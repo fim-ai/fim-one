@@ -25,6 +25,7 @@ FIM Agent occupies the middle ground between static workflow engines (Dify, n8n)
 
 - **Dynamic DAG Planning** -- An LLM decomposes goals into dependency graphs at runtime. No hard-coded workflows.
 - **Concurrent Execution** -- Independent DAG steps run in parallel via `asyncio`, bounded by a configurable concurrency limit.
+- **Real-time Streaming** -- Web UI streams reasoning steps and tool calls as they happen via SSE, with KaTeX math rendering support.
 - **ReAct Agent** -- Structured reasoning-and-acting loop with JSON-based tool calls, automatic error recovery, and iteration limits.
 - **OpenAI-Compatible** -- Works with any provider exposing the `/v1/chat/completions` interface (OpenAI, DeepSeek, Qwen, Ollama, vLLM, and others).
 - **Pluggable Tool System** -- Protocol-based tool interface with a central registry. Ships with a built-in Python code executor.
@@ -138,7 +139,7 @@ cp example.env .env
 uv run python examples/web_ui.py
 ```
 
-Then open http://localhost:8000 -- two modes available: **ReAct Agent** (single-query tool loop) and **DAG Planner** (multi-step planning with concurrent execution).
+Then open http://localhost:8000 -- two modes available: **ReAct Agent** (single-query tool loop) and **DAG Planner** (multi-step planning with concurrent execution). Both modes stream progress in real-time via SSE and support KaTeX math rendering.
 
 ## Configuration
 
@@ -191,6 +192,7 @@ fim-agent/
   tests/
   examples/
     quickstart.py     # Runnable quick start example
+    web_ui.py         # Web UI playground with real-time streaming
   pyproject.toml
 ```
 
@@ -198,9 +200,9 @@ fim-agent/
 
 > Goal: Build a complete **Dify alternative** -- from agent runtime to visual workflow builder.
 
-**Current (v0.1)**: ReAct Agent, DAG Planning, concurrent execution, Web UI playground.
+**Current (v0.1)**: ReAct Agent, DAG Planning, concurrent execution, Web UI playground, real-time SSE streaming, KaTeX math rendering.
 
-**Next**: Native function calling, streaming output, conversation memory (v0.2) → MCP integration, tool ecosystem (v0.3) → RAG & knowledge base (v0.4) → Agent builder UI (v0.5) → Multi-agent collaboration (v0.6) → Production platform (v0.7) → Observability (v0.8) → Visual workflow editor / Dify parity (v0.9) → Enterprise & ecosystem (v1.0).
+**Next**: Native function calling, conversation memory (v0.2) → MCP integration, tool ecosystem (v0.3) → RAG & knowledge base (v0.4) → Agent builder UI (v0.5) → Multi-agent collaboration (v0.6) → Production platform (v0.7) → Observability (v0.8) → Visual workflow editor / Dify parity (v0.9) → Enterprise & ecosystem (v1.0).
 
 See the full [Roadmap](https://github.com/fim-ai/fim-agent/wiki/Roadmap) for details.
 
