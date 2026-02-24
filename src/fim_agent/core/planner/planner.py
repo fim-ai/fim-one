@@ -12,6 +12,7 @@ from collections import deque
 from typing import Any
 
 from fim_agent.core.model import BaseLLM, ChatMessage
+from fim_agent.core.model.usage import UsageSummary
 from fim_agent.core.utils import extract_json
 
 from .types import ExecutionPlan, PlanStep
@@ -30,6 +31,8 @@ Each step must have:
 can start.  Use an empty list for steps that have no prerequisites.
 - "tool_hint": (optional) the name of a tool that would be useful for this \
 step, or null if no specific tool is needed.
+- "model_hint": (optional) a role name indicating which model should handle \
+this step (e.g. "fast", "vision", "general"), or null for the default model.
 
 Rules:
 1. Steps MUST form a valid directed acyclic graph (DAG) -- no circular \
@@ -53,8 +56,8 @@ If the goal is in Chinese, write tasks in Chinese.
 Respond with a single JSON object:
 {{
   "steps": [
-    {{"id": "step_1", "task": "...", "dependencies": [], "tool_hint": null}},
-    {{"id": "step_2", "task": "...", "dependencies": ["step_1"], "tool_hint": "some_tool"}}
+    {{"id": "step_1", "task": "...", "dependencies": [], "tool_hint": null, "model_hint": null}},
+    {{"id": "step_2", "task": "...", "dependencies": ["step_1"], "tool_hint": "some_tool", "model_hint": "fast"}}
   ]
 }}
 """
@@ -97,7 +100,16 @@ class DAGPlanner:
         steps = self._parse_steps(content)
         self._validate_dag(steps)
 
-        return ExecutionPlan(goal=goal, steps=steps)
+        total_usage: UsageSummary | None = None
+        if result.usage:
+            total_usage = UsageSummary(
+                prompt_tokens=result.usage.get("prompt_tokens", 0),
+                completion_tokens=result.usage.get("completion_tokens", 0),
+                total_tokens=result.usage.get("total_tokens", 0),
+                llm_calls=1,
+            )
+
+        return ExecutionPlan(goal=goal, steps=steps, total_usage=total_usage)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -167,6 +179,7 @@ class DAGPlanner:
                 task=str(raw.get("task", "")),
                 dependencies=[str(d) for d in raw.get("dependencies", [])],
                 tool_hint=raw.get("tool_hint"),
+                model_hint=raw.get("model_hint"),
             )
             steps.append(step)
 

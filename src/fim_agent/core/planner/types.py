@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+from fim_agent.core.model.usage import UsageSummary
+
 
 @dataclass
 class PlanStep:
@@ -27,11 +29,13 @@ class PlanStep:
     task: str
     dependencies: list[str] = field(default_factory=list)
     tool_hint: str | None = None
+    model_hint: str | None = None
     result: str | None = None
     status: Literal["pending", "running", "completed", "failed"] = "pending"
     started_at: float | None = None
     completed_at: float | None = None
     duration: float | None = None
+    usage: UsageSummary | None = None
 
 
 @dataclass
@@ -52,6 +56,7 @@ class ExecutionPlan:
     goal: str
     steps: list[PlanStep] = field(default_factory=list)
     current_round: int = 1
+    total_usage: UsageSummary | None = None
 
 
 @dataclass
@@ -73,3 +78,4 @@ class AnalysisResult:
     confidence: float
     final_answer: str | None = None
     reasoning: str = ""
+    usage: UsageSummary | None = None

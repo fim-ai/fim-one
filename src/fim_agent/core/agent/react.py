@@ -1,22 +1,23 @@
 """ReAct (Reasoning + Acting) agent implementation.
 
 This module provides a ``ReActAgent`` that uses structured JSON output from an
-LLM to drive an iterative tool-use loop.  Unlike OpenAI's native function
-calling, the agent prompts the model to produce a JSON object describing the
-next action, parses it, executes the corresponding tool, and feeds the
-observation back into the conversation.
+LLM to drive an iterative tool-use loop.  It also supports an optional *native*
+function-calling mode where the LLM produces ``tool_calls`` directly (OpenAI
+style) instead of emitting JSON action objects.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any
-
 from collections.abc import Callable
 from typing import Any
 
+from fim_agent.core.memory.base import BaseMemory
 from fim_agent.core.model import BaseLLM, ChatMessage, LLMResult
+from fim_agent.core.model.types import ToolCallRequest
+from fim_agent.core.model.usage import UsageTracker
 from fim_agent.core.tool import ToolRegistry
 from fim_agent.core.utils import extract_json
 
@@ -69,6 +70,24 @@ user writes in Chinese, your reasoning and final_answer must be in Chinese. \
 If the user writes in English, respond in English. Match the user's language.
 """
 
+_NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE = """\
+You are an intelligent assistant that solves tasks by reasoning step-by-step \
+and using tools when necessary.
+
+Guidelines:
+- Always think carefully before acting.
+- Use tools only when the task requires external information or computation.
+- When you have enough information, respond with a direct textual answer.
+- If a tool call fails, analyse the error and decide whether to retry with \
+different arguments or respond with the information you have.
+- Be EFFICIENT: try to accomplish as much as possible in each tool call. \
+Write a single comprehensive script rather than making many small calls.
+- Keep your answers concise and focused -- present key results, not lengthy \
+commentary or step-by-step narration of what you did.
+- LANGUAGE: Always respond in the same language as the user's query. If the \
+user writes in Chinese, respond in Chinese. If in English, respond in English.
+"""
+
 
 class ReActAgent:
     """A ReAct agent that reasons and acts through structured JSON output.
@@ -78,6 +97,10 @@ class ReActAgent:
     the observation, and continues until a ``final_answer`` is produced or the
     maximum iteration count is reached.
 
+    When ``use_native_tools=True`` and the LLM advertises ``tool_call``
+    capability, the agent delegates tool invocation to the LLM's native
+    function-calling interface instead of parsing JSON actions.
+
     Args:
         llm: The language model backend to use for reasoning.
         tools: A registry of tools the agent may invoke.
@@ -85,6 +108,10 @@ class ReActAgent:
             When provided the default ReAct instructions are *replaced*
             entirely -- make sure to include tool descriptions yourself.
         max_iterations: Safety limit on reasoning iterations.
+        use_native_tools: Whether to prefer the LLM's native function-calling
+            interface.  The feature is only activated when the LLM also
+            advertises ``tool_call`` capability.
+        memory: Optional conversation memory for multi-turn sessions.
     """
 
     def __init__(
@@ -93,11 +120,23 @@ class ReActAgent:
         tools: ToolRegistry,
         system_prompt: str | None = None,
         max_iterations: int = 50,
+        use_native_tools: bool = False,
+        memory: BaseMemory | None = None,
     ) -> None:
         self._llm = llm
         self._tools = tools
         self._system_prompt_override = system_prompt
         self._max_iterations = max_iterations
+        self._use_native_tools = use_native_tools
+        self._memory = memory
+
+    @property
+    def _native_mode_active(self) -> bool:
+        """Whether native function-calling mode is currently active."""
+        return (
+            self._use_native_tools
+            and self._llm.abilities.get("tool_call", False)
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -118,10 +157,34 @@ class ReActAgent:
         Returns:
             An ``AgentResult`` containing the final answer and full step trace.
         """
+        if self._native_mode_active:
+            return await self._run_native(query, on_iteration)
+        return await self._run_json(query, on_iteration)
+
+    # ------------------------------------------------------------------
+    # JSON mode (original ReAct loop)
+    # ------------------------------------------------------------------
+
+    async def _run_json(
+        self,
+        query: str,
+        on_iteration: IterationCallback | None = None,
+    ) -> AgentResult:
+        """Execute the JSON-based ReAct loop."""
+        usage_tracker = UsageTracker()
+
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=self._build_system_prompt()),
-            ChatMessage(role="user", content=query),
         ]
+
+        # Load history from memory.
+        if self._memory is not None:
+            history = await self._memory.get_messages()
+            for msg in history:
+                if msg.role != "system":
+                    messages.append(msg)
+
+        messages.append(ChatMessage(role="user", content=query))
 
         steps: list[StepResult] = []
         response_format = self._json_response_format()
@@ -133,6 +196,7 @@ class ReActAgent:
                 messages,
                 response_format=response_format,
             )
+            await usage_tracker.record(result.usage)
 
             assistant_content = result.message.content or ""
             action = self._parse_action(assistant_content)
@@ -147,10 +211,13 @@ class ReActAgent:
                 steps.append(StepResult(action=action))
                 if on_iteration is not None:
                     on_iteration(iteration, action, None, None)
+                answer = action.answer or ""
+                await self._save_to_memory(query, answer)
                 return AgentResult(
-                    answer=action.answer or "",
+                    answer=answer,
                     steps=steps,
                     iterations=iteration,
+                    usage=usage_tracker.get_summary(),
                 )
 
             # -- Tool call path --
@@ -179,15 +246,192 @@ class ReActAgent:
         logger.warning(
             "ReAct loop exhausted after %d iterations", self._max_iterations,
         )
+        answer = (
+            f"I was unable to complete the task within {self._max_iterations} "
+            "iterations.  Here is what I gathered so far:\n"
+            + self._summarise_steps(steps)
+        )
+        await self._save_to_memory(query, answer)
         return AgentResult(
-            answer=(
-                f"I was unable to complete the task within {self._max_iterations} "
-                "iterations.  Here is what I gathered so far:\n"
-                + self._summarise_steps(steps)
-            ),
+            answer=answer,
             steps=steps,
             iterations=self._max_iterations,
+            usage=usage_tracker.get_summary(),
         )
+
+    # ------------------------------------------------------------------
+    # Native function-calling mode
+    # ------------------------------------------------------------------
+
+    async def _run_native(
+        self,
+        query: str,
+        on_iteration: IterationCallback | None = None,
+    ) -> AgentResult:
+        """Execute the native function-calling loop."""
+        usage_tracker = UsageTracker()
+
+        messages: list[ChatMessage] = [
+            ChatMessage(
+                role="system",
+                content=self._build_system_prompt_native(),
+            ),
+        ]
+
+        # Load history from memory.
+        if self._memory is not None:
+            history = await self._memory.get_messages()
+            for msg in history:
+                if msg.role != "system":
+                    messages.append(msg)
+
+        messages.append(ChatMessage(role="user", content=query))
+
+        steps: list[StepResult] = []
+
+        # Build OpenAI-format tool definitions.
+        tools_payload = self._build_tools_payload()
+        tool_choice: str | None = "auto" if tools_payload else None
+
+        for iteration in range(1, self._max_iterations + 1):
+            logger.debug("Native ReAct iteration %d", iteration)
+
+            result: LLMResult = await self._llm.chat(
+                messages,
+                tools=tools_payload,
+                tool_choice=tool_choice,
+            )
+            await usage_tracker.record(result.usage)
+
+            assistant_msg = result.message
+
+            # Append the full assistant message (may contain tool_calls).
+            messages.append(assistant_msg)
+
+            # -- Tool call path --
+            if assistant_msg.tool_calls:
+                tool_results = await self._execute_native_tool_calls(
+                    assistant_msg.tool_calls,
+                    iteration,
+                    steps,
+                    on_iteration,
+                )
+                messages.extend(tool_results)
+                continue
+
+            # -- Final answer path (no tool calls) --
+            answer = assistant_msg.content or ""
+            action = Action(
+                type="final_answer",
+                reasoning="",
+                answer=answer,
+            )
+            steps.append(StepResult(action=action))
+            if on_iteration is not None:
+                on_iteration(iteration, action, None, None)
+            await self._save_to_memory(query, answer)
+            return AgentResult(
+                answer=answer,
+                steps=steps,
+                iterations=iteration,
+                usage=usage_tracker.get_summary(),
+            )
+
+        # Max iterations exceeded.
+        logger.warning(
+            "Native ReAct loop exhausted after %d iterations",
+            self._max_iterations,
+        )
+        answer = (
+            f"I was unable to complete the task within {self._max_iterations} "
+            "iterations.  Here is what I gathered so far:\n"
+            + self._summarise_steps(steps)
+        )
+        await self._save_to_memory(query, answer)
+        return AgentResult(
+            answer=answer,
+            steps=steps,
+            iterations=self._max_iterations,
+            usage=usage_tracker.get_summary(),
+        )
+
+    async def _execute_native_tool_calls(
+        self,
+        tool_calls: list[ToolCallRequest],
+        iteration: int,
+        steps: list[StepResult],
+        on_iteration: IterationCallback | None,
+    ) -> list[ChatMessage]:
+        """Execute one or more native tool calls in parallel.
+
+        Args:
+            tool_calls: The tool call requests from the assistant message.
+            iteration: The current iteration number.
+            steps: The running list of step results (mutated in-place).
+            on_iteration: Optional callback.
+
+        Returns:
+            A list of ``ChatMessage`` objects with role ``"tool"`` to append
+            to the conversation.
+        """
+        async def _run_single(tc: ToolCallRequest) -> tuple[StepResult, ChatMessage]:
+            action = Action(
+                type="tool_call",
+                reasoning="",
+                tool_name=tc.name,
+                tool_args=tc.arguments,
+            )
+
+            tool = self._tools.get(tc.name)
+            if tool is None:
+                error_msg = (
+                    f"Unknown tool '{tc.name}'. "
+                    f"Available tools: {[t.name for t in self._tools.list_tools()]}"
+                )
+                step = StepResult(action=action, error=error_msg)
+                msg = ChatMessage(
+                    role="tool",
+                    content=f"Error: {error_msg}",
+                    tool_call_id=tc.id,
+                )
+                return step, msg
+
+            try:
+                observation = await tool.run(**tc.arguments)
+                step = StepResult(action=action, observation=observation)
+                msg = ChatMessage(
+                    role="tool",
+                    content=observation,
+                    tool_call_id=tc.id,
+                )
+                return step, msg
+            except Exception as exc:
+                error_msg = f"{type(exc).__name__}: {exc}"
+                logger.exception("Tool '%s' raised an exception", tc.name)
+                step = StepResult(action=action, error=error_msg)
+                msg = ChatMessage(
+                    role="tool",
+                    content=f"Error: {error_msg}",
+                    tool_call_id=tc.id,
+                )
+                return step, msg
+
+        results = await asyncio.gather(*[_run_single(tc) for tc in tool_calls])
+
+        tool_messages: list[ChatMessage] = []
+        for step_result, tool_msg in results:
+            steps.append(step_result)
+            tool_messages.append(tool_msg)
+
+            if on_iteration is not None:
+                on_iteration(
+                    iteration,
+                    step_result.action,
+                    step_result.observation,
+                    step_result.error,
+                )
+
+        return tool_messages
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -204,6 +448,18 @@ class ReActAgent:
 
         tool_descriptions = self._format_tool_descriptions()
         return _SYSTEM_PROMPT_TEMPLATE.format(tool_descriptions=tool_descriptions)
+
+    def _build_system_prompt_native(self) -> str:
+        """Build the system prompt for native function-calling mode.
+
+        Returns:
+            The system prompt string (tool descriptions are passed via the
+            ``tools`` parameter instead of being embedded in the prompt).
+        """
+        if self._system_prompt_override is not None:
+            return self._system_prompt_override
+
+        return _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE
 
     def _format_tool_descriptions(self) -> str:
         """Format tool descriptions for inclusion in the system prompt.
@@ -225,11 +481,34 @@ class ReActAgent:
             )
         return "\n".join(lines)
 
+    def _build_tools_payload(self) -> list[dict[str, Any]] | None:
+        """Build OpenAI-format tool definitions for native mode.
+
+        Returns:
+            A list of tool definition dicts, or ``None`` if no tools are
+            registered.
+        """
+        tools = self._tools.list_tools()
+        if not tools:
+            return None
+
+        payload: list[dict[str, Any]] = []
+        for tool in tools:
+            payload.append({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters_schema,
+                },
+            })
+        return payload
+
     def _json_response_format(self) -> dict[str, Any] | None:
         """Return a JSON-mode response format dict if the LLM supports it.
 
         Returns:
-            ``{{"type": "json_object"}}`` when the model advertises
+            ``{"type": "json_object"}`` when the model advertises
             ``json_mode`` support, otherwise ``None``.
         """
         if self._llm.abilities.get("json_mode", False):
@@ -303,6 +582,20 @@ class ReActAgent:
             error_msg = f"{type(exc).__name__}: {exc}"
             logger.exception("Tool '%s' raised an exception", tool_name)
             return StepResult(action=action, error=error_msg)
+
+    async def _save_to_memory(self, query: str, answer: str) -> None:
+        """Save the user query and final answer to memory, if configured.
+
+        Args:
+            query: The original user query.
+            answer: The agent's final answer.
+        """
+        if self._memory is None:
+            return
+        await self._memory.add_message(ChatMessage(role="user", content=query))
+        await self._memory.add_message(
+            ChatMessage(role="assistant", content=answer),
+        )
 
     @staticmethod
     def _summarise_steps(steps: list[StepResult]) -> str:

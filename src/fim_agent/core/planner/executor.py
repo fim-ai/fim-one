@@ -15,6 +15,8 @@ from typing import Any
 
 from fim_agent.core.agent import ReActAgent
 from fim_agent.core.agent.types import Action
+from fim_agent.core.model.registry import ModelRegistry
+from fim_agent.core.model.usage import UsageSummary
 
 from .types import ExecutionPlan, PlanStep
 
@@ -36,15 +38,19 @@ class DAGExecutor:
     Args:
         agent: The ``ReActAgent`` used to execute individual steps.
         max_concurrency: Maximum number of steps running in parallel.
+        model_registry: Optional registry for per-step model selection
+            based on ``PlanStep.model_hint``.
     """
 
     def __init__(
         self,
         agent: ReActAgent,
         max_concurrency: int = 5,
+        model_registry: ModelRegistry | None = None,
     ) -> None:
         self._agent = agent
         self._max_concurrency = max_concurrency
+        self._model_registry = model_registry
 
     async def execute(
         self,
@@ -143,6 +149,17 @@ class DAGExecutor:
                     "duration": step.duration,
                 })
 
+        # Aggregate step-level usage into the plan's total_usage.
+        step_usage = UsageSummary()
+        for step in plan.steps:
+            if step.usage is not None:
+                step_usage += step.usage
+        if step_usage.llm_calls > 0:
+            if plan.total_usage is not None:
+                plan.total_usage += step_usage
+            else:
+                plan.total_usage = step_usage
+
         return plan
 
     # ------------------------------------------------------------------
@@ -169,6 +186,38 @@ class DAGExecutor:
         """
         async with semaphore:
             await self._execute_step(step, context)
+
+    def _resolve_agent(self, step: PlanStep) -> ReActAgent:
+        """Select the appropriate agent for a step based on its model_hint.
+
+        If a ``ModelRegistry`` is configured and the step has a ``model_hint``
+        that matches a registered role, a temporary ``ReActAgent`` is created
+        with the corresponding LLM.  Otherwise the default agent is returned.
+
+        Args:
+            step: The plan step to resolve an agent for.
+
+        Returns:
+            A ``ReActAgent`` instance to execute the step.
+        """
+        if self._model_registry is None or not step.model_hint:
+            return self._agent
+
+        try:
+            llm = self._model_registry.get_by_role(step.model_hint)
+        except KeyError:
+            logger.debug(
+                "No model registered for role '%s', using default agent",
+                step.model_hint,
+            )
+            return self._agent
+
+        return ReActAgent(
+            llm=llm,
+            tools=self._agent._tools,
+            system_prompt=self._agent._system_prompt_override,
+            max_iterations=self._agent._max_iterations,
+        )
 
     async def _execute_step(self, step: PlanStep, context: str) -> None:
         """Execute a single plan step via the ReAct agent.
@@ -199,12 +248,15 @@ class DAGExecutor:
                 "error": error,
             })
 
+        agent = self._resolve_agent(step)
+
         try:
-            agent_result = await self._agent.run(
+            agent_result = await agent.run(
                 query, on_iteration=_on_iteration,
             )
             step.status = "completed"
             step.result = agent_result.answer
+            step.usage = agent_result.usage
             logger.info(
                 "Step '%s' completed in %d iterations",
                 step.id,

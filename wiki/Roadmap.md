@@ -6,11 +6,12 @@
 
 ### v0.2 -- Core Enhancements
 
-- [ ] **Native Function Calling**: Support OpenAI-style `tool_choice` / `parallel_tool_calls` alongside the ReAct JSON mode
+- [x] **Native Function Calling**: Support OpenAI-style `tool_choice` / `parallel_tool_calls` alongside the ReAct JSON mode
 - [x] **Streaming Agent Output**: ~~Yield intermediate reasoning and tool results as they happen via `AsyncIterator`~~ -- Shipped in v0.1: real-time SSE streaming with async queue bridge and `on_iteration` callbacks for both ReAct and DAG modes
-- [ ] **Conversation Memory**: Short-term message window + long-term summary (LanceDB) for multi-turn agent sessions
-- [ ] **Retry & Fallback**: Configurable retry policies for LLM calls and tool executions with exponential backoff
-- [ ] **Multi-Model Support**: Configure multiple LLMs per project (general / fast / vision / compact), switch per step
+- [x] **Conversation Memory**: Short-term message window + long-term summary for multi-turn agent sessions
+- [x] **Retry & Rate Limiting**: Configurable retry with exponential backoff + token-bucket rate limiter respecting provider quotas
+- [x] **Token Usage Tracking**: Token usage aggregation across planning, execution, and analysis rounds
+- [x] **Multi-Model Support**: ModelRegistry to configure multiple LLMs per project (general / fast / vision / compact), switch per step
 
 ### v0.3 -- Rich Tool Ecosystem
 
@@ -54,9 +55,8 @@
 ### v0.8 -- Observability & Operations
 
 - [ ] **OpenTelemetry Traces**: Structured tracing for every LLM call, tool execution, and DAG step
-- [ ] **Token & Cost Tracking**: Token usage aggregation across planning, execution, and analysis rounds
+- [ ] **Cost Dashboard**: Visual cost analytics built on v0.2 UsageTracker data
 - [ ] **Monitoring Dashboard**: Task history, execution metrics, performance analytics
-- [ ] **Rate Limiting**: Token-aware rate limiter respecting provider quotas
 - [ ] **Execution Replay**: Historical trace replay for debugging and auditing
 
 ### v0.9 -- Workflow Engine (Dify Parity)

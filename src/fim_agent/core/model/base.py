@@ -23,6 +23,7 @@ class BaseLLM(ABC):
         messages: list[ChatMessage],
         *,
         tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
@@ -32,6 +33,8 @@ class BaseLLM(ABC):
         Args:
             messages: The conversation history.
             tools: Optional list of tool definitions in OpenAI format.
+            tool_choice: Optional tool choice constraint (e.g. ``"auto"``,
+                ``"none"``, or a dict specifying a particular function).
             temperature: Sampling temperature override.
             max_tokens: Maximum tokens to generate.
             response_format: Optional response format constraint (e.g. JSON mode).

@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from fim_agent.core.model import BaseLLM, ChatMessage
+from fim_agent.core.model.usage import UsageSummary
 from fim_agent.core.utils import extract_json
 
 from .types import AnalysisResult, ExecutionPlan
@@ -82,7 +83,17 @@ class PlanAnalyzer:
         )
 
         content = result.message.content or ""
-        return self._parse_result(content)
+        analysis = self._parse_result(content)
+
+        if result.usage:
+            analysis.usage = UsageSummary(
+                prompt_tokens=result.usage.get("prompt_tokens", 0),
+                completion_tokens=result.usage.get("completion_tokens", 0),
+                total_tokens=result.usage.get("total_tokens", 0),
+                llm_calls=1,
+            )
+
+        return analysis
 
     # ------------------------------------------------------------------
     # Internal helpers

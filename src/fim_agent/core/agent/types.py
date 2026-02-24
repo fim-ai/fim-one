@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from fim_agent.core.model.usage import UsageSummary
+
 
 @dataclass
 class Action:
@@ -61,3 +63,4 @@ class AgentResult:
     answer: str
     steps: list[StepResult] = field(default_factory=list)
     iterations: int = 0
+    usage: UsageSummary | None = None
