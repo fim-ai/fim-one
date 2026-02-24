@@ -137,6 +137,46 @@
   }
 }
 
+/* Fix Radix ScrollArea viewport child expanding beyond parent width */
+[data-radix-scroll-area-viewport] > div {
+  display: block !important;
+}
+
+/* Custom scrollbar for code blocks and pre elements */
+pre::-webkit-scrollbar,
+code::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+pre::-webkit-scrollbar-track,
+code::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+pre::-webkit-scrollbar-thumb,
+code::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 15%);
+  border-radius: 3px;
+}
+
+pre::-webkit-scrollbar-thumb:hover,
+code::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: oklch(1 0 0 / 25%);
+}
+
+/* Firefox scrollbar styling */
+pre,
+code,
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 15%) transparent;
+}
+
 .shiny-text {
   background: linear-gradient(
     120deg,
@@ -149,4 +189,15 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: shimmer 2s ease-in-out infinite;
+}
+
+/* ReactFlow overrides for dark theme */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-node-background-color: transparent;
+  --xy-node-border-radius: 8px;
+}
+
+.react-flow__node {
+  box-shadow: none !important;
 }

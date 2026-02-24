@@ -4,7 +4,13 @@
       "Bash(*)",
       "Write(*)",
       "Edit(*)",
-      "WebFetch(domain:*)"
+      "WebFetch(domain:*)",
+      "WebFetch(domain:docs.xagent.run)",
+      "WebFetch(domain:www.crunchbase.com)",
+      "WebFetch(domain:thenewstack.io)",
+      "WebFetch(domain:docs.openclaw.ai)",
+      "WebFetch(domain:x.com)",
+      "WebFetch(domain:tao-hpu.medium.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

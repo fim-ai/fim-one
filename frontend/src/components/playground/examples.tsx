@@ -18,46 +18,62 @@ interface ExamplesProps {
 const EXAMPLES: Record<AgentMode, Record<Language, string[]>> = {
   react: {
     en: [
-      "Simulate the Monty Hall problem 10,000 times \u2014 should you switch doors? Show the win rates",
-      "Simulate the Birthday Paradox: how often do 2 of 23 people share a birthday? Run 10,000 trials",
-      "Estimate pi by throwing 1,000,000 random darts at a unit square \u2014 how close can you get?",
-      "Solve the 8-queens puzzle: place 8 queens on a chessboard so none attack each other. How many solutions exist?",
+      // Web + analysis
+      "What are the top 5 stories on Hacker News right now? Fetch the page and give me a one-line summary of each",
+      "Search for the latest SpaceX launch, find the mission details, and calculate how many launches they've done this year",
+      "Look up the current population of the world's 5 largest cities, then calculate what % of the global population they hold",
+      // Pure code (keep a few fun ones)
+      "Simulate the Monty Hall problem 10,000 times — should you switch doors? Show the win rates",
       "Generate a random 15x15 maze and solve it with BFS, show the maze and solution path as ASCII art",
-      "Find all Pythagorean triples (a\u00b2 + b\u00b2 = c\u00b2) where c < 100. How many are there?",
-      "Simulate 5,000 hands of Blackjack with basic strategy (hit below 17) \u2014 what's the player win rate?",
-      "Crack this Caesar cipher: 'Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj' \u2014 try all 26 shifts, score by English letter frequency",
+      "Simulate a Rock-Paper-Scissors tournament: 8 AI strategies compete in elimination rounds — who wins?",
+      // Web + code combo
+      "Fetch the Wikipedia page for 'Collatz conjecture', extract the formula, then test it on all numbers from 1 to 10,000 — which starting number produces the longest chain?",
+      "Search for today's weather in Tokyo, then write a Python program to convert and display the temperatures in Celsius, Fahrenheit, and Kelvin",
     ],
     zh: [
-      "\u6a21\u62df\u8499\u63d0\u970d\u5c14\u95ee\u9898 10,000 \u6b21\u2014\u2014\u5e94\u8be5\u6362\u95e8\u5417\uff1f\u5c55\u793a\u80dc\u7387\u7edf\u8ba1",
-      "\u6a21\u62df\u751f\u65e5\u6096\u8bba\uff1a23 \u4e2a\u4eba\u4e2d\u6709 2 \u4eba\u540c\u4e00\u5929\u751f\u65e5\u7684\u6982\u7387\u662f\u591a\u5c11\uff1f\u6a21\u62df 10,000 \u6b21",
-      "\u7528\u8499\u7279\u5361\u6d1b\u65b9\u6cd5\u4f30\u7b97\u5706\u5468\u7387\uff1a\u5f80\u5355\u4f4d\u6b63\u65b9\u5f62\u4e0a\u6295 1,000,000 \u4e2a\u968f\u673a\u98de\u9556\uff0c\u80fd\u591a\u63a5\u8fd1\u771f\u5b9e\u503c\uff1f",
-      "\u89e3\u516b\u7687\u540e\u95ee\u9898\uff1a\u5728\u68cb\u76d8\u4e0a\u653e 8 \u4e2a\u7687\u540e\u4f7f\u5176\u4e92\u4e0d\u653b\u51fb\uff0c\u4e00\u5171\u6709\u591a\u5c11\u79cd\u89e3\u6cd5\uff1f",
-      "\u968f\u673a\u751f\u6210\u4e00\u4e2a 15x15 \u8ff7\u5bab\u5e76\u7528 BFS \u6c42\u89e3\uff0c\u7528 ASCII \u5b57\u7b26\u753b\u5c55\u793a\u8ff7\u5bab\u548c\u8def\u5f84",
-      "\u627e\u51fa\u6240\u6709 c < 100 \u7684\u52fe\u80a1\u6570 (a\u00b2 + b\u00b2 = c\u00b2)\uff0c\u4e00\u5171\u6709\u591a\u5c11\u7ec4\uff1f",
-      "\u6a21\u62df 5,000 \u5c40 21 \u70b9\uff0c\u4f7f\u7528\u57fa\u672c\u7b56\u7565\uff08\u4f4e\u4e8e 17 \u5c31\u8981\u724c\uff09\u2014\u2014\u73a9\u5bb6\u80dc\u7387\u662f\u591a\u5c11\uff1f",
-      "\u7834\u89e3\u51ef\u6492\u5bc6\u7801\uff1a'Wkh txlfn eurzq ira mxpsv ryhu wkh odcb grj'\u2014\u2014\u5c1d\u8bd5\u6240\u6709 26 \u79cd\u4f4d\u79fb\uff0c\u7528\u82f1\u8bed\u5b57\u6bcd\u9891\u7387\u8bc4\u5206",
+      // 联网 + 分析
+      "现在 Hacker News 上最火的 5 篇文章是什么？抓取页面并给出每篇的一句话摘要",
+      "搜索 SpaceX 最近一次发射的任务详情，算一算他们今年总共发射了多少次",
+      "查一下世界上人口最多的 5 个城市现在各有多少人，算出它们占全球总人口的百分比",
+      // 纯代码
+      "模拟蒙提霍尔问题 10,000 次——应该换门吗？展示胜率统计",
+      "随机生成一个 15x15 迷宫并用 BFS 求解，用 ASCII 字符画展示迷宫和路径",
+      "石头剪刀布锦标赛：8 种 AI 策略淘汰赛，谁能笑到最后？",
+      // 联网 + 代码
+      "抓取维基百科'考拉兹猜想'页面，提取公式，然后对 1~10,000 所有数字测试——哪个起始数字产生的链最长？",
+      "搜索东京今天的天气，然后写 Python 程序把温度转换成摄氏、华氏和开尔文分别展示",
     ],
   },
   dag: {
     en: [
-      "Implement bubble sort AND quicksort separately, benchmark both on a 10,000-element random list, then compare their speeds",
-      "Implement linear search AND binary search, race both finding 1,000 random targets in a sorted 100,000-element list, then compare total operations",
-      "Simulate 10,000 Monty Hall rounds with always-switch AND 10,000 with always-stay, then compare win rates and explain the paradox",
-      "Simulate Martingale betting AND flat-bet strategy over 500 coin flips starting with $1,000 each, then compare who survived longer",
-      "Estimate pi via Monte Carlo (1M darts) AND via the Leibniz series (1M terms), then compare which method is more accurate",
-      "Compute the first 50 Fibonacci numbers AND the first 50 primes, then find which numbers appear in both sequences",
-      "Write a Caesar cipher encoder AND a brute-force decoder, encode 'ATTACK AT DAWN' with a random shift, then crack it with the decoder",
-      "Generate a random 20x20 maze, then solve it using BFS AND DFS in parallel, compare which algorithm explored fewer cells",
+      // Multi-source research → synthesis (real DAG value)
+      "Search for Python, Rust, and Go on the TIOBE index in parallel, then synthesize a report comparing their popularity trends and job market outlook",
+      "Fetch the Hacker News front page, find the top 5 stories, then fetch and summarize each article in parallel",
+      "Fetch the Hacker News front page, Reddit r/programming hot posts, and GitHub trending repos in parallel, then produce a unified 'Tech Pulse' briefing",
+      "Search for reviews of ChatGPT, Claude, and Gemini in parallel, then create a comparison table rating each on speed, accuracy, and creativity",
+      // Data collection → computation → report
+      "Fetch the Wikipedia pages for Earth, Mars, and Jupiter in parallel, extract key stats (mass, radius, distance from Sun), then calculate how much you'd weigh on each planet",
+      "Search for the current price of Bitcoin, Ethereum, and Solana in parallel, then calculate their 24h changes and generate an investment risk comparison",
+      // Web + code hybrid DAG
+      "Fetch 3 different news articles about AI regulation in parallel, summarize each, then write Python code to find common themes using word frequency analysis",
+      "Search for the population of New York, London, and Tokyo in parallel, then simulate a random 'city growth race' over 50 years and report who wins",
+      // Pure code DAG (one classic kept)
+      "Generate a random 20x20 maze, then solve it using BFS and DFS in parallel, compare which explored fewer cells and visualize both paths in ASCII",
     ],
     zh: [
-      "\u5206\u522b\u5b9e\u73b0\u5192\u6ce1\u6392\u5e8f\u548c\u5feb\u901f\u6392\u5e8f\uff0c\u5728 10,000 \u4e2a\u968f\u673a\u5143\u7d20\u4e0a\u8dd1\u57fa\u51c6\u6d4b\u8bd5\uff0c\u7136\u540e\u5bf9\u6bd4\u4e24\u8005\u901f\u5ea6",
-      "\u5206\u522b\u5b9e\u73b0\u7ebf\u6027\u641c\u7d22\u548c\u4e8c\u5206\u641c\u7d22\uff0c\u5728 100,000 \u4e2a\u6709\u5e8f\u5143\u7d20\u4e2d\u641c\u7d22 1,000 \u4e2a\u968f\u673a\u76ee\u6807\uff0c\u7136\u540e\u5bf9\u6bd4\u603b\u64cd\u4f5c\u6b21\u6570",
-      "\u6a21\u62df\u8499\u63d0\u970d\u5c14\u95ee\u9898\uff1a\u59cb\u7ec8\u6362\u95e8 10,000 \u6b21 vs \u59cb\u7ec8\u4e0d\u6362 10,000 \u6b21\uff0c\u5bf9\u6bd4\u80dc\u7387\u5e76\u89e3\u91ca\u6096\u8bba",
-      "\u6a21\u62df\u9a6c\u4e01\u683c\u5c14\u7b56\u7565\u548c\u5e73\u6ce8\u7b56\u7565\u5404\u8fdb\u884c 500 \u6b21\u629b\u786c\u5e01\uff08\u8d77\u59cb $1,000\uff09\uff0c\u5bf9\u6bd4\u8c01\u6d3b\u5f97\u66f4\u4e45",
-      "\u7528\u8499\u7279\u5361\u6d1b\u6cd5\uff08100 \u4e07\u98de\u9556\uff09\u548c\u83b1\u5e03\u5c3c\u8328\u7ea7\u6570\uff08100 \u4e07\u9879\uff09\u5206\u522b\u4f30\u7b97\u5706\u5468\u7387\uff0c\u5bf9\u6bd4\u54ea\u79cd\u65b9\u6cd5\u66f4\u7cbe\u786e",
-      "\u8ba1\u7b97\u524d 50 \u4e2a\u6590\u6ce2\u90a3\u5951\u6570\u548c\u524d 50 \u4e2a\u7d20\u6570\uff0c\u7136\u540e\u627e\u51fa\u540c\u65f6\u51fa\u73b0\u5728\u4e24\u4e2a\u5e8f\u5217\u4e2d\u7684\u6570",
-      "\u7f16\u5199\u51ef\u6492\u5bc6\u7801\u52a0\u5bc6\u5668\u548c\u66b4\u529b\u7834\u89e3\u5668\uff0c\u7528\u968f\u673a\u4f4d\u79fb\u52a0\u5bc6 'ATTACK AT DAWN'\uff0c\u518d\u7528\u7834\u89e3\u5668\u7834\u89e3",
-      "\u968f\u673a\u751f\u6210 20x20 \u8ff7\u5bab\uff0c\u7136\u540e\u7528 BFS \u548c DFS \u5e76\u884c\u6c42\u89e3\uff0c\u5bf9\u6bd4\u54ea\u79cd\u7b97\u6cd5\u63a2\u7d22\u7684\u683c\u5b50\u66f4\u5c11",
+      // 多源调研 → 汇总（真正的 DAG 价值）
+      "并行搜索 Python、Rust、Go 在 TIOBE 指数上的排名，然后综合一份报告对比它们的流行趋势和就业前景",
+      "抓取 Hacker News 首页，找出最火的 5 篇文章，然后并行抓取每篇文章并生成一句话摘要",
+      "并行抓取 Hacker News 首页、Reddit r/programming 热帖和 GitHub Trending 仓库，生成一份统一的'技术脉搏'简报",
+      "并行搜索 ChatGPT、Claude 和 Gemini 的评测，然后生成对比表格，从速度、准确性、创造力三个维度打分",
+      // 数据采集 → 计算 → 报告
+      "并行抓取维基百科上地球、火星和木星的页面，提取关键数据（质量、半径、距太阳距离），然后算出你在每个星球上的体重",
+      "并行搜索 Bitcoin、Ethereum 和 Solana 的当前价格，计算 24 小时涨跌幅，生成投资风险对比分析",
+      // 联网 + 代码混合 DAG
+      "并行抓取 3 篇关于 AI 监管的新闻文章，分别摘要，然后用 Python 词频分析找出共同主题",
+      "并行搜索纽约、伦敦、东京的人口数据，然后模拟一个 50 年的'城市增长竞赛'，看谁先到 2000 万",
+      // 纯代码 DAG（保留一个经典）
+      "随机生成 20x20 迷宫，然后用 BFS 和 DFS 并行求解，对比哪个探索的格子更少，用 ASCII 画出两条路径",
     ],
   },
 }

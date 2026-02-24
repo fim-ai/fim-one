@@ -26,7 +26,7 @@ from fastapi.responses import StreamingResponse
 from fim_agent.core.agent import ReActAgent
 from fim_agent.core.planner import DAGExecutor, DAGPlanner, PlanAnalyzer
 
-from ..deps import get_llm, get_tools
+from ..deps import get_fast_llm, get_llm, get_max_concurrency, get_model_registry, get_tools
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ async def react_endpoint(q: str, user_id: str = "default") -> StreamingResponse:
 
         progress_queue: asyncio.Queue[str] = asyncio.Queue()
         done_event = asyncio.Event()
+        iter_start = time.time()
 
         def on_iteration(
             iteration: int,
@@ -73,21 +74,29 @@ async def react_endpoint(q: str, user_id: str = "default") -> StreamingResponse:
             observation: str | None,
             error: str | None,
         ) -> None:
+            nonlocal iter_start
             if action.type == "tool_call":
-                progress_queue.put_nowait(
-                    _sse(
-                        "step",
-                        {
-                            "type": "tool_call",
-                            "iteration": iteration,
-                            "tool_name": action.tool_name,
-                            "tool_args": action.tool_args,
-                            "reasoning": action.reasoning,
-                            "observation": observation,
-                            "error": error,
-                        },
-                    )
-                )
+                is_starting = observation is None and error is None
+                now = time.time()
+                iter_elapsed: float | None = None
+                if is_starting:
+                    # Reset timer when tools start executing, so parallel
+                    # tools all measure from the same baseline.
+                    iter_start = now
+                else:
+                    iter_elapsed = round(now - iter_start, 2)
+                payload: dict[str, Any] = {
+                    "type": "tool_start" if is_starting else "tool_call",
+                    "iteration": iteration,
+                    "tool_name": action.tool_name,
+                    "tool_args": action.tool_args,
+                    "reasoning": action.reasoning,
+                    "observation": observation,
+                    "error": error,
+                }
+                if iter_elapsed is not None:
+                    payload["iter_elapsed"] = iter_elapsed
+                progress_queue.put_nowait(_sse("step", payload))
 
         try:
             llm = get_llm()
@@ -118,12 +127,14 @@ async def react_endpoint(q: str, user_id: str = "default") -> StreamingResponse:
             result = run_task.result()
 
             elapsed = round(time.time() - t0, 2)
+            last_iter_elapsed = round(time.time() - iter_start, 2)
             yield _sse(
                 "done",
                 {
                     "answer": result.answer,
                     "iterations": result.iterations,
                     "elapsed": elapsed,
+                    "iter_elapsed": last_iter_elapsed,
                 },
             )
         except Exception as exc:
@@ -172,10 +183,11 @@ async def dag_endpoint(q: str, user_id: str = "default") -> StreamingResponse:
             )
 
         try:
-            llm = get_llm()
+            llm = get_llm()           # Sonnet — planning & analysis
+            fast_llm = get_fast_llm()  # Haiku — step execution
             tools = get_tools()
 
-            # Phase 1: Plan
+            # Phase 1: Plan (Sonnet)
             yield _sse("phase", {"name": "planning", "status": "start"})
             planner = DAGPlanner(llm=llm)
             plan = await planner.plan(q)
@@ -196,10 +208,15 @@ async def dag_endpoint(q: str, user_id: str = "default") -> StreamingResponse:
                 },
             )
 
-            # Phase 2: Execute (with real-time step progress)
+            # Phase 2: Execute — Haiku (with real-time step progress)
             yield _sse("phase", {"name": "executing", "status": "start"})
-            agent = ReActAgent(llm=llm, tools=tools, max_iterations=15)
-            executor = DAGExecutor(agent=agent, max_concurrency=3)
+            agent = ReActAgent(llm=fast_llm, tools=tools, max_iterations=15)
+            registry = get_model_registry()
+            executor = DAGExecutor(
+                agent=agent,
+                max_concurrency=get_max_concurrency(),
+                model_registry=registry,
+            )
 
             async def _exec() -> Any:
                 try:
@@ -243,7 +260,7 @@ async def dag_endpoint(q: str, user_id: str = "default") -> StreamingResponse:
                 },
             )
 
-            # Phase 3: Analyze
+            # Phase 3: Analyze (Sonnet)
             yield _sse("phase", {"name": "analyzing", "status": "start"})
             analyzer = PlanAnalyzer(llm=llm)
             analysis = await analyzer.analyze(plan.goal, plan)

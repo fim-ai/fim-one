@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo } from "react"
 import {
   Card,
   CardContent,
@@ -10,77 +9,36 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
 import { Loader2, Wrench, Brain, CheckCircle2, AlertCircle, Clock, RefreshCw } from "lucide-react"
-import type { SSEMessage } from "@/hooks/use-sse"
+import { fmtDuration } from "@/lib/utils"
 import type { ReactStepEvent, ReactDoneEvent } from "@/types/api"
+import type { StepItem } from "@/hooks/use-react-steps"
 
 interface ReactOutputProps {
-  messages: SSEMessage[]
-  isRunning: boolean
+  items: StepItem[]
 }
 
-interface StepItem {
-  event: string
-  data: unknown
-  duration?: number
-  displayIteration?: number
-}
-
-export function ReactOutput({ messages, isRunning }: ReactOutputProps) {
-  const items = useMemo(() => {
-    const result: StepItem[] = []
-    let iterCount = 0
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i]
-
-      // Skip empty thinking steps (no reasoning = just a processing indicator)
-      if (msg.event === "step") {
-        const step = msg.data as ReactStepEvent
-        if (step.type === "thinking" && !step.reasoning) {
-          continue
-        }
-      }
-
-      // Calculate duration: time between this event and the next event
-      let duration: number | undefined
-      if (i + 1 < messages.length) {
-        duration = (messages[i + 1].timestamp - msg.timestamp) / 1000
-      }
-
-      // Sequential display iteration for step events
-      let displayIteration: number | undefined
-      if (msg.event === "step") {
-        iterCount++
-        displayIteration = iterCount
-      }
-
-      result.push({ event: msg.event, data: msg.data, duration, displayIteration })
-    }
-    return result
-  }, [messages])
-
-  if (items.length === 0 && !isRunning) {
-    return null
-  }
-
+export function ReactOutput({ items }: ReactOutputProps) {
   return (
     <div className="space-y-3 min-w-0 w-full">
       {items.map((item, idx) => {
         if (item.event === "step") {
           const step = item.data as ReactStepEvent
-          return <StepCard key={idx} step={step} duration={item.duration} displayIteration={item.displayIteration} />
+          return (
+            <div key={idx} data-react-idx={idx}>
+              <StepCard step={step} duration={item.duration} displayIteration={item.displayIteration} />
+            </div>
+          )
         }
         if (item.event === "done") {
           const done = item.data as ReactDoneEvent
-          return <DoneCard key={idx} done={done} />
+          return (
+            <div key={idx} data-react-idx={idx}>
+              <DoneCard done={done} />
+            </div>
+          )
         }
         return null
       })}
-      {isRunning && (
-        <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span className="shiny-text">Processing...</span>
-        </div>
-      )}
     </div>
   )
 }
@@ -108,7 +66,7 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
             {duration != null && (
               <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
                 <Clock className="h-2.5 w-2.5" />
-                {duration.toFixed(1)}s
+                {fmtDuration(duration)}
               </span>
             )}
           </div>
@@ -117,6 +75,44 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
               {step.reasoning}
             </p>
           )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (step.type === "tool_start") {
+    return (
+      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-blue-500/20 py-4">
+        <CardContent className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/10">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+            </div>
+            <Badge
+              variant="outline"
+              className="border-blue-500/30 text-blue-500 text-[10px] uppercase tracking-wider"
+            >
+              Tool
+            </Badge>
+            <span className="text-sm font-medium text-foreground">
+              {step.tool_name}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Iteration {iterLabel}
+            </span>
+          </div>
+          {step.reasoning && (
+            <p className="text-sm italic text-muted-foreground leading-relaxed pl-9">
+              {step.reasoning}
+            </p>
+          )}
+          {step.tool_args && Object.keys(step.tool_args).length > 0 && (
+            <ToolArgsBlock args={step.tool_args} className="ml-9" />
+          )}
+          <div className="flex items-center gap-2 ml-9 text-sm text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span className="shiny-text">Executing...</span>
+          </div>
         </CardContent>
       </Card>
     )
@@ -145,7 +141,7 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
             {duration != null && (
               <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
                 <Clock className="h-2.5 w-2.5" />
-                {duration.toFixed(1)}s
+                {fmtDuration(duration)}
               </span>
             )}
           </div>
@@ -162,7 +158,7 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
               <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
                 Observation
               </p>
-              <pre className="whitespace-pre-wrap text-sm text-foreground/90 font-mono leading-relaxed">
+              <pre className="whitespace-pre-wrap text-sm text-foreground/90 font-mono leading-relaxed max-h-[300px] overflow-y-auto">
                 {step.observation}
               </pre>
             </div>
@@ -203,22 +199,22 @@ function ToolArgsBlock({
       <div className={className}>
         <MarkdownContent
           content={`\`\`\`python\n${args.code}\n\`\`\``}
-          className="text-xs [&_pre]:my-0 [&_pre]:p-3"
+          className="text-xs [&_pre]:my-0 [&_pre]:p-3 [&_pre]:max-h-[300px] [&_pre]:overflow-y-auto"
         />
         {hasRest && (
-          <pre className="overflow-x-auto rounded-md bg-muted/50 p-3 text-xs font-mono leading-relaxed mt-2">
-            {JSON.stringify(rest, null, 2)}
-          </pre>
+          <MarkdownContent
+            content={`\`\`\`json\n${JSON.stringify(rest, null, 2)}\n\`\`\``}
+            className="text-xs [&_pre]:my-0 [&_pre]:p-3 [&_pre]:max-h-[300px] [&_pre]:overflow-y-auto mt-2"
+          />
         )}
       </div>
     )
   }
   return (
-    <pre
-      className={`overflow-x-auto rounded-md bg-muted/50 p-3 text-xs font-mono leading-relaxed ${className ?? ""}`}
-    >
-      {JSON.stringify(args, null, 2)}
-    </pre>
+    <MarkdownContent
+      content={`\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\``}
+      className={`text-xs [&_pre]:my-0 [&_pre]:p-3 [&_pre]:max-h-[300px] [&_pre]:overflow-y-auto ${className ?? ""}`}
+    />
   )
 }
 
@@ -238,7 +234,7 @@ function DoneCard({ done }: { done: ReactDoneEvent }) {
             </span>
             <span className="flex items-center gap-1">
               <Clock className="h-2.5 w-2.5" />
-              {done.elapsed.toFixed(1)}s
+              {fmtDuration(done.elapsed)}
             </span>
           </div>
         </div>

@@ -65,6 +65,8 @@ Write a single comprehensive script rather than making many small calls. \
 For example, generate data AND analyse it in one script when feasible.
 - Keep your final_answer concise and focused -- present key results, not \
 lengthy commentary or step-by-step narration of what you did.
+- Do NOT generate charts, plots, or images (e.g. matplotlib) unless the user \
+explicitly asks for visualisation. Prefer text tables and formatted output.
 - LANGUAGE: Always respond in the same language as the user's query. If the \
 user writes in Chinese, your reasoning and final_answer must be in Chinese. \
 If the user writes in English, respond in English. Match the user's language.
@@ -123,7 +125,7 @@ class ReActAgent:
         tools: ToolRegistry,
         system_prompt: str | None = None,
         max_iterations: int = 50,
-        use_native_tools: bool = False,
+        use_native_tools: bool = True,
         memory: BaseMemory | None = None,
     ) -> None:
         self._llm = llm
@@ -258,6 +260,9 @@ class ReActAgent:
                 )
 
             # -- Tool call path --
+            if on_iteration is not None:
+                on_iteration(iteration, action, None, None)
+
             step = await self._execute_tool_call(action)
             steps.append(step)
 
@@ -452,6 +457,17 @@ class ReActAgent:
                     tool_call_id=tc.id,
                 )
                 return step, msg
+
+        # Notify all tool calls starting before parallel execution.
+        if on_iteration is not None:
+            for tc in tool_calls:
+                start_action = Action(
+                    type="tool_call",
+                    reasoning="",
+                    tool_name=tc.name,
+                    tool_args=tc.arguments,
+                )
+                on_iteration(iteration, start_action, None, None)
 
         results = await asyncio.gather(*[_run_single(tc) for tc in tool_calls])
 

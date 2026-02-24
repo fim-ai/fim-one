@@ -1,34 +1,40 @@
-# FIM Agent
+<div align="center">
 
-**LLM-powered Agent Runtime with Dynamic DAG Planning & Concurrent Execution**
+![FIM Agent Banner](./assets/banner.jpg)
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-Source%20Available-orange)
+
+**Provider-agnostic Agent Platform -- from standalone AI assistant to embeddable runtime that modernizes legacy systems.**
+
+</div>
 
 ---
 
 ## Overview
 
-FIM Agent is a lightweight Python framework that lets an LLM dynamically decompose complex goals into directed acyclic graphs (DAGs) and execute them with maximum parallelism.
+FIM Agent is a provider-agnostic Python framework for building AI agents that dynamically plan and execute complex tasks. It operates in two modes:
 
-Traditional workflow engines (Dify, LangGraph, etc.) require developers to hard-code execution graphs at design time. FIM Agent takes a different approach: **the LLM decides the execution graph at runtime**. Given a high-level goal, the planner produces a dependency-aware DAG of steps, the executor runs independent steps concurrently, and an analyzer verifies whether the goal was achieved -- re-planning if necessary.
+- **Standalone** -- A full-featured AI assistant with dynamic DAG planning, concurrent execution, and real-time streaming. The LLM decomposes goals into dependency-aware DAGs at runtime, runs independent steps in parallel, and re-plans if needed.
+- **Embedded (Sidecar)** -- An embeddable runtime that connects to legacy systems via a standardized Adapter protocol, enabling AI-powered automation without rewriting existing software.
 
-The framework also ships a ReAct agent for single-query tool-use loops and an extensible RAG retriever interface, making it a complete building block for agentic applications.
+Both modes share the same agent core: ReAct reasoning loops, pluggable tools, and a protocol-first architecture with zero vendor lock-in.
 
 ## Philosophy
 
-FIM Agent occupies the middle ground between static workflow engines (Dify, n8n) and fully autonomous agents (AutoGPT). It offers three execution modes -- **Static Workflow** (deterministic, roadmap v0.9), **ReAct Agent** (single-query tool loops), and **DAG Planning** (concurrent multi-step execution) -- so users can choose the right trade-off between determinism and flexibility.
+FIM Agent offers two execution modes -- **ReAct Agent** (single-query tool loops) and **DAG Planning** (concurrent multi-step execution) -- letting users choose the right trade-off between simplicity and power. Unlike static workflow engines (Dify, n8n) that require hand-coded DAGs, FIM Agent's planner generates execution graphs at runtime. Unlike fully autonomous agents (Manus, AutoGPT), it keeps humans in the loop with confirmation gates and audit trails.
 
 > Deep dive: [Philosophy](https://github.com/fim-ai/fim-agent/wiki/Philosophy) | [Execution Modes](https://github.com/fim-ai/fim-agent/wiki/Execution-Modes) | [Planning Landscape](https://github.com/fim-ai/fim-agent/wiki/Planning-Landscape)
 
 ## Key Features
 
 - **Dynamic DAG Planning** -- An LLM decomposes goals into dependency graphs at runtime. No hard-coded workflows.
+- **DAG Visualization** -- Interactive flow graph (@xyflow/react) in an expand/collapse right sidebar with real-time step status, dependency edges, click-to-scroll navigation, and auto fitView. ReAct mode shows a compact step timeline.
 - **Concurrent Execution** -- Independent DAG steps run in parallel via `asyncio`, bounded by a configurable concurrency limit.
-- **Real-time Streaming** -- Web UI streams reasoning steps and tool calls as they happen via SSE, with KaTeX math rendering support.
+- **Real-time Streaming** -- Portal streams reasoning steps and tool calls as they happen via SSE, with KaTeX math rendering support.
 - **ReAct Agent** -- Structured reasoning-and-acting loop with JSON-based tool calls, automatic error recovery, and iteration limits.
 - **OpenAI-Compatible** -- Works with any provider exposing the `/v1/chat/completions` interface (OpenAI, DeepSeek, Qwen, Ollama, vLLM, and others).
-- **Pluggable Tool System** -- Protocol-based tool interface with a central registry. Ships with a built-in Python code executor.
+- **Pluggable Tool System** -- Protocol-based tool interface with a central registry. Ships with Python executor, web search, and web fetch (Jina).
 - **RAG Ready** -- Abstract `BaseRetriever` / `Document` interface for plugging in vector stores and search backends.
 - **Minimal Dependencies** -- Only three runtime dependencies: `openai`, `httpx`, `pydantic`.
 
@@ -136,19 +142,17 @@ cp example.env .env
 uv sync --extra web
 cd frontend && pnpm install && cd ..
 
-# Start (pick one)
-./start.sh            # Web UI demo (lightweight, single process)
-./start.sh portal     # Next.js portal + API backend (full experience)
+# Start
+./start.sh            # Next.js portal + API backend (default)
 ./start.sh api        # API only (for custom frontends or testing)
 ```
 
 | Command | What starts | URL |
 |---------|-------------|-----|
-| `./start.sh` | Inline Web UI demo | http://localhost:8000 |
-| `./start.sh portal` | Next.js + FastAPI | http://localhost:3000 (UI) + :8000 (API) |
+| `./start.sh` | Next.js + FastAPI | http://localhost:3000 (UI) + :8000 (API) |
 | `./start.sh api` | FastAPI only | http://localhost:8000/api |
 
-Both the Web UI and the Next.js portal offer two modes: **ReAct Agent** (single-query tool loop) and **DAG Planner** (multi-step planning with concurrent execution), with real-time SSE streaming and KaTeX math rendering.
+The portal offers two modes: **ReAct Agent** (single-query tool loop) and **DAG Planner** (multi-step planning with concurrent execution), with real-time SSE streaming, DAG visualization, and KaTeX math rendering.
 
 ## Configuration
 
@@ -203,18 +207,17 @@ fim-agent/
   tests/
   examples/
     quickstart.py     # Runnable quick start example
-    web_ui.py         # Lightweight Web UI demo (inline HTML)
-  start.sh            # Start script (webui / portal / api)
+  start.sh            # Start script (portal / api)
   pyproject.toml
 ```
 
 ## Roadmap
 
-> Goal: Build a complete **Dify alternative** -- from agent runtime to visual workflow builder.
+> Goal: Build a **provider-agnostic Agent Platform** -- from standalone AI assistant to embeddable runtime that modernizes legacy systems.
 
-**Current (v0.1)**: ReAct Agent, DAG Planning, concurrent execution, Web UI playground, real-time SSE streaming, KaTeX math rendering.
+**Shipped**: v0.1 (ReAct Agent, DAG Planning, streaming, KaTeX) → v0.2 (memory, multi-model, token tracking, native function calling) → v0.3-wip (web tools via Jina, DAG visualization with @xyflow/react, expand/collapse sidebar with click-to-scroll, parallel tool timing fix).
 
-**Next**: Memory, multi-model, token tracking (v0.2) → MCP, tool auto-discovery, rich tools (v0.3) → RAG & knowledge base (v0.4) → Agent builder, templates, lifecycle (v0.5) → Nested agents, step hooks, HITL (v0.6) → Production platform, DAG visualization (v0.7) → Observability, Langfuse (v0.8) → Visual workflow editor / Dify parity (v0.9) → Enterprise & ecosystem (v1.0).
+**Next**: Remaining tools + MCP client (v0.3) → Platform foundation, multi-tenant (v0.4) → RAG & knowledge (v0.5) → System Adapter protocol (v0.6) → Human confirmation + embeddable UI (v0.7) → Declarative adapters (v0.8) → Observability (v0.9) → Enterprise & scale (v1.0).
 
 See the full [Roadmap](https://github.com/fim-ai/fim-agent/wiki/Roadmap) for details.
 

@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import sys
 import traceback
+from pathlib import Path
 from typing import Any
 
 from ..base import BaseTool
 
 _DEFAULT_TIMEOUT_SECONDS: int = 120
+
+# Temp directory for code execution outputs (plots, data files, etc.)
+_TMP_DIR = Path(__file__).resolve().parents[4] / "tmp"
+_TMP_DIR.mkdir(exist_ok=True)
 
 
 class PythonExecTool(BaseTool):
@@ -96,14 +102,27 @@ class PythonExecTool(BaseTool):
         Stdout is captured via a ``StringIO`` buffer that temporarily
         replaces ``sys.stdout``.
         """
+        # Pre-configure matplotlib CJK fonts if available.
+        try:
+            import matplotlib
+            matplotlib.rcParams["font.sans-serif"] = [
+                "PingFang SC", "STHeiti", "SimHei", "Helvetica",
+            ]
+            matplotlib.rcParams["axes.unicode_minus"] = False
+        except ImportError:
+            pass
+
         capture = io.StringIO()
         namespace: dict[str, Any] = {"__builtins__": __builtins__}
         old_stdout = sys.stdout
+        old_cwd = os.getcwd()
         try:
+            os.chdir(_TMP_DIR)
             sys.stdout = capture
             exec(code, namespace)
         except Exception:
             return traceback.format_exc()
         finally:
             sys.stdout = old_stdout
+            os.chdir(old_cwd)
         return capture.getvalue()

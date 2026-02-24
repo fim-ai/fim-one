@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo } from "react"
 import {
   Card,
   CardContent,
@@ -9,138 +8,43 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
+import { fmtDuration } from "@/lib/utils"
 import {
   Loader2,
   Wrench,
   Brain,
   CheckCircle2,
   AlertCircle,
-  ListTree,
-  Play,
+  CircleDashed,
   BarChart3,
-  ArrowRight,
   Clock,
   Target,
   Gauge,
 } from "lucide-react"
-import type { SSEMessage } from "@/hooks/use-sse"
 import type {
   DagPhaseEvent,
-  DagStepProgressEvent,
   DagDoneEvent,
 } from "@/types/api"
+import type { StepState } from "@/hooks/use-dag-steps"
+import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
 
 interface DagOutputProps {
-  messages: SSEMessage[]
-  isRunning: boolean
+  planSteps: DagPhaseEvent["steps"]
+  stepStates: StepState[]
+  analysisPhase: DagPhaseEvent | null
+  doneEvent: DagDoneEvent | null
+  currentPhase: string | null
+  hideDagGraph?: boolean
 }
 
-interface StepState {
-  step_id: string
-  task?: string
-  status: "pending" | "running" | "completed"
-  result?: string
-  duration?: number
-  iterations: Array<{
-    type?: string
-    iteration?: number
-    tool_name?: string
-    tool_args?: Record<string, unknown>
-    reasoning?: string
-    observation?: string
-    error?: string
-  }>
-}
-
-export function DagOutput({ messages, isRunning }: DagOutputProps) {
-  const { planSteps, stepStates, analysisPhase, doneEvent, currentPhase } =
-    useMemo(() => {
-      let planSteps: DagPhaseEvent["steps"] = undefined
-      const stepMap = new Map<string, StepState>()
-      let analysisPhase: DagPhaseEvent | null = null
-      let doneEvent: DagDoneEvent | null = null
-      let currentPhase: string | null = null
-
-      for (const msg of messages) {
-        if (msg.event === "phase") {
-          const phase = msg.data as DagPhaseEvent
-          if (phase.name === "planning" && phase.status === "done" && phase.steps) {
-            planSteps = phase.steps
-            for (const s of phase.steps) {
-              stepMap.set(s.id, {
-                step_id: s.id,
-                task: s.task,
-                status: "pending",
-                iterations: [],
-              })
-            }
-          }
-          if (phase.name === "executing") {
-            currentPhase = "executing"
-          }
-          if (phase.name === "analyzing") {
-            currentPhase = "analyzing"
-            if (phase.status === "done") {
-              analysisPhase = phase
-            }
-          }
-          if (phase.name === "planning" && phase.status === "start") {
-            currentPhase = "planning"
-          }
-        }
-
-        if (msg.event === "step_progress") {
-          const sp = msg.data as DagStepProgressEvent
-          const existing = stepMap.get(sp.step_id)
-          if (!existing) {
-            stepMap.set(sp.step_id, {
-              step_id: sp.step_id,
-              task: sp.task,
-              status: "pending",
-              iterations: [],
-            })
-          }
-          const state = stepMap.get(sp.step_id)!
-
-          if (sp.task) state.task = sp.task
-
-          if (sp.event === "started") {
-            state.status = "running"
-          } else if (sp.event === "completed") {
-            state.status = "completed"
-            if (sp.result) state.result = sp.result
-            if (sp.duration) state.duration = sp.duration
-          } else if (sp.event === "iteration") {
-            state.iterations.push({
-              type: sp.type,
-              iteration: sp.iteration,
-              tool_name: sp.tool_name,
-              tool_args: sp.tool_args,
-              reasoning: sp.reasoning,
-              observation: sp.observation,
-              error: sp.error,
-            })
-          }
-        }
-
-        if (msg.event === "done") {
-          doneEvent = msg.data as DagDoneEvent
-        }
-      }
-
-      return {
-        planSteps,
-        stepStates: Array.from(stepMap.values()),
-        analysisPhase,
-        doneEvent,
-        currentPhase,
-      }
-    }, [messages])
-
-  if (messages.length === 0 && !isRunning) {
-    return null
-  }
-
+export function DagOutput({
+  planSteps,
+  stepStates,
+  analysisPhase,
+  doneEvent,
+  currentPhase,
+  hideDagGraph,
+}: DagOutputProps) {
   return (
     <div className="space-y-3 min-w-0 w-full">
       {/* Planning spinner */}
@@ -148,23 +52,25 @@ export function DagOutput({ messages, isRunning }: DagOutputProps) {
         <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-amber-500/20 py-4">
           <CardContent className="flex items-center gap-3">
             <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm shiny-text">
               Planning execution steps...
             </span>
           </CardContent>
         </Card>
       )}
 
-      {/* Plan card */}
-      {planSteps && planSteps.length > 0 && (
-        <PlanCard steps={planSteps} />
+      {/* DAG flow graph */}
+      {!hideDagGraph && planSteps && planSteps.length > 0 && (
+        <DagFlowGraph planSteps={planSteps} stepStates={stepStates} />
       )}
 
       {/* Step progress cards */}
       {stepStates.length > 0 &&
         currentPhase !== "planning" &&
         stepStates.map((state) => (
-          <StepProgressCard key={state.step_id} state={state} />
+          <div key={state.step_id} data-step-id={state.step_id}>
+            <StepProgressCard state={state} />
+          </div>
         ))}
 
       {/* Analysis phase */}
@@ -173,75 +79,7 @@ export function DagOutput({ messages, isRunning }: DagOutputProps) {
       {/* Done card */}
       {doneEvent && <DagDoneCard done={doneEvent} />}
 
-      {/* Running indicator */}
-      {isRunning && !doneEvent && (
-        <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span className="shiny-text">
-            {currentPhase === "executing"
-              ? "Executing steps..."
-              : currentPhase === "analyzing"
-                ? "Analyzing results..."
-                : "Processing..."}
-          </span>
-        </div>
-      )}
     </div>
-  )
-}
-
-function PlanCard({
-  steps,
-}: {
-  steps: NonNullable<DagPhaseEvent["steps"]>
-}) {
-  return (
-    <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-green-500/20 py-4">
-      <CardHeader className="pb-0">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/10">
-            <ListTree className="h-3.5 w-3.5 text-green-500" />
-          </div>
-          <CardTitle className="text-sm">
-            Execution Plan
-          </CardTitle>
-          <Badge variant="secondary" className="text-[10px]">
-            {steps.length} step{steps.length !== 1 ? "s" : ""}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {steps.map((step) => (
-            <div
-              key={step.id}
-              className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-1.5"
-            >
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="border-green-500/30 text-green-500 text-[10px] font-mono"
-                >
-                  {step.id}
-                </Badge>
-                {step.tool_hint && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    {step.tool_hint}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-sm text-foreground/90">{step.task}</p>
-              {step.deps.length > 0 && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <ArrowRight className="h-3 w-3" />
-                  <span>Depends on: {step.deps.join(", ")}</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -250,8 +88,8 @@ function StepProgressCard({ state }: { state: StepState }) {
     state.status === "completed"
       ? CheckCircle2
       : state.status === "running"
-        ? Play
-        : Loader2
+        ? Loader2
+        : CircleDashed
 
   const cardBorderClass =
     state.status === "completed"
@@ -283,7 +121,7 @@ function StepProgressCard({ state }: { state: StepState }) {
 
   return (
     <Card
-      className={`animate-in fade-in-0 slide-in-from-bottom-2 duration-300 py-4 ${cardBorderClass}`}
+      className={`py-4 ${cardBorderClass}`}
     >
       <CardHeader className="pb-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -306,7 +144,7 @@ function StepProgressCard({ state }: { state: StepState }) {
           {state.status === "completed" && state.duration != null && (
             <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
               <Clock className="h-2.5 w-2.5" />
-              {state.duration.toFixed(1)}s
+              {fmtDuration(state.duration)}
             </span>
           )}
         </div>
@@ -358,12 +196,18 @@ function StepProgressCard({ state }: { state: StepState }) {
                 Object.keys(iter.tool_args).length > 0 && (
                   <DagToolArgsBlock args={iter.tool_args} />
                 )}
+              {iter.loading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span className="shiny-text">Executing...</span>
+                </div>
+              )}
               {iter.observation && (
                 <div className="rounded bg-muted/30 border border-border/30 p-2">
                   <p className="text-[10px] font-medium text-muted-foreground mb-0.5 uppercase tracking-wider">
                     Observation
                   </p>
-                  <pre className="whitespace-pre-wrap text-xs text-foreground/90 font-mono leading-relaxed">
+                  <pre className="whitespace-pre-wrap text-xs text-foreground/90 font-mono leading-relaxed max-h-[300px] overflow-y-auto">
                     {iter.observation}
                   </pre>
                 </div>
@@ -411,20 +255,22 @@ function DagToolArgsBlock({ args }: { args: Record<string, unknown> }) {
       <div>
         <MarkdownContent
           content={`\`\`\`python\n${args.code}\n\`\`\``}
-          className="text-[11px] [&_pre]:my-0 [&_pre]:p-2"
+          className="text-[11px] [&_pre]:my-0 [&_pre]:p-2 [&_pre]:max-h-[300px] [&_pre]:overflow-y-auto"
         />
         {hasRest && (
-          <pre className="overflow-x-auto rounded bg-muted/50 p-2 text-[11px] font-mono leading-relaxed mt-1">
-            {JSON.stringify(rest, null, 2)}
-          </pre>
+          <MarkdownContent
+            content={`\`\`\`json\n${JSON.stringify(rest, null, 2)}\n\`\`\``}
+            className="text-[11px] [&_pre]:my-0 [&_pre]:p-2 [&_pre]:max-h-[300px] [&_pre]:overflow-y-auto mt-1"
+          />
         )}
       </div>
     )
   }
   return (
-    <pre className="overflow-x-auto rounded bg-muted/50 p-2 text-[11px] font-mono leading-relaxed">
-      {JSON.stringify(args, null, 2)}
-    </pre>
+    <MarkdownContent
+      content={`\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\``}
+      className="text-[11px] [&_pre]:my-0 [&_pre]:p-2 [&_pre]:max-h-[300px] [&_pre]:overflow-y-auto"
+    />
   )
 }
 
@@ -476,20 +322,10 @@ function DagDoneCard({ done }: { done: DagDoneEvent }) {
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
           </div>
           <CardTitle className="text-sm">Result</CardTitle>
-          <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span className={`flex items-center gap-1 ${done.achieved ? "text-green-500" : "text-destructive"}`}>
-              <Target className="h-2.5 w-2.5" />
-              {done.achieved ? "Achieved" : "Not Achieved"}
-            </span>
-            <span className="flex items-center gap-1">
-              <Gauge className="h-2.5 w-2.5" />
-              {(done.confidence * 100).toFixed(0)}%
-            </span>
-            <span className="flex items-center gap-1">
-              <Clock className="h-2.5 w-2.5" />
-              {done.elapsed.toFixed(1)}s
-            </span>
-          </div>
+          <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Clock className="h-2.5 w-2.5" />
+            {fmtDuration(done.elapsed)}
+          </span>
         </div>
       </CardHeader>
       <CardContent>

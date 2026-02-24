@@ -7,8 +7,7 @@ usage() {
 Usage: ./start.sh [command]
 
 Commands:
-  webui     Start the lightweight Web UI demo (default)
-  portal    Start the Next.js portal + API backend
+  portal    Start the Next.js portal + API backend (default)
   api       Start only the FastAPI backend (no frontend)
   help      Show this message
 
@@ -19,13 +18,9 @@ EOF
 # Load .env if present
 [ -f .env ] && set -a && source .env && set +a
 
-CMD="${1:-webui}"
+CMD="${1:-portal}"
 
 case "$CMD" in
-  webui)
-    echo "Starting FIM Agent Web UI at http://localhost:8000"
-    uv run python examples/web_ui.py
-    ;;
   portal)
     echo "Starting FIM Agent Portal..."
     echo "  API backend  → http://localhost:8000"

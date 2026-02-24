@@ -7,7 +7,7 @@ FIM Agent is a Python async agent framework (Dify alternative). Provider-agnosti
 - **Package manager**: `uv` (not pip)
 - **Frontend**: Next.js + pnpm (in `frontend/`)
 - **Tests**: `uv run pytest`
-- **Launcher**: `./start.sh [webui|portal|api]`
+- **Launcher**: `./start.sh [portal|api]`
 
 ## Architecture
 
@@ -50,3 +50,10 @@ Before starting parallel worktree development:
 - Async-first: use `async def` for I/O-bound operations
 - Tests alongside features: every new module gets a corresponding `tests/test_*.py`
 - Keep imports in `__init__.py` minimal — only re-export public API
+
+## Post-Feature Checklist
+
+After completing a feature, always:
+1. **Sync `example.env`** — if any new environment variable was added, update `example.env` with a placeholder and comment
+2. **Update roadmap** — update **both** `README.md` Roadmap section **and** `wiki/Roadmap.md` to reflect what shipped
+3. **Review docs** — check if README Key Features, Architecture, or wiki pages need updating for the new feature

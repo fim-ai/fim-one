@@ -1,18 +1,22 @@
 // ReAct events
 export interface ReactStepEvent {
-  type: "thinking" | "tool_call" | "final_answer"
+  type: "thinking" | "tool_call" | "tool_start" | "final_answer"
   iteration: number
   tool_name?: string
   tool_args?: Record<string, unknown>
   reasoning?: string
   observation?: string
   error?: string
+  /** Server-side iteration elapsed (LLM thinking + tool execution). */
+  iter_elapsed?: number
 }
 
 export interface ReactDoneEvent {
   answer: string
   iterations: number
   elapsed: number
+  /** Server-side elapsed for the final iteration (LLM thinking → answer). */
+  iter_elapsed?: number
 }
 
 // DAG events
