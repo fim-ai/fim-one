@@ -126,3 +126,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Shiny text shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.shiny-text {
+  background: linear-gradient(
+    120deg,
+    rgba(160, 160, 170, 1) 40%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(160, 160, 170, 1) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2s ease-in-out infinite;
+}

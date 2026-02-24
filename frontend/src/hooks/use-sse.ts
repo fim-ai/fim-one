@@ -5,6 +5,7 @@ import { useState, useCallback, useRef } from "react"
 export interface SSEMessage {
   event: string
   data: unknown
+  timestamp: number
 }
 
 export function useSSE() {
@@ -28,7 +29,7 @@ export function useSSE() {
     const handleEvent = (eventType: string) => (e: MessageEvent) => {
       try {
         const data: unknown = JSON.parse(e.data)
-        setMessages((prev) => [...prev, { event: eventType, data }])
+        setMessages((prev) => [...prev, { event: eventType, data, timestamp: Date.now() }])
 
         if (eventType === "done") {
           es.close()

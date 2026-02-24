@@ -2,6 +2,7 @@
 
 import React from "react"
 import Markdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import rehypeHighlight from "rehype-highlight"
@@ -13,15 +14,15 @@ interface MarkdownContentProps {
 
 export function MarkdownContent({ content, className }: MarkdownContentProps) {
   return (
-    <div className={className}>
+    <div className={`min-w-0 overflow-hidden ${className ?? ""}`}>
       <Markdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex, rehypeHighlight]}
         components={{
           pre({ children, ...props }) {
             return (
               <pre
-                className="overflow-x-auto rounded-md bg-muted/50 p-3 text-sm"
+                className="overflow-x-auto rounded-lg bg-muted/50 p-4 text-sm font-mono my-3 max-w-full"
                 {...props}
               >
                 {children}
@@ -33,7 +34,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
             if (isInline) {
               return (
                 <code
-                  className="rounded bg-muted/50 px-1.5 py-0.5 text-sm"
+                  className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[0.9em] font-mono"
                   {...props}
                 >
                   {children}
@@ -48,56 +49,56 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           },
           p({ children, ...props }) {
             return (
-              <p className="mb-2 last:mb-0 leading-relaxed" {...props}>
+              <p className="mb-3 last:mb-0 leading-relaxed" {...props}>
                 {children}
               </p>
             )
           },
           ul({ children, ...props }) {
             return (
-              <ul className="mb-2 list-disc pl-6 last:mb-0" {...props}>
+              <ul className="mb-3 list-disc pl-6 last:mb-0 space-y-1" {...props}>
                 {children}
               </ul>
             )
           },
           ol({ children, ...props }) {
             return (
-              <ol className="mb-2 list-decimal pl-6 last:mb-0" {...props}>
+              <ol className="mb-3 list-decimal pl-6 last:mb-0 space-y-1" {...props}>
                 {children}
               </ol>
             )
           },
           li({ children, ...props }) {
             return (
-              <li className="mb-1" {...props}>
+              <li className="leading-relaxed" {...props}>
                 {children}
               </li>
             )
           },
           h1({ children, ...props }) {
             return (
-              <h1 className="mb-3 text-xl font-bold" {...props}>
+              <h1 className="mt-6 mb-3 text-xl font-bold first:mt-0" {...props}>
                 {children}
               </h1>
             )
           },
           h2({ children, ...props }) {
             return (
-              <h2 className="mb-2 text-lg font-semibold" {...props}>
+              <h2 className="mt-5 mb-2 text-lg font-semibold first:mt-0" {...props}>
                 {children}
               </h2>
             )
           },
           h3({ children, ...props }) {
             return (
-              <h3 className="mb-2 text-base font-semibold" {...props}>
+              <h3 className="mt-4 mb-2 text-base font-semibold first:mt-0" {...props}>
                 {children}
               </h3>
             )
           },
           table({ children, ...props }) {
             return (
-              <div className="mb-2 overflow-x-auto">
+              <div className="my-3 overflow-x-auto rounded-lg border border-border">
                 <table
                   className="w-full border-collapse text-sm"
                   {...props}
@@ -107,10 +108,17 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
               </div>
             )
           },
+          thead({ children, ...props }) {
+            return (
+              <thead className="bg-muted/40" {...props}>
+                {children}
+              </thead>
+            )
+          },
           th({ children, ...props }) {
             return (
               <th
-                className="border border-border px-3 py-1.5 text-left font-semibold bg-muted/30"
+                className="border-b border-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                 {...props}
               >
                 {children}
@@ -119,7 +127,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           },
           td({ children, ...props }) {
             return (
-              <td className="border border-border px-3 py-1.5" {...props}>
+              <td className="border-b border-border/50 px-3 py-2" {...props}>
                 {children}
               </td>
             )
@@ -127,7 +135,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           blockquote({ children, ...props }) {
             return (
               <blockquote
-                className="mb-2 border-l-2 border-primary/40 pl-4 italic text-muted-foreground"
+                className="my-3 border-l-2 border-primary/40 pl-4 italic text-muted-foreground"
                 {...props}
               >
                 {children}
@@ -136,6 +144,13 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           },
           hr(props) {
             return <hr className="my-4 border-border" {...props} />
+          },
+          strong({ children, ...props }) {
+            return (
+              <strong className="font-semibold text-foreground" {...props}>
+                {children}
+              </strong>
+            )
           },
         }}
       >

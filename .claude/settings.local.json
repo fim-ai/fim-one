@@ -4,8 +4,7 @@
       "Bash(*)",
       "Write(*)",
       "Edit(*)",
-      "Bash(node --version && npm --version 2>&1)",
-      "WebFetch(domain:localhost)"
+      "WebFetch(domain:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -5,7 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, RotateCcw } from "lucide-react"
+import { Send, Loader2, Trash2 } from "lucide-react"
 import { useSSE } from "@/hooks/use-sse"
 import { API_BASE_URL } from "@/lib/constants"
 import { ReactOutput } from "@/components/playground/react-output"
@@ -19,14 +19,18 @@ export default function PlaygroundPage() {
   const [language, setLanguage] = useState<Language>("en")
   const { messages, isRunning, start, reset } = useSSE()
 
-  const handleRun = useCallback(() => {
-    const trimmed = query.trim()
+  const runWithQuery = useCallback((q: string) => {
+    const trimmed = q.trim()
     if (!trimmed || isRunning) return
 
     const endpoint = mode === "react" ? "react" : "dag"
     const url = `${API_BASE_URL}/api/${endpoint}?q=${encodeURIComponent(trimmed)}&user_id=default`
     start(url)
-  }, [query, isRunning, mode, start])
+  }, [isRunning, mode, start])
+
+  const handleRun = useCallback(() => {
+    runWithQuery(query)
+  }, [query, runWithQuery])
 
   const handleReset = useCallback(() => {
     reset()
@@ -46,8 +50,9 @@ export default function PlaygroundPage() {
   const handleExampleSelect = useCallback(
     (example: string) => {
       setQuery(example)
+      runWithQuery(example)
     },
-    []
+    [runWithQuery]
   )
 
   return (
@@ -148,7 +153,7 @@ function PlaygroundContent({
     <div className="flex flex-1 flex-col overflow-hidden p-6 gap-4">
       {/* Input area */}
       <div className="shrink-0 space-y-3">
-        <div className="flex gap-2">
+        <div className="flex items-end gap-2">
           <Textarea
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
@@ -161,29 +166,17 @@ function PlaygroundContent({
             disabled={isRunning}
             className="min-h-[72px] max-h-[160px] resize-none"
           />
-          <div className="flex flex-col gap-2">
-            <Button
-              onClick={onRun}
-              disabled={isRunning || !query.trim()}
-              className="h-full w-12 shrink-0"
-            >
-              {isRunning ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-            {hasMessages && !isRunning && (
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={onReset}
-                title="Clear output"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
+          <Button
+            onClick={onRun}
+            disabled={isRunning || !query.trim()}
+            className="h-[72px] w-16 shrink-0"
+          >
+            {isRunning ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
             )}
-          </div>
+          </Button>
         </div>
         {/* Examples */}
         {!hasMessages && (
@@ -199,14 +192,32 @@ function PlaygroundContent({
 
       {/* Output area */}
       {(hasMessages || isRunning) && (
-        <ScrollArea className="flex-1 min-h-0 rounded-lg border border-border/50 bg-muted/10 p-4">
-          {mode === "react" ? (
-            <ReactOutput messages={messages} isRunning={isRunning} />
-          ) : (
-            <DagOutput messages={messages} isRunning={isRunning} />
+        <div className="flex flex-1 flex-col min-h-0 rounded-lg border border-border/50 bg-muted/10 overflow-hidden">
+          {/* Output header */}
+          {hasMessages && !isRunning && (
+            <div className="flex items-center justify-end shrink-0 px-4 pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onReset}
+                className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-3 w-3" />
+                Clear
+              </Button>
+            </div>
           )}
-          <div ref={bottomRef} />
-        </ScrollArea>
+          <ScrollArea className="flex-1 min-h-0 p-4">
+            <div className="min-w-0 max-w-full">
+              {mode === "react" ? (
+                <ReactOutput messages={messages} isRunning={isRunning} />
+              ) : (
+                <DagOutput messages={messages} isRunning={isRunning} />
+              )}
+              <div ref={bottomRef} />
+            </div>
+          </ScrollArea>
+        </div>
       )}
     </div>
   )

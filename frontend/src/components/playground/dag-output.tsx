@@ -19,6 +19,9 @@ import {
   Play,
   BarChart3,
   ArrowRight,
+  Clock,
+  Target,
+  Gauge,
 } from "lucide-react"
 import type { SSEMessage } from "@/hooks/use-sse"
 import type {
@@ -139,7 +142,7 @@ export function DagOutput({ messages, isRunning }: DagOutputProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 min-w-0 w-full">
       {/* Planning spinner */}
       {currentPhase === "planning" && !planSteps && (
         <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-amber-500/20 py-4">
@@ -172,9 +175,9 @@ export function DagOutput({ messages, isRunning }: DagOutputProps) {
 
       {/* Running indicator */}
       {isRunning && !doneEvent && (
-        <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground animate-pulse">
+        <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span>
+          <span className="shiny-text">
             {currentPhase === "executing"
               ? "Executing steps..."
               : currentPhase === "analyzing"
@@ -283,7 +286,7 @@ function StepProgressCard({ state }: { state: StepState }) {
       className={`animate-in fade-in-0 slide-in-from-bottom-2 duration-300 py-4 ${cardBorderClass}`}
     >
       <CardHeader className="pb-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <div
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${iconBgClass}`}
           >
@@ -293,17 +296,18 @@ function StepProgressCard({ state }: { state: StepState }) {
           </div>
           <Badge
             variant="outline"
-            className={`${badgeBorderClass} text-[10px] font-mono`}
+            className={`${badgeBorderClass} text-[10px] font-mono shrink-0`}
           >
             {state.step_id}
           </Badge>
-          <span className="text-sm font-medium text-foreground truncate">
+          <span className="text-sm font-medium text-foreground truncate min-w-0">
             {state.task}
           </span>
           {state.status === "completed" && state.duration != null && (
-            <Badge variant="secondary" className="ml-auto text-[10px]">
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+              <Clock className="h-2.5 w-2.5" />
               {state.duration.toFixed(1)}s
-            </Badge>
+            </span>
           )}
         </div>
       </CardHeader>
@@ -341,11 +345,9 @@ function StepProgressCard({ state }: { state: StepState }) {
                     </Badge>
                   </>
                 )}
-                {iter.iteration != null && (
-                  <span className="text-[10px] text-muted-foreground">
-                    #{iter.iteration}
-                  </span>
-                )}
+                <span className="text-[10px] text-muted-foreground">
+                  Iteration {idx + 1}
+                </span>
               </div>
               {iter.reasoning && (
                 <p className="text-xs italic text-muted-foreground leading-relaxed">
@@ -354,9 +356,7 @@ function StepProgressCard({ state }: { state: StepState }) {
               )}
               {iter.tool_args &&
                 Object.keys(iter.tool_args).length > 0 && (
-                  <pre className="overflow-x-auto rounded bg-muted/50 p-2 text-[11px] font-mono leading-relaxed">
-                    {JSON.stringify(iter.tool_args, null, 2)}
-                  </pre>
+                  <DagToolArgsBlock args={iter.tool_args} />
                 )}
               {iter.observation && (
                 <div className="rounded bg-muted/30 border border-border/30 p-2">
@@ -390,14 +390,41 @@ function StepProgressCard({ state }: { state: StepState }) {
               <p className="text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">
                 Result
               </p>
-              <pre className="whitespace-pre-wrap text-sm text-foreground/90 font-mono leading-relaxed">
-                {state.result}
-              </pre>
+              <MarkdownContent
+                content={state.result}
+                className="prose-sm text-sm text-foreground/90"
+              />
             </div>
           )}
         </CardContent>
       )}
     </Card>
+  )
+}
+
+function DagToolArgsBlock({ args }: { args: Record<string, unknown> }) {
+  if (typeof args.code === "string") {
+    const rest = { ...args }
+    delete rest.code
+    const hasRest = Object.keys(rest).length > 0
+    return (
+      <div>
+        <MarkdownContent
+          content={`\`\`\`python\n${args.code}\n\`\`\``}
+          className="text-[11px] [&_pre]:my-0 [&_pre]:p-2"
+        />
+        {hasRest && (
+          <pre className="overflow-x-auto rounded bg-muted/50 p-2 text-[11px] font-mono leading-relaxed mt-1">
+            {JSON.stringify(rest, null, 2)}
+          </pre>
+        )}
+      </div>
+    )
+  }
+  return (
+    <pre className="overflow-x-auto rounded bg-muted/50 p-2 text-[11px] font-mono leading-relaxed">
+      {JSON.stringify(args, null, 2)}
+    </pre>
   )
 }
 
@@ -409,7 +436,7 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
           <BarChart3 className="h-3.5 w-3.5 text-purple-500" />
         </div>
         <div className="space-y-2 min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
             <Badge
               variant="outline"
               className="border-purple-500/30 text-purple-500 text-[10px] uppercase tracking-wider"
@@ -417,17 +444,16 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
               Analysis
             </Badge>
             {phase.achieved != null && (
-              <Badge
-                variant={phase.achieved ? "default" : "destructive"}
-                className="text-[10px]"
-              >
+              <span className={`flex items-center gap-1 text-[10px] ${phase.achieved ? "text-green-500" : "text-destructive"}`}>
+                <Target className="h-2.5 w-2.5" />
                 {phase.achieved ? "Goal Achieved" : "Goal Not Achieved"}
-              </Badge>
+              </span>
             )}
             {phase.confidence != null && (
-              <Badge variant="secondary" className="text-[10px]">
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <Gauge className="h-2.5 w-2.5" />
                 {(phase.confidence * 100).toFixed(0)}% confidence
-              </Badge>
+              </span>
             )}
           </div>
           {phase.reasoning && (
@@ -450,19 +476,19 @@ function DagDoneCard({ done }: { done: DagDoneEvent }) {
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
           </div>
           <CardTitle className="text-sm">Result</CardTitle>
-          <div className="ml-auto flex items-center gap-2 flex-wrap">
-            <Badge
-              variant={done.achieved ? "default" : "destructive"}
-              className="text-[10px]"
-            >
+          <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
+            <span className={`flex items-center gap-1 ${done.achieved ? "text-green-500" : "text-destructive"}`}>
+              <Target className="h-2.5 w-2.5" />
               {done.achieved ? "Achieved" : "Not Achieved"}
-            </Badge>
-            <Badge variant="secondary" className="text-[10px]">
+            </span>
+            <span className="flex items-center gap-1">
+              <Gauge className="h-2.5 w-2.5" />
               {(done.confidence * 100).toFixed(0)}%
-            </Badge>
-            <Badge variant="secondary" className="text-[10px]">
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-2.5 w-2.5" />
               {done.elapsed.toFixed(1)}s
-            </Badge>
+            </span>
           </div>
         </div>
       </CardHeader>

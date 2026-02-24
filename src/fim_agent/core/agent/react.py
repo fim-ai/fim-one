@@ -68,6 +68,9 @@ lengthy commentary or step-by-step narration of what you did.
 - LANGUAGE: Always respond in the same language as the user's query. If the \
 user writes in Chinese, your reasoning and final_answer must be in Chinese. \
 If the user writes in English, respond in English. Match the user's language.
+- CRITICAL: Your ENTIRE response must be a single JSON object. No markdown, no plain text, no code fences.
+- Even for long final answers, always wrap the content in the {{"type": "final_answer", ...}} JSON structure.
+- If your answer contains markdown formatting, put it INSIDE the "answer" field as a JSON string.
 """
 
 _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE = """\
@@ -200,6 +203,40 @@ class ReActAgent:
 
             assistant_content = result.message.content or ""
             action = self._parse_action(assistant_content)
+
+            # If JSON parsing failed, ask the LLM to re-format as JSON
+            # (one retry).  The ``continue`` naturally advances ``iteration``
+            # so this counts against ``max_iterations``.
+            if (
+                action.type == "final_answer"
+                and action.reasoning == "(could not parse LLM output as JSON)"
+                and iteration < self._max_iterations
+            ):
+                logger.info(
+                    "JSON parse failed, requesting LLM to re-format "
+                    "(iteration %d)",
+                    iteration,
+                )
+                # Append the raw reply so the LLM sees what it said.
+                messages.append(
+                    ChatMessage(role="assistant", content=assistant_content),
+                )
+                # Ask it to wrap the content in JSON.
+                messages.append(
+                    ChatMessage(
+                        role="user",
+                        content=(
+                            "Your previous response was not valid JSON. "
+                            "Please re-format your answer as a JSON object "
+                            "with the structure: "
+                            '{"type": "final_answer", "reasoning": "...", '
+                            '"answer": "..."}. '
+                            'Put your full answer inside the "answer" field '
+                            "as a string."
+                        ),
+                    ),
+                )
+                continue  # Skip to next iteration, which will call LLM again
 
             # Append the raw assistant reply to the conversation.
             messages.append(

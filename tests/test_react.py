@@ -171,6 +171,47 @@ class TestReActAgentRun:
         # Verify the LLM was called (no crash from custom prompt)
         assert llm.call_count == 1
 
+    async def test_json_parse_retry_on_malformed_output(self) -> None:
+        """When LLM returns non-JSON, agent asks it to re-format and retries."""
+        # First response: raw text (not JSON) -> triggers retry
+        malformed = LLMResult(
+            message=ChatMessage(
+                role="assistant",
+                content="Here is my analysis report...",
+            ),
+        )
+        # Second response: properly formatted JSON after the retry prompt
+        proper = _final_answer_response("Here is my analysis report...")
+
+        llm = FakeLLM(responses=[malformed, proper])
+        registry = ToolRegistry()
+        agent = ReActAgent(llm=llm, tools=registry)
+
+        result = await agent.run("analyze something")
+
+        assert result.answer == "Here is my analysis report..."
+        assert result.iterations == 2  # One retry
+        assert llm.call_count == 2
+
+    async def test_json_parse_retry_still_fails_fallback(self) -> None:
+        """If retry also produces non-JSON, fallback to raw content."""
+        malformed1 = LLMResult(
+            message=ChatMessage(role="assistant", content="Raw text 1"),
+        )
+        malformed2 = LLMResult(
+            message=ChatMessage(role="assistant", content="Raw text 2"),
+        )
+
+        llm = FakeLLM(responses=[malformed1, malformed2])
+        registry = ToolRegistry()
+        agent = ReActAgent(llm=llm, tools=registry, max_iterations=2)
+
+        result = await agent.run("test")
+
+        # Second malformed response should be used as final answer via fallback
+        assert result.answer == "Raw text 2"
+        assert "could not parse" in result.steps[-1].action.reasoning.lower()
+
 
 # ======================================================================
 # ReActAgent._parse_action -- unit tests
