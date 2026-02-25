@@ -10,7 +10,7 @@ export interface StepItem {
   timestamp?: number
 }
 
-export function useReactSteps(messages: SSEMessage[]): StepItem[] {
+export function useReactSteps(messages: SSEMessage[], isRunning: boolean): StepItem[] {
   return useMemo(() => {
     const result: StepItem[] = []
     let iterCount = 0
@@ -67,6 +67,21 @@ export function useReactSteps(messages: SSEMessage[]): StepItem[] {
 
       result.push({ event: msg.event, data: msg.data, duration, displayIteration, timestamp: msg.timestamp })
     }
+    // When aborted (not running, no done event), convert remaining tool_start
+    // items to tool_call so spinners and "Executing..." indicators stop.
+    const hasDone = result.some(item => item.event === "done")
+    if (!isRunning && !hasDone && result.length > 0) {
+      return result.map(item => {
+        if (item.event === "step") {
+          const step = item.data as ReactStepEvent
+          if (step.type === "tool_start") {
+            return { ...item, data: { ...step, type: "tool_call" as const } }
+          }
+        }
+        return item
+      })
+    }
+
     return result
-  }, [messages])
+  }, [messages, isRunning])
 }

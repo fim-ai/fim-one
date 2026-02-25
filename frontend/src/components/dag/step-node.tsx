@@ -141,8 +141,8 @@ function StepNodeComponent({ data }: NodeProps) {
     >
       <Handle
         type="target"
-        position={Position.Top}
-        id="top"
+        position={Position.Left}
+        id="left"
         className="!w-2 !h-2 !bg-zinc-600 !border-zinc-500"
       />
 
@@ -185,8 +185,8 @@ function StepNodeComponent({ data }: NodeProps) {
 
       <Handle
         type="source"
-        position={Position.Bottom}
-        id="bottom"
+        position={Position.Right}
+        id="right"
         className="!w-2 !h-2 !bg-zinc-600 !border-zinc-500"
       />
     </div>

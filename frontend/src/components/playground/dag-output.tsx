@@ -20,7 +20,6 @@ import {
   Clock,
   Target,
   Gauge,
-  Zap,
 } from "lucide-react"
 import type {
   DagPhaseEvent,
@@ -330,7 +329,7 @@ function DagDoneCard({ done }: { done: DagDoneEvent }) {
             </span>
             {done.usage && (
               <span className="flex items-center gap-1">
-                <Zap className="h-2.5 w-2.5" />
+                <BarChart3 className="h-2.5 w-2.5" />
                 {done.usage.prompt_tokens} in · {done.usage.completion_tokens} out
               </span>
             )}

@@ -185,8 +185,8 @@ function PlaygroundContent({
   const currentRatio = dragRatio ?? customRatio ?? (sidebarExpanded ? EXPANDED_RATIO : NORMAL_RATIO)
 
   // Parse data at this level via hooks
-  const dagData = useDagSteps(messages)
-  const reactItems = useReactSteps(messages)
+  const dagData = useDagSteps(messages, isRunning)
+  const reactItems = useReactSteps(messages, isRunning)
 
   const showSidebar = hasMessages && sidebarOpen && isWideScreen
 

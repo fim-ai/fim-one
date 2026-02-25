@@ -34,7 +34,7 @@ export interface DagStepsResult {
   currentPhase: string | null
 }
 
-export function useDagSteps(messages: SSEMessage[]): DagStepsResult {
+export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStepsResult {
   return useMemo(() => {
     let planSteps: DagPhaseEvent["steps"] = undefined
     const stepMap = new Map<string, StepState>()
@@ -149,6 +149,18 @@ export function useDagSteps(messages: SSEMessage[]): DagStepsResult {
       }
     }
 
+    // When aborted (not running, no done event), clean up all loading states
+    // so spinners and "Executing..." indicators stop immediately.
+    if (!isRunning && !doneEvent && stepMap.size > 0) {
+      for (const state of stepMap.values()) {
+        if (state.status === "running") state.status = "pending"
+        for (const iter of state.iterations) {
+          iter.loading = false
+        }
+      }
+      currentPhase = null
+    }
+
     return {
       planSteps,
       stepStates: Array.from(stepMap.values()),
@@ -156,5 +168,5 @@ export function useDagSteps(messages: SSEMessage[]): DagStepsResult {
       doneEvent,
       currentPhase,
     }
-  }, [messages])
+  }, [messages, isRunning])
 }
