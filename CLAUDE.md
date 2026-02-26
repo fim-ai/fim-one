@@ -51,10 +51,13 @@ Before starting parallel worktree development:
 - Tests alongside features: every new module gets a corresponding `tests/test_*.py`
 - Keep imports in `__init__.py` minimal — only re-export public API
 
-## Post-Feature Checklist
+## Post-Feature Checks (automated)
 
-After completing a feature, always:
-1. **Sync `example.env`** — if any new environment variable was added, update `example.env` with a placeholder and comment
-2. **Update roadmap** — update **both** `README.md` Roadmap section **and** `wiki/Roadmap.md` to reflect what shipped
-3. **Review docs** — check if README Key Features, Architecture, or wiki pages need updating for the new feature
-4. **Sync wiki** — if any file in `wiki/` was modified, run `./scripts/sync-wiki.sh` to push changes to GitHub Wiki
+A PostToolUse hook (`scripts/post-commit-check.sh`) runs automatically after every `git commit` and checks:
+- `example.env` vs `.env` key alignment
+- `wiki/` changes that need `./scripts/sync-wiki.sh`
+- Source module additions/removals that may require README Project Structure updates
+- README vs wiki Roadmap sync
+- New built-in tools that should be mentioned in README Key Features
+
+No manual checklist needed. The hook will surface warnings when relevant.
