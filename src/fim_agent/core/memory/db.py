@@ -40,7 +40,7 @@ class DbMemory(BaseMemory):
     def __init__(
         self,
         conversation_id: str,
-        max_tokens: int = 8000,
+        max_tokens: int = 32_000,
         compact_llm: BaseLLM | None = None,
     ) -> None:
         self._conversation_id = conversation_id

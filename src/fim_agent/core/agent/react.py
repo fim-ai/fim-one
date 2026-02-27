@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fim_agent.core.memory.base import BaseMemory
+from fim_agent.core.memory.context_guard import ContextGuard
 from fim_agent.core.model import BaseLLM, ChatMessage, LLMResult
 from fim_agent.core.model.types import ToolCallRequest
 from fim_agent.core.model.usage import UsageTracker
@@ -131,6 +132,9 @@ class ReActAgent:
             interface.  The feature is only activated when the LLM also
             advertises ``tool_call`` capability.
         memory: Optional conversation memory for multi-turn sessions.
+        context_guard: Optional context-window budget manager.  When
+            provided, messages are checked against a token budget before
+            each LLM call and compacted if necessary.
     """
 
     def __init__(
@@ -142,6 +146,7 @@ class ReActAgent:
         max_iterations: int = 50,
         use_native_tools: bool = True,
         memory: BaseMemory | None = None,
+        context_guard: ContextGuard | None = None,
     ) -> None:
         self._llm = llm
         self._tools = tools
@@ -150,6 +155,7 @@ class ReActAgent:
         self._max_iterations = max_iterations
         self._use_native_tools = use_native_tools
         self._memory = memory
+        self._context_guard = context_guard
 
     @property
     def _native_mode_active(self) -> bool:
@@ -212,6 +218,11 @@ class ReActAgent:
 
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("ReAct iteration %d", iteration)
+
+            if self._context_guard is not None:
+                messages = await self._context_guard.check_and_compact(
+                    messages, hint="react_iteration",
+                )
 
             result: LLMResult = await self._llm.chat(
                 messages,
@@ -353,6 +364,11 @@ class ReActAgent:
 
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("Native ReAct iteration %d", iteration)
+
+            if self._context_guard is not None:
+                messages = await self._context_guard.check_and_compact(
+                    messages, hint="react_iteration",
+                )
 
             result: LLMResult = await self._llm.chat(
                 messages,

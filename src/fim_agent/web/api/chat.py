@@ -39,9 +39,12 @@ from fim_agent.core.planner import (
     ExecutionPlan,
     PlanAnalyzer,
 )
+from fim_agent.core.memory.context_guard import ContextGuard
 from fim_agent.core.tool import ToolRegistry
 
 from ..deps import (
+    get_context_budget,
+    get_fast_context_budget,
     get_fast_llm,
     get_llm,
     get_llm_from_config,
@@ -309,12 +312,18 @@ async def react_endpoint(
                     conversation_id=conversation_id,
                     compact_llm=get_fast_llm(),
                 )
+            context_guard = ContextGuard(
+                compact_llm=get_fast_llm(),
+                default_budget=get_context_budget(),
+            )
+
             agent = ReActAgent(
                 llm=llm,
                 tools=tools,
                 extra_instructions=extra_instructions,
                 max_iterations=20,
                 memory=memory,
+                context_guard=context_guard,
             )
 
             async def _run() -> Any:
@@ -514,6 +523,36 @@ async def dag_endpoint(
                         f"Previous conversation:\n{context_str}\n\n"
                         f"Current request: {q}"
                     )
+
+                    # Truncate enriched_query if too large for planner.
+                    from fim_agent.core.memory.compact import CompactUtils
+                    from fim_agent.core.memory.context_guard import _COMPACT_PROMPTS
+
+                    enriched_tokens = CompactUtils.estimate_tokens(enriched_query)
+                    if enriched_tokens > 16_000:
+                        if fast_llm:
+                            from fim_agent.core.model.types import ChatMessage
+
+                            summary_result = await fast_llm.chat([
+                                ChatMessage(
+                                    role="system",
+                                    content=_COMPACT_PROMPTS["planner_input"],
+                                ),
+                                ChatMessage(role="user", content=context_str),
+                            ])
+                            summary = (
+                                summary_result.message.content or ""
+                            ).strip()
+                            enriched_query = (
+                                f"Previous conversation (summary):\n{summary}\n\n"
+                                f"Current request: {q}"
+                            )
+                        else:
+                            enriched_query = (
+                                f"Previous conversation:\n"
+                                f"{context_str[-20000:]}\n\n"
+                                f"Current request: {q}"
+                            )
             except Exception:
                 logger.warning(
                     "Failed to load conversation history for DAG planning "
@@ -580,18 +619,25 @@ async def dag_endpoint(
                     "phase",
                     {"name": "executing", "status": "start", "round": round_num},
                 )
+                dag_context_guard = ContextGuard(
+                    compact_llm=fast_llm,
+                    default_budget=get_fast_context_budget(),
+                )
+
                 agent = ReActAgent(
                     llm=fast_llm,
                     tools=tools,
                     extra_instructions=extra_instructions,
                     max_iterations=15,
                     memory=dag_memory,
+                    context_guard=dag_context_guard,
                 )
                 registry = get_model_registry()
                 executor = DAGExecutor(
                     agent=agent,
                     max_concurrency=get_max_concurrency(),
                     model_registry=registry,
+                    context_guard=dag_context_guard,
                 )
 
                 # Capture plan in closure to avoid late-binding issues

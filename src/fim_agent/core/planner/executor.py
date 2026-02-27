@@ -15,6 +15,7 @@ from typing import Any
 
 from fim_agent.core.agent import ReActAgent
 from fim_agent.core.agent.types import Action
+from fim_agent.core.memory.context_guard import ContextGuard
 from fim_agent.core.model.registry import ModelRegistry
 from fim_agent.core.model.usage import UsageSummary
 
@@ -40,6 +41,8 @@ class DAGExecutor:
         max_concurrency: Maximum number of steps running in parallel.
         model_registry: Optional registry for per-step model selection
             based on ``PlanStep.model_hint``.
+        context_guard: Optional context-window budget manager used to
+            truncate oversized dependency contexts.
     """
 
     def __init__(
@@ -47,10 +50,12 @@ class DAGExecutor:
         agent: ReActAgent,
         max_concurrency: int = 5,
         model_registry: ModelRegistry | None = None,
+        context_guard: ContextGuard | None = None,
     ) -> None:
         self._agent = agent
         self._max_concurrency = max_concurrency
         self._model_registry = model_registry
+        self._context_guard = context_guard
 
     async def execute(
         self,
@@ -95,7 +100,7 @@ class DAGExecutor:
                 step.started_at = time.time()
                 self._notify(sid, "started", {"task": step.task, "started_at": step.started_at})
 
-                context = self._build_step_context(step, step_index)
+                context = self._build_step_context(step, step_index, self._context_guard)
                 task = asyncio.create_task(
                     self._run_with_semaphore(semaphore, step, context),
                 )
@@ -304,12 +309,14 @@ class DAGExecutor:
     def _build_step_context(
         step: PlanStep,
         step_index: dict[str, PlanStep],
+        context_guard: ContextGuard | None = None,
     ) -> str:
         """Gather results from a step's completed dependencies.
 
         Args:
             step: The step whose dependency context is needed.
             step_index: Mapping of step ID to ``PlanStep`` for lookup.
+            context_guard: Optional guard used to truncate oversized context.
 
         Returns:
             A formatted string with each dependency's result, or an empty
@@ -331,4 +338,13 @@ class DAGExecutor:
                 f"Result: {result_text}"
             )
 
-        return "\n\n".join(context_parts)
+        context_text = "\n\n".join(context_parts)
+
+        # Truncate oversized dependency context.
+        if context_guard and len(context_text) > context_guard.max_message_chars:
+            context_text = (
+                context_text[:context_guard.max_message_chars]
+                + "\n[Dependency context truncated]"
+            )
+
+        return context_text

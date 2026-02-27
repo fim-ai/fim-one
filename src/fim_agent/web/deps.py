@@ -14,6 +14,14 @@ FAST_LLM_MODEL   : Model identifier for the fast model used for DAG step
                     execution (default: falls back to ``LLM_MODEL``).
 LLM_TEMPERATURE  : Default sampling temperature (default: ``0.7``).
 MAX_CONCURRENCY  : Max parallel steps in DAG executor (default: ``5``).
+LLM_CONTEXT_SIZE : Effective context cap for the main LLM in tokens
+                    (default: ``128000`` — sweet spot for attention quality).
+LLM_MAX_OUTPUT_TOKENS : Max output tokens per call for the main LLM
+                    (default: ``64000``).
+FAST_LLM_CONTEXT_SIZE : Total context window of the fast LLM
+                    (default: falls back to ``LLM_CONTEXT_SIZE``).
+FAST_LLM_MAX_OUTPUT_TOKENS : Max output tokens for the fast LLM
+                    (default: falls back to ``LLM_MAX_OUTPUT_TOKENS``).
 MCP_SERVERS      : Optional JSON array of MCP server configs.  Each entry
                     is ``{"name": str, "command": str, "args": [str], "env": {}}``.
 """
@@ -60,6 +68,48 @@ def _temperature() -> float:
 def get_max_concurrency() -> int:
     """Return the max parallel steps for the DAG executor."""
     return int(os.environ.get("MAX_CONCURRENCY", "5"))
+
+
+# Reserve for system prompt + tool descriptions in the context window.
+_SYSTEM_PROMPT_RESERVE = 4_000
+
+
+def _compute_input_budget(context_size: int, max_output: int) -> int:
+    """Compute usable input token budget from model specs.
+
+    Formula: ``context_size - max_output_tokens - system_prompt_reserve``.
+    Ensures the budget is at least 4 000 tokens.
+    """
+    budget = context_size - max_output - _SYSTEM_PROMPT_RESERVE
+    return max(budget, 4_000)
+
+
+def get_context_budget() -> int:
+    """Return the input token budget for the main LLM.
+
+    Computed from ``LLM_CONTEXT_SIZE`` and ``LLM_MAX_OUTPUT_TOKENS``.
+    """
+    context_size = int(os.environ.get("LLM_CONTEXT_SIZE", "128000"))
+    max_output = int(os.environ.get("LLM_MAX_OUTPUT_TOKENS", "64000"))
+    return _compute_input_budget(context_size, max_output)
+
+
+def get_fast_context_budget() -> int:
+    """Return the input token budget for the fast LLM.
+
+    Computed from ``FAST_LLM_CONTEXT_SIZE`` and ``FAST_LLM_MAX_OUTPUT_TOKENS``.
+    Falls back to the main LLM values when not set.
+    """
+    context_size = os.environ.get("FAST_LLM_CONTEXT_SIZE", "")
+    max_output = os.environ.get("FAST_LLM_MAX_OUTPUT_TOKENS", "")
+    if context_size and max_output:
+        return _compute_input_budget(int(context_size), int(max_output))
+    if context_size:
+        return _compute_input_budget(
+            int(context_size),
+            int(os.environ.get("LLM_MAX_OUTPUT_TOKENS", "64000")),
+        )
+    return get_context_budget()
 
 
 def get_llm() -> OpenAICompatibleLLM:
