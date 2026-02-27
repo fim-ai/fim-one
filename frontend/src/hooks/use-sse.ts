@@ -44,6 +44,8 @@ export function useSSE() {
     es.addEventListener("step", handleEvent("step"))
     es.addEventListener("step_progress", handleEvent("step_progress"))
     es.addEventListener("phase", handleEvent("phase"))
+    es.addEventListener("compact", handleEvent("compact"))
+    es.addEventListener("evidence", handleEvent("evidence"))
     es.addEventListener("done", handleEvent("done"))
 
     es.onerror = () => {

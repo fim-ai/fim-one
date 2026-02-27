@@ -27,14 +27,17 @@ _COMPACT_PROMPTS: dict[str, str] = {
     "general": (
         "Summarise the following conversation history into a concise paragraph.\n"
         "Preserve key facts, decisions, tool results, and any data the user or "
-        "assistant referenced.  Drop greetings, filler, and redundant back-and-forth.\n"
+        "assistant referenced.  When images were shared, preserve the assistant's "
+        "description of the image content (what was in the image, key visual details).\n"
+        "Drop greetings, filler, and redundant back-and-forth.\n"
         "Reply with ONLY the summary text — no JSON, no markdown headers.\n"
         "Write in the same language as the conversation."
     ),
     "react_iteration": (
         "Summarise the following conversation history for an ongoing ReAct agent loop.\n"
         "PRESERVE: the most recent reasoning chain, key tool results that are still "
-        "relevant, the current goal/sub-goal, and any critical data or numbers.\n"
+        "relevant, the current goal/sub-goal, any critical data or numbers, and "
+        "descriptions of any images the user shared (what was depicted, key visual details).\n"
         "DROP: old redundant reasoning steps, failed tool attempts that were already "
         "retried successfully, verbose tool outputs whose conclusions have been noted.\n"
         "Reply with ONLY the summary text — no JSON, no markdown headers.\n"
@@ -144,6 +147,10 @@ class ContextGuard:
         limit = self.max_message_chars
         for msg in messages:
             content = msg.content or ""
+            # Vision content arrays: skip character-level truncation
+            if isinstance(content, list):
+                result.append(msg)
+                continue
             if len(content) > limit:
                 truncated = content[:limit] + "\n[Truncated]"
                 result.append(ChatMessage(
@@ -151,6 +158,7 @@ class ContextGuard:
                     content=truncated,
                     tool_call_id=msg.tool_call_id,
                     tool_calls=msg.tool_calls,
+                    pinned=msg.pinned,
                 ))
             else:
                 result.append(msg)
@@ -172,21 +180,33 @@ class ContextGuard:
         # Split: system messages stay, keep last 4 user/assistant messages,
         # summarise the rest.
         system_msgs = [m for m in messages if m.role == "system"]
-        non_system = [m for m in messages if m.role != "system"]
+        pinned_msgs = [m for m in messages if m.pinned and m.role != "system"]
+        compactable = [m for m in messages if m.role != "system" and not m.pinned]
 
         keep_recent = 4
-        if len(non_system) <= keep_recent:
+        if len(compactable) <= keep_recent:
             # Not enough to split — fall back to heuristic truncation.
             return CompactUtils.smart_truncate(messages, budget)
 
-        old_messages = non_system[:-keep_recent]
-        recent_messages = non_system[-keep_recent:]
+        old_messages = compactable[:-keep_recent]
+        recent_messages = compactable[-keep_recent:]
+
+        # Warn if pinned messages consume too much of the budget.
+        pinned_tokens = CompactUtils.estimate_messages_tokens(pinned_msgs)
+        if pinned_tokens > budget * 0.5:
+            logger.warning(
+                "ContextGuard: pinned messages consume %d tokens "
+                "(%.0f%% of budget %d)",
+                pinned_tokens,
+                pinned_tokens / budget * 100,
+                budget,
+            )
 
         # Build the text block to summarise.
         lines: list[str] = []
         for msg in old_messages:
             prefix = msg.role.capitalize()
-            lines.append(f"{prefix}: {msg.content}")
+            lines.append(f"{prefix}: {CompactUtils.content_as_text(msg.content)}")
         history_text = "\n".join(lines)
 
         try:
@@ -207,6 +227,7 @@ class ContextGuard:
 
         compacted = [
             *system_msgs,
+            *pinned_msgs,
             ChatMessage(
                 role="system",
                 content=f"[Conversation summary]: {summary}",

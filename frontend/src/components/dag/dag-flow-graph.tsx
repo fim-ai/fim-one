@@ -154,7 +154,7 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
   }
 
   // Inline mode - original behavior
-  const graphHeight = Math.max(280, Math.min(planSteps.length * 100 + 80, 600))
+  const graphHeight = Math.max(380, Math.min(planSteps.length * 120 + 100, 600))
 
   return (
     <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 rounded-lg border border-green-500/20 bg-card/50 overflow-hidden">
@@ -185,6 +185,9 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={true}
+          zoomOnScroll={false}
+          panOnScroll={false}
+          preventScrolling={false}
           minZoom={0.5}
           maxZoom={1.5}
         >

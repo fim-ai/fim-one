@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import Link from "next/link"
+import { Bot, ChevronLeft, ChevronRight, Library, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { APP_NAME, APP_VERSION } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -78,6 +79,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {/* Conversation list */}
           <div className="flex-1 min-h-0 py-2">
             <ConversationSidebar collapsed={collapsed} />
+          </div>
+
+          {/* Navigation */}
+          <div className="px-3 pb-2 shrink-0">
+            <Link
+              href="/agents"
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                pathname === "/agents"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                collapsed && "justify-center px-0"
+              )}
+            >
+              <Bot className="h-4 w-4" />
+              {!collapsed && <span>Agents</span>}
+            </Link>
+            <Link
+              href="/kb"
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                pathname === "/kb" || pathname.startsWith("/kb/")
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                collapsed && "justify-center px-0"
+              )}
+            >
+              <Library className="h-4 w-4" />
+              {!collapsed && <span>Knowledge</span>}
+            </Link>
           </div>
 
           {/* Bottom area */}

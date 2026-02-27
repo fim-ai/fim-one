@@ -19,8 +19,8 @@ _MAX_TIMEOUT_SECONDS: int = 120
 # Maximum captured output size (bytes) before truncation.
 _MAX_OUTPUT_BYTES: int = 100 * 1024  # 100 KB
 
-# Sandbox workspace lives under the project-level tmp/ directory.
-_SANDBOX_DIR = Path(__file__).resolve().parents[4] / "tmp" / "sandbox"
+# Default sandbox workspace lives under the project-level tmp/ directory.
+_DEFAULT_SANDBOX_DIR = Path(__file__).resolve().parents[4] / "tmp" / "sandbox"
 
 # -----------------------------------------------------------------------
 # Security: command blocklist patterns
@@ -221,8 +221,14 @@ class ShellExecTool(BaseTool):
     and writes to system paths.
     """
 
-    def __init__(self, *, timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> None:
+    def __init__(
+        self,
+        *,
+        timeout: int = _DEFAULT_TIMEOUT_SECONDS,
+        sandbox_dir: Path | None = None,
+    ) -> None:
         self._timeout = timeout
+        self._sandbox_dir = sandbox_dir or _DEFAULT_SANDBOX_DIR
 
     # ------------------------------------------------------------------
     # Tool protocol properties
@@ -302,7 +308,8 @@ class ShellExecTool(BaseTool):
             return f"[Error] Command blocked: {block_reason}"
 
         # 2. Ensure sandbox directory exists.
-        _SANDBOX_DIR.mkdir(parents=True, exist_ok=True)
+        sandbox = self._sandbox_dir
+        sandbox.mkdir(parents=True, exist_ok=True)
 
         # 3. Resolve working directory.
         working_dir_arg: str | None = kwargs.get("working_dir")
@@ -313,14 +320,14 @@ class ShellExecTool(BaseTool):
             # If relative, interpret relative to the sandbox.
             wd_path = Path(working_dir_arg)
             if not wd_path.is_absolute():
-                wd_path = _SANDBOX_DIR / wd_path
-            err = _validate_working_dir(str(wd_path), _SANDBOX_DIR)
+                wd_path = sandbox / wd_path
+            err = _validate_working_dir(str(wd_path), sandbox)
             if err is not None:
                 return f"[Error] {err}"
             wd_path.mkdir(parents=True, exist_ok=True)
             cwd = str(wd_path)
         else:
-            cwd = str(_SANDBOX_DIR)
+            cwd = str(sandbox)
 
         # 4. Build restricted environment.
         env = _build_safe_env(cwd)

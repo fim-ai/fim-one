@@ -15,6 +15,8 @@ class AgentCreate(BaseModel):
     model_config_json: dict | None = None
     tool_categories: list[str] | None = None
     suggested_prompts: list[str] | None = None
+    kb_ids: list[str] | None = None
+    grounding_config: dict | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -25,6 +27,8 @@ class AgentUpdate(BaseModel):
     model_config_json: dict | None = None
     tool_categories: list[str] | None = None
     suggested_prompts: list[str] | None = None
+    kb_ids: list[str] | None = None
+    grounding_config: dict | None = None
 
 
 class AgentResponse(BaseModel):
@@ -36,6 +40,8 @@ class AgentResponse(BaseModel):
     model_config_json: dict | None
     tool_categories: list[str] | None
     suggested_prompts: list[str] | None
+    kb_ids: list[str] | None
+    grounding_config: dict | None
     status: str
     published_at: str | None
     created_at: str

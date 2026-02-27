@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 _COMPACT_PROMPT = """\
 Summarise the following conversation history into a concise paragraph.
 Preserve key facts, decisions, tool results, and any data the user or
-assistant referenced.  Drop greetings, filler, and redundant back-and-forth.
+assistant referenced.  When images were shared, preserve the assistant's
+description of the image content (what was in the image, key visual details).
+Drop greetings, filler, and redundant back-and-forth.
 Reply with ONLY the summary text — no JSON, no markdown headers.
 Write in the same language as the conversation."""
 
@@ -30,7 +32,32 @@ class CompactUtils:
     """Stateless helpers for estimating and truncating conversation history."""
 
     @staticmethod
-    def estimate_tokens(text: str) -> int:
+    def content_as_text(content: str | list | None) -> str:
+        """Extract plain text from message content (str or vision array).
+
+        For vision content arrays, extracts all text parts and appends
+        a descriptive note for each image part.
+        """
+        if not content:
+            return ""
+        if isinstance(content, str):
+            return content
+        # Vision content array: list[dict]
+        parts: list[str] = []
+        image_count = 0
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "text":
+                parts.append(item.get("text", ""))
+            elif item.get("type") == "image_url":
+                image_count += 1
+        if image_count:
+            parts.append(f"[{image_count} image(s) were attached to this message]")
+        return " ".join(parts)
+
+    @staticmethod
+    def estimate_tokens(text: str | list) -> int:
         """Estimate token count for mixed-language text.
 
         Uses different heuristics depending on character type:
@@ -38,14 +65,28 @@ class CompactUtils:
         - CJK / non-ASCII characters (Chinese, Japanese, Korean, etc.):
           ~1.5 chars per token (each CJK char is typically 1-2 tokens)
 
+        Also handles vision content arrays (list of dicts).
+
         Args:
-            text: The string to estimate.
+            text: The string (or vision content list) to estimate.
 
         Returns:
             Approximate number of tokens.
         """
         if not text:
             return 0
+
+        # Handle vision content arrays
+        if isinstance(text, list):
+            total = 0
+            for part in text:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "text":
+                    total += CompactUtils.estimate_tokens(part.get("text", ""))
+                elif part.get("type") == "image_url":
+                    total += 765  # approximate token cost for a base64 image
+            return max(1, total) if total else 0
 
         ascii_chars = 0
         non_ascii_chars = 0
@@ -74,7 +115,15 @@ class CompactUtils:
         total = 0
         for msg in messages:
             total += 4  # per-message overhead
-            total += cls.estimate_tokens(msg.content or "")
+            content = msg.content or ""
+            if isinstance(content, list):
+                # Multimodal content blocks — only count text parts
+                text = " ".join(
+                    part.get("text", "") for part in content if isinstance(part, dict)
+                )
+                total += cls.estimate_tokens(text)
+            else:
+                total += cls.estimate_tokens(content)
         return total
 
     @classmethod
@@ -102,17 +151,26 @@ class CompactUtils:
         if cls.estimate_messages_tokens(messages) <= max_tokens:
             return list(messages)
 
-        # Walk backwards, accumulating messages until we exceed the budget.
-        result: list[ChatMessage] = []
+        # Pinned messages are always kept; deduct their cost first.
+        pinned = [m for m in messages if m.pinned]
+        non_pinned = [m for m in messages if not m.pinned]
+
         budget = max_tokens
-        for msg in reversed(messages):
+        for msg in pinned:
+            budget -= 4 + cls.estimate_tokens(msg.content or "")
+
+        # Walk backwards through non-pinned, accumulating until budget exhausted.
+        recent: list[ChatMessage] = []
+        for msg in reversed(non_pinned):
             cost = 4 + cls.estimate_tokens(msg.content or "")
             if budget - cost < 0:
                 break
-            result.append(msg)
+            recent.append(msg)
             budget -= cost
 
-        result.reverse()
+        recent.reverse()
+
+        result = pinned + recent
 
         # Drop leading assistant messages — the history must start with a
         # user message so the LLM doesn't see a context-free assistant turn.
@@ -152,19 +210,22 @@ class CompactUtils:
         if total <= max_tokens:
             return list(messages)
 
-        # Split: keep the most recent messages, summarise the rest.
-        if len(messages) <= keep_recent:
-            # Not enough to split — fall back to heuristic truncation.
+        # Three-way split: system / pinned / compactable.
+        system_msgs = [m for m in messages if m.role == "system"]
+        pinned_msgs = [m for m in messages if m.pinned and m.role != "system"]
+        compactable = [m for m in messages if m.role != "system" and not m.pinned]
+
+        if len(compactable) <= keep_recent:
             return cls.smart_truncate(messages, max_tokens)
 
-        old_messages = messages[:-keep_recent]
-        recent_messages = list(messages[-keep_recent:])
+        old_messages = compactable[:-keep_recent]
+        recent_messages = list(compactable[-keep_recent:])
 
         # Build the text block to summarise.
         lines: list[str] = []
         for msg in old_messages:
             prefix = "User" if msg.role == "user" else "Assistant"
-            lines.append(f"{prefix}: {msg.content}")
+            lines.append(f"{prefix}: {cls.content_as_text(msg.content)}")
         history_text = "\n".join(lines)
 
         try:
@@ -181,6 +242,8 @@ class CompactUtils:
             return cls.smart_truncate(messages, max_tokens)
 
         compacted = [
+            *system_msgs,
+            *pinned_msgs,
             ChatMessage(role="system", content=f"[Conversation summary]: {summary}"),
             *recent_messages,
         ]

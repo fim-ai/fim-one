@@ -11,6 +11,7 @@ import importlib
 import inspect
 import logging
 import pkgutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fim_agent.core.tool.base import BaseTool
@@ -23,16 +24,20 @@ logger = logging.getLogger(__name__)
 # Explicit re-exports (for convenience — callers can still import directly)
 from .calculator import CalculatorTool
 from .file_ops import FileOpsTool
+from .grounded_retrieve import GroundedRetrieveTool
 from .http_request import HttpRequestTool
 from .python_exec import PythonExecTool
 from .shell_exec import ShellExecTool
+from .kb_retrieve import KBRetrieveTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
 
 __all__ = [
     "CalculatorTool",
     "FileOpsTool",
+    "GroundedRetrieveTool",
     "HttpRequestTool",
+    "KBRetrieveTool",
     "PythonExecTool",
     "ShellExecTool",
     "WebFetchTool",
@@ -40,15 +45,46 @@ __all__ = [
     "discover_builtin_tools",
 ]
 
+# Mapping from tool class to the keyword argument name for sandbox paths.
+_SANDBOX_KWARGS: dict[type, str] = {
+    FileOpsTool: "workspace_dir",
+    ShellExecTool: "sandbox_dir",
+    PythonExecTool: "exec_dir",
+}
 
-def discover_builtin_tools() -> list[Tool]:
+
+def discover_builtin_tools(
+    *,
+    sandbox_root: Path | None = None,
+) -> list[Tool]:
     """Auto-discover and instantiate all built-in tools.
 
     Scans every module in this package, finds concrete ``BaseTool`` subclasses,
-    and returns a fresh instance of each (via zero-arg constructor).
+    and returns a fresh instance of each.
+
+    When *sandbox_root* is provided (a per-conversation directory), sandboxed
+    tools (``FileOpsTool``, ``ShellExecTool``, ``PythonExecTool``) receive
+    their respective sub-directory under that root::
+
+        sandbox_root/
+        ├── workspace/   → FileOpsTool(workspace_dir=...)
+        ├── sandbox/     → ShellExecTool(sandbox_dir=...)
+        └── exec/        → PythonExecTool(exec_dir=...)
+
+    Tools that do not accept a sandbox parameter are instantiated with their
+    zero-arg constructor as before.
 
     Tools that fail to import or instantiate are logged and skipped.
     """
+    # Pre-compute per-tool sandbox paths when a root is provided.
+    sandbox_paths: dict[str, Path] = {}
+    if sandbox_root is not None:
+        sandbox_paths = {
+            "workspace_dir": sandbox_root / "workspace",
+            "sandbox_dir": sandbox_root / "sandbox",
+            "exec_dir": sandbox_root / "exec",
+        }
+
     tools: list[Tool] = []
     package_path = __path__  # type: ignore[name-defined]
     package_name = __name__
@@ -68,7 +104,12 @@ def discover_builtin_tools() -> list[Tool]:
                 and not inspect.isabstract(obj)
             ):
                 try:
-                    tools.append(obj())
+                    # Pass sandbox path to tools that support it.
+                    kwarg_name = _SANDBOX_KWARGS.get(obj)
+                    if kwarg_name and kwarg_name in sandbox_paths:
+                        tools.append(obj(**{kwarg_name: sandbox_paths[kwarg_name]}))
+                    else:
+                        tools.append(obj())
                 except Exception:
                     logger.warning(
                         "Failed to instantiate tool %s.%s",

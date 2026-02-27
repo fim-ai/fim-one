@@ -51,6 +51,14 @@ web = [
 mcp = [
     "mcp>=1.0",
 ]
+files = [
+    "pdfplumber>=0.10",
+    "python-docx>=1.0",
+]
+rag = [
+    "lancedb>=0.6",
+    "pyarrow>=14.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/fim-ai/fim-agent"

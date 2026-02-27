@@ -57,6 +57,10 @@ character types in one script), so do NOT create separate steps for \
 trivially related sub-tasks.
 7. LANGUAGE: Write the "task" descriptions in the same language as the goal. \
 If the goal is in Chinese, write tasks in Chinese.
+8. IMPORTANT: Keep "task" descriptions CONCISE (1-3 sentences). Do NOT copy \
+or echo large blocks of text, conversation history, or report content into \
+the task field. Instead, reference it briefly (e.g. "Translate the report \
+from the previous conversation into English, preserving Markdown formatting").
 
 Respond with a single JSON object:
 {{
@@ -174,6 +178,11 @@ class DAGPlanner:
         """
         data = extract_json(content)
         if data is None:
+            logger.warning(
+                "Failed to parse plan JSON (%d chars): %.500s",
+                len(content),
+                content,
+            )
             raise ValueError(
                 f"LLM returned unparseable content for plan: {content[:200]}"
             )

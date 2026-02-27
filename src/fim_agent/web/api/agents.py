@@ -28,6 +28,8 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         model_config_json=agent.model_config_json,
         tool_categories=agent.tool_categories,
         suggested_prompts=agent.suggested_prompts,
+        kb_ids=agent.kb_ids,
+        grounding_config=agent.grounding_config,
         status=agent.status,
         published_at=(
             agent.published_at.isoformat() if agent.published_at else None
@@ -69,6 +71,8 @@ async def create_agent(
         model_config_json=body.model_config_json,
         tool_categories=body.tool_categories,
         suggested_prompts=body.suggested_prompts,
+        kb_ids=body.kb_ids,
+        grounding_config=body.grounding_config,
         status="draft",
     )
     db.add(agent)

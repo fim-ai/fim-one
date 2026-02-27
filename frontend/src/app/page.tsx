@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react"
+import { useState, useCallback, useRef, useEffect, useMemo, Fragment } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, Trash2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, User } from "lucide-react"
+import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, User, Paperclip, X, Plus } from "lucide-react"
 import { useSSE } from "@/hooks/use-sse"
 import { useDagSteps } from "@/hooks/use-dag-steps"
 import { useReactSteps } from "@/hooks/use-react-steps"
@@ -13,8 +13,15 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useAuth } from "@/contexts/auth-context"
 import { useConversation } from "@/contexts/conversation-context"
+import { agentApi, fileApi } from "@/lib/api"
 import { API_BASE_URL, ACCESS_TOKEN_KEY } from "@/lib/constants"
-import { cn } from "@/lib/utils"
+import { cn, formatFileSize, isImageFile } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -33,6 +40,8 @@ import { HistoryMessages } from "@/components/playground/history-messages"
 import { reconstructSSEMessages } from "@/lib/sse-utils"
 import type { SSEMessage } from "@/hooks/use-sse"
 import type { MessageResponse } from "@/types/conversation"
+import type { AgentResponse } from "@/types/agent"
+import type { FileUploadResponse } from "@/types/file"
 import type { AgentMode, Language } from "@/components/playground/examples"
 
 export default function PlaygroundPage() {
@@ -49,6 +58,7 @@ export default function PlaygroundPage() {
   } = useConversation()
 
   const [mode, setMode] = useState<AgentMode>("react")
+  const [selectedAgent, setSelectedAgent] = useState<AgentResponse | null>(null)
   const [query, setQuery] = useState("")
   const [language, setLanguage] = useState<Language>("en")
   const [sourceMode, setSourceMode] = useState<AgentMode | null>(null)
@@ -138,8 +148,15 @@ export default function PlaygroundPage() {
     }
   }, [isRunning]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-sync mode when agent is selected
+  useEffect(() => {
+    if (selectedAgent) {
+      setMode(selectedAgent.execution_mode as AgentMode)
+    }
+  }, [selectedAgent])
+
   const runWithQuery = useCallback(
-    async (q: string) => {
+    async (q: string, imageIds?: string[]) => {
       const trimmed = q.trim()
       if (!trimmed || isRunning) return
 
@@ -152,7 +169,11 @@ export default function PlaygroundPage() {
       // Auto-create conversation if none selected
       if (!convId) {
         try {
-          const conv = await createConversation(mode, trimmed.slice(0, 60))
+          const conv = await createConversation(
+            selectedAgent?.execution_mode as "react" | "dag" || mode,
+            trimmed.slice(0, 60),
+            selectedAgent?.id,
+          )
           convId = conv.id
           // Mark as self-created so the activeConversation effect doesn't reset SSE
           selfCreatedIdRef.current = convId
@@ -172,31 +193,16 @@ export default function PlaygroundPage() {
       if (accessToken) {
         url += `&token=${encodeURIComponent(accessToken)}`
       }
+      if (selectedAgent?.id) {
+        url += `&agent_id=${encodeURIComponent(selectedAgent.id)}`
+      }
+      if (imageIds?.length) {
+        url += `&image_ids=${encodeURIComponent(imageIds.join(","))}`
+      }
       setSourceMode(mode)
       start(url)
     },
-    [isRunning, mode, start, activeId, createConversation, selectConversation],
-  )
-
-  const handleRun = useCallback(() => {
-    runWithQuery(query)
-  }, [query, runWithQuery])
-
-  const handleReset = useCallback(() => {
-    reset()
-    setQuery("")
-    setSourceMode(null)
-    setPendingQuery(null)
-  }, [reset])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault()
-        handleRun()
-      }
-    },
-    [handleRun],
+    [isRunning, mode, start, activeId, createConversation, selectConversation, selectedAgent],
   )
 
   const handleExampleSelect = useCallback(
@@ -220,6 +226,8 @@ export default function PlaygroundPage() {
         messages={messages}
         isRunning={isRunning}
         activeConversation={activeConversation}
+        selectedAgent={selectedAgent}
+        onAgentChange={setSelectedAgent}
         onQueryChange={setQuery}
         onLanguageChange={setLanguage}
         onModeChange={(m) => {
@@ -230,10 +238,8 @@ export default function PlaygroundPage() {
             setMode(m)
           }
         }}
-        onRun={handleRun}
+        onRunWithQuery={runWithQuery}
         onAbort={abort}
-        onReset={handleReset}
-        onKeyDown={handleKeyDown}
         onExampleSelect={handleExampleSelect}
       />
 
@@ -265,13 +271,69 @@ export default function PlaygroundPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   )
 }
 
+/** Fetches an image via authenticated request and displays a clickable thumbnail with lightbox. */
+function ImageThumbnail({ fileId, filename }: { fileId: string; filename: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let revoked = false
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+    fetch(`${API_BASE_URL}/api/files/${fileId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => res.blob())
+      .then((blob) => {
+        if (!revoked) setBlobUrl(URL.createObjectURL(blob))
+      })
+      .catch(() => {})
+
+    return () => {
+      revoked = true
+      // blobUrl cleanup happens via the separate ref below
+    }
+  }, [fileId])
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+    }
+  }, [blobUrl])
+
+  if (!blobUrl) return <div className="h-16 w-16 rounded-md border border-border/40 bg-muted/30 animate-pulse" />
+
+  return (
+    <>
+      <button
+        onClick={() => setExpanded(true)}
+        className="group relative overflow-hidden rounded-md border border-border/40"
+      >
+        <img src={blobUrl} alt={filename} className="h-16 w-16 object-cover transition-transform group-hover:scale-105" loading="lazy" />
+      </button>
+      {expanded && (
+        <Dialog open={expanded} onOpenChange={setExpanded}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>{filename}</DialogTitle>
+            </DialogHeader>
+            <img src={blobUrl} alt={filename} className="w-full rounded" />
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
+}
+
 /** Renders a single history turn (user message + execution steps) using the same hooks as live mode. */
-function HistoryTurn({ userContent, sseMessages, mode, hideDagGraph }: {
+function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGraph }: {
   userContent: string | null
+  userMetadata?: Record<string, unknown> | null
   sseMessages: SSEMessage[]
   mode: "react" | "dag"
   hideDagGraph: boolean
@@ -288,6 +350,13 @@ function HistoryTurn({ userContent, sseMessages, mode, hideDagGraph }: {
           </div>
           <div className="flex-1 pt-0.5">
             <p className="text-sm text-foreground">{userContent}</p>
+            {Array.isArray(userMetadata?.images) && userMetadata.images.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(userMetadata.images as Array<{ file_id: string; filename: string }>).map((img) => (
+                  <ImageThumbnail key={img.file_id} fileId={img.file_id} filename={img.filename} />
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -308,6 +377,20 @@ function HistoryTurn({ userContent, sseMessages, mode, hideDagGraph }: {
   )
 }
 
+/** Subtle divider shown when the backend compacted (summarized) older conversation context. */
+function CompactDivider({ originalCount, keptCount }: { originalCount: number; keptCount: number }) {
+  return (
+    <div className="flex items-center gap-3 py-2">
+      <div className="flex-1 border-t border-dashed border-border/50" />
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground/70 select-none">
+        <span>&#9986;</span>
+        <span>Earlier context ({originalCount - keptCount} messages) was summarized by AI</span>
+      </span>
+      <div className="flex-1 border-t border-dashed border-border/50" />
+    </div>
+  )
+}
+
 interface PlaygroundContentProps {
   mode: AgentMode
   sourceMode: AgentMode | null
@@ -317,13 +400,13 @@ interface PlaygroundContentProps {
   messages: ReturnType<typeof useSSE>["messages"]
   isRunning: boolean
   activeConversation: ReturnType<typeof useConversation>["activeConversation"]
+  selectedAgent: AgentResponse | null
+  onAgentChange: (agent: AgentResponse | null) => void
   onQueryChange: (q: string) => void
   onLanguageChange: (lang: Language) => void
   onModeChange: (mode: AgentMode) => void
-  onRun: () => void
+  onRunWithQuery: (q: string, imageIds?: string[]) => void
   onAbort: () => void
-  onReset: () => void
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   onExampleSelect: (example: string) => void
 }
 
@@ -336,13 +419,13 @@ function PlaygroundContent({
   messages,
   isRunning,
   activeConversation,
+  selectedAgent,
+  onAgentChange,
   onQueryChange,
   onLanguageChange,
   onModeChange,
-  onRun,
+  onRunWithQuery,
   onAbort,
-  onReset,
-  onKeyDown,
   onExampleSelect,
 }: PlaygroundContentProps) {
   const modeMatches = sourceMode === mode
@@ -365,6 +448,16 @@ function PlaygroundContent({
   const [resizeKey, setResizeKey] = useState(0)
   const panelContainerRef = useRef<HTMLDivElement>(null)
   const dragRatioRef = useRef<number | null>(null)
+
+  // Agent selector
+  const [agents, setAgents] = useState<AgentResponse[]>([])
+  const [agentsLoaded, setAgentsLoaded] = useState(false)
+
+  // File upload
+  const [attachedFiles, setAttachedFiles] = useState<(FileUploadResponse & { previewUrl?: string })[]>([])
+  const [pendingImages, setPendingImages] = useState<Array<{ file_id: string; filename: string }>>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Priority: active drag > custom drag (persisted) > expand preset > normal preset
   const NORMAL_RATIO = 0.3
@@ -393,6 +486,13 @@ function PlaygroundContent({
     }
     return turns.length > 0 ? turns : null
   }, [activeConversation?.messages])
+
+  // Detect compact event from SSE stream
+  const compactEvent = useMemo(() => {
+    if (!modeMatches) return null
+    const evt = messages.find((m) => m.event === "compact")
+    return evt?.data as { original_messages: number; kept_messages: number } | null
+  }, [messages, modeMatches])
 
   const hasRichHistory = !hasLiveMessages && allHistoryTurns !== null
 
@@ -480,6 +580,11 @@ function PlaygroundContent({
     }
   }, [hasMessages])
 
+  // Clear pending images when pending query is cleared
+  useEffect(() => {
+    if (!pendingQuery) setPendingImages([])
+  }, [pendingQuery])
+
   const scrollToBottom = useCallback(() => {
     scrollViewportToBottom()
     setShowScrollBtn(false)
@@ -505,6 +610,87 @@ function PlaygroundContent({
   const scrollToReactItem = useCallback((idx: number) => {
     scrollInViewport(`[data-react-idx="${idx}"]`)
   }, [scrollInViewport])
+
+  // Fetch published agents on mount
+  useEffect(() => {
+    if (agentsLoaded) return
+    agentApi.list(1, 50, "published").then((res) => {
+      setAgents(res.items as AgentResponse[])
+      setAgentsLoaded(true)
+    }).catch(() => setAgentsLoaded(true))
+  }, [agentsLoaded])
+
+  // File upload handler
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    setIsUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const result = await fileApi.upload(file)
+        // Create blob URL preview for image files
+        let previewUrl: string | undefined
+        if (file.type.startsWith("image/")) {
+          previewUrl = URL.createObjectURL(file)
+        }
+        setAttachedFiles((prev) => [...prev, { ...result, previewUrl }])
+      }
+    } catch (err) {
+      console.error("Upload failed:", err)
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }, [])
+
+  const removeFile = useCallback((fileId: string) => {
+    setAttachedFiles((prev) => {
+      const file = prev.find((f) => f.file_id === fileId)
+      if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl)
+      return prev.filter((f) => f.file_id !== fileId)
+    })
+  }, [])
+
+  // Run with file content injection (text files) and image_ids passthrough
+  const handleRunWithFiles = useCallback(() => {
+    let finalQuery = query.trim()
+    if (!finalQuery) return
+
+    const textFiles = attachedFiles.filter((f) => !isImageFile(f))
+    const imageFiles = attachedFiles.filter((f) => isImageFile(f))
+
+    // Text files: inject content into query (existing behavior)
+    if (textFiles.length > 0) {
+      const fileContext = textFiles
+        .map((f) => `File: ${f.filename}\n\`\`\`\n${f.content_preview || "[No preview available]"}\n\`\`\``)
+        .join("\n\n")
+      finalQuery = `Uploaded files:\n${fileContext}\n\n${finalQuery}`
+    }
+
+    // Image files: pass as image_ids parameter
+    const imageIds = imageFiles.map((f) => f.file_id)
+
+    // Save image info for pending display before clearing
+    setPendingImages(imageFiles.map((f) => ({ file_id: f.file_id, filename: f.filename })))
+
+    // Clean up preview URLs
+    attachedFiles.forEach((f) => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+    })
+    setAttachedFiles([])
+
+    onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined)
+  }, [attachedFiles, query, onRunWithQuery])
+
+  const handleKeyDownWithFiles = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault()
+        handleRunWithFiles()
+      }
+    },
+    [handleRunWithFiles],
+  )
 
   const statusText = (() => {
     if (!isRunning || !modeMatches) return null
@@ -548,16 +734,6 @@ function PlaygroundContent({
                 </span>
               )}
               <div className="flex-1" />
-              {hasLiveMessages && !isRunning && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onReset}
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
               {hasLiveMessages && isWideScreen && (
                 <Button
                   variant="ghost"
@@ -574,18 +750,37 @@ function PlaygroundContent({
               <ScrollArea ref={scrollAreaRef} className="h-full p-4">
                 <div className="min-w-0 max-w-full space-y-4">
                   {/* Previous turns from DB (shown during both live and history mode) */}
-                  {allHistoryTurns?.map((turn, idx) => (
-                    <HistoryTurn
-                      key={idx}
-                      userContent={turn.user?.content ?? null}
-                      sseMessages={turn.sseMessages}
-                      mode={(activeConversation?.mode as AgentMode) ?? mode}
-                      hideDagGraph={showSidebar}
-                    />
-                  ))}
+                  {allHistoryTurns?.map((turn, idx) => {
+                    const historyCompact = turn.sseMessages.find((m) => m.event === "compact")
+                    const historyCompactData = historyCompact?.data as { original_messages: number; kept_messages: number } | undefined
+                    return (
+                      <Fragment key={idx}>
+                        {historyCompactData && (
+                          <CompactDivider
+                            originalCount={historyCompactData.original_messages}
+                            keptCount={historyCompactData.kept_messages}
+                          />
+                        )}
+                        <HistoryTurn
+                          userContent={turn.user?.content ?? null}
+                          userMetadata={turn.user?.metadata}
+                          sseMessages={turn.sseMessages}
+                          mode={(activeConversation?.mode as AgentMode) ?? mode}
+                          hideDagGraph={showSidebar}
+                        />
+                      </Fragment>
+                    )
+                  })}
                   {/* Fallback: old messages without sse_events */}
                   {!allHistoryTurns && !hasLiveMessages && hasHistory && (
                     <HistoryMessages messages={activeConversation!.messages} />
+                  )}
+                  {/* Compact divider — shown when AI summarized older context */}
+                  {compactEvent && (
+                    <CompactDivider
+                      originalCount={compactEvent.original_messages}
+                      keptCount={compactEvent.kept_messages}
+                    />
                   )}
                   {/* Current turn: user message + live output */}
                   {pendingQuery && (
@@ -595,6 +790,13 @@ function PlaygroundContent({
                       </div>
                       <div className="flex-1 pt-0.5">
                         <p className="text-sm text-foreground">{pendingQuery}</p>
+                        {pendingImages.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {pendingImages.map((img) => (
+                              <ImageThumbnail key={img.file_id} fileId={img.file_id} filename={img.filename} />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -682,11 +884,51 @@ function PlaygroundContent({
 
       {/* Input area — pinned to bottom */}
       <div className="shrink-0 space-y-2">
+        {/* Attached files */}
+        {attachedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 pb-2">
+            {attachedFiles.map((f) => {
+              const isImage = isImageFile(f)
+              return (
+                <div
+                  key={f.file_id}
+                  className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-xs"
+                >
+                  {isImage && f.previewUrl ? (
+                    <img
+                      src={f.previewUrl}
+                      alt={f.filename}
+                      className="h-8 w-8 rounded object-cover"
+                    />
+                  ) : (
+                    <Paperclip className="h-3 w-3 text-muted-foreground" />
+                  )}
+                  <span className="max-w-[150px] truncate">{f.filename}</span>
+                  <span className="text-muted-foreground">({formatFileSize(f.size)})</span>
+                  <button
+                    onClick={() => removeFile(f.file_id)}
+                    className="ml-0.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={handleFileUpload}
+          accept=".txt,.md,.py,.js,.json,.csv,.pdf,.docx,.html,.htm,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.svg,image/*"
+        />
         <div className="flex items-end gap-2">
           <Textarea
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            onKeyDown={onKeyDown}
+            onKeyDown={handleKeyDownWithFiles}
             placeholder={
               mode === "react"
                 ? "Ask the ReAct agent to solve a problem..."
@@ -695,7 +937,7 @@ function PlaygroundContent({
             className="min-h-[72px] max-h-[160px] resize-none"
           />
           <Button
-            onClick={isRunning ? onAbort : onRun}
+            onClick={isRunning ? onAbort : handleRunWithFiles}
             disabled={!isRunning && !query.trim()}
             className="h-[72px] w-16 shrink-0"
             variant={isRunning ? "destructive" : "default"}
@@ -708,7 +950,34 @@ function PlaygroundContent({
           </Button>
         </div>
         {/* Mode toggle toolbar */}
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
+          {/* "+" dropdown menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex items-center justify-center rounded-full px-2 py-1 transition-colors",
+                  "border border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground select-none"
+                )}
+              >
+                {isUploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start">
+              <DropdownMenuItem
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                <Paperclip className="h-4 w-4" />
+                Upload files
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button
             type="button"
             disabled={isRunning}
@@ -729,6 +998,32 @@ function PlaygroundContent({
             )}
             {mode === "react" ? "ReAct" : "DAG"}
           </button>
+          {/* Agent selector */}
+          {agents.length > 0 && (
+            <select
+              value={selectedAgent?.id || ""}
+              onChange={(e) => {
+                const agent = agents.find((a) => a.id === e.target.value) || null
+                onAgentChange(agent)
+              }}
+              disabled={isRunning}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs border bg-transparent transition-colors",
+                "focus:outline-none focus:ring-1 focus:ring-ring",
+                selectedAgent
+                  ? "border-primary/40 text-primary"
+                  : "border-border/60 text-muted-foreground",
+                isRunning && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              <option value="">No Agent</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.execution_mode === "react" ? "ReAct" : "DAG"})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
     </div>

@@ -25,6 +25,7 @@ interface ConversationContextValue {
   createConversation: (
     mode: "react" | "dag",
     title?: string,
+    agentId?: string,
   ) => Promise<ConversationResponse>
   deleteConversation: (id: string) => Promise<void>
   updateTitle: (id: string, title: string) => Promise<void>
@@ -84,8 +85,8 @@ export function ConversationProvider({
   }, [])
 
   const createConversation = useCallback(
-    async (mode: "react" | "dag", title?: string) => {
-      const conv = await conversationApi.create({ mode, title })
+    async (mode: "react" | "dag", title?: string, agentId?: string) => {
+      const conv = await conversationApi.create({ mode, title, agent_id: agentId })
       setConversations((prev) => [conv, ...prev])
       setActiveId(conv.id)
       setActiveConversation({ ...conv, messages: [] })

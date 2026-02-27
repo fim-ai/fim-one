@@ -1,6 +1,7 @@
 "use client"
 
-import { X, Wrench, Brain, AlertCircle, Clock } from "lucide-react"
+import { useState } from "react"
+import { X, Wrench, Brain, AlertCircle, Clock, ChevronDown, ChevronUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { MarkdownContent } from "@/lib/markdown"
@@ -12,11 +13,47 @@ interface StepDetailPanelProps {
   onClose: () => void
 }
 
+/** Collapsible wrapper — collapsed by default, click to expand. */
+function Collapsible({
+  label,
+  labelClass,
+  children,
+}: {
+  label: string
+  labelClass?: string
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="rounded bg-muted/30 border border-border/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left hover:bg-muted/40 transition-colors"
+      >
+        <p className={cn("text-[9px] font-medium uppercase tracking-wider flex-1", labelClass ?? "text-muted-foreground")}>
+          {label}
+        </p>
+        {open
+          ? <ChevronUp className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+          : <ChevronDown className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
+        }
+      </button>
+      {open && (
+        <div className="px-2 pb-2">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
   return (
     <div
       className={cn(
-        "absolute top-0 right-0 w-72 h-full z-10 border-l border-border/50 bg-card/95 backdrop-blur-md transition-transform duration-200 ease-out flex flex-col",
+        "absolute top-0 right-0 bottom-0 w-72 z-10 border-l border-border/50 bg-card/95 backdrop-blur-md transition-transform duration-200 ease-out flex flex-col overflow-hidden",
         state ? "translate-x-0" : "translate-x-full"
       )}
     >
@@ -31,7 +68,10 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
               >
                 {state.step_id}
               </Badge>
-              <p className="text-sm font-medium text-foreground leading-snug">
+              <p
+                className="text-sm font-medium text-foreground leading-snug line-clamp-2"
+                title={state.task}
+              >
                 {state.task}
               </p>
               {state.duration != null && (
@@ -50,7 +90,7 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
           </div>
 
           {/* Content */}
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-3 space-y-2.5">
               {/* Iterations */}
               {state.iterations.map((iter, idx) => (
@@ -58,6 +98,7 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
                   key={idx}
                   className="rounded-md border border-border/30 bg-muted/20 p-2.5 space-y-1.5"
                 >
+                  {/* Iteration header */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {iter.type === "tool_call" ? (
                       <>
@@ -90,30 +131,33 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
                     </span>
                   </div>
 
+                  {/* Reasoning — always visible, italic */}
                   {iter.reasoning && (
                     <p className="text-xs italic text-muted-foreground leading-relaxed">
                       {iter.reasoning}
                     </p>
                   )}
 
+                  {/* Tool args — collapsed by default */}
                   {iter.tool_args &&
                     Object.keys(iter.tool_args).length > 0 && (
-                      <pre className="overflow-x-auto rounded bg-muted/40 p-2 text-[10px] font-mono leading-relaxed max-h-[200px] overflow-y-auto">
-                        {JSON.stringify(iter.tool_args, null, 2)}
-                      </pre>
+                      <Collapsible label="Arguments" labelClass="text-muted-foreground">
+                        <pre className="overflow-x-auto rounded bg-muted/40 p-1.5 text-[10px] font-mono leading-relaxed max-h-[200px] overflow-y-auto">
+                          {JSON.stringify(iter.tool_args, null, 2)}
+                        </pre>
+                      </Collapsible>
                     )}
 
+                  {/* Observation — collapsed by default */}
                   {iter.observation && (
-                    <div className="rounded bg-muted/30 border border-border/30 p-2">
-                      <p className="text-[9px] font-medium text-muted-foreground mb-0.5 uppercase tracking-wider">
-                        Observation
-                      </p>
+                    <Collapsible label="Observation">
                       <pre className="whitespace-pre-wrap text-[10px] text-foreground/90 font-mono leading-relaxed max-h-[200px] overflow-y-auto">
                         {iter.observation}
                       </pre>
-                    </div>
+                    </Collapsible>
                   )}
 
+                  {/* Error — always visible, highlighted */}
                   {iter.error && (
                     <div className="rounded border border-destructive/30 bg-destructive/5 p-2">
                       <div className="flex items-center gap-1 mb-0.5">
@@ -130,17 +174,14 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
                 </div>
               ))}
 
-              {/* Result */}
+              {/* Result — collapsed by default */}
               {state.result && (
-                <div className="rounded-md bg-muted/30 border border-border/30 p-2.5">
-                  <p className="text-[9px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-                    Result
-                  </p>
+                <Collapsible label="Result" labelClass="text-green-500">
                   <MarkdownContent
                     content={state.result}
                     className="prose-sm text-xs text-foreground/90"
                   />
-                </div>
+                </Collapsible>
               )}
 
               {state.iterations.length === 0 && !state.result && (

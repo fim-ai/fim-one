@@ -109,6 +109,8 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 
 **Memory & Compact**
 - [x] **LLM Compact**: When conversation history exceeds threshold, use a fast LLM to compress early turns into a summary; retain recent turns verbatim; transparent to the agent
+- [x] **ContextGuard**: Unified context window budget manager -- checks message token counts against model limits (`LLM_CONTEXT_SIZE` / `LLM_MAX_OUTPUT_TOKENS`), applies hint-specific LLM compaction (react_iteration, planner_input, step_dependency), truncates oversized messages, falls back to smart truncation; wired into ReAct agent and DAG executor
+- [x] **Pinned Messages**: `ChatMessage.pinned` flag protects critical messages (task description, user corrections) from compaction — ContextGuard and CompactUtils perform three-way split (system / pinned / compactable), pinned messages never enter the "old" pool for summarisation; ReAct pins the initial user message; DAG steps receive `original_goal` context so agents don't "forget what they're doing" during long tool-call loops; also fixes model_hint agents missing `context_guard` and `extra_instructions`
 - [ ] **Conversation Summary Memory**: Automatic rolling summaries that persist across long sessions; hybrid window + summary strategy
 - [ ] **Semantic Memory Store**: Cross-conversation knowledge extraction and retrieval; agent remembers facts/preferences across sessions via embedding-based lookup
 - [ ] **Memory Lifecycle**: TTL-based expiry, importance scoring, explicit forget/remember commands
@@ -117,34 +119,43 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 - [ ] **DAG Multi-Turn Polish**: Currently injects history as text prefix to planner; upgrade to structured message history so planner can reason about prior tool results and plan evolution
 - [ ] **DAG LLM Compact**: Apply LLM compact to the enriched query before planning; long conversation context can blow up planner input
 - [x] **DAG Re-Planning**: When the analyzer determines the goal was not achieved (confidence < 0.5), the pipeline automatically re-plans using previous step results as context and retries, up to 3 rounds; new SSE phase event `replanning`; done payload includes `rounds` count
+- [ ] **DAG Step-Level ReAct**: Each DAG step runs a full ReAct agent loop (multi-step reasoning + tool use) instead of a single LLM call; enables complex sub-tasks within a DAG node — the minimal viable unit of Multi-Agent capability, reusing existing DAG infrastructure
 - [ ] **DAG Step-Level Memory**: Each step executor sees relevant prior conversation context, not just the step task description
 - [ ] **DAG Streaming Improvements**: Stream planner reasoning (not just step progress); show plan changes in real-time when re-planning occurs
 - [ ] **DAG History Replay**: Frontend replays persisted DAG executions with the flow graph (currently only ReAct timeline replays correctly)
 
 **RAG & Knowledge Base**
-- [ ] **Embedding**: `BaseEmbedding` protocol + OpenAI-compatible implementation
-- [ ] **Vector Store**: LanceDB embedded vector store -- zero external services
-- [ ] **Document Loaders**: PDF, DOCX, Markdown, HTML, CSV
-- [ ] **Chunking Strategies**: Fixed-size, recursive, and semantic chunking
-- [ ] **Hybrid Retrieval**: Dense vector search + BM25 full-text search
-- [ ] **Knowledge Base Management**: Per-project knowledge base CRUD
+- [x] **Embedding**: `BaseEmbedding` protocol + OpenAI-compatible implementation (Jina jina-embeddings-v3)
+- [x] **Vector Store**: LanceDB embedded vector store -- zero external services, native FTS, content-hash dedup
+- [x] **Document Loaders**: PDF, DOCX, Markdown, HTML, CSV, plain text
+- [x] **Chunking Strategies**: Fixed-size, recursive, and semantic chunking
+- [x] **Hybrid Retrieval**: Dense vector search + LanceDB native FTS + RRF fusion + Jina reranker
+- [x] **Knowledge Base Management**: Full KB CRUD with document upload, background ingest, and agent `kb_retrieve` tool
+- [x] **Grounded Generation**: Evidence-anchored RAG — when an agent is bound to KBs, `kb_retrieve` auto-upgrades to `grounded_retrieve` with 5-stage pipeline: multi-KB parallel retrieval, LLM citation extraction (exact quotes), query-chunk alignment scoring, cross-document conflict detection, and score-based confidence (pure math, no LLM self-eval). Agent model gains `kb_ids` + `grounding_config` fields; agent form UI supports KB multi-select binding; frontend evidence panel with collapsible citations and conflict warnings
 
-### v0.6 -- System Adapter + Zhihe Integration
+### v0.6 -- System Adapter & Sandbox Hardening
 
 > *"The standard protocol for connecting legacy systems"*
 >
-> The universal platform is ready. Now add adaptation capabilities. Zhihe contract system is the first real-world target.
+> The universal platform is ready. Now add adaptation capabilities so FIM Agent can bridge into any host system without modifying it.
 >
 > **Core insight**: The host system can't be modified. Agent must proactively bridge in -- read their DB, call their API, push to their message bus.
 >
 > **Architecture**: Adapters are MCP Servers with a governance layer (Adapter SDK) on top. The agent sees adapters as ordinary tools -- zero coupling. See [Adapter Architecture](Adapter-Architecture) for the full design.
 
+**Execution Sandbox Hardening**
+- [ ] **Per-User Virtual Environment**: Each conversation spawns an isolated Python venv; user code executes via subprocess in the venv, not the host interpreter; prevents cross-session state leakage and module pollution
+- [ ] **Resource Limits**: CPU time and memory caps via `resource.setrlimit()` (Unix) for both Python exec and shell exec; prevents OOM and infinite-loop DoS
+- [ ] **File I/O Sandboxing**: Replace whitelisted `open()` in python_exec with path-validated wrapper; all file access confined to conversation sandbox directory
+- [ ] **Shell Exec Allowlist Mode**: Optional switch from command blocklist (regex-bypassable) to strict allowlist (`curl`, `grep`, `jq`, `awk`, `sed`, etc.); defense-in-depth against variable expansion / command substitution bypass
+
+**System Adapter**
 - [ ] **Adapter SDK**: Governance layer on MCP -- `read_only` enforcement, operation classification, audit hooks, auth passthrough interface
 - [ ] **Database Adapter**: Direct SQL read against host DB (async, parameterized, read-only by default); supports PostgreSQL, MySQL, Oracle, SQL Server
 - [ ] **HTTP API Adapter**: Generic REST/SOAP connector (httpx-based); auto-discover endpoints from Swagger/WSDL when available
 - [ ] **Message Push Adapter**: Send results to DingTalk (钉钉) / WeCom (企微) / Slack / Teams / email / webhook; templated message formatting
-- [ ] **Auth Passthrough**: Proxy host-system authentication; agent acts on behalf of the logged-in user
-- [ ] **Zhihe Contract Adapter**: First concrete implementation -- search / detail / compare / timeline / statistics
+- [ ] **Auth Passthrough**: Proxy host-system authentication; agent acts on behalf of the logged-in user; scoped permissions (DB read-only vs API full-access) per adapter
+- [ ] **Reference Adapter**: First concrete implementation targeting a real-world contract/business management system -- search / detail / compare / timeline / statistics
 - [ ] **Operation Audit Log**: Every tool call recorded (timestamp, user, tool, params, result, source adapter)
 
 **Example scenarios this unlocks:**
@@ -159,7 +170,7 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 
 - [ ] **Confirmation Gate**: Write operations require human approval; SSE event `confirmation_required`; configurable policy
 - [ ] **Dry-run Mode**: Preview operation effects without actual execution
-- [ ] **Zhihe Write Operations**: Approval, commenting, status changes (all require confirmation)
+- [ ] **Adapter Write Operations**: Approval, commenting, status changes on host system (all require confirmation)
 - [ ] **Embeddable Widget**: Lightweight JS bundle (<100KB), inject via `<script>` tag into host pages
 - [ ] **Page Context Injection**: Read current context from host page (contract ID, page URL, DOM selector)
 - [ ] **iframe / Standalone URL Mode**: Authenticated standalone access for embedding
@@ -193,7 +204,13 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 - [ ] **AI Adapter Generation**: Upload Swagger/OpenAPI spec -> auto-generate adapter config (Standardization Level 3)
 - [ ] **Plugin System**: Pip-installable adapter packages with entry-point auto-registration
 - [ ] **Admin Dashboard**: Audit logs, adapter management, health monitoring, usage/cost analytics
-- [ ] **Multi-Agent**: Nested agents, specialized roles (researcher / reviewer / actor)
+- [ ] **Multi-Agent Orchestration** *(inspired by Claude Code Teams)*:
+  - [ ] Agent Pool: Dynamic agent lifecycle — spawn on demand, shut down when done; each agent runs isolated ReAct loop with its own context window
+  - [ ] Task Graph: `blockedBy` / `blocks` dependency edges between tasks; orchestrator dispatches newly-unblocked tasks as predecessors complete (dynamic DAG over message-passing)
+  - [ ] Leader / Worker roles: Leader decomposes plan into tasks, assigns to Workers, monitors progress, re-assigns on failure
+  - [ ] Inter-Agent Messaging: Direct messages + broadcast; Workers report results back to Leader
+  - [ ] Graceful shutdown: Leader sends shutdown requests, Workers confirm or reject
+  - [ ] Token economics awareness: Track per-agent token cost; expose total cost as `N agents × per-agent tokens`
 - [ ] **Scheduled Jobs**: Cron triggers, webhook triggers
 - [ ] **Enterprise Security**: Data encryption, IP whitelisting, SOC2 audit logging
 - [ ] **PostgreSQL**: Optional for large-scale deployments

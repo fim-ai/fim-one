@@ -13,6 +13,7 @@ from fim_agent.db.base import Base, TimestampMixin, UUIDPKMixin
 if TYPE_CHECKING:
     from .agent import Agent
     from .conversation import Conversation
+    from .knowledge_base import KnowledgeBase
     from .model_config import ModelConfig
 
 
@@ -27,4 +28,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
 
     conversations: Mapped[list[Conversation]] = relationship(back_populates="user", lazy="selectin")
     agents: Mapped[list[Agent]] = relationship(back_populates="user", lazy="selectin")
+    knowledge_bases: Mapped[list[KnowledgeBase]] = relationship(
+        back_populates="user", lazy="selectin"
+    )
     model_configs: Mapped[list[ModelConfig]] = relationship(back_populates="user", lazy="selectin")

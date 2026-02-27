@@ -334,29 +334,33 @@ class TestDAGExecutorBuildStepContext:
 
 
 class TestDAGExecutorBuildStepQuery:
-    """Tests for the static ``_build_step_query`` helper."""
+    """Tests for the ``_build_step_query`` instance method."""
+
+    def _make_executor(self, **kwargs: Any) -> DAGExecutor:
+        from unittest.mock import MagicMock
+        return DAGExecutor(agent=MagicMock(), **kwargs)
 
     def test_basic_query(self) -> None:
         step = PlanStep(id="s1", task="compute sum")
-        query = DAGExecutor._build_step_query(step, context="")
+        query = self._make_executor()._build_step_query(step, context="")
         assert "compute sum" in query
 
     def test_query_with_tool_hint(self) -> None:
         step = PlanStep(id="s1", task="run code", tool_hint="python_exec")
-        query = DAGExecutor._build_step_query(step, context="")
+        query = self._make_executor()._build_step_query(step, context="")
         assert "python_exec" in query
         assert "Suggested tool" in query
 
     def test_query_with_context(self) -> None:
         step = PlanStep(id="s1", task="summarise")
         ctx = "[s0] (completed) fetch data\nResult: some data"
-        query = DAGExecutor._build_step_query(step, context=ctx)
+        query = self._make_executor()._build_step_query(step, context=ctx)
         assert "some data" in query
         assert "Context from previous steps" in query
 
     def test_query_no_tool_hint_no_context(self) -> None:
         step = PlanStep(id="s1", task="simple task")
-        query = DAGExecutor._build_step_query(step, context="")
+        query = self._make_executor()._build_step_query(step, context="")
         assert "Suggested tool" not in query
         assert "Context" not in query
 

@@ -27,6 +27,7 @@ class ModelConfig:
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o"
     temperature: float = 0.7
+    max_tokens: int = 64000
     roles: list[str] = field(default_factory=list)
 
 
@@ -53,6 +54,7 @@ def create_registry_from_configs(configs: list[ModelConfig]) -> ModelRegistry:
             base_url=cfg.base_url,
             model=cfg.model,
             default_temperature=cfg.temperature,
+            default_max_tokens=cfg.max_tokens,
         )
         registry.register(cfg.name, llm, roles=cfg.roles)
 

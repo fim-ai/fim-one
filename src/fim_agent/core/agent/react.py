@@ -173,6 +173,7 @@ class ReActAgent:
         self,
         query: str,
         on_iteration: IterationCallback | None = None,
+        image_urls: list[str] | None = None,
     ) -> AgentResult:
         """Execute the ReAct loop for a given user query.
 
@@ -180,13 +181,15 @@ class ReActAgent:
             query: The user question or task description.
             on_iteration: Optional callback invoked after each iteration with
                 ``(iteration, action, observation, error)``.
+            image_urls: Optional list of base64 data-URLs for images to
+                include in the first user message (vision model support).
 
         Returns:
             An ``AgentResult`` containing the final answer and full step trace.
         """
         if self._native_mode_active:
-            return await self._run_native(query, on_iteration)
-        return await self._run_json(query, on_iteration)
+            return await self._run_native(query, on_iteration, image_urls=image_urls)
+        return await self._run_json(query, on_iteration, image_urls=image_urls)
 
     # ------------------------------------------------------------------
     # JSON mode (original ReAct loop)
@@ -196,6 +199,7 @@ class ReActAgent:
         self,
         query: str,
         on_iteration: IterationCallback | None = None,
+        image_urls: list[str] | None = None,
     ) -> AgentResult:
         """Execute the JSON-based ReAct loop."""
         usage_tracker = UsageTracker()
@@ -211,7 +215,11 @@ class ReActAgent:
                 if msg.role != "system":
                     messages.append(msg)
 
-        messages.append(ChatMessage(role="user", content=query))
+        # Build user message — use vision content array when images are attached.
+        user_content: str | list[dict[str, Any]] = query
+        if image_urls:
+            user_content = ChatMessage.build_vision_content(query, image_urls)
+        messages.append(ChatMessage(role="user", content=user_content, pinned=True))
 
         steps: list[StepResult] = []
         response_format = self._json_response_format()
@@ -336,6 +344,7 @@ class ReActAgent:
         self,
         query: str,
         on_iteration: IterationCallback | None = None,
+        image_urls: list[str] | None = None,
     ) -> AgentResult:
         """Execute the native function-calling loop."""
         usage_tracker = UsageTracker()
@@ -354,7 +363,11 @@ class ReActAgent:
                 if msg.role != "system":
                     messages.append(msg)
 
-        messages.append(ChatMessage(role="user", content=query))
+        # Build user message — use vision content array when images are attached.
+        user_content: str | list[dict[str, Any]] = query
+        if image_urls:
+            user_content = ChatMessage.build_vision_content(query, image_urls)
+        messages.append(ChatMessage(role="user", content=user_content, pinned=True))
 
         steps: list[StepResult] = []
 

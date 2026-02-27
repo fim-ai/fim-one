@@ -113,7 +113,7 @@ export function ReactOutput({ items }: ReactOutputProps) {
   )
 }
 
-const COLLAPSE_HEIGHT = 120
+const COLLAPSE_HEIGHT = 60
 
 function CollapsibleBlock({
   children,

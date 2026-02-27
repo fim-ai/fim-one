@@ -5,6 +5,7 @@ Both endpoints stream Server-Sent Events with the following event names:
 - ``step``           – ReAct iteration progress (tool calls, thinking).
 - ``step_progress``  – DAG per-step progress (started / iteration / completed).
 - ``phase``          – DAG pipeline phase transitions (planning / executing / analyzing).
+- ``compact``        – Context compaction occurred (original_messages, kept_messages).
 - ``done``           – Final result payload (always the last event).
 
 A keepalive comment (``": keepalive\\n\\n"``) is emitted every 15 seconds of
@@ -18,11 +19,13 @@ background.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import time
 from collections.abc import AsyncGenerator
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -183,6 +186,8 @@ async def _resolve_agent_config(
             "tool_categories": agent.tool_categories,
             "model_config_json": agent.model_config_json,
             "execution_mode": agent.execution_mode,
+            "kb_ids": agent.kb_ids,
+            "grounding_config": agent.grounding_config,
         }
 
 
@@ -195,12 +200,84 @@ def _resolve_llm(agent_cfg: dict[str, Any] | None) -> BaseLLM:
     return get_llm()
 
 
-def _resolve_tools(agent_cfg: dict[str, Any] | None) -> ToolRegistry:
-    """Build tool registry, filtered by agent's tool_categories if set."""
-    tools = get_tools()
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _conversation_sandbox_root(conversation_id: str | None) -> Path | None:
+    """Compute the sandbox root for a conversation.
+
+    Returns ``PROJECT_ROOT/tmp/conversations/{conversation_id}`` when a
+    conversation ID is provided, or ``None`` for anonymous sessions (which
+    fall back to the global sandbox directories).
+    """
+    if not conversation_id:
+        return None
+    return _PROJECT_ROOT / "tmp" / "conversations" / conversation_id
+
+
+def _resolve_tools(
+    agent_cfg: dict[str, Any] | None,
+    conversation_id: str | None = None,
+) -> ToolRegistry:
+    """Build tool registry, optionally scoped to a per-conversation sandbox."""
+    sandbox_root = _conversation_sandbox_root(conversation_id)
+    tools = get_tools(sandbox_root=sandbox_root)
     if agent_cfg and agent_cfg.get("tool_categories"):
-        return tools.filter_by_category(*agent_cfg["tool_categories"])
+        tools = tools.filter_by_category(*agent_cfg["tool_categories"])
+
+    # When the agent is bound to knowledge bases, replace the basic kb_retrieve
+    # tool with the grounded version.
+    kb_ids = agent_cfg.get("kb_ids") if agent_cfg else None
+    if kb_ids:
+        from fim_agent.core.tool.builtin.grounded_retrieve import GroundedRetrieveTool
+
+        tools = tools.exclude_by_name("kb_retrieve")
+        tools.register(GroundedRetrieveTool(kb_ids=kb_ids))
+
     return tools
+
+
+# ---------------------------------------------------------------------------
+# Image loading helper
+# ---------------------------------------------------------------------------
+
+
+def _load_image_data_urls(
+    image_ids: str, user_id: str | None,
+) -> list[tuple[str, str, str]]:
+    """Load images from disk and return list of ``(file_id, filename, data_url)``.
+
+    Returns an empty list if *user_id* is ``None`` or no valid images are
+    found.
+    """
+    if not user_id or not image_ids:
+        return []
+
+    from fim_agent.web.api.files import UPLOAD_ROOT, _is_image, _load_index
+
+    index = _load_index(user_id)
+    results: list[tuple[str, str, str]] = []
+
+    for fid in image_ids.split(","):
+        fid = fid.strip()
+        if not fid:
+            continue
+        meta = index.get(fid)
+        if not meta:
+            continue
+        suffix = Path(meta["filename"]).suffix.lower()
+        if not _is_image(suffix):
+            continue
+        file_path = UPLOAD_ROOT / f"user_{user_id}" / meta["stored_name"]
+        if not file_path.exists():
+            continue
+        mime = meta.get("mime_type", "image/png")
+        raw = file_path.read_bytes()
+        b64 = base64.b64encode(raw).decode("ascii")
+        data_url = f"data:{mime};base64,{b64}"
+        results.append((fid, meta["filename"], data_url))
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +292,7 @@ async def react_endpoint(
     conversation_id: str | None = None,
     agent_id: str | None = None,
     token: str | None = None,
+    image_ids: str | None = None,
 ) -> StreamingResponse:
     """Run a ReAct agent query with SSE progress updates.
 
@@ -231,6 +309,9 @@ async def react_endpoint(
     token : str | None
         JWT access token (query param) for SSE auth.  When provided,
         conversation ownership is validated.
+    image_ids : str | None
+        Comma-separated file IDs of uploaded images to attach to the query
+        for vision model processing.
     """
     # -- Pre-stream resolution (before StreamingResponse) -------------------
     current_user_id = await _resolve_user(token)
@@ -239,8 +320,23 @@ async def react_endpoint(
 
     agent_cfg = await _resolve_agent_config(agent_id, conversation_id)
     llm = _resolve_llm(agent_cfg)
-    tools = _resolve_tools(agent_cfg)
+    tools = _resolve_tools(agent_cfg, conversation_id)
     extra_instructions = agent_cfg["instructions"] if agent_cfg else None
+
+    if agent_cfg and agent_cfg.get("kb_ids"):
+        grounding_hint = (
+            "\n\nYou have access to knowledge bases. When answering questions that "
+            "can be found in the knowledge bases, use the grounded_retrieve tool. "
+            "Always cite sources using the exact quotes provided in [N] format. "
+            "If conflicts are detected between sources, mention them to the user. "
+            "The confidence score indicates evidence quality — mention it for important claims."
+        )
+        extra_instructions = (extra_instructions or "") + grounding_hint
+
+    # Load attached images
+    image_data: list[tuple[str, str, str]] = []
+    if image_ids:
+        image_data = _load_image_data_urls(image_ids, current_user_id)
 
     async def generate() -> AsyncGenerator[str, None]:  # noqa: C901
         t0 = time.time()
@@ -255,11 +351,24 @@ async def react_endpoint(
                 from fim_agent.web.models import Message as MessageModel
 
                 db_session = create_session()
+                user_metadata = None
+                if image_data:
+                    user_metadata = {
+                        "images": [
+                            {
+                                "file_id": fid,
+                                "filename": fname,
+                                "mime_type": durl.split(";")[0].split(":")[1],
+                            }
+                            for fid, fname, durl in image_data
+                        ]
+                    }
                 user_msg = MessageModel(
                     conversation_id=conversation_id,
                     role="user",
                     content=q,
                     message_type="text",
+                    metadata_=user_metadata,
                 )
                 db_session.add(user_msg)
                 await db_session.commit()
@@ -311,6 +420,7 @@ async def react_endpoint(
                 memory = DbMemory(
                     conversation_id=conversation_id,
                     compact_llm=get_fast_llm(),
+                    user_id=current_user_id,
                 )
             context_guard = ContextGuard(
                 compact_llm=get_fast_llm(),
@@ -326,9 +436,13 @@ async def react_endpoint(
                 context_guard=context_guard,
             )
 
+            image_urls = [url for _, _, url in image_data] if image_data else None
+
             async def _run() -> Any:
                 try:
-                    return await agent.run(q, on_iteration=on_iteration)
+                    return await agent.run(
+                        q, on_iteration=on_iteration, image_urls=image_urls,
+                    )
                 finally:
                     done_event.set()
 
@@ -360,6 +474,14 @@ async def react_endpoint(
                 return
 
             result = run_task.result()
+
+            # Notify frontend if context was compacted
+            if memory and memory.was_compacted:
+                compact_payload = {
+                    "original_messages": memory._original_count,
+                    "kept_messages": memory._compacted_count,
+                }
+                yield _emit(sse_events, "compact", compact_payload)
 
             elapsed = round(time.time() - t0, 2)
             last_iter_elapsed = round(time.time() - iter_start, 2)
@@ -444,6 +566,7 @@ async def dag_endpoint(
     conversation_id: str | None = None,
     agent_id: str | None = None,
     token: str | None = None,
+    image_ids: str | None = None,
 ) -> StreamingResponse:
     """Run a DAG planner pipeline with SSE progress updates.
 
@@ -459,6 +582,9 @@ async def dag_endpoint(
         Optional agent ID to load per-agent model, tools, and instructions.
     token : str | None
         JWT access token (query param) for SSE auth.
+    image_ids : str | None
+        Comma-separated file IDs of uploaded images to attach to the query
+        for vision model processing.
     """
     # -- Pre-stream resolution ----------------------------------------------
     current_user_id = await _resolve_user(token)
@@ -467,11 +593,26 @@ async def dag_endpoint(
 
     agent_cfg = await _resolve_agent_config(agent_id, conversation_id)
     llm = _resolve_llm(agent_cfg)
-    tools = _resolve_tools(agent_cfg)
+    tools = _resolve_tools(agent_cfg, conversation_id)
     extra_instructions = agent_cfg["instructions"] if agent_cfg else None
+
+    if agent_cfg and agent_cfg.get("kb_ids"):
+        grounding_hint = (
+            "\n\nYou have access to knowledge bases. When answering questions that "
+            "can be found in the knowledge bases, use the grounded_retrieve tool. "
+            "Always cite sources using the exact quotes provided in [N] format. "
+            "If conflicts are detected between sources, mention them to the user. "
+            "The confidence score indicates evidence quality — mention it for important claims."
+        )
+        extra_instructions = (extra_instructions or "") + grounding_hint
 
     # DAG uses a fast LLM for step execution; try agent config first.
     fast_llm = get_fast_llm()
+
+    # Load attached images
+    dag_image_data: list[tuple[str, str, str]] = []
+    if image_ids:
+        dag_image_data = _load_image_data_urls(image_ids, current_user_id)
 
     async def generate() -> AsyncGenerator[str, None]:  # noqa: C901
         t0 = time.time()
@@ -485,11 +626,24 @@ async def dag_endpoint(
                 from fim_agent.web.models import Message as MessageModel
 
                 db_session = create_session()
+                dag_user_metadata = None
+                if dag_image_data:
+                    dag_user_metadata = {
+                        "images": [
+                            {
+                                "file_id": fid,
+                                "filename": fname,
+                                "mime_type": durl.split(";")[0].split(":")[1],
+                            }
+                            for fid, fname, durl in dag_image_data
+                        ]
+                    }
                 user_msg = MessageModel(
                     conversation_id=conversation_id,
                     role="user",
                     content=q,
                     message_type="text",
+                    metadata_=dag_user_metadata,
                 )
                 db_session.add(user_msg)
                 await db_session.commit()
@@ -502,7 +656,14 @@ async def dag_endpoint(
                 db_session = None
 
         # -- Load conversation context for multi-turn DAG planning ----------
+        # When images are attached, annotate the query so the text-only
+        # planner is aware of them.
         enriched_query = q
+        if dag_image_data:
+            img_names = ", ".join(fname for _, fname, _ in dag_image_data)
+            enriched_query = (
+                f"{q}\n\n[Attached images: {img_names}]"
+            )
         dag_memory = None
         if conversation_id:
             try:
@@ -511,13 +672,15 @@ async def dag_endpoint(
                 dag_memory = DbMemory(
                     conversation_id=conversation_id,
                     compact_llm=fast_llm,
+                    user_id=current_user_id,
                 )
                 history = await dag_memory.get_messages()
                 if history:
+                    from fim_agent.core.memory.compact import CompactUtils as _CU
                     context_lines = []
                     for msg in history:
                         prefix = "User" if msg.role == "user" else "Assistant"
-                        context_lines.append(f"{prefix}: {msg.content}")
+                        context_lines.append(f"{prefix}: {_CU.content_as_text(msg.content)}")
                     context_str = "\n".join(context_lines)
                     enriched_query = (
                         f"Previous conversation:\n{context_str}\n\n"
@@ -638,6 +801,7 @@ async def dag_endpoint(
                     max_concurrency=get_max_concurrency(),
                     model_registry=registry,
                     context_guard=dag_context_guard,
+                    original_goal=enriched_query,
                 )
 
                 # Capture plan in closure to avoid late-binding issues
@@ -786,6 +950,14 @@ async def dag_endpoint(
                     )
                 else:
                     answer = "(goal not achieved)"
+
+            # Notify frontend if context was compacted
+            if dag_memory and dag_memory.was_compacted:
+                compact_payload = {
+                    "original_messages": dag_memory._original_count,
+                    "kept_messages": dag_memory._compacted_count,
+                }
+                yield _emit(sse_events, "compact", compact_payload)
 
             dag_done_payload: dict[str, Any] = {
                 "answer": answer,

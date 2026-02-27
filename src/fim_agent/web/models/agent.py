@@ -30,6 +30,8 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
     suggested_prompts: Any = Column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    kb_ids: Any = Column(JSON, nullable=True)
+    grounding_config: Any = Column(JSON, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="agents")
     conversations: Mapped[list[Conversation]] = relationship(

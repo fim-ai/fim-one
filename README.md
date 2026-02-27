@@ -23,7 +23,6 @@
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Development](#development)
-- [Project Structure](#project-structure)
 - [Roadmap](#roadmap)
 - [Star History](#star-history)
 - [Contributors](#contributors)
@@ -84,7 +83,9 @@ FIM Agent solves this with two integration directions:
 - **Multi-Tenant Platform**: JWT auth with token-based SSE authentication, conversation ownership validation, per-user resource isolation.
 - **Agent Management**: Create, configure, and publish agents with bound LLM model, tool categories, and custom instructions. Chat endpoints automatically resolve agent config.
 - **LLM Compact**: Automatic LLM-powered summarisation of long conversation histories to stay within token budgets without losing context.
-- **RAG Ready**: Abstract `BaseRetriever` / `Document` interface for plugging in vector stores and search backends.
+- **ContextGuard + Pinned Messages**: Unified context window budget manager -- checks token counts against model limits, applies hint-specific LLM compaction (ReAct iteration, planner input, step dependency), truncates oversized messages, and falls back to smart truncation. Pinned messages (task descriptions, critical context) are protected from compaction so agents never "forget what they're doing" during long tool-call loops. Configurable via `LLM_CONTEXT_SIZE` / `LLM_MAX_OUTPUT_TOKENS` env vars.
+- **RAG & Knowledge Base**: Full RAG pipeline -- Jina embedding + LanceDB vector store + native FTS + RRF hybrid retrieval + Jina reranker. Document loaders for PDF, DOCX, Markdown, HTML, CSV. Fixed-size, recursive, and semantic chunking. KB management UI with document upload and background ingest. Agent `kb_retrieve` tool for autonomous knowledge lookup.
+- **Grounded Generation**: Evidence-anchored RAG with claim-level citations. When an agent is bound to knowledge bases, retrieval automatically upgrades to `grounded_retrieve` -- a 5-stage pipeline (multi-KB parallel retrieval, LLM citation extraction, query-chunk alignment scoring, cross-document conflict detection, score-based confidence). Produces exact quotes with page numbers, detects contradictions between sources, and computes explainable confidence scores (no LLM self-evaluation). Agent form UI supports KB multi-select binding.
 - **Minimal Dependencies**: Only three runtime dependencies: `openai`, `httpx`, `pydantic`.
 
 ## Architecture
@@ -120,92 +121,68 @@ User Query
 
 ## Quick Start
 
-### Installation
+### Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- Node.js 18+ and pnpm (for the portal frontend)
+
+### Get Running
 
 ```bash
-# Using uv (recommended)
-uv add fim-agent
-
-# Or install from source
 git clone https://github.com/fim-ai/fim-agent.git
 cd fim-agent
-uv sync
-```
 
-### Basic Usage
-
-```python
-import asyncio
-import os
-
-from fim_agent.core.agent import ReActAgent
-from fim_agent.core.model import OpenAICompatibleLLM
-from fim_agent.core.tool import ToolRegistry
-from fim_agent.core.tool.builtin.python_exec import PythonExecTool
-
-
-async def main() -> None:
-    llm = OpenAICompatibleLLM(
-        api_key=os.environ["LLM_API_KEY"],
-        base_url=os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1"),
-        model=os.environ.get("LLM_MODEL", "gpt-4o"),
-    )
-
-    tools = ToolRegistry()
-    tools.register(PythonExecTool())
-
-    agent = ReActAgent(llm=llm, tools=tools)
-    result = await agent.run("Calculate the factorial of 10 using Python.")
-    print(result.answer)
-
-
-asyncio.run(main())
-```
-
-### DAG Planning
-
-```python
-from fim_agent.core.planner import DAGPlanner, DAGExecutor, PlanAnalyzer
-
-planner = DAGPlanner(llm=llm)
-plan = await planner.plan("Compare bubble sort vs built-in sorted() on 5000 random ints.")
-
-executor = DAGExecutor(agent=agent, max_concurrency=3)
-plan = await executor.execute(plan)
-
-analyzer = PlanAnalyzer(llm=llm)
-analysis = await analyzer.analyze(plan.goal, plan)
-print(analysis.final_answer)
-```
-
-See [`examples/quickstart.py`](examples/quickstart.py) for a complete runnable example.
-
-### Running
-
-```bash
-# Create .env with your LLM credentials
+# Configure — only LLM_API_KEY is required
 cp example.env .env
-# Edit .env with your API key
+# Edit .env: set LLM_API_KEY (and optionally LLM_BASE_URL, LLM_MODEL)
 
-# Install dependencies
+# Install
 uv sync --extra web
 cd frontend && pnpm install && cd ..
 
-# Start
-./start.sh            # Next.js portal + API backend (default)
-./start.sh api        # API only (for custom frontends or testing)
+# Launch
+./start.sh
 ```
+
+Open http://localhost:3000 — that's it.
+
+### start.sh Commands
 
 | Command | What starts | URL |
 |---------|-------------|-----|
 | `./start.sh` | Next.js + FastAPI | http://localhost:3000 (UI) + :8000 (API) |
-| `./start.sh api` | FastAPI only | http://localhost:8000/api |
+| `./start.sh dev` | Same, with hot reload (Python `--reload` + Next.js HMR) | Same |
+| `./start.sh api` | FastAPI only (headless, for integration or testing) | http://localhost:8000/api |
+
+> **Docker deployment** is on the [Roadmap](https://github.com/fim-ai/fim-agent/wiki/Roadmap) (v0.9). For now, `./start.sh` is the recommended way to run.
 
 The portal offers two modes: **ReAct Agent** (single-query tool loop) and **DAG Planner** (multi-step planning with concurrent execution), with real-time SSE streaming, DAG visualization, and KaTeX math rendering.
 
 ## Configuration
 
-All configuration is done through environment variables:
+### Recommended Setup
+
+Two API keys unlock all features:
+
+| Service | What it powers | Get a key |
+|---------|---------------|-----------|
+| **Anthropic** (Claude) | Agent reasoning (main LLM) | [console.anthropic.com](https://console.anthropic.com/) |
+| **Jina AI** | Web search/fetch, embedding, reranker | [jina.ai](https://jina.ai/) (free tier available) |
+
+Minimal `.env` to get everything working:
+
+```bash
+LLM_API_KEY=sk-ant-...          # Anthropic API key
+LLM_BASE_URL=https://api.anthropic.com/v1
+LLM_MODEL=claude-sonnet-4-20250514
+
+JINA_API_KEY=jina_...           # Unlocks web tools + RAG
+```
+
+> Any OpenAI-compatible provider works (DeepSeek, Qwen, Ollama, vLLM, etc.) — just change `LLM_BASE_URL` and `LLM_MODEL`.
+
+### All Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -213,7 +190,16 @@ All configuration is done through environment variables:
 | `LLM_BASE_URL` | No | `https://api.openai.com/v1` | Base URL of the OpenAI-compatible API |
 | `LLM_MODEL` | No | `gpt-4o` | Model identifier to use |
 | `LLM_TEMPERATURE` | No | `0.7` | Default sampling temperature |
+| `LLM_CONTEXT_SIZE` | No | `128000` | Context window size for the main LLM |
+| `LLM_MAX_OUTPUT_TOKENS` | No | `64000` | Max output tokens per call for the main LLM |
+| `FAST_LLM_CONTEXT_SIZE` | No | *(falls back to `LLM_CONTEXT_SIZE`)* | Context window size for the fast LLM |
+| `FAST_LLM_MAX_OUTPUT_TOKENS` | No | *(falls back to `LLM_MAX_OUTPUT_TOKENS`)* | Max output tokens per call for the fast LLM |
 | `MAX_CONCURRENCY` | No | `5` | Max parallel steps in DAG executor |
+| `JINA_API_KEY` | No | | Jina API key for embedding, reranker, and web tools |
+| `EMBEDDING_MODEL` | No | `jina-embeddings-v3` | Embedding model identifier |
+| `EMBEDDING_DIMENSION` | No | `1024` | Embedding vector dimension |
+| `RERANKER_MODEL` | No | `jina-reranker-v2-base-multilingual` | Reranker model identifier |
+| `VECTOR_STORE_DIR` | No | `./data/vector_store` | Directory for LanceDB vector store data |
 
 Copy `example.env` to `.env` and fill in your values:
 
@@ -240,43 +226,9 @@ ruff check src/ tests/
 mypy src/
 ```
 
-## Project Structure
-
-```
-fim-agent/
-  src/fim_agent/
-    core/
-      agent/          # ReAct agent (JSON mode + native function calling)
-      model/          # LLM abstraction, ModelRegistry, retry, rate limiting, usage tracking
-      planner/        # DAG planner, executor, analyzer
-      memory/         # WindowMemory, SummaryMemory, DbMemory, CompactUtils
-      tool/           # Tool protocol, registry, auto-discovery
-        builtin/      # Built-in tools (python_exec, calculator, web_search, web_fetch, file_ops, http_request, shell_exec)
-      mcp/            # MCP client, tool adapter
-    db/               # SQLAlchemy ORM, SQLite persistence (conversations, messages)
-    migrations/       # Alembic migrations
-    web/              # FastAPI backend
-      api/            # Route handlers (chat SSE, auth, conversations, agents, models, files)
-      models/         # ORM models
-      schemas/        # Pydantic request/response schemas
-    rag/              # RAG retriever interface (planned)
-  frontend/           # Next.js 15 portal (shadcn/ui, TypeScript, Tailwind)
-  tests/
-  examples/
-    quickstart.py     # Runnable quick start example
-  start.sh            # Start script (portal / api)
-  pyproject.toml
-```
-
 ## Roadmap
 
-> Goal: Build a provider-agnostic Agent Platform, from standalone AI assistant to embeddable sidecar engine that modernizes legacy systems without modifying them.
-
-**Shipped**: v0.1 (ReAct Agent, DAG Planning, streaming, KaTeX) → v0.2 (memory, multi-model, token tracking, native function calling) → v0.3 (web/calculator/file tools, MCP client, tool auto-discovery & categories, DAG visualization, sidebar UX, sandbox hardening) → v0.4 (persistence, multi-turn conversation, JWT auth with SSE token support, agent-aware chat with per-agent model/tools/instructions binding, file upload management, HTTP request & shell exec tools) → v0.5 (LLM Compact for conversation history compression, DAG Re-Planning with automatic retry up to 3 rounds).
-
-**Next**: Semantic memory, conversation summary & RAG knowledge base (v0.5 remaining) → System Adapter protocol for bridging into legacy DBs/APIs/message buses (v0.6) → Human confirmation + embeddable UI (v0.7) → Declarative adapters (v0.8) → Observability (v0.9) → Enterprise & scale (v1.0).
-
-See the full [Roadmap](https://github.com/fim-ai/fim-agent/wiki/Roadmap) for details.
+See the full [Roadmap](https://github.com/fim-ai/fim-agent/wiki/Roadmap) for version history and what's next.
 
 Contributions and ideas are welcome. Open an issue or submit a PR on [GitHub](https://github.com/fim-ai/fim-agent).
 

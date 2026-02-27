@@ -31,13 +31,18 @@ from __future__ import annotations
 import json
 import os
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from fim_agent.core.embedding.openai_compatible import OpenAICompatibleEmbedding
 from fim_agent.core.model import OpenAICompatibleLLM
 from fim_agent.core.model.registry import ModelRegistry
+from fim_agent.core.reranker.jina import JinaReranker
 from fim_agent.core.tool import ToolRegistry
 from fim_agent.core.tool.builtin import discover_builtin_tools
 from fim_agent.db import get_session
+from fim_agent.rag.manager import KnowledgeBaseManager
+from fim_agent.rag.store.lancedb import LanceDBVectorStore
 
 if TYPE_CHECKING:
     from fim_agent.core.mcp import MCPClient
@@ -90,8 +95,7 @@ def get_context_budget() -> int:
     Computed from ``LLM_CONTEXT_SIZE`` and ``LLM_MAX_OUTPUT_TOKENS``.
     """
     context_size = int(os.environ.get("LLM_CONTEXT_SIZE", "128000"))
-    max_output = int(os.environ.get("LLM_MAX_OUTPUT_TOKENS", "64000"))
-    return _compute_input_budget(context_size, max_output)
+    return _compute_input_budget(context_size, _main_max_output())
 
 
 def get_fast_context_budget() -> int:
@@ -101,15 +105,18 @@ def get_fast_context_budget() -> int:
     Falls back to the main LLM values when not set.
     """
     context_size = os.environ.get("FAST_LLM_CONTEXT_SIZE", "")
-    max_output = os.environ.get("FAST_LLM_MAX_OUTPUT_TOKENS", "")
-    if context_size and max_output:
-        return _compute_input_budget(int(context_size), int(max_output))
     if context_size:
-        return _compute_input_budget(
-            int(context_size),
-            int(os.environ.get("LLM_MAX_OUTPUT_TOKENS", "64000")),
-        )
+        return _compute_input_budget(int(context_size), _fast_max_output())
     return get_context_budget()
+
+
+def _main_max_output() -> int:
+    return int(os.environ.get("LLM_MAX_OUTPUT_TOKENS", "64000"))
+
+
+def _fast_max_output() -> int:
+    raw = os.environ.get("FAST_LLM_MAX_OUTPUT_TOKENS", "")
+    return int(raw) if raw else _main_max_output()
 
 
 def get_llm() -> OpenAICompatibleLLM:
@@ -119,6 +126,7 @@ def get_llm() -> OpenAICompatibleLLM:
         base_url=_base_url(),
         model=_main_model(),
         default_temperature=_temperature(),
+        default_max_tokens=_main_max_output(),
     )
 
 
@@ -132,6 +140,7 @@ def get_fast_llm() -> OpenAICompatibleLLM:
         base_url=_base_url(),
         model=_fast_model(),
         default_temperature=_temperature(),
+        default_max_tokens=_fast_max_output(),
     )
 
 
@@ -157,15 +166,19 @@ def get_model_registry() -> ModelRegistry:
     return registry
 
 
-def get_tools() -> ToolRegistry:
+def get_tools(*, sandbox_root: Path | None = None) -> ToolRegistry:
     """Create a :class:`ToolRegistry` pre-loaded with all discovered built-in tools.
 
     Tools are auto-discovered from the ``fim_agent.core.tool.builtin`` package.
     To add a new tool, simply drop a module containing a ``BaseTool`` subclass
     into that package — no manual registration needed.
+
+    When *sandbox_root* is provided, sandboxed tools (file_ops, shell_exec,
+    python_exec) are configured with per-conversation subdirectories under
+    that root.
     """
     registry = ToolRegistry()
-    for tool in discover_builtin_tools():
+    for tool in discover_builtin_tools(sandbox_root=sandbox_root):
         registry.register(tool)
     logger.info("Registered %d built-in tools: %s", len(registry), registry)
     return registry
@@ -189,6 +202,7 @@ def get_llm_from_config(config: dict[str, object]) -> OpenAICompatibleLLM | None
         base_url=str(config.get("base_url", "")) or _base_url(),
         model=str(model_name),
         default_temperature=float(config.get("temperature", 0) or _temperature()),
+        default_max_tokens=int(config.get("max_output_tokens", 0) or _main_max_output()),
     )
 
 
@@ -204,6 +218,50 @@ def get_user_id() -> str:
 
 # Alias for convenience — endpoints can use either name.
 get_db = get_session
+
+
+def get_embedding() -> OpenAICompatibleEmbedding:
+    """Create an embedding model from environment config.
+
+    Priority: ``JINA_API_KEY`` with Jina defaults, then ``EMBEDDING_API_KEY``
+    with ``EMBEDDING_BASE_URL``.
+    """
+    jina_key = os.environ.get("JINA_API_KEY", "")
+    emb_key = os.environ.get("EMBEDDING_API_KEY", "") or jina_key
+    base_url = os.environ.get("EMBEDDING_BASE_URL", "https://api.jina.ai/v1")
+    model = os.environ.get("EMBEDDING_MODEL", "jina-embeddings-v3")
+    dim = int(os.environ.get("EMBEDDING_DIMENSION", "1024"))
+    return OpenAICompatibleEmbedding(
+        api_key=emb_key,
+        base_url=base_url,
+        model=model,
+        dim=dim,
+    )
+
+
+def get_reranker() -> JinaReranker | None:
+    """Create a Jina reranker if an API key is available."""
+    jina_key = os.environ.get("JINA_API_KEY", "")
+    if not jina_key:
+        return None
+    model = os.environ.get("RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
+    return JinaReranker(api_key=jina_key, model=model)
+
+
+def get_vector_store() -> LanceDBVectorStore:
+    """Create a LanceDB vector store from environment config."""
+    base_dir = os.environ.get("VECTOR_STORE_DIR", "./data/vector_store")
+    dim = int(os.environ.get("EMBEDDING_DIMENSION", "1024"))
+    return LanceDBVectorStore(base_dir=base_dir, embedding_dim=dim)
+
+
+def get_kb_manager() -> KnowledgeBaseManager:
+    """Create a KnowledgeBaseManager wired with embedding, store, and reranker."""
+    return KnowledgeBaseManager(
+        store=get_vector_store(),
+        embedding=get_embedding(),
+        reranker=get_reranker(),
+    )
 
 
 async def get_mcp_tools(registry: ToolRegistry) -> MCPClient | None:

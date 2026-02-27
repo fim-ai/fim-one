@@ -21,6 +21,92 @@ router = APIRouter(prefix="/api/files", tags=["files"])
 
 UPLOAD_ROOT = Path(os.environ.get("UPLOADS_DIR", "uploads"))
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+ALLOWED_EXTENSIONS = {
+    ".txt", ".md", ".py", ".js", ".json", ".csv",
+    ".pdf", ".docx", ".html", ".htm", ".xlsx",
+    # Images (vision model support)
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+}
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
+
+_MIME_MAP: dict[str, str] = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+}
+
+
+def _is_image(suffix: str) -> bool:
+    """Check whether a file extension corresponds to an image type."""
+    return suffix in IMAGE_EXTENSIONS
+
+
+def _guess_mime(suffix: str) -> str:
+    """Return the MIME type for a given file extension."""
+    return _MIME_MAP.get(suffix, "application/octet-stream")
+
+
+def _extract_content(file_path: Path) -> str | None:
+    """Extract text content from an uploaded file for preview.
+
+    Returns the extracted text, a fallback message if optional
+    dependencies are missing, or *None* for unsupported types.
+    """
+    suffix = file_path.suffix.lower()
+
+    # Images have no extractable text content
+    if _is_image(suffix):
+        return None
+
+    # Plain text family
+    if suffix in {".txt", ".md", ".py", ".js", ".html", ".htm"}:
+        return file_path.read_text(encoding="utf-8", errors="replace")
+
+    # JSON — parse and pretty-print
+    if suffix == ".json":
+        try:
+            data = json.loads(file_path.read_text(encoding="utf-8", errors="replace"))
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except json.JSONDecodeError:
+            return file_path.read_text(encoding="utf-8", errors="replace")
+
+    # CSV — raw text
+    if suffix == ".csv":
+        return file_path.read_text(encoding="utf-8", errors="replace")
+
+    # PDF — requires pdfplumber (optional)
+    if suffix == ".pdf":
+        try:
+            import pdfplumber  # type: ignore[import-untyped]
+        except ImportError:
+            return "[PDF content extraction requires pdfplumber]"
+        pages_text: list[str] = []
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    pages_text.append(text)
+        return "\n".join(pages_text) if pages_text else None
+
+    # DOCX — requires python-docx (optional)
+    if suffix == ".docx":
+        try:
+            import docx  # type: ignore[import-untyped]
+        except ImportError:
+            return "[DOCX content extraction requires python-docx]"
+        document = docx.Document(str(file_path))
+        paragraphs = [p.text for p in document.paragraphs if p.text]
+        return "\n".join(paragraphs) if paragraphs else None
+
+    # XLSX — no extraction
+    if suffix == ".xlsx":
+        return "[Excel file — content preview not available]"
+
+    return None
 
 
 def _user_dir(user_id: str) -> Path:
@@ -55,6 +141,16 @@ async def upload_file(
             detail="No filename provided",
         )
 
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"File extension '{ext}' is not allowed. "
+                f"Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            ),
+        )
+
     user_dir = _user_dir(current_user.id)
     user_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,14 +175,23 @@ async def upload_file(
                 )
             f.write(chunk)
 
+    # Extract text content for preview
+    extracted = _extract_content(dest)
+    content_preview: str | None = None
+    if extracted:
+        content_preview = extracted[:500]
+
     # Update index
     index = _load_index(current_user.id)
     file_url = f"/uploads/user_{current_user.id}/{stored_name}"
+    mime_type = _guess_mime(ext)
     index[file_id] = {
         "filename": file.filename,
         "stored_name": stored_name,
         "file_url": file_url,
         "size": total_size,
+        "content_preview": content_preview,
+        "mime_type": mime_type,
     }
     _save_index(current_user.id, index)
 
@@ -96,6 +201,8 @@ async def upload_file(
             "filename": file.filename,
             "file_url": file_url,
             "size": total_size,
+            "content_preview": content_preview,
+            "mime_type": mime_type,
         }
     )
 
@@ -111,6 +218,8 @@ async def list_files(
             "filename": meta["filename"],
             "file_url": meta["file_url"],
             "size": meta["size"],
+            "content_preview": meta.get("content_preview"),
+            "mime_type": meta.get("mime_type", "application/octet-stream"),
         }
         for fid, meta in index.items()
     ]

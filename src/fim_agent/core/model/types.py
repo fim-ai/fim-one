@@ -18,13 +18,45 @@ class ToolCallRequest:
 
 @dataclass
 class ChatMessage:
-    """A single message in a chat conversation."""
+    """A single message in a chat conversation.
+
+    ``content`` may be a plain string **or** an OpenAI-style content array
+    (list of dicts) for multi-modal messages (e.g. text + images).
+    """
 
     role: Literal["system", "user", "assistant", "tool"]
-    content: str | None = None
+    content: str | list[dict[str, Any]] | None = None
     tool_call_id: str | None = None
     tool_calls: list[ToolCallRequest] | None = None
     name: str | None = None
+    pinned: bool = False
+
+    # ------------------------------------------------------------------
+    # Vision helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def build_vision_content(
+        text: str,
+        image_urls: list[str],
+    ) -> list[dict[str, Any]]:
+        """Build OpenAI Vision API content array with text and images.
+
+        Args:
+            text: The text prompt.
+            image_urls: List of base64 data URLs
+                (e.g. ``"data:image/png;base64,..."``) or HTTP URLs.
+
+        Returns:
+            A content array suitable for the OpenAI chat completion API.
+        """
+        parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for url in image_urls:
+            parts.append({
+                "type": "image_url",
+                "image_url": {"url": url},
+            })
+        return parts
 
     def to_openai_dict(self) -> dict[str, Any]:
         """Convert to OpenAI API format.

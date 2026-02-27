@@ -16,11 +16,20 @@ class Document:
         metadata: Arbitrary key-value metadata associated with the chunk
             (e.g. source file, page number, chunk index).
         score: Optional relevance score assigned by the retriever.
+        vector_score: Original dense retriever score before fusion (tracing).
+        fts_score: Original sparse/FTS retriever score before fusion (tracing).
+        vector_rank: 0-based rank in the dense result list (tracing).
+        fts_rank: 0-based rank in the sparse result list (tracing).
     """
 
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
     score: float | None = None
+    # Score tracing — populated by HybridRetriever for debugging
+    vector_score: float | None = None
+    fts_score: float | None = None
+    vector_rank: int | None = None
+    fts_rank: int | None = None
 
 
 class BaseRetriever(ABC):

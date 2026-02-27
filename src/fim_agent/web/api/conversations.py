@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import math
+import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -178,6 +181,11 @@ async def update_conversation(
     return ApiResponse(data=_conv_to_response(conv).model_dump())
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_CONVERSATIONS_DIR = _PROJECT_ROOT / "tmp" / "conversations"
+_logger = logging.getLogger(__name__)
+
+
 @router.delete("/{conversation_id}", response_model=ApiResponse)
 async def delete_conversation(
     conversation_id: str,
@@ -187,4 +195,11 @@ async def delete_conversation(
     conv = await _get_owned_conversation(conversation_id, current_user.id, db)
     await db.delete(conv)
     await db.commit()
+
+    # Clean up per-conversation sandbox directory (workspace, sandbox, exec).
+    sandbox_dir = _CONVERSATIONS_DIR / conversation_id
+    if sandbox_dir.exists():
+        shutil.rmtree(sandbox_dir, ignore_errors=True)
+        _logger.info("Removed sandbox dir for conversation %s", conversation_id)
+
     return ApiResponse(data={"deleted": conversation_id})

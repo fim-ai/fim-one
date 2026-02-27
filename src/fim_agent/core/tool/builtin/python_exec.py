@@ -16,9 +16,8 @@ from ..base import BaseTool
 
 _DEFAULT_TIMEOUT_SECONDS: int = 120
 
-# Temp directory for code execution outputs (plots, data files, etc.)
-_TMP_DIR = Path(__file__).resolve().parents[4] / "tmp"
-_TMP_DIR.mkdir(exist_ok=True)
+# Default directory for code execution outputs (plots, data files, etc.)
+_DEFAULT_EXEC_DIR = Path(__file__).resolve().parents[4] / "tmp"
 
 # Maximum captured output size (bytes) before truncation.
 _MAX_OUTPUT_BYTES: int = 100 * 1024  # 100 KB
@@ -129,8 +128,14 @@ class PythonExecTool(BaseTool):
     execution.
     """
 
-    def __init__(self, *, timeout: int = _DEFAULT_TIMEOUT_SECONDS) -> None:
+    def __init__(
+        self,
+        *,
+        timeout: int = _DEFAULT_TIMEOUT_SECONDS,
+        exec_dir: Path | None = None,
+    ) -> None:
         self._timeout = timeout
+        self._exec_dir = exec_dir or _DEFAULT_EXEC_DIR
 
     # ------------------------------------------------------------------
     # Tool protocol properties
@@ -198,8 +203,7 @@ class PythonExecTool(BaseTool):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _execute_sync(code: str) -> str:
+    def _execute_sync(self, code: str) -> str:
         """Run *code* synchronously in a restricted namespace.
 
         Stdout and stderr are captured via ``StringIO`` buffers that
@@ -216,6 +220,10 @@ class PythonExecTool(BaseTool):
             matplotlib.rcParams["axes.unicode_minus"] = False
         except ImportError:
             pass
+
+        # Lazily create exec directory on first use.
+        exec_dir = self._exec_dir
+        exec_dir.mkdir(parents=True, exist_ok=True)
 
         stdout_capture = io.StringIO()
         stderr_capture = io.StringIO()
@@ -239,7 +247,7 @@ class PythonExecTool(BaseTool):
                 _saved_modules[mod_name] = sys.modules.pop(mod_name)
 
         try:
-            os.chdir(_TMP_DIR)
+            os.chdir(str(exec_dir))
             sys.stdout = stdout_capture
             sys.stderr = stderr_capture
             exec(code, namespace)

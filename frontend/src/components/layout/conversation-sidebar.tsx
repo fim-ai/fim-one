@@ -1,10 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
+import { useRouter, usePathname } from "next/navigation"
 import { Plus, Trash2, MessageSquare, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useConversation } from "@/contexts/conversation-context"
 import type { ConversationResponse } from "@/types/conversation"
@@ -46,10 +55,30 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
     clearActive,
     deleteConversation,
   } = useConversation()
+  const router = useRouter()
+  const pathname = usePathname()
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  const handleSelectConversation = useCallback((id: string) => {
+    selectConversation(id)
+    if (pathname !== "/") router.push(`/?c=${id}`)
+  }, [selectConversation, pathname, router])
+
+  const handleNewChat = useCallback(() => {
+    clearActive()
+    if (pathname !== "/") router.push("/")
+  }, [clearActive, pathname, router])
+
+  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
+    setPendingDeleteId(id)
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return
+    const id = pendingDeleteId
+    setPendingDeleteId(null)
     setDeletingId(id)
     try {
       await deleteConversation(id)
@@ -62,7 +91,7 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
     return (
       <div className="flex flex-col items-center gap-2 py-2">
         <button
-          onClick={clearActive}
+          onClick={handleNewChat}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           title="New Chat"
         >
@@ -82,7 +111,7 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
           variant="outline"
           size="sm"
           className="w-full justify-start gap-2"
-          onClick={clearActive}
+          onClick={handleNewChat}
         >
           <Plus className="h-4 w-4" />
           New Chat
@@ -111,8 +140,8 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
                     key={conv.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => selectConversation(conv.id)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") selectConversation(conv.id) }}
+                    onClick={() => handleSelectConversation(conv.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleSelectConversation(conv.id) }}
                     className={cn(
                       "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors text-left cursor-pointer",
                       activeId === conv.id
@@ -128,10 +157,10 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
                       variant="secondary"
                       className="shrink-0 text-[10px] px-1 py-0 h-4 opacity-60"
                     >
-                      {conv.mode === "react" ? "ReAct" : conv.mode}
+                      {conv.mode === "react" ? "ReAct" : conv.mode === "dag" ? "DAG" : conv.mode}
                     </Badge>
                     <button
-                      onClick={(e) => handleDelete(e, conv.id)}
+                      onClick={(e) => handleDeleteClick(e, conv.id)}
                       disabled={deletingId === conv.id}
                       className="shrink-0 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-destructive transition-opacity"
                     >
@@ -148,6 +177,26 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
           )}
         </div>
       </ScrollArea>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={pendingDeleteId !== null} onOpenChange={(open) => { if (!open) setPendingDeleteId(null) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete conversation?</DialogTitle>
+            <DialogDescription>
+              This conversation will be permanently deleted. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" className="px-6" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

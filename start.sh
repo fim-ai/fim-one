@@ -59,10 +59,22 @@ case "$CMD" in
     echo "Starting FIM Agent Portal (dev mode — hot reload)..."
     echo "  API backend  → http://localhost:8000 (--reload)"
     echo "  Next.js app  → http://localhost:3000 (HMR)"
+    rm -rf frontend/.next
+    mkdir -p frontend/.next && touch frontend/.next/.metadata_never_index
     uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --reload --reload-dir src &
     API_PID=$!
     trap "kill $API_PID 2>/dev/null" EXIT
-    cd frontend && pnpm dev
+    cd frontend
+    # Auto-restart on crash (e.g. Turbopack tmp file race condition)
+    while true; do
+      pnpm dev
+      EXIT_CODE=$?
+      # Ctrl+C (SIGINT=130) → stop for real
+      [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 130 ] && break
+      echo ""
+      echo "  Next.js dev server crashed (exit $EXIT_CODE), restarting in 1s..."
+      sleep 1
+    done
     ;;
   api)
     free_port 8000

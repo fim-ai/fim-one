@@ -42,7 +42,7 @@ class OpenAICompatibleLLM(BaseLLM):
         model: str,
         *,
         default_temperature: float = 0.7,
-        default_max_tokens: int = 4096,
+        default_max_tokens: int = 64000,
         retry_config: RetryConfig | None = RetryConfig(),
         rate_limit_config: RateLimitConfig | None = RateLimitConfig(),
     ) -> None:

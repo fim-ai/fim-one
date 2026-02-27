@@ -51,11 +51,13 @@ class DAGExecutor:
         max_concurrency: int = 5,
         model_registry: ModelRegistry | None = None,
         context_guard: ContextGuard | None = None,
+        original_goal: str | None = None,
     ) -> None:
         self._agent = agent
         self._max_concurrency = max_concurrency
         self._model_registry = model_registry
         self._context_guard = context_guard
+        self._original_goal = original_goal
 
     async def execute(
         self,
@@ -228,7 +230,9 @@ class DAGExecutor:
             llm=llm,
             tools=self._agent._tools,
             system_prompt=self._agent._system_prompt_override,
+            extra_instructions=self._agent._extra_instructions,
             max_iterations=self._agent._max_iterations,
+            context_guard=self._agent._context_guard,
         )
 
     async def _execute_step(self, step: PlanStep, context: str) -> None:
@@ -250,6 +254,10 @@ class DAGExecutor:
             observation: str | None,
             error: str | None,
         ) -> None:
+            # Skip final_answer iterations — the same content is sent via
+            # the "completed" event as step.result.
+            if action.type == "final_answer":
+                return
             self._notify(step.id, "iteration", {
                 "iteration": iteration,
                 "type": action.type,
@@ -283,8 +291,7 @@ class DAGExecutor:
             if step.started_at is not None:
                 step.duration = round(step.completed_at - step.started_at, 2)
 
-    @staticmethod
-    def _build_step_query(step: PlanStep, context: str) -> str:
+    def _build_step_query(self, step: PlanStep, context: str) -> str:
         """Build the query string to send to the ReAct agent.
 
         Args:
@@ -295,7 +302,10 @@ class DAGExecutor:
             A query string incorporating the task description, any tool hint,
             and dependency context.
         """
-        parts: list[str] = [f"Task: {step.task}"]
+        parts: list[str] = []
+        if self._original_goal:
+            parts.append(f"Original goal: {self._original_goal}")
+        parts.append(f"Task: {step.task}")
 
         if step.tool_hint:
             parts.append(f"Suggested tool: {step.tool_hint}")

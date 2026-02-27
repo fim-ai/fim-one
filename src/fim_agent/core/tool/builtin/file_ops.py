@@ -10,19 +10,23 @@ from ..base import BaseTool
 
 _MAX_READ_BYTES: int = 50 * 1024  # 50 KB
 
-# Workspace directory — all file operations are confined here.
+# Default workspace directory — used when no per-conversation sandbox is provided.
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
-_WORKSPACE_DIR = _PROJECT_ROOT / "tmp" / "workspace"
-_WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+_DEFAULT_WORKSPACE_DIR = _PROJECT_ROOT / "tmp" / "workspace"
 
 
 class FileOpsTool(BaseTool):
     """Perform file operations (read, write, list, mkdir) in a sandboxed workspace.
 
-    All paths are resolved relative to a workspace directory under the
-    project root (``tmp/workspace/``).  Path traversal outside the
-    workspace is rejected.
+    All paths are resolved relative to a workspace directory.  When
+    *workspace_dir* is provided (e.g. per-conversation sandbox), operations
+    are confined to that directory.  Otherwise the global default
+    ``tmp/workspace/`` is used.  Path traversal outside the workspace is
+    rejected.
     """
+
+    def __init__(self, *, workspace_dir: Path | None = None) -> None:
+        self._workspace_dir = workspace_dir or _DEFAULT_WORKSPACE_DIR
 
     # ------------------------------------------------------------------
     # Tool protocol properties
@@ -98,6 +102,9 @@ class FileOpsTool(BaseTool):
         if not raw_path:
             return "[Error] No path specified."
 
+        # Lazily create workspace directory on first use.
+        self._workspace_dir.mkdir(parents=True, exist_ok=True)
+
         # Resolve and validate the target path.
         resolved = self._resolve_safe_path(raw_path)
         if resolved is None:
@@ -121,18 +128,18 @@ class FileOpsTool(BaseTool):
     # Path safety
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _resolve_safe_path(raw_path: str) -> Path | None:
+    def _resolve_safe_path(self, raw_path: str) -> Path | None:
         """Resolve *raw_path* within the workspace and validate containment.
 
         Returns the resolved :class:`Path` if it is safely inside the
         workspace directory, or ``None`` if path traversal is detected.
         """
-        target = (_WORKSPACE_DIR / raw_path).resolve()
+        workspace = self._workspace_dir
+        target = (workspace / raw_path).resolve()
         # Ensure the resolved path is still under the workspace.
         if not (
-            target == _WORKSPACE_DIR
-            or str(target).startswith(str(_WORKSPACE_DIR) + "/")
+            target == workspace
+            or str(target).startswith(str(workspace) + "/")
         ):
             return None
         return target
@@ -141,13 +148,13 @@ class FileOpsTool(BaseTool):
     # Operation implementations (synchronous — run via to_thread)
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _read(path: Path) -> str:
+    def _read(self, path: Path) -> str:
         """Read file contents, truncating at ``_MAX_READ_BYTES``."""
+        workspace = self._workspace_dir
         if not path.exists():
-            return f"[Error] File not found: {path.relative_to(_WORKSPACE_DIR)}"
+            return f"[Error] File not found: {path.relative_to(workspace)}"
         if not path.is_file():
-            return f"[Error] Not a file: {path.relative_to(_WORKSPACE_DIR)}"
+            return f"[Error] Not a file: {path.relative_to(workspace)}"
 
         size = path.stat().st_size
         if size > _MAX_READ_BYTES:
@@ -168,21 +175,20 @@ class FileOpsTool(BaseTool):
             )
         return text
 
-    @staticmethod
-    def _write(path: Path, content: str) -> str:
+    def _write(self, path: Path, content: str) -> str:
         """Write *content* to file, creating parent directories as needed."""
         # Ensure parent directories exist.
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        return f"Written {len(content)} chars to {path.relative_to(_WORKSPACE_DIR)}"
+        return f"Written {len(content)} chars to {path.relative_to(self._workspace_dir)}"
 
-    @staticmethod
-    def _list(path: Path) -> str:
+    def _list(self, path: Path) -> str:
         """List directory contents with file sizes."""
+        workspace = self._workspace_dir
         if not path.exists():
-            return f"[Error] Directory not found: {path.relative_to(_WORKSPACE_DIR)}"
+            return f"[Error] Directory not found: {path.relative_to(workspace)}"
         if not path.is_dir():
-            return f"[Error] Not a directory: {path.relative_to(_WORKSPACE_DIR)}"
+            return f"[Error] Not a directory: {path.relative_to(workspace)}"
 
         entries = sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name))
         if not entries:
@@ -197,11 +203,10 @@ class FileOpsTool(BaseTool):
                 lines.append(f"  {entry.name}  ({_human_size(size)})")
         return "\n".join(lines)
 
-    @staticmethod
-    def _mkdir(path: Path) -> str:
+    def _mkdir(self, path: Path) -> str:
         """Create directory with parents."""
         path.mkdir(parents=True, exist_ok=True)
-        return f"Directory created: {path.relative_to(_WORKSPACE_DIR)}"
+        return f"Directory created: {path.relative_to(self._workspace_dir)}"
 
 
 # ------------------------------------------------------------------
