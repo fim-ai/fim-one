@@ -21,10 +21,12 @@ from fim_agent.web.auth import (
 )
 from fim_agent.web.models import User
 from fim_agent.web.schemas.auth import (
+    ChangePasswordRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
+    UpdateProfileRequest,
     UserInfo,
 )
 from fim_agent.web.schemas.common import ApiResponse
@@ -38,7 +40,7 @@ def _build_token_response(user: User, access: str, refresh: str) -> TokenRespons
         refresh_token=refresh,
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user=UserInfo(id=user.id, username=user.username, is_admin=user.is_admin),
+        user=UserInfo(id=user.id, username=user.username, display_name=user.display_name, is_admin=user.is_admin, system_instructions=user.system_instructions),
     )
 
 
@@ -161,6 +163,51 @@ async def me(
         data=UserInfo(
             id=current_user.id,
             username=current_user.username,
+            display_name=current_user.display_name,
             is_admin=current_user.is_admin,
+            system_instructions=current_user.system_instructions,
         ).model_dump()
     )
+
+
+@router.patch("/profile", response_model=ApiResponse)
+async def update_profile(
+    body: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    if body.display_name is not None:
+        user.display_name = body.display_name or None
+    if body.system_instructions is not None:
+        user.system_instructions = body.system_instructions or None
+    await db.commit()
+    await db.refresh(user)
+    return ApiResponse(
+        data=UserInfo(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            is_admin=user.is_admin,
+            system_instructions=user.system_instructions,
+        ).model_dump()
+    )
+
+
+@router.post("/change-password", response_model=ApiResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()
+    return ApiResponse(data={"message": "Password changed successfully"})

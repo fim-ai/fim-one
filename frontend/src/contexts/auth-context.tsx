@@ -23,6 +23,7 @@ interface AuthContextValue {
   login: (body: LoginRequest) => Promise<void>
   register: (body: RegisterRequest) => Promise<void>
   logout: () => void
+  updateUser: (partial: Partial<UserInfo>) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -121,13 +122,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [saveTokens, scheduleRefresh],
   )
 
+  const updateUser = useCallback(
+    (partial: Partial<UserInfo>) => {
+      setUser((prev) => {
+        if (!prev) return prev
+        const updated = { ...prev, ...partial }
+        localStorage.setItem(USER_KEY, JSON.stringify(updated))
+        return updated
+      })
+    },
+    [],
+  )
+
   const logout = useCallback(() => {
     clearAuth()
     router.replace("/login")
   }, [clearAuth, router])
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

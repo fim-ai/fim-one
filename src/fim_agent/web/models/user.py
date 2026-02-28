@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fim_agent.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -21,10 +21,12 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     refresh_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     refresh_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    system_instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
     conversations: Mapped[list[Conversation]] = relationship(back_populates="user", lazy="selectin")
     agents: Mapped[list[Agent]] = relationship(back_populates="user", lazy="selectin")

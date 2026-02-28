@@ -3,10 +3,9 @@
 import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { Bot, ChevronLeft, ChevronRight, Library, Loader2, MessagesSquare, Plus, Search } from "lucide-react"
+import { Bot, Library, Loader2, MessagesSquare, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { APP_NAME, APP_VERSION } from "@/lib/constants"
-import { Badge } from "@/components/ui/badge"
+import { APP_NAME } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/contexts/auth-context"
@@ -87,7 +86,16 @@ function RedirectToLogin() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("sidebar-collapsed") === "true"
+    }
+    return false
+  })
+
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", String(collapsed))
+  }, [collapsed])
   const pathname = usePathname()
   const { user, isLoading } = useAuth()
 
@@ -122,7 +130,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
         >
           {/* Logo area */}
-          <div className="flex h-14 items-center gap-2 px-4 shrink-0">
+          <div className={cn("flex h-14 items-center gap-2 shrink-0", collapsed ? "justify-center px-2" : "px-4")}>
             <img
               src="/fim-mark.svg"
               alt="FIM"
@@ -143,7 +151,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Separator />
 
           {/* Navigation */}
-          <div className="px-3 py-2 shrink-0">
+          <div className={cn("px-3 py-2 shrink-0", collapsed && "flex flex-col items-center gap-1")}>
             <Link
               href="/agents"
               className={cn(
@@ -193,26 +201,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Bottom area */}
-          <div className="space-y-2 px-3 pb-4 shrink-0">
-            <Separator />
-            <UserMenu collapsed={collapsed} />
-            <div className="flex items-center justify-between pt-1">
-              {!collapsed && (
-                <Badge variant="secondary" className="text-xs font-normal">
-                  v{APP_VERSION}
-                </Badge>
-              )}
-              <button
-                onClick={() => setCollapsed(!collapsed)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                {collapsed ? (
-                  <ChevronRight className="h-4 w-4" />
-                ) : (
-                  <ChevronLeft className="h-4 w-4" />
-                )}
-              </button>
-            </div>
+          <div className={cn("shrink-0 pb-3", collapsed ? "px-2" : "px-3")}>
+            <Separator className="mb-2" />
+            {collapsed ? (
+              <div className="flex flex-col items-center gap-2">
+                <UserMenu collapsed={collapsed} />
+                <button
+                  onClick={() => setCollapsed(!collapsed)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <div className="flex-1 min-w-0">
+                  <UserMenu collapsed={collapsed} />
+                </div>
+                <button
+                  onClick={() => setCollapsed(!collapsed)}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         </aside>
 

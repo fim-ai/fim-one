@@ -1,5 +1,5 @@
 import { API_BASE_URL, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "./constants"
-import type { TokenResponse, LoginRequest, RegisterRequest } from "@/types/auth"
+import type { UserInfo, TokenResponse, LoginRequest, RegisterRequest, ChangePasswordRequest } from "@/types/auth"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -142,6 +142,18 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ refresh_token: refreshToken }),
     }),
+
+  updateProfile: (body: { system_instructions?: string | null; display_name?: string | null }) =>
+    apiFetch<ApiResponse<UserInfo>>("/api/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+
+  changePassword: (body: ChangePasswordRequest) =>
+    apiFetch<ApiResponse<{ message: string }>>("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
 }
 
 // --- Conversation API ---

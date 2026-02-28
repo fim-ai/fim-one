@@ -127,6 +127,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
   }
 
   if (collapsed) {
+    if (hideHeader) return null
     return (
       <div className="flex flex-col items-center gap-2 py-2">
         <button
@@ -246,15 +247,6 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                 </div>
               ))
             )}
-          </div>
-          {/* All chats link */}
-          <div className="px-2 pb-2">
-            <Link
-              href="/chats"
-              className="flex w-full items-center justify-center rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground transition-colors"
-            >
-              All chats &rarr;
-            </Link>
           </div>
         </ScrollArea>
       </div>

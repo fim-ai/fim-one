@@ -111,13 +111,13 @@ def _format_replan_context(plan: ExecutionPlan, analysis: AnalysisResult) -> str
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_user(token: str | None) -> str | None:
-    """Validate a JWT query-param token and return the user_id, or None.
+async def _resolve_user(token: str | None) -> tuple[str | None, str | None]:
+    """Validate a JWT query-param token and return (user_id, system_instructions), or (None, None).
 
     Raises HTTPException(401) on invalid/expired tokens.
     """
     if not token:
-        return None
+        return None, None
 
     from fim_agent.web.auth import decode_token
 
@@ -125,7 +125,24 @@ async def _resolve_user(token: str | None) -> str | None:
     user_id: str | None = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload")
-    return user_id
+
+    # Fetch user's system_instructions
+    system_instructions: str | None = None
+    try:
+        from fim_agent.db import create_session
+        from fim_agent.web.models import User
+
+        async with create_session() as session:
+            result = await session.execute(
+                sa_select(User.system_instructions).where(User.id == user_id)
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                system_instructions = row
+    except Exception:
+        logger.warning("Failed to load user system_instructions", exc_info=True)
+
+    return user_id, system_instructions
 
 
 async def _validate_conversation_ownership(
@@ -329,14 +346,22 @@ async def react_endpoint(
         for vision model processing.
     """
     # -- Pre-stream resolution (before StreamingResponse) -------------------
-    current_user_id = await _resolve_user(token)
+    current_user_id, user_system_instructions = await _resolve_user(token)
     if conversation_id and current_user_id:
         await _validate_conversation_ownership(conversation_id, current_user_id)
 
     agent_cfg = await _resolve_agent_config(agent_id, conversation_id)
     llm = _resolve_llm(agent_cfg)
     tools = _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
-    extra_instructions = agent_cfg["instructions"] if agent_cfg else None
+    agent_instructions = agent_cfg["instructions"] if agent_cfg else None
+
+    # Merge user personal instructions + agent-specific instructions
+    parts: list[str] = []
+    if user_system_instructions:
+        parts.append(f"User's personal instructions:\n{user_system_instructions}")
+    if agent_instructions:
+        parts.append(agent_instructions)
+    extra_instructions = "\n\n".join(parts) if parts else None
 
     if agent_cfg and agent_cfg.get("kb_ids"):
         grounding_hint = (
@@ -603,14 +628,22 @@ async def dag_endpoint(
         for vision model processing.
     """
     # -- Pre-stream resolution ----------------------------------------------
-    current_user_id = await _resolve_user(token)
+    current_user_id, user_system_instructions = await _resolve_user(token)
     if conversation_id and current_user_id:
         await _validate_conversation_ownership(conversation_id, current_user_id)
 
     agent_cfg = await _resolve_agent_config(agent_id, conversation_id)
     llm = _resolve_llm(agent_cfg)
     tools = _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
-    extra_instructions = agent_cfg["instructions"] if agent_cfg else None
+    agent_instructions = agent_cfg["instructions"] if agent_cfg else None
+
+    # Merge user personal instructions + agent-specific instructions
+    parts: list[str] = []
+    if user_system_instructions:
+        parts.append(f"User's personal instructions:\n{user_system_instructions}")
+    if agent_instructions:
+        parts.append(agent_instructions)
+    extra_instructions = "\n\n".join(parts) if parts else None
 
     if agent_cfg and agent_cfg.get("kb_ids"):
         grounding_hint = (

@@ -103,6 +103,7 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 - [x] **Project & Agent Management**: Create/configure/publish agents; bind tools, model, and prompt per agent; agent-aware chat endpoints resolve LLM, tools, and instructions from agent config
 - [x] **File Upload & Management**: Upload/download/delete files with per-user isolation; configurable upload directory
 - [x] **Clipboard Image Paste**: Chat input supports pasting images directly from clipboard; same upload flow as file picker
+- [x] **Drag-and-Drop File Upload**: Drag files onto the chat input area to upload; visual drop overlay with backdrop blur
 
 ### v0.5 -- RAG, Knowledge & Memory
 
@@ -112,19 +113,15 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 - [x] **LLM Compact**: When conversation history exceeds threshold, use a fast LLM to compress early turns into a summary; retain recent turns verbatim; transparent to the agent
 - [x] **ContextGuard**: Unified context window budget manager -- checks message token counts against model limits (`LLM_CONTEXT_SIZE` / `LLM_MAX_OUTPUT_TOKENS`), applies hint-specific LLM compaction (react_iteration, planner_input, step_dependency), truncates oversized messages, falls back to smart truncation; wired into ReAct agent and DAG executor
 - [x] **Pinned Messages**: `ChatMessage.pinned` flag protects critical messages (task description, user corrections) from compaction — ContextGuard and CompactUtils perform three-way split (system / pinned / compactable), pinned messages never enter the "old" pool for summarisation; ReAct pins the initial user message; DAG steps receive `original_goal` context so agents don't "forget what they're doing" during long tool-call loops; also fixes model_hint agents missing `context_guard` and `extra_instructions`
-- [ ] **Conversation Summary Memory**: Automatic rolling summaries that persist across long sessions; hybrid window + summary strategy
-- [ ] **Semantic Memory Store**: Cross-conversation knowledge extraction and retrieval; agent remembers facts/preferences across sessions via embedding-based lookup
-- [ ] **Memory Lifecycle**: TTL-based expiry, importance scoring, explicit forget/remember commands
 
 **DAG Mode Feature Parity** *(avoid falling behind ReAct)*
-- [ ] **DAG Multi-Turn Polish**: Currently injects history as text prefix to planner; upgrade to structured message history so planner can reason about prior tool results and plan evolution
-- [ ] **DAG LLM Compact**: Apply LLM compact to the enriched query before planning; long conversation context can blow up planner input
+- [x] **DAG Multi-Turn Polish**: Currently injects history as text prefix to planner; upgrade to structured message history so planner can reason about prior tool results and plan evolution
+- [x] **DAG LLM Compact**: Apply LLM compact to the enriched query before planning; long conversation context can blow up planner input
 - [x] **DAG Re-Planning**: When the analyzer determines the goal was not achieved (confidence < 0.5), the pipeline automatically re-plans using previous step results as context and retries, up to 3 rounds; new SSE phase event `replanning`; done payload includes `rounds` count
 - [x] **Tool-Name-Aware Planning**: Planner `tool_hint` constrained to available tool names; prevents hallucinated tool references in generated plans
-- [ ] **DAG Step-Level ReAct**: Each DAG step runs a full ReAct agent loop (multi-step reasoning + tool use) instead of a single LLM call; enables complex sub-tasks within a DAG node — the minimal viable unit of Multi-Agent capability, reusing existing DAG infrastructure
-- [ ] **DAG Step-Level Memory**: Each step executor sees relevant prior conversation context, not just the step task description
-- [ ] **DAG Streaming Improvements**: Stream planner reasoning (not just step progress); show plan changes in real-time when re-planning occurs
-- [ ] **DAG History Replay**: Frontend replays persisted DAG executions with the flow graph (currently only ReAct timeline replays correctly)
+- [x] **DAG Step-Level ReAct**: Each DAG step runs a full ReAct agent loop (multi-step reasoning + tool use) instead of a single LLM call; enables complex sub-tasks within a DAG node — the minimal viable unit of Multi-Agent capability, reusing existing DAG infrastructure
+- [x] **DAG Step-Level Memory**: Each step executor sees relevant prior conversation context, not just the step task description
+- [x] **DAG History Replay**: Frontend replays persisted DAG executions with the flow graph (currently only ReAct timeline replays correctly)
 
 **RAG & Knowledge Base**
 - [x] **Embedding**: `BaseEmbedding` protocol + OpenAI-compatible implementation (Jina jina-embeddings-v3)
@@ -143,6 +140,9 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 - [x] **Batch Delete Conversations**: Select and delete multiple conversations at once from the sidebar
 - [x] **Chat Search (Cmd+K)**: Command palette–style search dialog for quickly finding conversations by title or content
 - [x] **Conversation Rename**: Inline rename conversations directly from the sidebar
+
+**Personal Center**
+- [x] **Global User Instructions**: Per-user system instructions that inject into every agent conversation; PATCH `/api/auth/profile` to save; merged with agent-specific instructions (user instructions first, agent instructions after for higher LLM priority)
 
 ### v0.6 -- System Adapter & Sandbox Hardening
 
@@ -264,6 +264,14 @@ Platform (multi-tenant)
 | -- | -- | **New** v0.6 System Adapter | Core differentiator |
 | -- | -- | **New** v0.7 Embeddable UI | Sidecar delivery mode |
 | -- | -- | **New** v0.8 Declarative Adapter | Standardization at scale |
+
+### Backlog
+
+> Items deprioritized from earlier versions. May be revisited when relevant.
+
+- [ ] **Conversation Summary Memory**: Automatic rolling summaries that persist across long sessions; hybrid window + summary strategy *(deprioritized from v0.5 — largely overlaps with LLM Compact)*
+- [ ] **Semantic Memory Store**: Cross-conversation knowledge extraction and retrieval; agent remembers facts/preferences across sessions via embedding-based lookup
+- [ ] **Memory Lifecycle**: TTL-based expiry, importance scoring, explicit forget/remember commands
 
 ---
 

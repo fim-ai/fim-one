@@ -1,7 +1,14 @@
 export interface UserInfo {
   id: string
   username: string
+  display_name: string | null
   is_admin: boolean
+  system_instructions?: string | null
+}
+
+export interface ChangePasswordRequest {
+  current_password: string
+  new_password: string
 }
 
 export interface TokenResponse {
