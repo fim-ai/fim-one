@@ -119,6 +119,7 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 - [ ] **DAG Multi-Turn Polish**: Currently injects history as text prefix to planner; upgrade to structured message history so planner can reason about prior tool results and plan evolution
 - [ ] **DAG LLM Compact**: Apply LLM compact to the enriched query before planning; long conversation context can blow up planner input
 - [x] **DAG Re-Planning**: When the analyzer determines the goal was not achieved (confidence < 0.5), the pipeline automatically re-plans using previous step results as context and retries, up to 3 rounds; new SSE phase event `replanning`; done payload includes `rounds` count
+- [x] **Tool-Name-Aware Planning**: Planner `tool_hint` constrained to available tool names; prevents hallucinated tool references in generated plans
 - [ ] **DAG Step-Level ReAct**: Each DAG step runs a full ReAct agent loop (multi-step reasoning + tool use) instead of a single LLM call; enables complex sub-tasks within a DAG node — the minimal viable unit of Multi-Agent capability, reusing existing DAG infrastructure
 - [ ] **DAG Step-Level Memory**: Each step executor sees relevant prior conversation context, not just the step task description
 - [ ] **DAG Streaming Improvements**: Stream planner reasoning (not just step progress); show plan changes in real-time when re-planning occurs
@@ -132,6 +133,15 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 - [x] **Hybrid Retrieval**: Dense vector search + LanceDB native FTS + RRF fusion + Jina reranker
 - [x] **Knowledge Base Management**: Full KB CRUD with document upload, background ingest, and agent `kb_retrieve` tool
 - [x] **Grounded Generation**: Evidence-anchored RAG — when an agent is bound to KBs, `kb_retrieve` auto-upgrades to `grounded_retrieve` with 5-stage pipeline: multi-KB parallel retrieval, LLM citation extraction (exact quotes), query-chunk alignment scoring, cross-document conflict detection, and score-based confidence (pure math, no LLM self-eval). Agent model gains `kb_ids` + `grounding_config` fields; agent form UI supports KB multi-select binding; frontend evidence panel with collapsible citations and conflict warnings; inline `[N]` citation markers with structured References section (confidence badge, source names, page numbers, exact quotes)
+- [x] **Chunk-Level CRUD**: View, edit, and delete individual chunks within a knowledge base document; inline chunk editor with content preview
+- [x] **KB Detail Page**: Dedicated knowledge base detail page with document table and chunk browser; navigate from KB list to full document/chunk management
+- [x] **Markdown Document Creation**: Create markdown documents directly from the KB UI; content authored in-browser and ingested into the knowledge base
+
+**Conversation Management**
+- [x] **Conversation Starring & Pinning**: Star/pin important conversations for quick access; starred conversations surface to the top of the sidebar
+- [x] **Batch Delete Conversations**: Select and delete multiple conversations at once from the sidebar
+- [x] **Chat Search (Cmd+K)**: Command palette–style search dialog for quickly finding conversations by title or content
+- [x] **Conversation Rename**: Inline rename conversations directly from the sidebar
 
 ### v0.6 -- System Adapter & Sandbox Hardening
 

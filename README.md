@@ -72,7 +72,7 @@ FIM Agent solves this with two integration directions:
 
 ## Key Features
 
-- **Dynamic DAG Planning**: The LLM decomposes goals into dependency graphs at runtime. No hard-coded workflows.
+- **Dynamic DAG Planning**: The LLM decomposes goals into dependency graphs at runtime with tool-name-aware planning (planner receives the available tool list to constrain `tool_hint`). No hard-coded workflows.
 - **DAG Visualization**: Interactive flow graph (@xyflow/react) in an expand/collapse right sidebar with real-time step status, dependency edges, click-to-scroll navigation, and auto fitView. ReAct mode shows a compact step timeline.
 - **DAG Re-Planning**: When the goal is not achieved, the planner automatically revises the plan using step results as context and retries, up to 3 rounds.
 - **Concurrent Execution**: Independent DAG steps run in parallel via `asyncio`, bounded by a configurable concurrency limit.
@@ -80,11 +80,11 @@ FIM Agent solves this with two integration directions:
 - **ReAct Agent**: Structured reasoning-and-acting loop with JSON-based tool calls, automatic error recovery, and iteration limits.
 - **OpenAI-Compatible**: Works with any provider exposing the `/v1/chat/completions` interface (OpenAI, DeepSeek, Qwen, Ollama, vLLM, and others).
 - **Pluggable Tool System**: Protocol-based tool interface with auto-discovery. Ships with Python executor, calculator, file ops, web search/fetch (Jina), HTTP request (any REST API), and sandboxed shell exec (curl, jq, etc.).
-- **Multi-Tenant Platform**: JWT auth with token-based SSE authentication, conversation ownership validation, per-user resource isolation.
+- **Multi-Tenant Platform**: JWT auth with token-based SSE authentication, conversation ownership validation, per-user resource isolation. Conversation starring, batch delete, title rename, and Cmd+K chat search command palette.
 - **Agent Management**: Create, configure, and publish agents with bound LLM model, tool categories, and custom instructions. Chat endpoints automatically resolve agent config.
 - **LLM Compact**: Automatic LLM-powered summarisation of long conversation histories to stay within token budgets without losing context.
 - **ContextGuard + Pinned Messages**: Unified context window budget manager -- checks token counts against model limits, applies hint-specific LLM compaction (ReAct iteration, planner input, step dependency), truncates oversized messages, and falls back to smart truncation. Pinned messages (task descriptions, critical context) are protected from compaction so agents never "forget what they're doing" during long tool-call loops. Configurable via `LLM_CONTEXT_SIZE` / `LLM_MAX_OUTPUT_TOKENS` env vars.
-- **RAG & Knowledge Base**: Full RAG pipeline -- Jina embedding + LanceDB vector store + native FTS + RRF hybrid retrieval + Jina reranker. Document loaders for PDF, DOCX, Markdown, HTML, CSV. Fixed-size, recursive, and semantic chunking. KB management UI with document upload and background ingest. Agent `kb_retrieve` tool for autonomous knowledge lookup.
+- **RAG & Knowledge Base**: Full RAG pipeline -- Jina embedding + LanceDB vector store + native FTS + RRF hybrid retrieval + Jina reranker. Document loaders for PDF, DOCX, Markdown, HTML, CSV. Fixed-size, recursive, and semantic chunking. KB management UI with document upload, background ingest, and Markdown document creation. KB detail page with document table and chunk browser supporting chunk-level CRUD (view, edit, delete individual chunks). Agent `kb_retrieve` tool for autonomous knowledge lookup.
 - **Grounded Generation**: Evidence-anchored RAG with claim-level citations. When an agent is bound to knowledge bases, retrieval automatically upgrades to `grounded_retrieve` -- a 5-stage pipeline (multi-KB parallel retrieval, LLM citation extraction, query-chunk alignment scoring, cross-document conflict detection, score-based confidence). Produces inline `[N]` citation markers linked to a structured References section (confidence badge, source names, page numbers, exact quotes), detects contradictions between sources, and computes explainable confidence scores (no LLM self-evaluation). Agent form UI supports KB multi-select binding.
 - **Minimal Dependencies**: Only three runtime dependencies: `openai`, `httpx`, `pydantic`.
 
