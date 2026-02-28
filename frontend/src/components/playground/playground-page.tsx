@@ -657,15 +657,13 @@ function PlaygroundContent({
     }).catch(() => setAgentsLoaded(true))
   }, [agentsLoaded])
 
-  // File upload handler
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files?.length) return
+  // Shared upload logic for both file input and paste
+  const uploadFiles = useCallback(async (files: File[]) => {
+    if (!files.length) return
     setIsUploading(true)
     try {
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         const result = await fileApi.upload(file)
-        // Create blob URL preview for image files
         let previewUrl: string | undefined
         if (file.type.startsWith("image/")) {
           previewUrl = URL.createObjectURL(file)
@@ -676,9 +674,33 @@ function PlaygroundContent({
       console.error("Upload failed:", err)
     } finally {
       setIsUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }, [])
+
+  // File input handler
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files?.length) return
+    await uploadFiles(Array.from(files))
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }, [uploadFiles])
+
+  // Paste handler — extract images from clipboard
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const imageFiles: File[] = []
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile()
+        if (file) imageFiles.push(file)
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault()
+      uploadFiles(imageFiles)
+    }
+  }, [uploadFiles])
 
   const removeFile = useCallback((fileId: string) => {
     setAttachedFiles((prev) => {
@@ -966,6 +988,7 @@ function PlaygroundContent({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={handleKeyDownWithFiles}
+            onPaste={handlePaste}
             placeholder={
               mode === "react"
                 ? "Ask the ReAct agent to solve a problem..."
