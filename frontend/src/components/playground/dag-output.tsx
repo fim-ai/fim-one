@@ -31,6 +31,7 @@ import type { StepState } from "@/hooks/use-dag-steps"
 import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
 import { IterationCard } from "@/components/steps"
 import type { IterationData } from "@/components/steps"
+import { SuggestedFollowups } from "./suggested-followups"
 
 interface DagOutputProps {
   planSteps: DagPhaseEvent["steps"]
@@ -40,6 +41,7 @@ interface DagOutputProps {
   currentPhase: string | null
   currentRound?: number
   hideDagGraph?: boolean
+  onSuggestionSelect?: (query: string) => void
 }
 
 export function DagOutput({
@@ -50,6 +52,7 @@ export function DagOutput({
   currentPhase,
   currentRound = 1,
   hideDagGraph,
+  onSuggestionSelect,
 }: DagOutputProps) {
   const [stepsExpanded, setStepsExpanded] = useState(false)
 
@@ -74,7 +77,7 @@ export function DagOutput({
         <button
           type="button"
           onClick={() => setStepsExpanded((v) => !v)}
-          className="flex w-full items-center gap-2 px-4 py-2.5 rounded-lg border border-border/40 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors text-xs text-muted-foreground"
+          className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 flex w-full items-center gap-2 px-4 py-2.5 rounded-lg border border-border/40 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors text-xs text-muted-foreground"
         >
           <Wrench className="h-3.5 w-3.5 shrink-0" />
           <span>{summaryParts.join(" \u00b7 ")}</span>
@@ -101,7 +104,7 @@ export function DagOutput({
         )}
 
         {/* Done card — always visible */}
-        <DagDoneCard done={doneEvent} />
+        <DagDoneCard done={doneEvent} onSuggestionSelect={onSuggestionSelect} />
       </div>
     )
   }
@@ -153,7 +156,7 @@ export function DagOutput({
       {analysisPhase && <AnalysisCard phase={analysisPhase} />}
 
       {/* Done card */}
-      {doneEvent && <DagDoneCard done={doneEvent} />}
+      {doneEvent && <DagDoneCard done={doneEvent} onSuggestionSelect={onSuggestionSelect} />}
     </div>
   )
 }
@@ -257,15 +260,7 @@ function StepProgressCard({ state }: { state: StepState }) {
 
           {/* Completed result */}
           {state.result && (
-            <div className="rounded-md bg-muted/30 border border-border/30 p-3">
-              <p className="text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-                Result
-              </p>
-              <MarkdownContent
-                content={state.result}
-                className="text-xs text-foreground/80 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_h4]:text-xs [&_p]:text-xs [&_li]:text-xs [&_td]:text-xs [&_th]:text-xs [&_table]:text-xs"
-              />
-            </div>
+            <ResultBlock content={state.result} />
           )}
         </CardContent>
       )}
@@ -276,6 +271,39 @@ function StepProgressCard({ state }: { state: StepState }) {
 /* ------------------------------------------------------------------ */
 /*  Shared components                                                  */
 /* ------------------------------------------------------------------ */
+
+function ResultBlock({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  // First non-empty line as preview (strip markdown)
+  const preview = content.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "").trim() ?? ""
+  const shortPreview = preview.length > 40 ? preview.slice(0, 40) + "…" : preview
+
+  return (
+    <div className="rounded-md border border-border/30 bg-muted/20 p-2.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 text-left cursor-pointer group"
+      >
+        <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+        <span className="font-medium text-foreground text-xs">Result</span>
+        {!expanded && shortPreview && (
+          <span className="text-[10px] text-muted-foreground truncate min-w-0">{shortPreview}</span>
+        )}
+        <ChevronDown className={`h-3 w-3 text-muted-foreground shrink-0 ml-auto transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {expanded && (
+        <div className="mt-2">
+          <MarkdownContent
+            content={content}
+            className="text-xs text-foreground/80 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_h4]:text-xs [&_p]:text-xs [&_li]:text-xs [&_td]:text-xs [&_th]:text-xs [&_table]:text-xs"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
   return (
@@ -316,7 +344,7 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
   )
 }
 
-function DagDoneCard({ done }: { done: DagDoneEvent }) {
+function DagDoneCard({ done, onSuggestionSelect }: { done: DagDoneEvent; onSuggestionSelect?: (query: string) => void }) {
   return (
     <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-green-500/20 py-4">
       <CardHeader className="pb-0">
@@ -350,6 +378,12 @@ function DagDoneCard({ done }: { done: DagDoneEvent }) {
           content={done.answer}
           className="prose-sm text-sm text-foreground/90"
         />
+        {done.suggestions?.length && onSuggestionSelect ? (
+          <SuggestedFollowups
+            suggestions={done.suggestions}
+            onSelect={onSuggestionSelect}
+          />
+        ) : null}
       </CardContent>
     </Card>
   )

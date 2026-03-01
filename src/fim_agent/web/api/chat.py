@@ -34,6 +34,7 @@ from sqlalchemy import select as sa_select
 
 from fim_agent.core.agent import ReActAgent
 from fim_agent.core.model import BaseLLM
+from fim_agent.core.model.types import ChatMessage
 from fim_agent.core.model.usage import UsageSummary
 from fim_agent.core.planner import (
     AnalysisResult,
@@ -104,6 +105,72 @@ def _format_replan_context(plan: ExecutionPlan, analysis: AnalysisResult) -> str
     lines.append("")
     lines.append("Please create a revised plan that addresses the gaps identified above.")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Suggested follow-ups helper
+# ---------------------------------------------------------------------------
+
+
+async def _generate_suggestions(
+    fast_llm: "BaseLLM",
+    query: str,
+    answer: str,
+    *,
+    count: int = 3,
+) -> list[str]:
+    """Generate follow-up question suggestions based on query and answer.
+
+    Uses a fast LLM to produce *count* concise follow-up questions that the
+    user might ask next.  The result is ephemeral — it is injected into the
+    SSE ``done`` payload but **not** persisted to the database.
+
+    On any failure the function silently returns an empty list so that the
+    main chat flow is never interrupted.
+    """
+    try:
+        truncated_answer = answer[:1500]
+
+        system_prompt = (
+            "You generate concise follow-up questions that a user might naturally ask "
+            "after receiving an answer. The questions should explore different angles: "
+            "deeper detail, related topics, or practical next steps.\n\n"
+            "Rules:\n"
+            f"- Return EXACTLY {count} questions.\n"
+            "- Each question must be a single sentence, under 80 characters.\n"
+            "- Match the language of the original query (e.g. Chinese query -> Chinese questions).\n"
+            "- Return ONLY a JSON array of strings, no other text."
+        )
+        user_content = (
+            f"User query: {query}\n\n"
+            f"Assistant answer (truncated): {truncated_answer}"
+        )
+
+        result = await fast_llm.chat([
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_content),
+        ])
+
+        raw = (result.message.content or "").strip()
+
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            # Remove opening fence (```json or ```)
+            first_newline = raw.index("\n") if "\n" in raw else 3
+            raw = raw[first_newline + 1:]
+            # Remove closing fence
+            if raw.endswith("```"):
+                raw = raw[:-3].strip()
+
+        suggestions = json.loads(raw)
+        if isinstance(suggestions, list) and all(isinstance(s, str) for s in suggestions):
+            return suggestions[:count]
+
+        logger.debug("_generate_suggestions: unexpected JSON structure: %s", type(suggestions))
+        return []
+    except Exception:
+        logger.debug("_generate_suggestions failed", exc_info=True)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +687,11 @@ async def react_endpoint(
                         exc_info=True,
                     )
 
+            # ephemeral: generate AFTER persist, inject BEFORE yield
+            suggestions = await _generate_suggestions(get_fast_llm(), q, result.answer)
+            if suggestions:
+                done_payload["suggestions"] = suggestions
+
             yield _sse("done", done_payload)
         except Exception as exc:
             logger.exception("ReAct agent failed")
@@ -1110,6 +1182,11 @@ async def dag_endpoint(
                         conversation_id,
                         exc_info=True,
                     )
+
+            # ephemeral: generate AFTER persist, inject BEFORE yield
+            dag_suggestions = await _generate_suggestions(fast_llm, q, answer)
+            if dag_suggestions:
+                dag_done_payload["suggestions"] = dag_suggestions
 
             yield _sse("done", dag_done_payload)
         except Exception as exc:

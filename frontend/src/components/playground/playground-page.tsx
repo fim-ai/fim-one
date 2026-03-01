@@ -536,6 +536,10 @@ function PlaygroundContent({
   // Sidebar only shown during live streaming (history shows all turns -- sidebar would mismatch)
   const showSidebar = hasLiveMessages && sidebarOpen && isWideScreen
 
+  const handleSuggestionSelect = useCallback((q: string) => {
+    onRunWithQuery(q)
+  }, [onRunWithQuery])
+
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -861,7 +865,7 @@ function PlaygroundContent({
                   )}
                   {hasLiveMessages && (
                     mode === "react" ? (
-                      <ReactOutput items={reactItems} />
+                      <ReactOutput items={reactItems} onSuggestionSelect={handleSuggestionSelect} />
                     ) : (
                       <DagOutput
                         planSteps={dagData.planSteps}
@@ -871,6 +875,7 @@ function PlaygroundContent({
                         currentPhase={dagData.currentPhase}
                         currentRound={dagData.currentRound}
                         hideDagGraph
+                        onSuggestionSelect={handleSuggestionSelect}
                       />
                     )
                   )}

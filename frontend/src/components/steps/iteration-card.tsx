@@ -1,17 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, ChevronRight } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
 import type { IterationData } from "./types"
 import { IterationHeader } from "./iteration-header"
-import { ToolArgsBlock } from "./tool-args-block"
-import { ObservationBlock } from "./observation-block"
 import { ErrorBlock } from "./error-block"
 import { generateStepSummary } from "./step-summary"
-
-type TabKey = "args" | "obs"
+import { IterationDetailDrawer } from "./iteration-detail-drawer"
 
 interface IterationCardProps {
   data: IterationData
@@ -25,101 +21,82 @@ interface IterationCardProps {
 export function IterationCard({
   data,
   summary: summaryProp,
-  size = "default",
   variant = "card",
-  defaultCollapsed = true,
-  showReasoning = false,
 }: IterationCardProps) {
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const isLoading = data.loading || data.type === "tool_start"
-  const hasArgs = data.tool_args && Object.keys(data.tool_args).length > 0
-  const hasObs = !!data.observation
-  const hasError = !!data.error
-  const hasTabs = (hasArgs || hasObs) && !isLoading
 
-  // null = all collapsed; "args" or "obs" = that tab active
-  const [activeTab, setActiveTab] = useState<TabKey | null>(
-    defaultCollapsed ? null : (hasArgs ? "args" : hasObs ? "obs" : null),
+  const hasDetail = !isLoading && (
+    (data.tool_args && Object.keys(data.tool_args).length > 0) ||
+    data.observation ||
+    data.error ||
+    data.reasoning
   )
 
-  const toggleTab = (tab: TabKey) => {
-    setActiveTab((cur) => (cur === tab ? null : tab))
-  }
-
-  // Auto-generate summary if not provided
   const summary = summaryProp ?? (
     (data.type === "tool_call" || data.type === "tool_start")
       ? generateStepSummary(data.tool_name, data.tool_args, data.reasoning)
       : undefined
   )
 
-  // Build tab items
-  const tabs: { key: TabKey; label: string; available: boolean }[] = [
-    { key: "args", label: "Arguments", available: !!hasArgs },
-    { key: "obs", label: "Observation", available: !!hasObs },
-  ]
+  const handleClick = hasDetail ? () => setDrawerOpen(true) : undefined
 
-  const content = (
-    <div className="space-y-1.5">
-      <IterationHeader data={data} summary={summary} />
-
-      {showReasoning && data.reasoning && (
-        <p className="text-[11px] italic text-muted-foreground leading-relaxed">
-          {data.reasoning}
-        </p>
-      )}
-
-      {isLoading && (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          <span className="shiny-text">Executing…</span>
+  const inner = (
+    <>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <IterationHeader data={data} summary={summary} />
+        </div>
+        {isLoading && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            <span className="shiny-text text-[10px] text-muted-foreground">Executing…</span>
+          </div>
+        )}
+        {hasDetail && (
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 group-hover:text-foreground transition-colors" />
+        )}
+      </div>
+      {data.error && (
+        <div className="mt-1.5">
+          <ErrorBlock error={data.error} size="compact" />
         </div>
       )}
-
-      {/* Tab bar */}
-      {hasTabs && (
-        <div className="flex items-center gap-px rounded border border-border/40 bg-muted/20 w-fit overflow-hidden">
-          {tabs.filter((t) => t.available).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => toggleTab(t.key)}
-              className={cn(
-                "px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors",
-                activeTab === t.key
-                  ? "bg-amber-500/15 text-amber-500"
-                  : "text-muted-foreground hover:bg-muted/40",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Tab content */}
-      {activeTab === "args" && hasArgs && (
-        <ToolArgsBlock args={data.tool_args!} size={size} defaultCollapsed={false} />
-      )}
-      {activeTab === "obs" && hasObs && (
-        <ObservationBlock observation={data.observation!} size={size} defaultCollapsed={false} />
-      )}
-
-      {hasError && <ErrorBlock error={data.error!} size={size} />}
-    </div>
+    </>
   )
 
   if (variant === "card") {
     return (
-      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-200 border-amber-500/20 py-2">
-        <CardContent className="py-0">{content}</CardContent>
-      </Card>
+      <>
+        <Card
+          className={`animate-in fade-in-0 slide-in-from-bottom-2 duration-200 border-amber-500/20 py-2 transition-colors ${hasDetail ? "cursor-pointer group hover:bg-muted/20" : ""}`}
+          onClick={handleClick}
+        >
+          <CardContent className="py-0">{inner}</CardContent>
+        </Card>
+        <IterationDetailDrawer
+          data={drawerOpen ? data : null}
+          summary={summary}
+          onClose={() => setDrawerOpen(false)}
+        />
+      </>
     )
   }
 
   // variant === "inline"
   return (
-    <div className="rounded-md border border-border/30 bg-muted/20 px-2.5 py-2">
-      {content}
-    </div>
+    <>
+      <div
+        className={`rounded-md border border-border/30 bg-muted/20 px-2.5 py-2 transition-colors ${hasDetail ? "cursor-pointer group hover:bg-muted/30" : ""}`}
+        onClick={handleClick}
+      >
+        {inner}
+      </div>
+      <IterationDetailDrawer
+        data={drawerOpen ? data : null}
+        summary={summary}
+        onClose={() => setDrawerOpen(false)}
+      />
+    </>
   )
 }

@@ -123,8 +123,11 @@ function LoginPageInner() {
 
   if (authLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="relative flex h-screen items-center justify-center bg-background">
+        <div className="login-mesh-bg" aria-hidden="true">
+          <div className="mesh-orb" />
+        </div>
+        <Loader2 className="relative z-10 h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -132,8 +135,13 @@ function LoginPageInner() {
   if (user) return null // Will redirect
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm">
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4">
+      {/* Animated mesh gradient background */}
+      <div className="login-mesh-bg" aria-hidden="true">
+        <div className="mesh-orb" />
+      </div>
+
+      <Card className="relative z-10 w-full max-w-sm login-card-float">
         <CardHeader className="text-center">
           <div className="mx-auto mb-2 flex items-center gap-2">
             <img src="/fim-mark-light.svg" alt="FIM" className="h-8 w-auto dark:hidden" />
@@ -289,8 +297,11 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen items-center justify-center bg-background">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="relative flex h-screen items-center justify-center bg-background">
+          <div className="login-mesh-bg" aria-hidden="true">
+            <div className="mesh-orb" />
+          </div>
+          <Loader2 className="relative z-10 h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       }
     >

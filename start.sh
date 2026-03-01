@@ -38,6 +38,10 @@ free_port() {
   fi
 }
 
+# Normalise LOG_LEVEL to lowercase for uvicorn --log-level
+UVICORN_LOG_LEVEL="${LOG_LEVEL:-info}"
+UVICORN_LOG_LEVEL="$(echo "$UVICORN_LOG_LEVEL" | tr '[:upper:]' '[:lower:]')"
+
 CMD="${1:-portal}"
 
 case "$CMD" in
@@ -48,7 +52,7 @@ case "$CMD" in
     echo "  API backend  → http://localhost:8000"
     echo "  Next.js app  → http://localhost:3000"
     # Start API in background, Next.js in foreground
-    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 &
+    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --log-level "$UVICORN_LOG_LEVEL" &
     API_PID=$!
     trap "kill $API_PID 2>/dev/null" EXIT
     cd frontend && pnpm dev
@@ -66,7 +70,7 @@ case "$CMD" in
     touch frontend/.next/static/.metadata_never_index
     touch frontend/.next/static/development/.metadata_never_index
     mdutil -i off frontend/.next &>/dev/null || true
-    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --reload --reload-dir src &
+    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --reload --reload-dir src --log-level "$UVICORN_LOG_LEVEL" &
     API_PID=$!
     trap "kill $API_PID 2>/dev/null" EXIT
     cd frontend
@@ -85,7 +89,7 @@ case "$CMD" in
   api)
     free_port 8000
     echo "Starting FIM Agent API at http://localhost:8000"
-    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000
+    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --log-level "$UVICORN_LOG_LEVEL"
     ;;
   help|--help|-h)
     usage

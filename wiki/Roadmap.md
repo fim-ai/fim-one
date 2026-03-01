@@ -154,6 +154,7 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 
 **Portal UX**
 - [x] **Dark / Light / System Theme**: `next-themes` provider with system-preference detection, manual toggle (Appearance settings page), and full component theming across DAG visualization, playground, connectors, and KB pages; light-mode logo variant
+- [x] **Suggested Follow-ups**: After agent completes (ReAct/DAG), fast LLM generates 2-3 follow-up questions displayed as clickable chips below the answer; click to auto-submit as new query; ephemeral — not persisted to DB, disappears on page refresh
 
 #### v0.6.1 — Connector Entity & Manual Builder (shipped)
 

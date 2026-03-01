@@ -136,6 +136,170 @@
   }
 }
 
+/* Login mesh gradient animation */
+@keyframes mesh-drift-1 {
+  0%, 100% {
+    transform: translate(0%, 0%) scale(1);
+  }
+  25% {
+    transform: translate(15%, -20%) scale(1.08);
+  }
+  50% {
+    transform: translate(-10%, 15%) scale(0.92);
+  }
+  75% {
+    transform: translate(-18%, -10%) scale(1.05);
+  }
+}
+
+@keyframes mesh-drift-2 {
+  0%, 100% {
+    transform: translate(0%, 0%) scale(1);
+  }
+  25% {
+    transform: translate(-20%, 12%) scale(0.94);
+  }
+  50% {
+    transform: translate(18%, -18%) scale(1.06);
+  }
+  75% {
+    transform: translate(10%, 20%) scale(0.96);
+  }
+}
+
+@keyframes mesh-drift-3 {
+  0%, 100% {
+    transform: translate(0%, 0%) scale(1.04);
+  }
+  25% {
+    transform: translate(12%, 18%) scale(0.93);
+  }
+  50% {
+    transform: translate(-15%, -12%) scale(1.06);
+  }
+  75% {
+    transform: translate(20%, -15%) scale(1);
+  }
+}
+
+@keyframes mesh-drift-4 {
+  0%, 100% {
+    transform: translate(0%, 0%) scale(1);
+  }
+  20% {
+    transform: translate(-14%, -18%) scale(1.07);
+  }
+  40% {
+    transform: translate(12%, 10%) scale(0.95);
+  }
+  60% {
+    transform: translate(18%, -8%) scale(1.03);
+  }
+  80% {
+    transform: translate(-8%, 16%) scale(0.97);
+  }
+}
+
+.login-mesh-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.login-mesh-bg::before,
+.login-mesh-bg::after,
+.login-mesh-bg .mesh-orb {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  will-change: transform;
+}
+
+/* Orb 1 — top-left, primary green */
+.login-mesh-bg::before {
+  width: 700px;
+  height: 700px;
+  top: -15%;
+  left: -10%;
+  background: oklch(0.72 0.14 70 / 0.30);
+  animation: mesh-drift-1 22s ease-in-out infinite;
+}
+
+/* Orb 2 — bottom-right, shifted hue (amber-green) */
+.login-mesh-bg::after {
+  width: 650px;
+  height: 650px;
+  bottom: -12%;
+  right: -8%;
+  background: oklch(0.65 0.12 85 / 0.28);
+  animation: mesh-drift-2 26s ease-in-out infinite;
+}
+
+/* Orb 3 — center, primary */
+.login-mesh-bg .mesh-orb {
+  width: 600px;
+  height: 600px;
+  top: 40%;
+  left: 50%;
+  margin-left: -300px;
+  margin-top: -300px;
+  background: oklch(0.60 0.14 70 / 0.25);
+  animation: mesh-drift-3 20s ease-in-out infinite;
+}
+
+/* Orb 4 — accent highlight, top-right, brighter teal-green */
+.login-mesh-bg .mesh-orb::after {
+  content: "";
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  top: -350px;
+  right: -600px;
+  border-radius: 50%;
+  filter: blur(55px);
+  background: oklch(0.70 0.16 155 / 0.35);
+  animation: mesh-drift-4 18s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Light mode — proportionally boosted (roughly half of dark) */
+:root .login-mesh-bg::before {
+  background: oklch(0.55 0.12 70 / 0.15);
+}
+
+:root .login-mesh-bg::after {
+  background: oklch(0.50 0.10 85 / 0.14);
+}
+
+:root .login-mesh-bg .mesh-orb {
+  background: oklch(0.45 0.12 70 / 0.12);
+}
+
+:root .login-mesh-bg .mesh-orb::after {
+  background: oklch(0.50 0.14 155 / 0.18);
+}
+
+/* Login card float effect */
+.login-card-float {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: oklch(0.28 0.006 55 / 0.6);
+  box-shadow:
+    0 0 0 1px oklch(0.28 0.006 55 / 0.1),
+    0 8px 32px oklch(0 0 0 / 0.2),
+    0 2px 8px oklch(0 0 0 / 0.1);
+}
+
+:root .login-card-float {
+  border-color: oklch(0.92 0.005 75 / 0.8);
+  box-shadow:
+    0 0 0 1px oklch(0.92 0.005 75 / 0.3),
+    0 8px 32px oklch(0 0 0 / 0.06),
+    0 2px 8px oklch(0 0 0 / 0.03);
+}
+
 /* Shiny text shimmer effect */
 @keyframes shimmer {
   0% {

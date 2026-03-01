@@ -16,12 +16,14 @@ import type { StepItem } from "@/hooks/use-react-steps"
 import { ReferencesSection } from "./references-section"
 import { IterationCard } from "@/components/steps"
 import type { IterationData } from "@/components/steps"
+import { SuggestedFollowups } from "./suggested-followups"
 
 interface ReactOutputProps {
   items: StepItem[]
+  onSuggestionSelect?: (query: string) => void
 }
 
-export function ReactOutput({ items }: ReactOutputProps) {
+export function ReactOutput({ items, onSuggestionSelect }: ReactOutputProps) {
   const [stepsExpanded, setStepsExpanded] = useState(false)
 
   const hasDone = items.some((i) => i.event === "done")
@@ -83,7 +85,7 @@ export function ReactOutput({ items }: ReactOutputProps) {
         {/* Done card */}
         {doneItem && (
           <div data-react-idx={items.indexOf(doneItem)}>
-            <DoneCard done={doneItem.data as ReactDoneEvent} items={items} />
+            <DoneCard done={doneItem.data as ReactDoneEvent} items={items} onSuggestionSelect={onSuggestionSelect} />
           </div>
         )}
       </div>
@@ -106,7 +108,7 @@ export function ReactOutput({ items }: ReactOutputProps) {
           const done = item.data as ReactDoneEvent
           return (
             <div key={idx} data-react-idx={idx}>
-              <DoneCard done={done} items={items} />
+              <DoneCard done={done} items={items} onSuggestionSelect={onSuggestionSelect} />
             </div>
           )
         }
@@ -201,7 +203,7 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
   return <IterationCard data={iterData} variant="card" defaultCollapsed={true} />
 }
 
-function DoneCard({ done, items }: { done: ReactDoneEvent; items?: StepItem[] }) {
+function DoneCard({ done, items, onSuggestionSelect }: { done: ReactDoneEvent; items?: StepItem[]; onSuggestionSelect?: (query: string) => void }) {
   return (
     <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-green-500/20 py-4">
       <CardHeader className="pb-0">
@@ -234,6 +236,12 @@ function DoneCard({ done, items }: { done: ReactDoneEvent; items?: StepItem[] })
           className="prose-sm text-sm text-foreground/90"
         />
         {items && <ReferencesSection items={items} />}
+        {done.suggestions?.length && onSuggestionSelect ? (
+          <SuggestedFollowups
+            suggestions={done.suggestions}
+            onSelect={onSuggestionSelect}
+          />
+        ) : null}
       </CardContent>
     </Card>
   )
