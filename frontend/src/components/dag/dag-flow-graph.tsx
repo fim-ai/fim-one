@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTheme } from "next-themes"
 import {
   ReactFlow,
   Background,
@@ -34,6 +35,9 @@ interface DagFlowGraphProps {
 }
 
 export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded, resizeKey, onStepClick }: DagFlowGraphProps) {
+  const { resolvedTheme } = useTheme()
+  const rfColorMode = resolvedTheme === "dark" ? "dark" : "light"
+
   const { nodes: layoutNodes, edges: layoutEdges, dagreCenters } = useDagLayout({
     planSteps,
     stepStates,
@@ -169,7 +173,7 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
           onPaneClick={onPaneClick}
           onInit={(instance) => { fitViewFn.current = instance.fitView }}
           fitView
-          colorMode="dark"
+          colorMode={rfColorMode}
           proOptions={{ hideAttribution: true }}
           nodesDraggable={false}
           nodesConnectable={false}
@@ -188,7 +192,7 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
   const graphHeight = Math.max(380, Math.min(planSteps.length * 120 + 100, 600))
 
   return (
-    <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 rounded-lg border border-green-500/20 bg-card/50 overflow-hidden">
+    <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 rounded-lg border border-green-500/20 bg-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30">
         <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500/10">
@@ -211,7 +215,7 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           fitView
-          colorMode="dark"
+          colorMode={rfColorMode}
           proOptions={{ hideAttribution: true }}
           nodesDraggable={false}
           nodesConnectable={false}

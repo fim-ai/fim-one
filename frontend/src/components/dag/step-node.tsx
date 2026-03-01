@@ -23,11 +23,11 @@ const statusConfig = {
     badgeBg: "bg-zinc-500/10 text-zinc-400",
   },
   running: {
-    border: "border-blue-500/60",
-    glow: "shadow-[0_0_12px_rgba(59,130,246,0.25)]",
+    border: "border-amber-500/60",
+    glow: "shadow-[0_0_12px_rgba(217,168,78,0.25)]",
     Icon: Loader2,
-    iconClass: "text-blue-500 animate-spin",
-    badgeBg: "bg-blue-500/10 text-blue-400",
+    iconClass: "text-amber-500 animate-spin",
+    badgeBg: "bg-amber-500/10 text-amber-400",
   },
   completed: {
     border: "border-green-500/50",
@@ -134,7 +134,7 @@ function StepNodeComponent({ data }: NodeProps) {
   return (
     <div
       className={cn(
-        "w-[200px] rounded-lg border bg-card/80 backdrop-blur-sm p-3 cursor-pointer transition-all duration-200 hover:brightness-110",
+        "w-[200px] rounded-lg border bg-card p-3 transition-all duration-200 hover:brightness-[1.03] dark:hover:brightness-110",
         config.border,
         config.glow
       )}
@@ -143,7 +143,7 @@ function StepNodeComponent({ data }: NodeProps) {
         type="target"
         position={Position.Left}
         id="left"
-        className="!w-2 !h-2 !bg-zinc-600 !border-zinc-500"
+        className="!w-1.5 !h-1.5 !bg-zinc-300 !border-zinc-300 dark:!bg-zinc-600 dark:!border-zinc-500"
       />
 
       <div className="flex items-start gap-2 min-w-0">
@@ -187,7 +187,7 @@ function StepNodeComponent({ data }: NodeProps) {
         type="source"
         position={Position.Right}
         id="right"
-        className="!w-2 !h-2 !bg-zinc-600 !border-zinc-500"
+        className="!w-1.5 !h-1.5 !bg-zinc-300 !border-zinc-300 dark:!bg-zinc-600 dark:!border-zinc-500"
       />
     </div>
   )

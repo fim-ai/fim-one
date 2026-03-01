@@ -53,10 +53,10 @@ export function useDagLayout({
           source: dep,
           target: step.id,
           type: "smoothstep",
-          style: { stroke: "rgba(113, 113, 122, 0.4)", strokeWidth: 1.5 },
+          style: { stroke: "var(--border)", strokeWidth: 1.5 },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: "rgba(113, 113, 122, 0.4)",
+            color: "var(--border)",
             width: 16,
             height: 16,
           },

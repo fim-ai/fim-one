@@ -28,7 +28,7 @@ const CATEGORY_META: Record<
     icon: Globe,
     label: "Web + Analysis",
     labelZh: "联网分析",
-    color: "text-blue-400",
+    color: "text-amber-400",
   },
   code: {
     icon: Code,
@@ -322,8 +322,8 @@ export function Examples({
               disabled={disabled}
               onClick={() => handleSelect(example.text)}
               className={
-                "group relative flex flex-col gap-3 rounded-xl border border-border/40 bg-card/50 p-4 text-left transition-all duration-200" +
-                " hover:border-border hover:bg-card/80 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5" +
+                "group relative flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 shadow-sm" +
+                " hover:border-primary/30 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5" +
                 " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background" +
                 (disabled ? " opacity-50 pointer-events-none" : " cursor-pointer")
               }

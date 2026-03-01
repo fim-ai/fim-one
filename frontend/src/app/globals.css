@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "katex/dist/katex.min.css";
-@import "highlight.js/styles/github-dark.min.css";
+@import "highlight.js/styles/github.min.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -51,71 +51,71 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: oklch(0.98 0.005 80);
+  --foreground: oklch(0.18 0.01 60);
+  --card: oklch(0.98 0.005 80);
+  --card-foreground: oklch(0.18 0.01 60);
+  --popover: oklch(0.98 0.005 80);
+  --popover-foreground: oklch(0.18 0.01 60);
+  --primary: oklch(0.55 0.12 70);
+  --primary-foreground: oklch(0.98 0.005 80);
+  --secondary: oklch(0.96 0.005 75);
+  --secondary-foreground: oklch(0.18 0.01 60);
+  --muted: oklch(0.96 0.005 75);
+  --muted-foreground: oklch(0.55 0.01 60);
+  --accent: oklch(0.96 0.005 75);
+  --accent-foreground: oklch(0.18 0.01 60);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --border: oklch(0.92 0.005 75);
+  --input: oklch(0.92 0.005 75);
+  --ring: oklch(0.55 0.12 70);
+  --chart-1: oklch(0.55 0.12 70);
+  --chart-2: oklch(0.65 0.15 160);
+  --chart-3: oklch(0.65 0.12 300);
+  --chart-4: oklch(0.70 0.15 85);
+  --chart-5: oklch(0.60 0.10 30);
+  --sidebar: oklch(0.97 0.005 78);
+  --sidebar-foreground: oklch(0.18 0.01 60);
+  --sidebar-primary: oklch(0.55 0.12 70);
+  --sidebar-primary-foreground: oklch(0.98 0.005 80);
+  --sidebar-accent: oklch(0.96 0.005 75);
+  --sidebar-accent-foreground: oklch(0.18 0.01 60);
+  --sidebar-border: oklch(0.92 0.005 75);
+  --sidebar-ring: oklch(0.55 0.12 70);
 }
 
 .dark {
-  --background: #0a0b10;
-  --foreground: oklch(0.985 0 0);
-  --card: #11121a;
-  --card-foreground: oklch(0.985 0 0);
-  --popover: #11121a;
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: #0066ff;
-  --primary-foreground: #ffffff;
-  --secondary: #1a1b26;
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: #1a1b26;
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: #1a1b26;
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.17 0.008 55);
+  --foreground: oklch(0.95 0.008 75);
+  --card: oklch(0.20 0.007 55);
+  --card-foreground: oklch(0.95 0.008 75);
+  --popover: oklch(0.20 0.007 55);
+  --popover-foreground: oklch(0.95 0.008 75);
+  --primary: oklch(0.72 0.14 70);
+  --primary-foreground: oklch(0.15 0.01 55);
+  --secondary: oklch(0.23 0.006 50);
+  --secondary-foreground: oklch(0.95 0.008 75);
+  --muted: oklch(0.23 0.006 50);
+  --muted-foreground: oklch(0.65 0.008 65);
+  --accent: oklch(0.23 0.006 50);
+  --accent-foreground: oklch(0.95 0.008 75);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: #0066ff;
-  --chart-1: #0066ff;
-  --chart-2: #3ef0f9;
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: #1d40bf;
-  --sidebar: #0e0f16;
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: #0066ff;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1a1b26;
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: #0066ff;
+  --border: oklch(0.28 0.006 55);
+  --input: oklch(0.30 0.006 55);
+  --ring: oklch(0.72 0.14 70);
+  --chart-1: oklch(0.72 0.14 70);
+  --chart-2: oklch(0.70 0.13 170);
+  --chart-3: oklch(0.70 0.12 300);
+  --chart-4: oklch(0.75 0.15 85);
+  --chart-5: oklch(0.65 0.10 30);
+  --sidebar: oklch(0.18 0.008 55);
+  --sidebar-foreground: oklch(0.95 0.008 75);
+  --sidebar-primary: oklch(0.72 0.14 70);
+  --sidebar-primary-foreground: oklch(0.15 0.01 55);
+  --sidebar-accent: oklch(0.23 0.006 50);
+  --sidebar-accent-foreground: oklch(0.95 0.008 75);
+  --sidebar-border: oklch(0.28 0.006 55);
+  --sidebar-ring: oklch(0.72 0.14 70);
 }
 
 @layer base {
@@ -168,14 +168,14 @@ code::-webkit-scrollbar-track,
 pre::-webkit-scrollbar-thumb,
 code::-webkit-scrollbar-thumb,
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: oklch(1 0 0 / 15%);
+  background: oklch(0.65 0.008 65 / 40%);
   border-radius: 3px;
 }
 
 pre::-webkit-scrollbar-thumb:hover,
 code::-webkit-scrollbar-thumb:hover,
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: oklch(1 0 0 / 25%);
+  background: oklch(0.65 0.008 65 / 60%);
 }
 
 /* Firefox scrollbar styling */
@@ -183,15 +183,15 @@ pre,
 code,
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: oklch(1 0 0 / 15%) transparent;
+  scrollbar-color: oklch(0.65 0.008 65 / 40%) transparent;
 }
 
 .shiny-text {
   background: linear-gradient(
     120deg,
-    rgba(160, 160, 170, 1) 40%,
+    rgba(170, 160, 145, 1) 40%,
     rgba(255, 255, 255, 0.9) 50%,
-    rgba(160, 160, 170, 1) 60%
+    rgba(170, 160, 145, 1) 60%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
@@ -200,7 +200,68 @@ code,
   animation: shimmer 2s ease-in-out infinite;
 }
 
-/* ReactFlow overrides for dark theme */
+/* Light mode highlight.js background override — match theme */
+.hljs,
+pre code.hljs {
+  background: var(--muted) !important;
+}
+
+/* Dark mode highlight.js overrides (One Dark) */
+.dark .hljs,
+.dark pre code.hljs {
+  background: var(--muted);
+  color: #abb2bf;
+}
+.dark .hljs-comment,
+.dark .hljs-quote {
+  color: #5c6370;
+  font-style: italic;
+}
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-type {
+  color: #c678dd;
+}
+.dark .hljs-string,
+.dark .hljs-regexp,
+.dark .hljs-addition {
+  color: #98c379;
+}
+.dark .hljs-number,
+.dark .hljs-literal {
+  color: #d19a66;
+}
+.dark .hljs-title,
+.dark .hljs-section {
+  color: #e6c07b;
+}
+.dark .hljs-title.function_,
+.dark .hljs-name {
+  color: #61afef;
+}
+.dark .hljs-attr,
+.dark .hljs-variable,
+.dark .hljs-template-variable {
+  color: #d19a66;
+}
+.dark .hljs-built_in {
+  color: #e6c07b;
+}
+.dark .hljs-symbol,
+.dark .hljs-bullet {
+  color: #56b6c2;
+}
+.dark .hljs-meta {
+  color: #61afef;
+}
+.dark .hljs-deletion {
+  color: #e06c75;
+}
+.dark .hljs-params {
+  color: #abb2bf;
+}
+
+/* ReactFlow overrides */
 .react-flow {
   --xy-background-color: transparent;
   --xy-node-background-color: transparent;
@@ -209,4 +270,33 @@ code,
 
 .react-flow__node {
   box-shadow: none !important;
+}
+
+.react-flow__panel {
+  box-shadow: none !important;
+}
+
+.react-flow__controls {
+  box-shadow: none !important;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.react-flow__controls button {
+  background: var(--card);
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+}
+
+.react-flow__controls button:hover {
+  background: var(--accent);
+}
+
+.react-flow__controls button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls button svg {
+  fill: currentColor;
 }

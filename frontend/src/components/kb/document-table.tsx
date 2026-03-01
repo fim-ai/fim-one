@@ -68,8 +68,7 @@ export function DocumentTable({
         {documents.map((doc) => (
           <div
             key={doc.id}
-            className="grid grid-cols-[1fr_60px_70px_70px_80px] gap-2 px-3 py-2 text-sm items-center border-b border-border/50 hover:bg-accent/5 transition-colors cursor-pointer"
-            onClick={() => setSelectedDoc(doc)}
+            className="grid grid-cols-[1fr_60px_70px_70px_80px] gap-2 px-3 py-2 text-sm items-center border-b border-border/50 hover:bg-accent/5 transition-colors"
           >
             {/* Filename */}
             <div className="flex items-center gap-1.5 min-w-0">
@@ -104,10 +103,7 @@ export function DocumentTable({
             </Badge>
 
             {/* Actions */}
-            <div
-              className="flex items-center justify-end gap-0.5"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="flex items-center justify-end gap-0.5">
               <Button
                 variant="ghost"
                 size="icon-xs"

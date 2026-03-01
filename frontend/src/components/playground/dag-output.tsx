@@ -174,28 +174,28 @@ function StepProgressCard({ state }: { state: StepState }) {
     state.status === "completed"
       ? "border-green-500/20"
       : state.status === "running"
-        ? "border-blue-500/20"
+        ? "border-amber-500/20"
         : "border-zinc-500/20"
 
   const iconBgClass =
     state.status === "completed"
       ? "bg-green-500/10"
       : state.status === "running"
-        ? "bg-blue-500/10"
+        ? "bg-amber-500/10"
         : "bg-zinc-500/10"
 
   const iconTextClass =
     state.status === "completed"
       ? "text-green-500"
       : state.status === "running"
-        ? "text-blue-500"
+        ? "text-amber-500"
         : "text-zinc-500"
 
   const badgeBorderClass =
     state.status === "completed"
       ? "border-green-500/30 text-green-500"
       : state.status === "running"
-        ? "border-blue-500/30 text-blue-500"
+        ? "border-amber-500/30 text-amber-500"
         : "border-zinc-500/30 text-zinc-500"
 
   return (
@@ -240,10 +240,10 @@ function StepProgressCard({ state }: { state: StepState }) {
               <div className="flex items-center gap-2 flex-wrap">
                 {iter.type === "tool_call" ? (
                   <>
-                    <Wrench className="h-3 w-3 text-blue-500" />
+                    <Wrench className="h-3 w-3 text-amber-500" />
                     <Badge
                       variant="outline"
-                      className="border-blue-500/30 text-blue-500 text-[10px] uppercase tracking-wider"
+                      className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
                     >
                       Tool
                     </Badge>
@@ -412,7 +412,7 @@ function CollapsibleBlock({
       )}
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="flex items-center gap-1 mt-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+        className="flex items-center gap-1 mt-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
       >
         {expanded ? (
           <>

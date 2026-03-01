@@ -150,7 +150,7 @@ function CollapsibleBlock({
       )}
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="flex items-center gap-1 mt-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+        className="flex items-center gap-1 mt-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
       >
         {expanded ? (
           <>
@@ -239,15 +239,15 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
 
   if (step.type === "tool_start") {
     return (
-      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-blue-500/20 py-4">
+      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-amber-500/20 py-4">
         <CardContent className="space-y-2">
           <div className="flex items-center gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/10">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
             </div>
             <Badge
               variant="outline"
-              className="border-blue-500/30 text-blue-500 text-[10px] uppercase tracking-wider"
+              className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
             >
               Tool
             </Badge>
@@ -277,15 +277,15 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
 
   if (step.type === "tool_call") {
     return (
-      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-blue-500/20 py-4">
+      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-amber-500/20 py-4">
         <CardContent className="space-y-2">
           <div className="flex items-center gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500/10">
-              <Wrench className="h-3.5 w-3.5 text-blue-500" />
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
+              <Wrench className="h-3.5 w-3.5 text-amber-500" />
             </div>
             <Badge
               variant="outline"
-              className="border-blue-500/30 text-blue-500 text-[10px] uppercase tracking-wider"
+              className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
             >
               Tool
             </Badge>

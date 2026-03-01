@@ -8,11 +8,38 @@ import { cn } from "@/lib/utils"
 import { APP_NAME } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useAuth } from "@/contexts/auth-context"
 import { ConversationProvider, useConversation } from "@/contexts/conversation-context"
 import { ConversationSidebar } from "@/components/layout/conversation-sidebar"
 import { ChatSearchDialog } from "@/components/layout/chat-search-dialog"
 import { UserMenu } from "@/components/layout/user-menu"
+
+/** Wraps children in a right-side tooltip when the sidebar is collapsed. */
+function SidebarTooltip({
+  label,
+  collapsed,
+  children,
+}: {
+  label: string
+  collapsed: boolean
+  children: React.ReactNode
+}) {
+  if (!collapsed) return <>{children}</>
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
   const { clearActive } = useConversation()
@@ -27,20 +54,22 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
   if (collapsed) {
     return (
       <div className="flex flex-col items-center gap-1 px-2 py-2 shrink-0">
-        <button
-          onClick={handleNewChat}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-          title="New Chat"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-          title="Search (Cmd+K)"
-        >
-          <Search className="h-4 w-4" />
-        </button>
+        <SidebarTooltip label="New Chat" collapsed>
+          <button
+            onClick={handleNewChat}
+            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </SidebarTooltip>
+        <SidebarTooltip label="Search (Cmd+K)" collapsed>
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        </SidebarTooltip>
         <ChatSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       </div>
     )
@@ -129,27 +158,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             collapsed ? "w-16" : "w-60",
           )}
         >
+         <TooltipProvider delayDuration={300}>
           {/* Logo area + collapse toggle */}
           <div className={cn("flex h-14 items-center shrink-0", collapsed ? "justify-center px-2" : "justify-between px-4")}>
             {!collapsed && (
               <div className="flex items-center gap-2">
                 <img
+                  src="/fim-mark-light.svg"
+                  alt="FIM"
+                  className="h-6 w-auto shrink-0 dark:hidden"
+                />
+                <img
                   src="/fim-mark.svg"
                   alt="FIM"
-                  className="h-6 w-auto shrink-0"
+                  className="h-6 w-auto shrink-0 hidden dark:block"
                 />
                 <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
                   {APP_NAME}
                 </span>
               </div>
             )}
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
+            <SidebarTooltip label="Expand sidebar" collapsed={collapsed}>
+              <button
+                onClick={() => setCollapsed(!collapsed)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              </button>
+            </SidebarTooltip>
           </div>
 
           <Separator />
@@ -161,59 +197,66 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Navigation */}
           <div className={cn("px-3 py-2 shrink-0", collapsed && "flex flex-col items-center gap-1")}>
-            <Link
-              href="/agents"
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                pathname === "/agents"
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <Bot className="h-4 w-4" />
-              {!collapsed && <span>Agents</span>}
-            </Link>
-            <Link
-              href="/kb"
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                pathname === "/kb" || pathname.startsWith("/kb/")
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <Library className="h-4 w-4" />
-              {!collapsed && <span>Knowledge</span>}
-            </Link>
-            <Link
-              href="/connectors"
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                pathname === "/connectors"
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                collapsed && "justify-center px-0"
-              )}
-              title="Connectors"
-            >
-              <Plug className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>Connectors</span>}
-            </Link>
-            <Link
-              href="/chats"
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                pathname === "/chats"
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <MessagesSquare className="h-4 w-4" />
-              {!collapsed && <span>All Chats</span>}
-            </Link>
+            <SidebarTooltip label="Agents" collapsed={collapsed}>
+              <Link
+                href="/agents"
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  pathname === "/agents"
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                  collapsed && "h-9 w-9 justify-center px-0"
+                )}
+              >
+                <Bot className="h-4 w-4" />
+                {!collapsed && <span>Agents</span>}
+              </Link>
+            </SidebarTooltip>
+            <SidebarTooltip label="Knowledge" collapsed={collapsed}>
+              <Link
+                href="/kb"
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  pathname === "/kb" || pathname.startsWith("/kb/")
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                  collapsed && "h-9 w-9 justify-center px-0"
+                )}
+              >
+                <Library className="h-4 w-4" />
+                {!collapsed && <span>Knowledge</span>}
+              </Link>
+            </SidebarTooltip>
+            <SidebarTooltip label="Connectors" collapsed={collapsed}>
+              <Link
+                href="/connectors"
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  pathname === "/connectors"
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                  collapsed && "h-9 w-9 justify-center px-0"
+                )}
+              >
+                <Plug className="h-4 w-4 shrink-0" />
+                {!collapsed && <span>Connectors</span>}
+              </Link>
+            </SidebarTooltip>
+            <SidebarTooltip label="All Chats" collapsed={collapsed}>
+              <Link
+                href="/chats"
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  pathname === "/chats"
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                  collapsed && "h-9 w-9 justify-center px-0"
+                )}
+              >
+                <MessagesSquare className="h-4 w-4" />
+                {!collapsed && <span>All Chats</span>}
+              </Link>
+            </SidebarTooltip>
           </div>
 
           <Separator />
@@ -228,6 +271,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Separator className="mb-2" />
             <UserMenu collapsed={collapsed} />
           </div>
+         </TooltipProvider>
         </aside>
 
         {/* Main area */}

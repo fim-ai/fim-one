@@ -36,7 +36,7 @@ export function UserMenu({ collapsed }: UserMenuProps) {
             "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
             "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             "outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            collapsed && "justify-center px-0",
+            collapsed && "h-9 w-9 justify-center px-0",
           )}
         >
           <Avatar className="h-7 w-7 shrink-0">

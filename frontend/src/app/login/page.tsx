@@ -136,7 +136,8 @@ function LoginPageInner() {
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <div className="mx-auto mb-2 flex items-center gap-2">
-            <img src="/fim-mark.svg" alt="FIM" className="h-8 w-auto" />
+            <img src="/fim-mark-light.svg" alt="FIM" className="h-8 w-auto dark:hidden" />
+            <img src="/fim-mark.svg" alt="FIM" className="h-8 w-auto hidden dark:block" />
             <span className="text-lg font-bold">{APP_NAME}</span>
           </div>
           <CardTitle className="text-xl">Welcome</CardTitle>

@@ -38,7 +38,7 @@ export function ConnectorCard({
           {connector.name}
         </h3>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[10px] px-1.5 py-0 h-5 inline-flex items-center rounded-full bg-blue-500/10 text-blue-500 font-medium">
+          <span className="text-[10px] px-1.5 py-0 h-5 inline-flex items-center rounded-full bg-amber-500/10 text-amber-500 font-medium">
             {connector.type === "api" ? "API" : "Database"}
           </span>
           <Badge

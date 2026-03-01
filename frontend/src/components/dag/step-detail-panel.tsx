@@ -64,7 +64,7 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
             <div className="flex-1 min-w-0 space-y-1">
               <Badge
                 variant="outline"
-                className="text-[10px] font-mono border-blue-500/30 text-blue-400"
+                className="text-[10px] font-mono border-amber-500/30 text-amber-400"
               >
                 {state.step_id}
               </Badge>
@@ -102,10 +102,10 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
                   <div className="flex items-center gap-2 flex-wrap">
                     {iter.type === "tool_call" ? (
                       <>
-                        <Wrench className="h-3 w-3 text-blue-500" />
+                        <Wrench className="h-3 w-3 text-amber-500" />
                         <Badge
                           variant="outline"
-                          className="border-blue-500/30 text-blue-500 text-[10px] uppercase tracking-wider"
+                          className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
                         >
                           Tool
                         </Badge>

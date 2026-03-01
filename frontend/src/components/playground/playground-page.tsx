@@ -380,7 +380,7 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
   return (
     <>
       {userContent && (
-        <div className="flex gap-3">
+        <div className="flex gap-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
             <User className="h-3.5 w-3.5 text-primary" />
           </div>
@@ -843,7 +843,7 @@ function PlaygroundContent({
                   )}
                   {/* Current turn: user message + live output */}
                   {pendingQuery && (
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
                       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
                         <User className="h-3.5 w-3.5 text-primary" />
                       </div>
@@ -1048,7 +1048,7 @@ function PlaygroundContent({
               isRunning && "opacity-50 cursor-not-allowed",
               mode === "react"
                 ? "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                : "border-blue-500/40 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20"
+                : "border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
             )}
           >
             {mode === "react" ? (

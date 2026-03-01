@@ -56,7 +56,7 @@ function TimelineStep({ step, item, isLast, onClick }: { step: ReactStepEvent; i
   const dotColor = isThinking
     ? "bg-amber-500"
     : isTool
-      ? "bg-blue-500"
+      ? "bg-amber-500"
       : "bg-zinc-500"
 
   const lineColor = isLast ? "bg-transparent" : "bg-border/50"
@@ -80,7 +80,7 @@ function TimelineStep({ step, item, isLast, onClick }: { step: ReactStepEvent; i
             className={`text-[9px] uppercase tracking-wider py-0 h-4 ${
               isThinking
                 ? "border-amber-500/30 text-amber-500"
-                : "border-blue-500/30 text-blue-500"
+                : "border-amber-500/30 text-amber-500"
             }`}
           >
             {isThinking ? "Think" : "Tool"}

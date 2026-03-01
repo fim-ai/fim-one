@@ -1,6 +1,6 @@
 <div align="center">
 
-![FIM Agent Banner](./assets/banner.jpg)
+![FIM Agent Banner](./assets/banner.png)
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-Source%20Available-orange)

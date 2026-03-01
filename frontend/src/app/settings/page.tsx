@@ -3,15 +3,17 @@
 import { useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
-import { Settings, User } from "lucide-react"
+import { Palette, Settings, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { GeneralSettings } from "@/components/settings/general-settings"
 import { AccountSettings } from "@/components/settings/account-settings"
+import { AppearanceSettings } from "@/components/settings/appearance-settings"
 
 const TABS = [
   { key: "general", label: "General", icon: Settings },
   { key: "account", label: "Account", icon: User },
+  { key: "appearance", label: "Appearance", icon: Palette },
 ] as const
 
 type TabKey = (typeof TABS)[number]["key"]
@@ -73,6 +75,7 @@ function SettingsContent() {
           <div className="max-w-2xl">
             {activeTab === "general" && <GeneralSettings />}
             {activeTab === "account" && <AccountSettings />}
+            {activeTab === "appearance" && <AppearanceSettings />}
           </div>
         </div>
       </div>
