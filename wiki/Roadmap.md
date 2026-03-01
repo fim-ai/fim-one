@@ -152,22 +152,23 @@ Layer 3 — Sidecar engine  : Embed into enterprise legacy systems as invisible 
 >
 > **Architecture**: Virtual Connector model — definitions stored in DB, runtime HTTP/SQL proxy (no MCP protocol overhead), export to standalone MCP Server for distribution/fork.
 
-#### v0.6.1 — Connector Entity & Manual Builder
+#### v0.6.1 — Connector Entity & Manual Builder (shipped)
 
 **Backend**
-- [ ] Connector + ConnectorAction ORM models
-- [ ] Connector CRUD API: `/api/connectors`
-- [ ] ConnectorAction CRUD API: `/api/connectors/{id}/actions`
-- [ ] `ConnectorToolAdapter` (like MCPToolAdapter): Action → BaseTool; `run()` builds HTTP request → `base_url + path` → returns response
-- [ ] Agent model `connector_ids: JSON` field
-- [ ] `_resolve_tools()` extension: load agent-bound connectors → register actions as tools
-- [ ] Database migration
+- [x] Connector + ConnectorAction ORM models
+- [x] Connector CRUD API: `/api/connectors`
+- [x] ConnectorAction CRUD API: `/api/connectors/{id}/actions`
+- [x] `ConnectorToolAdapter` (like MCPToolAdapter): Action → BaseTool; `run()` builds HTTP request → `base_url + path` → returns response; auth injection (bearer with configurable prefix, API key with custom header, basic auth) with default credential fallback from `auth_config`
+- [x] Agent model `connector_ids: JSON` field
+- [x] `_resolve_tools()` extension: load agent-bound connectors → register actions as tools
+- [x] Database migration
 
 **Frontend**
-- [ ] Connector management page (list + create/edit form)
-- [ ] Action editor (method, path, parameters schema)
-- [ ] Agent form Connector multi-select (like KB binding)
-- [ ] Tool category `"connector"` in sidebar
+- [x] Connector management page (list + create/edit form)
+- [x] Action editor (method, path, parameters schema)
+- [x] Agent form Connector multi-select (like KB binding)
+- [x] Tool category `"connector"` in sidebar
+- [x] Per-auth-type config UI (bearer token prefix + default token, API key header name + default key, basic auth username/password)
 
 **Validation**: GitHub Connector (PAT bearer auth) → list_repos / get_issue → bind to Agent → use in conversation.
 
