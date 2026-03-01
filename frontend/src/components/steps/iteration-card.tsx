@@ -1,6 +1,7 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
+import { useState } from "react"
+import { Loader2, ChevronDown, ChevronUp } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import type { IterationData } from "./types"
 import { IterationHeader } from "./iteration-header"
@@ -24,10 +25,15 @@ export function IterationCard({
   size = "default",
   variant = "card",
   defaultCollapsed = true,
-  showReasoning = true,
+  showReasoning = false,
 }: IterationCardProps) {
-  const isCompact = size === "compact"
   const isLoading = data.loading || data.type === "tool_start"
+  const hasArgs = data.tool_args && Object.keys(data.tool_args).length > 0
+  const hasObs = !!data.observation
+  const hasError = !!data.error
+
+  const [argsOpen, setArgsOpen] = useState(!defaultCollapsed)
+  const [obsOpen, setObsOpen] = useState(!defaultCollapsed)
 
   // Auto-generate summary if not provided
   const summary = summaryProp ?? (
@@ -37,62 +43,74 @@ export function IterationCard({
   )
 
   const content = (
-    <div className={`space-y-${isCompact ? "1.5" : "2"}`}>
-      <IterationHeader data={data} summary={summary} size={size} />
+    <div className="space-y-1.5">
+      <IterationHeader data={data} summary={summary} />
 
       {showReasoning && data.reasoning && (
-        <p className={`text-xs italic text-muted-foreground leading-relaxed ${isCompact ? "" : "pl-9"}`}>
+        <p className="text-[11px] italic text-muted-foreground leading-relaxed">
           {data.reasoning}
         </p>
       )}
 
-      {data.tool_args && Object.keys(data.tool_args).length > 0 && (
-        <div className={isCompact ? "" : "ml-9"}>
-          <ToolArgsBlock
-            args={data.tool_args}
-            size={size}
-            defaultCollapsed={defaultCollapsed}
-          />
-        </div>
-      )}
-
       {isLoading && (
-        <div className={`flex items-center gap-2 text-xs text-muted-foreground ${isCompact ? "" : "ml-9"}`}>
-          <Loader2 className="h-3 w-3 animate-spin" />
-          <span className="shiny-text">Executing...</span>
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+          <span className="shiny-text">Executing…</span>
         </div>
       )}
 
-      {data.observation && (
-        <div className={isCompact ? "" : "ml-9"}>
-          <ObservationBlock
-            observation={data.observation}
-            size={size}
-            defaultCollapsed={defaultCollapsed}
-          />
+      {/* Inline toggle pills for Args / Obs */}
+      {(hasArgs || hasObs) && !isLoading && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {hasArgs && (
+            <TogglePill label="Arguments" open={argsOpen} onClick={() => setArgsOpen((v) => !v)} />
+          )}
+          {hasObs && (
+            <TogglePill label="Observation" open={obsOpen} onClick={() => setObsOpen((v) => !v)} />
+          )}
         </div>
       )}
 
-      {data.error && (
-        <div className={isCompact ? "" : "ml-9"}>
-          <ErrorBlock error={data.error} size={size} />
-        </div>
+      {/* Expanded content */}
+      {argsOpen && hasArgs && (
+        <ToolArgsBlock args={data.tool_args!} size={size} defaultCollapsed={false} />
       )}
+      {obsOpen && hasObs && (
+        <ObservationBlock observation={data.observation!} size={size} defaultCollapsed={false} />
+      )}
+      {hasError && <ErrorBlock error={data.error!} size={size} />}
     </div>
   )
 
   if (variant === "card") {
     return (
-      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-amber-500/20 py-4">
-        <CardContent>{content}</CardContent>
+      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-200 border-amber-500/20 py-2">
+        <CardContent className="py-0">{content}</CardContent>
       </Card>
     )
   }
 
   // variant === "inline"
   return (
-    <div className="rounded-md border border-border/30 bg-muted/20 p-2.5">
+    <div className="rounded-md border border-border/30 bg-muted/20 px-2.5 py-2">
       {content}
     </div>
+  )
+}
+
+/** Compact inline pill toggle button */
+function TogglePill({ label, open, onClick }: { label: string; open: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1 px-2 py-0.5 rounded border border-border/40 bg-muted/30 text-[10px] text-muted-foreground hover:bg-muted/50 transition-colors"
+    >
+      <span className="uppercase tracking-wider font-medium">{label}</span>
+      {open
+        ? <ChevronUp className="h-2.5 w-2.5" />
+        : <ChevronDown className="h-2.5 w-2.5" />
+      }
+    </button>
   )
 }
