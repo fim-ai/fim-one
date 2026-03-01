@@ -9,13 +9,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
 import { fmtDuration } from "@/lib/utils"
-import { useState, useRef, useLayoutEffect } from "react"
+import { useState } from "react"
 import {
   Loader2,
   Wrench,
-  Brain,
   CheckCircle2,
-  AlertCircle,
   CircleDashed,
   BarChart3,
   Clock,
@@ -31,6 +29,8 @@ import type {
 } from "@/types/api"
 import type { StepState } from "@/hooks/use-dag-steps"
 import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
+import { IterationCard } from "@/components/steps"
+import type { IterationData } from "@/components/steps"
 
 interface DagOutputProps {
   planSteps: DagPhaseEvent["steps"]
@@ -232,82 +232,28 @@ function StepProgressCard({ state }: { state: StepState }) {
       {(state.iterations.length > 0 || state.result) && (
         <CardContent className="space-y-2">
           {/* Iteration items */}
-          {state.iterations.map((iter, idx) => (
-            <div
-              key={idx}
-              className="rounded-md border border-border/30 bg-muted/20 p-2.5 space-y-1.5"
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                {iter.type === "tool_call" ? (
-                  <>
-                    <Wrench className="h-3 w-3 text-amber-500" />
-                    <Badge
-                      variant="outline"
-                      className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
-                    >
-                      Tool
-                    </Badge>
-                    <span className="text-xs font-medium">
-                      {iter.tool_name}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Brain className="h-3 w-3 text-amber-500" />
-                    <Badge
-                      variant="outline"
-                      className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
-                    >
-                      Thinking
-                    </Badge>
-                  </>
-                )}
-                <span className="text-[10px] text-muted-foreground">
-                  Iteration {idx + 1}
-                </span>
-              </div>
-              {iter.reasoning && (
-                <p className="text-xs italic text-muted-foreground leading-relaxed">
-                  {iter.reasoning}
-                </p>
-              )}
-              {iter.tool_args &&
-                Object.keys(iter.tool_args).length > 0 && (
-                  <DagToolArgsBlock args={iter.tool_args} />
-                )}
-              {iter.loading && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  <span className="shiny-text">Executing...</span>
-                </div>
-              )}
-              {iter.observation && (
-                <div className="rounded bg-muted/30 border border-border/30 p-2">
-                  <p className="text-[10px] font-medium text-muted-foreground mb-0.5 uppercase tracking-wider">
-                    Observation
-                  </p>
-                  <CollapsibleBlock>
-                    <pre className="whitespace-pre-wrap text-xs text-foreground/90 font-mono leading-relaxed">
-                      {iter.observation}
-                    </pre>
-                  </CollapsibleBlock>
-                </div>
-              )}
-              {iter.error && (
-                <div className="rounded border border-destructive/30 bg-destructive/5 p-2">
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <AlertCircle className="h-2.5 w-2.5 text-destructive" />
-                    <p className="text-[10px] font-medium text-destructive uppercase tracking-wider">
-                      Error
-                    </p>
-                  </div>
-                  <pre className="whitespace-pre-wrap text-xs text-destructive/90 font-mono">
-                    {iter.error}
-                  </pre>
-                </div>
-              )}
-            </div>
-          ))}
+          {state.iterations.map((iter, idx) => {
+            const iterData: IterationData = {
+              type: iter.type,
+              iteration: iter.iteration,
+              displayIteration: idx + 1,
+              tool_name: iter.tool_name,
+              tool_args: iter.tool_args,
+              reasoning: iter.reasoning,
+              observation: iter.observation,
+              error: iter.error,
+              loading: iter.loading,
+            }
+            return (
+              <IterationCard
+                key={idx}
+                data={iterData}
+                variant="inline"
+                size="compact"
+                defaultCollapsed={true}
+              />
+            )
+          })}
 
           {/* Completed result */}
           {state.result && (
@@ -324,109 +270,6 @@ function StepProgressCard({ state }: { state: StepState }) {
         </CardContent>
       )}
     </Card>
-  )
-}
-
-function DagToolArgsBlock({ args }: { args: Record<string, unknown> }) {
-  const mdCls = "text-[11px] [&_pre]:my-0 [&_pre]:p-2"
-  if (typeof args.code === "string") {
-    const rest = { ...args }
-    delete rest.code
-    const hasRest = Object.keys(rest).length > 0
-    return (
-      <div className="rounded bg-muted/30 border border-border/30 p-2">
-        <p className="text-[10px] font-medium text-muted-foreground mb-0.5 uppercase tracking-wider">
-          Arguments
-        </p>
-        <CollapsibleBlock>
-          <MarkdownContent
-            content={`\`\`\`python\n${args.code}\n\`\`\``}
-            className={mdCls}
-          />
-        </CollapsibleBlock>
-        {hasRest && (
-          <div className="mt-1">
-            <CollapsibleBlock>
-              <MarkdownContent
-                content={`\`\`\`json\n${JSON.stringify(rest, null, 2)}\n\`\`\``}
-                className={mdCls}
-              />
-            </CollapsibleBlock>
-          </div>
-        )}
-      </div>
-    )
-  }
-  return (
-    <div className="rounded bg-muted/30 border border-border/30 p-2">
-      <p className="text-[10px] font-medium text-muted-foreground mb-0.5 uppercase tracking-wider">
-        Arguments
-      </p>
-      <CollapsibleBlock>
-        <MarkdownContent
-          content={`\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\``}
-          className={mdCls}
-        />
-      </CollapsibleBlock>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Collapsible block (same as react-output)                           */
-/* ------------------------------------------------------------------ */
-
-const COLLAPSE_HEIGHT = 60
-
-function CollapsibleBlock({
-  children,
-  maxHeight = COLLAPSE_HEIGHT,
-}: {
-  children: React.ReactNode
-  maxHeight?: number
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [overflows, setOverflows] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el) setOverflows(el.scrollHeight > maxHeight)
-  }, [children, maxHeight])
-
-  if (!overflows) {
-    return <div ref={ref}>{children}</div>
-  }
-
-  return (
-    <div>
-      <div
-        ref={ref}
-        style={!expanded ? { maxHeight } : undefined}
-        className={!expanded ? "overflow-hidden" : undefined}
-      >
-        {children}
-      </div>
-      {!expanded && (
-        <div className="h-6 -mt-6 bg-gradient-to-t from-muted/80 to-transparent pointer-events-none relative z-[1]" />
-      )}
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        className="flex items-center gap-1 mt-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
-      >
-        {expanded ? (
-          <>
-            <ChevronUp className="h-3 w-3" />
-            Collapse
-          </>
-        ) : (
-          <>
-            <ChevronDown className="h-3 w-3" />
-            Show more
-          </>
-        )}
-      </button>
-    </div>
   )
 }
 

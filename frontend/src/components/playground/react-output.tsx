@@ -8,12 +8,14 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
-import { useState, useRef, useEffect, useLayoutEffect } from "react"
-import { Loader2, Wrench, Brain, CheckCircle2, AlertCircle, Clock, RefreshCw, BarChart3, ChevronDown, ChevronUp, Sparkles } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Loader2, Wrench, Brain, CheckCircle2, Clock, RefreshCw, BarChart3, ChevronDown, ChevronUp, Sparkles } from "lucide-react"
 import { fmtDuration } from "@/lib/utils"
 import type { ReactStepEvent, ReactDoneEvent } from "@/types/api"
 import type { StepItem } from "@/hooks/use-react-steps"
 import { ReferencesSection } from "./references-section"
+import { IterationCard } from "@/components/steps"
+import type { IterationData } from "@/components/steps"
 
 interface ReactOutputProps {
   items: StepItem[]
@@ -114,60 +116,6 @@ export function ReactOutput({ items }: ReactOutputProps) {
   )
 }
 
-const COLLAPSE_HEIGHT = 60
-
-function CollapsibleBlock({
-  children,
-  maxHeight = COLLAPSE_HEIGHT,
-}: {
-  children: React.ReactNode
-  maxHeight?: number
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [overflows, setOverflows] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el) setOverflows(el.scrollHeight > maxHeight)
-  }, [children, maxHeight])
-
-  if (!overflows) {
-    return <div ref={ref}>{children}</div>
-  }
-
-  return (
-    <div>
-      <div
-        ref={ref}
-        style={!expanded ? { maxHeight } : undefined}
-        className={!expanded ? "overflow-hidden" : undefined}
-      >
-        {children}
-      </div>
-      {!expanded && (
-        <div className="h-6 -mt-6 bg-gradient-to-t from-muted/80 to-transparent pointer-events-none relative z-[1]" />
-      )}
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        className="flex items-center gap-1 mt-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
-      >
-        {expanded ? (
-          <>
-            <ChevronUp className="h-3 w-3" />
-            Collapse
-          </>
-        ) : (
-          <>
-            <ChevronDown className="h-3 w-3" />
-            Show more
-          </>
-        )}
-      </button>
-    </div>
-  )
-}
-
 const THINKING_HINTS = [
   "Understanding your question...",
   "Analyzing the task...",
@@ -237,162 +185,20 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
     return <ThinkingCard iterLabel={iterLabel} duration={duration} reasoning={step.reasoning} />
   }
 
-  if (step.type === "tool_start") {
-    return (
-      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-amber-500/20 py-4">
-        <CardContent className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
-            </div>
-            <Badge
-              variant="outline"
-              className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
-            >
-              Tool
-            </Badge>
-            <span className="text-xs font-medium text-foreground">
-              {step.tool_name}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Iteration {iterLabel}
-            </span>
-          </div>
-          {step.reasoning && (
-            <p className="text-xs italic text-muted-foreground leading-relaxed pl-9">
-              {step.reasoning}
-            </p>
-          )}
-          {step.tool_args && Object.keys(step.tool_args).length > 0 && (
-            <ToolArgsBlock args={step.tool_args} className="ml-9" />
-          )}
-          <div className="flex items-center gap-2 ml-9 text-xs text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span className="shiny-text">Executing...</span>
-          </div>
-        </CardContent>
-      </Card>
-    )
+  // Map ReactStepEvent to IterationData for tool_start / tool_call
+  const iterData: IterationData = {
+    type: step.type,
+    displayIteration: iterLabel,
+    tool_name: step.tool_name,
+    tool_args: step.tool_args,
+    reasoning: step.reasoning,
+    observation: step.observation,
+    error: step.error,
+    duration,
+    loading: step.type === "tool_start",
   }
 
-  if (step.type === "tool_call") {
-    return (
-      <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 border-amber-500/20 py-4">
-        <CardContent className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
-              <Wrench className="h-3.5 w-3.5 text-amber-500" />
-            </div>
-            <Badge
-              variant="outline"
-              className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider"
-            >
-              Tool
-            </Badge>
-            <span className="text-xs font-medium text-foreground">
-              {step.tool_name}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Iteration {iterLabel}
-            </span>
-            {duration != null && (
-              <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock className="h-2.5 w-2.5" />
-                {fmtDuration(duration)}
-              </span>
-            )}
-          </div>
-          {step.reasoning && (
-            <p className="text-xs italic text-muted-foreground leading-relaxed pl-9">
-              {step.reasoning}
-            </p>
-          )}
-          {step.tool_args && Object.keys(step.tool_args).length > 0 && (
-            <ToolArgsBlock args={step.tool_args} className="ml-9" />
-          )}
-          {step.observation && (
-            <div className="rounded-md border border-border/50 bg-muted/30 p-3 ml-9">
-              <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-                Observation
-              </p>
-              <CollapsibleBlock>
-                <pre className="whitespace-pre-wrap text-xs text-foreground/90 font-mono leading-relaxed">
-                  {step.observation}
-                </pre>
-              </CollapsibleBlock>
-            </div>
-          )}
-          {step.error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 ml-9">
-              <div className="flex items-center gap-1.5 mb-1">
-                <AlertCircle className="h-3 w-3 text-destructive" />
-                <p className="text-xs font-medium text-destructive uppercase tracking-wider">
-                  Error
-                </p>
-              </div>
-              <pre className="whitespace-pre-wrap text-xs text-destructive/90 font-mono">
-                {step.error}
-              </pre>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return null
-}
-
-const ARGS_MD_CLS = "text-xs [&_pre]:my-0 [&_pre]:p-0 [&_pre]:bg-transparent [&_pre]:rounded-none"
-
-function ToolArgsBlock({
-  args,
-  className,
-}: {
-  args: Record<string, unknown>
-  className?: string
-}) {
-  if (typeof args.code === "string") {
-    const rest = { ...args }
-    delete rest.code
-    const hasRest = Object.keys(rest).length > 0
-    return (
-      <div className={`rounded-md border border-border/50 bg-muted/30 p-3 ${className ?? ""}`}>
-        <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-          Arguments
-        </p>
-        <CollapsibleBlock>
-          <MarkdownContent
-            content={`\`\`\`python\n${args.code}\n\`\`\``}
-            className={ARGS_MD_CLS}
-          />
-        </CollapsibleBlock>
-        {hasRest && (
-          <div className="mt-2">
-            <CollapsibleBlock>
-              <MarkdownContent
-                content={`\`\`\`json\n${JSON.stringify(rest, null, 2)}\n\`\`\``}
-                className={ARGS_MD_CLS}
-              />
-            </CollapsibleBlock>
-          </div>
-        )}
-      </div>
-    )
-  }
-  return (
-    <div className={`rounded-md border border-border/50 bg-muted/30 p-3 ${className ?? ""}`}>
-      <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wider">
-        Arguments
-      </p>
-      <CollapsibleBlock>
-        <MarkdownContent
-          content={`\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\``}
-          className={ARGS_MD_CLS}
-        />
-      </CollapsibleBlock>
-    </div>
-  )
+  return <IterationCard data={iterData} variant="card" defaultCollapsed={true} />
 }
 
 function DoneCard({ done, items }: { done: ReactDoneEvent; items?: StepItem[] }) {
