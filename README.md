@@ -16,18 +16,18 @@
 
 ## Table of Contents
 
-- [Overview](#-overview)
-- [Why FIM Agent](#-why-fim-agent)
+- [Overview](#overview)
+- [Why FIM Agent](#why-fim-agent)
 - [Where FIM Agent Sits](#where-fim-agent-sits)
-- [Key Features](#-key-features)
-- [Architecture](#%EF%B8%8F-architecture)
-- [Quick Start](#-quick-start)
-- [Configuration](#%EF%B8%8F-configuration)
-- [Development](#%EF%B8%8F-development)
-- [Roadmap](#%EF%B8%8F-roadmap)
-- [Star History](#-star-history)
-- [Contributors](#-contributors)
-- [License](#-license)
+- [Key Features](#key-features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [Star History](#star-history)
+- [Contributors](#contributors)
+- [License](#license)
 
 ## Overview
 
