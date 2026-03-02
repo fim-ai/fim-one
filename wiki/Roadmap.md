@@ -254,6 +254,10 @@ Hub          → Central cross-system orchestration (Portal / API)
 **Reference Implementation**
 - [ ] **Zhihe Contract System Reference Connector**: First official business connector — search / detail / compare / timeline / statistics
 
+**Planning & Execution Intelligence**
+- [ ] **DAG Execution Gating (HITL)**: Human-in-the-loop checkpoints during DAG execution — Plan Preview (show generated plan → user approve/modify/reject before execution), Step-level Gates (`GateNode` type with `single_select` / `multi_select` / `freeform` interaction modes), Confidence-based Soft Gates (planner confidence < threshold triggers user review, timeout auto-selects default); SSE event `gate_required`; complements v0.6.2 Confirmation Gate (connector write ops) with plan-level oversight
+- [ ] **KB Routing Strategy**: Multi-layer knowledge base selection — L1: static `kb_scope` per step (whitelist within agent's `kb_ids`), L2: priority hints in step config (`high` / `medium` / `low` with trigger conditions), L3: optional agent dynamic selection within whitelist for large KB pools (>5); reduces unnecessary retrieval, improves grounding precision
+
 ### v0.9 -- Sandbox Hardening + Observability
 
 > *"Production-ready"*
@@ -320,34 +324,17 @@ Platform (multi-tenant)
 │   └── Project 2: Internal Knowledge Agent  [tools: rag + built-in + MCP]
 ```
 
-## Migration from Old Roadmap
-
-| Old Version | Old Content | Disposition | Rationale |
-|-------------|-------------|-------------|-----------|
-| v0.3 Tool Ecosystem | Built-in tools, MCP | **Kept** at v0.3 | Universal tools are the foundation |
-| v0.4 RAG | Vector store, doc loaders | **Moved** to v0.5 | Platform foundation comes first |
-| v0.5 Agent Builder | Visual agent creation | **Simplified** -> v0.4 Project/Agent management | Code + config over drag-and-drop |
-| v0.6 Multi-Agent + HITL | Nested agents, approval gates | **Split** | HITL -> v0.7; Multi-Agent -> v1.0 |
-| v0.7 Production Platform | User management, persistence | **Moved earlier** to v0.4 | Platform basics needed sooner |
-| v0.8 Observability | Tracing, cost, monitoring | **Moved** to v0.9 | Connector features take priority |
-| v0.9 Workflow Engine | Dify-style visual orchestration | **Removed** | Not pursuing Dify parity |
-| -- | -- | **New** v0.6 System Connector | Core differentiator |
-| -- | -- | **New** v0.7 Embeddable UI | Embedded delivery mode |
-| -- | -- | **New** v0.8 Declarative Connector | Standardization at scale |
-| v0.6–v1.0 | System Adapter → Connector Platform | **Restructured** | governance layer evolved into Connector entity model; per-user credentials; AI Builder; Sandbox Hardening moved to v0.9; Embeddable UI moved to v1.0 |
-| v1.0 | Multi-Agent Orchestration | **Moved** to Consider | LLM providers building natively (OpenAI Swarm, Claude Teams, A2A); competing is not sustainable |
-| Backlog | Semantic Memory Store, Memory Lifecycle | **Moved** to Consider | Context windows growing rapidly; providers adding native memory features |
-
-### Backlog
-
-> Items deprioritized from earlier versions. May be revisited when relevant.
-
-- [ ] **Conversation Summary Memory**: Automatic rolling summaries that persist across long sessions; hybrid window + summary strategy *(deprioritized from v0.5 — largely overlaps with LLM Compact)*
-
 ### Consider
 
-> Deferred indefinitely. These capabilities are increasingly being absorbed by LLM providers at the model/platform level. Building them in-house carries high risk of becoming redundant. Re-evaluate only if the landscape changes significantly.
+> Items worth exploring but deferred from version roadmap. Priority labels indicate likelihood of future promotion.
 
+**P2 — Worth building if the product direction supports it**
+
+- [ ] **Static Pipeline Template (L1 + L2 Architecture)**: User-defined DAG templates with fixed node structure and edges; each node constrains execution scope (allowed tool set, KB whitelist, token budget) while the agent dynamically decides details within constraints. L1 static layer = user-defined flow (JSON template, no visual editor initially), L2 dynamic layer = existing DAGPlanner inside each node. *Deferred because: requires significant frontend investment (workflow builder UI) and the industry hasn't converged on whether visual workflow builders or prompt-driven planning is the better abstraction for agent orchestration. Re-evaluate when connector scenarios demand fixed multi-step pipelines that pure LLM planning cannot reliably produce.*
+
+**P3 — Deferred indefinitely; being absorbed by LLM providers or already solved**
+
+- [ ] **Conversation Summary Memory**: Automatic rolling summaries that persist across long sessions; hybrid window + summary strategy. *Reason: Largely overlaps with LLM Compact (shipped in v0.5). The compact mechanism already summarizes old turns via fast LLM; a separate summary memory adds marginal value.*
 - [ ] **Multi-Agent Orchestration**: Leader/Worker agent pool, task graph with dependency edges, inter-agent messaging, graceful shutdown, token economics tracking. *Reason: LLM providers are building this natively — OpenAI Swarm, Anthropic Claude Code Teams, Google A2A protocol. The orchestration layer is commoditizing at the provider level; competing with first-party implementations is not a sustainable differentiator.*
 - [ ] **Semantic Memory Store**: Cross-conversation knowledge extraction and retrieval; agent remembers facts/preferences across sessions via embedding-based lookup. *Reason: Model context windows are growing rapidly (Gemini 2M+, Claude 200K+), reducing the need for external memory management. Meanwhile, providers are adding native memory/personalization features (ChatGPT Memory, Claude Projects). The gap that semantic memory fills is shrinking with each model generation.*
 - [ ] **Memory Lifecycle**: TTL-based expiry, importance scoring, explicit forget/remember commands. *Reason: Same as Semantic Memory Store — as models gain longer context and native memory capabilities, building a custom memory lifecycle system risks becoming redundant engineering effort.*
