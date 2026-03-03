@@ -54,6 +54,7 @@ mcp = [
 files = [
     "pdfplumber>=0.10",
     "python-docx>=1.0",
+    "markitdown[docx,xlsx,pptx]>=0.1",
 ]
 rag = [
     "lancedb>=0.6",

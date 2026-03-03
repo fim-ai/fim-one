@@ -23,7 +23,8 @@ UPLOAD_ROOT = Path(os.environ.get("UPLOADS_DIR", "uploads"))
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 ALLOWED_EXTENSIONS = {
     ".txt", ".md", ".py", ".js", ".json", ".csv",
-    ".pdf", ".docx", ".html", ".htm", ".xlsx",
+    ".pdf", ".docx", ".html", ".htm",
+    ".xlsx", ".xls", ".pptx",
     # Images (vision model support)
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
 }
@@ -92,19 +93,16 @@ def _extract_content(file_path: Path) -> str | None:
                     pages_text.append(text)
         return "\n".join(pages_text) if pages_text else None
 
-    # DOCX — requires python-docx (optional)
-    if suffix == ".docx":
+    # Office documents (DOCX, XLSX, XLS, PPTX) — requires markitdown
+    if suffix in {".docx", ".xlsx", ".xls", ".pptx"}:
         try:
-            import docx  # type: ignore[import-untyped]
+            from markitdown import MarkItDown  # type: ignore[import-untyped]
         except ImportError:
-            return "[DOCX content extraction requires python-docx]"
-        document = docx.Document(str(file_path))
-        paragraphs = [p.text for p in document.paragraphs if p.text]
-        return "\n".join(paragraphs) if paragraphs else None
-
-    # XLSX — no extraction
-    if suffix == ".xlsx":
-        return "[Excel file — content preview not available]"
+            return f"[{suffix.upper().lstrip('.')} content extraction requires markitdown]"
+        converter = MarkItDown()
+        result = converter.convert(str(file_path))
+        content = result.text_content or ""
+        return content if content.strip() else None
 
     return None
 

@@ -5,6 +5,7 @@ from .csv import CSVLoader
 from .docx import DOCXLoader
 from .html import HTMLLoader
 from .markdown import MarkdownLoader
+from .markitdown_loader import MarkItDownLoader
 from .pdf import PDFLoader
 from .text import TextLoader
 
@@ -15,6 +16,7 @@ __all__ = [
     "HTMLLoader",
     "LoadedDocument",
     "MarkdownLoader",
+    "MarkItDownLoader",
     "PDFLoader",
     "TextLoader",
     "loader_for_extension",
@@ -22,7 +24,10 @@ __all__ = [
 
 _EXTENSION_MAP: dict[str, type[BaseLoader]] = {
     ".pdf": PDFLoader,
-    ".docx": DOCXLoader,
+    ".docx": MarkItDownLoader,
+    ".xlsx": MarkItDownLoader,
+    ".xls": MarkItDownLoader,
+    ".pptx": MarkItDownLoader,
     ".md": MarkdownLoader,
     ".markdown": MarkdownLoader,
     ".html": HTMLLoader,

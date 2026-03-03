@@ -34,7 +34,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
 
 _UPLOADS_DIR = Path("uploads") / "kb"
-_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".md", ".markdown", ".html", ".htm", ".csv", ".txt"}
+_SUPPORTED_EXTENSIONS = {
+    ".pdf", ".docx", ".md", ".markdown", ".html", ".htm", ".csv", ".txt",
+    ".xlsx", ".xls", ".pptx",
+}
 
 
 # ── Helpers ──────────────────────────────────────────────────────
