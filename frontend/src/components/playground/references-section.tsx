@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { parseEvidence, mergeEvidence, type ParsedEvidence } from "@/lib/evidence-utils"
+import { parseEvidence, parseSimpleEvidence, mergeEvidence, type ParsedEvidence } from "@/lib/evidence-utils"
 import type { ReactStepEvent } from "@/types/api"
 import type { StepItem } from "@/hooks/use-react-steps"
 import { ChevronDown } from "lucide-react"
@@ -20,8 +20,8 @@ export function ReferencesSection({ items }: ReferencesSectionProps) {
     for (const item of items) {
       if (item.event === "step") {
         const step = item.data as ReactStepEvent
-        if (step.type === "tool_call" && step.observation?.includes("**Evidence**")) {
-          const parsed = parseEvidence(step.observation)
+        if (step.type === "tool_call" && step.observation) {
+          const parsed = parseEvidence(step.observation) ?? parseSimpleEvidence(step.observation)
           if (parsed) blocks.push(parsed)
         }
       }

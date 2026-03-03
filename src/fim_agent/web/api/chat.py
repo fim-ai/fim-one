@@ -22,6 +22,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -393,23 +394,28 @@ async def _resolve_tools(
         cats = agent_cfg.get("tool_categories") or []
         tools = tools.filter_by_category(*cats)
 
-    # When the agent is bound to knowledge bases, replace the basic kb_retrieve
-    # tool with grounded_retrieve (unified KB retrieval).
-    # citation_mode is controlled by: agent grounding_config > CITATION_MODE env > "auto"
+    # When the agent is bound to knowledge bases, choose retrieval tool based on
+    # RETRIEVAL_MODE: "grounding" → full pipeline, "simple" → basic RAG.
+    # Priority: agent grounding_config.retrieval_mode > RETRIEVAL_MODE env > "grounding"
     kb_ids = agent_cfg.get("kb_ids") if agent_cfg else None
     if kb_ids:
-        from fim_agent.core.tool.builtin.grounded_retrieve import GroundedRetrieveTool
-
+        retrieval_mode = _get_retrieval_mode(agent_cfg)
         tools = tools.exclude_by_name("kb_retrieve", "grounded_retrieve")
-        grounding_config = agent_cfg.get("grounding_config") or {}
-        confidence_threshold = grounding_config.get("confidence_threshold")
-        citation_mode = grounding_config.get("citation_mode")
-        tools.register(GroundedRetrieveTool(
-            kb_ids=kb_ids,
-            user_id=user_id,
-            confidence_threshold=confidence_threshold,
-            citation_mode=citation_mode,
-        ))
+
+        if retrieval_mode == "simple":
+            from fim_agent.core.tool.builtin.kb_retrieve import KBRetrieveTool
+
+            tools.register(KBRetrieveTool(user_id=user_id, kb_ids=kb_ids))
+        else:
+            from fim_agent.core.tool.builtin.grounded_retrieve import GroundedRetrieveTool
+
+            grounding_config = agent_cfg.get("grounding_config") or {}
+            confidence_threshold = grounding_config.get("confidence_threshold")
+            tools.register(GroundedRetrieveTool(
+                kb_ids=kb_ids,
+                user_id=user_id,
+                confidence_threshold=confidence_threshold,
+            ))
     elif user_id:
         # No bound KBs — keep basic kb_retrieve with user scope
         from fim_agent.core.tool.builtin.kb_retrieve import KBRetrieveTool
@@ -469,6 +475,42 @@ async def _resolve_tools(
 # ---------------------------------------------------------------------------
 # Image loading helper
 # ---------------------------------------------------------------------------
+
+
+def _get_retrieval_mode(agent_cfg: dict[str, Any] | None) -> str:
+    """Resolve retrieval mode: agent grounding_config > RETRIEVAL_MODE env > 'grounding'."""
+    grounding_config = (agent_cfg.get("grounding_config") or {}) if agent_cfg else {}
+    return (
+        grounding_config.get("retrieval_mode")
+        or os.environ.get("RETRIEVAL_MODE", "grounding")
+    )
+
+
+def _kb_system_hint(agent_cfg: dict[str, Any]) -> str:
+    """Return the system-prompt hint for KB retrieval based on RETRIEVAL_MODE."""
+    retrieval_mode = _get_retrieval_mode(agent_cfg)
+    tool_name = "kb_retrieve" if retrieval_mode == "simple" else "grounded_retrieve"
+
+    # Common citation instructions shared by both modes
+    hint = (
+        f"\n\nYou have access to knowledge bases. When answering questions that "
+        f"can be found in the knowledge bases, use the {tool_name} tool. "
+        "Place citation markers [N] at the END of the sentence or claim they support, "
+        "not at the beginning. Example: '\u6536\u8d2d\u4ef7\u683c\u4e3a\u6bcf\u80a13.70\u7f8e\u5143 [1]\u3002'\n"
+        f"If you call {tool_name} multiple times, use the exact [N] numbers "
+        "from each result block."
+    )
+
+    # Grounding-specific instructions
+    if retrieval_mode != "simple":
+        hint += (
+            "\nIf conflicts are detected between sources, mention them to the user. "
+            "The confidence score indicates evidence quality \u2014 mention it for important claims. "
+            "Source numbers are cumulative across calls "
+            "(e.g., first call [1]-[5], second call [6]-[10])."
+        )
+
+    return hint
 
 
 def _load_image_data_urls(
@@ -643,17 +685,7 @@ async def react_endpoint(
         extra_instructions = f"{lang_directive}\n\n{extra_instructions}" if extra_instructions else lang_directive
 
     if agent_cfg and agent_cfg.get("kb_ids"):
-        grounding_hint = (
-            "\n\nYou have access to knowledge bases. When answering questions that "
-            "can be found in the knowledge bases, use the grounded_retrieve tool. "
-            "Place citation markers [N] at the END of the sentence or claim they support, "
-            "not at the beginning. Example: '\u6536\u8d2d\u4ef7\u683c\u4e3a\u6bcf\u80a13.70\u7f8e\u5143 [1]\u3002'\n"
-            "If conflicts are detected between sources, mention them to the user. "
-            "The confidence score indicates evidence quality \u2014 mention it for important claims. "
-            "If you call grounded_retrieve multiple times, source numbers are cumulative "
-            "(e.g., first call [1]-[5], second call [6]-[10]). Use the exact [N] numbers "
-            "from each Evidence block."
-        )
+        grounding_hint = _kb_system_hint(agent_cfg)
         extra_instructions = (extra_instructions or "") + grounding_hint
 
     # Load attached images
@@ -967,17 +999,7 @@ async def dag_endpoint(
         extra_instructions = f"{lang_directive}\n\n{extra_instructions}" if extra_instructions else lang_directive
 
     if agent_cfg and agent_cfg.get("kb_ids"):
-        grounding_hint = (
-            "\n\nYou have access to knowledge bases. When answering questions that "
-            "can be found in the knowledge bases, use the grounded_retrieve tool. "
-            "Place citation markers [N] at the END of the sentence or claim they support, "
-            "not at the beginning. Example: '\u6536\u8d2d\u4ef7\u683c\u4e3a\u6bcf\u80a13.70\u7f8e\u5143 [1]\u3002'\n"
-            "If conflicts are detected between sources, mention them to the user. "
-            "The confidence score indicates evidence quality \u2014 mention it for important claims. "
-            "If you call grounded_retrieve multiple times, source numbers are cumulative "
-            "(e.g., first call [1]-[5], second call [6]-[10]). Use the exact [N] numbers "
-            "from each Evidence block."
-        )
+        grounding_hint = _kb_system_hint(agent_cfg)
         extra_instructions = (extra_instructions or "") + grounding_hint
 
     # DAG uses a fast LLM for step execution; try agent config first.

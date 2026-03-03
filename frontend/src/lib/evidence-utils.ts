@@ -76,6 +76,43 @@ export function parseEvidence(content: string): ParsedEvidence | null {
 }
 
 /**
+ * Parse the simple `kb_retrieve` tool output into ParsedEvidence.
+ *
+ * Expected format (chunks separated by `---`):
+ *   [1] (score: 0.912)
+ *   This is the chunk content...
+ *
+ *   ---
+ *
+ *   [2] (score: 0.845)
+ *   Another chunk...
+ */
+export function parseSimpleEvidence(content: string): ParsedEvidence | null {
+  const sourceRegex = /\[(\d+)\]\s*\(score:\s*([\d.]+)\)\s*\n([\s\S]*?)(?=\n\n---|\n*$)/g
+  const sources: ParsedSource[] = []
+  let match
+  while ((match = sourceRegex.exec(content)) !== null) {
+    const text = match[3].trim()
+    const preview = text.length > 200 ? text.slice(0, 200) + "..." : text
+    sources.push({
+      index: parseInt(match[1]),
+      name: "knowledge base",
+      displayName: "Knowledge Base",
+      relevance: parseFloat(match[2]),
+      quote: preview,
+    })
+  }
+  if (sources.length === 0) return null
+  const avgRelevance = sources.reduce((s, src) => s + src.relevance, 0) / sources.length
+  return {
+    confidence: Math.round(avgRelevance * 100),
+    sourceCount: sources.length,
+    sources,
+    conflicts: [],
+  }
+}
+
+/**
  * Strip citation markers like [1], [10], [27] from text.
  *
  * Targets bracketed numbers (`[N]`) that are NOT followed by `(`,

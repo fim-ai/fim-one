@@ -22,12 +22,10 @@ class GroundedRetrieveTool(BaseTool):
         kb_ids: list[str] | None = None,
         user_id: str | None = None,
         confidence_threshold: float | None = None,
-        citation_mode: str | None = None,
     ) -> None:
         self._bound_kb_ids = kb_ids or []
         self._user_id = user_id
         self._confidence_threshold = confidence_threshold
-        self._citation_mode = citation_mode
         self._source_offset: int = 0
         self._offset_lock: asyncio.Lock = asyncio.Lock()
 
@@ -97,8 +95,6 @@ class GroundedRetrieveTool(BaseTool):
             fast_llm = get_fast_llm()
 
             config: dict[str, Any] = {"top_k": top_k}
-            if self._citation_mode:
-                config["citation_mode"] = self._citation_mode
 
             pipeline = GroundingPipeline(
                 kb_manager=kb_manager,

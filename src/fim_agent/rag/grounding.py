@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import os
+
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -79,7 +79,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "top_k": 10,
     "min_score": 0.3,
     "conflict_threshold": 0.85,
-    "citation_mode": os.environ.get("CITATION_MODE", "grounding"),
+    "citation_mode": "grounding",
 }
 
 _CITATION_SYSTEM_PROMPT = (
