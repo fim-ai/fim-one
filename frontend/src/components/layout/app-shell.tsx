@@ -48,7 +48,8 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
   const [isMac, setIsMac] = useState(true) // default to Mac to avoid flash
 
   useEffect(() => {
-    const platform = (navigator as any).userAgentData?.platform ?? navigator.platform ?? ""
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+    const platform = nav.userAgentData?.platform ?? navigator.platform ?? ""
     setIsMac(/mac|iphone|ipad|ipod/i.test(platform))
   }, [])
 
@@ -72,14 +73,6 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
   if (collapsed) {
     return (
       <div className="flex flex-col items-center gap-1 px-2 py-2 shrink-0">
-        <SidebarTooltip label="New Chat" collapsed>
-          <button
-            onClick={handleNewChat}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </SidebarTooltip>
         <SidebarTooltip label={isMac ? "Search (⌘K)" : "Search (Ctrl+K)"} collapsed>
           <button
             onClick={() => setSearchOpen(true)}
@@ -99,7 +92,9 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
         onClick={handleNewChat}
         className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
       >
-        <Plus className="h-4 w-4" />
+        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-foreground/10 text-foreground">
+          <Plus className="h-3.5 w-3.5" />
+        </span>
         <span>New chat</span>
         <kbd className="ml-auto text-xs text-muted-foreground/40 font-normal tracking-[0.1em] opacity-0 group-hover:opacity-100 transition-opacity" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>{isMac ? "⇧⌘O" : "Ctrl+Shift+O"}</kbd>
       </button>
@@ -228,36 +223,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           className={cn(
             "flex flex-col border-r border-border bg-sidebar transition-all duration-200",
-            collapsed ? "w-16" : "w-60",
+            collapsed ? "w-16" : "w-72",
           )}
         >
           {/* Logo area + collapse toggle */}
-          <div className={cn("flex h-14 items-center shrink-0", collapsed ? "justify-center px-2" : "justify-between px-4")}>
-            {!collapsed && (
-              <div className="flex items-center gap-2">
-                <img
-                  src="/fim-mark-light.svg"
-                  alt="FIM"
-                  className="h-5 w-auto shrink-0 dark:hidden"
-                />
-                <img
-                  src="/fim-mark.svg"
-                  alt="FIM"
-                  className="h-5 w-auto shrink-0 hidden dark:block"
-                />
-                <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-                  {APP_NAME}
-                </span>
-              </div>
+          <div className={cn("flex shrink-0", collapsed ? "items-center justify-center px-2 py-3" : "h-14 items-center justify-between px-4")}>
+            {collapsed ? (
+              <SidebarTooltip label="Expand sidebar" collapsed>
+                <button
+                  onClick={() => setCollapsed(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <PanelLeftOpen className="h-4 w-4" />
+                </button>
+              </SidebarTooltip>
+            ) : (
+              <>
+                <Link href="/new" className="flex items-center gap-2 rounded-md px-1 -mx-1 transition-colors hover:opacity-70">
+                  <img src="/fim-mark-light.svg" alt="FIM" className="h-5 w-auto shrink-0 dark:hidden" />
+                  <img src="/fim-mark.svg" alt="FIM" className="h-5 w-auto shrink-0 hidden dark:block" />
+                  <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">{APP_NAME}</span>
+                </Link>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setCollapsed(!collapsed)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <PanelLeftClose className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={4}>Collapse sidebar</TooltipContent>
+                </Tooltip>
+              </>
             )}
-            <SidebarTooltip label="Expand sidebar" collapsed={collapsed}>
-              <button
-                onClick={() => setCollapsed(!collapsed)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-              </button>
-            </SidebarTooltip>
           </div>
 
           <Separator />
