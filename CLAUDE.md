@@ -23,6 +23,16 @@ src/fim_agent/
 frontend/            # Next.js portal (shadcn/ui)
 ```
 
+## Git Commit Rules (MANDATORY)
+
+### Atomic Commits
+
+- **Always split unrelated changes into separate commits**, even if the user says "commit all"
+- Group by feature/fix/refactor — one logical change per commit
+- This applies to both user-requested commits and post-work commits
+- Example: markitdown integration + sidebar fix + interrupt UI = 3 separate commits
+- Makes `git log`, `git bisect`, and code review much easier
+
 ## Git Safety Rules (MANDATORY)
 
 These rules exist because of a real data loss incident. **Do not skip them.**
