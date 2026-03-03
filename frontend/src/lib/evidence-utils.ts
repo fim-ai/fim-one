@@ -42,7 +42,7 @@ export function parseEvidence(content: string): ParsedEvidence | null {
   const sourceCount = parseInt(headerMatch[2])
 
   // Match [N] Source: name [KB: kb_name]? (relevance: X.XXX, alignment: X.XXX)
-  const sourceRegex = /\[(\d+)\]\s*Source:\s*(.+?)(?:\s*\[KB:\s*(.+?)\])?\s*\(relevance:\s*([\d.]+),\s*alignment:\s*([\d.]+)\)\s*\n\s*>\s*"([^"]+)"\s*(?:p\.(\d+))?/g
+  const sourceRegex = /\[(\d+)\]\s*Source:\s*(.+?)(?:\s*\[KB:\s*(.+?)\])?\s*\(relevance:\s*([\d.]+),\s*alignment:\s*([\d.]+)\)\s*\n\s*>\s*"?([^"\n]+)"?\s*(?:p\.(\d+))?/g
   const sources: ParsedSource[] = []
   let match
   while ((match = sourceRegex.exec(content)) !== null) {

@@ -7,6 +7,29 @@ import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import rehypeHighlight from "rehype-highlight"
 
+/** Replace [N] citation markers in text with styled <sup> badges */
+function processCitations(children: React.ReactNode): React.ReactNode {
+  return React.Children.map(children, (child) => {
+    if (typeof child !== "string") return child
+    const parts = child.split(/(\[\d+\])/)
+    if (parts.length === 1) return child
+    return parts.map((part, i) => {
+      const m = part.match(/^\[(\d+)\]$/)
+      if (m) {
+        return (
+          <sup
+            key={i}
+            className="inline-flex items-center justify-center min-w-[1.1em] h-[1.1em] px-0.5 ml-0.5 rounded text-[0.65em] font-medium bg-primary/10 text-primary align-super cursor-default"
+          >
+            {m[1]}
+          </sup>
+        )
+      }
+      return part
+    })
+  })
+}
+
 interface MarkdownContentProps {
   content: string
   className?: string
@@ -50,7 +73,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           p({ children, ...props }) {
             return (
               <p className="mb-3 last:mb-0 leading-relaxed" {...props}>
-                {children}
+                {processCitations(children)}
               </p>
             )
           },
@@ -71,7 +94,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           li({ children, ...props }) {
             return (
               <li className="leading-relaxed" {...props}>
-                {children}
+                {processCitations(children)}
               </li>
             )
           },
@@ -128,7 +151,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           td({ children, ...props }) {
             return (
               <td className="border-b border-border/50 px-3 py-2" {...props}>
-                {children}
+                {processCitations(children)}
               </td>
             )
           },

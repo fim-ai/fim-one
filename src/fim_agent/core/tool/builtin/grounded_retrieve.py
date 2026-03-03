@@ -159,11 +159,11 @@ def _format_grounded_result(result: Any, kb_names: dict[str, str] | None = None)
                 page_info = f"  p.{cit.page_number}" if cit.page_number else ""
                 lines.append(f'  > "{cit.text}"{page_info}')
         else:
-            # Fall back to showing a content preview
-            preview = unit.chunk.content[:200]
+            # Fall back to showing a content preview (keep consistent quoted format)
+            preview = unit.chunk.content[:200].replace("\n", " ").strip()
             if len(unit.chunk.content) > 200:
                 preview += "..."
-            lines.append(f"  > {preview}")
+            lines.append(f'  > "{preview}"')
         lines.append("")
 
     if result.conflicts:
