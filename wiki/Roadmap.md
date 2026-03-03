@@ -369,6 +369,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 **i18n**
 - [x] **User Language Preference**: `preferred_language` backend setting with language directive injection across all LLM interactions
 - [ ] **Frontend i18n**: `next-intl` integration with en/zh translation files; locale driven by `preferred_language` (auto mode falls back to `navigator.language`); all UI text externalized
+- [ ] **Documentation i18n**: Chinese translation for README, Wiki, and GitHub repository pages; maintain bilingual docs alongside feature stabilization
 
 ### v1.1 -- Agent as a Service
 
