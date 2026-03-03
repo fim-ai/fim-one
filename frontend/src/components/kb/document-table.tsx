@@ -1,11 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { Trash2, Loader2, Eye } from "lucide-react"
+import { Trash2, Loader2, Eye, RotateCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { ChunkDrawer } from "@/components/kb/chunk-drawer"
+import { kbApi } from "@/lib/api"
 import type { KBDocumentResponse } from "@/types/kb"
 
 interface DocumentTableProps {
@@ -43,6 +50,31 @@ export function DocumentTable({
   const [selectedDoc, setSelectedDoc] = useState<KBDocumentResponse | null>(
     null,
   )
+  const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
+  const [retriedIds, setRetriedIds] = useState<Set<string>>(new Set())
+
+  const handleRetry = async (doc: KBDocumentResponse) => {
+    setRetryingIds((prev) => new Set(prev).add(doc.id))
+    try {
+      await kbApi.retryDocument(kbId, doc.id)
+      // Mark as retried so we show "processing" optimistically until parent re-fetches
+      setRetriedIds((prev) => new Set(prev).add(doc.id))
+    } catch (err) {
+      console.error("Failed to retry document:", err)
+    } finally {
+      setRetryingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(doc.id)
+        return next
+      })
+    }
+  }
+
+  // Derive effective status: if retried and still showing "failed", override to "processing"
+  const getEffectiveStatus = (doc: KBDocumentResponse) => {
+    if (retriedIds.has(doc.id) && doc.status === "failed") return "processing"
+    return doc.status
+  }
 
   if (documents.length === 0) {
     return (
@@ -89,21 +121,65 @@ export function DocumentTable({
             <span className="text-xs tabular-nums">{doc.chunk_count}</span>
 
             {/* Status */}
-            <Badge
-              variant="secondary"
-              className={cn(
-                "text-[10px] px-1.5 py-0 h-5 w-fit gap-1",
-                statusColor(doc.status),
-              )}
-            >
-              {doc.status === "processing" && (
-                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              )}
-              {doc.status}
-            </Badge>
+            {(() => {
+              const effectiveStatus = getEffectiveStatus(doc)
+              if (effectiveStatus === "failed" && doc.error_message) {
+                return (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "text-[10px] px-1.5 py-0 h-5 w-fit gap-1 cursor-help",
+                            statusColor(effectiveStatus),
+                          )}
+                        >
+                          {effectiveStatus}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        {doc.error_message}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )
+              }
+              return (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] px-1.5 py-0 h-5 w-fit gap-1",
+                    statusColor(effectiveStatus),
+                  )}
+                >
+                  {effectiveStatus === "processing" && (
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  )}
+                  {effectiveStatus}
+                </Badge>
+              )
+            })()}
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-0.5">
+              {getEffectiveStatus(doc) === "failed" && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => handleRetry(doc)}
+                  disabled={retryingIds.has(doc.id)}
+                  className="text-muted-foreground hover:text-foreground"
+                  title="Retry processing"
+                >
+                  <RotateCw
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      retryingIds.has(doc.id) && "animate-spin",
+                    )}
+                  />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon-xs"

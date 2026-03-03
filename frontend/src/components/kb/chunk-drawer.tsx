@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Loader2, Pencil, Trash2, FileText } from "lucide-react"
+import { Loader2, Pencil, Trash2, FileText, Search, X } from "lucide-react"
 import {
   Sheet,
   SheetContent,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { kbApi } from "@/lib/api"
 import { ChunkEditor } from "@/components/kb/chunk-editor"
@@ -25,6 +26,22 @@ interface ChunkDrawerProps {
 }
 
 const PAGE_SIZE = 20
+
+/** Split text by query (case-insensitive) and wrap matches in <mark>. */
+function highlightMatches(text: string, query: string) {
+  if (!query) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"))
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase() ? (
+      <mark key={i} className="bg-amber-500/30 text-amber-200 rounded-sm px-0.5">
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  )
+}
 
 function statusColor(status: string): string {
   switch (status) {
@@ -52,11 +69,24 @@ export function ChunkDrawer({
   const [totalPages, setTotalPages] = useState(0)
   const [total, setTotal] = useState(0)
   const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
+  const [searchInput, setSearchInput] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  // Reset page when search query changes
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery])
 
   const loadChunks = useCallback(async () => {
     setIsLoading(true)
     try {
-      const data = await kbApi.listChunks(kbId, document.id, page, PAGE_SIZE)
+      const data = await kbApi.listChunks(kbId, document.id, page, PAGE_SIZE, searchQuery)
       setChunks(data.items)
       setTotalPages(data.pages)
       setTotal(data.total)
@@ -65,7 +95,7 @@ export function ChunkDrawer({
     } finally {
       setIsLoading(false)
     }
-  }, [kbId, document.id, page])
+  }, [kbId, document.id, page, searchQuery])
 
   // Load chunks when the drawer opens or page changes
   useEffect(() => {
@@ -78,6 +108,8 @@ export function ChunkDrawer({
   useEffect(() => {
     setPage(1)
     setEditingChunkId(null)
+    setSearchInput("")
+    setSearchQuery("")
   }, [document.id])
 
   const handleUpdateChunk = async (chunkId: string, text: string) => {
@@ -156,6 +188,23 @@ export function ChunkDrawer({
               </div>
             </SheetDescription>
           </SheetHeader>
+          <div className="relative mt-3">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="搜索切片内容..."
+              className="h-8 pl-8 pr-8 text-xs bg-background/50"
+            />
+            {searchInput && (
+              <button
+                onClick={() => { setSearchInput(""); setSearchQuery("") }}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+              >
+                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Scrollable chunk list */}
@@ -210,7 +259,7 @@ export function ChunkDrawer({
                         </div>
                       </div>
                       <p className="text-sm text-foreground whitespace-pre-wrap break-all leading-relaxed">
-                        {chunk.text}
+                        {highlightMatches(chunk.text, searchQuery)}
                       </p>
                     </div>
                   )}

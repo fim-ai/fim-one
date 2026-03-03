@@ -414,6 +414,71 @@ async def delete_document(
     return ApiResponse(data={"deleted": doc_id})
 
 
+@router.post("/{kb_id}/documents/{doc_id}/retry", response_model=ApiResponse)
+async def retry_document(
+    kb_id: str,
+    doc_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Retry ingestion for a failed document."""
+    kb = await _get_owned_kb(kb_id, current_user.id, db)
+
+    result = await db.execute(
+        select(KBDocument).where(KBDocument.id == doc_id, KBDocument.kb_id == kb_id)
+    )
+    doc = result.scalar_one_or_none()
+    if doc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    if doc.status != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Only failed documents can be retried (current status: {doc.status})",
+        )
+
+    # Verify the source file still exists on disk
+    file_path = Path(doc.file_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source file no longer exists on disk; please re-upload",
+        )
+
+    # Clean up any partial chunks left by the previous attempt
+    try:
+        manager = get_kb_manager()
+        await manager.delete_document(
+            kb_id=kb_id, user_id=current_user.id, document_id=doc_id
+        )
+    except Exception:
+        logger.warning("Failed to clean partial chunks for doc %s", doc_id, exc_info=True)
+
+    # Reset document status for re-processing
+    doc.status = "processing"
+    doc.error_message = None
+    doc.chunk_count = 0
+    await db.commit()
+
+    # Launch background ingestion (same as upload flow)
+    asyncio.create_task(
+        _ingest_document(
+            doc_id=doc.id,
+            kb_id=kb_id,
+            user_id=current_user.id,
+            file_path=file_path,
+            chunk_strategy=kb.chunk_strategy,
+            chunk_size=kb.chunk_size,
+            chunk_overlap=kb.chunk_overlap,
+        )
+    )
+
+    return ApiResponse(data={"status": "processing"})
+
+
 # ── Document Create (Markdown) ───────────────────────────────────
 
 
@@ -498,6 +563,7 @@ async def list_chunks(
     doc_id: str,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    query: str = Query("", description="Filter chunks by text content"),
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
@@ -513,7 +579,7 @@ async def list_chunks(
     manager = get_kb_manager()
     chunks, total = await manager.get_chunks_by_document(
         kb_id=kb_id, user_id=current_user.id, document_id=doc_id,
-        page=page, size=size,
+        page=page, size=size, query=query,
     )
 
     items = [

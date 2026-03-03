@@ -350,6 +350,12 @@ export const kbApi = {
       { method: "DELETE" },
     ),
 
+  retryDocument: (kbId: string, docId: string) =>
+    apiFetch<ApiResponse<KBDocumentResponse>>(
+      `/api/knowledge-bases/${kbId}/documents/${docId}/retry`,
+      { method: "POST" },
+    ).then((r) => r.data),
+
   createDocument: (kbId: string, body: DocumentCreate) =>
     apiFetch<ApiResponse<KBDocumentResponse>>(
       `/api/knowledge-bases/${kbId}/documents/create`,
@@ -357,10 +363,13 @@ export const kbApi = {
     ).then((r) => r.data),
 
   // Chunks
-  listChunks: (kbId: string, docId: string, page = 1, size = 20) =>
-    apiFetch<PaginatedChunks>(
-      `/api/knowledge-bases/${kbId}/documents/${docId}/chunks?page=${page}&size=${size}`,
-    ),
+  listChunks: (kbId: string, docId: string, page = 1, size = 20, query = "") => {
+    const params = new URLSearchParams({ page: String(page), size: String(size) })
+    if (query) params.set("query", query)
+    return apiFetch<PaginatedChunks>(
+      `/api/knowledge-bases/${kbId}/documents/${docId}/chunks?${params}`,
+    )
+  },
 
   getChunk: (kbId: string, chunkId: string) =>
     apiFetch<ApiResponse<ChunkResponse>>(

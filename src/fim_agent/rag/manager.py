@@ -186,6 +186,7 @@ class KnowledgeBaseManager:
         document_id: str,
         page: int = 1,
         size: int = 20,
+        query: str = "",
     ) -> tuple[list[dict[str, Any]], int]:
         """Return paginated chunks for a document.
 
@@ -197,6 +198,7 @@ class KnowledgeBaseManager:
             document_id: Document ID.
             page: 1-based page number.
             size: Items per page.
+            query: Optional text filter (case-insensitive substring match).
 
         Returns:
             Tuple of (list of chunk dicts, total_count).
@@ -204,7 +206,7 @@ class KnowledgeBaseManager:
         offset = (page - 1) * size
         return await self._store.get_chunks_by_document(
             kb_id=kb_id, user_id=user_id, document_id=document_id,
-            offset=offset, limit=size,
+            offset=offset, limit=size, query=query,
         )
 
     async def get_chunk(

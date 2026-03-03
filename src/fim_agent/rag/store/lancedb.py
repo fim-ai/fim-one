@@ -73,13 +73,9 @@ class LanceDBVectorStore:
         db_path.mkdir(parents=True, exist_ok=True)
         return lancedb.connect(str(db_path))
 
-    def _get_or_create_table(
-        self, db: lancedb.DBConnection
-    ) -> lancedb.table.Table:
-        """Get existing table or create a new one."""
-        if _TABLE_NAME in _list_table_names(db):
-            return db.open_table(_TABLE_NAME)
-        schema = pa.schema([
+    def _expected_schema(self) -> pa.Schema:
+        """Return the canonical table schema."""
+        return pa.schema([
             pa.field("id", pa.string()),
             pa.field("text", pa.string()),
             pa.field("content_hash", pa.string()),
@@ -90,7 +86,43 @@ class LanceDBVectorStore:
             pa.field("metadata_json", pa.string()),
             pa.field("vector", pa.list_(pa.float32(), self._embedding_dim)),
         ])
+
+    def _get_or_create_table(
+        self, db: lancedb.DBConnection
+    ) -> lancedb.table.Table:
+        """Get existing table or create a new one.
+
+        If an existing table is missing columns that were added in newer
+        schema versions (e.g. ``chunk_index``), they are automatically
+        back-filled with null values so that subsequent inserts succeed.
+        """
+        schema = self._expected_schema()
+        if _TABLE_NAME in _list_table_names(db):
+            table = db.open_table(_TABLE_NAME)
+            self._migrate_schema(table, schema)
+            return table
         return db.create_table(_TABLE_NAME, schema=schema)
+
+    def _migrate_schema(
+        self, table: lancedb.table.Table, expected: pa.Schema
+    ) -> None:
+        """Add any columns present in *expected* but missing from *table*."""
+        existing_names = {f.name for f in table.schema}
+        missing_fields = [
+            f for f in expected
+            if f.name not in existing_names and f.name != "vector"
+        ]
+        if not missing_fields:
+            return
+        try:
+            table.add_columns(missing_fields)
+            names = [f.name for f in missing_fields]
+            logger.info("Migrated table schema: added columns %s", names)
+        except Exception:
+            logger.warning(
+                "Schema migration failed for missing columns",
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Add
@@ -456,6 +488,7 @@ class LanceDBVectorStore:
         document_id: str,
         offset: int = 0,
         limit: int = 20,
+        query: str = "",
     ) -> tuple[list[dict[str, Any]], int]:
         """Return paginated chunks for a document, sorted by chunk_index.
 
@@ -465,6 +498,7 @@ class LanceDBVectorStore:
             document_id: Document ID to filter by.
             offset: Number of chunks to skip.
             limit: Max number of chunks to return.
+            query: Optional text filter (case-insensitive substring match).
 
         Returns:
             Tuple of (list of chunk dicts, total_count).
@@ -472,7 +506,7 @@ class LanceDBVectorStore:
         return await asyncio.to_thread(
             self._get_chunks_by_document_sync,
             kb_id=kb_id, user_id=user_id, document_id=document_id,
-            offset=offset, limit=limit,
+            offset=offset, limit=limit, query=query,
         )
 
     def _get_chunks_by_document_sync(
@@ -483,6 +517,7 @@ class LanceDBVectorStore:
         document_id: str,
         offset: int = 0,
         limit: int = 20,
+        query: str = "",
     ) -> tuple[list[dict[str, Any]], int]:
         import json
 
@@ -493,33 +528,45 @@ class LanceDBVectorStore:
         table = db.open_table(_TABLE_NAME)
         where_clause = f"document_id = '{document_id}'"
 
-        # Step 1: Get total count without loading data into memory
-        try:
-            total_count = table.count_rows(where_clause)
-        except Exception:
-            logger.warning("count_rows failed for document chunks", exc_info=True)
-            return [], 0
+        # When query is non-empty we must filter in Python, so skip count_rows shortcut
+        if not query:
+            # Optimised path: count without loading data
+            try:
+                total_count = table.count_rows(where_clause)
+            except Exception:
+                logger.warning("count_rows failed for document chunks", exc_info=True)
+                return [], 0
 
-        if total_count == 0:
-            return [], 0
+            if total_count == 0:
+                return [], 0
 
-        # Step 2: Fetch rows. chunk_index lives inside metadata_json,
+            fetch_limit = total_count
+        else:
+            # Need all rows for text filtering; use a generous upper bound
+            fetch_limit = 1_000_000
+
+        # Fetch rows. chunk_index lives inside metadata_json,
         # so we must load all matching rows, parse index, sort, then slice.
         try:
             all_rows = (
                 table.search()
                 .where(where_clause)
                 .select(["id", "text", "content_hash", "metadata_json"])
-                .limit(total_count)
+                .limit(fetch_limit)
                 .to_list()
             )
         except Exception:
             logger.warning("get_chunks_by_document failed", exc_info=True)
             return [], 0
 
-        # Parse chunk_index for sorting, but defer full metadata parse to page slice
+        # Parse chunk_index for sorting, optionally filter by query text
+        query_lower = query.lower() if query else ""
         indexed: list[tuple[int, dict]] = []
         for row in all_rows:
+            # Filter by text content when query is provided
+            if query_lower and query_lower not in row.get("text", "").lower():
+                continue
+
             raw_meta = row.get("metadata_json", "{}")
             # Fast extraction: only parse chunk_index for sorting
             try:
@@ -528,6 +575,10 @@ class LanceDBVectorStore:
             except Exception:
                 idx = 0
             indexed.append((idx, row))
+
+        # When filtering, total_count comes from filtered list
+        if query:
+            total_count = len(indexed)
 
         indexed.sort(key=lambda t: t[0])
         page_slice = indexed[offset : offset + limit]
