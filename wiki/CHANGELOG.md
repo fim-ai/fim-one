@@ -7,15 +7,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **Citation Badges & References Redesign**: Inline `[N]` citation badges as styled `<sup>` elements in markdown; references section with card layout and collapse/expand toggle
 - **KB Document Retry**: Failed document ingestion can be retried; frontend retry button with error tooltip
 - **Chunk Text Search**: Search/filter chunks within KB drawer with debounced input and match highlighting
 - **Connector Smart Truncation**: JSON-aware response truncation (array item limit + char limit, env-configurable via `CONNECTOR_RESPONSE_MAX_CHARS` / `CONNECTOR_RESPONSE_MAX_ITEMS`)
 - **Observation JSON Highlighting**: Auto-detect JSON in tool output, pretty-print with syntax highlighting; label renamed to "Output"
+- **Sonner Toast Notifications**: Toast notification library for non-blocking user feedback
+- **KB Document Management in README**: Added KB Document Management to README Key Features section
 
 ### Changed
 - Connectors now default to "published" on creation; removed publish/unpublish workflow and status badge
 - Agent form always sends `kb_ids` and `connector_ids` (even when empty); confidence threshold moved above connectors section
 - LanceDB auto-migrates missing schema columns on table open
+- KB chunk drawer search replaced with collapsible toggle icon button (auto-focus, Escape to close)
+- KB detail page "Search" tab renamed to "Retrieve Test"
+- Inject recall button now always visible (not hidden on success)
 
 ### Fixed
 - IME composition handling in chat input (Chinese/Japanese input no longer triggers premature submit)
@@ -25,6 +31,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - Agent form custom checkbox styling and orphan resource display
 - Resource ownership validation on agent binding and KB lookup
 - Connector publish/unpublish confirmation dialogs (now removed)
+- Evidence-utils citation regex matching for grounded retrieval
+- Grounded retrieve tool fallback format when no evidence found
+- Failed inject content now restored to input box with toast warning instead of being lost
 
 ## [0.6.1] — Connector Entity & Manual Builder
 
