@@ -6,7 +6,6 @@ import Link from "next/link"
 import { Bot, Library, Loader2, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, Sun } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { APP_NAME } from "@/lib/constants"
-import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
   Tooltip,
@@ -46,6 +45,24 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
   const { clearActive } = useConversation()
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [isMac, setIsMac] = useState(true) // default to Mac to avoid flash
+
+  useEffect(() => {
+    const platform = (navigator as any).userAgentData?.platform ?? navigator.platform ?? ""
+    setIsMac(/mac|iphone|ipad|ipod/i.test(platform))
+  }, [])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault()
+        clearActive()
+        router.push("/new")
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [clearActive, router])
 
   const handleNewChat = () => {
     clearActive()
@@ -63,7 +80,7 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
             <Plus className="h-4 w-4" />
           </button>
         </SidebarTooltip>
-        <SidebarTooltip label="Search (Cmd+K)" collapsed>
+        <SidebarTooltip label={isMac ? "Search (⌘K)" : "Search (Ctrl+K)"} collapsed>
           <button
             onClick={() => setSearchOpen(true)}
             className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
@@ -78,30 +95,22 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
 
   return (
     <div className="px-3 py-2 shrink-0">
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1 justify-start gap-2"
-          onClick={handleNewChat}
-        >
-          <Plus className="h-4 w-4" />
-          New Chat
-        </Button>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 px-2"
-              onClick={() => setSearchOpen(true)}
-            >
-              <Search className="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Search (Cmd+K)</TooltipContent>
-        </Tooltip>
-      </div>
+      <button
+        onClick={handleNewChat}
+        className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+      >
+        <Plus className="h-4 w-4" />
+        <span>New chat</span>
+        <kbd className="ml-auto text-xs text-muted-foreground/40 font-normal tracking-[0.1em] opacity-0 group-hover:opacity-100 transition-opacity" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>{isMac ? "⇧⌘O" : "Ctrl+Shift+O"}</kbd>
+      </button>
+      <button
+        onClick={() => setSearchOpen(true)}
+        className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+      >
+        <Search className="h-4 w-4" />
+        <span>Search</span>
+        <kbd className="ml-auto text-xs text-muted-foreground/40 font-normal tracking-[0.1em] opacity-0 group-hover:opacity-100 transition-opacity" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>{isMac ? "⌘K" : "Ctrl+K"}</kbd>
+      </button>
       <ChatSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
@@ -229,12 +238,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <img
                   src="/fim-mark-light.svg"
                   alt="FIM"
-                  className="h-6 w-auto shrink-0 dark:hidden"
+                  className="h-5 w-auto shrink-0 dark:hidden"
                 />
                 <img
                   src="/fim-mark.svg"
                   alt="FIM"
-                  className="h-6 w-auto shrink-0 hidden dark:block"
+                  className="h-5 w-auto shrink-0 hidden dark:block"
                 />
                 <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
                   {APP_NAME}
