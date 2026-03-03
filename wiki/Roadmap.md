@@ -182,6 +182,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [x] Conversational Connector Settings: chat-based form for creating and editing connectors and actions through dialogue
 - [x] User Language Preference: `preferred_language` setting (auto/en/zh) with language directive injection across all LLM interactions; language selector in user dropdown
 - [ ] Conversational Agent Settings: port the conversational settings pattern to agent create/edit (same chat-based CRUD approach)
+- [ ] Frontend i18n: `next-intl` integration with en/zh translation files; locale driven by `preferred_language` (auto mode falls back to `navigator.language`); all UI text externalized
 
 **Validation**: Create Zhihe contract system Connector via conversation — provide API docs → Agent generates actions → test → publish.
 
@@ -368,7 +369,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [ ] **Docker Compose**: API + SQLite + optional Langfuse, production-ready
 
 **i18n**
-- [ ] **Chinese / English**: Frontend + backend error messages; locale auto-detection + manual switch
+- [x] **Chinese / English**: Moved to v0.6.2 — `preferred_language` backend + `next-intl` frontend
 
 ### v1.1 -- Enterprise & Scale
 
