@@ -1352,9 +1352,17 @@ async def dag_endpoint(
                     "completion_tokens": cumulative_usage.completion_tokens,
                     "total_tokens": cumulative_usage.total_tokens,
                 }
-            # Final drain of any remaining injected messages.
+            # Final drain: emit inject events for any late messages, then record them.
             if dag_interrupt_queue is not None:
                 remaining = dag_interrupt_queue.drain()
+                for injected in remaining:
+                    inject_payload = {
+                        "type": "inject",
+                        "content": injected.content,
+                        "phase": "done",
+                    }
+                    sse_events.append({"event": "inject", "data": inject_payload})
+                    yield _sse("inject", inject_payload)
                 if remaining:
                     dag_done_payload["pending_injections"] = [m.content for m in remaining]
 

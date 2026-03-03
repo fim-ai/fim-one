@@ -153,6 +153,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 **Portal UX**
 - [x] **Dark / Light / System Theme**: `next-themes` provider with system-preference detection, manual toggle (Appearance settings page), and full component theming across DAG visualization, playground, connectors, and KB pages; light-mode logo variant
 - [x] **Suggested Follow-ups**: After agent completes (ReAct/DAG), fast LLM generates 2-3 follow-up questions displayed as clickable chips below the answer; click to auto-submit as new query; ephemeral — not persisted to DB, disappears on page refresh
+- [x] **Conversational Interrupt**: Send messages while the agent is running — injected at the next iteration boundary without interrupting execution. Backend async queue per conversation; ReAct drains between iterations (JSON mode) or after tool results (native mode); DAG drains between phases. Messages persist as `message_type="inject"` for history replay. Frontend: input box switches to inject mode during execution (Send = inject, empty + click = Stop); optimistic UI with SSE confirmation and recall support
 
 #### v0.6.1 — Connector Entity & Manual Builder (shipped)
 

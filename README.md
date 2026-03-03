@@ -129,6 +129,7 @@ FIM Agent doesn't do BPM/FSM — workflow logic belongs to the target system, Co
 #### Portal & UX
 - **Real-time Streaming** — SSE with KaTeX math rendering and tool step folding.
 - **DAG Visualization** — Interactive flow graph with live status, dependency edges, and click-to-scroll.
+- **Conversational Interrupt** — Send follow-up messages while the agent is running; injected at the next iteration boundary.
 - **Dark / Light / System Theme** — Full theme support with system-preference detection.
 - **Command Palette** — Conversation search, starring, batch operations, and title rename.
 

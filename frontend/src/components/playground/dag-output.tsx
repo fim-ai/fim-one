@@ -22,6 +22,7 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  User,
 } from "lucide-react"
 import type {
   DagPhaseEvent,
@@ -41,6 +42,7 @@ interface DagOutputProps {
   currentPhase: string | null
   currentRound?: number
   hideDagGraph?: boolean
+  injectEvents?: Array<{ content: string; phase?: string; timestamp: number }>
   onSuggestionSelect?: (query: string) => void
 }
 
@@ -52,6 +54,7 @@ export function DagOutput({
   currentPhase,
   currentRound = 1,
   hideDagGraph,
+  injectEvents = [],
   onSuggestionSelect,
 }: DagOutputProps) {
   const [stepsExpanded, setStepsExpanded] = useState(false)
@@ -87,6 +90,18 @@ export function DagOutput({
             <ChevronDown className="h-3.5 w-3.5 ml-auto shrink-0" />
           )}
         </button>
+
+        {/* Inject messages — always visible */}
+        {injectEvents.map((evt, i) => (
+          <div key={`inject-${i}`} className="flex gap-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <User className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <div className="flex-1 pt-0.5">
+              <p className="text-sm text-foreground">{evt.content}</p>
+            </div>
+          </div>
+        ))}
 
         {/* Expanded: DAG graph + step cards + analysis */}
         {stepsExpanded && (
@@ -151,6 +166,18 @@ export function DagOutput({
             <StepProgressCard state={state} />
           </div>
         ))}
+
+      {/* Inject messages */}
+      {injectEvents.map((evt, i) => (
+        <div key={`inject-${i}`} className="flex gap-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <User className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div className="flex-1 pt-0.5">
+            <p className="text-sm text-foreground">{evt.content}</p>
+          </div>
+        </div>
+      ))}
 
       {/* Analysis phase */}
       {analysisPhase && <AnalysisCard phase={analysisPhase} />}

@@ -33,6 +33,7 @@ export interface DagStepsResult {
   doneEvent: DagDoneEvent | null
   currentPhase: string | null
   currentRound: number
+  injectEvents: Array<{ content: string; phase?: string; timestamp: number }>
 }
 
 export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStepsResult {
@@ -43,6 +44,7 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
     let doneEvent: DagDoneEvent | null = null
     let currentPhase: string | null = null
     let currentRound = 1
+    const injectEvents: Array<{ content: string; phase?: string; timestamp: number }> = []
 
     for (const msg of messages) {
       if (msg.event === "phase") {
@@ -162,6 +164,11 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
       if (msg.event === "done") {
         doneEvent = msg.data as DagDoneEvent
       }
+
+      if (msg.event === "inject") {
+        const data = msg.data as { content: string; phase?: string }
+        injectEvents.push({ ...data, timestamp: msg.timestamp })
+      }
     }
 
     // When aborted (not running, no done event), clean up all loading states
@@ -183,6 +190,7 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
       doneEvent,
       currentPhase,
       currentRound,
+      injectEvents,
     }
   }, [messages, isRunning])
 }

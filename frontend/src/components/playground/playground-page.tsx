@@ -309,6 +309,7 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
         onRunWithQuery={runWithQuery}
         onAbort={abort}
         onExampleSelect={handleExampleSelect}
+        isNewChat={isNewChat}
       />
 
       {/* Mode switch confirmation dialog */}
@@ -440,6 +441,7 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
           doneEvent={dagData.doneEvent}
           currentPhase={dagData.currentPhase}
           currentRound={dagData.currentRound}
+          injectEvents={dagData.injectEvents}
           hideDagGraph={hideDagGraph}
         />
       )}
@@ -480,6 +482,7 @@ interface PlaygroundContentProps {
   onRunWithQuery: (q: string, imageIds?: string[]) => void
   onAbort: () => void
   onExampleSelect: (example: string) => void
+  isNewChat?: boolean
 }
 
 function PlaygroundContent({
@@ -501,14 +504,21 @@ function PlaygroundContent({
   onRunWithQuery,
   onAbort,
   onExampleSelect,
+  isNewChat,
 }: PlaygroundContentProps) {
   const modeMatches = sourceMode === mode
   const hasLiveMessages = modeMatches && messages.length > 0
   const hasHistory = !!(activeConversation?.messages && activeConversation.messages.length > 0)
   const hasMessages = hasLiveMessages || hasHistory || !!pendingQuery
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isNearBottomRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+
+  // Auto-focus textarea on new chat
+  useEffect(() => {
+    if (isNewChat) textareaRef.current?.focus()
+  }, [isNewChat])
 
   // Sidebar state -- persisted to localStorage
   const [sidebarOpen, setSidebarOpen] = useLocalStorage("fim-sidebar-open", true)
@@ -915,6 +925,7 @@ function PlaygroundContent({
                         doneEvent={dagData.doneEvent}
                         currentPhase={dagData.currentPhase}
                         currentRound={dagData.currentRound}
+                        injectEvents={dagData.injectEvents}
                         hideDagGraph
                         onSuggestionSelect={handleSuggestionSelect}
                       />
@@ -1063,6 +1074,7 @@ function PlaygroundContent({
         />
         <div className="flex items-end gap-2">
           <Textarea
+            ref={textareaRef}
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={handleKeyDownWithFiles}
