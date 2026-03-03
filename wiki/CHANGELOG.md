@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **New Chat Keyboard Shortcut**: ⇧⌘O (Mac) / Ctrl+Shift+O (Windows) to start a new chat from anywhere
 - **User Language Preference**: `preferred_language` setting (auto/en/zh) with language directive injection across all LLM interactions (ReAct, DAG, Connector AI, suggestions)
 - **Language Selector**: Language sub-menu in user dropdown menu for quick switching
 - **OpenAPI Spec Import**: One-shot connector creation from OpenAPI 3.x specs (JSON/YAML); paste, URL, or parsed dict input; auto-extracts connector name, base_url, and description from spec info/servers; parses all operations into actions with parameters_schema, method, path, and requires_confirmation; resolves local `$ref` pointers
@@ -24,6 +25,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **KB Document Management in README**: Added KB Document Management to README Key Features section
 
 ### Changed
+- Sidebar "New Chat" and "Search" restyled as minimal plain buttons with hover keyboard shortcut hints (⇧⌘O / ⌘K)
+- Sidebar logo size reduced from h-6 to h-5
+- Frontend i18n moved from v0.6.2 scope to v1.0 backlog; User Language Preference (backend) remains shipped
 - Connectors now default to "published" on creation; removed publish/unpublish workflow and status badge
 - Agent form always sends `kb_ids` and `connector_ids` (even when empty); confidence threshold moved above connectors section
 - LanceDB auto-migrates missing schema columns on table open
