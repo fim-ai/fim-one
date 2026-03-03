@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2 } from "lucide-react"
+import { Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { kbApi, connectorApi } from "@/lib/api"
 import type { ConnectorResponse } from "@/types/connector"
@@ -193,69 +193,129 @@ export function AgentFormDialog({
           </div>
 
           {/* Knowledge Bases */}
-          {availableKBs.length > 0 && (
+          {(availableKBs.length > 0 || selectedKBs.some((id) => !availableKBs.some((kb) => kb.id === id))) && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Knowledge Bases</label>
               <p className="text-xs text-muted-foreground">
                 Bind KBs to enable evidence-grounded retrieval with citations
               </p>
               <div className="flex flex-col gap-1.5">
-                {availableKBs.map((kb) => (
-                  <label
-                    key={kb.id}
-                    className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedKBs.includes(kb.id)}
-                      onChange={() =>
-                        setSelectedKBs((prev) =>
-                          prev.includes(kb.id)
-                            ? prev.filter((id) => id !== kb.id)
-                            : [...prev, kb.id]
-                        )
-                      }
-                      className="h-3.5 w-3.5 rounded border-input accent-primary"
-                    />
-                    <span className="text-muted-foreground">
-                      {kb.name} ({kb.document_count} docs)
-                    </span>
-                  </label>
-                ))}
+                {availableKBs.map((kb) => {
+                  const isChecked = selectedKBs.includes(kb.id)
+                  const toggleKB = () =>
+                    setSelectedKBs((prev) =>
+                      prev.includes(kb.id)
+                        ? prev.filter((id) => id !== kb.id)
+                        : [...prev, kb.id]
+                    )
+                  return (
+                    <div
+                      key={kb.id}
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      tabIndex={0}
+                      onClick={toggleKB}
+                      onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleKB() } }}
+                      className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
+                    >
+                      <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors ${isChecked ? "bg-primary border-primary" : "border-input"}`}>
+                        {isChecked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                      </div>
+                      <span className="text-muted-foreground">
+                        {kb.name} ({kb.document_count} docs)
+                      </span>
+                    </div>
+                  )
+                })}
+                {selectedKBs
+                  .filter((id) => !availableKBs.some((kb) => kb.id === id))
+                  .map((orphanId) => {
+                    const toggleOrphan = () =>
+                      setSelectedKBs((prev) => prev.filter((id) => id !== orphanId))
+                    return (
+                      <div
+                        key={orphanId}
+                        role="checkbox"
+                        aria-checked={true}
+                        tabIndex={0}
+                        onClick={toggleOrphan}
+                        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleOrphan() } }}
+                        className="flex items-center gap-1.5 text-sm cursor-pointer select-none rounded px-1 py-0.5 bg-destructive/10"
+                      >
+                        <div className="h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors bg-primary border-primary">
+                          <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                        </div>
+                        <span className="text-destructive/80 truncate max-w-[200px]" title={orphanId}>
+                          {orphanId.length > 12 ? `${orphanId.slice(0, 12)}...` : orphanId}
+                        </span>
+                        <span className="text-destructive/60 text-xs">(deleted)</span>
+                      </div>
+                    )
+                  })}
               </div>
             </div>
           )}
 
           {/* Connectors */}
-          {availableConnectors.length > 0 && (
+          {(availableConnectors.length > 0 || selectedConnectors.some((id) => !availableConnectors.some((c) => c.id === id))) && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Connectors</label>
               <p className="text-xs text-muted-foreground">
                 Bind connectors to give the agent access to external API actions
               </p>
               <div className="flex flex-col gap-1.5">
-                {availableConnectors.map((conn) => (
-                  <label
-                    key={conn.id}
-                    className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedConnectors.includes(conn.id)}
-                      onChange={() =>
-                        setSelectedConnectors((prev) =>
-                          prev.includes(conn.id)
-                            ? prev.filter((id) => id !== conn.id)
-                            : [...prev, conn.id]
-                        )
-                      }
-                      className="h-3.5 w-3.5 rounded border-input accent-primary"
-                    />
-                    <span className="text-muted-foreground">
-                      {conn.name} ({conn.actions.length} actions)
-                    </span>
-                  </label>
-                ))}
+                {availableConnectors.map((conn) => {
+                  const isChecked = selectedConnectors.includes(conn.id)
+                  const toggleConn = () =>
+                    setSelectedConnectors((prev) =>
+                      prev.includes(conn.id)
+                        ? prev.filter((id) => id !== conn.id)
+                        : [...prev, conn.id]
+                    )
+                  return (
+                    <div
+                      key={conn.id}
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      tabIndex={0}
+                      onClick={toggleConn}
+                      onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleConn() } }}
+                      className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
+                    >
+                      <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors ${isChecked ? "bg-primary border-primary" : "border-input"}`}>
+                        {isChecked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                      </div>
+                      <span className="text-muted-foreground">
+                        {conn.name} ({conn.actions.length} actions)
+                      </span>
+                    </div>
+                  )
+                })}
+                {selectedConnectors
+                  .filter((id) => !availableConnectors.some((c) => c.id === id))
+                  .map((orphanId) => {
+                    const toggleOrphan = () =>
+                      setSelectedConnectors((prev) => prev.filter((id) => id !== orphanId))
+                    return (
+                      <div
+                        key={orphanId}
+                        role="checkbox"
+                        aria-checked={true}
+                        tabIndex={0}
+                        onClick={toggleOrphan}
+                        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleOrphan() } }}
+                        className="flex items-center gap-1.5 text-sm cursor-pointer select-none rounded px-1 py-0.5 bg-destructive/10"
+                      >
+                        <div className="h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors bg-primary border-primary">
+                          <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                        </div>
+                        <span className="text-destructive/80 truncate max-w-[200px]" title={orphanId}>
+                          {orphanId.length > 12 ? `${orphanId.slice(0, 12)}...` : orphanId}
+                        </span>
+                        <span className="text-destructive/60 text-xs">(deleted)</span>
+                      </div>
+                    )
+                  })}
               </div>
             </div>
           )}
