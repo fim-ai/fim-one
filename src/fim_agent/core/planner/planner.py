@@ -234,25 +234,32 @@ class DAGPlanner:
         """Validate that the steps form a valid DAG.
 
         Checks two properties:
-        1. All dependency IDs reference existing steps.
+        1. All dependency IDs reference existing steps (dangling refs are
+           auto-removed with a warning instead of raising).
         2. There are no circular dependencies (via topological sort).
 
         Args:
             steps: The list of plan steps to validate.
 
         Raises:
-            ValueError: If the graph contains dangling references or cycles.
+            ValueError: If the graph contains cycles.
         """
         step_ids = {step.id for step in steps}
 
-        # Check for dangling dependency references.
+        # Auto-remove dangling dependency references (LLM may omit steps).
         for step in steps:
-            for dep_id in step.dependencies:
-                if dep_id not in step_ids:
-                    raise ValueError(
-                        f"Step '{step.id}' depends on unknown step '{dep_id}'. "
-                        f"Known step IDs: {sorted(step_ids)}"
-                    )
+            dangling = [d for d in step.dependencies if d not in step_ids]
+            if dangling:
+                logger.warning(
+                    "Step '%s' references unknown deps %s — removing them. "
+                    "Known step IDs: %s",
+                    step.id,
+                    dangling,
+                    sorted(step_ids),
+                )
+                step.dependencies = [
+                    d for d in step.dependencies if d in step_ids
+                ]
 
         # Topological sort via Kahn's algorithm to detect cycles.
         in_degree: dict[str, int] = {s.id: 0 for s in steps}
