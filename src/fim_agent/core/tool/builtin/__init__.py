@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Explicit re-exports (for convenience — callers can still import directly)
 from .calculator import CalculatorTool
+from .datetime_tool import DateTimeTool
 from .file_ops import FileOpsTool
 from .grounded_retrieve import GroundedRetrieveTool
 from .http_request import HttpRequestTool
@@ -35,6 +36,7 @@ from .web_search import WebSearchTool
 
 __all__ = [
     "CalculatorTool",
+    "DateTimeTool",
     "FileOpsTool",
     "GroundedRetrieveTool",
     "HttpRequestTool",
