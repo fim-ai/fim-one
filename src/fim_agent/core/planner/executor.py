@@ -93,93 +93,108 @@ class DAGExecutor:
         completed_ids: set[str] = set()
         running_tasks: dict[asyncio.Task[None], str] = {}
 
-        while pending_ids or running_tasks:
-            # If stop was requested (user inject), skip all remaining pending steps.
-            if self._stop_event is not None and self._stop_event.is_set() and pending_ids:
-                for sid in sorted(pending_ids):
-                    step_index[sid].status = "skipped"
-                    self._notify(sid, "completed", {
-                        "task": step_index[sid].task,
-                        "status": "skipped",
-                        "result": "Skipped — user changed requirements",
-                    })
-                pending_ids.clear()
-
-            # Identify steps that are ready to launch (sorted for deterministic order).
-            ready_ids: list[str] = sorted(
-                (sid for sid in pending_ids
-                 if all(dep in completed_ids for dep in step_index[sid].dependencies)),
-                key=lambda sid: step_index[sid].id,
-            )
-
-            # Launch ready steps.
-            for sid in ready_ids:
-                pending_ids.discard(sid)
-                step = step_index[sid]
-                step.status = "running"
-                step.started_at = time.time()
-                self._notify(sid, "started", {"task": step.task, "started_at": step.started_at})
-
-                context = self._build_step_context(step, step_index, self._context_guard)
-                task = asyncio.create_task(
-                    self._run_with_semaphore(semaphore, step, context),
-                )
-                running_tasks[task] = sid
-                logger.debug("Launched step '%s': %s", sid, step.task)
-
-            if not running_tasks:
-                # No tasks running and nothing can be launched -- this
-                # would indicate a bug (e.g. failed dependency blocking).
-                if pending_ids:
-                    logger.error(
-                        "Deadlock: pending steps %s cannot proceed "
-                        "(dependencies never completed)",
-                        sorted(pending_ids),
-                    )
-                    for sid in pending_ids:
-                        step_index[sid].status = "failed"
-                        step_index[sid].result = (
-                            "Step could not run: one or more dependencies failed."
-                        )
+        try:
+            while pending_ids or running_tasks:
+                # If stop was requested (user inject), skip all remaining pending steps.
+                if self._stop_event is not None and self._stop_event.is_set() and pending_ids:
+                    for sid in sorted(pending_ids):
+                        step_index[sid].status = "skipped"
+                        self._notify(sid, "completed", {
+                            "task": step_index[sid].task,
+                            "status": "skipped",
+                            "result": "Skipped — user changed requirements",
+                        })
                     pending_ids.clear()
-                break
 
-            # Wait for at least one task to finish.
-            done, _ = await asyncio.wait(
-                running_tasks.keys(),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+                # Identify steps that are ready to launch (sorted for deterministic order).
+                ready_ids: list[str] = sorted(
+                    (sid for sid in pending_ids
+                     if all(dep in completed_ids for dep in step_index[sid].dependencies)),
+                    key=lambda sid: step_index[sid].id,
+                )
 
-            for finished_task in done:
-                sid = running_tasks.pop(finished_task)
+                # Launch ready steps.
+                for sid in ready_ids:
+                    pending_ids.discard(sid)
+                    step = step_index[sid]
+                    step.status = "running"
+                    step.started_at = time.time()
+                    self._notify(sid, "started", {"task": step.task, "started_at": step.started_at})
 
-                # Re-raise unexpected exceptions (step-level errors are
-                # already caught inside ``_execute_step``).
-                exc = finished_task.exception()
-                if exc is not None:
-                    logger.exception(
-                        "Unexpected error in step '%s'", sid, exc_info=exc,
+                    context = self._build_step_context(step, step_index, self._context_guard)
+                    task = asyncio.create_task(
+                        self._run_with_semaphore(semaphore, step, context),
                     )
-                    step_index[sid].status = "failed"
-                    step_index[sid].result = f"Unexpected error: {exc}"
+                    running_tasks[task] = sid
+                    logger.debug("Launched step '%s': %s", sid, step.task)
 
-                completed_ids.add(sid)
-                step = step_index[sid]
-                completed_data: dict[str, Any] = {
-                    "task": step.task,
-                    "status": step.status,
-                    "result": step.result,
-                    "started_at": step.started_at,
-                    "completed_at": step.completed_at,
-                    "duration": step.duration,
-                }
-                if step.usage is not None:
-                    completed_data["usage"] = {
-                        "prompt_tokens": step.usage.prompt_tokens,
-                        "completion_tokens": step.usage.completion_tokens,
-                        "total_tokens": step.usage.total_tokens,
+                if not running_tasks:
+                    # No tasks running and nothing can be launched -- this
+                    # would indicate a bug (e.g. failed dependency blocking).
+                    if pending_ids:
+                        logger.error(
+                            "Deadlock: pending steps %s cannot proceed "
+                            "(dependencies never completed)",
+                            sorted(pending_ids),
+                        )
+                        for sid in pending_ids:
+                            step_index[sid].status = "failed"
+                            step_index[sid].result = (
+                                "Step could not run: one or more dependencies failed."
+                            )
+                        pending_ids.clear()
+                    break
+
+                # Wait for at least one task to finish.
+                done, _ = await asyncio.wait(
+                    running_tasks.keys(),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                for finished_task in done:
+                    sid = running_tasks.pop(finished_task)
+
+                    # Re-raise unexpected exceptions (step-level errors are
+                    # already caught inside ``_execute_step``).
+                    exc = finished_task.exception()
+                    if exc is not None:
+                        logger.exception(
+                            "Unexpected error in step '%s'", sid, exc_info=exc,
+                        )
+                        step_index[sid].status = "failed"
+                        step_index[sid].result = f"Unexpected error: {exc}"
+
+                    completed_ids.add(sid)
+                    step = step_index[sid]
+                    completed_data: dict[str, Any] = {
+                        "task": step.task,
+                        "status": step.status,
+                        "result": step.result,
+                        "started_at": step.started_at,
+                        "completed_at": step.completed_at,
+                        "duration": step.duration,
                     }
-                self._notify(sid, "completed", completed_data)
+                    if step.usage is not None:
+                        completed_data["usage"] = {
+                            "prompt_tokens": step.usage.prompt_tokens,
+                            "completion_tokens": step.usage.completion_tokens,
+                            "total_tokens": step.usage.total_tokens,
+                        }
+                    self._notify(sid, "completed", completed_data)
+        except asyncio.CancelledError:
+            # Cancel all in-flight step tasks so they don't keep running
+            # (consuming LLM tokens / tool resources) after user hits Stop.
+            if running_tasks:
+                logger.info(
+                    "DAG executor cancelled, cancelling %d running step(s): %s",
+                    len(running_tasks),
+                    list(running_tasks.values()),
+                )
+                for task in running_tasks:
+                    task.cancel()
+                # Give tasks a moment to handle cancellation gracefully.
+                await asyncio.gather(*running_tasks, return_exceptions=True)
+            raise
 
         # Aggregate step-level usage into the plan's total_usage.
         # Lock protects against concurrent execute() calls on the same plan
