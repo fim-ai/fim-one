@@ -15,7 +15,7 @@ import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useAuth } from "@/contexts/auth-context"
 import { useConversation } from "@/contexts/conversation-context"
 import { agentApi, fileApi, chatApi } from "@/lib/api"
-import { API_BASE_URL, ACCESS_TOKEN_KEY } from "@/lib/constants"
+import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { cn, formatFileSize, isImageFile } from "@/lib/utils"
 import {
   DropdownMenu,
@@ -254,7 +254,7 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
       }
 
       const endpoint = mode === "react" ? "react" : "dag"
-      let url = `${API_BASE_URL}/api/${endpoint}?q=${encodeURIComponent(trimmed)}&conversation_id=${convId}`
+      let url = `${getApiBaseUrl()}/api/${endpoint}?q=${encodeURIComponent(trimmed)}&conversation_id=${convId}`
       const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY)
       if (accessToken) {
         url += `&token=${encodeURIComponent(accessToken)}`
@@ -370,7 +370,7 @@ function ImageThumbnail({ fileId, filename }: { fileId: string; filename: string
   useEffect(() => {
     let revoked = false
     const token = localStorage.getItem(ACCESS_TOKEN_KEY)
-    fetch(`${API_BASE_URL}/api/files/${fileId}`, {
+    fetch(`${getApiBaseUrl()}/api/files/${fileId}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((res) => res.blob())
@@ -946,9 +946,9 @@ function PlaygroundContent({
                       </div>
                     </div>
                   )}
-                  {hasLiveMessages && (
+                  {(hasLiveMessages || (isRunning && pendingQuery && mode === "react")) && (
                     mode === "react" ? (
-                      <ReactOutput items={reactItems} onSuggestionSelect={handleSuggestionSelect} />
+                      <ReactOutput items={reactItems} isStreaming={isRunning && modeMatches} onSuggestionSelect={handleSuggestionSelect} />
                     ) : (
                       <DagOutput
                         planSteps={dagData.planSteps}
@@ -1062,6 +1062,9 @@ function PlaygroundContent({
             onLanguageChange={onLanguageChange}
             onSelect={onExampleSelect}
             disabled={isRunning}
+            agentPrompts={selectedAgent?.suggested_prompts}
+            agentName={selectedAgent?.name}
+            agentIcon={selectedAgent?.icon}
           />
         </div>
       )}

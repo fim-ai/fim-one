@@ -20,10 +20,11 @@ import { SuggestedFollowups } from "./suggested-followups"
 
 interface ReactOutputProps {
   items: StepItem[]
+  isStreaming?: boolean
   onSuggestionSelect?: (query: string) => void
 }
 
-export function ReactOutput({ items, onSuggestionSelect }: ReactOutputProps) {
+export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOutputProps) {
   const [stepsExpanded, setStepsExpanded] = useState(false)
 
   const hasDone = items.some((i) => i.event === "done")
@@ -106,6 +107,13 @@ export function ReactOutput({ items, onSuggestionSelect }: ReactOutputProps) {
   // Streaming (no done yet) or direct answer (no steps): render as before
   return (
     <div className="space-y-3 min-w-0 w-full">
+      {/* Initial loading indicator before any step events arrive */}
+      {isStreaming && items.length === 0 && (
+        <div className="flex items-center gap-3 px-1 py-2">
+          <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+          <span className="text-sm text-muted-foreground shiny-text">Processing...</span>
+        </div>
+      )}
       {items.map((item, idx) => {
         if (item.event === "step") {
           const step = item.data as ReactStepEvent

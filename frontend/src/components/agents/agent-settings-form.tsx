@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
+import { SuggestedPromptsEditor } from "@/components/agents/suggested-prompts-editor"
 import { agentApi, kbApi, connectorApi } from "@/lib/api"
 import type { AgentCreate, AgentResponse } from "@/types/agent"
 import type { ConnectorResponse } from "@/types/connector"
@@ -28,7 +29,7 @@ export function AgentSettingsForm({
   const [description, setDescription] = useState("")
   const [instructions, setInstructions] = useState("")
   const [toolCategories, setToolCategories] = useState<string[]>([])
-  const [suggestedPrompts, setSuggestedPrompts] = useState("")
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>([])
   const [selectedKBs, setSelectedKBs] = useState<string[]>([])
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([])
   const [confidenceThreshold, setConfidenceThreshold] = useState<number | null>(null)
@@ -45,7 +46,7 @@ export function AgentSettingsForm({
       setDescription(agent.description || "")
       setInstructions(agent.instructions || "")
       setToolCategories(agent.tool_categories || [])
-      setSuggestedPrompts(agent.suggested_prompts?.join("\n") || "")
+      setSuggestedPrompts(agent.suggested_prompts || [])
       setSelectedKBs(agent.kb_ids || [])
       setSelectedConnectors(agent.connector_ids || [])
       const ct = agent.grounding_config?.confidence_threshold
@@ -56,7 +57,7 @@ export function AgentSettingsForm({
       setDescription("")
       setInstructions("")
       setToolCategories([])
-      setSuggestedPrompts("")
+      setSuggestedPrompts([])
       setSelectedKBs([])
       setSelectedConnectors([])
       setConfidenceThreshold(null)
@@ -89,7 +90,7 @@ export function AgentSettingsForm({
       description !== (agent.description || "") ||
       instructions !== (agent.instructions || "") ||
       JSON.stringify(toolCategories) !== JSON.stringify(agent.tool_categories || []) ||
-      suggestedPrompts !== (agent.suggested_prompts?.join("\n") || "") ||
+      JSON.stringify(suggestedPrompts) !== JSON.stringify(agent.suggested_prompts || []) ||
       JSON.stringify(selectedKBs) !== JSON.stringify(agent.kb_ids || []) ||
       JSON.stringify(selectedConnectors) !== JSON.stringify(agent.connector_ids || []) ||
       (() => {
@@ -116,9 +117,7 @@ export function AgentSettingsForm({
     setIsSubmitting(true)
     try {
       const prompts = suggestedPrompts
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean)
+        .filter((s) => s.trim())
 
       const data: AgentCreate = {
         name: trimmedName,
@@ -157,7 +156,7 @@ export function AgentSettingsForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 overflow-hidden">
         <div className="space-y-4 pl-0.5 pr-4">
           {/* Name + Icon */}
           <div className="space-y-1.5">
@@ -399,19 +398,15 @@ export function AgentSettingsForm({
 
           {/* Suggested Prompts */}
           <div className="space-y-1.5">
-            <label htmlFor="agent-prompts" className="text-sm font-medium">
+            <label className="text-sm font-medium">
               Suggested Prompts
             </label>
-            <textarea
-              id="agent-prompts"
+            <SuggestedPromptsEditor
               value={suggestedPrompts}
-              onChange={(e) => setSuggestedPrompts(e.target.value)}
-              placeholder="One prompt per line..."
-              rows={3}
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+              onChange={setSuggestedPrompts}
             />
             <p className="text-xs text-muted-foreground">
-              One prompt per line. Shown as quick-start suggestions in chat.
+              Shown as quick-start suggestions in chat.
             </p>
           </div>
         </div>

@@ -13,6 +13,9 @@ interface ExamplesProps {
   onLanguageChange: (lang: Language) => void
   onSelect: (query: string) => void
   disabled?: boolean
+  agentPrompts?: string[] | null
+  agentName?: string | null
+  agentIcon?: string | null
 }
 
 interface ExampleItem {
@@ -243,6 +246,9 @@ export function Examples({
   onLanguageChange,
   onSelect,
   disabled,
+  agentPrompts,
+  agentName,
+  agentIcon,
 }: ExamplesProps) {
   const allExamples = EXAMPLES[mode][language]
   const examples = useMemo(
@@ -259,6 +265,50 @@ export function Examples({
     [disabled, onSelect]
   )
 
+  const hasAgentPrompts = agentPrompts && agentPrompts.length > 0
+
+  // Agent-specific prompts layout
+  if (hasAgentPrompts) {
+    return (
+      <div className="mx-auto w-full max-w-3xl space-y-6 px-4">
+        {/* Agent header */}
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            {agentIcon && <span className="text-xl">{agentIcon}</span>}
+            {agentName}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {language === "en" ? "Suggested prompts" : "建议提示"}
+          </p>
+        </div>
+
+        {/* Agent prompt cards */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {agentPrompts.map((prompt, i) => (
+            <button
+              key={`agent-prompt-${i}`}
+              type="button"
+              disabled={disabled}
+              onClick={() => handleSelect(prompt)}
+              className={
+                "group relative flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 shadow-sm" +
+                " hover:border-primary/30 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5" +
+                " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background" +
+                (disabled ? " opacity-50 pointer-events-none" : " cursor-pointer")
+              }
+            >
+              <p className="flex-1 text-[13px] leading-relaxed text-muted-foreground transition-colors duration-200 group-hover:text-foreground/90">
+                {prompt}
+              </p>
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground/0 transition-all duration-200 group-hover:text-muted-foreground/70 group-hover:translate-x-0.5" />
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Default hardcoded examples layout
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4">
       {/* Header */}
