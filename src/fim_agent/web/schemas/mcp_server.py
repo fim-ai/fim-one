@@ -13,14 +13,16 @@ class MCPServerCreate(BaseModel):
     args: list[str] | None = None
     env: dict[str, str] | None = None
     url: str | None = None
+    working_dir: str | None = None
+    headers: dict[str, str] | None = None
     is_active: bool = True
 
     @model_validator(mode="after")
     def validate_transport(self):
         if self.transport == "stdio" and not self.command:
             raise ValueError("command is required for stdio transport")
-        if self.transport == "sse" and not self.url:
-            raise ValueError("url is required for sse transport")
+        if self.transport in ("sse", "streamable_http") and not self.url:
+            raise ValueError("url is required for sse/streamable_http transport")
         return self
 
 
@@ -32,6 +34,8 @@ class MCPServerUpdate(BaseModel):
     args: list[str] | None = None
     env: dict[str, str] | None = None
     url: str | None = None
+    working_dir: str | None = None
+    headers: dict[str, str] | None = None
     is_active: bool | None = None
 
 
@@ -44,6 +48,8 @@ class MCPServerResponse(BaseModel):
     args: list[str] | None
     env: dict[str, str] | None
     url: str | None
+    working_dir: str | None
+    headers: dict[str, str] | None
     is_active: bool
     tool_count: int
     created_at: str

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -40,6 +41,8 @@ def _to_response(srv: MCPServer) -> MCPServerResponse:
         args=srv.args,
         env=srv.env,
         url=srv.url,
+        working_dir=srv.working_dir,
+        headers=srv.headers,
         is_active=srv.is_active,
         tool_count=srv.tool_count,
         created_at=srv.created_at.isoformat() if srv.created_at else "",
@@ -63,6 +66,17 @@ async def _get_owned_server(
 
 
 # ---------------------------------------------------------------------------
+# Capabilities (must be before /{server_id} to avoid path conflict)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/capabilities")
+async def get_capabilities():
+    allow_stdio = os.environ.get("ALLOW_STDIO_MCP", "true").lower() != "false"
+    return {"allow_stdio": allow_stdio}
+
+
+# ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
 
@@ -82,6 +96,8 @@ async def create_mcp_server(
         args=body.args,
         env=body.env,
         url=body.url,
+        working_dir=body.working_dir,
+        headers=body.headers,
         is_active=body.is_active,
     )
     db.add(server)

@@ -58,6 +58,7 @@ class MCPClient:
         command: str,
         args: list[str] | None = None,
         env: dict[str, str] | None = None,
+        working_dir: str | None = None,
     ) -> list[Tool]:
         """Connect to an MCP server via stdio transport.
 
@@ -96,6 +97,7 @@ class MCPClient:
             command=command,
             args=args or [],
             env=env,
+            cwd=working_dir,
         )
 
         logger.info("Connecting to MCP server %r: %s %s", name, command, args or [])
@@ -201,6 +203,77 @@ class MCPClient:
         tool_names = [t.name for t in adapters]
         logger.info(
             "MCP server %r (SSE) connected — discovered %d tool(s): %s",
+            name,
+            len(adapters),
+            tool_names,
+        )
+        return adapters
+
+    async def connect_streamable_http(
+        self,
+        name: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+    ) -> list[Tool]:
+        """Connect to an MCP server via Streamable HTTP transport.
+
+        Parameters
+        ----------
+        name:
+            Unique name for this server (used as tool-name prefix).
+        url:
+            Streamable HTTP endpoint URL of the MCP server.
+        headers:
+            Optional HTTP headers for the connection.
+
+        Returns
+        -------
+        list[Tool]
+            List of :class:`MCPToolAdapter` instances wrapping the server's tools.
+
+        Raises
+        ------
+        ImportError
+            If the ``mcp`` package is not installed.
+        """
+        try:
+            from mcp import ClientSession
+            from mcp.client.streamable_http import streamablehttp_client
+        except ImportError as exc:
+            raise ImportError(
+                "The 'mcp' package is required for MCP integration. "
+                "Install it with: uv sync --extra mcp"
+            ) from exc
+
+        logger.info("Connecting to MCP server %r via Streamable HTTP: %s", name, url)
+
+        read, write, _ = await self._exit_stack.enter_async_context(
+            streamablehttp_client(url, headers=headers or {})
+        )
+        session: ClientSession = await self._exit_stack.enter_async_context(
+            ClientSession(read, write)
+        )
+        await session.initialize()
+        self._sessions[name] = session
+
+        tools_result = await session.list_tools()
+
+        adapters: list[Tool] = []
+        for tool in tools_result.tools:
+            adapter = MCPToolAdapter(
+                server_name=name,
+                tool_def={
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "inputSchema": tool.inputSchema,
+                },
+                call_fn=session.call_tool,
+            )
+            adapters.append(adapter)
+
+        tool_names = [t.name for t in adapters]
+        logger.info(
+            "MCP server %r (Streamable HTTP) connected — discovered %d tool(s): %s",
             name,
             len(adapters),
             tool_names,

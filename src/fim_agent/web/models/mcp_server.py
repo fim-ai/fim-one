@@ -23,11 +23,13 @@ class MCPServer(UUIDPKMixin, TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    transport: Mapped[str] = mapped_column(String(10), default="stdio")
+    transport: Mapped[str] = mapped_column(String(20), default="stdio")
     command: Mapped[str | None] = mapped_column(String(500), nullable=True)
     args: Any = Column(JSON, nullable=True)
     env: Any = Column(JSON, nullable=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    working_dir: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    headers: Any = Column(JSON, nullable=True)  # dict[str, str] for SSE/Streamable HTTP
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     tool_count: Mapped[int] = mapped_column(Integer, default=0)
 

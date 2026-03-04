@@ -73,6 +73,8 @@ from fim_agent.web.models import User
 
 logger = logging.getLogger(__name__)
 
+_allow_stdio_mcp = os.environ.get("ALLOW_STDIO_MCP", "true").lower() != "false"
+
 
 # ---------------------------------------------------------------------------
 # Interrupt queue infrastructure
@@ -494,16 +496,30 @@ async def _resolve_tools(
                 for _srv in _user_servers:
                     try:
                         if _srv.transport == "stdio" and _srv.command:
+                            if not _allow_stdio_mcp:
+                                logger.warning(
+                                    "STDIO MCP disabled by ALLOW_STDIO_MCP=false, skipping %r",
+                                    _srv.name,
+                                )
+                                continue
                             _mcp_tools = await _mcp_client.connect_stdio(
                                 name=_srv.name,
                                 command=_srv.command,
                                 args=_srv.args or [],
                                 env=_srv.env,
+                                working_dir=_srv.working_dir,
                             )
                         elif _srv.transport == "sse" and _srv.url:
                             _mcp_tools = await _mcp_client.connect_sse(
                                 name=_srv.name,
                                 url=_srv.url,
+                                headers=_srv.headers,
+                            )
+                        elif _srv.transport == "streamable_http" and _srv.url:
+                            _mcp_tools = await _mcp_client.connect_streamable_http(
+                                name=_srv.name,
+                                url=_srv.url,
+                                headers=_srv.headers,
                             )
                         else:
                             continue
@@ -972,6 +988,8 @@ async def react_endpoint(
                             conv.total_tokens = (
                                 conv.total_tokens or 0
                             ) + done_payload["usage"].get("total_tokens", 0)
+                            if conv.model_name is None and llm.model_id:
+                                conv.model_name = llm.model_id
                     await db_session.commit()
                 except Exception:
                     logger.warning(
@@ -1566,6 +1584,8 @@ async def dag_endpoint(
                             ) + dag_done_payload["usage"].get(
                                 "total_tokens", 0
                             )
+                            if conv.model_name is None and llm.model_id:
+                                conv.model_name = llm.model_id
                     await db_session.commit()
                 except Exception:
                     logger.warning(
