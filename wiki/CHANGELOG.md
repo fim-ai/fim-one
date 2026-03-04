@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **MCP Server Management UI**: New `/tools` page with per-user MCP server CRUD (name, transport STDIO/SSE, command/args/env or URL); servers connect on-demand during agent execution and disconnect after the SSE stream ends; system-level `MCP_SERVERS` env var continues to work alongside user-defined servers
+- **MCPClient SSE Transport**: `MCPClient.connect_sse()` for remote MCP servers over HTTP/SSE transport, alongside existing `connect_stdio()`; `MCPClient.disconnect()` for single-server session removal
+- **Built-in Tools Catalog**: Read-only tools reference in `/tools` page showing Computation, Web, Filesystem, and Knowledge categories
 - **KB URL Import**: New "URL Import" tab in the KB upload dialog; users paste multiple URLs (one per line), backend fetches each via Jina Reader API (r.jina.ai) and ingests as Markdown documents using the existing chunking/embedding/LanceDB pipeline; per-URL success/failed status reported
 - **file_ops Extended Operations**: Nine new file operations added to the `file_ops` built-in tool — `append`, `delete`, `exists`, `get_info`, `read_json`, `write_json`, `read_csv`, `write_csv`, `find_replace` — bringing feature parity with competitor file tooling while retaining the single-tool dispatch architecture
 - **list_knowledge_bases Tool**: New `knowledge`-category built-in tool that lets agents discover all available knowledge bases (id, name, description, document/chunk counts) before calling `kb_retrieve`; auto-discovered via `discover_builtin_tools()`

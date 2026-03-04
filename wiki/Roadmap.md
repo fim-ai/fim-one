@@ -191,6 +191,15 @@ Hub          → Central cross-system orchestration (Portal / API)
 - **CRM / Contracts** (Salesforce, custom PG): Agent reads contract clauses via API Connector, performs risk analysis, generates review opinions
 - **Business DB** (MySQL / PG): Agent scans for anomalies via DB Connector, generates alerts, notifies responsible parties via Teams / WeCom (企微) / email
 
+#### v0.6.3 — MCP Server Management UI (shipped)
+
+- [x] **MCPServer ORM & API**: Per-user MCP server records (transport: stdio/sse, command/args/env or URL); full CRUD at `/api/mcp-servers` with JWT auth and ownership isolation
+- [x] **SSE Transport**: `MCPClient.connect_sse()` for remote MCP servers; `MCPClient.disconnect()` for individual session removal
+- [x] **Per-Request MCP Lifecycle**: Active user MCP servers connect on-demand in `_resolve_tools()` and disconnect after SSE stream ends; system-level `MCP_SERVERS` env var remains supported in parallel
+- [x] **Tools Page (`/tools`)**: Built-in tool catalog (read-only, grouped by category) + MCP server management grid with add/edit/delete; transport-aware dialog (STDIO: command+args+env, SSE: URL)
+
+---
+
 ### v0.7 -- SaaS Runtime & Provider Abstraction
 
 > *"Secure execution and pluggable services for multi-tenant deployment"*
@@ -468,6 +477,8 @@ Platform
 - [ ] **Browser Automation**: Playwright-based browser control — navigate, click, fill forms, take screenshots, extract text, evaluate JS, manage sessions. Enables agents to interact with login-gated websites, JavaScript-rendered pages, and multi-step web workflows. Screenshots stream inline as execution audit trail. *Architecture choice: implement as built-in tool suite (10+ granular tools matching competitor parity) or expose via MCP Playwright server (zero backend dependency). Built-in approach gives deeper DAG integration and screenshot-in-step-output UX; MCP approach keeps core lean. Revisit when the use case (web automation vs. API-first Connector Hub) becomes clearer from user demand.*
 
 **P2 — Worth building if the product direction supports it**
+
+- [ ] **Model Management UI**: Visual interface for managing LLM/Embedding model configurations — add/edit/delete model providers (OpenAI, Anthropic, Gemini, Ollama, etc.), set default model, configure Fast LLM separately. Backend ModelRegistry already exists (v0.2); this is purely a UI layer on top of current env-var config. Also includes per-agent model override (bind a specific model to an agent instead of the global default) and Embedding model provider selection (decouple from Jina-only). *Deferred because: env-var config works fine for self-hosted single-tenant deployments; UI only becomes necessary for multi-user/org deployments where admins need to configure models without touching `.env`. Re-evaluate when Organization (v0.8) ships.*
 
 - [ ] **Cost-Aware Request Routing**: Skip full Agent loop for simple queries that pattern matching can resolve; local rule-based handling to reduce LLM cost. Inspired by Ruflo's 3-Tier routing (local transform → fast model → full model). *Deferred because: the LLM call IS the core product; fast_llm + ModelRegistry already handle cost optimization; pattern-matchable queries are rare in the Connector Hub use case. Re-evaluate when request volume scales up.*
 - [ ] **Advanced KB Routing Strategy**: Multi-layer knowledge base selection beyond basic node-level binding. L1: static `kb_scope` per step (whitelist within agent's `kb_ids`); L2: priority hints with trigger conditions (e.g., "prefer contract regulations KB when legal clauses are involved"); L3: optional agent dynamic selection within whitelist for large KB pools (>5). *Deferred because: basic node-level KB binding in Blueprint Mode (v1.0) covers the primary enterprise use case. Advanced routing adds value only when KB pools are large and diverse enough to warrant automated selection. Re-evaluate after Blueprint Mode ships and real usage patterns emerge.*
