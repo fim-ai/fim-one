@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2 } from "lucide-react"
 import { APP_NAME, getApiBaseUrl, getApiDirectUrl } from "@/lib/constants"
+import { authApi } from "@/lib/api"
 
 function LoginPageInner() {
   const { user, isLoading: authLoading, login, register } = useAuth()
@@ -28,6 +29,9 @@ function LoginPageInner() {
   const [regError, setRegError] = useState("")
   const [regLoading, setRegLoading] = useState(false)
 
+  // Setup status check
+  const [setupChecking, setSetupChecking] = useState(true)
+
   // OAuth state
   const [oauthProviders, setOauthProviders] = useState<string[]>([])
   const [oauthError, setOauthError] = useState("")
@@ -38,6 +42,23 @@ function LoginPageInner() {
       router.replace("/")
     }
   }, [authLoading, user, router])
+
+  // Check if system needs first-time setup
+  useEffect(() => {
+    authApi
+      .setupStatus()
+      .then((res) => {
+        if (!res.initialized) {
+          router.replace("/setup")
+        } else {
+          setSetupChecking(false)
+        }
+      })
+      .catch(() => {
+        // If API call fails (old backend, network error), stay on login for backward compatibility
+        setSetupChecking(false)
+      })
+  }, [router])
 
   // Check for OAuth error in URL params
   useEffect(() => {
@@ -120,7 +141,7 @@ function LoginPageInner() {
     }
   }
 
-  if (authLoading) {
+  if (authLoading || setupChecking) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

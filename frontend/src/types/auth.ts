@@ -46,3 +46,9 @@ export interface RegisterRequest {
   password: string
   email: string
 }
+
+export interface SetupRequest {
+  username: string
+  password: string
+  email?: string
+}

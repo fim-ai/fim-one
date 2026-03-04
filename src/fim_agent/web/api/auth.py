@@ -29,6 +29,7 @@ from fim_agent.web.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     SetPasswordRequest,
+    SetupRequest,
     TokenResponse,
     UpdateProfileRequest,
     UserInfo,
@@ -377,3 +378,54 @@ async def unbind_oauth(
     )
     user = result.scalar_one()
     return ApiResponse(data=_build_user_info(user).model_dump())
+
+
+@router.get("/setup-status")
+async def setup_status(
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Check whether the system has been initialized (any users exist)."""
+    result = await db.execute(select(func.count(User.id)))
+    count = result.scalar_one()
+    return {"initialized": count > 0}
+
+
+@router.post("/setup", response_model=TokenResponse)
+async def setup(
+    body: SetupRequest,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> TokenResponse:
+    """First-time admin setup. Only works when no users exist yet."""
+    result = await db.execute(select(func.count(User.id)))
+    count = result.scalar_one()
+    if count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System already initialized",
+        )
+
+    user = User(
+        username=body.username,
+        password_hash=hash_password(body.password),
+        email=body.email,
+        is_admin=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    access = create_access_token(user.id, user.username)
+    refresh = create_refresh_token(user.id, user.username)
+
+    user.refresh_token = refresh
+    user.refresh_token_expires_at = datetime.utcnow() + timedelta(
+        days=REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    await db.commit()
+
+    # Reload with oauth_bindings for response serialization
+    result = await db.execute(
+        select(User).options(selectinload(User.oauth_bindings)).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+
+    return _build_token_response(user, access, refresh)

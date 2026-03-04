@@ -1,5 +1,5 @@
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "./constants"
-import type { UserInfo, TokenResponse, LoginRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest } from "@/types/auth"
+import type { UserInfo, TokenResponse, LoginRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -181,6 +181,15 @@ export const authApi = {
 
   me: () =>
     apiFetch<ApiResponse<UserInfo>>("/api/auth/me").then((r) => r.data),
+
+  setupStatus: () =>
+    apiFetch<{ initialized: boolean }>("/api/auth/setup-status"),
+
+  setup: (body: SetupRequest) =>
+    apiFetch<TokenResponse>("/api/auth/setup", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 }
 
 // --- Conversation API ---

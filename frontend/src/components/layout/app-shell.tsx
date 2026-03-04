@@ -205,7 +205,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   // Public pages: no sidebar, full-width content
-  if (pathname === "/login" || pathname === "/auth/callback") {
+  if (pathname === "/login" || pathname === "/auth/callback" || pathname === "/setup") {
     return <main className="h-screen bg-background">{children}</main>
   }
 
