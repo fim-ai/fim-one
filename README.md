@@ -28,6 +28,7 @@
 - [Development](#development)
 - [Roadmap](#roadmap)
 - [Star History](#star-history)
+- [Activity](#activity)
 - [Contributors](#contributors)
 - [License](#license)
 
@@ -320,6 +321,10 @@ Contributions and ideas are welcome. Open an issue or submit a PR on [GitHub](ht
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date)](https://star-history.com/#fim-ai/fim-agent&Date)
+
+## Activity
+
+![Alt](https://repobeats.axiom.co/api/embed/ff8b449fd183a323d81f33fc96e7ce42ad745f65.svg "Repobeats analytics image")
 
 ## Contributors
 
