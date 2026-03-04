@@ -92,6 +92,9 @@ async def init_db() -> None:
             await _migrate_user_oauth_columns(conn)
             await _migrate_oauth_bindings(conn)
             await _migrate_agent_columns(conn)
+            await _migrate_user_is_active(conn)
+            await _migrate_user_email_required(conn)
+            await _migrate_mcp_server_columns(conn)
 
     logger.info("Database initialized successfully")
 
@@ -248,6 +251,51 @@ async def _migrate_agent_columns(conn) -> None:
         if col_name not in existing_columns:
             logger.info("Adding column agents.%s", col_name)
             await conn.execute(text(ddl))
+
+
+async def _migrate_user_is_active(conn) -> None:
+    """Add is_active column to users table if it doesn't exist."""
+    result = await conn.execute(text("PRAGMA table_info(users)"))
+    existing_columns = {row[1] for row in result.fetchall()}
+    if "is_active" not in existing_columns:
+        logger.info("Adding column users.is_active")
+        await conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+
+
+async def _migrate_mcp_server_columns(conn) -> None:
+    """Add working_dir and headers columns to mcp_servers if they don't exist."""
+    result = await conn.execute(text("PRAGMA table_info(mcp_servers)"))
+    existing_columns = {row[1] for row in result.fetchall()}
+
+    migrations = [
+        ("working_dir", "ALTER TABLE mcp_servers ADD COLUMN working_dir VARCHAR(500)"),
+        ("headers", "ALTER TABLE mcp_servers ADD COLUMN headers JSON"),
+    ]
+
+    for col_name, ddl in migrations:
+        if col_name not in existing_columns:
+            logger.info("Adding column mcp_servers.%s", col_name)
+            await conn.execute(text(ddl))
+
+
+async def _migrate_user_email_required(conn) -> None:
+    """Backfill NULL emails with a placeholder so the column can be NOT NULL."""
+    result = await conn.execute(
+        text("SELECT id, username FROM users WHERE email IS NULL")
+    )
+    rows = result.fetchall()
+    if not rows:
+        return
+
+    logger.info("Backfilling email for %d users with NULL email", len(rows))
+    for row in rows:
+        user_id, username = row
+        placeholder = f"{username}@change.me"
+        await conn.execute(
+            text("UPDATE users SET email = :email WHERE id = :id"),
+            {"email": placeholder, "id": user_id},
+        )
+    logger.info("Email backfill complete")
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
