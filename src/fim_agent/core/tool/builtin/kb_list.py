@@ -8,7 +8,7 @@ from typing import Any
 from fim_agent.core.tool.base import BaseTool
 
 
-class ListKnowledgeBasesTool(BaseTool):
+class KBListTool(BaseTool):
     """List all knowledge bases available to the current user.
 
     Returns each KB's id, name, description, document count, and status.
@@ -21,7 +21,7 @@ class ListKnowledgeBasesTool(BaseTool):
 
     @property
     def name(self) -> str:
-        return "list_knowledge_bases"
+        return "kb_list"
 
     @property
     def description(self) -> str:
