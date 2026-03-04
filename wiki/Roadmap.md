@@ -462,6 +462,10 @@ Platform
 
 > Items deferred from version roadmap. Priority labels indicate likelihood of future promotion.
 
+**P1 — Strong fit with product direction; revisit when bandwidth allows**
+
+- [ ] **Browser Automation**: Playwright-based browser control — navigate, click, fill forms, take screenshots, extract text, evaluate JS, manage sessions. Enables agents to interact with login-gated websites, JavaScript-rendered pages, and multi-step web workflows. Screenshots stream inline as execution audit trail. *Architecture choice: implement as built-in tool suite (10+ granular tools matching competitor parity) or expose via MCP Playwright server (zero backend dependency). Built-in approach gives deeper DAG integration and screenshot-in-step-output UX; MCP approach keeps core lean. Revisit when the use case (web automation vs. API-first Connector Hub) becomes clearer from user demand.*
+
 **P2 — Worth building if the product direction supports it**
 
 - [ ] **Cost-Aware Request Routing**: Skip full Agent loop for simple queries that pattern matching can resolve; local rule-based handling to reduce LLM cost. Inspired by Ruflo's 3-Tier routing (local transform → fast model → full model). *Deferred because: the LLM call IS the core product; fast_llm + ModelRegistry already handle cost optimization; pattern-matchable queries are rare in the Connector Hub use case. Re-evaluate when request volume scales up.*
