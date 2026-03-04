@@ -118,8 +118,7 @@ class DbMemory(BaseMemory):
             from fim_agent.web.models import Message as MessageModel
             from sqlalchemy import select as sa_select
 
-            session = create_session()
-            try:
+            async with create_session() as session:
                 stmt = (
                     sa_select(MessageModel)
                     .where(
@@ -157,8 +156,6 @@ class DbMemory(BaseMemory):
                     messages.append(
                         ChatMessage(role=row.role, content=content),
                     )
-            finally:
-                await session.close()
 
             # Drop the trailing user message — chat.py already saved the
             # current query to DB before creating this memory, and the agent

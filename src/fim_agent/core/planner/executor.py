@@ -43,6 +43,8 @@ class DAGExecutor:
             based on ``PlanStep.model_hint``.
         context_guard: Optional context-window budget manager used to
             truncate oversized dependency contexts.
+        step_timeout: Maximum seconds a single step may run before being
+            cancelled.  Defaults to 600 (10 minutes).
     """
 
     def __init__(
@@ -53,6 +55,7 @@ class DAGExecutor:
         context_guard: ContextGuard | None = None,
         original_goal: str | None = None,
         stop_event: asyncio.Event | None = None,
+        step_timeout: float = 600,
     ) -> None:
         self._agent = agent
         self._max_concurrency = max_concurrency
@@ -60,6 +63,8 @@ class DAGExecutor:
         self._context_guard = context_guard
         self._original_goal = original_goal
         self._stop_event = stop_event
+        self._step_timeout = step_timeout
+        self._usage_lock = asyncio.Lock()
 
     async def execute(
         self,
@@ -177,15 +182,18 @@ class DAGExecutor:
                 self._notify(sid, "completed", completed_data)
 
         # Aggregate step-level usage into the plan's total_usage.
-        step_usage = UsageSummary()
-        for step in plan.steps:
-            if step.usage is not None:
-                step_usage += step.usage
-        if step_usage.llm_calls > 0:
-            if plan.total_usage is not None:
-                plan.total_usage += step_usage
-            else:
-                plan.total_usage = step_usage
+        # Lock protects against concurrent execute() calls on the same plan
+        # (e.g. during re-planning), since UsageSummary.__iadd__ is not atomic.
+        async with self._usage_lock:
+            step_usage = UsageSummary()
+            for step in plan.steps:
+                if step.usage is not None:
+                    step_usage += step.usage
+            if step_usage.llm_calls > 0:
+                if plan.total_usage is not None:
+                    plan.total_usage += step_usage
+                else:
+                    plan.total_usage = step_usage
 
         return plan
 
@@ -212,7 +220,20 @@ class DAGExecutor:
             context: Contextual information from dependency results.
         """
         async with semaphore:
-            await self._execute_step(step, context)
+            try:
+                await asyncio.wait_for(
+                    self._execute_step(step, context),
+                    timeout=self._step_timeout,
+                )
+            except asyncio.TimeoutError:
+                step.status = "failed"
+                step.result = f"Step execution timed out after {self._step_timeout}s"
+                step.completed_at = time.time()
+                if step.started_at is not None:
+                    step.duration = round(step.completed_at - step.started_at, 2)
+                logger.error(
+                    "Step '%s' timed out after %ds", step.id, self._step_timeout,
+                )
 
     def _resolve_agent(self, step: PlanStep) -> ReActAgent:
         """Select the appropriate agent for a step based on its model_hint.
@@ -308,6 +329,8 @@ class DAGExecutor:
                 step.id,
                 agent_result.iterations,
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             step.status = "failed"
             step.result = f"{type(exc).__name__}: {exc}"

@@ -774,6 +774,8 @@ class ReActAgent:
         try:
             observation = await tool.run(**(action.tool_args or {}))
             return StepResult(action=action, observation=observation)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             error_msg = f"{type(exc).__name__}: {exc}"
             logger.exception("Tool '%s' raised an exception", tool_name)

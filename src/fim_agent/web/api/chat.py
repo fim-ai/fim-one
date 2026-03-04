@@ -94,28 +94,31 @@ class InterruptQueue:
     def __init__(self) -> None:
         self._queue: asyncio.Queue[InjectedMessage] = asyncio.Queue()
         self._recalled: set[str] = set()  # ids of recalled messages
+        self._lock = asyncio.Lock()
 
     def put(self, msg: InjectedMessage) -> None:
         self._queue.put_nowait(msg)
 
-    def recall(self, msg_id: str) -> bool:
+    async def recall(self, msg_id: str) -> bool:
         """Mark a message as recalled. Returns True if the id was not already recalled."""
-        if msg_id in self._recalled:
-            return False
-        self._recalled.add(msg_id)
-        return True
+        async with self._lock:
+            if msg_id in self._recalled:
+                return False
+            self._recalled.add(msg_id)
+            return True
 
-    def drain(self) -> list[InjectedMessage]:
+    async def drain(self) -> list[InjectedMessage]:
         """Drain all non-recalled messages from the queue."""
-        result: list[InjectedMessage] = []
-        while not self._queue.empty():
-            try:
-                msg = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-            if msg.id not in self._recalled:
-                result.append(msg)
-        return result
+        async with self._lock:
+            result: list[InjectedMessage] = []
+            while not self._queue.empty():
+                try:
+                    msg = self._queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+                if msg.id not in self._recalled:
+                    result.append(msg)
+            return result
 
     def empty(self) -> bool:
         return self._queue.empty()
@@ -624,7 +627,7 @@ async def recall_inject(
     q = get_interrupt_queue(body.conversation_id)
     if q is None:
         raise HTTPException(status_code=409, detail="No active execution")
-    recalled = q.recall(body.inject_id)
+    recalled = await q.recall(body.inject_id)
     return {"success": recalled}
 
 
@@ -740,7 +743,7 @@ async def react_endpoint(
         if conversation_id:
             interrupt_queue = register_interrupt_queue(conversation_id)
 
-        progress_queue: asyncio.Queue[str] = asyncio.Queue()
+        progress_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
         done_event = asyncio.Event()
         iter_start = time.time()
 
@@ -761,7 +764,10 @@ async def react_endpoint(
                 if action.tool_args.get("id"):
                     inject_payload["id"] = action.tool_args["id"]
                 sse_events.append({"event": "inject", "data": inject_payload})
-                progress_queue.put_nowait(_sse("inject", inject_payload))
+                try:
+                    progress_queue.put_nowait(_sse("inject", inject_payload))
+                except asyncio.QueueFull:
+                    logger.warning("SSE progress queue full, dropping event")
                 return
 
             if action.type == "tool_call":
@@ -784,7 +790,10 @@ async def react_endpoint(
                 if iter_elapsed is not None:
                     payload["iter_elapsed"] = iter_elapsed
                 sse_events.append({"event": "step", "data": payload})
-                progress_queue.put_nowait(_sse("step", payload))
+                try:
+                    progress_queue.put_nowait(_sse("step", payload))
+                except asyncio.QueueFull:
+                    logger.warning("SSE progress queue full, dropping event")
 
         try:
             memory = None
@@ -830,8 +839,11 @@ async def react_endpoint(
                     if await request.is_disconnected():
                         logger.info("Client disconnected — cancelling ReAct task")
                         run_task.cancel()
-                        with suppress(asyncio.CancelledError, TimeoutError, Exception):
-                            await asyncio.wait_for(run_task, timeout=5.0)
+                        try:
+                            with suppress(asyncio.CancelledError, TimeoutError):
+                                await asyncio.wait_for(run_task, timeout=5.0)
+                        except Exception:
+                            logger.exception("Unexpected error while cancelling ReAct task")
                         return
                     now = time.time()
                     if now - last_keepalive >= 15.0:
@@ -873,7 +885,7 @@ async def react_endpoint(
                 }
             # Final drain of any remaining injected messages.
             if interrupt_queue is not None:
-                remaining = interrupt_queue.drain()
+                remaining = await interrupt_queue.drain()
                 if remaining:
                     done_payload["pending_injections"] = [m.content for m in remaining]
 
@@ -1125,13 +1137,16 @@ async def dag_endpoint(
                     exc_info=True,
                 )
 
-        progress_queue: asyncio.Queue[str] = asyncio.Queue()
+        progress_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
         done_event = asyncio.Event()
 
         def on_step_progress(step_id: str, event: str, data: dict[str, Any]) -> None:
             step_payload = {"step_id": step_id, "event": event, **data}
             sse_events.append({"event": "step_progress", "data": step_payload})
-            progress_queue.put_nowait(_sse("step_progress", step_payload))
+            try:
+                progress_queue.put_nowait(_sse("step_progress", step_payload))
+            except asyncio.QueueFull:
+                logger.warning("SSE progress queue full, dropping event")
 
         try:
             plan: ExecutionPlan | None = None
@@ -1155,7 +1170,7 @@ async def dag_endpoint(
 
                 # Drain any injected messages at phase transition.
                 if dag_interrupt_queue is not None:
-                    for injected in dag_interrupt_queue.drain():
+                    for injected in await dag_interrupt_queue.drain():
                         current_phase = "planning" if plan is None else "replanning"
                         inject_payload = {
                             "type": "inject",
@@ -1254,12 +1269,15 @@ async def dag_endpoint(
                         if await request.is_disconnected():
                             logger.info("Client disconnected — cancelling DAG exec task")
                             exec_task.cancel()
-                            with suppress(asyncio.CancelledError, TimeoutError, Exception):
-                                await asyncio.wait_for(exec_task, timeout=5.0)
+                            try:
+                                with suppress(asyncio.CancelledError, TimeoutError):
+                                    await asyncio.wait_for(exec_task, timeout=5.0)
+                            except Exception:
+                                logger.exception("Unexpected error while cancelling DAG exec task")
                             return
                         # Drain inject queue during execution for real-time feedback.
                         if dag_interrupt_queue is not None:
-                            for injected in dag_interrupt_queue.drain():
+                            for injected in await dag_interrupt_queue.drain():
                                 inject_payload = {
                                     "type": "inject",
                                     "content": injected.content,
@@ -1314,7 +1332,7 @@ async def dag_endpoint(
 
                 # Drain any injected messages before analysis.
                 if dag_interrupt_queue is not None:
-                    for injected in dag_interrupt_queue.drain():
+                    for injected in await dag_interrupt_queue.drain():
                         inject_payload = {
                             "type": "inject",
                             "content": injected.content,
@@ -1448,7 +1466,7 @@ async def dag_endpoint(
                 }
             # Final drain: emit inject events for any late messages, then record them.
             if dag_interrupt_queue is not None:
-                remaining = dag_interrupt_queue.drain()
+                remaining = await dag_interrupt_queue.drain()
                 for injected in remaining:
                     inject_payload = {
                         "type": "inject",
