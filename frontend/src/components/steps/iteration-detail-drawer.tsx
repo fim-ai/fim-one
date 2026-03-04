@@ -57,8 +57,8 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
         {data && (
           <>
             {/* Header */}
-            <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border/40">
-              <SheetHeader className="gap-1">
+            <div className="shrink-0 px-6 pt-5 pb-3 border-b border-border/40 space-y-3">
+              <SheetHeader>
                 <SheetTitle className="flex items-center gap-2.5 text-base">
                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/10">
                     {isTool ? (
@@ -69,43 +69,44 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
                   </div>
                   <span className="truncate font-semibold">{displayName}</span>
                 </SheetTitle>
-                <SheetDescription asChild>
-                  <div className="flex items-center gap-3 flex-wrap pl-9">
-                    {summary && (
-                      <span className="text-xs text-muted-foreground">{summary}</span>
-                    )}
+                <SheetDescription className="sr-only">
+                  {displayName} tool details
+                </SheetDescription>
+              </SheetHeader>
+
+              {/* Tab bar + stats in one row */}
+              {hasTabs && (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-px rounded-lg border border-border/40 bg-muted/20 overflow-hidden">
+                    {tabs.filter((t) => t.available).map((t) => {
+                      const TabIcon = t.icon
+                      return (
+                        <button
+                          key={t.key}
+                          type="button"
+                          onClick={() => setActiveTab(t.key)}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors",
+                            effectiveTab === t.key
+                              ? "bg-amber-500/15 text-amber-500"
+                              : "text-muted-foreground hover:bg-muted/40",
+                          )}
+                        >
+                          <TabIcon className="h-3 w-3" />
+                          {t.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
+                    {summary && <span>{summary}</span>}
                     {data.duration != null && (
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {fmtDuration(data.duration)}
                       </span>
                     )}
                   </div>
-                </SheetDescription>
-              </SheetHeader>
-
-              {/* Tab bar */}
-              {hasTabs && (
-                <div className="flex items-center gap-px mt-4 rounded-lg border border-border/40 bg-muted/20 w-fit overflow-hidden">
-                  {tabs.filter((t) => t.available).map((t) => {
-                    const TabIcon = t.icon
-                    return (
-                      <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => setActiveTab(t.key)}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors",
-                          effectiveTab === t.key
-                            ? "bg-amber-500/15 text-amber-500"
-                            : "text-muted-foreground hover:bg-muted/40",
-                        )}
-                      >
-                        <TabIcon className="h-3 w-3" />
-                        {t.label}
-                      </button>
-                    )
-                  })}
                 </div>
               )}
             </div>

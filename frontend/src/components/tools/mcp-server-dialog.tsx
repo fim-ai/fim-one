@@ -11,6 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { mcpServerApi } from "@/lib/api"
@@ -43,6 +53,7 @@ export function MCPServerDialog({
   const [headerPairs, setHeaderPairs] = useState<Array<{ key: string; value: string }>>([])
   const [isActive, setIsActive] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   // Reset form when dialog opens or server changes
   useEffect(() => {
@@ -80,6 +91,32 @@ export function MCPServerDialog({
       }
     }
   }, [open, server])
+
+  // isDirty: create mode = any meaningful field has content; edit mode = any field differs from original
+  const isDirty = server
+    ? name !== server.name ||
+      description !== (server.description || "") ||
+      transport !== server.transport ||
+      command !== (server.command || "") ||
+      args !== (server.args?.join(", ") || "") ||
+      url !== (server.url || "") ||
+      workingDir !== (server.working_dir || "") ||
+      isActive !== server.is_active ||
+      JSON.stringify(envPairs) !== JSON.stringify(
+        server.env ? Object.entries(server.env).map(([key, value]) => ({ key, value })) : []
+      ) ||
+      JSON.stringify(headerPairs) !== JSON.stringify(
+        server.headers ? Object.entries(server.headers).map(([key, value]) => ({ key, value })) : []
+      )
+    : name.trim().length > 0 || description.trim().length > 0 ||
+      command.trim().length > 0 || url.trim().length > 0 ||
+      args.trim().length > 0 || workingDir.trim().length > 0 ||
+      envPairs.length > 0 || headerPairs.length > 0
+
+  const handleClose = (open: boolean) => {
+    if (!open && isDirty) { setShowCloseConfirm(true); return }
+    onOpenChange(open)
+  }
 
   const addEnvPair = () => setEnvPairs((prev) => [...prev, { key: "", value: "" }])
 
@@ -170,8 +207,14 @@ export function MCPServerDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+    <>
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent
+        className="sm:max-w-lg max-h-[85vh] overflow-y-auto"
+        onInteractOutside={(e) => {
+          if (isDirty) { e.preventDefault(); setShowCloseConfirm(true) }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
           <DialogDescription>
@@ -391,7 +434,7 @@ export function MCPServerDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving}>
+          <Button variant="ghost" onClick={() => handleClose(false)} disabled={isSaving}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!name.trim() || isSaving}>
@@ -401,5 +444,26 @@ export function MCPServerDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogDescription>
+            You have unsaved changes. Closing will discard them.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => onOpenChange(false)}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Discard & close
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

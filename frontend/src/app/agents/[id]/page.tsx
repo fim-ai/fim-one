@@ -2,9 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
+import Link from "next/link"
 import { ArrowLeft, Loader2, Bot, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { agentApi } from "@/lib/api"
 import { AgentSettingsForm } from "@/components/agents/agent-settings-form"
@@ -21,6 +32,15 @@ export default function AgentEditorPage() {
   const [isNew, setIsNew] = useState(id === "new")
   const [isLoading, setIsLoading] = useState(id !== "new")
   const [formDirty, setFormDirty] = useState(false)
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+
+  // Warn on browser refresh / tab close
+  useEffect(() => {
+    if (!formDirty) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [formDirty])
 
   // Auth guard
   useEffect(() => {
@@ -72,13 +92,21 @@ export default function AgentEditorPage() {
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => router.push("/agents")}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+            {formDirty ? (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setShowLeaveDialog(true)}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button variant="ghost" size="icon-xs" asChild>
+                <Link href="/agents">
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={5}>Back to Agents</TooltipContent>
         </Tooltip>
@@ -97,11 +125,13 @@ export default function AgentEditorPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => router.push(`/new?agent=${agent.id}`)}
                 className="gap-1.5 text-muted-foreground hover:text-primary"
+                asChild
               >
-                <MessageSquare className="h-4 w-4" />
-                Start Chat
+                <Link href={`/new?agent=${agent.id}`}>
+                  <MessageSquare className="h-4 w-4" />
+                  Start Chat
+                </Link>
               </Button>
             </TooltipTrigger>
             <TooltipContent>Start a new conversation with this agent</TooltipContent>
@@ -131,6 +161,23 @@ export default function AgentEditorPage() {
           />
         </div>
       </div>
+
+      <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Leaving this page will discard them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay</AlertDialogCancel>
+            <AlertDialogAction onClick={() => router.push("/agents")}>
+              Discard &amp; Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

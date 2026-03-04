@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { toast } from "sonner"
 import { Loader2, FilePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +13,16 @@ import {
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { kbApi } from "@/lib/api"
 
 interface MdCreateDialogProps {
@@ -31,6 +42,7 @@ export function MdCreateDialog({
   const [content, setContent] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -39,6 +51,8 @@ export function MdCreateDialog({
       setError(null)
     }
   }, [open])
+
+  const isDirty = filename.trim().length > 0 || content.trim().length > 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,82 +75,122 @@ export function MdCreateDialog({
       })
       onOpenChange(false)
       onCreated()
+      toast.success("Markdown document created")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create document"
       setError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  const handleClose = (open: boolean) => {
+    if (!open && isDirty) {
+      setShowCloseConfirm(true)
+      return
+    }
+    onOpenChange(open)
+  }
+
+  const handleForceClose = () => {
+    onOpenChange(false)
+  }
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col">
-        <SheetHeader>
-          <SheetTitle>New Markdown Document</SheetTitle>
-        </SheetHeader>
+    <>
+      <Sheet open={open} onOpenChange={handleClose}>
+        <SheetContent
+          side="right"
+          className="sm:max-w-xl w-full flex flex-col"
+          onInteractOutside={(e) => {
+            if (isDirty) { e.preventDefault(); setShowCloseConfirm(true) }
+          }}
+        >
+          <SheetHeader>
+            <SheetTitle>Write a Note</SheetTitle>
+          </SheetHeader>
 
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4 overflow-hidden">
-          <div className="space-y-1.5">
-            <label htmlFor="md-filename" className="text-sm font-medium">
-              Filename <span className="text-destructive">*</span>
-            </label>
-            <Input
-              id="md-filename"
-              value={filename}
-              onChange={(e) => setFilename(e.target.value)}
-              placeholder="notes.md"
-              required
-              disabled={isSubmitting}
-            />
-            <p className="text-xs text-muted-foreground">
-              .md extension will be added automatically if omitted.
-            </p>
-          </div>
+          <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4 overflow-hidden">
+            <div className="space-y-1.5">
+              <label htmlFor="md-filename" className="text-sm font-medium">
+                Title <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="md-filename"
+                value={filename}
+                onChange={(e) => setFilename(e.target.value)}
+                placeholder="My Meeting Notes"
+                required
+                disabled={isSubmitting}
+              />
+            </div>
 
-          <div className="flex-1 flex flex-col gap-1.5 min-h-0">
-            <label htmlFor="md-content" className="text-sm font-medium">
-              Content <span className="text-destructive">*</span>
-            </label>
-            <Textarea
-              id="md-content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="# My Document&#10;&#10;Write your markdown content here..."
-              className="font-mono text-sm flex-1 resize-none min-h-0"
-              required
-              disabled={isSubmitting}
-            />
-          </div>
+            <div className="flex-1 flex flex-col gap-1.5 min-h-0">
+              <label htmlFor="md-content" className="text-sm font-medium">
+                Content <span className="text-destructive">*</span>
+              </label>
+              <Textarea
+                id="md-content"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="# My Document&#10;&#10;Write your content here..."
+                className="font-mono text-sm flex-1 resize-none min-h-0"
+                required
+                disabled={isSubmitting}
+              />
+            </div>
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
 
-          <SheetFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
+            <SheetFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => handleClose(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting || !filename.trim() || !content.trim()}
+                className="gap-1.5"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FilePlus className="h-4 w-4" />
+                )}
+                Create
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
+
+      {/* Discard confirmation */}
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved note?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved content. Closing will permanently discard what you&apos;ve written.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceClose}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting || !filename.trim() || !content.trim()}
-              className="gap-1.5"
-            >
-              {isSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <FilePlus className="h-4 w-4" />
-              )}
-              Create
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
+              Discard & close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

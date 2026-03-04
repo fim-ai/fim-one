@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { toast } from "sonner"
 import { Loader2, Pencil, Trash2, FileText, Search, X } from "lucide-react"
 import {
   Sheet,
@@ -124,11 +125,16 @@ export function ChunkDrawer({
   }, [document.id])
 
   const handleUpdateChunk = async (chunkId: string, text: string) => {
-    await kbApi.updateChunk(kbId, chunkId, { text })
-    setChunks((prev) =>
-      prev.map((c) => (c.id === chunkId ? { ...c, text } : c)),
-    )
-    setEditingChunkId(null)
+    try {
+      await kbApi.updateChunk(kbId, chunkId, { text })
+      setChunks((prev) =>
+        prev.map((c) => (c.id === chunkId ? { ...c, text } : c)),
+      )
+      setEditingChunkId(null)
+      toast.success("Chunk updated")
+    } catch {
+      toast.error("Failed to update chunk")
+    }
   }
 
   const handleDeleteChunk = async (chunkId: string) => {
@@ -136,8 +142,9 @@ export function ChunkDrawer({
       await kbApi.deleteChunk(kbId, chunkId)
       setChunks((prev) => prev.filter((c) => c.id !== chunkId))
       setTotal((t) => Math.max(0, t - 1))
-    } catch (err) {
-      console.error("Failed to delete chunk:", err)
+      toast.success("Chunk deleted")
+    } catch {
+      toast.error("Failed to delete chunk")
     }
   }
 

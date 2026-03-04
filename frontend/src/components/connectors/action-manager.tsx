@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { connectorApi } from "@/lib/api"
+import { toast } from "sonner"
 import type {
   ConnectorResponse,
   ConnectorActionResponse,
@@ -124,8 +125,9 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
         resetForm()
       }
       onChanged()
-    } catch (err) {
-      console.error("Failed to delete action:", err)
+      toast.success("Action deleted")
+    } catch {
+      toast.error("Failed to delete action")
     } finally {
       setDeletingId(null)
     }
@@ -166,10 +168,11 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
         await connectorApi.createAction(connector.id, body)
       }
 
+      toast.success(isAddingNew || !editingActionId ? "Action created" : "Action updated")
       resetForm()
       onChanged()
-    } catch (err) {
-      console.error("Failed to save action:", err)
+    } catch {
+      toast.error("Failed to save action")
     } finally {
       setIsSubmitting(false)
     }

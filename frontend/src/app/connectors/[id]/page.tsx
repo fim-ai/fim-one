@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
+import Link from "next/link"
 import { ArrowLeft, Loader2, Plug, Settings, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -88,9 +89,11 @@ export default function ConnectorEditorPage() {
             <Button
               variant="ghost"
               size="icon-xs"
-              onClick={() => router.push("/connectors")}
+              asChild
             >
-              <ArrowLeft className="h-4 w-4" />
+              <Link href="/connectors">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
             </Button>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={5}>Back to Connectors</TooltipContent>

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Plus, Trash2, Loader2, Search, Star, MoreHorizontal, Pencil, MessagesSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -22,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useConversation } from "@/contexts/conversation-context"
 import { ChatSearchDialog } from "@/components/layout/chat-search-dialog"
 import type { ConversationResponse } from "@/types/conversation"
@@ -69,6 +69,8 @@ function groupByDate(conversations: ConversationResponse[]) {
 }
 
 export function ConversationSidebar({ collapsed, hideHeader }: ConversationSidebarProps) {
+  const pathname = usePathname()
+  const isNewChat = pathname === "/new"
   const {
     conversations,
     activeId,
@@ -79,7 +81,6 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
     updateTitle,
     toggleStar,
   } = useConversation()
-  const router = useRouter()
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null)
   const [renameValue, setRenameValue] = useState("")
@@ -97,15 +98,9 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [])
 
-  const handleSelectConversation = useCallback((id: string) => {
-    selectConversation(id)
-    router.push(`/?c=${id}`)
-  }, [selectConversation, router])
-
   const handleNewChat = useCallback(() => {
     clearActive()
-    router.push("/new")
-  }, [clearActive, router])
+  }, [clearActive])
 
   const confirmDelete = async () => {
     if (!pendingDeleteId) return
@@ -129,13 +124,19 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
     if (hideHeader) return null
     return (
       <div className="flex flex-col items-center gap-2 py-2">
-        <button
+        <Link
+          href="/new"
           onClick={handleNewChat}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+            isNewChat
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          )}
           title="New Chat"
         >
           <Plus className="h-4 w-4" />
-        </button>
+        </Link>
         <button
           onClick={() => setSearchOpen(true)}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
@@ -156,13 +157,15 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
       {!hideHeader && (
         <div className="flex items-center gap-1.5 px-2 pb-2">
           <Button
-            variant="outline"
+            variant={isNewChat ? "default" : "outline"}
             size="sm"
             className="flex-1 justify-start gap-2"
-            onClick={handleNewChat}
+            asChild
           >
-            <Plus className="h-4 w-4" />
-            New Chat
+            <Link href="/new" onClick={handleNewChat}>
+              <Plus className="h-4 w-4" />
+              New Chat
+            </Link>
           </Button>
           <Button
             variant="outline"
@@ -196,12 +199,10 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                       {group.label}
                     </div>
                     {group.items.map((conv) => (
-                      <div
+                      <Link
                         key={conv.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleSelectConversation(conv.id)}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleSelectConversation(conv.id) }}
+                        href={`/?c=${conv.id}`}
+                        onClick={() => { selectConversation(conv.id) }}
                         className={cn(
                           "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors text-left cursor-pointer",
                           activeId === conv.id
@@ -213,7 +214,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                           {conv.title || "Untitled"}
                         </span>
                         <span className="shrink-0 text-[10px] text-muted-foreground/40 font-normal select-none">
-                          {conv.mode === "react" ? "ReAct" : conv.mode === "dag" ? "DAG" : conv.mode}
+                          {conv.mode === "react" ? "Standard" : conv.mode === "dag" ? "Planner" : conv.mode}
                         </span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -242,7 +243,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 ))}

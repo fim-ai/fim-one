@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Pencil, Plug, Trash2, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -7,7 +8,6 @@ import type { ConnectorResponse } from "@/types/connector"
 
 interface ConnectorCardProps {
   connector: ConnectorResponse
-  onEdit: (connector: ConnectorResponse) => void
   onDelete: (id: string) => void
 }
 
@@ -21,7 +21,6 @@ const AUTH_LABELS: Record<string, string> = {
 
 export function ConnectorCard({
   connector,
-  onEdit,
   onDelete,
 }: ConnectorCardProps) {
   return (
@@ -72,10 +71,12 @@ export function ConnectorCard({
             <Button
               variant="ghost"
               size="icon-xs"
-              onClick={() => onEdit(connector)}
               className="text-muted-foreground hover:text-foreground"
+              asChild
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Link href={`/connectors/${connector.id}`}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Link>
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={5}>Edit</TooltipContent>

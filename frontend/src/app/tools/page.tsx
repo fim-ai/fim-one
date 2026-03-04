@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Loader2, Wrench, Server } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useAuth } from "@/contexts/auth-context"
 import { mcpServerApi } from "@/lib/api"
 import { BuiltinToolsSection } from "@/components/tools/builtin-tools-section"
@@ -89,17 +90,23 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-8">
-        {/* Built-in Tools */}
-        <section>
-          <h2 className="text-sm font-semibold text-foreground mb-3">Built-in Tools</h2>
-          <BuiltinToolsSection />
-        </section>
+      {/* Tabs */}
+      <Tabs defaultValue="builtin" className="flex flex-col flex-1 overflow-hidden">
+        <div className="px-6 pt-4 shrink-0">
+          <TabsList>
+            <TabsTrigger value="builtin">Built-in</TabsTrigger>
+            <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
+          </TabsList>
+        </div>
 
-        {/* MCP Servers */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
+        {/* Built-in tab */}
+        <TabsContent value="builtin" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+          <BuiltinToolsSection />
+        </TabsContent>
+
+        {/* MCP Servers tab */}
+        <TabsContent value="mcp" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
               <Server className="h-4 w-4" />
               MCP Servers
@@ -141,8 +148,8 @@ export default function ToolsPage() {
               ))}
             </div>
           )}
-        </section>
-      </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Dialog */}
       <MCPServerDialog

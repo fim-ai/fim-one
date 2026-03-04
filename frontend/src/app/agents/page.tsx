@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { toast } from "sonner"
 import { Plus, Loader2, Bot, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,14 +52,6 @@ export default function AgentsPage() {
     if (user) loadAgents()
   }, [user, loadAgents])
 
-  const handleCreate = () => {
-    router.push("/agents/new")
-  }
-
-  const handleEdit = (agent: AgentResponse) => {
-    router.push(`/agents/${agent.id}`)
-  }
-
   const handleDelete = (id: string) => setPendingDeleteId(id)
   const handlePublish = (id: string) => setPendingPublishId(id)
   const handleUnpublish = (id: string) => setPendingUnpublishId(id)
@@ -69,8 +63,9 @@ export default function AgentsPage() {
     try {
       await agentApi.delete(id)
       setAgents((prev) => prev.filter((a) => a.id !== id))
-    } catch (err) {
-      console.error("Failed to delete agent:", err)
+      toast.success("Agent deleted")
+    } catch {
+      toast.error("Failed to delete agent")
     }
   }
 
@@ -81,8 +76,9 @@ export default function AgentsPage() {
     try {
       const updated = await agentApi.publish(id)
       setAgents((prev) => prev.map((a) => (a.id === id ? updated : a)))
-    } catch (err) {
-      console.error("Failed to publish agent:", err)
+      toast.success("Agent published")
+    } catch {
+      toast.error("Failed to publish agent")
     }
   }
 
@@ -93,8 +89,9 @@ export default function AgentsPage() {
     try {
       const updated = await agentApi.unpublish(id)
       setAgents((prev) => prev.map((a) => (a.id === id ? updated : a)))
-    } catch (err) {
-      console.error("Failed to unpublish agent:", err)
+      toast.success("Agent unpublished")
+    } catch {
+      toast.error("Failed to unpublish agent")
     }
   }
 
@@ -113,9 +110,11 @@ export default function AgentsPage() {
             Create and manage your AI agents
           </p>
         </div>
-        <Button onClick={handleCreate} size="sm" className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          New Agent
+        <Button size="sm" className="gap-1.5" asChild>
+          <Link href="/agents/new">
+            <Plus className="h-4 w-4" />
+            New Agent
+          </Link>
         </Button>
       </div>
 
@@ -131,13 +130,15 @@ export default function AgentsPage() {
               No agents yet. Create your first agent to get started.
             </p>
             <Button
-              onClick={handleCreate}
               variant="outline"
               size="sm"
               className="mt-4 gap-1.5"
+              asChild
             >
-              <Plus className="h-4 w-4" />
-              Create Agent
+              <Link href="/agents/new">
+                <Plus className="h-4 w-4" />
+                Create Agent
+              </Link>
             </Button>
           </div>
         ) : (
@@ -146,8 +147,6 @@ export default function AgentsPage() {
               <AgentCard
                 key={agent.id}
                 agent={agent}
-                onStartChat={(agent) => router.push(`/new?agent=${agent.id}`)}
-                onEdit={handleEdit}
                 onDelete={handleDelete}
                 onPublish={handlePublish}
                 onUnpublish={handleUnpublish}

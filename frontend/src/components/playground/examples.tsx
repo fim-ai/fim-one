@@ -355,7 +355,7 @@ export function Examples({
           ) : (
             <GitBranch className="h-3 w-3" />
           )}
-          {mode === "react" ? "ReAct" : "DAG"} mode
+          {mode === "react" ? "Standard" : "Planner"} mode
         </div>
       </div>
 

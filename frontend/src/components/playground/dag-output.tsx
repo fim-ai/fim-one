@@ -262,7 +262,7 @@ function StepProgressCard({ state }: { state: StepState }) {
 
   return (
     <Card
-      className={`py-4 ${cardBorderClass}`}
+      className={`py-4 gap-3 ${cardBorderClass}`}
     >
       <CardHeader className="pb-0">
         <div className="flex items-center gap-2 min-w-0">

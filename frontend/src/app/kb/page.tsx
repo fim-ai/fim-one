@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Plus, Loader2, Library, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,7 +17,6 @@ import { useAuth } from "@/contexts/auth-context"
 import { kbApi } from "@/lib/api"
 import { KBCard } from "@/components/kb/kb-card"
 import { KBFormDialog } from "@/components/kb/kb-form-dialog"
-import { KBUploadDialog } from "@/components/kb/kb-upload-dialog"
 import type { KBResponse, KBCreate } from "@/types/kb"
 
 export default function KBPage() {
@@ -29,7 +29,6 @@ export default function KBPage() {
   const [editingKB, setEditingKB] = useState<KBResponse | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
-  const [uploadingKB, setUploadingKB] = useState<KBResponse | null>(null)
 
   // Auth guard
   useEffect(() => {
@@ -73,9 +72,10 @@ export default function KBPage() {
         await kbApi.create(data)
       }
       setDialogOpen(false)
+      toast.success(editingKB ? "Knowledge base updated" : "Knowledge base created")
       await loadKBs()
-    } catch (err) {
-      console.error("Failed to save knowledge base:", err)
+    } catch {
+      toast.error("Failed to save knowledge base")
     } finally {
       setIsSubmitting(false)
     }
@@ -90,12 +90,11 @@ export default function KBPage() {
     try {
       await kbApi.delete(id)
       setKnowledgeBases((prev) => prev.filter((kb) => kb.id !== id))
-    } catch (err) {
-      console.error("Failed to delete knowledge base:", err)
+      toast.success("Knowledge base deleted")
+    } catch {
+      toast.error("Failed to delete knowledge base")
     }
   }
-
-  const handleUpload = (kb: KBResponse) => setUploadingKB(kb)
 
   if (authLoading || !user) return null
 
@@ -145,7 +144,6 @@ export default function KBPage() {
               <KBCard
                 key={kb.id}
                 kb={kb}
-                onUpload={handleUpload}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
               />
@@ -161,14 +159,6 @@ export default function KBPage() {
         kb={editingKB}
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}
-      />
-
-      {/* Upload Dialog */}
-      <KBUploadDialog
-        open={uploadingKB !== null}
-        onOpenChange={(open) => { if (!open) setUploadingKB(null) }}
-        kb={uploadingKB}
-        onUploaded={loadKBs}
       />
 
       {/* Delete Confirmation */}

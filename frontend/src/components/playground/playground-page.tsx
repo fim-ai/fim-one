@@ -5,7 +5,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, User, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2 } from "lucide-react"
+import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, User, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 import { useSSE } from "@/hooks/use-sse"
 import { useDagSteps } from "@/hooks/use-dag-steps"
@@ -44,6 +44,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { ReactOutput } from "@/components/playground/react-output"
 import { DagOutput } from "@/components/playground/dag-output"
 import { Examples } from "@/components/playground/examples"
@@ -56,6 +57,7 @@ import type { MessageResponse } from "@/types/conversation"
 import type { AgentResponse } from "@/types/agent"
 import type { FileUploadResponse } from "@/types/file"
 import type { AgentMode, Language } from "@/components/playground/examples"
+
 
 interface PlaygroundPageProps {
   /** When true, this is a fresh "new chat" page — no conversation should be loaded from URL */
@@ -311,7 +313,13 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
         selectedAgent={selectedAgent}
         injectedMessages={injectedMessages}
         onRecallInject={handleRecallInject}
-        onAgentChange={setSelectedAgent}
+        onAgentChange={(agent) => {
+          setSelectedAgent(agent)
+          // Sync mode from agent's default when no active conversation
+          if (!activeId && agent?.execution_mode) {
+            setMode(agent.execution_mode)
+          }
+        }}
         onQueryChange={setQuery}
         onLanguageChange={setLanguage}
         onModeChange={(m) => {
@@ -333,7 +341,7 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
       <Dialog open={pendingMode !== null} onOpenChange={(open) => { if (!open) setPendingMode(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Switch to {pendingMode?.toUpperCase()} mode?</DialogTitle>
+            <DialogTitle>Switch to {pendingMode === "react" ? "Standard" : "Planner"} mode?</DialogTitle>
             <DialogDescription>
               This will start a new conversation. Your current conversation is saved and accessible from the sidebar.
             </DialogDescription>
@@ -856,6 +864,25 @@ function PlaygroundContent({
     }
   })()
 
+  // True when a task was submitted but aborted before completing (current session)
+  const wasStopped = !isRunning && !!pendingQuery && hasLiveMessages && (
+    mode === "dag"
+      ? !dagData.doneEvent
+      : !reactItems.some(i => i.event === "done")
+  )
+
+  // After page refresh: last message is a user message with no assistant reply → was stopped
+  const refreshStoppedQuery = useMemo(() => {
+    if (isRunning || hasLiveMessages) return null
+    const msgs = activeConversation?.messages
+    if (!msgs?.length) return null
+    const last = msgs[msgs.length - 1]
+    if (last.role === "user" && last.message_type !== "inject") return last.content
+    return null
+  }, [isRunning, hasLiveMessages, activeConversation?.messages])
+
+  const retryQuery = wasStopped ? pendingQuery : refreshStoppedQuery
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden p-6 gap-4">
       {/* Output area / empty state */}
@@ -880,6 +907,17 @@ function PlaygroundContent({
                   <Loader2 className="h-3 w-3 animate-spin" />
                   <span className="shiny-text">{statusText}</span>
                 </span>
+              )}
+              {retryQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRunWithQuery(retryQuery)}
+                  className="ml-2 h-6 px-2 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Retry
+                </Button>
               )}
               <div className="flex-1" />
               {hasLiveMessages && isWideScreen && mode === "dag" && (
@@ -1126,7 +1164,7 @@ function PlaygroundContent({
               isRunning
                 ? "Send a message to interrupt the agent..."
                 : mode === "react"
-                  ? "Ask the ReAct agent to solve a problem..."
+                  ? "Ask the agent to solve a problem..."
                   : "Describe a multi-step task for the DAG planner..."
             }
             className="min-h-[72px] max-h-[160px] resize-none"
@@ -1173,26 +1211,37 @@ function PlaygroundContent({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button
-            type="button"
-            disabled={isRunning}
-            onClick={() => onModeChange(mode === "react" ? "dag" : "react")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-              "border select-none",
-              isRunning && "opacity-50 cursor-not-allowed",
-              mode === "react"
-                ? "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                : "border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-            )}
-          >
-            {mode === "react" ? (
-              <Zap className="h-3 w-3" />
-            ) : (
-              <GitBranch className="h-3 w-3" />
-            )}
-            {mode === "react" ? "ReAct" : "DAG"}
-          </button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  disabled={isRunning}
+                  onClick={() => onModeChange(mode === "react" ? "dag" : "react")}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                    "border select-none",
+                    isRunning && "opacity-50 cursor-not-allowed",
+                    mode === "react"
+                      ? "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                  )}
+                >
+                  {mode === "react" ? (
+                    <Zap className="h-3 w-3" />
+                  ) : (
+                    <GitBranch className="h-3 w-3" />
+                  )}
+                  {mode === "react" ? "Standard" : "Planner"}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {mode === "react"
+                  ? "Standard (ReAct) — Quick response with flexible tool use"
+                  : "Planner (DAG) — Breaks down tasks into a structured plan"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           {/* Agent selector */}
           {agents.length > 0 && (
             <Popover open={agentSelectorOpen} onOpenChange={setAgentSelectorOpen}>
@@ -1211,7 +1260,10 @@ function PlaygroundContent({
                       : "hover:bg-muted/70 hover:text-foreground"
                   )}
                 >
-                  <User className="h-3 w-3" />
+                  {selectedAgent?.icon
+                    ? <span className="text-sm leading-none">{selectedAgent.icon}</span>
+                    : <Bot className="h-3 w-3" />
+                  }
                   {selectedAgent ? selectedAgent.name : "No Agent"}
                   <ChevronsUpDown className="h-3 w-3 opacity-50" />
                 </button>
@@ -1240,7 +1292,8 @@ function PlaygroundContent({
                       {agents.map((a) => (
                         <CommandItem
                           key={a.id}
-                          value={a.name}
+                          value={a.id}
+                          keywords={[a.name]}
                           onSelect={() => {
                             onAgentChange(a)
                             setAgentSelectorOpen(false)

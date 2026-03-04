@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Plus, Loader2, Plug, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +17,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { connectorApi } from "@/lib/api"
 import { ConnectorCard } from "@/components/connectors/connector-card"
 import type { ConnectorResponse } from "@/types/connector"
+import { toast } from "sonner"
 
 export default function ConnectorsPage() {
   const { user, isLoading: authLoading } = useAuth()
@@ -57,8 +59,9 @@ export default function ConnectorsPage() {
     try {
       await connectorApi.delete(id)
       setConnectors((prev) => prev.filter((c) => c.id !== id))
-    } catch (err) {
-      console.error("Failed to delete connector:", err)
+      toast.success("Connector deleted")
+    } catch {
+      toast.error("Failed to delete connector")
     }
   }
 
@@ -77,9 +80,11 @@ export default function ConnectorsPage() {
             Manage API connectors and their actions
           </p>
         </div>
-        <Button onClick={() => router.push("/connectors/new")} size="sm" className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          New Connector
+        <Button size="sm" className="gap-1.5" asChild>
+          <Link href="/connectors/new">
+            <Plus className="h-4 w-4" />
+            New Connector
+          </Link>
         </Button>
       </div>
 
@@ -95,13 +100,15 @@ export default function ConnectorsPage() {
               No connectors yet. Create your first one to connect external APIs.
             </p>
             <Button
-              onClick={() => router.push("/connectors/new")}
               variant="outline"
               size="sm"
               className="mt-4 gap-1.5"
+              asChild
             >
-              <Plus className="h-4 w-4" />
-              Create Connector
+              <Link href="/connectors/new">
+                <Plus className="h-4 w-4" />
+                Create Connector
+              </Link>
             </Button>
           </div>
         ) : (
@@ -110,7 +117,6 @@ export default function ConnectorsPage() {
               <ConnectorCard
                 key={connector.id}
                 connector={connector}
-                onEdit={(c) => router.push(`/connectors/${c.id}`)}
                 onDelete={handleDelete}
               />
             ))}

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import { Plus, Star, Loader2, Trash2, MoreHorizontal, Check, Pencil, MessagesSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -21,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import Link from "next/link"
 import { conversationApi } from "@/lib/api"
 import { useConversation } from "@/contexts/conversation-context"
 import type { ConversationResponse } from "@/types/conversation"
@@ -51,7 +51,6 @@ function sortConversations(convs: ConversationResponse[]): ConversationResponse[
 }
 
 export default function ChatsPage() {
-  const router = useRouter()
   const { loadConversations } = useConversation()
 
   const [conversations, setConversations] = useState<ConversationResponse[]>([])
@@ -126,16 +125,12 @@ export default function ChatsPage() {
   }
 
   const handleSelect = (id: string) => {
-    if (selectMode) {
-      setSelectedIds((prev) => {
-        const next = new Set(prev)
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        return next
-      })
-    } else {
-      router.push(`/?c=${id}`)
-    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   const handleBatchDelete = async () => {
@@ -157,9 +152,6 @@ export default function ChatsPage() {
     }
   }
 
-  const handleNewChat = () => {
-    router.push("/new")
-  }
 
   const handleSingleDelete = async () => {
     if (!singleDeleteId) return
@@ -210,9 +202,11 @@ export default function ChatsPage() {
           <MessagesSquare className="h-6 w-6" />
           Chats
         </h1>
-        <Button size="sm" variant="outline" className="gap-2" onClick={handleNewChat}>
-          <Plus className="h-4 w-4" />
-          New chat
+        <Button size="sm" variant="outline" className="gap-2" asChild>
+          <Link href="/new">
+            <Plus className="h-4 w-4" />
+            New Chat
+          </Link>
         </Button>
       </div>
 
@@ -293,12 +287,20 @@ export default function ChatsPage() {
       ) : (
         <div className="space-y-1">
           {sorted.map((conv) => (
-            <div
+            <Link
               key={conv.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => handleSelect(conv.id)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleSelect(conv.id) }}
+              href={`/?c=${conv.id}`}
+              onClick={(e) => {
+                if (selectMode) {
+                  e.preventDefault()
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(conv.id)) next.delete(conv.id)
+                    else next.add(conv.id)
+                    return next
+                  })
+                }
+              }}
               className={cn(
                 "group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors cursor-pointer",
                 selectedIds.has(conv.id)
@@ -372,7 +374,7 @@ export default function ChatsPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-            </div>
+            </Link>
           ))}
         </div>
       )}

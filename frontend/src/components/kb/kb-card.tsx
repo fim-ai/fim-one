@@ -1,7 +1,7 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-import { Eye, Upload, Pencil, Trash2 } from "lucide-react"
+import Link from "next/link"
+import { Eye, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,19 +10,15 @@ import type { KBResponse } from "@/types/kb"
 
 interface KBCardProps {
   kb: KBResponse
-  onUpload: (kb: KBResponse) => void
   onEdit: (kb: KBResponse) => void
   onDelete: (id: string) => void
 }
 
 export function KBCard({
   kb,
-  onUpload,
   onEdit,
   onDelete,
 }: KBCardProps) {
-  const router = useRouter()
-
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-border/80 hover:bg-accent/5">
       {/* Header: name + badges */}
@@ -68,26 +64,15 @@ export function KBCard({
             <Button
               variant="ghost"
               size="icon-xs"
-              onClick={() => router.push(`/kb/${kb.id}`)}
               className="text-muted-foreground hover:text-foreground"
+              asChild
             >
-              <Eye className="h-3.5 w-3.5" />
+              <Link href={`/kb/${kb.id}`}>
+                <Eye className="h-3.5 w-3.5" />
+              </Link>
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={5}>View</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => onUpload(kb)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <Upload className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Upload Document</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>

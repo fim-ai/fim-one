@@ -10,6 +10,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { KBCreate, KBResponse } from "@/types/kb"
 
 interface KBFormDialogProps {
@@ -33,6 +43,7 @@ export function KBFormDialog({
   const [chunkSize, setChunkSize] = useState(1000)
   const [chunkOverlap, setChunkOverlap] = useState(200)
   const [retrievalMode, setRetrievalMode] = useState("hybrid")
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   // Pre-fill when editing or reset when creating
   useEffect(() => {
@@ -53,6 +64,21 @@ export function KBFormDialog({
       setRetrievalMode("hybrid")
     }
   }, [open, kb])
+
+  // isDirty: create mode = any field has content; edit mode = any field differs from original
+  const isDirty = kb
+    ? name !== kb.name ||
+      description !== (kb.description || "") ||
+      chunkStrategy !== kb.chunk_strategy ||
+      chunkSize !== kb.chunk_size ||
+      chunkOverlap !== kb.chunk_overlap ||
+      retrievalMode !== kb.retrieval_mode
+    : name.trim().length > 0 || description.trim().length > 0
+
+  const handleClose = (open: boolean) => {
+    if (!open && isDirty) { setShowCloseConfirm(true); return }
+    onOpenChange(open)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,8 +103,14 @@ export function KBFormDialog({
     "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-muted"
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+    <>
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent
+        className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
+        onInteractOutside={(e) => {
+          if (isDirty) { e.preventDefault(); setShowCloseConfirm(true) }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isEditing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -233,7 +265,7 @@ export function KBFormDialog({
             <Button
               type="button"
               variant="ghost"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleClose(false)}
               disabled={isSubmitting}
             >
               Cancel
@@ -246,5 +278,26 @@ export function KBFormDialog({
         </form>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogDescription>
+            You have unsaved changes. Closing will discard them.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => onOpenChange(false)}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Discard & close
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

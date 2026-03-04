@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
+import Link from "next/link"
 import {
   ArrowLeft,
   Loader2,
@@ -177,10 +178,12 @@ export default function KBDetailPage() {
               <Button
                 variant="ghost"
                 size="icon-xs"
-                onClick={() => router.push("/kb")}
                 className="mt-1"
+                asChild
               >
-                <ArrowLeft className="h-4 w-4" />
+                <Link href="/kb">
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={5}>Back to KB</TooltipContent>
@@ -218,7 +221,7 @@ export default function KBDetailPage() {
             className="gap-1.5"
           >
             <Upload className="h-3.5 w-3.5" />
-            Upload
+            Add Documents
           </Button>
           <Button
             size="sm"
@@ -227,7 +230,7 @@ export default function KBDetailPage() {
             className="gap-1.5"
           >
             <FilePlus className="h-3.5 w-3.5" />
-            New MD
+            Write Note
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>

@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Bot, Pencil, Trash2, Globe, GlobeLock, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -9,20 +10,16 @@ import type { AgentResponse } from "@/types/agent"
 
 interface AgentCardProps {
   agent: AgentResponse
-  onEdit: (agent: AgentResponse) => void
   onDelete: (id: string) => void
   onPublish: (id: string) => void
   onUnpublish: (id: string) => void
-  onStartChat?: (agent: AgentResponse) => void
 }
 
 export function AgentCard({
   agent,
-  onEdit,
   onDelete,
   onPublish,
   onUnpublish,
-  onStartChat,
 }: AgentCardProps) {
   const isPublished = agent.status === "published"
 
@@ -58,32 +55,19 @@ export function AgentCard({
         {agent.description || "No description"}
       </p>
 
-      {/* Action buttons */}
+      {/* Management buttons */}
       <div className="flex items-center gap-1 -ml-1">
-        {isPublished && onStartChat && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onStartChat(agent)}
-                className="text-muted-foreground hover:text-primary"
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={5}>Start Chat</TooltipContent>
-          </Tooltip>
-        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon-xs"
-              onClick={() => onEdit(agent)}
               className="text-muted-foreground hover:text-foreground"
+              asChild
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Link href={`/agents/${agent.id}`}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Link>
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={5}>Edit</TooltipContent>
@@ -125,6 +109,21 @@ export function AgentCard({
           <TooltipContent side="bottom" sideOffset={5}>Delete</TooltipContent>
         </Tooltip>
       </div>
+
+      {/* Start Chat CTA — only when published */}
+      {isPublished && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3 w-full gap-1.5 text-xs h-7"
+          asChild
+        >
+          <Link href={`/new?agent=${agent.id}`}>
+            <MessageSquare className="h-3.5 w-3.5" />
+            Start Chat
+          </Link>
+        </Button>
+      )}
     </div>
   )
 }
