@@ -100,7 +100,7 @@ export function MCPHubDialog({ open, onOpenChange, onSuccess, onInstallLocal }: 
           is_active: true,
         })
         toast.success(`${server.displayName} installed`)
-        onSuccess(result.data as MCPServerResponse)
+        onSuccess(result)
         onOpenChange(false)
       } catch {
         toast.error(`Failed to install ${server.displayName}`)
