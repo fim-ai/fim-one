@@ -80,6 +80,8 @@ function LoginPageInner() {
     if (error) {
       if (error === "oauth_failed") {
         setOauthError("OAuth authentication failed. Please try again.")
+      } else if (error === "registration_disabled") {
+        setOauthError("Registration is currently disabled. Please contact an administrator.")
       } else {
         setOauthError(error)
       }

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.db import get_session
+from fim_agent.web.api.admin import SETTING_REGISTRATION_ENABLED, get_setting
 from fim_agent.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -286,7 +287,19 @@ async def _handle_login(
             user = email_result.scalar_one_or_none()
 
         if user is None:
-            # 3. No email match -- create new user
+            # 3. No email match -- create new user, but check registration setting first
+            reg_value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
+            if reg_value.lower() == "false":
+                logger.warning(
+                    "OAuth new-user creation blocked: registration disabled (provider=%s email=%s)",
+                    provider_name,
+                    user_info.email,
+                )
+                return RedirectResponse(
+                    url=f"{frontend_url}/auth/callback?error=registration_disabled",
+                    status_code=302,
+                )
+
             base_username = user_info.username or f"{provider_name}_user"
             username = base_username
             suffix = 0
