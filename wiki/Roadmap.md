@@ -307,6 +307,14 @@ Hub          → Central cross-system orchestration (Portal / API)
   - Automatic token refresh (silent refresh before expiry)
   - Works with Organization: admin configures OAuth app credentials at org level, each member authorizes individually
 
+**Conversation Channels**
+
+> *"Bring agents into messaging apps — users talk to your agent from where they already are"*
+
+- [ ] **Channel Adapter Architecture**: `channels/` module with `BaseChannel` abstraction; single webhook router `POST /webhooks/{channel}`; channels are code-defined (not DB-driven), credentials stored in env/DB; startup auto-registers webhooks for configured channels
+- [ ] **Telegram Channel**: Configure bot token via env (`TELEGRAM_BOT_TOKEN`); private chat only (group messages ignored); inline keyboard agent picker on `/start` — lists all published agents; per-user session tracks selected agent; typing indicator (`sendChatAction`) during processing; full ReAct/DAG execution on backend, only final answer delivered to user
+- [ ] **Feishu Bot Channel**: Feishu app webhook (`FEISHU_APP_ID` / `FEISHU_APP_SECRET`); private message + group @mention; agent picker via `/agents` slash command; leverages Feishu Connector for API tool calls — same agent can both receive Feishu messages and call Feishu APIs
+
 ### v0.9 -- Database Connector, Message Push & Governance
 
 > *"Not just APIs — databases, notifications, and operational safety"*
