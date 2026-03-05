@@ -242,6 +242,14 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [x] **Model Provider Management UI**: Settings → Models with General/Fast role slot cards (RoleSlot + AssignRoleDialog); provider list with Brain/Zap role badges; ProviderDialog includes Role selector; `modelApi.setRole()` in frontend
 - [x] **Agent Model Selector**: Agent settings form exposes Model dropdown; stored as `model_config_json.model_config_id`
 
+#### v0.6.8 — Utility Built-in Tools (shipped)
+
+- [x] **EmailSendTool** (`email_send`): SMTP email sending; SSL/STARTTLS/plain; auto-registered from `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` env vars; `SMTP_FROM` + `SMTP_FROM_NAME` optional
+- [x] **JsonTransformTool** (`json_transform`): JMESPath-based JSON extraction and transformation; no extra dependencies
+- [x] **TemplateRenderTool** (`template_render`): Jinja2 template rendering with variable injection; `jinja2>=3.0` added as core dependency
+- [x] **TextUtilsTool** (`text_utils`): String manipulation — trim, split, join, replace, case conversion, count, word count, truncate, pad
+- [x] **Tool catalog category ordering**: `"general"` always first; Zap icon + yellow color for the general category in Built-in Tools UI
+
 ---
 
 ### v0.7 -- SaaS Runtime & Provider Abstraction

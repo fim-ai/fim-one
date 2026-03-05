@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **EmailSendTool** (`email_send`): SMTP-powered email sending; supports SSL (port 465), STARTTLS (port 587), and plain; auto-registered when `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` env vars are set; `SMTP_FROM` and `SMTP_FROM_NAME` optional; env block added to `example.env`
+- **JsonTransformTool** (`json_transform`): JMESPath-based JSON extraction and transformation; extract nested fields, filter arrays, reshape payloads; no extra dependencies
+- **TemplateRenderTool** (`template_render`): Jinja2 template rendering with variable injection; supports loops, conditionals, filters; `jinja2>=3.0` added as core dependency
+- **TextUtilsTool** (`text_utils`): String manipulation — trim/strip, split, join, replace, case conversion (upper/lower/title), count occurrences, word count, truncate, pad
+- **Tool catalog category ordering**: `"general"` category pinned first in `/api/tools` response; remaining categories sorted alphabetically
+- **"general" category icon**: Clock → Zap with `text-yellow-500` color in the Built-in Tools page
+
 - **README Provider-Agnostic Setup**: Replaced Anthropic-only Recommended Setup example with a provider table (OpenAI, DeepSeek, Anthropic, Ollama) and a generic minimal `.env`; leading message now correctly states any OpenAI-compatible provider is supported
 - **Environment Variables Wiki**: Extracted all env var documentation from README into `wiki/Environment-Variables.md` with full coverage across 8 sections (LLM, agent execution, web tools, RAG, code execution, image generation, connectors, platform, OAuth); README now links to the wiki page
 
