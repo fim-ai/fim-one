@@ -26,11 +26,14 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+import json
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api.admin import router as admin_router
+from .api.admin import SETTING_MAINTENANCE_MODE, get_setting, router as admin_router
 from .api.agents import router as agents_router
 from .api.auth import router as auth_router
 from .api.chat import router as chat_router
@@ -95,6 +98,27 @@ def create_app() -> FastAPI:
         response: Response = await call_next(request)
         response.headers["X-Powered-By"] = "FIM-Agent"
         return response
+
+    # -- Maintenance mode middleware ----------------------------------------
+    # Passes: OPTIONS (CORS preflight), /api/auth/* (login still works),
+    #         /api/admin/* (admins can turn maintenance off), /api/system/*
+    _MAINTENANCE_PASS = ("/api/auth/", "/api/admin/", "/api/system/")
+
+    @app.middleware("http")
+    async def maintenance_mode_gate(request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in _MAINTENANCE_PASS) or request.method == "OPTIONS":
+            return await call_next(request)
+        from fim_agent.db import create_session
+        async with create_session() as db:
+            value = await get_setting(db, SETTING_MAINTENANCE_MODE, default="false")
+        if value.lower() == "true":
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "System is under maintenance. Please try again later."},
+                headers={"Retry-After": "300"},
+            )
+        return await call_next(request)
 
     # -- CORS ---------------------------------------------------------------
     app.add_middleware(

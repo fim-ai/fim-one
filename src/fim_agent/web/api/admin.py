@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_agent.db import get_session
 from fim_agent.web.auth import get_current_admin, hash_password
-from fim_agent.web.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, Message, SystemSetting, User
+from fim_agent.web.models import Agent, AuditLog, Connector, ConnectorCallLog, Conversation, KnowledgeBase, Message, SystemSetting, User
 from fim_agent.web.schemas.common import PaginatedResponse
 
 # ---------------------------------------------------------------------------
@@ -527,6 +527,10 @@ async def create_user(
 
     result = await db.execute(select(User).where(User.id == user.id))
     user = result.scalar_one()
+    await write_audit(
+        db, current_user, "user.create",
+        target_type="user", target_id=user.id, target_label=user.username,
+    )
     return _user_to_info(user)
 
 
@@ -598,6 +602,11 @@ async def update_user_admin(
 
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one()
+    await write_audit(
+        db, current_user,
+        "user.grant_admin" if body.is_admin else "user.revoke_admin",
+        target_type="user", target_id=user_id, target_label=target_user.username,
+    )
     return _user_to_info(target_user)
 
 
@@ -624,6 +633,10 @@ async def reset_password(
 
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one()
+    await write_audit(
+        db, current_user, "user.reset_password",
+        target_type="user", target_id=user_id, target_label=target_user.username,
+    )
     return _user_to_info(target_user)
 
 
@@ -658,7 +671,45 @@ async def toggle_user_active(
 
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one()
+    await write_audit(
+        db, current_user,
+        "user.enable" if body.is_active else "user.disable",
+        target_type="user", target_id=user_id, target_label=target_user.username,
+    )
     return _user_to_info(target_user)
+
+
+# ---------------------------------------------------------------------------
+# Audit log helper
+# ---------------------------------------------------------------------------
+
+SETTING_MAINTENANCE_MODE = "maintenance_mode"
+SETTING_ANNOUNCEMENT_ENABLED = "announcement_enabled"
+SETTING_ANNOUNCEMENT_TEXT = "announcement_text"
+
+
+async def write_audit(
+    db: AsyncSession,
+    admin: User,
+    action: str,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    target_label: str | None = None,
+    detail: str | None = None,
+) -> None:
+    """Append an audit log entry. Call after the main db.commit() succeeds."""
+    db.add(
+        AuditLog(
+            admin_id=admin.id,
+            admin_username=admin.username,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            target_label=target_label,
+            detail=detail,
+        )
+    )
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -668,10 +719,29 @@ async def toggle_user_active(
 
 class SystemSettingsResponse(BaseModel):
     registration_enabled: bool
+    maintenance_mode: bool
+    announcement_enabled: bool
+    announcement_text: str
 
 
 class UpdateSystemSettingsRequest(BaseModel):
-    registration_enabled: bool
+    registration_enabled: bool | None = None
+    maintenance_mode: bool | None = None
+    announcement_enabled: bool | None = None
+    announcement_text: str | None = None
+
+
+async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
+    reg = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
+    maint = await get_setting(db, SETTING_MAINTENANCE_MODE, default="false")
+    ann_en = await get_setting(db, SETTING_ANNOUNCEMENT_ENABLED, default="false")
+    ann_txt = await get_setting(db, SETTING_ANNOUNCEMENT_TEXT, default="")
+    return SystemSettingsResponse(
+        registration_enabled=reg.lower() != "false",
+        maintenance_mode=maint.lower() == "true",
+        announcement_enabled=ann_en.lower() == "true",
+        announcement_text=ann_txt,
+    )
 
 
 @router.get("/settings", response_model=SystemSettingsResponse)
@@ -680,8 +750,7 @@ async def get_system_settings(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> SystemSettingsResponse:
     """Return current system settings. Requires admin privileges."""
-    value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
-    return SystemSettingsResponse(registration_enabled=value.lower() != "false")
+    return await _load_all_settings(db)
 
 
 @router.patch("/settings", response_model=SystemSettingsResponse)
@@ -690,8 +759,138 @@ async def update_system_settings(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> SystemSettingsResponse:
-    """Update system settings. Requires admin privileges."""
-    await set_setting(
-        db, SETTING_REGISTRATION_ENABLED, "true" if body.registration_enabled else "false"
+    """Update one or more system settings. Requires admin privileges."""
+    changed: list[str] = []
+    if body.registration_enabled is not None:
+        await set_setting(db, SETTING_REGISTRATION_ENABLED, "true" if body.registration_enabled else "false")
+        changed.append(f"registration_enabled={body.registration_enabled}")
+    if body.maintenance_mode is not None:
+        await set_setting(db, SETTING_MAINTENANCE_MODE, "true" if body.maintenance_mode else "false")
+        changed.append(f"maintenance_mode={body.maintenance_mode}")
+    if body.announcement_enabled is not None:
+        await set_setting(db, SETTING_ANNOUNCEMENT_ENABLED, "true" if body.announcement_enabled else "false")
+        changed.append(f"announcement_enabled={body.announcement_enabled}")
+    if body.announcement_text is not None:
+        await set_setting(db, SETTING_ANNOUNCEMENT_TEXT, body.announcement_text)
+        changed.append("announcement_text updated")
+    if changed:
+        await write_audit(db, current_user, "settings.update", detail="; ".join(changed))
+    return await _load_all_settings(db)
+
+
+# ---------------------------------------------------------------------------
+# Delete user
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/users/{user_id}", response_model=AdminUserInfo)
+async def delete_user(
+    user_id: str,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> AdminUserInfo:
+    """Permanently delete a user account. Requires admin privileges."""
+    if current_user.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    target_user = result.scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    info = _user_to_info(target_user)
+    label = target_user.username
+    await db.delete(target_user)
+    await db.commit()
+    await write_audit(
+        db, current_user, "user.delete",
+        target_type="user", target_id=user_id, target_label=label,
     )
-    return SystemSettingsResponse(registration_enabled=body.registration_enabled)
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Force logout all users
+# ---------------------------------------------------------------------------
+
+
+@router.post("/actions/force-logout-all")
+async def force_logout_all(
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Invalidate all refresh tokens, forcing every user to re-authenticate."""
+    result = await db.execute(select(User).where(User.id != current_user.id))
+    users = result.scalars().all()
+    count = 0
+    for u in users:
+        if u.refresh_token is not None:
+            u.refresh_token = None
+            u.refresh_token_expires_at = None
+            count += 1
+    await db.commit()
+    await write_audit(db, current_user, "auth.force_logout_all", detail=f"invalidated {count} sessions")
+    return {"invalidated": count}
+
+
+# ---------------------------------------------------------------------------
+# Audit log endpoint
+# ---------------------------------------------------------------------------
+
+
+class AuditLogEntry(BaseModel):
+    id: str
+    admin_id: str
+    admin_username: str
+    action: str
+    target_type: str | None
+    target_id: str | None
+    target_label: str | None
+    detail: str | None
+    created_at: str
+
+
+@router.get("/audit-log", response_model=PaginatedResponse)
+async def list_audit_log(
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> PaginatedResponse:
+    """Return paginated audit log entries, newest first. Requires admin privileges."""
+    total_result = await db.execute(select(func.count()).select_from(AuditLog))
+    total: int = total_result.scalar_one()
+
+    rows_result = await db.execute(
+        select(AuditLog)
+        .order_by(AuditLog.created_at.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    rows = rows_result.scalars().all()
+
+    items = [
+        AuditLogEntry(
+            id=r.id,
+            admin_id=r.admin_id,
+            admin_username=r.admin_username,
+            action=r.action,
+            target_type=r.target_type,
+            target_id=r.target_id,
+            target_label=r.target_label,
+            detail=r.detail,
+            created_at=r.created_at.isoformat() if r.created_at else "",
+        ).model_dump()
+        for r in rows
+    ]
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=math.ceil(total / size) if total > 0 else 1,
+    )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .agent import Agent
+from .audit_log import AuditLog
 from .connector import Connector, ConnectorAction
 from .connector_call_log import ConnectorCallLog
 from .conversation import Conversation
@@ -16,6 +17,7 @@ from .user import User
 
 __all__ = [
     "Agent",
+    "AuditLog",
     "Connector",
     "ConnectorAction",
     "ConnectorCallLog",

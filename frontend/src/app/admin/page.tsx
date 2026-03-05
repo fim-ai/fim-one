@@ -2,18 +2,20 @@
 
 import { useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { LayoutDashboard, Plug, Settings, Users } from "lucide-react"
+import { LayoutDashboard, Plug, Settings, Shield, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { AdminOverview } from "@/components/admin/admin-overview"
 import { AdminSettings } from "@/components/admin/admin-settings"
 import { AdminUsers } from "@/components/admin/admin-users"
 import { AdminConnectors } from "@/components/admin/admin-connectors"
+import { AdminAudit } from "@/components/admin/admin-audit"
 
 const TABS = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "users", label: "Users", icon: Users },
   { key: "connectors", label: "Connectors", icon: Plug },
+  { key: "audit", label: "Audit Log", icon: Shield },
   { key: "settings", label: "Settings", icon: Settings },
 ] as const
 
@@ -84,6 +86,7 @@ function AdminPanelContent() {
           {activeTab === "overview" && <AdminOverview />}
           {activeTab === "users" && <AdminUsers />}
           {activeTab === "connectors" && <AdminConnectors />}
+          {activeTab === "audit" && <AdminAudit />}
           {activeTab === "settings" && <AdminSettings />}
         </div>
       </div>

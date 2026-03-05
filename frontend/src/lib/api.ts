@@ -592,6 +592,12 @@ export const adminApi = {
       body: JSON.stringify({ new_password: newPassword }),
     }),
 
+  deleteUser: (userId: string) =>
+    apiFetch<AdminUser>(`/api/admin/users/${userId}`, { method: "DELETE" }),
+
+  forceLogoutAll: () =>
+    apiFetch<{ invalidated: number }>("/api/admin/actions/force-logout-all", { method: "POST" }),
+
   connectorStats: () =>
     apiFetch<ConnectorStats>("/api/admin/connector-stats"),
 }

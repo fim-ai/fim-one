@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.db import get_session
-from fim_agent.web.api.admin import SETTING_REGISTRATION_ENABLED, get_setting
+from fim_agent.web.api.admin import (
+    SETTING_ANNOUNCEMENT_ENABLED,
+    SETTING_ANNOUNCEMENT_TEXT,
+    SETTING_REGISTRATION_ENABLED,
+    get_setting,
+)
 from fim_agent.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -464,3 +469,15 @@ async def setup(
     user = result.scalar_one()
 
     return _build_token_response(user, access, refresh)
+
+
+@router.get("/announcement")
+async def get_announcement(
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Public endpoint: returns the current system announcement if enabled."""
+    enabled = await get_setting(db, SETTING_ANNOUNCEMENT_ENABLED, default="false")
+    text = await get_setting(db, SETTING_ANNOUNCEMENT_TEXT, default="")
+    if enabled.lower() == "true" and text.strip():
+        return {"enabled": True, "text": text}
+    return {"enabled": False, "text": ""}

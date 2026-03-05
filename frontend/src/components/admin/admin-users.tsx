@@ -13,6 +13,7 @@ import {
   ShieldOff,
   UserCheck,
   UserX,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,6 +67,7 @@ export function AdminUsers() {
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
   const [adminToggleTarget, setAdminToggleTarget] = useState<AdminUser | null>(null)
   const [activeToggleTarget, setActiveToggleTarget] = useState<AdminUser | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
 
   // --- Form fields ---
   const [createUsername, setCreateUsername] = useState("")
@@ -192,6 +194,22 @@ export function AdminUsers() {
       await adminApi.toggleAdmin(adminToggleTarget.id, !adminToggleTarget.is_admin)
       toast.success("Admin status updated")
       setAdminToggleTarget(null)
+      await loadUsers()
+    } catch (err: unknown) {
+      toast.error(errMsg(err))
+    } finally {
+      setIsMutating(false)
+    }
+  }
+
+  // --- Delete user ---
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return
+    setIsMutating(true)
+    try {
+      await adminApi.deleteUser(deleteTarget.id)
+      toast.success(`User "${deleteTarget.username}" deleted`)
+      setDeleteTarget(null)
       await loadUsers()
     } catch (err: unknown) {
       toast.error(errMsg(err))
@@ -343,6 +361,14 @@ export function AdminUsers() {
                                     Enable Account
                                   </>
                                 )}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDeleteTarget(u)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete User
                               </DropdownMenuItem>
                             </>
                           )}
@@ -574,6 +600,32 @@ export function AdminUsers() {
             <AlertDialogAction onClick={handleToggleActive} disabled={isMutating}>
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {activeToggleTarget?.is_active ? "Disable" : "Enable"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* --- Delete User AlertDialog --- */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete user "{deleteTarget?.username}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the account and all associated data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={handleDeleteUser}
+              disabled={isMutating}
+            >
+              {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Permanently
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

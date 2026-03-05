@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
-import { Bot, Library, Loader2, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, Sun, Wrench } from "lucide-react"
+import { Bot, Library, Loader2, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, Sun, Wrench, X } from "lucide-react"
+import { getApiBaseUrl } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { APP_NAME } from "@/lib/constants"
 import { Separator } from "@/components/ui/separator"
@@ -189,6 +190,37 @@ function SidebarFooter({ collapsed }: { collapsed: boolean }) {
   )
 }
 
+function AnnouncementBanner() {
+  const [text, setText] = useState<string | null>(null)
+  const [dismissed, setDismissed] = useState(false)
+
+  useEffect(() => {
+    fetch(`${getApiBaseUrl()}/api/auth/announcement`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.enabled && data?.text?.trim()) {
+          setText(data.text.trim())
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  if (!text || dismissed) return null
+
+  return (
+    <div className="flex items-center gap-3 bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 text-sm text-amber-800 dark:text-amber-300 shrink-0">
+      <span className="flex-1">{text}</span>
+      <button
+        onClick={() => setDismissed(true)}
+        className="ml-auto shrink-0 rounded p-0.5 hover:bg-amber-500/20 transition-colors"
+        aria-label="Dismiss"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -369,7 +401,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Main area */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Content (no top header bar — playground manages its own header) */}
+          <AnnouncementBanner />
           <main className="flex-1 overflow-hidden">{children}</main>
         </div>
       </div>
