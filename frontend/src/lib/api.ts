@@ -35,6 +35,7 @@ import type {
 } from "@/types/connector"
 import type { AdminUser } from "@/types/admin"
 import type { MCPServerResponse, MCPServerCreate, MCPServerUpdate } from "@/types/mcp-server"
+import type { ModelConfigResponse, ModelConfigCreate, ModelConfigUpdate } from "@/types/model_config"
 
 // --- Auth failure callback ---
 let authFailureCallback: (() => void) | null = null
@@ -634,4 +635,36 @@ export const mcpServerApi = {
       `/api/mcp-servers/${id}/test`,
       { method: "POST" },
     ).then((r) => r.data),
+}
+
+// --- Model Config API ---
+export const modelApi = {
+  list: (category?: string) => {
+    const url = category ? `/api/models?category=${category}` : "/api/models"
+    return apiFetch<ApiResponse<ModelConfigResponse[]>>(url).then((r) => r.data)
+  },
+
+  get: (id: string) =>
+    apiFetch<ApiResponse<ModelConfigResponse>>(`/api/models/${id}`).then((r) => r.data),
+
+  create: (body: ModelConfigCreate) =>
+    apiFetch<ApiResponse<ModelConfigResponse>>("/api/models", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+
+  update: (id: string, body: ModelConfigUpdate) =>
+    apiFetch<ApiResponse<ModelConfigResponse>>(`/api/models/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+
+  delete: (id: string) =>
+    apiFetch<ApiResponse<void>>(`/api/models/${id}`, { method: "DELETE" }),
+
+  setDefault: (id: string) =>
+    apiFetch<ApiResponse<ModelConfigResponse>>(`/api/models/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ is_default: true }),
+    }).then((r) => r.data),
 }

@@ -3,15 +3,17 @@
 import { useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
-import { Palette, Settings, User } from "lucide-react"
+import { Cpu, Palette, Settings, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { GeneralSettings } from "@/components/settings/general-settings"
 import { AccountSettings } from "@/components/settings/account-settings"
 import { AppearanceSettings } from "@/components/settings/appearance-settings"
+import { ModelSettings } from "@/components/settings/model-settings"
 
 const TABS = [
   { key: "general", label: "General", icon: Settings },
+  { key: "models", label: "Models", icon: Cpu },
   { key: "account", label: "Account", icon: User },
   { key: "appearance", label: "Appearance", icon: Palette },
 ] as const
@@ -77,6 +79,7 @@ function SettingsContent() {
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-2xl">
             {activeTab === "general" && <GeneralSettings />}
+            {activeTab === "models" && <ModelSettings />}
             {activeTab === "account" && <AccountSettings />}
             {activeTab === "appearance" && <AppearanceSettings />}
           </div>

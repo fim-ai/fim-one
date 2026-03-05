@@ -8,9 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
 import { SuggestedPromptsEditor } from "@/components/agents/suggested-prompts-editor"
-import { agentApi, kbApi, connectorApi } from "@/lib/api"
+import { agentApi, kbApi, connectorApi, modelApi } from "@/lib/api"
 import type { AgentCreate, AgentResponse, SandboxConfig } from "@/types/agent"
 import type { ConnectorResponse } from "@/types/connector"
+import type { ModelConfigResponse } from "@/types/model_config"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useToolCatalog } from "@/hooks/use-tool-catalog"
 
@@ -80,6 +82,8 @@ export function AgentSettingsForm({
   const [sandboxMemory, setSandboxMemory] = useState<string>("")
   const [sandboxCpu, setSandboxCpu] = useState<string>("")
   const [sandboxTimeout, setSandboxTimeout] = useState<string>("")
+  const [selectedModelConfigId, setSelectedModelConfigId] = useState<string>("")
+  const [systemModels, setSystemModels] = useState<ModelConfigResponse[]>([])
 
   const [availableKBs, setAvailableKBs] = useState<{ id: string; name: string; document_count: number }[]>([])
   const [availableConnectors, setAvailableConnectors] = useState<ConnectorResponse[]>([])
@@ -105,6 +109,7 @@ export function AgentSettingsForm({
       setSandboxMemory(agent.sandbox_config?.memory ?? "")
       setSandboxCpu(agent.sandbox_config?.cpu != null ? String(agent.sandbox_config.cpu) : "")
       setSandboxTimeout(agent.sandbox_config?.timeout != null ? String(agent.sandbox_config.timeout) : "")
+      setSelectedModelConfigId((agent.model_config_json?.model_config_id as string) ?? "")
     } else {
       setName("")
       setIcon(null)
@@ -120,6 +125,7 @@ export function AgentSettingsForm({
       setSandboxMemory("")
       setSandboxCpu("")
       setSandboxTimeout("")
+      setSelectedModelConfigId("")
     }
   }, [agent])
 
@@ -133,6 +139,7 @@ export function AgentSettingsForm({
       .list(1, 100)
       .then((d) => setAvailableConnectors(d.items || []))
       .catch(() => setAvailableConnectors([]))
+    modelApi.list("llm").then(setSystemModels).catch(() => {})
   }, [])
 
   // Compute and notify dirty state
@@ -161,9 +168,10 @@ export function AgentSettingsForm({
       temperature !== (agent.model_config_json?.temperature ?? null) ||
       sandboxMemory !== (agent.sandbox_config?.memory ?? "") ||
       sandboxCpu !== (agent.sandbox_config?.cpu != null ? String(agent.sandbox_config.cpu) : "") ||
-      sandboxTimeout !== (agent.sandbox_config?.timeout != null ? String(agent.sandbox_config.timeout) : "")
+      sandboxTimeout !== (agent.sandbox_config?.timeout != null ? String(agent.sandbox_config.timeout) : "") ||
+      selectedModelConfigId !== ((agent.model_config_json?.model_config_id as string) ?? "")
     onDirtyChange(dirty)
-  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, onDirtyChange])
+  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, selectedModelConfigId, onDirtyChange])
 
   const toggleCategory = (cat: string) => {
     setToolCategories((prev) =>
@@ -183,16 +191,21 @@ export function AgentSettingsForm({
       const prompts = suggestedPrompts
         .filter((s) => s.trim())
 
-      // Build model_config_json: merge temperature into existing config, or strip it if null
+      // Build model_config_json: merge temperature + model_config_id into existing config
       const baseModelConfig = agent?.model_config_json ? { ...agent.model_config_json } : {}
       let modelConfigJson: Record<string, unknown> | undefined
+      const merged: Record<string, unknown> = { ...baseModelConfig }
       if (temperature != null) {
-        modelConfigJson = { ...baseModelConfig, temperature }
+        merged.temperature = temperature
       } else {
-        const { temperature: _omit, ...rest } = baseModelConfig as Record<string, unknown>
-        void _omit
-        modelConfigJson = Object.keys(rest).length > 0 ? rest : undefined
+        delete merged.temperature
       }
+      if (selectedModelConfigId) {
+        merged.model_config_id = selectedModelConfigId
+      } else {
+        delete merged.model_config_id
+      }
+      modelConfigJson = Object.keys(merged).length > 0 ? merged : undefined
 
       // Build sandbox_config: only include fields that have been set
       const sandboxCfg: SandboxConfig = {}
@@ -326,6 +339,37 @@ export function AgentSettingsForm({
               </button>
             </div>
           </div>
+
+          {/* Model */}
+          {systemModels.length > 0 && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Model</label>
+              <Select
+                value={selectedModelConfigId}
+                onValueChange={(v) => setSelectedModelConfigId(v === "__default__" ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Use system default" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">
+                    Use system default
+                    {systemModels.find((m) => m.is_default) && (
+                      <span className="text-muted-foreground ml-1">
+                        ({systemModels.find((m) => m.is_default)!.name})
+                      </span>
+                    )}
+                  </SelectItem>
+                  {systemModels.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                      <span className="text-muted-foreground ml-1 text-xs">({m.model_name})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Temperature */}
           <div className="space-y-2">
