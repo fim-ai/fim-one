@@ -43,6 +43,12 @@ export function setAuthFailureCallback(cb: (() => void) | null) {
   authFailureCallback = cb
 }
 
+// --- Maintenance mode callback ---
+let maintenanceCallback: (() => void) | null = null
+export function setMaintenanceCallback(cb: (() => void) | null) {
+  maintenanceCallback = cb
+}
+
 // --- Token helpers ---
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null
@@ -127,6 +133,11 @@ export async function apiFetch<T>(
       authFailureCallback?.()
       throw new ApiError(401, "Session expired")
     }
+  }
+
+  if (res.status === 503) {
+    maintenanceCallback?.()
+    throw new ApiError(503, "System is under maintenance")
   }
 
   if (!res.ok) {

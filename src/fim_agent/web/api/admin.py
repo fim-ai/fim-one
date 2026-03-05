@@ -822,15 +822,16 @@ async def force_logout_all(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict:
-    """Invalidate all refresh tokens, forcing every user to re-authenticate."""
+    """Invalidate all refresh tokens and mark a force-logout timestamp,
+    causing active access tokens to also be rejected immediately."""
+    now = datetime.now(timezone.utc)
     result = await db.execute(select(User).where(User.id != current_user.id))
     users = result.scalars().all()
-    count = 0
+    count = len(users)
     for u in users:
-        if u.refresh_token is not None:
-            u.refresh_token = None
-            u.refresh_token_expires_at = None
-            count += 1
+        u.refresh_token = None
+        u.refresh_token_expires_at = None
+        u.tokens_invalidated_at = now
     await db.commit()
     await write_audit(db, current_user, "auth.force_logout_all", detail=f"invalidated {count} sessions")
     return {"invalidated": count}

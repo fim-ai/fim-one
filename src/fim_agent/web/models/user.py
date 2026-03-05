@@ -33,6 +33,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     refresh_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     refresh_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    tokens_invalidated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     system_instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     preferred_language: Mapped[str] = mapped_column(
         String(10), nullable=False, default="auto", server_default="auto"

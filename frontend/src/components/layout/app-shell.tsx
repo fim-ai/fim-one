@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Bot, Library, Loader2, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, Sun, Wrench, X } from "lucide-react"
 import { getApiBaseUrl } from "@/lib/constants"
+import { setMaintenanceCallback } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { APP_NAME } from "@/lib/constants"
 import { Separator } from "@/components/ui/separator"
@@ -221,7 +222,28 @@ function AnnouncementBanner() {
   )
 }
 
+function MaintenanceOverlay() {
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background gap-6">
+      <Wrench className="h-12 w-12 text-orange-500 animate-pulse" />
+      <div className="text-center space-y-2">
+        <h1 className="text-2xl font-semibold">System Maintenance</h1>
+        <p className="text-muted-foreground text-sm max-w-sm">
+          The system is currently under maintenance. Please check back shortly.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const [isMaintenance, setIsMaintenance] = useState(false)
+
+  useEffect(() => {
+    setMaintenanceCallback(() => setIsMaintenance(true))
+    return () => setMaintenanceCallback(null)
+  }, [])
+
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("sidebar-collapsed") === "true"
@@ -243,6 +265,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
     )
   }
+
+  if (isMaintenance) return <MaintenanceOverlay />
 
   // Public pages: no sidebar, full-width content
   if (pathname === "/login" || pathname === "/auth/callback" || pathname === "/setup") {

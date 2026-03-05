@@ -44,12 +44,14 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: str, username: str) -> str:
-    expires = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    now = datetime.now(UTC)
+    expires = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "sub": user_id,
         "username": username,
         "type": "access",
         "exp": expires,
+        "iat": now,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -113,6 +115,16 @@ async def get_current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account disabled",
         )
+    # Check if this token was issued before a force-logout event
+    if user.tokens_invalidated_at is not None:
+        iat = payload.get("iat")
+        if iat is not None:
+            token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
+            if token_issued <= user.tokens_invalidated_at.replace(tzinfo=UTC):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session invalidated",
+                )
     return user
 
 
