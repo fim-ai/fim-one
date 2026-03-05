@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **System Model Config Management**: Admin can configure LLM providers in Settings → Models tab (CRUD, set-default, API key storage); `ModelConfig` extended with `max_output_tokens` and `context_size` fields; Alembic migration `e5g7h9i1j234` adds both columns
+- **LLM Priority Chain**: `_resolve_llm()` in chat.py upgraded to async with 3-tier resolution — agent pinned model (`model_config_id`) → system DB default (`user_id=NULL, is_default=True`) → ENV fallback; new `get_system_default_llm()`, `get_effective_llm()`, `get_llm_by_config_id()` in `deps.py`
+- **Agent Model Selector**: Agent settings form now exposes a Model dropdown listing all configured system LLM providers; selection stored as `model_config_json.model_config_id`
+
 - **Write-First Script Execution**: All sandbox backends now write code to a named file in `exec_dir/` before executing — `script_{uuid8}.py` / `.js`; `SandboxResult` carries `script_path`; `python_exec` and `node_exec` tools prepend `[Script: <name>]` so agents can reference the file with `file_ops` and re-run it; Docker backend mounts exec_dir as `/workspace` and executes the file (no more stdin pipe); Local Node switches from `node -e` to `node file.js`
 
 - **Docker Sandbox Backend**: `CODE_EXEC_BACKEND=docker` routes `python_exec`, `node_exec`, and `shell_exec` through Docker containers with `--network=none`, `--memory=256m`, `--cpus=0.5` for OS-level isolation; volume-mounts an exec_dir per run; `DOCKER_PYTHON_IMAGE`, `DOCKER_NODE_IMAGE`, `DOCKER_SHELL_IMAGE` env vars to override default images

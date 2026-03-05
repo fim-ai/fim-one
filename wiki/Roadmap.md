@@ -234,6 +234,13 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [x] **Local Pre-Fill Install**: Local (stdio) servers close the Hub dialog and pre-fill MCPServerDialog with `npx @smithery/cli@latest run {qualifiedName}` args
 - [x] **Browse Hub Button**: Added to the MCP Servers tab header in `/tools` page, left of the existing "Add Server" button
 
+#### v0.6.7 — System Model Config Management (shipped)
+
+- [x] **ModelConfig Fields**: `max_output_tokens` and `context_size` added to `ModelConfig` ORM and Pydantic schemas; Alembic migration `e5g7h9i1j234`
+- [x] **LLM Priority Chain**: `_resolve_llm()` upgraded to async 3-tier resolution — agent pinned model (`model_config_id`) → system DB default (`user_id=NULL, is_default=True`) → ENV fallback; `get_system_default_llm()`, `get_effective_llm()`, `get_llm_by_config_id()` in `deps.py`
+- [x] **Model Provider Management UI**: Settings → Models tab with CRUD, set-default, and empty state; `ProviderDialog` with dirty-state protection and AlertDialog delete confirmation; `modelApi` in frontend API client
+- [x] **Agent Model Selector**: Agent settings form exposes a Model dropdown listing all system LLM providers; selection stored as `model_config_json.model_config_id`
+
 ---
 
 ### v0.7 -- SaaS Runtime & Provider Abstraction
