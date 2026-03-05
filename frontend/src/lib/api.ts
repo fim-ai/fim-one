@@ -135,7 +135,7 @@ export async function apiFetch<T>(
       res = await fetch(`${getApiBaseUrl()}${path}`, { ...options, headers })
     } else {
       authFailureCallback?.()
-      throw new ApiError(401, "Session expired")
+      return new Promise<T>(() => {}) // silently hang — auth callback redirects to login
     }
   }
 
