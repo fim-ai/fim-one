@@ -445,7 +445,7 @@ export function AccountSettings() {
 
         <form onSubmit={handleEmailSubmit} className="space-y-4 max-w-sm">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email Address</label>
+            <label className="text-sm font-medium">Email Address <span className="text-destructive">*</span></label>
             <Input
               type="email"
               value={email}
@@ -494,7 +494,7 @@ export function AccountSettings() {
 
           <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Current Password</label>
+              <label className="text-sm font-medium">Current Password <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={currentPassword}
@@ -504,7 +504,7 @@ export function AccountSettings() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">New Password</label>
+              <label className="text-sm font-medium">New Password <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={newPassword}
@@ -519,7 +519,7 @@ export function AccountSettings() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Confirm New Password</label>
+              <label className="text-sm font-medium">Confirm New Password <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={confirmPassword}
@@ -560,7 +560,7 @@ export function AccountSettings() {
 
           <form onSubmit={handleSetPassword} className="space-y-4 max-w-sm">
             <div className="space-y-2">
-              <label className="text-sm font-medium">New Password</label>
+              <label className="text-sm font-medium">New Password <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={setNewPw}
@@ -575,7 +575,7 @@ export function AccountSettings() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Confirm Password</label>
+              <label className="text-sm font-medium">Confirm Password <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={setConfirmPw}

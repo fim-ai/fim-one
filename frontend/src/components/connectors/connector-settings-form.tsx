@@ -152,7 +152,7 @@ export function ConnectorSettingsForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
       <ScrollArea className="flex-1">
-        <div className="space-y-4 pl-0.5 pr-4">
+        <div className="space-y-4 pr-4">
           {/* Name + Icon */}
           <div className="space-y-1.5">
             <label htmlFor="connector-name" className="text-sm font-medium">

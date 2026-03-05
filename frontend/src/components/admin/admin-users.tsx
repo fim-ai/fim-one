@@ -396,7 +396,7 @@ export function AdminUsers() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Username *</label>
+              <label className="text-sm font-medium">Username <span className="text-destructive">*</span></label>
               <Input
                 value={createUsername}
                 onChange={(e) => setCreateUsername(e.target.value)}
@@ -404,7 +404,7 @@ export function AdminUsers() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Password *</label>
+              <label className="text-sm font-medium">Password <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={createPassword}
@@ -413,7 +413,7 @@ export function AdminUsers() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email *</label>
+              <label className="text-sm font-medium">Email <span className="text-destructive">*</span></label>
               <Input
                 type="email"
                 value={createEmail}
@@ -468,7 +468,7 @@ export function AdminUsers() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
+              <label className="text-sm font-medium">Email <span className="text-destructive">*</span></label>
               <Input
                 type="email"
                 value={editEmail}
@@ -503,7 +503,7 @@ export function AdminUsers() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">New Password *</label>
+              <label className="text-sm font-medium">New Password <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={resetPassword}

@@ -242,7 +242,7 @@ export function MCPServerDialog({
     <>
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
-        className="sm:max-w-lg max-h-[85vh] overflow-y-auto"
+        className="sm:max-w-lg flex flex-col max-h-[85vh]"
         onInteractOutside={(e) => {
           if (isDirty) { e.preventDefault(); setShowCloseConfirm(true) }
         }}
@@ -256,10 +256,11 @@ export function MCPServerDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto">
         <div className="grid gap-4 py-2">
           {/* Name */}
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium">Name</label>
+            <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
             <Input
               placeholder="e.g. filesystem-server"
               value={name}
@@ -478,6 +479,7 @@ export function MCPServerDialog({
               />
             </button>
           </div>
+        </div>
         </div>
 
         <DialogFooter>
