@@ -75,6 +75,7 @@ class StatsResponse(BaseModel):
     total_conversations: int
     total_messages: int
     total_tokens: int
+    total_fast_llm_tokens: int = 0
     total_agents: int
     total_kbs: int
     total_documents: int = 0
@@ -167,13 +168,16 @@ async def get_stats(
 
     # Total conversations and total tokens
     conv_agg_result = await db.execute(
-        select(func.count(), func.coalesce(func.sum(Conversation.total_tokens), 0)).select_from(
-            Conversation
-        )
+        select(
+            func.count(),
+            func.coalesce(func.sum(Conversation.total_tokens), 0),
+            func.coalesce(func.sum(Conversation.fast_llm_tokens), 0),
+        ).select_from(Conversation)
     )
     row = conv_agg_result.one()
     total_conversations: int = row[0]
     total_tokens: int = row[1]
+    total_fast_llm_tokens: int = row[2]
 
     # Total messages
     total_messages_result = await db.execute(select(func.count()).select_from(Message))
@@ -222,10 +226,12 @@ async def get_stats(
     token_model_rows = await db.execute(
         select(
             func.coalesce(Conversation.model_name, "Unknown").label("model"),
-            func.coalesce(func.sum(Conversation.total_tokens), 0).label("tokens"),
+            func.coalesce(
+                func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens), 0
+            ).label("tokens"),
         )
         .group_by(func.coalesce(Conversation.model_name, "Unknown"))
-        .order_by(func.sum(Conversation.total_tokens).desc())
+        .order_by(func.sum(Conversation.total_tokens - Conversation.fast_llm_tokens).desc())
         .limit(20)
     )
     token_label_counts: Counter[str] = Counter()
@@ -235,6 +241,10 @@ async def get_stats(
         ModelStat(model=label, count=count)
         for label, count in token_label_counts.most_common(10)
     ]
+    # Add fast LLM tokens as a separate pie chart entry
+    if total_fast_llm_tokens > 0:
+        fast_label = f"Fast LLM ({fast_llm_model})" if fast_llm_model else "Fast LLM"
+        tokens_by_model.append(ModelStat(model=fast_label, count=total_fast_llm_tokens))
 
     # Top agents by conversation count (top 5), joined to get agent name
     agent_rows = await db.execute(
@@ -315,6 +325,7 @@ async def get_stats(
         total_conversations=total_conversations,
         total_messages=total_messages,
         total_tokens=total_tokens,
+        total_fast_llm_tokens=total_fast_llm_tokens,
         total_agents=total_agents,
         total_kbs=total_kbs,
         total_documents=total_documents,

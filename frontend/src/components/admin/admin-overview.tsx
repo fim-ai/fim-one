@@ -23,6 +23,7 @@ interface AdminStats {
   total_conversations: number
   total_messages: number
   total_tokens: number
+  total_fast_llm_tokens: number
   total_agents: number
   total_kbs: number
   total_documents: number
@@ -168,7 +169,12 @@ export function AdminOverview() {
               secondary={stats?.today_conversations ? `${stats.today_conversations} today` : undefined}
             />
             <StatCard icon={Database} label="Messages" value={(stats?.total_messages ?? 0).toLocaleString()} />
-            <StatCard icon={Zap} label="Total Tokens" value={formatTokens(stats?.total_tokens ?? 0)} />
+            <StatCard
+              icon={Zap}
+              label="Total Tokens"
+              value={formatTokens(stats?.total_tokens ?? 0)}
+              secondary={stats?.total_fast_llm_tokens ? `Fast LLM: ${formatTokens(stats.total_fast_llm_tokens)}` : undefined}
+            />
             <StatCard icon={Bot} label="Agents" value={stats?.total_agents ?? 0} />
             <StatCard icon={BookOpen} label="Knowledge Bases" value={stats?.total_kbs ?? 0} />
             <StatCard icon={FileText} label="Documents" value={(stats?.total_documents ?? 0).toLocaleString()} />
