@@ -35,6 +35,7 @@ function LoginPageInner() {
 
   // Registration status
   const [registrationEnabled, setRegistrationEnabled] = useState(true)
+  const [registrationMode, setRegistrationMode] = useState<"open" | "invite" | "disabled">("open")
 
   // OAuth state
   const [oauthProviders, setOauthProviders] = useState<string[]>([])
@@ -60,8 +61,13 @@ function LoginPageInner() {
           fetch(`${getApiBaseUrl()}/api/auth/registration-status`)
             .then((r) => (r.ok ? r.json() : null))
             .then((data) => {
-              if (data && typeof data.registration_enabled === "boolean") {
-                setRegistrationEnabled(data.registration_enabled)
+              if (data) {
+                if (typeof data.registration_enabled === "boolean") {
+                  setRegistrationEnabled(data.registration_enabled)
+                }
+                if (data.registration_mode) {
+                  setRegistrationMode(data.registration_mode as "open" | "invite" | "disabled")
+                }
               }
             })
             .catch(() => {
@@ -246,8 +252,8 @@ function LoginPageInner() {
             <p className="text-sm text-destructive text-center mb-4">{oauthError}</p>
           )}
 
-          {/* OAuth Buttons */}
-          {oauthProviders.length > 0 && (
+          {/* OAuth Buttons — only in open registration mode; invite/disabled hides them to prevent bypassing invite codes */}
+          {oauthProviders.length > 0 && registrationMode === "open" && (
             <>
               <div className="space-y-2">
                 {oauthProviders.includes("github") && (
@@ -365,12 +371,15 @@ function LoginPageInner() {
                     required
                     autoComplete="new-password"
                   />
-                  <Input
-                    placeholder="Invite code (if required)"
-                    value={regInviteCode}
-                    onChange={(e) => setRegInviteCode(e.target.value)}
-                    autoComplete="off"
-                  />
+                  {registrationMode === "invite" && (
+                    <Input
+                      placeholder="Invite code"
+                      value={regInviteCode}
+                      onChange={(e) => setRegInviteCode(e.target.value)}
+                      autoComplete="off"
+                      required
+                    />
+                  )}
                 </div>
                 {regError && (
                   <p className="text-sm text-destructive">{regError}</p>

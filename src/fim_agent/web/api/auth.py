@@ -85,9 +85,15 @@ def _build_token_response(user: User, access: str, refresh: str) -> TokenRespons
 async def registration_status(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> dict:
-    """Public endpoint: returns whether public registration is currently allowed."""
-    value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
-    return {"registration_enabled": value.lower() != "false"}
+    """Public endpoint: returns registration mode and legacy enabled flag."""
+    reg_mode = await get_setting(db, "registration_mode", "")
+    if not reg_mode:
+        value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
+        reg_mode = "open" if value.lower() != "false" else "disabled"
+    return {
+        "registration_enabled": reg_mode != "disabled",
+        "registration_mode": reg_mode,
+    }
 
 
 @router.post("/register", response_model=TokenResponse)
