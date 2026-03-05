@@ -43,7 +43,7 @@ export function AppearanceSettings() {
 
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-foreground">Color mode</h3>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-3 max-w-lg">
           {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
