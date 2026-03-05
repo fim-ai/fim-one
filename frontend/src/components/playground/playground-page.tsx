@@ -5,11 +5,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, User } from "lucide-react"
-import Lightbox from "yet-another-react-lightbox"
-import "yet-another-react-lightbox/styles.css"
-import LightboxZoom from "yet-another-react-lightbox/plugins/zoom"
-import LightboxDownload from "yet-another-react-lightbox/plugins/download"
+import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, User, Download } from "lucide-react"
 import { toast } from "sonner"
 import { useSSE } from "@/hooks/use-sse"
 import { useDagSteps } from "@/hooks/use-dag-steps"
@@ -422,24 +418,17 @@ function ImageThumbnail({ fileId, filename }: { fileId: string; filename: string
       </button>
       {expanded && (
         <Dialog open={expanded} onOpenChange={setExpanded}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col gap-3">
-            <DialogHeader className="shrink-0">
-              <DialogTitle className="flex items-center gap-2 pr-6">
-                <span className="truncate">{filename}</span>
-                <a
-                  href={blobUrl}
-                  download={filename}
-                  className="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Download
-                </a>
-              </DialogTitle>
-            </DialogHeader>
-            <div className="overflow-auto min-h-0 flex-1">
-              <img src={blobUrl} alt={filename} className="w-full h-auto rounded object-contain" />
-            </div>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col gap-3 pt-4">
+            <a
+              href={blobUrl}
+              download={filename}
+              className="absolute right-12 top-4 rounded-sm opacity-70 hover:opacity-100 transition-opacity text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Download className="h-4 w-4" />
+            </a>
+            <DialogTitle className="leading-normal pb-1 pr-24 truncate text-xs font-medium">{filename}</DialogTitle>
+            <img src={blobUrl} alt={filename} className="max-h-[calc(90vh-6rem)] max-w-full w-auto mx-auto block rounded object-contain" />
           </DialogContent>
         </Dialog>
       )}
@@ -937,7 +926,7 @@ function PlaygroundContent({
           >
             {/* Output header bar */}
             <div className="flex items-center shrink-0 px-4 py-3 border-b border-border/30 gap-1">
-              <span className="text-sm font-medium">
+              <span className="text-xs font-medium">
                 {hasLiveMessages || pendingQuery || hasRichHistory ? "Execution Log" : "History"}
               </span>
               {statusText && (

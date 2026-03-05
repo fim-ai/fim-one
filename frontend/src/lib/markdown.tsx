@@ -1,6 +1,13 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
+import { Download } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
@@ -28,6 +35,38 @@ function processCitations(children: React.ReactNode): React.ReactNode {
       return part
     })
   })
+}
+
+function ClickableImage({ src, alt }: { src: string; alt: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-72 w-auto max-w-full rounded-lg my-2 block cursor-zoom-in hover:opacity-90 transition-opacity"
+        onClick={() => setOpen(true)}
+      />
+      {open && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col gap-3 pt-4">
+            <a
+              href={src}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute right-12 top-4 rounded-sm opacity-70 hover:opacity-100 transition-opacity text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Download className="h-4 w-4" />
+            </a>
+            <DialogTitle className="leading-normal pb-1 pr-24 truncate text-xs font-medium">{alt || "Image"}</DialogTitle>
+            <img src={src} alt={alt} className="max-h-[calc(90vh-6rem)] max-w-full w-auto mx-auto block rounded object-contain" />
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
 }
 
 interface MarkdownContentProps {
@@ -169,13 +208,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
             return <hr className="my-4 border-border" {...props} />
           },
           img({ src, alt }) {
-            return (
-              <img
-                src={src ?? ""}
-                alt={alt ?? ""}
-                className="max-w-full rounded-lg my-2 block"
-              />
-            )
+            return <ClickableImage src={src ?? ""} alt={alt ?? ""} />
           },
           a({ children, ...props }) {
             return (
