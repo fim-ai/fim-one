@@ -97,6 +97,7 @@ async def init_db() -> None:
             await _migrate_mcp_server_columns(conn)
             await _backfill_conversation_model_name(conn)
             await _migrate_conversation_fast_llm_tokens(conn)
+            await _migrate_user_tokens_invalidated_at(conn)
 
     logger.info("Database initialized successfully")
 
@@ -355,6 +356,15 @@ async def _migrate_conversation_fast_llm_tokens(conn) -> None:
         await conn.execute(
             text("ALTER TABLE conversations ADD COLUMN fast_llm_tokens INTEGER NOT NULL DEFAULT 0")
         )
+
+
+async def _migrate_user_tokens_invalidated_at(conn) -> None:
+    """Add tokens_invalidated_at column to users table if it doesn't exist."""
+    result = await conn.execute(text("PRAGMA table_info(users)"))
+    existing_columns = {row[1] for row in result.fetchall()}
+    if "tokens_invalidated_at" not in existing_columns:
+        logger.info("Adding column users.tokens_invalidated_at")
+        await conn.execute(text("ALTER TABLE users ADD COLUMN tokens_invalidated_at DATETIME"))
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
