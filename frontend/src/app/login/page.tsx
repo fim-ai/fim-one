@@ -176,7 +176,7 @@ function LoginPageInner() {
   if (user) return null // Will redirect
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen" style={{ background: 'oklch(0.13 0.008 55)' }}>
       {/* Left panel — brand / hero, always dark, hidden on mobile */}
       <div className="login-brand-panel hidden lg:flex w-[45%] shrink-0 flex-col justify-between px-14 py-10 text-white">
         {/* Mesh gradient background */}
@@ -225,7 +225,7 @@ function LoginPageInner() {
       </div>
 
       {/* Right panel — form, follows light/dark theme */}
-      <div className="flex flex-1 flex-col items-center justify-center bg-background px-6 py-12">
+      <div className="flex flex-1 flex-col items-center justify-center bg-background/[0.88] backdrop-blur-sm px-6 py-12">
         <div className="w-full max-w-sm">
           {/* Mobile-only logo (< lg) */}
           <div className="mb-8 flex items-center justify-center gap-2 lg:hidden">
