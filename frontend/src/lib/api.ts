@@ -667,4 +667,10 @@ export const modelApi = {
       method: "PUT",
       body: JSON.stringify({ is_default: true }),
     }).then((r) => r.data),
+
+  setRole: (id: string, role: "general" | "fast" | null) =>
+    apiFetch<ApiResponse<ModelConfigResponse>>(`/api/models/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }).then((r) => r.data),
 }

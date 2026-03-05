@@ -5,6 +5,7 @@ export interface ModelConfigResponse {
   model_name: string
   base_url: string | null
   category: "llm" | "embedding" | "vision"
+  role: "general" | "fast" | null
   temperature: number | null
   max_output_tokens: number | null
   context_size: number | null
@@ -22,6 +23,7 @@ export interface ModelConfigCreate {
   base_url?: string | null
   api_key?: string | null
   category?: "llm" | "embedding" | "vision"
+  role?: "general" | "fast" | null
   temperature?: number | null
   max_output_tokens?: number | null
   context_size?: number | null
