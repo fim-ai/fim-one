@@ -251,24 +251,26 @@ The portal offers two modes: **ReAct Agent** (single-query tool loop) and **DAG 
 
 ### Recommended Setup
 
-Two API keys unlock all features:
+FIM Agent works with **any OpenAI-compatible LLM provider** — OpenAI, DeepSeek, Anthropic, Qwen, Ollama, vLLM, and more. Pick whichever you prefer:
 
-| Service                | What it powers                        | Get a key                                               |
-| ---------------------- | ------------------------------------- | ------------------------------------------------------- |
-| **Anthropic** (Claude) | Agent reasoning (main LLM)            | [console.anthropic.com](https://console.anthropic.com/) |
-| **Jina AI**            | Web search/fetch, embedding, reranker | [jina.ai](https://jina.ai/) (free tier available)       |
+| Provider | `LLM_API_KEY` | `LLM_BASE_URL` | `LLM_MODEL` |
+| -------- | ------------- | -------------- | ----------- |
+| **OpenAI** | `sk-...` | *(default)* | `gpt-4o` |
+| **DeepSeek** | `sk-...` | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| **Anthropic** | `sk-ant-...` | `https://api.anthropic.com/v1` | `claude-sonnet-4-6` |
+| **Ollama** (local) | `ollama` | `http://localhost:11434/v1` | `qwen2.5:14b` |
 
-Minimal `.env` to get everything working:
+**[Jina AI](https://jina.ai/)** unlocks web search/fetch, embedding, and the full RAG pipeline (free tier available).
+
+Minimal `.env`:
 
 ```bash
-LLM_API_KEY=sk-ant-...          # Anthropic API key
-LLM_BASE_URL=https://api.anthropic.com/v1
-LLM_MODEL=claude-sonnet-4-6
+LLM_API_KEY=sk-your-key
+# LLM_BASE_URL=https://api.openai.com/v1   # default — change for other providers
+# LLM_MODEL=gpt-4o                         # default — change for other models
 
-JINA_API_KEY=jina_...           # Unlocks web tools + RAG
+JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 ```
-
-> Any OpenAI-compatible provider works (DeepSeek, Qwen, Ollama, vLLM, etc.) — just change `LLM_BASE_URL` and `LLM_MODEL`.
 
 ### All Variables
 
