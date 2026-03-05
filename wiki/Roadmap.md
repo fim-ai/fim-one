@@ -236,10 +236,11 @@ Hub          → Central cross-system orchestration (Portal / API)
 
 #### v0.6.7 — System Model Config Management (shipped)
 
-- [x] **ModelConfig Fields**: `max_output_tokens` and `context_size` added to `ModelConfig` ORM and Pydantic schemas; Alembic migration `e5g7h9i1j234`
-- [x] **LLM Priority Chain**: `_resolve_llm()` upgraded to async 3-tier resolution — agent pinned model (`model_config_id`) → system DB default (`user_id=NULL, is_default=True`) → ENV fallback; `get_system_default_llm()`, `get_effective_llm()`, `get_llm_by_config_id()` in `deps.py`
-- [x] **Model Provider Management UI**: Settings → Models tab with CRUD, set-default, and empty state; `ProviderDialog` with dirty-state protection and AlertDialog delete confirmation; `modelApi` in frontend API client
-- [x] **Agent Model Selector**: Agent settings form exposes a Model dropdown listing all system LLM providers; selection stored as `model_config_json.model_config_id`
+- [x] **ModelConfig Fields**: `max_output_tokens`, `context_size`, and `role` added to `ModelConfig` ORM and schemas; migrations `e5g7h9i1j234` + `f6h8j0k2l345`
+- [x] **Role-Based LLM Slots**: `role: "general" | "fast" | null` on `ModelConfig`; system configs use `user_id=NULL`; `_unset_role()` enforces single-active per role; `get_system_llm_by_role()`, `get_effective_llm()`, `get_effective_fast_llm()` in `deps.py`
+- [x] **Full Priority Chain Wired**: General — DB `role=general` → ENV; Fast — DB `role=fast` → DB `role=general` → ENV; agent `model_config_id` override at top; both ReAct and DAG endpoints use DB-resolved LLMs
+- [x] **Model Provider Management UI**: Settings → Models with General/Fast role slot cards (RoleSlot + AssignRoleDialog); provider list with Brain/Zap role badges; ProviderDialog includes Role selector; `modelApi.setRole()` in frontend
+- [x] **Agent Model Selector**: Agent settings form exposes Model dropdown; stored as `model_config_json.model_config_id`
 
 ---
 

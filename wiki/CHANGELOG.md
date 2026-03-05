@@ -7,9 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
-- **System Model Config Management**: Admin can configure LLM providers in Settings → Models tab (CRUD, set-default, API key storage); `ModelConfig` extended with `max_output_tokens` and `context_size` fields; Alembic migration `e5g7h9i1j234` adds both columns
-- **LLM Priority Chain**: `_resolve_llm()` in chat.py upgraded to async with 3-tier resolution — agent pinned model (`model_config_id`) → system DB default (`user_id=NULL, is_default=True`) → ENV fallback; new `get_system_default_llm()`, `get_effective_llm()`, `get_llm_by_config_id()` in `deps.py`
-- **Agent Model Selector**: Agent settings form now exposes a Model dropdown listing all configured system LLM providers; selection stored as `model_config_json.model_config_id`
+- **System Model Config Management**: Admin configures LLM providers in Settings → Models tab; `ModelConfig` extended with `max_output_tokens`, `context_size`, and `role` (`"general" | "fast" | null`) fields; migrations `e5g7h9i1j234` and `f6h8j0k2l345`
+- **Role-Based LLM Slots**: Settings → Models shows two pinned slot cards (General / Fast); assigning a provider to a role sets `user_id=NULL` (system-level) and single-active constraint via `_unset_role()`
+- **Full LLM Priority Chain**: General slot — `get_effective_llm()`: DB `role=general` → ENV; Fast slot — `get_effective_fast_llm()`: DB `role=fast` → DB `role=general` → ENV; agent pinned config (`model_config_id`) takes highest priority; all wired in both ReAct and DAG endpoints
+- **Agent Model Selector**: Agent settings form exposes a Model dropdown listing all configured system LLM providers; selection stored as `model_config_json.model_config_id`
 
 - **Write-First Script Execution**: All sandbox backends now write code to a named file in `exec_dir/` before executing — `script_{uuid8}.py` / `.js`; `SandboxResult` carries `script_path`; `python_exec` and `node_exec` tools prepend `[Script: <name>]` so agents can reference the file with `file_ops` and re-run it; Docker backend mounts exec_dir as `/workspace` and executes the file (no more stdin pipe); Local Node switches from `node -e` to `node file.js`
 
