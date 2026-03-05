@@ -358,7 +358,7 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
                 <Input
                   id="mc-max-output"
                   type="number"
-                  placeholder="e.g. 64000"
+                  placeholder="default: env LLM_MAX_OUTPUT_TOKENS"
                   value={maxOutputTokens}
                   onChange={(e) => setMaxOutputTokens(e.target.value)}
                 />
@@ -366,12 +366,12 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
               <div className="space-y-1.5">
                 <Label htmlFor="mc-context">
                   Context Size{" "}
-                  <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                  <span className="text-xs font-normal text-muted-foreground">(optional, reserved)</span>
                 </Label>
                 <Input
                   id="mc-context"
                   type="number"
-                  placeholder="e.g. 128000"
+                  placeholder="default: env LLM_CONTEXT_SIZE"
                   value={contextSize}
                   onChange={(e) => setContextSize(e.target.value)}
                 />
