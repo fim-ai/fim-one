@@ -33,7 +33,7 @@
 - [Contributors](#contributors)
 - [License](#license)
 
-## Overview
+## 🧩 Overview
 
 FIM Agent is a provider-agnostic Python framework for building AI agents that dynamically plan and execute complex tasks. What makes it different is the **Connector Hub** architecture — three delivery modes, one agent core:
 
@@ -53,7 +53,7 @@ FIM Agent is a provider-agnostic Python framework for building AI agents that dy
 
 The core is always the same: ReAct reasoning loops, dynamic DAG planning with concurrent execution, pluggable tools, and a protocol-first architecture with zero vendor lock-in.
 
-## Why FIM Agent
+## 🤔 Why FIM Agent
 
 ### Land and Expand
 
@@ -106,7 +106,7 @@ FIM Agent doesn't do BPM/FSM — workflow logic belongs to the target system, Co
 
 > Full explanation: [Philosophy](https://github.com/fim-ai/fim-agent/wiki/Philosophy)
 
-## Key Features
+## ✨ Key Features
 
 #### Connector Platform (the core)
 - **Connector Hub Architecture** — Standalone assistant, embedded Copilot, or central Hub — same agent core, different delivery.
@@ -150,7 +150,7 @@ FIM Agent doesn't do BPM/FSM — workflow logic belongs to the target system, Co
 - **ContextGuard + Pinned Messages** — Token budget manager; pinned messages are protected from compaction.
 - **Single-Process Deployment** — No Redis, no PostgreSQL, no message queue. One process + SQLite.
 
-## Architecture
+## 🏗️ Architecture
 
 ### Connector Hub
 
@@ -207,7 +207,7 @@ User Query
  Final Answer
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -247,7 +247,7 @@ Open http://localhost:3000 — on first launch you'll be guided through creating
 
 The portal offers two modes: **ReAct Agent** (single-query tool loop) and **DAG Planner** (multi-step planning with concurrent execution), with real-time SSE streaming, DAG visualization, and KaTeX math rendering.
 
-## Configuration
+## ⚙️ Configuration
 
 ### Recommended Setup
 
@@ -276,7 +276,7 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 
 See the full [Environment Variables](https://github.com/fim-ai/fim-agent/wiki/Environment-Variables) reference for all configuration options (LLM, agent execution, web tools, RAG, code execution, image generation, connectors, platform, OAuth).
 
-## Development
+## 🛠️ Development
 
 ```bash
 # Install all dependencies (including dev extras)
@@ -295,7 +295,7 @@ ruff check src/ tests/
 mypy src/
 ```
 
-## Roadmap
+## 🗺️ Roadmap
 
 See the full [Roadmap](https://github.com/fim-ai/fim-agent/wiki/Roadmap) for version history and what's next.
 

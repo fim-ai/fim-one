@@ -94,6 +94,24 @@ cp example.env .env
 
 ---
 
+## Email (SMTP)
+
+Auto-registers the `email_send` built-in tool when `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` are all set.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SMTP_HOST` | Cond. | — | SMTP server hostname |
+| `SMTP_PORT` | No | `465` | SMTP port |
+| `SMTP_SSL` | No | `ssl` | TLS mode: `ssl` (port 465) / `tls` (STARTTLS, port 587) / `""` (plain) |
+| `SMTP_USER` | Cond. | — | SMTP login username |
+| `SMTP_PASS` | Cond. | — | SMTP login password |
+| `SMTP_FROM` | No | *(uses `SMTP_USER`)* | Sender address shown in From header |
+| `SMTP_FROM_NAME` | No | — | Display name shown in From header |
+| `SMTP_ALLOWED_DOMAINS` | No | — | Comma-separated domain allowlist (e.g. `example.com,corp.io`); blocks recipients outside listed domains |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`; leave both unset to allow any recipient (not recommended for shared mailboxes) |
+
+---
+
 ## Connectors
 
 | Variable | Required | Default | Description |
