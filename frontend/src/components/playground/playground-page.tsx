@@ -5,7 +5,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, User, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw } from "lucide-react"
+import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 import { useSSE } from "@/hooks/use-sse"
 import { useDagSteps } from "@/hooks/use-dag-steps"
@@ -438,6 +438,8 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
   mode: "react" | "dag"
   hideDagGraph: boolean
 }) {
+  const { user } = useAuth()
+  const userInitial = (user?.display_name || user?.username || "U").charAt(0).toUpperCase()
   const reactItems = useReactSteps(sseMessages, false)
   const dagData = useDagSteps(sseMessages, false)
 
@@ -446,7 +448,7 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
       {userContent && (
         <div className="flex items-center gap-3">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
-            <User className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-medium text-primary">{userInitial}</span>
           </div>
           <div className="flex-1">
             <p className="text-sm text-foreground">{userContent}</p>
@@ -540,6 +542,8 @@ function PlaygroundContent({
   isNewChat,
   initialAgentId,
 }: PlaygroundContentProps) {
+  const { user } = useAuth()
+  const userInitial = (user?.display_name || user?.username || "U").charAt(0).toUpperCase()
   const modeMatches = sourceMode === mode
   const hasLiveMessages = modeMatches && messages.length > 0
   const hasHistory = !!(activeConversation?.messages && activeConversation.messages.length > 0)
