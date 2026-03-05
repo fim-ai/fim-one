@@ -265,7 +265,7 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
     <>
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent
-          className="max-w-lg max-h-[90vh] overflow-y-auto"
+          className="max-w-lg flex flex-col max-h-[90vh]"
           onInteractOutside={(e) => {
             if (isDirty) {
               e.preventDefault()
@@ -278,6 +278,7 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
               {editing ? "Edit Model Provider" : "Add Model Provider"}
             </DialogTitle>
           </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
           <div className="space-y-4 py-2">
             {/* Compatibility notice */}
             <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -404,6 +405,7 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
                 className="w-full"
               />
             </div>
+          </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => handleClose(false)}>
