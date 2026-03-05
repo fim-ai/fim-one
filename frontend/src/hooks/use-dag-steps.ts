@@ -178,8 +178,8 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
     }
 
     // When aborted (not running, no done event), clean up all loading states
-    // so spinners and "Executing..." indicators stop immediately.
-    if (!isRunning && !doneEvent && stepMap.size > 0) {
+    // so spinners and "Executing..." / "Planning..." indicators stop immediately.
+    if (!isRunning && !doneEvent) {
       for (const state of stepMap.values()) {
         if (state.status === "running") state.status = "pending"
         for (const iter of state.iterations) {
