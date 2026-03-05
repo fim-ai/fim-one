@@ -7,6 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **EmailSendTool recipient allowlist**: `SMTP_ALLOWED_DOMAINS` and `SMTP_ALLOWED_ADDRESSES` env vars restrict which addresses the `email_send` tool may send to; any blocked recipient returns `[Error]` without sending; both vars optional — leave unset for no restriction (not recommended for shared mailboxes)
+- **Admin: token quota per user**: `token_quota` field on `User` model; admins can cap monthly token usage per account via `PUT /api/admin/users/{id}/quota`
+- **Admin: global MCP servers**: `is_global` flag on `MCPServer` makes a server available to all users; `user_id` is now nullable for admin-managed global servers; DB migration handles column addition and table recreation for SQLite NOT NULL constraint
+- **Admin: invite codes**: New `InviteCode` model and `invite_codes` table; admins can generate single-use or multi-use codes with optional expiry and notes; CRUD endpoints at `/api/admin/invite-codes`; register endpoint validates invite code in `invite` registration mode
+- **Admin: API health dashboard**: `GET /api/admin/system/health` returns integration configuration status for LLM, Fast LLM, Embedding, Reranker, Web Search, Web Fetch, and Image Generation
+- **Admin: conversation moderation**: `GET /api/admin/conversations` lists all conversations with user info, message counts, and search/filter; `DELETE /api/admin/conversations/:id` removes any conversation with file cleanup
+- **Admin: storage management**: `GET /api/admin/storage` shows per-user disk usage; `DELETE /api/admin/storage/user/:id` clears a user's uploads; `DELETE /api/admin/storage/orphaned` cleans conversation upload dirs for deleted conversations
+- **Admin: per-user force logout**: `POST /api/admin/users/:id/force-logout` invalidates a single user's session and marks `tokens_invalidated_at`
+- **Admin: registration modes**: Registration endpoint now supports `open`, `invite`, and `disabled` modes with backward compatibility to legacy `registration_enabled` setting
+- **Chat: token quota enforcement**: Both ReAct and DAG SSE endpoints check monthly token usage against user quota before starting stream; returns 429 when exceeded
+- **Chat: global MCP servers loaded**: MCP server query in chat tool resolution now includes `is_global=true` servers alongside user-owned servers
 - **EmailSendTool** (`email_send`): SMTP-powered email sending; supports SSL (port 465), STARTTLS (port 587), and plain; auto-registered when `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` env vars are set; `SMTP_FROM` and `SMTP_FROM_NAME` optional; env block added to `example.env`
 - **JsonTransformTool** (`json_transform`): JMESPath-based JSON extraction and transformation; extract nested fields, filter arrays, reshape payloads; no extra dependencies
 - **TemplateRenderTool** (`template_render`): Jinja2 template rendering with variable injection; supports loops, conditionals, filters; `jinja2>=3.0` added as core dependency
