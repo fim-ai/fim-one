@@ -322,7 +322,13 @@ Contributions and ideas are welcome. Open an issue or submit a PR on [GitHub](ht
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date)](https://star-history.com/#fim-ai/fim-agent&Date)
+<a href="https://star-history.com/#fim-ai/fim-agent&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date" />
+  </picture>
+</a>
 
 ## Activity
 
