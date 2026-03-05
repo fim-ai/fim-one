@@ -32,6 +32,9 @@ function LoginPageInner() {
   // Setup status check
   const [setupChecking, setSetupChecking] = useState(true)
 
+  // Registration status
+  const [registrationEnabled, setRegistrationEnabled] = useState(true)
+
   // OAuth state
   const [oauthProviders, setOauthProviders] = useState<string[]>([])
   const [oauthError, setOauthError] = useState("")
@@ -43,7 +46,7 @@ function LoginPageInner() {
     }
   }, [authLoading, user, router])
 
-  // Check if system needs first-time setup
+  // Check if system needs first-time setup, and fetch registration status
   useEffect(() => {
     authApi
       .setupStatus()
@@ -52,6 +55,17 @@ function LoginPageInner() {
           router.replace("/setup")
         } else {
           setSetupChecking(false)
+          // Fetch registration status after confirming system is initialized
+          fetch(`${getApiBaseUrl()}/api/auth/registration-status`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+              if (data && typeof data.registration_enabled === "boolean") {
+                setRegistrationEnabled(data.registration_enabled)
+              }
+            })
+            .catch(() => {
+              // Silently ignore — default to showing registration
+            })
         }
       })
       .catch(() => {
@@ -278,9 +292,9 @@ function LoginPageInner() {
           )}
 
           <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className={`grid w-full ${registrationEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
               <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="register">Register</TabsTrigger>
+              {registrationEnabled && <TabsTrigger value="register">Register</TabsTrigger>}
             </TabsList>
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4 pt-4">
@@ -311,7 +325,7 @@ function LoginPageInner() {
                 </Button>
               </form>
             </TabsContent>
-            <TabsContent value="register">
+            {registrationEnabled && <TabsContent value="register">
               <form onSubmit={handleRegister} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Input
@@ -356,7 +370,7 @@ function LoginPageInner() {
                   Create Account
                 </Button>
               </form>
-            </TabsContent>
+            </TabsContent>}
           </Tabs>
         </div>
       </div>

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.db import get_session
+from fim_agent.web.api.admin import SETTING_REGISTRATION_ENABLED, get_setting
 from fim_agent.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -74,11 +75,31 @@ def _build_token_response(user: User, access: str, refresh: str) -> TokenRespons
     )
 
 
+@router.get("/registration-status")
+async def registration_status(
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Public endpoint: returns whether public registration is currently allowed."""
+    value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
+    return {"registration_enabled": value.lower() != "false"}
+
+
 @router.post("/register", response_model=TokenResponse)
 async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse:
+    # Check if registration is enabled (first user is always allowed as bootstrap)
+    user_count_check = await db.execute(select(func.count(User.id)))
+    is_first_user_check = user_count_check.scalar_one() == 0
+    if not is_first_user_check:
+        reg_value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
+        if reg_value.lower() == "false":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Public registration is disabled",
+            )
+
     result = await db.execute(select(User).where(User.username == body.username))
     if result.scalar_one_or_none() is not None:
         raise HTTPException(
@@ -97,14 +118,11 @@ async def register(
         )
 
     # First registered user automatically becomes admin
-    user_count_result = await db.execute(select(func.count(User.id)))
-    is_first_user = user_count_result.scalar_one() == 0
-
     user = User(
         username=body.username,
         password_hash=hash_password(body.password),
         email=body.email,
-        is_admin=is_first_user,
+        is_admin=is_first_user_check,
     )
     db.add(user)
     await db.flush()

@@ -11,6 +11,7 @@ from .knowledge_base import KBDocument, KnowledgeBase
 from .message import Message
 from .model_config import ModelConfig
 from .oauth_binding import UserOAuthBinding
+from .system_setting import SystemSetting
 from .user import User
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "MCPServer",
     "Message",
     "ModelConfig",
+    "SystemSetting",
     "User",
     "UserOAuthBinding",
 ]

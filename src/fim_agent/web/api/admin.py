@@ -15,8 +15,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_agent.db import get_session
 from fim_agent.web.auth import get_current_admin, hash_password
-from fim_agent.web.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, Message, User
+from fim_agent.web.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, Message, SystemSetting, User
 from fim_agent.web.schemas.common import PaginatedResponse
+
+# ---------------------------------------------------------------------------
+# Settings helpers
+# ---------------------------------------------------------------------------
+
+SETTING_REGISTRATION_ENABLED = "registration_enabled"
+
+
+async def get_setting(db: AsyncSession, key: str, default: str = "") -> str:
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    row = result.scalar_one_or_none()
+    return row.value if row is not None else default
+
+
+async def set_setting(db: AsyncSession, key: str, value: str) -> None:
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    row = result.scalar_one_or_none()
+    if row is None:
+        db.add(SystemSetting(key=key, value=value))
+    else:
+        row.value = value
+    await db.commit()
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -637,3 +659,39 @@ async def toggle_user_active(
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one()
     return _user_to_info(target_user)
+
+
+# ---------------------------------------------------------------------------
+# System settings endpoints
+# ---------------------------------------------------------------------------
+
+
+class SystemSettingsResponse(BaseModel):
+    registration_enabled: bool
+
+
+class UpdateSystemSettingsRequest(BaseModel):
+    registration_enabled: bool
+
+
+@router.get("/settings", response_model=SystemSettingsResponse)
+async def get_system_settings(
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> SystemSettingsResponse:
+    """Return current system settings. Requires admin privileges."""
+    value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
+    return SystemSettingsResponse(registration_enabled=value.lower() != "false")
+
+
+@router.patch("/settings", response_model=SystemSettingsResponse)
+async def update_system_settings(
+    body: UpdateSystemSettingsRequest,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> SystemSettingsResponse:
+    """Update system settings. Requires admin privileges."""
+    await set_setting(
+        db, SETTING_REGISTRATION_ENABLED, "true" if body.registration_enabled else "false"
+    )
+    return SystemSettingsResponse(registration_enabled=body.registration_enabled)
