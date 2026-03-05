@@ -391,7 +391,14 @@ async def _resolve_llm(
             if llm is not None:
                 return llm
     # System default -> ENV fallback
-    return await get_effective_llm(db)
+    llm = await get_effective_llm(db)
+    if not getattr(llm, "api_key", None):
+        raise ValueError(
+            "No LLM API key configured. "
+            "Go to Settings → Models to add a model provider, "
+            "or set LLM_API_KEY in your environment."
+        )
+    return llm
 
 
 async def _resolve_fast_llm(db: AsyncSession) -> BaseLLM:
@@ -815,10 +822,13 @@ async def react_endpoint(
 
     agent_cfg = await _resolve_agent_config(agent_id, conversation_id, user_id=current_user_id)
     from fim_agent.db import create_session as _create_session
-    async with _create_session() as _llm_db:
-        llm = await _resolve_llm(agent_cfg, _llm_db)
-        fast_llm = await _resolve_fast_llm(_llm_db)
-        _context_budget = await get_effective_context_budget(_llm_db)
+    try:
+        async with _create_session() as _llm_db:
+            llm = await _resolve_llm(agent_cfg, _llm_db)
+            fast_llm = await _resolve_fast_llm(_llm_db)
+            _context_budget = await get_effective_context_budget(_llm_db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
 
@@ -1178,9 +1188,12 @@ async def dag_endpoint(
 
     agent_cfg = await _resolve_agent_config(agent_id, conversation_id, user_id=current_user_id)
     from fim_agent.db import create_session as _create_session
-    async with _create_session() as _llm_db:
-        llm = await _resolve_llm(agent_cfg, _llm_db)
-        _fast_context_budget = await get_effective_fast_context_budget(_llm_db)
+    try:
+        async with _create_session() as _llm_db:
+            llm = await _resolve_llm(agent_cfg, _llm_db)
+            _fast_context_budget = await get_effective_fast_context_budget(_llm_db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
 
