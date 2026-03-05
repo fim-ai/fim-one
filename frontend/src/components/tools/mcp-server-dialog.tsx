@@ -34,6 +34,7 @@ export interface MCPServerInitialValues {
   url?: string
   command?: string
   args?: string
+  env?: Record<string, string>
 }
 
 interface MCPServerDialogProps {
@@ -112,7 +113,11 @@ export function MCPServerDialog({
         setArgs(initialValues?.args ?? "")
         setUrl(initialValues?.url ?? "")
         setWorkingDir("")
-        setEnvPairs([])
+        setEnvPairs(
+          initialValues?.env
+            ? Object.entries(initialValues.env).map(([key, value]) => ({ key, value }))
+            : []
+        )
         setHeaderPairs([])
         setIsActive(false)
       }

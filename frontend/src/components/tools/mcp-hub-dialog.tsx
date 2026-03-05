@@ -25,6 +25,7 @@ interface CuratedServer {
   command: string        // "npx" | "uvx" | etc.
   args: string           // comma-separated args for MCPServerDialog
   requiresConfig?: string // brief hint about env vars / config needed
+  env?: Record<string, string> // pre-populated env vars (values left empty for user to fill)
 }
 
 const SERVERS: CuratedServer[] = [
@@ -100,7 +101,8 @@ const SERVERS: CuratedServer[] = [
     category: "Search",
     command: "npx",
     args: "-y, @modelcontextprotocol/server-brave-search",
-    requiresConfig: "BRAVE_API_KEY env var",
+    requiresConfig: "Get key at brave.com/search/api → paste into BRAVE_API_KEY",
+    env: { BRAVE_API_KEY: "" },
   },
   {
     name: "Exa Search",
@@ -109,7 +111,8 @@ const SERVERS: CuratedServer[] = [
     category: "Search",
     command: "npx",
     args: "-y, exa-mcp-server",
-    requiresConfig: "EXA_API_KEY env var",
+    requiresConfig: "Get key at dashboard.exa.ai → paste into EXA_API_KEY",
+    env: { EXA_API_KEY: "" },
   },
   // ── Productivity ──────────────────────────────────────────────────────────
   {
@@ -135,7 +138,8 @@ const SERVERS: CuratedServer[] = [
     category: "Productivity",
     command: "npx",
     args: "-y, @notionhq/notion-mcp-server",
-    requiresConfig: "OPENAPI_MCP_HEADERS with Notion API key",
+    requiresConfig: 'Get key at notion.so/my-integrations → set OPENAPI_MCP_HEADERS to: {"Authorization":"Bearer YOUR_KEY"}',
+    env: { OPENAPI_MCP_HEADERS: "" },
   },
   // ── Dev Tools ─────────────────────────────────────────────────────────────
   {
@@ -145,7 +149,8 @@ const SERVERS: CuratedServer[] = [
     category: "Dev Tools",
     command: "npx",
     args: "-y, @modelcontextprotocol/server-github",
-    requiresConfig: "GITHUB_PERSONAL_ACCESS_TOKEN env var",
+    requiresConfig: "Create token at github.com/settings/tokens → paste into GITHUB_PERSONAL_ACCESS_TOKEN",
+    env: { GITHUB_PERSONAL_ACCESS_TOKEN: "" },
   },
   {
     name: "GitLab",
@@ -154,7 +159,8 @@ const SERVERS: CuratedServer[] = [
     category: "Dev Tools",
     command: "npx",
     args: "-y, @modelcontextprotocol/server-gitlab",
-    requiresConfig: "GITLAB_PERSONAL_ACCESS_TOKEN and GITLAB_URL env vars",
+    requiresConfig: "Create token at gitlab.com/-/user_settings/personal_access_tokens · set GITLAB_URL to your GitLab host",
+    env: { GITLAB_PERSONAL_ACCESS_TOKEN: "", GITLAB_URL: "" },
   },
   {
     name: "Everything (test)",
@@ -172,7 +178,8 @@ const SERVERS: CuratedServer[] = [
     category: "Communication",
     command: "npx",
     args: "-y, @modelcontextprotocol/server-slack",
-    requiresConfig: "SLACK_BOT_TOKEN and SLACK_TEAM_ID env vars",
+    requiresConfig: "Create bot at api.slack.com/apps → paste Bot Token; find Team ID in workspace URL",
+    env: { SLACK_BOT_TOKEN: "", SLACK_TEAM_ID: "" },
   },
   // ── Cloud ─────────────────────────────────────────────────────────────────
   {
@@ -191,7 +198,8 @@ const SERVERS: CuratedServer[] = [
     category: "Cloud",
     command: "npx",
     args: "-y, @modelcontextprotocol/server-google-maps",
-    requiresConfig: "GOOGLE_MAPS_API_KEY env var",
+    requiresConfig: "Enable Maps API at console.cloud.google.com → paste into GOOGLE_MAPS_API_KEY",
+    env: { GOOGLE_MAPS_API_KEY: "" },
   },
 ]
 
@@ -242,6 +250,7 @@ export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialo
       transport: "stdio",
       command: server.command,
       args: server.args,
+      env: server.env,
     })
   }
 
