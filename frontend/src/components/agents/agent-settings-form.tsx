@@ -12,6 +12,7 @@ import { agentApi, kbApi, connectorApi } from "@/lib/api"
 import type { AgentCreate, AgentResponse } from "@/types/agent"
 import type { ConnectorResponse } from "@/types/connector"
 import { cn } from "@/lib/utils"
+import { useToolCatalog } from "@/hooks/use-tool-catalog"
 
 // Ordered: general first → common tools → advanced/specialized
 const TOOL_CATEGORIES = ["general", "web", "computation", "filesystem", "knowledge", "connector", "mcp"] as const
@@ -80,6 +81,7 @@ export function AgentSettingsForm({
   const [availableKBs, setAvailableKBs] = useState<{ id: string; name: string; document_count: number }[]>([])
   const [availableConnectors, setAvailableConnectors] = useState<ConnectorResponse[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const { data: catalog } = useToolCatalog()
 
   // Pre-fill when agent prop changes (full sync)
   useEffect(() => {
@@ -365,6 +367,11 @@ export function AgentSettingsForm({
               <div className="flex flex-wrap gap-2">
                 {TOOL_CATEGORIES.map((cat) => {
                   const meta = TOOL_CATEGORY_META[cat]
+                  const toolsInCategory = catalog?.tools
+                    ?.filter((t) => t.category === cat)
+                    .map((t) => t.display_name)
+                    .join(", ")
+                  const toolsLabel = toolsInCategory || meta.tools
                   return (
                     <Tooltip key={cat}>
                       <TooltipTrigger asChild>
@@ -380,7 +387,7 @@ export function AgentSettingsForm({
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-[200px] text-center">
                         <p className="font-medium mb-0.5">{meta.description}</p>
-                        <p className="text-[11px] opacity-75">{meta.tools}</p>
+                        <p className="text-[11px] opacity-75">{toolsLabel}</p>
                       </TooltipContent>
                     </Tooltip>
                   )

@@ -9,6 +9,7 @@ import { ErrorBlock } from "./error-block"
 import { generateStepSummary, getToolIcon, getToolDisplayName } from "./step-summary"
 import { fmtDuration } from "@/lib/utils"
 import { IterationDetailDrawer } from "./iteration-detail-drawer"
+import { useToolCatalog } from "@/hooks/use-tool-catalog"
 
 interface IterationCardProps {
   data: IterationData
@@ -24,6 +25,7 @@ export function IterationCard({
   summary: summaryProp,
   variant = "card",
 }: IterationCardProps) {
+  const { data: catalog } = useToolCatalog()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const isLoading = data.loading || data.type === "tool_start"
 
@@ -85,8 +87,9 @@ export function IterationCard({
   }
 
   if (variant === "pill") {
-    const ToolIcon = data.tool_name ? getToolIcon(data.tool_name) : Loader2
-    const displayName = data.tool_name ? getToolDisplayName(data.tool_name) : "Thinking"
+    const ToolIcon = data.tool_name ? getToolIcon(data.tool_name, catalog?.tools) : Loader2
+    const displayName = data.tool_name ? getToolDisplayName(data.tool_name, catalog?.tools) : "Thinking"
+    const toolMeta = data.tool_name ? catalog?.tools?.find((t) => t.name === data.tool_name) : undefined
 
     return (
       <>
@@ -105,6 +108,11 @@ export function IterationCard({
             <ToolIcon className="h-3 w-3 text-muted-foreground shrink-0" />
           )}
           <span className="font-medium shrink-0">{displayName}</span>
+          {toolMeta && (
+            <span className="text-[10px] text-muted-foreground/60 shrink-0">
+              [{toolMeta.category.charAt(0).toUpperCase() + toolMeta.category.slice(1)}]
+            </span>
+          )}
           {summary && (
             <span className="text-muted-foreground truncate min-w-0">{summary}</span>
           )}

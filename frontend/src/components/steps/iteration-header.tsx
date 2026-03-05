@@ -4,6 +4,7 @@ import { Wrench, Brain, Loader2, Clock } from "lucide-react"
 import { fmtDuration } from "@/lib/utils"
 import type { IterationData } from "./types"
 import { getToolDisplayName } from "./step-summary"
+import { useToolCatalog } from "@/hooks/use-tool-catalog"
 
 interface IterationHeaderProps {
   data: IterationData
@@ -12,6 +13,7 @@ interface IterationHeaderProps {
 
 /** Single-line compact header: icon · DisplayName · summary · duration */
 export function IterationHeader({ data, summary }: IterationHeaderProps) {
+  const { data: catalog } = useToolCatalog()
   const isTool = data.type === "tool_call" || data.type === "tool_start"
   const isLoading = data.loading || data.type === "tool_start"
 
@@ -19,7 +21,7 @@ export function IterationHeader({ data, summary }: IterationHeaderProps) {
   const iconCls = isLoading ? "animate-spin" : ""
 
   const displayName = isTool && data.tool_name
-    ? getToolDisplayName(data.tool_name)
+    ? getToolDisplayName(data.tool_name, catalog?.tools)
     : "Thinking"
 
   return (

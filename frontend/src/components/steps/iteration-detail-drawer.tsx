@@ -13,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn, fmtDuration } from "@/lib/utils"
 import type { IterationData } from "./types"
 import { getToolDisplayName } from "./step-summary"
+import { useToolCatalog } from "@/hooks/use-tool-catalog"
 import { ToolArgsBlock } from "./tool-args-block"
 import { ObservationBlock } from "./observation-block"
 import { ErrorBlock } from "./error-block"
@@ -26,12 +27,13 @@ interface IterationDetailDrawerProps {
 }
 
 export function IterationDetailDrawer({ data, summary, onClose }: IterationDetailDrawerProps) {
+  const { data: catalog } = useToolCatalog()
   const [activeTab, setActiveTab] = useState<TabKey>("args")
 
   const open = !!data
   const isTool = data?.type === "tool_call" || data?.type === "tool_start"
   const displayName = isTool && data?.tool_name
-    ? getToolDisplayName(data.tool_name)
+    ? getToolDisplayName(data.tool_name, catalog?.tools)
     : "Thinking"
 
   const hasArgs = data?.tool_args && Object.keys(data.tool_args).length > 0

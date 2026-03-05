@@ -4,174 +4,77 @@ import { useState } from "react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import {
-  Calculator,
   Clock,
   Code2,
   Globe,
-  Search,
-  Network,
-  Files,
-  Terminal,
-  Library,
-  Database,
-  Sparkles,
+  FolderOpen,
+  BookOpen,
   Plug,
   Server,
+  Wrench,
   ArrowRight,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { useToolCatalog } from "@/hooks/use-tool-catalog"
+import type { ToolMeta } from "@/hooks/use-tool-catalog"
 
-interface ToolEntry {
-  name: string
-  description: string
-  note?: string
-  category: string
+/* ------------------------------------------------------------------ */
+/*  Category icon & color maps                                          */
+/* ------------------------------------------------------------------ */
+
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  general: Clock,
+  computation: Code2,
+  web: Globe,
+  filesystem: FolderOpen,
+  knowledge: BookOpen,
+  connector: Plug,
+  mcp: Server,
 }
 
-interface ToolCategory {
-  category: string
-  tools: ToolEntry[]
+const CATEGORY_COLORS: Record<string, string> = {
+  general: "text-muted-foreground",
+  computation: "text-blue-500",
+  web: "text-green-500",
+  filesystem: "text-orange-500",
+  knowledge: "text-purple-500",
 }
 
-const BUILTIN_TOOLS: ToolCategory[] = [
-  {
-    category: "General",
-    tools: [
-      {
-        name: "datetime",
-        description: "Get the current date, time, and weekday. Supports any IANA timezone (e.g. UTC, Asia/Shanghai).",
-        category: "General",
-      },
-    ],
-  },
-  {
-    category: "Computation",
-    tools: [
-      {
-        name: "calculator",
-        description: "Safe AST-based math expression evaluation — add, sub, mul, div, pow, sqrt, sin, cos, log, …",
-        category: "Computation",
-      },
-      {
-        name: "python_exec",
-        description: "Execute Python code in a sandboxed namespace; stdout/stderr captured; supports file I/O and most stdlib",
-        category: "Computation",
-      },
-      {
-        name: "shell_exec",
-        description: "Run shell commands in a sandboxed directory; blocked: sudo, rm -rf /, network reconfig, dangerous binaries",
-        category: "Computation",
-      },
-    ],
-  },
-  {
-    category: "Web",
-    tools: [
-      {
-        name: "web_fetch",
-        description: "Fetch a URL and return clean Markdown via Jina Reader (r.jina.ai)",
-        category: "Web",
-      },
-      {
-        name: "web_search",
-        description: "Search the web and return ranked results via Jina Search (s.jina.ai)",
-        category: "Web",
-      },
-      {
-        name: "http_request",
-        description: "Send arbitrary HTTP requests (GET/POST/PUT/DELETE/PATCH) to REST APIs; SSRF-protected",
-        category: "Web",
-      },
-    ],
-  },
-  {
-    category: "Filesystem",
-    tools: [
-      {
-        name: "file_ops",
-        description: "Sandboxed file operations within a per-conversation workspace",
-        note: "read · write · append · delete · list · mkdir · exists · get_info · read_json · write_json · read_csv · write_csv · find_replace",
-        category: "Filesystem",
-      },
-    ],
-  },
-  {
-    category: "Knowledge",
-    tools: [
-      {
-        name: "kb_list",
-        description: "List all knowledge bases available to the current user (id, name, description, doc count)",
-        category: "Knowledge",
-      },
-      {
-        name: "kb_retrieve",
-        description: "Basic vector retrieval from knowledge bases — returns top-K chunks by relevance score",
-        category: "Knowledge",
-      },
-      {
-        name: "grounded_retrieve",
-        description: "5-stage grounding pipeline: multi-KB retrieve → citation extraction → alignment scoring → conflict detection → confidence scoring",
-        category: "Knowledge",
-      },
-    ],
-  },
-]
+/* ------------------------------------------------------------------ */
+/*  ToolCard                                                            */
+/* ------------------------------------------------------------------ */
 
-const ALL_TOOLS: ToolEntry[] = BUILTIN_TOOLS.flatMap((g) => g.tools)
-
-const CATEGORIES = ["All", "General", "Computation", "Web", "Filesystem", "Knowledge", "Connector", "MCP"] as const
-type CategoryFilter = (typeof CATEGORIES)[number]
-
-const TOOL_ICONS: Record<string, LucideIcon> = {
-  datetime: Clock,
-  calculator: Calculator,
-  python_exec: Code2,
-  web_fetch: Globe,
-  web_search: Search,
-  http_request: Network,
-  file_ops: Files,
-  shell_exec: Terminal,
-  kb_list: Library,
-  kb_retrieve: Database,
-  grounded_retrieve: Sparkles,
-}
-
-const CATEGORY_ICON_COLOR: Record<string, string> = {
-  General: "text-muted-foreground",
-  Computation: "text-blue-500",
-  Web: "text-green-500",
-  Filesystem: "text-orange-500",
-  Knowledge: "text-purple-500",
-}
-
-function ToolCard({ tool }: { tool: ToolEntry }) {
-  const Icon = TOOL_ICONS[tool.name]
-  const iconColor = CATEGORY_ICON_COLOR[tool.category] ?? "text-muted-foreground"
+function ToolCard({ tool }: { tool: ToolMeta }) {
+  const Icon = CATEGORY_ICONS[tool.category] ?? Wrench
+  const iconColor = CATEGORY_COLORS[tool.category] ?? "text-muted-foreground"
+  const categoryLabel = tool.category.charAt(0).toUpperCase() + tool.category.slice(1)
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-2 hover:border-border/80 hover:bg-accent/30 transition-colors">
+    <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-2 transition-colors hover:border-border/80 hover:bg-accent/5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {Icon && <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />}
+          <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
+          <span className="text-sm font-medium shrink-0">{tool.display_name}</span>
           <Badge variant="secondary" className="shrink-0 text-xs font-mono">
             {tool.name}
           </Badge>
         </div>
         <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">
-          {tool.category}
+          {categoryLabel}
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground leading-relaxed">
         {tool.description}
       </p>
-      {tool.note && (
-        <p className="font-mono text-xs text-muted-foreground/60 leading-relaxed">
-          {tool.note}
-        </p>
-      )}
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/*  Navigation link cards (unchanged)                                   */
+/* ------------------------------------------------------------------ */
 
 function ConnectorLinkCard() {
   return (
@@ -188,7 +91,7 @@ function ConnectorLinkCard() {
             <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">
               Connector
             </Badge>
-            <ArrowRight className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+            <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
           </div>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
@@ -214,7 +117,7 @@ function MCPLinkCard({ onSwitch }: { onSwitch: () => void }) {
             <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">
               MCP
             </Badge>
-            <ArrowRight className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+            <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
           </div>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
@@ -225,28 +128,42 @@ function MCPLinkCard({ onSwitch }: { onSwitch: () => void }) {
   )
 }
 
+/* ------------------------------------------------------------------ */
+/*  Main section                                                        */
+/* ------------------------------------------------------------------ */
+
 interface BuiltinToolsSectionProps {
   onSwitchToMCP: () => void
 }
 
 export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps) {
-  const [activeCategory, setActiveCategory] = useState<CategoryFilter>("All")
+  const { data: catalog, isLoading, error } = useToolCatalog()
+  const [activeCategory, setActiveCategory] = useState<string>("All")
+
+  // Derive categories from catalog, with "All" prepended, and Connector/MCP appended
+  const apiCategories = catalog?.categories ?? []
+  // Exclude connector and mcp from tool categories (they have dedicated link cards)
+  const toolCategories = apiCategories.filter((c) => c !== "connector" && c !== "mcp")
+  const categories = ["All", ...toolCategories.map((c) => c.charAt(0).toUpperCase() + c.slice(1)), "Connector", "MCP"]
+
+  // Filter tools from catalog (exclude connector/mcp tools — those come from link cards)
+  const allTools = catalog?.tools.filter((t) => t.category !== "connector" && t.category !== "mcp") ?? []
 
   const showConnector = activeCategory === "All" || activeCategory === "Connector"
   const showMCP = activeCategory === "All" || activeCategory === "MCP"
 
   const filteredTools =
-    activeCategory === "All" || activeCategory === "Connector" || activeCategory === "MCP"
-      ? activeCategory === "All"
-        ? ALL_TOOLS
-        : []
-      : ALL_TOOLS.filter((t) => t.category === activeCategory)
+    activeCategory === "All"
+      ? allTools
+      : activeCategory === "Connector" || activeCategory === "MCP"
+        ? []
+        : allTools.filter((t) => t.category === activeCategory.toLowerCase())
 
   return (
     <div className="flex flex-col gap-4">
       {/* Category filter chips */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}
@@ -261,14 +178,32 @@ export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps)
         ))}
       </div>
 
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Loading tools...</span>
+        </div>
+      )}
+
+      {/* Error state */}
+      {error && !isLoading && (
+        <div className="flex items-center justify-center gap-2 py-8 text-destructive">
+          <AlertCircle className="h-4 w-4" />
+          <span className="text-sm">Failed to load tool catalog</span>
+        </div>
+      )}
+
       {/* Tool cards grid */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {filteredTools.map((tool) => (
-          <ToolCard key={tool.name} tool={tool} />
-        ))}
-        {showConnector && <ConnectorLinkCard />}
-        {showMCP && <MCPLinkCard onSwitch={onSwitchToMCP} />}
-      </div>
+      {!isLoading && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredTools.map((tool) => (
+            <ToolCard key={tool.name} tool={tool} />
+          ))}
+          {showConnector && <ConnectorLinkCard />}
+          {showMCP && <MCPLinkCard onSwitch={onSwitchToMCP} />}
+        </div>
+      )}
     </div>
   )
 }
