@@ -252,3 +252,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 - Step dependency display improvements
+
+### Fixed
+- MCP stdio client: `RuntimeError: Attempted to exit cancel scope in a different task` — moved `connect_stdio()` from the request handler coroutine into the SSE generator body via `_connect_pending_mcp_servers()` helper, so anyio cancel scope enter/exit happen in the same coroutine
