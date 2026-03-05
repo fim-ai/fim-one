@@ -81,7 +81,12 @@ export function AdminMcpServers() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      {/* Page header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-base font-semibold">MCP Servers</h2>
+          <p className="text-sm text-muted-foreground">Global MCP servers available to all users.</p>
+        </div>
         <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
           <Plus className="h-4 w-4" />
           Add Global Server

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { HardDrive, Trash2, Loader2 } from "lucide-react"
+import { Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -81,12 +81,13 @@ export function AdminStorage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <HardDrive className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">
-            Total: {stats ? formatBytes(stats.total_bytes) : "--"}
-          </span>
+      {/* Page header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Storage</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage user file uploads.{stats ? ` Total: ${formatBytes(stats.total_bytes)}.` : ""}
+          </p>
         </div>
         <Button
           variant="outline"

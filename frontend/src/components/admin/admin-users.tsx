@@ -274,6 +274,18 @@ export function AdminUsers() {
 
   return (
     <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Users</h2>
+          <p className="text-sm text-muted-foreground">Manage user accounts, roles, and access control.</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          Create User
+        </Button>
+      </div>
+
       {/* Toolbar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
@@ -284,10 +296,6 @@ export function AdminUsers() {
             onChange={(e) => handleSearchChange(e.target.value)}
           />
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          Create User
-        </Button>
       </div>
 
       {/* Table */}

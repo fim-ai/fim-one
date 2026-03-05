@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Loader2, RefreshCw, Shield } from "lucide-react"
+import { Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { apiFetch } from "@/lib/api"
@@ -78,12 +78,9 @@ export function AdminAudit() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-base font-medium flex items-center gap-1.5">
-            <Shield className="h-4 w-4" />
-            Audit Log
-          </h3>
+          <h2 className="text-base font-semibold">Audit Log</h2>
           <p className="text-sm text-muted-foreground">
             Admin actions recorded for accountability.
           </p>

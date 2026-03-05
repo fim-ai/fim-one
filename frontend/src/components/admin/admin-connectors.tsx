@@ -108,6 +108,12 @@ export function AdminConnectors() {
 
   return (
     <div className="space-y-8">
+      {/* Page header */}
+      <div>
+        <h2 className="text-base font-semibold">Connectors</h2>
+        <p className="text-sm text-muted-foreground">Connector usage analytics and performance overview.</p>
+      </div>
+
       {/* Section 1 -- Connector Stats */}
       <div className="space-y-4">
         <div>

@@ -72,6 +72,12 @@ export function AdminConversations() {
 
   return (
     <div className="space-y-4">
+      {/* Page header */}
+      <div>
+        <h2 className="text-base font-semibold">Conversations</h2>
+        <p className="text-sm text-muted-foreground">Browse and moderate all user conversations.</p>
+      </div>
+
       {/* Toolbar */}
       <div className="flex items-center gap-3">
         <div className="relative flex-1">

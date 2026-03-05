@@ -151,6 +151,12 @@ export function AdminOverview() {
 
   return (
     <div className="space-y-8">
+      {/* Page header */}
+      <div>
+        <h2 className="text-base font-semibold">Overview</h2>
+        <p className="text-sm text-muted-foreground">Platform-wide usage statistics and activity.</p>
+      </div>
+
       {/* Section 1 — System Stats */}
       <div className="space-y-4">
         <div>
