@@ -252,7 +252,28 @@ Hub          → Central cross-system orchestration (Portal / API)
 
 ---
 
-### v0.7 -- SaaS Runtime & Provider Abstraction
+### v0.7 -- Admin Platform (shipped)
+
+> *"Operational controls for multi-user deployments"*
+>
+> Self-hosted multi-user deployments need more than user CRUD — admins need token controls, visibility into integrations, conversation oversight, invite-only access, storage tracking, per-user session control, and org-wide tools.
+
+**User & Access Control**
+- [x] **Per-User Token Quota**: Monthly token cap per user; system-wide default; 429 enforcement in chat endpoints (ReAct + DAG); monthly usage displayed in admin user list
+- [x] **Per-User Force Logout**: Invalidate a single user's refresh token without affecting other sessions; audit logged
+- [x] **Invite Code Registration**: Three-mode registration (`open` / `invite` / `disabled`); admin generates 8-char alphanumeric codes with optional note, max-uses cap, and expiry; invite code CRUD with revoke; backward-compatible with legacy `registration_enabled` setting
+
+**Visibility & Moderation**
+- [x] **API Integration Health Dashboard**: Read-only endpoint checking env-var presence for Main LLM, Fast LLM, Embedding, Reranker, Web Search, Web Fetch, Image Generation; colored dot UI in Admin Overview
+- [x] **Conversation Moderation**: Admin can list all users' conversations (paginated, searchable by user or title) and delete any conversation with cascade (messages + uploads); audit logged
+- [x] **Storage Management**: Per-user disk usage summary (file count + bytes); clear a user's upload directory; clean orphaned conversation upload dirs for deleted conversations; audit logged
+
+**Infrastructure**
+- [x] **Global MCP Servers**: Admin-provisioned MCP servers visible to all users in chat sessions; full CRUD + test endpoint in admin panel; loaded alongside user-owned servers in tool resolution
+
+---
+
+### v0.8 -- SaaS Runtime & Provider Abstraction
 
 > *"Secure execution and pluggable services for multi-tenant deployment"*
 >
@@ -269,7 +290,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [x] **Web Fetch Adapter**: `BaseWebFetch` protocol — Jina Reader (default), self-hosted httpx + html2text fallback; configured via `WEB_FETCH_PROVIDER` env var
 - [x] **Reranker Providers**: Add Cohere Reranker and OpenAI-compatible reranker implementations alongside existing Jina; configured via `RERANKER_PROVIDER` env var; `BaseReranker` interface already exists, only new implementations needed
 
-### v0.8 -- Organization, Connector Distribution & OAuth
+### v0.9 -- Organization, Connector Distribution & OAuth
 
 > *"Who uses what — then distribute everywhere"*
 >
@@ -323,7 +344,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [ ] **Telegram Channel**: Configure bot token via env (`TELEGRAM_BOT_TOKEN`); private chat only (group messages ignored); inline keyboard agent picker on `/start` — lists all published agents; per-user session tracks selected agent; typing indicator (`sendChatAction`) during processing; full ReAct/DAG execution on backend, only final answer delivered to user
 - [ ] **Feishu Bot Channel**: Feishu app webhook (`FEISHU_APP_ID` / `FEISHU_APP_SECRET`); private message + group @mention; agent picker via `/agents` slash command; leverages Feishu Connector for API tool calls — same agent can both receive Feishu messages and call Feishu APIs
 
-### v0.9 -- Database Connector, Message Push & Governance
+### v0.10 -- Database Connector, Message Push & Governance
 
 > *"Not just APIs — databases, notifications, and operational safety"*
 
@@ -377,7 +398,7 @@ Hub          → Central cross-system orchestration (Portal / API)
   - DAG: Planner unsure whether to split into 2 or 3 steps → presents plan alternatives
   - DAG step: Step-level ReAct agent encounters same tool/KB ambiguity as standalone ReAct
 
-  **Relationship to other gates (all in v0.9):**
+  **Relationship to other gates (all in v0.10):**
   - Confirmation Gate: **hardcoded safety** — connector write operations require user permission (allow once / allow always / deny)
   - Plan Preview: **explicit user review** — user opts in to review every DAG plan before execution
   - Soft Gate: **intelligent safety net** — agent self-triggers only when uncertain, zero config overhead
@@ -398,7 +419,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 
 - [ ] **Visual Pipeline Builder**: Lightweight drag-and-drop editor for defining static execution pipelines — a Dify-equivalent visual workflow that enterprise clients can adopt without fear of uncontrollable AI behavior:
   - Canvas with draggable nodes and connectable edges
-  - Node types: Action (tool/agent execution), Gate (guided HITL dialog from v0.8), Condition (if-else branching), Start/End
+  - Node types: Action (tool/agent execution), Gate (guided HITL dialog from v0.9), Condition (if-else branching), Start/End
   - Per-node configuration: tool set binding, KB scope (which knowledge bases this node can access), system prompt / instruction template, model override, token budget
   - Conditional branches: rule-based (field value matching) or LLM-evaluated (confidence-based routing)
   - Pipeline saved as versioned JSON template; one template can be bound to multiple agents
@@ -417,7 +438,7 @@ Hub          → Central cross-system orchestration (Portal / API)
   - Essentially a Dify workflow runtime with FIM Agent's connector and KB infrastructure
 
   **Phase 2 — Semi-dynamic (agent-assisted nodes)**:
-  Selected nodes upgrade from fixed prompt templates to agent-mode execution — the node scope (tool set, KB whitelist, token budget) is still statically defined, but within those boundaries the agent can reason, select tools, and iterate. Non-critical nodes remain fully static. Soft Gate (v0.8) activates for agent-mode nodes to handle uncertainty.
+  Selected nodes upgrade from fixed prompt templates to agent-mode execution — the node scope (tool set, KB whitelist, token budget) is still statically defined, but within those boundaries the agent can reason, select tools, and iterate. Non-critical nodes remain fully static. Soft Gate (v0.9) activates for agent-mode nodes to handle uncertainty.
 
   **Phase 3 — Fully dynamic (no blueprint)**:
   No static pipeline — pure DAGPlanner generates and executes the plan autonomously. This is the current default behavior, suitable for advanced users comfortable with AI-driven execution.
@@ -500,7 +521,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 | Level | Version | Approach |
 |-------|---------|----------|
 | **Level 1** | v0.6 | Manual/AI-created Connector, DB storage, runtime HTTP proxy |
-| **Level 2** | v0.8 | Export/Import + Fork, MCP Server export |
+| **Level 2** | v0.9 | Export/Import + Fork, MCP Server export |
 | **Level 3** | v1.1 | Upload OpenAPI spec, AI auto-generates complete Connector |
 
 ## Multi-Tenant Model
@@ -538,7 +559,7 @@ Platform
 
 **P2 — Worth building if the product direction supports it**
 
-- [ ] **Model Management UI**: Visual interface for managing LLM/Embedding model configurations — add/edit/delete model providers (OpenAI, Anthropic, Gemini, Ollama, etc.), set default model, configure Fast LLM separately. Backend ModelRegistry already exists (v0.2); this is purely a UI layer on top of current env-var config. Also includes per-agent model override (bind a specific model to an agent instead of the global default) and Embedding model provider selection (decouple from Jina-only). *Deferred because: env-var config works fine for self-hosted single-tenant deployments; UI only becomes necessary for multi-user/org deployments where admins need to configure models without touching `.env`. Re-evaluate when Organization (v0.8) ships.*
+- [ ] **Model Management UI**: Visual interface for managing LLM/Embedding model configurations — add/edit/delete model providers (OpenAI, Anthropic, Gemini, Ollama, etc.), set default model, configure Fast LLM separately. Backend ModelRegistry already exists (v0.2); this is purely a UI layer on top of current env-var config. Also includes per-agent model override (bind a specific model to an agent instead of the global default) and Embedding model provider selection (decouple from Jina-only). *Deferred because: env-var config works fine for self-hosted single-tenant deployments; UI only becomes necessary for multi-user/org deployments where admins need to configure models without touching `.env`. Re-evaluate when Organization (v0.9) ships.*
 
 - [ ] **Cost-Aware Request Routing**: Skip full Agent loop for simple queries that pattern matching can resolve; local rule-based handling to reduce LLM cost. Inspired by Ruflo's 3-Tier routing (local transform → fast model → full model). *Deferred because: the LLM call IS the core product; fast_llm + ModelRegistry already handle cost optimization; pattern-matchable queries are rare in the Connector Hub use case. Re-evaluate when request volume scales up.*
 - [ ] **Advanced KB Routing Strategy**: Multi-layer knowledge base selection beyond basic node-level binding. L1: static `kb_scope` per step (whitelist within agent's `kb_ids`); L2: priority hints with trigger conditions (e.g., "prefer contract regulations KB when legal clauses are involved"); L3: optional agent dynamic selection within whitelist for large KB pools (>5). *Deferred because: basic node-level KB binding in Blueprint Mode (v1.0) covers the primary enterprise use case. Advanced routing adds value only when KB pools are large and diverse enough to warrant automated selection. Re-evaluate after Blueprint Mode ships and real usage patterns emerge.*
