@@ -97,7 +97,7 @@ export function MCPHubDialog({ open, onOpenChange, onSuccess, onInstallLocal }: 
           description: server.description,
           transport: "streamable_http",
           url: `https://server.smithery.ai/${server.qualifiedName}/mcp`,
-          is_active: true,
+          is_active: false,
         })
         toast.success(`${server.displayName} installed`)
         onSuccess(result)

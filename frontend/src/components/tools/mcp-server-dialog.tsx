@@ -64,7 +64,7 @@ export function MCPServerDialog({
   const [workingDir, setWorkingDir] = useState("")
   const [envPairs, setEnvPairs] = useState<Array<{ key: string; value: string }>>([])
   const [headerPairs, setHeaderPairs] = useState<Array<{ key: string; value: string }>>([])
-  const [isActive, setIsActive] = useState(true)
+  const [isActive, setIsActive] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
