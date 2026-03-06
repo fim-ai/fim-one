@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Sparkles, Send, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,6 +30,7 @@ export function AgentAIPanel({
   isNewMode = false,
   onAgentCreated,
 }: AgentAIPanelProps) {
+  const t = useTranslations("agents")
   const [messages, setMessages] = useState<AIMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -62,15 +64,15 @@ export function AgentAIPanel({
         })
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: result.message || "Agent created successfully." },
+          { role: "assistant", content: result.message || t("agentCreated") },
         ])
-        toast.success("Agent created. Settings have been populated.")
+        toast.success(t("aiCreatedSuccess"))
         onAgentCreated?.(result.agent)
       } catch (err) {
         const errorMsg =
           err instanceof ApiError
             ? err.message
-            : "Something went wrong. Please try again."
+            : t("aiError")
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: `Error: ${errorMsg}` },
@@ -85,7 +87,7 @@ export function AgentAIPanel({
 
     // Block if agent form has unsaved changes
     if (formDirty) {
-      toast.warning("Please save your agent settings first.")
+      toast.warning(t("saveSettingsFirst"))
       return
     }
 
@@ -101,24 +103,24 @@ export function AgentAIPanel({
 
       const parts: string[] = []
       if (result.modified_fields && result.modified_fields.length > 0) {
-        parts.push(`Updated fields: ${result.modified_fields.join(", ")}`)
+        parts.push(t("aiUpdatedFields", { fields: result.modified_fields.join(", ") }))
       }
 
       const summary = parts.length > 0
         ? `${result.message} ${parts.join(". ")}.`
-        : result.message || "Agent updated."
+        : result.message || t("aiAgentUpdated")
 
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: summary },
       ])
-      toast.success("Agent modified. Check the updated settings.")
+      toast.success(t("aiModifiedSuccess"))
       onAgentUpdated(result.agent)
     } catch (err) {
       const errorMsg =
         err instanceof ApiError
           ? err.message
-          : "Something went wrong. Please try again."
+          : t("aiError")
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `Error: ${errorMsg}` },
@@ -142,7 +144,7 @@ export function AgentAIPanel({
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
         <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-        <span className="text-sm font-medium">AI Assistant</span>
+        <span className="text-sm font-medium">{t("aiAssistant")}</span>
       </div>
 
       {/* Messages area */}
@@ -150,7 +152,7 @@ export function AgentAIPanel({
         {isDisabled ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-muted-foreground text-center">
-              Save the agent first to use AI assistant
+              {t("saveFirst")}
             </p>
           </div>
         ) : (
@@ -163,13 +165,13 @@ export function AgentAIPanel({
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">
                     {isNewMode && !agentId
-                      ? "Describe the agent you want to create..."
-                      : "Describe how to modify this agent..."}
+                      ? t("describeCreate")
+                      : t("describeModify")}
                   </p>
                   <p className="text-xs text-muted-foreground/50">
                     {isNewMode && !agentId
-                      ? "AI will configure settings for you"
-                      : "AI will apply your requested changes"}
+                      ? t("aiWillConfigure")
+                      : t("aiWillApply")}
                   </p>
                 </div>
               </div>
@@ -198,7 +200,7 @@ export function AgentAIPanel({
               <div className="flex justify-start">
                 <div className="bg-muted rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5 text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Thinking...
+                  {t("thinking")}
                 </div>
               </div>
             )}
@@ -215,8 +217,8 @@ export function AgentAIPanel({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={isNewMode && !agentId
-            ? "e.g. Create an agent that helps with customer support..."
-            : "e.g. Add web search capability and update instructions..."}
+            ? t("aiCreatePlaceholder")
+            : t("aiRefinePlaceholder")}
           disabled={isLoading || isDisabled}
           className="flex-1 h-8 text-sm"
         />
@@ -230,7 +232,7 @@ export function AgentAIPanel({
               <Send className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Send</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{t("send")}</TooltipContent>
         </Tooltip>
       </div>
     </div>
