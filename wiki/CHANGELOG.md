@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **i18n: connectors namespace** — migrated all hardcoded English strings in the Connectors area (list page, editor page, connector card, settings form, action manager, AI action panel) to next-intl with full English and Chinese translations
 - **Admin/Settings: invite code inactive filter**: Revoked and exhausted invite codes are hidden by default; an "N inactive" toggle button reveals them. Exhausted codes (use_count ≥ max_uses) now show an "Exhausted" badge distinct from "Revoked".
 
 ### Fixed
