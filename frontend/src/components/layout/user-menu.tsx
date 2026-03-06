@@ -49,6 +49,13 @@ export function UserMenu({ collapsed }: UserMenuProps) {
     } catch {
       // Silently fail — user will see old value
     }
+
+    // Sync locale cookie for next-intl and reload to apply
+    const locale = value === "auto" ? "" : value
+    document.cookie = locale
+      ? `NEXT_LOCALE=${locale}; path=/; max-age=${60 * 60 * 24 * 365}`
+      : "NEXT_LOCALE=; path=/; max-age=0"
+    window.location.reload()
   }
 
   return (

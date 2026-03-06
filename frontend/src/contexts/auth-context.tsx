@@ -77,6 +77,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [saveTokens, clearAuth, router],
   )
 
+  // Sync preferred_language → NEXT_LOCALE cookie for next-intl
+  const syncLocaleCookie = useCallback((lang: string | undefined) => {
+    if (!lang || lang === "auto") {
+      document.cookie = "NEXT_LOCALE=; path=/; max-age=0"
+    } else {
+      document.cookie = `NEXT_LOCALE=${lang}; path=/; max-age=${60 * 60 * 24 * 365}`
+    }
+  }, [])
+
   // Register auth failure callback for api.ts
   useEffect(() => {
     setAuthFailureCallback(() => {
@@ -95,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const parsed = JSON.parse(savedUser) as UserInfo
         setUser(parsed)
+        syncLocaleCookie(parsed.preferred_language)
         scheduleRefresh(7200) // conservative 2h
       } catch {
         clearAuth()
@@ -110,18 +120,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (body: LoginRequest) => {
       const data = await authApi.login(body)
       saveTokens(data.access_token, data.refresh_token, data.user)
+      syncLocaleCookie(data.user.preferred_language)
       scheduleRefresh(data.expires_in)
     },
-    [saveTokens, scheduleRefresh],
+    [saveTokens, syncLocaleCookie, scheduleRefresh],
   )
 
   const register = useCallback(
     async (body: RegisterRequest) => {
       const data = await authApi.register(body)
       saveTokens(data.access_token, data.refresh_token, data.user)
+      syncLocaleCookie(data.user.preferred_language)
       scheduleRefresh(data.expires_in)
     },
-    [saveTokens, scheduleRefresh],
+    [saveTokens, syncLocaleCookie, scheduleRefresh],
   )
 
   const updateUser = useCallback(

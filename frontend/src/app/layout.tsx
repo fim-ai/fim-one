@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import localFont from "next/font/local"
+import { NextIntlClientProvider } from "next-intl"
+import { getLocale, getMessages } from "next-intl/server"
 import "./globals.css"
 import { APP_NAME } from "@/lib/constants"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -31,22 +33,27 @@ export const metadata: Metadata = {
   description: "Intelligent agent framework with fill-in-the-middle capabilities",
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const locale = await getLocale()
+  const messages = await getMessages()
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body className={`${inter.variable} ${jetbrainsMono.variable} ${cabinetGrotesk.variable} font-sans antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <AuthProvider>
-            <TooltipProvider>
-              <AppShell>{children}</AppShell>
-              <Toaster theme="dark" position="top-center" richColors />
-            </TooltipProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <NextIntlClientProvider messages={messages}>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <AuthProvider>
+              <TooltipProvider>
+                <AppShell>{children}</AppShell>
+                <Toaster theme="dark" position="top-center" richColors />
+              </TooltipProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   )
