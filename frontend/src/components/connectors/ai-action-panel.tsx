@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Sparkles, Send, Loader2 } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -31,6 +32,8 @@ export function AIActionPanel({
   isNewMode = false,
   onConnectorCreated,
 }: AIActionPanelProps) {
+  const t = useTranslations("connectors")
+
   const [messages, setMessages] = useState<AIMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -64,15 +67,15 @@ export function AIActionPanel({
         })
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: result.message || "Connector created successfully." },
+          { role: "assistant", content: result.message || t("aiConnectorCreatedMessage") },
         ])
-        toast.success("Connector created. Settings and actions have been populated.")
+        toast.success(t("aiConnectorCreatedSuccess"))
         onConnectorCreated?.(result.connector)
       } catch (err) {
         const errorMsg =
           err instanceof ApiError
             ? err.message
-            : "Something went wrong. Please try again."
+            : t("aiErrorFallback")
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: `Error: ${errorMsg}` },
@@ -87,7 +90,7 @@ export function AIActionPanel({
 
     // Block if connector form has unsaved changes
     if (formDirty) {
-      toast.warning("Please save your connector settings first.")
+      toast.warning(t("aiSaveSettingsFirst"))
       return
     }
 
@@ -104,21 +107,27 @@ export function AIActionPanel({
       const parts: string[] = []
       if (result.created.length > 0) {
         parts.push(
-          `Created ${result.created.length} action${result.created.length > 1 ? "s" : ""}: ${result.created.map((a) => a.name).join(", ")}`,
+          t("aiCreatedActions", {
+            count: result.created.length,
+            names: result.created.map((a) => a.name).join(", "),
+          }),
         )
       }
       if (result.updated.length > 0) {
         parts.push(
-          `Updated ${result.updated.length} action${result.updated.length > 1 ? "s" : ""}: ${result.updated.map((a) => a.name).join(", ")}`,
+          t("aiUpdatedActions", {
+            count: result.updated.length,
+            names: result.updated.map((a) => a.name).join(", "),
+          }),
         )
       }
       if (result.deleted.length > 0) {
         parts.push(
-          `Deleted ${result.deleted.length} action${result.deleted.length > 1 ? "s" : ""}`,
+          t("aiDeletedActions", { count: result.deleted.length }),
         )
       }
       if (result.connector_updated) {
-        parts.push("Connector settings updated")
+        parts.push(t("aiConnectorSettingsUpdated"))
         onConnectorUpdated?.(result.connector_updated)
       }
 
@@ -129,14 +138,14 @@ export function AIActionPanel({
         { role: "assistant", content: summary },
       ])
       if (parts.length > 0) {
-        toast.success("Connector modified. Check the updated settings and actions.")
+        toast.success(t("aiConnectorModified"))
       }
       onActionsChanged()
     } catch (err) {
       const errorMsg =
         err instanceof ApiError
           ? err.message
-          : "Something went wrong. Please try again."
+          : t("aiErrorFallback")
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `Error: ${errorMsg}` },
@@ -160,7 +169,7 @@ export function AIActionPanel({
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
         <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-        <span className="text-sm font-medium">AI Assistant</span>
+        <span className="text-sm font-medium">{t("aiAssistant")}</span>
       </div>
 
       {/* Messages area */}
@@ -168,7 +177,7 @@ export function AIActionPanel({
         {isDisabled ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-muted-foreground text-center">
-              Save the connector first to use AI assistant
+              {t("saveConnectorFirst")}
             </p>
           </div>
         ) : (
@@ -181,13 +190,13 @@ export function AIActionPanel({
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">
                     {isNewMode && !connectorId
-                      ? "Describe the connector you want to create, or paste an OpenAPI spec URL."
-                      : "Describe the API actions you want to create, and AI will generate them for you."}
+                      ? t("aiEmptyNewMode")
+                      : t("aiEmptyExistingMode")}
                   </p>
                   <p className="text-xs text-muted-foreground/50">
                     {isNewMode && !connectorId
-                      ? "AI will configure settings and actions"
-                      : "AI will create, update, or delete actions"}
+                      ? t("aiSubtitleNewMode")
+                      : t("aiSubtitleExistingMode")}
                   </p>
                 </div>
               </div>
@@ -216,7 +225,7 @@ export function AIActionPanel({
               <div className="flex justify-start">
                 <div className="bg-muted rounded-lg px-3 py-1.5 text-sm flex items-center gap-1.5 text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Thinking...
+                  {t("aiThinking")}
                 </div>
               </div>
             )}
@@ -233,8 +242,8 @@ export function AIActionPanel({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={isNewMode && !connectorId
-            ? "e.g. Import from https://petstore.swagger.io/v2/swagger.json"
-            : "e.g. Create CRUD actions for /users..."}
+            ? t("aiPlaceholderNewMode")
+            : t("aiPlaceholderExistingMode")}
           disabled={isLoading || isDisabled}
           className="flex-1 h-8 text-sm"
         />
@@ -248,7 +257,7 @@ export function AIActionPanel({
               <Send className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Send</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{t("send")}</TooltipContent>
         </Tooltip>
       </div>
     </div>
