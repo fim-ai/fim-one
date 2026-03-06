@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect, useMemo, Fragment } from "react"
+import { useTranslations } from "next-intl"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -65,6 +66,8 @@ interface PlaygroundPageProps {
 }
 
 export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
+  const t = useTranslations("playground")
+  const tc = useTranslations("common")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
@@ -206,7 +209,7 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
       if (queued) {
         failedInjectRef.current = null
         setQuery(queued)
-        toast.warning("Message couldn't be injected — press Enter to send as a new turn.")
+        toast.warning(t("injectFailed"))
       }
     }
   }, [isRunning]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -345,14 +348,14 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
       <Dialog open={pendingMode !== null} onOpenChange={(open) => { if (!open) setPendingMode(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Switch to {pendingMode === "react" ? "Standard" : "Planner"} mode?</DialogTitle>
+            <DialogTitle>{t("switchModeTitle", { mode: pendingMode === "react" ? t("modeStandard") : t("modePlanner") })}</DialogTitle>
             <DialogDescription>
-              This will start a new conversation. Your current conversation is saved and accessible from the sidebar.
+              {t("switchModeDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => setPendingMode(null)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button className="px-6" onClick={() => {
               if (pendingMode) {
@@ -366,7 +369,7 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
               }
               setPendingMode(null)
             }}>
-              Switch
+              {t("switchButton")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -489,12 +492,13 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
 
 /** Subtle divider shown when the backend compacted (summarized) older conversation context. */
 function CompactDivider({ originalCount, keptCount }: { originalCount: number; keptCount: number }) {
+  const t = useTranslations("playground")
   return (
     <div className="flex items-center gap-3 py-2">
       <div className="flex-1 border-t border-dashed border-border/50" />
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground/70 select-none">
         <span>&#9986;</span>
-        <span>Earlier context ({originalCount - keptCount} messages) was summarized by AI</span>
+        <span>{t("compactDivider", { count: originalCount - keptCount })}</span>
       </span>
       <div className="flex-1 border-t border-dashed border-border/50" />
     </div>
@@ -548,6 +552,7 @@ function PlaygroundContent({
   isNewChat,
   initialAgentId,
 }: PlaygroundContentProps) {
+  const t = useTranslations("playground")
   const { user } = useAuth()
   const userInitial = (user?.display_name || user?.username || "U").charAt(0).toUpperCase()
   const modeMatches = sourceMode === mode
@@ -877,15 +882,14 @@ function PlaygroundContent({
     if (!isRunning || !modeMatches) return null
     if (mode === "dag") {
       if (dagData.doneEvent) return null
-      const roundSuffix = dagData.currentRound > 1 ? ` (Round ${dagData.currentRound})` : ""
-      if (dagData.currentPhase === "replanning") return "Re-planning..."
-      if (dagData.currentPhase === "planning") return `Planning${roundSuffix}...`
-      if (dagData.currentPhase === "executing") return `Executing steps${roundSuffix}...`
-      if (dagData.currentPhase === "analyzing") return `Analyzing${roundSuffix}...`
-      return "Processing..."
+      if (dagData.currentPhase === "replanning") return t("statusReplanning")
+      if (dagData.currentPhase === "planning") return dagData.currentRound > 1 ? t("statusPlanningRound", { round: dagData.currentRound }) : t("statusPlanning")
+      if (dagData.currentPhase === "executing") return dagData.currentRound > 1 ? t("statusExecutingRound", { round: dagData.currentRound }) : t("statusExecuting")
+      if (dagData.currentPhase === "analyzing") return dagData.currentRound > 1 ? t("statusAnalyzingRound", { round: dagData.currentRound }) : t("statusAnalyzing")
+      return t("statusProcessing")
     } else {
       if (reactItems.some(i => i.event === "done")) return null
-      return "Processing..."
+      return t("statusProcessing")
     }
   })()
 
@@ -927,7 +931,7 @@ function PlaygroundContent({
             {/* Output header bar */}
             <div className="flex items-center shrink-0 px-4 py-3 border-b border-border/30 gap-1">
               <span className="text-xs font-medium">
-                {hasLiveMessages || pendingQuery || hasRichHistory ? "Execution Log" : "History"}
+                {hasLiveMessages || pendingQuery || hasRichHistory ? t("executionLog") : t("history")}
               </span>
               {statusText && (
                 <span className="flex items-center gap-1.5 ml-3 text-xs text-muted-foreground">
@@ -943,7 +947,7 @@ function PlaygroundContent({
                   className="ml-2 h-6 px-2 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Retry
+                  {t("retryButton")}
                 </Button>
               )}
               <div className="flex-1" />
@@ -1058,12 +1062,12 @@ function PlaygroundContent({
                               className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-destructive transition-colors"
                             >
                               <Undo2 className="h-2.5 w-2.5" />
-                              Recall
+                              {t("recall")}
                             </button>
                           ) : (
                             <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
                               <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                              Queued...
+                              {t("queued")}
                             </span>
                           )}
                         </div>
@@ -1078,7 +1082,7 @@ function PlaygroundContent({
                   className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:text-foreground hover:border-border"
                 >
                   <ArrowDown className="h-3 w-3" />
-                  New updates
+                  {t("newUpdates")}
                 </button>
               )}
             </div>
@@ -1097,7 +1101,7 @@ function PlaygroundContent({
           {/* Right sidebar */}
           {showSidebar && (
             <RightSidebar
-              title="Execution Plan"
+              title={t("executionPlan")}
               badge={dagData.planSteps?.length}
               expanded={sidebarExpanded}
               onToggleExpand={() => { setSidebarExpanded(!sidebarExpanded); setCustomRatio(null) }}
@@ -1115,7 +1119,7 @@ function PlaygroundContent({
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                  Waiting for plan...
+                  {t("waitingForPlan")}
                 </div>
               )}
             </RightSidebar>
@@ -1189,10 +1193,10 @@ function PlaygroundContent({
             onPaste={handlePaste}
             placeholder={
               isRunning
-                ? "Send a message to interrupt the agent..."
+                ? t("placeholderInterrupt")
                 : mode === "react"
-                  ? "Ask the agent to solve a problem..."
-                  : "Describe a multi-step task for the DAG planner..."
+                  ? t("placeholderReact")
+                  : t("placeholderDag")
             }
             className="min-h-[72px] max-h-[160px] resize-none"
           />
@@ -1234,7 +1238,7 @@ function PlaygroundContent({
                 disabled={isUploading}
               >
                 <Paperclip className="h-4 w-4" />
-                Upload files
+                {t("uploadFiles")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1259,13 +1263,13 @@ function PlaygroundContent({
                   ) : (
                     <GitBranch className="h-3 w-3" />
                   )}
-                  {mode === "react" ? "Standard" : "Planner"}
+                  {mode === "react" ? t("modeStandard") : t("modePlanner")}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top">
                 {mode === "react"
-                  ? "Standard (ReAct) — Quick response with flexible tool use"
-                  : "Planner (DAG) — Breaks down tasks into a structured plan"}
+                  ? t("modeStandardTooltip")
+                  : t("modePlannerTooltip")}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1291,15 +1295,15 @@ function PlaygroundContent({
                     ? <span className="text-sm leading-none">{selectedAgent.icon}</span>
                     : <Bot className="h-3 w-3" />
                   }
-                  {selectedAgent ? selectedAgent.name : "No Agent"}
+                  {selectedAgent ? selectedAgent.name : t("noAgent")}
                   <ChevronsUpDown className="h-3 w-3 opacity-50" />
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-[200px] p-0" side="top" align="start">
                 <Command>
-                  <CommandInput placeholder="Search agents..." />
+                  <CommandInput placeholder={t("searchAgents")} />
                   <CommandList>
-                    <CommandEmpty>No agent found.</CommandEmpty>
+                    <CommandEmpty>{t("noAgentFound")}</CommandEmpty>
                     <CommandGroup>
                       <CommandItem
                         value="__no_agent__"
@@ -1314,7 +1318,7 @@ function PlaygroundContent({
                             !selectedAgent ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        No Agent
+                        {t("noAgent")}
                       </CommandItem>
                       {agents.map((a) => (
                         <CommandItem

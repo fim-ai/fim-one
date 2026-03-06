@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { parseEvidence, parseSimpleEvidence, mergeEvidence, type ParsedEvidence } from "@/lib/evidence-utils"
 import type { ReactStepEvent } from "@/types/api"
 import type { StepItem } from "@/hooks/use-react-steps"
@@ -13,6 +14,7 @@ interface ReferencesSectionProps {
 const COLLAPSED_COUNT = 3
 
 export function ReferencesSection({ items }: ReferencesSectionProps) {
+  const t = useTranslations("playground")
   const [expanded, setExpanded] = useState(false)
 
   const evidence = useMemo<ParsedEvidence | null>(() => {
@@ -46,12 +48,12 @@ export function ReferencesSection({ items }: ReferencesSectionProps) {
     <div className="mt-4 pt-3 border-t border-border/60">
       {/* Header */}
       <div className="flex items-center gap-2 mb-2.5">
-        <span className="text-xs font-medium text-muted-foreground">References</span>
+        <span className="text-xs font-medium text-muted-foreground">{t("references")}</span>
         <span className={`text-xs font-mono ${confidenceColor}`}>
-          {Math.round(evidence.confidence)}% confidence
+          {t("confidenceLabel", { value: Math.round(evidence.confidence) })}
         </span>
         <span className="text-[10px] text-muted-foreground/60">
-          {evidence.sources.length} source{evidence.sources.length !== 1 ? "s" : ""}
+          {evidence.sources.length !== 1 ? t("sourceCountPlural", { count: evidence.sources.length }) : t("sourceCount", { count: evidence.sources.length })}
         </span>
       </div>
 
@@ -98,8 +100,8 @@ export function ReferencesSection({ items }: ReferencesSectionProps) {
         >
           <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
           {expanded
-            ? "Show less"
-            : `Show ${evidence.sources.length - COLLAPSED_COUNT} more`}
+            ? t("showLess")
+            : t("showMore", { count: evidence.sources.length - COLLAPSED_COUNT })}
         </button>
       )}
     </div>

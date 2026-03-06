@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Maximize2, Minimize2 } from "lucide-react"
@@ -17,6 +18,7 @@ interface RightSidebarProps {
 }
 
 export function RightSidebar({ title, subtitle, badge, expanded, onToggleExpand, children, className, style }: RightSidebarProps) {
+  const t = useTranslations("playground")
   return (
     <div className={cn(
       "flex flex-col rounded-lg border border-border/50 bg-muted/10 overflow-hidden",
@@ -43,7 +45,7 @@ export function RightSidebar({ title, subtitle, badge, expanded, onToggleExpand,
             size="icon"
             onClick={onToggleExpand}
             className="h-7 w-7 text-muted-foreground shrink-0"
-            title={expanded ? "Minimize" : "Maximize"}
+            title={expanded ? t("minimize") : t("maximize")}
           >
             {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </Button>

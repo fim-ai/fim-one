@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Globe, Code, Sparkles, GitBranch, ArrowRight } from "lucide-react"
 
@@ -25,24 +26,21 @@ interface ExampleItem {
 
 const CATEGORY_META: Record<
   ExampleItem["category"],
-  { icon: typeof Globe; label: string; labelZh: string; color: string }
+  { icon: typeof Globe; tKey: string; color: string }
 > = {
   web: {
     icon: Globe,
-    label: "Web + Analysis",
-    labelZh: "联网分析",
+    tKey: "categoryWeb",
     color: "text-amber-400",
   },
   code: {
     icon: Code,
-    label: "Code",
-    labelZh: "代码",
+    tKey: "categoryCode",
     color: "text-emerald-400",
   },
   hybrid: {
     icon: Sparkles,
-    label: "Web + Code",
-    labelZh: "混合任务",
+    tKey: "categoryHybrid",
     color: "text-amber-400",
   },
 }
@@ -250,6 +248,7 @@ export function Examples({
   agentName,
   agentIcon,
 }: ExamplesProps) {
+  const t = useTranslations("playground")
   const allExamples = EXAMPLES[mode][language]
   const examples = useMemo(
     () => pickExamples(allExamples, DISPLAY_COUNT),
@@ -278,7 +277,7 @@ export function Examples({
             {agentName}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {language === "en" ? "Suggested prompts" : "建议提示"}
+            {t("suggestedPrompts")}
           </p>
         </div>
 
@@ -315,16 +314,10 @@ export function Examples({
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-foreground">
-            {language === "en" ? "Try an example" : "试试这些示例"}
+            {t("tryExample")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {mode === "react"
-              ? language === "en"
-                ? "Single-agent tasks with tool use"
-                : "单智能体工具调用任务"
-              : language === "en"
-                ? "Multi-step parallel execution"
-                : "多步骤并行执行任务"}
+            {mode === "react" ? t("reactSubtitle") : t("dagSubtitle")}
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-lg border border-border/50 bg-muted/30 p-0.5">
@@ -355,7 +348,7 @@ export function Examples({
           ) : (
             <GitBranch className="h-3 w-3" />
           )}
-          {mode === "react" ? "Standard" : "Planner"} mode
+          {mode === "react" ? t("standardMode") : t("plannerMode")}
         </div>
       </div>
 
@@ -387,7 +380,7 @@ export function Examples({
                   }
                 >
                   <Icon className="h-3 w-3" />
-                  {language === "en" ? meta.label : meta.labelZh}
+                  {t(meta.tKey)}
                 </span>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 transition-all duration-200 group-hover:text-muted-foreground/70 group-hover:translate-x-0.5" />
               </div>

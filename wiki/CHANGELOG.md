@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **i18n: playground namespace**: Migrated all user-facing hardcoded strings in 9 playground components to `next-intl` with `playground.json` translation files (en/zh); covers chat UI, examples, execution output, evidence panel, references, and sidebar
 - **Admin/Settings: invite code inactive filter**: Revoked and exhausted invite codes are hidden by default; an "N inactive" toggle button reveals them. Exhausted codes (use_count ≥ max_uses) now show an "Exhausted" badge distinct from "Revoked".
 
 ### Fixed
