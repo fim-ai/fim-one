@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Search, Loader2, MessageSquare } from "lucide-react"
 import {
   Dialog,
@@ -20,32 +21,38 @@ interface ChatSearchDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(
+  dateStr: string,
+  t: (key: string, values?: Record<string, number>) => string,
+): string {
   const now = Date.now()
   const d = new Date(dateStr).getTime()
   const diff = now - d
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return t("justNow")
+  if (mins < 60) return t("minutesAgo", { minutes: mins })
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return t("hoursAgo", { hours })
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
+  if (days < 30) return t("daysAgo", { days })
   const months = Math.floor(days / 30)
-  return `${months}mo ago`
+  return t("monthsAgo", { months })
 }
 
-function groupResultsByTime(results: ConversationResponse[]) {
+function groupResultsByTime(
+  results: ConversationResponse[],
+  labels: { today: string; pastWeek: string; pastMonth: string; older: string },
+) {
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const weekAgo = new Date(today.getTime() - 7 * 86400000)
   const monthAgo = new Date(today.getTime() - 30 * 86400000)
 
   const groups: { label: string; items: ConversationResponse[] }[] = [
-    { label: "Today", items: [] },
-    { label: "Past week", items: [] },
-    { label: "Past month", items: [] },
-    { label: "Older", items: [] },
+    { label: labels.today, items: [] },
+    { label: labels.pastWeek, items: [] },
+    { label: labels.pastMonth, items: [] },
+    { label: labels.older, items: [] },
   ]
 
   for (const conv of results) {
@@ -61,6 +68,8 @@ function groupResultsByTime(results: ConversationResponse[]) {
 
 export function ChatSearchDialog({ open, onOpenChange }: ChatSearchDialogProps) {
   const router = useRouter()
+  const t = useTranslations("layout")
+  const tc = useTranslations("common")
   const { selectConversation } = useConversation()
   const [query, setQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
@@ -118,13 +127,18 @@ export function ChatSearchDialog({ open, onOpenChange }: ChatSearchDialogProps) 
     router.push(`/?c=${id}`)
   }, [onOpenChange, selectConversation, router])
 
-  const groups = groupResultsByTime(results)
+  const groups = groupResultsByTime(results, {
+    today: tc("today"),
+    pastWeek: t("pastWeek"),
+    pastMonth: t("pastMonth"),
+    older: tc("older"),
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
         <DialogHeader className="sr-only">
-          <DialogTitle>Search conversations</DialogTitle>
+          <DialogTitle>{t("searchConversations")}</DialogTitle>
         </DialogHeader>
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -132,7 +146,7 @@ export function ChatSearchDialog({ open, onOpenChange }: ChatSearchDialogProps) 
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search conversations..."
+            placeholder={t("searchConversationsPlaceholder")}
             className="border-0 shadow-none focus-visible:ring-0 px-0 h-8"
           />
         </div>
@@ -145,11 +159,11 @@ export function ChatSearchDialog({ open, onOpenChange }: ChatSearchDialogProps) 
               </div>
             ) : !debouncedQuery.trim() ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
-                Type to search conversations
+                {t("typeToSearch")}
               </div>
             ) : groups.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
-                No results found
+                {tc("noResults")}
               </div>
             ) : (
               groups.map((group) => (
@@ -165,10 +179,10 @@ export function ChatSearchDialog({ open, onOpenChange }: ChatSearchDialogProps) 
                     >
                       <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-50" />
                       <span className="flex-1 truncate">
-                        {conv.title || "Untitled"}
+                        {conv.title || t("untitled")}
                       </span>
                       <span className="text-xs text-muted-foreground shrink-0">
-                        {formatRelativeTime(conv.created_at)}
+                        {formatRelativeTime(conv.created_at, t)}
                       </span>
                     </button>
                   ))}
