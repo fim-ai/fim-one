@@ -47,6 +47,42 @@ Hub          → Central cross-system orchestration (Portal / API)
 | **API (headless)** | Pure HTTP/SSE interface; no UI required; for embedding and programmatic access |
 | **iframe / standalone URL** | Embed into host system pages; works with any mode |
 
+## Strategy Decisions (2026-03)
+
+> Key product decisions documented for roadmap alignment. Referenced by version sections below.
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| **Open source vs. closed** | **Closed-source SaaS** (revisit post-PMF) | AI auto-configuration engine and legacy system connector know-how are the core moat; open-sourcing transfers that value to competitors. Open Core may be revisited once product-market fit is proven. |
+| **Connector vs. MCP alignment** | **Keep separate; optional MCP export later** | Connector = no-code product feature (fill a form → tool); MCP = developer protocol (write code → server). They solve the same problem at different abstraction layers for different users. Don't merge; offer "Export as MCP Server" in v1.2. |
+| **Frontend language** | **Chinese-first i18n** | Closed-source SaaS targeting Chinese enterprise (用友/金蝶/致远). Set up `next-intl` with `zh-CN` as primary, English as fallback from existing code. Code/commits/variable names stay English (engineering standard). |
+| **Connector access modes** | **Three modes: API → DB → Auth-Login** | Priority order based on coverage and implementation complexity. API mode (80% of modern systems) polish first; DB mode (data analysis, high enterprise value) second; Auth-Login (legacy ERP multi-step credential exchange) third. See v0.8.1, v0.10. |
+| **Core differentiator** | **AI auto-configuration** | "Give me any system's docs or credentials, AI figures out the rest" — not pre-built connectors (Zapier/n8n), not developer protocol (MCP), not workflow automation. The AI Connector Assistant quality is THE product. Closest competitors: Composio.dev (pre-built integrations for AI agents, no AI auto-config), MuleSoft/Boomi (enterprise iPaaS, requires engineers). |
+
+**Three Connector Access Modes — Framework**
+
+```
+Mode 1: API Mode (shipped v0.6, polish in v0.8.1)
+  Input: API documentation (OpenAPI / HTML / plain text)
+  AI does: parse docs → generate Actions → auto-test → iterate until working
+  Output: Connector with validated Actions
+  Auth: Bearer / API key / Basic (static injection)
+
+Mode 2: DB Mode (planned v0.10)
+  Input: Database connection string (PostgreSQL / MySQL DSN)
+  AI does: connect → explore schema → understand business semantics → suggest valuable queries
+  Output: Connector with parameterized read-only SQL Actions
+  Auth: Connection string credentials
+  Safety: Read-only by default, writes require Confirmation Gate
+
+Mode 3: Auth-Login Mode (planned v0.10)
+  Input: Login URL + username + password (legacy ERP systems)
+  AI does: detect auth flow → login → extract token → configure Bearer injection → handle refresh
+  Output: Connector with session-managed auth
+  Auth: Multi-step credential exchange (login → token → refresh cycle)
+  Examples: 用友 NC Cloud, 金蝶云星空, 致远 OA
+```
+
 ---
 
 ### v0.1 -- Foundation (shipped)
@@ -290,6 +326,44 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [x] **Web Fetch Adapter**: `BaseWebFetch` protocol — Jina Reader (default), self-hosted httpx + html2text fallback; configured via `WEB_FETCH_PROVIDER` env var
 - [x] **Reranker Providers**: Add Cohere Reranker and OpenAI-compatible reranker implementations alongside existing Jina; configured via `RERANKER_PROVIDER` env var; `BaseReranker` interface already exists, only new implementations needed
 
+#### v0.8.1 — Connector Intelligence & Chinese-First i18n
+
+> *"Sharpen the core product: AI auto-configuration quality and Chinese enterprise readiness"*
+>
+> Two priorities before Organization (v0.9): make the AI Connector Builder production-quality for the API access mode, and ship Chinese UI for enterprise demos. These are the highest-leverage items for the target market (Chinese enterprise SaaS).
+
+**Connector Response Intelligence**
+- [x] **Schema-Hint Truncation**: Shared `truncate_tool_output()` utility (`core/tool/truncation.py`) for both ConnectorToolAdapter and MCPToolAdapter; truncation messages now include JSON key lists and array item counts so the agent knows what was omitted and can refine queries — replaces blind `[Truncated -- N chars]` messages. MCPToolAdapter previously had **zero truncation**; now protected against oversized tool outputs (e.g., 265K-char MCP responses that would blow up the context window). Inspired by Claude Code's overflow mechanism: when tool output exceeds limits, provide a "map" (schema hint) not the "territory" (raw data).
+
+**AI Connector Assistant Enhancement (API Mode)**
+
+> The AI Connector Assistant (v0.6.2) can generate Actions from OpenAPI specs and natural language. This iteration makes it robust enough to handle real-world enterprise API documentation — which is often HTML pages, PDFs, or unstructured text, not clean OpenAPI specs.
+>
+> **This is the core product differentiator.** The quality of this assistant determines whether "give me your API docs and I'll configure everything" is a real promise or a demo trick.
+
+- [ ] **HTML/Text API Doc Parsing**: AI assistant reads raw HTML documentation pages and unstructured text (not just OpenAPI/Swagger specs); extracts endpoints, parameters, auth requirements, and generates Action configs. Many enterprise systems (用友, 金蝶) only provide HTML docs or Word documents, never OpenAPI.
+- [ ] **Action Auto-Test & Iteration**: After generating an Action, the assistant automatically executes a test call against the real API; if the call fails (4xx/5xx), it analyzes the error response and iteratively adjusts parameters, headers, or body until the Action works or reports what's blocking it. This is the difference between "generated a config" and "generated a working config."
+- [ ] **Auth Flow Detection**: AI identifies authentication requirements from API docs (Bearer token, API key, OAuth, session-based login) and pre-configures the Connector's `auth_type` and `auth_config`. Currently admins must manually select auth type and fill in config — AI should handle this.
+- [ ] **Batch Action Generation**: From a single API documentation page/site, generate multiple related Actions at once (e.g., "CRUD for contacts" → 4-5 Actions), with consistent naming and parameter conventions. Currently only one Action generated at a time.
+
+**Frontend i18n (Chinese-First)**
+
+> Closed-source SaaS targeting Chinese enterprise market. Chinese UI is a prerequisite for demos, sales, and pilot deployments. English fallback from existing code is sufficient — no separate English translation effort.
+>
+> **Rule: Code stays English, UI speaks Chinese.** Variable names, commit messages, comments, technical docs, CHANGELOG — all remain English. Only user-facing UI strings are externalized to locale files.
+
+- [ ] **i18n Infrastructure**: `next-intl` integration with `zh-CN` as primary locale, `en` as fallback (existing English strings serve as fallback keys — no translation file needed for English)
+- [ ] **UI Text Externalization**: All user-facing strings extracted to locale JSON files (`messages/zh-CN.json`); components use `useTranslations()` hook. Organized by page/feature (e.g., `agent.create`, `connector.authType.bearer`, `admin.userManagement`)
+- [ ] **Locale Resolution**: Driven by user's `preferred_language` setting (already exists in backend); `auto` mode falls back to `navigator.language`; switching language does not require page reload (next-intl handles this)
+
+**NOT in this version (explicit decisions — see Strategy Decisions section):**
+- ❌ Connector does NOT adopt MCP protocol internally — Connector is a no-code product, MCP is a developer protocol; they are complementary layers serving different users
+- ❌ No full English i18n translation effort — English fallback from existing code is sufficient; investing in English translation has zero ROI for the Chinese enterprise target market
+- ❌ No open source release — closed-source SaaS confirmed; the AI auto-configuration engine and legacy system know-how are the moat
+- ❌ No DB mode or Auth-Login mode yet — these are v0.10 scope; API mode must be production-quality first
+
+---
+
 ### v0.9 -- Organization, Connector Distribution & OAuth
 
 > *"Who uses what — then distribute everywhere"*
@@ -309,7 +383,10 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [ ] **Connector Export/Import**: Export JSON/YAML (without credentials), others can import
 - [ ] **Fork Mechanism**: Create a copy from a published Connector, freely modify actions
 - [ ] **Connector Versioning**: Track changes, support rollback
-- [ ] **Official Connector Library**: GitHub, Lark, Slack and other preset connectors
+- [ ] **Official Connector Library**: High-quality pre-built connectors for the most common enterprise systems; each ships with validated auth config, action schemas, and usage examples; all published to the Connector Marketplace (v1.2) as reference implementations:
+  - **Domestic (China)**: Lark (飞书) — messages, docs, calendar, approval bots; WeCom (企业微信) — messages, customer service; Kingdee ERP (金蝶) — financial records, orders; Seeyon OA (致远) — approval workflow, process query; Yonyou ERP (用友) — financial data; FineReport (帆软) — report export
+  - **International**: GitHub — repos, issues, PRs; Slack — messages, channels, search; Salesforce — leads, contacts, opportunities; Notion — pages, databases, blocks; Jira — issues, sprints, projects; HubSpot — contacts, deals, emails; Stripe — payments, subscriptions
+  - **Infrastructure**: SMTP Email, Webhook (generic HTTP push/pull), Postgres template (official DB connector example)
 - [ ] **MCP Server Export**: Generate standalone FastMCP Server code from Connector; users can run independently or fork
 
 **Per-User Credentials**
@@ -344,20 +421,63 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [ ] **Telegram Channel**: Configure bot token via env (`TELEGRAM_BOT_TOKEN`); private chat only (group messages ignored); inline keyboard agent picker on `/start` — lists all published agents; per-user session tracks selected agent; typing indicator (`sendChatAction`) during processing; full ReAct/DAG execution on backend, only final answer delivered to user
 - [ ] **Feishu Bot Channel**: Feishu app webhook (`FEISHU_APP_ID` / `FEISHU_APP_SECRET`); private message + group @mention; agent picker via `/agents` slash command; leverages Feishu Connector for API tool calls — same agent can both receive Feishu messages and call Feishu APIs
 
-### v0.10 -- Database Connector, Message Push & Governance
+### v0.10 -- Database Connector, Auth-Login, Message Push & Governance
 
-> *"Not just APIs — databases, notifications, and operational safety"*
+> *"Not just APIs — databases, legacy systems, notifications, and operational safety"*
+>
+> This version completes the **Three Connector Access Modes** framework (see Strategy Decisions). API Mode shipped in v0.6 and polished in v0.8.1. DB Mode and Auth-Login Mode ship here, making FIM Agent capable of connecting to virtually any enterprise system — modern API-first SaaS, traditional databases, and legacy ERP/OA systems that only expose login-based access.
 
-**Connector Types**
+**Connector Access Mode 2: Database Connector**
 - [ ] **Database Connector Type**:
   - Support PostgreSQL, MySQL (asyncpg / aiomysql)
-  - Schema introspection: AI browses table structure, suggests useful queries
-  - Action = parameterized SQL query (read-only by default, writes require confirmation)
+  - Schema introspection: AI browses table structure, understands business semantics (e.g., `bd_corp` → company, `gl_voucher` → financial voucher), suggests useful queries
+  - Action = parameterized SQL query (read-only by default, writes require Confirmation Gate)
   - Connection pool management, query timeout protection
+  - **Compliance**: read-only by default; write operations require explicit `requires_confirmation: true`; audit logging for all queries; row-level result limits to prevent full table dumps
+  - **AI Assistant for DB Mode**: Give AI the connection string → it runs `SHOW TABLES` / `\dt` → explores column types and sample data → recommends which tables/views are valuable → auto-generates parameterized query Actions
+
+**Connector Access Mode 3: Auth-Login (Legacy Enterprise Systems)**
+- [ ] **Multi-Step Credential Exchange**:
+  Legacy enterprise systems (用友/Yonyou NC Cloud, 金蝶/Kingdee Cloud Cosmic, 致远/Seeyon OA, 泛微/Weaver e-cology) often require multi-step authentication that goes beyond simple Bearer/API-key injection:
+  - New `auth_type: "login"` on Connector with `login_config` specifying: login URL, credential fields, token extraction path (JMESPath), and optional token TTL
+  - Login action: `POST /api/auth/login {username, password}` → extract `{token, session_id}` from response via JMESPath
+  - Auto-inject extracted token into subsequent Action calls as Bearer/Cookie header
+  - Token refresh: detect expiry via TTL countdown or 401 response → re-run login action → update cached token transparently
+  - Support complex auth flows: public key fetch → encrypt password → login → session_id + token (e.g., Yonyou NC Cloud pattern)
+  - AI Assistant can detect and configure auth flows from API documentation (builds on v0.8.1 Auth Flow Detection)
+  - **Why this matters**: These legacy systems serve millions of Chinese enterprises. If FIM Agent can connect to 用友/金蝶/致远 with just a username and password, the sales pitch becomes trivially simple: "Give me your ERP login, I'll give you an AI assistant that understands your financial data."
+
+**Connector Types (continued)**
 - [ ] **Message Push Connector Type**:
   - Send results to Lark / WeCom / Slack / email / webhook
   - Templated message formatting
   - Can serve as Agent's "output channel"
+- [ ] **Async Query Connector Type**:
+  Long-running data operations where synchronous wait is impractical (Hadoop/Hive queries, Spark jobs, large data exports):
+  - Submit query → receive `job_id`; poll status at configurable interval; fetch results when `status = completed`
+  - Supports incremental progress reporting if target API provides completion percentage
+  - Configurable `poll_interval` (default 5s) and `max_wait` (default 5 min) per action; timeout returns partial result or structured error
+  - `async: true` flag in action schema enables polling behavior; `status_path` + `result_path` JMESPath expressions extract status/result from polling response
+  - Compatible with Confirmation Gate — the submit step can require user approval before the job starts
+
+**Hub Cross-Connector Orchestration**
+
+> *The core value of Hub mode — connectors talking to each other through AI*
+
+Hub mode enables cross-system workflows where the agent reads from one connector, processes the result, and writes to another — with Confirmation Gate governing every write hop. No special primitives needed: this is standard ReAct/DAG execution over multiple connectors bound to the same agent.
+
+```
+ERP Connector     (read financial data)
+    → Agent       (analyze, detect anomalies, generate report)
+    → OA Connector      (submit approval request)
+    → IM Connector      (notify team via Lark / WeCom)
+    → Email Connector   (send PDF summary to stakeholder)
+```
+
+- **Connector chain visualization**: Agent settings show a data-flow preview when multiple connectors are bound — helps admin verify the orchestration topology before deployment
+- **Data mapping between connectors**: `json_transform` (JMESPath) and `template_render` (Jinja2) — both already shipped — serve as the schema translation and formatting layer between connectors with incompatible data structures
+- **Error propagation**: When one connector in a chain fails, the agent evaluates whether to abort, retry, or compensate based on error type and Confirmation Gate decisions
+- **Cross-connector tracing**: All connector calls in a single conversation are linked by `conversation_id` in `connector_call_logs` — the full cross-system chain is auditable end-to-end
 
 **Governance**
 - [ ] **Operation Audit Log**: Every tool call recorded (timestamp, user, Connector, Action, params, result); filterable audit trail UI in admin panel
@@ -458,10 +578,10 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [ ] **Execution Replay**: Complete execution trace replay for debugging and auditing
 - [ ] **Docker Compose**: API + SQLite + optional Langfuse, production-ready
 
-**i18n**
-- [x] **User Language Preference**: `preferred_language` backend setting with language directive injection across all LLM interactions
-- [ ] **Frontend i18n**: `next-intl` integration with en/zh translation files; locale driven by `preferred_language` (auto mode falls back to `navigator.language`); all UI text externalized
-- [ ] **Documentation i18n**: Chinese translation for README, Wiki, and GitHub repository pages; maintain bilingual docs alongside feature stabilization
+**i18n** *(core items moved to v0.8.1 — Chinese-first strategy)*
+- [x] **User Language Preference**: `preferred_language` backend setting with language directive injection across all LLM interactions *(shipped in v0.6.2)*
+- [ ] **Frontend i18n**: → **moved to v0.8.1** (Chinese-first; `next-intl` + `zh-CN` primary locale)
+- [ ] **Documentation i18n**: Chinese user-facing documentation (help center, onboarding guides); technical docs (CHANGELOG, API docs) remain English. Deferred until product stabilizes post-v0.9.
 
 ### v1.1 -- Agent as a Service
 
@@ -503,8 +623,8 @@ Hub          → Central cross-system orchestration (Portal / API)
 **Connector Ecosystem**
 
 - [ ] **AI Connector Generation**: Upload Swagger/OpenAPI spec → AI auto-generates complete Connector (auth, Actions, tests)
-- [ ] **Connector Marketplace**: In-platform connector market — search, install, rate
-- [ ] **Plugin System**: Pip-installable Connector packages with entry-point auto-registration
+- [ ] **Connector Marketplace**: Searchable in-platform catalog of published connectors — browse by category, search by name/keyword, view install count, ratings, and author; one-click install into your workspace
+- [ ] **Plugin System**: Pip-installable Connector packages with entry-point auto-registration; packages include connector definitions, default auth schema, and bundled test fixtures
 
 **Enterprise Operations**
 
@@ -513,6 +633,35 @@ Hub          → Central cross-system orchestration (Portal / API)
 - [ ] **Batch Execution**: Run an agent against multiple inputs in one job (e.g., review 100 contracts, audit 50 invoices); progress tracking, partial failure handling, result aggregation
 - [ ] **Enterprise Security**: Data encryption, IP whitelisting, SOC2 audit logging
 - [ ] **PostgreSQL**: Optional for large-scale deployments
+
+### v1.2 -- Open Connector Ecosystem & SaaS Marketplace
+
+> *"Turn connectors into a community currency"*
+>
+> Every major integration platform has a marketplace moment — Zapier's App Directory, Salesforce AppExchange, Slack App Directory. FIM Agent's differentiator is that connectors are AI-native (not just OAuth flows) and community-extensible. Any developer or ISV can contribute a connector, publish it to the global registry, and optionally monetize it via per-call billing. The platform becomes the standard for AI-to-system integration.
+
+**Connector Registry (Global)**
+
+- [ ] **Community Connector Registry**: Centralized registry where developers publish connector definitions (JSON/YAML, no credentials); searchable by system name, category (ERP/CRM/OA/DB/IM/Finance), region, and compatibility version
+- [ ] **Contributor System**: GitHub-linked developer accounts; connector authorship and attribution; version history and changelog per connector; verified badge for official and partner connectors
+- [ ] **One-Click Install**: Browse registry → install connector into workspace → configure credentials → bind to agent; zero manual JSON editing; installed connectors sync to personal/org workspace automatically
+- [ ] **Fork & Customize**: Fork any published connector → private copy in your workspace → modify actions, auth schema, defaults → optionally re-publish as a derivative
+
+**Ecosystem Business Model**
+
+- [ ] **Free Tier**: All community-contributed connectors are free; platform takes no cut; contributors build reputation and distribution
+- [ ] **Paid Connectors (ISV tier)**: ISVs (system integrators, SaaS vendors) can publish premium connectors with per-call billing — e.g., "Gold Salesforce Connector: $0.001/call" or "Certified SAP Connector: $50/month/workspace"; platform handles billing, usage metering, and revenue split (e.g., 70/30)
+- [ ] **Connector Certification Program**: Connector authors apply for "Certified" status — platform team reviews schema quality, auth security, action coverage, and test coverage; certified connectors receive priority placement and verified badge
+- [ ] **Official Partner Program**: Major SaaS vendors (Salesforce, Lark, WeCom, HubSpot) co-develop and co-maintain official connectors with the platform team; bidirectional marketing and technical partnership
+
+**Connector Standard**
+
+- [ ] **Connector Specification v1.0**: Formal, versioned specification document for the FIM Connector format — auth types, action schema, parameter types, error codes, async protocol, response truncation contract; enables third-party tooling (validators, generators, importers)
+- [ ] **OpenAPI ↔ Connector Bidirectional Bridge**: Export any connector as OpenAPI spec; import any OpenAPI spec as connector (already partially shipped); lossless round-trip enables interoperability with the broader API ecosystem
+- [ ] **MCP Connector Bridge**: Auto-generate a standalone MCP server from any Connector in the registry; bridges the FIM Connector ecosystem with the growing MCP tool ecosystem
+- [ ] **Connector SDK**: Python library (`fim-connector-sdk`) with helpers for auth, pagination, error handling, and testing; CLI for scaffolding, local testing, and publishing to the registry (`fim connector new`, `fim connector publish`)
+
+**Validation**: A community developer creates a connector for a domestic OA system using the SDK → publishes to registry → another user installs in one click → binds to agent → cross-connector workflow (OA → IM notification) works end-to-end without any platform code changes.
 
 ---
 
@@ -523,6 +672,7 @@ Hub          → Central cross-system orchestration (Portal / API)
 | **Level 1** | v0.6 | Manual/AI-created Connector, DB storage, runtime HTTP proxy |
 | **Level 2** | v0.9 | Export/Import + Fork, MCP Server export |
 | **Level 3** | v1.1 | Upload OpenAPI spec, AI auto-generates complete Connector |
+| **Level 4** | v1.2 | Open registry, community contributions, ISV marketplace, Connector SDK, bidirectional OpenAPI/MCP bridge |
 
 ## Multi-Tenant Model
 
