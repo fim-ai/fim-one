@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Bot, Brain, Edit2, Plus, Trash2, X, Zap } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 
 import { modelApi } from "@/lib/api"
 import type { ModelConfigCreate, ModelConfigResponse, ModelConfigUpdate } from "@/types/model_config"
@@ -39,13 +40,14 @@ interface RoleSlotProps {
 }
 
 function RoleSlot({ role, active, onAssign, onClear }: RoleSlotProps) {
+  const t = useTranslations("settings.models")
   const isGeneral = role === "general"
   const Icon = isGeneral ? Brain : Zap
-  const label = isGeneral ? "General Model" : "Fast Model"
+  const label = isGeneral ? t("generalModel") : t("fastModel")
   const envVar = isGeneral ? "LLM_MODEL" : "FAST_LLM_MODEL"
   const desc = isGeneral
-    ? "Used for ReAct reasoning, DAG planning, and analysis"
-    : "Used for DAG step execution (falls back to General if not set)"
+    ? t("generalModelDesc")
+    : t("fastModelDesc")
 
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -73,7 +75,7 @@ function RoleSlot({ role, active, onAssign, onClear }: RoleSlotProps) {
                 onClick={() => onClear(active.id)}
               >
                 <X className="h-3 w-3 mr-1" />
-                Clear
+                {t("clear")}
               </Button>
             ) : (
               <Button
@@ -82,7 +84,7 @@ function RoleSlot({ role, active, onAssign, onClear }: RoleSlotProps) {
                 className="h-7 text-xs shrink-0"
                 onClick={() => onAssign(role)}
               >
-                Assign
+                {t("assign")}
               </Button>
             )}
           </div>
@@ -98,7 +100,7 @@ function RoleSlot({ role, active, onAssign, onClear }: RoleSlotProps) {
             </div>
           ) : (
             <div className="mt-2 flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-muted-foreground">
-              <span className="text-xs">ENV default ({envVar})</span>
+              <span className="text-xs">{t("envDefault", { envVar })}</span>
             </div>
           )}
         </div>
@@ -118,19 +120,21 @@ interface AssignRoleDialogProps {
 }
 
 function AssignRoleDialog({ open, role, models, onAssign, onClose }: AssignRoleDialogProps) {
-  const label = role === "general" ? "General Model" : "Fast Model"
+  const t = useTranslations("settings.models")
+  const tc = useTranslations("common")
+  const roleLabel = role === "general" ? t("generalModel") : t("fastModel")
   const available = models.filter((m) => m.role !== role)
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Assign {label}</DialogTitle>
+          <DialogTitle>{t("assignDialogTitle", { role: roleLabel })}</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 py-2">
           {available.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
-              No providers available. Add a provider first.
+              {t("noProvidersAvailable")}
             </p>
           ) : (
             available.map((m) => (
@@ -157,7 +161,7 @@ function AssignRoleDialog({ open, role, models, onAssign, onClose }: AssignRoleD
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            {tc("cancel")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -175,6 +179,9 @@ interface ProviderDialogProps {
 }
 
 function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialogProps) {
+  const t = useTranslations("settings.models")
+  const tc = useTranslations("common")
+
   const [name, setName] = useState("")
   const [provider, setProvider] = useState("")
   const [baseUrl, setBaseUrl] = useState("")
@@ -227,7 +234,7 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
 
   const handleSubmit = async () => {
     if (!name.trim() || !modelName.trim() || (!editing && !apiKey.trim())) {
-      toast.error(!name.trim() || !modelName.trim() ? "Name and Model Name are required" : "API Key is required")
+      toast.error(!name.trim() || !modelName.trim() ? t("nameAndModelRequired") : t("apiKeyRequired"))
       return
     }
     setSaving(true)
@@ -247,15 +254,15 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
         const updateBody: ModelConfigUpdate = { ...body }
         if (!apiKey.trim()) delete updateBody.api_key
         await modelApi.update(editing.id, updateBody)
-        toast.success("Model updated")
+        toast.success(t("modelUpdated"))
       } else {
         await modelApi.create(body)
-        toast.success("Model provider added")
+        toast.success(t("modelAdded"))
       }
       onSaved()
       onOpenChange(false)
     } catch {
-      toast.error(editing ? "Failed to update model" : "Failed to add model provider")
+      toast.error(editing ? t("updateFailed") : t("addFailed"))
     } finally {
       setSaving(false)
     }
@@ -275,76 +282,77 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
         >
           <DialogHeader>
             <DialogTitle>
-              {editing ? "Edit Model Provider" : "Add Model Provider"}
+              {editing ? t("providerDialogEdit") : t("providerDialogAdd")}
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto">
           <div className="space-y-4 py-2">
             {/* Compatibility notice */}
-            <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-              Only <strong>OpenAI-compatible</strong> APIs are supported. For Anthropic or other providers, use their OpenAI-compatible endpoint and API key.
-            </div>
+            <div
+              className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground"
+              dangerouslySetInnerHTML={{ __html: t("compatibilityNotice") }}
+            />
 
             <div className="space-y-1.5">
               <Label htmlFor="mc-name">
-                Name <span className="text-destructive">*</span>
+                {t("nameLabel")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="mc-name"
-                placeholder="e.g. Claude Haiku"
+                placeholder={t("namePlaceholder")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="mc-model-name">
-                Model Name <span className="text-destructive">*</span>
+                {t("modelNameLabel")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="mc-model-name"
-                placeholder="e.g. gpt-4o, claude-sonnet-4-6"
+                placeholder={t("modelNamePlaceholder")}
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="mc-api-key">
-                API Key <span className="text-destructive">*</span>
+                {t("apiKeyLabel")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="mc-api-key"
                 type="password"
-                placeholder={editing ? "Leave blank to keep existing key" : "sk-..."}
+                placeholder={editing ? t("apiKeyEditPlaceholder") : t("apiKeyPlaceholder")}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 autoComplete="new-password"
               />
               {editing && (
                 <p className="text-xs text-muted-foreground">
-                  Leave blank to keep the existing key.
+                  {t("apiKeyEditHint")}
                 </p>
               )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="mc-base-url">
-                Base URL{" "}
-                <span className="text-xs font-normal text-muted-foreground">(optional, defaults to OpenAI)</span>
+                {t("baseUrlLabel")}{" "}
+                <span className="text-xs font-normal text-muted-foreground">({t("baseUrlOptional")})</span>
               </Label>
               <Input
                 id="mc-base-url"
-                placeholder="https://api.openai.com/v1"
+                placeholder={t("baseUrlPlaceholder")}
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="mc-provider">
-                Provider Tag{" "}
-                <span className="text-xs font-normal text-muted-foreground">(optional, for display only)</span>
+                {t("providerTagLabel")}{" "}
+                <span className="text-xs font-normal text-muted-foreground">({t("providerTagOptional")})</span>
               </Label>
               <Input
                 id="mc-provider"
-                placeholder="e.g. anthropic, openai, deepseek"
+                placeholder={t("providerTagPlaceholder")}
                 value={provider}
                 onChange={(e) => setProvider(e.target.value)}
               />
@@ -352,26 +360,26 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="mc-max-output">
-                  Max Output Tokens{" "}
-                  <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                  {t("maxOutputTokensLabel")}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">({tc("optional")})</span>
                 </Label>
                 <Input
                   id="mc-max-output"
                   type="number"
-                  placeholder="default: env LLM_MAX_OUTPUT_TOKENS"
+                  placeholder={t("maxOutputTokensPlaceholder")}
                   value={maxOutputTokens}
                   onChange={(e) => setMaxOutputTokens(e.target.value)}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="mc-context">
-                  Context Size{" "}
-                  <span className="text-xs font-normal text-muted-foreground">(optional, reserved)</span>
+                  {t("contextSizeLabel")}{" "}
+                  <span className="text-xs font-normal text-muted-foreground">({t("contextSizeOptional")})</span>
                 </Label>
                 <Input
                   id="mc-context"
                   type="number"
-                  placeholder="default: env LLM_CONTEXT_SIZE"
+                  placeholder={t("contextSizePlaceholder")}
                   value={contextSize}
                   onChange={(e) => setContextSize(e.target.value)}
                 />
@@ -380,9 +388,9 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="mc-temperature">
-                  Temperature{" "}
+                  {t("temperatureLabel")}{" "}
                   <span className="text-xs font-normal text-muted-foreground">
-                    {temperature !== null ? `(${temperature.toFixed(1)})` : "(optional)"}
+                    {temperature !== null ? t("temperatureValue", { value: temperature.toFixed(1) }) : `(${tc("optional")})`}
                   </span>
                 </Label>
                 <Button
@@ -392,7 +400,7 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
                   className="h-6 text-xs text-muted-foreground"
                   onClick={() => setTemperature(null)}
                 >
-                  Reset
+                  {tc("reset")}
                 </Button>
               </div>
               <Slider
@@ -409,10 +417,10 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => handleClose(false)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button onClick={handleSubmit} disabled={saving}>
-              {saving ? "Saving..." : editing ? "Save Changes" : "Add Provider"}
+              {saving ? tc("saving") : editing ? t("saveChanges") : t("addProvider")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -421,18 +429,18 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
       <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogTitle>{t("discardTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              You have unsaved input. Are you sure you want to close?
+              {t("discardDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>{tc("keepEditing")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => onOpenChange(false)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Discard &amp; close
+              {t("discardConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -444,6 +452,9 @@ function ProviderDialog({ open, onOpenChange, editing, onSaved }: ProviderDialog
 // ─── Main ModelSettings ───────────────────────────────────────────────────────
 
 export function ModelSettings() {
+  const t = useTranslations("settings.models")
+  const tc = useTranslations("common")
+
   const [models, setModels] = useState<ModelConfigResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -456,7 +467,7 @@ export function ModelSettings() {
       const data = await modelApi.list("llm")
       setModels(data)
     } catch {
-      toast.error("Failed to load model configurations")
+      toast.error(t("loadFailed"))
     } finally {
       setLoading(false)
     }
@@ -473,21 +484,22 @@ export function ModelSettings() {
     if (!assignRole) return
     try {
       await modelApi.setRole(modelId, assignRole)
-      toast.success(`Model assigned as ${assignRole} model`)
+      const roleLabel = assignRole === "general" ? t("generalModel") : t("fastModel")
+      toast.success(t("roleAssigned", { role: roleLabel }))
       setAssignRole(null)
       load()
     } catch {
-      toast.error("Failed to assign role")
+      toast.error(t("roleAssignFailed"))
     }
   }
 
   const handleClearRole = async (modelId: string) => {
     try {
       await modelApi.setRole(modelId, null)
-      toast.success("Role cleared")
+      toast.success(t("roleCleared"))
       load()
     } catch {
-      toast.error("Failed to clear role")
+      toast.error(t("roleClearFailed"))
     }
   }
 
@@ -495,11 +507,11 @@ export function ModelSettings() {
     if (!deleteTarget) return
     try {
       await modelApi.delete(deleteTarget.id)
-      toast.success(`"${deleteTarget.name}" deleted`)
+      toast.success(t("modelDeleted", { name: deleteTarget.name }))
       setDeleteTarget(null)
       load()
     } catch {
-      toast.error("Failed to delete model")
+      toast.error(t("deleteFailed"))
     }
   }
 
@@ -507,9 +519,9 @@ export function ModelSettings() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-semibold">Model Providers</h2>
+          <h2 className="text-base font-semibold">{t("title")}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Configure LLM providers. General model is used for reasoning and planning; Fast model for DAG step execution.
+            {t("description")}
           </p>
         </div>
         <Button
@@ -520,7 +532,7 @@ export function ModelSettings() {
           }}
         >
           <Plus className="h-4 w-4 mr-1.5" />
-          Add Provider
+          {t("addProvider")}
         </Button>
       </div>
 
@@ -542,13 +554,13 @@ export function ModelSettings() {
 
       {/* Provider List */}
       {loading ? (
-        <div className="text-sm text-muted-foreground">Loading...</div>
+        <div className="text-sm text-muted-foreground">{tc("loading")}</div>
       ) : models.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <Bot className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          <p className="text-sm font-medium">No model providers configured</p>
+          <p className="text-sm font-medium">{t("noProviders")}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Add a provider to override the environment variable defaults.
+            {t("noProvidersHint")}
           </p>
           <Button
             size="sm"
@@ -560,13 +572,13 @@ export function ModelSettings() {
             }}
           >
             <Plus className="h-4 w-4 mr-1.5" />
-            Add Provider
+            {t("addProvider")}
           </Button>
         </div>
       ) : (
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Configured Providers
+            {t("configuredProviders")}
           </p>
           {models.map((model) => (
             <div
@@ -583,19 +595,19 @@ export function ModelSettings() {
                         {model.role === "general" ? (
                           <>
                             <Brain className="h-3 w-3" />
-                            general
+                            {t("generalModel").toLowerCase()}
                           </>
                         ) : (
                           <>
                             <Zap className="h-3 w-3" />
-                            fast
+                            {t("fastModel").toLowerCase()}
                           </>
                         )}
                       </Badge>
                     )}
                     {!model.is_active && (
                       <Badge variant="outline" className="text-xs text-muted-foreground">
-                        Inactive
+                        {tc("inactive")}
                       </Badge>
                     )}
                   </div>
@@ -649,19 +661,18 @@ export function ModelSettings() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete model provider?</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete &ldquo;{deleteTarget?.name}&rdquo;. This action cannot be
-              undone.
+              {t("deleteDescription", { name: deleteTarget?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {tc("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

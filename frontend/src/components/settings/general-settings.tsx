@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,6 +15,8 @@ const MAX_DISPLAY_NAME_LENGTH = 50
 
 export function GeneralSettings() {
   const { user, updateUser } = useAuth()
+  const t = useTranslations("settings.general")
+  const tc = useTranslations("common")
 
   // --- Profile ---
   const [displayName, setDisplayName] = useState("")
@@ -44,9 +47,9 @@ export function GeneralSettings() {
         display_name: displayName.trim(),
       })
       updateUser(updated)
-      toast.success("Profile saved")
+      toast.success(t("profileSaved"))
     } catch (err) {
-      toast.error("Failed to save profile")
+      toast.error(t("profileSaveFailed"))
     } finally {
       setSavingProfile(false)
     }
@@ -60,9 +63,9 @@ export function GeneralSettings() {
         system_instructions: instructions,
       })
       updateUser(updated)
-      toast.success("Instructions saved")
+      toast.success(t("instructionsSaved"))
     } catch (err) {
-      toast.error("Failed to save instructions")
+      toast.error(t("instructionsSaveFailed"))
     } finally {
       setSavingInstructions(false)
     }
@@ -73,24 +76,24 @@ export function GeneralSettings() {
       {/* Profile Section */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Profile</h3>
+          <h3 className="text-base font-medium">{t("profileTitle")}</h3>
           <p className="text-sm text-muted-foreground">
-            Your personal profile information.
+            {t("profileDescription")}
           </p>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Username</label>
+            <label className="text-sm font-medium">{t("usernameLabel")}</label>
             <p className="text-sm text-foreground">{user?.username}</p>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Display Name</label>
+            <label className="text-sm font-medium">{t("displayNameLabel")}</label>
             <Input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Enter a display name"
+              placeholder={t("displayNamePlaceholder")}
               maxLength={MAX_DISPLAY_NAME_LENGTH + 10}
               className="max-w-sm"
             />
@@ -112,7 +115,7 @@ export function GeneralSettings() {
                     !isDisplayNameDirty || isDisplayNameOverLimit || savingProfile
                   }
                 >
-                  {savingProfile ? "Saving..." : "Save"}
+                  {savingProfile ? tc("saving") : tc("save")}
                 </Button>
               </div>
             </div>
@@ -125,17 +128,16 @@ export function GeneralSettings() {
       {/* Personal Instructions Section */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Personal Instructions</h3>
+          <h3 className="text-base font-medium">{t("instructionsTitle")}</h3>
           <p className="text-sm text-muted-foreground">
-            These instructions will be applied to all your conversations.
-            Agent-specific instructions take higher priority.
+            {t("instructionsDescription")}
           </p>
         </div>
 
         <Textarea
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
-          placeholder="E.g., Always respond in Chinese. Prefer concise answers..."
+          placeholder={t("instructionsPlaceholder")}
           rows={8}
           className="resize-y"
         />
@@ -159,7 +161,7 @@ export function GeneralSettings() {
                 savingInstructions
               }
             >
-              {savingInstructions ? "Saving..." : "Save"}
+              {savingInstructions ? tc("saving") : tc("save")}
             </Button>
           </div>
         </div>

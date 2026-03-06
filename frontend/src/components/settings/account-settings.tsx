@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +61,8 @@ function formatProviderName(provider: string): string {
 }
 
 function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; onUnbind: (provider: string) => void; onConnect: (provider: string) => void }) {
+  const t = useTranslations("settings.account")
+  const tc = useTranslations("common")
   const bindings = user.oauth_bindings ?? []
   const bindingMap = new Map(bindings.map((b) => [b.provider, b]))
   const hasPassword = user.has_password ?? false
@@ -68,9 +71,9 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-medium">Connected Accounts</h3>
+        <h3 className="text-base font-medium">{t("connectedAccountsTitle")}</h3>
         <p className="text-sm text-muted-foreground">
-          Third-party login providers linked to your account.
+          {t("connectedAccountsDescription")}
         </p>
       </div>
       <div className="space-y-3 max-w-md">
@@ -96,11 +99,11 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
                       variant="secondary"
                       className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                     >
-                      Connected
+                      {t("connected")}
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      Not connected
+                      {t("notConnected")}
                     </Badge>
                   )}
                 </div>
@@ -111,7 +114,7 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
                 )}
                 {isBound && binding.bound_at && (
                   <p className="text-xs text-muted-foreground">
-                    Bound {new Date(binding.bound_at).toLocaleDateString()}
+                    {t("bound", { date: new Date(binding.bound_at).toLocaleDateString() })}
                   </p>
                 )}
               </div>
@@ -127,12 +130,12 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
                             className="text-xs"
                             disabled
                           >
-                            Disconnect
+                            {t("disconnect")}
                           </Button>
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        Set a password before disconnecting your only login method.
+                        {t("disconnectTooltip")}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -140,23 +143,22 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="outline" size="sm" className="text-xs">
-                        Disconnect
+                        {t("disconnect")}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>
-                          Disconnect {formatProviderName(provider)}?
+                          {t("disconnectConfirmTitle", { provider: formatProviderName(provider) })}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will unlink your {formatProviderName(provider)} account.
-                          You can reconnect it later from the settings page.
+                          {t("disconnectConfirmDescription", { provider: formatProviderName(provider) })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => onUnbind(provider)}>
-                          Disconnect
+                          {t("disconnect")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -169,7 +171,7 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
                   className="text-xs"
                   onClick={() => onConnect(provider)}
                 >
-                  Connect
+                  {t("connect")}
                 </Button>
               )}
             </div>
@@ -180,17 +182,18 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
   )
 }
 
-const BIND_ERROR_MESSAGES: Record<string, string> = {
-  email_mismatch:
-    "OAuth account email does not match your account email. Binding requires matching emails.",
-  already_bound: "This OAuth account is already bound to another user.",
-  already_connected: "You already have a connection for this provider.",
-}
-
 export function AccountSettings() {
   const { user, updateUser } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const t = useTranslations("settings.account")
+  const tc = useTranslations("common")
+
+  const BIND_ERROR_MESSAGES: Record<string, string> = {
+    email_mismatch: t("bindErrorEmailMismatch"),
+    already_bound: t("bindErrorAlreadyBound"),
+    already_connected: t("bindErrorAlreadyConnected"),
+  }
 
   const refreshUser = useCallback(async () => {
     try {
@@ -207,13 +210,13 @@ export function AccountSettings() {
 
     if (bindSuccess) {
       const providerName = formatProviderName(bindSuccess)
-      toast.success(`${providerName} connected successfully.`)
+      toast.success(t("providerConnected", { provider: providerName }))
       refreshUser()
       router.replace("/settings?tab=account", { scroll: false })
     } else if (bindError) {
       const text =
         BIND_ERROR_MESSAGES[bindError] ??
-        `Failed to connect account: ${bindError}`
+        t("bindErrorGeneric", { error: bindError })
       toast.error(text)
       router.replace("/settings?tab=account", { scroll: false })
     }
@@ -229,7 +232,7 @@ export function AccountSettings() {
       })
       window.location.href = `${getApiDirectUrl()}/api/auth/oauth/${provider}/authorize?action=bind&ticket=${res.ticket}`
     } catch {
-      toast.error("Failed to initiate OAuth connection. Please try again.")
+      toast.error(t("connectFailed"))
     }
   }
 
@@ -255,12 +258,12 @@ export function AccountSettings() {
         email: email.trim(),
       })
       updateUser({ email: updated.email })
-      toast.success("Email updated successfully")
+      toast.success(t("emailUpdated"))
     } catch (err) {
       if (err instanceof ApiError) {
         setEmailError(err.message)
       } else {
-        setEmailError("Failed to update email. Please try again.")
+        setEmailError(t("emailUpdateFailed"))
       }
     } finally {
       setEmailSaving(false)
@@ -282,12 +285,12 @@ export function AccountSettings() {
         oauth_provider: updatedUser.oauth_provider,
         has_password: updatedUser.has_password,
       })
-      toast.success(`${formatProviderName(provider)} disconnected`)
+      toast.success(t("providerDisconnected", { provider: formatProviderName(provider) }))
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message)
       } else {
-        toast.error("Failed to disconnect provider. Please try again.")
+        toast.error(t("disconnectFailed"))
       }
     } finally {
       setUnbindingProvider(null)
@@ -328,12 +331,12 @@ export function AccountSettings() {
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")
-      toast.success("Password changed successfully")
+      toast.success(t("passwordChanged"))
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message)
       } else {
-        setError("Failed to change password. Please try again.")
+        setError(t("passwordChangeFailed"))
       }
     } finally {
       setSaving(false)
@@ -369,12 +372,12 @@ export function AccountSettings() {
       updateUser({ has_password: updatedUser.has_password })
       setSetNewPw("")
       setSetConfirmPw("")
-      toast.success("Password set successfully")
+      toast.success(t("passwordSet"))
     } catch (err) {
       if (err instanceof ApiError) {
         setSetPwError(err.message)
       } else {
-        setSetPwError("Failed to set password. Please try again.")
+        setSetPwError(t("passwordSetFailed"))
       }
     } finally {
       setSetPwSaving(false)
@@ -397,29 +400,29 @@ export function AccountSettings() {
       {/* Email Section */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Email</h3>
+          <h3 className="text-base font-medium">{t("emailTitle")}</h3>
           <p className="text-sm text-muted-foreground">
-            Update the email address associated with your account.
+            {t("emailDescription")}
           </p>
         </div>
 
         <form onSubmit={handleEmailSubmit} className="space-y-4 max-w-sm">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email Address <span className="text-destructive">*</span></label>
+            <label className="text-sm font-medium">{t("emailLabel")} <span className="text-destructive">*</span></label>
             <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
+              placeholder={t("emailPlaceholder")}
             />
             {emailEmpty && emailChanged && (
               <p className="text-xs text-destructive">
-                Email is required and cannot be empty.
+                {t("emailRequired")}
               </p>
             )}
             {!emailEmpty && !emailValid && (
               <p className="text-xs text-destructive">
-                Please enter a valid email address.
+                {t("emailInvalid")}
               </p>
             )}
           </div>
@@ -429,7 +432,7 @@ export function AccountSettings() {
           )}
 
           <Button type="submit" size="sm" disabled={!canSaveEmail}>
-            {emailSaving ? "Saving..." : "Update Email"}
+            {emailSaving ? tc("saving") : t("updateEmail")}
           </Button>
         </form>
       </div>
@@ -440,49 +443,49 @@ export function AccountSettings() {
       {hasPassword ? (
         <div className="space-y-4">
           <div>
-            <h3 className="text-base font-medium">Change Password</h3>
+            <h3 className="text-base font-medium">{t("changePasswordTitle")}</h3>
             <p className="text-sm text-muted-foreground">
-              Update your password to keep your account secure.
+              {t("changePasswordDescription")}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Current Password <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("currentPasswordLabel")} <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Enter current password"
+                placeholder={t("currentPasswordPlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">New Password <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("newPasswordLabel")} <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
+                placeholder={t("newPasswordPlaceholder")}
               />
               {newTooShort && (
                 <p className="text-xs text-destructive">
-                  Password must be at least {MIN_PASSWORD_LENGTH} characters.
+                  {t("passwordMinLength", { min: MIN_PASSWORD_LENGTH })}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Confirm New Password <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("confirmPasswordLabel")} <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
+                placeholder={t("confirmPasswordPlaceholder")}
               />
               {confirmMismatch && (
                 <p className="text-xs text-destructive">
-                  Passwords do not match.
+                  {t("passwordMismatch")}
                 </p>
               )}
             </div>
@@ -492,47 +495,46 @@ export function AccountSettings() {
             )}
 
             <Button type="submit" size="sm" disabled={!canSubmit}>
-              {saving ? "Changing..." : "Change Password"}
+              {saving ? t("changing") : t("changePassword")}
             </Button>
           </form>
         </div>
       ) : (
         <div className="space-y-4">
           <div>
-            <h3 className="text-base font-medium">Set Password</h3>
+            <h3 className="text-base font-medium">{t("setPasswordTitle")}</h3>
             <p className="text-sm text-muted-foreground">
-              Your account uses OAuth login only. Set a password to enable
-              email/password login and allow disconnecting OAuth providers.
+              {t("setPasswordDescription")}
             </p>
           </div>
 
           <form onSubmit={handleSetPassword} className="space-y-4 max-w-sm">
             <div className="space-y-2">
-              <label className="text-sm font-medium">New Password <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("newPasswordLabel")} <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={setNewPw}
                 onChange={(e) => setSetNewPw(e.target.value)}
-                placeholder="Enter new password"
+                placeholder={t("newPasswordPlaceholder")}
               />
               {setNewTooShort && (
                 <p className="text-xs text-destructive">
-                  Password must be at least {MIN_PASSWORD_LENGTH} characters.
+                  {t("passwordMinLength", { min: MIN_PASSWORD_LENGTH })}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Confirm Password <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("confirmSetPasswordLabel")} <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={setConfirmPw}
                 onChange={(e) => setSetConfirmPw(e.target.value)}
-                placeholder="Confirm new password"
+                placeholder={t("confirmSetPasswordPlaceholder")}
               />
               {setConfirmMismatch && (
                 <p className="text-xs text-destructive">
-                  Passwords do not match.
+                  {t("passwordMismatch")}
                 </p>
               )}
             </div>
@@ -542,7 +544,7 @@ export function AccountSettings() {
             )}
 
             <Button type="submit" size="sm" disabled={!canSetPw}>
-              {setPwSaving ? "Setting..." : "Set Password"}
+              {setPwSaving ? t("setting") : t("setPassword")}
             </Button>
           </form>
         </div>
@@ -554,16 +556,16 @@ export function AccountSettings() {
       <div className="space-y-4">
         <div>
           <h3 className="text-base font-medium text-destructive">
-            Danger Zone
+            {t("dangerZoneTitle")}
           </h3>
           <p className="text-sm text-muted-foreground">
-            Irreversible and destructive actions.
+            {t("dangerZoneDescription")}
           </p>
         </div>
 
         <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-muted-foreground">
-            Account deletion is not yet available.
+            {t("deleteAccountUnavailable")}
           </p>
         </div>
       </div>
