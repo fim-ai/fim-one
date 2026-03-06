@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Admin/Settings: invite code inactive filter**: Revoked and exhausted invite codes are hidden by default; an "N inactive" toggle button reveals them. Exhausted codes (use_count ≥ max_uses) now show an "Exhausted" badge distinct from "Revoked".
 
 ### Fixed
+- **Auth: refresh token expiry comparison** — `refresh_token_expires_at` (SQLite naive datetime) now has `tzinfo=UTC` attached before comparing with `datetime.now(UTC)`, fixing `TypeError: can't compare offset-naive and offset-aware datetimes` in `POST /api/auth/refresh`.
 - **Replace deprecated `datetime.utcnow()`** with `datetime.now(UTC)` across auth and OAuth endpoints (S-9)
 - **Add host-execution warning to ShellExecTool**: logs a startup warning when using the local sandbox backend without OS-level isolation (S-8)
 - **OAuth callback redirect** now passes tokens via URL fragment instead of query params, preventing leakage in server logs and browser history (S-7)

@@ -20,6 +20,7 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Use Cases](#use-cases)
 - [Why FIM Agent](#why-fim-agent)
 - [Where FIM Agent Sits](#where-fim-agent-sits)
 - [Key Features](#key-features)
@@ -52,6 +53,19 @@ FIM Agent is a provider-agnostic Python framework for building AI agents that dy
 ```
 
 The core is always the same: ReAct reasoning loops, dynamic DAG planning with concurrent execution, pluggable tools, and a protocol-first architecture with zero vendor lock-in.
+
+## 🎯 Use Cases
+
+Enterprise data and workflows are locked inside OA, ERP, finance, and approval systems. FIM Agent lets AI agents read and write those systems — automating cross-system processes without modifying your existing infrastructure.
+
+| Scenario | Recommended Start | What it automates |
+|----------|------------------|-------------------|
+| **Legal & Compliance** | Copilot → Hub | Contract clause extraction, version diff, risk flagging with source citations, auto-trigger OA approval |
+| **IT Operations** | Hub | Alert fires → logs pulled → root cause analyzed → fix dispatched to Lark/Slack — one closed loop |
+| **Business Operations** | Copilot | Scheduled data summaries pushed to team channels; ad-hoc natural language queries against live databases |
+| **Finance Automation** | Hub | Invoice verification, expense approval routing, ledger reconciliation across ERP and accounting systems |
+| **Procurement** | Copilot → Hub | Requirements → vendor comparison → contract draft → approval — Agent handles the cross-system handoffs |
+| **Developer Integration** | API | Import an OpenAPI spec or describe an API in chat — connector created in minutes, auto-registered as agent tools |
 
 ## 🤔 Why FIM Agent
 
@@ -111,7 +125,10 @@ FIM Agent doesn't do BPM/FSM — workflow logic belongs to the target system, Co
 #### Connector Platform (the core)
 - **Connector Hub Architecture** — Standalone assistant, embedded Copilot, or central Hub — same agent core, different delivery.
 - **Any System, One Pattern** — Connect APIs, databases, and message buses. Actions auto-register as agent tools with auth injection (Bearer, API Key, Basic).
-- **AI-Assisted Builder** — Import OpenAPI specs (YAML/JSON/URL) to auto-generate connectors and actions. AI chat panel for natural language action generation and refinement.
+- **Three Ways to Build Connectors:**
+  - *Import OpenAPI spec* — upload YAML/JSON/URL; connectors and all actions generated automatically.
+  - *AI chat builder* — describe the API in natural language; AI generates and iterates the action config in-conversation.
+  - *MCP ecosystem* — connect any MCP server directly; the third-party MCP community works out of the box.
 
 #### Intelligent Planning & Execution
 - **Dynamic DAG Planning** — LLM decomposes goals into dependency graphs at runtime. No hard-coded workflows.
@@ -151,6 +168,30 @@ FIM Agent doesn't do BPM/FSM — workflow logic belongs to the target system, Co
 - **Single-Process Deployment** — No Redis, no PostgreSQL, no message queue. One process + SQLite.
 
 ## 🏗️ Architecture
+
+### System Overview
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                 Application & Interaction Layer               │
+│   Portal (Web UI)    API (Headless)    iframe (Embed)        │
+│   Lark / Slack Bot   Webhook           WeCom / DingTalk      │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+┌──────────────────────────▼───────────────────────────────────┐
+│                    FIM Agent Middleware                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  ┌──────┐ │
+│  │  Connectors  │  │ Orch Engine  │  │   RAG /  │  │Auth  │ │
+│  │  + MCP Hub   │  │ ReAct / DAG  │  │Knowledge │  │Admin │ │
+│  └──────────────┘  └──────────────┘  └──────────┘  └──────┘ │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+┌──────────────────────────▼───────────────────────────────────┐
+│                 Business Systems & Data Layer                  │
+│   ERP · CRM · OA · Finance · Databases · Custom APIs         │
+│   Lark · DingTalk · WeCom · Slack · Email · Webhook          │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ### Connector Hub
 
