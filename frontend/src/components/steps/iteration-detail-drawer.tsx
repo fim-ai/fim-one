@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Wrench, Brain, Clock, ArrowUpRight, ArrowDownLeft } from "lucide-react"
 import {
   Sheet,
@@ -27,6 +28,7 @@ interface IterationDetailDrawerProps {
 }
 
 export function IterationDetailDrawer({ data, summary, onClose }: IterationDetailDrawerProps) {
+  const t = useTranslations("dag")
   const { data: catalog } = useToolCatalog()
   const [activeTab, setActiveTab] = useState<TabKey>("args")
 
@@ -34,7 +36,7 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
   const isTool = data?.type === "tool_call" || data?.type === "tool_start"
   const displayName = isTool && data?.tool_name
     ? getToolDisplayName(data.tool_name, catalog?.tools)
-    : "Thinking"
+    : t("thinking")
 
   const hasArgs = data?.tool_args && Object.keys(data.tool_args).length > 0
   const hasObs = !!data?.observation
@@ -46,8 +48,8 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
     : activeTab
 
   const tabs: { key: TabKey; label: string; icon: typeof ArrowUpRight; available: boolean }[] = [
-    { key: "args", label: "Input", icon: ArrowUpRight, available: !!hasArgs },
-    { key: "obs", label: "Output", icon: ArrowDownLeft, available: hasObs },
+    { key: "args", label: t("input"), icon: ArrowUpRight, available: !!hasArgs },
+    { key: "obs", label: t("output"), icon: ArrowDownLeft, available: hasObs },
   ]
 
   return (
@@ -72,7 +74,7 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
                   <span className="truncate font-semibold">{displayName}</span>
                 </SheetTitle>
                 <SheetDescription className="sr-only">
-                  {displayName} tool details
+                  {t("toolDetails", { name: displayName })}
                 </SheetDescription>
               </SheetHeader>
 
@@ -120,7 +122,7 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
                 {data.reasoning && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">
-                      Reasoning
+                      {t("reasoning")}
                     </p>
                     <p className="text-sm text-muted-foreground leading-relaxed italic">
                       {data.reasoning}

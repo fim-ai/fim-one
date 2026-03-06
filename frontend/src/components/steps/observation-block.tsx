@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { MarkdownContent } from "@/lib/markdown"
 
 interface ObservationBlockProps {
@@ -40,6 +41,7 @@ export function ObservationBlock({
   size = "default",
   hideLabel = false,
 }: ObservationBlockProps) {
+  const t = useTranslations("dag")
   const isCompact = size === "compact"
   const mdCls = isCompact ? COMPACT_MD_CLS : DEFAULT_MD_CLS
 
@@ -49,7 +51,7 @@ export function ObservationBlock({
     <div className={`rounded${isCompact ? "" : "-md"} border border-border/30 ${isCompact ? "bg-muted/30 p-2" : "border-border/50 bg-muted/30 p-3"}`}>
       {!hideLabel && (
         <p className={`font-medium text-muted-foreground ${isCompact ? "text-[10px] mb-0.5" : "text-xs mb-1"} uppercase tracking-wider`}>
-          Output
+          {t("output")}
         </p>
       )}
       {lang ? (

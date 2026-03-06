@@ -1,0 +1,12 @@
+{
+  "executionPlan": "执行计划",
+  "stepCount": "{count, plural, one {# 个步骤} other {# 个步骤}}",
+  "noActivityYet": "暂无执行记录",
+  "executing": "执行中...",
+  "thinking": "思考中",
+  "input": "输入",
+  "output": "输出",
+  "toolDetails": "{name} 工具详情",
+  "reasoning": "推理过程",
+  "arguments": "参数"
+}

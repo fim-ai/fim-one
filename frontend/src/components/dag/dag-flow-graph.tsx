@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
 import { useTheme } from "next-themes"
 import {
   ReactFlow,
@@ -35,6 +36,7 @@ interface DagFlowGraphProps {
 }
 
 export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded, resizeKey, onStepClick }: DagFlowGraphProps) {
+  const t = useTranslations("dag")
   const { resolvedTheme } = useTheme()
   const rfColorMode = resolvedTheme === "dark" ? "dark" : "light"
 
@@ -207,9 +209,9 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
         <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500/10">
           <ListTree className="h-3 w-3 text-green-500" />
         </div>
-        <span className="text-sm font-medium">Execution Plan</span>
+        <span className="text-sm font-medium">{t("executionPlan")}</span>
         <Badge variant="secondary" className="text-[10px]">
-          {planSteps.length} step{planSteps.length !== 1 ? "s" : ""}
+          {t("stepCount", { count: planSteps.length })}
         </Badge>
       </div>
 

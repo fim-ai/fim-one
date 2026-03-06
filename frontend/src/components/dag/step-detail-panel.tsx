@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { X, Clock } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -15,6 +16,7 @@ interface StepDetailPanelProps {
 }
 
 export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
+  const t = useTranslations("dag")
   return (
     <div
       className={cn(
@@ -88,7 +90,7 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
 
               {state.iterations.length === 0 && !state.result && (
                 <p className="text-xs text-muted-foreground text-center py-4">
-                  No activity yet
+                  {t("noActivityYet")}
                 </p>
               )}
             </div>
