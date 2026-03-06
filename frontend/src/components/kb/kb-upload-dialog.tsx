@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, Upload, CheckCircle2, XCircle, Link, FolderOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -54,6 +55,8 @@ export function KBUploadDialog({
   kb,
   onUploaded,
 }: KBUploadDialogProps) {
+  const t = useTranslations("kb")
+  const tc = useTranslations("common")
   const [tab, setTab] = useState<"file" | "url">("file")
 
   // File upload state
@@ -116,9 +119,9 @@ export function KBUploadDialog({
     setIsUploading(false)
     const failedCount = items.filter((i) => i.status === "error").length
     if (failedCount > 0) {
-      toast.error(`${failedCount} document(s) failed to upload`)
+      toast.error(t("documentsUploadFailed", { count: failedCount }))
     } else {
-      toast.success("Documents uploaded successfully")
+      toast.success(t("documentsUploadedSuccess"))
     }
     onUploaded()
   }
@@ -146,15 +149,15 @@ export function KBUploadDialog({
       )
       const failedCount = result.results.filter((r) => r.status !== "success").length
       if (failedCount > 0) {
-        toast.error(`${failedCount} URL(s) failed to import`)
+        toast.error(t("urlImportFailed", { count: failedCount }))
       } else {
-        toast.success("URLs imported successfully")
+        toast.success(t("urlImportSuccess"))
       }
       onUploaded()
     } catch (err) {
       const message = err instanceof Error ? err.message : "Import failed"
       setUrlItems(urls.map((url) => ({ url, status: "failed", error: message })))
-      toast.error("Failed to import URLs")
+      toast.error(t("failedToImportUrls"))
     }
 
     setIsImporting(false)
@@ -209,18 +212,18 @@ export function KBUploadDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Add Documents{kb ? ` to ${kb.name}` : ""}</DialogTitle>
+            <DialogTitle>{kb ? t("addDocumentsTo", { name: kb.name }) : t("addDocuments")}</DialogTitle>
           </DialogHeader>
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as "file" | "url")}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="file">
                 <Upload className="h-3.5 w-3.5 mr-1.5" />
-                File Upload
+                {t("fileUpload")}
               </TabsTrigger>
               <TabsTrigger value="url">
                 <Link className="h-3.5 w-3.5 mr-1.5" />
-                URL Import
+                {t("urlImport")}
               </TabsTrigger>
             </TabsList>
 
@@ -259,8 +262,8 @@ export function KBUploadDialog({
                   <FolderOpen className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-medium">Drop files here or click to browse</p>
-                  <p className="text-xs text-muted-foreground mt-1">PDF · DOCX · MD · HTML · CSV · TXT</p>
+                  <p className="text-sm font-medium">{t("dropFilesHint")}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("acceptedFormats")}</p>
                 </div>
               </div>
 
@@ -274,7 +277,7 @@ export function KBUploadDialog({
                       <span className="flex-1 truncate">{item.file.name}</span>
                       {item.status === "pending" && (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-                          Pending
+                          {t("pending")}
                         </Badge>
                       )}
                       {item.status === "uploading" && (
@@ -298,7 +301,7 @@ export function KBUploadDialog({
             <TabsContent value="url" className="space-y-4 mt-4">
               {urlItems.length === 0 ? (
                 <Textarea
-                  placeholder={"Paste URLs, one per line:\nhttps://docs.example.com\nhttps://blog.example.com/post"}
+                  placeholder={t("urlPlaceholder")}
                   value={urlText}
                   onChange={(e) => setUrlText(e.target.value)}
                   className="min-h-[120px] text-sm font-mono resize-none"
@@ -336,8 +339,8 @@ export function KBUploadDialog({
                           const successCount = urlItems.filter((u) => u.status !== "failed").length
                           const failCount = urlItems.filter((u) => u.status === "failed").length
                           return failCount > 0
-                            ? `${successCount} queued · ${failCount} failed`
-                            : `${successCount} queued`
+                            ? t("urlQueuedAndFailed", { successCount, failCount })
+                            : t("urlQueued", { successCount })
                         })()}
                       </p>
                       <Button
@@ -346,14 +349,14 @@ export function KBUploadDialog({
                         className="text-xs h-7 px-2"
                         onClick={handleResetUrlState}
                       >
-                        Import More
+                        {t("importMore")}
                       </Button>
                     </div>
                   )}
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Web pages are fetched via Jina Reader · PDF / DOCX / XLSX / PPTX downloaded directly
+                {t("urlProviderHint")}
               </p>
             </TabsContent>
           </Tabs>
@@ -364,7 +367,7 @@ export function KBUploadDialog({
               onClick={() => handleClose(false)}
               disabled={isUploading || isImporting}
             >
-              {isUploading || isImporting ? "Close" : "Cancel"}
+              {isUploading || isImporting ? tc("close") : tc("cancel")}
             </Button>
 
             {tab === "file" ? (
@@ -378,7 +381,7 @@ export function KBUploadDialog({
                 ) : (
                   <Upload className="h-4 w-4" />
                 )}
-                Upload {pendingCount > 0 ? `(${pendingCount})` : ""}
+                {pendingCount > 0 ? t("uploadCount", { count: pendingCount }) : tc("upload")}
               </Button>
             ) : urlItems.length > 0 && !isImporting ? (
               <Button
@@ -387,7 +390,7 @@ export function KBUploadDialog({
                 className="gap-1.5"
               >
                 <Link className="h-4 w-4" />
-                Import More
+                {t("importMore")}
               </Button>
             ) : (
               <Button
@@ -400,7 +403,7 @@ export function KBUploadDialog({
                 ) : (
                   <Link className="h-4 w-4" />
                 )}
-                Import {urlCount > 0 ? `(${urlCount})` : ""}
+                {urlCount > 0 ? t("importCount", { count: urlCount }) : tc("import")}
               </Button>
             )}
           </DialogFooter>
@@ -411,20 +414,20 @@ export function KBUploadDialog({
       <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogTitle>{t("discardUnsavedTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {items.some((i) => i.status === "pending")
-                ? `You have ${items.filter((i) => i.status === "pending").length} file(s) selected but not yet uploaded. Closing will discard them.`
-                : "You have URLs entered but not yet imported. Closing will discard them."}
+                ? t("discardPendingFilesDescription", { count: items.filter((i) => i.status === "pending").length })
+                : t("discardPendingUrlsDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>{tc("keepEditing")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleForceClose}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Discard & close
+              {t("discardAndClose")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

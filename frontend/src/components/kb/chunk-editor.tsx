@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -13,6 +14,7 @@ interface ChunkEditorProps {
 }
 
 export function ChunkEditor({ content, maxLength, onSave, onCancel }: ChunkEditorProps) {
+  const tc = useTranslations("common")
   const [value, setValue] = useState(content)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -55,7 +57,7 @@ export function ChunkEditor({ content, maxLength, onSave, onCancel }: ChunkEdito
           className="h-7 px-2 text-xs"
         >
           <X className="h-3.5 w-3.5 mr-1" />
-          Cancel
+          {tc("cancel")}
         </Button>
         <Button
           size="sm"
@@ -68,7 +70,7 @@ export function ChunkEditor({ content, maxLength, onSave, onCancel }: ChunkEdito
           ) : (
             <Check className="h-3.5 w-3.5 mr-1" />
           )}
-          Save
+          {tc("save")}
         </Button>
       </div>
     </div>

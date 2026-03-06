@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Plus, Loader2, Library, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -22,6 +23,8 @@ import type { KBResponse, KBCreate } from "@/types/kb"
 export default function KBPage() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
+  const t = useTranslations("kb")
+  const tc = useTranslations("common")
 
   const [knowledgeBases, setKnowledgeBases] = useState<KBResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -72,10 +75,10 @@ export default function KBPage() {
         await kbApi.create(data)
       }
       setDialogOpen(false)
-      toast.success(editingKB ? "Knowledge base updated" : "Knowledge base created")
+      toast.success(editingKB ? t("knowledgeBaseUpdated") : t("knowledgeBaseCreated"))
       await loadKBs()
     } catch {
-      toast.error("Failed to save knowledge base")
+      toast.error(t("failedToSaveKb"))
     } finally {
       setIsSubmitting(false)
     }
@@ -90,9 +93,9 @@ export default function KBPage() {
     try {
       await kbApi.delete(id)
       setKnowledgeBases((prev) => prev.filter((kb) => kb.id !== id))
-      toast.success("Knowledge base deleted")
+      toast.success(t("knowledgeBaseDeleted"))
     } catch {
-      toast.error("Failed to delete knowledge base")
+      toast.error(t("failedToDeleteKb"))
     }
   }
 
@@ -105,15 +108,15 @@ export default function KBPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Library className="h-5 w-5" />
-            Knowledge Base
+            {t("title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage your knowledge bases and documents
+            {t("subtitle")}
           </p>
         </div>
         <Button onClick={handleCreate} size="sm" className="gap-1.5">
           <Plus className="h-4 w-4" />
-          New KB
+          {t("newKb")}
         </Button>
       </div>
 
@@ -126,7 +129,7 @@ export default function KBPage() {
         ) : knowledgeBases.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-sm text-muted-foreground">
-              No knowledge bases yet. Create your first one to get started.
+              {t("emptyState")}
             </p>
             <Button
               onClick={handleCreate}
@@ -135,7 +138,7 @@ export default function KBPage() {
               className="mt-4 gap-1.5"
             >
               <Plus className="h-4 w-4" />
-              Create Knowledge Base
+              {t("createKnowledgeBase")}
             </Button>
           </div>
         ) : (
@@ -167,15 +170,15 @@ export default function KBPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4" />
-              Delete knowledge base?
+              {t("deleteKbTitle")}
             </DialogTitle>
             <DialogDescription>
-              This knowledge base and all its documents will be permanently deleted. This action cannot be undone.
+              {t("deleteKbDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" className="px-6" onClick={confirmDelete}>Delete</Button>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>{tc("cancel")}</Button>
+            <Button variant="destructive" className="px-6" onClick={confirmDelete}>{tc("delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
