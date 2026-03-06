@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, ShieldCheck } from "lucide-react"
@@ -9,6 +10,7 @@ import { APP_NAME, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from "@/lib/c
 import { authApi, ApiError } from "@/lib/api"
 
 export default function SetupPage() {
+  const t = useTranslations("auth")
   const router = useRouter()
 
   // Setup status check
@@ -52,24 +54,24 @@ export default function SetupPage() {
     setError("")
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match")
+      setError(t("passwordsDoNotMatch"))
       return
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters")
+      setError(t("passwordMinLength"))
       return
     }
 
     setSubmitting(true)
     try {
       if (!email.trim()) {
-        setError("Email is required")
+        setError(t("emailRequired"))
         setSubmitting(false)
         return
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        setError("Please enter a valid email address")
+        setError(t("emailInvalid"))
         setSubmitting(false)
         return
       }
@@ -89,7 +91,7 @@ export default function SetupPage() {
         router.replace("/login")
         return
       }
-      setError(err instanceof Error ? err.message : "Setup failed")
+      setError(err instanceof Error ? err.message : t("setupFailed"))
     } finally {
       setSubmitting(false)
     }
@@ -131,19 +133,17 @@ export default function SetupPage() {
         {/* Middle-lower -- tagline */}
         <div className="relative z-10 -mt-8">
           <h1
-            className="text-[2.75rem] font-bold leading-[1.1] tracking-tight text-white"
+            className="text-[2.75rem] font-bold leading-[1.1] tracking-tight text-white whitespace-pre-line"
             style={{ fontFamily: 'var(--font-cabinet), sans-serif' }}
           >
-            AI-Powered
-            <br />
-            Connector Hub
+            {t("brandTagline")}
           </h1>
           <p className="mt-4 text-base leading-relaxed text-white/55">
-            Connect any API.
+            {t("brandLine1")}
             <br />
-            Orchestrate with agents.
+            {t("brandLine2")}
             <br />
-            Ship faster.
+            {t("brandLine3")}
           </p>
         </div>
 
@@ -172,22 +172,22 @@ export default function SetupPage() {
           <div className="mb-4 flex justify-center lg:justify-start">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
-              One-time setup
+              {t("oneTimeSetup")}
             </span>
           </div>
 
           {/* Heading */}
           <div className="mb-6 text-center lg:text-left">
-            <h2 className="text-xl font-semibold tracking-tight">Initialize System</h2>
+            <h2 className="text-xl font-semibold tracking-tight">{t("initializeSystem")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create your admin account to get started
+              {t("setupSubtitle")}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Input
-                placeholder="Username"
+                placeholder={t("usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -197,7 +197,7 @@ export default function SetupPage() {
               />
               <Input
                 type="password"
-                placeholder="Password (min 6 characters)"
+                placeholder={t("passwordMinLengthPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -206,7 +206,7 @@ export default function SetupPage() {
               />
               <Input
                 type="password"
-                placeholder="Confirm password"
+                placeholder={t("confirmPasswordPlaceholder")}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -214,7 +214,7 @@ export default function SetupPage() {
               />
               <Input
                 type="email"
-                placeholder="Email"
+                placeholder={t("emailPlaceholder")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -226,7 +226,7 @@ export default function SetupPage() {
             )}
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Admin Account
+              {t("createAdminAccount")}
             </Button>
           </form>
         </div>
