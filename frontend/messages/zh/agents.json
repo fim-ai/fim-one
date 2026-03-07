@@ -119,5 +119,9 @@
   "aiUpdatedFields": "已更新字段：{fields}",
   "aiAgentUpdated": "智能体已更新。",
   "saveSettingsFirst": "请先保存智能体设置。",
-  "aiError": "出错了，请重试。"
+  "aiError": "出错了，请重试。",
+
+  "ai_agent_created": "智能体创建成功。",
+  "ai_agent_updated": "已更新 {count} 个字段：{fields}。",
+  "ai_no_changes": "未应用任何修改。"
 }

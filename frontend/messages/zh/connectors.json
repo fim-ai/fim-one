@@ -79,5 +79,10 @@
   "aiConnectorSettingsUpdated": "连接器设置已更新",
   "aiConnectorModified": "连接器已修改，请查看更新后的设置和操作。",
   "aiConnectorCreatedMessage": "连接器创建成功。",
-  "aiErrorFallback": "出了点问题，请重试。"
+  "aiErrorFallback": "出了点问题，请重试。",
+
+  "ai_connector_imported": "已从 OpenAPI 规范导入 {count} 个操作。",
+  "ai_connector_created": "已创建连接器，包含 {count} 个操作。",
+  "ai_actions_generated": "已创建 {created} 个操作。",
+  "ai_connector_refined": "操作完成。"
 }

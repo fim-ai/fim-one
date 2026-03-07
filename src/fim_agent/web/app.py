@@ -29,10 +29,12 @@ logging.basicConfig(
 
 import json
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .exceptions import AppError
 from .api.admin import SETTING_MAINTENANCE_MODE, get_setting, router as admin_router
 from .api.agents import router as agents_router
 from .api.auth import router as auth_router
@@ -133,6 +135,40 @@ def create_app() -> FastAPI:
                 headers={"Retry-After": "300"},
             )
         return await call_next(request)
+
+    # -- Exception handlers -------------------------------------------------
+    @app.exception_handler(AppError)
+    async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": exc.detail,
+                "error_code": exc.error_code,
+                "error_args": exc.detail_args,
+            },
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": exc.detail,
+                "error_code": None,
+                "error_args": {},
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:  # noqa: ARG001
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": exc.errors(),
+                "error_code": "validation_error",
+                "error_args": {"errors": exc.errors()},
+            },
+        )
 
     # -- CORS ---------------------------------------------------------------
     # Do NOT include "*" alongside allow_credentials=True — browsers reject

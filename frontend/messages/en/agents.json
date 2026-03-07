@@ -119,5 +119,9 @@
   "aiUpdatedFields": "Updated fields: {fields}",
   "aiAgentUpdated": "Agent updated.",
   "saveSettingsFirst": "Please save your agent settings first.",
-  "aiError": "Something went wrong. Please try again."
+  "aiError": "Something went wrong. Please try again.",
+
+  "ai_agent_created": "Agent created successfully.",
+  "ai_agent_updated": "Updated {count} field(s): {fields}.",
+  "ai_no_changes": "No changes applied."
 }

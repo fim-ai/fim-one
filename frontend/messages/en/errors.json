@@ -1,0 +1,80 @@
+{
+  "_fallback": "An unexpected error occurred.",
+
+  "validation_error": "Invalid request data.",
+
+  "registration_disabled": "Registration is disabled.",
+  "invite_code_required": "Invite code required.",
+  "invite_code_invalid": "Invalid invite code.",
+  "invite_code_expired": "Invite code has expired.",
+  "invite_code_exhausted": "Invite code has been fully used.",
+  "username_taken": "Username already taken.",
+  "email_already_registered": "Email already registered.",
+  "invalid_credentials": "Invalid credentials.",
+  "account_disabled": "Account disabled.",
+  "invalid_token_type": "Invalid token type.",
+  "invalid_token_payload": "Invalid token payload.",
+  "user_not_found": "User not found.",
+  "refresh_token_mismatch": "Refresh token does not match.",
+  "refresh_token_expired": "Refresh token has expired.",
+  "email_empty": "Email cannot be empty.",
+  "oauth_password_change": "Cannot change password for OAuth accounts.",
+  "current_password_incorrect": "Current password is incorrect.",
+  "password_already_set": "Password already set. Use change-password instead.",
+  "oauth_binding_not_found": "No OAuth binding found for provider \"{provider}\".",
+  "cannot_unbind_only_login": "Cannot unbind the only login method. Set a password first.",
+  "system_already_initialized": "System already initialized.",
+
+  "cannot_revoke_own_admin": "Cannot revoke your own admin role.",
+  "cannot_disable_own_account": "Cannot disable your own account.",
+  "cannot_delete_own_account": "Cannot delete your own account.",
+  "cannot_force_logout_self": "Cannot force logout yourself.",
+  "invalid_registration_mode": "Invalid registration mode: {mode}.",
+  "invite_code_not_found": "Invite code not found.",
+  "global_mcp_server_not_found": "Global MCP server not found.",
+
+  "sse_ticket_expired": "SSE ticket expired or invalid.",
+  "authentication_required": "Authentication required.",
+  "forbidden": "Forbidden.",
+  "token_quota_exceeded": "Token quota exceeded.",
+  "no_active_execution": "No active execution to cancel.",
+  "conversation_not_found": "Conversation not found.",
+  "agent_config_error": "Agent configuration error: {reason}.",
+
+  "connector_not_found": "Connector not found.",
+  "action_not_found": "Action not found.",
+  "spec_fetch_failed": "Failed to fetch OpenAPI spec: {reason}.",
+  "spec_input_required": "Provide spec, spec_url, or spec_raw.",
+  "spec_parse_failed": "Failed to parse OpenAPI spec: {reason}.",
+  "spec_no_server_url": "No server URL found in spec and no base_url provided.",
+
+  "no_filename": "No filename provided.",
+  "invalid_filename": "Invalid filename: {filename}.",
+  "unsupported_file_type": "Unsupported file type: {ext}.",
+  "file_too_large": "File too large (max {max_mb} MB).",
+  "file_not_found": "File not found.",
+  "file_not_found_disk": "File not found on disk.",
+
+  "kb_not_found": "Knowledge base not found.",
+  "document_not_found": "Document not found.",
+  "unsupported_document_type": "Unsupported document type: {ext}.",
+  "chunk_not_found": "Chunk not found.",
+
+  "model_config_not_found": "Model configuration not found.",
+  "cannot_delete_system_model": "Cannot delete system model.",
+
+  "agent_not_found": "Agent not found.",
+  "connector_ownership_denied": "You do not own connector \"{name}\".",
+  "kb_ownership_denied": "You do not own knowledge base \"{name}\".",
+
+  "llm_empty_response": "LLM returned empty response.",
+  "llm_invalid_json": "LLM returned invalid JSON.",
+  "llm_unexpected_format": "LLM returned unexpected format.",
+  "llm_unknown_mode": "Unknown mode: {mode}.",
+  "openapi_url_missing": "OpenAPI spec URL is required.",
+
+  "oauth_provider_not_configured": "OAuth provider \"{provider}\" is not configured.",
+  "oauth_bind_credentials_required": "Credentials required for OAuth binding.",
+
+  "mcp_server_not_found": "MCP server not found."
+}

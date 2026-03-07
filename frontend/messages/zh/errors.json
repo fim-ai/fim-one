@@ -1,0 +1,80 @@
+{
+  "_fallback": "发生了意外错误。",
+
+  "validation_error": "请求数据无效。",
+
+  "registration_disabled": "注册已关闭。",
+  "invite_code_required": "需要邀请码。",
+  "invite_code_invalid": "邀请码无效。",
+  "invite_code_expired": "邀请码已过期。",
+  "invite_code_exhausted": "邀请码已用完。",
+  "username_taken": "用户名已被占用。",
+  "email_already_registered": "邮箱已被注册。",
+  "invalid_credentials": "登录凭据无效。",
+  "account_disabled": "账户已禁用。",
+  "invalid_token_type": "无效的令牌类型。",
+  "invalid_token_payload": "无效的令牌内容。",
+  "user_not_found": "用户未找到。",
+  "refresh_token_mismatch": "刷新令牌不匹配。",
+  "refresh_token_expired": "刷新令牌已过期。",
+  "email_empty": "邮箱不能为空。",
+  "oauth_password_change": "OAuth 账户无法修改密码。",
+  "current_password_incorrect": "当前密码不正确。",
+  "password_already_set": "密码已设置，请使用修改密码功能。",
+  "oauth_binding_not_found": "未找到提供商 \"{provider}\" 的 OAuth 绑定。",
+  "cannot_unbind_only_login": "无法解绑唯一的登录方式，请先设置密码。",
+  "system_already_initialized": "系统已初始化。",
+
+  "cannot_revoke_own_admin": "无法撤销自己的管理员角色。",
+  "cannot_disable_own_account": "无法禁用自己的账户。",
+  "cannot_delete_own_account": "无法删除自己的账户。",
+  "cannot_force_logout_self": "无法强制登出自己。",
+  "invalid_registration_mode": "无效的注册模式：{mode}。",
+  "invite_code_not_found": "邀请码未找到。",
+  "global_mcp_server_not_found": "全局 MCP 服务器未找到。",
+
+  "sse_ticket_expired": "SSE 票据已过期或无效。",
+  "authentication_required": "需要身份验证。",
+  "forbidden": "没有权限。",
+  "token_quota_exceeded": "令牌配额已超出。",
+  "no_active_execution": "没有正在执行的任务可取消。",
+  "conversation_not_found": "对话未找到。",
+  "agent_config_error": "Agent 配置错误：{reason}。",
+
+  "connector_not_found": "连接器未找到。",
+  "action_not_found": "操作未找到。",
+  "spec_fetch_failed": "获取 OpenAPI 规范失败：{reason}。",
+  "spec_input_required": "请提供 spec、spec_url 或 spec_raw。",
+  "spec_parse_failed": "解析 OpenAPI 规范失败：{reason}。",
+  "spec_no_server_url": "规范中未找到服务器 URL，也未提供 base_url。",
+
+  "no_filename": "未提供文件名。",
+  "invalid_filename": "文件名无效：{filename}。",
+  "unsupported_file_type": "不支持的文件类型：{ext}。",
+  "file_too_large": "文件太大（最大 {max_mb} MB）。",
+  "file_not_found": "文件未找到。",
+  "file_not_found_disk": "文件在磁盘上未找到。",
+
+  "kb_not_found": "知识库未找到。",
+  "document_not_found": "文档未找到。",
+  "unsupported_document_type": "不支持的文档类型：{ext}。",
+  "chunk_not_found": "分块未找到。",
+
+  "model_config_not_found": "模型配置未找到。",
+  "cannot_delete_system_model": "无法删除系统模型。",
+
+  "agent_not_found": "Agent 未找到。",
+  "connector_ownership_denied": "你不拥有连接器 \"{name}\"。",
+  "kb_ownership_denied": "你不拥有知识库 \"{name}\"。",
+
+  "llm_empty_response": "LLM 返回了空响应。",
+  "llm_invalid_json": "LLM 返回了无效的 JSON。",
+  "llm_unexpected_format": "LLM 返回了意外的格式。",
+  "llm_unknown_mode": "未知模式：{mode}。",
+  "openapi_url_missing": "需要 OpenAPI 规范 URL。",
+
+  "oauth_provider_not_configured": "OAuth 提供商 \"{provider}\" 未配置。",
+  "oauth_bind_credentials_required": "OAuth 绑定需要登录凭据。",
+
+  "mcp_server_not_found": "MCP 服务器未找到。"
+}

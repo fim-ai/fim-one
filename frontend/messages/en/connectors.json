@@ -79,5 +79,10 @@
   "aiConnectorSettingsUpdated": "Connector settings updated",
   "aiConnectorModified": "Connector modified. Check the updated settings and actions.",
   "aiConnectorCreatedMessage": "Connector created successfully.",
-  "aiErrorFallback": "Something went wrong. Please try again."
+  "aiErrorFallback": "Something went wrong. Please try again.",
+
+  "ai_connector_imported": "Imported {count} action(s) from OpenAPI spec.",
+  "ai_connector_created": "Created connector with {count} action(s).",
+  "ai_actions_generated": "Created {created} action(s).",
+  "ai_connector_refined": "Operation completed."
 }

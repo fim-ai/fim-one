@@ -135,6 +135,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public errorCode: string | null = null,
+    public errorArgs: Record<string, unknown> = {},
   ) {
     super(message)
   }
@@ -187,7 +189,12 @@ export async function apiFetch<T>(
     const body = await res.json().catch(() => ({}))
     const detail = body.detail ?? body.error ?? res.statusText
     const message = typeof detail === "string" ? detail : JSON.stringify(detail)
-    throw new ApiError(res.status, message)
+    throw new ApiError(
+      res.status,
+      message,
+      body.error_code ?? null,
+      body.error_args ?? {},
+    )
   }
 
   // 204 No Content (and any response with no body) has nothing to parse
@@ -363,7 +370,12 @@ export const fileApi = {
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, body.detail || res.statusText)
+      throw new ApiError(
+        res.status,
+        body.detail || res.statusText,
+        body.error_code ?? null,
+        body.error_args ?? {},
+      )
     }
     const json: ApiResponse<FileUploadResponse> = await res.json()
     return json.data
@@ -425,7 +437,12 @@ export const kbApi = {
     )
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, body.detail || res.statusText)
+      throw new ApiError(
+        res.status,
+        body.detail || res.statusText,
+        body.error_code ?? null,
+        body.error_args ?? {},
+      )
     }
     const json: ApiResponse<KBDocumentResponse> = await res.json()
     return json.data
