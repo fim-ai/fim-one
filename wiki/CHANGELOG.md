@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **Login animated logo**: Replaced static `<img>` logo with inline SVG using Framer Motion (`motion/react`). Entrance animation features stroke draw-in → fill fade for each path with staggered timing, spring scale/rotate on the SVG group, and letter-by-letter text reveal with spring physics. Plays once on mount.
 - **Error code infrastructure**: `AppError(HTTPException)` with structured `error_code` + `detail_args`; global exception handlers in `app.py` for `AppError`, `HTTPException` (backward-compat), and `RequestValidationError`; frontend `ApiError` extended with `errorCode`/`errorArgs`; `getErrorMessage()` utility for i18n-aware error display
 - **Error translations**: `errors.json` (en/zh) with ~60 error code translations covering auth, admin, chat, connectors, files, KB, models, agents, AI, OAuth, MCP
 - **AI result i18n**: `message_key` + `message_args` fields on `AICreateAgentResult`, `AIRefineAgentResult`, `AIActionResult`, `AICreateConnectorResult` for translated success messages
