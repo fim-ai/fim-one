@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import os
-import shutil
-import uuid
 from pathlib import Path
 from typing import Any
 
 from fim_agent.core.tool.base import BaseTool
+
+# Default directory when no per-conversation sandbox is provided.
+_DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[4] / "tmp" / "default" / "exec"
 
 
 class GenerateImageTool(BaseTool):
     """Generate an image from a text prompt using Google Imagen (via Gemini API).
 
     Requires IMAGE_GEN_API_KEY to be set in the environment.
-    The generated image is saved to the uploads directory and the agent
-    receives a markdown image link it can embed in its reply.
+    The generated image is saved to the shared workspace and automatically
+    registered as an artifact via ``scan_new_files()``.
     """
 
     def __init__(
@@ -24,10 +25,7 @@ class GenerateImageTool(BaseTool):
         output_dir: Path | None = None,
         artifacts_dir: Path | None = None,
     ) -> None:
-        # Default to uploads/generated when no conversation context is provided
-        # (e.g. tool catalog listing). Per-conversation callers inject the
-        # scoped path so images are isolated and cleaned up with the conversation.
-        self._output_dir = output_dir or (Path("uploads") / "generated")
+        self._output_dir = output_dir or _DEFAULT_OUTPUT_DIR
         self._artifacts_dir = artifacts_dir
 
     @property
@@ -84,6 +82,13 @@ class GenerateImageTool(BaseTool):
         if not available:
             return f"Error: {reason}"
 
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Snapshot files before generation for artifact detection.
+        before: set[str] = set()
+        if self._artifacts_dir:
+            before = {f.name for f in self._output_dir.iterdir() if f.is_file()}
+
         from fim_agent.core.image_gen.google import GoogleImageGen
 
         gen = GoogleImageGen()
@@ -97,26 +102,13 @@ class GenerateImageTool(BaseTool):
         # Text summary for LLM — no image URL, the artifact chip handles display.
         text = f"*Prompt:* {result.prompt}\n*Model:* {result.model}"
 
-        # Register generated image as a downloadable artifact.
+        # Scan for new files after generation (same pattern as PythonExecTool).
         if self._artifacts_dir:
-            from fim_agent.core.tool.base import Artifact, ToolResult
+            from ..artifact_utils import scan_new_files
+            from ..base import ToolResult
 
-            img_path = self._output_dir / Path(result.url).name
-            if img_path.exists():
-                self._artifacts_dir.mkdir(parents=True, exist_ok=True)
-                artifact_id = uuid.uuid4().hex[:12]
-                stored = self._artifacts_dir / f"{artifact_id}_{img_path.name}"
-                shutil.copy2(img_path, stored)
-                try:
-                    rel_path = str(stored.relative_to(self._artifacts_dir.parent.parent.parent))
-                except ValueError:
-                    rel_path = stored.name
-                artifact = Artifact(
-                    name=img_path.name,
-                    path=rel_path,
-                    mime_type="image/png",
-                    size=stored.stat().st_size,
-                )
-                return ToolResult(content=text, artifacts=[artifact])
+            artifacts = scan_new_files(self._output_dir, before, self._artifacts_dir)
+            if artifacts:
+                return ToolResult(content=text, artifacts=artifacts)
 
         return text

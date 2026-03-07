@@ -267,6 +267,65 @@ async def _generate_suggestions(
 
 
 # ---------------------------------------------------------------------------
+# Auto-title helper
+# ---------------------------------------------------------------------------
+
+
+async def _generate_title(
+    fast_llm: "BaseLLM",
+    query: str,
+    answer: str,
+    *,
+    preferred_language: str | None = None,
+    usage_tracker: "UsageTracker | None" = None,
+) -> str | None:
+    """Generate a concise conversation title from the first Q&A exchange.
+
+    Uses the fast LLM to produce a short descriptive title.  The result is
+    persisted to the ``Conversation.title`` column by the caller.
+
+    On any failure the function silently returns ``None`` so that the main
+    chat flow is never interrupted.
+    """
+    try:
+        lang_directive = get_language_directive(preferred_language)
+        lang_rule = (
+            f"- {lang_directive}\n" if lang_directive
+            else "- Match the language of the user query.\n"
+        )
+        system_prompt = (
+            "Generate a short, descriptive title for a conversation based on "
+            "the user's first message and the assistant's response.\n\n"
+            "Rules:\n"
+            "- The title MUST be under 50 characters.\n"
+            "- Capture the core topic or intent.\n"
+            "- Do NOT wrap the title in quotes or add punctuation at the edges.\n"
+            f"{lang_rule}"
+            "- Return ONLY the title text, nothing else."
+        )
+        user_content = (
+            f"User: {query[:500]}\n\n"
+            f"Assistant: {answer[:500]}"
+        )
+
+        result = await fast_llm.chat([
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_content),
+        ])
+
+        raw = (result.message.content or "").strip().strip("\"'")
+        if usage_tracker and result.usage:
+            await usage_tracker.record(result.usage)
+
+        if raw and len(raw) <= 100:
+            return raw
+        return None
+    except Exception:
+        logger.debug("_generate_title failed", exc_info=True)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Auth & agent resolution helpers
 # ---------------------------------------------------------------------------
 
@@ -1274,6 +1333,39 @@ async def react_endpoint(
             if suggestions:
                 done_payload["suggestions"] = suggestions
 
+            # Auto-generate title for the first message in a new conversation
+            if db_session and conversation_id:
+                try:
+                    from sqlalchemy import func as _sa_func
+                    from fim_agent.web.models import (
+                        Conversation,
+                        Message as _MsgModel,
+                    )
+                    msg_count = (
+                        await db_session.execute(
+                            sa_select(_sa_func.count())
+                            .select_from(_MsgModel)
+                            .where(_MsgModel.conversation_id == conversation_id)
+                        )
+                    ).scalar() or 0
+                    if msg_count <= 2:
+                        gen_title = await _generate_title(
+                            fast_llm, q, result.answer,
+                            preferred_language=preferred_language,
+                            usage_tracker=fast_usage_tracker,
+                        )
+                        if gen_title:
+                            from sqlalchemy import update as _sa_update
+                            await db_session.execute(
+                                _sa_update(Conversation)
+                                .where(Conversation.id == conversation_id)
+                                .values(title=gen_title)
+                            )
+                            await db_session.commit()
+                            done_payload["title"] = gen_title
+                except Exception:
+                    logger.debug("Auto-title generation failed", exc_info=True)
+
             # Capture fast LLM token usage (after all fast calls including suggestions)
             fast_summary = fast_usage_tracker.get_summary()
             if fast_summary.total_tokens > 0:
@@ -1925,6 +2017,39 @@ async def dag_endpoint(
             )
             if dag_suggestions:
                 dag_done_payload["suggestions"] = dag_suggestions
+
+            # Auto-generate title for the first message in a new conversation
+            if db_session and conversation_id:
+                try:
+                    from sqlalchemy import func as _sa_func
+                    from fim_agent.web.models import (
+                        Conversation as ConvModel,
+                        Message as _MsgModel,
+                    )
+                    msg_count = (
+                        await db_session.execute(
+                            sa_select(_sa_func.count())
+                            .select_from(_MsgModel)
+                            .where(_MsgModel.conversation_id == conversation_id)
+                        )
+                    ).scalar() or 0
+                    if msg_count <= 2:
+                        gen_title = await _generate_title(
+                            fast_llm, q, answer,
+                            preferred_language=preferred_language,
+                            usage_tracker=fast_usage_tracker,
+                        )
+                        if gen_title:
+                            from sqlalchemy import update as _sa_update
+                            await db_session.execute(
+                                _sa_update(ConvModel)
+                                .where(ConvModel.id == conversation_id)
+                                .values(title=gen_title)
+                            )
+                            await db_session.commit()
+                            dag_done_payload["title"] = gen_title
+                except Exception:
+                    logger.debug("Auto-title generation failed", exc_info=True)
 
             # Capture fast LLM token usage (after all fast calls including suggestions)
             fast_summary = fast_usage_tracker.get_summary()

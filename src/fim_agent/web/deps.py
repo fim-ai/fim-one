@@ -207,9 +207,9 @@ def get_tools(
     When *sandbox_config* is provided (from an agent's ``sandbox_config``
     column), per-agent resource limits are applied to exec tools.
 
-    When *uploads_root* is provided, media tools (generate_image) write
-    output to a per-conversation subdirectory so files are isolated and
-    cleaned up when the conversation is deleted.
+    When *uploads_root* is provided, tools that produce files (generate_image,
+    python_exec, etc.) copy artifacts to a per-conversation subdirectory so
+    files are isolated and cleaned up when the conversation is deleted.
     """
     registry = ToolRegistry()
     for tool in discover_builtin_tools(

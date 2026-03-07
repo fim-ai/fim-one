@@ -2,18 +2,17 @@
 
 SQLite concurrency notes
 ------------------------
-SQLite supports only a single writer at a time.  To avoid
-``sqlite3.OperationalError: database is locked`` under concurrent requests we
-apply three mitigations:
+SQLite supports only a single writer at a time.  We use the following
+mitigations so that concurrent requests (e.g. SSE streaming + artifact
+downloads) do **not** block each other:
 
 1. **WAL journal mode** — allows readers to proceed while a write is in
    progress, drastically reducing lock contention.
-2. **Increased busy timeout** (30 s) — the default is 5 s which is far too
-   short when an LLM streaming endpoint holds a session open for tens of
-   seconds.
-3. **StaticPool** — a single shared connection via ``StaticPool`` so that all
-   async tasks serialise through one underlying SQLite connection, eliminating
-   multi-connection write contention entirely.
+2. **Increased busy timeout** (30 s) — if a write lock is held, other
+   writers wait up to 30 s instead of failing immediately.
+3. **QueuePool** with bounded size — multiple connections allow concurrent
+   DB access; each request gets its own connection so long-running SSE
+   streams do not starve short-lived queries.
 """
 
 from __future__ import annotations
@@ -25,8 +24,6 @@ from pathlib import Path
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
 from .base import Base
 
 logger = logging.getLogger(__name__)
@@ -57,10 +54,12 @@ async def init_db() -> None:
         connect_args["check_same_thread"] = False
         # Give SQLite 30 seconds to wait for a lock instead of the default 5.
         connect_args["timeout"] = 30
-        # Use StaticPool so that all async tasks share the same underlying
-        # SQLite connection.  This avoids multi-connection write contention
-        # that causes "database is locked" even with WAL mode enabled.
-        kwargs["poolclass"] = StaticPool
+        # Bounded QueuePool so concurrent requests each get their own
+        # connection.  WAL mode + busy_timeout handle write contention;
+        # the pool prevents long-running SSE streams from starving other
+        # requests (artifact downloads, conversation lists, etc.).
+        kwargs["pool_size"] = 5
+        kwargs["max_overflow"] = 5
         # Ensure the data directory exists for SQLite file-based databases.
         db_path = url.split("///", 1)[-1] if "///" in url else None
         if db_path and db_path != ":memory:":

@@ -45,16 +45,24 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
 
-    conversations: Mapped[list[Conversation]] = relationship(back_populates="user", lazy="raise")
-    agents: Mapped[list[Agent]] = relationship(back_populates="user", lazy="raise")
-    knowledge_bases: Mapped[list[KnowledgeBase]] = relationship(
-        back_populates="user", lazy="raise"
+    conversations: Mapped[list[Conversation]] = relationship(
+        back_populates="user", lazy="raise", cascade="all, delete-orphan"
     )
-    model_configs: Mapped[list[ModelConfig]] = relationship(back_populates="user", lazy="raise")
-    connectors: Mapped[list[Connector]] = relationship(back_populates="user", lazy="raise")
+    agents: Mapped[list[Agent]] = relationship(
+        back_populates="user", lazy="raise", cascade="all, delete-orphan"
+    )
+    knowledge_bases: Mapped[list[KnowledgeBase]] = relationship(
+        back_populates="user", lazy="raise", cascade="all, delete-orphan"
+    )
+    model_configs: Mapped[list[ModelConfig]] = relationship(
+        back_populates="user", lazy="raise", cascade="all, delete-orphan"
+    )
+    connectors: Mapped[list[Connector]] = relationship(
+        back_populates="user", lazy="raise", cascade="all, delete-orphan"
+    )
     mcp_servers: Mapped[list[MCPServer]] = relationship(
         back_populates="user", lazy="raise", cascade="all, delete-orphan"
     )
     oauth_bindings: Mapped[list[UserOAuthBinding]] = relationship(
-        back_populates="user", lazy="raise"
+        back_populates="user", lazy="raise", cascade="all, delete-orphan"
     )
