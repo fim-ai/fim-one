@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,7 @@ from fim_agent.web.schemas.agent import (
     AIRefineAgentRequest,
     AIRefineAgentResult,
 )
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.schemas.common import ApiResponse
 from fim_agent.web.api.agents import (
     _agent_to_response,
@@ -129,17 +130,15 @@ async def _llm_call(
     result = await llm.chat(messages=messages)
     content = result.message.content or ""
     if not content:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM returned empty response",
-        )
+        raise AppError("llm_empty_response", status_code=422)
 
     try:
         return _extract_json(content)
     except (json.JSONDecodeError, ValueError) as exc:
         if retry_context is not None:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+            raise AppError(
+                "llm_invalid_json",
+                status_code=422,
                 detail=f"LLM returned invalid JSON after retry: {exc}",
             ) from exc
         logger.warning("LLM JSON parse failed, retrying: %s", exc)
@@ -230,10 +229,7 @@ async def ai_create_agent(
 
     data = await _llm_call(_CREATE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
     if not isinstance(data, dict):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM did not return a JSON object",
-        )
+        raise AppError("llm_unexpected_format", status_code=422)
 
     # Validate tool_categories
     tool_categories = _validate_tool_categories(data.get("tool_categories"))
@@ -275,6 +271,7 @@ async def ai_create_agent(
         data=AICreateAgentResult(
             agent=_agent_to_response(agent),
             message="Agent created successfully.",
+            message_key="ai_agent_created",
         ).model_dump()
     )
 
@@ -300,10 +297,7 @@ async def ai_refine_agent(
 
     data = await _llm_call(_REFINE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
     if not isinstance(data, dict):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM did not return a JSON object",
-        )
+        raise AppError("llm_unexpected_format", status_code=422)
 
     updatable_fields = {
         "name", "icon", "description", "instructions", "tool_categories",
@@ -335,10 +329,19 @@ async def ai_refine_agent(
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
 
+    if modified_fields:
+        refine_message_key = "ai_agent_updated"
+        refine_message_args = {"count": len(modified_fields), "fields": ", ".join(modified_fields)}
+    else:
+        refine_message_key = "ai_no_changes"
+        refine_message_args = {}
+
     return ApiResponse(
         data=AIRefineAgentResult(
             agent=_agent_to_response(agent),
             modified_fields=modified_fields,
             message=f"Updated {len(modified_fields)} field(s)." if modified_fields else "No changes applied.",
+            message_key=refine_message_key,
+            message_args=refine_message_args,
         ).model_dump()
     )

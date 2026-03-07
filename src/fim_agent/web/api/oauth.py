@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.db import get_session
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.api.admin import SETTING_REGISTRATION_ENABLED, SETTING_REGISTRATION_MODE, get_setting
 from fim_agent.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -91,7 +92,12 @@ async def authorize(
     """
     provider = get_provider(provider_name)
     if not provider:
-        raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not configured")
+        raise AppError(
+            "oauth_provider_not_configured",
+            status_code=400,
+            detail=f"OAuth provider '{provider_name}' is not configured",
+            detail_args={"provider": provider_name},
+        )
 
     _cleanup_expired_states()
     state = secrets.token_urlsafe(32)
@@ -141,10 +147,10 @@ async def authorize(
                 )
             user_id = payload.get("sub")
         else:
-            raise HTTPException(status_code=400, detail="Ticket or token required for bind action")
+            raise AppError("oauth_bind_credentials_required", status_code=400)
 
         if not user_id:
-            raise HTTPException(status_code=400, detail="Invalid credentials: missing user id")
+            raise AppError("oauth_bind_credentials_required", status_code=400)
         state_entry["action"] = "bind"
         state_entry["user_id"] = user_id
 

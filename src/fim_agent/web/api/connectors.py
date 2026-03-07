@@ -9,12 +9,13 @@ from typing import Any
 
 import httpx
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.core.tool.connector.openapi_parser import parse_openapi_spec
+from fim_agent.web.exceptions import AppError
 from fim_agent.db import get_session
 from fim_agent.web.auth import get_current_user
 from fim_agent.web.models.connector import Connector, ConnectorAction
@@ -86,10 +87,7 @@ async def _get_owned_connector(
     )
     connector = result.scalar_one_or_none()
     if connector is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connector not found",
-        )
+        raise AppError("connector_not_found", status_code=404)
     return connector
 
 
@@ -228,16 +226,15 @@ async def _resolve_openapi_spec(body: OpenAPIImportRequest) -> dict[str, Any]:
                 resp.raise_for_status()
                 raw = resp.text
         except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                "spec_fetch_failed",
+                status_code=422,
                 detail=f"Failed to fetch spec URL: {exc}",
+                detail_args={"reason": str(exc)},
             ) from exc
 
     if raw is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide one of: spec, spec_raw, or spec_url",
-        )
+        raise AppError("spec_input_required", status_code=400)
 
     # Try JSON first, then YAML
     try:
@@ -251,10 +248,7 @@ async def _resolve_openapi_spec(body: OpenAPIImportRequest) -> dict[str, Any]:
     except yaml.YAMLError:
         pass
 
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Unable to parse spec as JSON or YAML",
-    )
+    raise AppError("spec_parse_failed", status_code=422)
 
 
 @router.post("/import-openapi", response_model=ApiResponse)
@@ -270,10 +264,7 @@ async def import_openapi(
     base_url = servers[0]["url"] if servers else ""
 
     if not base_url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Spec must have at least one server URL",
-        )
+        raise AppError("spec_no_server_url", status_code=422)
 
     connector = Connector(
         user_id=current_user.id,
@@ -408,10 +399,7 @@ async def update_action(
     )
     action = result.scalar_one_or_none()
     if action is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
+        raise AppError("action_not_found", status_code=404)
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -443,10 +431,7 @@ async def delete_action(
     )
     action = result.scalar_one_or_none()
     if action is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Action not found",
-        )
+        raise AppError("action_not_found", status_code=404)
 
     await db.delete(action)
     await db.commit()

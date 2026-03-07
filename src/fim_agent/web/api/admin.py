@@ -12,8 +12,10 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, field_validator
+
+from fim_agent.web.exceptions import AppError
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -617,17 +619,11 @@ async def create_user(
     # Check username uniqueness
     result = await db.execute(select(User).where(User.username == body.username))
     if result.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
-        )
+        raise AppError("username_taken", status_code=409)
     # Check email uniqueness
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
+        raise AppError("email_already_registered", status_code=409)
 
     user = User(
         username=body.username,
@@ -659,10 +655,7 @@ async def update_user(
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one_or_none()
     if target_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise AppError("user_not_found", status_code=404)
 
     if body.display_name is not None:
         target_user.display_name = body.display_name or None
@@ -673,10 +666,7 @@ async def update_user(
                 select(User).where(User.email == body.email, User.id != user_id)
             )
             if email_result.scalar_one_or_none() is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Email already registered",
-                )
+                raise AppError("email_already_registered", status_code=409)
         target_user.email = body.email or None
 
     await db.commit()
@@ -698,18 +688,12 @@ async def update_user_admin(
     Requires admin privileges.
     """
     if current_user.id == user_id and not body.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot revoke your own admin status",
-        )
+        raise AppError("cannot_revoke_own_admin")
 
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one_or_none()
     if target_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise AppError("user_not_found", status_code=404)
 
     target_user.is_admin = body.is_admin
     await db.commit()
@@ -735,10 +719,7 @@ async def reset_password(
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one_or_none()
     if target_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise AppError("user_not_found", status_code=404)
 
     target_user.password_hash = hash_password(body.new_password)
     target_user.refresh_token = None
@@ -764,18 +745,12 @@ async def toggle_user_active(
 ) -> AdminUserInfo:
     """Enable or disable a user account. Requires admin privileges."""
     if current_user.id == user_id and not body.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot disable your own account",
-        )
+        raise AppError("cannot_disable_own_account")
 
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one_or_none()
     if target_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+        raise AppError("user_not_found", status_code=404)
 
     target_user.is_active = body.is_active
     if not body.is_active:
@@ -894,7 +869,11 @@ async def update_system_settings(
         changed.append(f"registration_enabled={body.registration_enabled}")
     if body.registration_mode is not None:
         if body.registration_mode not in ("open", "invite", "disabled"):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "registration_mode must be open, invite, or disabled")
+            raise AppError(
+                "invalid_registration_mode",
+                detail=f"Invalid registration mode: {body.registration_mode}",
+                detail_args={"mode": body.registration_mode},
+            )
         await set_setting(db, SETTING_REGISTRATION_MODE, body.registration_mode)
         changed.append(f"registration_mode={body.registration_mode}")
     if body.default_token_quota is not None:
@@ -927,15 +906,12 @@ async def delete_user(
 ) -> AdminUserInfo:
     """Permanently delete a user account. Requires admin privileges."""
     if current_user.id == user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot delete your own account",
-        )
+        raise AppError("cannot_delete_own_account")
 
     result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one_or_none()
     if target_user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise AppError("user_not_found", status_code=404)
 
     info = _user_to_info(target_user)
     label = target_user.username
@@ -1046,11 +1022,11 @@ async def force_logout_user(
 ):
     """Invalidate a single user's session. Requires admin privileges."""
     if user_id == current_user.id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot force logout yourself")
+        raise AppError("cannot_force_logout_self")
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+        raise AppError("user_not_found", status_code=404)
     user.refresh_token = None
     user.refresh_token_expires_at = None
     user.tokens_invalidated_at = datetime.now(timezone.utc)
@@ -1078,7 +1054,7 @@ async def set_user_quota(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+        raise AppError("user_not_found", status_code=404)
     user.token_quota = body.token_quota
     await db.commit()
     await write_audit(
@@ -1255,7 +1231,7 @@ async def admin_delete_conversation(
     )
     conv = result.scalar_one_or_none()
     if conv is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found")
+        raise AppError("conversation_not_found", status_code=404)
 
     await db.delete(conv)
     await db.commit()
@@ -1342,7 +1318,7 @@ async def revoke_invite_code(
     result = await db.execute(select(InviteCode).where(InviteCode.id == code_id))
     code = result.scalar_one_or_none()
     if code is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invite code not found")
+        raise AppError("invite_code_not_found", status_code=404)
     code.is_active = False
     await db.commit()
     await write_audit(
@@ -1520,7 +1496,7 @@ async def update_global_mcp_server(
     )
     server = result.scalar_one_or_none()
     if server is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Global MCP server not found")
+        raise AppError("global_mcp_server_not_found", status_code=404)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(server, field, value)
     await db.commit()
@@ -1543,7 +1519,7 @@ async def delete_global_mcp_server(
     )
     server = result.scalar_one_or_none()
     if server is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Global MCP server not found")
+        raise AppError("global_mcp_server_not_found", status_code=404)
     await db.delete(server)
     await db.commit()
     await write_audit(
@@ -1567,7 +1543,7 @@ async def test_global_mcp_server(
     )
     server = result.scalar_one_or_none()
     if server is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Global MCP server not found")
+        raise AppError("global_mcp_server_not_found", status_code=404)
 
     try:
         from fim_agent.core.mcp import MCPClient

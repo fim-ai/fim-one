@@ -8,12 +8,13 @@ import math
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.db import get_session
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.auth import get_current_user
 from fim_agent.web.models import Agent, Conversation, Message, User
 from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse
@@ -76,10 +77,7 @@ async def _get_owned_conversation(
     )
     conv = result.scalar_one_or_none()
     if conv is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found",
-        )
+        raise AppError("conversation_not_found", status_code=404)
     return conv
 
 
@@ -212,10 +210,7 @@ async def get_conversation(
     )
     conv = result.scalar_one_or_none()
     if conv is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found",
-        )
+        raise AppError("conversation_not_found", status_code=404)
 
     messages_sorted = sorted(conv.messages, key=lambda m: m.created_at)
     detail = ConversationDetail(
@@ -275,10 +270,7 @@ async def delete_conversation(
     )
     conv = result.scalar_one_or_none()
     if conv is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found",
-        )
+        raise AppError("conversation_not_found", status_code=404)
     await db.delete(conv)
     await db.commit()
 

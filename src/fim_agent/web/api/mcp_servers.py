@@ -6,11 +6,12 @@ import logging
 import math
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_agent.db import get_session
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.auth import get_current_user
 from fim_agent.web.models.mcp_server import MCPServer
 from fim_agent.web.models.user import User
@@ -58,10 +59,7 @@ async def _get_owned_server(
     )
     server = result.scalar_one_or_none()
     if server is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="MCP server not found",
-        )
+        raise AppError("mcp_server_not_found", status_code=404)
     return server
 
 

@@ -8,13 +8,14 @@ import math
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.db import get_session
 from fim_agent.web.auth import get_current_user
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.deps import get_embedding, get_kb_manager
 from fim_agent.web.models import KBDocument, KnowledgeBase, User
 from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse
@@ -88,10 +89,7 @@ async def _get_owned_kb(
     )
     kb = result.scalar_one_or_none()
     if kb is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found",
-        )
+        raise AppError("kb_not_found", status_code=404)
     return kb
 
 
@@ -196,10 +194,7 @@ async def delete_kb(
     )
     kb = result.scalar_one_or_none()
     if kb is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found",
-        )
+        raise AppError("kb_not_found", status_code=404)
     # Delete vectors
     try:
         manager = get_kb_manager()
@@ -268,9 +263,11 @@ async def upload_document(
     filename = file.filename or "unknown"
     ext = Path(filename).suffix.lower()
     if ext not in _SUPPORTED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: {ext}",
+        raise AppError(
+            "unsupported_document_type",
+            status_code=422,
+            detail=f"Unsupported document type: {ext}",
+            detail_args={"ext": ext},
         )
 
     # Save file
@@ -404,10 +401,7 @@ async def delete_document(
     )
     doc = result.scalar_one_or_none()
     if doc is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
-        )
+        raise AppError("document_not_found", status_code=404)
 
     # Delete vectors
     try:
@@ -453,24 +447,19 @@ async def retry_document(
     )
     doc = result.scalar_one_or_none()
     if doc is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
-        )
+        raise AppError("document_not_found", status_code=404)
 
     if doc.status != "failed":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            "document_not_failed",
             detail=f"Only failed documents can be retried (current status: {doc.status})",
+            detail_args={"status": doc.status},
         )
 
     # Verify the source file still exists on disk
     file_path = Path(doc.file_path)
     if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Source file no longer exists on disk; please re-upload",
-        )
+        raise AppError("source_file_missing")
 
     # Clean up any partial chunks left by the previous attempt
     try:
@@ -521,9 +510,11 @@ async def create_document(
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_path = upload_dir / body.filename
     if file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+        raise AppError(
+            "document_filename_conflict",
+            status_code=409,
             detail=f"File '{body.filename}' already exists in this knowledge base",
+            detail_args={"filename": body.filename},
         )
 
     # Write file to disk
@@ -580,8 +571,9 @@ async def import_urls(
     try:
         jina_api_key = get_jina_api_key()
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        raise AppError(
+            "jina_api_key_missing",
+            status_code=503,
             detail=str(exc),
         ) from exc
 
@@ -706,10 +698,7 @@ async def _get_owned_doc(
     )
     doc = result.scalar_one_or_none()
     if doc is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found",
-        )
+        raise AppError("document_not_found", status_code=404)
     return kb, doc
 
 
@@ -727,9 +716,10 @@ async def list_chunks(
     _kb, doc = await _get_owned_doc(kb_id, doc_id, current_user.id, db)
 
     if doc.status != "ready":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            "document_not_ready",
             detail=f"Document is not ready (status: {doc.status})",
+            detail_args={"status": doc.status},
         )
 
     manager = get_kb_manager()
@@ -773,10 +763,7 @@ async def get_chunk(
         kb_id=kb_id, user_id=current_user.id, chunk_id=chunk_id,
     )
     if chunk is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chunk not found",
-        )
+        raise AppError("chunk_not_found", status_code=404)
 
     resp = ChunkResponse(
         id=chunk["id"],
@@ -805,10 +792,7 @@ async def update_chunk(
         kb_id=kb_id, user_id=current_user.id, chunk_id=chunk_id,
     )
     if existing is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chunk not found",
-        )
+        raise AppError("chunk_not_found", status_code=404)
 
     # Ensure the parent document is in "ready" status
     doc_id = existing.get("document_id", "")
@@ -818,9 +802,10 @@ async def update_chunk(
         )
         doc = result.scalar_one_or_none()
         if doc and doc.status != "ready":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                "document_not_ready",
                 detail=f"Document is not ready (status: {doc.status})",
+                detail_args={"status": doc.status},
             )
 
     updated = await manager.update_chunk_text(
@@ -828,10 +813,7 @@ async def update_chunk(
         chunk_id=chunk_id, new_text=body.text,
     )
     if not updated:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update chunk",
-        )
+        raise AppError("chunk_update_failed", status_code=500)
 
     # Return updated chunk
     chunk = await manager.get_chunk(
@@ -863,10 +845,7 @@ async def delete_chunk(
         kb_id=kb_id, user_id=current_user.id, chunk_id=chunk_id,
     )
     if existing is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chunk not found",
-        )
+        raise AppError("chunk_not_found", status_code=404)
 
     # Ensure the parent document is in "ready" status
     doc_id = existing.get("document_id", "")
@@ -876,19 +855,17 @@ async def delete_chunk(
         )
         doc = result.scalar_one_or_none()
         if doc and doc.status != "ready":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                "document_not_ready",
                 detail=f"Document is not ready (status: {doc.status})",
+                detail_args={"status": doc.status},
             )
 
     deleted = await manager.delete_chunk(
         kb_id=kb_id, user_id=current_user.id, chunk_id=chunk_id,
     )
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete chunk",
-        )
+        raise AppError("chunk_delete_failed", status_code=500)
 
     # Decrement counters on KBDocument and KnowledgeBase
     if doc_id:

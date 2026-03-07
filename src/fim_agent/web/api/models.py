@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_agent.db import get_session
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.auth import get_current_user
 from fim_agent.web.models import ModelConfig, User
 from fim_agent.web.schemas.common import ApiResponse
@@ -153,10 +154,7 @@ async def get_model_config(
     )
     cfg = result.scalar_one_or_none()
     if cfg is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model config not found",
-        )
+        raise AppError("model_config_not_found", status_code=404)
     return ApiResponse(data=_config_to_response(cfg).model_dump())
 
 
@@ -175,10 +173,7 @@ async def update_model_config(
     )
     cfg = result.scalar_one_or_none()
     if cfg is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model config not found",
-        )
+        raise AppError("model_config_not_found", status_code=404)
 
     update_data = body.model_dump(exclude_unset=True)
 
@@ -216,22 +211,13 @@ async def delete_model_config(
     )
     cfg = result.scalar_one_or_none()
     if cfg is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model config not found",
-        )
+        raise AppError("model_config_not_found", status_code=404)
 
     if cfg.user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot delete system-level model config",
-        )
+        raise AppError("cannot_delete_system_model", status_code=400)
 
     if cfg.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Model config not found",
-        )
+        raise AppError("model_config_not_found", status_code=404)
 
     await db.delete(cfg)
     await db.commit()

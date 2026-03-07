@@ -5,11 +5,12 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_agent.db import get_session
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.auth import get_current_user
 from fim_agent.web.models import Agent, User
 from fim_agent.web.models.connector import Connector
@@ -54,10 +55,7 @@ async def _get_owned_agent(
     )
     agent = result.scalar_one_or_none()
     if agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
+        raise AppError("agent_not_found", status_code=404)
     return agent
 
 
@@ -79,10 +77,7 @@ async def _validate_binding_ownership(
         )
         owned_count = result.scalar_one()
         if owned_count != len(connector_ids):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="One or more connector_ids do not belong to the current user",
-            )
+            raise AppError("connector_ownership_denied", status_code=403)
 
     if kb_ids:
         result = await db.execute(
@@ -92,10 +87,7 @@ async def _validate_binding_ownership(
         )
         owned_count = result.scalar_one()
         if owned_count != len(kb_ids):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="One or more kb_ids do not belong to the current user",
-            )
+            raise AppError("kb_ownership_denied", status_code=403)
 
 
 @router.post("", response_model=ApiResponse)

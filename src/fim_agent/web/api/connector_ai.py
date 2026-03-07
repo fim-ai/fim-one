@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -30,6 +30,7 @@ from fim_agent.web.schemas.connector import (
     OpenAPIImportRequest,
 )
 from fim_agent.web.api.connectors import _get_owned_connector, _action_to_response, _connector_to_response, _resolve_openapi_spec
+from fim_agent.web.exceptions import AppError
 from fim_agent.core.tool.connector.openapi_parser import parse_openapi_spec
 
 router = APIRouter(prefix="/api/connectors", tags=["connector-ai"])
@@ -198,18 +199,16 @@ async def _llm_call(
     result = await llm.chat(messages=messages)
     content = result.message.content or ""
     if not content:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM returned empty response",
-        )
+        raise AppError("llm_empty_response", status_code=422)
 
     try:
         return _extract_json(content)
     except (json.JSONDecodeError, ValueError) as exc:
         if retry_context is not None:
             # Already retried once — give up
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
+            raise AppError(
+                "llm_invalid_json",
+                status_code=422,
                 detail=f"LLM returned invalid JSON after retry: {exc}",
             ) from exc
         # Auto-retry with error feedback
@@ -236,29 +235,20 @@ async def ai_create_connector(
     lang_directive = get_language_directive(current_user.preferred_language)
     plan = await _llm_call(_CREATE_SYSTEM_PROMPT, body.instruction, language_directive=lang_directive)
     if not isinstance(plan, dict):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM did not return a JSON object",
-        )
+        raise AppError("llm_unexpected_format", status_code=422)
 
     mode = plan.get("mode")
 
     if mode == "openapi_import":
         url = plan.get("url", "")
         if not url:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="LLM extracted openapi_import mode but no URL",
-            )
+            raise AppError("openapi_url_missing", status_code=400)
         spec = await _resolve_openapi_spec(OpenAPIImportRequest(spec_url=url))
         info = spec.get("info", {})
         servers = spec.get("servers", [])
         base_url = servers[0]["url"] if servers else ""
         if not base_url:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OpenAPI spec must have at least one server URL",
-            )
+            raise AppError("spec_no_server_url", status_code=422)
 
         connector = Connector(
             user_id=current_user.id,
@@ -288,6 +278,8 @@ async def ai_create_connector(
 
         await db.commit()
         msg = f"Imported {len(action_dicts)} action(s) from OpenAPI spec."
+        msg_key = "ai_connector_imported"
+        msg_args: dict = {"count": len(action_dicts)}
 
     elif mode == "generate":
         conn_data = plan.get("connector", {})
@@ -330,10 +322,13 @@ async def ai_create_connector(
 
         await db.commit()
         msg = f"Created connector with {created_count} action(s)."
+        msg_key = "ai_connector_created"
+        msg_args = {"count": created_count}
 
     else:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+        raise AppError(
+            "llm_unexpected_format",
+            status_code=422,
             detail=f"LLM returned unknown mode: {mode}",
         )
 
@@ -349,6 +344,8 @@ async def ai_create_connector(
         data=AICreateConnectorResult(
             connector=_connector_to_response(connector),
             message=msg,
+            message_key=msg_key,
+            message_args=msg_args,
         ).model_dump()
     )
 
@@ -371,10 +368,7 @@ async def ai_generate_actions(
 
     raw_actions = await _llm_call(_GENERATE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
     if not isinstance(raw_actions, list):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM did not return a JSON array",
-        )
+        raise AppError("llm_unexpected_format", status_code=422)
 
     created: list[ActionResponse] = []
     failed: list[str] = []
@@ -419,6 +413,8 @@ async def ai_generate_actions(
         created=created,
         failed=failed,
         message=" ".join(parts),
+        message_key="ai_actions_generated",
+        message_args={"created": len(created), "failed": len(failed)},
     )
     return ApiResponse(data=result.model_dump())
 
@@ -442,10 +438,7 @@ async def ai_refine_action(
             (a for a in connector.actions if a.id == body.action_id), None
         )
         if target is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Target action not found",
-            )
+            raise AppError("action_not_found", status_code=404)
         user_msg += (
             f"\n\nTarget action: [{target.id}] {target.name} "
             f"({target.method} {target.path})"
@@ -453,10 +446,7 @@ async def ai_refine_action(
 
     operations = await _llm_call(_REFINE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
     if not isinstance(operations, list):
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="LLM did not return a JSON array",
-        )
+        raise AppError("llm_unexpected_format", status_code=422)
 
     created: list[ActionResponse] = []
     updated: list[ActionResponse] = []
@@ -590,5 +580,13 @@ async def ai_refine_action(
         failed=failed,
         connector_updated=connector_updated_resp,
         message=" ".join(parts),
+        message_key="ai_connector_refined",
+        message_args={
+            "created": len(created),
+            "updated": len(updated),
+            "deleted": len(deleted),
+            "failed": len(failed),
+            "connector_changed": connector_changed,
+        },
     )
     return ApiResponse(data=ai_result.model_dump())

@@ -8,10 +8,11 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import FileResponse
 
 from fim_agent.web.auth import get_current_user
+from fim_agent.web.exceptions import AppError
 from fim_agent.web.models import User
 from fim_agent.web.schemas.common import ApiResponse
 
@@ -134,19 +135,15 @@ async def upload_file(
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ApiResponse:
     if not file.filename:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No filename provided",
-        )
+        raise AppError("no_filename", status_code=400)
 
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"File extension '{ext}' is not allowed. "
-                f"Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
-            ),
+        raise AppError(
+            "unsupported_file_type",
+            status_code=422,
+            detail=f"File extension '{ext}' is not allowed. Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+            detail_args={"ext": ext},
         )
 
     user_dir = _user_dir(current_user.id)
@@ -167,9 +164,12 @@ async def upload_file(
             total_size += len(chunk)
             if total_size > MAX_FILE_SIZE:
                 dest.unlink(missing_ok=True)
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"File exceeds maximum size of {MAX_FILE_SIZE // (1024 * 1024)} MB",
+                max_mb = MAX_FILE_SIZE // (1024 * 1024)
+                raise AppError(
+                    "file_too_large",
+                    status_code=413,
+                    detail=f"File exceeds maximum size of {max_mb} MB",
+                    detail_args={"max_mb": max_mb},
                 )
             f.write(chunk)
 
@@ -232,17 +232,11 @@ async def download_file(
     index = _load_index(current_user.id)
     meta = index.get(file_id)
     if meta is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found",
-        )
+        raise AppError("file_not_found", status_code=404)
 
     file_path = _user_dir(current_user.id) / meta["stored_name"]
     if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found on disk",
-        )
+        raise AppError("file_not_found_disk", status_code=404)
 
     return FileResponse(
         path=str(file_path),
@@ -259,10 +253,7 @@ async def delete_file(
     index = _load_index(current_user.id)
     meta = index.get(file_id)
     if meta is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found",
-        )
+        raise AppError("file_not_found", status_code=404)
 
     # Remove from disk
     file_path = _user_dir(current_user.id) / meta["stored_name"]

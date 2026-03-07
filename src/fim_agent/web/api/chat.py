@@ -34,6 +34,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+from fim_agent.web.exceptions import AppError
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select as sa_select
@@ -291,7 +293,7 @@ async def _resolve_user(
     if token in _sse_tickets:
         _uid, _exp = _sse_tickets.pop(token)
         if _exp < now_utc:
-            raise HTTPException(status_code=401, detail="SSE ticket expired")
+            raise AppError("sse_ticket_expired", status_code=401)
         # Ticket is valid — fall through to DB lookup with _uid
         user_id: str | None = _uid
         payload: dict = {}
@@ -302,7 +304,7 @@ async def _resolve_user(
         payload = decode_token(token)  # raises 401 on bad/expired token
         user_id = payload.get("sub")
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
+            raise AppError("invalid_token_payload", status_code=401)
 
     # -- Fetch full user record from DB ------------------------------------
     system_instructions: str | None = None
@@ -317,7 +319,7 @@ async def _resolve_user(
             )
             user = result.scalar_one_or_none()
             if user is None:
-                raise HTTPException(status_code=401, detail="User not found")
+                raise AppError("user_not_found", status_code=401)
 
             # Fix #11a: reject disabled accounts
             if not user.is_active:
@@ -361,7 +363,7 @@ async def _validate_conversation_ownership(
             )
         )
         if result.scalar_one_or_none() is None:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise AppError("conversation_not_found", status_code=404)
 
 
 async def _check_token_quota(user_id: str) -> None:
@@ -395,10 +397,7 @@ async def _check_token_quota(user_id: str) -> None:
             )
             monthly_tokens = monthly_result.scalar_one()
             if monthly_tokens >= user_quota:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Monthly token quota exceeded",
-                )
+                raise AppError("token_quota_exceeded", status_code=429)
 
 
 async def _resolve_agent_config(
@@ -852,14 +851,11 @@ async def inject_message(
     )
     _conv_owner = _conv_result.scalar_one_or_none()
     if _conv_owner is None or str(_conv_owner) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise AppError("forbidden", status_code=403)
 
     q = get_interrupt_queue(body.conversation_id)
     if q is None:
-        raise HTTPException(
-            status_code=409,
-            detail="No active execution for this conversation",
-        )
+        raise AppError("no_active_execution", status_code=404)
     msg_id = uuid.uuid4().hex[:12]
     q.put(InjectedMessage(id=msg_id, content=body.content))
 
@@ -907,11 +903,11 @@ async def recall_inject(
     )
     _conv_owner = _conv_result.scalar_one_or_none()
     if _conv_owner is None or str(_conv_owner) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise AppError("forbidden", status_code=403)
 
     q = get_interrupt_queue(body.conversation_id)
     if q is None:
-        raise HTTPException(status_code=409, detail="No active execution")
+        raise AppError("no_active_execution", status_code=404)
     recalled = await q.recall(body.inject_id)
     return {"success": recalled}
 
@@ -952,7 +948,7 @@ async def react_endpoint(
     # -- Pre-stream resolution (before StreamingResponse) -------------------
     current_user_id, user_system_instructions, preferred_language = await _resolve_user(token)
     if current_user_id is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise AppError("authentication_required", status_code=401)
     if conversation_id and current_user_id:
         await _validate_conversation_ownership(conversation_id, current_user_id)
     if current_user_id:
@@ -966,7 +962,12 @@ async def react_endpoint(
             fast_llm = await _resolve_fast_llm(_llm_db)
             _context_budget = await get_effective_context_budget(_llm_db)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise AppError(
+            "agent_config_error",
+            status_code=500,
+            detail=str(exc),
+            detail_args={"reason": str(exc)},
+        ) from exc
     tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
 
@@ -1325,7 +1326,7 @@ async def dag_endpoint(
     # -- Pre-stream resolution ----------------------------------------------
     current_user_id, user_system_instructions, preferred_language = await _resolve_user(token)
     if current_user_id is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise AppError("authentication_required", status_code=401)
     if conversation_id and current_user_id:
         await _validate_conversation_ownership(conversation_id, current_user_id)
     if current_user_id:
@@ -1338,7 +1339,12 @@ async def dag_endpoint(
             llm = await _resolve_llm(agent_cfg, _llm_db)
             _fast_context_budget = await get_effective_fast_context_budget(_llm_db)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise AppError(
+            "agent_config_error",
+            status_code=500,
+            detail=str(exc),
+            detail_args={"reason": str(exc)},
+        ) from exc
     tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
 

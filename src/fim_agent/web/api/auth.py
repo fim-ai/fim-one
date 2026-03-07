@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, update
+
+from fim_agent.web.exceptions import AppError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -112,16 +114,10 @@ async def register(
             reg_mode = "open" if reg_enabled.lower() != "false" else "disabled"
 
         if reg_mode == "disabled":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Registration is disabled",
-            )
+            raise AppError("registration_disabled", status_code=403)
         elif reg_mode == "invite":
             if not body.invite_code:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invite code required",
-                )
+                raise AppError("invite_code_required")
                 # Atomic increment: the UPDATE only succeeds when the code exists,
             # is active, has not expired, and still has remaining uses.
             # This prevents the non-atomic read-modify-write race condition where
@@ -150,33 +146,23 @@ async def register(
                 )
                 diag = diag_result.scalar_one_or_none()
                 if diag is None or not diag.is_active:
-                    detail = "Invalid invite code"
+                    raise AppError("invite_code_invalid")
                 elif diag.expires_at and diag.expires_at.replace(tzinfo=UTC) < now_utc:
-                    detail = "Invite code has expired"
+                    raise AppError("invite_code_expired")
                 else:
-                    detail = "Invite code has been fully used"
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=detail,
-                )
+                    raise AppError("invite_code_exhausted")
             await db.flush()
 
     result = await db.execute(select(User).where(User.username == body.username))
     if result.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
-        )
+        raise AppError("username_taken", status_code=409)
 
     # Check email uniqueness
     email_result = await db.execute(
         select(User).where(User.email == body.email)
     )
     if email_result.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
+        raise AppError("email_already_registered", status_code=409)
 
     # First registered user automatically becomes admin
     user = User(
@@ -220,16 +206,10 @@ async def login(
             select(User).options(selectinload(User.oauth_bindings)).where(User.username == body.username)
         )
     if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-        )
+        raise AppError("invalid_credentials", status_code=401)
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account disabled",
-        )
+        raise AppError("account_disabled", status_code=403)
 
     access = create_access_token(user.id, user.username)
     refresh = create_refresh_token(user.id, user.username)
@@ -256,48 +236,30 @@ async def refresh_token(
 ) -> TokenResponse:
     payload = decode_token(body.refresh_token)
     if payload.get("type") != "refresh":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token type",
-        )
+        raise AppError("invalid_token_type", status_code=401)
 
     user_id = payload.get("sub")
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
+        raise AppError("invalid_token_payload", status_code=401)
 
     result = await db.execute(
         select(User).options(selectinload(User.oauth_bindings)).where(User.id == user_id)
     )
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
+        raise AppError("user_not_found", status_code=401)
 
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account disabled",
-        )
+        raise AppError("account_disabled", status_code=403)
 
     if user.refresh_token != body.refresh_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token does not match",
-        )
+        raise AppError("refresh_token_mismatch", status_code=401)
 
     if (
         user.refresh_token_expires_at is not None
         and user.refresh_token_expires_at.replace(tzinfo=UTC) < datetime.now(UTC)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token has expired",
-        )
+        raise AppError("refresh_token_expired", status_code=401)
 
     # Token rotation: issue new pair
     access = create_access_token(user.id, user.username)
@@ -347,19 +309,13 @@ async def update_profile(
         user.preferred_language = body.preferred_language
     if body.email is not None:
         if not body.email or not body.email.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email cannot be empty",
-            )
+            raise AppError("email_empty")
         # Check email uniqueness (exclude current user)
         email_result = await db.execute(
             select(User).where(User.email == body.email, User.id != user.id)
         )
         if email_result.scalar_one_or_none() is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered",
-            )
+            raise AppError("email_already_registered", status_code=409)
         user.email = body.email
     await db.commit()
 
@@ -380,15 +336,9 @@ async def change_password(
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     if user.password_hash is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot change password for OAuth accounts",
-        )
+        raise AppError("oauth_password_change")
     if not verify_password(body.current_password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect",
-        )
+        raise AppError("current_password_incorrect")
     user.password_hash = hash_password(body.new_password)
     await db.commit()
     return ApiResponse(data={"message": "Password changed successfully"})
@@ -404,10 +354,7 @@ async def set_password(
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     if user.password_hash is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password already set. Use change-password instead.",
-        )
+        raise AppError("password_already_set")
     user.password_hash = hash_password(body.new_password)
     await db.commit()
 
@@ -435,9 +382,11 @@ async def unbind_oauth(
     )
     binding = result.scalar_one_or_none()
     if binding is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+        raise AppError(
+            "oauth_binding_not_found",
+            status_code=404,
             detail=f"No OAuth binding found for provider '{provider}'",
+            detail_args={"provider": provider},
         )
 
     # Safety check: prevent unbinding if it's the user's only login method
@@ -453,10 +402,7 @@ async def unbind_oauth(
 
     has_password = user.password_hash is not None
     if not has_password and binding_count <= 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot unbind the only login method. Set a password first.",
-        )
+        raise AppError("cannot_unbind_only_login")
 
     # Delete the binding
     await db.delete(binding)
@@ -495,10 +441,7 @@ async def setup(
     result = await db.execute(select(func.count(User.id)))
     count = result.scalar_one()
     if count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="System already initialized",
-        )
+        raise AppError("system_already_initialized", status_code=403)
 
     user = User(
         username=body.username,
