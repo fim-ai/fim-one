@@ -121,9 +121,9 @@ class HttpRequestTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Send HTTP requests to any URL. Supports GET, POST, PUT, PATCH, DELETE "
-            "methods with custom headers, query parameters, and request body. "
-            "Use this to call REST APIs directly for structured data instead of web search."
+            "Send HTTP requests to REST APIs and return raw responses (status, headers, body). "
+            "Supports GET, POST, PUT, PATCH, DELETE with custom headers, params, and body. "
+            "Best for JSON APIs and structured data. For reading web pages, use web_fetch instead."
         )
 
     @property

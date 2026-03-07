@@ -20,13 +20,42 @@ from ..base import BaseTool
 _DEFAULT_TIMEOUT: int = 30
 _MAX_CHARS: int = 20_000
 
+# Explicit blocklist — avoid Python's ``is_private`` which over-blocks in 3.11+
+# (e.g. 198.18.0.0/15 used by TUN-mode proxies like Clash/Surge).
+_BLOCKED_IPV4_NETWORKS = [
+    ipaddress.IPv4Network("127.0.0.0/8"),
+    ipaddress.IPv4Network("10.0.0.0/8"),
+    ipaddress.IPv4Network("172.16.0.0/12"),
+    ipaddress.IPv4Network("192.168.0.0/16"),
+    ipaddress.IPv4Network("169.254.0.0/16"),
+    ipaddress.IPv4Network("0.0.0.0/8"),
+]
+
+_BLOCKED_IPV6_NETWORKS = [
+    ipaddress.IPv6Network("::1/128"),
+    ipaddress.IPv6Network("fc00::/7"),
+    ipaddress.IPv6Network("fe80::/10"),
+]
+
+
+def _is_blocked_ip(ip_str: str) -> bool:
+    """Return True if the IP address falls within a blocked range."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True  # Unparseable addresses are blocked.
+
+    if isinstance(addr, ipaddress.IPv4Address):
+        return any(addr in net for net in _BLOCKED_IPV4_NETWORKS)
+    return any(addr in net for net in _BLOCKED_IPV6_NETWORKS)
+
 
 def _validate_url(url: str) -> None:
     """Validate a URL against SSRF risks.
 
     Raises ValueError if:
     - The scheme is not http or https.
-    - The resolved IP falls in a private, loopback, or link-local range.
+    - The resolved IP falls in a blocked internal range.
 
     DNS resolution failures are treated as non-blocking: if the hostname
     cannot be resolved here, the request is allowed to proceed and will
@@ -50,15 +79,10 @@ def _validate_url(url: str) -> None:
         return
 
     for _family, _type, _proto, _canonname, sockaddr in addr_infos:
-        raw_ip = sockaddr[0]
-        try:
-            addr = ipaddress.ip_address(raw_ip)
-        except ValueError:
-            continue
-
-        if addr.is_loopback or addr.is_private or addr.is_link_local:
+        ip = sockaddr[0]
+        if _is_blocked_ip(ip):
             raise ValueError(
-                f"Blocked request to internal/reserved address '{raw_ip}' "
+                f"Blocked request to internal address '{ip}' "
                 f"resolved from hostname '{hostname}'."
             )
 
@@ -84,9 +108,10 @@ class WebFetchTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Fetch the content of a web page and return it as Markdown text. "
-            "Provide a full URL (e.g. https://example.com). "
-            "Useful for reading articles, documentation, API responses, etc."
+            "Fetch a web page and return its content as clean Markdown text "
+            "(HTML is converted, navigation/ads stripped). "
+            "Best for reading articles, blog posts, documentation, and Wikipedia. "
+            "For REST APIs that return JSON, use http_request instead."
         )
 
     @property
