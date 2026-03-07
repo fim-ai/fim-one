@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
+import hljs from "highlight.js"
+import Markdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import {
   Layers,
   Loader2,
@@ -80,6 +83,49 @@ async function fetchArtifactBlob(url: string): Promise<string> {
   if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
   const blob = await res.blob()
   return URL.createObjectURL(blob)
+}
+
+async function fetchArtifactText(url: string): Promise<string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem(ACCESS_TOKEN_KEY) : null
+  const headers: Record<string, string> = {}
+  if (token) headers["Authorization"] = `Bearer ${token}`
+  const res = await fetch(`${getApiBaseUrl()}${url}`, { headers })
+  if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
+  return res.text()
+}
+
+const EXT_LANG: Record<string, string> = {
+  py: "python", js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript",
+  json: "json", yaml: "yaml", yml: "yaml", sh: "bash", bash: "bash", zsh: "bash",
+  css: "css", scss: "scss", less: "less", sql: "sql", xml: "xml", toml: "toml",
+  go: "go", rs: "rust", rb: "ruby", php: "php", java: "java",
+  c: "c", cpp: "cpp", cs: "csharp", swift: "swift", kt: "kotlin",
+  html: "html", env: "bash", cfg: "ini", ini: "ini",
+}
+
+function fileExt(name: string): string {
+  return name.split(".").pop()?.toLowerCase() ?? ""
+}
+
+function isMarkdownFile(name: string, mimeType: string): boolean {
+  return fileExt(name) === "md" || mimeType === "text/markdown"
+}
+
+function isTextPreviewable(mime: string, name: string): boolean {
+  if (mime === "text/html" || mime.startsWith("image/")) return false
+  if (mime.startsWith("text/") || mime === "application/json") return true
+  return fileExt(name) in EXT_LANG
+}
+
+function highlight(code: string, name: string): string {
+  const lang = EXT_LANG[fileExt(name)]
+  try {
+    return lang
+      ? hljs.highlight(code, { language: lang }).value
+      : hljs.highlightAuto(code).value
+  } catch {
+    return hljs.highlightAuto(code).value
+  }
 }
 
 // ---------- sub-components ----------
@@ -174,30 +220,47 @@ function PreviewModal({
 }) {
   const t = useTranslations("artifacts")
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
-  const [loadingBlob, setLoadingBlob] = useState(false)
+  const [textContent, setTextContent] = useState<string | null>(null)
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   const filter = artifact ? getFilter(artifact.mime_type) : null
+  const isText = artifact ? isTextPreviewable(artifact.mime_type, artifact.name) : false
+  const isMarkdown = artifact ? isMarkdownFile(artifact.name, artifact.mime_type) : false
   const needsBlob = filter === "images" || filter === "html"
 
   useEffect(() => {
-    if (!open || !artifact || !needsBlob) {
+    if (!open || !artifact) {
       setBlobUrl(null)
+      setTextContent(null)
+      setHighlightedHtml(null)
       return
     }
-    let objectUrl: string | null = null
-    setLoadingBlob(true)
-    fetchArtifactBlob(artifact.url)
-      .then((url) => {
-        objectUrl = url
-        setBlobUrl(url)
-      })
-      .catch(() => setBlobUrl(null))
-      .finally(() => setLoadingBlob(false))
 
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    let objectUrl: string | null = null
+    setLoading(true)
+
+    if (needsBlob) {
+      fetchArtifactBlob(artifact.url)
+        .then((url) => { objectUrl = url; setBlobUrl(url) })
+        .catch(() => setBlobUrl(null))
+        .finally(() => setLoading(false))
+    } else if (isText) {
+      fetchArtifactText(artifact.url)
+        .then((text) => {
+          setTextContent(text)
+          if (!isMarkdownFile(artifact.name, artifact.mime_type)) {
+            setHighlightedHtml(highlight(text, artifact.name))
+          }
+        })
+        .catch(() => setTextContent(null))
+        .finally(() => setLoading(false))
+    } else {
+      setLoading(false)
     }
-  }, [open, artifact, needsBlob])
+
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [open, artifact, needsBlob, isText])
 
   const handleDownload = useCallback(async () => {
     if (!artifact) return
@@ -225,7 +288,7 @@ function PreviewModal({
         </DialogHeader>
 
         <div className="min-h-32 flex items-center justify-center">
-          {loadingBlob ? (
+          {loading ? (
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           ) : filter === "images" && blobUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -241,8 +304,23 @@ function PreviewModal({
               className="h-[60vh] w-full rounded border border-border"
               title={artifact.name}
             />
+          ) : isText && isMarkdown && textContent !== null ? (
+            <div className="w-full max-h-[65vh] overflow-y-auto rounded border border-border p-4 prose prose-sm dark:prose-invert max-w-none">
+              <Markdown remarkPlugins={[remarkGfm]}>{textContent}</Markdown>
+            </div>
+          ) : isText && highlightedHtml !== null ? (
+            <pre className="w-full max-h-[65vh] overflow-auto rounded border border-border bg-muted/30 p-4 text-xs leading-relaxed">
+              <code
+                className="hljs"
+                dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+              />
+            </pre>
+          ) : isText && textContent !== null ? (
+            <pre className="w-full max-h-[65vh] overflow-auto rounded border border-border bg-muted/30 p-4 text-xs leading-relaxed whitespace-pre-wrap break-words">
+              {textContent}
+            </pre>
           ) : (
-            <div className="flex flex-col items-center gap-4 py-8 text-center">
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
               <File className="h-12 w-12 text-muted-foreground/40" />
               <div>
                 <p className="font-medium text-sm">{artifact.name}</p>
@@ -250,10 +328,6 @@ function PreviewModal({
                   {artifact.mime_type} &middot; {formatSize(artifact.size)}
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={handleDownload}>
-                <Download className="h-4 w-4 mr-2" />
-                {t("download")}
-              </Button>
             </div>
           )}
         </div>
