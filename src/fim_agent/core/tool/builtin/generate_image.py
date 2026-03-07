@@ -94,13 +94,8 @@ class GenerateImageTool(BaseTool):
         except Exception as exc:
             return f"Image generation failed: {exc}"
 
-        text = (
-            f"![Generated Image]({result.url})\n\n"
-            f"*Prompt:* {result.prompt}  \n"
-            f"*Model:* {result.model}"
-        )
-
-        # Register generated image as an artifact.
+        # Register generated image as an artifact and use the artifact API URL
+        # so the frontend can load the image with authentication.
         if self._artifacts_dir:
             from fim_agent.core.tool.base import Artifact, ToolResult
 
@@ -114,6 +109,17 @@ class GenerateImageTool(BaseTool):
                     rel_path = str(stored.relative_to(self._artifacts_dir.parent.parent.parent))
                 except ValueError:
                     rel_path = stored.name
+
+                # Derive conversation ID from artifacts_dir path to build the
+                # artifact API URL (instead of the unserved /uploads/... path).
+                conv_id = self._artifacts_dir.parent.name
+                artifact_url = f"/api/conversations/{conv_id}/artifacts/{artifact_id}"
+
+                text = (
+                    f"![Generated Image]({artifact_url})\n\n"
+                    f"*Prompt:* {result.prompt}  \n"
+                    f"*Model:* {result.model}"
+                )
                 artifact = Artifact(
                     name=img_path.name,
                     path=rel_path,
@@ -122,4 +128,10 @@ class GenerateImageTool(BaseTool):
                 )
                 return ToolResult(content=text, artifacts=[artifact])
 
+        # Fallback when no artifacts_dir: use the direct upload URL.
+        text = (
+            f"![Generated Image]({result.url})\n\n"
+            f"*Prompt:* {result.prompt}  \n"
+            f"*Model:* {result.model}"
+        )
         return text

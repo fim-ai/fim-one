@@ -1,13 +1,13 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Download } from "lucide-react"
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
@@ -37,31 +37,84 @@ function processCitations(children: React.ReactNode): React.ReactNode {
   })
 }
 
+/** Check if a URL points to an authenticated artifact endpoint. */
+function isArtifactUrl(url: string): boolean {
+  return url.includes("/api/conversations/") && url.includes("/artifacts/")
+}
+
+/** Fetch an image through the authenticated artifact API, returning a blob URL. */
+async function fetchAuthImage(url: string): Promise<string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem(ACCESS_TOKEN_KEY) : null
+  const headers: Record<string, string> = {}
+  if (token) headers["Authorization"] = `Bearer ${token}`
+  const fullUrl = url.startsWith("http") ? url : `${getApiBaseUrl()}${url}`
+  const res = await fetch(fullUrl, { headers })
+  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`)
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
+
 function ClickableImage({ src, alt }: { src: string; alt: string }) {
   const [open, setOpen] = useState(false)
+  // For artifact URLs, fetch with auth and use a blob URL for rendering.
+  const [imgSrc, setImgSrc] = useState(() => isArtifactUrl(src) ? "" : src)
+
+  useEffect(() => {
+    if (!isArtifactUrl(src)) {
+      setImgSrc(src)
+      return
+    }
+    let revoked = false
+    fetchAuthImage(src).then((blobUrl) => {
+      if (!revoked) setImgSrc(blobUrl)
+    }).catch(() => {
+      // Fallback to raw URL (will likely fail but shows alt text)
+      if (!revoked) setImgSrc(src)
+    })
+    return () => { revoked = true }
+  }, [src])
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    try {
+      const blobUrl = isArtifactUrl(src) ? imgSrc || await fetchAuthImage(src) : src
+      const a = document.createElement("a")
+      a.href = blobUrl
+      a.download = alt || "image"
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch {
+      window.open(src, "_blank")
+    }
+  }
+
   return (
     <>
-      <img
-        src={src}
-        alt={alt}
-        className="max-h-72 w-auto max-w-full rounded-lg my-2 block cursor-zoom-in hover:opacity-90 transition-opacity"
-        onClick={() => setOpen(true)}
-      />
+      {imgSrc ? (
+        <img
+          src={imgSrc}
+          alt={alt}
+          className="max-h-72 w-auto max-w-full rounded-lg my-2 block cursor-zoom-in hover:opacity-90 transition-opacity"
+          onClick={() => setOpen(true)}
+        />
+      ) : (
+        <div className="max-h-72 w-64 rounded-lg my-2 flex items-center justify-center bg-muted/30 text-muted-foreground text-sm animate-pulse">
+          Loading image…
+        </div>
+      )}
       {open && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col gap-3 pt-4">
-            <a
-              href={src}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleDownload}
               className="absolute right-12 top-4 rounded-sm opacity-70 hover:opacity-100 transition-opacity text-foreground"
-              onClick={(e) => e.stopPropagation()}
             >
               <Download className="h-4 w-4" />
-            </a>
+            </button>
             <DialogTitle className="leading-normal pb-1 pr-24 truncate text-xs font-medium">{alt || "Image"}</DialogTitle>
-            <img src={src} alt={alt} className="max-h-[calc(90vh-6rem)] max-w-full w-auto mx-auto block rounded object-contain" />
+            <img src={imgSrc} alt={alt} className="max-h-[calc(90vh-6rem)] max-w-full w-auto mx-auto block rounded object-contain" />
           </DialogContent>
         </Dialog>
       )}
