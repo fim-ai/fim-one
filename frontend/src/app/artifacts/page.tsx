@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 import hljs from "highlight.js"
 import Markdown from "react-markdown"
@@ -324,13 +325,24 @@ function PreviewPanel({
 
 // ---------- main page ----------
 
-export default function ArtifactsPage() {
+function ArtifactsContent() {
   const t = useTranslations("artifacts")
   const tLayout = useTranslations("layout")
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const activeFilter = (searchParams.get("tab") as FilterType) || "all"
+
+  const handleFilterChange = (tab: FilterType) => {
+    if (tab === "all") {
+      router.replace("/artifacts")
+    } else {
+      router.replace(`/artifacts?tab=${tab}`)
+    }
+  }
 
   const [artifacts, setArtifacts] = useState<ArtifactItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeFilter, setActiveFilter] = useState<FilterType>("all")
   const [selected, setSelected] = useState<ArtifactItem | null>(null)
 
   useEffect(() => {
@@ -384,7 +396,7 @@ export default function ArtifactsPage() {
             {filters.map((f) => (
               <button
                 key={f.key}
-                onClick={() => setActiveFilter(f.key)}
+                onClick={() => handleFilterChange(f.key)}
                 className={cn(
                   "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                   activeFilter === f.key
@@ -468,5 +480,13 @@ export default function ArtifactsPage() {
         {selected && <PreviewPanel artifact={selected} onClose={() => setSelected(null)} />}
       </aside>
     </div>
+  )
+}
+
+export default function ArtifactsPage() {
+  return (
+    <Suspense>
+      <ArtifactsContent />
+    </Suspense>
   )
 }

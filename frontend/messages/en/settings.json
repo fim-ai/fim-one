@@ -189,7 +189,19 @@
 
     "dangerZoneTitle": "Danger Zone",
     "dangerZoneDescription": "Irreversible and destructive actions.",
-    "deleteAccountUnavailable": "Account deletion is not yet available."
+    "deleteAccountButton": "Delete My Account",
+    "deleteAccountDesc": "Once deleted, all your data will be permanently removed and cannot be recovered.",
+    "deleteAccountConfirmTitle": "Confirm Account Deletion",
+    "deleteAccountConfirmDesc": "This action cannot be undone. The following data will be permanently deleted:",
+    "deleteAccountConfirmItem1": "Account information (profile, credentials, settings)",
+    "deleteAccountConfirmItem2": "All conversations and chat messages",
+    "deleteAccountConfirmItem3": "Generated artifacts (images, code outputs, etc.)",
+    "deleteAccountConfirmItem4": "User-uploaded files",
+    "deleteAccountConfirmItem5": "Sandbox and temporary files",
+    "deleteAccountInputHint": "Type \"{target}\" to confirm",
+    "deleteAccountCountdown": "Delete ({seconds}s)",
+    "deleteAccountFinal": "Delete Permanently",
+    "deleteAccountDeleting": "Deleting..."
   },
 
   "appearance": {

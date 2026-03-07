@@ -5,6 +5,13 @@ import { useTranslations, useLocale } from "next-intl"
 import { format } from "date-fns"
 import { Loader2, RefreshCw, Download, CalendarIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { Calendar } from "@/components/ui/calendar"
 import {
   Popover,
@@ -70,6 +77,7 @@ const KNOWN_ACTIONS = [
   "model.enable",
   "model.disable",
   "model.set_role",
+  "account.self_delete",
 ]
 
 const ACTION_COLORS: Record<string, string> = {
@@ -82,6 +90,7 @@ const ACTION_COLORS: Record<string, string> = {
   "user.reset_password": "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30",
   "auth.force_logout_all": "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
   "settings.update": "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30",
+  "account.self_delete": "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30",
 }
 
 function actionColor(action: string): string {
@@ -148,6 +157,7 @@ export function AdminAudit() {
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
+  const [selected, setSelected] = useState<AuditEntry | null>(null)
 
   // Filters
   const [actionFilter, setActionFilter] = useState("__all__")
@@ -345,7 +355,7 @@ export function AdminAudit() {
               </thead>
               <tbody className="divide-y divide-border">
                 {data.items.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-muted/20 transition-colors">
+                  <tr key={entry.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setSelected(entry)}>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                       {formatTime(entry.created_at, locale)}
                     </td>
@@ -386,6 +396,48 @@ export function AdminAudit() {
           </div>
         </>
       )}
+
+      {/* Detail dialog */}
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("detailDialogTitle")}</DialogTitle>
+            <DialogDescription>
+              {selected && formatTime(selected.created_at, locale)}
+            </DialogDescription>
+          </DialogHeader>
+          {selected && (
+            <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
+              <span className="text-muted-foreground">{t("adminColumn")}</span>
+              <span className="font-medium">{selected.admin_username}</span>
+
+              <span className="text-muted-foreground">{t("actionColumn")}</span>
+              <span>
+                <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${actionColor(selected.action)}`}>
+                  {getActionLabel(selected.action)}
+                </span>
+              </span>
+
+              <span className="text-muted-foreground">{t("targetColumn")}</span>
+              <span className="font-medium">
+                {selected.target_label || "\u2014"}
+              </span>
+
+              {selected.target_id && (
+                <>
+                  <span className="text-muted-foreground">ID</span>
+                  <span className="font-mono text-xs text-muted-foreground break-all">{selected.target_id}</span>
+                </>
+              )}
+
+              <span className="text-muted-foreground">{t("detailColumn")}</span>
+              <span className="whitespace-pre-wrap break-words">
+                {selected.detail || "\u2014"}
+              </span>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

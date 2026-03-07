@@ -8,8 +8,8 @@
   "executionPlan": "Execution Plan",
   "waitingForPlan": "Waiting for plan...",
   "placeholderInterrupt": "Send a message to interrupt the agent...",
-  "placeholderReact": "Ask the agent to solve a problem...",
-  "placeholderDag": "Describe a multi-step task for the DAG planner...",
+  "placeholderReact": "Ask the agent to solve a problem... (Type / for commands)",
+  "placeholderDag": "Describe a multi-step task for the DAG planner... (Type / for commands)",
   "modeStandard": "Standard",
   "modePlanner": "Planner",
   "modeStandardTooltip": "Standard (ReAct) — Quick response with flexible tool use",
@@ -76,6 +76,12 @@
   "tokenIn": "{value}k in",
   "tokenOut": "{value}k out",
   "retryButton": "Retry",
+  "slash": {
+    "newDesc": "Start a fresh conversation",
+"agentDesc": "Quick-select an agent by name",
+    "modeDesc": "Switch between Standard and Planner mode",
+    "noMatch": "No matching items"
+  },
   "examples": {
     "react": [
       { "text": "Call the GitHub API (https://api.github.com/orgs/openai/repos?sort=stars&per_page=5) to list OpenAI's top 5 repos -- which one has the most stars?", "category": "web" },

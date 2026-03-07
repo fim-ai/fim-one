@@ -8,8 +8,8 @@
   "executionPlan": "执行计划",
   "waitingForPlan": "等待执行计划...",
   "placeholderInterrupt": "发送消息以中断智能体...",
-  "placeholderReact": "让智能体帮你解决问题...",
-  "placeholderDag": "描述一个多步骤任务，由 DAG 规划器执行...",
+  "placeholderReact": "让智能体帮你解决问题...（输入 / 调出命令）",
+  "placeholderDag": "描述一个多步骤任务...（输入 / 调出命令）",
   "modeStandard": "标准",
   "modePlanner": "规划",
   "modeStandardTooltip": "标准 (ReAct) — 灵活的工具调用，快速响应",
@@ -76,6 +76,12 @@
   "tokenIn": "{value}k 输入",
   "tokenOut": "{value}k 输出",
   "retryButton": "重试",
+  "slash": {
+    "newDesc": "开始一个新对话",
+"agentDesc": "快速按名称选择智能体",
+    "modeDesc": "在标准模式和规划模式间切换",
+    "noMatch": "无匹配项"
+  },
   "examples": {
     "react": [
       { "text": "调用 GitHub API (https://api.github.com/orgs/openai/repos?sort=stars&per_page=5) 列出 OpenAI 最热门的 5 个仓库——哪个 star 最多？", "category": "web" },

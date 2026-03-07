@@ -1,4 +1,6 @@
 {
+  "welcomeTitle": "个性化设置",
+
   "step1Title": "我们该怎么称呼你？",
   "step1Subtitle": "这将是你在对话中的显示名称",
   "displayNamePlaceholder": "你的名字",
@@ -43,5 +45,6 @@
   "continue": "继续",
   "getStarted": "开始使用",
   "skip": "暂时跳过",
+  "back": "上一步",
   "settingUp": "正在设置你的个人资料..."
 }

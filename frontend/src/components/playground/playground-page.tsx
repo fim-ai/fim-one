@@ -10,6 +10,8 @@ import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap,
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "sonner"
 import { useSSE } from "@/hooks/use-sse"
+import { useSlashCommands } from "@/hooks/use-slash-commands"
+import { SlashCommandMenu } from "@/components/playground/slash-command-menu"
 import { useDagSteps } from "@/hooks/use-dag-steps"
 import { useReactSteps } from "@/hooks/use-react-steps"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -79,6 +81,7 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
     createConversation,
     selectConversation,
     loadConversations,
+    animateTitle,
     clearActive,
   } = useConversation()
 
@@ -203,6 +206,12 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
     } else if (sseJustFinishedRef.current) {
       sseJustFinishedRef.current = false
       setInjectedMessages([])
+      // Extract auto-generated title from done event and animate it
+      const doneMsg = messages.find((m) => m.event === "done")
+      const doneTitle = (doneMsg?.data as { title?: string } | undefined)?.title
+      if (doneTitle && activeId) {
+        animateTitle(activeId, doneTitle)
+      }
       loadConversations()
       // Restore failed inject content to input box for user to re-send
       const queued = failedInjectRef.current
@@ -268,21 +277,19 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
       }
 
       const endpoint = mode === "react" ? "react" : "dag"
-      // SSE EventSource connects directly to backend, bypassing Next.js
+      // SSE connects directly to backend via POST, bypassing Next.js
       // rewrite proxy which buffers streaming responses.
-      let url = `${getApiDirectUrl()}/api/${endpoint}?q=${encodeURIComponent(trimmed)}&conversation_id=${convId}`
+      const url = `${getApiDirectUrl()}/api/${endpoint}`
+      const body: Record<string, unknown> = {
+        q: trimmed,
+        conversation_id: convId,
+      }
       const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY)
-      if (accessToken) {
-        url += `&token=${encodeURIComponent(accessToken)}`
-      }
-      if (selectedAgent?.id) {
-        url += `&agent_id=${encodeURIComponent(selectedAgent.id)}`
-      }
-      if (imageIds?.length) {
-        url += `&image_ids=${encodeURIComponent(imageIds.join(","))}`
-      }
+      if (accessToken) body.token = accessToken
+      if (selectedAgent?.id) body.agent_id = selectedAgent.id
+      if (imageIds?.length) body.image_ids = imageIds.join(",")
       setSourceMode(mode)
-      start(url, (errMsg) => toast.error(errMsg))
+      start(url, { body, onError: (errMsg) => toast.error(errMsg) })
     },
     [isRunning, mode, start, activeId, createConversation, selectConversation, selectedAgent, setInjectedMessages],
   )
@@ -338,6 +345,13 @@ export function PlaygroundPage({ isNewChat }: PlaygroundPageProps) {
         onRunWithQuery={runWithQuery}
         onAbort={abort}
         onExampleSelect={handleExampleSelect}
+        onNewChat={() => {
+          reset()
+          setPendingQuery(null)
+          setSourceMode(null)
+          clearActive()
+          router.push("/new")
+        }}
         isNewChat={isNewChat}
         initialAgentId={agentParam}
       />
@@ -519,6 +533,7 @@ interface PlaygroundContentProps {
   onRunWithQuery: (q: string, imageIds?: string[]) => void
   onAbort: () => void
   onExampleSelect: (example: string) => void
+  onNewChat: () => void
   isNewChat?: boolean
   initialAgentId?: string | null
 }
@@ -541,6 +556,7 @@ function PlaygroundContent({
   onRunWithQuery,
   onAbort,
   onExampleSelect,
+  onNewChat,
   isNewChat,
   initialAgentId,
 }: PlaygroundContentProps) {
@@ -586,6 +602,27 @@ function PlaygroundContent({
   const [pendingImages, setPendingImages] = useState<Array<{ file_id: string; filename: string }>>([])
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Slash commands
+  const slashCommands = useSlashCommands({
+    query,
+    isComposing: composing,
+    agents,
+    mode,
+    isRunning,
+    onNewChat,
+    onAgentChange: (agentId) => {
+      if (!agentId) {
+        onAgentChange(null)
+      } else {
+        const agent = agents.find((a) => a.id === agentId)
+        if (agent) onAgentChange(agent)
+      }
+    },
+    onModeChange,
+    onQueryChange,
+    onAbort,
+  })
 
   // Priority: active drag > custom drag (persisted) > expand preset > normal preset
   const NORMAL_RATIO = 0.3
@@ -862,12 +899,14 @@ function PlaygroundContent({
 
   const handleKeyDownWithFiles = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Let slash command menu handle first
+      if (slashCommands.handleKeyDown(e)) return
       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault()
         handleRunWithFiles()
       }
     },
-    [handleRunWithFiles],
+    [handleRunWithFiles, slashCommands.handleKeyDown],
   )
 
   const statusText = (() => {
@@ -1168,7 +1207,16 @@ function PlaygroundContent({
           onChange={handleFileUpload}
           accept=".txt,.md,.py,.js,.json,.csv,.pdf,.docx,.html,.htm,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.svg,image/*"
         />
-        <div className="flex items-end gap-2">
+        <div className="relative flex items-end gap-2">
+          <SlashCommandMenu
+            isOpen={slashCommands.isOpen}
+            filteredCommands={slashCommands.filteredCommands}
+            subMenuCommand={slashCommands.subMenuCommand}
+            subMenuItems={slashCommands.subMenuItems}
+            selectedIndex={slashCommands.selectedIndex}
+            onSelect={slashCommands.executeCommand}
+            onQueryChange={onQueryChange}
+          />
           <Textarea
             ref={textareaRef}
             value={query}

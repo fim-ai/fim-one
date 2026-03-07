@@ -1,4 +1,6 @@
 {
+  "welcomeTitle": "Set up your profile",
+
   "step1Title": "What should we call you?",
   "step1Subtitle": "This is how you'll appear in conversations",
   "displayNamePlaceholder": "Your name",
@@ -43,5 +45,6 @@
   "continue": "Continue",
   "getStarted": "Get Started",
   "skip": "Skip for now",
+  "back": "Back",
   "settingUp": "Setting up your profile..."
 }

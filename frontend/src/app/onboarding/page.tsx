@@ -117,6 +117,13 @@ export default function OnboardingPage() {
     }
   }, [step])
 
+  const goBack = useCallback(() => {
+    if (step > 1) {
+      setDirection("backward")
+      setStep((s) => s - 1)
+    }
+  }, [step])
+
   const handleSkip = useCallback(async () => {
     setSubmitting(true)
     try {
@@ -411,14 +418,26 @@ export default function OnboardingPage() {
           >
             {t("skip")}
           </button>
-          <Button
-            onClick={isLastStep ? handleComplete : goNext}
-            disabled={!canContinue || submitting}
-            className="min-w-[120px]"
-          >
-            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {submitting ? t("settingUp") : isLastStep ? t("getStarted") : t("continue")}
-          </Button>
+          <div className="flex items-center gap-6">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={submitting}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                {t("back")}
+              </button>
+            )}
+            <Button
+              onClick={isLastStep ? handleComplete : goNext}
+              disabled={!canContinue || submitting}
+              className="min-w-[120px]"
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {submitting ? t("settingUp") : isLastStep ? t("getStarted") : t("continue")}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

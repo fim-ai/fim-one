@@ -10,6 +10,8 @@ import {
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
+import remarkCjkFriendly from "remark-cjk-friendly"
+import remarkCjkFriendlyGfmStrikethrough from "remark-cjk-friendly-gfm-strikethrough"
 import rehypeKatex from "rehype-katex"
 import rehypeHighlight from "rehype-highlight"
 
@@ -77,7 +79,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
   return (
     <div className={`min-w-0 overflow-hidden ${className ?? ""}`}>
       <Markdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkCjkFriendly, remarkCjkFriendlyGfmStrikethrough, remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex, rehypeHighlight]}
         components={{
           pre({ children, ...props }) {

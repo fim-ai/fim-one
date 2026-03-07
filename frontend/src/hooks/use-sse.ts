@@ -8,13 +8,18 @@ export interface SSEMessage {
   timestamp: number
 }
 
+export interface StartOptions {
+  body?: Record<string, unknown>
+  onError?: (msg: string) => void
+}
+
 export function useSSE() {
   const [messages, setMessages] = useState<SSEMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [isError, setIsError] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
-  const start = useCallback((url: string, onError?: (msg: string) => void) => {
+  const start = useCallback((url: string, options?: StartOptions) => {
     // Abort any existing stream
     if (abortRef.current) {
       abortRef.current.abort()
@@ -30,7 +35,13 @@ export function useSSE() {
 
     ;(async () => {
       try {
-        const res = await fetch(url, { signal: controller.signal })
+        const fetchInit: RequestInit = { signal: controller.signal }
+        if (options?.body) {
+          fetchInit.method = "POST"
+          fetchInit.headers = { "Content-Type": "application/json" }
+          fetchInit.body = JSON.stringify(options.body)
+        }
+        const res = await fetch(url, fetchInit)
 
         if (!res.ok) {
           // Read error body before closing
@@ -40,7 +51,7 @@ export function useSSE() {
               ? body.detail
               : `Request failed (${res.status})`
           setIsError(true)
-          onError?.(detail)
+          options?.onError?.(detail)
           setIsRunning(false)
           abortRef.current = null
           return
@@ -48,7 +59,7 @@ export function useSSE() {
 
         if (!res.body) {
           setIsError(true)
-          onError?.("No response body")
+          options?.onError?.("No response body")
           setIsRunning(false)
           abortRef.current = null
           return
@@ -100,7 +111,7 @@ export function useSSE() {
       } catch (err: unknown) {
         if ((err as { name?: string })?.name === "AbortError") return
         setIsError(true)
-        onError?.((err as Error)?.message ?? "Stream error")
+        options?.onError?.((err as Error)?.message ?? "Stream error")
       } finally {
         if (abortRef.current === controller) {
           abortRef.current = null

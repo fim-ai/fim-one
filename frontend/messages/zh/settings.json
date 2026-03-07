@@ -189,7 +189,19 @@
 
     "dangerZoneTitle": "危险区域",
     "dangerZoneDescription": "不可逆的破坏性操作。",
-    "deleteAccountUnavailable": "账户删除功能暂未开放。"
+    "deleteAccountButton": "注销我的账户",
+    "deleteAccountDesc": "注销后，你的所有数据将被永久删除且无法恢复。",
+    "deleteAccountConfirmTitle": "确认注销账户",
+    "deleteAccountConfirmDesc": "此操作不可撤销，以下数据将被永久删除：",
+    "deleteAccountConfirmItem1": "账户信息（个人资料、登录凭证、偏好设置）",
+    "deleteAccountConfirmItem2": "所有对话及聊天消息",
+    "deleteAccountConfirmItem3": "生成的产物（图片、代码输出等）",
+    "deleteAccountConfirmItem4": "用户上传的文件",
+    "deleteAccountConfirmItem5": "沙箱及临时文件",
+    "deleteAccountInputHint": "输入 \"{target}\" 以确认",
+    "deleteAccountCountdown": "删除 ({seconds}s)",
+    "deleteAccountFinal": "永久删除",
+    "deleteAccountDeleting": "删除中..."
   },
 
   "appearance": {

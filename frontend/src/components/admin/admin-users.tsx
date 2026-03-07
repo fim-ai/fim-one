@@ -689,8 +689,17 @@ export function AdminUsers() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("deleteUserTitle", { username: deleteTarget?.username || deleteTarget?.email || "" })}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("deleteUserDesc")}
+            <AlertDialogDescription asChild>
+              <div className="text-sm text-muted-foreground">
+                <p>{t("deleteUserDesc")}</p>
+                <ul className="mt-2 list-disc pl-5 space-y-1">
+                  <li>{t("deleteUserItem1")}</li>
+                  <li>{t("deleteUserItem2")}</li>
+                  <li>{t("deleteUserItem3")}</li>
+                  <li>{t("deleteUserItem4")}</li>
+                  <li>{t("deleteUserItem5")}</li>
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

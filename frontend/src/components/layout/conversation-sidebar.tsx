@@ -86,6 +86,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
     clearActive,
     deleteConversation,
     updateTitle,
+    typingTitles,
     toggleStar,
   } = useConversation()
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -224,7 +225,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                         )}
                       >
                         <span className="flex-1 truncate text-[13px]">
-                          {conv.title || t("untitled")}
+                          {conv.id in typingTitles ? typingTitles[conv.id] : (conv.title || t("untitled"))}
                         </span>
                         {conv.mode === "dag" ? (
                           <GitBranch className="shrink-0 h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />

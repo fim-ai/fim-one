@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from "react"
 import { conversationApi, ApiError } from "@/lib/api"
 import { useAuth } from "./auth-context"
@@ -20,6 +21,8 @@ interface ConversationContextValue {
   activeId: string | null
   isLoadingList: boolean
   isLoadingDetail: boolean
+  /** Map of conversation IDs to partially-typed titles (typewriter animation). */
+  typingTitles: Record<string, string>
   loadConversations: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
   createConversation: (
@@ -29,6 +32,8 @@ interface ConversationContextValue {
   ) => Promise<ConversationResponse>
   deleteConversation: (id: string) => Promise<void>
   updateTitle: (id: string, title: string) => Promise<void>
+  /** Animate a title into the sidebar with a typewriter effect. */
+  animateTitle: (id: string, fullTitle: string) => void
   toggleStar: (id: string) => Promise<void>
   batchDeleteConversations: (ids: string[]) => Promise<void>
   clearActive: () => void
@@ -48,6 +53,8 @@ export function ConversationProvider({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isLoadingList, setIsLoadingList] = useState(false)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [typingTitles, setTypingTitles] = useState<Record<string, string>>({})
+  const animationTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
 
   const loadConversations = useCallback(async () => {
     setIsLoadingList(true)
@@ -128,6 +135,42 @@ export function ConversationProvider({
     [activeConversation?.id],
   )
 
+  const animateTitle = useCallback((id: string, fullTitle: string) => {
+    // Clear any existing animation for this ID
+    if (animationTimers.current[id]) {
+      clearInterval(animationTimers.current[id])
+    }
+    let index = 1
+    setTypingTitles((prev) => ({ ...prev, [id]: fullTitle.charAt(0) }))
+    const timer = setInterval(() => {
+      index++
+      if (index > fullTitle.length) {
+        clearInterval(timer)
+        delete animationTimers.current[id]
+        setTypingTitles((prev) => {
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+        // Ensure the conversations list has the full title
+        setConversations((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, title: fullTitle } : c)),
+        )
+        return
+      }
+      setTypingTitles((prev) => ({ ...prev, [id]: fullTitle.slice(0, index) }))
+    }, 32)
+    animationTimers.current[id] = timer
+  }, [])
+
+  // Cleanup animation timers on unmount
+  useEffect(() => {
+    const timers = animationTimers.current
+    return () => {
+      Object.values(timers).forEach(clearInterval)
+    }
+  }, [])
+
   const toggleStar = useCallback(async (id: string) => {
     const conv = conversations.find((c) => c.id === id)
     if (!conv) return
@@ -162,11 +205,13 @@ export function ConversationProvider({
         activeId,
         isLoadingList,
         isLoadingDetail,
+        typingTitles,
         loadConversations,
         selectConversation,
         createConversation,
         deleteConversation,
         updateTitle,
+        animateTitle,
         toggleStar,
         batchDeleteConversations,
         clearActive,

@@ -324,6 +324,11 @@ export const authApi = {
       method: "DELETE",
     }).then((r) => r.data),
 
+  deleteAccount: () =>
+    apiFetch<{ deleted: boolean }>("/api/auth/account", {
+      method: "DELETE",
+    }),
+
   me: () =>
     apiFetch<ApiResponse<UserInfo>>("/api/auth/me").then((r) => r.data),
 
