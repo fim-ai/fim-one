@@ -6,7 +6,7 @@ from datetime import datetime
 
 import re
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -20,7 +20,7 @@ class OAuthBindingInfo(BaseModel):
 
 class UserInfo(BaseModel):
     id: str
-    username: str
+    username: str | None = None
     display_name: str | None = None
     is_admin: bool
     system_instructions: str | None = None
@@ -29,13 +29,52 @@ class UserInfo(BaseModel):
     email: str | None = None
     has_password: bool = False
     oauth_bindings: list[OAuthBindingInfo] = []
+    onboarding_completed: bool = False
+    avatar: str | None = None
 
 
 class RegisterRequest(BaseModel):
-    username: str = Field(min_length=2, max_length=50)
     password: str = Field(min_length=6, max_length=100)
     email: str = Field(..., max_length=255)
     invite_code: str | None = None
+    verification_code: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v.lower()
+
+
+class SendVerificationCodeRequest(BaseModel):
+    email: str = Field(..., max_length=255)
+    locale: str | None = Field(None, pattern=r"^(en|zh)$")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v.lower()
+
+
+
+class SendLoginCodeRequest(BaseModel):
+    email: str = Field(..., max_length=255)
+    locale: str | None = Field(None, pattern=r"^(en|zh)$")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v.lower()
+
+
+class LoginWithCodeRequest(BaseModel):
+    email: str = Field(..., max_length=255)
+    code: str = Field(..., min_length=6, max_length=6)
 
     @field_validator("email")
     @classmethod
@@ -46,15 +85,8 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str | None = None
+    email: str
     password: str
-    email: str | None = None
-
-    @model_validator(mode="after")
-    def check_identifier(self):
-        if not self.username and not self.email:
-            raise ValueError("username or email is required")
-        return self
 
 
 class TokenResponse(BaseModel):
@@ -70,6 +102,9 @@ class UpdateProfileRequest(BaseModel):
     system_instructions: str | None = Field(None, max_length=2000)
     preferred_language: str | None = Field(None, pattern=r"^(auto|en|zh)$")
     email: str | None = Field(None, max_length=255)
+    onboarding_completed: bool | None = None
+    avatar: str | None = None  # "builtin:cat", "builtin:star", etc. or None to remove
+    username: str | None = Field(None, min_length=2, max_length=50)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -83,12 +118,21 @@ class SetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=100)
 
 
+class ResetPasswordRequest(BaseModel):
+    """For authenticated users who forgot their password — verify via OTP then set new."""
+    code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(min_length=8, max_length=100)
+
+
+class SendResetCodeRequest(BaseModel):
+    locale: str | None = Field(None, pattern=r"^(en|zh)$")
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 
 
 class SetupRequest(BaseModel):
-    username: str = Field(min_length=2, max_length=50)
     password: str = Field(min_length=6, max_length=100)
     email: str = Field(..., max_length=255)
 

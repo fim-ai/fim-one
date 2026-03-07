@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import random
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select, update
 
+from fim_agent.web.email import _smtp_configured, send_verification_email
 from fim_agent.web.exceptions import AppError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,6 +23,7 @@ from fim_agent.web.api.admin import (
     SETTING_REGISTRATION_ENABLED,
     get_setting,
 )
+from fim_agent.web.models.email_verification import EmailVerification
 from fim_agent.web.models.invite_code import InviteCode
 from fim_agent.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -34,9 +40,14 @@ from fim_agent.web.models.oauth_binding import UserOAuthBinding
 from fim_agent.web.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
+    LoginWithCodeRequest,
     OAuthBindingInfo,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordRequest,
+    SendLoginCodeRequest,
+    SendResetCodeRequest,
+    SendVerificationCodeRequest,
     SetPasswordRequest,
     SetupRequest,
     TokenResponse,
@@ -70,6 +81,8 @@ def _build_user_info(user: User) -> UserInfo:
         email=user.email,
         has_password=user.password_hash is not None,
         oauth_bindings=bindings,
+        onboarding_completed=user.onboarding_completed,
+        avatar=user.avatar,
     )
 
 
@@ -92,9 +105,63 @@ async def registration_status(
     if not reg_mode:
         value = await get_setting(db, SETTING_REGISTRATION_ENABLED, default="true")
         reg_mode = "open" if value.lower() != "false" else "disabled"
+    email_verif = await get_setting(db, "email_verification_enabled", default="false")
     return {
         "registration_enabled": reg_mode != "disabled",
         "registration_mode": reg_mode,
+        "email_verification_enabled": email_verif.lower() == "true",
+        "smtp_configured": _smtp_configured(),
+    }
+
+
+VERIFICATION_CODE_EXPIRY_MINUTES = 5
+VERIFICATION_CODE_RATE_LIMIT_SECONDS = 60
+VERIFICATION_MAX_ATTEMPTS = 5
+
+
+@router.post("/send-verification-code")
+async def send_verification_code(
+    body: SendVerificationCodeRequest,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Send a 6-digit verification code to the given email address."""
+    if not _smtp_configured():
+        raise AppError("smtp_not_configured", status_code=503)
+
+    # Check email not already registered
+    existing = await db.execute(select(User).where(User.email == body.email))
+    if existing.scalar_one_or_none() is not None:
+        raise AppError("email_already_registered", status_code=409)
+
+    # Rate limit: no new code if one was sent < 60s ago for same email+purpose
+    recent = await db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == body.email,
+            EmailVerification.purpose == "register",
+            EmailVerification.created_at > func.datetime("now", f"-{VERIFICATION_CODE_RATE_LIMIT_SECONDS} seconds"),
+        )
+        .order_by(EmailVerification.created_at.desc())
+        .limit(1)
+    )
+    if recent.scalar_one_or_none() is not None:
+        raise AppError("verification_rate_limited", status_code=429)
+
+    code = f"{random.randint(0, 999999):06d}"
+    verification = EmailVerification(
+        email=body.email,
+        code=code,
+        purpose="register",
+        expires_at=datetime.now(UTC) + timedelta(minutes=VERIFICATION_CODE_EXPIRY_MINUTES),
+    )
+    db.add(verification)
+    await db.commit()
+
+    await send_verification_email(body.email, code, locale=body.locale or "en")
+
+    return {
+        "message": "Verification code sent",
+        "expires_in": VERIFICATION_CODE_EXPIRY_MINUTES * 60,
     }
 
 
@@ -153,10 +220,6 @@ async def register(
                     raise AppError("invite_code_exhausted")
             await db.flush()
 
-    result = await db.execute(select(User).where(User.username == body.username))
-    if result.scalar_one_or_none() is not None:
-        raise AppError("username_taken", status_code=409)
-
     # Check email uniqueness
     email_result = await db.execute(
         select(User).where(User.email == body.email)
@@ -164,9 +227,38 @@ async def register(
     if email_result.scalar_one_or_none() is not None:
         raise AppError("email_already_registered", status_code=409)
 
+    # Validate email verification code if email verification is enabled
+    email_verif_enabled = await get_setting(db, "email_verification_enabled", default="false")
+    if email_verif_enabled.lower() == "true" and not is_first_user_check:
+        if not body.verification_code:
+            raise AppError("email_verification_required")
+        # Find the latest unexpired, unverified code for this email
+        verif_result = await db.execute(
+            select(EmailVerification)
+            .where(
+                EmailVerification.email == body.email,
+                EmailVerification.purpose == "register",
+                EmailVerification.verified_at == None,  # noqa: E711
+                EmailVerification.expires_at > datetime.now(UTC),
+            )
+            .order_by(EmailVerification.created_at.desc())
+            .limit(1)
+        )
+        verif = verif_result.scalar_one_or_none()
+        if verif is None:
+            raise AppError("verification_code_expired")
+        if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
+            raise AppError("verification_code_too_many_attempts")
+        if verif.code != body.verification_code:
+            verif.attempts += 1
+            await db.commit()
+            raise AppError("verification_code_invalid")
+        # Mark as verified
+        verif.verified_at = datetime.now(UTC)
+        await db.flush()
+
     # First registered user automatically becomes admin
     user = User(
-        username=body.username,
         password_hash=hash_password(body.password),
         email=body.email,
         is_admin=is_first_user_check,
@@ -174,8 +266,8 @@ async def register(
     db.add(user)
     await db.flush()
 
-    access = create_access_token(user.id, user.username)
-    refresh = create_refresh_token(user.id, user.username)
+    access = create_access_token(user.id, user.email)
+    refresh = create_refresh_token(user.id, user.email)
 
     user.refresh_token = refresh
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
@@ -197,22 +289,131 @@ async def login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> TokenResponse:
-    if body.email:
-        user = await db.scalar(
-            select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
-        )
-    else:
-        user = await db.scalar(
-            select(User).options(selectinload(User.oauth_bindings)).where(User.username == body.username)
-        )
+    user = await db.scalar(
+        select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
+    )
     if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
         raise AppError("invalid_credentials", status_code=401)
 
     if not user.is_active:
         raise AppError("account_disabled", status_code=403)
 
-    access = create_access_token(user.id, user.username)
-    refresh = create_refresh_token(user.id, user.username)
+    access = create_access_token(user.id, user.email)
+    refresh = create_refresh_token(user.id, user.email)
+
+    user.refresh_token = refresh
+    user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
+        days=REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    await db.commit()
+
+    # Reload with oauth_bindings (commit expires loaded attributes)
+    result = await db.execute(
+        select(User).options(selectinload(User.oauth_bindings)).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+
+    return _build_token_response(user, access, refresh)
+
+
+@router.post("/send-login-code")
+async def send_login_code(
+    body: SendLoginCodeRequest,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Send a 6-digit OTP code for passwordless login."""
+    if not _smtp_configured():
+        raise AppError("smtp_not_configured", status_code=503)
+
+    # Email MUST be registered (opposite of send-verification-code)
+    user = await db.scalar(select(User).where(User.email == body.email))
+    if user is None:
+        raise AppError("email_not_registered", status_code=404)
+
+    if not user.is_active:
+        raise AppError("account_disabled", status_code=403)
+
+    # Rate limit: no new code if one was sent < 60s ago for same email+purpose
+    recent = await db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == body.email,
+            EmailVerification.purpose == "login",
+            EmailVerification.created_at > func.datetime("now", f"-{VERIFICATION_CODE_RATE_LIMIT_SECONDS} seconds"),
+        )
+        .order_by(EmailVerification.created_at.desc())
+        .limit(1)
+    )
+    if recent.scalar_one_or_none() is not None:
+        raise AppError("verification_rate_limited", status_code=429)
+
+    code = f"{random.randint(0, 999999):06d}"
+    verification = EmailVerification(
+        email=body.email,
+        code=code,
+        purpose="login",
+        expires_at=datetime.now(UTC) + timedelta(minutes=VERIFICATION_CODE_EXPIRY_MINUTES),
+    )
+    db.add(verification)
+    await db.commit()
+
+    await send_verification_email(body.email, code, purpose="login", locale=body.locale or "en")
+
+    return {
+        "message": "Login code sent",
+        "expires_in": VERIFICATION_CODE_EXPIRY_MINUTES * 60,
+    }
+
+
+@router.post("/login-with-code", response_model=TokenResponse)
+async def login_with_code(
+    body: LoginWithCodeRequest,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> TokenResponse:
+    """Passwordless login using an email OTP code."""
+    user = await db.scalar(
+        select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
+    )
+    if user is None:
+        raise AppError("email_not_registered", status_code=404)
+
+    if not user.is_active:
+        raise AppError("account_disabled", status_code=403)
+
+    # Find the latest unexpired, unverified code for this email+purpose
+    verif_result = await db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == body.email,
+            EmailVerification.purpose == "login",
+            EmailVerification.verified_at == None,  # noqa: E711
+        )
+        .order_by(EmailVerification.created_at.desc())
+        .limit(1)
+    )
+    verif = verif_result.scalar_one_or_none()
+
+    if verif is None:
+        raise AppError("verification_code_expired")
+
+    if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        raise AppError("verification_code_expired")
+
+    if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
+        raise AppError("verification_code_too_many_attempts")
+
+    if verif.code != body.code:
+        verif.attempts += 1
+        await db.commit()
+        raise AppError("verification_code_invalid")
+
+    # Mark as verified
+    verif.verified_at = datetime.now(UTC)
+    await db.flush()
+
+    # Issue tokens (same pattern as /login)
+    access = create_access_token(user.id, user.email)
+    refresh = create_refresh_token(user.id, user.email)
 
     user.refresh_token = refresh
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
@@ -262,8 +463,8 @@ async def refresh_token(
         raise AppError("refresh_token_expired", status_code=401)
 
     # Token rotation: issue new pair
-    access = create_access_token(user.id, user.username)
-    refresh = create_refresh_token(user.id, user.username)
+    access = create_access_token(user.id, user.email)
+    refresh = create_refresh_token(user.id, user.email)
 
     user.refresh_token = refresh
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(
@@ -317,6 +518,21 @@ async def update_profile(
         if email_result.scalar_one_or_none() is not None:
             raise AppError("email_already_registered", status_code=409)
         user.email = body.email
+    if body.onboarding_completed is not None:
+        user.onboarding_completed = body.onboarding_completed
+    if body.avatar is not None:
+        user.avatar = body.avatar or None
+    if body.username is not None:
+        if not body.username or not body.username.strip():
+            raise AppError("username_empty")
+        new_username = body.username.strip()
+        # Check uniqueness (exclude current user)
+        username_result = await db.execute(
+            select(User).where(User.username == new_username, User.id != user.id)
+        )
+        if username_result.scalar_one_or_none() is not None:
+            raise AppError("username_taken", status_code=409)
+        user.username = new_username
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
@@ -325,6 +541,103 @@ async def update_profile(
     )
     user = result.scalar_one()
     return ApiResponse(data=_build_user_info(user).model_dump())
+
+
+AVATAR_MAX_SIZE = 5 * 1024 * 1024  # 5MB
+AVATAR_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+
+@router.post("/avatar", response_model=ApiResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Upload a custom avatar image."""
+    # Validate file extension
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in AVATAR_ALLOWED_EXTENSIONS:
+        raise AppError("avatar_invalid_format", status_code=400)
+
+    # Read and validate size
+    content = await file.read()
+    if len(content) > AVATAR_MAX_SIZE:
+        raise AppError("avatar_too_large", status_code=400)
+
+    # Save to uploads/avatars/{user_id}{ext}
+    uploads_dir = Path(os.environ.get("UPLOADS_DIR", "uploads"))
+    avatar_dir = uploads_dir / "avatars"
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+
+    # Remove old avatar file if exists (may have different extension/timestamp)
+    for old_file in avatar_dir.glob(f"{current_user.id}_*"):
+        old_file.unlink(missing_ok=True)
+    # Also clean up legacy files without timestamp
+    for old_file in avatar_dir.glob(f"{current_user.id}.*"):
+        old_file.unlink(missing_ok=True)
+
+    ts = int(datetime.now(UTC).timestamp())
+    avatar_filename = f"{current_user.id}_{ts}{ext}"
+    avatar_path = avatar_dir / avatar_filename
+    avatar_path.write_bytes(content)
+
+    # Update user record
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    user.avatar = f"avatars/{avatar_filename}"
+    await db.commit()
+
+    # Reload with oauth_bindings for response serialization
+    result = await db.execute(
+        select(User).options(selectinload(User.oauth_bindings)).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+    return ApiResponse(data=_build_user_info(user).model_dump())
+
+
+@router.delete("/avatar", response_model=ApiResponse)
+async def delete_avatar(
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Remove the current user's avatar."""
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+
+    # Delete file if it's an uploaded avatar
+    if user.avatar and not user.avatar.startswith("builtin:"):
+        uploads_dir = Path(os.environ.get("UPLOADS_DIR", "uploads"))
+        avatar_path = uploads_dir / user.avatar
+        avatar_path.unlink(missing_ok=True)
+
+    user.avatar = None
+    await db.commit()
+
+    # Reload with oauth_bindings for response serialization
+    result = await db.execute(
+        select(User).options(selectinload(User.oauth_bindings)).where(User.id == user.id)
+    )
+    user = result.scalar_one()
+    return ApiResponse(data=_build_user_info(user).model_dump())
+
+
+@router.get("/avatar/{user_id}")
+async def get_avatar(
+    user_id: str,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> FileResponse:
+    """Serve a user's uploaded avatar image (public, no auth required)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.avatar or user.avatar.startswith("builtin:"):
+        raise AppError("avatar_not_found", status_code=404)
+
+    uploads_dir = Path(os.environ.get("UPLOADS_DIR", "uploads"))
+    avatar_path = uploads_dir / user.avatar
+    if not avatar_path.exists():
+        raise AppError("avatar_not_found", status_code=404)
+
+    return FileResponse(avatar_path)
 
 
 @router.post("/change-password", response_model=ApiResponse)
@@ -364,6 +677,101 @@ async def set_password(
     )
     user = result.scalar_one()
     return ApiResponse(data=_build_user_info(user).model_dump())
+
+
+@router.post("/send-reset-code")
+async def send_reset_code(
+    body: SendResetCodeRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Send a 6-digit OTP code for password reset (authenticated users only)."""
+    if not _smtp_configured():
+        raise AppError("smtp_not_configured", status_code=503)
+
+    if not current_user.email:
+        raise AppError("email_not_set", status_code=400)
+
+    # Rate limit: no new code if one was sent < 60s ago for same email+purpose
+    recent = await db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == current_user.email,
+            EmailVerification.purpose == "reset_password",
+            EmailVerification.created_at > func.datetime("now", f"-{VERIFICATION_CODE_RATE_LIMIT_SECONDS} seconds"),
+        )
+        .order_by(EmailVerification.created_at.desc())
+        .limit(1)
+    )
+    if recent.scalar_one_or_none() is not None:
+        raise AppError("verification_rate_limited", status_code=429)
+
+    code = f"{random.randint(0, 999999):06d}"
+    verification = EmailVerification(
+        email=current_user.email,
+        code=code,
+        purpose="reset_password",
+        expires_at=datetime.now(UTC) + timedelta(minutes=VERIFICATION_CODE_EXPIRY_MINUTES),
+    )
+    db.add(verification)
+    await db.commit()
+
+    await send_verification_email(current_user.email, code, purpose="reset_password", locale=body.locale or "en")
+
+    return {
+        "message": "Reset code sent",
+        "expires_in": VERIFICATION_CODE_EXPIRY_MINUTES * 60,
+    }
+
+
+@router.post("/reset-password", response_model=ApiResponse)
+async def reset_password(
+    body: ResetPasswordRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Reset password using OTP verification (authenticated users who forgot their password)."""
+    if not current_user.email:
+        raise AppError("email_not_set", status_code=400)
+
+    # Find the latest unexpired, unverified code for this email+purpose
+    verif_result = await db.execute(
+        select(EmailVerification)
+        .where(
+            EmailVerification.email == current_user.email,
+            EmailVerification.purpose == "reset_password",
+            EmailVerification.verified_at == None,  # noqa: E711
+        )
+        .order_by(EmailVerification.created_at.desc())
+        .limit(1)
+    )
+    verif = verif_result.scalar_one_or_none()
+
+    if verif is None:
+        raise AppError("verification_code_expired")
+
+    if verif.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+        raise AppError("verification_code_expired")
+
+    if verif.attempts >= VERIFICATION_MAX_ATTEMPTS:
+        raise AppError("verification_code_too_many_attempts")
+
+    if verif.code != body.code:
+        verif.attempts += 1
+        await db.commit()
+        raise AppError("verification_code_invalid")
+
+    # Mark as verified
+    verif.verified_at = datetime.now(UTC)
+    await db.flush()
+
+    # Set new password
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()
+
+    return ApiResponse(data={"message": "Password reset successfully"})
 
 
 @router.delete("/oauth-bindings/{provider}", response_model=ApiResponse)
@@ -444,7 +852,6 @@ async def setup(
         raise AppError("system_already_initialized", status_code=403)
 
     user = User(
-        username=body.username,
         password_hash=hash_password(body.password),
         email=body.email,
         is_admin=True,
@@ -452,8 +859,8 @@ async def setup(
     db.add(user)
     await db.flush()
 
-    access = create_access_token(user.id, user.username)
-    refresh = create_refresh_token(user.id, user.username)
+    access = create_access_token(user.id, user.email)
+    refresh = create_refresh_token(user.id, user.email)
 
     user.refresh_token = refresh
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(

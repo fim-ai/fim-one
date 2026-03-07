@@ -1,5 +1,5 @@
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "./constants"
-import type { UserInfo, TokenResponse, LoginRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
+import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -33,7 +33,7 @@ import type {
   AIActionResult,
   AICreateConnectorResult,
 } from "@/types/connector"
-import type { AdminUser, AdminConversation, StorageStats, InviteCode, AdminMCPServer, IntegrationHealth } from "@/types/admin"
+import type { AdminUser, AdminConversation, AdminMessage, StorageStats, InviteCode, AdminMCPServer, IntegrationHealth, AdminModelsResponse, AdminModelCreate, AdminModelUpdate } from "@/types/admin"
 import type { MCPServerResponse, MCPServerCreate, MCPServerUpdate } from "@/types/mcp-server"
 import type { ModelConfigResponse, ModelConfigCreate, ModelConfigUpdate } from "@/types/model_config"
 
@@ -169,7 +169,7 @@ export async function apiFetch<T>(
       // No token at all — only redirect if not on a public page (login/setup/oauth callback)
       const isPublicPath =
         typeof window !== "undefined" &&
-        ["/login", "/setup", "/auth"].some((p) =>
+        ["/login", "/setup", "/auth", "/onboarding"].some((p) =>
           window.location.pathname.startsWith(p),
         )
       if (!isPublicPath) {
@@ -218,16 +218,63 @@ export const authApi = {
       body: JSON.stringify(body),
     }),
 
+  sendVerificationCode: (email: string, locale?: string) =>
+    apiFetch<{ message: string; expires_in: number }>("/api/auth/send-verification-code", {
+      method: "POST",
+      body: JSON.stringify({ email, locale }),
+    }),
+
+  sendLoginCode: (email: string, locale?: string) =>
+    apiFetch<{ message: string; expires_in: number }>("/api/auth/send-login-code", {
+      method: "POST",
+      body: JSON.stringify({ email, locale }),
+    }),
+
+  loginWithCode: (body: LoginWithCodeRequest) =>
+    apiFetch<TokenResponse>("/api/auth/login-with-code", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   refresh: (refreshToken: string) =>
     apiFetch<TokenResponse>("/api/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refresh_token: refreshToken }),
     }),
 
-  updateProfile: (body: { system_instructions?: string | null; display_name?: string | null; email?: string | null; preferred_language?: string | null }) =>
+  updateProfile: (body: { system_instructions?: string | null; display_name?: string | null; email?: string | null; preferred_language?: string | null; onboarding_completed?: boolean; avatar?: string | null; username?: string | null }) =>
     apiFetch<ApiResponse<UserInfo>>("/api/auth/profile", {
       method: "PATCH",
       body: JSON.stringify(body),
+    }).then((r) => r.data),
+
+  uploadAvatar: async (file: File): Promise<UserInfo> => {
+    const token = getAccessToken()
+    const formData = new FormData()
+    formData.append("file", file)
+    const headers: Record<string, string> = {}
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    const res = await fetch(`${getApiBaseUrl()}/api/auth/avatar`, {
+      method: "POST",
+      headers,
+      body: formData,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new ApiError(
+        res.status,
+        body.detail || res.statusText,
+        body.error_code ?? null,
+        body.error_args ?? {},
+      )
+    }
+    const json: ApiResponse<UserInfo> = await res.json()
+    return json.data
+  },
+
+  removeAvatar: () =>
+    apiFetch<ApiResponse<UserInfo>>("/api/auth/avatar", {
+      method: "DELETE",
     }).then((r) => r.data),
 
   changePassword: (body: ChangePasswordRequest) =>
@@ -238,6 +285,18 @@ export const authApi = {
 
   setPassword: (body: SetPasswordRequest) =>
     apiFetch<ApiResponse<UserInfo>>("/api/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+
+  sendResetCode: (locale?: string) =>
+    apiFetch<{ message: string; expires_in: number }>("/api/auth/send-reset-code", {
+      method: "POST",
+      body: JSON.stringify({ locale }),
+    }),
+
+  resetPassword: (body: { code: string; new_password: string }) =>
+    apiFetch<ApiResponse<{ message: string }>>("/api/auth/reset-password", {
       method: "POST",
       body: JSON.stringify(body),
     }).then((r) => r.data),
@@ -702,6 +761,8 @@ export const adminApi = {
   },
   adminDeleteConversation: (convId: string) =>
     apiFetch(`/api/admin/conversations/${convId}`, { method: 'DELETE' }),
+  getConversationMessages: (convId: string) =>
+    apiFetch<AdminMessage[]>(`/api/admin/conversations/${convId}/messages`),
 
   // Feature 5 -- storage
   getStorageStats: () =>
@@ -739,6 +800,32 @@ export const adminApi = {
     }),
   revokeInviteCode: (id: string) =>
     apiFetch(`/api/admin/invite-codes/${id}`, { method: 'DELETE' }),
+
+  // Admin model management
+  listModels: () =>
+    apiFetch<AdminModelsResponse>('/api/admin/models'),
+  createModel: (data: AdminModelCreate) =>
+    apiFetch<import("@/types/model_config").ModelConfigResponse>('/api/admin/models', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateModel: (id: string, data: AdminModelUpdate) =>
+    apiFetch<import("@/types/model_config").ModelConfigResponse>(`/api/admin/models/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deleteModel: (id: string) =>
+    apiFetch(`/api/admin/models/${id}`, { method: 'DELETE' }),
+  toggleModelActive: (id: string, is_active: boolean) =>
+    apiFetch<{ ok: boolean }>(`/api/admin/models/${id}/active`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active }),
+    }),
+  setModelRole: (id: string, role: string | null) =>
+    apiFetch<{ ok: boolean }>(`/api/admin/models/${id}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }),
 }
 
 // --- MCP Server API ---

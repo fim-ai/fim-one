@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from "@/components/ui/input-otp"
 import { apiFetch, authApi, ApiError } from "@/lib/api"
 import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
@@ -304,6 +305,18 @@ export function AccountSettings() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
+  // Reset password via OTP state
+  const locale = useLocale()
+  const [resetMode, setResetMode] = useState(false)
+  const [resetStep, setResetStep] = useState<"confirm" | "code" | "password">("confirm")
+  const [resetCode, setResetCode] = useState("")
+  const [resetNewPassword, setResetNewPassword] = useState("")
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("")
+  const [resetSending, setResetSending] = useState(false)
+  const [resetVerifying, setResetVerifying] = useState(false)
+  const [resetSubmitting, setResetSubmitting] = useState(false)
+  const [resetResendCountdown, setResetResendCountdown] = useState(0)
+
   const hasPassword = user?.has_password ?? !user?.oauth_provider
 
   const confirmMismatch =
@@ -340,6 +353,79 @@ export function AccountSettings() {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Resend countdown timer for reset OTP
+  useEffect(() => {
+    if (resetResendCountdown <= 0) return
+    const timer = setTimeout(() => setResetResendCountdown(resetResendCountdown - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resetResendCountdown])
+
+  const handleCancelReset = () => {
+    setResetMode(false)
+    setResetStep("confirm")
+    setResetCode("")
+    setResetNewPassword("")
+    setResetConfirmPassword("")
+  }
+
+  const handleSendResetCode = async () => {
+    setResetSending(true)
+    try {
+      await authApi.sendResetCode(locale)
+      setResetStep("code")
+      setResetResendCountdown(60)
+      setResetCode("")
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message)
+      } else {
+        toast.error(t("resetPasswordFailed"))
+      }
+    } finally {
+      setResetSending(false)
+    }
+  }
+
+  const handleResetCodeComplete = async (code: string) => {
+    setResetVerifying(true)
+    try {
+      // Don't verify code separately — just move to password step
+      // The code will be validated when the user submits the new password
+      setResetCode(code)
+      setResetStep("password")
+    } finally {
+      setResetVerifying(false)
+    }
+  }
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (resetNewPassword.length < MIN_PASSWORD_LENGTH || resetNewPassword !== resetConfirmPassword) return
+
+    setResetSubmitting(true)
+    try {
+      await authApi.resetPassword({
+        code: resetCode,
+        new_password: resetNewPassword,
+      })
+      toast.success(t("passwordResetSuccess"))
+      handleCancelReset()
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message)
+        // If code is invalid/expired, go back to code step
+        if (err.errorCode === "verification_code_invalid" || err.errorCode === "verification_code_expired" || err.errorCode === "verification_code_too_many_attempts") {
+          setResetStep("code")
+          setResetCode("")
+        }
+      } else {
+        toast.error(t("resetPasswordFailed"))
+      }
+    } finally {
+      setResetSubmitting(false)
     }
   }
 
@@ -449,55 +535,190 @@ export function AccountSettings() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("currentPasswordLabel")} <span className="text-destructive">*</span></label>
-              <Input
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder={t("currentPasswordPlaceholder")}
-              />
-            </div>
+          {!resetMode ? (
+            /* Normal change password form */
+            <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("currentPasswordLabel")} <span className="text-destructive">*</span></label>
+                <Input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder={t("currentPasswordPlaceholder")}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("newPasswordLabel")} <span className="text-destructive">*</span></label>
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder={t("newPasswordPlaceholder")}
-              />
-              {newTooShort && (
-                <p className="text-xs text-destructive">
-                  {t("passwordMinLength", { min: MIN_PASSWORD_LENGTH })}
-                </p>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("newPasswordLabel")} <span className="text-destructive">*</span></label>
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder={t("newPasswordPlaceholder")}
+                />
+                {newTooShort && (
+                  <p className="text-xs text-destructive">
+                    {t("passwordMinLength", { min: MIN_PASSWORD_LENGTH })}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t("confirmPasswordLabel")} <span className="text-destructive">*</span></label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder={t("confirmPasswordPlaceholder")}
+                />
+                {confirmMismatch && (
+                  <p className="text-xs text-destructive">
+                    {t("passwordMismatch")}
+                  </p>
+                )}
+              </div>
+
+              {error && (
+                <p className="text-sm text-destructive">{error}</p>
+              )}
+
+              <div className="flex items-center gap-4">
+                <Button type="submit" size="sm" disabled={!canSubmit}>
+                  {saving ? t("changing") : t("changePassword")}
+                </Button>
+              </div>
+
+              <button
+                type="button"
+                className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+                onClick={() => setResetMode(true)}
+              >
+                {t("forgotPassword")}
+              </button>
+            </form>
+          ) : (
+            /* OTP Reset flow */
+            <div className="space-y-4 max-w-sm">
+              {resetStep === "confirm" && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Button size="sm" onClick={handleSendResetCode} disabled={resetSending}>
+                      {resetSending ? t("sendingResetCode") : t("sendResetCode")}
+                    </Button>
+                    <button
+                      type="button"
+                      className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+                      onClick={handleCancelReset}
+                    >
+                      {t("cancelReset")}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {resetStep === "code" && (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    {t("resetCodeSent", { email: user?.email ?? "" })}
+                  </p>
+                  <InputOTP
+                    maxLength={6}
+                    value={resetCode}
+                    onChange={setResetCode}
+                    onComplete={handleResetCodeComplete}
+                    disabled={resetVerifying}
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                    </InputOTPGroup>
+                    <InputOTPSeparator />
+                    <InputOTPGroup>
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSendResetCode}
+                      disabled={resetResendCountdown > 0 || resetSending}
+                    >
+                      {resetSending
+                        ? t("sendingResetCode")
+                        : resetResendCountdown > 0
+                          ? t("resendCodeIn", { seconds: resetResendCountdown })
+                          : t("resendCode")}
+                    </Button>
+                    <button
+                      type="button"
+                      className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+                      onClick={handleCancelReset}
+                    >
+                      {t("cancelReset")}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {resetStep === "password" && (
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  <p className="text-sm font-medium">{t("setNewPassword")}</p>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{t("newPasswordLabel")} <span className="text-destructive">*</span></label>
+                    <Input
+                      type="password"
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      placeholder={t("newPasswordPlaceholder")}
+                    />
+                    {resetNewPassword.length > 0 && resetNewPassword.length < MIN_PASSWORD_LENGTH && (
+                      <p className="text-xs text-destructive">
+                        {t("passwordMinLength", { min: MIN_PASSWORD_LENGTH })}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{t("confirmPasswordLabel")} <span className="text-destructive">*</span></label>
+                    <Input
+                      type="password"
+                      value={resetConfirmPassword}
+                      onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      placeholder={t("confirmPasswordPlaceholder")}
+                    />
+                    {resetConfirmPassword.length > 0 && resetNewPassword !== resetConfirmPassword && (
+                      <p className="text-xs text-destructive">
+                        {t("passwordMismatch")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={
+                        resetNewPassword.length < MIN_PASSWORD_LENGTH ||
+                        resetNewPassword !== resetConfirmPassword ||
+                        resetSubmitting
+                      }
+                    >
+                      {resetSubmitting ? t("resettingPassword") : t("resetPassword")}
+                    </Button>
+                    <button
+                      type="button"
+                      className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+                      onClick={handleCancelReset}
+                    >
+                      {t("cancelReset")}
+                    </button>
+                  </div>
+                </form>
               )}
             </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("confirmPasswordLabel")} <span className="text-destructive">*</span></label>
-              <Input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder={t("confirmPasswordPlaceholder")}
-              />
-              {confirmMismatch && (
-                <p className="text-xs text-destructive">
-                  {t("passwordMismatch")}
-                </p>
-              )}
-            </div>
-
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-
-            <Button type="submit" size="sm" disabled={!canSubmit}>
-              {saving ? t("changing") : t("changePassword")}
-            </Button>
-          </form>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
