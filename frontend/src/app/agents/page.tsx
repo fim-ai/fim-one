@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Plus, Loader2, Bot, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -20,6 +21,8 @@ import { AgentCard } from "@/components/agents/agent-card"
 import type { AgentResponse } from "@/types/agent"
 
 export default function AgentsPage() {
+  const t = useTranslations("agents")
+  const tc = useTranslations("common")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
 
@@ -63,9 +66,9 @@ export default function AgentsPage() {
     try {
       await agentApi.delete(id)
       setAgents((prev) => prev.filter((a) => a.id !== id))
-      toast.success("Agent deleted")
+      toast.success(t("agentDeleted"))
     } catch {
-      toast.error("Failed to delete agent")
+      toast.error(t("agentDeleteFailed"))
     }
   }
 
@@ -76,9 +79,9 @@ export default function AgentsPage() {
     try {
       const updated = await agentApi.publish(id)
       setAgents((prev) => prev.map((a) => (a.id === id ? updated : a)))
-      toast.success("Agent published")
+      toast.success(t("agentPublished"))
     } catch {
-      toast.error("Failed to publish agent")
+      toast.error(t("agentPublishFailed"))
     }
   }
 
@@ -89,9 +92,9 @@ export default function AgentsPage() {
     try {
       const updated = await agentApi.unpublish(id)
       setAgents((prev) => prev.map((a) => (a.id === id ? updated : a)))
-      toast.success("Agent unpublished")
+      toast.success(t("agentUnpublished"))
     } catch {
-      toast.error("Failed to unpublish agent")
+      toast.error(t("agentUnpublishFailed"))
     }
   }
 
@@ -104,16 +107,16 @@ export default function AgentsPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Bot className="h-5 w-5" />
-            Agents
+            {t("title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Create and manage your AI agents
+            {t("subtitle")}
           </p>
         </div>
         <Button size="sm" className="gap-1.5" asChild>
           <Link href="/agents/new">
             <Plus className="h-4 w-4" />
-            New Agent
+            {t("newAgent")}
           </Link>
         </Button>
       </div>
@@ -127,7 +130,7 @@ export default function AgentsPage() {
         ) : agents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-sm text-muted-foreground">
-              No agents yet. Create your first agent to get started.
+              {t("emptyState")}
             </p>
             <Button
               variant="outline"
@@ -137,7 +140,7 @@ export default function AgentsPage() {
             >
               <Link href="/agents/new">
                 <Plus className="h-4 w-4" />
-                Create Agent
+                {t("createAgent")}
               </Link>
             </Button>
           </div>
@@ -162,15 +165,15 @@ export default function AgentsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4" />
-              Delete agent?
+              {t("deleteDialogTitle")}
             </DialogTitle>
             <DialogDescription>
-              This agent will be permanently deleted. This action cannot be undone.
+              {t("deleteDialogDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" className="px-6" onClick={confirmDelete}>Delete</Button>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>{tc("cancel")}</Button>
+            <Button variant="destructive" className="px-6" onClick={confirmDelete}>{tc("delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -179,14 +182,14 @@ export default function AgentsPage() {
       <Dialog open={pendingPublishId !== null} onOpenChange={(open) => { if (!open) setPendingPublishId(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Publish agent?</DialogTitle>
+            <DialogTitle>{t("publishDialogTitle")}</DialogTitle>
             <DialogDescription>
-              Once published, this agent will be available for use in conversations.
+              {t("publishDialogDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingPublishId(null)}>Cancel</Button>
-            <Button className="px-6" onClick={confirmPublish}>Publish</Button>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingPublishId(null)}>{tc("cancel")}</Button>
+            <Button className="px-6" onClick={confirmPublish}>{tc("publish")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -195,14 +198,14 @@ export default function AgentsPage() {
       <Dialog open={pendingUnpublishId !== null} onOpenChange={(open) => { if (!open) setPendingUnpublishId(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Unpublish agent?</DialogTitle>
+            <DialogTitle>{t("unpublishDialogTitle")}</DialogTitle>
             <DialogDescription>
-              This agent will be set back to draft and no longer available in conversations.
+              {t("unpublishDialogDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingUnpublishId(null)}>Cancel</Button>
-            <Button variant="secondary" className="px-6" onClick={confirmUnpublish}>Unpublish</Button>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingUnpublishId(null)}>{tc("cancel")}</Button>
+            <Button variant="secondary" className="px-6" onClick={confirmUnpublish}>{tc("unpublish")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

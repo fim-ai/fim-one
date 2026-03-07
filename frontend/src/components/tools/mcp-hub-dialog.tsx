@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { Search, Key, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -228,6 +229,7 @@ interface MCPHubDialogProps {
 }
 
 export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialogProps) {
+  const t = useTranslations("tools")
   const [query, setQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState("All")
 
@@ -258,11 +260,11 @@ export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
-          <DialogTitle>MCP Catalog</DialogTitle>
+          <DialogTitle>{t("mcpCatalog")}</DialogTitle>
           <div className="relative mt-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search servers..."
+              placeholder={t("searchServers")}
               className="pl-9"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -290,7 +292,7 @@ export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialo
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-sm text-muted-foreground">No servers found</p>
+              <p className="text-sm text-muted-foreground">{t("noServersFound")}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -299,6 +301,7 @@ export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialo
                   key={server.package}
                   server={server}
                   onConfigure={() => handleConfigure(server)}
+                  configureLabel={t("configure")}
                 />
               ))}
             </div>
@@ -313,7 +316,7 @@ export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialo
 // Card
 // ---------------------------------------------------------------------------
 
-function CatalogCard({ server, onConfigure }: { server: CuratedServer; onConfigure: () => void }) {
+function CatalogCard({ server, onConfigure, configureLabel }: { server: CuratedServer; onConfigure: () => void; configureLabel: string }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-border/80 transition-colors">
       {/* Avatar */}
@@ -350,7 +353,7 @@ function CatalogCard({ server, onConfigure }: { server: CuratedServer; onConfigu
           onClick={onConfigure}
         >
           <Settings className="h-3 w-3" />
-          Configure
+          {configureLabel}
         </Button>
       </div>
     </div>

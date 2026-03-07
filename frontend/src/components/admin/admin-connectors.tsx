@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Activity, ArrowUpRight, CheckCircle, Clock, Plug } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { adminApi } from "@/lib/api"
@@ -76,6 +77,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function AdminConnectors() {
+  const t = useTranslations("admin.connectors")
   const [stats, setStats] = useState<ConnectorStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -110,15 +112,15 @@ export function AdminConnectors() {
     <div className="space-y-8">
       {/* Page header */}
       <div>
-        <h2 className="text-base font-semibold">Connectors</h2>
-        <p className="text-sm text-muted-foreground">Connector usage analytics and performance overview.</p>
+        <h2 className="text-base font-semibold">{t("title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       {/* Section 1 -- Connector Stats */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Connector Stats</h3>
-          <p className="text-sm text-muted-foreground">Call volume and performance across all connectors.</p>
+          <h3 className="text-base font-medium">{t("connectorStats")}</h3>
+          <p className="text-sm text-muted-foreground">{t("connectorStatsDesc")}</p>
         </div>
 
         {isLoading ? (
@@ -127,16 +129,16 @@ export function AdminConnectors() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            <StatCard icon={Activity} label="Total Calls" value={(stats?.total_calls ?? 0).toLocaleString()} />
-            <StatCard icon={ArrowUpRight} label="Today's Calls" value={(stats?.today_calls ?? 0).toLocaleString()} />
+            <StatCard icon={Activity} label={t("totalCalls")} value={(stats?.total_calls ?? 0).toLocaleString()} />
+            <StatCard icon={ArrowUpRight} label={t("todayCalls")} value={(stats?.today_calls ?? 0).toLocaleString()} />
             <StatCard
               icon={CheckCircle}
-              label="Success Rate"
+              label={t("successRate")}
               value={`${((stats?.success_rate ?? 0) * 100).toFixed(1)}%`}
             />
             <StatCard
               icon={Clock}
-              label="Avg Response Time"
+              label={t("avgResponseTime")}
               value={`${Math.round(stats?.avg_response_time_ms ?? 0)}ms`}
             />
           </div>
@@ -148,15 +150,15 @@ export function AdminConnectors() {
       {/* Section 2 -- Top Connectors (horizontal bar chart) */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Top Connectors</h3>
-          <p className="text-sm text-muted-foreground">Most used connectors by call count.</p>
+          <h3 className="text-base font-medium">{t("topConnectors")}</h3>
+          <p className="text-sm text-muted-foreground">{t("topConnectorsDesc")}</p>
         </div>
 
         {isLoading ? (
           <div className="h-[200px] rounded bg-muted animate-pulse" />
         ) : topConnectors.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            No connector usage data yet.
+            {t("noConnectorUsage")}
           </div>
         ) : (
           <div className="text-muted-foreground" style={{ height: Math.max(180, topConnectors.length * 36) }}>
@@ -166,7 +168,7 @@ export function AdminConnectors() {
                 <XAxis type="number" tick={TICK_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                 <YAxis type="category" dataKey="name" width={120} tick={TICK_STYLE} tickLine={false} axisLine={false} />
                 <Tooltip content={<BarTooltip />} cursor={{ fill: "rgba(128,128,128,0.1)" }} />
-                <Bar dataKey="calls" name="Calls" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
+                <Bar dataKey="calls" name={t("chartCalls")} fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -178,8 +180,8 @@ export function AdminConnectors() {
       {/* Section 3 -- Top Actions */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Top Actions</h3>
-          <p className="text-sm text-muted-foreground">Most called connector actions.</p>
+          <h3 className="text-base font-medium">{t("topActions")}</h3>
+          <p className="text-sm text-muted-foreground">{t("topActionsDesc")}</p>
         </div>
 
         {isLoading ? (
@@ -190,7 +192,7 @@ export function AdminConnectors() {
           </div>
         ) : !stats?.top_actions?.length ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            No action usage data yet.
+            {t("noActionUsage")}
           </div>
         ) : (
           <div className="divide-y divide-border rounded-md border border-border">
@@ -205,7 +207,7 @@ export function AdminConnectors() {
                   </span>
                 </div>
                 <span className="text-sm text-muted-foreground tabular-nums">
-                  {action.call_count.toLocaleString()} calls
+                  {t("callCount", { count: action.call_count.toLocaleString() })}
                 </span>
               </div>
             ))}
@@ -218,15 +220,15 @@ export function AdminConnectors() {
       {/* Section 4 -- 14-day Call Trend */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Call Trend</h3>
-          <p className="text-sm text-muted-foreground">Daily connector call volume over the last 14 days.</p>
+          <h3 className="text-base font-medium">{t("callTrend")}</h3>
+          <p className="text-sm text-muted-foreground">{t("callTrendDesc")}</p>
         </div>
 
         {isLoading ? (
           <div className="h-[180px] rounded bg-muted animate-pulse" />
         ) : recentDays.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            No recent activity yet.
+            {t("noRecentActivity")}
           </div>
         ) : (
           <div className="h-[180px] text-muted-foreground">
@@ -236,7 +238,7 @@ export function AdminConnectors() {
                 <XAxis dataKey="label" tick={TICK_STYLE} tickLine={false} axisLine={false} />
                 <YAxis width={28} tick={TICK_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip content={<BarTooltip />} cursor={{ fill: "rgba(128,128,128,0.1)" }} />
-                <Bar dataKey="count" name="Calls" fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" name={t("chartCalls")} fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Plus, Loader2, Wrench, Server, LayoutGrid } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -14,6 +15,7 @@ import { MCPHubDialog } from "@/components/tools/mcp-hub-dialog"
 import type { MCPServerResponse } from "@/types/mcp-server"
 
 export default function ToolsPage() {
+  const t = useTranslations("tools")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -119,10 +121,10 @@ export default function ToolsPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Wrench className="h-5 w-5" />
-            Tools
+            {t("pageTitle")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Built-in tools and MCP server connections
+            {t("pageDescription")}
           </p>
         </div>
       </div>
@@ -131,8 +133,8 @@ export default function ToolsPage() {
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col flex-1 overflow-hidden">
         <div className="px-6 pt-4 shrink-0">
           <TabsList>
-            <TabsTrigger value="builtin">Built-in</TabsTrigger>
-            <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
+            <TabsTrigger value="builtin">{t("builtinTab")}</TabsTrigger>
+            <TabsTrigger value="mcp">{t("mcpServersTab")}</TabsTrigger>
           </TabsList>
         </div>
 
@@ -146,16 +148,16 @@ export default function ToolsPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
               <Server className="h-4 w-4" />
-              MCP Servers
+              {t("mcpServersTitle")}
             </h2>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => setHubOpen(true)}>
                 <LayoutGrid className="h-4 w-4" />
-                MCP Catalog
+                {t("mcpCatalog")}
               </Button>
               <Button size="sm" className="gap-1.5 h-8" onClick={() => handleAdd()}>
                 <Plus className="h-4 w-4" />
-                Add Server
+                {t("addServer")}
               </Button>
             </div>
           </div>
@@ -167,7 +169,7 @@ export default function ToolsPage() {
           ) : servers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center rounded-lg border border-dashed border-border">
               <p className="text-sm text-muted-foreground">
-                No MCP servers configured. Add one to extend agent capabilities.
+                {t("noServersMessage")}
               </p>
               <Button
                 variant="outline"
@@ -176,7 +178,7 @@ export default function ToolsPage() {
                 onClick={() => handleAdd()}
               >
                 <Plus className="h-4 w-4" />
-                Add Server
+                {t("addServer")}
               </Button>
             </div>
           ) : (

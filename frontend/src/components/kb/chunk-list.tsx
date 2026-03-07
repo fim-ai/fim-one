@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { kbApi } from "@/lib/api"
@@ -16,6 +17,7 @@ interface ChunkListProps {
 const PAGE_SIZE = 20
 
 export function ChunkList({ kbId, docId }: ChunkListProps) {
+  const t = useTranslations("kb")
   const [chunks, setChunks] = useState<ChunkResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -70,7 +72,7 @@ export function ChunkList({ kbId, docId }: ChunkListProps) {
   if (chunks.length === 0) {
     return (
       <p className="text-xs text-muted-foreground text-center py-4">
-        No chunks found.
+        {t("noChunksFound")}
       </p>
     )
   }
@@ -102,7 +104,7 @@ export function ChunkList({ kbId, docId }: ChunkListProps) {
                   size="icon-xs"
                   onClick={() => setEditingChunkId(chunk.id)}
                   className="text-muted-foreground hover:text-foreground"
-                  title="Edit chunk"
+                  title={t("editChunk")}
                 >
                   <Pencil className="h-3 w-3" />
                 </Button>
@@ -111,7 +113,7 @@ export function ChunkList({ kbId, docId }: ChunkListProps) {
                   size="icon-xs"
                   onClick={() => handleDeleteChunk(chunk.id)}
                   className="text-muted-foreground hover:text-destructive"
-                  title="Delete chunk"
+                  title={t("deleteChunk")}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -125,7 +127,7 @@ export function ChunkList({ kbId, docId }: ChunkListProps) {
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-2">
           <span className="text-[10px] text-muted-foreground">
-            {total} chunks total
+            {t("chunksTotal", { count: total })}
           </span>
           <Pagination
             page={page}

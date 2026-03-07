@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Plus, Pencil, Trash2, TestTube2, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,8 @@ import { adminApi } from "@/lib/api"
 import type { AdminMCPServer } from "@/types/admin"
 
 export function AdminMcpServers() {
+  const t = useTranslations("admin.mcpServers")
+  const tc = useTranslations("common")
   const [servers, setServers] = useState<AdminMCPServer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<AdminMCPServer | null>(null)
@@ -57,7 +60,7 @@ export function AdminMcpServers() {
     try {
       const result = await adminApi.testGlobalMcpServer(server.id)
       if (result.ok) {
-        toast.success(`Connected: ${result.tool_count} tool(s) found`)
+        toast.success(t("testConnected", { count: result.tool_count ?? 0 }))
         load()
       } else {
         toast.error(result.error ?? "Test failed")
@@ -71,7 +74,7 @@ export function AdminMcpServers() {
     if (!deleteTarget) return
     try {
       await adminApi.deleteGlobalMcpServer(deleteTarget.id)
-      toast.success("Server deleted")
+      toast.success(t("serverDeleted"))
       setDeleteTarget(null)
       load()
     } catch (err) {
@@ -84,12 +87,12 @@ export function AdminMcpServers() {
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-semibold">MCP Servers</h2>
-          <p className="text-sm text-muted-foreground">Global MCP servers available to all users.</p>
+          <h2 className="text-base font-semibold">{t("title")}</h2>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
         <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
           <Plus className="h-4 w-4" />
-          Add Global Server
+          {t("addServer")}
         </Button>
       </div>
 
@@ -99,17 +102,17 @@ export function AdminMcpServers() {
         </div>
       ) : servers.length === 0 ? (
         <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-          No global MCP servers configured.
+          {t("noServers")}
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Name</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Transport</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Tools</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{tc("name")}</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("transport")}</th>
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("tools")}</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{tc("status")}</th>
                 <th className="px-4 py-2.5 w-28" />
               </tr>
             </thead>
@@ -128,18 +131,18 @@ export function AdminMcpServers() {
                   <td className="px-4 py-3 text-right tabular-nums">{s.tool_count}</td>
                   <td className="px-4 py-3">
                     <Badge variant={s.is_active ? "default" : "secondary"}>
-                      {s.is_active ? "Active" : "Inactive"}
+                      {s.is_active ? tc("active") : tc("inactive")}
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Test" onClick={() => handleTest(s)}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={tc("test")} onClick={() => handleTest(s)}>
                         <TestTube2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit" onClick={() => setEditTarget(s)}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={tc("edit")} onClick={() => setEditTarget(s)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" title="Delete" onClick={() => setDeleteTarget(s)}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" title={tc("delete")} onClick={() => setDeleteTarget(s)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -155,15 +158,15 @@ export function AdminMcpServers() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete server?</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete global MCP server &quot;{deleteTarget?.name}&quot;? All users will lose access to its tools.
+              {t("deleteDesc", { name: deleteTarget?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+              {tc("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -187,7 +190,7 @@ export function AdminMcpServers() {
   )
 }
 
-/* ── Global MCP Server Form Dialog ── */
+/* -- Global MCP Server Form Dialog -- */
 
 function GlobalMcpServerDialog({
   open,
@@ -201,6 +204,8 @@ function GlobalMcpServerDialog({
   onSuccess: () => void
 }) {
   const isEdit = !!server
+  const t = useTranslations("admin.mcpServers")
+  const tc = useTranslations("common")
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -281,14 +286,14 @@ function GlobalMcpServerDialog({
 
       if (isEdit && server) {
         await adminApi.updateGlobalMcpServer(server.id, body)
-        toast.success("MCP server updated")
+        toast.success(t("serverUpdated"))
       } else {
         await adminApi.createGlobalMcpServer(body)
-        toast.success("MCP server created")
+        toast.success(t("serverCreated"))
       }
       onSuccess()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save MCP server")
+      toast.error(err instanceof Error ? err.message : t("saveFailed"))
     } finally {
       setIsSaving(false)
     }
@@ -298,11 +303,11 @@ function GlobalMcpServerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg flex flex-col max-h-[85vh]">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Global MCP Server" : "Add Global MCP Server"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("editDialogTitle") : t("addDialogTitle")}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Update the global MCP server configuration."
-              : "Configure a new global MCP server available to all users."}
+              ? t("editDialogDesc")
+              : t("addDialogDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -310,9 +315,9 @@ function GlobalMcpServerDialog({
           <div className="grid gap-4 py-2">
             {/* Name */}
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("serverName")} <span className="text-destructive">*</span></label>
               <Input
-                placeholder="e.g. filesystem-server"
+                placeholder={t("serverNamePlaceholder")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -320,9 +325,9 @@ function GlobalMcpServerDialog({
 
             {/* Description */}
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium">Description</label>
+              <label className="text-sm font-medium">{tc("description")}</label>
               <Textarea
-                placeholder="Optional description"
+                placeholder={t("descriptionPlaceholder")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={2}
@@ -331,7 +336,7 @@ function GlobalMcpServerDialog({
 
             {/* Transport */}
             <div className="grid gap-1.5">
-              <label className="text-sm font-medium">Transport</label>
+              <label className="text-sm font-medium">{t("transport")}</label>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -364,27 +369,27 @@ function GlobalMcpServerDialog({
             {transport === "stdio" && (
               <>
                 <div className="grid gap-1.5">
-                  <label className="text-sm font-medium">Command</label>
+                  <label className="text-sm font-medium">{t("commandLabel")}</label>
                   <Input
-                    placeholder="e.g. npx or python"
+                    placeholder={t("commandPlaceholder")}
                     value={command}
                     onChange={(e) => setCommand(e.target.value)}
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <label className="text-sm font-medium">Arguments</label>
+                  <label className="text-sm font-medium">{t("argumentsLabel")}</label>
                   <Input
-                    placeholder="Comma-separated, e.g. -y, @modelcontextprotocol/server-filesystem, /tmp"
+                    placeholder={t("argumentsPlaceholder")}
                     value={args}
                     onChange={(e) => setArgs(e.target.value)}
                   />
-                  <p className="text-xs text-muted-foreground">Separate multiple arguments with commas</p>
+                  <p className="text-xs text-muted-foreground">{t("argumentsHint")}</p>
                 </div>
                 <div className="grid gap-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">Environment Variables</label>
+                    <label className="text-sm font-medium">{t("envVarsLabel")}</label>
                     <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={addEnvPair}>
-                      <Plus className="h-3 w-3" /> Add
+                      <Plus className="h-3 w-3" /> {tc("add")}
                     </Button>
                   </div>
                   {envPairs.map((pair, idx) => (
@@ -405,7 +410,7 @@ function GlobalMcpServerDialog({
             {(transport === "sse" || transport === "streamable_http") && (
               <>
                 <div className="grid gap-1.5">
-                  <label className="text-sm font-medium">Server URL</label>
+                  <label className="text-sm font-medium">{t("serverUrlLabel")}</label>
                   <Input
                     placeholder={transport === "sse" ? "e.g. http://localhost:3001/sse" : "e.g. http://localhost:3001/mcp"}
                     value={url}
@@ -414,9 +419,9 @@ function GlobalMcpServerDialog({
                 </div>
                 <div className="grid gap-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">HTTP Headers</label>
+                    <label className="text-sm font-medium">{t("httpHeadersLabel")}</label>
                     <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={addHeaderPair}>
-                      <Plus className="h-3 w-3" /> Add
+                      <Plus className="h-3 w-3" /> {tc("add")}
                     </Button>
                   </div>
                   {headerPairs.map((pair, idx) => (
@@ -436,8 +441,8 @@ function GlobalMcpServerDialog({
             {/* Active toggle */}
             <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
               <div>
-                <p className="text-sm font-medium">Active</p>
-                <p className="text-xs text-muted-foreground">Enable this server for all users</p>
+                <p className="text-sm font-medium">{t("activeLabel")}</p>
+                <p className="text-xs text-muted-foreground">{t("activeDesc")}</p>
               </div>
               <button
                 type="button"
@@ -460,11 +465,11 @@ function GlobalMcpServerDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            Cancel
+            {tc("cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!name.trim() || isSaving}>
             {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-            {isEdit ? "Save Changes" : "Add Server"}
+            {isEdit ? t("saveChanges") : t("addServerBtn")}
           </Button>
         </DialogFooter>
       </DialogContent>

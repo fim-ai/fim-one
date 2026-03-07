@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Loader2, Plug } from "lucide-react"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,6 +24,9 @@ export function ConnectorSettingsForm({
   onSaved,
   onDirtyChange,
 }: ConnectorSettingsFormProps) {
+  const t = useTranslations("connectors")
+  const tc = useTranslations("common")
+
   const [name, setName] = useState("")
   const [icon, setIcon] = useState<string | null>(null)
   const [description, setDescription] = useState("")
@@ -138,12 +142,12 @@ export function ConnectorSettingsForm({
       }
 
       onSaved(result)
-      toast.success(connector ? "Connector updated" : "Connector created")
+      toast.success(connector ? t("connectorUpdated") : t("connectorCreated"))
     } catch (err) {
       console.error("Failed to save connector:", err)
       const message =
         err instanceof Error ? err.message : "Unknown error"
-      toast.error(`Failed to save connector: ${message}`)
+      toast.error(t("connectorSaveFailed", { message }))
     } finally {
       setIsSubmitting(false)
     }
@@ -156,7 +160,7 @@ export function ConnectorSettingsForm({
           {/* Name + Icon */}
           <div className="space-y-1.5">
             <label htmlFor="connector-name" className="text-sm font-medium">
-              Name <span className="text-destructive">*</span>
+              {tc("name")} <span className="text-destructive">*</span>
             </label>
             <div className="flex items-center gap-2">
               <EmojiPickerPopover
@@ -169,7 +173,7 @@ export function ConnectorSettingsForm({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="GitHub API"
+                placeholder={t("namePlaceholder")}
                 required
               />
             </div>
@@ -178,13 +182,13 @@ export function ConnectorSettingsForm({
           {/* Description */}
           <div className="space-y-1.5">
             <label htmlFor="connector-description" className="text-sm font-medium">
-              Description
+              {tc("description")}
             </label>
             <Textarea
               id="connector-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="A brief description of this connector..."
+              placeholder={t("descriptionPlaceholder")}
               rows={2}
               className="resize-none"
             />
@@ -193,14 +197,14 @@ export function ConnectorSettingsForm({
           {/* Base URL */}
           <div className="space-y-1.5">
             <label htmlFor="connector-base-url" className="text-sm font-medium">
-              Base URL <span className="text-destructive">*</span>
+              {t("baseUrl")} <span className="text-destructive">*</span>
             </label>
             <Input
               id="connector-base-url"
               type="text"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="https://api.example.com"
+              placeholder={t("baseUrlPlaceholder")}
               required
             />
           </div>
@@ -208,17 +212,17 @@ export function ConnectorSettingsForm({
           {/* Auth Type */}
           <div className="space-y-1.5">
             <label htmlFor="connector-auth-type" className="text-sm font-medium">
-              Auth Type
+              {t("authType")}
             </label>
             <Select value={authType} onValueChange={setAuthType}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="bearer">Bearer Token</SelectItem>
-                <SelectItem value="api_key">API Key (Custom Header)</SelectItem>
-                <SelectItem value="basic">Basic Auth (Username/Password)</SelectItem>
+                <SelectItem value="none">{t("authTypeNone")}</SelectItem>
+                <SelectItem value="bearer">{t("authTypeBearer")}</SelectItem>
+                <SelectItem value="api_key">{t("authTypeApiKey")}</SelectItem>
+                <SelectItem value="basic">{t("authTypeBasic")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -228,7 +232,7 @@ export function ConnectorSettingsForm({
             <div className="space-y-3 rounded-md border border-border p-3">
               <div className="space-y-1.5">
                 <label htmlFor="connector-token-prefix" className="text-sm font-medium">
-                  Token Prefix
+                  {t("tokenPrefix")}
                 </label>
                 <Input
                   id="connector-token-prefix"
@@ -238,12 +242,12 @@ export function ConnectorSettingsForm({
                   placeholder="Bearer"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Prefix before the token in Authorization header. Default: Bearer.
+                  {t("tokenPrefixHelp")}
                 </p>
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="connector-default-token" className="text-sm font-medium">
-                  Default Token
+                  {t("defaultToken")}
                 </label>
                 <Input
                   id="connector-default-token"
@@ -253,7 +257,7 @@ export function ConnectorSettingsForm({
                   placeholder="ghp_xxxxxxxxxxxx"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Used for testing. Per-user credentials will override this in a future version.
+                  {t("defaultTokenHelp")}
                 </p>
               </div>
             </div>
@@ -264,7 +268,7 @@ export function ConnectorSettingsForm({
             <div className="space-y-3 rounded-md border border-border p-3">
               <div className="space-y-1.5">
                 <label htmlFor="connector-header-name" className="text-sm font-medium">
-                  Header Name
+                  {t("headerName")}
                 </label>
                 <Input
                   id="connector-header-name"
@@ -274,12 +278,12 @@ export function ConnectorSettingsForm({
                   placeholder="X-API-Key"
                 />
                 <p className="text-xs text-muted-foreground">
-                  The HTTP header used to send the API key. Default: X-API-Key.
+                  {t("headerNameHelp")}
                 </p>
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="connector-default-api-key" className="text-sm font-medium">
-                  Default API Key
+                  {t("defaultApiKey")}
                 </label>
                 <Input
                   id="connector-default-api-key"
@@ -289,7 +293,7 @@ export function ConnectorSettingsForm({
                   placeholder="sk-xxxxxxxxxxxx"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Used for testing. Per-user credentials will override this in a future version.
+                  {t("defaultApiKeyHelp")}
                 </p>
               </div>
             </div>
@@ -300,7 +304,7 @@ export function ConnectorSettingsForm({
             <div className="space-y-3 rounded-md border border-border p-3">
               <div className="space-y-1.5">
                 <label htmlFor="connector-default-username" className="text-sm font-medium">
-                  Username
+                  {t("username")}
                 </label>
                 <Input
                   id="connector-default-username"
@@ -312,7 +316,7 @@ export function ConnectorSettingsForm({
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="connector-default-password" className="text-sm font-medium">
-                  Password
+                  {t("password")}
                 </label>
                 <Input
                   id="connector-default-password"
@@ -323,7 +327,7 @@ export function ConnectorSettingsForm({
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Used for testing. Per-user credentials will override this in a future version.
+                {t("basicAuthHelp")}
               </p>
             </div>
           )}
@@ -334,7 +338,7 @@ export function ConnectorSettingsForm({
       <div className="flex justify-end pt-4">
         <Button type="submit" disabled={isSubmitting || !name.trim() || !baseUrl.trim()}>
           {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          Save
+          {tc("save")}
         </Button>
       </div>
     </form>

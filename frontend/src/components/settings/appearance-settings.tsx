@@ -3,83 +3,84 @@
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { Monitor, Moon, Sun } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 
-const THEME_OPTIONS = [
-  {
-    value: "system",
-    label: "Auto",
-    icon: Monitor,
-  },
-  {
-    value: "light",
-    label: "Light",
-    icon: Sun,
-  },
-  {
-    value: "dark",
-    label: "Dark",
-    icon: Moon,
-  },
-] as const
+const THEME_KEYS = ["system", "light", "dark"] as const
+const THEME_ICONS = {
+  system: Monitor,
+  light: Sun,
+  dark: Moon,
+} as const
 
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const t = useTranslations("settings.appearance")
 
   // Avoid hydration mismatch
   useEffect(() => setMounted(true), [])
 
   if (!mounted) return null
 
+  const themeLabelKeys: Record<string, string> = {
+    system: "auto",
+    light: "light",
+    dark: "dark",
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-foreground">Appearance</h2>
+        <h2 className="text-base font-semibold text-foreground">{t("title")}</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Customize how the app looks on your device.
+          {t("description")}
         </p>
       </div>
 
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-foreground">Color mode</h3>
+        <h3 className="text-sm font-medium text-foreground">{t("colorMode")}</h3>
         <div className="grid grid-cols-3 gap-4 max-w-2xl">
-          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              onClick={() => setTheme(value)}
-              className={cn(
-                "group relative flex flex-col items-center gap-2 rounded-lg border-2 p-5 transition-all",
-                theme === value
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/40 hover:bg-accent/50"
-              )}
-            >
-              {/* Mini preview card */}
-              <div
+          {THEME_KEYS.map((value) => {
+            const Icon = THEME_ICONS[value]
+            const label = t(themeLabelKeys[value])
+            return (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
                 className={cn(
-                  "w-full aspect-[4/3] rounded-md overflow-hidden border",
-                  theme === value ? "border-primary/30" : "border-border"
+                  "group relative flex flex-col items-center gap-2 rounded-lg border-2 p-5 transition-all",
+                  theme === value
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/40 hover:bg-accent/50"
                 )}
               >
-                <ThemePreview mode={value} />
-              </div>
+                {/* Mini preview card */}
+                <div
+                  className={cn(
+                    "w-full aspect-[4/3] rounded-md overflow-hidden border",
+                    theme === value ? "border-primary/30" : "border-border"
+                  )}
+                >
+                  <ThemePreview mode={value} />
+                </div>
 
-              {/* Label */}
-              <div className="flex items-center gap-1.5">
-                <Icon className={cn(
-                  "h-3.5 w-3.5",
-                  theme === value ? "text-primary" : "text-muted-foreground"
-                )} />
-                <span className={cn(
-                  "text-sm font-medium",
-                  theme === value ? "text-primary" : "text-muted-foreground"
-                )}>
-                  {label}
-                </span>
-              </div>
-            </button>
-          ))}
+                {/* Label */}
+                <div className="flex items-center gap-1.5">
+                  <Icon className={cn(
+                    "h-3.5 w-3.5",
+                    theme === value ? "text-primary" : "text-muted-foreground"
+                  )} />
+                  <span className={cn(
+                    "text-sm font-medium",
+                    theme === value ? "text-primary" : "text-muted-foreground"
+                  )}>
+                    {label}
+                  </span>
+                </div>
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

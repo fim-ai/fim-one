@@ -2,6 +2,7 @@
 
 import { useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { LayoutDashboard, Plug, Settings, Shield, Users, MessageSquare, HardDrive, Server } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
@@ -14,23 +15,26 @@ import { AdminConversations } from "@/components/admin/admin-conversations"
 import { AdminStorage } from "@/components/admin/admin-storage"
 import { AdminMcpServers } from "@/components/admin/admin-mcp-servers"
 
-const TABS = [
-  { key: "overview", label: "Overview", icon: LayoutDashboard },
-  { key: "users", label: "Users", icon: Users },
-  { key: "conversations", label: "Conversations", icon: MessageSquare },
-  { key: "connectors", label: "Connectors", icon: Plug },
-  { key: "storage", label: "Storage", icon: HardDrive },
-  { key: "mcp", label: "MCP Servers", icon: Server },
-  { key: "audit", label: "Audit Log", icon: Shield },
-  { key: "settings", label: "Settings", icon: Settings },
-] as const
+const TAB_KEYS = ["overview", "users", "conversations", "connectors", "storage", "mcp", "audit", "settings"] as const
 
-type TabKey = (typeof TABS)[number]["key"]
+const TAB_ICONS = {
+  overview: LayoutDashboard,
+  users: Users,
+  conversations: MessageSquare,
+  connectors: Plug,
+  storage: HardDrive,
+  mcp: Server,
+  audit: Shield,
+  settings: Settings,
+} as const
+
+type TabKey = (typeof TAB_KEYS)[number]
 
 function AdminPanelContent() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const t = useTranslations("admin")
 
   const activeTab = (searchParams.get("tab") as TabKey) || "overview"
 
@@ -62,7 +66,7 @@ function AdminPanelContent() {
       <div className="flex items-center px-6 py-4 shrink-0 border-b border-border/40">
         <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <LayoutDashboard className="h-5 w-5" />
-          Admin Panel
+          {t("panelTitle")}
         </h1>
       </div>
 
@@ -70,21 +74,24 @@ function AdminPanelContent() {
       <div className="flex flex-1 min-h-0">
         {/* Left nav */}
         <nav className="w-52 shrink-0 border-r border-border/40 p-4 space-y-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => handleTabChange(key)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                activeTab === key
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{label}</span>
-            </button>
-          ))}
+          {TAB_KEYS.map((key) => {
+            const Icon = TAB_ICONS[key]
+            return (
+              <button
+                key={key}
+                onClick={() => handleTabChange(key)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  activeTab === key
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{t(`tabs.${key}`)}</span>
+              </button>
+            )
+          })}
         </nav>
 
         {/* Right content */}

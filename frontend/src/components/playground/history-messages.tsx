@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { User, Bot, Clock, RefreshCw, BarChart3, CheckCircle2, Target } from "lucide-react"
 import { MarkdownContent } from "@/lib/markdown"
 import { fmtDuration } from "@/lib/utils"
@@ -47,6 +48,7 @@ function AssistantMessage({
   content: string | null
   metadata: Record<string, unknown> | null
 }) {
+  const t = useTranslations("playground")
   const elapsed = metadata?.elapsed as number | undefined
   const iterations = metadata?.iterations as number | undefined
   const usage = metadata?.usage as { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined
@@ -67,7 +69,7 @@ function AssistantMessage({
             {achieved != null && (
               <span className="flex items-center gap-1">
                 <CheckCircle2 className={`h-2.5 w-2.5 ${achieved ? "text-emerald-500" : "text-amber-500"}`} />
-                {achieved ? "Achieved" : "Partial"}
+                {achieved ? t("achieved") : t("partial")}
               </span>
             )}
             {confidence != null && (
@@ -79,7 +81,7 @@ function AssistantMessage({
             {iterations != null && (
               <span className="flex items-center gap-1">
                 <RefreshCw className="h-2.5 w-2.5" />
-                {iterations} iter{iterations !== 1 ? "s" : ""}
+                {iterations !== 1 ? t("iterationCountPlural", { count: iterations }) : t("iterationCount", { count: iterations })}
               </span>
             )}
             {elapsed != null && (
@@ -91,7 +93,7 @@ function AssistantMessage({
             {usage && (
               <span className="flex items-center gap-1">
                 <BarChart3 className="h-2.5 w-2.5" />
-                {(usage.prompt_tokens / 1000).toFixed(1)}k in · {(usage.completion_tokens / 1000).toFixed(1)}k out
+                {t("tokenIn", { value: (usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (usage.completion_tokens / 1000).toFixed(1) })}
               </span>
             )}
           </div>
@@ -103,7 +105,7 @@ function AssistantMessage({
             <MarkdownContent content={content} />
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground italic">No content</p>
+          <p className="text-sm text-muted-foreground italic">{t("noContent")}</p>
         )}
       </div>
     </div>

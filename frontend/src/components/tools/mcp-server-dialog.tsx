@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, Plus, X, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -54,6 +55,8 @@ export function MCPServerDialog({
   onSuccess,
   allowStdio = true,
 }: MCPServerDialogProps) {
+  const t = useTranslations("tools")
+  const tc = useTranslations("common")
   const isEdit = !!server
 
   const [name, setName] = useState("")
@@ -240,10 +243,10 @@ export function MCPServerDialog({
         const created = await mcpServerApi.create(body)
         onSuccess(created)
       }
-      toast.success(isEdit ? "MCP server updated" : "MCP server created")
+      toast.success(isEdit ? t("mcpServerUpdated") : t("mcpServerCreated"))
       onOpenChange(false)
     } catch {
-      toast.error("Failed to save MCP server")
+      toast.error(t("failedToSaveMcpServer"))
     } finally {
       setIsSaving(false)
     }
@@ -262,11 +265,11 @@ export function MCPServerDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("editMcpServer") : t("addMcpServer")}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Update the MCP server configuration."
-              : "Configure a new MCP server connection."}
+              ? t("editMcpServerDescription")
+              : t("addMcpServerDescription")}
           </DialogDescription>
         </DialogHeader>
 
@@ -274,9 +277,9 @@ export function MCPServerDialog({
         <div className="grid gap-4 py-2">
           {/* Name */}
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
+            <label className="text-sm font-medium">{tc("name")} <span className="text-destructive">*</span></label>
             <Input
-              placeholder="e.g. filesystem-server"
+              placeholder={t("namePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -284,9 +287,9 @@ export function MCPServerDialog({
 
           {/* Description */}
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium">Description</label>
+            <label className="text-sm font-medium">{tc("description")}</label>
             <Textarea
-              placeholder="Optional description"
+              placeholder={t("descriptionPlaceholder")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
@@ -295,7 +298,7 @@ export function MCPServerDialog({
 
           {/* Transport */}
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium">Transport</label>
+            <label className="text-sm font-medium">{t("transport")}</label>
             <div className="flex gap-2">
               {allowStdio && (
                 <Button
@@ -321,7 +324,7 @@ export function MCPServerDialog({
                 size="sm"
                 onClick={() => setTransport("streamable_http")}
               >
-                Streamable HTTP
+                {t("streamableHttp")}
               </Button>
             </div>
           </div>
@@ -330,35 +333,35 @@ export function MCPServerDialog({
           {transport === "stdio" && allowStdio && (
             <>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium">Command</label>
+                <label className="text-sm font-medium">{t("command")}</label>
                 <Input
-                  placeholder="e.g. npx or python"
+                  placeholder={t("commandPlaceholder")}
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                 />
               </div>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium">Arguments</label>
+                <label className="text-sm font-medium">{t("arguments")}</label>
                 <Input
-                  placeholder="Comma-separated, e.g. -y, @modelcontextprotocol/server-filesystem, /tmp"
+                  placeholder={t("argumentsPlaceholder")}
                   value={args}
                   onChange={(e) => setArgs(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Separate multiple arguments with commas
+                  {t("argumentsHint")}
                 </p>
               </div>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium">Working Directory <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <label className="text-sm font-medium">{t("workingDirectory")} <span className="text-muted-foreground font-normal">({tc("optional")})</span></label>
                 <Input
-                  placeholder="e.g. /home/user/my-server"
+                  placeholder={t("workingDirectoryPlaceholder")}
                   value={workingDir}
                   onChange={(e) => setWorkingDir(e.target.value)}
                 />
               </div>
               <div className="grid gap-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Environment Variables</label>
+                  <label className="text-sm font-medium">{t("envVars")}</label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -367,7 +370,7 @@ export function MCPServerDialog({
                     onClick={addEnvPair}
                   >
                     <Plus className="h-3 w-3" />
-                    Add
+                    {tc("add")}
                   </Button>
                 </div>
                 {envPairs.map((pair, idx) => (
@@ -404,7 +407,7 @@ export function MCPServerDialog({
           {(transport === "sse" || transport === "streamable_http") && (
             <>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium">Server URL</label>
+                <label className="text-sm font-medium">{t("serverUrl")}</label>
                 <Input
                   placeholder={transport === "sse" ? "e.g. http://localhost:3001/sse" : "e.g. http://localhost:3001/mcp"}
                   value={url}
@@ -413,7 +416,7 @@ export function MCPServerDialog({
               </div>
               <div className="grid gap-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">HTTP Headers</label>
+                  <label className="text-sm font-medium">{t("httpHeaders")}</label>
                   <Button
                     type="button"
                     variant="ghost"
@@ -422,7 +425,7 @@ export function MCPServerDialog({
                     onClick={addHeaderPair}
                   >
                     <Plus className="h-3 w-3" />
-                    Add
+                    {tc("add")}
                   </Button>
                 </div>
                 {headerPairs.map((pair, idx) => (
@@ -451,7 +454,7 @@ export function MCPServerDialog({
                     </Button>
                   </div>
                 ))}
-                <p className="text-xs text-muted-foreground">e.g. Authorization: Bearer token</p>
+                <p className="text-xs text-muted-foreground">{t("httpHeadersHint")}</p>
               </div>
             </>
           )}
@@ -465,16 +468,16 @@ export function MCPServerDialog({
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-              View configuration guide on Smithery
+              {t("viewSmitheryGuide")}
             </a>
           )}
 
           {/* Active toggle */}
           <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
             <div>
-              <p className="text-sm font-medium">Active</p>
+              <p className="text-sm font-medium">{t("activeToggle")}</p>
               <p className="text-xs text-muted-foreground">
-                Enable this server for agent tool usage
+                {t("activeToggleDescription")}
               </p>
             </div>
             <button
@@ -498,11 +501,11 @@ export function MCPServerDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => handleClose(false)} disabled={isSaving}>
-            Cancel
+            {tc("cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!name.trim() || isSaving}>
             {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-            {isEdit ? "Save Changes" : "Add Server"}
+            {isEdit ? t("saveChanges") : t("addServer")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -511,18 +514,18 @@ export function MCPServerDialog({
     <AlertDialog open={open && showCloseConfirm} onOpenChange={setShowCloseConfirm}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogTitle>{t("discardUnsavedTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
-            You have unsaved changes. Closing will discard them.
+            {t("discardUnsavedDescription")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogCancel>{tc("keepEditing")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => { setShowCloseConfirm(false); onOpenChange(false) }}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Discard & close
+            {t("discardAndClose")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

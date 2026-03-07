@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, ShieldOff, ShieldCheck, Megaphone, Wrench, LogOut, AlertTriangle, Zap, Plus, Ticket, Copy, X, Eye } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -48,6 +49,8 @@ interface SystemSettings {
 }
 
 export function AdminSettings() {
+  const t = useTranslations("admin.settings")
+  const tc = useTranslations("common")
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -94,7 +97,7 @@ export function AdminSettings() {
       const res = await apiFetch<{ invalidated: number }>("/api/admin/actions/force-logout-all", {
         method: "POST",
       })
-      toast.success(`Logged out ${res.invalidated} active session${res.invalidated !== 1 ? "s" : ""}`)
+      toast.success(t("loggedOutSessions", { count: res.invalidated }))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to force logout")
     } finally {
@@ -110,10 +113,10 @@ export function AdminSettings() {
     await patch({ registration_mode: value } as Partial<SystemSettings>)
     toast.success(
       value === "open"
-        ? "Registration open to everyone"
+        ? t("registrationOpenToast")
         : value === "invite"
-        ? "Registration set to invite-only"
-        : "Registration disabled"
+        ? t("registrationInviteToast")
+        : t("registrationDisabledToast")
     )
   }
 
@@ -121,7 +124,7 @@ export function AdminSettings() {
     return (
       <div className="flex items-center gap-2 text-muted-foreground text-sm">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading settings...
+        {t("loadingSettings")}
       </div>
     )
   }
@@ -129,9 +132,9 @@ export function AdminSettings() {
   return (
     <div className="space-y-8 max-w-2xl">
       <div>
-        <h2 className="text-base font-semibold">Settings</h2>
+        <h2 className="text-base font-semibold">{t("title")}</h2>
         <p className="text-sm text-muted-foreground">
-          Global configuration that affects all users.
+          {t("subtitle")}
         </p>
       </div>
 
@@ -141,28 +144,28 @@ export function AdminSettings() {
       <SettingSection
         icon={registrationMode === "open" ? ShieldCheck : ShieldOff}
         iconColor={registrationMode === "open" ? "text-green-500" : registrationMode === "invite" ? "text-amber-500" : "text-destructive"}
-        title="User Registration"
-        description="Control how new users can join the system."
+        title={t("registrationTitle")}
+        description={t("registrationDesc")}
       >
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Registration Mode</Label>
+            <Label className="text-sm font-medium">{t("registrationMode")}</Label>
             <Select value={registrationMode} onValueChange={handleRegistrationModeChange} disabled={isSaving}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="open">Open (anyone can register)</SelectItem>
-                <SelectItem value="invite">Invite Only</SelectItem>
-                <SelectItem value="disabled">Disabled</SelectItem>
+                <SelectItem value="open">{t("registrationOpen")}</SelectItem>
+                <SelectItem value="invite">{t("registrationInvite")}</SelectItem>
+                <SelectItem value="disabled">{t("registrationDisabled")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-0.5">
               {registrationMode === "open"
-                ? "Anyone can create an account from the login page."
+                ? t("registrationOpenDesc")
                 : registrationMode === "invite"
-                ? "Users need a valid invite code to register."
-                : "Only admins can create accounts via the Users tab."}
+                ? t("registrationInviteDesc")
+                : t("registrationDisabledDesc")}
             </p>
           </div>
           {registrationMode === "invite" && <InviteCodeManager />}
@@ -175,8 +178,8 @@ export function AdminSettings() {
       <SettingSection
         icon={Zap}
         iconColor="text-blue-500"
-        title="Default Monthly Token Quota"
-        description="Applied to users without a personal quota. 0 means unlimited."
+        title={t("tokenQuotaTitle")}
+        description={t("tokenQuotaDesc")}
       >
         <div className="flex items-center gap-3">
           <Input
@@ -193,11 +196,11 @@ export function AdminSettings() {
             onClick={async () => {
               const val = parseInt(quotaDraft, 10) || 0
               await patch({ default_token_quota: val })
-              toast.success("Default token quota saved")
+              toast.success(t("tokenQuotaSaved"))
             }}
           >
             {isSaving && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-            Save
+            {tc("save")}
           </Button>
         </div>
       </SettingSection>
@@ -208,26 +211,26 @@ export function AdminSettings() {
       <SettingSection
         icon={Megaphone}
         iconColor="text-amber-500"
-        title="System Announcement"
-        description="Show a banner message to all users at the top of every page."
+        title={t("announcementTitle")}
+        description={t("announcementDesc")}
       >
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <Label htmlFor="announcement-toggle" className="text-sm font-medium cursor-pointer">
-              Show announcement banner
+              {t("announcementToggle")}
             </Label>
             <Switch
               id="announcement-toggle"
               checked={settings?.announcement_enabled ?? false}
               onCheckedChange={async (v) => {
                 await patch({ announcement_enabled: v })
-                toast.success(v ? "Announcement banner enabled" : "Announcement banner disabled")
+                toast.success(v ? t("announcementEnabled") : t("announcementDisabled"))
               }}
               disabled={isSaving}
             />
           </div>
           <Textarea
-            placeholder="Write your announcement here..."
+            placeholder={t("announcementPlaceholder")}
             value={announcementDraft}
             onChange={(e) => setAnnouncementDraft(e.target.value)}
             className="resize-none text-sm"
@@ -239,11 +242,11 @@ export function AdminSettings() {
             disabled={isSaving || announcementDraft === settings?.announcement_text}
             onClick={async () => {
               await patch({ announcement_text: announcementDraft })
-              toast.success("Announcement text saved")
+              toast.success(t("announcementSaved"))
             }}
           >
             {isSaving && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-            Save Text
+            {t("saveText")}
           </Button>
         </div>
       </SettingSection>
@@ -254,18 +257,18 @@ export function AdminSettings() {
       <SettingSection
         icon={Wrench}
         iconColor={settings?.maintenance_mode ? "text-orange-500" : "text-muted-foreground"}
-        title="Maintenance Mode"
-        description="Block all non-admin access. Admins can still log in and manage the system."
+        title={t("maintenanceTitle")}
+        description={t("maintenanceDesc")}
       >
         <div className="flex items-center justify-between">
           <div>
             <Label htmlFor="maintenance-toggle" className="text-sm font-medium cursor-pointer">
-              Enable maintenance mode
+              {t("maintenanceToggle")}
             </Label>
             <p className="text-xs text-muted-foreground mt-0.5">
               {settings?.maintenance_mode
-                ? "System is in maintenance. Non-admin requests receive 503."
-                : "System is operating normally."}
+                ? t("maintenanceOnDesc")
+                : t("maintenanceOffDesc")}
             </p>
           </div>
           <Switch
@@ -273,7 +276,7 @@ export function AdminSettings() {
             checked={settings?.maintenance_mode ?? false}
             onCheckedChange={async (v) => {
               await patch({ maintenance_mode: v })
-              toast.success(v ? "Maintenance mode ON -- users are blocked" : "Maintenance mode OFF -- system restored")
+              toast.success(v ? t("maintenanceOn") : t("maintenanceOff"))
             }}
             disabled={isSaving}
           />
@@ -287,19 +290,19 @@ export function AdminSettings() {
         <div>
           <h4 className="text-sm font-medium text-destructive flex items-center gap-1.5">
             <AlertTriangle className="h-4 w-4" />
-            Danger Zone
+            {t("dangerZone")}
           </h4>
           <p className="text-sm text-muted-foreground">
-            Irreversible or high-impact actions.
+            {t("dangerZoneDesc")}
           </p>
         </div>
 
         <div className="flex items-start gap-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <LogOut className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-medium">Force logout all users</p>
+            <p className="text-sm font-medium">{t("forceLogoutAll")}</p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Invalidates every active refresh token. All users (except you) will be signed out immediately.
+              {t("forceLogoutAllDesc")}
             </p>
           </div>
           <Button
@@ -307,7 +310,7 @@ export function AdminSettings() {
             size="sm"
             onClick={() => setForceLogoutOpen(true)}
           >
-            Force Logout All
+            {t("forceLogoutAllBtn")}
           </Button>
         </div>
       </div>
@@ -316,21 +319,20 @@ export function AdminSettings() {
       <AlertDialog open={forceLogoutOpen} onOpenChange={setForceLogoutOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Force logout all users?</AlertDialogTitle>
+            <AlertDialogTitle>{t("forceLogoutTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will immediately invalidate all active sessions. Every user will be signed out and
-              must log in again. Your own session will not be affected.
+              {t("forceLogoutDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={handleForceLogout}
               disabled={isForcing}
             >
               {isForcing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Yes, Force Logout
+              {t("yesForceLogout")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -339,9 +341,11 @@ export function AdminSettings() {
   )
 }
 
-/* ── Invite Code Manager ── */
+/* -- Invite Code Manager -- */
 
 function InviteCodeManager() {
+  const t = useTranslations("admin.settings")
+  const tc = useTranslations("common")
   const [codes, setCodes] = useState<InviteCode[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
@@ -379,7 +383,7 @@ function InviteCodeManager() {
         max_uses: parseInt(maxUses, 10) || 1,
         expires_at: expiresAt || undefined,
       })
-      toast.success("Invite code generated")
+      toast.success(t("codeGenerated"))
       setCreateOpen(false)
       setNote("")
       setMaxUses("1")
@@ -396,7 +400,7 @@ function InviteCodeManager() {
     if (!revokeTarget) return
     try {
       await adminApi.revokeInviteCode(revokeTarget.id)
-      toast.success("Invite code revoked")
+      toast.success(t("codeRevoked"))
       setRevokeTarget(null)
       load()
     } catch (err) {
@@ -406,7 +410,7 @@ function InviteCodeManager() {
 
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
-    toast.success("Code copied to clipboard")
+    toast.success(t("codeCopied"))
   }
 
   const inactiveCount = codes.filter((c) => !c.is_active || c.use_count >= c.max_uses).length
@@ -417,7 +421,7 @@ function InviteCodeManager() {
       <div className="flex items-center justify-between">
         <h5 className="text-sm font-medium flex items-center gap-1.5">
           <Ticket className="h-3.5 w-3.5" />
-          Invite Codes
+          {t("inviteCodes")}
         </h5>
         <div className="flex items-center gap-2">
           {inactiveCount > 0 && (
@@ -428,12 +432,12 @@ function InviteCodeManager() {
               className="h-7 gap-1 text-xs text-muted-foreground"
             >
               <Eye className="h-3 w-3" />
-              {showInactive ? "Hide inactive" : `${inactiveCount} inactive`}
+              {showInactive ? t("hideInactive") : t("inactiveCount", { count: inactiveCount })}
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)} className="h-7 gap-1 text-xs">
             <Plus className="h-3 w-3" />
-            Generate Code
+            {t("generateCode")}
           </Button>
         </div>
       </div>
@@ -441,11 +445,11 @@ function InviteCodeManager() {
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
           <Loader2 className="h-3 w-3 animate-spin" />
-          Loading...
+          {tc("loading")}
         </div>
       ) : visibleCodes.length === 0 ? (
         <p className="text-xs text-muted-foreground py-2">
-          {codes.length === 0 ? "No invite codes yet." : "No active invite codes."}
+          {codes.length === 0 ? t("noInviteCodes") : t("noActiveInviteCodes")}
         </p>
       ) : (
         <div className="divide-y divide-border rounded-md border border-border text-sm">
@@ -464,13 +468,13 @@ function InviteCodeManager() {
                 </Badge>
                 {c.expires_at && (
                   <span className="text-xs text-muted-foreground">
-                    exp {new Date(c.expires_at).toLocaleDateString()}
+                    {t("expiresLabel", { date: new Date(c.expires_at).toLocaleDateString() })}
                   </span>
                 )}
                 {!c.is_active ? (
-                  <Badge variant="secondary" className="text-xs">Revoked</Badge>
+                  <Badge variant="secondary" className="text-xs">{t("revoked")}</Badge>
                 ) : c.use_count >= c.max_uses ? (
-                  <Badge variant="secondary" className="text-xs">Exhausted</Badge>
+                  <Badge variant="secondary" className="text-xs">{t("exhausted")}</Badge>
                 ) : (
                   <Button
                     variant="ghost"
@@ -491,22 +495,22 @@ function InviteCodeManager() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Generate Invite Code</DialogTitle>
+            <DialogTitle>{t("generateTitle")}</DialogTitle>
             <DialogDescription>
-              Create a new invite code for user registration.
+              {t("generateDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Note (optional)</Label>
+              <Label className="text-sm font-medium">{t("noteLabel")}</Label>
               <Input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g. For team onboarding"
+                placeholder={t("notePlaceholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Max Uses</Label>
+              <Label className="text-sm font-medium">{t("maxUsesLabel")}</Label>
               <Input
                 type="number"
                 min={1}
@@ -515,7 +519,7 @@ function InviteCodeManager() {
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Expires At (optional)</Label>
+              <Label className="text-sm font-medium">{t("expiresAtLabel")}</Label>
               <Input
                 type="date"
                 value={expiresAt}
@@ -524,10 +528,10 @@ function InviteCodeManager() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{tc("cancel")}</Button>
             <Button onClick={handleCreate} disabled={isSaving}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Generate
+              {t("generate")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -537,15 +541,15 @@ function InviteCodeManager() {
       <AlertDialog open={!!revokeTarget} onOpenChange={(open) => !open && setRevokeTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke invite code?</AlertDialogTitle>
+            <AlertDialogTitle>{t("revokeTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Code &quot;{revokeTarget?.code}&quot; will be deactivated. Users with this code will no longer be able to register.
+              {t("revokeDesc", { code: revokeTarget?.code ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleRevoke} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Revoke
+              {t("revoke")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

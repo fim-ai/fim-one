@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Trash2, Loader2, Eye, RotateCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -46,6 +47,8 @@ export function DocumentTable({
   onDeleteDocument,
   chunkSize,
 }: DocumentTableProps) {
+  const t = useTranslations("kb")
+  const tc = useTranslations("common")
   const [selectedDoc, setSelectedDoc] = useState<KBDocumentResponse | null>(
     null,
   )
@@ -78,7 +81,7 @@ export function DocumentTable({
   if (documents.length === 0) {
     return (
       <p className="text-sm text-muted-foreground text-center py-10">
-        No documents yet. Upload files or create a markdown document to get started.
+        {t("noDocuments")}
       </p>
     )
   }
@@ -88,11 +91,11 @@ export function DocumentTable({
       <div className="rounded-lg border border-border overflow-hidden">
         {/* Header row */}
         <div className="grid grid-cols-[1fr_60px_70px_70px_80px] gap-2 px-3 py-2 bg-muted/50 text-[11px] font-medium text-muted-foreground uppercase tracking-wider border-b border-border">
-          <span>Filename</span>
-          <span>Type</span>
-          <span>Chunks</span>
-          <span>Status</span>
-          <span className="text-right">Actions</span>
+          <span>{t("filename")}</span>
+          <span>{tc("type")}</span>
+          <span>{t("chunks")}</span>
+          <span>{tc("status")}</span>
+          <span className="text-right">{tc("actions")}</span>
         </div>
 
         {/* Document rows */}
@@ -183,7 +186,7 @@ export function DocumentTable({
                       />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" sideOffset={5}>Retry processing</TooltipContent>
+                  <TooltipContent side="bottom" sideOffset={5}>{t("retryProcessing")}</TooltipContent>
                 </Tooltip>
               )}
               <Tooltip>
@@ -197,7 +200,7 @@ export function DocumentTable({
                     <Eye className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={5}>View chunks</TooltipContent>
+                <TooltipContent side="bottom" sideOffset={5}>{t("viewChunks")}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -210,7 +213,7 @@ export function DocumentTable({
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" sideOffset={5}>Delete document</TooltipContent>
+                <TooltipContent side="bottom" sideOffset={5}>{t("deleteDocument")}</TooltipContent>
               </Tooltip>
             </div>
           </div>

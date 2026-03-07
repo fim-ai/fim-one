@@ -1,0 +1,12 @@
+{
+  "executionPlan": "Execution Plan",
+  "stepCount": "{count, plural, one {# step} other {# steps}}",
+  "noActivityYet": "No activity yet",
+  "executing": "Executing...",
+  "thinking": "Thinking",
+  "input": "Input",
+  "output": "Output",
+  "toolDetails": "{name} tool details",
+  "reasoning": "Reasoning",
+  "arguments": "Arguments"
+}

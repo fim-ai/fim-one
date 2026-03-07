@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { MessageCircleQuestion } from "lucide-react"
 
 interface SuggestedFollowupsProps {
@@ -8,13 +9,14 @@ interface SuggestedFollowupsProps {
 }
 
 export function SuggestedFollowups({ suggestions, onSelect }: SuggestedFollowupsProps) {
+  const t = useTranslations("playground")
   if (!suggestions.length) return null
 
   return (
     <div className="mt-4 pt-4 border-t">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
         <MessageCircleQuestion className="h-3.5 w-3.5" />
-        <span>Follow up</span>
+        <span>{t("followUp")}</span>
       </div>
       <div className="flex flex-wrap gap-2">
         {suggestions.map((suggestion, i) => (

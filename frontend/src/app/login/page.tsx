@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +12,8 @@ import { APP_NAME, getApiBaseUrl, getApiDirectUrl } from "@/lib/constants"
 import { authApi } from "@/lib/api"
 
 function LoginPageInner() {
+  const t = useTranslations("auth")
+  const tc = useTranslations("common")
   const { user, isLoading: authLoading, login, register } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -86,14 +89,14 @@ function LoginPageInner() {
     const error = searchParams.get("error")
     if (error) {
       if (error === "oauth_failed") {
-        setOauthError("OAuth authentication failed. Please try again.")
+        setOauthError(t("oauthFailed"))
       } else if (error === "registration_disabled") {
-        setOauthError("Registration is currently disabled. Please contact an administrator.")
+        setOauthError(t("oauthRegistrationDisabled"))
       } else {
         setOauthError(error)
       }
     }
-  }, [searchParams])
+  }, [searchParams, t])
 
   // Fetch available OAuth providers
   useEffect(() => {
@@ -124,7 +127,7 @@ function LoginPageInner() {
       })
       router.replace("/")
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : "Login failed")
+      setLoginError(err instanceof Error ? err.message : t("loginFailed"))
     } finally {
       setLoginLoading(false)
     }
@@ -134,19 +137,19 @@ function LoginPageInner() {
     e.preventDefault()
     setRegError("")
     if (!regEmail.trim()) {
-      setRegError("Email is required")
+      setRegError(t("emailRequired"))
       return
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail)) {
-      setRegError("Please enter a valid email address")
+      setRegError(t("emailInvalid"))
       return
     }
     if (regPassword !== regConfirm) {
-      setRegError("Passwords do not match")
+      setRegError(t("passwordsDoNotMatch"))
       return
     }
     if (regPassword.length < 6) {
-      setRegError("Password must be at least 6 characters")
+      setRegError(t("passwordMinLength"))
       return
     }
     setRegLoading(true)
@@ -159,7 +162,7 @@ function LoginPageInner() {
       })
       router.replace("/")
     } catch (err) {
-      setRegError(err instanceof Error ? err.message : "Registration failed")
+      setRegError(err instanceof Error ? err.message : t("registrationFailed"))
     } finally {
       setRegLoading(false)
     }
@@ -202,19 +205,17 @@ function LoginPageInner() {
         {/* Middle-lower — tagline */}
         <div className="relative z-10 -mt-8">
           <h1
-            className="text-[2.75rem] font-bold leading-[1.1] tracking-tight text-white"
+            className="text-[2.75rem] font-bold leading-[1.1] tracking-tight text-white whitespace-pre-line"
             style={{ fontFamily: 'var(--font-cabinet), sans-serif' }}
           >
-            AI-Powered
-            <br />
-            Connector Hub
+            {t("brandTagline")}
           </h1>
           <p className="mt-4 text-base leading-relaxed text-white/55">
-            Connect any API.
+            {t("brandLine1")}
             <br />
-            Orchestrate with agents.
+            {t("brandLine2")}
             <br />
-            Ship faster.
+            {t("brandLine3")}
           </p>
         </div>
 
@@ -241,9 +242,9 @@ function LoginPageInner() {
 
           {/* Heading */}
           <div className="mb-6 text-center lg:text-left">
-            <h2 className="text-xl font-semibold tracking-tight">Welcome</h2>
+            <h2 className="text-xl font-semibold tracking-tight">{t("loginWelcome")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sign in to your account or create a new one
+              {t("loginSubtitle")}
             </p>
           </div>
 
@@ -267,7 +268,7 @@ function LoginPageInner() {
                     <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
                     </svg>
-                    Continue with GitHub
+                    {t("continueWithGithub")}
                   </Button>
                 )}
                 {oauthProviders.includes("google") && (
@@ -284,7 +285,7 @@ function LoginPageInner() {
                       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                     </svg>
-                    Continue with Google
+                    {t("continueWithGoogle")}
                   </Button>
                 )}
               </div>
@@ -295,7 +296,7 @@ function LoginPageInner() {
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">or</span>
+                  <span className="bg-background px-2 text-muted-foreground">{t("orDivider")}</span>
                 </div>
               </div>
             </>
@@ -303,14 +304,14 @@ function LoginPageInner() {
 
           <Tabs defaultValue="login" className="w-full">
             <TabsList className={`grid w-full ${registrationEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
-              <TabsTrigger value="login">Login</TabsTrigger>
-              {registrationEnabled && <TabsTrigger value="register">Register</TabsTrigger>}
+              <TabsTrigger value="login">{tc("login")}</TabsTrigger>
+              {registrationEnabled && <TabsTrigger value="register">{tc("register")}</TabsTrigger>}
             </TabsList>
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Input
-                    placeholder="Username or Email"
+                    placeholder={t("usernameOrEmailPlaceholder")}
                     value={loginUsername}
                     onChange={(e) => setLoginUsername(e.target.value)}
                     required
@@ -319,7 +320,7 @@ function LoginPageInner() {
                   />
                   <Input
                     type="password"
-                    placeholder="Password"
+                    placeholder={t("passwordPlaceholder")}
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     required
@@ -331,7 +332,7 @@ function LoginPageInner() {
                 )}
                 <Button type="submit" className="w-full" disabled={loginLoading}>
                   {loginLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Sign In
+                  {t("signIn")}
                 </Button>
               </form>
             </TabsContent>
@@ -339,7 +340,7 @@ function LoginPageInner() {
               <form onSubmit={handleRegister} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Input
-                    placeholder="Username (min 2 characters)"
+                    placeholder={t("usernameMinLengthPlaceholder")}
                     value={regUsername}
                     onChange={(e) => setRegUsername(e.target.value)}
                     required
@@ -348,7 +349,7 @@ function LoginPageInner() {
                   />
                   <Input
                     type="email"
-                    placeholder="Email"
+                    placeholder={t("emailPlaceholder")}
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
                     required
@@ -356,7 +357,7 @@ function LoginPageInner() {
                   />
                   <Input
                     type="password"
-                    placeholder="Password (min 6 characters)"
+                    placeholder={t("passwordMinLengthPlaceholder")}
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
                     required
@@ -365,7 +366,7 @@ function LoginPageInner() {
                   />
                   <Input
                     type="password"
-                    placeholder="Confirm password"
+                    placeholder={t("confirmPasswordPlaceholder")}
                     value={regConfirm}
                     onChange={(e) => setRegConfirm(e.target.value)}
                     required
@@ -373,7 +374,7 @@ function LoginPageInner() {
                   />
                   {registrationMode === "invite" && (
                     <Input
-                      placeholder="Invite code"
+                      placeholder={t("inviteCodePlaceholder")}
                       value={regInviteCode}
                       onChange={(e) => setRegInviteCode(e.target.value)}
                       autoComplete="off"
@@ -386,7 +387,7 @@ function LoginPageInner() {
                 )}
                 <Button type="submit" className="w-full" disabled={regLoading}>
                   {regLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Account
+                  {t("createAccount")}
                 </Button>
               </form>
             </TabsContent>}

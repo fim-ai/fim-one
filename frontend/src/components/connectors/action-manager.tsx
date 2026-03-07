@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Plus, Trash2, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -72,6 +73,9 @@ interface ActionManagerProps {
 // ---------------------------------------------------------------------------
 
 export function ActionManager({ connector, onChanged }: ActionManagerProps) {
+  const t = useTranslations("connectors")
+  const tc = useTranslations("common")
+
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null)
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [form, setForm] = useState<ActionFormState>(EMPTY_FORM)
@@ -125,9 +129,9 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
         resetForm()
       }
       onChanged()
-      toast.success("Action deleted")
+      toast.success(t("actionDeleted"))
     } catch {
-      toast.error("Failed to delete action")
+      toast.error(t("actionDeleteFailed"))
     } finally {
       setDeletingId(null)
     }
@@ -168,11 +172,11 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
         await connectorApi.createAction(connector.id, body)
       }
 
-      toast.success(isAddingNew || !editingActionId ? "Action created" : "Action updated")
+      toast.success(isAddingNew || !editingActionId ? t("actionCreated") : t("actionUpdated"))
       resetForm()
       onChanged()
     } catch {
-      toast.error("Failed to save action")
+      toast.error(t("actionSaveFailed"))
     } finally {
       setIsSubmitting(false)
     }
@@ -192,7 +196,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
             className="gap-1.5 w-full"
           >
             <Plus className="h-4 w-4" />
-            Add Action
+            {t("addAction")}
           </Button>
         </div>
 
@@ -200,7 +204,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
           <div className="p-2 space-y-1">
             {connector.actions.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-6">
-                No actions yet.
+                {t("noActionsYet")}
               </p>
             )}
 
@@ -256,7 +260,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                       )}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" sideOffset={5}>Delete Action</TooltipContent>
+                  <TooltipContent side="bottom" sideOffset={5}>{t("deleteAction")}</TooltipContent>
                 </Tooltip>
               </div>
             ))}
@@ -269,27 +273,27 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
         {!showForm ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-sm text-muted-foreground">
-              Select an action or create a new one
+              {t("selectOrCreateAction")}
             </p>
           </div>
         ) : (
           <ScrollArea className="flex-1">
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               <p className="text-sm font-medium mb-2">
-                {editingActionId && !isAddingNew ? "Edit Action" : "New Action"}
+                {editingActionId && !isAddingNew ? t("editAction") : t("newAction")}
               </p>
 
               {/* Name */}
               <div className="space-y-1.5">
                 <label htmlFor="am-action-name" className="text-sm font-medium">
-                  Name <span className="text-destructive">*</span>
+                  {tc("name")} <span className="text-destructive">*</span>
                 </label>
                 <Input
                   id="am-action-name"
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="List Repositories"
+                  placeholder={t("actionNamePlaceholder")}
                   required
                 />
               </div>
@@ -297,13 +301,13 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
               {/* Description */}
               <div className="space-y-1.5">
                 <label htmlFor="am-action-description" className="text-sm font-medium">
-                  Description
+                  {tc("description")}
                 </label>
                 <Textarea
                   id="am-action-description"
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="What does this action do..."
+                  placeholder={t("actionDescriptionPlaceholder")}
                   rows={2}
                   className="resize-none"
                 />
@@ -313,7 +317,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
               <div className="grid grid-cols-[120px_1fr] gap-3">
                 <div className="space-y-1.5">
                   <label htmlFor="am-action-method" className="text-sm font-medium">
-                    Method
+                    {t("method")}
                   </label>
                   <Select value={form.method} onValueChange={(v) => setForm({ ...form, method: v })}>
                     <SelectTrigger className="w-full">
@@ -330,7 +334,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                 </div>
                 <div className="space-y-1.5">
                   <label htmlFor="am-action-path" className="text-sm font-medium">
-                    Path <span className="text-destructive">*</span>
+                    {t("path")} <span className="text-destructive">*</span>
                   </label>
                   <Input
                     id="am-action-path"
@@ -346,7 +350,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
               {/* Parameters Schema */}
               <div className="space-y-1.5">
                 <label htmlFor="am-action-params" className="text-sm font-medium">
-                  Parameters Schema (JSON)
+                  {t("parametersSchema")}
                 </label>
                 <Textarea
                   id="am-action-params"
@@ -363,7 +367,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
               {/* Response Extract */}
               <div className="space-y-1.5">
                 <label htmlFor="am-action-extract" className="text-sm font-medium">
-                  Response Extract (JMESPath)
+                  {t("responseExtract")}
                 </label>
                 <Input
                   id="am-action-extract"
@@ -375,7 +379,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                   placeholder="data[].{name: name, id: id}"
                 />
                 <p className="text-xs text-muted-foreground">
-                  JMESPath expression to extract relevant data from the API response.
+                  {t("responseExtractHelp")}
                 </p>
               </div>
 
@@ -389,7 +393,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                   }
                   className="h-3.5 w-3.5 rounded border-input accent-primary"
                 />
-                <span>Requires user confirmation before execution</span>
+                <span>{t("requiresConfirmation")}</span>
               </label>
 
               {/* Form buttons */}
@@ -401,7 +405,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                   onClick={resetForm}
                   disabled={isSubmitting}
                 >
-                  Cancel
+                  {tc("cancel")}
                 </Button>
                 <Button
                   type="submit"
@@ -411,7 +415,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                   }
                 >
                   {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {editingActionId && !isAddingNew ? "Update" : "Add"}
+                  {editingActionId && !isAddingNew ? tc("update") : tc("add")}
                 </Button>
               </div>
             </form>
@@ -425,14 +429,14 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete action?</DialogTitle>
+            <DialogTitle>{t("deleteActionTitle")}</DialogTitle>
             <DialogDescription>
-              This action will be permanently deleted. This cannot be undone.
+              {t("deleteActionDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -444,7 +448,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                 setPendingDeleteId(null)
               }}
             >
-              Delete
+              {tc("delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

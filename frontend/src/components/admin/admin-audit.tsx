@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { apiFetch } from "@/lib/api"
 import { toast } from "sonner"
 
@@ -58,6 +58,8 @@ function formatTime(iso: string): string {
 }
 
 export function AdminAudit() {
+  const t = useTranslations("admin.audit")
+  const tc = useTranslations("common")
   const [data, setData] = useState<AuditPage | null>(null)
   const [page, setPage] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
@@ -80,14 +82,14 @@ export function AdminAudit() {
     <div className="space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-semibold">Audit Log</h2>
+          <h2 className="text-base font-semibold">{t("title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Admin actions recorded for accountability.
+            {t("subtitle")}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={isLoading}>
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
+          {tc("refresh")}
         </Button>
       </div>
 
@@ -97,7 +99,7 @@ export function AdminAudit() {
         </div>
       ) : !data || data.items.length === 0 ? (
         <div className="rounded-md border border-border bg-muted/30 p-6 text-sm text-muted-foreground text-center">
-          No audit log entries yet.
+          {t("noEntries")}
         </div>
       ) : (
         <>
@@ -105,11 +107,11 @@ export function AdminAudit() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">Time</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Admin</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Action</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Target</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Detail</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground whitespace-nowrap">{t("timeColumn")}</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("adminColumn")}</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("actionColumn")}</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("targetColumn")}</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("detailColumn")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -129,10 +131,10 @@ export function AdminAudit() {
                     <td className="px-4 py-2.5 text-muted-foreground text-xs">
                       {entry.target_label
                         ? <span className="font-medium text-foreground">{entry.target_label}</span>
-                        : <span className="text-muted-foreground/50">—</span>}
+                        : <span className="text-muted-foreground/50">&mdash;</span>}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[260px] truncate">
-                      {entry.detail ?? "—"}
+                      {entry.detail ?? "\u2014"}
                     </td>
                   </tr>
                 ))}
@@ -142,14 +144,14 @@ export function AdminAudit() {
 
           {/* Pagination */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{data.total} entr{data.total !== 1 ? "ies" : "y"} total</span>
+            <span>{t("totalEntries", { count: data.total })}</span>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Previous
+                {t("previous")}
               </Button>
-              <span>Page {page} of {data.pages}</span>
+              <span>{t("pageOf", { page, pages: data.pages })}</span>
               <Button variant="outline" size="sm" disabled={page >= data.pages} onClick={() => setPage((p) => p + 1)}>
-                Next
+                {tc("next")}
               </Button>
             </div>
           </div>

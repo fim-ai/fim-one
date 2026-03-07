@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Plus, Trash2, Loader2, Search, Star, MoreHorizontal, Pencil, MessagesSquare, GitBranch, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -32,7 +33,10 @@ interface ConversationSidebarProps {
   hideHeader?: boolean
 }
 
-function groupByDate(conversations: ConversationResponse[]) {
+function groupByDate(
+  conversations: ConversationResponse[],
+  labels: { starred: string; today: string; yesterday: string; previous7Days: string; older: string },
+) {
   const starred = conversations.filter((c) => c.starred)
   const unstarred = conversations.filter((c) => !c.starred)
 
@@ -44,14 +48,14 @@ function groupByDate(conversations: ConversationResponse[]) {
   const groups: { label: string; items: ConversationResponse[] }[] = []
 
   if (starred.length > 0) {
-    groups.push({ label: "Starred", items: starred })
+    groups.push({ label: labels.starred, items: starred })
   }
 
   const dateGroups: { label: string; items: ConversationResponse[] }[] = [
-    { label: "Today", items: [] },
-    { label: "Yesterday", items: [] },
-    { label: "Previous 7 Days", items: [] },
-    { label: "Older", items: [] },
+    { label: labels.today, items: [] },
+    { label: labels.yesterday, items: [] },
+    { label: labels.previous7Days, items: [] },
+    { label: labels.older, items: [] },
   ]
 
   for (const conv of unstarred) {
@@ -72,6 +76,8 @@ function groupByDate(conversations: ConversationResponse[]) {
 export function ConversationSidebar({ collapsed, hideHeader }: ConversationSidebarProps) {
   const pathname = usePathname()
   const isNewChat = pathname === "/new"
+  const t = useTranslations("layout")
+  const tc = useTranslations("common")
   const {
     conversations,
     activeId,
@@ -134,14 +140,14 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
               ? "bg-accent text-accent-foreground"
               : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           )}
-          title="New Chat"
+          title={t("newChat")}
         >
           <Plus className="h-4 w-4" />
         </Link>
         <button
           onClick={() => setSearchOpen(true)}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-          title="Search"
+          title={tc("search")}
         >
           <Search className="h-4 w-4" />
         </button>
@@ -150,7 +156,13 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
     )
   }
 
-  const groups = groupByDate(conversations)
+  const groups = groupByDate(conversations, {
+    starred: t("starred"),
+    today: tc("today"),
+    yesterday: tc("yesterday"),
+    previous7Days: t("previous7Days"),
+    older: tc("older"),
+  })
 
   return (
     <div className="flex flex-col h-full">
@@ -165,7 +177,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
           >
             <Link href="/new" onClick={handleNewChat}>
               <Plus className="h-4 w-4" />
-              New Chat
+              {t("newChat")}
             </Link>
           </Button>
           <Button
@@ -173,7 +185,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
             size="sm"
             className="shrink-0 px-2"
             onClick={() => setSearchOpen(true)}
-            title="Search (Cmd+K)"
+            title={t("searchTooltipMac", { shortcut: "⌘K" })}
           >
             <Search className="h-4 w-4" />
           </Button>
@@ -190,7 +202,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
               </div>
             ) : conversations.length === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">
-                No conversations yet
+                {t("noConversations")}
               </div>
             ) : (
               <>
@@ -212,7 +224,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                         )}
                       >
                         <span className="flex-1 truncate text-[13px]">
-                          {conv.title || "Untitled"}
+                          {conv.title || t("untitled")}
                         </span>
                         {conv.mode === "dag" ? (
                           <GitBranch className="shrink-0 h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -231,11 +243,11 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                           <DropdownMenuContent align="end" className="w-36">
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openRename(conv) }}>
                               <Pencil className="h-3.5 w-3.5 mr-2" />
-                              Rename
+                              {t("rename")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); toggleStar(conv.id) }}>
                               <Star className={cn("h-3.5 w-3.5 mr-2", conv.starred && "fill-yellow-500 text-yellow-500")} />
-                              {conv.starred ? "Unstar" : "Star"}
+                              {conv.starred ? t("unstar") : t("star")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -243,7 +255,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                               onClick={(e) => { e.stopPropagation(); setPendingDeleteId(conv.id) }}
                             >
                               <Trash2 className="h-3.5 w-3.5 mr-2" />
-                              Delete
+                              {tc("delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -257,7 +269,7 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                   className="flex items-center gap-2 rounded-md px-2 py-1.5 mt-1 text-xs text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/50 transition-colors"
                 >
                   <MessagesSquare className="h-3.5 w-3.5" />
-                  All Chats
+                  {t("allChats")}
                 </Link>
               </>
             )}
@@ -272,17 +284,17 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
       <Dialog open={pendingDeleteId !== null} onOpenChange={(open) => { if (!open) setPendingDeleteId(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete conversation?</DialogTitle>
+            <DialogTitle>{t("deleteConversationTitle")}</DialogTitle>
             <DialogDescription>
-              This conversation will be permanently deleted. This action cannot be undone.
+              {t("deleteConversationDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button variant="destructive" className="px-6" onClick={confirmDelete}>
-              Delete
+              {tc("delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -291,24 +303,24 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
       <Dialog open={renameTarget !== null} onOpenChange={(open) => { if (!open) setRenameTarget(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Rename conversation</DialogTitle>
+            <DialogTitle>{t("renameConversationTitle")}</DialogTitle>
             <DialogDescription>
-              Enter a new title for this conversation.
+              {t("renameConversationDescription")}
             </DialogDescription>
           </DialogHeader>
           <Input
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") confirmRename() }}
-            placeholder="Conversation title"
+            placeholder={t("conversationTitlePlaceholder")}
             autoFocus
           />
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => setRenameTarget(null)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button className="px-6" onClick={confirmRename} disabled={!renameValue.trim()}>
-              Save
+              {tc("save")}
             </Button>
           </DialogFooter>
         </DialogContent>

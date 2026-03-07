@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Loader2, Pencil, Trash2, FileText, Search, X } from "lucide-react"
 import {
@@ -75,6 +76,8 @@ export function ChunkDrawer({
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  const t = useTranslations("kb")
+
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => setSearchQuery(searchInput), 300)
@@ -131,9 +134,9 @@ export function ChunkDrawer({
         prev.map((c) => (c.id === chunkId ? { ...c, text } : c)),
       )
       setEditingChunkId(null)
-      toast.success("Chunk updated")
+      toast.success(t("chunkUpdated"))
     } catch {
-      toast.error("Failed to update chunk")
+      toast.error(t("failedToUpdateChunk"))
     }
   }
 
@@ -142,9 +145,9 @@ export function ChunkDrawer({
       await kbApi.deleteChunk(kbId, chunkId)
       setChunks((prev) => prev.filter((c) => c.id !== chunkId))
       setTotal((t) => Math.max(0, t - 1))
-      toast.success("Chunk deleted")
+      toast.success(t("chunkDeleted"))
     } catch {
-      toast.error("Failed to delete chunk")
+      toast.error(t("failedToDeleteChunk"))
     }
   }
 
@@ -193,7 +196,7 @@ export function ChunkDrawer({
                     {document.file_type}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {total > 0 ? total : document.chunk_count} chunks
+                    {t("chunkCount", { count: total > 0 ? total : document.chunk_count })}
                   </span>
                   <Badge
                     variant="secondary"
@@ -211,7 +214,7 @@ export function ChunkDrawer({
                     size="icon-xs"
                     onClick={() => setSearchOpen(true)}
                     className="text-muted-foreground hover:text-foreground"
-                    title="Search chunks"
+                    title={t("searchChunks")}
                   >
                     <Search className="h-3.5 w-3.5" />
                   </Button>
@@ -233,7 +236,7 @@ export function ChunkDrawer({
                     setSearchQuery("")
                   }
                 }}
-                placeholder="Search chunks..."
+                placeholder={t("searchChunksPlaceholder")}
                 className="h-8 pl-8 pr-8 text-xs bg-background/50"
               />
               <button
@@ -254,7 +257,7 @@ export function ChunkDrawer({
             </div>
           ) : chunks.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-16">
-              No chunks found.
+              {t("noChunksFound")}
             </p>
           ) : (
             <div className="space-y-2">
@@ -282,7 +285,7 @@ export function ChunkDrawer({
                             size="icon-xs"
                             onClick={() => setEditingChunkId(chunk.id)}
                             className="text-muted-foreground hover:text-foreground"
-                            title="Edit chunk"
+                            title={t("editChunk")}
                           >
                             <Pencil className="h-3 w-3" />
                           </Button>
@@ -291,7 +294,7 @@ export function ChunkDrawer({
                             size="icon-xs"
                             onClick={() => handleDeleteChunk(chunk.id)}
                             className="text-muted-foreground hover:text-destructive"
-                            title="Delete chunk"
+                            title={t("deleteChunk")}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -312,7 +315,7 @@ export function ChunkDrawer({
         {totalPages > 1 && (
           <div className="shrink-0 border-t border-border/40 px-6 py-3 flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              {total} chunks total
+              {t("chunksTotal", { count: total })}
             </span>
             <div className="flex items-center gap-1">
               {buildPageNumbers().map((p, idx) =>

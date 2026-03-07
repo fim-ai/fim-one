@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,8 @@ function formatBytes(bytes: number): string {
 }
 
 export function AdminStorage() {
+  const t = useTranslations("admin.storage")
+  const tc = useTranslations("common")
   const [stats, setStats] = useState<{ total_bytes: number; users: UserStorageStat[] } | null>(null)
   const [clearTarget, setClearTarget] = useState<UserStorageStat | null>(null)
   const [showOrphanConfirm, setShowOrphanConfirm] = useState(false)
@@ -52,7 +55,7 @@ export function AdminStorage() {
     if (!clearTarget) return
     try {
       await adminApi.clearUserStorage(clearTarget.user_id)
-      toast.success(`Cleared storage for ${clearTarget.username}`)
+      toast.success(t("clearedStorage", { username: clearTarget.username }))
       setClearTarget(null)
       load()
     } catch (err) {
@@ -63,7 +66,7 @@ export function AdminStorage() {
   const handleCleanOrphaned = async () => {
     try {
       await adminApi.cleanOrphanedStorage()
-      toast.success("Orphaned files cleaned")
+      toast.success(t("orphanedCleaned"))
       setShowOrphanConfirm(false)
       load()
     } catch (err) {
@@ -84,9 +87,9 @@ export function AdminStorage() {
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-semibold">Storage</h2>
+          <h2 className="text-base font-semibold">{t("title")}</h2>
           <p className="text-sm text-muted-foreground">
-            Manage user file uploads.{stats ? ` Total: ${formatBytes(stats.total_bytes)}.` : ""}
+            {t("subtitle")}{stats ? ` ${t("totalSize", { size: formatBytes(stats.total_bytes) })}` : ""}
           </p>
         </div>
         <Button
@@ -95,22 +98,22 @@ export function AdminStorage() {
           className="text-destructive border-destructive/30 hover:bg-destructive/5"
           onClick={() => setShowOrphanConfirm(true)}
         >
-          Clean Orphaned Files
+          {t("cleanOrphanedFiles")}
         </Button>
       </div>
 
       {!stats?.users.length ? (
         <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-          No user uploads found.
+          {t("noUploads")}
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">User</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Files</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Size</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("userColumn")}</th>
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("filesColumn")}</th>
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("sizeColumn")}</th>
                 <th className="px-4 py-2.5 w-10" />
               </tr>
             </thead>
@@ -141,15 +144,15 @@ export function AdminStorage() {
       <AlertDialog open={!!clearTarget} onOpenChange={(open) => !open && setClearTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear user storage?</AlertDialogTitle>
+            <AlertDialogTitle>{t("clearTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all {clearTarget ? formatBytes(clearTarget.total_bytes) : ""} of files uploaded by {clearTarget?.username}.
+              {t("clearDesc", { size: clearTarget ? formatBytes(clearTarget.total_bytes) : "", username: clearTarget?.username ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleClearUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Clear
+              {t("clear")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -159,14 +162,14 @@ export function AdminStorage() {
       <AlertDialog open={showOrphanConfirm} onOpenChange={setShowOrphanConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clean orphaned files?</AlertDialogTitle>
+            <AlertDialogTitle>{t("cleanOrphanedTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete upload directories for conversations that no longer exist in the database.
+              {t("cleanOrphanedDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCleanOrphaned}>Clean</AlertDialogAction>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCleanOrphaned}>{t("clean")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

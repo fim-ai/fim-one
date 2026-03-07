@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Bot, Check, Loader2, Zap, GitBranch } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -21,42 +22,15 @@ import { useToolCatalog } from "@/hooks/use-tool-catalog"
 // Ordered: general first → common tools → advanced/specialized
 const TOOL_CATEGORIES = ["general", "web", "computation", "filesystem", "knowledge", "connector", "mcp"] as const
 
-const TOOL_CATEGORY_META: Record<string, { label: string; description: string; tools: string }> = {
-  connector: {
-    label: "Connector",
-    description: "Access external API actions bound to this agent",
-    tools: "Custom HTTP connectors, CRM, Slack, and more",
-  },
-  knowledge: {
-    label: "Knowledge",
-    description: "Query knowledge bases for grounded answers with citations",
-    tools: "KB Retrieve, Grounded Retrieve, KB List",
-  },
-  web: {
-    label: "Web",
-    description: "Browse the internet and search for information",
-    tools: "Web Search, Web Fetch, HTTP Request",
-  },
-  computation: {
-    label: "Computation",
-    description: "Run math calculations and execute Python code",
-    tools: "Calculator, Python Exec, Shell Exec",
-  },
-  filesystem: {
-    label: "Filesystem",
-    description: "Read, write, and manage local files",
-    tools: "File Read, File Write, File List, and more",
-  },
-  mcp: {
-    label: "MCP",
-    description: "Tools provided by external MCP servers",
-    tools: "Configured via MCP_SERVERS in environment",
-  },
-  general: {
-    label: "General",
-    description: "Miscellaneous and uncategorized built-in tools",
-    tools: "Utility tools without a specific category",
-  },
+// Tool category i18n key mapping
+const TOOL_CATEGORY_KEYS: Record<string, { label: string; description: string; tools: string }> = {
+  connector: { label: "toolCategoryConnector", description: "toolCategoryConnectorDesc", tools: "toolCategoryConnectorTools" },
+  knowledge: { label: "toolCategoryKnowledge", description: "toolCategoryKnowledgeDesc", tools: "toolCategoryKnowledgeTools" },
+  web: { label: "toolCategoryWeb", description: "toolCategoryWebDesc", tools: "toolCategoryWebTools" },
+  computation: { label: "toolCategoryComputation", description: "toolCategoryComputationDesc", tools: "toolCategoryComputationTools" },
+  filesystem: { label: "toolCategoryFilesystem", description: "toolCategoryFilesystemDesc", tools: "toolCategoryFilesystemTools" },
+  mcp: { label: "toolCategoryMcp", description: "toolCategoryMcpDesc", tools: "toolCategoryMcpTools" },
+  general: { label: "toolCategoryGeneral", description: "toolCategoryGeneralDesc", tools: "toolCategoryGeneralTools" },
 }
 
 interface AgentSettingsFormProps {
@@ -70,6 +44,8 @@ export function AgentSettingsForm({
   onSaved,
   onDirtyChange,
 }: AgentSettingsFormProps) {
+  const t = useTranslations("agents")
+  const tc = useTranslations("common")
   const [name, setName] = useState("")
   const [icon, setIcon] = useState<string | null>(null)
   const [description, setDescription] = useState("")
@@ -240,11 +216,11 @@ export function AgentSettingsForm({
       }
 
       onSaved(result)
-      toast.success(agent ? "Agent updated" : "Agent created")
+      toast.success(agent ? t("agentUpdated") : t("agentCreated"))
     } catch (err) {
       console.error("Failed to save agent:", err)
       const message = err instanceof Error ? err.message : "Unknown error"
-      toast.error(`Failed to save agent: ${message}`)
+      toast.error(t("agentSaveFailed", { message }))
     } finally {
       setIsSubmitting(false)
     }
@@ -257,7 +233,7 @@ export function AgentSettingsForm({
           {/* Name + Icon */}
           <div className="space-y-1.5">
             <label htmlFor="agent-name" className="text-sm font-medium">
-              Name <span className="text-destructive">*</span>
+              {tc("name")} <span className="text-destructive">*</span>
             </label>
             <div className="flex items-center gap-2">
               <EmojiPickerPopover
@@ -270,7 +246,7 @@ export function AgentSettingsForm({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="My Agent"
+                placeholder={t("namePlaceholder")}
                 required
               />
             </div>
@@ -279,13 +255,13 @@ export function AgentSettingsForm({
           {/* Description */}
           <div className="space-y-1.5">
             <label htmlFor="agent-description" className="text-sm font-medium">
-              Description
+              {tc("description")}
             </label>
             <Textarea
               id="agent-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="A brief description of what this agent does..."
+              placeholder={t("descriptionPlaceholder")}
               rows={2}
               className="resize-none"
             />
@@ -293,9 +269,9 @@ export function AgentSettingsForm({
 
           {/* Execution Mode */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Execution Mode</label>
+            <label className="text-sm font-medium">{t("executionMode")}</label>
             <p className="text-xs text-muted-foreground">
-              Sets the default mode for new conversations. You can still switch modes anytime during a chat.
+              {t("executionModeDescription")}
             </p>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -310,10 +286,10 @@ export function AgentSettingsForm({
               >
                 <div className="flex items-center gap-1.5 font-medium">
                   <Zap className="h-3.5 w-3.5" />
-                  Standard (ReAct)
+                  {t("reactMode")}
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  Quick response, flexible handling
+                  {t("reactModeDescription")}
                 </span>
               </button>
               <button
@@ -328,10 +304,10 @@ export function AgentSettingsForm({
               >
                 <div className="flex items-center gap-1.5 font-medium">
                   <GitBranch className="h-3.5 w-3.5" />
-                  Planner (DAG)
+                  {t("dagMode")}
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  Systematic breakdown, step by step
+                  {t("dagModeDescription")}
                 </span>
               </button>
             </div>
@@ -340,17 +316,17 @@ export function AgentSettingsForm({
           {/* Model */}
           {systemModels.length > 0 && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Model</label>
+              <label className="text-sm font-medium">{t("model")}</label>
               <Select
                 value={selectedModelConfigId}
                 onValueChange={(v) => setSelectedModelConfigId(v === "__default__" ? "" : v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Use system default" />
+                  <SelectValue placeholder={t("useSystemDefault")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__default__">
-                    Use system default
+                    {t("useSystemDefault")}
                     {systemModels.find((m) => m.is_default) && (
                       <span className="text-muted-foreground ml-1">
                         ({systemModels.find((m) => m.is_default)!.name})
@@ -371,13 +347,13 @@ export function AgentSettingsForm({
           {/* Temperature */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Temperature</label>
+              <label className="text-sm font-medium">{t("temperature")}</label>
               <span className="text-xs text-muted-foreground font-mono">
-                {temperature != null ? temperature.toFixed(2) : "Default"}
+                {temperature != null ? temperature.toFixed(2) : t("temperatureDefault")}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Controls randomness. Lower = focused, higher = creative. Leave as Default to use the server setting.
+              {t("temperatureDescription")}
             </p>
             <div className="flex items-center gap-3">
               <input
@@ -397,7 +373,7 @@ export function AgentSettingsForm({
                   onClick={() => setTemperature(null)}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
                 >
-                  Reset
+                  {tc("reset")}
                 </button>
               )}
             </div>
@@ -405,13 +381,13 @@ export function AgentSettingsForm({
 
           {/* Sandbox Config */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Sandbox Resources</label>
+            <label className="text-sm font-medium">{t("sandboxResources")}</label>
             <p className="text-xs text-muted-foreground">
-              Resource limits for code execution tools. Only applies when using Docker backend (CODE_EXEC_BACKEND=docker).
+              {t("sandboxDescription")}
             </p>
             <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Memory</label>
+                <label className="text-xs text-muted-foreground">{t("memory")}</label>
                 <Select
                   value={sandboxMemory || "__default__"}
                   onValueChange={(v) => setSandboxMemory(v === "__default__" ? "" : v)}
@@ -429,7 +405,7 @@ export function AgentSettingsForm({
                 </Select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">CPU</label>
+                <label className="text-xs text-muted-foreground">{t("cpu")}</label>
                 <Select
                   value={sandboxCpu || "__default__"}
                   onValueChange={(v) => setSandboxCpu(v === "__default__" ? "" : v)}
@@ -447,7 +423,7 @@ export function AgentSettingsForm({
                 </Select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Timeout (s)</label>
+                <label className="text-xs text-muted-foreground">{t("timeoutSeconds")}</label>
                 <Input
                   type="number"
                   min={1}
@@ -464,13 +440,13 @@ export function AgentSettingsForm({
           {/* Instructions */}
           <div className="space-y-1.5">
             <label htmlFor="agent-instructions" className="text-sm font-medium">
-              Instructions
+              {t("instructionsLabel")}
             </label>
             <Textarea
               id="agent-instructions"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="System prompt for the agent. Tell it how to behave, what to focus on..."
+              placeholder={t("instructionsPlaceholder")}
               rows={5}
               className="resize-y"
             />
@@ -478,19 +454,19 @@ export function AgentSettingsForm({
 
           {/* Tool Categories */}
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Tool Categories</label>
+            <label className="text-sm font-medium">{t("toolCategories")}</label>
             <p className="text-xs text-muted-foreground">
-              Hover over a category to see what tools it includes.
+              {t("toolCategoriesHint")}
             </p>
             <TooltipProvider>
               <div className="flex flex-wrap gap-2">
                 {TOOL_CATEGORIES.map((cat) => {
-                  const meta = TOOL_CATEGORY_META[cat]
+                  const keys = TOOL_CATEGORY_KEYS[cat]
                   const toolsInCategory = catalog?.tools
-                    ?.filter((t) => t.category === cat)
-                    .map((t) => t.display_name)
+                    ?.filter((ct) => ct.category === cat)
+                    .map((ct) => ct.display_name)
                     .join(", ")
-                  const toolsLabel = toolsInCategory || meta.tools
+                  const toolsLabel = toolsInCategory || t(keys.tools)
                   return (
                     <Tooltip key={cat}>
                       <TooltipTrigger asChild>
@@ -501,11 +477,11 @@ export function AgentSettingsForm({
                             onChange={() => toggleCategory(cat)}
                             className="h-3.5 w-3.5 rounded border-input accent-primary"
                           />
-                          <span className="text-muted-foreground">{meta.label}</span>
+                          <span className="text-muted-foreground">{t(keys.label)}</span>
                         </label>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-[200px] text-center">
-                        <p className="font-medium mb-0.5">{meta.description}</p>
+                        <p className="font-medium mb-0.5">{t(keys.description)}</p>
                         <p className="text-[11px] opacity-75">{toolsLabel}</p>
                       </TooltipContent>
                     </Tooltip>
@@ -518,9 +494,9 @@ export function AgentSettingsForm({
           {/* Knowledge Bases */}
           {(availableKBs.length > 0 || selectedKBs.some((id) => !availableKBs.some((kb) => kb.id === id))) && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Knowledge Bases</label>
+              <label className="text-sm font-medium">{t("knowledgeBases")}</label>
               <p className="text-xs text-muted-foreground">
-                Bind KBs to enable evidence-grounded retrieval with citations
+                {t("knowledgeBasesDescription")}
               </p>
               <div className="flex flex-col gap-1.5">
                 {availableKBs.map((kb) => {
@@ -545,7 +521,7 @@ export function AgentSettingsForm({
                         {isChecked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                       </div>
                       <span className="text-muted-foreground">
-                        {kb.name} ({kb.document_count} docs)
+                        {kb.name} ({t("kbDocCount", { count: kb.document_count })})
                       </span>
                     </div>
                   )
@@ -571,7 +547,7 @@ export function AgentSettingsForm({
                         <span className="text-destructive/80 truncate max-w-[200px]" title={orphanId}>
                           {orphanId.length > 12 ? `${orphanId.slice(0, 12)}...` : orphanId}
                         </span>
-                        <span className="text-destructive/60 text-xs">(deleted)</span>
+                        <span className="text-destructive/60 text-xs">({t("deleted")})</span>
                       </div>
                     )
                   })}
@@ -583,16 +559,15 @@ export function AgentSettingsForm({
           {selectedKBs.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Confidence Threshold</label>
+                <label className="text-sm font-medium">{t("confidenceThreshold")}</label>
                 <span className="text-xs text-muted-foreground font-mono">
                   {confidenceThreshold != null
                     ? `${Math.round(confidenceThreshold * 100)}%`
-                    : "Off"}
+                    : t("confidenceOff")}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                When set, answers with confidence below this threshold will be
-                rejected. Leave off to always show results.
+                {t("confidenceDescription")}
               </p>
               <div className="flex items-center gap-3">
                 <input
@@ -618,9 +593,9 @@ export function AgentSettingsForm({
           {/* Connectors */}
           {(availableConnectors.length > 0 || selectedConnectors.some((id) => !availableConnectors.some((c) => c.id === id))) && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Connectors</label>
+              <label className="text-sm font-medium">{t("connectors")}</label>
               <p className="text-xs text-muted-foreground">
-                Bind connectors to give the agent access to external API actions
+                {t("connectorsDescription")}
               </p>
               <div className="flex flex-col gap-1.5">
                 {availableConnectors.map((conn) => {
@@ -645,7 +620,7 @@ export function AgentSettingsForm({
                         {isChecked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                       </div>
                       <span className="text-muted-foreground">
-                        {conn.name} ({conn.actions.length} actions)
+                        {conn.name} ({t("connectorActionCount", { count: conn.actions.length })})
                       </span>
                     </div>
                   )
@@ -671,7 +646,7 @@ export function AgentSettingsForm({
                         <span className="text-destructive/80 truncate max-w-[200px]" title={orphanId}>
                           {orphanId.length > 12 ? `${orphanId.slice(0, 12)}...` : orphanId}
                         </span>
-                        <span className="text-destructive/60 text-xs">(deleted)</span>
+                        <span className="text-destructive/60 text-xs">({t("deleted")})</span>
                       </div>
                     )
                   })}
@@ -682,10 +657,10 @@ export function AgentSettingsForm({
           {/* Suggested Prompts */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">
-              Suggested Prompts
+              {t("suggestedPrompts")}
             </label>
             <p className="text-xs text-muted-foreground">
-              Shown as quick-start suggestions in chat.
+              {t("suggestedPromptsDescription")}
             </p>
             <SuggestedPromptsEditor
               value={suggestedPrompts}
@@ -699,7 +674,7 @@ export function AgentSettingsForm({
       <div className="flex justify-end pt-4">
         <Button type="submit" disabled={isSubmitting || !name.trim()}>
           {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          Save
+          {tc("save")}
         </Button>
       </div>
     </form>

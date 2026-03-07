@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Loader2, FilePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -44,6 +45,9 @@ export function MdCreateDialog({
   const [error, setError] = useState<string | null>(null)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
+  const t = useTranslations("kb")
+  const tc = useTranslations("common")
+
   useEffect(() => {
     if (open) {
       setFilename("")
@@ -75,9 +79,9 @@ export function MdCreateDialog({
       })
       onOpenChange(false)
       onCreated()
-      toast.success("Markdown document created")
+      toast.success(t("markdownDocumentCreated"))
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create document"
+      const message = err instanceof Error ? err.message : t("failedToCreateDocument")
       setError(message)
       toast.error(message)
     } finally {
@@ -108,19 +112,19 @@ export function MdCreateDialog({
           }}
         >
           <SheetHeader>
-            <SheetTitle>Write a Note</SheetTitle>
+            <SheetTitle>{t("writeNote")}</SheetTitle>
           </SheetHeader>
 
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4 overflow-hidden">
             <div className="space-y-1.5">
               <label htmlFor="md-filename" className="text-sm font-medium">
-                Title <span className="text-destructive">*</span>
+                {t("noteTitle")} <span className="text-destructive">*</span>
               </label>
               <Input
                 id="md-filename"
                 value={filename}
                 onChange={(e) => setFilename(e.target.value)}
-                placeholder="My Meeting Notes"
+                placeholder={t("noteTitlePlaceholder")}
                 required
                 disabled={isSubmitting}
               />
@@ -128,13 +132,13 @@ export function MdCreateDialog({
 
             <div className="flex-1 flex flex-col gap-1.5 min-h-0">
               <label htmlFor="md-content" className="text-sm font-medium">
-                Content <span className="text-destructive">*</span>
+                {t("noteContent")} <span className="text-destructive">*</span>
               </label>
               <Textarea
                 id="md-content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="# My Document&#10;&#10;Write your content here..."
+                placeholder={t("noteContentPlaceholder")}
                 className="font-mono text-sm flex-1 resize-none min-h-0"
                 required
                 disabled={isSubmitting}
@@ -152,7 +156,7 @@ export function MdCreateDialog({
                 onClick={() => handleClose(false)}
                 disabled={isSubmitting}
               >
-                Cancel
+                {tc("cancel")}
               </Button>
               <Button
                 type="submit"
@@ -164,7 +168,7 @@ export function MdCreateDialog({
                 ) : (
                   <FilePlus className="h-4 w-4" />
                 )}
-                Create
+                {tc("create")}
               </Button>
             </SheetFooter>
           </form>
@@ -175,18 +179,18 @@ export function MdCreateDialog({
       <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved note?</AlertDialogTitle>
+            <AlertDialogTitle>{t("discardUnsavedNoteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              You have unsaved content. Closing will permanently discard what you&apos;ve written.
+              {t("discardUnsavedNoteDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>{tc("keepEditing")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleForceClose}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Discard & close
+              {t("discardAndClose")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

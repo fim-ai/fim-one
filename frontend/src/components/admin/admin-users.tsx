@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import {
   Loader2,
@@ -52,6 +53,8 @@ import type { AdminUser } from "@/types/admin"
 
 export function AdminUsers() {
   const { user: currentUser } = useAuth()
+  const t = useTranslations("admin.users")
+  const tc = useTranslations("common")
 
   // --- List state ---
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -130,7 +133,7 @@ export function AdminUsers() {
         email: createEmail.trim(),
         display_name: createDisplayName.trim() || undefined,
       })
-      toast.success("User created")
+      toast.success(t("userCreated"))
       setCreateOpen(false)
       setCreateUsername("")
       setCreatePassword("")
@@ -159,7 +162,7 @@ export function AdminUsers() {
         display_name: editDisplayName.trim() || null,
         email: editEmail.trim() || null,
       })
-      toast.success("User updated")
+      toast.success(t("userUpdated"))
       setEditTarget(null)
       await loadUsers()
     } catch (err: unknown) {
@@ -180,7 +183,7 @@ export function AdminUsers() {
     setIsMutating(true)
     try {
       await adminApi.resetPassword(resetTarget.id, resetPassword)
-      toast.success("Password reset successfully")
+      toast.success(t("passwordResetSuccess"))
       setResetTarget(null)
       setResetPassword("")
       await loadUsers()
@@ -197,7 +200,7 @@ export function AdminUsers() {
     setIsMutating(true)
     try {
       await adminApi.toggleAdmin(adminToggleTarget.id, !adminToggleTarget.is_admin)
-      toast.success("Admin status updated")
+      toast.success(t("adminStatusUpdated"))
       setAdminToggleTarget(null)
       await loadUsers()
     } catch (err: unknown) {
@@ -213,7 +216,7 @@ export function AdminUsers() {
     setIsMutating(true)
     try {
       await adminApi.deleteUser(deleteTarget.id)
-      toast.success(`User "${deleteTarget.username}" deleted`)
+      toast.success(t("userDeleted", { username: deleteTarget.username }))
       setDeleteTarget(null)
       await loadUsers()
     } catch (err: unknown) {
@@ -227,7 +230,7 @@ export function AdminUsers() {
   const handleForceLogout = async (u: AdminUser) => {
     try {
       await adminApi.forceLogoutUser(u.id)
-      toast.success("User logged out")
+      toast.success(t("userLoggedOut"))
       await loadUsers()
     } catch (err: unknown) {
       toast.error(errMsg(err))
@@ -246,7 +249,7 @@ export function AdminUsers() {
     try {
       const parsed = quotaValue.trim() === "" || quotaValue.trim() === "0" ? null : parseInt(quotaValue, 10)
       await adminApi.setUserQuota(quotaTarget.id, parsed)
-      toast.success("Token quota updated")
+      toast.success(t("quotaUpdated"))
       setQuotaTarget(null)
       await loadUsers()
     } catch (err: unknown) {
@@ -262,7 +265,7 @@ export function AdminUsers() {
     setIsMutating(true)
     try {
       await adminApi.toggleActive(activeToggleTarget.id, !activeToggleTarget.is_active)
-      toast.success("User status updated")
+      toast.success(t("userStatusUpdated"))
       setActiveToggleTarget(null)
       await loadUsers()
     } catch (err: unknown) {
@@ -277,12 +280,12 @@ export function AdminUsers() {
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-base font-semibold">Users</h2>
-          <p className="text-sm text-muted-foreground">Manage user accounts, roles, and access control.</p>
+          <h2 className="text-base font-semibold">{t("title")}</h2>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
           <Plus className="h-4 w-4" />
-          Create User
+          {t("createUser")}
         </Button>
       </div>
 
@@ -291,7 +294,7 @@ export function AdminUsers() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search users..."
+            placeholder={t("searchPlaceholder")}
             className="pl-9"
             onChange={(e) => handleSearchChange(e.target.value)}
           />
@@ -305,7 +308,7 @@ export function AdminUsers() {
         </div>
       ) : users.length === 0 ? (
         <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-          No users found.
+          {t("noUsersFound")}
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-hidden">
@@ -313,22 +316,22 @@ export function AdminUsers() {
             <thead>
               <tr className="border-b border-border bg-muted/40">
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  Username
+                  {t("username")}
                 </th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  Email
+                  {t("email")}
                 </th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  Role
+                  {t("role")}
                 </th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  Status
+                  {tc("status")}
                 </th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                  Usage / Quota
+                  {t("usageQuota")}
                 </th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">
-                  Actions
+                  {tc("actions")}
                 </th>
               </tr>
             </thead>
@@ -342,12 +345,12 @@ export function AdminUsers() {
                         {u.username}
                         {isSelf && (
                           <span className="text-xs text-muted-foreground">
-                            (you)
+                            {t("you")}
                           </span>
                         )}
                         {u.has_active_session && (
                           <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px] px-1.5 py-0">
-                            Online
+                            {t("online")}
                           </Badge>
                         )}
                       </div>
@@ -357,29 +360,29 @@ export function AdminUsers() {
                     </td>
                     <td className="px-4 py-3">
                       {u.is_admin ? (
-                        <Badge variant="default">Admin</Badge>
+                        <Badge variant="default">{t("admin")}</Badge>
                       ) : (
-                        <Badge variant="secondary">User</Badge>
+                        <Badge variant="secondary">{t("user")}</Badge>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {u.is_active ? (
                         <Badge variant="outline" className="border-green-500/40 text-green-600 dark:text-green-400">
-                          Active
+                          {tc("active")}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="border-red-500/40 text-red-600 dark:text-red-400">
-                          Disabled
+                          {tc("disabled")}
                         </Badge>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="space-y-0.5">
                         {u.monthly_tokens > 0 && (
-                          <p className="text-muted-foreground text-xs">{u.monthly_tokens.toLocaleString()} tokens</p>
+                          <p className="text-muted-foreground text-xs">{t("tokensLabel", { count: u.monthly_tokens.toLocaleString() })}</p>
                         )}
                         <p className="text-xs text-muted-foreground/70">
-                          {u.token_quota !== null ? `Quota: ${u.token_quota.toLocaleString()}` : "Unlimited"}
+                          {u.token_quota !== null ? t("quotaValue", { value: u.token_quota.toLocaleString() }) : t("unlimited")}
                         </p>
                       </div>
                     </td>
@@ -393,22 +396,22 @@ export function AdminUsers() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openEdit(u)}>
                             <Pencil className="mr-2 h-4 w-4" />
-                            Edit
+                            {tc("edit")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openQuota(u)}>
                             <Gauge className="mr-2 h-4 w-4" />
-                            Set Quota
+                            {t("setQuota")}
                           </DropdownMenuItem>
                           {!isSelf && (
                             <>
                               <DropdownMenuItem onClick={() => openResetPassword(u)}>
                                 <KeyRound className="mr-2 h-4 w-4" />
-                                Reset Password
+                                {t("resetPassword")}
                               </DropdownMenuItem>
                               {u.has_active_session && (
                                 <DropdownMenuItem onClick={() => handleForceLogout(u)}>
                                   <LogOut className="mr-2 h-4 w-4" />
-                                  Force Logout
+                                  {t("forceLogout")}
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />
@@ -416,12 +419,12 @@ export function AdminUsers() {
                                 {u.is_admin ? (
                                   <>
                                     <ShieldOff className="mr-2 h-4 w-4" />
-                                    Revoke Admin
+                                    {t("revokeAdmin")}
                                   </>
                                 ) : (
                                   <>
                                     <ShieldCheck className="mr-2 h-4 w-4" />
-                                    Make Admin
+                                    {t("makeAdmin")}
                                   </>
                                 )}
                               </DropdownMenuItem>
@@ -429,12 +432,12 @@ export function AdminUsers() {
                                 {u.is_active ? (
                                   <>
                                     <UserX className="mr-2 h-4 w-4" />
-                                    Disable Account
+                                    {t("disableAccount")}
                                   </>
                                 ) : (
                                   <>
                                     <UserCheck className="mr-2 h-4 w-4" />
-                                    Enable Account
+                                    {t("enableAccount")}
                                   </>
                                 )}
                               </DropdownMenuItem>
@@ -444,7 +447,7 @@ export function AdminUsers() {
                                 onClick={() => setDeleteTarget(u)}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
-                                Delete User
+                                {t("deleteUser")}
                               </DropdownMenuItem>
                             </>
                           )}
@@ -462,7 +465,7 @@ export function AdminUsers() {
       {/* Pagination */}
       {!isLoading && users.length > 0 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>{total} user{total !== 1 ? "s" : ""} total</span>
+          <span>{t("totalUsers", { count: total })}</span>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -470,10 +473,10 @@ export function AdminUsers() {
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Previous
+              {t("previous")}
             </Button>
             <span>
-              Page {page} of {pages}
+              {t("pageOf", { page, pages })}
             </span>
             <Button
               variant="outline"
@@ -481,7 +484,7 @@ export function AdminUsers() {
               disabled={page >= pages}
               onClick={() => setPage((p) => Math.min(pages, p + 1))}
             >
-              Next
+              {tc("next")}
             </Button>
           </div>
         </div>
@@ -491,14 +494,14 @@ export function AdminUsers() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create User</DialogTitle>
+            <DialogTitle>{t("createTitle")}</DialogTitle>
             <DialogDescription>
-              Add a new user account to the system.
+              {t("createDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Username <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("username")} <span className="text-destructive">*</span></label>
               <Input
                 value={createUsername}
                 onChange={(e) => setCreateUsername(e.target.value)}
@@ -506,7 +509,7 @@ export function AdminUsers() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Password <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("password")} <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={createPassword}
@@ -515,7 +518,7 @@ export function AdminUsers() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("email")} <span className="text-destructive">*</span></label>
               <Input
                 type="email"
                 value={createEmail}
@@ -525,24 +528,24 @@ export function AdminUsers() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Display Name</label>
+              <label className="text-sm font-medium">{t("displayName")}</label>
               <Input
                 value={createDisplayName}
                 onChange={(e) => setCreateDisplayName(e.target.value)}
-                placeholder="Display Name"
+                placeholder={t("displayName")}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button
               onClick={handleCreate}
               disabled={isMutating || !createUsername.trim() || !createPassword.trim() || !createEmail.trim()}
             >
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create
+              {tc("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -555,22 +558,22 @@ export function AdminUsers() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
+            <DialogTitle>{t("editTitle")}</DialogTitle>
             <DialogDescription>
-              Update profile information for {editTarget?.username}.
+              {t("editDesc", { username: editTarget?.username ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Display Name</label>
+              <label className="text-sm font-medium">{t("displayName")}</label>
               <Input
                 value={editDisplayName}
                 onChange={(e) => setEditDisplayName(e.target.value)}
-                placeholder="Display Name"
+                placeholder={t("displayName")}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("email")} <span className="text-destructive">*</span></label>
               <Input
                 type="email"
                 value={editEmail}
@@ -581,11 +584,11 @@ export function AdminUsers() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTarget(null)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button onClick={handleEdit} disabled={isMutating}>
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
+              {tc("save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -598,32 +601,32 @@ export function AdminUsers() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
+            <DialogTitle>{t("resetPassword")}</DialogTitle>
             <DialogDescription>
-              Set a new password for {resetTarget?.username}.
+              {t("resetPasswordDesc", { username: resetTarget?.username ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium">New Password <span className="text-destructive">*</span></label>
+              <label className="text-sm font-medium">{t("newPassword")} <span className="text-destructive">*</span></label>
               <Input
                 type="password"
                 value={resetPassword}
                 onChange={(e) => setResetPassword(e.target.value)}
-                placeholder="New password"
+                placeholder={t("newPassword")}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetTarget(null)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button
               onClick={handleResetPassword}
               disabled={isMutating || !resetPassword.trim()}
             >
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Reset Password
+              {t("resetPassword")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -637,19 +640,19 @@ export function AdminUsers() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {adminToggleTarget?.is_admin ? "Revoke admin privileges?" : "Grant admin privileges?"}
+              {adminToggleTarget?.is_admin ? t("revokeAdminTitle") : t("grantAdminTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {adminToggleTarget?.is_admin
-                ? `${adminToggleTarget.username} will lose admin access and become a regular user.`
-                : `${adminToggleTarget?.username} will gain full admin access to the system.`}
+                ? t("revokeAdminDesc", { username: adminToggleTarget.username })
+                : t("grantAdminDesc", { username: adminToggleTarget?.username ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleToggleAdmin} disabled={isMutating}>
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {adminToggleTarget?.is_admin ? "Revoke Admin" : "Make Admin"}
+              {adminToggleTarget?.is_admin ? t("revokeAdmin") : t("makeAdmin")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -663,19 +666,19 @@ export function AdminUsers() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {activeToggleTarget?.is_active ? "Disable account?" : "Enable account?"}
+              {activeToggleTarget?.is_active ? t("disableAccountTitle") : t("enableAccountTitle")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {activeToggleTarget?.is_active
-                ? `${activeToggleTarget.username} will be unable to log in until re-enabled.`
-                : `${activeToggleTarget?.username} will be able to log in again.`}
+                ? t("disableAccountDesc", { username: activeToggleTarget.username })
+                : t("enableAccountDesc", { username: activeToggleTarget?.username ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleToggleActive} disabled={isMutating}>
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {activeToggleTarget?.is_active ? "Disable" : "Enable"}
+              {activeToggleTarget?.is_active ? tc("disable") : tc("enable")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -688,20 +691,20 @@ export function AdminUsers() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete user &quot;{deleteTarget?.username}&quot;?</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteUserTitle", { username: deleteTarget?.username ?? "" })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the account and all associated data. This action cannot be undone.
+              {t("deleteUserDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
               onClick={handleDeleteUser}
               disabled={isMutating}
             >
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete Permanently
+              {t("deletePermanently")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -714,33 +717,33 @@ export function AdminUsers() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Set Token Quota</DialogTitle>
+            <DialogTitle>{t("setQuotaTitle")}</DialogTitle>
             <DialogDescription>
-              Set a monthly token quota for {quotaTarget?.username}.
+              {t("setQuotaDesc", { username: quotaTarget?.username ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Monthly Token Quota</Label>
+              <Label className="text-sm font-medium">{t("monthlyTokenQuota")}</Label>
               <Input
                 type="number"
                 min={0}
                 value={quotaValue}
                 onChange={(e) => setQuotaValue(e.target.value)}
-                placeholder="0 = unlimited"
+                placeholder={t("quotaPlaceholder")}
               />
               <p className="text-xs text-muted-foreground">
-                Enter 0 or leave empty for unlimited usage.
+                {t("quotaHint")}
               </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setQuotaTarget(null)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button onClick={handleSetQuota} disabled={isMutating}>
               {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
+              {tc("save")}
             </Button>
           </DialogFooter>
         </DialogContent>

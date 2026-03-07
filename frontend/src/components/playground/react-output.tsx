@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, Wrench, Brain, CheckCircle2, Clock, RefreshCw, BarChart3, ChevronDown, ChevronUp, User } from "lucide-react"
 import { fmtDuration } from "@/lib/utils"
 import type { ReactStepEvent, ReactDoneEvent } from "@/types/api"
@@ -25,6 +26,7 @@ interface ReactOutputProps {
 }
 
 export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOutputProps) {
+  const t = useTranslations("playground")
   const [stepsExpanded, setStepsExpanded] = useState(false)
 
   const hasDone = items.some((i) => i.event === "done")
@@ -51,7 +53,7 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
           >
             <Wrench className="h-3.5 w-3.5 shrink-0" />
             <span>
-              {toolCallCount} tool call{toolCallCount !== 1 ? "s" : ""}
+              {toolCallCount !== 1 ? t("toolCallCountPlural", { count: toolCallCount }) : t("toolCallCount", { count: toolCallCount })}
               {" \u00b7 "}
               {fmtDuration(elapsed)}
             </span>
@@ -111,7 +113,7 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
       {isStreaming && items.length === 0 && (
         <div className="flex items-center gap-3 px-1 py-2">
           <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-          <span className="text-sm text-muted-foreground shiny-text">Processing...</span>
+          <span className="text-sm text-muted-foreground shiny-text">{t("statusProcessing")}</span>
         </div>
       )}
       {items.map((item, idx) => {
@@ -151,6 +153,7 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
 }
 
 function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; duration?: number; reasoning?: string }) {
+  const t = useTranslations("playground")
   const isWaiting = !reasoning && duration == null
 
   return (
@@ -162,10 +165,10 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
             className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider gap-1"
           >
             <Brain className="h-3 w-3" />
-            Thinking
+            {t("thinking")}
           </Badge>
           <span className="text-xs text-muted-foreground">
-            Iteration {iterLabel}
+            {t("iterationLabel", { n: iterLabel })}
           </span>
           {duration != null && (
             <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -177,7 +180,7 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
         {isWaiting && (
           <p className="text-xs text-muted-foreground leading-relaxed">
             <Loader2 className="inline h-3 w-3 animate-spin mr-1.5 align-text-bottom" />
-            <span className="shiny-text">Processing...</span>
+            <span className="shiny-text">{t("statusProcessing")}</span>
           </p>
         )}
         {reasoning && (
@@ -214,6 +217,7 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
 }
 
 function DoneCard({ done, items, onSuggestionSelect }: { done: ReactDoneEvent; items?: StepItem[]; onSuggestionSelect?: (query: string) => void }) {
+  const t = useTranslations("playground")
   return (
     <Card className="py-4">
       <CardHeader className="pb-0">
@@ -221,11 +225,11 @@ function DoneCard({ done, items, onSuggestionSelect }: { done: ReactDoneEvent; i
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/10">
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
           </div>
-          <CardTitle className="text-sm">Result</CardTitle>
+          <CardTitle className="text-sm">{t("result")}</CardTitle>
           <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <RefreshCw className="h-2.5 w-2.5" />
-              {done.iterations} iteration{done.iterations !== 1 ? "s" : ""}
+              {done.iterations !== 1 ? t("iterationCountPlural", { count: done.iterations }) : t("iterationCount", { count: done.iterations })}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="h-2.5 w-2.5" />
@@ -234,7 +238,7 @@ function DoneCard({ done, items, onSuggestionSelect }: { done: ReactDoneEvent; i
             {done.usage && (
               <span className="flex items-center gap-1">
                 <BarChart3 className="h-2.5 w-2.5" />
-                {(done.usage.prompt_tokens / 1000).toFixed(1)}k in · {(done.usage.completion_tokens / 1000).toFixed(1)}k out
+                {t("tokenIn", { value: (done.usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (done.usage.completion_tokens / 1000).toFixed(1) })}
               </span>
             )}
           </div>

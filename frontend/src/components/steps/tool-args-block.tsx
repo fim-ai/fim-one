@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { MarkdownContent } from "@/lib/markdown"
 
 interface ToolArgsBlockProps {
@@ -18,6 +19,7 @@ export function ToolArgsBlock({
   hideLabel = false,
   className,
 }: ToolArgsBlockProps) {
+  const t = useTranslations("dag")
   const isCompact = size === "compact"
   const mdCls = isCompact ? COMPACT_MD_CLS : DEFAULT_MD_CLS
   const containerCls = isCompact
@@ -33,7 +35,7 @@ export function ToolArgsBlock({
     const hasRest = Object.keys(rest).length > 0
     return (
       <div className={`${containerCls} ${className ?? ""}`}>
-        {!hideLabel && <p className={labelCls}>Arguments</p>}
+        {!hideLabel && <p className={labelCls}>{t("arguments")}</p>}
         <MarkdownContent
           content={`\`\`\`python\n${args.code}\n\`\`\``}
           className={mdCls}
@@ -52,7 +54,7 @@ export function ToolArgsBlock({
 
   return (
     <div className={`${containerCls} ${className ?? ""}`}>
-      {!hideLabel && <p className={labelCls}>Arguments</p>}
+      {!hideLabel && <p className={labelCls}>{t("arguments")}</p>}
       <MarkdownContent
         content={`\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\``}
         className={mdCls}

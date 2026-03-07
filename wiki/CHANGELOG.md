@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **i18n: full frontend internationalization** — migrated 500+ hardcoded English strings across 76 files to `next-intl` with cookie-based locale switching (en/zh). 11 namespaces: common, auth, layout, playground, admin, agents, connectors, kb, settings, tools, dag. Language selector in user menu sets `NEXT_LOCALE` cookie + reloads. No URL routing changes — locale stored in cookie, read server-side via `getRequestConfig` with `fs.readdirSync` auto-discovery of namespace JSON files.
 - **Admin/Settings: invite code inactive filter**: Revoked and exhausted invite codes are hidden by default; an "N inactive" toggle button reveals them. Exhausted codes (use_count ≥ max_uses) now show an "Exhausted" badge distinct from "Revoked".
 
 ### Fixed

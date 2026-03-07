@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { X, Plus, GripVertical } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
@@ -32,6 +33,7 @@ interface SortableItemProps {
 }
 
 function SortableItem({ id, prompt, onUpdate, onRemove }: SortableItemProps) {
+  const t = useTranslations("agents")
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id })
 
@@ -46,7 +48,7 @@ function SortableItem({ id, prompt, onUpdate, onRemove }: SortableItemProps) {
       <button
         type="button"
         className="flex-shrink-0 h-7 w-6 flex items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-grab active:cursor-grabbing"
-        aria-label="Drag to reorder"
+        aria-label={t("dragToReorder")}
         {...attributes}
         {...listeners}
       >
@@ -57,14 +59,14 @@ function SortableItem({ id, prompt, onUpdate, onRemove }: SortableItemProps) {
         type="text"
         value={prompt}
         onChange={(e) => onUpdate(e.target.value)}
-        placeholder="Enter a suggested prompt..."
+        placeholder={t("promptPlaceholder")}
       />
 
       <button
         type="button"
         onClick={onRemove}
         className="h-7 w-7 flex-shrink-0 flex items-center justify-center rounded-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-        aria-label="Remove prompt"
+        aria-label={t("removePrompt")}
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -76,6 +78,7 @@ export function SuggestedPromptsEditor({
   value,
   onChange,
 }: SuggestedPromptsEditorProps) {
+  const t = useTranslations("agents")
   const sensors = useSensors(useSensor(PointerSensor))
 
   // Stable IDs: each item gets a unique ID on creation, independent of its index
@@ -142,7 +145,7 @@ export function SuggestedPromptsEditor({
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
       >
         <Plus className="h-3.5 w-3.5" />
-        Add prompt
+        {t("addPrompt")}
       </button>
     </div>
   )

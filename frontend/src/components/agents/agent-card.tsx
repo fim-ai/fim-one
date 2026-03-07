@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Bot, Pencil, Trash2, Globe, GlobeLock, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +22,8 @@ export function AgentCard({
   onPublish,
   onUnpublish,
 }: AgentCardProps) {
+  const t = useTranslations("agents")
+  const tc = useTranslations("common")
   const isPublished = agent.status === "published"
 
   return (
@@ -45,14 +48,14 @@ export function AgentCard({
                 : "opacity-60"
             )}
           >
-            {isPublished ? "Published" : "Draft"}
+            {isPublished ? tc("published") : tc("draft")}
           </Badge>
         </div>
       </div>
 
       {/* Description */}
       <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-3">
-        {agent.description || "No description"}
+        {agent.description || t("noDescription")}
       </p>
 
       {/* Management buttons */}
@@ -70,7 +73,7 @@ export function AgentCard({
               </Link>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Edit</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{tc("edit")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -92,7 +95,7 @@ export function AgentCard({
               )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>{isPublished ? "Unpublish" : "Publish"}</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{isPublished ? tc("unpublish") : tc("publish")}</TooltipContent>
         </Tooltip>
         <div className="flex-1" />
         <Tooltip>
@@ -106,7 +109,7 @@ export function AgentCard({
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Delete</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{tc("delete")}</TooltipContent>
         </Tooltip>
       </div>
 
@@ -120,7 +123,7 @@ export function AgentCard({
         >
           <Link href={`/new?agent=${agent.id}`}>
             <MessageSquare className="h-3 w-3" />
-            Start Chat
+            {t("startChat")}
           </Link>
         </Button>
       )}

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Plus, Loader2, Plug, Trash2 } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,6 +23,8 @@ import { toast } from "sonner"
 export default function ConnectorsPage() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
+  const t = useTranslations("connectors")
+  const tc = useTranslations("common")
 
   const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -59,9 +62,9 @@ export default function ConnectorsPage() {
     try {
       await connectorApi.delete(id)
       setConnectors((prev) => prev.filter((c) => c.id !== id))
-      toast.success("Connector deleted")
+      toast.success(t("connectorDeleted"))
     } catch {
-      toast.error("Failed to delete connector")
+      toast.error(t("connectorDeleteFailed"))
     }
   }
 
@@ -74,16 +77,16 @@ export default function ConnectorsPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Plug className="h-5 w-5" />
-            Connectors
+            {t("title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage API connectors and their actions
+            {t("subtitle")}
           </p>
         </div>
         <Button size="sm" className="gap-1.5" asChild>
           <Link href="/connectors/new">
             <Plus className="h-4 w-4" />
-            New Connector
+            {t("newConnector")}
           </Link>
         </Button>
       </div>
@@ -97,7 +100,7 @@ export default function ConnectorsPage() {
         ) : connectors.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-sm text-muted-foreground">
-              No connectors yet. Create your first one to connect external APIs.
+              {t("emptyState")}
             </p>
             <Button
               variant="outline"
@@ -107,7 +110,7 @@ export default function ConnectorsPage() {
             >
               <Link href="/connectors/new">
                 <Plus className="h-4 w-4" />
-                Create Connector
+                {t("createConnector")}
               </Link>
             </Button>
           </div>
@@ -130,15 +133,15 @@ export default function ConnectorsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4" />
-              Delete connector?
+              {t("deleteConnectorTitle")}
             </DialogTitle>
             <DialogDescription>
-              This connector and all its actions will be permanently deleted. This action cannot be undone.
+              {t("deleteConnectorDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>Cancel</Button>
-            <Button variant="destructive" className="px-6" onClick={confirmDelete}>Delete</Button>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>{tc("cancel")}</Button>
+            <Button variant="destructive" className="px-6" onClick={confirmDelete}>{tc("delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

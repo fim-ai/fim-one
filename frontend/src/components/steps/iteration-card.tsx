@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, ChevronRight, Clock } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import type { IterationData } from "./types"
@@ -25,6 +26,7 @@ export function IterationCard({
   summary: summaryProp,
   variant = "card",
 }: IterationCardProps) {
+  const t = useTranslations("dag")
   const { data: catalog } = useToolCatalog()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const isLoading = data.loading || data.type === "tool_start"
@@ -53,7 +55,7 @@ export function IterationCard({
         {isLoading && (
           <div className="flex items-center gap-1.5 shrink-0">
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-            <span className="shiny-text text-[10px] text-muted-foreground">Executing…</span>
+            <span className="shiny-text text-[10px] text-muted-foreground">{t("executing")}</span>
           </div>
         )}
         {hasDetail && (
@@ -88,7 +90,7 @@ export function IterationCard({
 
   if (variant === "pill") {
     const ToolIcon = data.tool_name ? getToolIcon(data.tool_name, catalog?.tools) : Loader2
-    const displayName = data.tool_name ? getToolDisplayName(data.tool_name, catalog?.tools) : "Thinking"
+    const displayName = data.tool_name ? getToolDisplayName(data.tool_name, catalog?.tools) : t("thinking")
     const toolMeta = data.tool_name ? catalog?.tools?.find((t) => t.name === data.tool_name) : undefined
 
     return (

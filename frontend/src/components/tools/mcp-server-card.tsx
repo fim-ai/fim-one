@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { Pencil, Trash2, Terminal, Globe, FlaskConical, Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +28,8 @@ interface MCPServerCardProps {
 }
 
 export function MCPServerCard({ server, onEdit, onDelete, onToggleActive, onTest }: MCPServerCardProps) {
+  const t = useTranslations("tools")
+  const tc = useTranslations("common")
   const endpoint = server.transport === "stdio" ? server.command : server.url
   const isRemoteTransport = server.transport === "sse" || server.transport === "streamable_http"
   const [testing, setTesting] = useState(false)
@@ -75,7 +78,7 @@ export function MCPServerCard({ server, onEdit, onDelete, onToggleActive, onTest
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" sideOffset={5}>
-            {server.is_active ? "Disable" : "Enable"}
+            {server.is_active ? tc("disable") : tc("enable")}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -103,19 +106,19 @@ export function MCPServerCard({ server, onEdit, onDelete, onToggleActive, onTest
       {testResult ? (
         <p className={`text-xs mb-1 flex items-center gap-1 ${testResult.ok ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
           {testResult.ok
-            ? <><CheckCircle2 className="h-3 w-3" />{testResult.tool_count} tool{testResult.tool_count !== 1 ? "s" : ""} found</>
+            ? <><CheckCircle2 className="h-3 w-3" />{t("toolsFound", { count: testResult.tool_count ?? 0 })}</>
             : <><XCircle className="h-3 w-3" /><span className="truncate" title={testResult.error}>{testResult.error}</span></>
           }
         </p>
       ) : server.tool_count > 0 ? (
         <p className="text-xs text-muted-foreground mb-1">
-          {server.tool_count} tool{server.tool_count !== 1 ? "s" : ""}
+          {t("toolCount", { count: server.tool_count })}
         </p>
       ) : null}
 
       {/* Description */}
       <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-3">
-        {server.description || "No description"}
+        {server.description || t("noDescription")}
       </p>
 
       {/* Action buttons */}
@@ -131,7 +134,7 @@ export function MCPServerCard({ server, onEdit, onDelete, onToggleActive, onTest
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Edit</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{tc("edit")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -148,7 +151,7 @@ export function MCPServerCard({ server, onEdit, onDelete, onToggleActive, onTest
               }
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Test connection</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{t("testConnection")}</TooltipContent>
         </Tooltip>
         <div className="flex-1" />
         <AlertDialog>
@@ -164,25 +167,25 @@ export function MCPServerCard({ server, onEdit, onDelete, onToggleActive, onTest
                 </Button>
               </AlertDialogTrigger>
             </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={5}>Delete</TooltipContent>
+            <TooltipContent side="bottom" sideOffset={5}>{tc("delete")}</TooltipContent>
           </Tooltip>
           <AlertDialogContent className="sm:max-w-sm">
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <Trash2 className="h-4 w-4" />
-                Delete MCP server?
+                {t("deleteMcpServer")}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                This MCP server will be permanently removed. This action cannot be undone.
+                {t("deleteMcpServerDescription")}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 onClick={onDelete}
               >
-                Delete
+                {tc("delete")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

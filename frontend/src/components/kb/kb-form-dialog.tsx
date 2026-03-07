@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Loader2, Plus, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,6 +48,9 @@ export function KBFormDialog({
   const [chunkOverlap, setChunkOverlap] = useState(200)
   const [retrievalMode, setRetrievalMode] = useState("hybrid")
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+
+  const t = useTranslations("kb")
+  const tc = useTranslations("common")
 
   // Pre-fill when editing or reset when creating
   useEffect(() => {
@@ -114,26 +118,26 @@ export function KBFormDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isEditing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {isEditing ? "Edit Knowledge Base" : "Create Knowledge Base"}
+            {isEditing ? t("editKnowledgeBase") : t("createKnowledgeBase")}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* ── Section: General ── */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-foreground">General</legend>
+            <legend className="text-sm font-semibold text-foreground">{t("sectionGeneral")}</legend>
 
             {/* Name */}
             <div className="space-y-1.5">
               <label htmlFor="kb-name" className="text-sm font-medium">
-                Name <span className="text-destructive">*</span>
+                {tc("name")} <span className="text-destructive">*</span>
               </label>
               <Input
                 id="kb-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="My Knowledge Base"
+                placeholder={t("namePlaceholder")}
                 required
               />
             </div>
@@ -141,13 +145,13 @@ export function KBFormDialog({
             {/* Description */}
             <div className="space-y-1.5">
               <label htmlFor="kb-description" className="text-sm font-medium">
-                Description
+                {tc("description")}
               </label>
               <Textarea
                 id="kb-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="A brief description of this knowledge base..."
+                placeholder={t("descriptionPlaceholder")}
                 rows={2}
                 className="resize-none"
               />
@@ -157,49 +161,49 @@ export function KBFormDialog({
           {/* ── Section: Chunking ── */}
           <fieldset className="space-y-3">
             <legend className="text-sm font-semibold text-foreground">
-              Chunking
-              {isEditing && <span className="text-xs text-muted-foreground font-normal ml-2">(locked after creation)</span>}
+              {t("sectionChunking")}
+              {isEditing && <span className="text-xs text-muted-foreground font-normal ml-2">{t("chunkingLockedHint")}</span>}
             </legend>
             {!isEditing && (
               <p className="text-xs text-amber-500">
-                Chunk settings cannot be changed after creation.
+                {t("chunkingImmutableWarning")}
               </p>
             )}
 
             {/* Strategy */}
             <div className="space-y-1.5">
               <label htmlFor="kb-chunk-strategy" className="text-sm font-medium">
-                Strategy
+                {t("chunkStrategy")}
               </label>
               <Select value={chunkStrategy} onValueChange={setChunkStrategy} disabled={isEditing}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="recursive">Recursive</SelectItem>
-                  <SelectItem value="markdown">Markdown</SelectItem>
-                  <SelectItem value="fixed">Fixed</SelectItem>
-                  <SelectItem value="semantic">Semantic</SelectItem>
+                  <SelectItem value="recursive">{t("strategyRecursive")}</SelectItem>
+                  <SelectItem value="markdown">{t("strategyMarkdown")}</SelectItem>
+                  <SelectItem value="fixed">{t("strategyFixed")}</SelectItem>
+                  <SelectItem value="semantic">{t("strategySemantic")}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {chunkStrategy === "recursive" && "Split by paragraphs, sentences, then words. Best for general use."}
-                {chunkStrategy === "markdown" && "Split by # headers first, then recursively within sections. Best for .md files."}
-                {chunkStrategy === "fixed" && "Fixed character-length chunks. Best for unstructured text or logs."}
-                {chunkStrategy === "semantic" && "Split by semantic similarity using embeddings. Best for long documents."}
+                {chunkStrategy === "recursive" && t("strategyRecursiveDesc")}
+                {chunkStrategy === "markdown" && t("strategyMarkdownDesc")}
+                {chunkStrategy === "fixed" && t("strategyFixedDesc")}
+                {chunkStrategy === "semantic" && t("strategySemanticDesc")}
               </p>
             </div>
 
             {/* Size & Overlap */}
             {chunkStrategy === "semantic" && (
               <p className="text-xs text-muted-foreground">
-                Semantic chunking primarily splits by meaning. Size/overlap are used as fallback limits.
+                {t("semanticFallbackHint")}
               </p>
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label htmlFor="kb-chunk-size" className="text-sm font-medium">
-                  Size
+                  {t("chunkSize")}
                 </label>
                 <Input
                   id="kb-chunk-size"
@@ -211,12 +215,12 @@ export function KBFormDialog({
                   disabled={isEditing}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Recommended: 1000. Max: 6000 (embedding model limit).
+                  {t("chunkSizeHint")}
                 </p>
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="kb-chunk-overlap" className="text-sm font-medium">
-                  Overlap
+                  {t("chunkOverlap")}
                 </label>
                 <Input
                   id="kb-chunk-overlap"
@@ -233,26 +237,26 @@ export function KBFormDialog({
 
           {/* ── Section: Retrieval ── */}
           <fieldset className="space-y-3">
-            <legend className="text-sm font-semibold text-foreground">Retrieval</legend>
+            <legend className="text-sm font-semibold text-foreground">{t("sectionRetrieval")}</legend>
 
             <div className="space-y-1.5">
               <label htmlFor="kb-retrieval-mode" className="text-sm font-medium">
-                Mode
+                {t("retrievalMode")}
               </label>
               <Select value={retrievalMode} onValueChange={setRetrievalMode}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                  <SelectItem value="dense">Dense</SelectItem>
-                  <SelectItem value="fts">Full-Text Search</SelectItem>
+                  <SelectItem value="hybrid">{t("modeHybrid")}</SelectItem>
+                  <SelectItem value="dense">{t("modeDense")}</SelectItem>
+                  <SelectItem value="fts">{t("modeFts")}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {retrievalMode === "hybrid" && "Vector + full-text search with RRF fusion + reranking. Best quality."}
-                {retrievalMode === "dense" && "Pure vector similarity search. Good for semantic matching."}
-                {retrievalMode === "fts" && "Pure keyword search. Good for exact terms, codes, and names."}
+                {retrievalMode === "hybrid" && t("modeHybridDesc")}
+                {retrievalMode === "dense" && t("modeDenseDesc")}
+                {retrievalMode === "fts" && t("modeFtsDesc")}
               </p>
             </div>
           </fieldset>
@@ -264,11 +268,11 @@ export function KBFormDialog({
               onClick={() => handleClose(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button type="submit" disabled={isSubmitting || !name.trim()}>
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isEditing ? "Save Changes" : "Create"}
+              {isEditing ? t("saveChanges") : tc("create")}
             </Button>
           </DialogFooter>
         </form>
@@ -278,18 +282,18 @@ export function KBFormDialog({
     <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogTitle>{t("discardUnsavedTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
-            You have unsaved changes. Closing will discard them.
+            {t("discardUnsavedDescription")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogCancel>{tc("keepEditing")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => onOpenChange(false)}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Discard & close
+            {t("discardAndClose")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

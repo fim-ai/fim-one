@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import { Cpu, Palette, Settings, User } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { GeneralSettings } from "@/components/settings/general-settings"
@@ -11,19 +12,21 @@ import { AccountSettings } from "@/components/settings/account-settings"
 import { AppearanceSettings } from "@/components/settings/appearance-settings"
 import { ModelSettings } from "@/components/settings/model-settings"
 
-const TABS = [
-  { key: "general", label: "General", icon: Settings },
-  { key: "models", label: "Models", icon: Cpu },
-  { key: "account", label: "Account", icon: User },
-  { key: "appearance", label: "Appearance", icon: Palette },
-] as const
+const TAB_KEYS = ["general", "models", "account", "appearance"] as const
+const TAB_ICONS = {
+  general: Settings,
+  models: Cpu,
+  account: User,
+  appearance: Palette,
+} as const
 
-type TabKey = (typeof TABS)[number]["key"]
+type TabKey = (typeof TAB_KEYS)[number]
 
 function SettingsContent() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const t = useTranslations("settings")
 
   const activeTab = (searchParams.get("tab") as TabKey) || "general"
 
@@ -50,7 +53,7 @@ function SettingsContent() {
       <div className="flex items-center px-6 py-4 shrink-0 border-b border-border/40">
         <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <Settings className="h-5 w-5" />
-          Settings
+          {t("title")}
         </h1>
       </div>
 
@@ -58,21 +61,24 @@ function SettingsContent() {
       <div className="flex flex-1 min-h-0">
         {/* Left nav */}
         <nav className="w-52 shrink-0 border-r border-border/40 p-4 space-y-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => handleTabChange(key)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                activeTab === key
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{label}</span>
-            </button>
-          ))}
+          {TAB_KEYS.map((key) => {
+            const Icon = TAB_ICONS[key]
+            return (
+              <button
+                key={key}
+                onClick={() => handleTabChange(key)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  activeTab === key
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{t(`tabs.${key}`)}</span>
+              </button>
+            )
+          })}
         </nav>
 
         {/* Right content */}

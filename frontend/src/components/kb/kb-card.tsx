@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Eye, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +20,8 @@ export function KBCard({
   onEdit,
   onDelete,
 }: KBCardProps) {
+  const t = useTranslations("kb")
+  const tc = useTranslations("common")
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
       {/* Header: name + badges */}
@@ -49,12 +52,12 @@ export function KBCard({
 
       {/* Stats */}
       <p className="text-xs text-muted-foreground mb-1">
-        {kb.document_count} docs &middot; {kb.total_chunks} chunks
+        {t("docCount", { count: kb.document_count })} &middot; {t("chunkCount", { count: kb.total_chunks })}
       </p>
 
       {/* Description */}
       <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-3">
-        {kb.description || "No description"}
+        {kb.description || t("noDescription")}
       </p>
 
       {/* Action buttons */}
@@ -72,7 +75,7 @@ export function KBCard({
               </Link>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>View</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{t("view")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -85,7 +88,7 @@ export function KBCard({
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Edit</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{tc("edit")}</TooltipContent>
         </Tooltip>
         <div className="flex-1" />
         <Tooltip>
@@ -99,7 +102,7 @@ export function KBCard({
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Delete</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{tc("delete")}</TooltipContent>
         </Tooltip>
       </div>
     </div>

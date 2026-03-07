@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { Wrench, Brain, Loader2, Clock } from "lucide-react"
 import { fmtDuration } from "@/lib/utils"
 import type { IterationData } from "./types"
@@ -13,6 +14,7 @@ interface IterationHeaderProps {
 
 /** Single-line compact header: icon · DisplayName · summary · duration */
 export function IterationHeader({ data, summary }: IterationHeaderProps) {
+  const t = useTranslations("dag")
   const { data: catalog } = useToolCatalog()
   const isTool = data.type === "tool_call" || data.type === "tool_start"
   const isLoading = data.loading || data.type === "tool_start"
@@ -22,7 +24,7 @@ export function IterationHeader({ data, summary }: IterationHeaderProps) {
 
   const displayName = isTool && data.tool_name
     ? getToolDisplayName(data.tool_name, catalog?.tools)
-    : "Thinking"
+    : t("thinking")
 
   return (
     <div className="flex items-center gap-2 min-w-0">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -40,6 +41,8 @@ export default function KBDetailPage() {
   const kbId = params.id
   const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
+  const t = useTranslations("kb")
+  const tc = useTranslations("common")
 
   const [kb, setKb] = useState<KBResponse | null>(null)
   const [documents, setDocuments] = useState<KBDocumentResponse[]>([])
@@ -187,7 +190,7 @@ export default function KBDetailPage() {
                 </Link>
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={5}>Back to KB</TooltipContent>
+            <TooltipContent side="right" sideOffset={5}>{t("backToKb")}</TooltipContent>
           </Tooltip>
           <div className="flex-1 min-w-0 flex items-start justify-between gap-4">
             <div className="min-w-0 space-y-0.5">
@@ -196,11 +199,11 @@ export default function KBDetailPage() {
                 {kb.name}
               </h1>
               <p className="text-sm text-muted-foreground">
-                {kb.description || "No description"}
+                {kb.description || t("noDescription")}
                 {" "}&middot;{" "}
-                strategy: {kb.chunk_strategy}
+                {t("strategy")}: {kb.chunk_strategy}
                 {" "}&middot;{" "}
-                {kb.document_count} docs, {kb.total_chunks} chunks
+                {t("docAndChunkStats", { docCount: kb.document_count, chunkCount: kb.total_chunks })}
               </p>
             </div>
             <Badge
@@ -222,7 +225,7 @@ export default function KBDetailPage() {
             className="gap-1.5"
           >
             <Upload className="h-3.5 w-3.5" />
-            Add Documents
+            {t("addDocuments")}
           </Button>
           <Button
             size="sm"
@@ -231,7 +234,7 @@ export default function KBDetailPage() {
             className="gap-1.5"
           >
             <FilePlus className="h-3.5 w-3.5" />
-            Write Note
+            {t("writeNote")}
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -245,7 +248,7 @@ export default function KBDetailPage() {
                 <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={5}>Refresh documents</TooltipContent>
+            <TooltipContent side="bottom" sideOffset={5}>{t("refreshDocuments")}</TooltipContent>
           </Tooltip>
         </div>
         <div className="flex items-center gap-1">
@@ -256,7 +259,7 @@ export default function KBDetailPage() {
             className="text-xs h-7 px-2.5 gap-1"
           >
             <Files className="h-3 w-3" />
-            Documents
+            {t("documentsTab")}
           </Button>
           <Button
             variant={activeTab === "search" ? "secondary" : "ghost"}
@@ -265,7 +268,7 @@ export default function KBDetailPage() {
             className="text-xs h-7 px-2.5 gap-1"
           >
             <FlaskConical className="h-3 w-3" />
-            Retrieve Test
+            {t("retrieveTest")}
           </Button>
         </div>
       </div>
@@ -283,7 +286,7 @@ export default function KBDetailPage() {
             {docTotalPages > 1 && (
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">
-                  {docTotal} documents total
+                  {t("documentsTotal", { count: docTotal })}
                 </span>
                 <Pagination
                   page={docPage}
@@ -302,7 +305,7 @@ export default function KBDetailPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search knowledge base..."
+                placeholder={t("searchKbPlaceholder")}
                 className="flex-1"
               />
               <Button
@@ -325,8 +328,8 @@ export default function KBDetailPage() {
             ) : searchResults.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-10">
                 {hasSearched
-                  ? "No results found."
-                  : "Enter a query and press Enter to search."}
+                  ? t("noSearchResults")
+                  : t("searchPrompt")}
               </p>
             ) : (
               <div className="space-y-3">
@@ -340,7 +343,7 @@ export default function KBDetailPage() {
                         variant="secondary"
                         className="text-[10px] px-1.5 py-0 h-5"
                       >
-                        Score: {result.score.toFixed(3)}
+                        {t("score", { score: result.score.toFixed(3) })}
                       </Badge>
                       {"source" in result.metadata && result.metadata.source != null && (
                         <span className="text-xs text-muted-foreground truncate max-w-[200px]">
@@ -379,14 +382,14 @@ export default function KBDetailPage() {
       <Dialog open={pendingDeleteDocId !== null} onOpenChange={(open) => { if (!open) setPendingDeleteDocId(null) }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete document?</DialogTitle>
+            <DialogTitle>{t("deleteDocumentTitle")}</DialogTitle>
             <DialogDescription>
-              &ldquo;{documents.find((d) => d.id === pendingDeleteDocId)?.filename}&rdquo; and its vectors will be permanently deleted. This action cannot be undone.
+              {t("deleteDocumentDescription", { filename: documents.find((d) => d.id === pendingDeleteDocId)?.filename ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteDocId(null)}>Cancel</Button>
-            <Button variant="destructive" className="px-6" onClick={confirmDeleteDocument}>Delete</Button>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteDocId(null)}>{tc("cancel")}</Button>
+            <Button variant="destructive" className="px-6" onClick={confirmDeleteDocument}>{tc("delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

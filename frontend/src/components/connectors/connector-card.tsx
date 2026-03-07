@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Pencil, Plug, Trash2, Globe } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { ConnectorResponse } from "@/types/connector"
@@ -12,7 +13,7 @@ interface ConnectorCardProps {
 }
 
 const AUTH_LABELS: Record<string, string> = {
-  none: "No Auth",
+  none: "noAuth",
   bearer: "Bearer",
   api_key: "API Key",
   basic: "Basic",
@@ -23,6 +24,12 @@ export function ConnectorCard({
   connector,
   onDelete,
 }: ConnectorCardProps) {
+  const t = useTranslations("connectors")
+  const tc = useTranslations("common")
+
+  const authLabel = AUTH_LABELS[connector.auth_type]
+  const authDisplay = authLabel === "noAuth" ? t("noAuth") : (authLabel || connector.auth_type)
+
   return (
     <div className="flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
 
@@ -37,15 +44,15 @@ export function ConnectorCard({
           {connector.name}
         </h3>
         <span className="shrink-0 text-[10px] px-1.5 py-0 h-5 inline-flex items-center rounded-full bg-amber-500/10 text-amber-500 font-medium">
-          {connector.type === "api" ? "API" : "Database"}
+          {connector.type === "api" ? t("typeBadgeApi") : t("typeBadgeDatabase")}
         </span>
       </div>
 
       {/* Auth type */}
       <p className="text-xs text-muted-foreground mb-1">
-        {AUTH_LABELS[connector.auth_type] || connector.auth_type}
+        {authDisplay}
         {" \u00B7 "}
-        {connector.actions.length} action{connector.actions.length !== 1 ? "s" : ""}
+        {t("actionCount", { count: connector.actions.length })}
       </p>
 
       {/* Base URL */}
@@ -61,7 +68,7 @@ export function ConnectorCard({
 
       {/* Description */}
       <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-3">
-        {connector.description || "No description"}
+        {connector.description || t("noDescription")}
       </p>
 
       {/* Action buttons */}
@@ -79,7 +86,7 @@ export function ConnectorCard({
               </Link>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Edit</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{tc("edit")}</TooltipContent>
         </Tooltip>
         <div className="flex-1" />
         <Tooltip>
@@ -93,7 +100,7 @@ export function ConnectorCard({
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>Delete</TooltipContent>
+          <TooltipContent side="bottom" sideOffset={5}>{tc("delete")}</TooltipContent>
         </Tooltip>
       </div>
     </div>

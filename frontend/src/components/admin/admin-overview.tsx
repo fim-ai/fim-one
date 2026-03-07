@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Users, MessageSquare, Zap, Bot, Database, BookOpen, FileText, Hash, Plug } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -60,12 +61,12 @@ function BarTooltip({ active, payload, label }: { active?: boolean; payload?: { 
   )
 }
 
-function PieTooltip({ active, payload }: { active?: boolean; payload?: { name: string; value: number }[] }) {
+function PieTooltip({ active, payload, tokenLabel }: { active?: boolean; payload?: { name: string; value: number }[]; tokenLabel: string }) {
   if (!active || !payload?.length) return null
   return (
     <div className="rounded-md border border-border bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-md">
       <p className="font-medium">{payload[0].name}</p>
-      <p className="text-muted-foreground">tokens: <span className="text-popover-foreground font-medium">{formatTokens(payload[0].value)}</span></p>
+      <p className="text-muted-foreground">{tokenLabel}: <span className="text-popover-foreground font-medium">{formatTokens(payload[0].value)}</span></p>
     </div>
   )
 }
@@ -120,6 +121,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function AdminOverview() {
+  const t = useTranslations("admin.overview")
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -153,15 +155,15 @@ export function AdminOverview() {
     <div className="space-y-8">
       {/* Page header */}
       <div>
-        <h2 className="text-base font-semibold">Overview</h2>
-        <p className="text-sm text-muted-foreground">Platform-wide usage statistics and activity.</p>
+        <h2 className="text-base font-semibold">{t("title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       {/* Section 1 — System Stats */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">System Stats</h3>
-          <p className="text-sm text-muted-foreground">High-level usage overview across all users.</p>
+          <h3 className="text-base font-medium">{t("systemStats")}</h3>
+          <p className="text-sm text-muted-foreground">{t("systemStatsDesc")}</p>
         </div>
 
         {isLoading ? (
@@ -170,25 +172,25 @@ export function AdminOverview() {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-4">
-            <StatCard icon={Users} label="Total Users" value={stats?.total_users ?? 0} />
+            <StatCard icon={Users} label={t("totalUsers")} value={stats?.total_users ?? 0} />
             <StatCard
               icon={MessageSquare}
-              label="Conversations"
+              label={t("conversations")}
               value={stats?.total_conversations ?? 0}
-              secondary={stats?.today_conversations ? `${stats.today_conversations} today` : undefined}
+              secondary={stats?.today_conversations ? t("todayCount", { count: stats.today_conversations }) : undefined}
             />
-            <StatCard icon={Database} label="Messages" value={(stats?.total_messages ?? 0).toLocaleString()} />
+            <StatCard icon={Database} label={t("messages")} value={(stats?.total_messages ?? 0).toLocaleString()} />
             <StatCard
               icon={Zap}
-              label="Total Tokens"
+              label={t("totalTokens")}
               value={formatTokens(stats?.total_tokens ?? 0)}
-              secondary={stats?.total_fast_llm_tokens ? `Fast LLM: ${formatTokens(stats.total_fast_llm_tokens)}` : undefined}
+              secondary={stats?.total_fast_llm_tokens ? t("fastLlmTokens", { tokens: formatTokens(stats.total_fast_llm_tokens) }) : undefined}
             />
-            <StatCard icon={Bot} label="Agents" value={stats?.total_agents ?? 0} />
-            <StatCard icon={BookOpen} label="Knowledge Bases" value={stats?.total_kbs ?? 0} />
-            <StatCard icon={FileText} label="Documents" value={(stats?.total_documents ?? 0).toLocaleString()} />
-            <StatCard icon={Hash} label="Chunks" value={(stats?.total_chunks ?? 0).toLocaleString()} />
-            <StatCard icon={Plug} label="Connectors" value={stats?.total_connectors ?? 0} />
+            <StatCard icon={Bot} label={t("agents")} value={stats?.total_agents ?? 0} />
+            <StatCard icon={BookOpen} label={t("knowledgeBases")} value={stats?.total_kbs ?? 0} />
+            <StatCard icon={FileText} label={t("documents")} value={(stats?.total_documents ?? 0).toLocaleString()} />
+            <StatCard icon={Hash} label={t("chunks")} value={(stats?.total_chunks ?? 0).toLocaleString()} />
+            <StatCard icon={Plug} label={t("connectors")} value={stats?.total_connectors ?? 0} />
           </div>
         )}
       </div>
@@ -201,15 +203,15 @@ export function AdminOverview() {
       {/* Section 2 — Recent Activity (bar chart) */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Recent Activity</h3>
-          <p className="text-sm text-muted-foreground">Daily conversation volume over the last 14 days.</p>
+          <h3 className="text-base font-medium">{t("recentActivity")}</h3>
+          <p className="text-sm text-muted-foreground">{t("recentActivityDesc")}</p>
         </div>
 
         {isLoading ? (
           <div className="h-[180px] rounded bg-muted animate-pulse" />
         ) : recentDays.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            No recent activity yet.
+            {t("noRecentActivity")}
           </div>
         ) : (
           <div className="h-[180px] text-muted-foreground">
@@ -219,7 +221,7 @@ export function AdminOverview() {
                 <XAxis dataKey="label" tick={TICK_STYLE} tickLine={false} axisLine={false} />
                 <YAxis width={28} tick={TICK_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip content={<BarTooltip />} cursor={{ fill: "rgba(128,128,128,0.1)" }} />
-                <Bar dataKey="count" name="Conversations" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" name={t("chartConversations")} fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -231,8 +233,8 @@ export function AdminOverview() {
       {/* Section 3 — Top Agents */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Top Agents</h3>
-          <p className="text-sm text-muted-foreground">Most used agents by conversation count.</p>
+          <h3 className="text-base font-medium">{t("topAgents")}</h3>
+          <p className="text-sm text-muted-foreground">{t("topAgentsDesc")}</p>
         </div>
 
         {isLoading ? (
@@ -243,7 +245,7 @@ export function AdminOverview() {
           </div>
         ) : topAgents.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            No agent usage data yet.
+            {t("noAgentUsage")}
           </div>
         ) : (
           <div className="divide-y divide-border rounded-md border border-border">
@@ -256,7 +258,7 @@ export function AdminOverview() {
                   </span>
                 </div>
                 <span className="text-sm text-muted-foreground tabular-nums">
-                  {agent.count.toLocaleString()} conv.
+                  {t("convCount", { count: agent.count.toLocaleString() })}
                 </span>
               </div>
             ))}
@@ -269,19 +271,19 @@ export function AdminOverview() {
       {/* Section 4 — Model Usage (donut chart) */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Token Usage by Model</h3>
-          <p className="text-sm text-muted-foreground">Token consumption distribution across LLM models.</p>
+          <h3 className="text-base font-medium">{t("tokenUsageByModel")}</h3>
+          <p className="text-sm text-muted-foreground">{t("tokenUsageByModelDesc")}</p>
         </div>
 
         {isLoading ? (
           <div className="h-[220px] rounded bg-muted animate-pulse" />
         ) : topModels.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            No model usage data yet.
+            {t("noModelUsage")}
           </div>
         ) : topModels.length === 1 ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            All tokens consumed by <span className="font-medium text-foreground">{topModels[0].model}</span> ({formatTokens(topModels[0].count)})
+            {t("allTokensByModel", { model: topModels[0].model, tokens: formatTokens(topModels[0].count) })}
           </div>
         ) : (
           <div className="h-[220px]">
@@ -300,7 +302,7 @@ export function AdminOverview() {
                     <Cell key={`cell-${entry.model}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip content={<PieTooltip />} />
+                <Tooltip content={<PieTooltip tokenLabel={t("tokens")} />} />
                 <Legend
                   iconType="circle"
                   iconSize={8}
@@ -318,15 +320,15 @@ export function AdminOverview() {
       {/* Section 5 -- Tokens by Agent */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-base font-medium">Tokens by Agent</h3>
-          <p className="text-sm text-muted-foreground">Top agents by total token consumption.</p>
+          <h3 className="text-base font-medium">{t("tokensByAgent")}</h3>
+          <p className="text-sm text-muted-foreground">{t("tokensByAgentDesc")}</p>
         </div>
 
         {isLoading ? (
           <div className="h-[200px] rounded bg-muted animate-pulse" />
         ) : !stats?.tokens_by_agent?.length ? (
           <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            No token usage data yet.
+            {t("noTokenUsage")}
           </div>
         ) : (
           <div className="text-muted-foreground" style={{ height: Math.max(180, stats.tokens_by_agent.length * 36) }}>
@@ -343,7 +345,7 @@ export function AdminOverview() {
                 <XAxis type="number" tick={TICK_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
                 <YAxis type="category" dataKey="name" width={120} tick={TICK_STYLE} tickLine={false} axisLine={false} />
                 <Tooltip content={<BarTooltip />} cursor={{ fill: "rgba(128,128,128,0.1)" }} />
-                <Bar dataKey="tokens" name="Tokens" fill={CHART_COLORS[2]} radius={[0, 4, 4, 0]} />
+                <Bar dataKey="tokens" name={t("chartTokens")} fill={CHART_COLORS[2]} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -354,6 +356,7 @@ export function AdminOverview() {
 }
 
 function IntegrationHealthCard() {
+  const t = useTranslations("admin.overview")
   const [health, setHealth] = useState<IntegrationHealth[]>([])
 
   useEffect(() => {
@@ -365,7 +368,7 @@ function IntegrationHealthCard() {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium">Integration Health</CardTitle>
+        <CardTitle className="text-sm font-medium">{t("integrationHealth")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-2">

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Loader2, Plug, Settings, Zap } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -18,6 +19,7 @@ export default function ConnectorEditorPage() {
   const params = useParams()
   const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
+  const t = useTranslations("connectors")
 
   const id = params.id as string
   const [connector, setConnector] = useState<ConnectorResponse | null>(null)
@@ -96,7 +98,7 @@ export default function ConnectorEditorPage() {
               </Link>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={5}>Back to Connectors</TooltipContent>
+          <TooltipContent side="right" sideOffset={5}>{t("backToConnectors")}</TooltipContent>
         </Tooltip>
         <h1 className="text-sm font-semibold text-foreground truncate flex items-center gap-2">
           {connector?.icon ? (
@@ -104,7 +106,7 @@ export default function ConnectorEditorPage() {
           ) : (
             <Plug className="h-4 w-4 shrink-0" />
           )}
-          {isNew ? "New Connector" : connector?.name || "Connector"}
+          {isNew ? t("newConnector") : connector?.name || t("connector")}
         </h1>
       </div>
 
@@ -132,11 +134,11 @@ export default function ConnectorEditorPage() {
             <TabsList className="shrink-0 mx-4 mt-3 w-fit">
               <TabsTrigger value="connector" className="gap-1.5">
                 <Settings className="h-3.5 w-3.5" />
-                Connector
+                {t("connectorTab")}
               </TabsTrigger>
               <TabsTrigger value="actions" disabled={isNew} className="gap-1.5">
                 <Zap className="h-3.5 w-3.5" />
-                Actions
+                {t("actionsTab")}
                 {connector && connector.actions.length > 0 && (
                   <span className="text-xs text-muted-foreground">
                     ({connector.actions.length})

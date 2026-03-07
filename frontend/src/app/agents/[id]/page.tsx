@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { ArrowLeft, Loader2, Bot, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -23,6 +24,7 @@ import { AgentAIPanel } from "@/components/agents/agent-ai-panel"
 import type { AgentResponse } from "@/types/agent"
 
 export default function AgentEditorPage() {
+  const t = useTranslations("agents")
   const params = useParams()
   const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
@@ -108,7 +110,7 @@ export default function AgentEditorPage() {
               </Button>
             )}
           </TooltipTrigger>
-          <TooltipContent side="right" sideOffset={5}>Back to Agents</TooltipContent>
+          <TooltipContent side="right" sideOffset={5}>{t("backToAgents")}</TooltipContent>
         </Tooltip>
         <h1 className="text-sm font-semibold text-foreground truncate flex items-center gap-2">
           {agent?.icon ? (
@@ -116,7 +118,7 @@ export default function AgentEditorPage() {
           ) : (
             <Bot className="h-4 w-4 shrink-0" />
           )}
-          {isNew ? "New Agent" : agent?.name || "Agent"}
+          {isNew ? t("newAgent") : agent?.name || t("agent")}
         </h1>
         <div className="flex-1" />
         {agent && agent.status === "published" && (
@@ -130,11 +132,11 @@ export default function AgentEditorPage() {
               >
                 <Link href={`/new?agent=${agent.id}`}>
                   <MessageSquare className="h-4 w-4" />
-                  Start Chat
+                  {t("startChat")}
                 </Link>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Start a new conversation with this agent</TooltipContent>
+            <TooltipContent>{t("startChatTooltip")}</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -165,15 +167,15 @@ export default function AgentEditorPage() {
       <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Unsaved changes</AlertDialogTitle>
+            <AlertDialogTitle>{t("unsavedChangesTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              You have unsaved changes. Leaving this page will discard them.
+              {t("unsavedChangesDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Stay</AlertDialogCancel>
+            <AlertDialogCancel>{t("stay")}</AlertDialogCancel>
             <AlertDialogAction onClick={() => router.push("/agents")}>
-              Discard &amp; Leave
+              {t("discardAndLeave")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

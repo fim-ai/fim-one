@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import { Plus, Star, Loader2, Trash2, MoreHorizontal, Check, Pencil, MessagesSquare, GitBranch } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -25,19 +26,19 @@ import { conversationApi } from "@/lib/api"
 import { useConversation } from "@/contexts/conversation-context"
 import type { ConversationResponse } from "@/types/conversation"
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string, t: (key: string, values?: Record<string, number>) => string): string {
   const now = Date.now()
   const d = new Date(dateStr).getTime()
   const diff = now - d
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return t("justNow")
+  if (mins < 60) return t("minutesAgo", { count: mins })
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return t("hoursAgo", { count: hours })
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
+  if (days < 30) return t("daysAgo", { count: days })
   const months = Math.floor(days / 30)
-  return `${months}mo ago`
+  return t("monthsAgo", { count: months })
 }
 
 function sortConversations(convs: ConversationResponse[]): ConversationResponse[] {
@@ -51,6 +52,8 @@ function sortConversations(convs: ConversationResponse[]): ConversationResponse[
 }
 
 export default function ChatsPage() {
+  const t = useTranslations("auth")
+  const tc = useTranslations("common")
   const { loadConversations } = useConversation()
 
   const [conversations, setConversations] = useState<ConversationResponse[]>([])
@@ -200,12 +203,12 @@ export default function ChatsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <MessagesSquare className="h-6 w-6" />
-          Chats
+          {t("chatsTitle")}
         </h1>
         <Button size="sm" variant="outline" className="gap-2" asChild>
           <Link href="/new">
             <Plus className="h-4 w-4" />
-            New Chat
+            {t("newChat")}
           </Link>
         </Button>
       </div>
@@ -215,7 +218,7 @@ export default function ChatsPage() {
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search conversations..."
+          placeholder={t("searchConversations")}
           className="w-full"
         />
       </div>
@@ -224,7 +227,7 @@ export default function ChatsPage() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">
-            {total} chat{total !== 1 ? "s" : ""}
+            {t("chatCount", { count: total })}
           </span>
           {selectMode && sorted.length > 0 && (
             <Button
@@ -239,7 +242,7 @@ export default function ChatsPage() {
                 }
               }}
             >
-              {selectedIds.size === sorted.length ? "Deselect all" : "Select all"}
+              {selectedIds.size === sorted.length ? tc("deselectAll") : tc("selectAll")}
             </Button>
           )}
         </div>
@@ -252,7 +255,7 @@ export default function ChatsPage() {
               onClick={() => setDeleteDialogOpen(true)}
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Delete ({selectedIds.size})
+              {t("deleteCount", { count: selectedIds.size })}
             </Button>
           )}
           {selectMode ? (
@@ -261,7 +264,7 @@ export default function ChatsPage() {
               variant="ghost"
               onClick={exitSelectMode}
             >
-              Cancel
+              {tc("cancel")}
             </Button>
           ) : (
             <Button
@@ -269,7 +272,7 @@ export default function ChatsPage() {
               variant="outline"
               onClick={() => setSelectMode(true)}
             >
-              Select
+              {t("select")}
             </Button>
           )}
         </div>
@@ -282,7 +285,7 @@ export default function ChatsPage() {
         </div>
       ) : sorted.length === 0 ? (
         <div className="py-16 text-center text-sm text-muted-foreground">
-          {debouncedQuery ? "No results found" : "No conversations yet"}
+          {debouncedQuery ? tc("noResults") : t("noConversationsYet")}
         </div>
       ) : (
         <div className="space-y-1">
@@ -321,13 +324,13 @@ export default function ChatsPage() {
                 <Star className="h-4 w-4 shrink-0 fill-current text-yellow-500" />
               )}
               <span className="flex-1 truncate text-sm">
-                {conv.title || "Untitled"}
+                {conv.title || t("untitled")}
               </span>
               {conv.mode === "dag" && (
                 <GitBranch className="shrink-0 h-3.5 w-3.5 text-muted-foreground/40" />
               )}
               <span className="text-xs text-muted-foreground shrink-0">
-                {formatRelativeTime(conv.created_at)}
+                {formatRelativeTime(conv.created_at, t)}
               </span>
               {!selectMode && (
                 <DropdownMenu>
@@ -343,7 +346,7 @@ export default function ChatsPage() {
                       setSelectedIds(new Set([conv.id]))
                     }}>
                       <Check className="h-4 w-4 mr-2" />
-                      Select
+                      {t("select")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={(e) => {
@@ -351,7 +354,7 @@ export default function ChatsPage() {
                       handleStarToggle(e as unknown as React.MouseEvent, conv)
                     }}>
                       <Star className={cn("h-4 w-4 mr-2", conv.starred && "fill-current text-yellow-500")} />
-                      {conv.starred ? "Unstar" : "Star"}
+                      {conv.starred ? t("unstar") : t("star")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={(e) => {
                       e.stopPropagation()
@@ -360,7 +363,7 @@ export default function ChatsPage() {
                       setRenameDialogOpen(true)
                     }}>
                       <Pencil className="h-4 w-4 mr-2" />
-                      Rename
+                      {t("rename")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -372,7 +375,7 @@ export default function ChatsPage() {
                       }}
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
+                      {tc("delete")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -394,10 +397,10 @@ export default function ChatsPage() {
             {loadingMore ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Loading...
+                {tc("loading")}
               </>
             ) : (
-              "Show more"
+              tc("showMore")
             )}
           </Button>
         </div>
@@ -413,16 +416,16 @@ export default function ChatsPage() {
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4" />
               {singleDeleteId
-                ? "Delete this conversation?"
-                : `Delete ${selectedIds.size} conversation${selectedIds.size !== 1 ? "s" : ""}?`}
+                ? t("deleteSingleTitle")
+                : t("deleteBatchTitle", { count: selectedIds.size })}
             </DialogTitle>
             <DialogDescription>
-              This action cannot be undone.
+              {tc("confirmDeleteDescription")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => { setDeleteDialogOpen(false); setSingleDeleteId(null) }}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -433,10 +436,10 @@ export default function ChatsPage() {
               {deleting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Deleting...
+                  {tc("deleting")}
                 </>
               ) : (
-                "Delete"
+                tc("delete")
               )}
             </Button>
           </DialogFooter>
@@ -451,7 +454,7 @@ export default function ChatsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-4 w-4" />
-              Rename conversation
+              {t("renameConversation")}
             </DialogTitle>
           </DialogHeader>
           <Input
@@ -459,14 +462,14 @@ export default function ChatsPage() {
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleRenameSubmit() }}
-            placeholder="Conversation title"
+            placeholder={t("conversationTitlePlaceholder")}
           />
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => { setRenameDialogOpen(false); setRenamingId(null) }}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button className="px-6" onClick={handleRenameSubmit} disabled={!renameValue.trim()}>
-              Save
+              {tc("save")}
             </Button>
           </DialogFooter>
         </DialogContent>

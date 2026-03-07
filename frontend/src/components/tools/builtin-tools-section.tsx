@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import {
   Zap,
@@ -50,7 +51,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 /*  ToolCard                                                            */
 /* ------------------------------------------------------------------ */
 
-function ToolCard({ tool }: { tool: ToolMeta }) {
+function ToolCard({ tool, notConfiguredLabel }: { tool: ToolMeta; notConfiguredLabel: string }) {
   const [expanded, setExpanded] = useState(false)
   const Icon = CATEGORY_ICONS[tool.category] ?? Wrench
   const categoryLabel = tool.category.charAt(0).toUpperCase() + tool.category.slice(1)
@@ -81,7 +82,7 @@ function ToolCard({ tool }: { tool: ToolMeta }) {
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {unavailable && (
-            <div title={tool.unavailable_reason ?? "Not configured"}>
+            <div title={tool.unavailable_reason ?? notConfiguredLabel}>
               <Lock className="h-3 w-3 text-muted-foreground/50" />
             </div>
           )}
@@ -103,41 +104,41 @@ function ToolCard({ tool }: { tool: ToolMeta }) {
 /*  Navigation link cards (unchanged)                                   */
 /* ------------------------------------------------------------------ */
 
-function ConnectorLinkCard() {
+function ConnectorLinkCard({ label, description }: { label: string; description: string }) {
   return (
     <Link href="/connectors" className="block group">
       <div className="rounded-lg border border-dashed border-border bg-card p-4 flex flex-col gap-2 hover:border-primary/50 hover:bg-accent/30 transition-colors">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Plug className="h-4 w-4 shrink-0 text-cyan-500" />
-            <span className="text-sm font-medium shrink-0">Connector</span>
+            <span className="text-sm font-medium shrink-0">{label}</span>
             <Badge variant="secondary" className="shrink-0 text-xs font-mono">
               connector
             </Badge>
           </div>
           <div className="flex items-center gap-1">
             <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">
-              Connector
+              {label}
             </Badge>
             <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
           </div>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
-          Custom HTTP API actions bound to this agent. Managed on the Connectors page.
+          {description}
         </p>
       </div>
     </Link>
   )
 }
 
-function MCPLinkCard({ onSwitch }: { onSwitch: () => void }) {
+function MCPLinkCard({ onSwitch, label, description }: { onSwitch: () => void; label: string; description: string }) {
   return (
     <button onClick={onSwitch} className="text-left w-full group">
       <div className="rounded-lg border border-dashed border-border bg-card p-4 flex flex-col gap-2 hover:border-primary/50 hover:bg-accent/30 transition-colors">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Server className="h-4 w-4 shrink-0 text-indigo-500" />
-            <span className="text-sm font-medium shrink-0">MCP Servers</span>
+            <span className="text-sm font-medium shrink-0">{label}</span>
             <Badge variant="secondary" className="shrink-0 text-xs font-mono">
               mcp
             </Badge>
@@ -150,7 +151,7 @@ function MCPLinkCard({ onSwitch }: { onSwitch: () => void }) {
           </div>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
-          Tools provided by external MCP servers. Configure them in the MCP Servers tab.
+          {description}
         </p>
       </div>
     </button>
@@ -166,6 +167,7 @@ interface BuiltinToolsSectionProps {
 }
 
 export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps) {
+  const t = useTranslations("tools")
   const { data: catalog, isLoading, error } = useToolCatalog()
   const [activeCategory, setActiveCategory] = useState<string>("All")
 
@@ -211,7 +213,7 @@ export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps)
       {isLoading && (
         <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm">Loading tools...</span>
+          <span className="text-sm">{t("loadingTools")}</span>
         </div>
       )}
 
@@ -219,7 +221,7 @@ export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps)
       {error && !isLoading && (
         <div className="flex items-center justify-center gap-2 py-8 text-destructive">
           <AlertCircle className="h-4 w-4" />
-          <span className="text-sm">Failed to load tool catalog</span>
+          <span className="text-sm">{t("failedToLoadCatalog")}</span>
         </div>
       )}
 
@@ -227,10 +229,10 @@ export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps)
       {!isLoading && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filteredTools.map((tool) => (
-            <ToolCard key={tool.name} tool={tool} />
+            <ToolCard key={tool.name} tool={tool} notConfiguredLabel={t("notConfigured")} />
           ))}
-          {showConnector && <ConnectorLinkCard />}
-          {showMCP && <MCPLinkCard onSwitch={onSwitchToMCP} />}
+          {showConnector && <ConnectorLinkCard label={t("connectorLabel")} description={t("connectorDescription")} />}
+          {showMCP && <MCPLinkCard onSwitch={onSwitchToMCP} label={t("mcpServersLinkLabel")} description={t("mcpServersLinkDescription")} />}
         </div>
       )}
     </div>

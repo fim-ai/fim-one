@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
 import { fmtDuration } from "@/lib/utils"
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import {
   Loader2,
   Wrench,
@@ -69,6 +70,7 @@ export function DagOutput({
   injectEvents = [],
   onSuggestionSelect,
 }: DagOutputProps) {
+  const t = useTranslations("playground")
   const [stepsExpanded, setStepsExpanded] = useState(false)
 
   const completedSteps = stepStates.filter(
@@ -79,11 +81,13 @@ export function DagOutput({
   // After completion: collapsible summary bar + always-visible done card
   if (doneEvent && totalSteps > 0) {
     const summaryParts: string[] = [
-      `${completedSteps}/${totalSteps} step${totalSteps !== 1 ? "s" : ""} completed`,
+      totalSteps !== 1
+        ? t("stepsCompletedPlural", { completed: completedSteps, total: totalSteps })
+        : t("stepsCompleted", { completed: completedSteps, total: totalSteps }),
       fmtDuration(doneEvent.elapsed),
     ]
     if (doneEvent.rounds != null && doneEvent.rounds > 1) {
-      summaryParts.push(`${doneEvent.rounds} rounds`)
+      summaryParts.push(t("roundCount", { count: doneEvent.rounds }))
     }
 
     return (
@@ -148,8 +152,8 @@ export function DagOutput({
             <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
             <span className="text-sm shiny-text">
               {currentRound > 1
-                ? `Re-planning execution steps (Round ${currentRound})...`
-                : "Planning execution steps..."}
+                ? t("replanningRound", { round: currentRound })
+                : t("planningSteps")}
             </span>
           </CardContent>
         </Card>
@@ -161,7 +165,7 @@ export function DagOutput({
           <CardContent className="flex items-center gap-3">
             <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
             <span className="text-sm shiny-text">
-              Re-planning...
+              {t("replanning")}
             </span>
           </CardContent>
         </Card>
@@ -198,7 +202,7 @@ export function DagOutput({
         <Card className="border-purple-500/20 py-4">
           <CardContent className="flex items-center gap-3">
             <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
-            <span className="text-sm shiny-text">Analyzing results...</span>
+            <span className="text-sm shiny-text">{t("analyzingResults")}</span>
           </CardContent>
         </Card>
       )}
@@ -361,6 +365,7 @@ function stripInlineMarkdown(s: string): string {
 }
 
 export function ResultBlock({ content }: { content: string }) {
+  const t = useTranslations("playground")
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   // Strip orphan citation markers [1], [10] etc. — DAG mode has no References panel
@@ -378,7 +383,7 @@ export function ResultBlock({ content }: { content: string }) {
       >
         <div className="flex items-center gap-2">
           <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
-          <span className="font-medium text-foreground text-xs">Result</span>
+          <span className="font-medium text-foreground text-xs">{t("result")}</span>
           {shortPreview && (
             <span className="text-[10px] text-muted-foreground truncate min-w-0">{shortPreview}</span>
           )}
@@ -394,6 +399,7 @@ export function ResultBlock({ content }: { content: string }) {
 }
 
 function ResultDetailDrawer({ content, onClose }: { content: string | null; onClose: () => void }) {
+  const t = useTranslations("playground")
   return (
     <Sheet open={!!content} onOpenChange={(v) => { if (!v) onClose() }}>
       <SheetContent side="right" className="sm:max-w-2xl w-full flex flex-col p-0 gap-0">
@@ -405,7 +411,7 @@ function ResultDetailDrawer({ content, onClose }: { content: string | null; onCl
                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-500/10">
                     <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                   </div>
-                  <span className="font-semibold">Step Result</span>
+                  <span className="font-semibold">{t("stepResult")}</span>
                 </SheetTitle>
               </SheetHeader>
             </div>
@@ -425,6 +431,7 @@ function ResultDetailDrawer({ content, onClose }: { content: string | null; onCl
 }
 
 function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
+  const t = useTranslations("playground")
   return (
     <Card className="border-purple-500/20 py-4">
       <CardContent className="flex items-start gap-3">
@@ -437,18 +444,18 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
               variant="outline"
               className="border-purple-500/30 text-purple-500 text-[10px] uppercase tracking-wider"
             >
-              Analysis
+              {t("analysis")}
             </Badge>
             {phase.achieved != null && (
               <span className={`flex items-center gap-1 text-[10px] ${phase.achieved ? "text-green-500" : "text-destructive"}`}>
                 <Target className="h-2.5 w-2.5" />
-                {phase.achieved ? "Goal Achieved" : "Goal Not Achieved"}
+                {phase.achieved ? t("goalAchieved") : t("goalNotAchieved")}
               </span>
             )}
             {phase.confidence != null && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <Gauge className="h-2.5 w-2.5" />
-                {(phase.confidence * 100).toFixed(0)}% confidence
+                {t("confidenceLabel", { value: (phase.confidence * 100).toFixed(0) })}
               </span>
             )}
           </div>
@@ -464,6 +471,7 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
 }
 
 function DagDoneCard({ done, onSuggestionSelect }: { done: DagDoneEvent; onSuggestionSelect?: (query: string) => void }) {
+  const t = useTranslations("playground")
   return (
     <Card className="border-green-500/20 py-4">
       <CardHeader className="pb-0">
@@ -471,7 +479,7 @@ function DagDoneCard({ done, onSuggestionSelect }: { done: DagDoneEvent; onSugge
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/10">
             <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
           </div>
-          <CardTitle className="text-sm">Result</CardTitle>
+          <CardTitle className="text-sm">{t("result")}</CardTitle>
           <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-2.5 w-2.5" />
@@ -480,13 +488,13 @@ function DagDoneCard({ done, onSuggestionSelect }: { done: DagDoneEvent; onSugge
             {done.rounds != null && done.rounds > 1 && (
               <span className="flex items-center gap-1">
                 <RefreshCw className="h-2.5 w-2.5" />
-                {done.rounds} rounds
+                {t("roundCount", { count: done.rounds })}
               </span>
             )}
             {done.usage && (
               <span className="flex items-center gap-1">
                 <BarChart3 className="h-2.5 w-2.5" />
-                {(done.usage.prompt_tokens / 1000).toFixed(1)}k in · {(done.usage.completion_tokens / 1000).toFixed(1)}k out
+                {t("tokenIn", { value: (done.usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (done.usage.completion_tokens / 1000).toFixed(1) })}
               </span>
             )}
           </div>

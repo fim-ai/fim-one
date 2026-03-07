@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { parseEvidence } from "@/lib/evidence-utils"
 
@@ -9,6 +10,7 @@ interface EvidencePanelProps {
 }
 
 function ConfidenceBadge({ value }: { value: number }) {
+  const t = useTranslations("playground")
   const color =
     value >= 80
       ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
@@ -18,12 +20,13 @@ function ConfidenceBadge({ value }: { value: number }) {
 
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
-      {value.toFixed(1)}% confidence
+      {t("confidenceLabel", { value: value.toFixed(1) })}
     </span>
   )
 }
 
 export function EvidencePanel({ content }: EvidencePanelProps) {
+  const t = useTranslations("playground")
   const [isOpen, setIsOpen] = useState(false)
   const parsed = parseEvidence(content)
 
@@ -41,12 +44,12 @@ export function EvidencePanel({ content }: EvidencePanelProps) {
           <ChevronRight className="h-4 w-4 shrink-0" />
         )}
         <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-        <span>Evidence ({parsed.sourceCount} sources)</span>
+        <span>{t("evidence", { count: parsed.sourceCount })}</span>
         <ConfidenceBadge value={parsed.confidence} />
         {parsed.conflicts.length > 0 && (
           <span className="ml-auto flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400">
             <AlertTriangle className="h-3 w-3" />
-            {parsed.conflicts.length} conflict{parsed.conflicts.length > 1 ? "s" : ""}
+            {parsed.conflicts.length > 1 ? t("conflictCountPlural", { count: parsed.conflicts.length }) : t("conflictCount", { count: parsed.conflicts.length })}
           </span>
         )}
       </button>
@@ -75,7 +78,7 @@ export function EvidencePanel({ content }: EvidencePanelProps) {
             <div className="space-y-2 pt-2 border-t border-border">
               <div className="flex items-center gap-1 text-xs font-medium text-yellow-600 dark:text-yellow-400">
                 <AlertTriangle className="h-3.5 w-3.5" />
-                Conflicts Detected
+                {t("conflictsDetected")}
               </div>
               {parsed.conflicts.map((conflict, i) => (
                 <div key={i} className="rounded border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20 p-2 text-xs space-y-1">
