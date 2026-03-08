@@ -1,0 +1,87 @@
+{
+  "options": {
+    "experimentalClearLocaleDirs": true,
+    "mintlify": {
+      "inferTitleFromFilename": true
+    },
+    "jsonSchema": {
+      "./docs.json": {
+        "composite": {
+          "$.navigation.languages": {
+            "type": "array",
+            "key": "$.language",
+            "experimentalSort": "localesAlphabetical",
+            "include": [
+              "$..group",
+              "$..tab",
+              "$..item",
+              "$..anchor",
+              "$..dropdown"
+            ],
+            "transform": {
+              "$..pages[*]": {
+                "match": "^/?(.*)$",
+                "replace": "{locale}/$1"
+              },
+              "$..root": {
+                "match": "^/?(.*)$",
+                "replace": "{locale}/$1"
+              }
+            }
+          }
+        }
+      }
+    },
+    "docsUrlPattern": "/[locale]",
+    "docsImportPattern": "/snippets/[locale]",
+    "generateRedirects": "./docs.json",
+    "experimentalLocalizeStaticImports": true,
+    "experimentalLocalizeStaticUrls": true,
+    "experimentalLocalizeRelativeAssets": true,
+    "docsHideDefaultLocaleImport": true,
+    "experimentalHideDefaultLocale": true,
+    "experimentalAddHeaderAnchorIds": "mintlify"
+  },
+  "locales": [
+    "en",
+    "zh"
+  ],
+  "defaultLocale": "en",
+  "$schema": "https://assets.gtx.dev/config-schema.json",
+  "files": {
+    "json": {
+      "include": [
+        "./docs.json"
+      ]
+    },
+    "mdx": {
+      "include": [
+        "./**/*.mdx",
+        "./**/*.md"
+      ],
+      "transform": {
+        "match": "^(snippets/)?(.*)$",
+        "replace": "$1{locale}/$2"
+      },
+      "exclude": [
+        "./[locales]/**/*.mdx",
+        "./snippets/[locales]/**/*.mdx",
+        "./[locales]/**/*.md",
+        "./snippets/[locales]/**/*.md",
+        "./**/README.md",
+        "./**/LICENSE.md",
+        "./**/COPYING.md",
+        "./**/NOTICE.md",
+        "./**/CHANGELOG.md",
+        "./**/HISTORY.md",
+        "./**/CODE_OF_CONDUCT.md",
+        "./**/CONTRIBUTING.md",
+        "./**/SECURITY.md",
+        "./**/GOVERNANCE.md",
+        "./**/AGENTS.md",
+        "./**/OWNERS.md",
+        "./**/MAINTAINERS.md"
+      ]
+    }
+  }
+}
