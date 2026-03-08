@@ -9,7 +9,13 @@ export function getApiBaseUrl() {
 export function getApiDirectUrl() {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL
   if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:8000`
+    const { protocol, hostname, port } = window.location
+    // Standard ports (80/443) → production reverse-proxy setup: backend is co-located on same origin
+    // Non-standard port (e.g. :3000 in local dev) → backend runs separately on :8000
+    if (!port || port === "80" || port === "443") {
+      return `${protocol}//${hostname}`
+    }
+    return `${protocol}//${hostname}:8000`
   }
   return "http://localhost:8000"
 }
