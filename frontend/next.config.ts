@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
   // Standalone output for Docker — produces a minimal self-contained server.
   // Set NEXT_OUTPUT=standalone in Dockerfile; unset locally to keep `next start` working.
   output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
+  // Ensure next-intl message files are included in standalone output.
+  // They are read at runtime via fs.readdirSync() and cannot be statically traced.
+  outputFileTracingIncludes: {
+    "/*": ["./messages/**/*.json"],
+  },
   allowedDevOrigins: ["192.168.9.114"],
   async rewrites() {
     return [

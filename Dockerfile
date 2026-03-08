@@ -65,6 +65,9 @@ COPY --from=frontend-build /app/frontend/.next-build/standalone/ /app/frontend/
 COPY --from=frontend-build /app/frontend/.next-build/static /app/frontend/.next-build/static
 # Public assets (favicon, fonts, images)
 COPY --from=frontend-build /app/frontend/public /app/frontend/public
+# i18n message files — runtime-read by next-intl via fs.readdirSync(),
+# not statically traced by Next.js standalone bundler
+COPY --from=frontend-build /app/frontend/messages /app/frontend/messages
 
 # Copy entrypoint
 COPY docker-entrypoint.sh /app/
@@ -74,6 +77,11 @@ RUN chmod +x /app/docker-entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH"
 # Prevent Python from buffering stdout/stderr (important for Docker logs)
 ENV PYTHONUNBUFFERED=1
+
+# Compile .py → .pyc (in-place with -b) and remove source files for protection.
+# Migrations are kept as-is because Alembic reads them at runtime.
+RUN python -m compileall -b /app/src/fim_agent/ \
+    && find /app/src/fim_agent/ -name "*.py" ! -path "*/migrations/*" -delete
 
 EXPOSE 3000
 

@@ -22,6 +22,19 @@ uvicorn fim_agent.web:create_app \
   --log-level "$LOG_LEVEL" &
 API_PID=$!
 
+# Wait for API to be ready before starting frontend (prevents SSR race condition)
+echo "Waiting for API to be ready..."
+python -c "
+import socket, time
+while True:
+    try:
+        socket.create_connection(('127.0.0.1', 8000), timeout=1)
+        break
+    except OSError:
+        time.sleep(0.2)
+"
+echo "API ready."
+
 # Start Next.js frontend in foreground
 echo "Starting frontend on :3000..."
 cd /app/frontend
