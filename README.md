@@ -253,6 +253,8 @@ User Query
 
 ### Option A: Docker (recommended)
 
+No local Python or Node.js required — everything is built inside the container.
+
 ```bash
 git clone https://github.com/fim-ai/fim-agent.git
 cd fim-agent
@@ -261,13 +263,23 @@ cd fim-agent
 cp example.env .env
 # Edit .env: set LLM_API_KEY (and optionally LLM_BASE_URL, LLM_MODEL)
 
-# Build and run
-docker compose up -d
+# Build and run (first time, or after pulling new code)
+docker compose up --build -d
 ```
 
 Open http://localhost:3000 — on first launch you'll be guided through creating an admin account. That's it.
 
+After the initial build, subsequent starts only need:
+
+```bash
+docker compose up -d          # start (skip rebuild if image unchanged)
+docker compose down           # stop
+docker compose logs -f        # view logs
+```
+
 Data is persisted in Docker named volumes (`fim-data`, `fim-uploads`) and survives container restarts.
+
+> **Note:** Docker mode does not support hot reload. Code changes require rebuilding the image (`docker compose up --build -d`). For active development with live reload, use **Option B** below.
 
 ### Option B: Local Development
 
@@ -284,8 +296,8 @@ cp example.env .env
 uv sync --extra web
 cd frontend && pnpm install && cd ..
 
-# Launch
-./start.sh
+# Launch (with hot reload)
+./start.sh dev
 ```
 
 | Command          | What starts                                             | URL                                      |
@@ -296,13 +308,20 @@ cd frontend && pnpm install && cd ..
 
 ### Production Deployment
 
-For production, put an Nginx reverse proxy in front of the container for HTTPS and custom domain:
+Both options work in production:
+
+| Method | Command | Best for |
+|--------|---------|----------|
+| **Docker** | `docker compose up -d` | Hands-off deployment, easy updates |
+| **Script** | `./start.sh` | Bare-metal servers, custom process managers |
+
+For either method, put an Nginx reverse proxy in front for HTTPS and custom domain:
 
 ```
-User → Nginx (443/HTTPS) → Container :3000
+User → Nginx (443/HTTPS) → localhost:3000
 ```
 
-The API runs internally on port 8000 inside the container — Next.js proxies `/api/*` requests automatically. Only port 3000 needs to be exposed.
+The API runs internally on port 8000 — Next.js proxies `/api/*` requests automatically. Only port 3000 needs to be exposed.
 
 If you use the code execution sandbox (`CODE_EXEC_BACKEND=docker`), mount the Docker socket:
 
@@ -311,8 +330,6 @@ If you use the code execution sandbox (`CODE_EXEC_BACKEND=docker`), mount the Do
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
-
-The portal offers two modes: **ReAct Agent** (single-query tool loop) and **DAG Planner** (multi-step planning with concurrent execution), with real-time SSE streaming, DAG visualization, and KaTeX math rendering.
 
 ## ⚙️ Configuration
 
