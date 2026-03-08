@@ -105,20 +105,17 @@ FIM Agent 不会复制目标系统中已有的工作流逻辑：
 
 ### FIM Agent 的定位
 
-```mermaid
-quadrantChart
-    title 规划 vs 执行
-    x-axis 静态执行 --> 动态执行
-    y-axis 静态规划 --> 动态规划
-    quadrant-1 自主 Agent
-    quadrant-2 过渡区
-    quadrant-3 BPM / 工作流
-    quadrant-4 ACM
-    Camunda Activiti: [0.2, 0.2]
-    Dify n8n Coze: [0.3, 0.25]
-    Salesforce Case: [0.75, 0.2]
-    AutoGPT Manus: [0.8, 0.8]
-    FIM Agent: [0.7, 0.75]
+```
+                Static Execution          Dynamic Execution
+            ┌──────────────────────┬──────────────────────┐
+ Static     │ BPM / Workflow       │ ACM                  │
+ Planning   │ Camunda, Activiti    │ (Salesforce Case)    │
+            │ Dify, n8n, Coze     │                      │
+            ├──────────────────────┼──────────────────────┤
+ Dynamic    │ (transitional —      │ Autonomous Agent     │
+ Planning   │  unstable quadrant)  │ AutoGPT, Manus       │
+            │                      │ ★ FIM Agent (bounded)│
+            └──────────────────────┴──────────────────────┘
 ```
 
 Dify/n8n 属于 **静态规划 + 静态执行** — 人工在可视化画布上设计 DAG，节点执行固定操作。FIM Agent 属于 **动态规划 + 动态执行** — LLM 在运行时生成 DAG，每个节点运行 ReAct 循环，目标未达成时自动重新规划。但有边界约束（最多 3 轮重新规划、Token 预算、确认门控），因此比 AutoGPT 更可控。

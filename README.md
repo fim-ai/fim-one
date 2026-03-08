@@ -105,20 +105,17 @@ This is a deliberate architectural boundary, not a capability gap.
 
 ### Where FIM Agent Sits
 
-```mermaid
-quadrantChart
-    title Planning vs Execution
-    x-axis Static Execution --> Dynamic Execution
-    y-axis Static Planning --> Dynamic Planning
-    quadrant-1 Autonomous Agent
-    quadrant-2 Transitional
-    quadrant-3 BPM / Workflow
-    quadrant-4 ACM
-    Camunda Activiti: [0.2, 0.2]
-    Dify n8n Coze: [0.3, 0.25]
-    Salesforce Case: [0.75, 0.2]
-    AutoGPT Manus: [0.8, 0.8]
-    FIM Agent: [0.7, 0.75]
+```
+                Static Execution          Dynamic Execution
+            ┌──────────────────────┬──────────────────────┐
+ Static     │ BPM / Workflow       │ ACM                  │
+ Planning   │ Camunda, Activiti    │ (Salesforce Case)    │
+            │ Dify, n8n, Coze     │                      │
+            ├──────────────────────┼──────────────────────┤
+ Dynamic    │ (transitional —      │ Autonomous Agent     │
+ Planning   │  unstable quadrant)  │ AutoGPT, Manus       │
+            │                      │ ★ FIM Agent (bounded)│
+            └──────────────────────┴──────────────────────┘
 ```
 
 Dify/n8n are **Static Planning + Static Execution** — humans design the DAG on a visual canvas, nodes execute fixed operations. FIM Agent is **Dynamic Planning + Dynamic Execution** — LLM generates the DAG at runtime, each node runs a ReAct loop, with re-planning when goals aren't met. But bounded (max 3 re-plan rounds, token budgets, confirmation gates), so more controlled than AutoGPT.
