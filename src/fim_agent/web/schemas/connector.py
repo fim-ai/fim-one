@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Action Schemas ---
@@ -70,6 +70,16 @@ class ConnectorCreate(BaseModel):
     base_url: str = Field(min_length=1, max_length=500)
     auth_type: str = "none"
     auth_config: dict[str, Any] | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url_scheme(cls, v: str) -> str:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Only http and https schemes are allowed for base_url")
+        return v
 
 
 class ConnectorUpdate(BaseModel):

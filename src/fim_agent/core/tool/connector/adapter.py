@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from fim_agent.core.security import validate_url
 from fim_agent.core.tool.base import BaseTool
 from fim_agent.core.tool.truncation import truncate_tool_output
 
@@ -59,6 +60,12 @@ class ConnectorToolAdapter(BaseTool):
         self._description = action_description or f"{action_method} {action_path}"
         self._method = action_method.upper()
         self._base_url = connector_base_url.rstrip("/")
+
+        try:
+            validate_url(connector_base_url)
+        except ValueError as exc:
+            raise ValueError(f"Connector base URL blocked by SSRF policy: {exc}") from exc
+
         self._path = action_path
         self._parameters_schema_val = action_parameters_schema or {
             "type": "object",
@@ -114,6 +121,11 @@ class ConnectorToolAdapter(BaseTool):
                 path = path.replace(f"{{{param}}}", value)
 
         url = f"{self._base_url}{path}"
+
+        try:
+            validate_url(url)
+        except ValueError as exc:
+            return f"[Error] SSRF blocked: {exc}"
 
         # 2. Build headers with auth
         headers: dict[str, str] = {"Accept": "application/json"}
