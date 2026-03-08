@@ -6,8 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Added
+- **Admin: login history recording**: Auth endpoints now record every login attempt (IP address, User-Agent, success/failure with reason) to the `LoginHistory` table for security auditing
+- **Admin: file browser**: New admin file browser endpoints for listing and downloading user-uploaded files with pagination support
+- **Admin: enriched agent/KB views**: Admin agent list and knowledge base views now expose `model_name`, `tools`, `kb_ids`, and `embedding_model` fields for better visibility
+- **Chat: sensitive word blocking**: Both ReAct and `inject_message` chat endpoints now enforce sensitive word filtering, blocking messages that contain configured sensitive words
+- **SSE: structured error handling**: `onError` callback in `useSSE` hook upgraded from plain string to `ApiError` object for richer error context (error code, args)
+- **UI: `formatTokens` utility**: New formatting helper for displaying token counts with locale-aware number formatting
+- **UI: `Checkbox` and `FadeIn` components**: New shadcn-style checkbox and fade-in animation wrapper components
+
 ### Changed
 - **Admin UX: unified "..." actions dropdown across all list pages**: All admin pages with data tables (Storage, Resources, Security, Conversations, Audit, Models, Content, MCP Servers) now use a single `MoreHorizontal` DropdownMenu in the last column for row actions — matching the existing `admin-users.tsx` pattern. Inline icon buttons (trash, eye, edit, power toggle, switch) and clickable rows have been removed in favour of labelled `DropdownMenuItem` entries ordered safe→toggle→destructive. Convention documented in `CLAUDE.md`.
+- **i18n: admin keys updated for template removal, login history, and file browser**: Added/removed i18n keys in both `en` and `zh` admin/common/errors namespaces to reflect prompt template removal, login history additions, file browser UI, and sensitive word model simplification
 
 ### Changed
 - **Roadmap: Replace Plan Preview with Intent Wizard (v0.10)**: Removed the "Plan Preview" concept (post-plan DAG confirmation) and replaced it with "Intent Wizard" — a wizard-style structured Q&A that runs *before* planning begins. The three-gate model for v0.10 is now Intent Wizard (pre-plan info gathering) + Soft Gate (mid-execution uncertainty) + Confirmation Gate (write-op safety). Intent Wizard supports single-select, multi-select, and free-text steps; ambiguity detection uses the fast LLM; user completes all steps in one submission before the planner runs.
@@ -78,6 +88,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Login/Setup: frosted-glass right panel**: Page root uses `oklch(0.13 0.008 55)` background so the dark brand panel extends across the full viewport; the form panel uses `bg-background/88 + backdrop-blur-sm` for a subtle frosted-glass effect.
 
 ### Removed
+- **PromptTemplate model/API/UI**: Entire prompt template system removed (model, CRUD endpoints, admin UI tab) — feature was premature and unused
+- **SensitiveWord `severity` field**: Dropped the `severity` column from the `SensitiveWord` model; all sensitive words now simply block (no warn-vs-block distinction)
+- **Analytics cost estimate endpoint**: Removed per-model cost estimation API — unreliable without accurate per-model pricing data
 - **Dead `get_user_id()` stub** in `deps.py` — always returned `"default"`, superseded by JWT auth (Q-1)
 
 ### Added
