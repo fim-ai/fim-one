@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import ipaddress
 import json
-import socket
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+
+from fim_agent.core.security import resolve_and_check
 
 from ..base import BaseTool
 
@@ -17,59 +17,6 @@ _MAX_TIMEOUT_SECONDS: int = 120
 _MAX_RESPONSE_BYTES: int = 200 * 1024  # 200 KB
 _MAX_REDIRECTS: int = 5
 _USER_AGENT = "FIM-Agent/1.0 (http_request tool)"
-
-# ------------------------------------------------------------------
-# SSRF protection — blocked IP ranges
-# ------------------------------------------------------------------
-
-_BLOCKED_IPV4_NETWORKS = [
-    ipaddress.IPv4Network("127.0.0.0/8"),
-    ipaddress.IPv4Network("10.0.0.0/8"),
-    ipaddress.IPv4Network("172.16.0.0/12"),
-    ipaddress.IPv4Network("192.168.0.0/16"),
-    ipaddress.IPv4Network("169.254.0.0/16"),
-    ipaddress.IPv4Network("0.0.0.0/8"),
-]
-
-_BLOCKED_IPV6_NETWORKS = [
-    ipaddress.IPv6Network("::1/128"),
-    ipaddress.IPv6Network("fc00::/7"),
-    ipaddress.IPv6Network("fe80::/10"),
-]
-
-
-def _is_private_ip(ip_str: str) -> bool:
-    """Return True if the IP address falls within a blocked range."""
-    try:
-        addr = ipaddress.ip_address(ip_str)
-    except ValueError:
-        return True  # Unparseable addresses are blocked.
-
-    if isinstance(addr, ipaddress.IPv4Address):
-        return any(addr in net for net in _BLOCKED_IPV4_NETWORKS)
-    return any(addr in net for net in _BLOCKED_IPV6_NETWORKS)
-
-
-def _resolve_and_check(hostname: str) -> None:
-    """Resolve *hostname* and raise if any resolved address is private.
-
-    This prevents SSRF attacks where a public hostname resolves to a
-    private/internal IP address.
-    """
-    try:
-        results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise ValueError(f"DNS resolution failed for '{hostname}': {exc}") from exc
-
-    if not results:
-        raise ValueError(f"DNS resolution returned no results for '{hostname}'")
-
-    for _family, _type, _proto, _canonname, sockaddr in results:
-        ip = sockaddr[0]
-        if _is_private_ip(ip):
-            raise ValueError(
-                "SSRF blocked: requests to private/internal addresses are not allowed"
-            )
 
 
 def _looks_like_json(text: str) -> bool:
@@ -182,7 +129,7 @@ class HttpRequestTool(BaseTool):
 
         # --- SSRF check ---
         try:
-            _resolve_and_check(hostname)
+            resolve_and_check(hostname)
         except ValueError as exc:
             return f"[Error] {exc}"
 
