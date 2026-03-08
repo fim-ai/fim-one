@@ -144,10 +144,17 @@ async def list_all_artifacts(
         conversations = result.all()
 
     artifacts: list[dict] = []
-    for conv_id, conv_title, _conv_created_at in conversations:
+    for conv_id, conv_title, conv_created_at in conversations:
         artifacts_dir = _artifacts_dir(conv_id)
         if not artifacts_dir.exists():
             continue
+        # Use conversation creation time as the baseline; file mtime is
+        # unreliable after migration / scp / backup-restore.
+        conv_ts = (
+            conv_created_at.replace(tzinfo=timezone.utc).isoformat()
+            if conv_created_at
+            else datetime.now(timezone.utc).isoformat()
+        )
         for f in artifacts_dir.iterdir():
             if not f.is_file():
                 continue
@@ -155,16 +162,15 @@ async def list_all_artifacts(
             artifact_id = parts[0]
             original_name = parts[1] if len(parts) > 1 else f.name
             mime, _ = mimetypes.guess_type(str(f))
-            stat = f.stat()
             artifacts.append({
                 "id": artifact_id,
                 "name": original_name,
                 "mime_type": mime or "application/octet-stream",
-                "size": stat.st_size,
+                "size": f.stat().st_size,
                 "url": f"/api/conversations/{conv_id}/artifacts/{artifact_id}",
                 "conversation_id": conv_id,
                 "conversation_title": conv_title or "Untitled",
-                "created_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                "created_at": conv_ts,
             })
 
     artifacts.sort(key=lambda a: a["created_at"], reverse=True)
