@@ -1,5 +1,7 @@
 <div align="center">
 
+**English** | [中文](README.zh.md)
+
 ![FIM Agent Banner](./assets/banner.jpg)
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
