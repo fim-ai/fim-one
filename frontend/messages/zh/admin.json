@@ -355,7 +355,14 @@
     "cleanOrphanedTitle": "清理孤立文件？",
     "cleanOrphanedDesc": "这将删除数据库中已不存在的对话所对应的上传目录。",
     "clean": "清理",
-    "orphanedCleaned": "孤立文件已清理"
+    "orphanedCleaned": "孤立文件已清理",
+    "viewFiles": "查看文件",
+    "filesTitle": "用户文件",
+    "filesSubtitle": "{username} 上传的文件",
+    "colFilename": "文件名",
+    "noFiles": "暂无上传文件。",
+    "download": "下载",
+    "downloading": "下载中..."
   },
 
   "settings": {
@@ -479,7 +486,12 @@
     "createKey": "创建 API 密钥",
     "keyName": "密钥名称",
     "scopes": "权限范围",
-    "scopesHint": "逗号分隔（如 chat,agents），留空表示全部权限。",
+    "scope_chat": "对话",
+    "scope_agents": "智能体",
+    "scope_kb": "知识库",
+    "scope_connectors": "连接器",
+    "scope_admin": "管理",
+    "scopesHint": "全部不勾选表示拥有全部权限。",
     "expiresAt": "过期时间",
     "colName": "名称",
     "colPrefix": "密钥",
@@ -502,7 +514,9 @@
     "keyWarning": "请妥善保存此密钥，关闭对话框后无法再次获取。",
     "deleteTitle": "删除 API 密钥？",
     "deleteDesc": "撤销密钥「{name}」，使用此密钥的应用将失去访问权限。",
-    "noKeys": "暂无 API 密钥。"
+    "noKeys": "暂无 API 密钥。",
+    "comingSoonTitle": "功能开发中",
+    "comingSoonDesc": "API 密钥认证功能正在开发中。目前仅支持密钥的创建和管理，尚不能用于 API 请求认证。权限范围校验、请求频率限制、用户自助管理等功能后续推出。"
   },
 
   "resources": {

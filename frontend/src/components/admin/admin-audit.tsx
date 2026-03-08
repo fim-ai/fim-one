@@ -3,8 +3,14 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { format } from "date-fns"
-import { Loader2, RefreshCw, Download, CalendarIcon } from "lucide-react"
+import { Loader2, RefreshCw, Download, CalendarIcon, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -351,11 +357,12 @@ export function AdminAudit() {
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("actionColumn")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("targetColumn")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("detailColumn")}</th>
+                  <th className="px-4 py-2.5 w-12 text-right font-medium text-muted-foreground">{tc("actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {data.items.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setSelected(entry)}>
+                  <tr key={entry.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                       {formatTime(entry.created_at, locale)}
                     </td>
@@ -374,6 +381,20 @@ export function AdminAudit() {
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[260px] truncate">
                       {entry.detail ?? "\u2014"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setSelected(entry)}>
+                            {tc("details")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))}

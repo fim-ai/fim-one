@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { FileText, ShieldAlert, Plus, Loader2, Trash2, Pencil, Upload, Search } from "lucide-react"
+import { FileText, ShieldAlert, Plus, Loader2, Trash2, Pencil, Upload, Search, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +35,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -662,7 +669,7 @@ function PromptTemplatesSection() {
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colUsage")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colActive")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colCreated")}</th>
-                <th className="px-4 py-2.5 w-24" />
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -684,27 +691,25 @@ function PromptTemplatesSection() {
                   <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                     {formatDate(tpl.created_at)}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-end">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        title={tc("edit")}
-                        onClick={() => setEditTarget(tpl)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-destructive"
-                        title={tc("delete")}
-                        onClick={() => setDeleteTarget(tpl)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <td className="px-4 py-3 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setEditTarget(tpl)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          {tc("edit")}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(tpl)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {tc("delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
@@ -829,7 +834,7 @@ function SensitiveWordsSection() {
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colWordCategory")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colSeverity")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colActive")}</th>
-                <th className="px-4 py-2.5 w-16" />
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -857,18 +862,20 @@ function SensitiveWordsSection() {
                       {w.is_active ? tc("active") : tc("inactive")}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-destructive"
-                        title={tc("delete")}
-                        onClick={() => setDeleteTarget(w)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <td className="px-4 py-3 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(w)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {tc("delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}

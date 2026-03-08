@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { Trash2, Loader2 } from "lucide-react"
+import { MoreHorizontal, Loader2, Download, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,9 +15,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
-import type { UserStorageStat } from "@/types/admin"
+import type { UserStorageStat, AdminUserFile } from "@/types/admin"
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -34,6 +49,10 @@ export function AdminStorage() {
   const [clearTarget, setClearTarget] = useState<UserStorageStat | null>(null)
   const [showOrphanConfirm, setShowOrphanConfirm] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [filesTarget, setFilesTarget] = useState<UserStorageStat | null>(null)
+  const [userFiles, setUserFiles] = useState<AdminUserFile[]>([])
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   const load = async () => {
     setIsLoading(true)
@@ -70,6 +89,31 @@ export function AdminStorage() {
       load()
     } catch (err) {
       toast.error(getErrorMessage(err, tError))
+    }
+  }
+
+  const handleRowClick = async (u: UserStorageStat) => {
+    setFilesTarget(u)
+    setIsLoadingFiles(true)
+    try {
+      const files = await adminApi.listUserFiles(u.user_id)
+      setUserFiles(files)
+    } catch (err) {
+      toast.error(getErrorMessage(err, tError))
+    } finally {
+      setIsLoadingFiles(false)
+    }
+  }
+
+  const handleDownload = async (file: AdminUserFile) => {
+    if (!filesTarget) return
+    setDownloadingId(file.file_id)
+    try {
+      await adminApi.downloadUserFile(filesTarget.user_id, file.file_id, file.filename)
+    } catch (err) {
+      toast.error(getErrorMessage(err, tError))
+    } finally {
+      setDownloadingId(null)
     }
   }
 
@@ -113,24 +157,32 @@ export function AdminStorage() {
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("userColumn")}</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("filesColumn")}</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("sizeColumn")}</th>
-                <th className="px-4 py-2.5 w-10" />
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {stats.users.map((u) => (
-                <tr key={u.user_id} className="hover:bg-muted/20 transition-colors">
+                <tr key={u.user_id} className="hover:bg-muted/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{u.username || u.email}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{u.file_count}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{formatBytes(u.total_bytes)}</td>
-                  <td className="px-4 py-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-destructive"
-                      onClick={() => setClearTarget(u)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <td className="px-4 py-3 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleRowClick(u)}>
+                          {t("viewFiles")}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => setClearTarget(u)}>
+                          {t("clear")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
@@ -172,6 +224,53 @@ export function AdminStorage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* User files drawer */}
+      <Sheet open={!!filesTarget} onOpenChange={(open) => { if (!open) setFilesTarget(null) }}>
+        <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col p-0">
+          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border/40 shrink-0">
+            <SheetTitle>{t("filesTitle")}</SheetTitle>
+            <SheetDescription>
+              {t("filesSubtitle", { username: filesTarget?.username || filesTarget?.email || "" })}
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="flex-1 px-6 py-4">
+            {isLoadingFiles ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : userFiles.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-12">{t("noFiles")}</p>
+            ) : (
+              <div className="space-y-2">
+                {userFiles.map((file) => (
+                  <div key={file.file_id} className="flex items-center gap-3 rounded-md border p-3">
+                    <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{file.filename}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatBytes(file.size)} · {file.mime_type}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={downloadingId === file.file_id}
+                      onClick={() => handleDownload(file)}
+                    >
+                      {downloadingId === file.file_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

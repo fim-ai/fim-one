@@ -355,7 +355,14 @@
     "cleanOrphanedTitle": "Clean orphaned files?",
     "cleanOrphanedDesc": "This will delete upload directories for conversations that no longer exist in the database.",
     "clean": "Clean",
-    "orphanedCleaned": "Orphaned files cleaned"
+    "orphanedCleaned": "Orphaned files cleaned",
+    "viewFiles": "View Files",
+    "filesTitle": "User Files",
+    "filesSubtitle": "Files uploaded by {username}",
+    "colFilename": "Filename",
+    "noFiles": "No files uploaded.",
+    "download": "Download",
+    "downloading": "Downloading..."
   },
 
   "settings": {
@@ -479,7 +486,12 @@
     "createKey": "Create API Key",
     "keyName": "Key Name",
     "scopes": "Scopes",
-    "scopesHint": "Comma-separated (e.g. chat,agents). Leave empty for all.",
+    "scope_chat": "Chat",
+    "scope_agents": "Agents",
+    "scope_kb": "Knowledge Base",
+    "scope_connectors": "Connectors",
+    "scope_admin": "Admin",
+    "scopesHint": "Leave all unchecked for full access.",
     "expiresAt": "Expires At",
     "colName": "Name",
     "colPrefix": "Key",
@@ -502,7 +514,9 @@
     "keyWarning": "Save this key securely. It cannot be retrieved after closing this dialog.",
     "deleteTitle": "Delete API key?",
     "deleteDesc": "Revoke key \"{name}\". Applications using this key will lose access.",
-    "noKeys": "No API keys created yet."
+    "noKeys": "No API keys created yet.",
+    "comingSoonTitle": "Coming Soon",
+    "comingSoonDesc": "API key authentication is under development. Currently you can create and manage keys, but they cannot yet be used to authenticate API requests. Scope enforcement, rate limiting, and user self-service are planned."
   },
 
   "resources": {

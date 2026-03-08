@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { Trash2, Search, Loader2, Eye } from "lucide-react"
+import { MoreHorizontal, Search, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { AdminConversation, AdminMessage } from "@/types/admin"
@@ -156,7 +163,7 @@ export function AdminConversations() {
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("tokensColumn")}</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("msgsColumn")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("dateColumn")}</th>
-                <th className="px-4 py-2.5 w-20" />
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -175,26 +182,23 @@ export function AdminConversations() {
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {new Date(conv.created_at).toLocaleDateString(locale)}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => handleView(conv)}
-                        title={t("view")}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-destructive"
-                        onClick={() => setDeleteTarget(conv)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <td className="px-4 py-3 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleView(conv)}>
+                          {t("view")}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(conv)}>
+                          {tc("delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}

@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Changed
+- **Admin UX: unified "..." actions dropdown across all list pages**: All admin pages with data tables (Storage, Resources, Security, Conversations, Audit, Models, Content, MCP Servers) now use a single `MoreHorizontal` DropdownMenu in the last column for row actions — matching the existing `admin-users.tsx` pattern. Inline icon buttons (trash, eye, edit, power toggle, switch) and clickable rows have been removed in favour of labelled `DropdownMenuItem` entries ordered safe→toggle→destructive. Convention documented in `CLAUDE.md`.
+
+### Changed
+- **Roadmap: Replace Plan Preview with Intent Wizard (v0.10)**: Removed the "Plan Preview" concept (post-plan DAG confirmation) and replaced it with "Intent Wizard" — a wizard-style structured Q&A that runs *before* planning begins. The three-gate model for v0.10 is now Intent Wizard (pre-plan info gathering) + Soft Gate (mid-execution uncertainty) + Confirmation Gate (write-op safety). Intent Wizard supports single-select, multi-select, and free-text steps; ambiguity detection uses the fast LLM; user completes all steps in one submission before the planner runs.
+
 ### Security
 - **CRIT-1: Python sandbox hardening**: `python_exec` tool now uses whitelist-based imports (only safe standard library modules allowed) and replaces built-in `open()` with a sandboxed version that blocks writes to sensitive paths; prevents arbitrary code execution via unrestricted imports
 - **CRIT-2: SSRF protection for ConnectorToolAdapter**: Outbound HTTP requests from connector actions now pass through SSRF validation, blocking requests to private/internal IP ranges (RFC 1918, link-local, loopback) and resolving hostnames before connecting

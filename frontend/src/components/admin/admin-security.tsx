@@ -2,11 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { Shield, Plus, Loader2, Trash2 } from "lucide-react"
+import { Shield, Plus, Loader2, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -437,7 +443,7 @@ export function AdminSecurity() {
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
                     {tc("status")}
                   </th>
-                  <th className="px-4 py-2.5 w-24" />
+                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -467,21 +473,32 @@ export function AdminSecurity() {
                       {rule.note || "\u2014"}
                     </td>
                     <td className="px-4 py-3">
-                      <Switch
-                        checked={rule.is_active}
-                        onCheckedChange={() => handleToggleRule(rule)}
-                        size="sm"
-                      />
+                      {rule.is_active ? (
+                        <Badge variant="outline" className="border-green-500/40 text-green-600 dark:text-green-400">{tc("active")}</Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-red-500/40 text-red-600 dark:text-red-400">{tc("disabled")}</Badge>
+                      )}
                     </td>
-                    <td className="px-4 py-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-destructive"
-                        onClick={() => setDeleteTarget(rule)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <td className="px-4 py-3 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleToggleRule(rule)}>
+                            {rule.is_active ? tc("disable") : tc("enable")}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeleteTarget(rule)}
+                          >
+                            {tc("delete")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { Bot, BookOpen, Loader2, Trash2, Search, Eye } from "lucide-react"
+import { Bot, BookOpen, Loader2, MoreHorizontal, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +23,13 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { cn, formatFileSize } from "@/lib/utils"
@@ -298,7 +305,7 @@ export function AdminResources() {
                     <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("colKBs")}</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colPlanning")}</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colCreated")}</th>
-                    <th className="px-4 py-2.5 w-10" />
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -315,15 +322,22 @@ export function AdminResources() {
                       <td className="px-4 py-3 text-muted-foreground text-xs">
                         {new Date(agent.created_at).toLocaleDateString(locale)}
                       </td>
-                      <td className="px-4 py-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-destructive"
-                          onClick={() => setDeleteAgent(agent)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteAgent(agent)}
+                            >
+                              {tc("delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   ))}
@@ -396,7 +410,7 @@ export function AdminResources() {
                     <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("colChunks")}</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colEmbedding")}</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colCreated")}</th>
-                    <th className="px-4 py-2.5 w-20" />
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -410,26 +424,26 @@ export function AdminResources() {
                       <td className="px-4 py-3 text-muted-foreground text-xs">
                         {new Date(kb.created_at).toLocaleDateString(locale)}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                            onClick={() => handleViewDocs(kb)}
-                            title={t("viewDocs")}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-destructive"
-                            onClick={() => setDeleteKB(kb)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleViewDocs(kb)}>
+                              {t("viewDocs")}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteKB(kb)}
+                            >
+                              {tc("delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   ))}
@@ -490,10 +504,10 @@ export function AdminResources() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="border-b border-border bg-muted/40">
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("docColFilename")}</th>
-                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("docColSize")}</th>
-                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("docColChunks")}</th>
-                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("docColStatus")}</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colFilename")}</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("colSize")}</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("colDocChunks")}</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colStatus")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">

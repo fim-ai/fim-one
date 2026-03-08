@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { Plus, Pencil, Trash2, Loader2, Brain, Zap, Info, Bot, Power, ChevronDown } from "lucide-react"
+import { Plus, Pencil, Trash2, Loader2, Brain, Zap, Info, Bot, Power, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -517,7 +517,7 @@ export function AdminModels() {
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("modelName")}</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("role")}</th>
                     <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{tc("status")}</th>
-                    <th className="px-4 py-2.5 w-28" />
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -551,74 +551,45 @@ export function AdminModels() {
                           {m.is_active ? t("active") : t("inactive")}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 justify-end">
-                          {/* Role dropdown */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
-                                {t("role")}
-                                <ChevronDown className="h-3 w-3" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => handleSetRole(m, "general")}
-                                disabled={m.role === "general"}
-                              >
-                                <Brain className="h-3.5 w-3.5 mr-2" />
-                                {t("roleGeneral")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleSetRole(m, "fast")}
-                                disabled={m.role === "fast"}
-                              >
-                                <Zap className="h-3.5 w-3.5 mr-2" />
-                                {t("roleFast")}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleSetRole(m, null)}
-                                disabled={!m.role}
-                              >
-                                {t("clearRole")}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-
-                          {/* Toggle active */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            title={t("toggleActive")}
-                            onClick={() => handleToggleActive(m)}
-                          >
-                            <Power className={`h-4 w-4 ${m.is_active ? "text-green-500" : "text-muted-foreground"}`} />
-                          </Button>
-
-                          {/* Edit */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            title={tc("edit")}
-                            onClick={() => setEditTarget(m)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-
-                          {/* Delete */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-destructive"
-                            title={tc("delete")}
-                            onClick={() => setDeleteTarget(m)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {/* Edit */}
+                            <DropdownMenuItem onClick={() => setEditTarget(m)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              {tc("edit")}
+                            </DropdownMenuItem>
+                            {/* Enable/Disable */}
+                            <DropdownMenuItem onClick={() => handleToggleActive(m)}>
+                              <Power className="mr-2 h-4 w-4" />
+                              {m.is_active ? tc("disable") : tc("enable")}
+                            </DropdownMenuItem>
+                            {/* Set Role items */}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleSetRole(m, "general")} disabled={m.role === "general"}>
+                              <Brain className="mr-2 h-3.5 w-3.5" />
+                              {t("roleGeneral")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleSetRole(m, "fast")} disabled={m.role === "fast"}>
+                              <Zap className="mr-2 h-3.5 w-3.5" />
+                              {t("roleFast")}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleSetRole(m, null)} disabled={!m.role}>
+                              {t("clearRole")}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {/* Delete */}
+                            <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(m)}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {tc("delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   ))}

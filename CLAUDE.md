@@ -43,6 +43,18 @@ frontend/            # Next.js portal (shadcn/ui)
 - **No native `<select>`** — use shadcn `<Select>` with `<SelectTrigger className="w-full">`. For empty defaults, use `__default__` sentinel (Radix treats `""` as unset).
 - **Tab/filter state → URL query param**: any page with tabs or filter switching MUST sync to `?tab=xxx` via `useSearchParams` + `router.replace`. Default tab uses no param (clean URL). Wrap component in `<Suspense>`. See `admin/page.tsx`, `settings/page.tsx`, `artifacts/page.tsx` for reference.
 
+## Admin List Page Actions Convention (MANDATORY)
+
+All admin pages that display a data table **MUST** follow the `admin-users.tsx` pattern for row actions:
+
+- **Actions MUST live in a "..." `DropdownMenu`** — one `MoreHorizontal` ghost button (`h-7 w-7 p-0`) in the last column, right-aligned (`text-right`)
+- **NEVER expose inline icon buttons** (trash, edit, eye, power, toggle) directly in table rows
+- **NEVER make rows clickable** (`cursor-pointer` + row `onClick`) — use a DropdownMenuItem instead (e.g. "View Details")
+- **Column header**: last `<th>` must be `{tc("actions")}` with `text-right font-medium text-muted-foreground`
+- **Item order**: safe actions first (View, Edit), then state-toggle (Enable/Disable), then destructive last (Delete) with `variant="destructive"` and a `DropdownMenuSeparator` before it
+- **Dialogs/Sheets stay as siblings** of the table — only the trigger moves into the dropdown, never the modal itself
+- **Reference**: `admin-users.tsx` (full pattern), `admin-api-keys.tsx` (minimal pattern)
+
 ## Error Feedback Convention (MANDATORY)
 
 **Two-tier strategy — inline for field errors, toast for system errors:**

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { Plus, Pencil, Trash2, TestTube2, Loader2, X } from "lucide-react"
+import { Plus, Pencil, Trash2, TestTube2, Loader2, X, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +26,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { AdminMCPServer } from "@/types/admin"
@@ -112,7 +119,7 @@ export function AdminMcpServers() {
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("transport")}</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("tools")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{tc("status")}</th>
-                <th className="px-4 py-2.5 w-28" />
+                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -133,18 +140,29 @@ export function AdminMcpServers() {
                       {s.is_active ? tc("active") : tc("inactive")}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-end">
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={tc("test")} onClick={() => handleTest(s)}>
-                        <TestTube2 className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title={tc("edit")} onClick={() => setEditTarget(s)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" title={tc("delete")} onClick={() => setDeleteTarget(s)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                  <td className="px-4 py-3 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleTest(s)}>
+                          <TestTube2 className="mr-2 h-4 w-4" />
+                          {tc("test")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setEditTarget(s)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          {tc("edit")}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(s)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {tc("delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
