@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -239,15 +239,18 @@ async def _handle_bind(
             url=f"{settings_url}&bind_error=user_not_found", status_code=302
         )
 
-    # Email matching: OAuth provider email MUST match the current user's email
+    # Email matching: only enforced when BOTH sides have an email.
+    # Some providers (e.g. Feishu personal accounts) return an empty email even
+    # when the user has a login email — we rely on ticket-based auth instead.
     oauth_email = user_info.email
-    if not oauth_email or oauth_email.lower() != (user.email or "").lower():
-        logger.warning(
-            "Bind email mismatch: oauth=%s user=%s", oauth_email, user.email
-        )
-        return RedirectResponse(
-            url=f"{settings_url}&bind_error=email_mismatch", status_code=302
-        )
+    if oauth_email and user.email:
+        if oauth_email.lower() != user.email.lower():
+            logger.warning(
+                "Bind email mismatch: oauth=%s user=%s", oauth_email, user.email
+            )
+            return RedirectResponse(
+                url=f"{settings_url}&bind_error=email_mismatch", status_code=302
+            )
 
     # Check if a binding already exists for this (provider, oauth_id)
     existing_binding_result = await db.execute(
@@ -327,7 +330,7 @@ async def _handle_login(
         user = None
         if user_info.email:
             email_result = await db.execute(
-                select(User).where(User.email == user_info.email)
+                select(User).where(func.lower(User.email) == user_info.email.lower())
             )
             matched = email_result.scalar_one_or_none()
             if matched is not None:
