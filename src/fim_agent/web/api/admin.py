@@ -32,26 +32,12 @@ from fim_agent.web.schemas.mcp_server import MCPServerCreate, MCPServerUpdate
 from fim_agent.web.schemas.model_config import ModelConfigResponse
 
 # ---------------------------------------------------------------------------
-# Settings helpers
+# Settings helpers (delegated to admin_utils, re-exported for compatibility)
 # ---------------------------------------------------------------------------
 
+from fim_agent.web.api.admin_utils import get_setting, set_setting, write_audit  # noqa: F811,E402
+
 SETTING_REGISTRATION_ENABLED = "registration_enabled"
-
-
-async def get_setting(db: AsyncSession, key: str, default: str = "") -> str:
-    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-    row = result.scalar_one_or_none()
-    return row.value if row is not None else default
-
-
-async def set_setting(db: AsyncSession, key: str, value: str) -> None:
-    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-    row = result.scalar_one_or_none()
-    if row is None:
-        db.add(SystemSetting(key=key, value=value))
-    else:
-        row.value = value
-    await db.commit()
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -794,30 +780,6 @@ SETTING_ANNOUNCEMENT_TEXT = "announcement_text"
 SETTING_REGISTRATION_MODE = "registration_mode"
 SETTING_DEFAULT_TOKEN_QUOTA = "default_token_quota"
 SETTING_EMAIL_VERIFICATION_ENABLED = "email_verification_enabled"
-
-
-async def write_audit(
-    db: AsyncSession,
-    admin: User,
-    action: str,
-    target_type: str | None = None,
-    target_id: str | None = None,
-    target_label: str | None = None,
-    detail: str | None = None,
-) -> None:
-    """Append an audit log entry. Call after the main db.commit() succeeds."""
-    db.add(
-        AuditLog(
-            admin_id=admin.id,
-            admin_username=admin.username or admin.email,
-            action=action,
-            target_type=target_type,
-            target_id=target_id,
-            target_label=target_label,
-            detail=detail,
-        )
-    )
-    await db.commit()
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **Admin v0.8 — Extended Admin Platform**: 5 new admin modules (37 new API endpoints) accessible via dedicated sidebar tabs:
+  - **Security tab**: Login history tracking (all attempts with IP, user-agent, success/fail), login statistics, IP whitelist/blacklist rules (CRUD with CIDR support), active session viewer
+  - **API Keys tab**: Admin-managed API keys with SHA-256 hashing, `fim_` prefix, scoped permissions, expiry dates, one-time key display on creation, usage tracking
+  - **Resources tab**: Cross-user agent management (list, search, delete any agent) and knowledge base management (list, inspect documents, delete with vector+disk cleanup)
+  - **Content tab**: Prompt template library (CRUD with category, usage tracking) and content moderation (sensitive word list with warn/block severity, batch import, live text checking)
+  - **Analytics tab**: Per-user token usage breakdown with period filters, 30-day trend visualization, cost estimation by model, CSV/JSON data export (users, conversations, full backup), multi-announcement management with scheduling and severity levels
+  - Shared `admin_utils.py` helper module (extracted `write_audit`, `get_setting`, `set_setting`) used across all new routers
+  - 6 new ORM models: `LoginHistory`, `ApiKey`, `IpRule`, `PromptTemplate`, `SensitiveWord`, `Announcement`
 - **Admin Health Tab**: Dedicated Health tab in admin panel with grouped integration status cards; `impact` field on each health check item showing which features are affected when unconfigured (e.g., "Email Verification, Password Reset" for SMTP); amber warning badges for unconfigured-but-not-critical integrations
 - **SMTP Integration Health Check**: System health endpoint now checks SMTP configuration status (`SMTP_HOST` + `SMTP_USER` + `SMTP_PASS`); `smtp_configured` flag exposed in admin settings response for frontend gating
 - **SMTP Feature Gating**: Server-side validation rejects enabling email verification when SMTP is not configured (400 error); email verification toggle disabled in admin settings UI when SMTP unavailable; "Forgot Password" link hidden in account settings when SMTP not configured

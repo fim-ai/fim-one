@@ -688,6 +688,73 @@ export const chatApi = {
     }),
 }
 
+// --- Admin extended types (v0.8) ---
+export interface AdminLoginHistoryEntry {
+  id: string; user_id: string | null; username: string | null; email: string | null
+  ip_address: string | null; user_agent: string | null; success: boolean
+  failure_reason: string | null; created_at: string
+}
+export interface AdminLoginStats {
+  total_attempts: number; successful: number; failed: number
+  unique_ips: number; unique_users: number; recent_failures: number
+}
+export interface AdminIpRule {
+  id: string; ip_address: string; rule_type: string; note: string | null
+  is_active: boolean; created_at: string
+}
+export interface AdminActiveSession {
+  user_id: string; username: string | null; email: string | null
+  is_admin: boolean; refresh_token_expires_at: string | null
+}
+export interface AdminApiKeyInfo {
+  id: string; name: string; key_prefix: string; scopes: string | null
+  is_active: boolean; user_id: string | null; expires_at: string | null
+  last_used_at: string | null; total_requests: number; created_at: string
+}
+export interface AdminApiKeyCreated extends AdminApiKeyInfo {
+  key: string  // raw key, only returned on creation
+}
+export interface AdminAgentInfo {
+  id: string; name: string; description: string | null; model_name: string | null
+  tools: string | null; kb_ids: string | null; enable_planning: boolean
+  user_id: string; username: string | null; email: string | null; created_at: string
+}
+export interface AdminKBInfo {
+  id: string; name: string; description: string | null; embedding_model: string | null
+  chunk_size: number; document_count: number; total_chunks: number
+  user_id: string; username: string | null; email: string | null; created_at: string
+}
+export interface AdminKBDoc {
+  id: string; filename: string; file_size: number | null; chunk_count: number
+  status: string; error_message: string | null; created_at: string
+}
+export interface AdminKBDetail extends AdminKBInfo {
+  documents: AdminKBDoc[]
+}
+export interface AdminPromptTemplate {
+  id: string; name: string; description: string | null; content: string
+  category: string; is_active: boolean; use_count: number; created_at: string
+}
+export interface AdminSensitiveWord {
+  id: string; word: string; category: string; severity: string
+  is_active: boolean; created_at: string
+}
+export interface AdminUsageEntry {
+  user_id: string; username: string | null; email: string | null
+  total_tokens: number; conversation_count: number; token_quota: number | null
+}
+export interface AdminTrendEntry {
+  date: string; total_tokens: number; conversation_count: number; active_users: number
+}
+export interface AdminCostEstimate {
+  total_tokens: number; estimated_cost: number
+  by_model: { model: string; tokens: number; cost: number }[]
+}
+export interface AdminAnnouncement {
+  id: string; title: string; content: string; level: string; is_active: boolean
+  starts_at: string | null; ends_at: string | null; target_group: string | null; created_at: string
+}
+
 // --- Admin Stats Types ---
 interface ConnectorCallStat {
   connector_id: string
@@ -849,6 +916,123 @@ export const adminApi = {
       method: 'PATCH',
       body: JSON.stringify({ role }),
     }),
+
+  // --- Security: Login History ---
+  getLoginHistory: (params?: { page?: number; size?: number; success?: boolean }) => {
+    const sp = new URLSearchParams()
+    if (params?.page) sp.set('page', String(params.page))
+    if (params?.size) sp.set('size', String(params.size))
+    if (params?.success !== undefined) sp.set('success', String(params.success))
+    return apiFetch<{ items: AdminLoginHistoryEntry[]; total: number; page: number; size: number; pages: number }>(`/api/admin/login-history?${sp}`)
+  },
+  getLoginStats: () =>
+    apiFetch<AdminLoginStats>('/api/admin/login-history/stats'),
+
+  // --- Security: IP Rules ---
+  listIpRules: () =>
+    apiFetch<AdminIpRule[]>('/api/admin/ip-rules'),
+  createIpRule: (data: { ip_address: string; rule_type: string; note?: string }) =>
+    apiFetch<AdminIpRule>('/api/admin/ip-rules', { method: 'POST', body: JSON.stringify(data) }),
+  toggleIpRule: (id: string, is_active: boolean) =>
+    apiFetch<AdminIpRule>(`/api/admin/ip-rules/${id}/active`, { method: 'PATCH', body: JSON.stringify({ is_active }) }),
+  deleteIpRule: (id: string) =>
+    apiFetch(`/api/admin/ip-rules/${id}`, { method: 'DELETE' }),
+
+  // --- Security: Active Sessions ---
+  listActiveSessions: () =>
+    apiFetch<AdminActiveSession[]>('/api/admin/sessions'),
+
+  // --- API Keys ---
+  listApiKeys: (params?: { page?: number; size?: number }) => {
+    const sp = new URLSearchParams()
+    if (params?.page) sp.set('page', String(params.page))
+    if (params?.size) sp.set('size', String(params.size))
+    return apiFetch<{ items: AdminApiKeyInfo[]; total: number; page: number; size: number; pages: number }>(`/api/admin/api-keys?${sp}`)
+  },
+  createApiKey: (data: { name: string; user_id?: string; scopes?: string; expires_at?: string }) =>
+    apiFetch<AdminApiKeyCreated>('/api/admin/api-keys', { method: 'POST', body: JSON.stringify(data) }),
+  toggleApiKey: (id: string, is_active: boolean) =>
+    apiFetch<AdminApiKeyInfo>(`/api/admin/api-keys/${id}/active`, { method: 'PATCH', body: JSON.stringify({ is_active }) }),
+  deleteApiKey: (id: string) =>
+    apiFetch(`/api/admin/api-keys/${id}`, { method: 'DELETE' }),
+
+  // --- Resources: Agents ---
+  listAllAgents: (params?: { page?: number; size?: number; q?: string }) => {
+    const sp = new URLSearchParams()
+    if (params?.page) sp.set('page', String(params.page))
+    if (params?.size) sp.set('size', String(params.size))
+    if (params?.q) sp.set('q', params.q)
+    return apiFetch<{ items: AdminAgentInfo[]; total: number; page: number; size: number; pages: number }>(`/api/admin/agents?${sp}`)
+  },
+  adminDeleteAgent: (agentId: string) =>
+    apiFetch(`/api/admin/agents/${agentId}`, { method: 'DELETE' }),
+
+  // --- Resources: Knowledge Bases ---
+  listAllKBs: (params?: { page?: number; size?: number; q?: string }) => {
+    const sp = new URLSearchParams()
+    if (params?.page) sp.set('page', String(params.page))
+    if (params?.size) sp.set('size', String(params.size))
+    if (params?.q) sp.set('q', params.q)
+    return apiFetch<{ items: AdminKBInfo[]; total: number; page: number; size: number; pages: number }>(`/api/admin/knowledge-bases?${sp}`)
+  },
+  getKBDetail: (kbId: string) =>
+    apiFetch<AdminKBDetail>(`/api/admin/knowledge-bases/${kbId}`),
+  adminDeleteKB: (kbId: string) =>
+    apiFetch(`/api/admin/knowledge-bases/${kbId}`, { method: 'DELETE' }),
+
+  // --- Prompt Templates ---
+  listPromptTemplates: (params?: { category?: string }) => {
+    const sp = new URLSearchParams()
+    if (params?.category) sp.set('category', params.category)
+    return apiFetch<AdminPromptTemplate[]>(`/api/admin/prompt-templates?${sp}`)
+  },
+  createPromptTemplate: (data: { name: string; content: string; description?: string; category?: string }) =>
+    apiFetch<AdminPromptTemplate>('/api/admin/prompt-templates', { method: 'POST', body: JSON.stringify(data) }),
+  updatePromptTemplate: (id: string, data: Partial<{ name: string; content: string; description: string; category: string; is_active: boolean }>) =>
+    apiFetch<AdminPromptTemplate>(`/api/admin/prompt-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePromptTemplate: (id: string) =>
+    apiFetch(`/api/admin/prompt-templates/${id}`, { method: 'DELETE' }),
+
+  // --- Content Moderation ---
+  listSensitiveWords: (params?: { category?: string; severity?: string }) => {
+    const sp = new URLSearchParams()
+    if (params?.category) sp.set('category', params.category)
+    if (params?.severity) sp.set('severity', params.severity)
+    return apiFetch<AdminSensitiveWord[]>(`/api/admin/sensitive-words?${sp}`)
+  },
+  createSensitiveWord: (data: { word: string; category?: string; severity?: string }) =>
+    apiFetch<AdminSensitiveWord>('/api/admin/sensitive-words', { method: 'POST', body: JSON.stringify(data) }),
+  batchImportWords: (data: { words: string[]; category?: string; severity?: string }) =>
+    apiFetch<{ added: number }>('/api/admin/sensitive-words/batch', { method: 'POST', body: JSON.stringify(data) }),
+  deleteSensitiveWord: (id: string) =>
+    apiFetch(`/api/admin/sensitive-words/${id}`, { method: 'DELETE' }),
+  checkText: (data: { text: string }) =>
+    apiFetch<{ matched: { word: string; category: string; severity: string }[]; clean: boolean }>('/api/admin/sensitive-words/check', { method: 'POST', body: JSON.stringify(data) }),
+
+  // --- Analytics ---
+  getUsageAnalytics: (params?: { period?: string; top_n?: number }) => {
+    const sp = new URLSearchParams()
+    if (params?.period) sp.set('period', params.period)
+    if (params?.top_n) sp.set('top_n', String(params.top_n))
+    return apiFetch<AdminUsageEntry[]>(`/api/admin/analytics/usage?${sp}`)
+  },
+  getUsageTrends: () =>
+    apiFetch<AdminTrendEntry[]>('/api/admin/analytics/trends'),
+  getCostEstimate: (params?: { price_per_1k_tokens?: number }) => {
+    const sp = new URLSearchParams()
+    if (params?.price_per_1k_tokens) sp.set('price_per_1k_tokens', String(params.price_per_1k_tokens))
+    return apiFetch<AdminCostEstimate>(`/api/admin/analytics/cost?${sp}`)
+  },
+
+  // --- Announcements ---
+  listAnnouncements: () =>
+    apiFetch<AdminAnnouncement[]>('/api/admin/announcements'),
+  createAnnouncement: (data: { title: string; content: string; level?: string; starts_at?: string; ends_at?: string }) =>
+    apiFetch<AdminAnnouncement>('/api/admin/announcements', { method: 'POST', body: JSON.stringify(data) }),
+  updateAnnouncement: (id: string, data: Partial<{ title: string; content: string; level: string; is_active: boolean; starts_at: string | null; ends_at: string | null }>) =>
+    apiFetch<AdminAnnouncement>(`/api/admin/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAnnouncement: (id: string) =>
+    apiFetch(`/api/admin/announcements/${id}`, { method: 'DELETE' }),
 }
 
 // --- MCP Server API ---

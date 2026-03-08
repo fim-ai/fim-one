@@ -3,7 +3,7 @@
 import { useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { LayoutDashboard, Activity, Plug, Settings, Shield, Users, MessageSquare, HardDrive, Server, Cpu } from "lucide-react"
+import { LayoutDashboard, Activity, Plug, Settings, Shield, Users, MessageSquare, HardDrive, Server, Cpu, Lock, Key, BookOpen, FileText, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { AdminOverview } from "@/components/admin/admin-overview"
@@ -16,8 +16,13 @@ import { AdminStorage } from "@/components/admin/admin-storage"
 import { AdminMcpServers } from "@/components/admin/admin-mcp-servers"
 import { AdminModels } from "@/components/admin/admin-models"
 import { AdminHealth } from "@/components/admin/admin-health"
+import { AdminSecurity } from "@/components/admin/admin-security"
+import { AdminApiKeys } from "@/components/admin/admin-api-keys"
+import { AdminResources } from "@/components/admin/admin-resources"
+import { AdminContent } from "@/components/admin/admin-content"
+import { AdminAnalytics } from "@/components/admin/admin-analytics"
 
-const TAB_KEYS = ["overview", "health", "users", "conversations", "connectors", "mcp", "models", "audit", "storage", "settings"] as const
+const TAB_KEYS = ["overview", "health", "users", "conversations", "connectors", "mcp", "models", "audit", "storage", "security", "apikeys", "resources", "content", "analytics", "settings"] as const
 
 const TAB_ICONS = {
   overview: LayoutDashboard,
@@ -29,6 +34,11 @@ const TAB_ICONS = {
   models: Cpu,
   audit: Shield,
   storage: HardDrive,
+  security: Lock,
+  apikeys: Key,
+  resources: BookOpen,
+  content: FileText,
+  analytics: BarChart3,
   settings: Settings,
 } as const
 
@@ -109,6 +119,11 @@ function AdminPanelContent() {
           {activeTab === "mcp" && <AdminMcpServers />}
           {activeTab === "models" && <AdminModels />}
           {activeTab === "audit" && <AdminAudit />}
+          {activeTab === "security" && <AdminSecurity />}
+          {activeTab === "apikeys" && <AdminApiKeys />}
+          {activeTab === "resources" && <AdminResources />}
+          {activeTab === "content" && <AdminContent />}
+          {activeTab === "analytics" && <AdminAnalytics />}
           {activeTab === "settings" && <AdminSettings />}
         </div>
       </div>

@@ -36,6 +36,11 @@ from fastapi.responses import JSONResponse
 
 from .exceptions import AppError
 from .api.admin import SETTING_MAINTENANCE_MODE, get_setting, router as admin_router
+from .api.admin_security import router as admin_security_router
+from .api.admin_api_keys import router as admin_api_keys_router
+from .api.admin_resources import router as admin_resources_router
+from .api.admin_templates import router as admin_templates_router
+from .api.admin_extra import router as admin_extra_router
 from .api.agents import router as agents_router
 from .api.auth import router as auth_router
 from .api.chat import router as chat_router
@@ -197,6 +202,11 @@ def create_app() -> FastAPI:
 
     # -- Routers ------------------------------------------------------------
     app.include_router(admin_router)
+    app.include_router(admin_security_router)
+    app.include_router(admin_api_keys_router)
+    app.include_router(admin_resources_router)
+    app.include_router(admin_templates_router)
+    app.include_router(admin_extra_router)
     app.include_router(chat_router)
     app.include_router(auth_router)
     app.include_router(oauth_router)
