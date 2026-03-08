@@ -1190,50 +1190,71 @@ async def get_system_health(
     current_user: User = Depends(get_current_admin),  # noqa: B008
 ):
     """Return configuration status for key integrations. Requires admin privileges."""
+    from urllib.parse import urlparse
+
+    def _host(url: str) -> str:
+        """Extract hostname from a URL for display."""
+        try:
+            return urlparse(url).hostname or url
+        except Exception:
+            return url
+
     checks: list[IntegrationHealth] = []
 
-    llm_model = os.environ.get("LLM_MODEL", "")
+    # ── AI Models ────────────────────────────────────────────────────────
+    llm_model = os.environ.get("LLM_MODEL", "").strip('"')
     llm_key = os.environ.get("LLM_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
+    llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_configured = bool(llm_model and llm_key)
+    llm_parts = [p for p in [llm_model, _host(llm_base) if llm_base else None] if p]
     checks.append(IntegrationHealth(
         key="llm", label="Main LLM",
         configured=llm_configured,
-        detail=llm_model if llm_model else None,
+        detail=" · ".join(llm_parts) if llm_parts else None,
         impact=None if llm_configured else "Chat will not work",
     ))
 
-    fast_model = os.environ.get("FAST_LLM_MODEL", "")
+    fast_model = os.environ.get("FAST_LLM_MODEL", "").strip('"')
     fast_configured = bool(fast_model)
+    fast_parts = [p for p in [fast_model, _host(llm_base) if llm_base else None] if p]
     checks.append(IntegrationHealth(
         key="fast_llm", label="Fast LLM",
         configured=fast_configured,
-        detail=fast_model if fast_model else None,
+        detail=" · ".join(fast_parts) if fast_parts else None,
         impact=None if fast_configured else "DAG mode and summarization unavailable",
     ))
 
+    # ── Retrieval ────────────────────────────────────────────────────────
     jina_key = os.environ.get("JINA_API_KEY", "")
     emb_model = os.environ.get("EMBEDDING_MODEL", "")
-    # Jina is the default embedding provider; JINA_API_KEY alone is sufficient
+    emb_base = os.environ.get("EMBEDDING_BASE_URL", "")
     emb_configured = bool(emb_model) or bool(jina_key)
-    emb_detail = emb_model if emb_model else ("jina (default)" if jina_key else None)
+    emb_parts = [p for p in [
+        emb_model,
+        _host(emb_base) if emb_base else ("jina" if jina_key else None),
+    ] if p]
     checks.append(IntegrationHealth(
         key="embedding", label="Embedding",
         configured=emb_configured,
-        detail=emb_detail,
+        detail=" · ".join(emb_parts) if emb_parts else None,
         impact=None if emb_configured else "Knowledge base retrieval unavailable",
     ))
 
-    reranker = os.environ.get("RERANKER_PROVIDER", "")
-    # Jina reranker works with JINA_API_KEY even without explicit RERANKER_PROVIDER
-    reranker_configured = bool(reranker) or bool(jina_key)
-    reranker_detail = reranker if reranker else ("jina (default)" if jina_key else None)
+    reranker_provider = os.environ.get("RERANKER_PROVIDER", "")
+    reranker_model = os.environ.get("RERANKER_MODEL", "")
+    reranker_configured = bool(reranker_provider) or bool(jina_key)
+    reranker_parts = [p for p in [
+        reranker_model,
+        reranker_provider or ("jina" if jina_key else None),
+    ] if p]
     checks.append(IntegrationHealth(
         key="reranker", label="Reranker",
         configured=reranker_configured,
-        detail=reranker_detail,
+        detail=" · ".join(reranker_parts) if reranker_parts else None,
         impact=None if reranker_configured else "Search result ranking degraded",
     ))
 
+    # ── Web Tools ────────────────────────────────────────────────────────
     search_provider = os.environ.get("WEB_SEARCH_PROVIDER", "jina")
     search_key = (
         os.environ.get("JINA_API_KEY", "")
@@ -1243,30 +1264,44 @@ async def get_system_health(
     checks.append(IntegrationHealth(
         key="web_search", label="Web Search",
         configured=True,
-        detail=f"{search_provider} (default)" if not search_key else search_provider,
+        detail=search_provider + (" (no API key)" if not search_key else ""),
     ))
 
-    fetch_provider = os.environ.get("WEB_FETCH_PROVIDER", "jina")
+    fetch_provider = os.environ.get("WEB_FETCH_PROVIDER", "")
+    fetch_detail = fetch_provider if fetch_provider else ("jina" if jina_key else "httpx")
     checks.append(IntegrationHealth(
         key="web_fetch", label="Web Fetch",
         configured=True,
-        detail=fetch_provider,
+        detail=fetch_detail,
     ))
 
+    # ── Image Generation ─────────────────────────────────────────────────
     image_key = os.environ.get("IMAGE_GEN_API_KEY", "")
+    image_provider = os.environ.get("IMAGE_GEN_PROVIDER", "google").lower()
+    image_model = os.environ.get("IMAGE_GEN_MODEL", "gemini-3.1-flash-image-preview")
+    image_base = os.environ.get("IMAGE_GEN_BASE_URL", "")
     image_configured = bool(image_key)
+    image_parts = [p for p in [
+        image_provider,
+        image_model,
+        _host(image_base) if image_base else None,
+    ] if p]
     checks.append(IntegrationHealth(
         key="image_gen", label="Image Generation",
         configured=image_configured,
-        detail=None,
+        detail=" · ".join(image_parts) if image_configured else None,
         impact=None if image_configured else "Image generation unavailable",
     ))
 
+    # ── Email ────────────────────────────────────────────────────────────
     smtp_ok = _smtp_configured()
+    smtp_host = os.environ.get("SMTP_HOST", "")
+    smtp_from = os.environ.get("SMTP_FROM", "") or os.environ.get("SMTP_USER", "")
+    smtp_parts = [p for p in [smtp_host, smtp_from] if p]
     checks.append(IntegrationHealth(
         key="smtp", label="SMTP (Email)",
         configured=smtp_ok,
-        detail=os.environ.get("SMTP_HOST") if smtp_ok else None,
+        detail=" · ".join(smtp_parts) if smtp_ok and smtp_parts else None,
         impact=None if smtp_ok else "Email code login, email verification, forgot password",
     ))
 
