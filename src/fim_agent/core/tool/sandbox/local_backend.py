@@ -43,8 +43,7 @@ _SAFE_BUILTINS: dict[str, Any] = {
         "isinstance", "issubclass", "type", "hasattr", "getattr", "setattr",
         "delattr", "repr", "format", "iter", "next", "slice",
         "chr", "ord", "hex", "oct", "bin", "pow", "divmod",
-        "hash", "id", "callable", "vars", "dir", "help", "input",
-        "open", "__import__",
+        "hash", "id", "callable", "vars", "dir", "help",
         # Needed for common patterns: exceptions, None/True/False, etc.
         "None", "True", "False",
         "Exception", "BaseException", "ValueError", "TypeError",
@@ -60,7 +59,7 @@ _SAFE_BUILTINS: dict[str, Any] = {
         "property", "staticmethod", "classmethod", "super",
         "object", "enumerate",
         # String / number helpers the agent uses
-        "ascii", "breakpoint",
+        "ascii",
         # Internal helpers required by the interpreter for class/with/etc.
         "__build_class__", "__name__",
     )
@@ -68,7 +67,50 @@ _SAFE_BUILTINS: dict[str, Any] = {
     or (not isinstance(__builtins__, dict) and hasattr(__builtins__, name))
 }
 
+# Whitelist of modules allowed to be imported by user code.
+_ALLOWED_MODULES: frozenset[str] = frozenset({
+    "math", "cmath", "json", "re", "datetime", "time", "collections", "itertools",
+    "functools", "string", "textwrap", "decimal", "fractions", "statistics", "random",
+    "hashlib", "base64", "urllib.parse", "dataclasses", "enum", "typing", "copy", "operator",
+    "pprint", "io", "csv", "struct", "array", "bisect", "heapq", "uuid", "html", "difflib",
+    "unicodedata", "numpy", "pandas", "matplotlib", "matplotlib.pyplot", "scipy", "sklearn",
+})
+
+_ALLOWED_TOP_MODULES: frozenset[str] = frozenset({m.split(".")[0] for m in _ALLOWED_MODULES})
+
+
+def _safe_import(
+    name: str,
+    globals: dict[str, Any] | None = None,
+    locals: dict[str, Any] | None = None,
+    fromlist: tuple[str, ...] = (),
+    level: int = 0,
+) -> Any:
+    """Whitelist-based import function for the sandbox."""
+    if level != 0:
+        raise ImportError("Relative imports are not allowed in the sandbox")
+    top = name.split(".")[0]
+    if name not in _ALLOWED_MODULES and top not in _ALLOWED_TOP_MODULES:
+        raise ImportError(f"Import of '{name}' is not allowed in the sandbox")
+    import builtins
+    return builtins.__import__(name, globals, locals, fromlist, level)
+
+
+def _make_safe_open(exec_dir: Path):
+    """Create a sandbox-restricted ``open()`` that only allows access within *exec_dir*."""
+    def _safe_open(file: str | Path, mode: str = "r", *args: Any, **kwargs: Any):
+        file_path = (exec_dir / str(file)).resolve()
+        if not file_path.is_relative_to(exec_dir.resolve()):
+            raise PermissionError(
+                f"File access outside sandbox directory is not allowed: {file}"
+            )
+        return open(file_path, mode, *args, **kwargs)
+    return _safe_open
+
+
 # Modules that should never be importable from user code (local mode only).
+# Defense-in-depth: even though _safe_import uses a whitelist, the blocklist
+# prevents importation if user code somehow bypasses the whitelist check.
 _BLOCKED_MODULES: frozenset[str] = frozenset({
     "subprocess",
     "shutil",
@@ -76,6 +118,30 @@ _BLOCKED_MODULES: frozenset[str] = frozenset({
     "multiprocessing",
     "signal",
     "resource",
+    "os",
+    "sys",
+    "socket",
+    "http",
+    "urllib",
+    "pathlib",
+    "importlib",
+    "pty",
+    "pickle",
+    "marshal",
+    "code",
+    "gc",
+    "inspect",
+    "threading",
+    "asyncio",
+    "webbrowser",
+    "_thread",
+    "select",
+    "tempfile",
+    "glob",
+    "sqlite3",
+    "smtplib",
+    "ftplib",
+    "telnetlib",
 })
 
 
@@ -232,7 +298,9 @@ class LocalBackend:
 
         stdout_capture = io.StringIO()
         stderr_capture = io.StringIO()
-        namespace: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS}
+        # Build a restricted builtins dict with safe import and sandboxed open
+        _sandbox_builtins = {**_SAFE_BUILTINS, "__import__": _safe_import, "open": _make_safe_open(exec_dir)}
+        namespace: dict[str, Any] = {"__builtins__": _sandbox_builtins}
 
         old_stdout = sys.stdout
         old_stderr = sys.stderr
