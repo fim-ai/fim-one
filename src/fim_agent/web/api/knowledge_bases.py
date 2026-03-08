@@ -7,6 +7,7 @@ import logging
 import math
 import shutil
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy import func, select
@@ -270,10 +271,18 @@ async def upload_document(
             detail_args={"ext": ext},
         )
 
-    # Save file
+    # Save file — sanitize filename to prevent path traversal
+    safe_name = Path(filename).name
+    stored_name = f"{uuid4().hex[:8]}_{safe_name}"
     upload_dir = _UPLOADS_DIR / kb_id
     upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / filename
+    file_path = upload_dir / stored_name
+    if not file_path.resolve().is_relative_to(upload_dir.resolve()):
+        raise AppError(
+            "invalid_filename",
+            status_code=422,
+            detail="Invalid filename",
+        )
     content = await file.read()
     file_path.write_bytes(content)
 

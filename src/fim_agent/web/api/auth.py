@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import random
+import secrets
 import shutil
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -155,7 +155,7 @@ async def send_verification_code(
     if recent.scalar_one_or_none() is not None:
         raise AppError("verification_rate_limited", status_code=429)
 
-    code = f"{random.randint(0, 999999):06d}"
+    code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
         email=body.email,
         code=code,
@@ -355,7 +355,7 @@ async def send_login_code(
     if recent.scalar_one_or_none() is not None:
         raise AppError("verification_rate_limited", status_code=429)
 
-    code = f"{random.randint(0, 999999):06d}"
+    code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
         email=body.email,
         code=code,
@@ -641,7 +641,9 @@ async def get_avatar(
         raise AppError("avatar_not_found", status_code=404)
 
     uploads_dir = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-    avatar_path = uploads_dir / user.avatar
+    avatar_path = (uploads_dir / user.avatar).resolve()
+    if not avatar_path.is_relative_to(uploads_dir.resolve()):
+        raise AppError("avatar_not_found", status_code=404)
     if not avatar_path.exists():
         raise AppError("avatar_not_found", status_code=404)
 
@@ -714,7 +716,7 @@ async def send_reset_code(
     if recent.scalar_one_or_none() is not None:
         raise AppError("verification_rate_limited", status_code=429)
 
-    code = f"{random.randint(0, 999999):06d}"
+    code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
         email=current_user.email,
         code=code,
@@ -813,7 +815,7 @@ async def send_forgot_code(
     if recent.scalar_one_or_none() is not None:
         raise AppError("verification_rate_limited", status_code=429)
 
-    code = f"{random.randint(0, 999999):06d}"
+    code = f"{secrets.randbelow(1000000):06d}"
     verification = EmailVerification(
         email=body.email,
         code=code,
