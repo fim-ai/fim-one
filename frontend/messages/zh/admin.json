@@ -10,6 +10,7 @@
     "storage": "存储",
     "mcp": "MCP 服务",
     "models": "模型管理",
+    "tools": "工具",
     "audit": "审计日志",
     "security": "安全",
     "apikeys": "API 密钥",
@@ -305,6 +306,15 @@
     "nameAndModelRequired": "名称和模型名称为必填项",
     "apiKeyRequiredForNew": "新模型需要提供 API 密钥",
     "resolutionChain": "解析：用户偏好 \u2192 管理员模型 \u2192 环境变量"
+  },
+
+  "tools": {
+    "title": "内置工具",
+    "subtitle": "全局启用或禁用内置工具。",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "toolEnabled": "工具已启用",
+    "toolDisabled": "工具已禁用"
   },
 
   "audit": {

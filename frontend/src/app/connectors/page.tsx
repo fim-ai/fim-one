@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback, useRef, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Plus, Loader2, Plug, Trash2 } from "lucide-react"
+import { Plus, Loader2, Plug, Trash2, LayoutGrid } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -17,14 +18,28 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { connectorApi } from "@/lib/api"
 import { ConnectorCard } from "@/components/connectors/connector-card"
+import { MCPServersSection, type MCPServersSectionActions } from "@/components/tools/mcp-servers-section"
 import type { ConnectorResponse } from "@/types/connector"
 import { toast } from "sonner"
 
-export default function ConnectorsPage() {
+function ConnectorsPageInner() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const t = useTranslations("connectors")
+  const tt = useTranslations("tools")
   const tc = useTranslations("common")
+  const mcpActionsRef = useRef<MCPServersSectionActions | null>(null)
+
+  const activeTab = searchParams.get("tab") === "mcp" ? "mcp" : "connectors"
+
+  const handleTabChange = (tab: string) => {
+    if (tab === "connectors") {
+      router.replace("/connectors")
+    } else {
+      router.replace(`/connectors?tab=${tab}`)
+    }
+  }
 
   const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -83,49 +98,80 @@ export default function ConnectorsPage() {
             {t("subtitle")}
           </p>
         </div>
-        <Button size="sm" className="gap-1.5" asChild>
-          <Link href="/connectors/new">
-            <Plus className="h-4 w-4" />
-            {t("newConnector")}
-          </Link>
-        </Button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : connectors.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <p className="text-sm text-muted-foreground">
-              {t("emptyState")}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-4 gap-1.5"
-              asChild
-            >
+        <div className="flex items-center gap-2">
+          {activeTab === "connectors" && (
+            <Button size="sm" className="gap-1.5" asChild>
               <Link href="/connectors/new">
                 <Plus className="h-4 w-4" />
-                {t("createConnector")}
+                {t("newConnector")}
               </Link>
             </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {connectors.map((connector) => (
-              <ConnectorCard
-                key={connector.id}
-                connector={connector}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        )}
+          )}
+          {activeTab === "mcp" && (
+            <>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => mcpActionsRef.current?.openHub()}>
+                <LayoutGrid className="h-4 w-4" />
+                {tt("mcpCatalog")}
+              </Button>
+              <Button size="sm" className="gap-1.5" onClick={() => mcpActionsRef.current?.openAdd()}>
+                <Plus className="h-4 w-4" />
+                {tt("addServer")}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col flex-1 overflow-hidden">
+        <div className="px-6 pt-4 shrink-0">
+          <TabsList>
+            <TabsTrigger value="connectors">{t("connectorsTab")}</TabsTrigger>
+            <TabsTrigger value="mcp">{t("mcpTab")}</TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* Connectors tab */}
+        <TabsContent value="connectors" className="flex-1 overflow-y-auto p-6 mt-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : connectors.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <p className="text-sm text-muted-foreground">
+                {t("emptyState")}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4 gap-1.5"
+                asChild
+              >
+                <Link href="/connectors/new">
+                  <Plus className="h-4 w-4" />
+                  {t("createConnector")}
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {connectors.map((connector) => (
+                <ConnectorCard
+                  key={connector.id}
+                  connector={connector}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* MCP Servers tab */}
+        <TabsContent value="mcp" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
+          <MCPServersSection onReady={(actions) => { mcpActionsRef.current = actions }} />
+        </TabsContent>
+      </Tabs>
 
       {/* Delete Confirmation */}
       <Dialog open={pendingDeleteId !== null} onOpenChange={(open) => { if (!open) setPendingDeleteId(null) }}>
@@ -146,5 +192,13 @@ export default function ConnectorsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function ConnectorsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ConnectorsPageInner />
+    </Suspense>
   )
 }

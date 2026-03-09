@@ -829,6 +829,13 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
     ann_txt = await get_setting(db, SETTING_ANNOUNCEMENT_TEXT, default="")
     quota_str = await get_setting(db, SETTING_DEFAULT_TOKEN_QUOTA, default="0")
     email_verif = await get_setting(db, SETTING_EMAIL_VERIFICATION_ENABLED, default="false")
+    disabled_tools_raw = await get_setting(db, SETTING_DISABLED_BUILTIN_TOOLS, default="[]")
+    try:
+        disabled_tools = json.loads(disabled_tools_raw)
+        if not isinstance(disabled_tools, list):
+            disabled_tools = []
+    except (json.JSONDecodeError, TypeError):
+        disabled_tools = []
     # Derive registration_mode: prefer explicit setting, fall back to legacy boolean
     if not reg_mode:
         reg_mode = "open" if reg.lower() != "false" else "disabled"
@@ -841,6 +848,7 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
         default_token_quota=int(quota_str) if quota_str.isdigit() else 0,
         email_verification_enabled=email_verif.lower() == "true",
         smtp_configured=_smtp_configured(),
+        disabled_builtin_tools=disabled_tools,
     )
 
 
@@ -890,6 +898,9 @@ async def update_system_settings(
             raise AppError("smtp_not_configured", detail="Cannot enable email verification without SMTP")
         await set_setting(db, SETTING_EMAIL_VERIFICATION_ENABLED, "true" if body.email_verification_enabled else "false")
         changed.append(f"email_verification_enabled={body.email_verification_enabled}")
+    if body.disabled_builtin_tools is not None:
+        await set_setting(db, SETTING_DISABLED_BUILTIN_TOOLS, json.dumps(body.disabled_builtin_tools))
+        changed.append(f"disabled_builtin_tools={body.disabled_builtin_tools}")
     if changed:
         await write_audit(db, current_user, "settings.update", detail="; ".join(changed))
     return await _load_all_settings(db)
@@ -1252,9 +1263,13 @@ async def get_system_health(
     llm_key = os.environ.get("LLM_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_configured = bool(llm_model and llm_key) or has_db_general
-    llm_detail_parts = [p for p in [llm_model, _host(llm_base) if llm_base else None] if p]
+    reasoning_effort = os.environ.get("LLM_REASONING_EFFORT", "").strip().lower()
+    reasoning_label = f"Reasoning: {reasoning_effort}" if reasoning_effort in ("low", "medium", "high") else None
+    llm_detail_parts = [p for p in [llm_model, _host(llm_base) if llm_base else None, reasoning_label] if p]
     if has_db_general and not (llm_model and llm_key):
         llm_detail = "Admin Models"
+        if reasoning_label:
+            llm_detail += f" · {reasoning_label}"
     else:
         llm_detail = " · ".join(llm_detail_parts) if llm_detail_parts else None
     checks.append(IntegrationHealth(

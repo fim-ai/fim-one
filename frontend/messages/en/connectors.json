@@ -1,6 +1,8 @@
 {
   "title": "Connectors",
-  "subtitle": "Manage API connectors and their actions",
+  "subtitle": "Manage API connectors, MCP servers, and their actions",
+  "connectorsTab": "Connectors",
+  "mcpTab": "MCP Servers",
   "newConnector": "New Connector",
   "createConnector": "Create Connector",
   "emptyState": "No connectors yet. Create your first one to connect external APIs.",

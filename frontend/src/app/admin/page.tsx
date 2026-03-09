@@ -3,7 +3,7 @@
 import { useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { LayoutDashboard, Activity, Plug, Settings, Shield, Users, MessageSquare, HardDrive, Server, Cpu, Lock, Key, BookOpen, FileText, BarChart3 } from "lucide-react"
+import { LayoutDashboard, Activity, Plug, Settings, Shield, Users, MessageSquare, HardDrive, Server, Cpu, Lock, Key, BookOpen, FileText, BarChart3, Wrench } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { AdminOverview } from "@/components/admin/admin-overview"
@@ -21,8 +21,9 @@ import { AdminApiKeys } from "@/components/admin/admin-api-keys"
 import { AdminResources } from "@/components/admin/admin-resources"
 import { AdminContent } from "@/components/admin/admin-content"
 import { AdminAnalytics } from "@/components/admin/admin-analytics"
+import { AdminTools } from "@/components/admin/admin-tools"
 
-const TAB_KEYS = ["overview", "health", "users", "conversations", "connectors", "mcp", "models", "audit", "storage", "security", "apikeys", "resources", "content", "analytics", "settings"] as const
+const TAB_KEYS = ["overview", "health", "users", "conversations", "connectors", "mcp", "models", "tools", "audit", "storage", "security", "apikeys", "resources", "content", "analytics", "settings"] as const
 
 const TAB_ICONS = {
   overview: LayoutDashboard,
@@ -32,6 +33,7 @@ const TAB_ICONS = {
   connectors: Plug,
   mcp: Server,
   models: Cpu,
+  tools: Wrench,
   audit: Shield,
   storage: HardDrive,
   security: Lock,
@@ -118,6 +120,7 @@ function AdminPanelContent() {
           {activeTab === "storage" && <AdminStorage />}
           {activeTab === "mcp" && <AdminMcpServers />}
           {activeTab === "models" && <AdminModels />}
+          {activeTab === "tools" && <AdminTools />}
           {activeTab === "audit" && <AdminAudit />}
           {activeTab === "security" && <AdminSecurity />}
           {activeTab === "apikeys" && <AdminApiKeys />}

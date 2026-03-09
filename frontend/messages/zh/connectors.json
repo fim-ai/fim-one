@@ -1,6 +1,8 @@
 {
   "title": "连接器",
-  "subtitle": "管理 API 连接器及其操作",
+  "subtitle": "管理 API 连接器、MCP 服务器及其操作",
+  "connectorsTab": "连接器",
+  "mcpTab": "MCP 服务器",
   "newConnector": "新建连接器",
   "createConnector": "创建连接器",
   "emptyState": "暂无连接器。创建第一个连接器来对接外部 API。",

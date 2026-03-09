@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useTranslations, useMessages } from "next-intl"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Zap,
   Code2,
@@ -18,6 +19,7 @@ import {
   Loader2,
   AlertCircle,
   Lock,
+  Ban,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useToolCatalog } from "@/hooks/use-tool-catalog"
@@ -57,30 +59,40 @@ interface ToolCardProps {
   toolName: string
   toolDesc: string
   categoryLabel: string
+  isDisabled: boolean
 }
 
-function ToolCard({ tool, notConfiguredLabel, toolName, toolDesc, categoryLabel }: ToolCardProps) {
+function ToolCard({
+  tool,
+  notConfiguredLabel,
+  toolName,
+  toolDesc,
+  categoryLabel,
+  isDisabled,
+}: ToolCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const t = useTranslations("tools")
   const Icon = CATEGORY_ICONS[tool.category] ?? Wrench
   const unavailable = tool.available === false
+  const dimmed = unavailable || isDisabled
 
-  const iconColor = unavailable
+  const iconColor = dimmed
     ? "text-muted-foreground/40"
     : (CATEGORY_COLORS[tool.category] ?? "text-muted-foreground")
 
   return (
     <div
       className={`rounded-lg border bg-card p-4 flex flex-col gap-2 transition-colors ${
-        unavailable
+        dimmed
           ? "border-border/50 opacity-60 cursor-default"
           : "border-border hover:border-border/80 hover:bg-accent/5 cursor-pointer"
       }`}
-      onClick={() => !unavailable && setExpanded((v) => !v)}
+      onClick={() => !dimmed && setExpanded((v) => !v)}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
-          <span className={`text-sm font-medium shrink-0 ${unavailable ? "text-muted-foreground" : ""}`}>
+          <span className={`text-sm font-medium shrink-0 ${dimmed ? "text-muted-foreground" : ""}`}>
             {toolName}
           </span>
           <Badge variant="secondary" className="shrink-0 text-xs font-mono">
@@ -88,27 +100,43 @@ function ToolCard({ tool, notConfiguredLabel, toolName, toolDesc, categoryLabel 
           </Badge>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {unavailable && (
+          {isDisabled && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Ban className="h-3 w-3 text-muted-foreground/50" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={5}>
+                {t("disabledByAdmin")}
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {unavailable && !isDisabled && (
             <div title={tool.unavailable_reason ?? notConfiguredLabel}>
               <Lock className="h-3 w-3 text-muted-foreground/50" />
             </div>
           )}
-          <Badge variant="outline" className="text-xs text-muted-foreground">
-            {categoryLabel}
-          </Badge>
+          {!isDisabled && (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              {categoryLabel}
+            </Badge>
+          )}
         </div>
       </div>
-      <p className={`text-xs leading-relaxed ${unavailable ? "text-muted-foreground/60" : "text-muted-foreground"} ${expanded ? "" : "line-clamp-2"}`}>
-        {unavailable && tool.unavailable_reason
-          ? tool.unavailable_reason
-          : toolDesc}
+      <p className={`text-xs leading-relaxed ${dimmed ? "text-muted-foreground/60" : "text-muted-foreground"} ${expanded ? "" : "line-clamp-2"}`}>
+        {isDisabled
+          ? t("disabledByAdmin")
+          : unavailable && tool.unavailable_reason
+            ? tool.unavailable_reason
+            : toolDesc}
       </p>
     </div>
   )
 }
 
 /* ------------------------------------------------------------------ */
-/*  Navigation link cards (unchanged)                                   */
+/*  Navigation link cards                                               */
 /* ------------------------------------------------------------------ */
 
 function ConnectorLinkCard({ label, description }: { label: string; description: string }) {
@@ -138,9 +166,9 @@ function ConnectorLinkCard({ label, description }: { label: string; description:
   )
 }
 
-function MCPLinkCard({ onSwitch, label, description }: { onSwitch: () => void; label: string; description: string }) {
+function MCPLinkCard({ label, description }: { label: string; description: string }) {
   return (
-    <button onClick={onSwitch} className="text-left w-full group">
+    <Link href="/connectors?tab=mcp" className="block group">
       <div className="rounded-lg border border-dashed border-border bg-card p-4 flex flex-col gap-2 hover:border-primary/50 hover:bg-accent/30 transition-colors">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -161,7 +189,7 @@ function MCPLinkCard({ onSwitch, label, description }: { onSwitch: () => void; l
           {description}
         </p>
       </div>
-    </button>
+    </Link>
   )
 }
 
@@ -169,11 +197,7 @@ function MCPLinkCard({ onSwitch, label, description }: { onSwitch: () => void; l
 /*  Main section                                                        */
 /* ------------------------------------------------------------------ */
 
-interface BuiltinToolsSectionProps {
-  onSwitchToMCP: () => void
-}
-
-export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps) {
+export function BuiltinToolsSection() {
   const t = useTranslations("tools")
   const messages = useMessages()
   const { data: catalog, isLoading, error } = useToolCatalog()
@@ -195,6 +219,11 @@ export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps)
       return key.charAt(0).toUpperCase() + key.slice(1)
     }
   }
+
+  // Track disabled tools from the catalog
+  const disabledToolNames = new Set(
+    catalog?.tools.filter((tool) => tool.disabled).map((tool) => tool.name) ?? []
+  )
 
   // Derive categories from catalog; exclude connector/mcp (they have dedicated link cards)
   const apiCategories = catalog?.categories ?? []
@@ -260,10 +289,11 @@ export function BuiltinToolsSection({ onSwitchToMCP }: BuiltinToolsSectionProps)
               toolName={getToolName(tool)}
               toolDesc={getToolDesc(tool)}
               categoryLabel={getCategoryLabel(tool.category)}
+              isDisabled={disabledToolNames.has(tool.name)}
             />
           ))}
           {showConnector && <ConnectorLinkCard label={t("connectorLabel")} description={t("connectorDescription")} />}
-          {showMCP && <MCPLinkCard onSwitch={onSwitchToMCP} label={t("mcpServersLinkLabel")} description={t("mcpServersLinkDescription")} />}
+          {showMCP && <MCPLinkCard label={t("mcpServersLinkLabel")} description={t("mcpServersLinkDescription")} />}
         </div>
       )}
     </div>

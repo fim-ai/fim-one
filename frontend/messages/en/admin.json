@@ -10,6 +10,7 @@
     "storage": "Storage",
     "mcp": "MCP Servers",
     "models": "Models",
+    "tools": "Tools",
     "audit": "Audit Log",
     "security": "Security",
     "apikeys": "API Keys",
@@ -305,6 +306,15 @@
     "nameAndModelRequired": "Name and model name are required",
     "apiKeyRequiredForNew": "API key is required for new models",
     "resolutionChain": "Resolution: User Preference \u2192 Admin Models \u2192 ENV Fallback"
+  },
+
+  "tools": {
+    "title": "Built-in Tools",
+    "subtitle": "Enable or disable built-in tools globally.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "toolEnabled": "Tool enabled",
+    "toolDisabled": "Tool disabled"
   },
 
   "audit": {

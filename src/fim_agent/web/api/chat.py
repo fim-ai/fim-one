@@ -642,6 +642,21 @@ async def _resolve_tools(
         except Exception:
             logger.warning("Failed to load connector tools", exc_info=True)
 
+    # Filter out globally disabled built-in tools (admin setting).
+    try:
+        from fim_agent.db import create_session as _cs_disabled
+        from fim_agent.web.api.admin_utils import get_setting as _get_setting
+
+        from fim_agent.web.api.admin import SETTING_DISABLED_BUILTIN_TOOLS as _SDBT
+        async with _cs_disabled() as _disabled_db:
+            _disabled_raw = await _get_setting(_disabled_db, _SDBT, default="[]")
+        import json as _json
+        _disabled_names = _json.loads(_disabled_raw)
+        if isinstance(_disabled_names, list) and _disabled_names:
+            tools = tools.exclude_by_name(*_disabled_names)
+    except Exception:
+        logger.warning("Failed to load disabled builtin tools setting", exc_info=True)
+
     # Load user-defined MCP servers — only fetch configs here; actual connection
     # happens inside the SSE generator (same coroutine) to avoid the anyio
     # cancel-scope cross-task RuntimeError on disconnect_all().
