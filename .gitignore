@@ -34,4 +34,4 @@ tmp/
 .claude/
 data/
 uploads/
-.playwright-mcp/artifacts-page.png
+.playwright-mcp/
