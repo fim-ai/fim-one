@@ -258,88 +258,89 @@ export function AdminOverview() {
 
       <Separator />
 
-      {/* Section 4 — Model Usage (donut chart) */}
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-base font-medium">{t("tokenUsageByModel")}</h3>
-          <p className="text-sm text-muted-foreground">{t("tokenUsageByModelDesc")}</p>
+      {/* Section 4 — Token Usage: Model (left) + Agent (right) */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Model token usage (donut) */}
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-base font-medium">{t("tokenUsageByModel")}</h3>
+            <p className="text-sm text-muted-foreground">{t("tokenUsageByModelDesc")}</p>
+          </div>
+
+          {isLoading ? (
+            <div className="h-[220px] rounded bg-muted animate-pulse" />
+          ) : topModels.length === 0 ? (
+            <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+              {t("noModelUsage")}
+            </div>
+          ) : topModels.length === 1 ? (
+            <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+              {t("allTokensByModel", { model: topModels[0].model, tokens: formatTokens(topModels[0].count) })}
+            </div>
+          ) : (
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={topModels}
+                    dataKey="count"
+                    nameKey="model"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={85}
+                  >
+                    {topModels.map((entry, index) => (
+                      <Cell key={`cell-${entry.model}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<PieTooltip tokenLabel={t("tokens")} />} />
+                  <Legend
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: "12px" }}
+                    className="text-muted-foreground"
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
-        {isLoading ? (
-          <div className="h-[220px] rounded bg-muted animate-pulse" />
-        ) : topModels.length === 0 ? (
-          <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            {t("noModelUsage")}
+        {/* Agent token usage (horizontal bar) */}
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-base font-medium">{t("tokensByAgent")}</h3>
+            <p className="text-sm text-muted-foreground">{t("tokensByAgentDesc")}</p>
           </div>
-        ) : topModels.length === 1 ? (
-          <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            {t("allTokensByModel", { model: topModels[0].model, tokens: formatTokens(topModels[0].count) })}
-          </div>
-        ) : (
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={topModels}
-                  dataKey="count"
-                  nameKey="model"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={85}
+
+          {isLoading ? (
+            <div className="h-[220px] rounded bg-muted animate-pulse" />
+          ) : !stats?.tokens_by_agent?.length ? (
+            <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+              {t("noTokenUsage")}
+            </div>
+          ) : (
+            <div className="text-muted-foreground h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={stats.tokens_by_agent.map((a) => ({
+                    name: a.name,
+                    tokens: a.total_tokens,
+                  }))}
+                  layout="vertical"
+                  margin={{ top: 4, right: 4, left: 0, bottom: 4 }}
                 >
-                  {topModels.map((entry, index) => (
-                    <Cell key={`cell-${entry.model}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip content={<PieTooltip tokenLabel={t("tokens")} />} />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: "12px" }}
-                  className="text-muted-foreground"
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      <Separator />
-
-      {/* Section 5 -- Tokens by Agent */}
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-base font-medium">{t("tokensByAgent")}</h3>
-          <p className="text-sm text-muted-foreground">{t("tokensByAgentDesc")}</p>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={false} />
+                  <XAxis type="number" tick={TICK_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={120} tick={TICK_STYLE} tickLine={false} axisLine={false} />
+                  <Tooltip content={<BarTooltip />} cursor={{ fill: "rgba(128,128,128,0.1)" }} />
+                  <Bar dataKey="tokens" name={t("chartTokens")} fill={CHART_COLORS[2]} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
-
-        {isLoading ? (
-          <div className="h-[200px] rounded bg-muted animate-pulse" />
-        ) : !stats?.tokens_by_agent?.length ? (
-          <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            {t("noTokenUsage")}
-          </div>
-        ) : (
-          <div className="text-muted-foreground" style={{ height: Math.max(180, stats.tokens_by_agent.length * 36) }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={stats.tokens_by_agent.map((a) => ({
-                  name: a.name,
-                  tokens: a.total_tokens,
-                }))}
-                layout="vertical"
-                margin={{ top: 4, right: 4, left: 0, bottom: 4 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={false} />
-                <XAxis type="number" tick={TICK_STYLE} tickLine={false} axisLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" width={120} tick={TICK_STYLE} tickLine={false} axisLine={false} />
-                <Tooltip content={<BarTooltip />} cursor={{ fill: "rgba(128,128,128,0.1)" }} />
-                <Bar dataKey="tokens" name={t("chartTokens")} fill={CHART_COLORS[2]} radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
       </div>
     </div>
   )

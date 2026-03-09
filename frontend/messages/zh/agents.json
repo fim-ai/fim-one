@@ -111,6 +111,9 @@
   "agentSaveFailed": "保存智能体失败：{message}",
 
   "advancedBuilder": "高级构建器",
+  "advancedBuilderDesc": "适用于多轮迭代设计、复杂系统提示词优化、需要 AI 推理辅助的配置任务。",
+  "backToAssistant": "返回 AI 助手",
+  "builderInitFailed": "构建器初始化失败",
   "aiAssistant": "AI 助手",
   "saveFirst": "请先保存智能体才能使用 AI 助手",
   "describeCreate": "描述你想创建的智能体...",
@@ -130,5 +133,8 @@
 
   "ai_agent_created": "智能体创建成功。",
   "ai_agent_updated": "已更新 {count} 个字段：{fields}。",
-  "ai_no_changes": "未应用任何修改。"
+  "ai_no_changes": "未应用任何修改。",
+
+  "global": "全局",
+  "globalAgentNotice": "这是由管理员管理的全局智能体。"
 }

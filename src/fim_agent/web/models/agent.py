@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fim_agent.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -18,8 +18,17 @@ if TYPE_CHECKING:
 class Agent(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "agents"
 
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=False, index=True
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+    is_global: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
+    cloned_from_agent_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    cloned_from_user_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -36,7 +45,7 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
     grounding_config: Any = Column(JSON, nullable=True)
     sandbox_config: Any = Column(JSON, nullable=True)
 
-    user: Mapped[User] = relationship(back_populates="agents", lazy="raise")
+    user: Mapped[User | None] = relationship(back_populates="agents", lazy="raise")
     conversations: Mapped[list[Conversation]] = relationship(
         back_populates="agent", lazy="raise", passive_deletes=True
     )

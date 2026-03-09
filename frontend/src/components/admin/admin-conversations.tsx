@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { MoreHorizontal, Search, Loader2 } from "lucide-react"
+import { MoreHorizontal, Search, Loader2, Eye, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { formatTokens } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -192,10 +192,12 @@ export function AdminConversations() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleView(conv)}>
+                          <Eye className="mr-2 h-4 w-4" />
                           {t("view")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(conv)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
                           {tc("delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>

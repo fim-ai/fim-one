@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations } from "next-intl"
-import { Plus, Pencil, Trash2, TestTube2, Loader2, X, MoreHorizontal } from "lucide-react"
+import { Plus, Pencil, Trash2, TestTube2, Loader2, X, MoreHorizontal, Search, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,13 +39,14 @@ import type { AdminMCPServer } from "@/types/admin"
 
 export function AdminMcpServers() {
   const t = useTranslations("admin.mcpServers")
+  const tClone = useTranslations("admin.mcpClone")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
   const [servers, setServers] = useState<AdminMCPServer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<AdminMCPServer | null>(null)
   const [editTarget, setEditTarget] = useState<AdminMCPServer | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
+  const [showClonePicker, setShowClonePicker] = useState(false)
 
   const load = async () => {
     setIsLoading(true)
@@ -96,9 +97,9 @@ export function AdminMcpServers() {
           <h2 className="text-base font-semibold">{t("title")}</h2>
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          {t("addServer")}
+        <Button size="sm" onClick={() => setShowClonePicker(true)} className="gap-1.5">
+          <Upload className="h-4 w-4" />
+          {tClone("publishFromUser")}
         </Button>
       </div>
 
@@ -189,19 +190,19 @@ export function AdminMcpServers() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Create dialog */}
-      <GlobalMcpServerDialog
-        open={showCreate}
-        onOpenChange={setShowCreate}
-        onSuccess={() => { setShowCreate(false); load() }}
-      />
-
       {/* Edit dialog */}
       <GlobalMcpServerDialog
         open={!!editTarget}
         onOpenChange={(open) => { if (!open) setEditTarget(null) }}
         server={editTarget}
         onSuccess={() => { setEditTarget(null); load() }}
+      />
+
+      {/* Clone from user picker */}
+      <McpClonePickerDialog
+        open={showClonePicker}
+        onOpenChange={setShowClonePicker}
+        onSuccess={() => { setShowClonePicker(false); load() }}
       />
     </div>
   )
@@ -490,6 +491,158 @@ function GlobalMcpServerDialog({
             {isEdit ? t("saveChanges") : t("addServerBtn")}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* -- MCP Clone Picker Dialog -- */
+
+function McpClonePickerDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess: () => void
+}) {
+  const t = useTranslations("admin.mcpClone")
+  const tc = useTranslations("common")
+  const tError = useTranslations("errors")
+
+  const [servers, setServers] = useState<import("@/types/admin").AdminAllMcpServer[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const [pages, setPages] = useState(1)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const loadServers = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const data = await adminApi.listAllMcpServers(page, 10, search || undefined)
+      setServers(data.items)
+      setPages(data.pages)
+    } catch (err) {
+      toast.error(getErrorMessage(err, tError))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [page, search, tError])
+
+  useEffect(() => {
+    if (open) {
+      loadServers()
+    }
+  }, [open, loadServers])
+
+  const handleSearchChange = (value: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setSearch(value)
+      setPage(1)
+    }, 300)
+  }
+
+  const handlePublish = async (serverId: string) => {
+    setPublishingId(serverId)
+    try {
+      await adminApi.cloneMcpToGlobal(serverId)
+      toast.success(t("mcpClonedGlobal"))
+      onSuccess()
+    } catch (err) {
+      toast.error(getErrorMessage(err, tError))
+    } finally {
+      setPublishingId(null)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg flex flex-col max-h-[85vh]">
+        <DialogHeader>
+          <DialogTitle>{t("selectMcp")}</DialogTitle>
+          <DialogDescription>{t("selectMcpDesc")}</DialogDescription>
+        </DialogHeader>
+
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder={t("searchPlaceholder")}
+            className="pl-9"
+            onChange={(e) => handleSearchChange(e.target.value)}
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : servers.length === 0 ? (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              {t("noServersFound")}
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {servers.map((server) => (
+                <div key={server.id} className="flex items-center gap-3 py-3 px-1">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{server.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      @{server.username ?? server.email ?? "unknown"}
+                      {` \u00B7 ${server.transport}`}
+                      {server.tool_count > 0 && ` \u00B7 ${server.tool_count} tools`}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 text-xs"
+                    disabled={publishingId === server.id}
+                    onClick={() => handlePublish(server.id)}
+                  >
+                    {publishingId === server.id ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        {t("publishing")}
+                      </>
+                    ) : (
+                      t("publishAsGlobal")
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Picker pagination */}
+        {!isLoading && servers.length > 0 && pages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-2 border-t border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              {tc("back")}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {page} / {pages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            >
+              {tc("next")}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

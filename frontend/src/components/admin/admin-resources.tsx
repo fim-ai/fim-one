@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { Bot, BookOpen, Loader2, MoreHorizontal, Search, Info } from "lucide-react"
+import { Bot, BookOpen, Loader2, MoreHorizontal, Search, Info, Trash2, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -343,6 +343,7 @@ export function AdminResources() {
                               variant="destructive"
                               onClick={() => setDeleteAgent(agent)}
                             >
+                              <Trash2 className="mr-2 h-4 w-4" />
                               {tc("delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -442,6 +443,7 @@ export function AdminResources() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleViewDocs(kb)}>
+                              <FileText className="mr-2 h-4 w-4" />
                               {t("viewDocs")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -449,6 +451,7 @@ export function AdminResources() {
                               variant="destructive"
                               onClick={() => setDeleteKB(kb)}
                             >
+                              <Trash2 className="mr-2 h-4 w-4" />
                               {tc("delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>

@@ -33,7 +33,7 @@ import type {
   AIActionResult,
   AICreateConnectorResult,
 } from "@/types/connector"
-import type { AdminUser, AdminConversation, AdminMessage, StorageStats, InviteCode, AdminMCPServer, IntegrationHealth, AdminModelsResponse, AdminModelCreate, AdminModelUpdate, AdminUserFile } from "@/types/admin"
+import type { AdminUser, AdminConversation, AdminMessage, StorageStats, InviteCode, AdminMCPServer, IntegrationHealth, AdminModelsResponse, AdminModelCreate, AdminModelUpdate, AdminUserFile, AdminGlobalAgentInfo, AdminAllMcpServer } from "@/types/admin"
 import type { MCPServerResponse, MCPServerCreate, MCPServerUpdate } from "@/types/mcp-server"
 import type { ModelConfigResponse, ModelConfigCreate, ModelConfigUpdate } from "@/types/model_config"
 
@@ -1069,6 +1069,30 @@ export const adminApi = {
     apiFetch<AdminAnnouncement>(`/api/admin/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAnnouncement: (id: string) =>
     apiFetch(`/api/admin/announcements/${id}`, { method: 'DELETE' }),
+
+  // --- Global Agents ---
+  listGlobalAgents: (page = 1, size = 20, q?: string) => {
+    const sp = new URLSearchParams({ page: String(page), size: String(size) })
+    if (q) sp.set('q', q)
+    return apiFetch<{ items: AdminGlobalAgentInfo[]; total: number; page: number; size: number; pages: number }>(`/api/admin/global-agents?${sp}`)
+  },
+  cloneAgentToGlobal: (agentId: string) =>
+    apiFetch<AdminGlobalAgentInfo>(`/api/admin/global-agents/clone/${agentId}`, { method: 'POST' }),
+  updateGlobalAgent: (id: string, data: Record<string, unknown>) =>
+    apiFetch<AdminGlobalAgentInfo>(`/api/admin/global-agents/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteGlobalAgent: (id: string) =>
+    apiFetch(`/api/admin/global-agents/${id}`, { method: 'DELETE' }),
+  toggleGlobalAgent: (id: string) =>
+    apiFetch<AdminGlobalAgentInfo>(`/api/admin/global-agents/${id}/toggle`, { method: 'POST' }),
+
+  // --- MCP clone ---
+  cloneMcpToGlobal: (serverId: string) =>
+    apiFetch<AdminMCPServer>(`/api/admin/mcp-servers/clone/${serverId}`, { method: 'POST' }),
+  listAllMcpServers: (page = 1, size = 20, q?: string) => {
+    const sp = new URLSearchParams({ page: String(page), size: String(size) })
+    if (q) sp.set('q', q)
+    return apiFetch<{ items: AdminAllMcpServer[]; total: number; page: number; size: number; pages: number }>(`/api/admin/all-mcp-servers?${sp}`)
+  },
 }
 
 // --- MCP Server API ---

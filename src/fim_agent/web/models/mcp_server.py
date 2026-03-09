@@ -33,5 +33,11 @@ class MCPServer(UUIDPKMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     tool_count: Mapped[int] = mapped_column(Integer, default=0)
     is_global: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    cloned_from_server_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    cloned_from_user_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
 
     user: Mapped[User | None] = relationship(back_populates="mcp_servers", lazy="raise")

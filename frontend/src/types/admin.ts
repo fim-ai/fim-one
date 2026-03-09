@@ -75,6 +75,9 @@ export interface AdminMCPServer {
   is_active: boolean
   is_global: boolean
   tool_count: number
+  cloned_from_server_id: string | null
+  cloned_from_user_id: string | null
+  cloned_from_username: string | null
   created_at: string
 }
 
@@ -117,4 +120,48 @@ export interface AdminUserFile {
   size: number
   mime_type: string
   stored_name: string
+}
+
+export interface AdminGlobalAgentInfo {
+  id: string
+  name: string
+  icon: string | null
+  description: string | null
+  instructions: string | null
+  execution_mode: string
+  status: string
+  is_global: boolean
+  is_active: boolean
+  user_id: string | null
+  username: string | null
+  email: string | null
+  model_name: string | null
+  model_config_json: Record<string, unknown> | null
+  tools: string | null
+  tool_categories: string[] | null
+  suggested_prompts: string[] | null
+  sandbox_config: Record<string, unknown> | null
+  kb_ids: string | null
+  enable_planning: boolean
+  cloned_from_agent_id: string | null
+  cloned_from_user_id: string | null
+  cloned_from_username: string | null
+  created_at: string
+}
+
+export interface AdminAllMcpServer {
+  id: string
+  name: string
+  description: string | null
+  transport: string
+  command: string | null
+  args: string[] | null
+  url: string | null
+  is_active: boolean
+  is_global: boolean
+  tool_count: number
+  user_id: string | null
+  username: string | null
+  email: string | null
+  created_at: string
 }

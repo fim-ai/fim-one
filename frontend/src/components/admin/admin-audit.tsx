@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { format } from "date-fns"
-import { Loader2, RefreshCw, Download, CalendarIcon, MoreHorizontal } from "lucide-react"
+import { Loader2, RefreshCw, Download, CalendarIcon, MoreHorizontal, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -391,6 +391,7 @@ export function AdminAudit() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setSelected(entry)}>
+                            <FileText className="mr-2 h-4 w-4" />
                             {tc("details")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>

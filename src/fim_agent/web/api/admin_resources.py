@@ -7,10 +7,11 @@ import logging
 import math
 import shutil
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -52,6 +53,45 @@ class AdminAgentInfo(BaseModel):
     kb_ids: str | None = None
     enable_planning: bool = False
     created_at: str
+
+
+class AdminGlobalAgentInfo(BaseModel):
+    id: str
+    name: str
+    icon: str | None = None
+    description: str | None = None
+    instructions: str | None = None
+    execution_mode: str = "react"
+    status: str = "draft"
+    is_global: bool = True
+    is_active: bool = True
+    user_id: str | None = None
+    username: str | None = None
+    email: str | None = None
+    model_name: str | None = None
+    model_config_json: dict[str, Any] | None = None
+    tools: str | None = None
+    tool_categories: list[str] | None = None
+    suggested_prompts: list[str] | None = None
+    sandbox_config: dict[str, Any] | None = None
+    kb_ids: str | None = None
+    enable_planning: bool = False
+    cloned_from_agent_id: str | None = None
+    cloned_from_user_id: str | None = None
+    cloned_from_username: str | None = None
+    created_at: str
+
+
+class UpdateGlobalAgentRequest(BaseModel):
+    name: str | None = None
+    icon: str | None = None
+    description: str | None = None
+    instructions: str | None = None
+    execution_mode: str | None = None
+    model_config_json: dict[str, Any] | None = None
+    tool_categories: list[str] | None = None
+    suggested_prompts: list[str] | None = None
+    sandbox_config: dict[str, Any] | None = None
 
 
 class AdminKBInfo(BaseModel):
@@ -115,9 +155,10 @@ async def list_all_agents(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    """List all agents across all users. Requires admin privileges."""
-    stmt = select(Agent, User).join(User, Agent.user_id == User.id)
-    count_base = select(Agent)
+    """List all user-owned agents (excludes global). Requires admin privileges."""
+    non_global = Agent.is_global == False  # noqa: E712
+    stmt = select(Agent, User).join(User, Agent.user_id == User.id).where(non_global)
+    count_base = select(Agent).where(non_global)
 
     if q:
         pattern = f"%{q}%"
@@ -236,6 +277,280 @@ async def admin_delete_agent(
         target_id=agent_id,
         target_label=agent_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Global Agent Management
+# ---------------------------------------------------------------------------
+
+
+def _extract_model_name(agent: Agent) -> str | None:
+    """Extract model_name from the agent's model_config_json dict."""
+    if agent.model_config_json and isinstance(agent.model_config_json, dict):
+        return agent.model_config_json.get("model_name")
+    return None
+
+
+async def _resolve_username(db: AsyncSession, user_id: str | None) -> str | None:
+    """Look up a username by user_id. Returns None if user_id is None or not found."""
+    if not user_id:
+        return None
+    result = await db.execute(select(User.username).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
+def _agent_to_global_info(
+    agent: Agent,
+    *,
+    cloned_from_username: str | None = None,
+    owner_username: str | None = None,
+    owner_email: str | None = None,
+) -> AdminGlobalAgentInfo:
+    """Convert an Agent ORM object to an AdminGlobalAgentInfo schema."""
+    return AdminGlobalAgentInfo(
+        id=agent.id,
+        name=agent.name,
+        icon=agent.icon,
+        description=agent.description,
+        instructions=agent.instructions,
+        execution_mode=agent.execution_mode,
+        status=agent.status,
+        is_global=agent.is_global,
+        is_active=agent.status == "published",
+        user_id=agent.user_id,
+        username=owner_username,
+        email=owner_email,
+        model_name=_extract_model_name(agent),
+        model_config_json=agent.model_config_json,
+        tools=json.dumps(agent.tool_categories) if agent.tool_categories else None,
+        tool_categories=agent.tool_categories,
+        suggested_prompts=agent.suggested_prompts,
+        sandbox_config=agent.sandbox_config,
+        kb_ids=json.dumps(agent.kb_ids) if agent.kb_ids else None,
+        enable_planning=agent.execution_mode == "dag",
+        cloned_from_agent_id=agent.cloned_from_agent_id,
+        cloned_from_user_id=agent.cloned_from_user_id,
+        cloned_from_username=cloned_from_username,
+        created_at=agent.created_at.isoformat() if agent.created_at else "",
+    )
+
+
+@router.get("/global-agents", response_model=PaginatedResponse)
+async def list_global_agents(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    q: str | None = Query(None),
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> PaginatedResponse:
+    """List all global agents. Requires admin privileges."""
+    base_filter = Agent.is_global == True  # noqa: E712
+    stmt = select(Agent).where(base_filter)
+    count_base = select(Agent).where(base_filter)
+
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(Agent.name.ilike(pattern))
+        count_base = count_base.where(Agent.name.ilike(pattern))
+
+    count_stmt = select(func.count()).select_from(count_base.subquery())
+    total = (await db.execute(count_stmt)).scalar_one()
+
+    rows = (
+        await db.execute(
+            stmt.order_by(Agent.created_at.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+    ).scalars().all()
+
+    # Batch-resolve cloned_from usernames to avoid N+1
+    clone_user_ids = {a.cloned_from_user_id for a in rows if a.cloned_from_user_id}
+    username_map: dict[str, str] = {}
+    if clone_user_ids:
+        user_rows = (
+            await db.execute(
+                select(User.id, User.username).where(User.id.in_(clone_user_ids))
+            )
+        ).all()
+        username_map = {uid: uname for uid, uname in user_rows}
+
+    items = [
+        _agent_to_global_info(
+            agent,
+            cloned_from_username=username_map.get(agent.cloned_from_user_id or ""),
+        ).model_dump()
+        for agent in rows
+    ]
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=math.ceil(total / size) if total > 0 else 1,
+    )
+
+
+@router.post(
+    "/global-agents/clone/{agent_id}",
+    response_model=AdminGlobalAgentInfo,
+    status_code=201,
+)
+async def clone_agent_to_global(
+    agent_id: str,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> AdminGlobalAgentInfo:
+    """Clone a user agent to a global agent. Requires admin privileges."""
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    source = result.scalar_one_or_none()
+    if source is None:
+        raise AppError("agent_not_found", status_code=404)
+
+    global_agent = Agent(
+        user_id=None,
+        is_global=True,
+        name=source.name,
+        icon=source.icon,
+        description=source.description,
+        instructions=source.instructions,
+        execution_mode=source.execution_mode,
+        model_config_json=source.model_config_json,
+        tool_categories=source.tool_categories,
+        suggested_prompts=source.suggested_prompts,
+        kb_ids=[],
+        connector_ids=[],
+        grounding_config=None,
+        sandbox_config=source.sandbox_config,
+        status="published",
+        cloned_from_agent_id=source.id,
+        cloned_from_user_id=source.user_id,
+    )
+    db.add(global_agent)
+    await db.commit()
+    await db.refresh(global_agent)
+
+    cloned_from_username = await _resolve_username(db, source.user_id)
+
+    await write_audit(
+        db,
+        current_user,
+        "agent.clone_to_global",
+        target_type="agent",
+        target_id=global_agent.id,
+        target_label=global_agent.name,
+        detail=f"Cloned from agent {source.id} (user {source.user_id})",
+    )
+
+    return _agent_to_global_info(
+        global_agent, cloned_from_username=cloned_from_username
+    )
+
+
+@router.put("/global-agents/{agent_id}", response_model=AdminGlobalAgentInfo)
+async def update_global_agent(
+    agent_id: str,
+    body: UpdateGlobalAgentRequest,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> AdminGlobalAgentInfo:
+    """Update a global agent. Requires admin privileges."""
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id,
+            Agent.is_global == True,  # noqa: E712
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise AppError("global_agent_not_found", status_code=404)
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(agent, field, value)
+
+    await db.commit()
+    await db.refresh(agent)
+
+    cloned_from_username = await _resolve_username(db, agent.cloned_from_user_id)
+
+    await write_audit(
+        db,
+        current_user,
+        "agent.update_global",
+        target_type="agent",
+        target_id=agent.id,
+        target_label=agent.name,
+    )
+
+    return _agent_to_global_info(agent, cloned_from_username=cloned_from_username)
+
+
+@router.delete("/global-agents/{agent_id}", status_code=204)
+async def delete_global_agent(
+    agent_id: str,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+):
+    """Delete a global agent. Requires admin privileges."""
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id,
+            Agent.is_global == True,  # noqa: E712
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise AppError("global_agent_not_found", status_code=404)
+
+    agent_name = agent.name
+    await db.delete(agent)
+    await db.commit()
+
+    await write_audit(
+        db,
+        current_user,
+        "agent.delete_global",
+        target_type="agent",
+        target_id=agent_id,
+        target_label=agent_name,
+    )
+
+
+@router.post("/global-agents/{agent_id}/toggle", response_model=AdminGlobalAgentInfo)
+async def toggle_global_agent(
+    agent_id: str,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> AdminGlobalAgentInfo:
+    """Toggle a global agent between published (active) and draft (inactive)."""
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id,
+            Agent.is_global == True,  # noqa: E712
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise AppError("global_agent_not_found", status_code=404)
+
+    agent.status = "draft" if agent.status == "published" else "published"
+    await db.commit()
+    await db.refresh(agent)
+
+    cloned_from_username = await _resolve_username(db, agent.cloned_from_user_id)
+
+    await write_audit(
+        db,
+        current_user,
+        "agent.toggle_global",
+        target_type="agent",
+        target_id=agent.id,
+        target_label=agent.name,
+        detail=f"Status changed to {agent.status}",
+    )
+
+    return _agent_to_global_info(agent, cloned_from_username=cloned_from_username)
 
 
 # ---------------------------------------------------------------------------

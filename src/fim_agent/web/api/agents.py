@@ -6,7 +6,7 @@ import math
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_agent.db import get_session
@@ -40,6 +40,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         published_at=(
             agent.published_at.isoformat() if agent.published_at else None
         ),
+        is_global=agent.is_global,
         created_at=agent.created_at.isoformat() if agent.created_at else "",
         updated_at=agent.updated_at.isoformat() if agent.updated_at else None,
     )
@@ -50,8 +51,31 @@ async def _get_owned_agent(
     user_id: str,
     db: AsyncSession,
 ) -> Agent:
+    """Fetch an agent that the user owns."""
     result = await db.execute(
         select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id)
+    )
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise AppError("agent_not_found", status_code=404)
+    return agent
+
+
+async def _get_accessible_agent(
+    agent_id: str,
+    user_id: str,
+    db: AsyncSession,
+) -> Agent:
+    """Fetch an agent the user owns OR a published global agent (read-only)."""
+    from sqlalchemy import and_
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == agent_id,
+            or_(
+                Agent.user_id == user_id,
+                and_(Agent.is_global == True, Agent.status == "published"),  # noqa: E712
+            ),
+        )
     )
     agent = result.scalar_one_or_none()
     if agent is None:
@@ -132,7 +156,13 @@ async def list_agents(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    base = select(Agent).where(Agent.user_id == current_user.id)
+    from sqlalchemy import and_
+    base = select(Agent).where(
+        or_(
+            Agent.user_id == current_user.id,
+            and_(Agent.is_global == True, Agent.status == "published"),  # noqa: E712
+        )
+    )
     if agent_status is not None:
         base = base.where(Agent.status == agent_status)
 
@@ -163,7 +193,7 @@ async def get_agent(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    agent = await _get_owned_agent(agent_id, current_user.id, db)
+    agent = await _get_accessible_agent(agent_id, current_user.id, db)
     return ApiResponse(data=_agent_to_response(agent).model_dump())
 
 

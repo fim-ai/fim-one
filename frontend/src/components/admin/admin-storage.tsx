@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { MoreHorizontal, Loader2, Download, FileText } from "lucide-react"
+import { MoreHorizontal, Loader2, Download, FileText, FolderOpen, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -199,10 +199,12 @@ export function AdminStorage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleRowClick(u)}>
+                          <FolderOpen className="mr-2 h-4 w-4" />
                           {t("viewFiles")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" onClick={() => setClearTarget(u)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
                           {t("clear")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>

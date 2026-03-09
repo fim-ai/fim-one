@@ -111,6 +111,9 @@
   "agentSaveFailed": "Failed to save agent: {message}",
 
   "advancedBuilder": "Advanced Builder",
+  "advancedBuilderDesc": "Best for iterative agent design, complex system prompt refinement, and configuration tasks that require multi-step reasoning.",
+  "backToAssistant": "Back to AI Assistant",
+  "builderInitFailed": "Failed to initialize builder",
   "aiAssistant": "AI Assistant",
   "saveFirst": "Save the agent first to use AI assistant",
   "describeCreate": "Describe the agent you want to create...",
@@ -130,5 +133,8 @@
 
   "ai_agent_created": "Agent created successfully.",
   "ai_agent_updated": "Updated {count} field(s): {fields}.",
-  "ai_no_changes": "No changes applied."
+  "ai_no_changes": "No changes applied.",
+
+  "global": "Global",
+  "globalAgentNotice": "This is a global agent managed by an administrator."
 }

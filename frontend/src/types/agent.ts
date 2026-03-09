@@ -19,6 +19,7 @@ export interface AgentResponse {
   sandbox_config: SandboxConfig | null
   execution_mode: "react" | "dag"
   status: string
+  is_global?: boolean
   published_at: string | null
   created_at: string
   updated_at: string | null

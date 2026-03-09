@@ -258,6 +258,9 @@ class AdminMCPServerInfo(BaseModel):
     is_active: bool
     is_global: bool
     tool_count: int
+    cloned_from_server_id: str | None = None
+    cloned_from_user_id: str | None = None
+    cloned_from_username: str | None = None
     created_at: str
 
 
@@ -1814,12 +1817,19 @@ async def download_user_file(
 # ---------------------------------------------------------------------------
 
 
-def _mcp_to_admin_info(s: MCPServerModel) -> AdminMCPServerInfo:
+def _mcp_to_admin_info(
+    s: MCPServerModel,
+    *,
+    cloned_from_username: str | None = None,
+) -> AdminMCPServerInfo:
     return AdminMCPServerInfo(
         id=s.id, name=s.name, description=s.description,
         transport=s.transport, command=s.command, args=s.args,
         url=s.url, is_active=s.is_active, is_global=s.is_global,
         tool_count=s.tool_count,
+        cloned_from_server_id=s.cloned_from_server_id,
+        cloned_from_user_id=s.cloned_from_user_id,
+        cloned_from_username=cloned_from_username,
         created_at=s.created_at.isoformat() if s.created_at else "",
     )
 
@@ -1834,7 +1844,24 @@ async def list_global_mcp_servers(
         select(MCPServerModel).where(MCPServerModel.is_global == True)  # noqa: E712
     )
     servers = result.scalars().all()
-    return [_mcp_to_admin_info(s) for s in servers]
+
+    # Batch-resolve cloned_from usernames
+    clone_user_ids = {s.cloned_from_user_id for s in servers if s.cloned_from_user_id}
+    username_map: dict[str, str] = {}
+    if clone_user_ids:
+        user_rows = (
+            await db.execute(
+                select(User.id, User.username).where(User.id.in_(clone_user_ids))
+            )
+        ).all()
+        username_map = {uid: uname for uid, uname in user_rows}
+
+    return [
+        _mcp_to_admin_info(
+            s, cloned_from_username=username_map.get(s.cloned_from_user_id or "")
+        )
+        for s in servers
+    ]
 
 
 @router.post("/mcp-servers", response_model=AdminMCPServerInfo, status_code=201)
@@ -1888,6 +1915,10 @@ async def update_global_mcp_server(
         setattr(server, field, value)
     await db.commit()
     await db.refresh(server)
+    await write_audit(
+        db, current_user, "mcp_server.update_global",
+        target_type="mcp_server", target_id=server.id, target_label=server.name,
+    )
     return _mcp_to_admin_info(server)
 
 
@@ -1969,6 +2000,141 @@ async def test_global_mcp_server(
         return {"ok": False, "error": str(exc)}
     finally:
         await client.disconnect_all()
+
+
+@router.post(
+    "/mcp-servers/clone/{server_id}",
+    response_model=AdminMCPServerInfo,
+    status_code=201,
+)
+async def clone_mcp_server_to_global(
+    server_id: str,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+):
+    """Clone a user MCP server to a global MCP server. Requires admin privileges."""
+    result = await db.execute(
+        select(MCPServerModel).where(MCPServerModel.id == server_id)
+    )
+    source = result.scalar_one_or_none()
+    if source is None:
+        raise AppError("mcp_server_not_found", status_code=404)
+
+    server = MCPServerModel(
+        user_id=None,
+        is_global=True,
+        name=source.name,
+        description=source.description,
+        transport=source.transport,
+        command=source.command,
+        args=source.args,
+        env=source.env,
+        url=source.url,
+        working_dir=source.working_dir,
+        headers=source.headers,
+        is_active=True,
+        tool_count=source.tool_count,
+        cloned_from_server_id=source.id,
+        cloned_from_user_id=source.user_id,
+    )
+    db.add(server)
+    await db.commit()
+    await db.refresh(server)
+
+    # Resolve cloned_from username
+    cloned_from_username: str | None = None
+    if source.user_id:
+        uname_result = await db.execute(
+            select(User.username).where(User.id == source.user_id)
+        )
+        cloned_from_username = uname_result.scalar_one_or_none()
+
+    await write_audit(
+        db, current_user, "mcp_server.clone_to_global",
+        target_type="mcp_server", target_id=server.id, target_label=server.name,
+        detail=f"Cloned from server {source.id} (user {source.user_id})",
+    )
+
+    return _mcp_to_admin_info(server, cloned_from_username=cloned_from_username)
+
+
+class AdminAllMCPServerInfo(BaseModel):
+    """MCP server info with owner details, for the admin browse-all view."""
+    id: str
+    name: str
+    description: str | None
+    transport: str
+    command: str | None
+    args: list[str] | None
+    url: str | None
+    is_active: bool
+    is_global: bool
+    tool_count: int
+    user_id: str | None
+    username: str | None = None
+    email: str | None = None
+    created_at: str
+
+
+@router.get("/all-mcp-servers", response_model=PaginatedResponse)
+async def list_all_mcp_servers(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    q: str | None = Query(None),
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+):
+    """List all MCP servers across all users (for clone picker). Requires admin."""
+    stmt = (
+        select(MCPServerModel, User)
+        .outerjoin(User, MCPServerModel.user_id == User.id)
+    )
+    count_base = select(MCPServerModel)
+
+    if q:
+        pattern = f"%{q}%"
+        filter_clause = MCPServerModel.name.ilike(pattern)
+        stmt = stmt.where(filter_clause)
+        count_base = count_base.where(filter_clause)
+
+    count_stmt = select(func.count()).select_from(count_base.subquery())
+    total = (await db.execute(count_stmt)).scalar_one()
+
+    rows = (
+        await db.execute(
+            stmt.order_by(MCPServerModel.created_at.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+    ).all()
+
+    items = [
+        AdminAllMCPServerInfo(
+            id=server.id,
+            name=server.name,
+            description=server.description,
+            transport=server.transport,
+            command=server.command,
+            args=server.args,
+            url=server.url,
+            is_active=server.is_active,
+            is_global=server.is_global,
+            tool_count=server.tool_count,
+            user_id=server.user_id,
+            username=user.username if user else None,
+            email=user.email if user else None,
+            created_at=server.created_at.isoformat() if server.created_at else "",
+        ).model_dump()
+        for server, user in rows
+    ]
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=math.ceil(total / size) if total > 0 else 1,
+    )
 
 
 # ---------------------------------------------------------------------------
