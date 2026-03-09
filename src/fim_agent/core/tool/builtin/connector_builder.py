@@ -592,6 +592,14 @@ class ConnectorGetSettingsTool(_ConnectorBuilderBase):
             if connector is None:
                 return "[Error] Connector not found or access denied."
 
+            # Mask sensitive values to avoid leaking credentials into LLM context
+            safe_auth = {}
+            if connector.auth_config:
+                safe_auth = {
+                    k: ("****" + v[-4:] if isinstance(v, str) and len(v) > 4 else "****")
+                    for k, v in connector.auth_config.items()
+                }
+
             return json.dumps(
                 {
                     "id": connector.id,
@@ -600,7 +608,7 @@ class ConnectorGetSettingsTool(_ConnectorBuilderBase):
                     "icon": connector.icon,
                     "base_url": connector.base_url,
                     "auth_type": connector.auth_type,
-                    "auth_config": connector.auth_config or {},
+                    "auth_config": safe_auth,
                     "status": connector.status,
                 },
                 ensure_ascii=False,
