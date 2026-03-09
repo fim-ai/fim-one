@@ -47,6 +47,8 @@ description: "FIM Agent 的所有重要变更。"
 * **DAG：历史记录显示步骤卡片**：历史轮次现在在展开的折叠区域中渲染步骤卡片（之前被 `hideStepCards` 隐藏）
 * **DAG：重新规划时清除旧分析**：重新规划开始时，第一轮"目标未达成"的分析会立即清除，且第二轮的"正在分析结果..."加载提示可正确显示
 * **UI：聊天搜索框焦点环**：为搜索输入框添加 `focus-visible:outline-none`，防止焦点环溢出
+* **导出：PDF 可读性**：增加了所有 PDF 样式的行距 (leading) 和单元格内边距，提升文本可读性
+* **导出：移除表情符号过滤**：移除了 DOCX 和 PDF 导出中对最终回答内容不必要的 `_strip_emoji()` 调用，保留原始内容
 
 * **导出：RFC 5987 文件名支持**：优先使用 Content-Disposition 头中 UTF-8 编码的 `filename*`，而非普通 `filename`，修复导出对话时中日韩文件名乱码问题
 * **Docker i18n 失效**：将 `messages/` 目录复制到独立输出中，并添加 `outputFileTracingIncludes`，以便 next-intl 在运行时发现 locale JSON 文件

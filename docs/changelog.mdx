@@ -24,6 +24,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **DAG: history turn shows step cards**: History turns now render step cards in the expanded collapsible (previously hidden by `hideStepCards`)
 - **DAG: stale analysis on replan**: Round-1 "goal not achieved" analysis is now cleared immediately when replanning starts, and the round-2 "analyzing…" spinner appears correctly
 - **UI: chat search focus ring**: Added `focus-visible:outline-none` to search input to prevent focus ring bleed
+- **Export: PDF readability**: Increased line spacing (leading) and cell padding across all PDF styles for better text readability
+- **Export: emoji stripping removed**: Removed unnecessary `_strip_emoji()` from final answer rendering in both DOCX and PDF exports, preserving original content
 
 - **Docker Compose deployment**: Single image (API + Frontend), named volumes for data persistence, standalone Next.js output mode
 - **Admin: login history recording**: Auth endpoints now record every login attempt (IP address, User-Agent, success/failure with reason) to the `LoginHistory` table for security auditing
