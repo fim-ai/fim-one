@@ -1,7 +1,5 @@
 <div align="center">
 
-🌐 **English** | [🇨🇳 中文](README.zh.md)
-
 ![FIM Agent Banner](./assets/banner.jpg)
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
@@ -10,6 +8,8 @@
 [![GitHub forks](https://img.shields.io/github/forks/fim-ai/fim-agent?style=social)](https://github.com/fim-ai/fim-agent/network)
 [![GitHub issues](https://img.shields.io/github/issues/fim-ai/fim-agent)](https://github.com/fim-ai/fim-agent/issues)
 [![Follow on X](https://img.shields.io/twitter/follow/FIM_Agent?style=social)](https://x.com/FIM_Agent)
+
+🌐 **English** | [🇨🇳 中文](README.zh.md)
 
 **AI-Powered Connector Hub — embed into one system as a Copilot, or connect them all as a Hub.**
 
