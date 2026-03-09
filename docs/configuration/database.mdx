@@ -29,7 +29,9 @@ Tables are created automatically on first start — no manual migration step is 
 | **Best for** | Development, single-user, demos | Production, multi-user, teams |
 
 <Tip>
-For quick prototyping or single-user local development, SQLite works out of the box with zero setup. Switch to PostgreSQL when you need concurrent users or multi-worker deployments.
+**Local development:** SQLite works out of the box — no database server, no Redis, nothing to configure. Just start coding.
+
+**Production:** Deploy with Docker Compose and PostgreSQL + Redis are provisioned automatically. No manual database setup needed.
 </Tip>
 
 ---
@@ -120,9 +122,9 @@ Tables are created automatically on first start. No manual schema migration is n
 **Existing SQLite data is not migrated automatically.** Switching `DATABASE_URL` from SQLite to PostgreSQL starts with a fresh database. If you have existing conversations, agents, or connectors in SQLite that you need to preserve, see the [Data Migration](#data-migration) section below.
 </Note>
 
-### Docker Compose (Recommended)
+### Docker Compose (Recommended for Production)
 
-If you deploy with Docker Compose, PostgreSQL is already included and auto-configured. The `docker-compose.yml` sets `DATABASE_URL` internally — your `.env` value is overridden:
+If you deploy with Docker Compose, **PostgreSQL and Redis are already included and auto-configured** — there is nothing extra to set up. The `docker-compose.yml` sets `DATABASE_URL` internally — your `.env` value is overridden:
 
 ```yaml
 environment:

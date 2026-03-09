@@ -1,0 +1,152 @@
+---
+title: "数据库"
+description: "为你的部署选择并配置合适的数据库后端"
+---
+
+FIM Agent 支持两种数据库后端：**SQLite**（默认，零配置）和 **PostgreSQL**（推荐用于生产环境）。通过 `DATABASE_URL` 环境变量来决定使用哪个后端。
+
+```bash
+# SQLite（默认 - 无需配置）
+DATABASE_URL=sqlite+aiosqlite:///./data/fim_agent.db
+
+# PostgreSQL（生产环境）
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fim_agent
+```
+
+首次启动时会自动创建数据表，无需手动执行迁移步骤。
+
+---
+
+## SQLite vs PostgreSQL
+
+| | SQLite | PostgreSQL |
+|---|---|---|
+| **安装** | 零配置，基于文件 | 需要独立的数据库服务器 |
+| **并发** | 单写入者（全局锁） | 完整的 MVCC，行级锁 |
+| **多进程** | 不支持（`WORKERS` 必须为 `1`） | 完全支持 |
+| **SSE 流式** | 流式期间持有的连接可能阻塞其他请求 | 并发读写互不影响 |
+| **备份** | 复制 `.db` 文件即可 | `pg_dump` 或流复制 |
+| **适用场景** | 开发、单用户、演示 | 生产环境、多用户、团队 |
+
+<Tip>
+**本地开发：** SQLite 开箱即用——不需要数据库服务器，不需要 Redis，什么都不用配。直接开始开发。
+
+**生产环境：** 使用 Docker Compose 部署，PostgreSQL + Redis 自动配置到位，无需手动搭建数据库。
+</Tip>
+
+---
+
+## 已知限制：SQLite 并发流式
+
+<Warning>
+**SQLite 在并发负载下可能成为瓶颈。**
+
+FIM Agent 使用 Server-Sent Events (SSE) 进行 AI 响应的流式传输。在流式传输期间，每个活跃的 SSE 连接会在整个流式过程中占用连接池中的一个数据库连接。SQLite 强制使用全局写锁，这意味着同一时间只有一个写操作可以执行——其他所有写操作都在后面排队等待。
+
+尽管连接池支持最多 30 个并发连接（`pool_size=20` + `max_overflow=10`），但瓶颈在于锁本身，而非连接池。当多个用户同时聊天时，他们的写操作（保存消息、更新 token 计数）会彼此串行化。
+
+**你可能观察到的症状：**
+- 当另一个用户在流式传输时，会话列表加载缓慢
+- 活跃聊天会话期间，设置页面感觉迟钝
+- 多个流式传输活跃时，API 响应延迟
+
+**建议：** 如果你有超过 2-3 个并发用户，请切换到 PostgreSQL。PostgreSQL 使用 MVCC（多版本并发控制）配合行级锁，并发读写可以独立进行而不会相互阻塞。
+</Warning>
+
+---
+
+## 连接池配置
+
+FIM Agent 会根据每种后端在内部配置 SQLAlchemy 连接池参数。这些是经过调优的默认值，不需要环境变量来设置——它们会根据 `DATABASE_URL` 的协议自动应用。了解这些参数有助于理解运行时行为。
+
+### SQLite 连接池设置
+
+| 设置 | 值 | 说明 |
+|---|---|---|
+| `pool_size` | `20` | 连接池中持久连接的基础数量 |
+| `max_overflow` | `10` | 负载时额外创建的连接数（最多共 30 个） |
+| WAL 日志模式 | 已启用 | 预写日志允许在写入进行时并发读取，显著减少锁争用 |
+| `busy_timeout` | `30s` | 当写锁被持有时，其他写入者最多等待 30 秒再报错，而不是立即失败 |
+| `synchronous` | `NORMAL` | 配合 WAL 模式是安全的；比默认的 `FULL` 提供更好的写入吞吐量 |
+
+WAL 模式和 30 秒的忙等超时通过 SQLite PRAGMA 在每个新连接上设置。这种组合确保短时间的读操作（加载会话列表、获取设置）不会被长时间运行的写事务阻塞，并且并发写操作会优雅地排队而不是直接失败。
+
+### PostgreSQL 连接池设置
+
+| 设置 | 值 | 说明 |
+|---|---|---|
+| `pool_size` | `10` | 连接池中持久连接的基础数量 |
+| `max_overflow` | `20` | 负载时额外创建的连接数（最多共 30 个） |
+| `pool_timeout` | `30s` | 从连接池获取空闲连接的最大等待时间，超时后抛出错误 |
+| `pool_recycle` | `1800s` | 每 30 分钟回收一次连接，防止陈旧连接（对于会关闭空闲连接的云托管数据库非常重要） |
+
+PostgreSQL 通过 MVCC 原生处理并发，因此连接池设置主要控制资源使用而非争用。30 分钟的回收间隔避免了防火墙、负载均衡器或托管数据库服务静默断开空闲 TCP 连接的问题。
+
+---
+
+## 切换到 PostgreSQL
+
+### 第 1 步：启动 PostgreSQL 实例
+
+最快的方式是使用 Docker：
+
+```bash
+docker run -d \
+  --name postgres \
+  -e POSTGRES_PASSWORD=secret \
+  -e POSTGRES_DB=fim_agent \
+  -p 5432:5432 \
+  postgres:16-alpine
+```
+
+### 第 2 步：设置 DATABASE_URL
+
+在 `.env` 文件中添加或更新以下行：
+
+```bash
+DATABASE_URL=postgresql+asyncpg://postgres:secret@localhost:5432/fim_agent
+```
+
+### 第 3 步：重启 FIM Agent
+
+```bash
+# 本地开发
+./start.sh portal
+
+# 或者重启你的进程管理器 / systemd 服务
+```
+
+首次启动时会自动创建数据表，无需手动执行 schema 迁移。
+
+<Note>
+**现有的 SQLite 数据不会自动迁移。** 将 `DATABASE_URL` 从 SQLite 切换到 PostgreSQL 后将从一个空数据库开始。如果你有需要保留的现有会话、Agent 或连接器，请参阅下方的[数据迁移](#数据迁移)部分。
+</Note>
+
+### Docker Compose（生产环境推荐）
+
+如果你使用 Docker Compose 部署，**PostgreSQL 和 Redis 都已包含在内并自动配置好了**——不需要额外搭建任何东西。`docker-compose.yml` 在内部设置了 `DATABASE_URL`——你的 `.env` 中的值会被覆盖：
+
+```yaml
+environment:
+  DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_agent
+```
+
+使用 Docker Compose 时无需额外的数据库配置。
+
+---
+
+## 数据迁移
+
+目前没有内置的 SQLite 到 PostgreSQL 迁移工具。对于大多数部署，推荐的方式取决于你的情况：
+
+**全新部署（无现有数据）：** 只需将 `DATABASE_URL` 设置为你的 PostgreSQL 连接字符串并启动 FIM Agent。所有数据表会自动创建。
+
+**需要保留的现有数据：** 需要手动导出/导入。一般步骤：
+
+1. 使用 `sqlite3` CLI 或 Python 脚本从 SQLite 导出数据
+2. 根据需要转换数据（SQLite 和 PostgreSQL 有一些细微的类型差异）
+3. 使用 `psql`、`pg_restore` 或应用层插入脚本导入到 PostgreSQL
+
+<Tip>
+对于大多数从开发环境升级到生产环境的用户来说，直接在 PostgreSQL 上全新开始并通过 UI 重新创建 Agent 和连接器会更简单。会话历史通常不值得为其进行手动迁移。
+</Tip>

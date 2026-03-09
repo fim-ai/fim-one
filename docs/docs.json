@@ -35,6 +35,7 @@
                 "icon": "sitemap",
                 "pages": [
                   "architecture/philosophy",
+                  "architecture/context-management",
                   "architecture/connector-architecture",
                   "architecture/planning-landscape"
                 ]
@@ -105,6 +106,7 @@
                 "icon": "sitemap",
                 "pages": [
                   "zh/architecture/philosophy",
+                  "zh/architecture/context-management",
                   "zh/architecture/connector-architecture",
                   "zh/architecture/planning-landscape"
                 ]
@@ -114,6 +116,7 @@
                 "icon": "gear",
                 "pages": [
                   "zh/configuration/environment-variables",
+                  "zh/configuration/database",
                   "zh/configuration/models",
                   "zh/configuration/oauth-providers"
                 ]
