@@ -307,9 +307,13 @@ class DAGExecutor:
             step_result: Any = None,
         ) -> None:
             nonlocal iter_start
-            # Skip final_answer iterations — the same content is sent via
-            # the "completed" event as step.result.
+            # Skip non-tool events — final_answer is sent via "completed",
+            # thinking shims are empty, __selecting_tools__ is a notification.
             if action.type == "final_answer":
+                return
+            if action.type == "thinking":
+                return
+            if action.tool_name == "__selecting_tools__":
                 return
             is_starting = observation is None and error is None
             now = time.time()
@@ -318,9 +322,11 @@ class DAGExecutor:
                 iter_start = now
             else:
                 iter_elapsed = round(now - iter_start, 2)
+            status = "start" if is_starting else "done"
             payload: dict[str, Any] = {
                 "iteration": iteration,
                 "type": action.type,
+                "status": status,
                 "reasoning": action.reasoning,
                 "tool_name": action.tool_name,
                 "tool_args": action.tool_args,

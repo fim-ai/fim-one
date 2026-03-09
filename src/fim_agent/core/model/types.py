@@ -92,8 +92,10 @@ class StreamChunk:
     """A single chunk from a streaming LLM response."""
 
     delta_content: str | None = None
+    delta_reasoning: str | None = None
     finish_reason: str | None = None
     tool_calls: list[ToolCallRequest] | None = None
+    usage: dict[str, int] | None = None
 
 
 @dataclass

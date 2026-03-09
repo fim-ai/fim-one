@@ -272,16 +272,28 @@ class OpenAICompatibleLLM(BaseLLM):
         async def _iterate() -> AsyncIterator[StreamChunk]:
             # Accumulate partial tool calls keyed by their index in the array.
             pending_tool_calls: dict[int, _PartialToolCall] = {}
+            stream_usage: dict[str, int] | None = None
+            usage_yielded = False
 
             async for chunk in stream:  # type: ignore[union-attr]
+                # Extract usage from any chunk that carries it (typically the
+                # final chunk, which may have empty choices).
+                if hasattr(chunk, "usage") and chunk.usage is not None:
+                    stream_usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens,
+                        "completion_tokens": chunk.usage.completion_tokens,
+                        "total_tokens": chunk.usage.total_tokens,
+                    }
+
                 if not chunk.choices:
                     continue
 
                 delta = chunk.choices[0].delta
                 finish_reason = chunk.choices[0].finish_reason
 
-                # --- content fragment ---
+                # --- content / reasoning fragments ---
                 delta_content = getattr(delta, "content", None)
+                delta_reasoning = getattr(delta, "reasoning_content", None)
 
                 # --- tool-call fragments ---
                 if delta.tool_calls:
@@ -298,9 +310,13 @@ class OpenAICompatibleLLM(BaseLLM):
                             if tc_delta.function.arguments:
                                 partial.arguments += tc_delta.function.arguments
 
-                # Emit a chunk for every delta that carries content.
-                if delta_content:
-                    yield StreamChunk(delta_content=delta_content, finish_reason=finish_reason)
+                # Emit a chunk for every delta that carries content or reasoning.
+                if delta_content or delta_reasoning:
+                    yield StreamChunk(
+                        delta_content=delta_content,
+                        delta_reasoning=delta_reasoning,
+                        finish_reason=finish_reason,
+                    )
 
                 # When the stream finishes, flush any accumulated tool calls.
                 if finish_reason in ("tool_calls", "stop") and pending_tool_calls:
@@ -308,11 +324,19 @@ class OpenAICompatibleLLM(BaseLLM):
                     yield StreamChunk(
                         finish_reason=finish_reason,
                         tool_calls=completed,
+                        usage=stream_usage,
                     )
+                    usage_yielded = stream_usage is not None
                     pending_tool_calls.clear()
                 elif finish_reason and not pending_tool_calls:
                     # Final chunk with no tool calls (normal stop).
-                    yield StreamChunk(finish_reason=finish_reason)
+                    yield StreamChunk(finish_reason=finish_reason, usage=stream_usage)
+                    usage_yielded = stream_usage is not None
+
+            # Emit trailing usage if it arrived on a separate empty-choices
+            # chunk after finish_reason was already processed.
+            if stream_usage and not usage_yielded:
+                yield StreamChunk(usage=stream_usage)
 
         return _iterate()
 
@@ -355,6 +379,8 @@ class OpenAICompatibleLLM(BaseLLM):
             "stream": stream,
             "api_key": self._api_key,
         }
+        if stream:
+            kwargs["stream_options"] = {"include_usage": True}
         if self._api_base is not None:
             kwargs["api_base"] = self._api_base
         if tools:

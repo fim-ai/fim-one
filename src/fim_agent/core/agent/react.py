@@ -233,6 +233,7 @@ class ReActAgent:
         on_iteration: IterationCallback | None = None,
         image_urls: list[str] | None = None,
         interrupt_queue: Any | None = None,
+        on_answer_token: Callable[[str, str], None] | None = None,
     ) -> AgentResult:
         """Execute the ReAct loop for a given user query.
 
@@ -266,6 +267,7 @@ class ReActAgent:
                 query, on_iteration, image_urls=image_urls,
                 interrupt_queue=interrupt_queue,
                 effective_tools=effective_tools,
+                on_answer_token=on_answer_token,
             )
         return await self._run_json(
             query, on_iteration, image_urls=image_urls,
@@ -565,6 +567,7 @@ class ReActAgent:
         image_urls: list[str] | None = None,
         interrupt_queue: Any | None = None,
         effective_tools: ToolRegistry | None = None,
+        on_answer_token: Callable[[str, str], None] | None = None,
     ) -> AgentResult:
         """Execute the native function-calling loop.
 
@@ -617,14 +620,55 @@ class ReActAgent:
                     messages, hint="react_iteration",
                 )
 
-            result: LLMResult = await self._llm.chat(
+            # Stream the LLM response to enable real-time answer token
+            # delivery.  Tool-call iterations are also streamed so that
+            # usage data is captured from the final chunk.
+            stream = self._llm.stream_chat(
                 messages,
                 tools=tools_payload,
-                tool_choice=tool_choice,
             )
-            await usage_tracker.record(result.usage)
+            content_parts: list[str] = []
+            reasoning_parts: list[str] = []
+            tool_calls: list[ToolCallRequest] = []
+            stream_usage: dict[str, int] = {}
+            mode: str = "undecided"  # "undecided" | "tool_call" | "answer"
 
-            assistant_msg = result.message
+            async for chunk in stream:
+                if chunk.tool_calls:
+                    tool_calls = chunk.tool_calls
+                    mode = "tool_call"
+                if chunk.delta_reasoning:
+                    reasoning_parts.append(chunk.delta_reasoning)
+                if chunk.delta_content:
+                    content_parts.append(chunk.delta_content)
+                    if mode == "undecided":
+                        mode = "answer"
+                if chunk.usage:
+                    stream_usage = chunk.usage
+
+            await usage_tracker.record(stream_usage)
+
+            assistant_msg = ChatMessage(
+                role="assistant",
+                content="".join(content_parts) if content_parts else None,
+                tool_calls=tool_calls if tool_calls else None,
+                reasoning_content="".join(reasoning_parts) if reasoning_parts else None,
+            )
+
+            # Flush buffered content as answer tokens only when this
+            # iteration produces the final answer (no tool calls).
+            # Content that accompanies tool_calls is intermediate
+            # reasoning — not the answer — and must be discarded.
+            if (
+                not assistant_msg.tool_calls
+                and content_parts
+                and on_answer_token is not None
+            ):
+                reasoning_str = "".join(reasoning_parts)
+                for i, token in enumerate(content_parts):
+                    on_answer_token(
+                        token, reasoning_str if i == 0 else "",
+                    )
 
             # Append the full assistant message (may contain tool_calls).
             messages.append(assistant_msg)

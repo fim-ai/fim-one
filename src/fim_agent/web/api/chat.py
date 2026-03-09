@@ -7,7 +7,10 @@ Both endpoints stream Server-Sent Events with the following event names:
 - ``phase``          – Pipeline phase transitions (selecting_tools / planning / executing / analyzing).
 - ``compact``        – Context compaction occurred (original_messages, kept_messages).
 - ``answer``         – Streamed answer text (start / delta / done) emitted before ``done``.
-- ``done``           – Final result payload (always the last event).
+- ``done``           – Final result payload (answer complete, emitted immediately).
+- ``suggestions``    – Suggested follow-up questions (emitted after ``done``).
+- ``title``          – Auto-generated conversation title (emitted after ``done``).
+- ``end``            – Stream terminator (always the last event, NOT persisted).
 
 A keepalive comment (``": keepalive\\n\\n"``) is emitted every 15 seconds of
 inactivity to prevent proxy/browser timeouts during long LLM calls.
@@ -687,6 +690,9 @@ async def _resolve_tools(
                 ConnectorDeleteActionTool,
                 ConnectorUpdateSettingsTool,
                 ConnectorTestActionTool,
+                ConnectorGetSettingsTool,
+                ConnectorTestConnectionTool,
+                ConnectorImportOpenAPITool,
             )
             for _BCls in [
                 ConnectorListActionsTool,
@@ -695,6 +701,9 @@ async def _resolve_tools(
                 ConnectorDeleteActionTool,
                 ConnectorUpdateSettingsTool,
                 ConnectorTestActionTool,
+                ConnectorGetSettingsTool,
+                ConnectorTestConnectionTool,
+                ConnectorImportOpenAPITool,
             ]:
                 tools.register(_BCls(connector_id=_builder_cid, user_id=user_id or ""))
             logger.info(
@@ -711,8 +720,19 @@ async def _resolve_tools(
             from fim_agent.core.tool.builtin.agent_builder import (
                 AgentGetSettingsTool,
                 AgentUpdateSettingsTool,
+                AgentListConnectorsTool,
+                AgentAddConnectorTool,
+                AgentRemoveConnectorTool,
+                AgentSetModelTool,
             )
-            for _BCls2 in [AgentGetSettingsTool, AgentUpdateSettingsTool]:
+            for _BCls2 in [
+                AgentGetSettingsTool,
+                AgentUpdateSettingsTool,
+                AgentListConnectorsTool,
+                AgentAddConnectorTool,
+                AgentRemoveConnectorTool,
+                AgentSetModelTool,
+            ]:
                 tools.register(_BCls2(agent_id=_builder_aid, user_id=user_id or ""))
             logger.info(
                 "Injected agent builder tools for agent_id=%s", _builder_aid
@@ -1172,13 +1192,18 @@ async def react_endpoint(
                 )
                 db_session.add(user_msg)
                 await db_session.commit()
+                # Release connection back to pool immediately — the session
+                # is not needed during the long-running LLM execution phase.
+                await db_session.close()
+                db_session = None
             except Exception:
                 logger.warning(
                     "Failed to persist user message for conversation %s",
                     conversation_id,
                     exc_info=True,
                 )
-                await db_session.close()
+                if db_session:
+                    await db_session.close()
                 db_session = None
 
         # Register interrupt queue for mid-stream injection.
@@ -1190,7 +1215,51 @@ async def react_endpoint(
         done_event = asyncio.Event()
         iter_start = time.time()
         thinking_done_iter = 0  # track which iteration's thinking-done was emitted
+        current_iteration = 1  # track the current iteration for _on_answer_token
         answer_started = False
+        answer_streaming_started = False  # True when real streaming via on_answer_token
+
+        def _on_answer_token(token: str, reasoning: str = "") -> None:
+            """Push real-time answer tokens to the SSE progress queue.
+
+            Called from ReAct native mode when streaming the final answer
+            token-by-token.  Emits answer:start once, then answer:delta
+            for each token.
+
+            Args:
+                token: The answer text delta.
+                reasoning: Accumulated reasoning/thinking content from the
+                    model (e.g. DeepSeek R1).  Used on the first call to
+                    populate the thinking:done event.
+            """
+            nonlocal answer_streaming_started, thinking_done_iter
+            if not answer_streaming_started:
+                answer_streaming_started = True
+
+                # Close the thinking phase BEFORE starting the answer stream,
+                # so the UI doesn't show a loading spinner on the thinking card
+                # while answer tokens are already rendering.
+                if thinking_done_iter < current_iteration:
+                    _emit_step({
+                        "type": "thinking",
+                        "status": "done",
+                        "iteration": current_iteration,
+                        "reasoning": reasoning,
+                    })
+                    thinking_done_iter = current_iteration
+
+                evt_start = {"status": "start"}
+                sse_events.append({"event": "answer", "data": evt_start})
+                try:
+                    progress_queue.put_nowait(_sse("answer", evt_start))
+                except asyncio.QueueFull:
+                    pass
+            evt_delta = {"status": "delta", "content": token}
+            sse_events.append({"event": "answer", "data": evt_delta})
+            try:
+                progress_queue.put_nowait(_sse("answer", evt_delta))
+            except asyncio.QueueFull:
+                logger.warning("SSE progress queue full, dropping answer token")
 
         def _emit_step(payload: dict[str, Any]) -> None:
             """Emit a step SSE event to both persistence list and queue."""
@@ -1207,7 +1276,7 @@ async def react_endpoint(
             error: str | None,
             step_result: Any = None,
         ) -> None:
-            nonlocal iter_start, thinking_done_iter, answer_started
+            nonlocal iter_start, thinking_done_iter, current_iteration, answer_started
 
             # Handle injected user messages as a special SSE event.
             if getattr(action, "tool_name", None) == "__inject__":
@@ -1239,6 +1308,7 @@ async def react_endpoint(
 
             # -- Thinking start signal (emitted by agent before LLM call) --
             if action.type == "thinking":
+                current_iteration = iteration
                 # Iteration 1 already emitted as the initial event above.
                 if iteration > 1:
                     _emit_step({
@@ -1314,9 +1384,11 @@ async def react_endpoint(
                     })
                     thinking_done_iter = iteration
 
-                # Signal answer generation phase start
-                iter_start = time.time()
-                _emit_step({"type": "answer", "status": "start"})
+                # Signal answer generation phase start (skip if real
+                # streaming via on_answer_token already emitted these).
+                if not answer_streaming_started:
+                    iter_start = time.time()
+                    _emit_step({"type": "answer", "status": "start"})
                 answer_started = True
                 return
 
@@ -1359,6 +1431,7 @@ async def react_endpoint(
                     return await agent.run(
                         q, on_iteration=on_iteration, image_urls=image_urls,
                         interrupt_queue=interrupt_queue,
+                        on_answer_token=_on_answer_token,
                     )
                 finally:
                     done_event.set()
@@ -1408,11 +1481,17 @@ async def react_endpoint(
                 }
                 yield _emit(sse_events, "compact", compact_payload)
 
-            # -- Stream answer to client immediately --------------------
-            yield _emit(sse_events, "answer", {"status": "start"})
-            for _ans_chunk in _chunk_answer(result.answer):
-                yield _emit(sse_events, "answer", {"status": "delta", "content": _ans_chunk})
-            yield _emit(sse_events, "answer", {"status": "done"})
+            # -- Stream answer to client -----------------------------------
+            if answer_streaming_started:
+                # Real streaming already happened via on_answer_token — just
+                # close the answer stream.  Events are already in sse_events.
+                yield _emit(sse_events, "answer", {"status": "done"})
+            else:
+                # JSON mode or non-streaming fallback — fake chunking.
+                yield _emit(sse_events, "answer", {"status": "start"})
+                for _ans_chunk in _chunk_answer(result.answer):
+                    yield _emit(sse_events, "answer", {"status": "delta", "content": _ans_chunk})
+                yield _emit(sse_events, "answer", {"status": "done"})
 
             elapsed = round(time.time() - t0, 2)
             last_iter_elapsed = round(time.time() - iter_start, 2)
@@ -1435,6 +1514,13 @@ async def react_endpoint(
                     done_payload["pending_injections"] = [m.content for m in remaining]
 
             sse_events.append({"event": "done", "data": done_payload})
+
+            # -- Re-open a fresh DB session for persistence ----------------
+            # The original session was closed right after saving the user
+            # message to avoid holding a connection during LLM execution.
+            if conversation_id:
+                from fim_agent.db import create_session
+                db_session = create_session()
 
             # -- Persist assistant message BEFORE yielding done -----------
             if db_session and conversation_id:
@@ -1474,7 +1560,10 @@ async def react_endpoint(
                         exc_info=True,
                     )
 
-            # -- Concurrent post-answer metadata generation -------------
+            # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
+            yield _sse("done", done_payload)
+
+            # -- Async post-answer metadata (after done, before end) ----
             async def _maybe_generate_title() -> str | None:
                 """Generate title if this is the first message."""
                 if not (db_session and conversation_id):
@@ -1511,9 +1600,9 @@ async def react_endpoint(
                 _maybe_generate_title(),
             )
             if suggestions:
-                done_payload["suggestions"] = suggestions
+                yield _sse("suggestions", {"items": suggestions})
             if gen_title:
-                done_payload["title"] = gen_title
+                yield _sse("title", {"title": gen_title})
                 if db_session and conversation_id:
                     try:
                         from sqlalchemy import update as _sa_update
@@ -1548,7 +1637,7 @@ async def react_endpoint(
                     except Exception:
                         logger.warning("Failed to persist fast LLM tokens", exc_info=True)
 
-            yield _sse("done", done_payload)
+            yield _sse("end", {})
         except Exception as exc:
             logger.exception("ReAct agent failed")
             elapsed = round(time.time() - t0, 2)
@@ -1560,6 +1649,7 @@ async def react_endpoint(
                     "elapsed": elapsed,
                 },
             )
+            yield _sse("end", {})
         finally:
             if user_mcp_client:
                 await user_mcp_client.disconnect_all()
@@ -1704,13 +1794,18 @@ async def dag_endpoint(
                 )
                 db_session.add(user_msg)
                 await db_session.commit()
+                # Release connection back to pool immediately — the session
+                # is not needed during the long-running LLM/DAG execution.
+                await db_session.close()
+                db_session = None
             except Exception:
                 logger.warning(
                     "Failed to persist user message for conversation %s",
                     conversation_id,
                     exc_info=True,
                 )
-                await db_session.close()
+                if db_session:
+                    await db_session.close()
                 db_session = None
 
         # Register interrupt queue for mid-stream injection.
@@ -2188,6 +2283,13 @@ async def dag_endpoint(
 
             sse_events.append({"event": "done", "data": dag_done_payload})
 
+            # -- Re-open a fresh DB session for persistence ----------------
+            # The original session was closed right after saving the user
+            # message to avoid holding a connection during DAG execution.
+            if conversation_id:
+                from fim_agent.db import create_session
+                db_session = create_session()
+
             # -- Persist assistant message BEFORE yielding done -----------
             if db_session and conversation_id:
                 try:
@@ -2228,7 +2330,10 @@ async def dag_endpoint(
                         exc_info=True,
                     )
 
-            # -- Concurrent post-answer metadata generation -------------
+            # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
+            yield _sse("done", dag_done_payload)
+
+            # -- Async post-answer metadata (after done, before end) ----
             async def _dag_maybe_generate_title() -> str | None:
                 """Generate title if this is the first message."""
                 if not (db_session and conversation_id):
@@ -2265,9 +2370,9 @@ async def dag_endpoint(
                 _dag_maybe_generate_title(),
             )
             if dag_suggestions:
-                dag_done_payload["suggestions"] = dag_suggestions
+                yield _sse("suggestions", {"items": dag_suggestions})
             if dag_gen_title:
-                dag_done_payload["title"] = dag_gen_title
+                yield _sse("title", {"title": dag_gen_title})
                 if db_session and conversation_id:
                     try:
                         from sqlalchemy import update as _sa_update
@@ -2302,7 +2407,7 @@ async def dag_endpoint(
                     except Exception:
                         logger.warning("Failed to persist fast LLM tokens", exc_info=True)
 
-            yield _sse("done", dag_done_payload)
+            yield _sse("end", {})
         except Exception as exc:
             logger.exception("DAG pipeline failed")
             elapsed = round(time.time() - t0, 2)
@@ -2315,6 +2420,7 @@ async def dag_endpoint(
                     "elapsed": elapsed,
                 },
             )
+            yield _sse("end", {})
         finally:
             if dag_user_mcp_client:
                 await dag_user_mcp_client.disconnect_all()
