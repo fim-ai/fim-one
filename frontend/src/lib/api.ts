@@ -399,8 +399,10 @@ export const conversationApi = {
     }
     const blob = await res.blob()
     const contentDisposition = res.headers.get("content-disposition")
-    const filenameMatch = contentDisposition?.match(/filename="?([^";\n]+)"?/)
-    const filename = filenameMatch?.[1] ?? `export.${format}`
+    // Prefer RFC 5987 filename* (UTF-8 encoded) over plain filename
+    const utf8Match = contentDisposition?.match(/filename\*=UTF-8''(.+?)(?:;|$)/)
+    const asciiMatch = contentDisposition?.match(/filename="?([^";\n]+)"?/)
+    const filename = utf8Match ? decodeURIComponent(utf8Match[1]) : asciiMatch?.[1] ?? `export.${format}`
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
