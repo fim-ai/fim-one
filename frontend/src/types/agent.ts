@@ -20,6 +20,7 @@ export interface AgentResponse {
   execution_mode: "react" | "dag"
   status: string
   is_global?: boolean
+  is_builder?: boolean
   published_at: string | null
   created_at: string
   updated_at: string | null

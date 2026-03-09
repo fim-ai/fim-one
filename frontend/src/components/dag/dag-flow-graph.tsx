@@ -40,10 +40,7 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
   const { resolvedTheme } = useTheme()
   const rfColorMode = resolvedTheme === "dark" ? "dark" : "light"
 
-  const { nodes: layoutNodes, edges: layoutEdges, dagreCenters } = useDagLayout({
-    planSteps,
-    stepStates,
-  })
+  const { nodes: layoutNodes, edges: layoutEdges, dagreCenters } = useDagLayout(planSteps)
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges)
@@ -56,6 +53,8 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
 
   // Timer ref for debouncing fitView after dimension changes
   const fitAfterDimTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Only fitView once on initial dimension measurement, not during streaming
+  const initialFitDone = useRef(false)
 
   // Intercept dimension changes to center-align nodes based on measured height
   const handleNodesChange = useCallback(
@@ -81,11 +80,14 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
         return changed ? next : currentNodes
       })
 
-      // Re-fit after any dimension change (debounced)
-      if (fitAfterDimTimer.current) clearTimeout(fitAfterDimTimer.current)
-      fitAfterDimTimer.current = setTimeout(() => {
-        fitViewFn.current?.({ duration: 200 })
-      }, 100)
+      // Re-fit only once after initial dimension measurement
+      if (!initialFitDone.current) {
+        if (fitAfterDimTimer.current) clearTimeout(fitAfterDimTimer.current)
+        fitAfterDimTimer.current = setTimeout(() => {
+          initialFitDone.current = true
+          fitViewFn.current?.({ duration: 200 })
+        }, 100)
+      }
     },
     [onNodesChange, setNodes],
   )
@@ -127,11 +129,15 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
         const prevData = node.data as unknown as StepNodeData
         const newStatus =
           (state.status as StepNodeData["status"]) ?? "pending"
+        const toolsLen = state.tools_used?.length ?? 0
+        const prevToolsLen = prevData.tools_used?.length ?? 0
 
         // Only update if data actually changed
         if (
           prevData.status === newStatus &&
-          prevData.duration === state.duration
+          prevData.duration === state.duration &&
+          prevData.started_at === state.started_at &&
+          prevToolsLen === toolsLen
         ) {
           return node
         }
@@ -142,6 +148,8 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
             ...node.data,
             status: newStatus,
             duration: state.duration,
+            started_at: state.started_at,
+            tools_used: state.tools_used,
             state,
           },
         }
@@ -151,6 +159,7 @@ export function DagFlowGraph({ planSteps, stepStates, mode = "inline", expanded,
 
   // When layout changes (new plan), reset nodes and edges entirely
   useEffect(() => {
+    initialFitDone.current = false
     setNodes(layoutNodes)
     setEdges(layoutEdges)
   }, [layoutNodes, layoutEdges, setNodes, setEdges])

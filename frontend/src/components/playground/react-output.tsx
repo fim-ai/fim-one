@@ -26,10 +26,11 @@ interface ReactOutputProps {
   items: StepItem[]
   isStreaming?: boolean
   streamingAnswer?: string
+  suggestions?: string[]
   onSuggestionSelect?: (query: string) => void
 }
 
-export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionSelect }: ReactOutputProps) {
+export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, onSuggestionSelect }: ReactOutputProps) {
   const t = useTranslations("playground")
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
@@ -39,17 +40,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionS
   const stepItems = items.filter((i) => i.event === "step")
   const doneItem = items.find((i) => i.event === "done")
 
-  // Split steps: thinking cards shown above, tool iterations inside collapsible
-  const thinkingItems = stepItems.filter((i) => {
-    const step = i.data as ReactStepEvent
-    return step.type === "thinking" && step.status === "done"
-  })
-  const nonThinkingItems = stepItems.filter((i) => {
-    const step = i.data as ReactStepEvent
-    return !(step.type === "thinking")
-  })
-
-  const toolCallCount = nonThinkingItems.filter((i) => {
+  const toolCallCount = stepItems.filter((i) => {
     const step = i.data as ReactStepEvent
     return step.type === "iteration"
   }).length
@@ -65,19 +56,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionS
   if (hasDone && toolCallCount > 0) {
     return (
       <div className="space-y-3 min-w-0 w-full">
-        {/* Thinking cards — always visible above the tool call group */}
-        {thinkingItems.map((item) => {
-          const originalIdx = items.indexOf(item)
-          const step = item.data as ReactStepEvent
-          const iterLabel = item.displayIteration ?? (step.iteration ?? 0) + 1
-          return (
-            <div key={originalIdx} data-react-idx={originalIdx}>
-              <ThinkingCard iterLabel={iterLabel} duration={item.duration} reasoning={step.reasoning} />
-            </div>
-          )
-        })}
-
-        {/* Collapsible tool call group */}
+        {/* Collapsible step group — ALL steps (thinking + iterations) nested inside */}
         <div className="rounded-lg border border-border/40 bg-muted/20">
           <button
             type="button"
@@ -85,7 +64,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionS
             className="flex w-full items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors text-xs text-muted-foreground rounded-lg"
           >
             <Wrench className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {toolCallCount !== 1 ? t("toolCallCountPlural", { count: toolCallCount }) : t("toolCallCount", { count: toolCallCount })}
               {" \u00b7 "}
               {fmtDuration(elapsed)}
@@ -97,10 +76,9 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionS
             )}
           </button>
 
-          {/* Expanded step cards — nested inside the collapsible group */}
           {stepsExpanded && (
             <div className="space-y-3 px-4 pt-1 pb-3">
-              {nonThinkingItems.map((item) => {
+              {stepItems.map((item) => {
                 const originalIdx = items.indexOf(item)
                 const step = item.data as ReactStepEvent
                 return (
@@ -131,7 +109,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionS
         {(displayAnswer || isAnswerStreaming) && (
           <div data-react-idx={doneItem ? items.indexOf(doneItem) : undefined}>
             {done ? (
-              <DoneCard done={done} items={items} onSuggestionSelect={onSuggestionSelect} />
+              <DoneCard done={done} items={items} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} />
             ) : (
               <StreamingAnswerCard content={displayAnswer} />
             )}
@@ -178,7 +156,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionS
           const done = item.data as ReactDoneEvent
           return (
             <div key={idx} data-react-idx={idx}>
-              <DoneCard done={done} items={items} onSuggestionSelect={onSuggestionSelect} />
+              <DoneCard done={done} items={items} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} />
             </div>
           )
         }
@@ -207,9 +185,8 @@ function StreamingAnswerCard({ content }: { content: string }) {
       <CardContent>
         <MarkdownContent
           content={content}
-          className="prose-sm text-sm text-foreground/90"
+          className="prose-sm text-sm text-foreground/90 streaming-cursor"
         />
-        <span className="inline-block w-1.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
       </CardContent>
     </Card>
   )
@@ -234,7 +211,7 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
             {t("iterationLabel", { n: iterLabel })}
           </span>
           {duration != null && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground font-mono tabular-nums">
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums">
               <Clock className="h-2.5 w-2.5" />
               {fmtDuration(duration)}
             </span>
@@ -293,7 +270,7 @@ function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; 
   return <IterationCard data={iterData} variant="card" defaultCollapsed={true} />
 }
 
-function DoneCard({ done, items, onSuggestionSelect }: { done: ReactDoneEvent; items?: StepItem[]; onSuggestionSelect?: (query: string) => void }) {
+function DoneCard({ done, items, suggestions, onSuggestionSelect }: { done: ReactDoneEvent; items?: StepItem[]; suggestions?: string[]; onSuggestionSelect?: (query: string) => void }) {
   const t = useTranslations("playground")
   const tDag = useTranslations("dag")
 
@@ -315,12 +292,12 @@ function DoneCard({ done, items, onSuggestionSelect }: { done: ReactDoneEvent; i
               <RefreshCw className="h-2.5 w-2.5" />
               {done.iterations !== 1 ? t("iterationCountPlural", { count: done.iterations }) : t("iterationCount", { count: done.iterations })}
             </span>
-            <span className="flex items-center gap-1 font-mono tabular-nums">
+            <span className="flex items-center gap-1 tabular-nums">
               <Clock className="h-2.5 w-2.5" />
               {fmtDuration(done.elapsed)}
             </span>
             {done.usage && (
-              <span className="flex items-center gap-1 font-mono tabular-nums">
+              <span className="flex items-center gap-1 tabular-nums">
                 <BarChart3 className="h-2.5 w-2.5" />
                 {t("tokenIn", { value: (done.usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (done.usage.completion_tokens / 1000).toFixed(1) })}
               </span>
@@ -342,9 +319,10 @@ function DoneCard({ done, items, onSuggestionSelect }: { done: ReactDoneEvent; i
           </div>
         )}
         {items && <ReferencesSection items={items} />}
-        {done.suggestions?.length && onSuggestionSelect ? (
+        {/* Use prop suggestions first, fall back to done.suggestions for stored conversations */}
+        {(suggestions?.length || done.suggestions?.length) && onSuggestionSelect ? (
           <SuggestedFollowups
-            suggestions={done.suggestions}
+            suggestions={suggestions?.length ? suggestions : done.suggestions!}
             onSelect={onSuggestionSelect}
           />
         ) : null}

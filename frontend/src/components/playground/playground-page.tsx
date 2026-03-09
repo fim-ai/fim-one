@@ -231,9 +231,12 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId, o
     } else if (sseJustFinishedRef.current) {
       sseJustFinishedRef.current = false
       setInjectedMessages([])
-      // Extract auto-generated title from done event and animate it
+      // Extract auto-generated title from title event (new) or done event (backward compat)
+      const titleMsg = messages.find((m) => m.event === "title")
       const doneMsg = messages.find((m) => m.event === "done")
-      const doneTitle = (doneMsg?.data as { title?: string } | undefined)?.title
+      const doneTitle = titleMsg
+        ? (titleMsg.data as { title: string }).title
+        : (doneMsg?.data as { title?: string } | undefined)?.title
       if (doneTitle && activeId) {
         animateTitle(activeId, doneTitle)
       }
@@ -492,7 +495,7 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
 }) {
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
-  const { items: reactItems, streamingAnswer: reactStreamingAnswer } = useReactSteps(sseMessages, false)
+  const { items: reactItems, streamingAnswer: reactStreamingAnswer, suggestions: reactSuggestions } = useReactSteps(sseMessages, false)
   const dagData = useDagSteps(sseMessages, false)
 
   // Detect clip metadata in user message
@@ -526,7 +529,7 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
         </div>
       )}
       {mode === "react" ? (
-        <ReactOutput items={reactItems} streamingAnswer={reactStreamingAnswer} />
+        <ReactOutput items={reactItems} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} />
       ) : (
         <DagOutput
           planSteps={dagData.planSteps}
@@ -535,9 +538,11 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
           doneEvent={dagData.doneEvent}
           currentPhase={dagData.currentPhase}
           currentRound={dagData.currentRound}
+          previousRounds={dagData.previousRounds}
           injectEvents={dagData.injectEvents}
           streamingAnswer={dagData.streamingAnswer}
           answerDone={dagData.answerDone}
+          suggestions={dagData.suggestions}
           hideDagGraph={hideDagGraph}
         />
       )}
@@ -687,7 +692,7 @@ function PlaygroundContent({
 
   // Parse data at this level via hooks
   const dagData = useDagSteps(messages, isRunning)
-  const { items: reactItems, streamingAnswer: reactStreamingAnswer } = useReactSteps(messages, isRunning)
+  const { items: reactItems, streamingAnswer: reactStreamingAnswer, suggestions: reactSuggestions } = useReactSteps(messages, isRunning)
 
   // Reconstruct all persisted execution steps from conversation messages.
   // Available during BOTH live mode (shows previous turns) and history mode (shows all turns).
@@ -825,24 +830,8 @@ function PlaygroundContent({
     }
   }, [messages, scrollViewportToBottom])
 
-  // When streaming completes, scroll to the top of the result block so the user
-  // sees the answer from the beginning rather than the very end.
-  const wasRunningRef = useRef(false)
-  useEffect(() => {
-    if (isRunning) {
-      wasRunningRef.current = true
-      return
-    }
-    if (!wasRunningRef.current) return
-    wasRunningRef.current = false
-    // Only snap to result top when user didn't manually scroll away mid-stream.
-    if (!isNearBottomRef.current) return
-    // Double-rAF: first frame lets React commit the "done" re-render (steps collapse),
-    // second frame waits for the browser layout pass so bounding rects are correct.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => scrollInViewport("[data-live-output]"))
-    )
-  }, [isRunning, scrollInViewport])
+  // Streaming answer now pushes content naturally — no need to snap-scroll
+  // to the result block on completion.
 
   // Reset scroll state on clear
   useEffect(() => {
@@ -861,16 +850,9 @@ function PlaygroundContent({
   }, [pendingQuery])
 
   const scrollToBottom = useCallback(() => {
-    const root = scrollAreaRef.current
-    const viewport = root?.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]")
-    const liveOutput = viewport?.querySelector<HTMLElement>("[data-live-output]")
-    if (liveOutput) {
-      scrollInViewport("[data-live-output]")
-    } else {
-      scrollViewportToBottom()
-    }
+    scrollViewportToBottom()
     setShowScrollBtn(false)
-  }, [scrollInViewport, scrollViewportToBottom])
+  }, [scrollViewportToBottom])
 
   const scrollToStep = useCallback((stepId: string) => {
     // Expand the collapsed step section first (in case it's folded after completion)
@@ -1239,7 +1221,7 @@ function PlaygroundContent({
                   {(hasLiveMessages || (isRunning && pendingQuery && mode === "react")) && (
                     <div data-live-output>
                       {mode === "react" ? (
-                        <ReactOutput items={reactItems} isStreaming={isRunning && modeMatches} streamingAnswer={reactStreamingAnswer} onSuggestionSelect={handleSuggestionSelect} />
+                        <ReactOutput items={reactItems} isStreaming={isRunning && modeMatches} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} onSuggestionSelect={handleSuggestionSelect} />
                       ) : (
                         <DagOutput
                           ref={dagOutputRef}
@@ -1249,9 +1231,11 @@ function PlaygroundContent({
                           doneEvent={dagData.doneEvent}
                           currentPhase={dagData.currentPhase}
                           currentRound={dagData.currentRound}
+                          previousRounds={dagData.previousRounds}
                           injectEvents={dagData.injectEvents}
                           streamingAnswer={dagData.streamingAnswer}
                           answerDone={dagData.answerDone}
+                          suggestions={dagData.suggestions}
                           hideDagGraph
                           onSuggestionSelect={handleSuggestionSelect}
                         />

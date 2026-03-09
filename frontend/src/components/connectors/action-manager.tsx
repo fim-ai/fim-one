@@ -185,9 +185,9 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
   // ------- Render -------
 
   return (
-    <div className="flex h-full">
+    <div className="flex-1 flex min-h-0">
       {/* ---- Left panel: action list ---- */}
-      <div className="w-[250px] border-r flex flex-col">
+      <div className="w-[250px] border-r flex flex-col min-h-0 overflow-hidden">
         <div className="p-3 border-b">
           <Button
             variant="outline"
@@ -200,7 +200,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
           </Button>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="p-2 space-y-1">
             {connector.actions.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-6">

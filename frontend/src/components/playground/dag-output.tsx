@@ -32,7 +32,7 @@ import type {
   DagPhaseEvent,
   DagDoneEvent,
 } from "@/types/api"
-import type { StepState } from "@/hooks/use-dag-steps"
+import type { StepState, RoundSnapshot } from "@/hooks/use-dag-steps"
 import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
 import { IterationCard, ArtifactChips } from "@/components/steps"
 import type { IterationData } from "@/components/steps"
@@ -58,11 +58,13 @@ interface DagOutputProps {
   doneEvent: DagDoneEvent | null
   currentPhase: string | null
   currentRound?: number
+  previousRounds?: RoundSnapshot[]
   hideDagGraph?: boolean
   hideStepCards?: boolean
   injectEvents?: Array<{ content: string; phase?: string; timestamp: number }>
   streamingAnswer?: string
   answerDone?: boolean
+  suggestions?: string[]
   onSuggestionSelect?: (query: string) => void
 }
 
@@ -73,11 +75,13 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
   doneEvent,
   currentPhase,
   currentRound = 1,
+  previousRounds = [],
   hideDagGraph,
   hideStepCards,
   injectEvents = [],
   streamingAnswer,
   answerDone: _answerDone,
+  suggestions,
   onSuggestionSelect,
 }, ref) {
   const t = useTranslations("playground")
@@ -112,6 +116,11 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
 
     return (
       <div className="space-y-3 min-w-0 w-full">
+        {/* Previous rounds (collapsed, showing failure) */}
+        {previousRounds.map((snapshot) => (
+          <PreviousRoundCard key={snapshot.round} snapshot={snapshot} hideDagGraph={hideDagGraph} hideStepCards={hideStepCards} />
+        ))}
+
         {/* Collapsible step group */}
         <div className="rounded-lg border border-border/40 bg-muted/20">
           <button
@@ -120,7 +129,7 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
             className="flex w-full items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors text-xs text-muted-foreground rounded-lg"
           >
             <Wrench className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-mono tabular-nums">{summaryParts.join(" \u00b7 ")}</span>
+            <span className="tabular-nums">{summaryParts.join(" \u00b7 ")}</span>
             {stepsExpanded ? (
               <ChevronUp className="h-3.5 w-3.5 ml-auto shrink-0" />
             ) : (
@@ -155,7 +164,7 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
         ))}
 
         {/* Done card — always visible */}
-        <DagDoneCard done={doneEvent} stepStates={stepStates} onSuggestionSelect={onSuggestionSelect} />
+        <DagDoneCard done={doneEvent} stepStates={stepStates} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} />
       </div>
     )
   }
@@ -163,6 +172,11 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
   // Streaming / in-progress: render everything expanded as before
   return (
     <div className="space-y-3 min-w-0 w-full">
+      {/* Previous rounds (collapsed, showing failure) */}
+      {previousRounds.map((snapshot) => (
+        <PreviousRoundCard key={snapshot.round} snapshot={snapshot} hideDagGraph={hideDagGraph} hideStepCards={hideStepCards} />
+      ))}
+
       {/* Planning spinner */}
       {currentPhase === "planning" && !planSteps && (
         <Card className="border-border py-4">
@@ -225,7 +239,7 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
       {analysisPhase && <AnalysisCard phase={analysisPhase} />}
 
       {/* Done card */}
-      {doneEvent && <DagDoneCard done={doneEvent} stepStates={stepStates} onSuggestionSelect={onSuggestionSelect} />}
+      {doneEvent && <DagDoneCard done={doneEvent} stepStates={stepStates} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} />}
 
       {/* Streaming answer — shown before done arrives */}
       {isAnswerStreaming && displayAnswer && (
@@ -234,6 +248,50 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
     </div>
   )
 })
+
+function PreviousRoundCard({ snapshot, hideDagGraph, hideStepCards }: { snapshot: RoundSnapshot; hideDagGraph?: boolean; hideStepCards?: boolean }) {
+  const t = useTranslations("playground")
+  const [expanded, setExpanded] = useState(false)
+  const completedSteps = snapshot.stepStates.filter(s => s.status === "completed").length
+  const totalSteps = snapshot.stepStates.length
+
+  return (
+    <div className="rounded-lg border border-destructive/20 bg-destructive/5">
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="flex w-full items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-destructive/10 transition-colors text-xs text-muted-foreground rounded-lg"
+      >
+        <RefreshCw className="h-3.5 w-3.5 shrink-0 text-destructive/60" />
+        <span className="font-medium text-destructive/80">
+          {t("previousRoundHeader", { round: snapshot.round })}
+        </span>
+        <span className="tabular-nums">
+          {t("previousRoundSummary", { completed: completedSteps, total: totalSteps })}
+        </span>
+        {expanded ? (
+          <ChevronUp className="h-3.5 w-3.5 ml-auto shrink-0" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 ml-auto shrink-0" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="space-y-3 px-4 pb-3">
+          {!hideDagGraph && snapshot.planSteps && snapshot.planSteps.length > 0 && (
+            <DagFlowGraph planSteps={snapshot.planSteps} stepStates={snapshot.stepStates} />
+          )}
+          {!hideStepCards && snapshot.stepStates.map((state) => (
+            <div key={state.step_id} data-step-id={state.step_id}>
+              <StepProgressCard state={state} />
+            </div>
+          ))}
+          {!hideStepCards && snapshot.analysisPhase && <AnalysisCard phase={snapshot.analysisPhase} />}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function DagStreamingAnswerCard({ content }: { content: string }) {
   const t = useTranslations("playground")
@@ -250,9 +308,8 @@ function DagStreamingAnswerCard({ content }: { content: string }) {
       <CardContent>
         <MarkdownContent
           content={stripCitations(content)}
-          className="prose-sm text-sm text-foreground/90"
+          className="prose-sm text-sm text-foreground/90 streaming-cursor"
         />
-        <span className="inline-block w-1.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
       </CardContent>
     </Card>
   )
@@ -323,7 +380,7 @@ function StepProgressCard({ state }: { state: StepState }) {
           </div>
           <Badge
             variant="outline"
-            className={`${badgeBorderClass} text-[10px] font-mono shrink-0`}
+            className={`${badgeBorderClass} text-[10px] shrink-0`}
           >
             {state.step_id}
           </Badge>
@@ -331,7 +388,7 @@ function StepProgressCard({ state }: { state: StepState }) {
             {state.task}
           </span>
           {state.status === "completed" && state.duration != null && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 font-mono tabular-nums">
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 tabular-nums">
               <Clock className="h-2.5 w-2.5" />
               {fmtDuration(state.duration)}
             </span>
@@ -388,7 +445,7 @@ function ElapsedTimer({ startedAt }: { startedAt: number }) {
     return () => clearInterval(id)
   }, [startedAt])
   return (
-    <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 font-mono tabular-nums">
+    <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 tabular-nums">
       <Clock className="h-2.5 w-2.5" />
       {fmtDuration(elapsed)}
     </span>
@@ -517,7 +574,7 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
   )
 }
 
-function DagDoneCard({ done, stepStates, onSuggestionSelect }: { done: DagDoneEvent; stepStates?: StepState[]; onSuggestionSelect?: (query: string) => void }) {
+function DagDoneCard({ done, stepStates, suggestions, onSuggestionSelect }: { done: DagDoneEvent; stepStates?: StepState[]; suggestions?: string[]; onSuggestionSelect?: (query: string) => void }) {
   const t = useTranslations("playground")
   const tDag = useTranslations("dag")
 
@@ -535,7 +592,7 @@ function DagDoneCard({ done, stepStates, onSuggestionSelect }: { done: DagDoneEv
           </div>
           <CardTitle className="text-sm">{t("result")}</CardTitle>
           <div className="ml-auto flex items-center gap-3 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1 font-mono tabular-nums">
+            <span className="flex items-center gap-1 tabular-nums">
               <Clock className="h-2.5 w-2.5" />
               {fmtDuration(done.elapsed)}
             </span>
@@ -546,7 +603,7 @@ function DagDoneCard({ done, stepStates, onSuggestionSelect }: { done: DagDoneEv
               </span>
             )}
             {done.usage && (
-              <span className="flex items-center gap-1 font-mono tabular-nums">
+              <span className="flex items-center gap-1 tabular-nums">
                 <BarChart3 className="h-2.5 w-2.5" />
                 {t("tokenIn", { value: (done.usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (done.usage.completion_tokens / 1000).toFixed(1) })}
               </span>
@@ -567,9 +624,10 @@ function DagDoneCard({ done, stepStates, onSuggestionSelect }: { done: DagDoneEv
             <ArtifactChips artifacts={allArtifacts} />
           </div>
         )}
-        {done.suggestions?.length && onSuggestionSelect ? (
+        {/* Use prop suggestions first, fall back to done.suggestions for stored conversations */}
+        {(suggestions?.length || done.suggestions?.length) && onSuggestionSelect ? (
           <SuggestedFollowups
-            suggestions={done.suggestions}
+            suggestions={suggestions?.length ? suggestions : done.suggestions!}
             onSelect={onSuggestionSelect}
           />
         ) : null}

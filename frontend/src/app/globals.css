@@ -511,6 +511,24 @@ pre code.hljs {
   20%, 50%      { opacity: 0; }
 }
 
+/* Streaming cursor: small dot that follows the last character */
+@keyframes cursor-dot-pulse {
+  0%, 100% { opacity: 0.8; }
+  50%      { opacity: 0.2; }
+}
+
+.streaming-cursor > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(var(--primary) / 0.6);
+  margin-left: 3px;
+  vertical-align: middle;
+  animation: cursor-dot-pulse 0.8s ease-in-out infinite;
+}
+
 .nav-bar-loading {
   height: 2px;
   background: var(--primary);

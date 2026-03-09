@@ -98,6 +98,10 @@
   "collapseClip": "收起",
   "removeClip": "移除片段",
   "exportButton": "导出",
+  "previousRoundHeader": "第 {round} 轮 · 失败",
+  "previousRoundSummary": "已完成 {completed}/{total} 个步骤 · 目标未达成",
+  "roundLabel": "第 {round} 轮",
+  "loadingNextRound": "准备下一轮...",
   "slash": {
     "newDesc": "开始一个新对话",
 "agentDesc": "快速按名称选择智能体",

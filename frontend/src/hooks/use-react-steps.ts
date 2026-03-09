@@ -16,6 +16,10 @@ export interface ReactStepsResult {
   streamingAnswer: string
   /** True when all answer chunks have been received (answer status="done"). */
   answerDone: boolean
+  /** Suggested follow-up questions (from async `suggestions` event or done payload). */
+  suggestions: string[]
+  /** Auto-generated conversation title (from async `title` event or done payload). */
+  title: string | null
 }
 
 /** Normalize V1/V2 legacy event formats to V3 (type + status). */
@@ -41,6 +45,8 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
     let streamingAnswer = ""
     let answerDone = false
     let iterCount = 0
+    let suggestions: string[] = []
+    let title: string | null = null
 
     for (const msg of messages) {
       // Handle answer events (streamed before done)
@@ -54,6 +60,20 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
         } else if (ev.status === "done") {
           answerDone = true
         }
+        continue
+      }
+      // Handle suggestions event (new async flow)
+      if (msg.event === "suggestions") {
+        suggestions = (msg.data as { items: string[] }).items
+        continue
+      }
+      // Handle title event (new async flow)
+      if (msg.event === "title") {
+        title = (msg.data as { title: string }).title
+        continue
+      }
+      // Skip end event — it's a stream terminator, not a data event
+      if (msg.event === "end") {
         continue
       }
       // Normalize step events for backward compat with stored sse_events
@@ -105,6 +125,14 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
       let duration: number | undefined
       if (msg.event === "done") {
         duration = (msg.data as ReactDoneEvent).iter_elapsed
+        // Backward compat: read from done payload if separate events didn't arrive
+        const doneData = msg.data as ReactDoneEvent
+        if (!suggestions.length && doneData.suggestions?.length) {
+          suggestions = doneData.suggestions
+        }
+        if (title === null && doneData.title) {
+          title = doneData.title
+        }
       }
 
       result.push({ event: msg.event, data, duration, displayIteration, timestamp: msg.timestamp })
@@ -131,7 +159,7 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
           }
           return item
         })
-      return { items, streamingAnswer, answerDone }
+      return { items, streamingAnswer, answerDone, suggestions, title }
     }
 
     // After completion: drop transient items but keep thinking-done (has reasoning)
@@ -143,9 +171,9 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
         if (step.type === "answer") return false
         return true
       })
-      return { items, streamingAnswer, answerDone }
+      return { items, streamingAnswer, answerDone, suggestions, title }
     }
 
-    return { items: result, streamingAnswer, answerDone }
+    return { items: result, streamingAnswer, answerDone, suggestions, title }
   }, [messages, isRunning])
 }

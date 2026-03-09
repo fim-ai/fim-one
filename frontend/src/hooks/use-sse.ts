@@ -81,7 +81,7 @@ export function useSSE() {
           try {
             const data: unknown = JSON.parse(rawData)
             setMessages((prev) => [...prev, { event: eventType, data, timestamp: Date.now() }])
-            if (eventType === "done") {
+            if (eventType === "end") {
               controller.abort()
               abortRef.current = null
               setIsRunning(false)

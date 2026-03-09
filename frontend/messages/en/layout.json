@@ -11,6 +11,8 @@
   "tools": "Tools",
   "artifacts": "Artifacts",
   "allChats": "All Chats",
+  "newChatTooltipMac": "New chat ({shortcut})",
+  "newChatTooltipWin": "New chat ({shortcut})",
   "searchTooltipMac": "Search ({shortcut})",
   "searchTooltipWin": "Search ({shortcut})",
   "maintenanceTitle": "System Maintenance",

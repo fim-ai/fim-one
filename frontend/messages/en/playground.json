@@ -98,6 +98,10 @@
   "collapseClip": "Collapse",
   "removeClip": "Remove clip",
   "exportButton": "Export",
+  "previousRoundHeader": "Round {round} · Failed",
+  "previousRoundSummary": "{completed}/{total} steps · Goal not achieved",
+  "roundLabel": "Round {round}",
+  "loadingNextRound": "Preparing next round...",
   "slash": {
     "newDesc": "Start a fresh conversation",
 "agentDesc": "Quick-select an agent by name",

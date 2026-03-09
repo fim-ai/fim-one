@@ -43,7 +43,7 @@ export default function AgentsPage() {
     try {
       setIsLoading(true)
       const data = await agentApi.list()
-      setAgents((data.items as AgentResponse[]).filter((a) => !a.name.startsWith("__builder_")))
+      setAgents((data.items as AgentResponse[]).filter((a) => !a.is_builder))
     } catch (err) {
       console.error("Failed to load agents:", err)
     } finally {

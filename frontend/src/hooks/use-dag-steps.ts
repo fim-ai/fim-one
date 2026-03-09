@@ -31,6 +31,13 @@ export interface StepState {
   }>
 }
 
+export interface RoundSnapshot {
+  round: number
+  stepStates: StepState[]
+  analysisPhase: DagPhaseEvent | null
+  planSteps: DagPhaseEvent["steps"]
+}
+
 export interface DagStepsResult {
   planSteps: DagPhaseEvent["steps"]
   stepStates: StepState[]
@@ -38,11 +45,16 @@ export interface DagStepsResult {
   doneEvent: DagDoneEvent | null
   currentPhase: string | null
   currentRound: number
+  previousRounds: RoundSnapshot[]
   injectEvents: Array<{ content: string; phase?: string; timestamp: number }>
   /** Accumulated answer text from streaming answer events. */
   streamingAnswer: string
   /** True when all answer chunks have been received. */
   answerDone: boolean
+  /** Suggested follow-up questions (from async `suggestions` event or done payload). */
+  suggestions: string[]
+  /** Auto-generated conversation title (from async `title` event or done payload). */
+  title: string | null
 }
 
 export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStepsResult {
@@ -53,9 +65,12 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
     let doneEvent: DagDoneEvent | null = null
     let currentPhase: string | null = null
     let currentRound = 1
+    const previousRounds: RoundSnapshot[] = []
     const injectEvents: Array<{ content: string; phase?: string; timestamp: number }> = []
     let streamingAnswer = ""
     let answerDone = false
+    let suggestions: string[] = []
+    let title: string | null = null
 
     for (const msg of messages) {
       // Handle answer events (streamed before done)
@@ -71,6 +86,20 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
         }
         continue
       }
+      // Handle suggestions event (new async flow)
+      if (msg.event === "suggestions") {
+        suggestions = (msg.data as { items: string[] }).items
+        continue
+      }
+      // Handle title event (new async flow)
+      if (msg.event === "title") {
+        title = (msg.data as { title: string }).title
+        continue
+      }
+      // Skip end event — it's a stream terminator, not a data event
+      if (msg.event === "end") {
+        continue
+      }
       if (msg.event === "phase") {
         const phase = msg.data as DagPhaseEvent
 
@@ -80,9 +109,16 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
         }
 
         if (phase.name === "planning" && phase.status === "done" && phase.steps) {
-          // On re-plan (round > 1), clear old steps before populating new ones
+          // On re-plan (round > 1), snapshot current round then clear for new round
           if (currentRound > 1) {
+            previousRounds.push({
+              round: currentRound - 1,
+              stepStates: Array.from(stepMap.values()),
+              analysisPhase,
+              planSteps,
+            })
             stepMap.clear()
+            analysisPhase = null
           }
           planSteps = phase.steps
           for (const s of phase.steps) {
@@ -106,7 +142,8 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
         }
         if (phase.name === "replanning") {
           currentPhase = "replanning"
-          analysisPhase = null
+          // Keep analysisPhase alive so the snapshot captures it —
+          // it gets reset to null after snapshotting in the planning-done handler.
         }
         if (phase.name === "planning" && phase.status === "start") {
           currentPhase = "planning"
@@ -138,10 +175,14 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
           if (sp.duration) state.duration = sp.duration
           if (sp.started_at != null) state.started_at = sp.started_at
         } else if (sp.event === "iteration") {
+          // Backend now skips thinking shims and __selecting_tools__ in executor,
+          // but guard here too for backward compat with older event streams.
+          if (sp.type === "thinking" || sp.tool_name === "__selecting_tools__") continue
+
           if (sp.tool_name && !state.tools_used.includes(sp.tool_name)) {
             state.tools_used.push(sp.tool_name)
           }
-          const isStart = sp.type === "tool_call" && sp.observation == null && sp.error == null
+          const isStart = sp.status === "start"
           if (isStart) {
             state.iterations.push({
               type: sp.type,
@@ -198,6 +239,13 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
 
       if (msg.event === "done") {
         doneEvent = msg.data as DagDoneEvent
+        // Backward compat: read from done payload if separate events didn't arrive
+        if (!suggestions.length && doneEvent.suggestions?.length) {
+          suggestions = doneEvent.suggestions
+        }
+        if (title === null && doneEvent.title) {
+          title = doneEvent.title
+        }
       }
 
       if (msg.event === "inject") {
@@ -225,9 +273,12 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
       doneEvent,
       currentPhase,
       currentRound,
+      previousRounds,
       injectEvents,
       streamingAnswer,
       answerDone,
+      suggestions,
+      title,
     }
   }, [messages, isRunning])
 }

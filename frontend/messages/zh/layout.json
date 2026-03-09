@@ -11,6 +11,8 @@
   "tools": "工具",
   "artifacts": "Artifacts",
   "allChats": "全部对话",
+  "newChatTooltipMac": "新对话 ({shortcut})",
+  "newChatTooltipWin": "新对话 ({shortcut})",
   "searchTooltipMac": "搜索 ({shortcut})",
   "searchTooltipWin": "搜索 ({shortcut})",
   "maintenanceTitle": "系统维护中",

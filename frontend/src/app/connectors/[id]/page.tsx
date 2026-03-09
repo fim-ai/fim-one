@@ -140,7 +140,7 @@ export default function ConnectorEditorPage() {
           <Tabs
             value={activeTab}
             onValueChange={setActiveTab}
-            className="flex flex-col h-full"
+            className="flex flex-col flex-1 min-h-0"
           >
             <TabsList className="shrink-0 mx-4 mt-3 w-fit">
               <TabsTrigger value="connector" className="gap-1.5">
@@ -166,7 +166,7 @@ export default function ConnectorEditorPage() {
               />
             </TabsContent>
 
-            <TabsContent value="actions" className="flex-1 min-h-0">
+            <TabsContent value="actions" className="flex-1 min-h-0 overflow-hidden flex flex-col">
               {connector && (
                 <ActionManager connector={connector} onChanged={reload} />
               )}

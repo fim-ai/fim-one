@@ -106,7 +106,7 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
                   <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
                     {summary && <span>{summary}</span>}
                     {data.duration != null && (
-                      <span className="flex items-center gap-1 font-mono tabular-nums">
+                      <span className="flex items-center gap-1 tabular-nums">
                         <Clock className="h-3 w-3" />
                         {fmtDuration(data.duration)}
                       </span>

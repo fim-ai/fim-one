@@ -3,16 +3,10 @@ import dagre from "dagre"
 import type { Edge } from "@xyflow/react"
 import { MarkerType } from "@xyflow/react"
 import type { DagPhaseEvent } from "@/types/api"
-import type { StepState } from "@/hooks/use-dag-steps"
 import type { StepFlowNode, StepNodeData } from "./types"
 
 const NODE_WIDTH = 200
 const NODE_HEIGHT = 80
-
-interface UseDagLayoutArgs {
-  planSteps: DagPhaseEvent["steps"]
-  stepStates: StepState[]
-}
 
 interface UseDagLayoutResult {
   nodes: StepFlowNode[]
@@ -20,18 +14,19 @@ interface UseDagLayoutResult {
   dagreCenters: Map<string, number>
 }
 
-export function useDagLayout({
-  planSteps,
-  stepStates,
-}: UseDagLayoutArgs): UseDagLayoutResult {
+/**
+ * Compute Dagre layout from plan topology only.
+ *
+ * Nodes are initialised with "pending" status — live status/duration/tools
+ * are merged by the component's useEffect so that position-stable updates
+ * don't trigger a full layout recalculation.
+ */
+export function useDagLayout(
+  planSteps: DagPhaseEvent["steps"],
+): UseDagLayoutResult {
   return useMemo(() => {
     if (!planSteps || planSteps.length === 0) {
       return { nodes: [], edges: [], dagreCenters: new Map() }
-    }
-
-    const stateMap = new Map<string, StepState>()
-    for (const s of stepStates) {
-      stateMap.set(s.step_id, s)
     }
 
     const g = new dagre.graphlib.Graph()
@@ -71,17 +66,16 @@ export function useDagLayout({
     const nodes: StepFlowNode[] = planSteps.map((step) => {
       const nodeWithPosition = g.node(step.id)
       dagreCenters.set(step.id, nodeWithPosition.y)
-      const state = stateMap.get(step.id)
 
       const nodeData: StepNodeData = {
         step_id: step.id,
         task: step.task,
-        status: (state?.status as StepNodeData["status"]) ?? "pending",
+        status: "pending",
         tool_hint: step.tool_hint,
-        duration: state?.duration,
-        started_at: state?.started_at,
-        tools_used: state?.tools_used,
-        state: state ?? {
+        duration: undefined,
+        started_at: undefined,
+        tools_used: undefined,
+        state: {
           step_id: step.id,
           task: step.task,
           status: "pending",
@@ -102,5 +96,5 @@ export function useDagLayout({
     })
 
     return { nodes, edges: edgeList, dagreCenters }
-  }, [planSteps, stepStates])
+  }, [planSteps])
 }

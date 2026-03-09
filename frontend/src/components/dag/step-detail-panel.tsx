@@ -31,7 +31,7 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
             <div className="flex-1 min-w-0 space-y-1">
               <Badge
                 variant="outline"
-                className="text-[10px] font-mono border-amber-500/30 text-amber-400"
+                className="text-[10px] border-amber-500/30 text-amber-400"
               >
                 {state.step_id}
               </Badge>
@@ -42,7 +42,7 @@ export function StepDetailPanel({ state, onClose }: StepDetailPanelProps) {
                 {state.task}
               </p>
               {state.duration != null && (
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono tabular-nums">
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums">
                   <Clock className="h-2.5 w-2.5" />
                   <span>{fmtDuration(state.duration)}</span>
                 </div>

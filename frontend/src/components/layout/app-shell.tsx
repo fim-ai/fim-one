@@ -81,6 +81,19 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
   if (collapsed) {
     return (
       <div className="flex flex-col items-center gap-1 px-2 py-2 shrink-0">
+        <SidebarTooltip label={isMac ? t("newChatTooltipMac", { shortcut: "⇧⌘O" }) : t("newChatTooltipWin", { shortcut: "Ctrl+Shift+O" })} collapsed>
+          <button
+            onClick={handleNewChat}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
+              isActive
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </SidebarTooltip>
         <SidebarTooltip label={isMac ? t("searchTooltipMac", { shortcut: "⌘K" }) : t("searchTooltipWin", { shortcut: "Ctrl+K" })} collapsed>
           <button
             onClick={() => setSearchOpen(true)}

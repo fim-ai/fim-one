@@ -38,7 +38,7 @@ export function IterationHeader({ data, summary }: IterationHeaderProps) {
         </span>
       )}
       {!isLoading && data.duration != null && (
-        <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 font-mono tabular-nums">
+        <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 tabular-nums">
           <Clock className="h-2.5 w-2.5" />
           {fmtDuration(data.duration)}
         </span>

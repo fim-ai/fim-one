@@ -114,7 +114,7 @@ function ElapsedTimer({ startedAt }: { startedAt: number }) {
   }, [startedAt])
 
   return (
-    <span className="text-[10px] text-muted-foreground ml-auto font-mono tabular-nums">
+    <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
       {fmtDuration(elapsed)}
     </span>
   )
@@ -152,14 +152,14 @@ function StepNodeComponent({ data }: NodeProps) {
           <div className="flex items-center gap-1.5">
             <span
               className={cn(
-                "text-[10px] font-mono px-1.5 py-0.5 rounded",
+                "text-[10px] px-1.5 py-0.5 rounded",
                 config.badgeBg
               )}
             >
               {nodeData.step_id}
             </span>
             {showCompletedDuration && (
-              <span className="text-[10px] text-muted-foreground ml-auto font-mono tabular-nums">
+              <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
                 {fmtDuration(nodeData.duration!)}
               </span>
             )}
@@ -177,7 +177,7 @@ function StepNodeComponent({ data }: NodeProps) {
           {showStartTime && (
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
               <Clock className="h-2.5 w-2.5 shrink-0" />
-              <span className="font-mono tabular-nums">{fmtTime(nodeData.started_at!)}</span>
+              <span className="tabular-nums">{fmtTime(nodeData.started_at!)}</span>
             </div>
           )}
         </div>
