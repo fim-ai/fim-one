@@ -43,16 +43,20 @@ UVICORN_LOG_LEVEL="${LOG_LEVEL:-info}"
 UVICORN_LOG_LEVEL="$(echo "$UVICORN_LOG_LEVEL" | tr '[:upper:]' '[:lower:]')"
 
 CMD="${1:-portal}"
+# Worker count for production modes (portal / api); dev always uses 1 worker.
+# Set WORKERS=4 (or higher) when Redis is configured for cross-worker state.
+WORKERS="${WORKERS:-1}"
 
 case "$CMD" in
   portal)
     free_port 8000
     free_port 3000
     echo "Starting FIM Agent Portal..."
-    echo "  API backend  → http://localhost:8000"
+    WORKER_INFO=""; [ "$WORKERS" -gt 1 ] 2>/dev/null && WORKER_INFO=" (${WORKERS} workers)"
+    echo "  API backend  → http://localhost:8000${WORKER_INFO}"
     echo "  Next.js app  → http://localhost:3000"
     # Start API in background, Next.js in foreground
-    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --log-level "$UVICORN_LOG_LEVEL" &
+    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --workers "$WORKERS" --log-level "$UVICORN_LOG_LEVEL" &
     API_PID=$!
     trap "kill $API_PID 2>/dev/null" EXIT
     cd frontend && pnpm dev
@@ -88,8 +92,9 @@ case "$CMD" in
     ;;
   api)
     free_port 8000
-    echo "Starting FIM Agent API at http://localhost:8000"
-    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --log-level "$UVICORN_LOG_LEVEL"
+    WORKER_INFO=""; [ "$WORKERS" -gt 1 ] 2>/dev/null && WORKER_INFO=" (${WORKERS} workers)"
+    echo "Starting FIM Agent API at http://localhost:8000${WORKER_INFO}"
+    uv run uvicorn fim_agent.web:create_app --factory --host 0.0.0.0 --port 8000 --workers "$WORKERS" --log-level "$UVICORN_LOG_LEVEL"
     ;;
   help|--help|-h)
     usage
