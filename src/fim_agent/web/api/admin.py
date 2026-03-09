@@ -375,7 +375,7 @@ async def get_stats(
             func.count().label("cnt"),
         )
         .join(Agent, Agent.id == Conversation.agent_id)
-        .where(Conversation.agent_id.isnot(None))
+        .where(Conversation.agent_id.isnot(None), Agent.is_builder == False)  # noqa: E712
         .group_by(Conversation.agent_id, Agent.name)
         .order_by(func.count().desc())
         .limit(5)

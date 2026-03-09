@@ -41,6 +41,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
             agent.published_at.isoformat() if agent.published_at else None
         ),
         is_global=agent.is_global,
+        is_builder=agent.is_builder,
         created_at=agent.created_at.isoformat() if agent.created_at else "",
         updated_at=agent.updated_at.isoformat() if agent.updated_at else None,
     )
@@ -158,10 +159,11 @@ async def list_agents(
 ) -> PaginatedResponse:
     from sqlalchemy import and_
     base = select(Agent).where(
+        Agent.is_builder == False,  # noqa: E712
         or_(
             Agent.user_id == current_user.id,
             and_(Agent.is_global == True, Agent.status == "published"),  # noqa: E712
-        )
+        ),
     )
     if agent_status is not None:
         base = base.where(Agent.status == agent_status)

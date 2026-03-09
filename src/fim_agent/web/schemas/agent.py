@@ -54,6 +54,7 @@ class AgentResponse(BaseModel):
     status: str
     published_at: str | None
     is_global: bool = False
+    is_builder: bool = False
     created_at: str
     updated_at: str | None
 

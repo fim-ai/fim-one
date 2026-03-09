@@ -46,10 +46,17 @@ from .connector_builder import (
     ConnectorDeleteActionTool,
     ConnectorUpdateSettingsTool,
     ConnectorTestActionTool,
+    ConnectorGetSettingsTool,
+    ConnectorTestConnectionTool,
+    ConnectorImportOpenAPITool,
 )
 from .agent_builder import (
     AgentGetSettingsTool,
     AgentUpdateSettingsTool,
+    AgentListConnectorsTool,
+    AgentAddConnectorTool,
+    AgentRemoveConnectorTool,
+    AgentSetModelTool,
 )
 
 __all__ = [
@@ -76,8 +83,15 @@ __all__ = [
     "ConnectorDeleteActionTool",
     "ConnectorUpdateSettingsTool",
     "ConnectorTestActionTool",
+    "ConnectorGetSettingsTool",
+    "ConnectorTestConnectionTool",
+    "ConnectorImportOpenAPITool",
     "AgentGetSettingsTool",
     "AgentUpdateSettingsTool",
+    "AgentListConnectorsTool",
+    "AgentAddConnectorTool",
+    "AgentRemoveConnectorTool",
+    "AgentSetModelTool",
     "discover_builtin_tools",
 ]
 
@@ -119,8 +133,15 @@ _SKIP_AUTO_DISCOVER: set[type] = {
     ConnectorDeleteActionTool,
     ConnectorUpdateSettingsTool,
     ConnectorTestActionTool,
+    ConnectorGetSettingsTool,
+    ConnectorTestConnectionTool,
+    ConnectorImportOpenAPITool,
     AgentGetSettingsTool,    # agent builder tools — injected by chat.py for agent builder agents
     AgentUpdateSettingsTool,
+    AgentListConnectorsTool,
+    AgentAddConnectorTool,
+    AgentRemoveConnectorTool,
+    AgentSetModelTool,
 }
 
 
@@ -188,6 +209,7 @@ def discover_builtin_tools(
             if (
                 issubclass(obj, BaseTool)
                 and obj is not BaseTool
+                and not obj.__name__.startswith("_")
                 and not inspect.isabstract(obj)
                 and obj not in _SKIP_AUTO_DISCOVER
             ):

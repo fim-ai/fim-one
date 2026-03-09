@@ -24,6 +24,9 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
     is_global: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="0"
     )
+    is_builder: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
     cloned_from_agent_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
