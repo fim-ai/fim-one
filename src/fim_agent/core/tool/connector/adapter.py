@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from fim_agent.core.security import validate_url
+from fim_agent.core.security import get_safe_async_client, validate_url
 from fim_agent.core.tool.base import BaseTool
 from fim_agent.core.tool.truncation import truncate_tool_output
 
@@ -152,7 +152,7 @@ class ConnectorToolAdapter(BaseTool):
         result = ""
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with get_safe_async_client(timeout=30) as client:
                 resp = await client.request(
                     method=self._method,
                     url=url,

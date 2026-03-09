@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from fim_agent.core.security import validate_url
+from fim_agent.core.security import get_safe_async_client, validate_url
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ async def fetch_url_as_markdown(url: str, jina_api_key: str) -> dict:
         "Accept": "application/json",
         "X-Return-Format": "markdown",
     }
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with get_safe_async_client(timeout=30) as client:
         resp = await client.get(f"{_JINA_READER_BASE}{url}", headers=headers)
         resp.raise_for_status()
         data = resp.json()
@@ -60,7 +60,7 @@ async def resolve_url(url: str, jina_api_key: str) -> dict:
     if suffix in _FILE_EXTENSIONS:
         validate_url(url)
         filename = Path(parsed.path).name or "download"
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with get_safe_async_client(timeout=60) as client:
             resp = await client.get(url)
             resp.raise_for_status()
         return {

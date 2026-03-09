@@ -6,6 +6,8 @@ from html.parser import HTMLParser
 
 import httpx
 
+from fim_agent.core.security import get_safe_async_client
+
 from .base import BaseWebFetch
 
 _DEFAULT_TIMEOUT = 30
@@ -52,7 +54,7 @@ class HttpxFetch(BaseWebFetch):
         self._timeout = timeout
 
     async def fetch(self, url: str) -> str:
-        async with httpx.AsyncClient(
+        async with get_safe_async_client(
             timeout=self._timeout,
             follow_redirects=True,
             headers=_DEFAULT_HEADERS,

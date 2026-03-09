@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from fim_agent.core.security import resolve_and_check
+from fim_agent.core.security import get_safe_async_client, resolve_and_check
 
 from ..base import BaseTool
 
@@ -173,7 +173,7 @@ class HttpRequestTool(BaseTool):
 
         # --- Send request ---
         try:
-            async with httpx.AsyncClient(
+            async with get_safe_async_client(
                 timeout=timeout_val,
                 follow_redirects=True,
                 max_redirects=_MAX_REDIRECTS,

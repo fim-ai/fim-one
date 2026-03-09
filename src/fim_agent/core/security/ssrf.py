@@ -10,6 +10,8 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
+import httpx
+
 # ------------------------------------------------------------------
 # Blocked IP ranges
 # ------------------------------------------------------------------
@@ -107,3 +109,82 @@ def validate_url(url: str, *, allow_dns_failure: bool = False) -> None:
                 f"Blocked request to internal address '{ip}' "
                 f"resolved from hostname '{hostname}'."
             )
+
+
+# ------------------------------------------------------------------
+# Transport-level DNS pinning (prevents DNS rebinding)
+# ------------------------------------------------------------------
+
+
+def _is_ip_literal(host: str) -> bool:
+    """Return True if *host* is already an IP address (v4 or v6)."""
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_and_pin(hostname: str) -> str:
+    """Resolve *hostname*, check all IPs, return first public IP.
+
+    Raises:
+        ValueError: If DNS fails or any resolved IP is private/internal.
+    """
+    try:
+        results = socket.getaddrinfo(
+            hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM,
+        )
+    except socket.gaierror as exc:
+        raise ValueError(f"DNS resolution failed for '{hostname}': {exc}") from exc
+
+    if not results:
+        raise ValueError(f"DNS resolution returned no results for '{hostname}'")
+
+    first_ip: str | None = None
+    for _family, _type, _proto, _canonname, sockaddr in results:
+        ip = sockaddr[0]
+        if is_private_ip(ip):
+            raise ValueError(
+                f"SSRF blocked: resolved IP '{ip}' for '{hostname}' "
+                "is a private/internal address"
+            )
+        if first_ip is None:
+            first_ip = ip
+
+    assert first_ip is not None
+    return first_ip
+
+
+class SSRFSafeTransport(httpx.AsyncHTTPTransport):
+    """httpx transport that pins DNS resolution to prevent rebinding.
+
+    On each request, resolves the hostname ourselves, checks all IPs
+    against the private range blocklist, then rewrites the request URL
+    to use the resolved IP directly (preserving the original Host header).
+    """
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        host = request.url.host
+        if host and not _is_ip_literal(host):
+            ip = _resolve_and_pin(host)
+            # Rewrite URL to use the pinned IP; preserve original Host header
+            request.url = request.url.copy_with(host=ip)
+            # Ensure the original hostname is sent in the Host header
+            if "host" not in request.headers:
+                request.headers["host"] = host
+        return await super().handle_async_request(request)
+
+
+def get_safe_async_client(**kwargs) -> httpx.AsyncClient:
+    """Factory returning an httpx.AsyncClient with SSRF-safe DNS pinning.
+
+    Usage::
+
+        async with get_safe_async_client(timeout=30) as client:
+            resp = await client.get("https://example.com")
+    """
+    transport = kwargs.pop("transport", None)
+    if transport is None:
+        transport = SSRFSafeTransport()
+    return httpx.AsyncClient(transport=transport, **kwargs)
