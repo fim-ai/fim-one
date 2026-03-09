@@ -64,6 +64,8 @@ def is_retryable_error(error: BaseException) -> bool:
         "ReadTimeout",
         "ConnectTimeout",
         "TimeoutException",
+        "Timeout",                  # litellm
+        "ServiceUnavailableError",  # litellm
     }
     if error_type_name in retryable_names:
         return True

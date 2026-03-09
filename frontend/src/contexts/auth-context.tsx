@@ -83,7 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           scheduleRefresh(data.expires_in)
         } catch {
           clearAuth()
-          router.replace("/login")
+          const currentPath = window.location.pathname
+          const redirectParam = currentPath && currentPath !== "/" ? `?redirect=${encodeURIComponent(currentPath)}` : ""
+          router.replace(`/login${redirectParam}`)
         }
       }, delay)
     },
@@ -104,7 +106,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthFailureCallback(() => {
       clearAuth()
       toast.error(tError("session_expired"))
-      router.replace("/login")
+      // Carry current path so login page can redirect back after re-auth
+      const currentPath = window.location.pathname
+      const redirectParam = currentPath && currentPath !== "/" ? `?redirect=${encodeURIComponent(currentPath)}` : ""
+      router.replace(`/login${redirectParam}`)
     })
     return () => setAuthFailureCallback(null)
   }, [clearAuth, router, tError])

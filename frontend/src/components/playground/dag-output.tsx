@@ -36,6 +36,7 @@ import type { StepState } from "@/hooks/use-dag-steps"
 import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
 import { IterationCard, ArtifactChips } from "@/components/steps"
 import type { IterationData } from "@/components/steps"
+import { CollapsibleText } from "@/components/playground/collapsible-text"
 import { SuggestedFollowups } from "./suggested-followups"
 import { stripCitations } from "@/lib/evidence-utils"
 import {
@@ -140,7 +141,7 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
           <div key={`inject-${i}`} className="flex gap-3">
             <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7" iconClassName="h-3.5 w-3.5" />
             <div className="flex-1 pt-0.5">
-              <p className="text-sm text-foreground">{evt.content}</p>
+              <CollapsibleText content={evt.content} className="text-sm text-foreground whitespace-pre-wrap" />
             </div>
           </div>
         ))}
@@ -199,7 +200,7 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
         <div key={`inject-${i}`} className="flex gap-3">
           <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7" iconClassName="h-3.5 w-3.5" />
           <div className="flex-1 pt-0.5">
-            <p className="text-sm text-foreground">{evt.content}</p>
+            <CollapsibleText content={evt.content} className="text-sm text-foreground whitespace-pre-wrap" />
           </div>
         </div>
       ))}

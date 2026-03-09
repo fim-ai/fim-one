@@ -14,6 +14,9 @@ import { useSSE } from "@/hooks/use-sse"
 import { useSlashCommands } from "@/hooks/use-slash-commands"
 import { SlashCommandMenu } from "@/components/playground/slash-command-menu"
 import { ExportDialog } from "@/components/playground/export-dialog"
+import { CollapsibleText } from "@/components/playground/collapsible-text"
+import { ClipMessageContent } from "@/components/playground/clip-message-content"
+import type { ClipMessageMetadata } from "@/components/playground/clip-message-content"
 import { useDagSteps } from "@/hooks/use-dag-steps"
 import { useReactSteps } from "@/hooks/use-react-steps"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -199,6 +202,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
       setQuery("")
       setSourceMode(null)
       setPendingQuery(null)
+
     }
     if (activeConversation) {
       prevActiveIdRef.current = activeConversation.id
@@ -212,6 +216,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
       setQuery("")
       setSourceMode(null)
       setPendingQuery(null)
+
       prevActiveIdRef.current = null
     }
   }, [activeId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -244,7 +249,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
   // (Agent selection no longer overrides mode -- user controls mode independently)
 
   const runWithQuery = useCallback(
-    async (q: string, imageIds?: string[]) => {
+    async (q: string, imageIds?: string[], userMetadata?: Record<string, unknown>) => {
       const trimmed = q.trim()
       if (!trimmed) return
 
@@ -307,6 +312,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
       if (accessToken) body.token = accessToken
       if (selectedAgent?.id) body.agent_id = selectedAgent.id
       if (imageIds?.length) body.image_ids = imageIds.join(",")
+      if (userMetadata) body.user_metadata = JSON.stringify(userMetadata)
       setSourceMode(mode)
       start(url, { body, onError: (err) => toast.error(getErrorMessage(err, tError)) })
     },
@@ -367,6 +373,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
         onNewChat={() => {
           reset()
           setPendingQuery(null)
+    
           setSourceMode(null)
           clearActive()
           if (!embedded) router.push("/new")
@@ -392,6 +399,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
               if (pendingMode) {
                 reset()
                 setPendingQuery(null)
+          
                 setSourceMode(null)
                 clearActive()
                 setMode(pendingMode)
@@ -483,13 +491,26 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
   const reactItems = useReactSteps(sseMessages, false)
   const dagData = useDagSteps(sseMessages, false)
 
+  // Detect clip metadata in user message
+  const hasClipMeta = Array.isArray(userMetadata?.clips) && (userMetadata.clips as unknown[]).length > 0
+  const clipMetadata: ClipMessageMetadata | null = hasClipMeta
+    ? {
+        clips: userMetadata!.clips as ClipMessageMetadata["clips"],
+        userQuery: (userMetadata!.userQuery as string) ?? "",
+      }
+    : null
+
   return (
     <>
       {userContent && (
-        <div className="flex items-center gap-3">
-          <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7" iconClassName="h-3.5 w-3.5" />
+        <div className={cn("flex gap-3", !clipMetadata && "items-center")}>
+          <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
           <div className="flex-1">
-            <p className="text-sm text-foreground">{userContent}</p>
+            {clipMetadata ? (
+              <ClipMessageContent metadata={clipMetadata} />
+            ) : (
+              <CollapsibleText content={userContent} className="text-sm text-foreground whitespace-pre-wrap" />
+            )}
             {Array.isArray(userMetadata?.images) && userMetadata.images.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {(userMetadata.images as Array<{ file_id: string; filename: string }>).map((img) => (
@@ -548,7 +569,7 @@ interface PlaygroundContentProps {
   onAgentChange: (agent: AgentResponse | null) => void
   onQueryChange: (q: string) => void
   onModeChange: (mode: AgentMode) => void
-  onRunWithQuery: (q: string, imageIds?: string[]) => void
+  onRunWithQuery: (q: string, imageIds?: string[], userMetadata?: Record<string, unknown>) => void
   onAbort: () => void
   onExampleSelect: (example: string) => void
   onNewChat: () => void
@@ -593,6 +614,9 @@ function PlaygroundContent({
   const composingRef = useRef(false)
   const [composing, setComposing] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+
+  // Clip metadata for the current pending query (cleared when pendingQuery clears)
+  const [pendingClipMetadata, setPendingClipMetadata] = useState<ClipMessageMetadata | null>(null)
 
   // Auto-focus textarea on new chat
   useEffect(() => {
@@ -724,6 +748,7 @@ function PlaygroundContent({
     setPendingImages([])
     setClips([])
     setExpandedClips(new Set())
+    setPendingClipMetadata(null)
     onRunWithQuery(q)
     requestAnimationFrame(() => scrollViewportToBottom())
   }, [onRunWithQuery, scrollViewportToBottom, setAttachedFiles, setPendingImages])
@@ -819,9 +844,12 @@ function PlaygroundContent({
     }
   }, [hasMessages])
 
-  // Clear pending images when pending query is cleared
+  // Clear pending images and clip metadata when pending query is cleared
   useEffect(() => {
-    if (!pendingQuery) setPendingImages([])
+    if (!pendingQuery) {
+      setPendingImages([])
+      setPendingClipMetadata(null)
+    }
   }, [pendingQuery])
 
   const scrollToBottom = useCallback(() => {
@@ -850,7 +878,7 @@ function PlaygroundContent({
   useEffect(() => {
     if (agentsLoaded) return
     agentApi.list(1, 50, "published").then((res) => {
-      setAgents(res.items as AgentResponse[])
+      setAgents((res.items as AgentResponse[]).filter(a => !a.name.startsWith("__builder_")))
       setAgentsLoaded(true)
     }).catch(() => setAgentsLoaded(true))
   }, [agentsLoaded])
@@ -861,11 +889,16 @@ function PlaygroundContent({
 
   // Auto-select agent from URL param
   useEffect(() => {
-    if (!initialAgentId || !agentsLoaded || agents.length === 0) return
+    if (!initialAgentId || !agentsLoaded) return
     if (selectedAgent?.id === initialAgentId) return // already selected
     const found = agents.find(a => a.id === initialAgentId)
     if (found) {
       onAgentChangeRef.current(found)
+    } else {
+      // Agent not in published list (e.g. builder agents) — fetch directly
+      agentApi.get(initialAgentId).then(agent => {
+        onAgentChangeRef.current(agent)
+      }).catch(() => {})
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAgentId, agentsLoaded, agents, selectedAgent])
@@ -971,6 +1004,19 @@ function PlaygroundContent({
     const textFiles = attachedFiles.filter((f) => !isImageFile(f))
     const imageFiles = attachedFiles.filter((f) => isImageFile(f))
 
+    // Build clip metadata for persistence & rendering
+    let clipMetadata: ClipMessageMetadata | null = null
+    if (clips.length > 0) {
+      clipMetadata = {
+        clips: clips.map((c) => ({
+          content: c.content,
+          preview: c.preview,
+          charCount: c.charCount,
+        })),
+        userQuery: finalQuery, // the text the user typed (before clip injection)
+      }
+    }
+
     // Clips: prepend pasted content before user query
     if (clips.length > 0) {
       const clipContext = clips
@@ -997,8 +1043,9 @@ function PlaygroundContent({
     // Image files: pass as image_ids parameter
     const imageIds = imageFiles.map((f) => f.file_id)
 
-    // Save image info for pending display before clearing
+    // Save image info and clip metadata for pending display before clearing
     setPendingImages(imageFiles.map((f) => ({ file_id: f.file_id, filename: f.filename })))
+    setPendingClipMetadata(clipMetadata)
 
     // Clean up preview URLs
     attachedFiles.forEach((f) => {
@@ -1008,7 +1055,12 @@ function PlaygroundContent({
     setClips([])
     setExpandedClips(new Set())
 
-    onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined)
+    // Build user_metadata to persist with the message
+    const userMetadata: Record<string, unknown> | undefined = clipMetadata
+      ? { clips: clipMetadata.clips, userQuery: clipMetadata.userQuery }
+      : undefined
+
+    onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined, userMetadata)
     requestAnimationFrame(() => scrollViewportToBottom())
   }, [attachedFiles, clips, query, onRunWithQuery, scrollViewportToBottom, t])
 
@@ -1158,10 +1210,14 @@ function PlaygroundContent({
                   )}
                   {/* Current turn: user message + live output */}
                   {pendingQuery && (
-                    <div className="flex items-center gap-3">
-                      <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7" iconClassName="h-3.5 w-3.5" />
+                    <div className={cn("flex gap-3", !pendingClipMetadata && "items-center")}>
+                      <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
                       <div className="flex-1">
-                        <p className="text-sm text-foreground">{pendingQuery}</p>
+                        {pendingClipMetadata ? (
+                          <ClipMessageContent metadata={pendingClipMetadata} />
+                        ) : (
+                          <CollapsibleText content={pendingQuery} className="text-sm text-foreground whitespace-pre-wrap" />
+                        )}
                         {pendingImages.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-2">
                             {pendingImages.map((img) => (

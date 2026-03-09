@@ -27,7 +27,7 @@ FIM Agent 有两个模型槽位：
 | 提供商 | 主 LLM | 快速 LLM | 推理支持 | 备注 |
 |---|---|---|---|---|
 | **OpenAI** | `gpt-5.4` / `o3` | `gpt-5-mini` / `gpt-5-nano` | ✅ `reasoning_effort` | 最佳原生工具调用；GPT-5.4 是最新旗舰 |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ⚠️ 通过 `extra_body` | 兼容端点不返回思考内容 |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ 通过 LiteLLM | 原生 API 路由；完整 `reasoning_content` 支持 |
 | **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | 2.5 为稳定 GA 版；3.x 为预览版 |
 | **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | 最佳成本效益比；V4 即将发布 |
 | **通义千问 (阿里)** | `qwen3.5-plus` / `qwen3-max` | `qwen-turbo` | ✅ `qwen3-max-thinking` | 中文能力最强 |
@@ -51,7 +51,7 @@ FIM Agent 有两个模型槽位：
 - 快速模型：`gpt-5-mini`（$0.25/$2.00 每 MTok）或 `gpt-5-nano`（最便宜，$0.05/$0.40 每 MTok）
 - 旧版：`gpt-4.1`（API 中仍可用，1M 上下文，适合编码）——已于 2026年2月从 ChatGPT 退役
 
-**推理：** 设置 `LLM_REASONING_EFFORT=medium` 即可——o 系列和 GPT-5.x 模型原生支持。o 系列需要 `max_completion_tokens` 而非 `max_tokens`，FIM Agent 会自动处理。
+**推理：** 设置 `LLM_REASONING_EFFORT=medium` 即可——o 系列和 GPT-5.x 模型原生支持。o 系列需要 `max_completion_tokens` 而非 `max_tokens`，LiteLLM 会自动处理。注意：GPT-5.x 在 `/v1/chat/completions` 端点不支持 `reasoning_effort` 与工具调用同时使用——FIM Agent 会在 Agent 工具调用步骤中自动静默跳过，确保工作流不中断。此外，GPT-5.x 仅支持 `temperature=1`——FIM Agent 通过 LiteLLM 的参数过滤（`drop_params`）自动处理此限制。
 
 | 模型 | 输入 $/MTok | 输出 $/MTok | 上下文 |
 |---|---|---|---|
@@ -83,7 +83,7 @@ LLM_REASONING_EFFORT=medium
 
 ### Anthropic (Claude)
 
-Claude 在细腻推理和复杂多步骤任务方面表现出色。FIM Agent 通过 Anthropic 的 OpenAI 兼容端点连接。当前最新一代为 Claude 4.6（2026年2月）。
+Claude 在细腻推理和复杂多步骤任务方面表现出色。FIM Agent 通过 [LiteLLM](https://github.com/BerriAI/litellm) 连接，自动将 Anthropic 模型路由到其原生 API。当前最新一代为 Claude 4.6（2026年2月）。
 
 **推荐模型：**
 - 主模型：`claude-sonnet-4-6`（能力与成本的最佳平衡——$3/$15 每 MTok）
@@ -94,9 +94,7 @@ Claude 在细腻推理和复杂多步骤任务方面表现出色。FIM Agent 通
 
 所有当前 Claude 模型都支持扩展思考，拥有 200K 上下文窗口（1M beta 中）。
 
-<Warning>
-**兼容端点不会返回推理内容。** 设置 `LLM_REASONING_EFFORT` 后，模型*确实会*进行内部思考，但思考文本不会包含在响应中——UI 的"思考中"步骤会出现但内容为空。这是 Anthropic 兼容层的限制。如需完整的推理可见性，请使用能返回 `reasoning_content` 的第三方代理。详见[扩展思考](/zh/configuration/environment-variables#扩展思考reasoning)。
-</Warning>
+**推理：** 设置 `LLM_REASONING_EFFORT=medium` 即可——LiteLLM 将 Anthropic 模型通过原生 API 路由，因此 `reasoning_content`（扩展思考）会完整返回并在 UI 的"思考中"步骤中显示。启用扩展思考后，Anthropic 要求 `temperature=1`——请在 `.env` 或模型配置中设置 `LLM_TEMPERATURE=1`。详见[扩展思考](/zh/configuration/environment-variables#扩展思考reasoning)。
 
 ```bash
 # .env — Anthropic Claude
@@ -104,6 +102,7 @@ LLM_API_KEY=sk-ant-...
 LLM_BASE_URL=https://api.anthropic.com/v1/
 LLM_MODEL=claude-sonnet-4-6
 FAST_LLM_MODEL=claude-haiku-4-5
+LLM_REASONING_EFFORT=medium
 ```
 
 ---
@@ -300,6 +299,63 @@ FAST_LLM_MODEL=qwen3.5:9b
 LLM_CONTEXT_SIZE=32768
 LLM_MAX_OUTPUT_TOKENS=8192
 ```
+
+---
+
+<div id="third-party-relay-platforms">
+  ## 第三方中转平台
+</div>
+
+许多用户通过单一中转（代理）服务访问多个模型提供商。FIM Agent 会根据 URL 路径模式自动检测正确的 API 协议——只需填写 `LLM_BASE_URL` 即可。
+
+### 工作原理
+
+当 base URL 指向第三方中转时，FIM Agent 会检查 URL 路径来决定使用哪种协议：
+
+| URL 路径包含 | 检测到的协议 | 认证头 | 核心优势 |
+|---|---|---|---|
+| `/v1`（或无匹配） | OpenAI 兼容 | `Authorization: Bearer` | 通用兜底，适用于大多数中转 |
+| `/claude` 或 `/anthropic` | Anthropic 原生 | `x-api-key` | 完整的 `reasoning_content`（扩展思考）支持 |
+| `/gemini` | Google 原生 | `x-goog-api-key` | 原生 Gemini 参数转换 |
+
+**解析优先级：** 数据库 provider 字段（显式指定） > 域名匹配（官方 API） > URL 路径提示（中转平台） > OpenAI 兼容兜底。
+
+### 示例：一个中转，三种协议
+
+使用同一个中转账户，只需更改 base URL 路径即可访问不同提供商：
+
+```bash
+# .env — 通过中转使用 Claude（Anthropic 原生协议）
+LLM_API_KEY=your-relay-key
+LLM_BASE_URL=https://relay.example.com/anthropic
+LLM_MODEL=claude-sonnet-4-6
+```
+
+```bash
+# .env — 通过中转使用 Gemini（Google 原生协议）
+LLM_API_KEY=your-relay-key
+LLM_BASE_URL=https://relay.example.com/gemini
+LLM_MODEL=gemini-2.5-pro
+```
+
+```bash
+# .env — 通过中转使用 GPT（OpenAI 兼容协议）
+LLM_API_KEY=your-relay-key
+LLM_BASE_URL=https://relay.example.com/v1
+LLM_MODEL=gpt-5.4
+```
+
+无需额外配置——认证头、参数格式和响应解析全部自动切换。
+
+### 为什么这很重要
+
+- **Anthropic 原生端点**提供完整的 `reasoning_content` 支持（扩展思考在 UI 中可见）、正确的工具调用格式以及 `x-api-key` 认证——这些特性在使用 OpenAI 兼容转换时会丢失。
+- **Google 原生端点**提供原生 Gemini 参数和 `x-goog-api-key` 认证。
+- **OpenAI 兼容**是通用兜底方案，适用于任何中转，但提供商特定功能（如扩展思考输出）可能不可用。
+
+<Note>
+如果你的中转平台使用非标准路径约定（例如 URL 中没有 `/claude` 或 `/anthropic`），FIM Agent 会回退到 OpenAI 兼容协议——这对大多数场景都能正常工作。如需完整的原生协议支持，可以通过管理后台的模型配置界面显式设置 `provider` 字段。
+</Note>
 
 ---
 

@@ -886,6 +886,7 @@ class ChatStreamRequest(BaseModel):
     agent_id: str | None = None
     token: str | None = None
     image_ids: str | None = None
+    user_metadata: str | None = None
 
 
 class InjectMessageRequest(BaseModel):
@@ -1011,6 +1012,7 @@ async def react_endpoint(
     agent_id = body.agent_id
     token = body.token
     image_ids = body.image_ids
+    user_metadata_str = body.user_metadata
 
     # Sensitive word check — block before starting the agent
     from fim_agent.db import create_session as _create_sw_session
@@ -1092,24 +1094,33 @@ async def react_endpoint(
                 from fim_agent.web.models import Message as MessageModel
 
                 db_session = create_session()
-                user_metadata = None
+                # Build final metadata by merging image info and caller-provided user_metadata
+                extra_meta: dict[str, Any] = {}
+                if user_metadata_str:
+                    try:
+                        parsed = json.loads(user_metadata_str)
+                        if isinstance(parsed, dict):
+                            extra_meta = parsed
+                    except json.JSONDecodeError:
+                        pass
+                final_metadata: dict[str, Any] = {}
                 if image_data:
-                    user_metadata = {
-                        "images": [
-                            {
-                                "file_id": fid,
-                                "filename": fname,
-                                "mime_type": durl.split(";")[0].split(":")[1],
-                            }
-                            for fid, fname, durl in image_data
-                        ]
-                    }
+                    final_metadata["images"] = [
+                        {
+                            "file_id": fid,
+                            "filename": fname,
+                            "mime_type": durl.split(";")[0].split(":")[1],
+                        }
+                        for fid, fname, durl in image_data
+                    ]
+                if extra_meta:
+                    final_metadata.update(extra_meta)
                 user_msg = MessageModel(
                     conversation_id=conversation_id,
                     role="user",
                     content=q,
                     message_type="text",
-                    metadata_=user_metadata,
+                    metadata_=final_metadata if final_metadata else None,
                 )
                 db_session.add(user_msg)
                 await db_session.commit()
@@ -1525,6 +1536,7 @@ async def dag_endpoint(
     agent_id = body.agent_id
     token = body.token
     image_ids = body.image_ids
+    dag_user_metadata_str = body.user_metadata
 
     # -- Pre-stream resolution ----------------------------------------------
     current_user_id, user_system_instructions, preferred_language = await _resolve_user(token)
@@ -1596,24 +1608,33 @@ async def dag_endpoint(
                 from fim_agent.web.models import Message as MessageModel
 
                 db_session = create_session()
-                dag_user_metadata = None
+                # Build final metadata by merging image info and caller-provided user_metadata
+                dag_extra_meta: dict[str, Any] = {}
+                if dag_user_metadata_str:
+                    try:
+                        parsed = json.loads(dag_user_metadata_str)
+                        if isinstance(parsed, dict):
+                            dag_extra_meta = parsed
+                    except json.JSONDecodeError:
+                        pass
+                dag_final_metadata: dict[str, Any] = {}
                 if dag_image_data:
-                    dag_user_metadata = {
-                        "images": [
-                            {
-                                "file_id": fid,
-                                "filename": fname,
-                                "mime_type": durl.split(";")[0].split(":")[1],
-                            }
-                            for fid, fname, durl in dag_image_data
-                        ]
-                    }
+                    dag_final_metadata["images"] = [
+                        {
+                            "file_id": fid,
+                            "filename": fname,
+                            "mime_type": durl.split(";")[0].split(":")[1],
+                        }
+                        for fid, fname, durl in dag_image_data
+                    ]
+                if dag_extra_meta:
+                    dag_final_metadata.update(dag_extra_meta)
                 user_msg = MessageModel(
                     conversation_id=conversation_id,
                     role="user",
                     content=q,
                     message_type="text",
-                    metadata_=dag_user_metadata,
+                    metadata_=dag_final_metadata if dag_final_metadata else None,
                 )
                 db_session.add(user_msg)
                 await db_session.commit()

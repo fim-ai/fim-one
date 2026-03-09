@@ -32,8 +32,12 @@ function CallbackHandler() {
         localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
         localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
         localStorage.setItem(USER_KEY, JSON.stringify(user))
+        // Restore redirect URL saved before OAuth navigation, then clean up
+        const redirect = sessionStorage.getItem("fim_oauth_redirect")
+        sessionStorage.removeItem("fim_oauth_redirect")
+        const target = redirect && redirect.startsWith("/") ? redirect : "/"
         // Full page reload to re-initialize AuthProvider
-        window.location.href = "/"
+        window.location.href = target
       } catch {
         window.location.href = "/login?error=oauth_failed"
       }

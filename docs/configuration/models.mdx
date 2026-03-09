@@ -23,7 +23,7 @@ If `FAST_LLM_MODEL` is not set, it falls back to `LLM_MODEL`. For production dep
 | Provider | Main LLM | Fast LLM | Reasoning | Notes |
 |---|---|---|---|---|
 | **OpenAI** | `gpt-5.4` / `o3` | `gpt-5-mini` / `gpt-5-nano` | ✅ `reasoning_effort` | Best native tool-calling; GPT-5.4 is the latest flagship |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ⚠️ via `extra_body` | Thinking content not returned via compat endpoint |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | Native API routing; full `reasoning_content` support |
 | **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | 2.5 is stable GA; 3.x is preview |
 | **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | Best cost/performance; V4 imminent |
 | **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen-turbo` | ✅ `qwen3-max-thinking` | Strongest Chinese language support |
@@ -45,7 +45,7 @@ The most battle-tested option. OpenAI models have the best native function calli
 - Fast: `gpt-5-mini` ($0.25/$2.00 per MTok) or `gpt-5-nano` (cheapest at $0.05/$0.40 per MTok)
 - Legacy: `gpt-4.1` (still in API, 1M context, good for coding) — retired from ChatGPT Feb 2026
 
-**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. The o-series requires `max_completion_tokens` instead of `max_tokens`, which FIM Agent handles automatically.
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: GPT-5.x does not support `reasoning_effort` combined with tool-calling in `/v1/chat/completions` — FIM Agent silently drops it during agent tool-use steps so workflows run uninterrupted. GPT-5.x also only supports `temperature=1` — FIM Agent handles this automatically via LiteLLM's parameter filtering (`drop_params`).
 
 | Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
@@ -77,7 +77,7 @@ LLM_REASONING_EFFORT=medium
 
 ### Anthropic (Claude)
 
-Claude excels at nuanced reasoning and complex multi-step tasks. FIM Agent connects via Anthropic's OpenAI-compatible endpoint. The current generation is Claude 4.6 (February 2026).
+Claude excels at nuanced reasoning and complex multi-step tasks. FIM Agent connects via [LiteLLM](https://github.com/BerriAI/litellm), which routes Anthropic models through their native API automatically. The current generation is Claude 4.6 (February 2026).
 
 **Recommended models:**
 - Main: `claude-sonnet-4-6` (best balance of capability and cost — $3/$15 per MTok)
@@ -88,9 +88,7 @@ Claude excels at nuanced reasoning and complex multi-step tasks. FIM Agent conne
 
 All current Claude models support extended thinking and have a 200K context window (1M in beta).
 
-<Warning>
-**Reasoning content is NOT returned via the compatibility endpoint.** When you set `LLM_REASONING_EFFORT`, the model *will* think internally, but the thinking text is not included in the response — the UI "thinking" step will appear with empty content. This is an Anthropic compatibility-layer limitation. For full reasoning visibility, use a third-party proxy that returns `reasoning_content`. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
-</Warning>
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — LiteLLM routes Anthropic models through the native API, so `reasoning_content` (extended thinking) is fully returned and visible in the UI "thinking" step. When extended thinking is enabled, Anthropic requires `temperature=1` — set `LLM_TEMPERATURE=1` in your `.env` or model configuration. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
 
 ```bash
 # .env — Anthropic Claude
@@ -98,6 +96,7 @@ LLM_API_KEY=sk-ant-...
 LLM_BASE_URL=https://api.anthropic.com/v1/
 LLM_MODEL=claude-sonnet-4-6
 FAST_LLM_MODEL=claude-haiku-4-5
+LLM_REASONING_EFFORT=medium
 ```
 
 ---
@@ -290,6 +289,61 @@ FAST_LLM_MODEL=qwen3.5:9b
 LLM_CONTEXT_SIZE=32768
 LLM_MAX_OUTPUT_TOKENS=8192
 ```
+
+---
+
+## Third-Party Relay Platforms
+
+Many users access multiple model providers through a single relay (proxy) service. FIM Agent automatically detects the correct API protocol based on URL path patterns — just fill in the `LLM_BASE_URL` and it works.
+
+### How It Works
+
+When your base URL points to a third-party relay, FIM Agent inspects the URL path to determine which protocol to use:
+
+| URL Path Contains | Detected Protocol | Auth Header | Key Benefit |
+|---|---|---|---|
+| `/v1` (or no match) | OpenAI compatible | `Authorization: Bearer` | Universal fallback, works with most relays |
+| `/claude` or `/anthropic` | Anthropic native | `x-api-key` | Full `reasoning_content` (extended thinking) support |
+| `/gemini` | Google native | `x-goog-api-key` | Native Gemini parameter translation |
+
+**Resolution order:** Explicit DB provider field > domain match (official APIs) > URL path hint (relay platforms) > OpenAI compatible fallback.
+
+### Example: One Relay, Three Protocols
+
+With a single relay account, you can access different providers by simply changing the base URL path:
+
+```bash
+# .env — Claude via relay (Anthropic native protocol)
+LLM_API_KEY=your-relay-key
+LLM_BASE_URL=https://relay.example.com/anthropic
+LLM_MODEL=claude-sonnet-4-6
+```
+
+```bash
+# .env — Gemini via relay (Google native protocol)
+LLM_API_KEY=your-relay-key
+LLM_BASE_URL=https://relay.example.com/gemini
+LLM_MODEL=gemini-2.5-pro
+```
+
+```bash
+# .env — GPT via relay (OpenAI compatible protocol)
+LLM_API_KEY=your-relay-key
+LLM_BASE_URL=https://relay.example.com/v1
+LLM_MODEL=gpt-5.4
+```
+
+No extra configuration needed — authentication headers, parameter formats, and response parsing all switch automatically.
+
+### Why This Matters
+
+- **Anthropic native endpoint** gives you proper `reasoning_content` support (extended thinking visible in the UI), correct tool-calling format, and `x-api-key` authentication — features lost when using OpenAI-compatible translation.
+- **Google native endpoint** gives you native Gemini parameters and `x-goog-api-key` authentication.
+- **OpenAI compatible** is the universal fallback and works with any relay, but provider-specific features (like extended thinking output) may be unavailable.
+
+<Note>
+If your relay platform uses non-standard path conventions (e.g., no `/claude` or `/anthropic` in the URL), FIM Agent falls back to OpenAI compatible protocol — which works for most use cases. For full native protocol support, you can set the `provider` field explicitly via the admin model configuration UI.
+</Note>
 
 ---
 

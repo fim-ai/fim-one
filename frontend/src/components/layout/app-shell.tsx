@@ -129,9 +129,12 @@ function SidebarNewChat({ collapsed }: { collapsed: boolean }) {
 
 function RedirectToLogin() {
   const router = useRouter()
+  const pathname = usePathname()
   useEffect(() => {
-    router.replace("/login")
-  }, [router])
+    // Carry current path so the login page can redirect back after auth
+    const redirectParam = pathname && pathname !== "/" ? `?redirect=${encodeURIComponent(pathname)}` : ""
+    router.replace(`/login${redirectParam}`)
+  }, [router, pathname])
   return (
     <div className="flex h-screen items-center justify-center bg-background">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

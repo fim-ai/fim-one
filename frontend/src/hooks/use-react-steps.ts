@@ -110,12 +110,12 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): StepI
         })
     }
 
-    // After completion: keep only iteration items + done/inject events
+    // After completion: drop transient items but keep thinking-done (has reasoning)
     if (hasDone) {
       return result.filter(item => {
         if (item.event !== "step") return true
         const step = item.data as ReactStepEvent
-        if (step.type === "thinking") return false
+        if (step.type === "thinking" && step.status === "start") return false
         if (step.type === "answer") return false
         return true
       })

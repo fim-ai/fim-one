@@ -1,4 +1,8 @@
-"""OpenAI-compatible LLM implementation."""
+"""OpenAI-compatible LLM implementation.
+
+Uses LiteLLM to route requests to any provider (OpenAI, Anthropic, Gemini,
+DeepSeek, Mistral, etc.) without provider-specific conditionals.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from openai import AsyncOpenAI
+import litellm
 
 from .base import BaseLLM
 from .rate_limit import RateLimitConfig, TokenBucketRateLimiter
@@ -16,12 +20,83 @@ from .types import ChatMessage, LLMResult, StreamChunk, ToolCallRequest
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# LiteLLM global configuration
+# ---------------------------------------------------------------------------
+litellm.num_retries = 0  # We use our own retry.py
+litellm.drop_params = True  # Silently drop unsupported params per model
+litellm.suppress_debug_info = True
+
+# ---------------------------------------------------------------------------
+# Provider resolution
+# ---------------------------------------------------------------------------
+
+# Domain → provider for official API endpoints.
+KNOWN_DOMAINS: dict[str, str] = {
+    "api.openai.com": "openai",
+    "anthropic.com": "anthropic",
+    "generativelanguage.googleapis.com": "gemini",
+    "api.deepseek.com": "deepseek",
+    "api.mistral.ai": "mistral",
+}
+
+# URL path segments that hint at provider protocol on relay platforms
+# (e.g. UniAPI: /claude → Anthropic native, /gemini → Google native).
+PATH_PROVIDER_HINTS: dict[str, str] = {
+    "/claude": "anthropic",
+    "/anthropic": "anthropic",
+    "/gemini": "gemini",
+}
+
+# Providers whose native protocol LiteLLM handles — these need api_base
+# when the domain isn't the official one (i.e. relay/proxy scenarios).
+_NATIVE_PROVIDERS = frozenset(KNOWN_DOMAINS.values())
+
+
+def _resolve_litellm_model(
+    base_url: str,
+    model: str,
+    provider: str | None = None,
+) -> tuple[str, str | None]:
+    """Map (base_url, model, provider) to (litellm_model, optional api_base).
+
+    Resolution order:
+    1. Explicit ``provider`` (from DB ModelConfig.provider) — highest priority.
+    2. Domain match against ``KNOWN_DOMAINS`` (official API endpoints).
+    3. URL path hint against ``PATH_PROVIDER_HINTS`` (relay platforms).
+    4. Fallback to ``openai/`` prefix (generic OpenAI-compatible).
+
+    For official endpoints (step 2), no ``api_base`` is returned because
+    LiteLLM routes natively.  For everything else, ``api_base`` is included
+    so LiteLLM knows where to send the request.
+    """
+    # 1. Explicit provider from DB config
+    if provider:
+        for domain, prov in KNOWN_DOMAINS.items():
+            if prov == provider and domain in base_url:
+                return f"{provider}/{model}", None  # Official endpoint
+        return f"{provider}/{model}", base_url  # Relay/proxy
+
+    # 2. Domain match (official APIs)
+    for domain, prov in KNOWN_DOMAINS.items():
+        if domain in base_url:
+            return f"{prov}/{model}", None
+
+    # 3. URL path hint (relay platforms like UniAPI)
+    for path_segment, prov in PATH_PROVIDER_HINTS.items():
+        if path_segment in base_url:
+            return f"{prov}/{model}", base_url
+
+    # 4. Generic OpenAI-compatible fallback
+    return f"openai/{model}", base_url
+
 
 class OpenAICompatibleLLM(BaseLLM):
-    """LLM implementation for any OpenAI-compatible API endpoint.
+    """LLM implementation backed by LiteLLM for universal provider support.
 
-    Works with OpenAI, Azure OpenAI, vLLM, Ollama, and other providers that
-    expose the ``/v1/chat/completions`` interface.
+    Works with OpenAI, Anthropic, Gemini, DeepSeek, Mistral, vLLM, Ollama,
+    and any other provider that LiteLLM supports or that exposes an
+    OpenAI-compatible ``/v1/chat/completions`` interface.
 
     Args:
         api_key: API key for authentication.
@@ -33,6 +108,8 @@ class OpenAICompatibleLLM(BaseLLM):
             Pass ``None`` to disable retries entirely.
         rate_limit_config: Configuration for the token-bucket rate limiter.
             Pass ``None`` to disable rate limiting entirely.
+        reasoning_effort: Optional reasoning effort level (``low``/``medium``/``high``).
+        reasoning_budget_tokens: Optional explicit token budget for Anthropic thinking.
     """
 
     def __init__(
@@ -47,9 +124,14 @@ class OpenAICompatibleLLM(BaseLLM):
         rate_limit_config: RateLimitConfig | None = RateLimitConfig(),
         reasoning_effort: str | None = None,
         reasoning_budget_tokens: int | None = None,
+        provider: str | None = None,
     ) -> None:
-        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._api_key = api_key
+        self._base_url = base_url
         self._model = model
+        self._litellm_model, self._api_base = _resolve_litellm_model(
+            base_url, model, provider,
+        )
         self._default_temperature = default_temperature
         self._default_max_tokens = default_max_tokens
         self._retry_config = retry_config or RetryConfig(max_retries=0)
@@ -58,7 +140,6 @@ class OpenAICompatibleLLM(BaseLLM):
         )
         self._reasoning_effort = reasoning_effort
         self._reasoning_budget_tokens = reasoning_budget_tokens
-        self._is_anthropic = "anthropic.com" in base_url
 
     @property
     def model_id(self) -> str:
@@ -66,7 +147,7 @@ class OpenAICompatibleLLM(BaseLLM):
 
     @property
     def api_key(self) -> str:
-        return self._client.api_key
+        return self._api_key
 
     # ------------------------------------------------------------------
     # Public API
@@ -86,20 +167,6 @@ class OpenAICompatibleLLM(BaseLLM):
 
         The call is automatically wrapped with rate limiting and retry logic
         according to the configuration supplied at construction time.
-
-        Args:
-            messages: The conversation history.
-            tools: Optional tool definitions.
-            tool_choice: Controls which tool the model calls.
-            temperature: Sampling temperature override.
-            max_tokens: Maximum tokens to generate.
-            response_format: Optional response format constraint.
-
-        Returns:
-            An ``LLMResult`` with the parsed assistant message and usage stats.
-
-        Raises:
-            openai.APIError: On upstream API failures after retries are exhausted.
         """
         return await retry_async_call(
             self._chat_impl,
@@ -122,7 +189,7 @@ class OpenAICompatibleLLM(BaseLLM):
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
     ) -> LLMResult:
-        """Inner implementation of ``chat()`` — one attempt, no retry."""
+        """Inner implementation of ``chat()`` -- one attempt, no retry."""
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
 
@@ -135,7 +202,7 @@ class OpenAICompatibleLLM(BaseLLM):
             response_format=response_format,
             stream=False,
         )
-        response = await self._client.chat.completions.create(**kwargs)
+        response = await litellm.acompletion(**kwargs)
 
         choice = response.choices[0]
         assistant_msg = self._parse_choice_message(choice)
@@ -170,18 +237,6 @@ class OpenAICompatibleLLM(BaseLLM):
         Yields ``StreamChunk`` instances as they arrive.  Tool-call deltas are
         accumulated and emitted as complete ``ToolCallRequest`` objects once the
         stream signals ``finish_reason`` of ``"tool_calls"`` or ``"stop"``.
-
-        Args:
-            messages: The conversation history.
-            tools: Optional tool definitions.
-            temperature: Sampling temperature override.
-            max_tokens: Maximum tokens to generate.
-
-        Yields:
-            ``StreamChunk`` for each fragment received from the API.
-
-        Raises:
-            openai.APIError: On upstream API failures after retries are exhausted.
         """
         async for chunk in retry_async_iterator(
             self._stream_chat_impl,
@@ -201,7 +256,7 @@ class OpenAICompatibleLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Inner implementation of ``stream_chat()`` — one attempt, no retry."""
+        """Inner implementation of ``stream_chat()`` -- one attempt, no retry."""
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
 
@@ -212,7 +267,7 @@ class OpenAICompatibleLLM(BaseLLM):
             max_tokens=max_tokens,
             stream=True,
         )
-        stream = await self._client.chat.completions.create(**kwargs)
+        stream = await litellm.acompletion(**kwargs)
 
         async def _iterate() -> AsyncIterator[StreamChunk]:
             # Accumulate partial tool calls keyed by their index in the array.
@@ -286,15 +341,22 @@ class OpenAICompatibleLLM(BaseLLM):
         response_format: dict[str, Any] | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
-        """Build the keyword arguments dict for the OpenAI client call."""
-        effective_temperature = temperature if temperature is not None else self._default_temperature
+        """Build the keyword arguments dict for ``litellm.acompletion()``."""
+        effective_temperature = (
+            temperature if temperature is not None else self._default_temperature
+        )
+        token_limit = max_tokens if max_tokens is not None else self._default_max_tokens
+
         kwargs: dict[str, Any] = {
-            "model": self._model,
+            "model": self._litellm_model,
             "messages": [m.to_openai_dict() for m in messages],
             "temperature": effective_temperature,
-            "max_tokens": max_tokens if max_tokens is not None else self._default_max_tokens,
+            "max_tokens": token_limit,
             "stream": stream,
+            "api_key": self._api_key,
         }
+        if self._api_base is not None:
+            kwargs["api_base"] = self._api_base
         if tools:
             kwargs["tools"] = tools
             if tool_choice is not None:
@@ -302,36 +364,33 @@ class OpenAICompatibleLLM(BaseLLM):
         if response_format is not None:
             kwargs["response_format"] = response_format
         if self._reasoning_effort:
-            if self._is_anthropic:
-                # Anthropic ignores reasoning_effort; use extra_body with
-                # their native thinking parameter instead.
-                budget = self._reasoning_budget_tokens or self._effort_to_budget(
-                    self._reasoning_effort,
-                    kwargs.get("max_tokens", self._default_max_tokens),
+            # GPT-5.x /v1/chat/completions rejects reasoning_effort when
+            # tools are present.  Silently skip to keep agent workflows working.
+            if tools and self._model.lower().startswith("gpt-5"):
+                logger.debug(
+                    "Dropping reasoning_effort for %s (unsupported with tools in chat completions)",
+                    self._model,
                 )
-                kwargs["extra_body"] = {
-                    "thinking": {
-                        "type": "enabled",
-                        "budget_tokens": budget,
-                    }
+            elif self._reasoning_budget_tokens and self._litellm_model.startswith("anthropic/"):
+                # Explicit budget override — pass thinking directly, skip
+                # reasoning_effort to avoid LiteLLM's auto-mapping conflict.
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": self._reasoning_budget_tokens,
                 }
             else:
-                # OpenAI / Gemini / most proxies: flat reasoning_effort.
+                # Let LiteLLM handle the translation for each provider:
+                #   - Anthropic: reasoning_effort → thinking param (auto budget)
+                #   - OpenAI o-series: reasoning_effort passed through
+                #   - Others: drop_params=True handles unsupported cases
                 kwargs["reasoning_effort"] = self._reasoning_effort
         return kwargs
-
-    @staticmethod
-    def _effort_to_budget(effort: str, max_tokens: int) -> int:
-        """Map an effort level to a token budget for Anthropic thinking."""
-        ratio = {"low": 0.2, "medium": 0.5, "high": 0.8}.get(effort, 0.5)
-        budget = int(max_tokens * ratio)
-        return max(budget, 1024)  # Anthropic minimum is 1024
 
     @staticmethod
     def _parse_tool_calls(
         raw_tool_calls: list[Any],
     ) -> list[ToolCallRequest]:
-        """Parse tool calls from an OpenAI response choice."""
+        """Parse tool calls from a response choice."""
         result: list[ToolCallRequest] = []
         for tc in raw_tool_calls:
             try:
@@ -353,7 +412,7 @@ class OpenAICompatibleLLM(BaseLLM):
 
     @staticmethod
     def _parse_choice_message(choice: Any) -> ChatMessage:
-        """Convert an OpenAI choice object into a ``ChatMessage``."""
+        """Convert a response choice object into a ``ChatMessage``."""
         msg = choice.message
         tool_calls: list[ToolCallRequest] | None = None
         if msg.tool_calls:
@@ -361,7 +420,8 @@ class OpenAICompatibleLLM(BaseLLM):
         # Extract extended thinking / reasoning content.
         # Different providers use different field names:
         #   - DeepSeek R1: reasoning_content
-        #   - Some Claude proxies: reasoning_content or reasoning
+        #   - Anthropic (via LiteLLM): reasoning_content
+        #   - Some proxies: reasoning
         reasoning_content = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
         # Guard against the field being a non-string (e.g. dict from some proxies).
         if reasoning_content and not isinstance(reasoning_content, str):

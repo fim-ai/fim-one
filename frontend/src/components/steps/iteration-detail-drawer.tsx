@@ -15,6 +15,7 @@ import { cn, fmtDuration } from "@/lib/utils"
 import type { IterationData } from "./types"
 import { getToolDisplayName } from "./step-summary"
 import { useToolCatalog } from "@/hooks/use-tool-catalog"
+import { MarkdownContent } from "@/lib/markdown"
 import { ToolArgsBlock } from "./tool-args-block"
 import { ObservationBlock } from "./observation-block"
 import { ErrorBlock } from "./error-block"
@@ -124,9 +125,10 @@ export function IterationDetailDrawer({ data, summary, onClose }: IterationDetai
                     <p className="text-xs font-medium text-muted-foreground mb-1.5 uppercase tracking-wider">
                       {t("reasoning")}
                     </p>
-                    <p className="text-sm text-muted-foreground leading-relaxed italic">
-                      {data.reasoning}
-                    </p>
+                    <MarkdownContent
+                      content={data.reasoning}
+                      className="prose-sm text-sm text-muted-foreground italic"
+                    />
                   </div>
                 )}
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from abc import ABC
 from typing import Any
 
 import httpx
@@ -15,7 +16,7 @@ from ..base import BaseTool
 logger = logging.getLogger(__name__)
 
 
-class _ConnectorBuilderBase(BaseTool):
+class _ConnectorBuilderBase(BaseTool, ABC):
     """Shared base for all connector-builder tools."""
 
     def __init__(self, connector_id: str, user_id: str) -> None:

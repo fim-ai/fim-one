@@ -98,10 +98,13 @@ function LoginPageInner() {
       if (!user.onboarding_completed) {
         router.replace("/onboarding")
       } else {
-        router.replace("/")
+        // Redirect to the original page if ?redirect= is present, otherwise go home
+        const redirect = searchParams.get("redirect")
+        const target = redirect && redirect.startsWith("/") ? redirect : "/"
+        router.replace(target)
       }
     }
-  }, [authLoading, user, router])
+  }, [authLoading, user, router, searchParams])
 
   // Check if system needs first-time setup, and fetch registration status
   useEffect(() => {
@@ -503,6 +506,8 @@ function LoginPageInner() {
                           size="icon"
                           className="h-10 w-10"
                           onClick={() => {
+                            const redirect = searchParams.get("redirect")
+                            if (redirect) sessionStorage.setItem("fim_oauth_redirect", redirect)
                             window.location.href = `${getApiDirectUrl()}/api/auth/oauth/github/authorize`
                           }}
                         >
@@ -522,6 +527,8 @@ function LoginPageInner() {
                           size="icon"
                           className="h-10 w-10"
                           onClick={() => {
+                            const redirect = searchParams.get("redirect")
+                            if (redirect) sessionStorage.setItem("fim_oauth_redirect", redirect)
                             window.location.href = `${getApiDirectUrl()}/api/auth/oauth/google/authorize`
                           }}
                         >
@@ -544,6 +551,8 @@ function LoginPageInner() {
                           size="icon"
                           className="h-10 w-10"
                           onClick={() => {
+                            const redirect = searchParams.get("redirect")
+                            if (redirect) sessionStorage.setItem("fim_oauth_redirect", redirect)
                             window.location.href = `${getApiDirectUrl()}/api/auth/oauth/discord/authorize`
                           }}
                         >
@@ -563,6 +572,8 @@ function LoginPageInner() {
                           size="icon"
                           className="h-10 w-10"
                           onClick={() => {
+                            const redirect = searchParams.get("redirect")
+                            if (redirect) sessionStorage.setItem("fim_oauth_redirect", redirect)
                             window.location.href = `${getApiDirectUrl()}/api/auth/oauth/feishu/authorize`
                           }}
                         >

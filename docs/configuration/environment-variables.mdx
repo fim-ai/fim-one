@@ -58,43 +58,42 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `LLM_MAX_OUTPUT_TOKENS` | No | `64000` | Max output tokens per call for the main LLM |
 | `FAST_LLM_CONTEXT_SIZE` | No | *(falls back to `LLM_CONTEXT_SIZE`)* | Context window size for the fast LLM |
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | No | *(falls back to `LLM_MAX_OUTPUT_TOKENS`)* | Max output tokens per call for the fast LLM |
-| `LLM_REASONING_EFFORT` | No | *(disabled)* | Extended thinking level for supported models (OpenAI o-series, Gemini 2.5+, Claude). Values: `low`, `medium`, `high`. For OpenAI/Gemini sends `reasoning_effort`; for Anthropic (auto-detected) sends `thinking` via `extra_body`. The model's chain-of-thought is surfaced in the UI "thinking" step. |
+| `LLM_REASONING_EFFORT` | No | *(disabled)* | Extended thinking level for supported models (OpenAI o-series, Gemini 2.5+, Claude). Values: `low`, `medium`, `high`. LiteLLM translates this to each provider's native format automatically. The model's chain-of-thought is surfaced in the UI "thinking" step. |
 | `LLM_REASONING_BUDGET_TOKENS` | No | *(auto from effort)* | Explicit token budget for Anthropic thinking (minimum 1024). For OpenAI/Gemini the effort level is used directly. Only effective when `LLM_REASONING_EFFORT` is set. |
 
 > **Resolution order**: User Preference → Admin Models (DB) → ENV Fallback. If an admin model with role "General" is configured in Admin → Models, these ENV vars serve as fallback only. The health check considers both sources.
 
 ### Extended Thinking (Reasoning)
 
-When `LLM_REASONING_EFFORT` is set, FIM Agent enables the model's extended thinking capability so the internal chain-of-thought is surfaced in the UI "thinking" step. **We currently support two official provider paths only:**
+When `LLM_REASONING_EFFORT` is set, FIM Agent enables the model's extended thinking capability so the internal chain-of-thought is surfaced in the UI "thinking" step. FIM Agent uses [LiteLLM](https://github.com/BerriAI/litellm) to translate the reasoning effort parameter into each provider's native format automatically.
 
 #### Supported providers
 
-| Provider | `LLM_BASE_URL` | API parameter sent | Reasoning content returned? |
+| Provider | `LLM_BASE_URL` | How it works | Reasoning content returned? |
 |---|---|---|---|
-| **OpenAI** (o1 / o3 / o4-mini) | `https://api.openai.com/v1` | `reasoning_effort: "high"` | Yes |
-| **Anthropic** (Claude 3.7+) | `https://api.anthropic.com/v1/` | `extra_body: {thinking: {type: "enabled", budget_tokens: N}}` | No (compat endpoint limitation) |
+| **OpenAI** (o1 / o3 / o4-mini) | `https://api.openai.com/v1` | `reasoning_effort` sent natively | Yes |
+| **Anthropic** (Claude 3.7+) | `https://api.anthropic.com/v1/` | LiteLLM routes via native Anthropic API with `thinking` parameter | Yes |
+| **Google Gemini** (2.5+) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `reasoning_effort` sent on compat endpoint | Yes |
 
-The system auto-detects Anthropic by checking whether `LLM_BASE_URL` contains `anthropic.com`.
-
-- **Google Gemini** also supports `reasoning_effort` on its OpenAI-compatible endpoint (`generativelanguage.googleapis.com/v1beta/openai/`), so it should work out of the box — but we have not officially tested it.
+LiteLLM auto-detects the provider from `LLM_BASE_URL` and maps it to the correct API format. Unknown URLs are treated as OpenAI-compatible.
 
 #### Important caveats
 
 <Warning>
-**Anthropic's OpenAI-compatible endpoint does not return reasoning content.**
-If you set `LLM_BASE_URL` to Anthropic's official endpoint (`https://api.anthropic.com/v1/`), the `thinking` parameter will be sent correctly and the model *will* think internally, but the response **will not include the reasoning text** — you will only see the final answer. The UI "thinking" step will appear but with empty reasoning content. This is a limitation of Anthropic's compatibility layer, not a bug.
-
-For full reasoning visibility with Claude, use the native Anthropic SDK or a third-party proxy that returns `reasoning_content`.
-</Warning>
-
-<Warning>
 **Third-party proxies / custom endpoints are not guaranteed.**
-If your `LLM_BASE_URL` points to a third-party API proxy (e.g., OpenRouter, one-api, custom gateway), the `reasoning_effort` parameter is sent as-is. Whether the proxy translates it correctly to the underlying provider depends entirely on the proxy's implementation. Some proxies expect a different format (e.g., `reasoning: {effort, max_tokens}`). If reasoning does not work through your proxy, consult the proxy's documentation for their expected parameter format — FIM Agent cannot adapt to arbitrary proxy conventions.
+If your `LLM_BASE_URL` points to a third-party API proxy (e.g., OpenRouter, one-api, custom gateway), LiteLLM will attempt to route correctly based on the URL. However, if your proxy expects a non-standard format, reasoning may not work as expected. Consult the proxy's documentation for their expected parameter format.
 </Warning>
+
+#### Temperature constraints with reasoning
+
+Some providers impose temperature restrictions when reasoning is active:
+
+- **Anthropic**: Requires `temperature=1` when extended thinking is enabled. If using Anthropic with extended thinking, you **must** set `LLM_TEMPERATURE=1` — Anthropic rejects other values when thinking is enabled.
+- **OpenAI GPT-5.x**: Only supports `temperature=1` at all times. LiteLLM's `drop_params` filtering handles this automatically — unsupported temperature values are silently dropped. No user action is needed for GPT-5.x.
 
 #### How `LLM_REASONING_BUDGET_TOKENS` works
 
-This variable is **only meaningful for the Anthropic path**. When set, it overrides the auto-calculated budget and is sent as `budget_tokens` in the `thinking` parameter. When not set, the budget is derived from `LLM_MAX_OUTPUT_TOKENS` × effort ratio:
+This variable is **primarily meaningful for the Anthropic path**. When set, it overrides the auto-calculated budget and is sent as `budget_tokens` in the `thinking` parameter via LiteLLM. When not set, the budget is derived from `LLM_MAX_OUTPUT_TOKENS` x effort ratio:
 
 | `LLM_REASONING_EFFORT` | Budget ratio | Example (max_tokens = 64000) |
 |---|---|---|

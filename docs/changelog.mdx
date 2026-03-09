@@ -29,6 +29,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Chat: async image loading**: `_load_image_data_urls` is now async, offloading file reads to a thread via `asyncio.to_thread` to unblock the event loop
 - **Multi-worker readiness**: SSE tickets, OAuth state, and bind tickets now use JWT-signed tokens instead of in-memory dicts; file index locks use `fcntl.flock()` for cross-process safety; maintenance cache TTL reduced from 30s to 5s for faster cross-worker propagation
 - **Health dashboard: infrastructure checks**: Added Database type (SQLite/PostgreSQL) and Redis status to admin health dashboard
+- **Smart relay routing**: Automatically detects API protocol from URL path patterns (e.g., `/claude` or `/anthropic` → Anthropic native, `/gemini` → Google native), enabling proper authentication headers and parameter translation for third-party relay platforms without manual provider configuration
 
 ### Fixed
 - **DAG: AnalysisCard markdown**: Analysis reasoning is now rendered with `MarkdownContent` instead of plain `<p>`, fixing bold/lists in multi-step analysis

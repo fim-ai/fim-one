@@ -75,7 +75,17 @@ interface MarkdownContentProps {
   className?: string
 }
 
+/**
+ * Normalise markdown so that ATX headings without a space after the `#`
+ * sequence (e.g. `###标题`) are parsed correctly.  CommonMark requires
+ * `### heading` (with a space), but many LLMs omit the space before CJK text.
+ */
+function normalizeHeadings(md: string): string {
+  return md.replace(/^(#{1,6})([^\s#])/gm, "$1 $2")
+}
+
 export function MarkdownContent({ content, className }: MarkdownContentProps) {
+  const normalized = normalizeHeadings(content)
   return (
     <div className={`min-w-0 overflow-hidden ${className ?? ""}`}>
       <Markdown
@@ -227,7 +237,7 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           },
         }}
       >
-        {content}
+        {normalized}
       </Markdown>
     </div>
   )

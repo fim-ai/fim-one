@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/builder", tags=["builder"])
 
 
 class BuilderSessionRequest(BaseModel):
-    target_type: str  # "connector"
+    target_type: str  # "connector" | "agent"
     target_id: str
 
 
@@ -60,6 +60,35 @@ async def create_builder_session(
             f"4. After each batch, call connector_list_actions to verify\n"
             f"5. Continue iterating until all endpoints are covered\n"
         )
+    elif body.target_type == "agent":
+        result = await db.execute(
+            select(Agent).where(
+                Agent.id == body.target_id,
+                Agent.user_id == current_user.id,
+            )
+        )
+        target = result.scalar_one_or_none()
+        if target is None:
+            raise AppError("agent_not_found", status_code=404)
+
+        agent_name = f"__builder_agent_{body.target_id}"
+        instructions = (
+            f"You are an Agent Builder Assistant.\n"
+            f"target_agent_id={body.target_id}\n"
+            f"Agent name: {target.name}\n\n"
+            f"Help the user design and improve this AI agent. You can:\n"
+            f"- Suggest or draft system instructions (instructions/prompt)\n"
+            f"- Recommend tool categories and configurations\n"
+            f"- Explain execution modes (react, dag)\n"
+            f"- Review and critique existing instructions for clarity and effectiveness\n"
+            f"- Generate example conversations to test agent behavior\n\n"
+            f"Current agent state:\n"
+            f"- Description: {target.description or '(none)'}\n"
+            f"- Instructions: {(target.instructions or '(none)')[:500]}\n"
+            f"- Execution mode: {target.execution_mode}\n"
+            f"- Tool categories: {target.tool_categories or []}\n"
+            f"- Status: {target.status}\n"
+        )
     else:
         raise AppError("unsupported_target_type", status_code=400)
 
@@ -72,17 +101,27 @@ async def create_builder_session(
     )
     existing = result.scalar_one_or_none()
     if existing:
+        if existing.status != "published":
+            existing.status = "published"
+            await db.commit()
         return ApiResponse(data={"builder_agent_id": existing.id})
+
+    if body.target_type == "connector":
+        description = f"Builder agent for connector {body.target_id}"
+        tool_categories = ["builder", "web"]
+    else:
+        description = f"Builder assistant for agent {body.target_id}"
+        tool_categories = ["general"]
 
     agent = Agent(
         user_id=current_user.id,
         name=agent_name,
-        icon="\U0001f527",
-        description=f"Builder agent for connector {body.target_id}",
+        icon="\U0001f528",
+        description=description,
         instructions=instructions,
         execution_mode="react",
-        tool_categories=["builder", "web"],
-        status="draft",
+        tool_categories=tool_categories,
+        status="published",
     )
     db.add(agent)
     await db.commit()

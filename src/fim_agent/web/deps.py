@@ -266,6 +266,7 @@ def get_llm_from_config(config: dict[str, object]) -> OpenAICompatibleLLM | None
         default_max_tokens=int(config.get("max_output_tokens", 0) or _main_max_output()),
         reasoning_effort=_reasoning_effort(),
         reasoning_budget_tokens=_reasoning_budget_tokens(),
+        provider=str(config.get("provider", "")) or None,
     )
 
 
@@ -293,6 +294,7 @@ async def get_llm_by_config_id(
         default_max_tokens=cfg.max_output_tokens or _main_max_output(),
         reasoning_effort=_reasoning_effort(),
         reasoning_budget_tokens=_reasoning_budget_tokens(),
+        provider=cfg.provider or None,
     )
 
 
@@ -329,6 +331,7 @@ async def get_system_default_llm(
         default_max_tokens=cfg.max_output_tokens or _main_max_output(),
         reasoning_effort=_reasoning_effort(),
         reasoning_budget_tokens=_reasoning_budget_tokens(),
+        provider=cfg.provider or None,
     )
 
 
@@ -365,6 +368,7 @@ async def get_system_llm_by_role(
         default_max_tokens=cfg.max_output_tokens or _main_max_output(),
         reasoning_effort=_reasoning_effort(),
         reasoning_budget_tokens=_reasoning_budget_tokens(),
+        provider=cfg.provider or None,
     )
 
 

@@ -6,7 +6,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
 import { useState } from "react"
 import { useTranslations } from "next-intl"
@@ -19,6 +18,7 @@ import type { StepItem } from "@/hooks/use-react-steps"
 import { ReferencesSection } from "./references-section"
 import { IterationCard, ArtifactChips } from "@/components/steps"
 import type { IterationData } from "@/components/steps"
+import { CollapsibleText } from "@/components/playground/collapsible-text"
 import { SuggestedFollowups } from "./suggested-followups"
 
 interface ReactOutputProps {
@@ -37,7 +37,17 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
   const stepItems = items.filter((i) => i.event === "step")
   const doneItem = items.find((i) => i.event === "done")
 
-  const toolCallCount = stepItems.filter((i) => {
+  // Split steps: thinking cards shown above, tool iterations inside collapsible
+  const thinkingItems = stepItems.filter((i) => {
+    const step = i.data as ReactStepEvent
+    return step.type === "thinking" && step.status === "done"
+  })
+  const nonThinkingItems = stepItems.filter((i) => {
+    const step = i.data as ReactStepEvent
+    return !(step.type === "thinking")
+  })
+
+  const toolCallCount = nonThinkingItems.filter((i) => {
     const step = i.data as ReactStepEvent
     return step.type === "iteration"
   }).length
@@ -48,6 +58,18 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
   if (hasDone && toolCallCount > 0) {
     return (
       <div className="space-y-3 min-w-0 w-full">
+        {/* Thinking cards — always visible above the tool call group */}
+        {thinkingItems.map((item) => {
+          const originalIdx = items.indexOf(item)
+          const step = item.data as ReactStepEvent
+          const iterLabel = item.displayIteration ?? (step.iteration ?? 0) + 1
+          return (
+            <div key={originalIdx} data-react-idx={originalIdx}>
+              <ThinkingCard iterLabel={iterLabel} duration={item.duration} reasoning={step.reasoning} />
+            </div>
+          )
+        })}
+
         {/* Collapsible tool call group */}
         <div className="rounded-lg border border-border/40 bg-muted/20">
           <button
@@ -71,7 +93,7 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
           {/* Expanded step cards — nested inside the collapsible group */}
           {stepsExpanded && (
             <div className="space-y-3 px-4 pt-1 pb-3">
-              {stepItems.map((item) => {
+              {nonThinkingItems.map((item) => {
                 const originalIdx = items.indexOf(item)
                 const step = item.data as ReactStepEvent
                 return (
@@ -92,7 +114,7 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
             <div key={originalIdx} data-react-idx={originalIdx} className="flex gap-3">
               <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7" iconClassName="h-3.5 w-3.5" />
               <div className="flex-1 pt-0.5">
-                <p className="text-sm text-foreground">{injectData.content}</p>
+                <CollapsibleText content={injectData.content} className="text-sm text-foreground whitespace-pre-wrap" />
               </div>
             </div>
           )
@@ -133,7 +155,7 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
             <div key={idx} data-react-idx={idx} className="flex gap-3">
               <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7" iconClassName="h-3.5 w-3.5" />
               <div className="flex-1 pt-0.5">
-                <p className="text-sm text-foreground">{injectData.content}</p>
+                <CollapsibleText content={injectData.content} className="text-sm text-foreground whitespace-pre-wrap" />
               </div>
             </div>
           )
@@ -154,42 +176,52 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
 
 function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; duration?: number; reasoning?: string }) {
   const t = useTranslations("playground")
+  const [expanded, setExpanded] = useState(false)
   const isWaiting = !reasoning && duration == null
 
   return (
-    <Card className="border-amber-500/20 py-4">
-      <CardContent className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Badge
-            variant="outline"
-            className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider gap-1"
-          >
-            <Brain className="h-3 w-3" />
-            {t("thinking")}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            {t("iterationLabel", { n: iterLabel })}
-          </span>
-          {duration != null && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground font-mono tabular-nums">
-              <Clock className="h-2.5 w-2.5" />
-              {fmtDuration(duration)}
-            </span>
-          )}
-        </div>
+    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5">
+      {/* Full-width clickable bar */}
+      <button
+        type="button"
+        disabled={!reasoning}
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-amber-500/10 transition-colors text-xs text-muted-foreground rounded-lg disabled:cursor-default disabled:hover:bg-transparent"
+      >
+        <Brain className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+        <span className="text-amber-500 font-medium">
+          {t("thinking")}
+          {" \u00b7 "}
+          {t("iterationLabel", { n: iterLabel })}
+        </span>
         {isWaiting && (
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            <Loader2 className="inline h-3 w-3 animate-spin mr-1.5 align-text-bottom" />
+          <>
+            <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
             <span className="shiny-text">{t("statusProcessing")}</span>
-          </p>
+          </>
+        )}
+        {duration != null && (
+          <span className="flex items-center gap-1 font-mono tabular-nums">
+            <Clock className="h-2.5 w-2.5" />
+            {fmtDuration(duration)}
+          </span>
         )}
         {reasoning && (
-          <p className="text-xs italic text-muted-foreground leading-relaxed">
-            {reasoning}
-          </p>
+          expanded ? (
+            <ChevronUp className="h-3.5 w-3.5 ml-auto shrink-0" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 ml-auto shrink-0" />
+          )
         )}
-      </CardContent>
-    </Card>
+      </button>
+
+      {/* Expanded reasoning content */}
+      {expanded && reasoning && (
+        <div className="px-4 pt-1 pb-3">
+          <MarkdownContent content={reasoning} className="prose-xs text-xs text-muted-foreground" />
+        </div>
+      )}
+    </div>
   )
 }
 

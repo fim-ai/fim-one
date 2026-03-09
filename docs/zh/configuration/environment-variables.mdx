@@ -64,43 +64,42 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `LLM_MAX_OUTPUT_TOKENS` | 否 | `64000` | 主 LLM 每次调用的最大输出令牌数 |
 | `FAST_LLM_CONTEXT_SIZE` | 否 | *(回退到 `LLM_CONTEXT_SIZE`)* | 快速 LLM 的上下文窗口大小 |
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | 否 | *(回退到 `LLM_MAX_OUTPUT_TOKENS`)* | 快速 LLM 每次调用的最大输出令牌数 |
-| `LLM_REASONING_EFFORT` | 否 | *(禁用)* | 支持扩展思考的模型（OpenAI o 系列、Gemini 2.5+、Claude）的推理强度。可选值：`low`、`medium`、`high`。OpenAI/Gemini 发送 `reasoning_effort` 参数；Anthropic（自动检测）通过 `extra_body` 发送 `thinking`。模型的思维链将在 UI 的"思考中"步骤中显示。 |
+| `LLM_REASONING_EFFORT` | 否 | *(禁用)* | 支持扩展思考的模型（OpenAI o 系列、Gemini 2.5+、Claude）的推理强度。可选值：`low`、`medium`、`high`。LiteLLM 会自动将此参数转换为各提供商的原生格式。模型的思维链将在 UI 的"思考中"步骤中显示。 |
 | `LLM_REASONING_BUDGET_TOKENS` | 否 | *(根据 effort 自动计算)* | Anthropic thinking 的显式 token 预算（最小 1024）。OpenAI/Gemini 直接使用 effort 级别。仅在设置了 `LLM_REASONING_EFFORT` 时生效。 |
 
 > **解析顺序**：用户偏好 → 管理员模型（DB）→ ENV 回退。如果在 Admin → Models 中配置了角色为 "General" 的管理员模型，则这些 ENV 变量仅作为回退项。健康检查会同时考虑这两种来源。
 
 ### 扩展思考（Reasoning）
 
-设置 `LLM_REASONING_EFFORT` 后，FIM Agent 会启用模型的扩展思考能力，并将内部思维链展示在 UI 的"思考中"步骤中。**目前仅支持以下两条官方路径：**
+设置 `LLM_REASONING_EFFORT` 后，FIM Agent 会启用模型的扩展思考能力，并将内部思维链展示在 UI 的"思考中"步骤中。FIM Agent 使用 [LiteLLM](https://github.com/BerriAI/litellm) 自动将推理强度参数转换为各提供商的原生格式。
 
 #### 支持的提供商
 
-| 提供商 | `LLM_BASE_URL` | 发送的 API 参数 | 是否返回推理内容？ |
+| 提供商 | `LLM_BASE_URL` | 工作方式 | 是否返回推理内容？ |
 |---|---|---|---|
-| **OpenAI**（o1 / o3 / o4-mini） | `https://api.openai.com/v1` | `reasoning_effort: "high"` | 是 |
-| **Anthropic**（Claude 3.7+） | `https://api.anthropic.com/v1/` | `extra_body: {thinking: {type: "enabled", budget_tokens: N}}` | 否（兼容端点限制） |
+| **OpenAI**（o1 / o3 / o4-mini） | `https://api.openai.com/v1` | 原生发送 `reasoning_effort` | 是 |
+| **Anthropic**（Claude 3.7+） | `https://api.anthropic.com/v1/` | LiteLLM 通过原生 Anthropic API 路由，发送 `thinking` 参数 | 是 |
+| **Google Gemini**（2.5+） | `https://generativelanguage.googleapis.com/v1beta/openai/` | 通过兼容端点发送 `reasoning_effort` | 是 |
 
-系统通过检查 `LLM_BASE_URL` 是否包含 `anthropic.com` 来自动检测 Anthropic。
-
-- **Google Gemini** 在其 OpenAI 兼容端点（`generativelanguage.googleapis.com/v1beta/openai/`）上也支持 `reasoning_effort`，理论上可以直接使用——但我们尚未正式测试。
+LiteLLM 根据 `LLM_BASE_URL` 自动检测提供商，并映射到正确的 API 格式。未知 URL 按 OpenAI 兼容方式处理。
 
 #### 重要注意事项
 
 <Warning>
-**Anthropic 的 OpenAI 兼容端点不会返回推理内容。**
-如果你将 `LLM_BASE_URL` 设置为 Anthropic 的官方端点（`https://api.anthropic.com/v1/`），`thinking` 参数会正确发送，模型*确实会*进行内部思考，但响应中**不会包含推理文本**——你只能看到最终回答。UI 的"思考中"步骤会出现，但推理内容为空。这是 Anthropic 兼容层的限制，不是 bug。
-
-如需完整的 Claude 推理可见性，请使用原生 Anthropic SDK 或能返回 `reasoning_content` 的第三方代理。
-</Warning>
-
-<Warning>
 **第三方代理 / 自定义端点不保证兼容。**
-如果你的 `LLM_BASE_URL` 指向第三方 API 代理（如 OpenRouter、one-api、自定义网关），`reasoning_effort` 参数会原样发送。代理能否正确将其转换为底层提供商的格式，完全取决于代理的实现。部分代理可能期望不同的格式（如 `reasoning: {effort, max_tokens}`）。如果推理功能在你的代理上无法工作，请查阅代理的文档了解其期望的参数格式——FIM Agent 无法适配任意代理的自定义协议。
+如果你的 `LLM_BASE_URL` 指向第三方 API 代理（如 OpenRouter、one-api、自定义网关），LiteLLM 会尝试根据 URL 进行正确路由。但如果你的代理期望非标准格式，推理功能可能无法正常工作。请查阅代理的文档了解其期望的参数格式。
 </Warning>
+
+#### 推理模式下的温度限制
+
+部分提供商在启用推理时会对温度参数有特殊限制：
+
+- **Anthropic**：启用扩展思考后，要求 `temperature=1`。如果使用 Anthropic 配合扩展思考，你**必须**设置 `LLM_TEMPERATURE=1`——Anthropic 会拒绝其他温度值。
+- **OpenAI GPT-5.x**：始终仅支持 `temperature=1`。LiteLLM 的 `drop_params` 参数过滤会自动处理——不支持的温度值会被静默丢弃。GPT-5.x 无需用户手动操作。
 
 #### `LLM_REASONING_BUDGET_TOKENS` 的工作方式
 
-此变量**仅对 Anthropic 路径有效**。设置后，它会覆盖自动计算的预算，作为 `budget_tokens` 发送到 `thinking` 参数中。未设置时，预算根据 `LLM_MAX_OUTPUT_TOKENS` × effort 比例自动计算：
+此变量**主要对 Anthropic 路径有效**。设置后，它会覆盖自动计算的预算，通过 LiteLLM 作为 `budget_tokens` 发送到 `thinking` 参数中。未设置时，预算根据 `LLM_MAX_OUTPUT_TOKENS` x effort 比例自动计算：
 
 | `LLM_REASONING_EFFORT` | 预算比例 | 示例（max_tokens = 64000） |
 |---|---|---|
