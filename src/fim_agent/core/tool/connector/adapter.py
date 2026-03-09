@@ -262,7 +262,8 @@ class ConnectorToolAdapter(BaseTool):
             placeholder = f"{{{{{key}}}}}"
             if isinstance(value, str):
                 raw = raw.replace(f'"{placeholder}"', json.dumps(value))
-                raw = raw.replace(placeholder, value)
+                escaped = json.dumps(value)[1:-1]  # JSON-escaped interior without surrounding quotes
+                raw = raw.replace(placeholder, escaped)
             else:
                 raw = raw.replace(f'"{placeholder}"', json.dumps(value))
         return json.loads(raw)
