@@ -4,7 +4,7 @@ services:
     ports:
       - "3000:3000"   # Next.js frontend (API is proxied internally via rewrites)
     volumes:
-      - ./data:/app/data             # SQLite database + vector store (REQUIRED)
+      - ./data:/app/data             # Vector store (lancedb) + misc data
       - ./uploads:/app/uploads       # User-uploaded files (REQUIRED)
       # Code sandbox: mount Docker socket to run AI-generated code in isolated containers.
       # Required when CODE_EXEC_BACKEND=docker in .env (recommended for multi-user deployments).
@@ -12,13 +12,31 @@ services:
     env_file: .env
     environment:
       # Internal services — auto-configured by compose, no user action needed.
+      DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_agent
       REDIS_URL: redis://redis:6379/0
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
     # Production: put an Nginx reverse proxy in front for HTTPS + custom domain.
     # Example: nginx → http://fim-agent:3000
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fim
+      POSTGRES_PASSWORD: fim
+      POSTGRES_DB: fim_agent
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fim -d fim_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -32,4 +50,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   redis_data:

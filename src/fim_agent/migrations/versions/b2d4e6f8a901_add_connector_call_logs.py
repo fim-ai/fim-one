@@ -45,12 +45,21 @@ def upgrade() -> None:
     op.create_index('ix_connector_call_logs_created_at', 'connector_call_logs', ['created_at'])
 
     # Backfill NULL model_name on existing conversations from their agent's model config
-    op.execute("""
-        UPDATE conversations SET model_name = (
-            SELECT json_extract(agents.model_config_json, '$.model_name')
-            FROM agents WHERE agents.id = conversations.agent_id
-        ) WHERE model_name IS NULL AND agent_id IS NOT NULL
-    """)
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        op.execute("""
+            UPDATE conversations SET model_name = (
+                SELECT json_extract(agents.model_config_json, '$.model_name')
+                FROM agents WHERE agents.id = conversations.agent_id
+            ) WHERE model_name IS NULL AND agent_id IS NOT NULL
+        """)
+    else:
+        op.execute("""
+            UPDATE conversations SET model_name = (
+                SELECT agents.model_config_json::json->>'model_name'
+                FROM agents WHERE agents.id = conversations.agent_id
+            ) WHERE model_name IS NULL AND agent_id IS NOT NULL
+        """)
 
 
 def downgrade() -> None:

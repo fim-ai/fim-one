@@ -36,6 +36,11 @@ def _get_database_url() -> str:
     return os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./data/fim_agent.db")
 
 
+def is_sqlite_db() -> bool:
+    """Return True if the configured database is SQLite."""
+    return _get_database_url().startswith("sqlite")
+
+
 async def init_db() -> None:
     """Create the async engine and run ``CREATE TABLE`` for all models."""
     global _engine, _session_factory
@@ -64,6 +69,12 @@ async def init_db() -> None:
         db_path = url.split("///", 1)[-1] if "///" in url else None
         if db_path and db_path != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    else:
+        # PostgreSQL — standard production pool settings
+        kwargs["pool_size"] = 10
+        kwargs["max_overflow"] = 20
+        kwargs["pool_timeout"] = 30
+        kwargs["pool_recycle"] = 1800
 
     _engine = create_async_engine(url, connect_args=connect_args, echo=False, **kwargs)
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)

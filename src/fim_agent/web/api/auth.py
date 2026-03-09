@@ -178,7 +178,7 @@ async def send_verification_code(
         .where(
             EmailVerification.email == body.email,
             EmailVerification.purpose == "register",
-            EmailVerification.created_at > func.datetime("now", f"-{VERIFICATION_CODE_RATE_LIMIT_SECONDS} seconds"),
+            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
         )
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
@@ -387,7 +387,7 @@ async def send_login_code(
         .where(
             EmailVerification.email == body.email,
             EmailVerification.purpose == "login",
-            EmailVerification.created_at > func.datetime("now", f"-{VERIFICATION_CODE_RATE_LIMIT_SECONDS} seconds"),
+            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
         )
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
@@ -765,7 +765,7 @@ async def send_reset_code(
         .where(
             EmailVerification.email == current_user.email,
             EmailVerification.purpose == "reset_password",
-            EmailVerification.created_at > func.datetime("now", f"-{VERIFICATION_CODE_RATE_LIMIT_SECONDS} seconds"),
+            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
         )
         .order_by(EmailVerification.created_at.desc())
         .limit(1)
@@ -864,7 +864,7 @@ async def send_forgot_code(
         .where(
             EmailVerification.email == body.email,
             EmailVerification.purpose == "reset_password",
-            EmailVerification.created_at > func.datetime("now", f"-{VERIFICATION_CODE_RATE_LIMIT_SECONDS} seconds"),
+            EmailVerification.created_at > datetime.now(UTC) - timedelta(seconds=VERIFICATION_CODE_RATE_LIMIT_SECONDS),
         )
         .order_by(EmailVerification.created_at.desc())
         .limit(1)

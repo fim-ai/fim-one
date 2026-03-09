@@ -26,9 +26,10 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return os.environ.get(
-        "DATABASE_URL", "sqlite:///./data/fim_agent.db"
-    ).replace("sqlite+aiosqlite", "sqlite")
+    url = os.environ.get("DATABASE_URL", "sqlite:///./data/fim_agent.db")
+    url = url.replace("sqlite+aiosqlite", "sqlite")
+    url = url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+    return url
 
 
 def run_migrations_offline() -> None:

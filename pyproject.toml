@@ -67,6 +67,10 @@ rag = [
 redis = [
     "redis>=5.0",
 ]
+postgres = [
+    "asyncpg>=0.30",
+    "psycopg2-binary>=2.9",
+]
 
 [project.urls]
 Homepage = "https://github.com/fim-ai/fim-agent"

@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from fim_agent.web.email import _smtp_configured
 from fim_agent.web.exceptions import AppError
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1239,11 +1239,22 @@ async def get_system_health(
     db_url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./data/fim_agent.db")
     is_postgres = "postgresql" in db_url or "asyncpg" in db_url
     db_type = "PostgreSQL" if is_postgres else "SQLite"
+    try:
+        if is_postgres:
+            _ver_result = await db.execute(text("SELECT version()"))
+            _ver = _ver_result.scalar()
+            db_version = " ".join(_ver.split()[:2]) if _ver else "PostgreSQL"
+        else:
+            _ver_result = await db.execute(text("SELECT sqlite_version()"))
+            _ver = _ver_result.scalar()
+            db_version = f"SQLite {_ver}" if _ver else "SQLite"
+    except Exception:
+        db_version = db_type
     checks.append(IntegrationHealth(
         key="database",
         label="Database",
         configured=True,
-        detail=f"{db_type} · {_host(db_url) if is_postgres else 'File-based'}",
+        detail=f"{db_version} · {_host(db_url) if is_postgres else 'File-based'}",
         impact=None if is_postgres else "SQLite is single-writer; use PostgreSQL for high-concurrency deployments",
         level="recommended",
     ))
