@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
 import { useState } from "react"
 import { useTranslations } from "next-intl"
@@ -176,52 +177,42 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
 
 function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; duration?: number; reasoning?: string }) {
   const t = useTranslations("playground")
-  const [expanded, setExpanded] = useState(false)
   const isWaiting = !reasoning && duration == null
 
   return (
-    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5">
-      {/* Full-width clickable bar */}
-      <button
-        type="button"
-        disabled={!reasoning}
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-amber-500/10 transition-colors text-xs text-muted-foreground rounded-lg disabled:cursor-default disabled:hover:bg-transparent"
-      >
-        <Brain className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-        <span className="text-amber-500 font-medium">
-          {t("thinking")}
-          {" \u00b7 "}
-          {t("iterationLabel", { n: iterLabel })}
-        </span>
-        {isWaiting && (
-          <>
-            <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
-            <span className="shiny-text">{t("statusProcessing")}</span>
-          </>
-        )}
-        {duration != null && (
-          <span className="flex items-center gap-1 font-mono tabular-nums">
-            <Clock className="h-2.5 w-2.5" />
-            {fmtDuration(duration)}
+    <Card className="border-amber-500/20 py-4">
+      <CardContent className="space-y-2">
+        <div className="flex items-center gap-3">
+          <Badge
+            variant="outline"
+            className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider gap-1"
+          >
+            <Brain className="h-3 w-3" />
+            {t("thinking")}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {t("iterationLabel", { n: iterLabel })}
           </span>
+          {duration != null && (
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground font-mono tabular-nums">
+              <Clock className="h-2.5 w-2.5" />
+              {fmtDuration(duration)}
+            </span>
+          )}
+        </div>
+        {isWaiting && (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            <Loader2 className="inline h-3 w-3 animate-spin mr-1.5 align-text-bottom" />
+            <span className="shiny-text">{t("statusProcessing")}</span>
+          </p>
         )}
         {reasoning && (
-          expanded ? (
-            <ChevronUp className="h-3.5 w-3.5 ml-auto shrink-0" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5 ml-auto shrink-0" />
-          )
+          <div className="text-xs italic text-muted-foreground leading-relaxed">
+            <MarkdownContent content={reasoning} className="prose-xs text-xs text-muted-foreground" />
+          </div>
         )}
-      </button>
-
-      {/* Expanded reasoning content */}
-      {expanded && reasoning && (
-        <div className="px-4 pt-1 pb-3">
-          <MarkdownContent content={reasoning} className="prose-xs text-xs text-muted-foreground" />
-        </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
