@@ -4,6 +4,7 @@ import type {
   DagPhaseEvent,
   DagStepProgressEvent,
   DagDoneEvent,
+  AnswerEvent,
 } from "@/types/api"
 
 export interface StepState {
@@ -38,6 +39,10 @@ export interface DagStepsResult {
   currentPhase: string | null
   currentRound: number
   injectEvents: Array<{ content: string; phase?: string; timestamp: number }>
+  /** Accumulated answer text from streaming answer events. */
+  streamingAnswer: string
+  /** True when all answer chunks have been received. */
+  answerDone: boolean
 }
 
 export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStepsResult {
@@ -49,8 +54,23 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
     let currentPhase: string | null = null
     let currentRound = 1
     const injectEvents: Array<{ content: string; phase?: string; timestamp: number }> = []
+    let streamingAnswer = ""
+    let answerDone = false
 
     for (const msg of messages) {
+      // Handle answer events (streamed before done)
+      if (msg.event === "answer") {
+        const ev = msg.data as AnswerEvent
+        if (ev.status === "start") {
+          streamingAnswer = ""
+          answerDone = false
+        } else if (ev.status === "delta" && ev.content) {
+          streamingAnswer += ev.content
+        } else if (ev.status === "done") {
+          answerDone = true
+        }
+        continue
+      }
       if (msg.event === "phase") {
         const phase = msg.data as DagPhaseEvent
 
@@ -206,6 +226,8 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
       currentPhase,
       currentRound,
       injectEvents,
+      streamingAnswer,
+      answerDone,
     }
   }, [messages, isRunning])
 }

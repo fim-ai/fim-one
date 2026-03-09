@@ -42,6 +42,13 @@ export interface ReactDoneEvent {
   title?: string
 }
 
+/** Streaming answer chunk event (emitted before `done`). */
+export interface AnswerEvent {
+  status: "start" | "delta" | "done"
+  /** Text chunk (only present when status is "delta"). */
+  content?: string
+}
+
 // DAG events
 export interface DagPhaseEvent {
   name: "planning" | "executing" | "analyzing" | "replanning"

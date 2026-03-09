@@ -6,6 +6,7 @@ Both endpoints stream Server-Sent Events with the following event names:
 - ``step_progress``  – DAG per-step progress (started / iteration / completed).
 - ``phase``          – Pipeline phase transitions (selecting_tools / planning / executing / analyzing).
 - ``compact``        – Context compaction occurred (original_messages, kept_messages).
+- ``answer``         – Streamed answer text (start / delta / done) emitted before ``done``.
 - ``done``           – Final result payload (always the last event).
 
 A keepalive comment (``": keepalive\\n\\n"``) is emitted every 15 seconds of
@@ -127,6 +128,29 @@ def _emit(sse_events: list[dict[str, Any]], event: str, data: Any) -> str:
     """Accumulate event for persistence and return SSE frame for streaming."""
     sse_events.append({"event": event, "data": data})
     return _sse(event, data)
+
+
+def _chunk_answer(text: str, target_size: int = 30) -> list[str]:
+    """Split answer text into word-boundary chunks for streaming effect.
+
+    Produces chunks of approximately *target_size* characters, breaking
+    at word boundaries to avoid splitting words or markdown tokens.
+    """
+    if not text:
+        return []
+    words = text.split(" ")
+    chunks: list[str] = []
+    current = ""
+    for word in words:
+        candidate = current + " " + word if current else word
+        if current and len(candidate) > target_size:
+            chunks.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 # ---------------------------------------------------------------------------
@@ -437,9 +461,16 @@ async def _resolve_agent_config(
         return None
 
     async with create_session() as session:
+        from sqlalchemy import and_ as _and_agent, or_ as _or_agent
+
         stmt = sa_select(Agent).where(Agent.id == resolved_id)
         if user_id:
-            stmt = stmt.where(Agent.user_id == user_id)
+            stmt = stmt.where(
+                _or_agent(
+                    Agent.user_id == user_id,
+                    _and_agent(Agent.is_global == True, Agent.status == "published"),  # noqa: E712
+                )
+            )
         result = await session.execute(stmt)
         agent = result.scalar_one_or_none()
         if agent is None:
@@ -668,6 +699,23 @@ async def _resolve_tools(
                 tools.register(_BCls(connector_id=_builder_cid, user_id=user_id or ""))
             logger.info(
                 "Injected connector builder tools for connector_id=%s", _builder_cid
+            )
+
+    # Inject Agent Builder tools when this is an Agent Builder Agent.
+    if agent_cfg and "agent_builder" in (agent_cfg.get("tool_categories") or []):
+        import re as _re2
+        _instructions2 = agent_cfg.get("instructions") or ""
+        _m2 = _re2.search(r"target_agent_id=([a-f0-9-]{36})", _instructions2)
+        if _m2:
+            _builder_aid = _m2.group(1)
+            from fim_agent.core.tool.builtin.agent_builder import (
+                AgentGetSettingsTool,
+                AgentUpdateSettingsTool,
+            )
+            for _BCls2 in [AgentGetSettingsTool, AgentUpdateSettingsTool]:
+                tools.register(_BCls2(agent_id=_builder_aid, user_id=user_id or ""))
+            logger.info(
+                "Injected agent builder tools for agent_id=%s", _builder_aid
             )
 
     # Filter out globally disabled built-in tools (admin setting).
@@ -1360,6 +1408,12 @@ async def react_endpoint(
                 }
                 yield _emit(sse_events, "compact", compact_payload)
 
+            # -- Stream answer to client immediately --------------------
+            yield _emit(sse_events, "answer", {"status": "start"})
+            for _ans_chunk in _chunk_answer(result.answer):
+                yield _emit(sse_events, "answer", {"status": "delta", "content": _ans_chunk})
+            yield _emit(sse_events, "answer", {"status": "done"})
+
             elapsed = round(time.time() - t0, 2)
             last_iter_elapsed = round(time.time() - iter_start, 2)
             done_payload: dict[str, Any] = {
@@ -1420,16 +1474,11 @@ async def react_endpoint(
                         exc_info=True,
                     )
 
-            # ephemeral: generate AFTER persist, inject BEFORE yield
-            suggestions = await _generate_suggestions(
-                fast_llm, q, result.answer, preferred_language=preferred_language,
-                usage_tracker=fast_usage_tracker,
-            )
-            if suggestions:
-                done_payload["suggestions"] = suggestions
-
-            # Auto-generate title for the first message in a new conversation
-            if db_session and conversation_id:
+            # -- Concurrent post-answer metadata generation -------------
+            async def _maybe_generate_title() -> str | None:
+                """Generate title if this is the first message."""
+                if not (db_session and conversation_id):
+                    return None
                 try:
                     from sqlalchemy import func as _sa_func
                     from fim_agent.web.models import (
@@ -1444,22 +1493,39 @@ async def react_endpoint(
                         )
                     ).scalar() or 0
                     if msg_count <= 2:
-                        gen_title = await _generate_title(
+                        return await _generate_title(
                             fast_llm, q, result.answer,
                             preferred_language=preferred_language,
                             usage_tracker=fast_usage_tracker,
                         )
-                        if gen_title:
-                            from sqlalchemy import update as _sa_update
-                            await db_session.execute(
-                                _sa_update(Conversation)
-                                .where(Conversation.id == conversation_id)
-                                .values(title=gen_title)
-                            )
-                            await db_session.commit()
-                            done_payload["title"] = gen_title
                 except Exception:
                     logger.debug("Auto-title generation failed", exc_info=True)
+                return None
+
+            suggestions, gen_title = await asyncio.gather(
+                _generate_suggestions(
+                    fast_llm, q, result.answer,
+                    preferred_language=preferred_language,
+                    usage_tracker=fast_usage_tracker,
+                ),
+                _maybe_generate_title(),
+            )
+            if suggestions:
+                done_payload["suggestions"] = suggestions
+            if gen_title:
+                done_payload["title"] = gen_title
+                if db_session and conversation_id:
+                    try:
+                        from sqlalchemy import update as _sa_update
+                        from fim_agent.web.models import Conversation
+                        await db_session.execute(
+                            _sa_update(Conversation)
+                            .where(Conversation.id == conversation_id)
+                            .values(title=gen_title)
+                        )
+                        await db_session.commit()
+                    except Exception:
+                        logger.debug("Failed to persist title", exc_info=True)
 
             # Capture fast LLM token usage (after all fast calls including suggestions)
             fast_summary = fast_usage_tracker.get_summary()
@@ -2037,18 +2103,6 @@ async def dag_endpoint(
 
             elapsed = round(time.time() - t0, 2)
 
-            answer = analysis.final_answer
-            if not answer:
-                completed = [
-                    s for s in plan.steps if s.status == "completed" and s.result
-                ]
-                if completed:
-                    answer = "\n\n---\n\n".join(
-                        f"**{s.id}**: {s.result}" for s in completed
-                    )
-                else:
-                    answer = "(goal not achieved)"
-
             # Notify frontend if context was compacted
             if dag_memory and dag_memory.was_compacted:
                 compact_payload = {
@@ -2056,6 +2110,54 @@ async def dag_endpoint(
                     "kept_messages": dag_memory._compacted_count,
                 }
                 yield _emit(sse_events, "compact", compact_payload)
+
+            # -- Stream answer to client immediately --------------------
+            yield _emit(sse_events, "answer", {"status": "start"})
+
+            if analysis.achieved:
+                # Real streaming synthesis from LLM
+                answer_chunks: list[str] = []
+                try:
+                    async for _token in analyzer.stream_synthesize(
+                        enriched_query, plan, analysis,
+                    ):
+                        answer_chunks.append(_token)
+                        yield _emit(
+                            sse_events, "answer",
+                            {"status": "delta", "content": _token},
+                        )
+                    answer = "".join(answer_chunks)
+                except Exception:
+                    logger.warning(
+                        "stream_synthesize failed, falling back to "
+                        "analysis.final_answer",
+                        exc_info=True,
+                    )
+                    answer = analysis.final_answer or ""
+                    for _ans_chunk in _chunk_answer(answer):
+                        yield _emit(
+                            sse_events, "answer",
+                            {"status": "delta", "content": _ans_chunk},
+                        )
+            else:
+                # Goal not achieved — use fallback answer
+                completed = [
+                    s for s in plan.steps
+                    if s.status == "completed" and s.result
+                ]
+                if completed:
+                    answer = "\n\n---\n\n".join(
+                        f"**{s.id}**: {s.result}" for s in completed
+                    )
+                else:
+                    answer = "(goal not achieved)"
+                for _ans_chunk in _chunk_answer(answer):
+                    yield _emit(
+                        sse_events, "answer",
+                        {"status": "delta", "content": _ans_chunk},
+                    )
+
+            yield _emit(sse_events, "answer", {"status": "done"})
 
             dag_done_payload: dict[str, Any] = {
                 "answer": answer,
@@ -2126,16 +2228,11 @@ async def dag_endpoint(
                         exc_info=True,
                     )
 
-            # ephemeral: generate AFTER persist, inject BEFORE yield
-            dag_suggestions = await _generate_suggestions(
-                fast_llm, q, answer, preferred_language=preferred_language,
-                usage_tracker=fast_usage_tracker,
-            )
-            if dag_suggestions:
-                dag_done_payload["suggestions"] = dag_suggestions
-
-            # Auto-generate title for the first message in a new conversation
-            if db_session and conversation_id:
+            # -- Concurrent post-answer metadata generation -------------
+            async def _dag_maybe_generate_title() -> str | None:
+                """Generate title if this is the first message."""
+                if not (db_session and conversation_id):
+                    return None
                 try:
                     from sqlalchemy import func as _sa_func
                     from fim_agent.web.models import (
@@ -2150,22 +2247,39 @@ async def dag_endpoint(
                         )
                     ).scalar() or 0
                     if msg_count <= 2:
-                        gen_title = await _generate_title(
+                        return await _generate_title(
                             fast_llm, q, answer,
                             preferred_language=preferred_language,
                             usage_tracker=fast_usage_tracker,
                         )
-                        if gen_title:
-                            from sqlalchemy import update as _sa_update
-                            await db_session.execute(
-                                _sa_update(ConvModel)
-                                .where(ConvModel.id == conversation_id)
-                                .values(title=gen_title)
-                            )
-                            await db_session.commit()
-                            dag_done_payload["title"] = gen_title
                 except Exception:
                     logger.debug("Auto-title generation failed", exc_info=True)
+                return None
+
+            dag_suggestions, dag_gen_title = await asyncio.gather(
+                _generate_suggestions(
+                    fast_llm, q, answer,
+                    preferred_language=preferred_language,
+                    usage_tracker=fast_usage_tracker,
+                ),
+                _dag_maybe_generate_title(),
+            )
+            if dag_suggestions:
+                dag_done_payload["suggestions"] = dag_suggestions
+            if dag_gen_title:
+                dag_done_payload["title"] = dag_gen_title
+                if db_session and conversation_id:
+                    try:
+                        from sqlalchemy import update as _sa_update
+                        from fim_agent.web.models import Conversation as ConvModel
+                        await db_session.execute(
+                            _sa_update(ConvModel)
+                            .where(ConvModel.id == conversation_id)
+                            .values(title=dag_gen_title)
+                        )
+                        await db_session.commit()
+                    except Exception:
+                        logger.debug("Failed to persist title", exc_info=True)
 
             # Capture fast LLM token usage (after all fast calls including suggestions)
             fast_summary = fast_usage_tracker.get_summary()

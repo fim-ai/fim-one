@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronRight, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface CollapsibleTextProps {
@@ -29,34 +29,29 @@ export function CollapsibleText({
   }
 
   return (
-    <div>
-      {expanded ? (
-        <div className="max-h-[400px] overflow-y-auto">
-          <p className={cn(textClass, "break-words")}>{content}</p>
-        </div>
-      ) : (
-        <div className="relative">
-          <p className={cn(textClass, "line-clamp-3")}>{content}</p>
-          <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-        </div>
-      )}
+    <div className="rounded-lg border border-border/40 bg-muted/20 overflow-hidden">
+      {/* Full-width clickable bar */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-1 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="flex w-full items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors text-xs text-muted-foreground"
       >
         {expanded ? (
-          <>
-            <ChevronUp className="h-3 w-3" />
-            {t("showLessText")}
-          </>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
         ) : (
-          <>
-            <ChevronDown className="h-3 w-3" />
-            {t("showMoreText", { chars: content.length.toLocaleString() })}
-          </>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
         )}
+        <span className="truncate flex-1 text-left">
+          {expanded ? t("showLessText") : t("showMoreText", { chars: content.length.toLocaleString() })}
+        </span>
       </button>
+
+      {/* Content — expanded */}
+      {expanded && (
+        <div className="px-4 pb-3 max-h-[400px] overflow-y-auto">
+          <p className={cn(textClass, "break-words")}>{content}</p>
+        </div>
+      )}
     </div>
   )
 }

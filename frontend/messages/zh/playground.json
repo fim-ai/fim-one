@@ -49,6 +49,7 @@
   "toolCallCount": "{count} 次工具调用",
   "toolCallCountPlural": "{count} 次工具调用",
   "thinking": "思考中",
+  "reasoning": "推理过程",
   "result": "结果",
   "followUp": "追问",
   "stepsCompleted": "已完成 {completed}/{total} 个步骤",

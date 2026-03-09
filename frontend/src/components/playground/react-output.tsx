@@ -25,10 +25,11 @@ import { SuggestedFollowups } from "./suggested-followups"
 interface ReactOutputProps {
   items: StepItem[]
   isStreaming?: boolean
+  streamingAnswer?: string
   onSuggestionSelect?: (query: string) => void
 }
 
-export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOutputProps) {
+export function ReactOutput({ items, isStreaming, streamingAnswer, onSuggestionSelect }: ReactOutputProps) {
   const t = useTranslations("playground")
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
@@ -53,7 +54,12 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
     return step.type === "iteration"
   }).length
 
-  const elapsed = doneItem ? (doneItem.data as ReactDoneEvent).elapsed : 0
+  const done = doneItem?.data as ReactDoneEvent | undefined
+  const elapsed = done?.elapsed ?? 0
+
+  // Determine which answer to show: done.answer is authoritative, fall back to streaming
+  const displayAnswer = done?.answer ?? streamingAnswer ?? ""
+  const isAnswerStreaming = !!streamingAnswer && !done
 
   // After completion with tool calls: show collapsible summary bar + done card
   if (hasDone && toolCallCount > 0) {
@@ -121,21 +127,28 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
           )
         })}
 
-        {/* Done card */}
-        {doneItem && (
-          <div data-react-idx={items.indexOf(doneItem)}>
-            <DoneCard done={doneItem.data as ReactDoneEvent} items={items} onSuggestionSelect={onSuggestionSelect} />
+        {/* Answer card — shown during streaming or after done */}
+        {(displayAnswer || isAnswerStreaming) && (
+          <div data-react-idx={doneItem ? items.indexOf(doneItem) : undefined}>
+            {done ? (
+              <DoneCard done={done} items={items} onSuggestionSelect={onSuggestionSelect} />
+            ) : (
+              <StreamingAnswerCard content={displayAnswer} />
+            )}
           </div>
         )}
       </div>
     )
   }
 
+  // Show streaming answer before done arrives (no tool calls, or still streaming)
+  const showStreamingAnswer = isAnswerStreaming && !hasDone && displayAnswer
+
   // Streaming (no done yet) or direct answer (no steps): render as before
   return (
     <div className="space-y-3 min-w-0 w-full">
       {/* Initial loading indicator before any step events arrive */}
-      {isStreaming && items.length === 0 && (
+      {isStreaming && items.length === 0 && !showStreamingAnswer && (
         <div className="flex items-center gap-3 px-1 py-2">
           <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
           <span className="text-sm text-muted-foreground shiny-text">{t("statusProcessing")}</span>
@@ -171,7 +184,34 @@ export function ReactOutput({ items, isStreaming, onSuggestionSelect }: ReactOut
         }
         return null
       })}
+      {/* Streaming answer — shown before done arrives */}
+      {showStreamingAnswer && (
+        <StreamingAnswerCard content={displayAnswer} />
+      )}
     </div>
+  )
+}
+
+function StreamingAnswerCard({ content }: { content: string }) {
+  const t = useTranslations("playground")
+  return (
+    <Card className="py-4">
+      <CardHeader className="pb-0">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/10">
+            <Loader2 className="h-3.5 w-3.5 text-green-500 animate-spin" />
+          </div>
+          <CardTitle className="text-sm">{t("result")}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <MarkdownContent
+          content={content}
+          className="prose-sm text-sm text-foreground/90"
+        />
+        <span className="inline-block w-1.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
+      </CardContent>
+    </Card>
   )
 }
 
@@ -180,15 +220,15 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
   const isWaiting = !reasoning && duration == null
 
   return (
-    <Card className="border-amber-500/20 py-4">
+    <Card className="border-border py-4">
       <CardContent className="space-y-2">
         <div className="flex items-center gap-3">
           <Badge
             variant="outline"
-            className="border-amber-500/30 text-amber-500 text-[10px] uppercase tracking-wider gap-1"
+            className="border-muted-foreground/30 text-muted-foreground text-[10px] uppercase tracking-wider gap-1"
           >
             <Brain className="h-3 w-3" />
-            {t("thinking")}
+            {t("reasoning")}
           </Badge>
           <span className="text-xs text-muted-foreground">
             {t("iterationLabel", { n: iterLabel })}

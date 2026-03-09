@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fim_agent.core.model import BaseLLM, ChatMessage
@@ -154,6 +155,63 @@ class PlanAnalyzer:
             )
 
         return analysis
+
+    async def stream_synthesize(
+        self,
+        goal: str,
+        plan: ExecutionPlan,
+        judgment: AnalysisResult,
+    ) -> AsyncIterator[str]:
+        """Stream the final synthesised answer token by token.
+
+        Called after :meth:`analyze` when the goal was achieved and we want
+        real token-level streaming for the frontend.
+
+        Args:
+            goal: The original high-level objective.
+            plan: The executed plan with populated step results.
+            judgment: The analysis result from :meth:`analyze`.
+
+        Yields:
+            Incremental text chunks (tokens) of the synthesised answer.
+        """
+        step_summaries = self._format_step_results(plan)
+
+        system_parts = [
+            "You synthesize a final answer from execution plan results. "
+            "Provide a concise, coherent response that addresses the original "
+            "goal. Do NOT include meta-commentary like 'based on the results' "
+            "— just answer directly.",
+            "",
+            "Guidelines:",
+            "- When step results come from different sources (e.g. web search vs "
+            "knowledge base retrieval), explicitly compare them. If the "
+            "information is consistent, note that sources corroborate each other. "
+            "If there are contradictions (different numbers, dates, or claims), "
+            "flag each discrepancy clearly with both versions and indicate which "
+            "source is likely more authoritative based on recency and specificity.",
+            "- LANGUAGE: The answer must be in the same language as the original "
+            "goal. If the goal is in Chinese, respond in Chinese.",
+        ]
+        if self._language_directive:
+            system_parts.append(f"- {self._language_directive}")
+
+        system_content = "\n".join(system_parts)
+
+        user_content = (
+            f"Goal: {goal}\n\n"
+            f"Execution plan (round {plan.current_round}):\n{step_summaries}\n\n"
+            f"Analyzer reasoning: {judgment.reasoning}"
+        )
+
+        messages = [
+            ChatMessage(role="system", content=system_content),
+            ChatMessage(role="user", content=user_content),
+        ]
+
+        async for chunk in self._llm.stream_chat(messages):
+            if chunk.delta_content:
+                yield chunk.delta_content
 
     # ------------------------------------------------------------------
     # Internal helpers

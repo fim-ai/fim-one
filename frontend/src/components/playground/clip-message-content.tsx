@@ -49,31 +49,23 @@ export function ClipMessageContent({ metadata }: ClipMessageContentProps) {
             key={index}
             className="rounded-lg border border-border/60 bg-muted/50 text-xs overflow-hidden"
           >
-            <div className="flex items-center gap-2 px-3 py-2">
+            <button
+              type="button"
+              onClick={() => toggleExpand(index)}
+              className="flex w-full items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/80 transition-colors text-left"
+              aria-label={isExpanded ? t("collapseClip") : t("expandClip")}
+            >
               <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="flex-1 min-w-0 truncate text-foreground">{clip.preview}</span>
               <span className="shrink-0 text-muted-foreground">
                 ({clip.charCount.toLocaleString()} {t("chars")})
               </span>
-              <button
-                type="button"
-                onClick={() => toggleExpand(index)}
-                className="shrink-0 inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                aria-label={isExpanded ? t("collapseClip") : t("expandClip")}
-              >
-                {isExpanded ? (
-                  <>
-                    <ChevronUp className="h-3 w-3" />
-                    <span>{t("collapseClip")}</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-3 w-3" />
-                    <span>{t("expandClip")}</span>
-                  </>
-                )}
-              </button>
-            </div>
+              {isExpanded ? (
+                <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
+            </button>
             {isExpanded && (
               <div className="border-t border-border/40 bg-muted px-3 py-2 max-h-[200px] overflow-y-auto">
                 <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground/80">

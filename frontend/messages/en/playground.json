@@ -49,6 +49,7 @@
   "toolCallCount": "{count} tool call",
   "toolCallCountPlural": "{count} tool calls",
   "thinking": "Thinking",
+  "reasoning": "Reasoning",
   "result": "Result",
   "followUp": "Follow up",
   "stepsCompleted": "{completed}/{total} step completed",

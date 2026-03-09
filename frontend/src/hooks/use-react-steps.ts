@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import type { SSEMessage } from "@/hooks/use-sse"
-import type { ReactStepEvent, ReactDoneEvent } from "@/types/api"
+import type { ReactStepEvent, ReactDoneEvent, AnswerEvent } from "@/types/api"
 
 export interface StepItem {
   event: string
@@ -8,6 +8,14 @@ export interface StepItem {
   duration?: number
   displayIteration?: number
   timestamp?: number
+}
+
+export interface ReactStepsResult {
+  items: StepItem[]
+  /** Accumulated answer text from streaming answer events. */
+  streamingAnswer: string
+  /** True when all answer chunks have been received (answer status="done"). */
+  answerDone: boolean
 }
 
 /** Normalize V1/V2 legacy event formats to V3 (type + status). */
@@ -27,12 +35,27 @@ function normalizeStep(step: ReactStepEvent): ReactStepEvent {
   }
 }
 
-export function useReactSteps(messages: SSEMessage[], isRunning: boolean): StepItem[] {
+export function useReactSteps(messages: SSEMessage[], isRunning: boolean): ReactStepsResult {
   return useMemo(() => {
     const result: StepItem[] = []
+    let streamingAnswer = ""
+    let answerDone = false
     let iterCount = 0
 
     for (const msg of messages) {
+      // Handle answer events (streamed before done)
+      if (msg.event === "answer") {
+        const ev = msg.data as AnswerEvent
+        if (ev.status === "start") {
+          streamingAnswer = ""
+          answerDone = false
+        } else if (ev.status === "delta" && ev.content) {
+          streamingAnswer += ev.content
+        } else if (ev.status === "done") {
+          answerDone = true
+        }
+        continue
+      }
       // Normalize step events for backward compat with stored sse_events
       const data = msg.event === "step"
         ? normalizeStep(msg.data as ReactStepEvent)
@@ -91,7 +114,7 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): StepI
 
     // When aborted: convert remaining starts to done, drop transient items
     if (!isRunning && !hasDone && result.length > 0) {
-      return result
+      const items = result
         .filter(item => {
           if (item.event !== "step") return true
           const step = item.data as ReactStepEvent
@@ -108,19 +131,21 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): StepI
           }
           return item
         })
+      return { items, streamingAnswer, answerDone }
     }
 
     // After completion: drop transient items but keep thinking-done (has reasoning)
     if (hasDone) {
-      return result.filter(item => {
+      const items = result.filter(item => {
         if (item.event !== "step") return true
         const step = item.data as ReactStepEvent
         if (step.type === "thinking" && step.status === "start") return false
         if (step.type === "answer") return false
         return true
       })
+      return { items, streamingAnswer, answerDone }
     }
 
-    return result
+    return { items: result, streamingAnswer, answerDone }
   }, [messages, isRunning])
 }

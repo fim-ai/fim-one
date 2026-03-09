@@ -61,6 +61,8 @@ interface DagOutputProps {
   hideDagGraph?: boolean
   hideStepCards?: boolean
   injectEvents?: Array<{ content: string; phase?: string; timestamp: number }>
+  streamingAnswer?: string
+  answerDone?: boolean
   onSuggestionSelect?: (query: string) => void
 }
 
@@ -74,6 +76,8 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
   hideDagGraph,
   hideStepCards,
   injectEvents = [],
+  streamingAnswer,
+  answerDone: _answerDone,
   onSuggestionSelect,
 }, ref) {
   const t = useTranslations("playground")
@@ -89,6 +93,10 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
     (s) => s.status === "completed",
   ).length
   const totalSteps = stepStates.length
+
+  // Determine which answer to show: doneEvent.answer is authoritative, fall back to streaming
+  const displayAnswer = doneEvent?.answer ?? streamingAnswer ?? ""
+  const isAnswerStreaming = !!streamingAnswer && !doneEvent
 
   // After completion: collapsible summary bar + always-visible done card
   if (doneEvent && totalSteps > 0) {
@@ -157,9 +165,9 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
     <div className="space-y-3 min-w-0 w-full">
       {/* Planning spinner */}
       {currentPhase === "planning" && !planSteps && (
-        <Card className="border-amber-500/20 py-4">
+        <Card className="border-border py-4">
           <CardContent className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             <span className="text-sm shiny-text">
               {currentRound > 1
                 ? t("replanningRound", { round: currentRound })
@@ -171,9 +179,9 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
 
       {/* Re-planning spinner (between analyze and next planning:start) */}
       {currentPhase === "replanning" && (
-        <Card className="border-amber-500/20 py-4">
+        <Card className="border-border py-4">
           <CardContent className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             <span className="text-sm shiny-text">
               {t("replanning")}
             </span>
@@ -218,9 +226,37 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
 
       {/* Done card */}
       {doneEvent && <DagDoneCard done={doneEvent} stepStates={stepStates} onSuggestionSelect={onSuggestionSelect} />}
+
+      {/* Streaming answer — shown before done arrives */}
+      {isAnswerStreaming && displayAnswer && (
+        <DagStreamingAnswerCard content={displayAnswer} />
+      )}
     </div>
   )
 })
+
+function DagStreamingAnswerCard({ content }: { content: string }) {
+  const t = useTranslations("playground")
+  return (
+    <Card className="border-green-500/20 py-4">
+      <CardHeader className="pb-0">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/10">
+            <Loader2 className="h-3.5 w-3.5 text-green-500 animate-spin" />
+          </div>
+          <CardTitle className="text-sm">{t("result")}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <MarkdownContent
+          content={stripCitations(content)}
+          className="prose-sm text-sm text-foreground/90"
+        />
+        <span className="inline-block w-1.5 h-4 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
+      </CardContent>
+    </Card>
+  )
+}
 
 /* ------------------------------------------------------------------ */
 /*  Restored from commit 44ca9e1 — battle-tested components            */

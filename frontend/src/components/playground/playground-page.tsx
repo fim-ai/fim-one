@@ -84,9 +84,11 @@ interface PlaygroundPageProps {
   onClose?: () => void
   /** Pre-select a specific agent on mount */
   initialAgentId?: string
+  /** Called after each assistant turn completes (streaming ends) */
+  onTurnComplete?: () => void
 }
 
-export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }: PlaygroundPageProps) {
+export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId, onTurnComplete }: PlaygroundPageProps) {
   const t = useTranslations("playground")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
@@ -236,6 +238,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
         animateTitle(activeId, doneTitle)
       }
       loadConversations()
+      onTurnComplete?.()
       // Restore failed inject content to input box for user to re-send
       const queued = failedInjectRef.current
       if (queued) {
@@ -380,6 +383,7 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
         }}
         isNewChat={isNewChat}
         initialAgentId={initialAgentId ?? agentParam}
+        embedded={embedded}
       />
 
       {/* Mode switch confirmation dialog */}
@@ -403,8 +407,8 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId }:
                 setSourceMode(null)
                 clearActive()
                 setMode(pendingMode)
-                // Navigate to /new when switching mode
-                router.push("/new")
+                // Navigate to /new when switching mode (skip in embedded mode)
+                if (!embedded) router.push("/new")
               }
               setPendingMode(null)
             }}>
@@ -488,7 +492,7 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
 }) {
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
-  const reactItems = useReactSteps(sseMessages, false)
+  const { items: reactItems, streamingAnswer: reactStreamingAnswer } = useReactSteps(sseMessages, false)
   const dagData = useDagSteps(sseMessages, false)
 
   // Detect clip metadata in user message
@@ -522,7 +526,7 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
         </div>
       )}
       {mode === "react" ? (
-        <ReactOutput items={reactItems} />
+        <ReactOutput items={reactItems} streamingAnswer={reactStreamingAnswer} />
       ) : (
         <DagOutput
           planSteps={dagData.planSteps}
@@ -532,6 +536,8 @@ function HistoryTurn({ userContent, userMetadata, sseMessages, mode, hideDagGrap
           currentPhase={dagData.currentPhase}
           currentRound={dagData.currentRound}
           injectEvents={dagData.injectEvents}
+          streamingAnswer={dagData.streamingAnswer}
+          answerDone={dagData.answerDone}
           hideDagGraph={hideDagGraph}
         />
       )}
@@ -575,6 +581,7 @@ interface PlaygroundContentProps {
   onNewChat: () => void
   isNewChat?: boolean
   initialAgentId?: string | null
+  embedded?: boolean
 }
 
 function PlaygroundContent({
@@ -598,6 +605,7 @@ function PlaygroundContent({
   onNewChat,
   isNewChat,
   initialAgentId,
+  embedded,
 }: PlaygroundContentProps) {
   const t = useTranslations("playground")
   const { user } = useAuth()
@@ -679,7 +687,7 @@ function PlaygroundContent({
 
   // Parse data at this level via hooks
   const dagData = useDagSteps(messages, isRunning)
-  const reactItems = useReactSteps(messages, isRunning)
+  const { items: reactItems, streamingAnswer: reactStreamingAnswer } = useReactSteps(messages, isRunning)
 
   // Reconstruct all persisted execution steps from conversation messages.
   // Available during BOTH live mode (shows previous turns) and history mode (shows all turns).
@@ -1231,7 +1239,7 @@ function PlaygroundContent({
                   {(hasLiveMessages || (isRunning && pendingQuery && mode === "react")) && (
                     <div data-live-output>
                       {mode === "react" ? (
-                        <ReactOutput items={reactItems} isStreaming={isRunning && modeMatches} onSuggestionSelect={handleSuggestionSelect} />
+                        <ReactOutput items={reactItems} isStreaming={isRunning && modeMatches} streamingAnswer={reactStreamingAnswer} onSuggestionSelect={handleSuggestionSelect} />
                       ) : (
                         <DagOutput
                           ref={dagOutputRef}
@@ -1242,6 +1250,8 @@ function PlaygroundContent({
                           currentPhase={dagData.currentPhase}
                           currentRound={dagData.currentRound}
                           injectEvents={dagData.injectEvents}
+                          streamingAnswer={dagData.streamingAnswer}
+                          answerDone={dagData.answerDone}
                           hideDagGraph
                           onSuggestionSelect={handleSuggestionSelect}
                         />
@@ -1339,14 +1349,16 @@ function PlaygroundContent({
         </div>
       ) : (
         <div className="flex flex-1 flex-col justify-center min-h-0 w-full">
-          <Examples
-            mode={mode}
-            onSelect={onExampleSelect}
-            disabled={isRunning}
-            agentPrompts={selectedAgent?.suggested_prompts}
-            agentName={selectedAgent?.name}
-            agentIcon={selectedAgent?.icon}
-          />
+          {!embedded && (
+            <Examples
+              mode={mode}
+              onSelect={onExampleSelect}
+              disabled={isRunning}
+              agentPrompts={selectedAgent?.suggested_prompts}
+              agentName={selectedAgent?.name}
+              agentIcon={selectedAgent?.icon}
+            />
+          )}
         </div>
       )}
 
@@ -1394,32 +1406,26 @@ function PlaygroundContent({
                   key={clip.id}
                   className="rounded-lg border border-border/60 bg-muted/50 text-xs overflow-hidden"
                 >
-                  <div className="flex items-center gap-2 px-3 py-2">
-                    <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="flex-1 min-w-0 truncate text-foreground">{clip.preview}</span>
-                    <span className="shrink-0 text-muted-foreground">({clip.charCount.toLocaleString()} {t("chars")})</span>
+                  <div className="flex items-center">
                     <button
                       type="button"
                       onClick={() => toggleClipExpand(clip.id)}
-                      className="shrink-0 inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors"
+                      className="flex flex-1 min-w-0 items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/80 transition-colors text-left"
                       aria-label={isExpanded ? t("collapseClip") : t("expandClip")}
                     >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 min-w-0 truncate text-foreground">{clip.preview}</span>
+                      <span className="shrink-0 text-muted-foreground">({clip.charCount.toLocaleString()} {t("chars")})</span>
                       {isExpanded ? (
-                        <>
-                          <ChevronUp className="h-3 w-3" />
-                          <span>{t("collapseClip")}</span>
-                        </>
+                        <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       ) : (
-                        <>
-                          <ChevronDown className="h-3 w-3" />
-                          <span>{t("expandClip")}</span>
-                        </>
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       )}
                     </button>
                     <button
                       type="button"
                       onClick={() => removeClip(clip.id)}
-                      className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                      className="shrink-0 px-2 py-2 text-muted-foreground hover:text-foreground transition-colors"
                       aria-label={t("removeClip")}
                     >
                       <X className="h-3 w-3" />
@@ -1543,8 +1549,8 @@ function PlaygroundContent({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          {/* Agent selector */}
-          {agents.length > 0 && (
+          {/* Agent selector — hidden in embedded/builder mode */}
+          {!embedded && agents.length > 0 && (
             <Popover open={agentSelectorOpen} onOpenChange={setAgentSelectorOpen}>
               <PopoverTrigger asChild>
                 <button
