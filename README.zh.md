@@ -9,12 +9,13 @@
 [![GitHub issues](https://img.shields.io/github/issues/fim-ai/fim-agent)](https://github.com/fim-ai/fim-agent/issues)
 [![Follow on X](https://img.shields.io/twitter/follow/FIM_Agent?style=social)](https://x.com/FIM_Agent)
 [![Discord](https://img.shields.io/discord/1480638265206771742?logo=discord&label=discord)](https://discord.gg/z64czxdC7z)
+[![Product Hunt](https://img.shields.io/badge/Product%20Hunt-FIM%20Agent-DA552F?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/fim-agent)
 
 [🌐 English](README.md) | 🇨🇳 **中文**
 
 **AI 驱动的连接器中枢 — 嵌入单个系统作为 Copilot，或连接所有系统成为 Hub。**
 
-🌐 [官网](https://agent.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_Agent)
+🌐 [官网](https://agent.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_Agent) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-agent)
 
 </div>
 
@@ -429,6 +430,6 @@ FIM Agent Source Available License。这 **不是** OSI 批准的开源许可证
 
 <div align="center">
 
-🌐 [官网](https://agent.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_Agent)
+🌐 [官网](https://agent.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_Agent) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-agent)
 
 </div>
