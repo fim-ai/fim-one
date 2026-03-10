@@ -65,8 +65,9 @@ def upgrade() -> None:
             op.execute(
                 sa.text(
                     f"UPDATE {table} SET visibility = 'global' "
-                    f"WHERE is_global = TRUE AND visibility = 'personal'"
-                )
+                    f"WHERE is_global = :val AND visibility = 'personal'"
+                ),
+                {"val": True},
             )
 
     # Resolve legacy clones (user_id=NULL) for agents
