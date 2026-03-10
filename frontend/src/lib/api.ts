@@ -32,6 +32,14 @@ import type {
   AIRefineActionRequest,
   AIActionResult,
   AICreateConnectorResult,
+  DbConnectorCreate,
+  SchemaTable,
+  SchemaTableUpdate,
+  SchemaColumnUpdate,
+  TestConnectionResponse,
+  IntrospectResponse,
+  QueryResponse,
+  AIAnnotateResponse,
 } from "@/types/connector"
 import type { AdminUser, AdminConversation, AdminMessage, StorageStats, InviteCode, AdminMCPServer, IntegrationHealth, AdminModelsResponse, AdminModelCreate, AdminModelUpdate, AdminUserFile, AdminGlobalAgentInfo, AdminAllMcpServer, AdminOrganization, OrgMember } from "@/types/admin"
 import type { MCPServerResponse, MCPServerCreate, MCPServerUpdate } from "@/types/mcp-server"
@@ -699,6 +707,66 @@ export const connectorApi = {
     apiFetch<ApiResponse<AICreateConnectorResult>>(
       `/api/connectors/ai/create`,
       { method: "POST", body: JSON.stringify(body) },
+    ).then((r) => r.data),
+
+  // Database connector create
+  createDbConnector: (body: DbConnectorCreate) =>
+    apiFetch<ApiResponse<ConnectorResponse>>("/api/connectors", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+
+  // Database connector endpoints
+  testConnection: (connectorId: string) =>
+    apiFetch<ApiResponse<TestConnectionResponse>>(
+      `/api/connectors/${connectorId}/test-connection`,
+      { method: "POST" },
+    ).then((r) => r.data),
+
+  introspect: (connectorId: string) =>
+    apiFetch<ApiResponse<IntrospectResponse>>(
+      `/api/connectors/${connectorId}/introspect`,
+      { method: "POST" },
+    ).then((r) => r.data),
+
+  getSchemas: (connectorId: string) =>
+    apiFetch<ApiResponse<SchemaTable[]>>(
+      `/api/connectors/${connectorId}/schemas`,
+    ).then((r) => r.data),
+
+  updateSchema: (connectorId: string, schemaId: string, body: SchemaTableUpdate) =>
+    apiFetch<ApiResponse<SchemaTable>>(
+      `/api/connectors/${connectorId}/schemas/${schemaId}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ).then((r) => r.data),
+
+  updateSchemaColumn: (
+    connectorId: string,
+    schemaId: string,
+    columnId: string,
+    body: SchemaColumnUpdate,
+  ) =>
+    apiFetch<ApiResponse<SchemaTable>>(
+      `/api/connectors/${connectorId}/schemas/${schemaId}/columns/${columnId}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ).then((r) => r.data),
+
+  bulkUpdateSchemas: (connectorId: string, body: { schemas: SchemaTableUpdate[] }) =>
+    apiFetch<ApiResponse<{ updated: number }>>(
+      `/api/connectors/${connectorId}/schemas/bulk`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ).then((r) => r.data),
+
+  executeQuery: (connectorId: string, body: { sql: string }) =>
+    apiFetch<ApiResponse<QueryResponse>>(
+      `/api/connectors/${connectorId}/query`,
+      { method: "POST", body: JSON.stringify(body) },
+    ).then((r) => r.data),
+
+  aiAnnotate: (connectorId: string, body?: { table_ids?: string[] }) =>
+    apiFetch<ApiResponse<AIAnnotateResponse>>(
+      `/api/connectors/${connectorId}/ai/annotate`,
+      { method: "POST", body: JSON.stringify(body || {}) },
     ).then((r) => r.data),
 }
 

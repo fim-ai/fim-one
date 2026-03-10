@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Plus, Loader2, Plug, Trash2, LayoutGrid } from "lucide-react"
+import { Plus, Loader2, Plug, Trash2, LayoutGrid, Database, Globe, ChevronDown } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -15,6 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/contexts/auth-context"
 import { connectorApi } from "@/lib/api"
 import { ConnectorCard } from "@/components/connectors/connector-card"
@@ -100,12 +106,29 @@ function ConnectorsPageInner() {
         </div>
         <div className="flex items-center gap-2">
           {activeTab === "connectors" && (
-            <Button size="sm" className="gap-1.5" asChild>
-              <Link href="/connectors/new">
-                <Plus className="h-4 w-4" />
-                {t("newConnector")}
-              </Link>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="gap-1.5">
+                  <Plus className="h-4 w-4" />
+                  {t("newConnector")}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href="/connectors/new">
+                    <Globe className="h-4 w-4" />
+                    {t("newApiConnector")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/connectors/new?type=database">
+                    <Database className="h-4 w-4" />
+                    {t("newDatabaseConnector")}
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {activeTab === "mcp" && (
             <>

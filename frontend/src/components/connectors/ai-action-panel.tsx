@@ -26,6 +26,7 @@ interface AIActionPanelProps {
   isNewMode?: boolean
   onConnectorCreated?: (connector: ConnectorResponse) => void
   onBuilderModeChange?: (active: boolean) => void
+  connectorType?: "api" | "database"
 }
 
 export function AIActionPanel({
@@ -36,6 +37,7 @@ export function AIActionPanel({
   isNewMode = false,
   onConnectorCreated,
   onBuilderModeChange,
+  connectorType = "api",
 }: AIActionPanelProps) {
   const t = useTranslations("connectors")
 
@@ -295,12 +297,16 @@ export function AIActionPanel({
                   <p className="text-sm text-muted-foreground">
                     {isNewMode && !connectorId
                       ? t("aiEmptyNewMode")
-                      : t("aiEmptyExistingMode")}
+                      : connectorType === "database"
+                        ? t("aiEmptyDbMode")
+                        : t("aiEmptyExistingMode")}
                   </p>
                   <p className="text-xs text-muted-foreground/50">
                     {isNewMode && !connectorId
                       ? t("aiSubtitleNewMode")
-                      : t("aiSubtitleExistingMode")}
+                      : connectorType === "database"
+                        ? t("aiSubtitleDbMode")
+                        : t("aiSubtitleExistingMode")}
                   </p>
                 </div>
               </div>

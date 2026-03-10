@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { MoreHorizontal, Pencil, Plug, Trash2, Globe } from "lucide-react"
+import { MoreHorizontal, Pencil, Plug, Trash2, Globe, Database } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,8 +34,13 @@ export function ConnectorCard({
   const t = useTranslations("connectors")
   const tc = useTranslations("common")
 
+  const isDatabase = connector.type === "database"
   const authLabel = AUTH_LABELS[connector.auth_type]
   const authDisplay = authLabel === "noAuth" ? t("noAuth") : (authLabel || connector.auth_type)
+
+  // For database connectors, show host:port/database
+  const dbConfig = connector.db_config
+  const dbEndpoint = dbConfig ? `${dbConfig.host}:${dbConfig.port}/${dbConfig.database}` : ""
 
   return (
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
@@ -78,27 +83,54 @@ export function ConnectorCard({
 
       {/* Type badge */}
       <div className="flex items-center gap-1.5 mb-2">
-        <span className="text-[10px] px-1.5 py-0 h-5 inline-flex items-center rounded-full bg-amber-500/10 text-amber-500 font-medium">
-          {connector.type === "api" ? t("typeBadgeApi") : t("typeBadgeDatabase")}
+        <span className={`text-[10px] px-1.5 py-0 h-5 inline-flex items-center rounded-full font-medium ${
+          isDatabase
+            ? "bg-blue-500/10 text-blue-500"
+            : "bg-amber-500/10 text-amber-500"
+        }`}>
+          {isDatabase ? t("typeBadgeDatabase") : t("typeBadgeApi")}
         </span>
+        {isDatabase && dbConfig && (
+          <span className="text-[10px] px-1.5 py-0 h-5 inline-flex items-center rounded-full bg-muted text-muted-foreground font-medium">
+            {dbConfig.driver}
+          </span>
+        )}
       </div>
 
-      {/* Auth type */}
-      <p className="text-xs text-muted-foreground mb-1">
-        {authDisplay}
-        {" \u00B7 "}
-        {t("actionCount", { count: connector.actions.length })}
-      </p>
+      {/* Info line: auth/actions for API, driver info for DB */}
+      {isDatabase ? (
+        <p className="text-xs text-muted-foreground mb-1">
+          {dbConfig?.driver ?? "database"}
+          {dbConfig?.read_only && " \u00B7 read-only"}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground mb-1">
+          {authDisplay}
+          {" \u00B7 "}
+          {t("actionCount", { count: connector.actions.length })}
+        </p>
+      )}
 
-      {/* Base URL */}
+      {/* Endpoint */}
       <Tooltip>
         <TooltipTrigger asChild>
           <p className="text-xs text-muted-foreground truncate mb-1">
-            <Globe className="inline h-3 w-3 mr-1 -mt-0.5" />
-            {connector.base_url}
+            {isDatabase ? (
+              <>
+                <Database className="inline h-3 w-3 mr-1 -mt-0.5" />
+                {dbEndpoint}
+              </>
+            ) : (
+              <>
+                <Globe className="inline h-3 w-3 mr-1 -mt-0.5" />
+                {connector.base_url}
+              </>
+            )}
           </p>
         </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={5}>{connector.base_url}</TooltipContent>
+        <TooltipContent side="bottom" sideOffset={5}>
+          {isDatabase ? dbEndpoint : connector.base_url}
+        </TooltipContent>
       </Tooltip>
 
       {/* Description */}

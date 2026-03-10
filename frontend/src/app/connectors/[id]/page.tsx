@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useState, useEffect, useCallback, Suspense } from "react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Plug, Settings, Zap } from "lucide-react"
+import { ArrowLeft, Loader2, Plug, Settings, Zap, Database, Table2, Terminal } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11,13 +11,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useAuth } from "@/contexts/auth-context"
 import { connectorApi } from "@/lib/api"
 import { ConnectorSettingsForm } from "@/components/connectors/connector-settings-form"
+import { DbConnectorSettingsForm } from "@/components/connectors/db-connector-settings-form"
 import { ActionManager } from "@/components/connectors/action-manager"
+import { SchemaManager } from "@/components/connectors/schema-manager"
+import { QueryPlayground } from "@/components/connectors/query-playground"
 import { AIActionPanel } from "@/components/connectors/ai-action-panel"
 import type { ConnectorResponse } from "@/types/connector"
 
-export default function ConnectorEditorPage() {
+function ConnectorEditorPageInner() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, isLoading: authLoading } = useAuth()
   const t = useTranslations("connectors")
 
@@ -28,6 +32,13 @@ export default function ConnectorEditorPage() {
   const [isLoading, setIsLoading] = useState(id !== "new")
   const [formDirty, setFormDirty] = useState(false)
   const [builderActive, setBuilderActive] = useState(false)
+
+  // Determine if this is a database connector
+  // For new: check URL param ?type=database
+  // For existing: check connector.type
+  const isDatabase = isNew
+    ? searchParams.get("type") === "database"
+    : connector?.type === "database"
 
   // Auth guard
   useEffect(() => {
@@ -113,6 +124,8 @@ export default function ConnectorEditorPage() {
         <h1 className="text-sm font-semibold text-foreground truncate flex items-center gap-2">
           {connector?.icon ? (
             <span className="text-base leading-none shrink-0">{connector.icon}</span>
+          ) : isDatabase ? (
+            <Database className="h-4 w-4 shrink-0" />
           ) : (
             <Plug className="h-4 w-4 shrink-0" />
           )}
@@ -122,7 +135,7 @@ export default function ConnectorEditorPage() {
 
       {/* Main content: left AI chat + right tabs */}
       <div className="flex flex-1 min-h-0">
-        {/* Left: AI Chat Panel (1/3 → 1/2 in builder mode) */}
+        {/* Left: AI Chat Panel (1/3 -> 1/2 in builder mode) */}
         <div className={`${builderActive ? "w-1/2" : "w-1/3"} border-r border-border flex flex-col min-h-0 transition-all duration-300`}>
           <AIActionPanel
             connectorId={connector?.id ?? null}
@@ -132,10 +145,11 @@ export default function ConnectorEditorPage() {
             isNewMode={isNew}
             onConnectorCreated={handleConnectorSaved}
             onBuilderModeChange={handleBuilderModeChange}
+            connectorType={isDatabase ? "database" : "api"}
           />
         </div>
 
-        {/* Right: Tabs (2/3 → 1/2 in builder mode) */}
+        {/* Right: Tabs (2/3 -> 1/2 in builder mode) */}
         <div className={`${builderActive ? "w-1/2" : "w-2/3"} flex flex-col min-h-0 transition-all duration-300`}>
           <Tabs
             value={activeTab}
@@ -147,33 +161,78 @@ export default function ConnectorEditorPage() {
                 <Settings className="h-3.5 w-3.5" />
                 {t("connectorTab")}
               </TabsTrigger>
-              <TabsTrigger value="actions" disabled={isNew} className="gap-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                {t("actionsTab")}
-                {connector && connector.actions.length > 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    ({connector.actions.length})
-                  </span>
-                )}
-              </TabsTrigger>
+              {isDatabase ? (
+                <>
+                  <TabsTrigger value="schema" disabled={isNew} className="gap-1.5">
+                    <Table2 className="h-3.5 w-3.5" />
+                    {t("schemaTab")}
+                  </TabsTrigger>
+                  <TabsTrigger value="query" disabled={isNew} className="gap-1.5">
+                    <Terminal className="h-3.5 w-3.5" />
+                    {t("queryTab")}
+                  </TabsTrigger>
+                </>
+              ) : (
+                <TabsTrigger value="actions" disabled={isNew} className="gap-1.5">
+                  <Zap className="h-3.5 w-3.5" />
+                  {t("actionsTab")}
+                  {connector && connector.actions.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      ({connector.actions.length})
+                    </span>
+                  )}
+                </TabsTrigger>
+              )}
             </TabsList>
 
+            {/* Settings tab: swap form based on type */}
             <TabsContent value="connector" className="flex-1 min-h-0 px-4 py-4">
-              <ConnectorSettingsForm
-                connector={connector}
-                onSaved={handleConnectorSaved}
-                onDirtyChange={setFormDirty}
-              />
+              {isDatabase ? (
+                <DbConnectorSettingsForm
+                  connector={connector}
+                  onSaved={handleConnectorSaved}
+                  onDirtyChange={setFormDirty}
+                />
+              ) : (
+                <ConnectorSettingsForm
+                  connector={connector}
+                  onSaved={handleConnectorSaved}
+                  onDirtyChange={setFormDirty}
+                />
+              )}
             </TabsContent>
 
+            {/* API: Actions tab */}
             <TabsContent value="actions" className="flex-1 min-h-0 overflow-hidden flex flex-col">
               {connector && (
                 <ActionManager connector={connector} onChanged={reload} />
+              )}
+            </TabsContent>
+
+            {/* DB: Schema tab */}
+            <TabsContent value="schema" className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              {connector && (
+                <SchemaManager connectorId={connector.id} />
+              )}
+            </TabsContent>
+
+            {/* DB: Query tab */}
+            <TabsContent value="query" className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              {connector && (
+                <QueryPlayground connectorId={connector.id} dbConfig={connector.db_config} />
               )}
             </TabsContent>
           </Tabs>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ConnectorEditorPage() {
+  return (
+    <Suspense fallback={null}>
+      <ConnectorEditorPageInner />
+    </Suspense>
   )
 }
