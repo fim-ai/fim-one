@@ -19,6 +19,6 @@ class ApiKey(UUIDPKMixin, TimestampMixin, Base):
     key_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     total_requests: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

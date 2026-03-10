@@ -30,8 +30,8 @@ def upgrade() -> None:
         "system_settings",
         sa.Column("key", sa.String(100), primary_key=True, nullable=False),
         sa.Column("value", sa.Text, nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -41,9 +41,9 @@ def upgrade() -> None:
         sa.Column("code", sa.String(6), nullable=False),
         sa.Column("purpose", sa.String(20), nullable=False, server_default="register"),
         sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("expires_at", sa.DateTime, nullable=False),
-        sa.Column("verified_at", sa.DateTime, nullable=True),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
     op.create_table(
@@ -54,10 +54,10 @@ def upgrade() -> None:
         sa.Column("note", sa.String(200), nullable=True),
         sa.Column("max_uses", sa.Integer, nullable=False, server_default="1"),
         sa.Column("use_count", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("expires_at", sa.DateTime, nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.text("TRUE")),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -70,8 +70,8 @@ def upgrade() -> None:
         sa.Column("target_id", sa.String(36), nullable=True),
         sa.Column("target_label", sa.String(255), nullable=True),
         sa.Column("detail", sa.Text, nullable=True),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -83,11 +83,11 @@ def upgrade() -> None:
         sa.Column("key_hash", sa.String(255), nullable=False, unique=True),
         sa.Column("scopes", sa.Text, nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.text("TRUE")),
-        sa.Column("expires_at", sa.DateTime, nullable=True),
-        sa.Column("last_used_at", sa.DateTime, nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("total_requests", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -97,8 +97,8 @@ def upgrade() -> None:
         sa.Column("category", sa.String(50), nullable=False, server_default="general"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.text("TRUE")),
         sa.Column("created_by_id", sa.String(36), nullable=True),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -109,8 +109,8 @@ def upgrade() -> None:
         sa.Column("note", sa.String(255), nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.text("TRUE")),
         sa.Column("created_by_id", sa.String(36), nullable=True),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -120,12 +120,12 @@ def upgrade() -> None:
         sa.Column("content", sa.Text, nullable=False),
         sa.Column("level", sa.String(20), nullable=False, server_default="info"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.text("TRUE")),
-        sa.Column("starts_at", sa.DateTime, nullable=True),
-        sa.Column("ends_at", sa.DateTime, nullable=True),
+        sa.Column("starts_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("ends_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("target_group", sa.String(50), nullable=True),
         sa.Column("created_by_id", sa.String(36), nullable=True),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -138,8 +138,8 @@ def upgrade() -> None:
         sa.Column("user_agent", sa.Text, nullable=True),
         sa.Column("success", sa.Boolean, nullable=False, server_default=sa.text("TRUE")),
         sa.Column("failure_reason", sa.String(100), nullable=True),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     # ── tables with FK to users ──────────────────────────────────────
@@ -159,8 +159,8 @@ def upgrade() -> None:
         sa.Column("is_official", sa.Boolean, server_default=sa.text("FALSE")),
         sa.Column("forked_from", sa.String(36), nullable=True),
         sa.Column("version", sa.Integer, server_default="1"),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -176,8 +176,8 @@ def upgrade() -> None:
         sa.Column("document_count", sa.Integer, server_default="0"),
         sa.Column("total_chunks", sa.Integer, server_default="0"),
         sa.Column("status", sa.String(20), server_default="active"),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -196,8 +196,8 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean, server_default=sa.text("TRUE")),
         sa.Column("tool_count", sa.Integer, server_default="0"),
         sa.Column("is_global", sa.Boolean, nullable=False, server_default=sa.text("FALSE")),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -208,7 +208,7 @@ def upgrade() -> None:
         sa.Column("oauth_id", sa.String(255), nullable=False),
         sa.Column("email", sa.String(255), nullable=True),
         sa.Column("display_name", sa.String(100), nullable=True),
-        sa.Column("bound_at", sa.DateTime, server_default=sa.func.now()),
+        sa.Column("bound_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("provider", "oauth_id", name="uq_oauth_binding"),
         sa.UniqueConstraint("user_id", "provider", name="uq_user_provider"),
     )
@@ -227,8 +227,8 @@ def upgrade() -> None:
         sa.Column("request_body_template", sa.JSON, nullable=True),
         sa.Column("response_extract", sa.String(200), nullable=True),
         sa.Column("requires_confirmation", sa.Boolean, server_default=sa.text("FALSE")),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
     op.create_table(
@@ -243,8 +243,8 @@ def upgrade() -> None:
         sa.Column("chunk_count", sa.Integer, server_default="0"),
         sa.Column("status", sa.String(20), server_default="processing"),
         sa.Column("error_message", sa.Text, nullable=True),
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
 
 

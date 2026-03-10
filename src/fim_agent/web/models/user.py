@@ -32,8 +32,8 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="TRUE")
     refresh_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    refresh_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    tokens_invalidated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    refresh_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    tokens_invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     token_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
     system_instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     preferred_language: Mapped[str] = mapped_column(
@@ -44,7 +44,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     oauth_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
-    username_changed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    username_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     conversations: Mapped[list[Conversation]] = relationship(
         back_populates="user", lazy="raise", cascade="all, delete-orphan"

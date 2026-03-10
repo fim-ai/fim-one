@@ -42,7 +42,7 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
     tool_categories: Any = Column(JSON, nullable=True)
     suggested_prompts: Any = Column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
-    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     kb_ids: Any = Column(JSON, nullable=True)
     connector_ids: Any = Column(JSON, nullable=True)
     grounding_config: Any = Column(JSON, nullable=True)

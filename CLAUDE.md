@@ -75,6 +75,17 @@ Create/edit forms MUST guard against accidental close (modal backdrop, X button,
 
 All UI text must use `next-intl` — **never hardcode English strings**. Add keys to both `messages/en/{ns}.json` and `messages/zh/{ns}.json`, use `useTranslations("{ns}")` in components. Shared strings (Save/Cancel/Delete) → `useTranslations("common")`. New namespace = just drop JSON files, auto-discovered via `fs.readdirSync`.
 
+## Alembic Migration Rules (MANDATORY — SQLite/PG dual-track)
+
+Dev uses SQLite, production uses PostgreSQL. One set of migration files must work on both.
+
+- **Every new ORM model MUST have a migration** — never rely on `metadata.create_all()`. If you add a `__tablename__`, write a corresponding `op.create_table()` migration.
+- **Boolean defaults**: always use `server_default=sa.text("FALSE")` / `sa.text("TRUE")`. Never `"0"` / `"1"` — PG rejects integer literals for Boolean columns.
+- **Integer defaults**: `server_default="0"` is fine for both engines.
+- **Timestamps**: `server_default=sa.text('(CURRENT_TIMESTAMP)')` works on both.
+- **JSON operators**: SQLite uses `json_extract(col, '$.key')`, PG uses `col::json->>'key'`. When writing data migrations with JSON, check `bind.dialect.name` (see `b2d4e6f8a901` for reference).
+- **ORM model `server_default`**: same rule — use `"FALSE"` / `"TRUE"` for Boolean columns in model definitions, so future auto-generated migrations inherit correct defaults.
+
 ## Code Conventions
 
 - Type hints on all public functions

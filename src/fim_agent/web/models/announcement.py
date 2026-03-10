@@ -17,7 +17,7 @@ class Announcement(UUIDPKMixin, TimestampMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     level: Mapped[str] = mapped_column(String(20), nullable=False, default="info")  # info, warning, error
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     target_group: Mapped[str | None] = mapped_column(String(50), nullable=True)  # null=all, "admin", etc.
     created_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)

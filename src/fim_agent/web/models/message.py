@@ -26,7 +26,7 @@ class Message(UUIDPKMixin, Base):
     # Use Column() to avoid shadowing Python's builtin `metadata` attribute on Base.
     metadata_: Any = Column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages", lazy="raise")

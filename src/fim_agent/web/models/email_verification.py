@@ -22,9 +22,9 @@ class EmailVerification(UUIDPKMixin, Base):
     attempts: Mapped[int] = mapped_column(
         Integer, default=0, nullable=False, server_default="0"
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reset_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
