@@ -174,6 +174,7 @@ flowchart LR
 * 三级资源可见性 (personal/org/global)，适用于智能体、连接器、知识库、MCP 服务器
 * 所有资源类型的发布/取消发布 API；已发布智能体的所有者委托
 * 管理员设置可见性端点 (替代克隆为全局)；统一的 `build_visibility_filter()` 查询辅助函数
+* 数据库连接器 (Phase 1-3)：直接 SQL 访问 PG/MySQL/Oracle/SQL Server + 国产数据库；表结构发现、AI 标注、只读查询执行、密码加密存储、每个连接器 3 个工具 (`list_tables`、`describe_table`、`query`)
 
 <div id="planned-versions">
   ## 规划版本
@@ -188,7 +189,7 @@ flowchart LR
 * **YAML/JSON 连接器配置**：平台自动生成 MCP 服务器
 * **连接器导入/导出**：共享连接器模板
 * **连接器分叉**：复制并自定义现有连接器
-* **数据库连接器**：直接访问 SQL (PostgreSQL、MySQL、Oracle)
+* ~~**数据库连接器**：直接访问 SQL (PostgreSQL、MySQL、Oracle)~~ *(已在 v0.7.x 交付——Phase 1-3)*
 * **消息推送**：Lark、WeCom、Slack、Email 通知动作
 * ~~**RBAC**：按用户/角色控制连接器访问权限~~ *(已在 v0.7.x 发布——组织系统 + 三级可见性)*
 * **操作审计**：详细记录谁执行了哪些操作

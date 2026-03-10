@@ -132,6 +132,7 @@ FIM Agent doesn't do BPM/FSM — workflow logic belongs to the target system, Co
 #### Connector Platform (the core)
 - **Connector Hub Architecture** — Standalone assistant, embedded Copilot, or central Hub — same agent core, different delivery.
 - **Any System, One Pattern** — Connect APIs, databases, and message buses. Actions auto-register as agent tools with auth injection (Bearer, API Key, Basic).
+- **Database Connectors** — Direct SQL access to PostgreSQL, MySQL, Oracle, SQL Server, and Chinese legacy databases (DM, KingbaseES, GBase, Highgo). Schema introspection, AI-powered annotation, read-only query execution, and encrypted credentials at rest. Each DB connector auto-generates 3 tools (`list_tables`, `describe_table`, `query`).
 - **Three Ways to Build Connectors:**
   - *Import OpenAPI spec* — upload YAML/JSON/URL; connectors and all actions generated automatically.
   - *AI chat builder* — describe the API in natural language; AI generates and iterates the action config in-conversation. 10 specialized builder tools handle connector settings, actions, testing, and agent wiring.

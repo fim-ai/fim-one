@@ -10,6 +10,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ## [Unreleased]
 
 ### Added
+- **Database Connectors (Phase 1-3)**: Agents can now introspect schema and execute read-only SQL queries on PostgreSQL, MySQL, Oracle, SQL Server, and Chinese legacy databases (DM/Dameng, KingbaseES, GBase, Highgo). Key capabilities:
+  - **Fernet encryption** for database passwords at rest (derived from `JWT_SECRET_KEY`)
+  - **SQL safety layer**: sqlparse classification + single-statement enforcement + dangerous pattern blocklist
+  - **Database drivers**: `DatabaseDriver` ABC with PostgreSQL (`asyncpg`) and MySQL (`aiomysql`) implementations; connection pool manager (LRU eviction, max 50)
+  - **`DatabaseToolAdapter`**: creates 3 tools per DB connector (`list_tables`, `describe_table`, `query`) auto-loaded in chat when bound to agents
+  - **8 new API endpoints**: test-connection, introspect, schema CRUD, query execution, AI-powered schema annotation
+  - **Schema Manager UI**: two-panel layout with schema discovery, AI annotate, inline editing, visibility toggles
+  - **Query Playground**: SQL textarea with run/clear, results table, and truncation warning
+  - **Polymorphic connector detail page**: API connectors show Settings+Actions; DB connectors show Settings+Schema+Query
+  - **New Connector dropdown**: "New API Connector" / "New Database Connector" split
+  - **ConnectorCard**: shows host:port/database and driver badge for DB-type connectors
+  - **DB Connector Settings Form**: 8 database types with auto-port fill, SSL/read-only toggles, test connection
+  - **59 unit tests** covering SQL safety, encryption, and adapter logic
+  - New optional extra `[database]` with `sqlparse`, `cryptography`, `aiomysql` dependencies
 - **SSE Protocol v2 — real-time answer streaming**: Backend `StreamChunk` gains `delta_reasoning` and `usage` fields; LLM requests include usage tracking; ReAct `_run_native()` now streams via `stream_chat`. SSE protocol emits `done` immediately after the answer, then sends `suggestions`, `title`, and `end` as separate events. DB session early-release during LLM execution. SQLite pool size increased from 5 to 20
 - **AI Builder expansion — 7 new tools + `is_builder` flag**: Three new connector builder tools (`GetSettings`, `TestConnection`, `ImportOpenAPI`) and four new agent builder tools (`ListConnectors`, `AddConnector`, `RemoveConnector`, `SetModel`). New `is_builder` boolean column on agents with Alembic migration. Builder prompt auto-refresh on session creation. SSRF guard for OpenAPI import
 - **SSE v2 frontend — streaming cursor, DAG round snapshots, UI polish**: Frontend hooks parse `end` / `suggestions` / `title` events. DAG re-plan shows previous failed rounds as collapsible cards. CSS dot-pulse streaming cursor. DAG layout decoupled from step states. Collapsed sidebar new-chat button. Connector editor overflow fix. `font-mono` replaced with `tabular-nums`

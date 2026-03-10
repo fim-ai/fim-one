@@ -15,6 +15,20 @@ description: "FIM Agent 的所有重要变更。"
   ### 新增
 </div>
 
+* **数据库连接器 (Phase 1-3)**：智能体现在可以检查数据库表结构并对 PostgreSQL、MySQL、Oracle、SQL Server 及国产数据库（达梦、人大金仓、南大通用、瀚高）执行只读 SQL 查询。核心能力包括：
+  * **Fernet 加密**：数据库密码静态加密存储（基于 `JWT_SECRET_KEY` 派生）
+  * **SQL 安全层**：sqlparse 语句分类 + 单语句限制 + 危险模式黑名单
+  * **数据库驱动**：`DatabaseDriver` 抽象基类，PostgreSQL (`asyncpg`) 和 MySQL (`aiomysql`) 实现；连接池管理器（LRU 淘汰，最大 50）
+  * **`DatabaseToolAdapter`**：每个数据库连接器自动创建 3 个工具（`list_tables`、`describe_table`、`query`），绑定到智能体后自动在聊天中加载
+  * **8 个新 API 端点**：测试连接、表结构发现、Schema CRUD、查询执行、AI 驱动的表结构标注
+  * **Schema 管理器 UI**：双面板布局，支持表结构发现、AI 标注、内联编辑、可见性开关
+  * **查询试验台**：SQL 文本框 + 运行/清空按钮 + 结果表格 + 截断提示
+  * **多态连接器详情页**：API 连接器显示 设置+动作；数据库连接器显示 设置+表结构+查询
+  * **新建连接器下拉菜单**：拆分为"新建 API 连接器"/"新建数据库连接器"
+  * **连接器卡片**：数据库类型显示 host:port/database 及驱动徽章
+  * **数据库连接器设置表单**：8 种数据库类型自动填充端口，SSL/只读开关，测试连接
+  * **59 个单元测试**，覆盖 SQL 安全、加密和适配器逻辑
+  * 新增可选依赖组 `[database]`，包含 `sqlparse`、`cryptography`、`aiomysql`
 * **SSE 协议 v2 — 实时回答流式传输**：后端 `StreamChunk` 新增 `delta_reasoning` 和 `usage` 字段；LLM 请求包含用量追踪；ReAct `_run_native()` 现在通过 `stream_chat` 进行流式传输。SSE 协议在回答后立即发送 `done`，随后将 `suggestions`、`title` 和 `end` 作为独立事件发送。LLM 执行期间提前释放 DB 会话。SQLite 连接池大小从 5 提升至 20
 * **AI Builder 扩展 — 7 个新工具 + `is_builder` 标志**：三个新连接器构建器工具（`GetSettings`、`TestConnection`、`ImportOpenAPI`）和四个新智能体构建器工具（`ListConnectors`、`AddConnector`、`RemoveConnector`、`SetModel`）。智能体新增 `is_builder` 布尔字段及 Alembic 迁移。构建器提示词在会话创建时自动刷新。OpenAPI 导入新增 SSRF 防护
 * **SSE v2 前端 — 流式光标、DAG 轮次快照、UI 优化**：前端 hooks 解析 `end` / `suggestions` / `title` 事件。DAG 重新规划显示之前失败轮次为可折叠卡片。CSS 点脉冲流式光标。DAG 布局与步骤状态解耦。侧边栏折叠时新增新建对话按钮。连接器编辑器溢出修复。`font-mono` 替换为 `tabular-nums`

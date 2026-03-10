@@ -132,6 +132,7 @@ FIM Agent 不做 BPM/FSM — 工作流逻辑归属目标系统，连接器只负
 #### 连接器平台（核心）
 - **连接器中枢架构** — 独立助手、嵌入式 Copilot 或中央 Hub — 同一个 Agent 内核，不同的交付方式。
 - **任何系统，同一模式** — 连接 API、数据库和消息总线。Action 自动注册为 Agent 工具，支持认证注入（Bearer、API Key、Basic）。
+- **数据库连接器** — 直接 SQL 访问 PostgreSQL、MySQL、Oracle、SQL Server 及国产数据库（达梦、人大金仓、南大通用、瀚高）。表结构发现、AI 驱动的中文标注、只读查询执行、密码加密存储。每个数据库连接器自动生成 3 个工具（`list_tables`、`describe_table`、`query`）。
 - **三种创建连接器的方式：**
   - *导入 OpenAPI 规范* — 上传 YAML/JSON/URL；连接器及所有 Action 自动生成。
   - *AI 对话构建器* — 用自然语言描述 API；AI 在对话中生成并迭代 Action 配置。10 个专用构建器工具处理连接器设置、Action、测试和智能体关联。
