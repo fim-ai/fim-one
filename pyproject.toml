@@ -72,6 +72,11 @@ postgres = [
     "asyncpg>=0.30",
     "psycopg2-binary>=2.9",
 ]
+database = [
+    "sqlparse>=0.5",
+    "cryptography>=44.0",
+    "aiomysql>=0.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/fim-ai/fim-agent"
