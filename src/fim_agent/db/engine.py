@@ -63,8 +63,11 @@ async def init_db() -> None:
         # connection.  WAL mode + busy_timeout handle write contention;
         # the pool prevents long-running SSE streams from starving other
         # requests (artifact downloads, conversation lists, etc.).
-        kwargs["pool_size"] = 20
-        kwargs["max_overflow"] = 10
+        # Default 10+5=15: enough for SSE concurrency, low enough to
+        # avoid excessive write-lock contention.  Tune via env vars or
+        # switch to PostgreSQL for high-concurrency deployments.
+        kwargs["pool_size"] = int(os.environ.get("SQLITE_POOL_SIZE", "10"))
+        kwargs["max_overflow"] = int(os.environ.get("SQLITE_MAX_OVERFLOW", "5"))
         # Ensure the data directory exists for SQLite file-based databases.
         db_path = url.split("///", 1)[-1] if "///" in url else None
         if db_path and db_path != ":memory:":
