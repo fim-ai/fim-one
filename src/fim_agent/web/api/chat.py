@@ -463,16 +463,13 @@ async def _resolve_agent_config(
         return None
 
     async with create_session() as session:
-        from sqlalchemy import and_ as _and_agent, or_ as _or_agent
+        from fim_agent.web.visibility import build_visibility_filter
+        from fim_agent.web.auth import get_user_org_ids
 
         stmt = sa_select(Agent).where(Agent.id == resolved_id)
         if user_id:
-            stmt = stmt.where(
-                _or_agent(
-                    Agent.user_id == user_id,
-                    _and_agent(Agent.is_global == True, Agent.status == "published"),  # noqa: E712
-                )
-            )
+            _user_org_ids = await get_user_org_ids(user_id, session)
+            stmt = stmt.where(build_visibility_filter(Agent, user_id, _user_org_ids))
         result = await session.execute(stmt)
         agent = result.scalar_one_or_none()
         if agent is None:
@@ -486,6 +483,7 @@ async def _resolve_agent_config(
             "connector_ids": agent.connector_ids,
             "grounding_config": agent.grounding_config,
             "sandbox_config": agent.sandbox_config,
+            "owner_user_id": agent.user_id,
         }
 
 
@@ -584,11 +582,12 @@ async def _resolve_tools(
     if kb_ids:
         retrieval_mode = _get_retrieval_mode(agent_cfg)
         tools = tools.exclude_by_name("kb_retrieve", "grounded_retrieve")
+        _kb_owner_id = (agent_cfg.get("owner_user_id") or user_id) if agent_cfg else user_id
 
         if retrieval_mode == "simple":
             from fim_agent.core.tool.builtin.kb_retrieve import KBRetrieveTool
 
-            tools.register(KBRetrieveTool(user_id=user_id, kb_ids=kb_ids))
+            tools.register(KBRetrieveTool(user_id=_kb_owner_id, kb_ids=kb_ids))
         else:
             from fim_agent.core.tool.builtin.grounded_retrieve import GroundedRetrieveTool
 
@@ -596,7 +595,7 @@ async def _resolve_tools(
             confidence_threshold = grounding_config.get("confidence_threshold")
             tools.register(GroundedRetrieveTool(
                 kb_ids=kb_ids,
-                user_id=user_id,
+                user_id=_kb_owner_id,
                 confidence_threshold=confidence_threshold,
             ))
     elif user_id:
@@ -650,8 +649,9 @@ async def _resolve_tools(
                     .options(selectinload(ConnectorModel.actions))
                     .where(ConnectorModel.id.in_(connector_ids))
                 )
-                if user_id:
-                    stmt = stmt.where(ConnectorModel.user_id == user_id)
+                _resource_owner_id = (agent_cfg.get("owner_user_id") or user_id) if agent_cfg else user_id
+                if _resource_owner_id:
+                    stmt = stmt.where(ConnectorModel.user_id == _resource_owner_id)
                 result = await session.execute(stmt)
                 connectors = result.scalars().all()
                 for conn in connectors:
@@ -765,14 +765,15 @@ async def _resolve_tools(
     try:
         from fim_agent.db import create_session as _create_session
         from fim_agent.web.models.mcp_server import MCPServer as _MCPServerModel
-        from sqlalchemy import or_ as _or_, true as _true
+        from sqlalchemy import true as _true
 
         async with _create_session() as _mcp_db:
-            _conditions = [_MCPServerModel.is_global == _true()]
-            if user_id:
-                _conditions.append(_MCPServerModel.user_id == user_id)
+            from fim_agent.web.visibility import build_visibility_filter as _build_vis
+            from fim_agent.web.auth import get_user_org_ids as _get_org_ids
+
+            _mcp_org_ids = await _get_org_ids(user_id, _mcp_db) if user_id else []
             _stmt = sa_select(_MCPServerModel).where(
-                _or_(*_conditions),
+                _build_vis(_MCPServerModel, user_id, _mcp_org_ids) if user_id else (_MCPServerModel.is_global == _true()),
                 _MCPServerModel.is_active == _true(),
             )
             _result = await _mcp_db.execute(_stmt)

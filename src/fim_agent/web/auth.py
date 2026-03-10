@@ -273,6 +273,27 @@ async def get_current_user_optional(
     return user
 
 
+async def get_user_org_ids(user_id: str, db: AsyncSession) -> list[str]:
+    """Return organization IDs the user belongs to.
+
+    Queries the ``org_members`` table (created by the Wave 1 org migration).
+    Returns an empty list if the table does not exist yet -- safe for
+    incremental rollout.
+    """
+    from sqlalchemy import column as sa_column, table as sa_table
+
+    try:
+        result = await db.execute(
+            select(sa_column("org_id"))
+            .select_from(sa_table("org_members"))
+            .where(sa_column("user_id") == user_id)
+        )
+        return [row[0] for row in result.fetchall()]
+    except Exception:
+        # Table may not exist yet (Wave 1 not merged); return empty list
+        return []
+
+
 async def get_current_admin(
     user: User = Depends(get_current_user),  # noqa: B008
 ) -> User:

@@ -32,6 +32,12 @@ class Connector(UUIDPKMixin, TimestampMixin, Base):
     is_official: Mapped[bool] = mapped_column(Boolean, default=False)
     forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="personal", server_default="personal"
+    )
+    org_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("organizations.id"), nullable=True, index=True
+    )
 
     user: Mapped[User] = relationship(back_populates="connectors", lazy="raise")
     actions: Mapped[list[ConnectorAction]] = relationship(

@@ -39,5 +39,11 @@ class MCPServer(UUIDPKMixin, TimestampMixin, Base):
     cloned_from_user_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True
     )
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="personal", server_default="personal"
+    )
+    org_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("organizations.id"), nullable=True, index=True
+    )
 
     user: Mapped[User | None] = relationship(back_populates="mcp_servers", lazy="raise")

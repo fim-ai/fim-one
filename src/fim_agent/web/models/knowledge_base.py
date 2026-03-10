@@ -28,6 +28,12 @@ class KnowledgeBase(UUIDPKMixin, TimestampMixin, Base):
     document_count: Mapped[int] = mapped_column(Integer, default=0)
     total_chunks: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="personal", server_default="personal"
+    )
+    org_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("organizations.id"), nullable=True, index=True
+    )
 
     user: Mapped[User] = relationship(back_populates="knowledge_bases", lazy="raise")
     documents: Mapped[list[KBDocument]] = relationship(
