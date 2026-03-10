@@ -64,19 +64,19 @@ flowchart LR
 
 ## Shipped Versions
 
-### v0.1 (2025-08-01) — MVP: ReAct + DAG Planner
+### v0.1 (2026-02-22) — MVP: ReAct + DAG Planner
 - ReActAgent with tools (calculator, python_exec, web_search)
 - DAG Planner (LLM generates dependency graphs)
 - Portal UI with streaming + KaTeX
 
-### v0.2 (2025-09-15) — Multi-Model + Memory
+### v0.2 (2026-02-24) — Multi-Model + Memory
 - Retry / rate limiting / usage tracking
 - Native function calling (no JSON-only parsing)
 - Multi-model support (fast + main LLM)
 - Memory: WindowMemory, SummaryMemory
 - FastAPI backend with SSE streaming
 
-### v0.3 (2025-10-20) — Web Tools + MCP
+### v0.3 (2026-02-25) — Web Tools + MCP
 - Web tools (web_search, web_fetch) via Jina/Tavily/Brave
 - File operations tool
 - MCP client (standard tool integration)
@@ -84,7 +84,7 @@ flowchart LR
 - DAG visualization with click-to-scroll
 - Code exec in Docker (`--network=none`)
 
-### v0.4 (2025-11-15) — Multi-Turn + Agents
+### v0.4 (2026-02-25) — Multi-Turn + Agents
 - Multi-turn conversations (DbMemory)
 - Tool step folding UI
 - HTTP request + shell exec tools
@@ -92,7 +92,7 @@ flowchart LR
 - JWT authentication
 - Per-agent execution mode + temperature control
 
-### v0.5 (2025-12-20) — Full RAG + Grounded Gen
+### v0.5 (2026-02-28) — Full RAG + Grounded Gen
 - Full RAG pipeline (embedding + vector store + FTS + RRF + reranker)
 - Grounded Generation (citations, conflict detection, confidence scores)
 - Knowledge base document management (CRUD, search, retry, schema migration)
@@ -100,7 +100,7 @@ flowchart LR
 - DbMemory persistence + LLM Compact
 - DAG Re-Planning (up to 3 rounds)
 
-### v0.6 (2026-01-10) — Connector Platform
+### v0.6 (2026-03-01) — Connector Platform
 - **Connector CRUD**: create, read, update, delete
 - **ConnectorToolAdapter**: converts Connector → BaseTool
 - **Per-user credentials**: AES-GCM encryption
@@ -110,7 +110,7 @@ flowchart LR
 - **Utility tools**: email_send, json_transform, template_render, text_utils
 - **Embedding options**: Jina, OpenAI, custom providers
 
-### v0.7 (2026-02-07) — Admin Platform + Multi-Tenant
+### v0.7 (2026-03-06) — Admin Platform + Multi-Tenant
 - **Admin Platform**: user management, role toggle, password reset, account enable/disable
 - **Invite-only registration**: three modes (open/invite/disabled) + invite code CRUD
 - **Storage management**: per-user disk usage, clear, orphan cleanup
@@ -123,7 +123,7 @@ flowchart LR
 - **Global MCP servers**: admin-provisioned, loaded in all sessions
 - **Backward-compat**: registration_enabled → registration_mode auto-migration
 
-### v0.7.x (2026-02-21 onwards) — Stability + Polish
+### v0.7.x (2026-03-07 onwards) — Stability + Polish
 - Invite code management
 - Per-user quotas (429 enforcement)
 - Structured audit logging

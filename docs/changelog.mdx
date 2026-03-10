@@ -70,7 +70,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Artifacts: sort by conversation created_at**: Sort artifacts by conversation creation time instead of file mtime (mtime is unreliable on Docker volumes)
 - **OAuth: auto-detect production API URL from window.location port**: Browser auto-detection now works correctly for custom ports in production (not just 3000)
 
-## [v0.7.3] - 2026-02-28
+## [v0.7.3] - 2026-03-06
 
 ### Added
 - **Global MCP servers**: Admin-provisioned MCP servers loaded in all chat sessions (not per-user/agent); query logic: `or_(is_global==True, user_id==current_user.id)`
@@ -85,7 +85,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Invite code backward-compat**: Correctly interprets registration_mode when not explicitly set (reads from registration_enabled)
 - **Multi-user scenario**: Global MCP servers no longer conflict with per-user tools
 
-## [v0.7.2] - 2026-02-21
+## [v0.7.2] - 2026-03-06
 
 ### Added
 - **Invite-only registration mode**: New registration system with three modes (open/invite/disabled) and invite code CRUD
@@ -99,7 +99,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **Admin list pagination**: All admin data lists now support pagination and search
 
-## [v0.7.1] - 2026-02-14
+## [v0.7.1] - 2026-03-06
 
 ### Added
 - **API health dashboard**: System stats (users, conversations, tokens, model usage charts, tokens-by-agent breakdown), connector call metrics (success rate, latency)
@@ -109,7 +109,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **Token quota enforcement**: ReAct and DAG endpoints now check per-user quotas before execution
 
-## [v0.7] - 2026-02-07
+## [v0.7] - 2026-03-06
 
 ### Added
 - **Admin Platform v0.7**: User management with search/pagination, role toggle, password reset, account enable/disable, invite-only registration, per-user quota, conversation moderation, storage management
@@ -123,7 +123,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **OAuth account binding**: Proper email matching for link/login flows across all providers
 
-## [v0.6.5] - 2026-01-31
+## [v0.6.5] - 2026-03-05
 
 ### Added
 - **Utility tools**: `email_send`, `json_transform`, `template_render`, `text_utils`
@@ -133,7 +133,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **RAG pipeline stability**: Better error handling for failed chunk operations
 
-## [v0.6] - 2026-01-10
+## [v0.6] - 2026-03-01
 
 ### Added
 - **Connector Platform (core feature)**:
@@ -153,7 +153,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **Tool categorization**: All built-in tools properly tagged with categories
 
-## [v0.5] - 2025-12-20
+## [v0.5] - 2026-02-28
 
 ### Added
 - **Full RAG pipeline**: Jina embedding + LanceDB vector store + FTS + RRF hybrid retrieval + reranker
@@ -169,7 +169,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **Token overflow handling**: Automatic LLM-powered summarization respects token budgets
 
-## [v0.4] - 2025-11-15
+## [v0.4] - 2026-02-25
 
 ### Added
 - **Multi-turn conversations**: DbMemory persists conversation history; smart truncation handles long sessions
@@ -187,7 +187,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **Multi-user isolation**: Conversations isolated by user; agents scoped to user
 
-## [v0.3] - 2025-10-20
+## [v0.3] - 2026-02-25
 
 ### Added
 - **Web tools**: `web_search` (Jina/Tavily/Brave), `web_fetch`, configurable providers
@@ -206,7 +206,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **Tool discovery robustness**: Handles missing optional dependencies gracefully
 
-## [v0.2] - 2025-09-15
+## [v0.2] - 2026-02-24
 
 ### Added
 - **Retry & rate limiting**: Automatic exponential backoff for transient failures
@@ -223,7 +223,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 - **Error recovery**: Automatic retry on transient API errors
 
-## [v0.1] - 2025-08-01
+## [v0.1] - 2026-02-22
 
 ### Added
 - **ReActAgent**: Reason → Act → Observe loop with tools

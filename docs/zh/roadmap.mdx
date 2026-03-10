@@ -68,16 +68,16 @@ flowchart LR
   ## 发布版本
 </div>
 
-<div id="v01-2025-08-01-mvp-react-dag-planner">
-  ### v0.1 (2025-08-01) — MVP：ReAct + DAG 规划器
+<div id="v01-2026-02-22-mvp-react-dag-planner">
+  ### v0.1 (2026-02-22) — MVP：ReAct + DAG 规划器
 </div>
 
 * 支持工具 (calculator、python&#95;exec、网页搜索) 的 ReAct代理
 * DAG 规划器 (LLM 生成依赖图)
 * 支持流式输出 + KaTeX 的门户 UI
 
-<div id="v02-2025-09-15-multi-model-memory">
-  ### v0.2 (2025-09-15) — 多模型 + 记忆
+<div id="v02-2026-02-24-multi-model-memory">
+  ### v0.2 (2026-02-24) — 多模型 + 记忆
 </div>
 
 * 重试 / 速率限制 / 用量跟踪
@@ -86,8 +86,8 @@ flowchart LR
 * 记忆：窗口记忆、摘要记忆
 * 基于 FastAPI 的后端，支持 SSE 流式传输
 
-<div id="v03-2025-10-20-web-tools-mcp">
-  ### v0.3 (2025-10-20) — 网页工具 + MCP
+<div id="v03-2026-02-25-web-tools-mcp">
+  ### v0.3 (2026-02-25) — 网页工具 + MCP
 </div>
 
 * 通过 Jina/Tavily/Brave 提供的网页工具 (网页搜索、网页获取)
@@ -97,8 +97,8 @@ flowchart LR
 * 支持点击跳转滚动的 DAG 可视化
 * 在 Docker 中执行代码 (`--network=none`)
 
-<div id="v04-2025-11-15-multi-turn-agents">
-  ### v0.4 (2025-11-15) — 多轮对话 + 智能体
+<div id="v04-2026-02-25-multi-turn-agents">
+  ### v0.4 (2026-02-25) — 多轮对话 + 智能体
 </div>
 
 * 多轮对话 (数据库记忆)
@@ -108,8 +108,8 @@ flowchart LR
 * JWT 身份验证
 * 按智能体设置的执行模式 + 温度控制
 
-<div id="v05-2025-12-20-full-rag-grounded-gen">
-  ### v0.5 (2025-12-20) — 完整 RAG + 可溯源生成
+<div id="v05-2026-02-28-full-rag-grounded-gen">
+  ### v0.5 (2026-02-28) — 完整 RAG + 可溯源生成
 </div>
 
 * 完整 RAG 流水线 (嵌入 + 向量存储 + FTS + 倒数排名融合 + 重排序器)
@@ -119,8 +119,8 @@ flowchart LR
 * 数据库记忆持久化 + LLM Compact
 * DAG 重新规划 (最多 3 轮)
 
-<div id="v06-2026-01-10-connector-platform">
-  ### v0.6 (2026-01-10) — 连接器平台
+<div id="v06-2026-03-01-connector-platform">
+  ### v0.6 (2026-03-01) — 连接器平台
 </div>
 
 * **连接器 CRUD**：创建、读取、更新、删除
@@ -132,8 +132,8 @@ flowchart LR
 * **实用工具**：email_send、json_transform、template_render、text_utils
 * **嵌入选项**：Jina、OpenAI、自定义提供商
 
-<div id="v07-2026-02-07-admin-platform-multi-tenant">
-  ### v0.7 (2026-02-07) — 管理平台 + 多租户
+<div id="v07-2026-03-06-admin-platform-multi-tenant">
+  ### v0.7 (2026-03-06) — 管理平台 + 多租户
 </div>
 
 * **管理平台**：用户管理、角色切换、密码重置、账户启用/禁用
@@ -148,8 +148,8 @@ flowchart LR
 * **全局 MCP 服务器**：由管理员预配，在所有会话中加载
 * **向后兼容**：registration&#95;enabled → registration&#95;mode 自动迁移
 
-<div id="v07x-2026-02-21-onwards-stability-polish">
-  ### v0.7.x (自 2026-02-21 起) — 稳定性与完善
+<div id="v07x-2026-03-07-onwards-stability-polish">
+  ### v0.7.x (自 2026-03-07 起) — 稳定性与完善
 </div>
 
 * 邀请码管理
