@@ -1,6 +1,7 @@
 ---
 title: "DAG 引擎"
 description: "FIM Agent 的 DAG 引擎如何工作 — 动态规划、并行执行、目标感知分析与自主重规划。"
+mode: "wide"
 ---
 
 ## 流水线概览
@@ -46,20 +47,21 @@ flowchart TD
 | 7 | stream\_synthesize | analyzer.py | 智能 LLM | stream\_chat() | analysis.final\_answer |
 
 ```mermaid
-flowchart LR
-    subgraph "Pre-execution"
-        H["1. History summary"] --> EQ["enriched_query"]
+flowchart TD
+    subgraph pre ["Pre-execution"]
+        H["① History summary"] --> EQ["enriched_query"]
     end
-    subgraph "Planning"
-        EQ --> P["2. DAGPlanner<br/>structured_llm_call"]
+    subgraph plan ["Planning"]
+        P["② DAGPlanner\nstructured_llm_call"]
     end
-    subgraph "Execution (per step)"
-        TS["3. Tool Selection<br/>structured_llm_call"] --> RL["4. ReAct Loop<br/>chat()"]
-        CG["5. ContextGuard<br/>compact"]
+    subgraph exec ["Execution (per step)"]
+        TS["③ Tool Selection\nstructured_llm_call"] --> RL["④ ReAct Loop\nchat()"]
+        CG["⑤ ContextGuard\ncompact"]
     end
-    subgraph "Post-execution"
-        PA["6. PlanAnalyzer<br/>structured_llm_call"] --> SS["7. stream_synthesize<br/>stream_chat()"]
+    subgraph post ["Post-execution"]
+        PA["⑥ PlanAnalyzer\nstructured_llm_call"] --> SS["⑦ stream_synthesize\nstream_chat()"]
     end
+    EQ --> P
     P --> TS
     PA -->|"replan"| P
 ```

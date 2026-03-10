@@ -1,6 +1,7 @@
 ---
 title: "ReAct Engine"
 description: "How FIM Agent's ReAct engine works — dual-mode execution, structured LLM calls, and streaming answer synthesis."
+mode: "wide"
 ---
 
 ## The architecture
@@ -10,12 +11,12 @@ The ReAct engine implements a two-phase execution model. The first phase is an i
 This split is deliberate. Tool iterations are optimized for speed — every LLM call in the loop uses non-streaming `chat()`, because the user does not need to see partial JSON actions or intermediate reasoning tokens. Answer generation is optimized for UX — it uses streaming `stream_chat()` so the user sees tokens appearing in real time. The result is the best of both worlds: fast tool execution with responsive answer delivery.
 
 ```mermaid
-flowchart LR
+flowchart TD
     A["User query"] --> B["Tool loop\n(non-streaming chat() x N)"]
-    B -->|"'done' signal"| C["stream_answer()\n(streaming)"]
-    C --> D["SSE token stream\n→ frontend"]
     B -->|"tool_call"| E["Execute tool"]
     E -->|"observation"| B
+    B -->|"done signal"| C["stream_answer()\n(streaming)"]
+    C --> D["SSE token stream → frontend"]
 ```
 
 The tool loop produces an `AgentResult` containing the full conversation history — system prompt, user query, every assistant message, every tool result. The `stream_answer()` method distills this trace into a concise, coherent answer. Tool results are truncated to 2,000 characters each in the synthesis context, keeping the prompt lean even after complex multi-tool workflows.
