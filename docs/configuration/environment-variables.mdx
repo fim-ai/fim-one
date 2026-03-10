@@ -161,6 +161,7 @@ For OpenAI and Gemini, the provider handles token allocation internally based on
 | `DOCKER_MEMORY` | No | *(Docker default)* | RAM cap per container (e.g. `256m`, `512m`, `1g`) |
 | `DOCKER_CPUS` | No | *(Docker default)* | CPU quota per container (e.g. `0.5`, `1.0`) |
 | `SANDBOX_TIMEOUT` | No | `120` | Default execution timeout in seconds |
+| `DOCKER_HOST_DATA_DIR` | No | *(not set)* | Host-side absolute path of the `./data` volume mount. Required for Docker-in-Docker deployments; `docker-compose.yml` sets this automatically. |
 
 > **Security**: `local` mode runs AI-generated code directly on the host. For internet-facing or multi-user deployments, always set `CODE_EXEC_BACKEND=docker`.
 

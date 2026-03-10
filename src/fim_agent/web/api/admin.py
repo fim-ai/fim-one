@@ -1450,7 +1450,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
 _UPLOADS_BASE = _uploads_base if _uploads_base.is_absolute() else _PROJECT_ROOT / _uploads_base
 _UPLOADS_CONVERSATIONS_DIR = _UPLOADS_BASE / "conversations"
-_CONVERSATIONS_DIR = _PROJECT_ROOT / "tmp" / "conversations"
+_CONVERSATIONS_DIR = _PROJECT_ROOT.parent / "data" / "sandbox"
 
 
 @router.get("/conversations", response_model=PaginatedResponse)

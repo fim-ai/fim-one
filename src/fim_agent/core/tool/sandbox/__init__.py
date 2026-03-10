@@ -51,17 +51,20 @@ def get_sandbox_backend() -> SandboxBackend:
     if _backend is None:
         mode = os.environ.get("CODE_EXEC_BACKEND", "local").lower()
         if mode == "docker":
+            host_data_dir = os.environ.get("DOCKER_HOST_DATA_DIR") or None
             _backend = DockerBackend(
                 python_image=os.environ.get("DOCKER_PYTHON_IMAGE", "python:3.11-slim"),
                 node_image=os.environ.get("DOCKER_NODE_IMAGE", "node:20-slim"),
                 shell_image=os.environ.get("DOCKER_SHELL_IMAGE", "python:3.11-slim"),
                 default_memory=os.environ.get("DOCKER_MEMORY", "256m"),
                 default_cpu=float(os.environ.get("DOCKER_CPUS", "0.5")),
+                host_data_dir=host_data_dir,
             )
-            logger.info("Sandbox backend: docker (python=%s, node=%s, shell=%s)",
+            logger.info("Sandbox backend: docker (python=%s, node=%s, shell=%s, host_data_dir=%s)",
                         os.environ.get("DOCKER_PYTHON_IMAGE", "python:3.11-slim"),
                         os.environ.get("DOCKER_NODE_IMAGE", "node:20-slim"),
-                        os.environ.get("DOCKER_SHELL_IMAGE", "python:3.11-slim"))
+                        os.environ.get("DOCKER_SHELL_IMAGE", "python:3.11-slim"),
+                        host_data_dir or "(not set — assumes host-local)")
         else:
             _backend = LocalBackend()
             logger.info("Sandbox backend: local (in-process exec, no container isolation)")

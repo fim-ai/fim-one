@@ -31,7 +31,7 @@ from fim_agent.web.schemas.conversation import (
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_CONVERSATIONS_DIR = _PROJECT_ROOT / "tmp" / "conversations"
+_CONVERSATIONS_DIR = _PROJECT_ROOT.parent / "data" / "sandbox"
 _uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
 _UPLOADS_CONVERSATIONS_DIR = (
     _uploads_base if _uploads_base.is_absolute() else _PROJECT_ROOT / _uploads_base

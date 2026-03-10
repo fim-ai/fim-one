@@ -15,6 +15,11 @@ services:
       # Internal services — auto-configured by compose, no user action needed.
       DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_agent
       REDIS_URL: redis://redis:6379/0
+      # DooD sandbox: host-side absolute path of the ./data volume mount.
+      # The sandbox writes scripts to /app/data/sandbox/ inside the container;
+      # this tells DockerBackend the corresponding host path for -v bind mounts.
+      # ${PWD} is resolved by Docker Compose to the host project directory.
+      DOCKER_HOST_DATA_DIR: ${DOCKER_HOST_DATA_DIR:-${PWD}/data}
     depends_on:
       postgres:
         condition: service_healthy

@@ -10,11 +10,15 @@ Requirements:
     Pre-pull recommended: ``docker pull python:3.11-slim node:20-slim``
 
 Environment variables (all optional):
-  DOCKER_PYTHON_IMAGE  — Python image (default: python:3.11-slim)
-  DOCKER_NODE_IMAGE    — Node.js image (default: node:20-slim)
-  DOCKER_SHELL_IMAGE   — Shell image   (default: python:3.11-slim)
-  DOCKER_MEMORY        — Default RAM cap per container (default: 256m)
-  DOCKER_CPUS          — Default CPU quota per container (default: 0.5)
+  DOCKER_PYTHON_IMAGE    — Python image (default: python:3.11-slim)
+  DOCKER_NODE_IMAGE      — Node.js image (default: node:20-slim)
+  DOCKER_SHELL_IMAGE     — Shell image   (default: python:3.11-slim)
+  DOCKER_MEMORY          — Default RAM cap per container (default: 256m)
+  DOCKER_CPUS            — Default CPU quota per container (default: 0.5)
+  DOCKER_HOST_DATA_DIR   — Host-side path of the ``/app/data`` volume mount.
+                           Required for DooD (Docker-outside-of-Docker)
+                           deployments where fim-agent runs inside a container
+                           but spawns sandbox containers via the host daemon.
 """
 
 from __future__ import annotations
@@ -62,6 +66,8 @@ class DockerBackend:
         shell_image: str = _DEFAULT_SHELL_IMAGE,
         default_memory: str = "256m",
         default_cpu: float = 0.5,
+        host_data_dir: str | None = None,
+        container_data_dir: str = "/app/data",
     ) -> None:
         self._images = {
             "python": python_image,
@@ -70,11 +76,41 @@ class DockerBackend:
         self._shell_image = shell_image
         self._default_memory = default_memory
         self._default_cpu = default_cpu
+        # DooD path translation: when fim-agent runs inside a container and
+        # spawns sandbox containers via the host Docker socket, sandbox paths are
+        # container-internal (e.g. /app/data/sandbox/…). The host daemon can't see
+        # them.  If host_data_dir is set, we translate /app/data/… → host path.
+        self._host_data_dir = host_data_dir
+        self._container_data_dir = container_data_dir
         # Entrypoints per language (image is per-instance, not global)
         self._entrypoints: dict[str, list[str]] = {
             "python": ["python"],
             "javascript": ["node"],
         }
+
+    def _resolve_host_path(self, container_path: Path) -> str:
+        """Translate a container-internal path to a host-visible path.
+
+        When ``host_data_dir`` is configured (DooD deployment), replaces the
+        container data prefix (``/app/data``) with the host-side mount path so
+        that ``docker run -v`` points to a real directory on the host.
+
+        When not configured (fim-agent runs directly on host), the path is
+        returned as-is.
+        """
+        if self._host_data_dir is None:
+            return str(container_path)
+
+        path_str = str(container_path)
+        if path_str.startswith(self._container_data_dir):
+            return self._host_data_dir + path_str[len(self._container_data_dir):]
+
+        logger.warning(
+            "Sandbox path %s is outside container data dir %s — "
+            "Docker volume mount may fail in DooD mode",
+            path_str, self._container_data_dir,
+        )
+        return path_str
 
     async def run_code(
         self,
@@ -106,19 +142,20 @@ class DockerBackend:
         mem_limit = memory or self._default_memory
         cpu_limit = cpu or self._default_cpu
 
+        host_path = self._resolve_host_path(exec_dir)
         cmd = [
             "docker", "run", "--rm",
             "--name", container_name,
             "--network=none",
             f"--memory={mem_limit}", f"--cpus={cpu_limit}",
-            "-v", f"{exec_dir}:/workspace",
+            "-v", f"{host_path}:/workspace",
             "-w", "/workspace",
             image, *entrypoint, f"/workspace/{script_name}",
         ]
 
         logger.debug(
-            "docker run_code: container=%s image=%s language=%s exec_dir=%s script=%s timeout=%ds memory=%s cpus=%s",
-            container_name, image, language, exec_dir, script_name, timeout, mem_limit, cpu_limit,
+            "docker run_code: container=%s image=%s language=%s exec_dir=%s host_path=%s script=%s timeout=%ds memory=%s cpus=%s",
+            container_name, image, language, exec_dir, host_path, script_name, timeout, mem_limit, cpu_limit,
         )
         result = await self._run_container(cmd, stdin_data="", timeout=timeout,
                                            container_name=container_name)
@@ -140,18 +177,19 @@ class DockerBackend:
         cpu_limit = cpu or self._default_cpu
 
         # Shell execution allows network access (curl, wget, etc.)
+        host_path = self._resolve_host_path(sandbox_dir)
         cmd = [
             "docker", "run", "--rm", "-i",
             "--name", container_name,
             f"--memory={mem_limit}", f"--cpus={cpu_limit}",
-            "-v", f"{sandbox_dir}:/workspace",
+            "-v", f"{host_path}:/workspace",
             "-w", "/workspace",
             self._shell_image, "/bin/sh",
         ]
 
         logger.debug(
-            "docker run_shell: container=%s image=%s sandbox_dir=%s timeout=%ds memory=%s cpus=%s",
-            container_name, self._shell_image, sandbox_dir, timeout, mem_limit, cpu_limit,
+            "docker run_shell: container=%s image=%s sandbox_dir=%s host_path=%s timeout=%ds memory=%s cpus=%s",
+            container_name, self._shell_image, sandbox_dir, host_path, timeout, mem_limit, cpu_limit,
         )
         return await self._run_container(cmd, stdin_data=command, timeout=timeout,
                                          container_name=container_name)

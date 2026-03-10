@@ -538,13 +538,20 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 def _conversation_sandbox_root(conversation_id: str | None) -> Path | None:
     """Compute the sandbox root for a conversation.
 
-    Returns ``PROJECT_ROOT/tmp/conversations/{conversation_id}`` when a
-    conversation ID is provided, or ``None`` for anonymous sessions (which
-    fall back to the global sandbox directories).
+    Returns ``{data_dir}/sandbox/{conversation_id}`` when a conversation ID
+    is provided, or ``None`` for anonymous sessions (which fall back to the
+    global sandbox directories).
+
+    The path lives under ``data/`` so that DooD (Docker-outside-of-Docker)
+    volume mounts work correctly — ``./data:/app/data`` is already mounted
+    in docker-compose.yml.
+
+    Note: ``_PROJECT_ROOT`` is ``src/`` (parents[3] from chat.py), so we go
+    one level up to reach the actual project root where ``data/`` lives.
     """
     if not conversation_id:
         return None
-    return _PROJECT_ROOT / "tmp" / "conversations" / conversation_id
+    return _PROJECT_ROOT.parent / "data" / "sandbox" / conversation_id
 
 
 async def _resolve_tools(
