@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 UPLOAD_ROOT = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
+MAX_FILE_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = {
     ".txt", ".md", ".py", ".js", ".json", ".csv",
     ".pdf", ".docx", ".html", ".htm",

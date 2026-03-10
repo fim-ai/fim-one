@@ -68,11 +68,27 @@ import type { FileUploadResponse } from "@/types/file"
 import type { AgentMode } from "@/components/playground/examples"
 
 
+// File upload validation — must match backend ALLOWED_EXTENSIONS
+const ALLOWED_EXTENSIONS = new Set([
+  ".txt", ".md", ".py", ".js", ".json", ".csv",
+  ".pdf", ".docx", ".html", ".htm", ".xlsx", ".xls", ".pptx",
+  ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+])
+
+const MAX_UPLOAD_SIZE_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB || "50")
+const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
 interface PastedClip {
   id: string
   content: string
   preview: string
   charCount: number
+}
+
+interface PendingFile {
+  id: string
+  file: File
+  previewUrl?: string
 }
 
 interface PlaygroundPageProps {
@@ -101,7 +117,6 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId, o
     activeId,
     createConversation,
     selectConversation,
-    loadConversations,
     animateTitle,
     clearActive,
   } = useConversation()
@@ -240,7 +255,6 @@ export function PlaygroundPage({ isNewChat, embedded, onClose, initialAgentId, o
       if (doneTitle && activeId) {
         animateTitle(activeId, doneTitle)
       }
-      loadConversations()
       onTurnComplete?.()
       // Restore failed inject content to input box for user to re-send
       const queued = failedInjectRef.current
@@ -613,6 +627,7 @@ function PlaygroundContent({
   embedded,
 }: PlaygroundContentProps) {
   const t = useTranslations("playground")
+  const tError = useTranslations("errors")
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
   const modeMatches = sourceMode === mode
@@ -645,6 +660,10 @@ function PlaygroundContent({
   // Drag resize state (transient, not persisted)
   const [dragRatio, setDragRatio] = useState<number | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+
+  // Drag-and-drop file upload state
+  const [fileDragging, setFileDragging] = useState(false)
+  const dragCounterRef = useRef(0)
   const [resizeKey, setResizeKey] = useState(0)
   const panelContainerRef = useRef<HTMLDivElement>(null)
   const dragRatioRef = useRef<number | null>(null)
@@ -654,8 +673,8 @@ function PlaygroundContent({
   const [agentsLoaded, setAgentsLoaded] = useState(false)
   const [agentSelectorOpen, setAgentSelectorOpen] = useState(false)
 
-  // File upload
-  const [attachedFiles, setAttachedFiles] = useState<(FileUploadResponse & { previewUrl?: string })[]>([])
+  // File upload (lazy — files stored locally until send)
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
   const [pendingImages, setPendingImages] = useState<Array<{ file_id: string; filename: string }>>([])
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -755,16 +774,19 @@ function PlaygroundContent({
   }, [])
 
   const handleSuggestionSelect = useCallback((q: string) => {
-    // Clear any attached files/images/clips so they don't show up as "still attached"
+    // Clear any pending files/images/clips so they don't show up as "still attached"
     // on the follow-up turn. The suggestion never sends them to the backend anyway.
-    setAttachedFiles([])
+    setPendingFiles((prev) => {
+      prev.forEach((pf) => { if (pf.previewUrl) URL.revokeObjectURL(pf.previewUrl) })
+      return []
+    })
     setPendingImages([])
     setClips([])
     setExpandedClips(new Set())
     setPendingClipMetadata(null)
     onRunWithQuery(q)
     requestAnimationFrame(() => scrollViewportToBottom())
-  }, [onRunWithQuery, scrollViewportToBottom, setAttachedFiles, setPendingImages])
+  }, [onRunWithQuery, scrollViewportToBottom])
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -893,33 +915,43 @@ function PlaygroundContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAgentId, agentsLoaded, agents, selectedAgent])
 
-  // Shared upload logic for both file input and paste
-  const uploadFiles = useCallback(async (files: File[]) => {
-    if (!files.length) return
-    setIsUploading(true)
-    try {
-      for (const file of files) {
-        const result = await fileApi.upload(file)
-        let previewUrl: string | undefined
-        if (file.type.startsWith("image/")) {
-          previewUrl = URL.createObjectURL(file)
-        }
-        setAttachedFiles((prev) => [...prev, { ...result, previewUrl }])
+  // Validate files before adding — check type and size
+  const validateFiles = useCallback((files: File[]): File[] => {
+    const valid: File[] = []
+    for (const file of files) {
+      const ext = "." + file.name.split(".").pop()?.toLowerCase()
+      if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
+        toast.error(t("unsupportedFileType", { name: file.name }))
+        continue
       }
-    } catch (err) {
-      console.error("Upload failed:", err)
-    } finally {
-      setIsUploading(false)
+      if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+        toast.error(t("fileTooLarge", { name: file.name, limit: MAX_UPLOAD_SIZE_MB }))
+        continue
+      }
+      valid.push(file)
     }
-  }, [])
+    return valid
+  }, [t])
+
+  // Add files locally — no server upload yet (lazy upload on send)
+  const addFiles = useCallback((files: File[]) => {
+    const validFiles = validateFiles(files)
+    if (!validFiles.length) return
+    const newPending: PendingFile[] = validFiles.map((file) => ({
+      id: crypto.randomUUID(),
+      file,
+      previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+    }))
+    setPendingFiles((prev) => [...prev, ...newPending])
+  }, [validateFiles])
 
   // File input handler
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files?.length) return
-    await uploadFiles(Array.from(files))
+    addFiles(Array.from(files))
     if (fileInputRef.current) fileInputRef.current.value = ""
-  }, [uploadFiles])
+  }, [addFiles])
 
   // Paste handler — extract images from clipboard & fold long text into clips
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -934,7 +966,7 @@ function PlaygroundContent({
     }
     if (imageFiles.length > 0) {
       e.preventDefault()
-      uploadFiles(imageFiles)
+      addFiles(imageFiles)
       return
     }
 
@@ -950,13 +982,47 @@ function PlaygroundContent({
       }
       setClips((prev) => [...prev, clip])
     }
-  }, [uploadFiles])
+  }, [addFiles])
+
+  // Drag-and-drop file upload
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current++
+    if (e.dataTransfer?.types.includes("Files")) {
+      setFileDragging(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current--
+    if (dragCounterRef.current === 0) {
+      setFileDragging(false)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setFileDragging(false)
+    const files = e.dataTransfer?.files
+    if (!files?.length) return
+    addFiles(Array.from(files))
+  }, [addFiles])
 
   const removeFile = useCallback((fileId: string) => {
-    setAttachedFiles((prev) => {
-      const file = prev.find((f) => f.file_id === fileId)
+    setPendingFiles((prev) => {
+      const file = prev.find((f) => f.id === fileId)
       if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl)
-      return prev.filter((f) => f.file_id !== fileId)
+      return prev.filter((f) => f.id !== fileId)
     })
   }, [])
 
@@ -981,18 +1047,36 @@ function PlaygroundContent({
     })
   }, [])
 
-  // Run with file content injection (text files), clips, and image_ids passthrough
-  const handleRunWithFiles = useCallback(() => {
+  // Run with file content injection (text files), clips, and image_ids passthrough.
+  // Files are uploaded lazily — only when the user sends the message.
+  const handleRunWithFiles = useCallback(async () => {
     // Reset IME composing state — compositionEnd may not fire when
     // the user clicks the Send button instead of pressing Enter.
     composingRef.current = false
     setComposing(false)
 
     let finalQuery = query.trim()
-    if (!finalQuery && clips.length === 0) return
+    if (!finalQuery && clips.length === 0 && pendingFiles.length === 0) return
 
-    const textFiles = attachedFiles.filter((f) => !isImageFile(f))
-    const imageFiles = attachedFiles.filter((f) => isImageFile(f))
+    // Lazy upload: send pending files to server NOW
+    let uploadedFiles: (FileUploadResponse & { previewUrl?: string })[] = []
+    if (pendingFiles.length > 0) {
+      setIsUploading(true)
+      try {
+        for (const pf of pendingFiles) {
+          const result = await fileApi.upload(pf.file)
+          uploadedFiles.push({ ...result, previewUrl: pf.previewUrl })
+        }
+      } catch (err) {
+        toast.error(getErrorMessage(err, tError))
+        setIsUploading(false)
+        return
+      }
+      setIsUploading(false)
+    }
+
+    const textFiles = uploadedFiles.filter((f) => !isImageFile(f))
+    const imageFiles = uploadedFiles.filter((f) => isImageFile(f))
 
     // Build clip metadata for persistence & rendering
     let clipMetadata: ClipMessageMetadata | null = null
@@ -1038,10 +1122,10 @@ function PlaygroundContent({
     setPendingClipMetadata(clipMetadata)
 
     // Clean up preview URLs
-    attachedFiles.forEach((f) => {
+    uploadedFiles.forEach((f) => {
       if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
     })
-    setAttachedFiles([])
+    setPendingFiles([])
     setClips([])
     setExpandedClips(new Set())
 
@@ -1052,7 +1136,7 @@ function PlaygroundContent({
 
     onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined, userMetadata)
     requestAnimationFrame(() => scrollViewportToBottom())
-  }, [attachedFiles, clips, query, onRunWithQuery, scrollViewportToBottom, t])
+  }, [pendingFiles, clips, query, onRunWithQuery, scrollViewportToBottom, t, tError])
 
   const handleKeyDownWithFiles = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1104,7 +1188,14 @@ function PlaygroundContent({
 
   return (
     <>
-    <div className="flex flex-1 flex-col overflow-hidden p-6 gap-4">
+    <div
+      className="relative flex flex-1 flex-col overflow-hidden p-6 gap-4"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag-and-drop overlay is rendered inside the input row below */}
       {/* Output area / empty state */}
       {hasMessages ? (
         <div ref={panelContainerRef} className="flex flex-1 min-h-0">
@@ -1348,29 +1439,29 @@ function PlaygroundContent({
 
       {/* Input area -- pinned to bottom */}
       <div className="shrink-0 space-y-2">
-        {/* Attached files */}
-        {attachedFiles.length > 0 && (
+        {/* Pending files (not yet uploaded — lazy upload on send) */}
+        {pendingFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 pb-2">
-            {attachedFiles.map((f) => {
-              const isImage = isImageFile(f)
+            {pendingFiles.map((pf) => {
+              const isImage = pf.file.type.startsWith("image/")
               return (
                 <div
-                  key={f.file_id}
+                  key={pf.id}
                   className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-xs"
                 >
-                  {isImage && f.previewUrl ? (
+                  {isImage && pf.previewUrl ? (
                     <img
-                      src={f.previewUrl}
-                      alt={f.filename}
+                      src={pf.previewUrl}
+                      alt={pf.file.name}
                       className="h-8 w-8 rounded object-cover"
                     />
                   ) : (
                     <Paperclip className="h-3 w-3 text-muted-foreground" />
                   )}
-                  <span className="max-w-[150px] truncate">{f.filename}</span>
-                  <span className="text-muted-foreground">({formatFileSize(f.size)})</span>
+                  <span className="max-w-[150px] truncate">{pf.file.name}</span>
+                  <span className="text-muted-foreground">({formatFileSize(pf.file.size)})</span>
                   <button
-                    onClick={() => removeFile(f.file_id)}
+                    onClick={() => removeFile(pf.id)}
                     className="ml-0.5 text-muted-foreground hover:text-foreground"
                   >
                     <X className="h-3 w-3" />
@@ -1434,6 +1525,12 @@ function PlaygroundContent({
           accept=".txt,.md,.py,.js,.json,.csv,.pdf,.docx,.html,.htm,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.svg,image/*"
         />
         <div className="relative flex items-end gap-2">
+          {fileDragging && (
+            <div className="absolute inset-0 z-50 rounded-lg border-2 border-dashed border-primary bg-primary/5 backdrop-blur-sm flex items-center justify-center gap-2 pointer-events-none">
+              <Paperclip className="h-5 w-5 text-primary" />
+              <p className="text-sm font-medium text-primary">{t("dropFilesHere")}</p>
+            </div>
+          )}
           <SlashCommandMenu
             isOpen={slashCommands.isOpen}
             filteredCommands={slashCommands.filteredCommands}
@@ -1462,7 +1559,7 @@ function PlaygroundContent({
           />
           <Button
             onClick={isRunning ? ((query.trim() || composing) ? handleRunWithFiles : onAbort) : handleRunWithFiles}
-            disabled={!isRunning && !query.trim() && !composing && clips.length === 0}
+            disabled={!isRunning && !query.trim() && !composing && clips.length === 0 && pendingFiles.length === 0}
             className="h-[72px] w-16 shrink-0"
             variant={isRunning && !query.trim() && !composing ? "destructive" : "default"}
           >
