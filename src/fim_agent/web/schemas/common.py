@@ -19,3 +19,10 @@ class PaginatedResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+
+class PublishRequest(BaseModel):
+    """Request body for publish endpoints (agents, connectors, KBs, MCP servers)."""
+
+    scope: str  # "org" or "global"
+    org_id: str | None = None

@@ -6,17 +6,18 @@ import math
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_agent.db import get_session
 from fim_agent.web.exceptions import AppError
-from fim_agent.web.auth import get_current_user
+from fim_agent.web.auth import get_current_user, get_user_org_ids
 from fim_agent.web.models import Agent, User
 from fim_agent.web.models.connector import Connector
 from fim_agent.web.models.knowledge_base import KnowledgeBase
 from fim_agent.web.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
-from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse
+from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
+from fim_agent.web.visibility import build_visibility_filter
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -42,6 +43,8 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         ),
         is_global=agent.is_global,
         is_builder=agent.is_builder,
+        visibility=getattr(agent, "visibility", "personal"),
+        org_id=getattr(agent, "org_id", None),
         created_at=agent.created_at.isoformat() if agent.created_at else "",
         updated_at=agent.updated_at.isoformat() if agent.updated_at else None,
     )
@@ -67,15 +70,12 @@ async def _get_accessible_agent(
     user_id: str,
     db: AsyncSession,
 ) -> Agent:
-    """Fetch an agent the user owns OR a published global agent (read-only)."""
-    from sqlalchemy import and_
+    """Fetch an agent the user owns OR a published org/global agent (read-only)."""
+    user_org_ids = await get_user_org_ids(user_id, db)
     result = await db.execute(
         select(Agent).where(
             Agent.id == agent_id,
-            or_(
-                Agent.user_id == user_id,
-                and_(Agent.is_global == True, Agent.status == "published"),  # noqa: E712
-            ),
+            build_visibility_filter(Agent, user_id, user_org_ids),
         )
     )
     agent = result.scalar_one_or_none()
@@ -157,13 +157,10 @@ async def list_agents(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    from sqlalchemy import and_
+    user_org_ids = await get_user_org_ids(current_user.id, db)
     base = select(Agent).where(
         Agent.is_builder == False,  # noqa: E712
-        or_(
-            Agent.user_id == current_user.id,
-            and_(Agent.is_global == True, Agent.status == "published"),  # noqa: E712
-        ),
+        build_visibility_filter(Agent, current_user.id, user_org_ids),
     )
     if agent_status is not None:
         base = base.where(Agent.status == agent_status)
@@ -238,16 +235,62 @@ async def delete_agent(
 @router.post("/{agent_id}/publish", response_model=ApiResponse)
 async def publish_agent(
     agent_id: str,
+    body: PublishRequest,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
+    """Publish agent to org or global scope."""
     agent = await _get_owned_agent(agent_id, current_user.id, db)
+
+    if body.scope == "org":
+        if not body.org_id:
+            raise AppError("org_id_required", status_code=400)
+        from fim_agent.web.auth import require_org_member
+        await require_org_member(body.org_id, current_user, db)
+        agent.visibility = "org"
+        agent.org_id = body.org_id
+    elif body.scope == "global":
+        if not current_user.is_admin:
+            raise AppError("admin_required_for_global", status_code=403)
+        agent.visibility = "global"
+        agent.is_global = True  # backward compat
+        agent.org_id = None
+    else:
+        raise AppError("invalid_scope", status_code=400)
+
     agent.status = "published"
     agent.published_at = datetime.now(UTC)
+
+    # Check referenced resources and warn about private dependencies
+    warnings: list[str] = []
+    if agent.kb_ids:
+        for kb_id in agent.kb_ids:
+            result = await db.execute(
+                select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
+            )
+            kb = result.scalar_one_or_none()
+            if kb and getattr(kb, "visibility", "personal") == "personal":
+                warnings.append(
+                    f"KB '{kb.name}' is private — will be accessed via owner delegation"
+                )
+
+    if agent.connector_ids:
+        for cid in agent.connector_ids:
+            result = await db.execute(
+                select(Connector).where(Connector.id == cid)
+            )
+            conn = result.scalar_one_or_none()
+            if conn and getattr(conn, "visibility", "personal") == "personal":
+                warnings.append(
+                    f"Connector '{conn.name}' is private — will be accessed via owner delegation"
+                )
+
     await db.commit()
-    result = await db.execute(select(Agent).where(Agent.id == agent.id))
-    agent = result.scalar_one()
-    return ApiResponse(data=_agent_to_response(agent).model_dump())
+    await db.refresh(agent)
+
+    data = _agent_to_response(agent).model_dump()
+    data["warnings"] = warnings
+    return ApiResponse(data=data)
 
 
 @router.post("/{agent_id}/unpublish", response_model=ApiResponse)
@@ -256,10 +299,33 @@ async def unpublish_agent(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    agent = await _get_owned_agent(agent_id, current_user.id, db)
+    """Revert agent to personal visibility."""
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise AppError("agent_not_found", status_code=404)
+
+    is_owner = agent.user_id == current_user.id
+    is_admin = current_user.is_admin
+    is_org_admin = False
+
+    if agent.visibility == "org" and agent.org_id and not is_owner:
+        try:
+            from fim_agent.web.auth import require_org_admin
+            await require_org_admin(agent.org_id, current_user, db)
+            is_org_admin = True
+        except Exception:
+            pass
+
+    if not (is_owner or is_admin or is_org_admin):
+        raise AppError("unpublish_denied", status_code=403)
+
+    agent.visibility = "personal"
+    agent.org_id = None
+    agent.is_global = False  # backward compat
     agent.status = "draft"
     agent.published_at = None
+
     await db.commit()
-    result = await db.execute(select(Agent).where(Agent.id == agent.id))
-    agent = result.scalar_one()
+    await db.refresh(agent)
     return ApiResponse(data=_agent_to_response(agent).model_dump())

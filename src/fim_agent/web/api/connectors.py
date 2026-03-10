@@ -18,10 +18,10 @@ from fim_agent.core.security import get_safe_async_client, validate_url
 from fim_agent.core.tool.connector.openapi_parser import parse_openapi_spec
 from fim_agent.web.exceptions import AppError
 from fim_agent.db import get_session
-from fim_agent.web.auth import get_current_user
+from fim_agent.web.auth import get_current_user, get_user_org_ids
 from fim_agent.web.models.connector import Connector, ConnectorAction
 from fim_agent.web.models.user import User
-from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse
+from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_agent.web.schemas.connector import (
     ActionCreate,
     ActionResponse,
@@ -72,6 +72,8 @@ def _connector_to_response(connector: Connector) -> ConnectorResponse:
         is_official=connector.is_official,
         forked_from=connector.forked_from,
         version=connector.version,
+        visibility=getattr(connector, "visibility", "personal"),
+        org_id=getattr(connector, "org_id", None),
         actions=[_action_to_response(a) for a in (connector.actions or [])],
         created_at=connector.created_at.isoformat() if connector.created_at else "",
         updated_at=connector.updated_at.isoformat() if connector.updated_at else None,
@@ -134,7 +136,11 @@ async def list_connectors(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    base = select(Connector).where(Connector.user_id == current_user.id)
+    from fim_agent.web.visibility import build_visibility_filter
+    user_org_ids = await get_user_org_ids(current_user.id, db)
+    base = select(Connector).where(
+        build_visibility_filter(Connector, current_user.id, user_org_ids)
+    )
 
     count_result = await db.execute(
         select(func.count()).select_from(base.subquery())
@@ -203,6 +209,95 @@ async def delete_connector(
     await db.delete(connector)
     await db.commit()
     return ApiResponse(data={"deleted": connector_id})
+
+
+# ---------------------------------------------------------------------------
+# Publish / Unpublish
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{connector_id}/publish", response_model=ApiResponse)
+async def publish_connector(
+    connector_id: str,
+    body: PublishRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Publish connector to org or global scope."""
+    connector = await _get_owned_connector(connector_id, current_user.id, db)
+
+    if body.scope == "org":
+        if not body.org_id:
+            raise AppError("org_id_required", status_code=400)
+        from fim_agent.web.auth import require_org_member
+        await require_org_member(body.org_id, current_user, db)
+        connector.visibility = "org"
+        connector.org_id = body.org_id
+    elif body.scope == "global":
+        if not current_user.is_admin:
+            raise AppError("admin_required_for_global", status_code=403)
+        connector.visibility = "global"
+        connector.org_id = None
+    else:
+        raise AppError("invalid_scope", status_code=400)
+
+    await db.commit()
+    await db.refresh(connector)
+
+    # Reload with actions for response
+    result = await db.execute(
+        select(Connector)
+        .options(selectinload(Connector.actions))
+        .where(Connector.id == connector.id)
+    )
+    connector = result.scalar_one()
+    return ApiResponse(data=_connector_to_response(connector).model_dump())
+
+
+@router.post("/{connector_id}/unpublish", response_model=ApiResponse)
+async def unpublish_connector(
+    connector_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Revert connector to personal visibility."""
+    result = await db.execute(
+        select(Connector)
+        .options(selectinload(Connector.actions))
+        .where(Connector.id == connector_id)
+    )
+    connector = result.scalar_one_or_none()
+    if connector is None:
+        raise AppError("connector_not_found", status_code=404)
+
+    is_owner = connector.user_id == current_user.id
+    is_admin = current_user.is_admin
+    is_org_admin = False
+
+    if getattr(connector, "visibility", "personal") == "org" and connector.org_id and not is_owner:
+        try:
+            from fim_agent.web.auth import require_org_admin
+            await require_org_admin(connector.org_id, current_user, db)
+            is_org_admin = True
+        except Exception:
+            pass
+
+    if not (is_owner or is_admin or is_org_admin):
+        raise AppError("unpublish_denied", status_code=403)
+
+    connector.visibility = "personal"
+    connector.org_id = None
+
+    await db.commit()
+    await db.refresh(connector)
+
+    result = await db.execute(
+        select(Connector)
+        .options(selectinload(Connector.actions))
+        .where(Connector.id == connector.id)
+    )
+    connector = result.scalar_one()
+    return ApiResponse(data=_connector_to_response(connector).model_dump())
 
 
 # ---------------------------------------------------------------------------

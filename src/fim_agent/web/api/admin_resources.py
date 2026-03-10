@@ -65,6 +65,8 @@ class AdminGlobalAgentInfo(BaseModel):
     status: str = "draft"
     is_global: bool = True
     is_active: bool = True
+    visibility: str = "personal"
+    org_id: str | None = None
     user_id: str | None = None
     username: str | None = None
     email: str | None = None
@@ -92,6 +94,11 @@ class UpdateGlobalAgentRequest(BaseModel):
     tool_categories: list[str] | None = None
     suggested_prompts: list[str] | None = None
     sandbox_config: dict[str, Any] | None = None
+
+
+class SetVisibilityRequest(BaseModel):
+    visibility: str  # "personal", "org", "global"
+    org_id: str | None = None
 
 
 class AdminKBInfo(BaseModel):
@@ -317,6 +324,8 @@ def _agent_to_global_info(
         status=agent.status,
         is_global=agent.is_global,
         is_active=agent.status == "published",
+        visibility=getattr(agent, "visibility", "personal"),
+        org_id=getattr(agent, "org_id", None),
         user_id=agent.user_id,
         username=owner_username,
         email=owner_email,
@@ -344,7 +353,7 @@ async def list_global_agents(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
     """List all global agents. Requires admin privileges."""
-    base_filter = Agent.is_global == True  # noqa: E712
+    base_filter = or_(Agent.is_global == True, Agent.visibility == "global")  # noqa: E712
     stmt = select(Agent).where(base_filter)
     count_base = select(Agent).where(base_filter)
 
@@ -411,6 +420,7 @@ async def clone_agent_to_global(
     global_agent = Agent(
         user_id=None,
         is_global=True,
+        visibility="global",
         name=source.name,
         icon=source.icon,
         description=source.description,
@@ -551,6 +561,49 @@ async def toggle_global_agent(
     )
 
     return _agent_to_global_info(agent, cloned_from_username=cloned_from_username)
+
+
+# ---------------------------------------------------------------------------
+# Agent Visibility Management
+# ---------------------------------------------------------------------------
+
+
+@router.post("/resources/agent/{agent_id}/set-visibility", response_model=AdminGlobalAgentInfo)
+async def admin_set_agent_visibility(
+    agent_id: str,
+    body: SetVisibilityRequest,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> AdminGlobalAgentInfo:
+    """Set visibility on any agent. Admin-only."""
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        raise AppError("agent_not_found", status_code=404)
+
+    agent.visibility = body.visibility
+    agent.org_id = body.org_id if body.visibility == "org" else None
+    agent.is_global = body.visibility == "global"  # backward compat
+
+    if body.visibility == "global" and agent.status != "published":
+        agent.status = "published"
+
+    await db.commit()
+    await db.refresh(agent)
+
+    owner_username = await _resolve_username(db, agent.user_id)
+    cloned_from_username = await _resolve_username(db, agent.cloned_from_user_id)
+
+    await write_audit(
+        db, current_user, "agent.set_visibility",
+        target_type="agent", target_id=agent.id, target_label=agent.name,
+        detail=f"Visibility set to {body.visibility}",
+    )
+
+    return _agent_to_global_info(
+        agent, cloned_from_username=cloned_from_username,
+        owner_username=owner_username, owner_email=None,
+    )
 
 
 # ---------------------------------------------------------------------------

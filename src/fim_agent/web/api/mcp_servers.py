@@ -12,10 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_agent.core.security import is_stdio_allowed, validate_stdio_command
 from fim_agent.db import get_session
 from fim_agent.web.exceptions import AppError
-from fim_agent.web.auth import get_current_user
+from fim_agent.web.auth import get_current_user, get_user_org_ids
 from fim_agent.web.models.mcp_server import MCPServer
 from fim_agent.web.models.user import User
-from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse
+from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_agent.web.schemas.mcp_server import (
     MCPServerCreate,
     MCPServerResponse,
@@ -46,6 +46,8 @@ def _to_response(srv: MCPServer) -> MCPServerResponse:
         headers=srv.headers,
         is_active=srv.is_active,
         tool_count=srv.tool_count,
+        visibility=getattr(srv, "visibility", "personal"),
+        org_id=getattr(srv, "org_id", None),
         created_at=srv.created_at.isoformat() if srv.created_at else "",
         updated_at=srv.updated_at.isoformat() if srv.updated_at else None,
     )
@@ -134,7 +136,11 @@ async def list_mcp_servers(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    base = select(MCPServer).where(MCPServer.user_id == current_user.id)
+    from fim_agent.web.visibility import build_visibility_filter
+    user_org_ids = await get_user_org_ids(current_user.id, db)
+    base = select(MCPServer).where(
+        build_visibility_filter(MCPServer, current_user.id, user_org_ids)
+    )
 
     count_result = await db.execute(
         select(func.count()).select_from(base.subquery())
@@ -251,6 +257,80 @@ async def test_mcp_server(
         return ApiResponse(data={"ok": False, "error": str(exc)})
     finally:
         await client.disconnect_all()
+
+
+# ---------------------------------------------------------------------------
+# Publish / Unpublish
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{server_id}/publish", response_model=ApiResponse)
+async def publish_mcp_server(
+    server_id: str,
+    body: PublishRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Publish MCP server to org or global scope."""
+    server = await _get_owned_server(server_id, current_user.id, db)
+
+    if body.scope == "org":
+        if not body.org_id:
+            raise AppError("org_id_required", status_code=400)
+        from fim_agent.web.auth import require_org_member
+        await require_org_member(body.org_id, current_user, db)
+        server.visibility = "org"
+        server.org_id = body.org_id
+    elif body.scope == "global":
+        if not current_user.is_admin:
+            raise AppError("admin_required_for_global", status_code=403)
+        server.visibility = "global"
+        server.org_id = None
+        if hasattr(server, "is_global"):
+            server.is_global = True
+    else:
+        raise AppError("invalid_scope", status_code=400)
+
+    await db.commit()
+    await db.refresh(server)
+    return ApiResponse(data=_to_response(server).model_dump())
+
+
+@router.post("/{server_id}/unpublish", response_model=ApiResponse)
+async def unpublish_mcp_server(
+    server_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Revert MCP server to personal visibility."""
+    result = await db.execute(select(MCPServer).where(MCPServer.id == server_id))
+    server = result.scalar_one_or_none()
+    if server is None:
+        raise AppError("mcp_server_not_found", status_code=404)
+
+    is_owner = server.user_id == current_user.id
+    is_admin = current_user.is_admin
+    is_org_admin = False
+
+    if getattr(server, "visibility", "personal") == "org" and server.org_id and not is_owner:
+        try:
+            from fim_agent.web.auth import require_org_admin
+            await require_org_admin(server.org_id, current_user, db)
+            is_org_admin = True
+        except Exception:
+            pass
+
+    if not (is_owner or is_admin or is_org_admin):
+        raise AppError("unpublish_denied", status_code=403)
+
+    server.visibility = "personal"
+    server.org_id = None
+    if hasattr(server, "is_global"):
+        server.is_global = False
+
+    await db.commit()
+    await db.refresh(server)
+    return ApiResponse(data=_to_response(server).model_dump())
 
 
 @router.delete("/{server_id}", response_model=ApiResponse)

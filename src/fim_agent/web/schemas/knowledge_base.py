@@ -33,6 +33,8 @@ class KBResponse(BaseModel):
     document_count: int
     total_chunks: int
     status: str
+    visibility: str = "personal"
+    org_id: str | None = None
     created_at: str
     updated_at: str | None
 

@@ -104,6 +104,8 @@ class ConnectorResponse(BaseModel):
     is_official: bool
     forked_from: str | None
     version: int
+    visibility: str = "personal"
+    org_id: str | None = None
     actions: list[ActionResponse]
     created_at: str
     updated_at: str | None

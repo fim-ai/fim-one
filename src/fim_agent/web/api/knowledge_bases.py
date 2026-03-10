@@ -15,11 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_agent.db import get_session
-from fim_agent.web.auth import get_current_user
+from fim_agent.web.auth import get_current_user, get_user_org_ids
 from fim_agent.web.exceptions import AppError
 from fim_agent.web.deps import get_embedding, get_kb_manager
 from fim_agent.web.models import KBDocument, KnowledgeBase, User
-from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse
+from fim_agent.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_agent.web.schemas.knowledge_base import (
     ChunkResponse,
     ChunkUpdate,
@@ -61,6 +61,8 @@ def _kb_to_response(kb: KnowledgeBase) -> KBResponse:
         document_count=kb.document_count,
         total_chunks=kb.total_chunks,
         status=kb.status,
+        visibility=getattr(kb, "visibility", "personal"),
+        org_id=getattr(kb, "org_id", None),
         created_at=kb.created_at.isoformat() if kb.created_at else "",
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
     )
@@ -129,7 +131,11 @@ async def list_kbs(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    base = select(KnowledgeBase).where(KnowledgeBase.user_id == current_user.id)
+    from fim_agent.web.visibility import build_visibility_filter
+    user_org_ids = await get_user_org_ids(current_user.id, db)
+    base = select(KnowledgeBase).where(
+        build_visibility_filter(KnowledgeBase, current_user.id, user_org_ids)
+    )
 
     count_result = await db.execute(
         select(func.count()).select_from(base.subquery())
@@ -213,6 +219,76 @@ async def delete_kb(
     await db.delete(kb)
     await db.commit()
     return ApiResponse(data={"deleted": kb_id})
+
+
+# ── Publish / Unpublish ───────────────────────────────────────────
+
+
+@router.post("/{kb_id}/publish", response_model=ApiResponse)
+async def publish_kb(
+    kb_id: str,
+    body: PublishRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Publish knowledge base to org or global scope."""
+    kb = await _get_owned_kb(kb_id, current_user.id, db)
+
+    if body.scope == "org":
+        if not body.org_id:
+            raise AppError("org_id_required", status_code=400)
+        from fim_agent.web.auth import require_org_member
+        await require_org_member(body.org_id, current_user, db)
+        kb.visibility = "org"
+        kb.org_id = body.org_id
+    elif body.scope == "global":
+        if not current_user.is_admin:
+            raise AppError("admin_required_for_global", status_code=403)
+        kb.visibility = "global"
+        kb.org_id = None
+    else:
+        raise AppError("invalid_scope", status_code=400)
+
+    await db.commit()
+    await db.refresh(kb)
+    return ApiResponse(data=_kb_to_response(kb).model_dump())
+
+
+@router.post("/{kb_id}/unpublish", response_model=ApiResponse)
+async def unpublish_kb(
+    kb_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Revert knowledge base to personal visibility."""
+    result = await db.execute(
+        select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
+    )
+    kb = result.scalar_one_or_none()
+    if kb is None:
+        raise AppError("kb_not_found", status_code=404)
+
+    is_owner = kb.user_id == current_user.id
+    is_admin = current_user.is_admin
+    is_org_admin = False
+
+    if getattr(kb, "visibility", "personal") == "org" and kb.org_id and not is_owner:
+        try:
+            from fim_agent.web.auth import require_org_admin
+            await require_org_admin(kb.org_id, current_user, db)
+            is_org_admin = True
+        except Exception:
+            pass
+
+    if not (is_owner or is_admin or is_org_admin):
+        raise AppError("unpublish_denied", status_code=403)
+
+    kb.visibility = "personal"
+    kb.org_id = None
+
+    await db.commit()
+    await db.refresh(kb)
+    return ApiResponse(data=_kb_to_response(kb).model_dump())
 
 
 # ── Documents ────────────────────────────────────────────────────

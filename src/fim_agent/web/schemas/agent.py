@@ -55,6 +55,8 @@ class AgentResponse(BaseModel):
     published_at: str | None
     is_global: bool = False
     is_builder: bool = False
+    visibility: str = "personal"
+    org_id: str | None = None
     created_at: str
     updated_at: str | None
 
