@@ -644,9 +644,18 @@ async def _resolve_tools(
 
         try:
             async with create_session() as session:
+                from fim_agent.web.models.database_schema import (
+                    DatabaseSchema as DatabaseSchemaModel,
+                )
+
                 stmt = (
                     select(ConnectorModel)
-                    .options(selectinload(ConnectorModel.actions))
+                    .options(
+                        selectinload(ConnectorModel.actions),
+                        selectinload(ConnectorModel.database_schemas).selectinload(
+                            DatabaseSchemaModel.columns
+                        ),
+                    )
                     .where(ConnectorModel.id.in_(connector_ids))
                 )
                 _resource_owner_id = (agent_cfg.get("owner_user_id") or user_id) if agent_cfg else user_id
@@ -654,29 +663,80 @@ async def _resolve_tools(
                     stmt = stmt.where(ConnectorModel.user_id == _resource_owner_id)
                 result = await session.execute(stmt)
                 connectors = result.scalars().all()
+
+                api_tool_count = 0
+                db_tool_count = 0
+
                 for conn in connectors:
-                    for action in (conn.actions or []):
-                        adapter = ConnectorToolAdapter(
+                    if conn.type == "database" and conn.db_config:
+                        # Database connector — create tools via DatabaseToolAdapter
+                        from fim_agent.core.security.encryption import decrypt_db_config
+                        from fim_agent.core.tool.connector.database.adapter import (
+                            DatabaseToolAdapter,
+                        )
+
+                        config = decrypt_db_config(conn.db_config)
+                        # Build schema_tables list from ORM
+                        schema_tables = []
+                        for schema_obj in (conn.database_schemas or []):
+                            if not schema_obj.is_visible:
+                                continue
+                            cols = []
+                            for col in (schema_obj.columns or []):
+                                if not col.is_visible:
+                                    continue
+                                cols.append({
+                                    "column_name": col.column_name,
+                                    "data_type": col.data_type,
+                                    "is_nullable": col.is_nullable,
+                                    "is_primary_key": col.is_primary_key,
+                                    "display_name": col.display_name,
+                                    "description": col.description,
+                                })
+                            schema_tables.append({
+                                "table_name": schema_obj.table_name,
+                                "display_name": schema_obj.display_name,
+                                "description": schema_obj.description,
+                                "column_count": len(cols),
+                                "columns": cols,
+                            })
+                        db_tools = DatabaseToolAdapter.create_tools(
                             connector_name=conn.name,
-                            connector_base_url=conn.base_url,
-                            connector_auth_type=conn.auth_type,
-                            connector_auth_config=conn.auth_config,
-                            action_name=action.name,
-                            action_description=action.description or "",
-                            action_method=action.method,
-                            action_path=action.path,
-                            action_parameters_schema=action.parameters_schema,
-                            action_request_body_template=action.request_body_template,
-                            action_response_extract=action.response_extract,
-                            action_requires_confirmation=action.requires_confirmation,
                             connector_id=conn.id,
-                            action_id=action.id,
+                            db_config=config,
+                            schema_tables=schema_tables,
                             on_call_complete=_log_connector_call,
                         )
-                        tools.register(adapter)
+                        for t in db_tools:
+                            tools.register(t)
+                        db_tool_count += len(db_tools)
+                    else:
+                        # API connector — existing logic
+                        for action in (conn.actions or []):
+                            adapter = ConnectorToolAdapter(
+                                connector_name=conn.name,
+                                connector_base_url=conn.base_url or "",
+                                connector_auth_type=conn.auth_type,
+                                connector_auth_config=conn.auth_config,
+                                action_name=action.name,
+                                action_description=action.description or "",
+                                action_method=action.method,
+                                action_path=action.path,
+                                action_parameters_schema=action.parameters_schema,
+                                action_request_body_template=action.request_body_template,
+                                action_response_extract=action.response_extract,
+                                action_requires_confirmation=action.requires_confirmation,
+                                connector_id=conn.id,
+                                action_id=action.id,
+                                on_call_complete=_log_connector_call,
+                            )
+                            tools.register(adapter)
+                            api_tool_count += 1
+
                 logger.info(
-                    "Loaded %d connector tools from %d connectors",
-                    sum(len(c.actions or []) for c in connectors),
+                    "Loaded %d API tools + %d DB tools from %d connectors",
+                    api_tool_count,
+                    db_tool_count,
                     len(connectors),
                 )
         except Exception:

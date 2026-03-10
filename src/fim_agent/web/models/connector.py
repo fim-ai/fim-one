@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from fim_agent.db.base import Base, TimestampMixin, UUIDPKMixin
 
 if TYPE_CHECKING:
+    from .database_schema import DatabaseSchema
     from .user import User
 
 __all__ = ["Connector", "ConnectorAction"]
@@ -25,9 +26,10 @@ class Connector(UUIDPKMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
     type: Mapped[str] = mapped_column(String(20), default="api")
-    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     auth_type: Mapped[str] = mapped_column(String(20), default="none")
     auth_config: Any = Column(JSON, nullable=True)
+    db_config: Any = Column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="published")
     is_official: Mapped[bool] = mapped_column(Boolean, default=False)
     forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -41,6 +43,9 @@ class Connector(UUIDPKMixin, TimestampMixin, Base):
 
     user: Mapped[User] = relationship(back_populates="connectors", lazy="raise")
     actions: Mapped[list[ConnectorAction]] = relationship(
+        back_populates="connector", cascade="all, delete-orphan", lazy="raise"
+    )
+    database_schemas: Mapped[list[DatabaseSchema]] = relationship(
         back_populates="connector", cascade="all, delete-orphan", lazy="raise"
     )
 

@@ -59,6 +59,19 @@ def _action_to_response(action: ConnectorAction) -> ActionResponse:
     )
 
 
+def _mask_db_config(db_config: dict | None) -> dict | None:
+    """Return a copy of db_config with sensitive fields masked."""
+    if not db_config:
+        return db_config
+    masked = dict(db_config)
+    if "encrypted_password" in masked:
+        masked.pop("encrypted_password")
+        masked["password"] = "***"
+    if "password" in masked and masked["password"] and masked["password"] != "***":
+        masked["password"] = "***"
+    return masked
+
+
 def _connector_to_response(connector: Connector) -> ConnectorResponse:
     return ConnectorResponse(
         id=connector.id,
@@ -69,6 +82,7 @@ def _connector_to_response(connector: Connector) -> ConnectorResponse:
         base_url=connector.base_url,
         auth_type=connector.auth_type,
         auth_config=connector.auth_config,
+        db_config=_mask_db_config(connector.db_config),
         is_official=connector.is_official,
         forked_from=connector.forked_from,
         version=connector.version,
@@ -105,6 +119,25 @@ async def create_connector(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
+    # Handle database connector — encrypt password in db_config
+    db_config = None
+    if body.type == "database":
+        if not body.db_config:
+            raise AppError(
+                "db_config_required",
+                status_code=400,
+                detail="db_config is required for database connectors",
+            )
+        from fim_agent.core.security.encryption import encrypt_db_config
+
+        db_config = encrypt_db_config(body.db_config)
+    elif not body.base_url:
+        raise AppError(
+            "base_url_required",
+            status_code=400,
+            detail="base_url is required for API connectors",
+        )
+
     connector = Connector(
         user_id=current_user.id,
         name=body.name,
@@ -114,6 +147,7 @@ async def create_connector(
         base_url=body.base_url,
         auth_type=body.auth_type,
         auth_config=body.auth_config,
+        db_config=db_config,
         status="published",
     )
     db.add(connector)
@@ -184,6 +218,18 @@ async def update_connector(
     connector = await _get_owned_connector(connector_id, current_user.id, db)
 
     update_data = body.model_dump(exclude_unset=True)
+
+    # Re-encrypt password if db_config is being updated
+    if "db_config" in update_data and update_data["db_config"]:
+        from fim_agent.core.security.encryption import encrypt_db_config
+
+        update_data["db_config"] = encrypt_db_config(update_data["db_config"])
+        # Close any existing driver pool for this connector
+        from fim_agent.core.tool.connector.database.pool import ConnectionPoolManager
+
+        pool = ConnectionPoolManager.get_instance()
+        await pool.close_driver(connector_id)
+
     for field, value in update_data.items():
         setattr(connector, field, value)
 

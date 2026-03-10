@@ -67,13 +67,16 @@ class ConnectorCreate(BaseModel):
     description: str | None = None
     icon: str | None = None
     type: str = "api"
-    base_url: str = Field(min_length=1, max_length=500)
+    base_url: str | None = Field(default=None, max_length=500)
     auth_type: str = "none"
     auth_config: dict[str, Any] | None = None
+    db_config: dict[str, Any] | None = None
 
     @field_validator("base_url")
     @classmethod
-    def validate_base_url_scheme(cls, v: str) -> str:
+    def validate_base_url_scheme(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
         from urllib.parse import urlparse
 
         parsed = urlparse(v)
@@ -90,6 +93,7 @@ class ConnectorUpdate(BaseModel):
     base_url: str | None = None
     auth_type: str | None = None
     auth_config: dict[str, Any] | None = None
+    db_config: dict[str, Any] | None = None
 
 
 class ConnectorResponse(BaseModel):
@@ -98,9 +102,10 @@ class ConnectorResponse(BaseModel):
     description: str | None
     icon: str | None
     type: str
-    base_url: str
+    base_url: str | None
     auth_type: str
     auth_config: dict[str, Any] | None
+    db_config: dict[str, Any] | None = None
     is_official: bool
     forked_from: str | None
     version: int
