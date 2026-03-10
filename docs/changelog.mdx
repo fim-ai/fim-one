@@ -39,6 +39,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Docs
 - **Architecture diagrams layout fix**: Switched Mermaid flowcharts from left-right (`LR`) to top-down (`TD`) for better readability, removed `mode: "wide"` frontmatter, and added `custom.css` for centered Mermaid SVG rendering
+- **Mermaid node label line breaks**: Replaced `\n` with `<br/>` in all Mermaid flowchart node labels across architecture and concept docs (EN + ZH) — Mermaid renders `\n` as literal text in quoted labels
 
 ### Fixed
 - **Docker sandbox (DooD) volume mount**: Fix empty `-v` bind mounts when `CODE_EXEC_BACKEND=docker` runs inside a container (docker-compose). Sandbox dir moved from `tmp/conversations/` to `data/sandbox/` (under the mounted `./data:/app/data` volume). New `DOCKER_HOST_DATA_DIR` env var translates container-internal paths to host-visible paths for the Docker daemon. Fixes `_PROJECT_ROOT` resolving to `/app/src/` (not `/app/`) by using `.parent`

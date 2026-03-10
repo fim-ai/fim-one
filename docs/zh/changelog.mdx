@@ -62,6 +62,7 @@ description: "FIM Agent 的所有重要变更。"
 </div>
 
 * **架构图表布局修复**：将 Mermaid 流程图从左右布局（`LR`）切换为上下布局（`TD`）以提升可读性，移除 `mode: "wide"` frontmatter，新增 `custom.css` 实现 Mermaid SVG 居中渲染
+* **Mermaid 节点标签换行修复**：将所有架构和概念文档中 Mermaid 流程图节点标签的 `\n` 替换为 `<br/>`（中英文同步）——Mermaid 在带引号的标签中会将 `\n` 渲染为字面文本
 
 <div id="fixed">
   ### 已修复
