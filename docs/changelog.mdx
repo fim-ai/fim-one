@@ -37,6 +37,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Smart relay routing**: Automatically detects API protocol from URL path patterns (e.g., `/claude` or `/anthropic` → Anthropic native, `/gemini` → Google native), enabling proper authentication headers and parameter translation for third-party relay platforms without manual provider configuration
 - **Structured output degradation**: Unified `structured_llm_call()` utility with 3-level extraction (Native FC → JSON Mode → plain text + regex fallback). Refactored DAG Planner, Plan Analyzer, and tool selection to use the shared utility, replacing ad-hoc JSON parsing with consistent retry and degradation across all structured LLM call sites
 
+### Docs
+- **Architecture diagrams layout fix**: Switched Mermaid flowcharts from left-right (`LR`) to top-down (`TD`) for better readability, removed `mode: "wide"` frontmatter, and added `custom.css` for centered Mermaid SVG rendering
+
 ### Fixed
 - **Docker sandbox (DooD) volume mount**: Fix empty `-v` bind mounts when `CODE_EXEC_BACKEND=docker` runs inside a container (docker-compose). Sandbox dir moved from `tmp/conversations/` to `data/sandbox/` (under the mounted `./data:/app/data` volume). New `DOCKER_HOST_DATA_DIR` env var translates container-internal paths to host-visible paths for the Docker daemon. Fixes `_PROJECT_ROOT` resolving to `/app/src/` (not `/app/`) by using `.parent`
 - **Security: Python sandbox AST dunder validation**: Block sandbox escape via AST dunder attribute validation

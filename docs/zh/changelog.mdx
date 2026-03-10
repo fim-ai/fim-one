@@ -57,6 +57,12 @@ description: "FIM Agent 的所有重要变更。"
 * **文档：ASCII → Mermaid 图表**：所有使用框线字符绘制的 ASCII 图均已转换为原生 Mermaid 图表 (共 12 张，分布在 6 个页面) ，以获得更好的渲染效果和交互性
 * **文档：深色模式主题**：优化了 Mintlify 的颜色配置——深色模式下采用暖琥珀色强调色、渐变背景装饰，以及与项目主题一致的背景颜色
 
+<div id="docs">
+  ### 文档
+</div>
+
+* **架构图表布局修复**：将 Mermaid 流程图从左右布局（`LR`）切换为上下布局（`TD`）以提升可读性，移除 `mode: "wide"` frontmatter，新增 `custom.css` 实现 Mermaid SVG 居中渲染
+
 <div id="fixed">
   ### 已修复
 </div>
