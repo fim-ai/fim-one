@@ -40,13 +40,13 @@ The most common pattern: paste an OpenAPI URL and let the builder do the rest.
 
 ```mermaid
 flowchart TD
-  A["Describe your API\n(or paste OpenAPI URL)"]
-  A --> B["Import OpenAPI spec\n→ batch-create actions"]
-  B --> C["Test connection\n→ verify auth"]
+  A["Describe your API<br/>(or paste OpenAPI URL)"]
+  A --> B["Import OpenAPI spec<br/>→ batch-create actions"]
+  B --> C["Test connection<br/>→ verify auth"]
   C --> D{"All actions work?"}
-  D -- No --> E["Test failing action\n→ fix path or schema"]
+  D -- No --> E["Test failing action<br/>→ fix path or schema"]
   E --> D
-  D -- Yes --> F["Connector ready\nAttach to an agent"]
+  D -- Yes --> F["Connector ready<br/>Attach to an agent"]
 ```
 
 **Example prompt:**
@@ -77,12 +77,12 @@ Start with a description and let the builder configure the whole agent:
 
 ```mermaid
 flowchart TD
-  A["Describe the agent\n(role, capabilities, tone)"]
-  A --> B["Write system instructions\n→ Update Settings"]
-  B --> C["Set execution mode\n(ReAct or DAG)"]
-  C --> D["Browse connectors\n→ List Connectors"]
-  D --> E["Attach relevant connector\n→ Add Connector"]
-  E --> F["Add suggested prompts\n→ Update Settings"]
+  A["Describe the agent<br/>(role, capabilities, tone)"]
+  A --> B["Write system instructions<br/>→ Update Settings"]
+  B --> C["Set execution mode<br/>(ReAct or DAG)"]
+  C --> D["Browse connectors<br/>→ List Connectors"]
+  D --> E["Attach relevant connector<br/>→ Add Connector"]
+  E --> F["Add suggested prompts<br/>→ Update Settings"]
   F --> G["Agent ready to use"]
 ```
 

@@ -11,14 +11,14 @@ The architecture supports two integration scales:
 flowchart TD
     subgraph Copilot["Copilot (embedded)"]
         subgraph Host["Host System (ERP)"]
-            C["FIM Agent Copilot\n(iframe / widget)"]
+            C["FIM Agent Copilot<br/>(iframe / widget)"]
         end
         C --> DB1["DB"]
         C --> API1["API"]
     end
 
     subgraph Hub["Hub (central portal)"]
-        H["FIM Agent Hub\n(Portal / API)"]
+        H["FIM Agent Hub<br/>(Portal / API)"]
         H --> ERP["ERP"]
         H --> CRM["CRM"]
         H --> OA["OA"]

@@ -11,10 +11,10 @@ This split is deliberate. Tool iterations are optimized for speed — every LLM 
 
 ```mermaid
 flowchart TD
-    A["User query"] --> B["Tool loop\n(non-streaming chat() x N)"]
+    A["User query"] --> B["Tool loop<br/>(non-streaming chat() x N)"]
     B -->|"tool_call"| E["Execute tool"]
     E -->|"observation"| B
-    B -->|"done signal"| C["stream_answer()\n(streaming)"]
+    B -->|"done signal"| C["stream_answer()<br/>(streaming)"]
     C --> D["SSE token stream → frontend"]
 ```
 

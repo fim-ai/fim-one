@@ -51,14 +51,14 @@ flowchart TD
         H["① History summary"] --> EQ["enriched_query"]
     end
     subgraph plan ["Planning"]
-        P["② DAGPlanner\nstructured_llm_call"]
+        P["② DAGPlanner<br/>structured_llm_call"]
     end
     subgraph exec ["Execution (per step)"]
-        TS["③ Tool Selection\nstructured_llm_call"] --> RL["④ ReAct Loop\nchat()"]
-        CG["⑤ ContextGuard\ncompact"]
+        TS["③ Tool Selection<br/>structured_llm_call"] --> RL["④ ReAct Loop<br/>chat()"]
+        CG["⑤ ContextGuard<br/>compact"]
     end
     subgraph post ["Post-execution"]
-        PA["⑥ PlanAnalyzer\nstructured_llm_call"] --> SS["⑦ stream_synthesize\nstream_chat()"]
+        PA["⑥ PlanAnalyzer<br/>structured_llm_call"] --> SS["⑦ stream_synthesize<br/>stream_chat()"]
     end
     EQ --> P
     P --> TS
