@@ -14,13 +14,14 @@ __fim_origin__ = "https://github.com/fim-ai/fim-agent"
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timezone
 from typing import Any
 
 from fim_agent.core.memory.base import BaseMemory
 from fim_agent.core.memory.context_guard import ContextGuard
 from fim_agent.core.model import BaseLLM, ChatMessage, LLMResult
+from fim_agent.core.model.structured import structured_llm_call
 from fim_agent.core.model.types import ToolCallRequest
 from fim_agent.core.model.usage import UsageTracker
 from fim_agent.core.tool import ToolRegistry
@@ -60,6 +61,17 @@ Example response:
 {{"tools": ["web_search", "python_exec"]}}
 """
 
+_TOOL_SELECTION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "tools": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": ["tools"],
+}
+
 _SYSTEM_PROMPT_TEMPLATE = """\
 You are an intelligent assistant that solves tasks by reasoning step-by-step \
 and using tools when necessary.
@@ -79,11 +91,11 @@ one of the following two formats:
   "tool_args": {{<arguments as key-value pairs>}}
 }}
 
-2. To give the final answer:
+2. To signal you are done (no more tools needed):
 {{
   "type": "final_answer",
   "reasoning": "<your step-by-step reasoning>",
-  "answer": "<your final answer>"
+  "answer": "done"
 }}
 
 Available tools:
@@ -98,16 +110,14 @@ different arguments or produce a final answer with the information you have.
 - Be EFFICIENT: try to accomplish as much as possible in each tool call. \
 Write a single comprehensive script rather than making many small calls. \
 For example, generate data AND analyse it in one script when feasible.
-- Keep your final_answer concise and focused -- present key results, not \
-lengthy commentary or step-by-step narration of what you did.
+- IMPORTANT: The "answer" field MUST be literally "done". Do NOT write any \
+answer content — a separate synthesis step will produce the full answer.
 - Do NOT generate charts, plots, or images (e.g. matplotlib) unless the user \
 explicitly asks for visualisation. Prefer text tables and formatted output.
 - LANGUAGE: Always respond in the same language as the user's query. If the \
 user writes in Chinese, your reasoning and final_answer must be in Chinese. \
 If the user writes in English, respond in English. Match the user's language.
 - CRITICAL: Your ENTIRE response must be a single JSON object. No markdown, no plain text, no code fences.
-- Even for long final answers, always wrap the content in the {{"type": "final_answer", ...}} JSON structure.
-- If your answer contains markdown formatting, put it INSIDE the "answer" field as a JSON string.
 """
 
 _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE = """\
@@ -121,13 +131,13 @@ When searching for up-to-date information, always use the current year \
 Guidelines:
 - Always think carefully before acting.
 - Use tools only when the task requires external information or computation.
-- When you have enough information, respond with a direct textual answer.
-- If a tool call fails, analyse the error and decide whether to retry with \
-different arguments or respond with the information you have.
 - Be EFFICIENT: try to accomplish as much as possible in each tool call. \
 Write a single comprehensive script rather than making many small calls.
-- Keep your answers concise and focused -- present key results, not lengthy \
-commentary or step-by-step narration of what you did.
+- If a tool call fails, analyse the error and decide whether to retry with \
+different arguments or move on with the information you have.
+- When you have gathered enough information to answer, STOP calling tools and \
+respond with just a brief text (e.g. "done"). Do NOT write any answer content \
+— a separate synthesis step will produce the full answer.
 - LANGUAGE: Always respond in the same language as the user's query. If the \
 user writes in Chinese, respond in Chinese. If in English, respond in English.
 """
@@ -233,7 +243,6 @@ class ReActAgent:
         on_iteration: IterationCallback | None = None,
         image_urls: list[str] | None = None,
         interrupt_queue: Any | None = None,
-        on_answer_token: Callable[[str, str], None] | None = None,
     ) -> AgentResult:
         """Execute the ReAct loop for a given user query.
 
@@ -267,13 +276,84 @@ class ReActAgent:
                 query, on_iteration, image_urls=image_urls,
                 interrupt_queue=interrupt_queue,
                 effective_tools=effective_tools,
-                on_answer_token=on_answer_token,
             )
         return await self._run_json(
             query, on_iteration, image_urls=image_urls,
             interrupt_queue=interrupt_queue,
             effective_tools=effective_tools,
         )
+
+    async def stream_answer(
+        self,
+        query: str,
+        result: AgentResult,
+        *,
+        language_directive: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream the final answer via a dedicated LLM call.
+
+        Mirrors ``PlanAnalyzer.stream_synthesize()`` — tool iterations use
+        fast non-streaming ``chat()``, then this method generates the real
+        streamed answer from the full conversation context.
+
+        Args:
+            query: The original user query.
+            result: The ``AgentResult`` from :meth:`run`, containing
+                ``messages`` (full conversation history) used as context.
+            language_directive: Optional language override directive.
+
+        Yields:
+            Incremental text chunks (tokens) of the synthesised answer.
+        """
+        # Build a synthesis context from the conversation messages.
+        # Filter to tool calls and their results for a concise summary.
+        context_parts: list[str] = []
+        for msg in result.messages:
+            if msg.role == "assistant" and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    context_parts.append(
+                        f"Tool call: {tc.name}({json.dumps(tc.arguments, ensure_ascii=False)})"
+                    )
+            elif msg.role == "tool":
+                obs = msg.content or ""
+                # Truncate very long tool results to keep prompt lean.
+                if len(obs) > 2000:
+                    obs = obs[:2000] + "... (truncated)"
+                context_parts.append(f"Tool result: {obs}")
+            elif msg.role == "assistant" and msg.content:
+                # Final iteration content (the brief/fallback answer).
+                context_parts.append(f"Assistant reasoning: {msg.content}")
+
+        system_parts = [
+            "You synthesize a final answer from ReAct agent execution results. "
+            "Provide a concise, coherent response that addresses the original "
+            "question. Do NOT include meta-commentary like 'based on the results' "
+            "or 'according to the tool output' — just answer directly.",
+            "",
+            "Guidelines:",
+            "- Present key results clearly; use markdown formatting when helpful.",
+            "- LANGUAGE: The answer must be in the same language as the original "
+            "question. If the question is in Chinese, respond in Chinese.",
+        ]
+        if language_directive:
+            system_parts.append(f"- {language_directive}")
+
+        system_content = "\n".join(system_parts)
+
+        tool_context = "\n".join(context_parts) if context_parts else "(no tool calls)"
+        user_content = (
+            f"Question: {query}\n\n"
+            f"Agent execution trace:\n{tool_context}"
+        )
+
+        messages = [
+            ChatMessage(role="system", content=system_content),
+            ChatMessage(role="user", content=user_content),
+        ]
+
+        async for chunk in self._llm.stream_chat(messages):
+            if chunk.delta_content:
+                yield chunk.delta_content
 
     # ------------------------------------------------------------------
     # Tool selection phase
@@ -325,27 +405,25 @@ class ReActAgent:
             )
 
         try:
-            response_format: dict[str, Any] | None = None
-            if self._llm.abilities.get("json_mode", False):
-                response_format = {"type": "json_object"}
-
-            result: LLMResult = await self._llm.chat(
+            call_result = await structured_llm_call(
+                self._llm,
                 [
                     ChatMessage(role="system", content="You are a tool selection assistant. Respond only with JSON."),
                     ChatMessage(role="user", content=prompt),
                 ],
-                response_format=response_format,
+                schema=_TOOL_SELECTION_SCHEMA,
+                function_name="select_tools",
+                default_value=None,
             )
 
-            content = result.message.content or ""
-            data = extract_json(content)
-            if data is None:
+            if call_result.value is None:
                 logger.warning(
-                    "Tool selection returned non-JSON; falling back to all tools"
+                    "Tool selection: all extraction levels failed; "
+                    "falling back to all tools"
                 )
                 return self._tools
 
-            selected_names: list[str] = data.get("tools", [])
+            selected_names: list[str] = call_result.value.get("tools", [])
             if not isinstance(selected_names, list) or not selected_names:
                 logger.warning(
                     "Tool selection returned empty or invalid list; "
@@ -527,6 +605,7 @@ class ReActAgent:
                     steps=steps,
                     iterations=iteration,
                     usage=usage_tracker.get_summary(),
+                    messages=messages,
                 )
 
             # -- Tool call path --
@@ -554,6 +633,7 @@ class ReActAgent:
             steps=steps,
             iterations=self._max_iterations,
             usage=usage_tracker.get_summary(),
+            messages=messages,
         )
 
     # ------------------------------------------------------------------
@@ -567,9 +647,11 @@ class ReActAgent:
         image_urls: list[str] | None = None,
         interrupt_queue: Any | None = None,
         effective_tools: ToolRegistry | None = None,
-        on_answer_token: Callable[[str, str], None] | None = None,
     ) -> AgentResult:
         """Execute the native function-calling loop.
+
+        All iterations use non-streaming ``chat()`` for speed.  The final
+        answer is generated by a separate ``stream_answer()`` call (like DAG).
 
         Args:
             effective_tools: When provided, overrides ``self._tools`` for
@@ -620,56 +702,16 @@ class ReActAgent:
                     messages, hint="react_iteration",
                 )
 
-            # Stream the LLM response to enable real-time answer token
-            # delivery.  Tool-call iterations are also streamed so that
-            # usage data is captured from the final chunk.
-            stream = self._llm.stream_chat(
+            # Use non-streaming chat() for all iterations — fast tool loops.
+            # The final answer is streamed separately via stream_answer().
+            result: LLMResult = await self._llm.chat(
                 messages,
                 tools=tools_payload,
                 tool_choice=tool_choice,
             )
-            content_parts: list[str] = []
-            reasoning_parts: list[str] = []
-            tool_calls: list[ToolCallRequest] = []
-            stream_usage: dict[str, int] = {}
-            mode: str = "undecided"  # "undecided" | "tool_call" | "answer"
+            await usage_tracker.record(result.usage)
 
-            async for chunk in stream:
-                if chunk.tool_calls:
-                    tool_calls = chunk.tool_calls
-                    mode = "tool_call"
-                if chunk.delta_reasoning:
-                    reasoning_parts.append(chunk.delta_reasoning)
-                if chunk.delta_content:
-                    content_parts.append(chunk.delta_content)
-                    if mode == "undecided":
-                        mode = "answer"
-                if chunk.usage:
-                    stream_usage = chunk.usage
-
-            await usage_tracker.record(stream_usage)
-
-            assistant_msg = ChatMessage(
-                role="assistant",
-                content="".join(content_parts) if content_parts else None,
-                tool_calls=tool_calls if tool_calls else None,
-                reasoning_content="".join(reasoning_parts) if reasoning_parts else None,
-            )
-
-            # Flush buffered content as answer tokens only when this
-            # iteration produces the final answer (no tool calls).
-            # Content that accompanies tool_calls is intermediate
-            # reasoning — not the answer — and must be discarded.
-            if (
-                not assistant_msg.tool_calls
-                and content_parts
-                and on_answer_token is not None
-            ):
-                reasoning_str = "".join(reasoning_parts)
-                for i, token in enumerate(content_parts):
-                    on_answer_token(
-                        token, reasoning_str if i == 0 else "",
-                    )
+            assistant_msg = result.message
 
             # Append the full assistant message (may contain tool_calls).
             messages.append(assistant_msg)
@@ -719,6 +761,7 @@ class ReActAgent:
                 steps=steps,
                 iterations=iteration,
                 usage=usage_tracker.get_summary(),
+                messages=messages,
             )
 
         # Max iterations exceeded.
@@ -737,6 +780,7 @@ class ReActAgent:
             steps=steps,
             iterations=self._max_iterations,
             usage=usage_tracker.get_summary(),
+            messages=messages,
         )
 
     async def _execute_native_tool_calls(

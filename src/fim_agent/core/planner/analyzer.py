@@ -13,23 +13,23 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fim_agent.core.model import BaseLLM, ChatMessage
+from fim_agent.core.model.structured import structured_llm_call
 from fim_agent.core.model.usage import UsageSummary
-from fim_agent.core.utils import extract_json
 
 from .types import AnalysisResult, ExecutionPlan
 
 logger = logging.getLogger(__name__)
 
-_REFORMAT_PROMPT = """\
-Your previous response could not be parsed as valid JSON. \
-Please respond with ONLY a JSON object in this exact format — \
-no markdown, no explanation, no code fences:
-{
-  "achieved": true or false,
-  "confidence": <float between 0.0 and 1.0>,
-  "final_answer": "<synthesised answer or null>",
-  "reasoning": "<your assessment>"
-}"""
+_ANALYSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "achieved": {"type": "boolean"},
+        "confidence": {"type": "number"},
+        "final_answer": {"type": ["string", "null"]},
+        "reasoning": {"type": "string"},
+    },
+    "required": ["achieved", "confidence", "reasoning"],
+}
 
 _ANALYSIS_PROMPT = """\
 You are a plan evaluator.  Given a goal and the results of an execution \
@@ -95,63 +95,28 @@ class PlanAnalyzer:
             An ``AnalysisResult`` with the LLM's assessment.
         """
         messages = self._build_messages(goal, plan)
-        response_format = self._json_response_format()
 
-        result = await self._llm.chat(
+        call_result = await structured_llm_call(
+            self._llm,
             messages,
-            response_format=response_format,
-        )
-
-        content = result.message.content or ""
-        llm_calls = 1
-        total_usage = result.usage
-
-        analysis = self._parse_result(content)
-
-        # Retry once: ask the LLM to reformat as valid JSON.
-        if analysis is None:
-            logger.info("Analyzer JSON parse failed, retrying with reformat prompt")
-            retry_messages = messages + [
-                ChatMessage(role="assistant", content=content),
-                ChatMessage(role="user", content=_REFORMAT_PROMPT),
-            ]
-            retry_result = await self._llm.chat(
-                retry_messages,
-                response_format=response_format,
-            )
-            retry_content = retry_result.message.content or ""
-            llm_calls += 1
-
-            if retry_result.usage:
-                if total_usage:
-                    total_usage = {
-                        k: total_usage.get(k, 0) + retry_result.usage.get(k, 0)
-                        for k in ("prompt_tokens", "completion_tokens", "total_tokens")
-                    }
-                else:
-                    total_usage = retry_result.usage
-
-            analysis = self._parse_result(retry_content)
-
-        # Final fallback after retry exhausted.
-        if analysis is None:
-            logger.warning(
-                "Analyzer LLM returned non-JSON content after retry, "
-                "treating as inconclusive",
-            )
-            preview = content[:300] + "..." if len(content) > 300 else content
-            analysis = AnalysisResult(
+            schema=_ANALYSIS_SCHEMA,
+            function_name="analyze_plan",
+            parse_fn=self._dict_to_analysis_result,
+            regex_fallback=_regex_extract_analysis,
+            default_value=AnalysisResult(
                 achieved=False,
                 confidence=0.0,
-                reasoning=f"Could not parse analysis response: {preview}",
-            )
+                reasoning="Could not parse analysis response",
+            ),
+        )
 
-        if total_usage:
+        analysis = call_result.value
+        if call_result.total_usage:
             analysis.usage = UsageSummary(
-                prompt_tokens=total_usage.get("prompt_tokens", 0),
-                completion_tokens=total_usage.get("completion_tokens", 0),
-                total_tokens=total_usage.get("total_tokens", 0),
-                llm_calls=llm_calls,
+                prompt_tokens=call_result.total_usage.get("prompt_tokens", 0),
+                completion_tokens=call_result.total_usage.get("completion_tokens", 0),
+                total_tokens=call_result.total_usage.get("total_tokens", 0),
+                llm_calls=call_result.llm_calls,
             )
 
         return analysis
@@ -246,16 +211,6 @@ class PlanAnalyzer:
             ChatMessage(role="user", content=user_content),
         ]
 
-    def _json_response_format(self) -> dict[str, Any] | None:
-        """Return a JSON-mode response format if supported by the LLM.
-
-        Returns:
-            ``{{"type": "json_object"}}`` or ``None``.
-        """
-        if self._llm.abilities.get("json_mode", False):
-            return {"type": "json_object"}
-        return None
-
     @staticmethod
     def _format_step_results(
         plan: ExecutionPlan,
@@ -294,28 +249,11 @@ class PlanAnalyzer:
         return "\n\n".join(lines)
 
     @staticmethod
-    def _parse_result(content: str) -> AnalysisResult | None:
-        """Parse the LLM response into an ``AnalysisResult``.
+    def _dict_to_analysis_result(data: dict[str, Any]) -> AnalysisResult:
+        """Transform a raw dict into an ``AnalysisResult``.
 
-        Returns ``None`` when the content cannot be parsed, allowing the
-        caller to retry before falling back.
-
-        Args:
-            content: Raw JSON string from the LLM.
-
-        Returns:
-            A parsed ``AnalysisResult`` instance, or ``None`` on failure.
+        Handles type coercion and clamping of the confidence score.
         """
-        data = extract_json(content)
-        if data is None:
-            # Fallback: try regex extraction of individual fields.
-            # This handles cases where the JSON has issues that even
-            # _repair_json_strings cannot fix (e.g. deeply nested quotes).
-            data = _regex_extract_analysis(content)
-
-        if data is None:
-            return None
-
         achieved = bool(data.get("achieved", False))
 
         raw_confidence = data.get("confidence", 0.0)
@@ -376,9 +314,23 @@ def _regex_extract_analysis(content: str) -> dict[str, Any] | None:
         raw = raw.replace("\\n", "\n").replace("\\t", "\t").replace('\\"', '"')
         data["final_answer"] = raw
 
-    reasoning_m = re.search(r'"reasoning"\s*:\s*"((?:[^"\\]|\\.)*)"', content)
-    if reasoning_m:
-        r = reasoning_m.group(1)
-        data["reasoning"] = r.replace("\\n", "\n").replace('\\"', '"')
+    # Extract reasoning using the same greedy strategy as final_answer,
+    # because reasoning may contain unescaped quotes from the LLM.
+    reason_m = re.search(r'"reasoning"\s*:\s*"([\s\S]*)', content)
+    if reason_m:
+        raw_r = reason_m.group(1)
+        # Walk backwards to find the true end of the string value.
+        # Try specific field boundaries first, then generic patterns.
+        for end_pat in (
+            '"\\s*,\\s*"(?:final_answer|achieved|confidence)"',
+            '"\\s*,\\s*"',
+            '"\\s*\\}',
+        ):
+            end_r = re.search(end_pat, raw_r)
+            if end_r:
+                raw_r = raw_r[: end_r.start()]
+                break
+        raw_r = raw_r.replace("\\n", "\n").replace("\\t", "\t").replace('\\"', '"')
+        data["reasoning"] = raw_r
 
     return data

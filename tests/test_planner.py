@@ -248,7 +248,7 @@ class TestDAGPlannerPlan:
             ]
         )
         planner = DAGPlanner(llm=llm)
-        with pytest.raises(ValueError, match="unparseable content"):
+        with pytest.raises(ValueError, match="extraction levels failed"):
             await planner.plan("goal")
 
     async def test_plan_rejects_missing_steps_key(self) -> None:
@@ -535,6 +535,69 @@ class TestPlanAnalyzer:
         result = await analyzer.analyze("goal", plan)
 
         assert result.achieved is False
+
+
+# ======================================================================
+# _regex_extract_analysis — fallback regex extraction
+# ======================================================================
+
+
+class TestRegexExtractAnalysis:
+    """Tests for the regex fallback used when JSON parsing fails."""
+
+    def test_reasoning_with_unescaped_quotes(self) -> None:
+        """Reasoning containing unescaped quotes should not be truncated."""
+        from fim_agent.core.planner.analyzer import _regex_extract_analysis
+
+        content = (
+            '{"achieved": false, "confidence": 0.35, '
+            '"final_answer": null, '
+            '"reasoning": "Facebook data shows \\"React\\" has 226k stars but '
+            'the API returned incorrect results like \\"fbnic_qemu\\" which '
+            'indicates a sorting issue"}'
+        )
+        data = _regex_extract_analysis(content)
+        assert data is not None
+        assert "sorting issue" in data["reasoning"]
+
+    def test_reasoning_not_truncated_at_inner_quotes(self) -> None:
+        """Reasoning with Chinese-style quoting should be fully extracted."""
+        from fim_agent.core.planner.analyzer import _regex_extract_analysis
+
+        # Simulate the exact pattern from the user's screenshot:
+        # reasoning ends with 得出"Google 远超..."的结论 — old regex would
+        # stop at the quote before "Google".
+        content = (
+            '{"achieved": false, "confidence": 0.35, '
+            '"reasoning": "step_compare 采用了错误的数据，'
+            '得出\\"Google 远超其他两家\\"的错误结论。需要修正排序参数"}'
+        )
+        data = _regex_extract_analysis(content)
+        assert data is not None
+        assert "需要修正排序参数" in data["reasoning"]
+
+    def test_reasoning_last_field(self) -> None:
+        """Reasoning as the last field in JSON should be fully extracted."""
+        from fim_agent.core.planner.analyzer import _regex_extract_analysis
+
+        content = '{"achieved": true, "confidence": 0.9, "reasoning": "All steps completed successfully"}'
+        data = _regex_extract_analysis(content)
+        assert data is not None
+        assert data["reasoning"] == "All steps completed successfully"
+
+    def test_reasoning_before_final_answer(self) -> None:
+        """Reasoning followed by final_answer should extract correctly."""
+        from fim_agent.core.planner.analyzer import _regex_extract_analysis
+
+        content = (
+            '{"achieved": true, "confidence": 0.8, '
+            '"reasoning": "The plan worked well", '
+            '"final_answer": "Here is the result"}'
+        )
+        data = _regex_extract_analysis(content)
+        assert data is not None
+        assert data["reasoning"] == "The plan worked well"
+        assert data["final_answer"] == "Here is the result"
 
 
 # ======================================================================

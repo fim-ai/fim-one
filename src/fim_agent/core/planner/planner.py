@@ -16,8 +16,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fim_agent.core.model import BaseLLM, ChatMessage
+from fim_agent.core.model.structured import structured_llm_call
 from fim_agent.core.model.usage import UsageSummary
-from fim_agent.core.utils import extract_json
 
 from .types import ExecutionPlan, PlanStep
 
@@ -80,6 +80,31 @@ Respond with a single JSON object:
 """
 
 
+_PLAN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "task": {"type": "string"},
+                    "dependencies": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "tool_hint": {"type": ["string", "null"]},
+                    "model_hint": {"type": ["string", "null"]},
+                },
+                "required": ["id", "task"],
+            },
+        },
+    },
+    "required": ["steps"],
+}
+
+
 class DAGPlanner:
     """Decomposes a goal into a DAG execution plan using an LLM.
 
@@ -109,27 +134,28 @@ class DAGPlanner:
 
         Raises:
             ValueError: If the LLM produces an invalid DAG (cycles or
-                dangling dependency references).
+                dangling dependency references), or unparseable content.
         """
         messages = self._build_messages(goal, context, tool_names)
-        response_format = self._json_response_format()
 
-        result = await self._llm.chat(
+        call_result = await structured_llm_call(
+            self._llm,
             messages,
-            response_format=response_format,
+            schema=_PLAN_SCHEMA,
+            function_name="create_plan",
+            parse_fn=self._dict_to_steps,
         )
 
-        content = result.message.content or ""
-        steps = self._parse_steps(content)
+        steps = call_result.value
         self._validate_dag(steps)
 
         total_usage: UsageSummary | None = None
-        if result.usage:
+        if call_result.total_usage:
             total_usage = UsageSummary(
-                prompt_tokens=result.usage.get("prompt_tokens", 0),
-                completion_tokens=result.usage.get("completion_tokens", 0),
-                total_tokens=result.usage.get("total_tokens", 0),
-                llm_calls=1,
+                prompt_tokens=call_result.total_usage.get("prompt_tokens", 0),
+                completion_tokens=call_result.total_usage.get("completion_tokens", 0),
+                total_tokens=call_result.total_usage.get("total_tokens", 0),
+                llm_calls=call_result.llm_calls,
             )
 
         return ExecutionPlan(goal=goal, steps=steps, total_usage=total_usage)
@@ -176,40 +202,21 @@ class DAGPlanner:
         messages.append(ChatMessage(role="user", content=user_content))
         return messages
 
-    def _json_response_format(self) -> dict[str, Any] | None:
-        """Return a JSON-mode response format if supported by the LLM.
+    @staticmethod
+    def _dict_to_steps(data: dict[str, Any]) -> list[PlanStep]:
+        """Transform a raw dict into a list of ``PlanStep`` objects.
 
-        Returns:
-            ``{{"type": "json_object"}}`` or ``None``.
-        """
-        if self._llm.abilities.get("json_mode", False):
-            return {"type": "json_object"}
-        return None
-
-    def _parse_steps(self, content: str) -> list[PlanStep]:
-        """Parse the LLM response into a list of ``PlanStep`` objects.
+        Used as ``parse_fn`` for :func:`structured_llm_call`.
 
         Args:
-            content: Raw JSON string from the LLM.
+            data: Parsed JSON dict from the LLM.
 
         Returns:
-            A list of parsed plan steps.
+            A list of plan steps.
 
         Raises:
-            ValueError: If the content is not valid JSON or does not
-                contain a ``steps`` array.
+            ValueError: If the dict does not contain a ``steps`` array.
         """
-        data = extract_json(content)
-        if data is None:
-            logger.warning(
-                "Failed to parse plan JSON (%d chars): %.500s",
-                len(content),
-                content,
-            )
-            raise ValueError(
-                f"LLM returned unparseable content for plan: {content[:200]}"
-            )
-
         raw_steps = data.get("steps")
         if not isinstance(raw_steps, list):
             # LLM sometimes returns a single step object instead of {"steps": [...]}
