@@ -1439,6 +1439,39 @@ async def get_system_health(
         level="optional",
     ))
 
+    # ── Analytics ────────────────────────────────────────────────────────
+    ga_id = os.environ.get("NEXT_PUBLIC_GA_MEASUREMENT_ID", "")
+    checks.append(IntegrationHealth(
+        key="analytics_ga4",
+        label="Google Analytics (GA4)",
+        configured=bool(ga_id),
+        detail=ga_id if ga_id else None,
+        impact=None if ga_id else "Set NEXT_PUBLIC_GA_MEASUREMENT_ID to enable Google Analytics tracking",
+        level="optional",
+    ))
+
+    umami_url = os.environ.get("NEXT_PUBLIC_UMAMI_SCRIPT_URL", "")
+    umami_id = os.environ.get("NEXT_PUBLIC_UMAMI_WEBSITE_ID", "")
+    umami_configured = bool(umami_url and umami_id)
+    checks.append(IntegrationHealth(
+        key="analytics_umami",
+        label="Umami Analytics",
+        configured=umami_configured,
+        detail=_host(umami_url) if umami_url else None,
+        impact=None if umami_configured else "Set NEXT_PUBLIC_UMAMI_SCRIPT_URL and NEXT_PUBLIC_UMAMI_WEBSITE_ID to enable Umami tracking",
+        level="optional",
+    ))
+
+    plausible_domain = os.environ.get("NEXT_PUBLIC_PLAUSIBLE_DOMAIN", "")
+    checks.append(IntegrationHealth(
+        key="analytics_plausible",
+        label="Plausible Analytics",
+        configured=bool(plausible_domain),
+        detail=plausible_domain if plausible_domain else None,
+        impact=None if plausible_domain else "Set NEXT_PUBLIC_PLAUSIBLE_DOMAIN to enable Plausible tracking",
+        level="optional",
+    ))
+
     return checks
 
 

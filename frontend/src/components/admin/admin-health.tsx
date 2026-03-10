@@ -15,6 +15,7 @@ const GROUPS: Record<string, string[]> = {
   email: ["smtp"],
   media: ["image_gen"],
   oauth: ["oauth_github", "oauth_google", "oauth_discord", "oauth_feishu"],
+  analytics: ["analytics_ga4", "analytics_umami", "analytics_plausible"],
 }
 
 export function AdminHealth() {
@@ -179,17 +180,17 @@ function HealthRow({ item }: { item: IntegrationHealth }) {
           unconfiguredIcon
         )}
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="text-sm font-medium">{item.label}</span>
+          <span className="text-sm font-medium shrink-0">{item.label}</span>
           <span
             className={cn(
-              "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
+              "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none shrink-0",
               LEVEL_BADGE_STYLES[item.level],
             )}
           >
             {t(levelLabelKey)}
           </span>
           {item.detail && (
-            <span className="text-xs text-muted-foreground truncate">
+            <span className="text-xs text-muted-foreground truncate min-w-0 flex-1">
               {item.detail}
             </span>
           )}

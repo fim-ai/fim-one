@@ -3,7 +3,7 @@
 
   "tabs": {
     "overview": "Overview",
-    "health": "Health",
+    "health": "Configuration",
     "users": "Users",
     "conversations": "Conversations",
     "connectors": "Connectors",
@@ -58,9 +58,9 @@
   },
 
   "health": {
-    "title": "Integration Health",
-    "subtitle": "Items marked Required will cause errors if not configured. Recommended items degrade gracefully but affect key features. Optional items add capabilities without affecting core functions.",
-    "loading": "Loading health status...",
+    "title": "Configuration Preview",
+    "subtitle": "A snapshot of your deployment's integration and analytics setup. Required items must be configured for core features to work. Recommended and Optional items enhance capabilities.",
+    "loading": "Loading configuration...",
     "configured": "Configured",
     "notConfigured": "Not configured",
     "impactLabel": "Affected features",
@@ -80,6 +80,7 @@
       "email": "Email",
       "media": "Media",
       "oauth": "OAuth Login",
+      "analytics": "Analytics",
       "other": "Other"
     },
     "impact": {

@@ -3,7 +3,7 @@
 
   "tabs": {
     "overview": "概览",
-    "health": "健康检测",
+    "health": "配置预览",
     "users": "用户",
     "conversations": "对话",
     "connectors": "连接器",
@@ -58,9 +58,9 @@
   },
 
   "health": {
-    "title": "集成健康状态",
-    "subtitle": "标记为「必须」的项未配置会导致报错；「推荐」项未配置会缺失重要功能但不报错；「可选」项仅提供增强能力，不影响核心功能。",
-    "loading": "加载健康状态...",
+    "title": "配置预览",
+    "subtitle": "当前部署的集成与分析配置概览。「必须」项未配置会导致核心功能不可用；「推荐」项影响关键功能；「可选」项提供增强能力，不影响核心运行。",
+    "loading": "加载配置中...",
     "configured": "已配置",
     "notConfigured": "未配置",
     "impactLabel": "受影响功能",
@@ -80,11 +80,15 @@
       "email": "邮件",
       "media": "媒体",
       "oauth": "OAuth 登录",
+      "analytics": "数据统计",
       "other": "其他"
     },
     "impact": {
       "database": "SQLite 为单写模式，高并发部署建议使用 PostgreSQL",
-      "redis": "未配置 Redis 时，流式中断/注入在多工作进程间不可用（WORKERS>1）"
+      "redis": "未配置 Redis 时，流式中断/注入在多工作进程间不可用（WORKERS>1）",
+      "analytics_ga4": "设置 NEXT_PUBLIC_GA_MEASUREMENT_ID 以启用 Google Analytics 统计",
+      "analytics_umami": "设置 NEXT_PUBLIC_UMAMI_SCRIPT_URL 和 NEXT_PUBLIC_UMAMI_WEBSITE_ID 以启用 Umami 统计",
+      "analytics_plausible": "设置 NEXT_PUBLIC_PLAUSIBLE_DOMAIN 以启用 Plausible 统计"
     }
   },
 

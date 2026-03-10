@@ -45,12 +45,39 @@ export default async function RootLayout({
   return (
     <html lang={locale} suppressHydrationWarning>
       <head>
-        <Script
-          defer
-          src="https://t.aidb.com.cn/script.js"
-          data-website-id="5fc12072-69d6-4cc2-9a74-e9e5acda59fd"
-          strategy="afterInteractive"
-        />
+        {/* Google Analytics (GA4) — set NEXT_PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX */}
+        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">{`
+              window.dataLayer=window.dataLayer||[];
+              function gtag(){dataLayer.push(arguments)}
+              gtag('js',new Date());
+              gtag('config','${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}');
+            `}</Script>
+          </>
+        )}
+        {/* Umami — set NEXT_PUBLIC_UMAMI_SCRIPT_URL + NEXT_PUBLIC_UMAMI_WEBSITE_ID */}
+        {process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL && process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
+          <Script
+            defer
+            src={process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL}
+            data-website-id={process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID}
+            strategy="afterInteractive"
+          />
+        )}
+        {/* Plausible — set NEXT_PUBLIC_PLAUSIBLE_DOMAIN (e.g. yourdomain.com) */}
+        {process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN && (
+          <Script
+            defer
+            data-domain={process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN}
+            src={process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL ?? "https://plausible.io/js/script.js"}
+            strategy="afterInteractive"
+          />
+        )}
       </head>
       <body className={`${inter.variable} ${jetbrainsMono.variable} ${cabinetGrotesk.variable} font-sans antialiased`}>
         <NextIntlClientProvider messages={messages}>
