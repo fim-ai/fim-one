@@ -1193,7 +1193,7 @@ export const adminApi = {
 
   // --- Organization members ---
   listOrgMembers: (orgId: string) =>
-    apiFetch<OrgMember[]>(`/api/orgs/${orgId}/members`),
+    apiFetch<{ data: OrgMember[] }>(`/api/orgs/${orgId}/members`).then(r => r.data ?? []),
   addOrgMember: (orgId: string, data: { username_or_email: string; role: string }) =>
     apiFetch<OrgMember>(`/api/orgs/${orgId}/members`, { method: 'POST', body: JSON.stringify(data) }),
   updateOrgMemberRole: (orgId: string, userId: string, data: { role: string }) =>
@@ -1307,37 +1307,37 @@ export interface OrgMember {
 
 export const orgApi = {
   list: () =>
-    apiFetch<UserOrg[]>("/api/orgs"),
+    apiFetch<{ data: UserOrg[] }>("/api/orgs").then(r => r.data ?? []),
 
   create: (body: { name: string; slug: string; description?: string | null; icon?: string | null }) =>
-    apiFetch<UserOrg>("/api/orgs", {
+    apiFetch<{ data: UserOrg }>("/api/orgs", {
       method: "POST",
       body: JSON.stringify(body),
-    }),
+    }).then(r => r.data),
 
   update: (orgId: string, body: { name?: string; description?: string | null; icon?: string | null }) =>
-    apiFetch<UserOrg>(`/api/orgs/${orgId}`, {
+    apiFetch<{ data: UserOrg }>(`/api/orgs/${orgId}`, {
       method: "PUT",
       body: JSON.stringify(body),
-    }),
+    }).then(r => r.data),
 
   delete: (orgId: string) =>
     apiFetch<void>(`/api/orgs/${orgId}`, { method: "DELETE" }),
 
   listMembers: (orgId: string) =>
-    apiFetch<OrgMember[]>(`/api/orgs/${orgId}/members`),
+    apiFetch<{ data: OrgMember[] }>(`/api/orgs/${orgId}/members`).then(r => r.data ?? []),
 
   addMember: (orgId: string, body: { username_or_email: string; role: string }) =>
-    apiFetch<OrgMember>(`/api/orgs/${orgId}/members`, {
+    apiFetch<{ data: OrgMember }>(`/api/orgs/${orgId}/members`, {
       method: "POST",
       body: JSON.stringify(body),
-    }),
+    }).then(r => r.data),
 
   changeRole: (orgId: string, userId: string, role: string) =>
-    apiFetch<OrgMember>(`/api/orgs/${orgId}/members/${userId}`, {
+    apiFetch<{ data: OrgMember }>(`/api/orgs/${orgId}/members/${userId}`, {
       method: "PATCH",
       body: JSON.stringify({ role }),
-    }),
+    }).then(r => r.data),
 
   removeMember: (orgId: string, userId: string) =>
     apiFetch<void>(`/api/orgs/${orgId}/members/${userId}`, { method: "DELETE" }),
