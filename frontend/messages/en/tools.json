@@ -20,7 +20,7 @@
   "failedToLoadCatalog": "Failed to load tool catalog",
   "notConfigured": "Not configured",
   "connectorLabel": "Connector",
-  "connectorDescription": "Custom HTTP API actions bound to this agent. Managed on the Connectors page.",
+  "connectorDescription": "Custom actions (APIs, databases, etc.) bound to this agent. Managed on the Connectors page.",
   "mcpServersLinkLabel": "MCP Servers",
   "mcpServersLinkDescription": "Tools provided by external MCP servers. Configure them on the Connectors page.",
   "disabled": "Disabled",

@@ -86,7 +86,7 @@
   "failedToLoadCatalog": "加载工具目录失败",
   "notConfigured": "未配置",
   "connectorLabel": "连接器",
-  "connectorDescription": "绑定到此 Agent 的自定义 HTTP API 操作，在连接器页面管理。",
+  "connectorDescription": "绑定到此 Agent 的自定义操作（API、数据库等），在连接器页面管理。",
   "mcpServersLinkLabel": "MCP 服务器",
   "mcpServersLinkDescription": "由外部 MCP 服务器提供的工具。请在连接器页面配置。",
   "disabled": "已禁用",

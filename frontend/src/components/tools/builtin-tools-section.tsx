@@ -124,7 +124,7 @@ function ToolCard({
           )}
         </div>
       </div>
-      <p className={`text-xs leading-relaxed ${dimmed ? "text-muted-foreground/60" : "text-muted-foreground"} ${expanded ? "" : "line-clamp-2"}`}>
+      <p className={`text-xs leading-relaxed min-h-[2.5rem] ${dimmed ? "text-muted-foreground/60" : "text-muted-foreground"} ${expanded ? "" : "line-clamp-2"}`}>
         {isDisabled
           ? t("disabledByAdmin")
           : unavailable && tool.unavailable_reason
@@ -158,7 +158,7 @@ function ConnectorLinkCard({ label, description }: { label: string; description:
             <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 min-h-[2.5rem]">
           {description}
         </p>
       </div>
@@ -185,7 +185,7 @@ function MCPLinkCard({ label, description }: { label: string; description: strin
             <ArrowRight className="h-3 w-3 text-muted-foreground/50" />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 min-h-[2.5rem]">
           {description}
         </p>
       </div>
