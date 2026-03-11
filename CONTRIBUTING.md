@@ -324,7 +324,7 @@ Before submitting, ensure:
 - [Discord](https://discord.gg/z64czxdC7z) — chat with the maintainer and other users
 - [GitHub Issues](https://github.com/fim-ai/fim-one/issues) — bugs, security, and field test reports
 - [GitHub Discussions](https://github.com/fim-ai/fim-one/discussions) — questions, ideas, and use case sharing
-- [Twitter / X](https://x.com/fim_one) — announcements and updates
+- [Twitter / X](https://x.com/FIM_One) — announcements and updates
 - [Documentation](https://docs.fim.ai) — guides and API reference
 
 ## License
