@@ -7,6 +7,7 @@ from .announcement import Announcement
 from .api_key import ApiKey
 from .audit_log import AuditLog
 from .connector import Connector, ConnectorAction
+from .eval import EvalDataset, EvalCase, EvalRun, EvalCaseResult
 from .connector_call_log import ConnectorCallLog
 from .database_schema import DatabaseSchema, SchemaColumn
 from .conversation import Conversation
@@ -31,6 +32,10 @@ __all__ = [
     "AuditLog",
     "Connector",
     "ConnectorAction",
+    "EvalCaseResult",
+    "EvalCase",
+    "EvalDataset",
+    "EvalRun",
     "ConnectorCallLog",
     "Conversation",
     "DatabaseSchema",

@@ -59,6 +59,8 @@ from .api.files import router as files_router
 from .api.knowledge_bases import router as kb_router
 from .api.models import router as models_router
 from .api.tools import router as tools_router
+from .api.eval_datasets import router as eval_datasets_router
+from .api.eval_runs import router as eval_runs_router
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +233,8 @@ def create_app() -> FastAPI:
     app.include_router(kb_router)
     app.include_router(models_router)
     app.include_router(tools_router)
+    app.include_router(eval_datasets_router)
+    app.include_router(eval_runs_router)
 
     # NOTE: /uploads is intentionally NOT mounted as a public StaticFiles route.
     # File downloads are served through the authenticated API endpoint at
