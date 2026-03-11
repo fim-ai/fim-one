@@ -153,11 +153,19 @@ class QueryResponse(BaseModel):
 
 
 class AiAnnotateRequest(BaseModel):
-    """Request LLM-generated annotations for tables/columns."""
+    """Request LLM-generated annotations for tables/columns.
+
+    Accepts either ``table_names`` or ``table_ids`` to select which tables
+    to annotate.  If neither is provided, all visible tables are annotated.
+    """
 
     table_names: list[str] | None = Field(
         default=None,
-        description="Tables to annotate. None = all visible tables.",
+        description="Filter by table name. None = all visible tables.",
+    )
+    table_ids: list[str] | None = Field(
+        default=None,
+        description="Filter by table schema ID. Takes precedence over table_names.",
     )
 
 

@@ -93,7 +93,7 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
     }
   }
 
-  // AI Annotate
+  // AI Annotate (single table)
   const handleAiAnnotate = async () => {
     if (!selectedTable) return
     setIsAnnotating(true)
@@ -102,6 +102,21 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
         table_ids: [selectedTable.id],
       })
       toast.success(t("aiAnnotateSuccess", { count: result.annotated_count }))
+      await loadSchemas()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error"
+      toast.error(message)
+    } finally {
+      setIsAnnotating(false)
+    }
+  }
+
+  // AI Annotate All tables
+  const handleAiAnnotateAll = async () => {
+    setIsAnnotating(true)
+    try {
+      const result = await connectorApi.aiAnnotate(connectorId)
+      toast.success(t("aiAnnotateAllSuccess", { count: result.annotated_count }))
       await loadSchemas()
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error"
@@ -167,9 +182,23 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
     }, 600)
   }
 
-  // Toggle table visibility
-  const handleToggleVisible = (tableId: string, currentVisible: boolean) => {
-    updateTableField(tableId, "is_visible", !currentVisible)
+  // Toggle table visibility — immediate save + toast (not debounced)
+  const handleToggleVisible = async (tableId: string, currentVisible: boolean) => {
+    const newVisible = !currentVisible
+    const tbl = tables.find((tb) => tb.id === tableId)
+    setTables((prev) =>
+      prev.map((tb) => (tb.id === tableId ? { ...tb, is_visible: newVisible } : tb)),
+    )
+    try {
+      await connectorApi.updateSchema(connectorId, tableId, { is_visible: newVisible })
+      const name = tbl?.display_name || tbl?.table_name || tableId
+      toast.success(t(newVisible ? "tableNowVisible" : "tableNowHidden", { name }))
+    } catch {
+      setTables((prev) =>
+        prev.map((tb) => (tb.id === tableId ? { ...tb, is_visible: currentVisible } : tb)),
+      )
+      toast.error(t("connectorSaveFailed", { message: "Visibility update failed" }))
+    }
   }
 
   // ------- Render -------
@@ -193,6 +222,21 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
               <RefreshCw className="h-4 w-4" />
             )}
             {isDiscovering ? t("discovering") : t("discoverSchema")}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAiAnnotateAll}
+            disabled={isAnnotating || tables.length === 0}
+            className="gap-1.5 w-full"
+          >
+            {isAnnotating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            {isAnnotating ? t("aiAnnotating") : t("aiAnnotateAll")}
           </Button>
 
           {/* Search */}

@@ -28,7 +28,7 @@ function ConnectorEditorPageInner() {
   const id = params.id as string
   const [connector, setConnector] = useState<ConnectorResponse | null>(null)
   const [isNew, setIsNew] = useState(id === "new")
-  const [activeTab, setActiveTab] = useState<string>("connector")
+  const activeTab = searchParams.get("tab") || "connector"
   const [isLoading, setIsLoading] = useState(id !== "new")
   const [formDirty, setFormDirty] = useState(false)
   const [builderActive, setBuilderActive] = useState(false)
@@ -39,6 +39,17 @@ function ConnectorEditorPageInner() {
   const isDatabase = isNew
     ? searchParams.get("type") === "database"
     : connector?.type === "database"
+
+  const handleTabChange = (tab: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (tab === "connector") {
+      params.delete("tab")
+    } else {
+      params.set("tab", tab)
+    }
+    const qs = params.toString()
+    router.replace(`/connectors/${id}${qs ? `?${qs}` : ""}`)
+  }
 
   // Auth guard
   useEffect(() => {
@@ -153,7 +164,7 @@ function ConnectorEditorPageInner() {
         <div className={`${builderActive ? "w-1/2" : "w-2/3"} flex flex-col min-h-0 transition-all duration-300`}>
           <Tabs
             value={activeTab}
-            onValueChange={setActiveTab}
+            onValueChange={handleTabChange}
             className="flex flex-col flex-1 min-h-0"
           >
             <TabsList className="shrink-0 mx-4 mt-3 w-fit">

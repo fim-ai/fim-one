@@ -504,8 +504,175 @@ async def execute_query(
 
 
 # ---------------------------------------------------------------------------
-# AI Annotate (stub)
+# AI Annotate
 # ---------------------------------------------------------------------------
+
+
+_AI_ANNOTATE_SYSTEM_PROMPT = """\
+You are a database schema expert. Given table and column metadata from a \
+database, generate human-readable Chinese display names and brief Chinese \
+descriptions.
+
+Rules:
+- display_name: concise Chinese name (2-6 characters), e.g. "用户信息", "订单明细"
+- description: one-sentence Chinese description of what this table/column stores
+- For common patterns (id, created_at, updated_at, is_deleted, etc.) use \
+standard translations
+- Infer meaning from the table context — e.g. a column "status" in an \
+"orders" table should be "订单状态", not just "状态"
+
+Respond with ONLY a JSON array (no markdown fences, no explanation):
+[
+  {
+    "table_name": "original_table_name",
+    "display_name": "中文表名",
+    "description": "中文表描述",
+    "columns": [
+      {"column_name": "original_col", "display_name": "中文列名", "description": "中文列描述"},
+      ...
+    ]
+  },
+  ...
+]"""
+
+
+def _build_annotate_user_prompt(
+    schemas: list[DatabaseSchema],
+) -> str:
+    """Build the user prompt listing tables and columns for annotation."""
+    lines: list[str] = ["Annotate the following tables:\n"]
+    for idx, schema_obj in enumerate(schemas, 1):
+        lines.append(f"{idx}. Table: {schema_obj.table_name}")
+        col_parts: list[str] = []
+        for col in schema_obj.columns or []:
+            parts = [col.column_name, col.data_type]
+            if col.is_primary_key:
+                parts.append("PK")
+            if not col.is_nullable:
+                parts.append("NOT NULL")
+            col_parts.append(f"{' '.join(parts)}")
+        if col_parts:
+            lines.append(f"   Columns: {', '.join(col_parts)}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _parse_llm_annotations(
+    raw_text: str,
+) -> list[dict[str, Any]] | None:
+    """Parse the LLM JSON response, tolerating markdown fences.
+
+    Returns a list of table annotation dicts, or ``None`` on parse failure.
+    """
+    import json
+    import re
+
+    text = raw_text.strip()
+    # Strip markdown code fences if present
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    if fence_match:
+        text = fence_match.group(1).strip()
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # Try to find the first JSON array in the text
+        arr_match = re.search(r"\[.*\]", text, re.DOTALL)
+        if arr_match:
+            try:
+                parsed = json.loads(arr_match.group(0))
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+
+    if isinstance(parsed, list):
+        return parsed
+
+    # json_object mode often wraps the array in an object like {"tables": [...]}
+    if isinstance(parsed, dict):
+        for value in parsed.values():
+            if isinstance(value, list) and value:
+                return value
+
+    return None
+
+
+def _apply_annotations(
+    schemas: list[DatabaseSchema],
+    annotations: list[dict[str, Any]],
+) -> int:
+    """Apply parsed LLM annotations to ORM objects.
+
+    Only overwrites fields that the LLM returned (non-empty strings).
+    Returns the count of fields actually updated.
+    """
+    ann_by_table = {a["table_name"]: a for a in annotations if "table_name" in a}
+    updated = 0
+
+    for schema_obj in schemas:
+        ann = ann_by_table.get(schema_obj.table_name)
+        if not ann:
+            continue
+
+        # Table-level annotations
+        if ann.get("display_name"):
+            schema_obj.display_name = ann["display_name"]
+            updated += 1
+        if ann.get("description"):
+            schema_obj.description = ann["description"]
+            updated += 1
+
+        # Column-level annotations
+        col_anns = ann.get("columns")
+        if not col_anns or not isinstance(col_anns, list):
+            continue
+
+        col_ann_lookup = {
+            c["column_name"]: c for c in col_anns if isinstance(c, dict) and "column_name" in c
+        }
+        for col in schema_obj.columns or []:
+            ca = col_ann_lookup.get(col.column_name)
+            if not ca:
+                continue
+            if ca.get("display_name"):
+                col.display_name = ca["display_name"]
+                updated += 1
+            if ca.get("description"):
+                col.description = ca["description"]
+                updated += 1
+
+    return updated
+
+
+def _humanize_name(name: str) -> str:
+    """Convert snake_case or camelCase to a human-readable name (fallback)."""
+    import re
+
+    # Insert space before uppercase letters (camelCase)
+    result = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+    # Replace underscores and hyphens with spaces
+    result = result.replace("_", " ").replace("-", " ")
+    # Title case
+    return result.title()
+
+
+def _apply_humanize_fallback(schemas: list[DatabaseSchema]) -> int:
+    """Apply _humanize_name as a fallback when LLM is unavailable.
+
+    Only fills in display_name where it is not already set.
+    Returns the count of fields updated.
+    """
+    updated = 0
+    for schema_obj in schemas:
+        if not schema_obj.display_name:
+            schema_obj.display_name = _humanize_name(schema_obj.table_name)
+            updated += 1
+        for col in schema_obj.columns or []:
+            if not col.display_name:
+                col.display_name = _humanize_name(col.column_name)
+                updated += 1
+    return updated
 
 
 @router.post("/{connector_id}/ai/annotate", response_model=ApiResponse)
@@ -515,66 +682,100 @@ async def ai_annotate(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Generate LLM-based annotations for table/column descriptions.
+    """Generate LLM-powered Chinese annotations for table and column metadata.
 
-    This is a basic implementation that generates placeholder descriptions
-    based on naming conventions. A full LLM-powered version will be added
-    in a future release.
+    Sends table/column names and types to the fast LLM, which returns
+    display_name and description in Chinese. Falls back to simple
+    ``_humanize_name()`` if the LLM call fails.
     """
     await _get_db_connector(connector_id, current_user.id, db)
 
-    # Load schemas
+    # Build query — table_ids takes precedence over table_names
     stmt = (
         select(DatabaseSchema)
         .options(selectinload(DatabaseSchema.columns))
         .where(DatabaseSchema.connector_id == connector_id)
     )
-    if body.table_names:
+    if body.table_ids:
+        stmt = stmt.where(DatabaseSchema.id.in_(body.table_ids))
+    elif body.table_names:
         stmt = stmt.where(DatabaseSchema.table_name.in_(body.table_names))
 
     result = await db.execute(stmt)
-    schemas = result.scalars().all()
+    schemas = list(result.scalars().all())
 
+    if not schemas:
+        return ApiResponse(
+            data=AiAnnotateResponse(annotated_count=0, preview=[]).model_dump()
+        )
+
+    # --- Attempt LLM annotation ---
     annotated = 0
+    llm_used = False
+
+    try:
+        from fim_agent.core.model.types import ChatMessage
+        from fim_agent.web.deps import get_effective_fast_llm
+
+        llm = await get_effective_fast_llm(db)
+        user_prompt = _build_annotate_user_prompt(schemas)
+
+        llm_result = await llm.chat(
+            messages=[
+                ChatMessage(role="system", content=_AI_ANNOTATE_SYSTEM_PROMPT),
+                ChatMessage(role="user", content=user_prompt),
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+
+        raw_text = llm_result.message.content or ""
+        parsed = _parse_llm_annotations(raw_text)
+
+        if parsed:
+            annotated = _apply_annotations(schemas, parsed)
+            llm_used = True
+            logger.info(
+                "AI annotate: LLM updated %d fields for %d tables (connector=%s)",
+                annotated,
+                len(schemas),
+                connector_id,
+            )
+        else:
+            logger.warning(
+                "AI annotate: LLM returned unparseable response, "
+                "falling back to humanize (connector=%s)",
+                connector_id,
+            )
+    except Exception:
+        logger.exception(
+            "AI annotate: LLM call failed, falling back to humanize (connector=%s)",
+            connector_id,
+        )
+
+    # Fallback: fill any remaining empty display_names with humanize
+    if not llm_used:
+        annotated = _apply_humanize_fallback(schemas)
+
+    await db.commit()
+
+    # Build preview
     preview: list[dict[str, Any]] = []
-
     for schema_obj in schemas:
-        # Generate basic display_name from table_name if not set
-        if not schema_obj.display_name:
-            schema_obj.display_name = _humanize_name(schema_obj.table_name)
-            annotated += 1
-
-        col_previews = []
-        for col in (schema_obj.columns or []):
-            if not col.display_name:
-                col.display_name = _humanize_name(col.column_name)
-                annotated += 1
-            col_previews.append({
+        col_previews = [
+            {
                 "column_name": col.column_name,
                 "display_name": col.display_name,
                 "description": col.description,
-            })
-
+            }
+            for col in (schema_obj.columns or [])
+        ]
         preview.append({
             "table_name": schema_obj.table_name,
             "display_name": schema_obj.display_name,
             "description": schema_obj.description,
-            "columns": col_previews[:5],
+            "columns": col_previews,
         })
-
-    await db.commit()
 
     resp = AiAnnotateResponse(annotated_count=annotated, preview=preview)
     return ApiResponse(data=resp.model_dump())
-
-
-def _humanize_name(name: str) -> str:
-    """Convert snake_case or camelCase to a human-readable name."""
-    import re
-
-    # Insert space before uppercase letters (camelCase)
-    result = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
-    # Replace underscores and hyphens with spaces
-    result = result.replace("_", " ").replace("-", " ")
-    # Title case
-    return result.title()
