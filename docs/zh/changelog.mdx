@@ -43,15 +43,6 @@ description: "FIM Agent 的所有重要变更。"
 * **导出：PDF 格式**：对话现在可以导出为 PDF 文档（需要 `reportlab` + `Markdown` 额外依赖）
 * **start.sh：WORKERS 环境变量**：设置 `WORKERS=N` 以在 portal/api 模式下以多 worker 运行 uvicorn
 
-* **Docker Compose 部署**：单镜像 (API + Frontend) 、用于数据持久化的命名卷，以及独立模式的 Next.js 输出模式
-* **管理后台：登录历史记录**：认证端点现在会将每次登录尝试 (IP 地址、User-Agent、成功/失败及原因) 记录到 `LoginHistory` 表中，用于安全审计
-* **管理后台：文件浏览器**：新增管理后台文件浏览器端点，用于列出和下载用户上传的文件，并支持分页
-* **管理后台：增强的智能体/知识库视图**：管理后台智能体列表和知识库视图现已提供 `model_name`、`tools`、`kb_ids` 和 `embedding_model` 字段，提升可见性
-* **聊天：敏感词拦截**：ReAct 和 `inject_message` 聊天端点现在都会执行敏感词过滤，拦截包含已配置敏感词的消息
-* **SSE：结构化错误处理**：`useSSE` hook 中的 `onError` 回调已从普通字符串升级为 `ApiError` 对象，以提供更丰富的错误上下文 (错误代码、参数)
-* **UI：`formatTokens` 工具**：新增用于显示令牌计数的格式化辅助工具，支持基于区域设置的数字格式化
-* **UI：`Checkbox` 和 `FadeIn` 组件**：新增 shadcn 风格的复选框组件和淡入动画包装组件
-
 <div id="changed">
   ### 变更
 </div>
@@ -67,9 +58,6 @@ description: "FIM Agent 的所有重要变更。"
 * **健康看板：基础设施检查**：管理员健康看板新增数据库类型（SQLite/PostgreSQL）和 Redis 状态检查
 * **智能中转路由**：根据 URL 路径模式自动检测 API 协议（如 `/claude` 或 `/anthropic` → Anthropic 原生，`/gemini` → Google 原生），为第三方中转平台自动启用正确的认证头和参数转换，无需手动配置提供商
 * **结构化输出降级**：统一的 `structured_llm_call()` 工具，支持 3 级提取（Native FC → JSON Mode → 纯文本 + 正则兜底）。重构 DAG 规划器、计划分析器和工具选择，使用共享工具替代各自为政的 JSON 解析，实现所有结构化 LLM 调用点的一致重试和降级策略
-
-* **文档：ASCII → Mermaid 图表**：所有使用框线字符绘制的 ASCII 图均已转换为原生 Mermaid 图表 (共 12 张，分布在 6 个页面) ，以获得更好的渲染效果和交互性
-* **文档：深色模式主题**：优化了 Mintlify 的颜色配置——深色模式下采用暖琥珀色强调色、渐变背景装饰，以及与项目主题一致的背景颜色
 
 <div id="docs">
   ### 文档
@@ -96,6 +84,11 @@ description: "FIM Agent 的所有重要变更。"
 * **导出：PDF 可读性**：增加了所有 PDF 样式的行距 (leading) 和单元格内边距，提升文本可读性
 * **导出：移除表情符号过滤**：移除了 DOCX 和 PDF 导出中对最终回答内容不必要的 `_strip_emoji()` 调用，保留原始内容
 * **管理后台：统计页面 PG 崩溃**：修复管理后台统计页面在 PostgreSQL 上崩溃的问题 — `GROUP BY` 中使用参数化的 `coalesce()` 导致 `GroupingError`；已改用 `literal()` 列默认值
+
+<div id="added-org-visibility">
+  ### 新增（组织与可见性）
+</div>
+
 * **组织系统**：组织的完整 CRUD，支持基于角色的成员管理 (owner/admin/member)；认证辅助函数 (`get_user_org_ids`、`require_org_member/admin/owner`)；管理端点 `/api/admin/organizations`；前端管理员组织组件，含成员管理 UI
 * **三级资源可见性**：智能体、连接器、知识库和 MCP 服务器新增 `visibility` 列 (personal/org/global) 及 `org_id`；统一的 `build_visibility_filter()` 查询辅助函数；用户可见资源 = 个人 + 组织共享 + 全局
 * **发布/取消发布 API**：四种资源类型均新增 `POST /api/{resource}/{id}/publish` 和 `POST /api/{resource}/{id}/unpublish` 端点，用于组织/全局共享
@@ -103,26 +96,50 @@ description: "FIM Agent 的所有重要变更。"
 * **管理员设置可见性端点**：替代旧版"克隆为全局"工作流；管理员可直接设置任意资源的可见性
 * **组织管理 UI**：管理面板组织表格，含创建/编辑/删除对话框、成员管理 (添加/移除/角色变更)，完整国际化 (中英文)
 
-<div id="changed">
-  ### 变更
+<div id="changed-org-visibility">
+  ### 变更（组织与可见性）
 </div>
 
 * 资源列表查询现在通过 `build_visibility_filter()` 使用统一的可见性过滤器 (个人 + 组织共享 + 全局)
 * 全局资源现在使用引用模型替代克隆模型——源资源直接以 `visibility='global'` 发布
 * 智能体、连接器、知识库和 MCP 服务器的响应 Schema 现在包含 `visibility` 和 `org_id` 字段
 
-<div id="fixed">
-  ### 已修复
+<div id="fixed-org-visibility">
+  ### 已修复（组织与可见性）
 </div>
 
 * 旧版克隆智能体 (`user_id=NULL`) 已通过数据迁移回填转为引用模型
 * 可见性迁移回填中的 SQLite 布尔字面量处理修复
 * 移除了 auth.py 中重复的 `get_user_org_ids` 辅助函数
 
+<div id="added-docker-admin">
+  ### 新增（Docker 与管理后台）
+</div>
+
+* **Docker Compose 部署**：单镜像 (API + Frontend) 、用于数据持久化的命名卷，以及独立模式的 Next.js 输出模式
+* **管理后台：登录历史记录**：认证端点现在会将每次登录尝试 (IP 地址、User-Agent、成功/失败及原因) 记录到 `LoginHistory` 表中，用于安全审计
+* **管理后台：文件浏览器**：新增管理后台文件浏览器端点，用于列出和下载用户上传的文件，并支持分页
+* **管理后台：增强的智能体/知识库视图**：管理后台智能体列表和知识库视图现已提供 `model_name`、`tools`、`kb_ids` 和 `embedding_model` 字段，提升可见性
+* **聊天：敏感词拦截**：ReAct 和 `inject_message` 聊天端点现在都会执行敏感词过滤，拦截包含已配置敏感词的消息
+* **SSE：结构化错误处理**：`useSSE` hook 中的 `onError` 回调已从普通字符串升级为 `ApiError` 对象，以提供更丰富的错误上下文 (错误代码、参数)
+* **UI：`formatTokens` 工具**：新增用于显示令牌计数的格式化辅助工具，支持基于区域设置的数字格式化
+* **UI：`Checkbox` 和 `FadeIn` 组件**：新增 shadcn 风格的复选框组件和淡入动画包装组件
+
+<div id="changed-docker-admin">
+  ### 变更（Docker 与管理后台）
+</div>
+
+* **文档：ASCII → Mermaid 图表**：所有使用框线字符绘制的 ASCII 图均已转换为原生 Mermaid 图表 (共 12 张，分布在 6 个页面) ，以获得更好的渲染效果和交互性
+* **文档：深色模式主题**：优化了 Mintlify 的颜色配置——深色模式下采用暖琥珀色强调色、渐变背景装饰，以及与项目主题一致的背景颜色
+
+<div id="fixed-docker-admin">
+  ### 已修复（Docker 与管理后台）
+</div>
+
 * **导出：RFC 5987 文件名支持**：优先使用 Content-Disposition 头中 UTF-8 编码的 `filename*`，而非普通 `filename`，修复导出对话时中日韩文件名乱码问题
 * **Docker i18n 失效**：将 `messages/` 目录复制到独立输出中，并添加 `outputFileTracingIncludes`，以便 next-intl 在运行时发现 locale JSON 文件
 * **Docker 启动竞态条件**：在启动 Next.js 之前，于 entrypoint 中添加 API 就绪等待循环 (Python socket 轮询) ，避免出现 `e.map is not a function` SSR 错误
-* **工件：按会话 created&#95;at 排序**：按会话创建时间而不是文件 mtime 对工件进行排序 (mtime 在 Docker 卷上不可靠) 
+* **工件：按会话 created&#95;at 排序**：按会话创建时间而不是文件 mtime 对工件进行排序 (mtime 在 Docker 卷上不可靠)
 * **OAuth：根据 window.location 端口自动检测生产环境 API URL**：浏览器自动检测现在可在生产环境中正确处理自定义端口 (不再仅限于 3000)
 * **Docker：DooD 沙箱卷挂载路径不匹配**：当在容器内以 `CODE_EXEC_BACKEND=docker`（Docker-outside-of-Docker）运行时，沙箱脚本被写入容器内部路径，对宿主机 Docker 守护进程不可见，导致空的 `-v` 挂载和"No such file or directory"错误。通过将沙箱目录移至 `data/sandbox/`、新增 `DOCKER_HOST_DATA_DIR` 环境变量及 `_resolve_host_path()` 路径转换函数，并处理空字符串环境变量边界情况来修复
 

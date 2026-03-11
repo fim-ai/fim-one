@@ -70,6 +70,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Export: PDF readability**: Increased line spacing (leading) and cell padding across all PDF styles for better text readability
 - **Export: emoji stripping removed**: Removed unnecessary `_strip_emoji()` from final answer rendering in both DOCX and PDF exports, preserving original content
 - **Admin: dashboard stats PG crash**: Fixed admin dashboard stats page crash on PostgreSQL — `GROUP BY` with parameterized `coalesce()` caused `GroupingError`; replaced with `literal()` column default
+
+### Added (Organization & Visibility)
 - **Organization system**: Full CRUD for organizations with role-based membership (owner/admin/member); auth helpers (`get_user_org_ids`, `require_org_member/admin/owner`); admin management at `/api/admin/organizations`; frontend admin-organizations component with member management UI
 - **Three-tier resource visibility**: New `visibility` column (personal/org/global) + `org_id` on agents, connectors, knowledge bases, and MCP servers; unified `build_visibility_filter()` query helper; resources visible to user = personal + org-shared + global
 - **Publish/unpublish API**: All four resource types gain `POST /api/{resource}/{id}/publish` and `POST /api/{resource}/{id}/unpublish` endpoints for org/global sharing
@@ -77,16 +79,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Admin set-visibility endpoint**: Replaces the legacy clone-to-global workflow; admin can set any resource's visibility directly
 - **Organization management UI**: Admin panel organization table with create/edit/delete dialogs, member management (add/remove/role change), and full i18n (EN + ZH)
 
-### Changed
+### Changed (Organization & Visibility)
 - Resource list queries now use unified visibility filter (personal + org-shared + global) via `build_visibility_filter()`
 - Global resources now use a reference model instead of clone model — source resource is published directly with `visibility='global'`
 - Response schemas for agents, connectors, knowledge bases, and MCP servers now include `visibility` and `org_id` fields
 
-### Fixed
+### Fixed (Organization & Visibility)
 - Legacy clone agents (`user_id=NULL`) resolved to reference model via data migration backfill
 - SQLite boolean literal handling in visibility migration backfill
 - Duplicate `get_user_org_ids` helper in auth.py removed
 
+### Added (Docker & Admin)
 - **Docker Compose deployment**: Single image (API + Frontend), named volumes for data persistence, standalone Next.js output mode
 - **Admin: login history recording**: Auth endpoints now record every login attempt (IP address, User-Agent, success/failure with reason) to the `LoginHistory` table for security auditing
 - **Admin: file browser**: New admin file browser endpoints for listing and downloading user-uploaded files with pagination support
@@ -96,11 +99,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **UI: `formatTokens` utility**: New formatting helper for displaying token counts with locale-aware number formatting
 - **UI: `Checkbox` and `FadeIn` components**: New shadcn-style checkbox and fade-in animation wrapper components
 
-### Changed
+### Changed (Docker & Admin)
 - **Docs: ASCII → Mermaid diagrams**: All box-drawing ASCII diagrams converted to native Mermaid charts (12 diagrams across 6 pages) for better rendering and interactivity
 - **Docs: dark mode theme**: Refined Mintlify color config — warm amber accent in dark mode, gradient background decoration, proper background colors matching project theme
 
-### Fixed
+### Fixed (Docker & Admin)
 - **Export: RFC 5987 filename support**: Prefer UTF-8 encoded `filename*` over plain `filename` in Content-Disposition header, fixing garbled CJK filenames when exporting conversations
 - **Docker i18n broken**: Copy `messages/` directory into standalone output and add `outputFileTracingIncludes` so next-intl can discover locale JSON files at runtime
 - **Docker startup race condition**: Add API readiness wait loop (Python socket poll) in entrypoint before starting Next.js, preventing `e.map is not a function` SSR errors
