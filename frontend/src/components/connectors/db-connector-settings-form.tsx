@@ -173,10 +173,8 @@ export function DbConnectorSettingsForm({
         schema: dbSchema || undefined,
         ssl, read_only: readOnly, max_rows: maxRows, query_timeout: queryTimeout,
       }
-      // Use saved connector endpoint if available, otherwise ad-hoc
-      const result = connector?.id
-        ? await connectorApi.testConnection(connector.id)
-        : await connectorApi.testConnectionAdhoc(dbConfig)
+      // Always use ad-hoc endpoint with current form values
+      const result = await connectorApi.testConnectionAdhoc(dbConfig)
       setTestResult(result)
       if (result.success) {
         toast.success(t("connectionSuccess"))
