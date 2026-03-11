@@ -15,7 +15,8 @@ from fim_agent.core.model.types import ChatMessage
 from fim_agent.core.utils import get_language_directive
 from fim_agent.db import get_session
 from fim_agent.web.auth import get_current_user
-from fim_agent.web.deps import get_fast_llm
+from fim_agent.core.model.structured import structured_llm_call
+from fim_agent.web.deps import get_effective_fast_llm
 from fim_agent.web.models.connector import Connector, ConnectorAction
 from fim_agent.web.models.user import User
 from fim_agent.web.schemas.common import ApiResponse
@@ -58,7 +59,8 @@ Optional fields:
 - "request_body_template": object|null — template for request body
 - "response_extract": string|null — JMESPath expression to extract response data
 
-Output ONLY a valid JSON array. No markdown, no commentary."""
+Output ONLY a valid JSON object with an "actions" key. No markdown, no commentary:
+{"actions": [<array of action objects>]}"""
 
 _REFINE_SYSTEM_PROMPT = """\
 You are an API connector and action editor. Given the current connector configuration, \
@@ -97,7 +99,8 @@ Examples:
 IMPORTANT: To change connector-level properties (name, icon, description, base_url, auth), \
 you MUST use "update_connector" — NOT "update" (which is for actions only).
 
-Output ONLY a valid JSON array of operations. No markdown, no commentary."""
+Output ONLY a valid JSON object with an "operations" key. No markdown, no commentary:
+{"operations": [<array of operation objects>]}"""
 
 _CREATE_SYSTEM_PROMPT = """\
 You are an API connector creation assistant. Analyze the user's instruction and determine the best approach:
@@ -135,6 +138,60 @@ placeholder values (e.g. "your-api-key-here") in auth_config for the user to fil
 
 Output ONLY valid JSON. No markdown, no commentary."""
 
+_CREATE_CONNECTOR_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "mode": {"type": "string", "enum": ["openapi_import", "generate"]},
+        "url": {"type": "string"},
+        "connector": {"type": "object"},
+        "actions": {"type": "array"},
+    },
+    "required": ["mode"],
+}
+
+_GENERATE_ACTIONS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "actions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "method": {"type": "string"},
+                    "path": {"type": "string"},
+                    "parameters_schema": {"type": ["object", "null"]},
+                    "request_body_template": {"type": ["object", "null"]},
+                    "response_extract": {"type": ["string", "null"]},
+                    "requires_confirmation": {"type": "boolean"},
+                },
+                "required": ["name", "method", "path"],
+            },
+        },
+    },
+    "required": ["actions"],
+}
+
+_REFINE_OPERATIONS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "operations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "op": {"type": "string", "enum": ["create", "update", "delete", "update_connector"]},
+                    "action_id": {"type": "string"},
+                    "data": {"type": "object"},
+                },
+                "required": ["op"],
+            },
+        },
+    },
+    "required": ["operations"],
+}
+
 
 def _build_connector_context(connector: Connector) -> str:
     """Build a context string describing the connector and its existing actions."""
@@ -164,65 +221,25 @@ def _build_connector_context(connector: Connector) -> str:
     return "\n".join(lines)
 
 
-def _extract_json(text: str) -> Any:
-    """Extract JSON array from LLM response, handling markdown fences."""
-    text = text.strip()
-    # Strip markdown code fences if present
-    if text.startswith("```"):
-        # Remove opening fence (possibly with language tag)
-        first_newline = text.index("\n")
-        text = text[first_newline + 1 :]
-        # Remove closing fence
-        if text.rstrip().endswith("```"):
-            text = text.rstrip()[:-3].rstrip()
-    return json.loads(text)
-
-
-async def _llm_call(
+def _build_messages(
     system: str,
-    user_msg: str,
-    retry_context: str | None = None,
-    *,
-    language_directive: str | None = None,
-) -> Any:
-    """Call the fast LLM and parse JSON from response. Auto-retries once on parse failure."""
-    llm = get_fast_llm()
-    sys_content = system
+    user: str,
+    language_directive: str | None,
+    history: list[dict[str, str]] | None = None,
+) -> list[ChatMessage]:
+    """Build messages list with optional conversation history."""
     if language_directive:
-        sys_content += (
-            f"\n\n{language_directive} "
+        system = (
+            system
+            + f"\n\n{language_directive} "
             "This applies to natural-language fields only. "
             "Keep JSON keys and technical fields in English."
         )
-    messages: list[ChatMessage] = [
-        ChatMessage(role="system", content=sys_content),
-        ChatMessage(role="user", content=user_msg),
-    ]
-    if retry_context:
-        messages.append(ChatMessage(role="user", content=retry_context))
-
-    result = await llm.chat(messages=messages)
-    content = result.message.content or ""
-    if not content:
-        raise AppError("llm_empty_response", status_code=422)
-
-    try:
-        return _extract_json(content)
-    except (json.JSONDecodeError, ValueError) as exc:
-        if retry_context is not None:
-            # Already retried once — give up
-            raise AppError(
-                "llm_invalid_json",
-                status_code=422,
-                detail=f"LLM returned invalid JSON after retry: {exc}",
-            ) from exc
-        # Auto-retry with error feedback
-        logger.warning("LLM JSON parse failed, retrying: %s", exc)
-        feedback = (
-            f"Your previous response was not valid JSON. Error: {exc}\n"
-            "Please output ONLY a valid JSON array, no markdown or commentary."
-        )
-        return await _llm_call(system, user_msg, retry_context=feedback, language_directive=language_directive)
+    msgs = [ChatMessage(role="system", content=system)]
+    for turn in (history or []):
+        msgs.append(ChatMessage(role=turn["role"], content=turn["content"]))
+    msgs.append(ChatMessage(role="user", content=user))
+    return msgs
 
 
 # ---------------------------------------------------------------------------
@@ -238,9 +255,17 @@ async def ai_create_connector(
 ) -> ApiResponse:
     """Create a new connector using AI from natural language or OpenAPI URL."""
     lang_directive = get_language_directive(current_user.preferred_language)
-    plan = await _llm_call(_CREATE_SYSTEM_PROMPT, body.instruction, language_directive=lang_directive)
-    if not isinstance(plan, dict):
-        raise AppError("llm_unexpected_format", status_code=422)
+    llm = await get_effective_fast_llm(db)
+    sc = await structured_llm_call(
+        llm,
+        _build_messages(_CREATE_SYSTEM_PROMPT, body.instruction, lang_directive, history=body.history),
+        schema=_CREATE_CONNECTOR_SCHEMA,
+        function_name="create_connector",
+        default_value=None,
+    )
+    if sc.value is None or not isinstance(sc.value, dict):
+        raise AppError("llm_invalid_json", status_code=422, detail="LLM failed to return valid connector config")
+    plan: dict[str, Any] = sc.value
 
     mode = plan.get("mode")
 
@@ -371,9 +396,16 @@ async def ai_generate_actions(
     if body.context:
         user_msg += f"\n\nAPI documentation context:\n{body.context}"
 
-    raw_actions = await _llm_call(_GENERATE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
-    if not isinstance(raw_actions, list):
-        raise AppError("llm_unexpected_format", status_code=422)
+    llm = await get_effective_fast_llm(db)
+    sc = await structured_llm_call(
+        llm,
+        _build_messages(_GENERATE_SYSTEM_PROMPT, user_msg, lang_directive),
+        schema=_GENERATE_ACTIONS_SCHEMA,
+        function_name="generate_actions",
+        parse_fn=lambda d: d.get("actions", []),
+        default_value=[],
+    )
+    raw_actions: list[dict[str, Any]] = sc.value or []
 
     created: list[ActionResponse] = []
     failed: list[str] = []
@@ -449,9 +481,16 @@ async def ai_refine_action(
             f"({target.method} {target.path})"
         )
 
-    operations = await _llm_call(_REFINE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
-    if not isinstance(operations, list):
-        raise AppError("llm_unexpected_format", status_code=422)
+    llm = await get_effective_fast_llm(db)
+    sc = await structured_llm_call(
+        llm,
+        _build_messages(_REFINE_SYSTEM_PROMPT, user_msg, lang_directive, history=body.history),
+        schema=_REFINE_OPERATIONS_SCHEMA,
+        function_name="refine_operations",
+        parse_fn=lambda d: d.get("operations", []),
+        default_value=[],
+    )
+    operations: list[dict[str, Any]] = sc.value or []
 
     created: list[ActionResponse] = []
     updated: list[ActionResponse] = []

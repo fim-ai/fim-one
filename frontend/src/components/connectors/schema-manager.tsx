@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Search, RefreshCw, Loader2, Sparkles, Table2 } from "lucide-react"
+import { Search, RefreshCw, Loader2, Sparkles, Table2, Check, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
@@ -19,13 +19,16 @@ import type { SchemaTable, SchemaColumn } from "@/types/connector"
 
 interface SchemaManagerProps {
   connectorId: string
+  refreshKey?: number
 }
+
+type SyncStatus = "idle" | "saving" | "saved" | "error"
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function SchemaManager({ connectorId }: SchemaManagerProps) {
+export function SchemaManager({ connectorId, refreshKey }: SchemaManagerProps) {
   const t = useTranslations("connectors")
   const tc = useTranslations("common")
 
@@ -33,12 +36,16 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [isAnnotating, setIsAnnotating] = useState(false)
+  const [annotateProgress, setAnnotateProgress] = useState<{ completed: number; total: number } | null>(null)
+  const annotateAbortRef = useRef(false)
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle")
 
   // Debounce timers for auto-save
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const columnSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const syncResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const selectedTable = tables.find((t) => t.id === selectedTableId) ?? null
 
@@ -49,6 +56,20 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
   )
 
   const visibleCount = tables.filter((tbl) => tbl.is_visible).length
+
+  // Sync status helpers
+  const markSaving = () => {
+    if (syncResetRef.current) clearTimeout(syncResetRef.current)
+    setSyncStatus("saving")
+  }
+  const markSaved = () => {
+    setSyncStatus("saved")
+    syncResetRef.current = setTimeout(() => setSyncStatus("idle"), 2000)
+  }
+  const markError = () => {
+    setSyncStatus("error")
+    syncResetRef.current = setTimeout(() => setSyncStatus("idle"), 3000)
+  }
 
   // Load schemas
   const loadSchemas = useCallback(async () => {
@@ -67,11 +88,20 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
     loadSchemas()
   }, [loadSchemas])
 
-  // Cleanup timers
+  // Refresh when externally triggered (e.g., AI chat changed schema)
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      loadSchemas()
+    }
+  }, [refreshKey, loadSchemas])
+
+  // Cleanup timers + abort any in-flight polling loop
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       if (columnSaveTimerRef.current) clearTimeout(columnSaveTimerRef.current)
+      if (syncResetRef.current) clearTimeout(syncResetRef.current)
+      annotateAbortRef.current = true
     }
   }, [])
 
@@ -111,18 +141,46 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
     }
   }
 
-  // AI Annotate All tables
+  // AI Annotate All tables — background job with polling
   const handleAiAnnotateAll = async () => {
     setIsAnnotating(true)
+    setAnnotateProgress(null)
+    annotateAbortRef.current = false
+
+    const toastId = toast.loading(t("aiAnnotateAllLoading"), {
+      description: t("aiAnnotateAllHint"),
+      duration: Infinity,
+    })
     try {
-      const result = await connectorApi.aiAnnotate(connectorId)
-      toast.success(t("aiAnnotateAllSuccess", { count: result.annotated_count }))
-      await loadSchemas()
+      const { job_id } = await connectorApi.aiAnnotateAll(connectorId)
+
+      // Poll every 2 s until done/error or component aborts
+      while (!annotateAbortRef.current) {
+        await new Promise((r) => setTimeout(r, 2000))
+        if (annotateAbortRef.current) break
+
+        const status = await connectorApi.getAnnotateStatus(connectorId, job_id)
+        setAnnotateProgress({ completed: status.completed_batches, total: status.total_batches })
+
+        if (status.status === "done") {
+          toast.success(t("aiAnnotateAllSuccess", { count: status.annotated_count }), {
+            id: toastId,
+            duration: 4000,
+          })
+          await loadSchemas()
+          break
+        }
+        if (status.status === "error") {
+          toast.error(status.error ?? "Annotation failed", { id: toastId, duration: 4000 })
+          break
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error"
-      toast.error(message)
+      toast.error(message, { id: toastId, duration: 4000 })
     } finally {
       setIsAnnotating(false)
+      setAnnotateProgress(null)
     }
   }
 
@@ -137,15 +195,16 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
         tbl.id === tableId ? { ...tbl, [field]: value } : tbl,
       ),
     )
-
+    markSaving()
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       try {
         await connectorApi.updateSchema(connectorId, tableId, {
           [field]: value,
         })
+        markSaved()
       } catch {
-        toast.error(t("connectorSaveFailed", { message: "Schema update failed" }))
+        markError()
       }
     }, 600)
   }
@@ -169,39 +228,39 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
           : tbl,
       ),
     )
-
+    markSaving()
     if (columnSaveTimerRef.current) clearTimeout(columnSaveTimerRef.current)
     columnSaveTimerRef.current = setTimeout(async () => {
       try {
         await connectorApi.updateSchemaColumn(connectorId, tableId, columnId, {
           [field]: value,
         })
+        markSaved()
       } catch {
-        toast.error(t("connectorSaveFailed", { message: "Column update failed" }))
+        markError()
       }
     }, 600)
   }
 
-  // Toggle table visibility — immediate save + toast (not debounced)
+  // Toggle table visibility — immediate save (not debounced)
   const handleToggleVisible = async (tableId: string, currentVisible: boolean) => {
     const newVisible = !currentVisible
-    const tbl = tables.find((tb) => tb.id === tableId)
     setTables((prev) =>
       prev.map((tb) => (tb.id === tableId ? { ...tb, is_visible: newVisible } : tb)),
     )
+    markSaving()
     try {
       await connectorApi.updateSchema(connectorId, tableId, { is_visible: newVisible })
-      const name = tbl?.display_name || tbl?.table_name || tableId
-      toast.success(t(newVisible ? "tableNowVisible" : "tableNowHidden", { name }))
+      markSaved()
     } catch {
       setTables((prev) =>
         prev.map((tb) => (tb.id === tableId ? { ...tb, is_visible: currentVisible } : tb)),
       )
-      toast.error(t("connectorSaveFailed", { message: "Visibility update failed" }))
+      markError()
     }
   }
 
-  // Toggle column visibility — immediate save + toast
+  // Toggle column visibility — immediate save
   const handleToggleColumnVisible = async (
     tableId: string,
     col: SchemaColumn,
@@ -214,10 +273,10 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
           : tb,
       ),
     )
+    markSaving()
     try {
       await connectorApi.updateSchemaColumn(connectorId, tableId, col.id, { is_visible: newVisible })
-      const name = col.display_name || col.column_name
-      toast.success(t(newVisible ? "columnNowVisible" : "columnNowHidden", { column: name }))
+      markSaved()
     } catch {
       setTables((prev) =>
         prev.map((tb) =>
@@ -226,7 +285,7 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
             : tb,
         ),
       )
-      toast.error(t("connectorSaveFailed", { message: "Column visibility update failed" }))
+      markError()
     }
   }
 
@@ -265,7 +324,11 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            {isAnnotating ? t("aiAnnotating") : t("aiAnnotateAll")}
+            {isAnnotating && annotateProgress && annotateProgress.total > 0
+              ? `${annotateProgress.completed} / ${annotateProgress.total} ${t("batches")}`
+              : isAnnotating
+              ? t("aiAnnotating")
+              : t("aiAnnotateAll")}
           </Button>
 
           {/* Search */}
@@ -359,41 +422,27 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
         ) : (
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-4">
-              {/* Table header */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Table2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span className="text-sm font-semibold">{selectedTable.table_name}</span>
-                  </div>
-
-                  {/* Display name */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">{t("displayName")}</label>
-                    <Input
-                      type="text"
-                      value={selectedTable.display_name || ""}
-                      onChange={(e) =>
-                        updateTableField(selectedTable.id, "display_name", e.target.value)
-                      }
-                      placeholder={t("displayName")}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-
-                  {/* Description */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">{t("tableDescription")}</label>
-                    <Textarea
-                      value={selectedTable.description || ""}
-                      onChange={(e) =>
-                        updateTableField(selectedTable.id, "description", e.target.value)
-                      }
-                      placeholder={t("tableDescription")}
-                      rows={2}
-                      className="resize-none text-sm"
-                    />
-                  </div>
+              {/* Table header row: name + sync status + AI button */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Table2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-semibold truncate">{selectedTable.table_name}</span>
+                  {/* Inline sync status */}
+                  {syncStatus !== "idle" && (
+                    <span className={cn(
+                      "flex items-center gap-1 text-xs shrink-0",
+                      syncStatus === "saving" && "text-muted-foreground",
+                      syncStatus === "saved" && "text-emerald-600 dark:text-emerald-400",
+                      syncStatus === "error" && "text-destructive",
+                    )}>
+                      {syncStatus === "saving" && <Loader2 className="h-3 w-3 animate-spin" />}
+                      {syncStatus === "saved" && <Check className="h-3 w-3" />}
+                      {syncStatus === "error" && <AlertCircle className="h-3 w-3" />}
+                      {syncStatus === "saving" && tc("syncing")}
+                      {syncStatus === "saved" && tc("synced")}
+                      {syncStatus === "error" && tc("syncFailed")}
+                    </span>
+                  )}
                 </div>
 
                 {/* AI Annotate button */}
@@ -412,6 +461,35 @@ export function SchemaManager({ connectorId }: SchemaManagerProps) {
                   )}
                   {isAnnotating ? t("aiAnnotating") : t("aiAnnotate")}
                 </Button>
+              </div>
+
+              {/* Full-width fields */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">{t("displayName")}</label>
+                  <Input
+                    type="text"
+                    value={selectedTable.display_name || ""}
+                    onChange={(e) =>
+                      updateTableField(selectedTable.id, "display_name", e.target.value)
+                    }
+                    placeholder={t("displayName")}
+                    className="h-8 text-sm"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">{t("tableDescription")}</label>
+                  <Textarea
+                    value={selectedTable.description || ""}
+                    onChange={(e) =>
+                      updateTableField(selectedTable.id, "description", e.target.value)
+                    }
+                    placeholder={t("tableDescription")}
+                    rows={2}
+                    className="resize-none text-sm"
+                  />
+                </div>
               </div>
 
               {/* Columns table */}

@@ -10,6 +10,11 @@
   "deleteDialogDescription": "This agent will be permanently deleted. This action cannot be undone.",
   "publishDialogTitle": "Publish agent?",
   "publishDialogDescription": "Once published, this agent will be available for use in conversations.",
+  "publishScopeLabel": "Publish to",
+  "publishScopePersonal": "Personal use",
+  "publishScopeOrg": "My organization",
+  "publishSelectOrg": "Select organization",
+  "publishNoOrgs": "No organizations found. Join or create one in Settings.",
   "unpublishDialogTitle": "Unpublish agent?",
   "unpublishDialogDescription": "This agent will be set back to draft and no longer available in conversations.",
 
@@ -98,6 +103,8 @@
   "connectors": "Connectors",
   "connectorsDescription": "Bind connectors to give the agent access to external API actions",
   "connectorActionCount": "{count} actions",
+  "connectorTypeDatabase": "Database",
+  "connectorTypeApi": "API",
 
   "suggestedPrompts": "Suggested Prompts",
   "suggestedPromptsDescription": "Shown as quick-start suggestions in chat.",

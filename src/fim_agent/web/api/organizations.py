@@ -81,6 +81,7 @@ class OrgResponse(BaseModel):
 class OrgWithRoleResponse(OrgResponse):
     """Org detail plus the requesting user's role in it."""
     role: str
+    member_count: int = 0
 
 
 class MemberResponse(BaseModel):
@@ -122,7 +123,7 @@ def _org_to_response(org: Organization) -> OrgResponse:
     )
 
 
-def _org_with_role(org: Organization, role: str) -> OrgWithRoleResponse:
+def _org_with_role(org: Organization, role: str, member_count: int = 0) -> OrgWithRoleResponse:
     return OrgWithRoleResponse(
         id=org.id,
         name=org.name,
@@ -136,6 +137,7 @@ def _org_with_role(org: Organization, role: str) -> OrgWithRoleResponse:
         created_at=org.created_at.isoformat() if org.created_at else "",
         updated_at=org.updated_at.isoformat() if org.updated_at else None,
         role=role,
+        member_count=member_count,
     )
 
 
@@ -212,7 +214,7 @@ async def create_org(
     db.add(membership)
     await db.commit()
 
-    return ApiResponse(data=_org_with_role(org, "owner").model_dump())
+    return ApiResponse(data=_org_with_role(org, "owner", member_count=1).model_dump())
 
 
 @router.get("", response_model=ApiResponse)
@@ -237,11 +239,19 @@ async def list_my_orgs(
     )
     orgs_by_id = {o.id: o for o in org_result.scalars().all()}
 
+    # Count memberships per org in one query
+    count_result = await db.execute(
+        select(OrgMembership.org_id, func.count(OrgMembership.id).label("cnt"))
+        .where(OrgMembership.org_id.in_(org_ids))
+        .group_by(OrgMembership.org_id)
+    )
+    counts_by_org = {row.org_id: row.cnt for row in count_result.all()}
+
     items = []
     for m in memberships:
         org = orgs_by_id.get(m.org_id)
         if org:
-            items.append(_org_with_role(org, m.role).model_dump())
+            items.append(_org_with_role(org, m.role, counts_by_org.get(m.org_id, 0)).model_dump())
 
     return ApiResponse(data=items)
 
@@ -262,7 +272,11 @@ async def get_org(
     if org is None:
         raise AppError("org_not_found", status_code=404)
 
-    return ApiResponse(data=_org_with_role(org, membership.role).model_dump())
+    count_result = await db.execute(
+        select(func.count(OrgMembership.id)).where(OrgMembership.org_id == org_id)
+    )
+    member_count = count_result.scalar_one()
+    return ApiResponse(data=_org_with_role(org, membership.role, member_count).model_dump())
 
 
 @router.put("/{org_id}", response_model=ApiResponse)
@@ -300,7 +314,11 @@ async def update_org(
         select(Organization).where(Organization.id == org_id)
     )
     org = result.scalar_one()
-    return ApiResponse(data=_org_with_role(org, membership.role).model_dump())
+    count_result = await db.execute(
+        select(func.count(OrgMembership.id)).where(OrgMembership.org_id == org_id)
+    )
+    member_count = count_result.scalar_one()
+    return ApiResponse(data=_org_with_role(org, membership.role, member_count).model_dump())
 
 
 @router.delete("/{org_id}", response_model=ApiResponse)

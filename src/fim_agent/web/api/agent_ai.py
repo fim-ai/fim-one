@@ -14,7 +14,8 @@ from fim_agent.core.model.types import ChatMessage
 from fim_agent.core.utils import get_language_directive
 from fim_agent.db import get_session
 from fim_agent.web.auth import get_current_user
-from fim_agent.web.deps import get_fast_llm
+from fim_agent.core.model.structured import structured_llm_call
+from fim_agent.web.deps import get_effective_fast_llm
 from fim_agent.web.models import Agent
 from fim_agent.web.models.connector import Connector
 from fim_agent.web.models.knowledge_base import KnowledgeBase
@@ -72,6 +73,37 @@ mentions using external APIs, connectors, or specific integrations.
 
 Output ONLY valid JSON. No markdown, no commentary."""
 
+_CREATE_AGENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "icon": {"type": "string"},
+        "description": {"type": ["string", "null"]},
+        "instructions": {"type": ["string", "null"]},
+        "tool_categories": {"type": ["array", "null"], "items": {"type": "string"}},
+        "kb_ids": {"type": ["array", "null"], "items": {"type": "string"}},
+        "connector_ids": {"type": ["array", "null"], "items": {"type": "string"}},
+        "suggested_prompts": {"type": ["array", "null"], "items": {"type": "string"}},
+        "grounding_config": {"type": ["object", "null"]},
+    },
+    "required": ["name"],
+}
+
+_REFINE_AGENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "icon": {"type": "string"},
+        "description": {"type": ["string", "null"]},
+        "instructions": {"type": ["string", "null"]},
+        "tool_categories": {"type": ["array", "null"], "items": {"type": "string"}},
+        "kb_ids": {"type": ["array", "null"], "items": {"type": "string"}},
+        "connector_ids": {"type": ["array", "null"], "items": {"type": "string"}},
+        "suggested_prompts": {"type": ["array", "null"], "items": {"type": "string"}},
+        "grounding_config": {"type": ["object", "null"]},
+    },
+}
+
 _REFINE_SYSTEM_PROMPT = """\
 You are an AI agent configuration editor. Given the current agent configuration \
 and a user instruction, output a JSON object with ONLY the fields that should change.
@@ -91,62 +123,6 @@ Only include fields the user wants to change. Do not include unchanged fields.
 Do NOT add kb_ids or connector_ids unless the user explicitly requests them.
 
 Output ONLY valid JSON. No markdown, no commentary."""
-
-
-def _extract_json(text: str) -> Any:
-    """Extract JSON from LLM response, handling markdown fences."""
-    text = text.strip()
-    if text.startswith("```"):
-        first_newline = text.index("\n")
-        text = text[first_newline + 1:]
-        if text.rstrip().endswith("```"):
-            text = text.rstrip()[:-3].rstrip()
-    return json.loads(text)
-
-
-async def _llm_call(
-    system: str,
-    user_msg: str,
-    retry_context: str | None = None,
-    *,
-    language_directive: str | None = None,
-) -> Any:
-    """Call the fast LLM and parse JSON from response. Auto-retries once on parse failure."""
-    llm = get_fast_llm()
-    sys_content = system
-    if language_directive:
-        sys_content += (
-            f"\n\n{language_directive} "
-            "This applies to natural-language fields only. "
-            "Keep JSON keys and technical fields in English."
-        )
-    messages: list[ChatMessage] = [
-        ChatMessage(role="system", content=sys_content),
-        ChatMessage(role="user", content=user_msg),
-    ]
-    if retry_context:
-        messages.append(ChatMessage(role="user", content=retry_context))
-
-    result = await llm.chat(messages=messages)
-    content = result.message.content or ""
-    if not content:
-        raise AppError("llm_empty_response", status_code=422)
-
-    try:
-        return _extract_json(content)
-    except (json.JSONDecodeError, ValueError) as exc:
-        if retry_context is not None:
-            raise AppError(
-                "llm_invalid_json",
-                status_code=422,
-                detail=f"LLM returned invalid JSON after retry: {exc}",
-            ) from exc
-        logger.warning("LLM JSON parse failed, retrying: %s", exc)
-        feedback = (
-            f"Your previous response was not valid JSON. Error: {exc}\n"
-            "Please output ONLY a valid JSON object, no markdown or commentary."
-        )
-        return await _llm_call(system, user_msg, retry_context=feedback, language_directive=language_directive)
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +186,27 @@ def _validate_tool_categories(categories: list[str] | None) -> list[str] | None:
     return [c for c in categories if c in _VALID_TOOL_CATEGORIES]
 
 
+def _build_messages(
+    system: str,
+    user: str,
+    language_directive: str | None,
+    history: list[dict[str, str]] | None = None,
+) -> list[ChatMessage]:
+    """Build messages list with optional conversation history."""
+    if language_directive:
+        system = (
+            system
+            + f"\n\n{language_directive} "
+            "This applies to natural-language fields only. "
+            "Keep JSON keys and technical fields in English."
+        )
+    msgs = [ChatMessage(role="system", content=system)]
+    for turn in (history or []):
+        msgs.append(ChatMessage(role=turn["role"], content=turn["content"]))
+    msgs.append(ChatMessage(role="user", content=user))
+    return msgs
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -227,9 +224,17 @@ async def ai_create_agent(
     resources_ctx = await _build_available_resources_context(current_user.id, db)
     user_msg = f"{resources_ctx}\n\nUser instruction: {body.instruction}"
 
-    data = await _llm_call(_CREATE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
-    if not isinstance(data, dict):
-        raise AppError("llm_unexpected_format", status_code=422)
+    llm = await get_effective_fast_llm(db)
+    sc = await structured_llm_call(
+        llm,
+        _build_messages(_CREATE_SYSTEM_PROMPT, user_msg, lang_directive),
+        schema=_CREATE_AGENT_SCHEMA,
+        function_name="create_agent",
+        default_value=None,
+    )
+    if sc.value is None or not isinstance(sc.value, dict):
+        raise AppError("llm_invalid_json", status_code=422, detail="LLM failed to return valid agent config")
+    data: dict[str, Any] = sc.value
 
     # Validate tool_categories
     tool_categories = _validate_tool_categories(data.get("tool_categories"))
@@ -295,9 +300,17 @@ async def ai_refine_agent(
         f"User instruction: {body.instruction}"
     )
 
-    data = await _llm_call(_REFINE_SYSTEM_PROMPT, user_msg, language_directive=lang_directive)
-    if not isinstance(data, dict):
-        raise AppError("llm_unexpected_format", status_code=422)
+    llm = await get_effective_fast_llm(db)
+    sc = await structured_llm_call(
+        llm,
+        _build_messages(_REFINE_SYSTEM_PROMPT, user_msg, lang_directive, history=body.history),
+        schema=_REFINE_AGENT_SCHEMA,
+        function_name="refine_agent",
+        default_value=None,
+    )
+    if sc.value is None or not isinstance(sc.value, dict):
+        raise AppError("llm_invalid_json", status_code=422, detail="LLM failed to return valid agent updates")
+    data: dict[str, Any] = sc.value
 
     updatable_fields = {
         "name", "icon", "description", "instructions", "tool_categories",

@@ -122,5 +122,13 @@
 
   "previousPage": "Previous page",
   "nextPage": "Next page",
-  "page": "Page {page}"
+  "page": "Page {page}",
+
+  "aiAssistant": "KB Assistant",
+  "aiPlaceholder": "e.g. Search for contract terms, or annotate all documents...",
+  "aiThinking": "Thinking...",
+  "aiEmptyTitle": "KB AI Assistant",
+  "aiEmptySubtitle": "Test retrieval, annotate documents, or ask about configuration",
+  "aiError": "An error occurred. Please try again.",
+  "send": "Send"
 }

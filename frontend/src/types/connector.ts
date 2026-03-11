@@ -201,3 +201,17 @@ export interface AIAnnotateResponse {
   annotated_count: number
   preview: Record<string, unknown>[]
 }
+
+export interface AIAnnotateJobStarted {
+  job_id: string
+  table_count: number
+}
+
+export interface AIAnnotateJobStatus {
+  job_id: string
+  status: "pending" | "running" | "done" | "error"
+  completed_batches: number
+  total_batches: number
+  annotated_count: number
+  error: string | null
+}

@@ -67,6 +67,7 @@ class AICreateAgentRequest(BaseModel):
 
 class AIRefineAgentRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=2000)
+    history: list[dict] = Field(default_factory=list)
 
 
 class AICreateAgentResult(BaseModel):

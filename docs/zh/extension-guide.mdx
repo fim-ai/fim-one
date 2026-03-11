@@ -1,0 +1,434 @@
+---
+title: "扩展指南"
+description: "如何向 FIM Agent 接入自定义 LLM 提供商、工具、记忆后端、嵌入模型、重排序器、网络后端以及 RAG 组件。"
+---
+
+## 概述
+
+FIM Agent 围绕一组轻量级抽象基类构建——每个可替换组件对应一个基类。每个组件职责单一、接口最小。你只需实现抽象方法，将实例注入对应的注册器或构造函数，系统其余部分就会自动使用你的实现。
+
+| 扩展点 | 基类 | 文件 | 注册方式 |
+|---|---|---|---|
+| LLM 提供商 | `BaseLLM` | `core/model/base.py` | `ModelRegistry.register()` |
+| 工具 | `BaseTool` | `core/tool/base.py` | 在 `builtin/` 下新建文件 |
+| 记忆 | `BaseMemory` | `core/memory/base.py` | 构造函数注入 |
+| 嵌入模型 | `BaseEmbedding` | `core/embedding/base.py` | 构造函数注入 |
+| 图像生成 | `BaseImageGen` | `core/image_gen/base.py` | 构造函数注入 |
+| 重排序器 | `BaseReranker` | `core/reranker/base.py` | 构造函数注入 |
+| 网页抓取后端 | `BaseWebFetch` | `core/web/fetch/base.py` | 构造函数注入 |
+| 网页搜索后端 | `BaseWebSearch` | `core/web/search/base.py` | 构造函数注入 |
+| RAG 检索器 | `BaseRetriever` | `rag/base.py` | 构造函数注入 |
+| 文档加载器 | `BaseLoader` | `rag/loaders/base.py` | 加载器注册表 / 注入 |
+| 文本分块器 | `BaseChunker` | `rag/chunking/base.py` | 构造函数注入 |
+
+---
+
+## 自定义 LLM 提供商
+
+`BaseLLM` 有两个必须实现的方法——`chat` 和 `stream_chat`——以及一个可选的 `abilities` 属性，用于向系统声明该模型的能力。
+
+```python
+from collections.abc import AsyncIterator
+from typing import Any
+
+from fim_agent.core.model.base import BaseLLM
+from fim_agent.core.model.types import ChatMessage, LLMResult, StreamChunk
+
+
+class MyLLM(BaseLLM):
+    def __init__(self, api_key: str, model: str) -> None:
+        self._api_key = api_key
+        self._model = model
+
+    @property
+    def model_id(self) -> str:
+        return self._model
+
+    @property
+    def abilities(self) -> dict[str, bool]:
+        return {
+            "tool_call": True,   # 支持原生函数调用
+            "json_mode": True,   # 支持 response_format JSON 模式
+            "vision":   False,
+            "streaming": True,
+        }
+
+    async def chat(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        response_format: dict[str, Any] | None = None,
+    ) -> LLMResult:
+        # 调用你的提供商，返回 LLMResult(message=..., usage=...)
+        ...
+
+    async def stream_chat(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        # 随着 token 到达逐个 yield StreamChunk
+        ...
+        yield  # 让类型检查器满意
+```
+
+### 通过 ModelRegistry 注册
+
+`ModelRegistry` 将名称映射到 `BaseLLM` 实例，并支持按角色查询。系统内置四种角色：`general`、`fast`、`compact` 和 `vision`，你也可以自定义。
+
+```python
+from fim_agent.core.model.registry import ModelRegistry
+
+registry = ModelRegistry()
+registry.register("my-llm", MyLLM(api_key="...", model="my-v1"), roles=["general"])
+registry.register("my-fast", MyLLM(api_key="...", model="my-mini"), roles=["fast", "compact"])
+
+# 后续获取
+llm = registry.get_default()           # 第一个 "general" 模型，或第一个注册的模型
+llm = registry.get_by_role("fast")     # 第一个拥有 "fast" 角色的模型
+llm = registry.get("my-llm")           # 按精确名称获取
+```
+
+`abilities` 字典是 LLM 与 ReAct 引擎之间的契约。当 `tool_call=True` 且 agent 以 `use_native_tools=True` 创建时，引擎将使用原生函数调用；否则自动降级为 JSON 模式。
+
+---
+
+## 自定义工具
+
+工具是最常见的扩展形式。`BaseTool` 有三个必须实现的部分：`name`、`description` 和 `run`，其余均有合理默认值。
+
+```python
+from typing import Any
+from fim_agent.core.tool.base import BaseTool
+
+
+class GitStatusTool(BaseTool):
+    @property
+    def name(self) -> str:
+        return "git_status"
+
+    @property
+    def description(self) -> str:
+        return "返回某个仓库的当前 git 状态。"
+
+    @property
+    def category(self) -> str:
+        return "filesystem"   # 在 UI 中对工具进行分组
+
+    @property
+    def parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "仓库根目录的绝对路径。",
+                }
+            },
+            "required": ["path"],
+        }
+
+    async def run(self, *, path: str, **kwargs: Any) -> str:
+        import asyncio
+        result = await asyncio.create_subprocess_shell(
+            f"git -C {path} status --short",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await result.communicate()
+        return stdout.decode()
+```
+
+### 自动发现
+
+将文件放入 `src/fim_agent/core/tool/builtin/`，`discover_builtin_tools()` 扫描器会自动找到所有具体的（非抽象的）`BaseTool` 子类——无需手动注册。
+
+```
+src/fim_agent/core/tool/builtin/
+├── calculator.py       ← 已有工具
+├── git_status.py       ← 你的新文件 → 自动发现
+└── ...
+```
+
+扫描器会跳过 `_SKIP_AUTO_DISCOVER` 集合中列出的类。对于需要外部配置（如 API Key）并需要在启动时按条件实例化的工具，应将其加入该集合。
+
+### 标记不可用状态
+
+重写 `availability()` 可在工具目录中展示依赖缺失时的提示信息：
+
+```python
+def availability(self) -> tuple[bool, str | None]:
+    import os
+    if not os.getenv("GITHUB_TOKEN"):
+        return False, "未设置 GITHUB_TOKEN 环境变量。"
+    return True, None
+```
+
+### 带附件的富结果
+
+当工具会产生文件时，返回 `ToolResult` 而不是普通 `str`：
+
+```python
+from fim_agent.core.tool.base import Artifact, ToolResult
+
+async def run(self, **kwargs: Any) -> ToolResult:
+    # ... 在 /tmp/report.html 生成文件 ...
+    return ToolResult(
+        content="报告已生成。",
+        content_type="text",
+        artifacts=[Artifact(name="report.html", path="/uploads/report.html", mime_type="text/html", size=4096)],
+    )
+```
+
+---
+
+## 自定义记忆
+
+`BaseMemory` 是对话历史的持久化层。三个方法：`add_message`、`get_messages`、`clear`。
+
+```python
+import redis.asyncio as redis
+from fim_agent.core.memory.base import BaseMemory
+from fim_agent.core.model.types import ChatMessage
+
+
+class RedisMemory(BaseMemory):
+    def __init__(self, conversation_id: str, redis_url: str) -> None:
+        self._key = f"conv:{conversation_id}"
+        self._redis = redis.from_url(redis_url)
+
+    async def add_message(self, message: ChatMessage) -> None:
+        import json
+        await self._redis.rpush(self._key, json.dumps(message))
+
+    async def get_messages(self) -> list[ChatMessage]:
+        import json
+        raw = await self._redis.lrange(self._key, 0, -1)
+        return [json.loads(m) for m in raw]
+
+    async def clear(self) -> None:
+        await self._redis.delete(self._key)
+```
+
+通过 agent 构造函数注入：`ReActAgent(llm=llm, memory=RedisMemory(conv_id, url))`。
+
+---
+
+## 自定义嵌入模型
+
+`BaseEmbedding` 提供两个方法：`embed_texts`（批量）和 `embed_query`（单条），以及一个 `dimension` 属性。
+
+```python
+from fim_agent.core.embedding.base import BaseEmbedding
+
+
+class MyEmbedding(BaseEmbedding):
+    def __init__(self, model: str) -> None:
+        self._model = model
+        self._dim = 1536
+
+    @property
+    def dimension(self) -> int:
+        return self._dim
+
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        # 批量嵌入文档
+        ...
+
+    async def embed_query(self, query: str) -> list[float]:
+        # 嵌入单条查询——通常使用不同的指令前缀
+        ...
+```
+
+`embed_texts` 和 `embed_query` 分开设计，是因为许多嵌入模型（如 E5、BGE）对文档和查询使用不同的指令前缀，从而提升检索质量。
+
+---
+
+## 自定义图像生成
+
+`BaseImageGen` 只有一个方法 `generate`，负责将图片保存到 `output_dir` 并返回包含文件路径和服务器相对 URL 的 `ImageResult`。
+
+```python
+from fim_agent.core.image_gen.base import BaseImageGen, ImageResult
+
+
+class StableDiffusionImageGen(BaseImageGen):
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        aspect_ratio: str = "1:1",
+        output_dir: str,
+    ) -> ImageResult:
+        # 调用 SD API，保存到 output_dir
+        file_path = f"{output_dir}/image.png"
+        return ImageResult(
+            file_path=file_path,
+            url=f"/uploads/{file_path.split('/')[-1]}",
+            prompt=prompt,
+            model="stable-diffusion-xl",
+        )
+```
+
+---
+
+## 自定义重排序器
+
+`BaseReranker` 接受一个查询和一组文档字符串，返回按相关性重新排序并附带分数的结果。
+
+```python
+from fim_agent.core.reranker.base import BaseReranker, RerankResult
+
+
+class CrossEncoderReranker(BaseReranker):
+    async def rerank(
+        self, query: str, documents: list[str], *, top_k: int = 5
+    ) -> list[RerankResult]:
+        # 用 cross-encoder 对每个 (query, doc) 对打分
+        scores = await self._score_pairs(query, documents)
+        results = [
+            RerankResult(index=i, score=score, text=doc)
+            for i, (doc, score) in enumerate(zip(documents, scores))
+        ]
+        results.sort(key=lambda r: r.score, reverse=True)
+        return results[:top_k]
+```
+
+---
+
+## 自定义网络后端
+
+### 网页抓取
+
+`BaseWebFetch` 抓取一个 URL 并以 Markdown 或纯文本返回其内容。
+
+```python
+from fim_agent.core.web.fetch.base import BaseWebFetch
+
+
+class PlaywrightFetch(BaseWebFetch):
+    async def fetch(self, url: str) -> str:
+        # 使用 Playwright 渲染 JS 密集型页面
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            page = await browser.new_page()
+            await page.goto(url)
+            content = await page.content()
+            await browser.close()
+        return html_to_markdown(content)
+```
+
+### 网页搜索
+
+`BaseWebSearch` 返回一个按相关性排序的 `SearchResult` 列表。
+
+```python
+from fim_agent.core.web.search.base import BaseWebSearch, SearchResult
+
+
+class BingSearch(BaseWebSearch):
+    async def search(self, query: str, *, num_results: int = 10) -> list[SearchResult]:
+        # 调用 Bing Search API
+        ...
+        return [
+            SearchResult(title=r["name"], url=r["url"], snippet=r["snippet"])
+            for r in raw_results[:num_results]
+        ]
+```
+
+---
+
+## 自定义 RAG 组件
+
+RAG 流水线有三个可独立替换的阶段：加载、分块和检索。
+
+### 文档加载器
+
+`BaseLoader` 将文件路径转换为 `LoadedDocument` 对象列表。PDF 加载器通常每页返回一个文档。
+
+```python
+from pathlib import Path
+from fim_agent.rag.loaders.base import BaseLoader, LoadedDocument
+
+
+class DocxLoader(BaseLoader):
+    async def load(self, path: Path) -> list[LoadedDocument]:
+        from docx import Document
+        doc = Document(path)
+        text = "\n".join(p.text for p in doc.paragraphs)
+        return [LoadedDocument(content=text, metadata={"source": str(path)})]
+```
+
+### 文本分块器
+
+`BaseChunker` 将文本拆分为 `Chunk` 对象。`MAX_CHUNK_SIZE = 6000` 字符是硬性上限——超过此大小可能溢出 Jina Embeddings v3 的 token 窗口。
+
+```python
+from typing import Any
+from fim_agent.rag.chunking.base import BaseChunker, Chunk
+
+
+class SentenceChunker(BaseChunker):
+    def __init__(self, sentences_per_chunk: int = 5) -> None:
+        self._n = sentences_per_chunk
+
+    async def chunk(self, text: str, metadata: dict[str, Any] | None = None) -> list[Chunk]:
+        import nltk
+        sentences = nltk.sent_tokenize(text)
+        chunks = []
+        for i in range(0, len(sentences), self._n):
+            chunk_text = " ".join(sentences[i : i + self._n])
+            chunks.append(Chunk(text=chunk_text, metadata=metadata or {}, index=i // self._n))
+        return chunks
+```
+
+### 检索器
+
+`BaseRetriever` 查询任意后端并返回排序后的 `Document` 对象。
+
+```python
+from fim_agent.rag.base import BaseRetriever, Document
+
+
+class ElasticsearchRetriever(BaseRetriever):
+    def __init__(self, es_client, index: str) -> None:
+        self._es = es_client
+        self._index = index
+
+    async def retrieve(self, query: str, *, top_k: int = 5) -> list[Document]:
+        resp = await self._es.search(
+            index=self._index,
+            query={"match": {"content": query}},
+            size=top_k,
+        )
+        return [
+            Document(
+                content=hit["_source"]["content"],
+                metadata=hit["_source"].get("metadata", {}),
+                score=hit["_score"],
+            )
+            for hit in resp["hits"]["hits"]
+        ]
+```
+
+---
+
+## 设计原则
+
+所有基类遵循一致的模式，让自定义实现更容易写正确：
+
+**异步优先。** 每个方法都是 `async def`。即使你的实现是同步的，也应用 `asyncio.to_thread()` 包装，而不是阻塞事件循环。
+
+**工具返回字符串。** `BaseTool.run()` 返回 `str`（或 `ToolResult`）。LLM 只会看到文本——工具实现负责将复杂数据序列化为可读格式。
+
+**最小接口。** 每个基类只定义所需的最小契约。`BaseMemory` 只有三个方法；`BaseWebFetch` 只有一个。你永远不需要实现自己不需要的功能。
+
+**组合优于继承。** 基类是接口，不是框架。你在构造时注入实现，运行时不会对其进行猴子补丁或进一步子类化。

@@ -1,6 +1,9 @@
 {
   "save": "保存",
   "saving": "保存中...",
+  "syncing": "正在同步...",
+  "synced": "已同步",
+  "syncFailed": "同步失败",
   "cancel": "取消",
   "delete": "删除",
   "deleting": "删除中...",

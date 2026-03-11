@@ -174,3 +174,14 @@ class AiAnnotateResponse(BaseModel):
 
     annotated_count: int
     preview: list[dict[str, Any]] = []
+
+
+class AiAnnotateJobResponse(BaseModel):
+    """Status of a background annotation job."""
+
+    job_id: str
+    status: str  # "pending" | "running" | "done" | "error"
+    completed_batches: int = 0
+    total_batches: int = 0
+    annotated_count: int = 0
+    error: str | None = None

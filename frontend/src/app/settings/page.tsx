@@ -12,7 +12,7 @@ import { AccountSettings } from "@/components/settings/account-settings"
 import { AppearanceSettings } from "@/components/settings/appearance-settings"
 import { OrganizationSettings } from "@/components/settings/organization-settings"
 
-const TAB_KEYS = ["general", "account", "appearance", "organizations"] as const
+const TAB_KEYS = ["general", "account", "organizations", "appearance"] as const
 const TAB_ICONS = {
   general: Settings,
   account: User,

@@ -243,6 +243,15 @@ async def update_connector(
     for field, value in update_data.items():
         setattr(connector, field, value)
 
+    # Explicitly mark JSON columns as modified so SQLAlchemy flushes them
+    # even when the dict content changes without an object identity change.
+    if "db_config" in update_data:
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(connector, "db_config")
+    if "auth_config" in update_data:
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(connector, "auth_config")
+
     await db.commit()
 
     # Reload with actions relationship for response serialization

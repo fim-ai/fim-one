@@ -58,23 +58,27 @@ export function DbConnectorSettingsForm({
   const t = useTranslations("connectors")
   const tc = useTranslations("common")
 
-  // Basic fields
-  const [name, setName] = useState("")
-  const [icon, setIcon] = useState<string | null>(null)
-  const [description, setDescription] = useState("")
+  // Basic fields — lazy initializers so the first render already has correct values
+  // (useEffect fires after paint; without this, the Select would flash the wrong value)
+  const [name, setName] = useState(() => connector?.name ?? "")
+  const [icon, setIcon] = useState<string | null>(() => connector?.icon ?? null)
+  const [description, setDescription] = useState(() => connector?.description ?? "")
 
   // DB config fields
-  const [driver, setDriver] = useState("postgresql")
-  const [host, setHost] = useState("")
-  const [port, setPort] = useState(5432)
-  const [database, setDatabase] = useState("")
-  const [dbSchema, setDbSchema] = useState("")
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
-  const [ssl, setSsl] = useState(false)
-  const [readOnly, setReadOnly] = useState(true)
-  const [maxRows, setMaxRows] = useState(1000)
-  const [queryTimeout, setQueryTimeout] = useState(30)
+  const [driver, setDriver] = useState(() => {
+    const d = connector?.db_config?.driver
+    return DB_DRIVERS.find(x => x.value === d)?.value ?? "postgresql"
+  })
+  const [host, setHost] = useState(() => connector?.db_config?.host ?? "")
+  const [port, setPort] = useState(() => connector?.db_config?.port ?? 5432)
+  const [database, setDatabase] = useState(() => connector?.db_config?.database ?? "")
+  const [dbSchema, setDbSchema] = useState(() => connector?.db_config?.schema ?? "")
+  const [username, setUsername] = useState(() => connector?.db_config?.username ?? "")
+  const [password, setPassword] = useState(() => connector?.db_config?.password ?? "")
+  const [ssl, setSsl] = useState(() => connector?.db_config?.ssl ?? false)
+  const [readOnly, setReadOnly] = useState(() => connector?.db_config?.read_only ?? true)
+  const [maxRows, setMaxRows] = useState(() => connector?.db_config?.max_rows ?? 1000)
+  const [queryTimeout, setQueryTimeout] = useState(() => connector?.db_config?.query_timeout ?? 30)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
@@ -92,17 +96,17 @@ export function DbConnectorSettingsForm({
       setDescription(connector.description || "")
       const cfg = connector.db_config
       if (cfg) {
-        setDriver(cfg.driver || "postgresql")
+        setDriver(DB_DRIVERS.find(d => d.value === cfg.driver)?.value ?? "postgresql")
         setHost(cfg.host || "")
         setPort(cfg.port || 5432)
         setDatabase(cfg.database || "")
         setDbSchema(cfg.schema || "")
         setUsername(cfg.username || "")
         setPassword(cfg.password || "")
-        setSsl(cfg.ssl)
-        setReadOnly(cfg.read_only)
-        setMaxRows(cfg.max_rows)
-        setQueryTimeout(cfg.query_timeout)
+        setSsl(cfg.ssl ?? false)
+        setReadOnly(cfg.read_only ?? true)
+        setMaxRows(cfg.max_rows ?? 1000)
+        setQueryTimeout(cfg.query_timeout ?? 30)
       }
     } else {
       setName("")
@@ -293,7 +297,7 @@ export function DbConnectorSettingsForm({
             </label>
             <Select value={driver} onValueChange={handleDriverChange}>
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder={t("databaseType")} />
               </SelectTrigger>
               <SelectContent>
                 {DB_DRIVERS.map((d) => (

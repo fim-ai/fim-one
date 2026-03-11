@@ -148,6 +148,9 @@
   "aiAnnotating": "Annotating...",
   "aiAnnotateSuccess": "Annotated {count} items",
   "aiAnnotateAllSuccess": "AI annotated {count} tables/columns",
+  "aiAnnotateAllLoading": "AI annotating all tables — this may take a while…",
+  "aiAnnotateAllHint": "Server-side task. Results are saved even if you navigate away.",
+  "batches": "batches",
   "searchTables": "Search tables...",
   "schemaUpdated": "Schema updated",
 

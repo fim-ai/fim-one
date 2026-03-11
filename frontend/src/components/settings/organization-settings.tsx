@@ -60,17 +60,12 @@ import {
 } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
 import { orgApi, type UserOrg, type OrgMember } from "@/lib/api"
+import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-}
 
 function roleBadgeClass(role: "owner" | "admin" | "member"): string {
   switch (role) {
@@ -99,10 +94,8 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
   const tc = useTranslations("common")
 
   const [name, setName] = useState("")
-  const [slug, setSlug] = useState("")
   const [description, setDescription] = useState("")
-  const [icon, setIcon] = useState("")
-  const [slugEdited, setSlugEdited] = useState(false)
+  const [icon, setIcon] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [nameError, setNameError] = useState("")
   const [dirty, setDirty] = useState(false)
@@ -112,10 +105,8 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
   useEffect(() => {
     if (open) {
       setName(initial?.name ?? "")
-      setSlug(initial?.slug ?? "")
       setDescription(initial?.description ?? "")
-      setIcon(initial?.icon ?? "")
-      setSlugEdited(!!initial)
+      setIcon(initial?.icon ?? null)
       setNameError("")
       setDirty(false)
     }
@@ -125,15 +116,6 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
     setName(val)
     setDirty(true)
     setNameError("")
-    if (!slugEdited) {
-      setSlug(generateSlug(val))
-    }
-  }
-
-  const handleSlugChange = (val: string) => {
-    setSlug(val)
-    setSlugEdited(true)
-    setDirty(true)
   }
 
   const handleClose = () => {
@@ -156,15 +138,14 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
         saved = await orgApi.update(initial.id, {
           name: name.trim(),
           description: description.trim() || null,
-          icon: icon.trim() || null,
+          icon: icon || null,
         })
         toast.success(t("orgUpdated"))
       } else {
         saved = await orgApi.create({
           name: name.trim(),
-          slug: slug || generateSlug(name.trim()),
           description: description.trim() || null,
-          icon: icon.trim() || null,
+          icon: icon || null,
         })
         toast.success(t("orgCreated", { name: saved.name }))
       }
@@ -216,40 +197,26 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
               )}
             </div>
 
-            {/* Slug — only shown on create */}
-            {!isEdit && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">{t("slugLabel")}</label>
-                <Input
-                  value={slug}
-                  onChange={(e) => handleSlugChange(e.target.value)}
-                  placeholder={t("slugPlaceholder")}
+            {/* Icon + Description row */}
+            <div className="flex items-start gap-3">
+              <div className="space-y-1.5 shrink-0">
+                <label className="text-sm font-medium">{t("iconLabel")}</label>
+                <EmojiPickerPopover
+                  value={icon}
+                  onChange={(val) => { setIcon(val); setDirty(true) }}
+                  fallbackIcon={<Building2 className="h-5 w-5" />}
                 />
-                <p className="text-xs text-muted-foreground">{t("slugHint")}</p>
               </div>
-            )}
-
-            {/* Description */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">{t("descriptionLabel")}</label>
-              <Textarea
-                value={description}
-                onChange={(e) => { setDescription(e.target.value); setDirty(true) }}
-                placeholder={t("descriptionPlaceholder")}
-                rows={3}
-                className="resize-none"
-              />
-            </div>
-
-            {/* Icon */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">{t("iconLabel")}</label>
-              <Input
-                value={icon}
-                onChange={(e) => { setIcon(e.target.value); setDirty(true) }}
-                placeholder={t("iconPlaceholder")}
-                className="max-w-[100px]"
-              />
+              <div className="space-y-1.5 flex-1 min-w-0">
+                <label className="text-sm font-medium">{t("descriptionLabel")}</label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => { setDescription(e.target.value); setDirty(true) }}
+                  placeholder={t("descriptionPlaceholder")}
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -311,7 +278,7 @@ function MembersSheet({ open, onOpenChange, org, currentUserId }: MembersSheetPr
   const [adding, setAdding] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<OrgMember | null>(null)
 
-  const myRole = org.my_role
+  const myRole = org.role
   const canManage = myRole === "owner" || myRole === "admin"
 
   const loadMembers = useCallback(async () => {
@@ -574,8 +541,8 @@ function OrgCard({ org, currentUserId, onEdit, onDelete, onLeave, onManageMember
   const t = useTranslations("organizations")
   const tc = useTranslations("common")
 
-  const isOwner = org.my_role === "owner"
-  const isAdminOrOwner = org.my_role === "owner" || org.my_role === "admin"
+  const isOwner = org.role === "owner"
+  const isAdminOrOwner = org.role === "owner" || org.role === "admin"
   const canLeave = !isOwner
 
   return (
@@ -590,8 +557,8 @@ function OrgCard({ org, currentUserId, onEdit, onDelete, onLeave, onManageMember
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold truncate">{org.name}</p>
-            <Badge variant="outline" className={roleBadgeClass(org.my_role)}>
-              {t(`role${org.my_role.charAt(0).toUpperCase()}${org.my_role.slice(1)}` as "roleOwner" | "roleAdmin" | "roleMember")}
+            <Badge variant="outline" className={roleBadgeClass(org.role)}>
+              {t(`role${org.role.charAt(0).toUpperCase()}${org.role.slice(1)}` as "roleOwner" | "roleAdmin" | "roleMember")}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">/{org.slug}</p>
@@ -599,9 +566,10 @@ function OrgCard({ org, currentUserId, onEdit, onDelete, onLeave, onManageMember
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{org.description}</p>
           )}
           <p className="text-xs text-muted-foreground mt-1">
-            {org.member_count === 1
-              ? t("memberCountOne")
-              : t("memberCount", { count: org.member_count })}
+            {t(
+              (org.member_count ?? 0) === 1 ? "memberCountOne" : "memberCount",
+              { count: org.member_count ?? 0 }
+            )}
           </p>
         </div>
       </div>

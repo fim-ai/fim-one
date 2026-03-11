@@ -656,7 +656,9 @@ export function AgentSettingsForm({
                         {isChecked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                       </div>
                       <span className="text-muted-foreground">
-                        {conn.name} ({t("connectorActionCount", { count: conn.actions.length })})
+                        {conn.name} ({conn.type === "database"
+                          ? t("connectorTypeDatabase")
+                          : `${t("connectorTypeApi")} · ${t("connectorActionCount", { count: conn.actions.length })}`})
                       </span>
                     </div>
                   )

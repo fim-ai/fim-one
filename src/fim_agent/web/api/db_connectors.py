@@ -6,19 +6,25 @@ table/column annotations, executing test queries, and AI annotation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import math
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from fim_agent.core.model.base import BaseLLM
+from fim_agent.core.utils import get_language_directive
 from fim_agent.core.security.encryption import decrypt_db_config
 from fim_agent.core.tool.connector.database.pool import ConnectionPoolManager
 from fim_agent.core.tool.connector.database.safety import SqlSafetyError, validate_sql
-from fim_agent.db import get_session
+from fim_agent.db import create_session, get_session
 from fim_agent.web.auth import get_current_user
 from fim_agent.web.exceptions import AppError
 from fim_agent.web.models.connector import Connector
@@ -26,6 +32,7 @@ from fim_agent.web.models.database_schema import DatabaseSchema, SchemaColumn
 from fim_agent.web.models.user import User
 from fim_agent.web.schemas.common import ApiResponse
 from fim_agent.web.schemas.db_connector import (
+    AiAnnotateJobResponse,
     AiAnnotateRequest,
     AiAnnotateResponse,
     BulkSchemaUpdate,
@@ -508,6 +515,55 @@ async def execute_query(
 # ---------------------------------------------------------------------------
 
 
+_DB_CHAT_INTENT_SYSTEM_PROMPT = """\
+You are a database schema management assistant. Analyze the user message and \
+determine their intent.
+
+Return a JSON object with:
+- "intent": one of "annotate", "show", "hide", "update_settings", "unknown"
+  - "annotate": user wants AI-generated display names / descriptions \
+(keywords like: annotate, translate, 标注, 翻译, 描述, 中文, display name, rename)
+  - "show": user wants to make tables visible in the UI
+  - "hide": user wants to hide tables from the UI
+  - "update_settings": user wants to change connector settings — only these \
+safe fields are supported: read_only (bool), ssl (bool), max_rows (int 1-10000), \
+query_timeout (int 1-300). Connection credentials (host, port, database, \
+username, password, driver) CANNOT be changed via chat.
+  - "unknown": message is unrelated to any of the above
+- "table_names": list of table names (from the available list) that should be \
+affected by annotate/show/hide. Empty list means ALL tables. Irrelevant for \
+update_settings.
+- "settings_updates": (only when intent is "update_settings") object with the \
+fields to change. Only include fields explicitly mentioned by the user. \
+Example: {"read_only": false} or {"max_rows": 500, "query_timeout": 60}
+- "reply": (only when intent is "unknown") a brief message explaining what \
+operations are supported.
+
+The list of available table names is provided in the user message."""
+
+_DB_CHAT_INTENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "intent": {
+            "type": "string",
+            "enum": ["annotate", "show", "hide", "update_settings", "unknown"],
+        },
+        "table_names": {"type": "array", "items": {"type": "string"}},
+        "settings_updates": {
+            "type": ["object", "null"],
+            "properties": {
+                "read_only": {"type": ["boolean", "null"]},
+                "ssl": {"type": ["boolean", "null"]},
+                "max_rows": {"type": ["integer", "null"]},
+                "query_timeout": {"type": ["integer", "null"]},
+            },
+        },
+        "reply": {"type": ["string", "null"]},
+    },
+    "required": ["intent", "table_names"],
+}
+
+
 _AI_ANNOTATE_SYSTEM_PROMPT = """\
 You are a database schema expert. Given table and column metadata from a \
 database, generate human-readable Chinese display names and brief Chinese \
@@ -521,19 +577,56 @@ standard translations
 - Infer meaning from the table context — e.g. a column "status" in an \
 "orders" table should be "订单状态", not just "状态"
 
-Respond with ONLY a JSON array (no markdown fences, no explanation):
-[
-  {
-    "table_name": "original_table_name",
-    "display_name": "中文表名",
-    "description": "中文表描述",
-    "columns": [
-      {"column_name": "original_col", "display_name": "中文列名", "description": "中文列描述"},
-      ...
-    ]
-  },
-  ...
-]"""
+Respond with ONLY a JSON object (no markdown, no explanation):
+{"tables": [{"table_name": "original_table_name", "display_name": "中文表名", "description": "中文表描述", "columns": [{"column_name": "original_col", "display_name": "中文列名", "description": "中文列描述"}]}]}"""
+
+
+_ANNOTATE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "tables": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "table_name": {"type": "string"},
+                    "display_name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "columns": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "column_name": {"type": "string"},
+                                "display_name": {"type": "string"},
+                                "description": {"type": "string"},
+                            },
+                            "required": ["column_name", "display_name"],
+                        },
+                    },
+                },
+                "required": ["table_name", "display_name"],
+            },
+        },
+    },
+    "required": ["tables"],
+}
+
+_ANNOTATE_BATCH_SIZE = 30  # tables per LLM call
+_ANNOTATE_CONCURRENCY = 5  # parallel LLM calls
+
+
+@dataclass
+class _AnnotateJob:
+    job_id: str
+    status: str = "pending"  # pending | running | done | error
+    completed_batches: int = 0
+    total_batches: int = 0
+    annotated_count: int = 0
+    error: str | None = None
+
+
+_annotate_jobs: dict[str, _AnnotateJob] = {}
 
 
 def _build_annotate_user_prompt(
@@ -555,47 +648,6 @@ def _build_annotate_user_prompt(
             lines.append(f"   Columns: {', '.join(col_parts)}")
         lines.append("")
     return "\n".join(lines)
-
-
-def _parse_llm_annotations(
-    raw_text: str,
-) -> list[dict[str, Any]] | None:
-    """Parse the LLM JSON response, tolerating markdown fences.
-
-    Returns a list of table annotation dicts, or ``None`` on parse failure.
-    """
-    import json
-    import re
-
-    text = raw_text.strip()
-    # Strip markdown code fences if present
-    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if fence_match:
-        text = fence_match.group(1).strip()
-
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        # Try to find the first JSON array in the text
-        arr_match = re.search(r"\[.*\]", text, re.DOTALL)
-        if arr_match:
-            try:
-                parsed = json.loads(arr_match.group(0))
-            except json.JSONDecodeError:
-                return None
-        else:
-            return None
-
-    if isinstance(parsed, list):
-        return parsed
-
-    # json_object mode often wraps the array in an object like {"tables": [...]}
-    if isinstance(parsed, dict):
-        for value in parsed.values():
-            if isinstance(value, list) and value:
-                return value
-
-    return None
 
 
 def _apply_annotations(
@@ -657,125 +709,397 @@ def _humanize_name(name: str) -> str:
     return result.title()
 
 
-def _apply_humanize_fallback(schemas: list[DatabaseSchema]) -> int:
-    """Apply _humanize_name as a fallback when LLM is unavailable.
+def _build_humanize_data(schemas: list[DatabaseSchema]) -> list[dict[str, Any]]:
+    """Build annotation dicts using _humanize_name() as a last-resort fallback.
 
-    Only fills in display_name where it is not already set.
-    Returns the count of fields updated.
+    Returns data in the same shape as the LLM output so _apply_annotations
+    can handle both paths uniformly.
     """
-    updated = 0
+    result = []
     for schema_obj in schemas:
-        if not schema_obj.display_name:
-            schema_obj.display_name = _humanize_name(schema_obj.table_name)
-            updated += 1
-        for col in schema_obj.columns or []:
-            if not col.display_name:
-                col.display_name = _humanize_name(col.column_name)
-                updated += 1
-    return updated
+        entry: dict[str, Any] = {
+            "table_name": schema_obj.table_name,
+            "display_name": schema_obj.display_name or _humanize_name(schema_obj.table_name),
+        }
+        cols = [
+            {
+                "column_name": col.column_name,
+                "display_name": col.display_name or _humanize_name(col.column_name),
+            }
+            for col in (schema_obj.columns or [])
+        ]
+        if cols:
+            entry["columns"] = cols
+        result.append(entry)
+    return result
+
+
+async def _run_annotate_all_job(
+    job: _AnnotateJob,
+    schema_ids: list[str],
+    llm: BaseLLM,
+) -> None:
+    """Background task: annotate all tables in batches with bounded concurrency."""
+    job.status = "running"
+    batches = [
+        schema_ids[i : i + _ANNOTATE_BATCH_SIZE]
+        for i in range(0, len(schema_ids), _ANNOTATE_BATCH_SIZE)
+    ]
+    job.total_batches = len(batches)
+
+    sem = asyncio.Semaphore(_ANNOTATE_CONCURRENCY)
+
+    from fim_agent.core.model.structured import structured_llm_call
+    from fim_agent.core.model.types import ChatMessage
+
+    async def process_batch(batch_ids: list[str]) -> int:
+        async with sem:
+            async with create_session() as session:
+                stmt = (
+                    select(DatabaseSchema)
+                    .options(selectinload(DatabaseSchema.columns))
+                    .where(DatabaseSchema.id.in_(batch_ids))
+                )
+                result = await session.execute(stmt)
+                batch_schemas = list(result.scalars().all())
+                if not batch_schemas:
+                    return 0
+                messages = [
+                    ChatMessage(role="system", content=_AI_ANNOTATE_SYSTEM_PROMPT),
+                    ChatMessage(role="user", content=_build_annotate_user_prompt(batch_schemas)),
+                ]
+                sc_result = await structured_llm_call(
+                    llm,
+                    messages,
+                    schema=_ANNOTATE_SCHEMA,
+                    function_name="annotate_schema",
+                    parse_fn=lambda d: d.get("tables", []),
+                    default_value=_build_humanize_data(batch_schemas),
+                    temperature=0.3,
+                )
+                annotations: list[dict[str, Any]] = sc_result.value or []
+                count = _apply_annotations(batch_schemas, annotations)
+                await session.commit()
+                return count
+
+    async def process_batch_tracked(batch_ids: list[str]) -> int:
+        try:
+            count = await process_batch(batch_ids)
+        except Exception as exc:
+            logger.warning("Annotate batch failed (job=%s): %s", job.job_id, exc)
+            count = 0
+        finally:
+            job.completed_batches += 1
+        return count
+
+    try:
+        results = await asyncio.gather(
+            *[process_batch_tracked(b) for b in batches]
+        )
+        job.annotated_count = sum(results)
+        job.status = "done"
+    except Exception as exc:
+        logger.exception("Annotate job %s failed: %s", job.job_id, exc)
+        job.status = "error"
+        job.error = str(exc)
+
+
+class _DbChatRequest(BaseModel):
+    message: str
+    history: list[dict] = Field(default_factory=list)
+
+
+@router.post("/{connector_id}/ai/db-chat")
+async def db_ai_chat(
+    connector_id: str,
+    req: _DbChatRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Natural language interface for DB schema management (annotate, visibility toggle)."""
+    try:
+        from fim_agent.core.model.structured import structured_llm_call
+        from fim_agent.core.model.types import ChatMessage
+        from fim_agent.web.deps import get_effective_fast_llm
+
+        connector = await _get_db_connector(connector_id, current_user.id, db)
+
+        result = await db.execute(
+            select(DatabaseSchema)
+            .options(selectinload(DatabaseSchema.columns))
+            .where(DatabaseSchema.connector_id == connector_id)
+            .order_by(DatabaseSchema.table_name)
+        )
+        schemas = list(result.scalars().all())
+
+        if not schemas:
+            return {
+                "ok": False,
+                "message": "No schema found. Please introspect the database first.",
+                "changes": 0,
+            }
+
+        # Step 1: lightweight intent detection — only pass table names, not full schema.
+        table_names_list = ", ".join(s.table_name for s in schemas)
+        intent_user_msg = (
+            f"Available tables: {table_names_list}\n\nUser message: {req.message}"
+        )
+        lang_directive = get_language_directive(current_user.preferred_language)
+        intent_system = _DB_CHAT_INTENT_SYSTEM_PROMPT
+        if lang_directive:
+            intent_system = (
+                intent_system
+                + f"\n\n{lang_directive} "
+                "This applies to the 'reply' field only. Keep JSON keys in English."
+            )
+        llm = await get_effective_fast_llm(db)
+        intent_messages = [ChatMessage(role="system", content=intent_system)]
+        for turn in (req.history or []):
+            intent_messages.append(ChatMessage(role=turn["role"], content=turn["content"]))
+        intent_messages.append(ChatMessage(role="user", content=intent_user_msg))
+        intent_result = await structured_llm_call(
+            llm,
+            intent_messages,
+            schema=_DB_CHAT_INTENT_SCHEMA,
+            function_name="detect_intent",
+            default_value={"intent": "annotate", "table_names": []},
+            temperature=0.0,
+        )
+        intent_data: dict = intent_result.value or {"intent": "annotate", "table_names": []}
+        intent = intent_data.get("intent", "annotate")
+        targeted_names: list[str] = intent_data.get("table_names") or []
+
+        # Map LLM-identified names back to ORM objects; empty = all tables.
+        name_set = set(targeted_names)
+        target_schemas = (
+            [s for s in schemas if s.table_name in name_set] if name_set else schemas
+        )
+        if not target_schemas:
+            target_schemas = schemas
+
+        # Step 2: execute the identified intent.
+        if intent == "unknown":
+            reply = intent_data.get("reply") or "我只能处理表的标注和显示/隐藏操作。"
+            return {"ok": False, "message": reply, "changes": 0}
+
+        if intent == "annotate":
+            if len(target_schemas) > 50:
+                # Large DB: delegate to background batch job to avoid sync timeout.
+                schema_ids = [s.id for s in target_schemas]
+                job_id = str(uuid.uuid4())
+                job = _AnnotateJob(job_id=job_id, total_batches=0)
+                _annotate_jobs[job_id] = job
+                asyncio.create_task(_run_annotate_all_job(job, schema_ids, llm))
+                n_batches = math.ceil(len(schema_ids) / 30)
+                return {
+                    "ok": True,
+                    "message": (
+                        f"已启动批量标注任务（共 {n_batches} 批，{len(schema_ids)} 张表），"
+                        "请稍后在 Schema 页面查看进度"
+                    ),
+                    "changes": 0,
+                    "job_id": job_id,
+                }
+
+            annotate_result = await structured_llm_call(
+                llm,
+                [
+                    ChatMessage(role="system", content=_AI_ANNOTATE_SYSTEM_PROMPT),
+                    ChatMessage(role="user", content=_build_annotate_user_prompt(target_schemas)),
+                ],
+                schema=_ANNOTATE_SCHEMA,
+                function_name="annotate_schema",
+                parse_fn=lambda d: d.get("tables", []),
+                default_value=_build_humanize_data(target_schemas),
+                temperature=0.3,
+            )
+            annotations: list[dict[str, Any]] = annotate_result.value or []
+            changes = _apply_annotations(target_schemas, annotations)
+            await db.commit()
+            return {"ok": True, "message": f"标注完成，更新了 {changes} 个字段", "changes": changes}
+
+        if intent == "update_settings":
+            from sqlalchemy.orm.attributes import flag_modified
+            from fim_agent.web.api.connectors import _connector_to_response
+
+            updates: dict = intent_data.get("settings_updates") or {}
+            _SAFE_SETTINGS = {"read_only", "ssl", "max_rows", "query_timeout"}
+            filtered = {k: v for k, v in updates.items() if k in _SAFE_SETTINGS and v is not None}
+            if not filtered:
+                return {"ok": False, "message": "未识别到需要修改的设置项。", "changes": 0}
+
+            # Clamp numeric fields to their valid ranges
+            if "max_rows" in filtered:
+                filtered["max_rows"] = max(1, min(10000, int(filtered["max_rows"])))
+            if "query_timeout" in filtered:
+                filtered["query_timeout"] = max(1, min(300, int(filtered["query_timeout"])))
+
+            current_cfg: dict = dict(connector.db_config or {})
+            current_cfg.update(filtered)
+            connector.db_config = current_cfg
+            flag_modified(connector, "db_config")
+            await db.commit()
+
+            # Reload with actions so _connector_to_response can iterate them.
+            reloaded = await db.execute(
+                select(Connector)
+                .options(selectinload(Connector.actions))
+                .where(Connector.id == connector_id)
+            )
+            connector = reloaded.scalar_one()
+
+            parts = []
+            labels = {
+                "read_only": lambda v: f"只读模式{'开启' if v else '关闭'}",
+                "ssl": lambda v: f"SSL {'开启' if v else '关闭'}",
+                "max_rows": lambda v: f"最大行数设为 {v}",
+                "query_timeout": lambda v: f"查询超时设为 {v} 秒",
+            }
+            for k, v in filtered.items():
+                parts.append(labels[k](v))
+            msg = "，".join(parts)
+            return {
+                "ok": True,
+                "message": f"已更新：{msg}",
+                "changes": len(filtered),
+                "connector": _connector_to_response(connector).model_dump(),
+            }
+
+        # intent == "show" or "hide"
+        should_hide = intent == "hide"
+        changes = 0
+        for schema_obj in target_schemas:
+            schema_obj.is_visible = not should_hide
+            for col in (schema_obj.columns or []):
+                col.is_visible = not should_hide
+            changes += 1
+        await db.commit()
+        action = "隐藏" if should_hide else "显示"
+        return {"ok": True, "message": f"已{action} {changes} 张表", "changes": changes}
+
+    except Exception as exc:
+        logger.exception("db_ai_chat error (connector=%s): %s", connector_id, exc)
+        return {"ok": False, "message": str(exc), "changes": 0}
 
 
 @router.post("/{connector_id}/ai/annotate", response_model=ApiResponse)
 async def ai_annotate(
     connector_id: str,
     body: AiAnnotateRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
 ) -> ApiResponse:
-    """Generate LLM-powered Chinese annotations for table and column metadata.
+    """LLM-powered annotation.
 
-    Sends table/column names and types to the fast LLM, which returns
-    display_name and description in Chinese. Falls back to simple
-    ``_humanize_name()`` if the LLM call fails.
+    Single-table (table_ids provided): runs synchronously, returns AiAnnotateResponse.
+    Full-annotate (no table_ids): starts background job, returns {"job_id": ...}.
     """
     await _get_db_connector(connector_id, current_user.id, db)
 
-    # Build query — table_ids takes precedence over table_names
-    stmt = (
-        select(DatabaseSchema)
-        .options(selectinload(DatabaseSchema.columns))
-        .where(DatabaseSchema.connector_id == connector_id)
-    )
+    # ------------------------------------------------------------------
+    # Sync path: specific table_ids (single-table annotate, fast)
+    # ------------------------------------------------------------------
     if body.table_ids:
-        stmt = stmt.where(DatabaseSchema.id.in_(body.table_ids))
-    elif body.table_names:
-        stmt = stmt.where(DatabaseSchema.table_name.in_(body.table_names))
-
-    result = await db.execute(stmt)
-    schemas = list(result.scalars().all())
-
-    if not schemas:
-        return ApiResponse(
-            data=AiAnnotateResponse(annotated_count=0, preview=[]).model_dump()
+        stmt = (
+            select(DatabaseSchema)
+            .options(selectinload(DatabaseSchema.columns))
+            .where(
+                DatabaseSchema.connector_id == connector_id,
+                DatabaseSchema.id.in_(body.table_ids),
+            )
         )
+        result = await db.execute(stmt)
+        schemas = list(result.scalars().all())
 
-    # --- Attempt LLM annotation ---
-    annotated = 0
-    llm_used = False
+        if not schemas:
+            return ApiResponse(data=AiAnnotateResponse(annotated_count=0, preview=[]).model_dump())
 
-    try:
+        from fim_agent.core.model.structured import structured_llm_call
         from fim_agent.core.model.types import ChatMessage
         from fim_agent.web.deps import get_effective_fast_llm
 
         llm = await get_effective_fast_llm(db)
-        user_prompt = _build_annotate_user_prompt(schemas)
-
-        llm_result = await llm.chat(
-            messages=[
-                ChatMessage(role="system", content=_AI_ANNOTATE_SYSTEM_PROMPT),
-                ChatMessage(role="user", content=user_prompt),
-            ],
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
-
-        raw_text = llm_result.message.content or ""
-        parsed = _parse_llm_annotations(raw_text)
-
-        if parsed:
-            annotated = _apply_annotations(schemas, parsed)
-            llm_used = True
-            logger.info(
-                "AI annotate: LLM updated %d fields for %d tables (connector=%s)",
-                annotated,
-                len(schemas),
-                connector_id,
-            )
-        else:
-            logger.warning(
-                "AI annotate: LLM returned unparseable response, "
-                "falling back to humanize (connector=%s)",
-                connector_id,
-            )
-    except Exception:
-        logger.exception(
-            "AI annotate: LLM call failed, falling back to humanize (connector=%s)",
-            connector_id,
-        )
-
-    # Fallback: fill any remaining empty display_names with humanize
-    if not llm_used:
-        annotated = _apply_humanize_fallback(schemas)
-
-    await db.commit()
-
-    # Build preview
-    preview: list[dict[str, Any]] = []
-    for schema_obj in schemas:
-        col_previews = [
-            {
-                "column_name": col.column_name,
-                "display_name": col.display_name,
-                "description": col.description,
-            }
-            for col in (schema_obj.columns or [])
+        messages = [
+            ChatMessage(role="system", content=_AI_ANNOTATE_SYSTEM_PROMPT),
+            ChatMessage(role="user", content=_build_annotate_user_prompt(schemas)),
         ]
-        preview.append({
-            "table_name": schema_obj.table_name,
-            "display_name": schema_obj.display_name,
-            "description": schema_obj.description,
-            "columns": col_previews,
-        })
+        sc_result = await structured_llm_call(
+            llm,
+            messages,
+            schema=_ANNOTATE_SCHEMA,
+            function_name="annotate_schema",
+            parse_fn=lambda d: d.get("tables", []),
+            default_value=_build_humanize_data(schemas),
+            temperature=0.3,
+        )
+        annotations: list[dict[str, Any]] = sc_result.value or []
+        annotated = _apply_annotations(schemas, annotations)
+        await db.commit()
 
-    resp = AiAnnotateResponse(annotated_count=annotated, preview=preview)
+        preview: list[dict[str, Any]] = []
+        for schema_obj in schemas:
+            col_previews = [
+                {
+                    "column_name": col.column_name,
+                    "display_name": col.display_name,
+                    "description": col.description,
+                }
+                for col in (schema_obj.columns or [])
+            ]
+            preview.append({
+                "table_name": schema_obj.table_name,
+                "display_name": schema_obj.display_name,
+                "description": schema_obj.description,
+                "columns": col_previews,
+            })
+
+        return ApiResponse(data=AiAnnotateResponse(annotated_count=annotated, preview=preview).model_dump())
+
+    # ------------------------------------------------------------------
+    # Async path: full annotate — background job
+    # ------------------------------------------------------------------
+    stmt = select(DatabaseSchema.id).where(DatabaseSchema.connector_id == connector_id)
+    if body.table_names:
+        stmt = stmt.where(DatabaseSchema.table_name.in_(body.table_names))
+    result = await db.execute(stmt)
+    schema_ids = [row[0] for row in result.all()]
+
+    if not schema_ids:
+        return ApiResponse(data=AiAnnotateResponse(annotated_count=0, preview=[]).model_dump())
+
+    from fim_agent.web.deps import get_effective_fast_llm
+
+    llm = await get_effective_fast_llm(db)
+
+    job_id = str(uuid.uuid4())
+    job = _AnnotateJob(job_id=job_id, total_batches=0)
+    _annotate_jobs[job_id] = job
+
+    asyncio.create_task(_run_annotate_all_job(job, schema_ids, llm))
+
+    logger.info(
+        "Started annotate-all job %s for connector=%s (%d tables)",
+        job_id, connector_id, len(schema_ids),
+    )
+    return ApiResponse(data={"job_id": job_id, "table_count": len(schema_ids)})
+
+
+@router.get("/{connector_id}/ai/annotate/status/{job_id}", response_model=ApiResponse)
+async def ai_annotate_status(
+    connector_id: str,
+    job_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> ApiResponse:
+    """Poll the status of a background annotation job."""
+    job = _annotate_jobs.get(job_id)
+    if not job:
+        raise AppError(404, "Job not found")
+    resp = AiAnnotateJobResponse(
+        job_id=job.job_id,
+        status=job.status,
+        completed_batches=job.completed_batches,
+        total_batches=job.total_batches,
+        annotated_count=job.annotated_count,
+        error=job.error,
+    )
     return ApiResponse(data=resp.model_dump())

@@ -355,16 +355,27 @@ class OpenAICompatibleLLM(BaseLLM):
 
     @property
     def abilities(self) -> dict[str, bool]:
-        """Capability flags for the LLM.
+        """Capability flags used by structured_llm_call to select extraction levels.
 
-        ``tool_call`` is always True — ReAct uses ``tool_choice="auto"``
-        which works fine even with Anthropic thinking enabled.
-        ``structured_llm_call`` uses forced ``tool_choice`` which Anthropic
-        rejects when thinking is active, but its own try/except fallback
-        handles the 400 gracefully (native_fc → json_mode → plain_text).
+        Anthropic/Bedrock rejects ``tool_choice`` that forces a specific function
+        when thinking/reasoning is active ("Thinking may not be enabled when
+        tool_choice forces tool use").  Advertising ``tool_call: False`` causes
+        structured_llm_call to skip native_fc and go straight to json_mode,
+        avoiding a wasted API call and a noisy 400 error.
+
+        Covers both direct Anthropic API (``anthropic/...``) and Bedrock-routed
+        Anthropic models (``bedrock/anthropic....`` or provider=bedrock with an
+        Anthropic model name).
         """
+        is_anthropic_model = self._litellm_model.startswith("anthropic/") or (
+            "anthropic" in self._litellm_model.lower()
+            and self._litellm_model.startswith("bedrock/")
+        )
+        is_anthropic_thinking = is_anthropic_model and bool(
+            self._reasoning_effort or self._reasoning_budget_tokens
+        )
         return {
-            "tool_call": True,
+            "tool_call": not is_anthropic_thinking,
             "json_mode": self._json_mode_enabled,
             "vision": True,
             "streaming": True,

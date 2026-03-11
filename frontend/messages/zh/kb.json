@@ -122,5 +122,13 @@
 
   "previousPage": "上一页",
   "nextPage": "下一页",
-  "page": "第 {page} 页"
+  "page": "第 {page} 页",
+
+  "aiAssistant": "知识库助手",
+  "aiPlaceholder": "例如：搜索合同条款，或标注所有文档...",
+  "aiThinking": "思考中...",
+  "aiEmptyTitle": "知识库 AI 助手",
+  "aiEmptySubtitle": "测试检索质量、标注文档或询问配置建议",
+  "aiError": "发生错误，请重试。",
+  "send": "发送"
 }

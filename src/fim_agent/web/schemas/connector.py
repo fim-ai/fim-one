@@ -127,6 +127,7 @@ class AIGenerateActionsRequest(BaseModel):
 class AIRefineActionRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=2000)
     action_id: str | None = None
+    history: list[dict] = Field(default_factory=list)
 
 
 class AIActionResult(BaseModel):
@@ -142,6 +143,7 @@ class AIActionResult(BaseModel):
 
 class AICreateConnectorRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=5000)
+    history: list[dict] = Field(default_factory=list)
 
 
 class AICreateConnectorResult(BaseModel):

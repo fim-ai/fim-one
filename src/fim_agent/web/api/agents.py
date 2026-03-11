@@ -239,10 +239,15 @@ async def publish_agent(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Publish agent to org or global scope."""
+    """Publish agent to personal, org, or global scope."""
     agent = await _get_owned_agent(agent_id, current_user.id, db)
 
-    if body.scope == "org":
+    if body.scope == "personal":
+        # Activate for personal use only — visibility stays personal
+        agent.visibility = "personal"
+        agent.is_global = False
+        agent.org_id = None
+    elif body.scope == "org":
         if not body.org_id:
             raise AppError("org_id_required", status_code=400)
         from fim_agent.web.auth import require_org_member

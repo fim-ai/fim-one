@@ -1,6 +1,9 @@
 {
   "save": "Save",
   "saving": "Saving...",
+  "syncing": "Syncing...",
+  "synced": "Synced",
+  "syncFailed": "Sync failed",
   "cancel": "Cancel",
   "delete": "Delete",
   "deleting": "Deleting...",

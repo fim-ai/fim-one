@@ -32,6 +32,7 @@ function ConnectorEditorPageInner() {
   const [isLoading, setIsLoading] = useState(id !== "new")
   const [formDirty, setFormDirty] = useState(false)
   const [builderActive, setBuilderActive] = useState(false)
+  const [schemaRefreshKey, setSchemaRefreshKey] = useState(0)
 
   // Determine if this is a database connector
   // For new: check URL param ?type=database
@@ -152,6 +153,7 @@ function ConnectorEditorPageInner() {
             connectorId={connector?.id ?? null}
             onActionsChanged={reload}
             onConnectorUpdated={(updated) => setConnector(updated)}
+            onSchemaChanged={() => setSchemaRefreshKey((k) => k + 1)}
             formDirty={formDirty}
             isNewMode={isNew}
             onConnectorCreated={handleConnectorSaved}
@@ -197,7 +199,7 @@ function ConnectorEditorPageInner() {
             </TabsList>
 
             {/* Settings tab: swap form based on type */}
-            <TabsContent value="connector" className="flex-1 min-h-0 px-4 py-4 overflow-hidden flex flex-col">
+            <TabsContent forceMount value="connector" className="flex-1 min-h-0 px-4 py-4 overflow-hidden flex flex-col data-[state=inactive]:hidden">
               {isDatabase ? (
                 <DbConnectorSettingsForm
                   connector={connector}
@@ -214,22 +216,22 @@ function ConnectorEditorPageInner() {
             </TabsContent>
 
             {/* API: Actions tab */}
-            <TabsContent value="actions" className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <TabsContent forceMount value="actions" className="flex-1 min-h-0 overflow-hidden flex flex-col data-[state=inactive]:hidden">
               {connector && (
                 <ActionManager connector={connector} onChanged={reload} />
               )}
             </TabsContent>
 
             {/* DB: Schema tab */}
-            <TabsContent value="schema" className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              {connector && (
-                <SchemaManager connectorId={connector.id} />
+            <TabsContent forceMount value="schema" className="flex-1 min-h-0 overflow-hidden flex flex-col data-[state=inactive]:hidden">
+              {isDatabase && connector && (
+                <SchemaManager connectorId={connector.id} refreshKey={schemaRefreshKey} />
               )}
             </TabsContent>
 
             {/* DB: Query tab */}
-            <TabsContent value="query" className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              {connector && (
+            <TabsContent forceMount value="query" className="flex-1 min-h-0 overflow-hidden flex flex-col data-[state=inactive]:hidden">
+              {isDatabase && connector && (
                 <QueryPlayground connectorId={connector.id} dbConfig={connector.db_config} />
               )}
             </TabsContent>

@@ -10,6 +10,11 @@
   "deleteDialogDescription": "该智能体将被永久删除，此操作无法撤销。",
   "publishDialogTitle": "发布智能体？",
   "publishDialogDescription": "发布后，该智能体将可在对话中使用。",
+  "publishScopeLabel": "发布范围",
+  "publishScopePersonal": "仅自己使用",
+  "publishScopeOrg": "我的组织",
+  "publishSelectOrg": "选择组织",
+  "publishNoOrgs": "未找到组织，请在设置中加入或创建组织。",
   "unpublishDialogTitle": "取消发布智能体？",
   "unpublishDialogDescription": "该智能体将恢复为草稿状态，不再可用于对话。",
 
@@ -98,6 +103,8 @@
   "connectors": "连接器",
   "connectorsDescription": "绑定连接器以使智能体能够访问外部 API 操作",
   "connectorActionCount": "{count} 个操作",
+  "connectorTypeDatabase": "数据库",
+  "connectorTypeApi": "API",
 
   "suggestedPrompts": "建议提示词",
   "suggestedPromptsDescription": "在对话中显示为快速开始建议。",

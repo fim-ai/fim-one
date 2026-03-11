@@ -15,6 +15,7 @@ import {
   UserMinus,
   ShieldCheck,
   Crown,
+  Building2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -61,6 +62,7 @@ import {
 } from "@/components/ui/select"
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
+import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
 import type { AdminOrganization, OrgMember } from "@/types/admin"
 
 const PAGE_SIZE = 20
@@ -107,10 +109,12 @@ export function AdminOrganizations() {
   // --- Create form fields ---
   const [createName, setCreateName] = useState("")
   const [createDescription, setCreateDescription] = useState("")
+  const [createIcon, setCreateIcon] = useState<string | null>(null)
 
   // --- Edit form fields ---
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
+  const [editIcon, setEditIcon] = useState<string | null>(null)
 
   // --- Field errors ---
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -172,11 +176,13 @@ export function AdminOrganizations() {
       await adminApi.createOrganization({
         name: createName.trim(),
         description: createDescription.trim() || undefined,
+        icon: createIcon || undefined,
       })
       toast.success(t("createSuccess"))
       setCreateOpen(false)
       setCreateName("")
       setCreateDescription("")
+      setCreateIcon(null)
       setFieldErrors({})
       await loadOrgs()
     } catch (err: unknown) {
@@ -191,6 +197,7 @@ export function AdminOrganizations() {
     setEditTarget(org)
     setEditName(org.name)
     setEditDescription(org.description ?? "")
+    setEditIcon(org.icon ?? null)
     setFieldErrors({})
   }
 
@@ -209,6 +216,7 @@ export function AdminOrganizations() {
       await adminApi.updateOrganization(editTarget.id, {
         name: editName.trim(),
         description: editDescription.trim() || undefined,
+        icon: editIcon || undefined,
       })
       toast.success(t("updateSuccess"))
       setEditTarget(null)
@@ -407,7 +415,12 @@ export function AdminOrganizations() {
               {orgs.map((org) => (
                 <tr key={org.id} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {org.name}
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center justify-center h-7 w-7 rounded-md bg-muted shrink-0 text-base leading-none">
+                        {org.icon ?? <Building2 className="h-4 w-4 text-muted-foreground" />}
+                      </span>
+                      {org.name}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs font-mono">
                     {org.slug}
@@ -495,7 +508,7 @@ export function AdminOrganizations() {
       )}
 
       {/* --- Create Organization Dialog --- */}
-      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) { setCreateOpen(false); setFieldErrors({}) } }}>
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) { setCreateOpen(false); setCreateIcon(null); setFieldErrors({}) } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("createTitle")}</DialogTitle>
@@ -504,7 +517,7 @@ export function AdminOrganizations() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                {t("orgName")} <span className="text-destructive">*</span>
+                {t("nameLabel")} <span className="text-destructive">*</span>
               </label>
               <Input
                 value={createName}
@@ -512,25 +525,35 @@ export function AdminOrganizations() {
                   setCreateName(e.target.value)
                   clearFieldError("name")
                 }}
-                placeholder={t("orgName")}
+                placeholder={t("namePlaceholder")}
                 aria-invalid={!!fieldErrors.name}
               />
               {fieldErrors.name && (
                 <p className="text-sm text-destructive">{fieldErrors.name}</p>
               )}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("orgDescription")}</label>
-              <Textarea
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder={t("orgDescription")}
-                rows={3}
-              />
+            <div className="flex items-start gap-3">
+              <div className="space-y-2 shrink-0">
+                <label className="text-sm font-medium">{t("iconLabel")}</label>
+                <EmojiPickerPopover
+                  value={createIcon}
+                  onChange={setCreateIcon}
+                  fallbackIcon={<Building2 className="h-5 w-5" />}
+                />
+              </div>
+              <div className="space-y-2 flex-1 min-w-0">
+                <label className="text-sm font-medium">{t("descriptionLabel")}</label>
+                <Textarea
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                  placeholder={t("descriptionPlaceholder")}
+                  rows={3}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); setFieldErrors({}) }}>
+            <Button variant="outline" onClick={() => { setCreateOpen(false); setCreateIcon(null); setFieldErrors({}) }}>
               {tc("cancel")}
             </Button>
             <Button
@@ -557,7 +580,7 @@ export function AdminOrganizations() {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                {t("orgName")} <span className="text-destructive">*</span>
+                {t("nameLabel")} <span className="text-destructive">*</span>
               </label>
               <Input
                 value={editName}
@@ -565,21 +588,31 @@ export function AdminOrganizations() {
                   setEditName(e.target.value)
                   clearFieldError("name")
                 }}
-                placeholder={t("orgName")}
+                placeholder={t("namePlaceholder")}
                 aria-invalid={!!fieldErrors.name}
               />
               {fieldErrors.name && (
                 <p className="text-sm text-destructive">{fieldErrors.name}</p>
               )}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t("orgDescription")}</label>
-              <Textarea
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                placeholder={t("orgDescription")}
-                rows={3}
-              />
+            <div className="flex items-start gap-3">
+              <div className="space-y-2 shrink-0">
+                <label className="text-sm font-medium">{t("iconLabel")}</label>
+                <EmojiPickerPopover
+                  value={editIcon}
+                  onChange={setEditIcon}
+                  fallbackIcon={<Building2 className="h-5 w-5" />}
+                />
+              </div>
+              <div className="space-y-2 flex-1 min-w-0">
+                <label className="text-sm font-medium">{t("descriptionLabel")}</label>
+                <Textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder={t("descriptionPlaceholder")}
+                  rows={3}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

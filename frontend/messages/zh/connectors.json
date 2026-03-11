@@ -148,6 +148,9 @@
   "aiAnnotating": "正在标注...",
   "aiAnnotateSuccess": "已标注 {count} 项",
   "aiAnnotateAllSuccess": "AI 已标注 {count} 个表/列",
+  "aiAnnotateAllLoading": "AI 全量标注中，表越多耗时越久，请耐心等待…",
+  "aiAnnotateAllHint": "后台任务，即使刷新页面结果也会保存，完成后刷新查看。",
+  "batches": "批",
   "searchTables": "搜索表...",
   "schemaUpdated": "表结构已更新",
 

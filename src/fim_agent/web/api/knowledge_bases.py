@@ -7,9 +7,11 @@ import logging
 import math
 import shutil
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -998,3 +1000,229 @@ async def retrieve_from_kb(
     ]
 
     return ApiResponse(data=results)
+
+
+# ── KB AI Chat ────────────────────────────────────────────────────
+
+
+_KB_INTENT_PROMPT = """\
+You are a Knowledge Base assistant. Detect the user's intent from their message.
+Return JSON with:
+- "intent": one of "retrieve", "annotate", "config", "general"
+  - "retrieve": user wants to test search \
+(keywords: search, find, retrieve, 搜索, 查找, 检索, 测试)
+  - "annotate": user wants to annotate or summarize documents \
+(keywords: annotate, summarize, label, 标注, 摘要, 总结, 描述文档)
+  - "config": user asks about KB settings \
+(keywords: chunk, size, overlap, setting, config, 分块, 配置, 参数, 设置)
+  - "general": everything else
+- "query": extracted search query string if intent is "retrieve", otherwise null"""
+
+_KB_INTENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "intent": {
+            "type": "string",
+            "enum": ["retrieve", "annotate", "config", "general"],
+        },
+        "query": {"type": ["string", "null"]},
+    },
+    "required": ["intent"],
+}
+
+_KB_GENERAL_SYSTEM_PROMPT = """\
+You are a helpful Knowledge Base assistant. Answer questions about the knowledge base \
+configuration, document management, retrieval strategies, and best practices. \
+Be concise and practical."""
+
+
+def _build_kb_messages(
+    system: str,
+    user: str,
+    lang_directive: str | None,
+    history: list[dict[str, str]] | None = None,
+) -> list[Any]:
+    """Build messages list for KB AI chat calls."""
+    from fim_agent.core.model.types import ChatMessage
+
+    if lang_directive:
+        system = (
+            system
+            + f"\n\n{lang_directive} "
+            "This applies to natural-language fields only. "
+            "Keep JSON keys and technical fields in English."
+        )
+    msgs: list[ChatMessage] = [ChatMessage(role="system", content=system)]
+    for turn in (history or []):
+        msgs.append(ChatMessage(role=turn["role"], content=turn["content"]))
+    msgs.append(ChatMessage(role="user", content=user))
+    return msgs
+
+
+class _KBAIChatRequest(BaseModel):
+    message: str
+    history: list[dict] = Field(default_factory=list)
+
+
+@router.post("/{kb_id}/ai/chat")
+async def kb_ai_chat(
+    kb_id: str,
+    req: _KBAIChatRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> dict:
+    """Natural language interface for KB management (retrieve, annotate, config)."""
+    try:
+        from fim_agent.core.model.structured import structured_llm_call
+        from fim_agent.core.utils import get_language_directive
+        from fim_agent.web.deps import get_effective_fast_llm
+
+        kb = await _get_owned_kb(kb_id, current_user.id, db)
+        lang_directive = get_language_directive(current_user.preferred_language)
+        llm = await get_effective_fast_llm(db)
+
+        # Step 1: detect intent
+        intent_result = await structured_llm_call(
+            llm,
+            _build_kb_messages(
+                _KB_INTENT_PROMPT,
+                req.message,
+                lang_directive,
+                history=req.history,
+            ),
+            schema=_KB_INTENT_SCHEMA,
+            function_name="detect_kb_intent",
+            default_value={"intent": "general", "query": None},
+            temperature=0.0,
+        )
+        intent_data: dict = intent_result.value or {"intent": "general", "query": None}
+        intent = intent_data.get("intent", "general")
+
+        # Step 2: execute intent
+
+        if intent == "retrieve":
+            query = intent_data.get("query") or req.message
+            manager = get_kb_manager()
+            documents = await manager.retrieve(
+                query,
+                kb_id=kb_id,
+                user_id=current_user.id,
+                top_k=5,
+                mode=kb.retrieval_mode,
+            )
+            if not documents:
+                return {
+                    "ok": True,
+                    "message": f'No results found for "{query}".',
+                    "action": "retrieve",
+                }
+            lines = [f"Found {len(documents)} result(s) for \"{query}\":\n"]
+            for i, doc in enumerate(documents, 1):
+                score_str = f"{doc.score:.3f}" if doc.score is not None else "N/A"
+                snippet = (doc.content or "").replace("\n", " ")[:200]
+                if len(doc.content or "") > 200:
+                    snippet += "..."
+                lines.append(f"{i}. [score: {score_str}] {snippet}")
+            return {"ok": True, "message": "\n".join(lines), "action": "retrieve"}
+
+        if intent == "annotate":
+            # Load all documents in this KB
+            doc_result = await db.execute(
+                select(KBDocument)
+                .where(KBDocument.kb_id == kb_id)
+                .order_by(KBDocument.created_at.asc())
+            )
+            docs = doc_result.scalars().all()
+            if not docs:
+                return {
+                    "ok": True,
+                    "message": "No documents found in this knowledge base.",
+                    "action": "annotate",
+                }
+
+            doc_list = "\n".join(
+                f"- {d.filename} ({d.file_type}, {d.chunk_count or 0} chunks, status: {d.status})"
+                for d in docs
+            )
+            annotate_system = """\
+You are a document annotation assistant. Given a list of documents in a knowledge base, \
+generate a brief summary/description for each document based on its filename and file type. \
+Be concise (1-2 sentences per document)."""
+            annotate_user = (
+                f"Knowledge base: {kb.name}\n"
+                f"Description: {kb.description or 'N/A'}\n\n"
+                f"Documents:\n{doc_list}\n\n"
+                f"User request: {req.message}\n\n"
+                "Generate a brief annotation/summary for each document."
+            )
+            annotate_messages = _build_kb_messages(
+                annotate_system, annotate_user, lang_directive, history=req.history
+            )
+            # Use plain chat call (not structured) since we want free-form text
+            response_text = await _plain_llm_call(llm, annotate_messages)
+            n = len(docs)
+            return {
+                "ok": True,
+                "message": f"Generated summaries for {n} document(s):\n\n{response_text}",
+                "action": "annotate",
+            }
+
+        if intent == "config":
+            config_info = (
+                f"Knowledge Base: {kb.name}\n"
+                f"Description: {kb.description or 'N/A'}\n"
+                f"Chunk Strategy: {kb.chunk_strategy}\n"
+                f"Chunk Size: {kb.chunk_size}\n"
+                f"Chunk Overlap: {kb.chunk_overlap}\n"
+                f"Retrieval Mode: {kb.retrieval_mode}\n"
+                f"Document Count: {kb.document_count}\n"
+                f"Total Chunks: {kb.total_chunks}\n"
+            )
+            config_system = """\
+You are a knowledge base configuration advisor. Given the current KB configuration, \
+analyze it and provide specific, actionable advice to improve retrieval quality. \
+Consider the chunk size, overlap, strategy, and retrieval mode in relation to typical \
+use cases. Be concise and practical."""
+            config_user = (
+                f"Current configuration:\n{config_info}\n\n"
+                f"User question: {req.message}"
+            )
+            config_messages = _build_kb_messages(
+                config_system, config_user, lang_directive, history=req.history
+            )
+            response_text = await _plain_llm_call(llm, config_messages)
+            return {"ok": True, "message": response_text, "action": "config"}
+
+        # intent == "general"
+        kb_context = (
+            f"Knowledge Base: {kb.name}\n"
+            f"Description: {kb.description or 'N/A'}\n"
+            f"Chunk Strategy: {kb.chunk_strategy}, "
+            f"Size: {kb.chunk_size}, Overlap: {kb.chunk_overlap}\n"
+            f"Retrieval Mode: {kb.retrieval_mode}\n"
+            f"Documents: {kb.document_count}, Chunks: {kb.total_chunks}\n"
+        )
+        general_user = (
+            f"Knowledge base context:\n{kb_context}\n\n"
+            f"User question: {req.message}"
+        )
+        general_messages = _build_kb_messages(
+            _KB_GENERAL_SYSTEM_PROMPT, general_user, lang_directive, history=req.history
+        )
+        response_text = await _plain_llm_call(llm, general_messages)
+        return {"ok": True, "message": response_text, "action": "general"}
+
+    except Exception as exc:
+        logger.exception("kb_ai_chat error (kb=%s): %s", kb_id, exc)
+        return {"ok": False, "message": str(exc), "action": "general"}
+
+
+async def _plain_llm_call(llm: Any, messages: list[Any]) -> str:
+    """Call the LLM for a plain text response (no structured output).
+
+    Returns the assistant message content string.
+    """
+    result = await llm.chat(messages)
+    # LLMResult.message is a ChatMessage with .content
+    msg = result.message
+    return msg.content or ""
