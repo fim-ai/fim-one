@@ -271,17 +271,22 @@ class TestOpenAICompatibleLLMInit:
         assert abilities["vision"] is True
         assert abilities["streaming"] is True
 
-    def test_abilities_tool_call_false_when_anthropic_thinking(self) -> None:
-        """Anthropic + thinking active → tool_call=False to avoid forced-tool_choice 400."""
+    def test_abilities_tool_call_true_even_with_anthropic_thinking(self) -> None:
+        """Anthropic + thinking → tool_call still True.
+
+        ReAct uses tool_choice="auto" which works with thinking.
+        structured_llm_call's forced tool_choice gets a 400 but its
+        own try/except fallback handles it gracefully.
+        """
         llm = OpenAICompatibleLLM(
             api_key="sk-test",
             base_url="https://api.anthropic.com/v1/",
             model="claude-sonnet-4-6",
             reasoning_effort="high",
         )
-        assert llm.abilities["tool_call"] is False
+        assert llm.abilities["tool_call"] is True
 
-    def test_abilities_tool_call_false_when_anthropic_budget_tokens(self) -> None:
+    def test_abilities_tool_call_true_even_with_anthropic_budget_tokens(self) -> None:
         llm = OpenAICompatibleLLM(
             api_key="sk-test",
             base_url="https://api.anthropic.com/v1/",
@@ -289,7 +294,7 @@ class TestOpenAICompatibleLLMInit:
             reasoning_effort="high",
             reasoning_budget_tokens=8192,
         )
-        assert llm.abilities["tool_call"] is False
+        assert llm.abilities["tool_call"] is True
 
     def test_abilities_tool_call_true_for_non_thinking_anthropic(self) -> None:
         """Anthropic without thinking still supports tool_call."""
