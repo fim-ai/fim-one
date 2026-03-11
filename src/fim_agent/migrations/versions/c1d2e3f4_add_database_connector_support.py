@@ -27,14 +27,15 @@ def upgrade() -> None:
     if table_exists(bind, "connectors") and not table_has_column(bind, "connectors", "db_config"):
         op.add_column("connectors", sa.Column("db_config", sa.JSON(), nullable=True))
 
-    # -- Make base_url nullable (it may already be nullable) --
-    # SQLite doesn't support ALTER COLUMN, but the column is already String(500)
-    # and we need it nullable for database connectors that have no base_url.
-    # For PG, we alter; for SQLite, it's effectively nullable already.
+    # -- Make base_url nullable (database connectors have no base_url) --
     if table_exists(bind, "connectors"):
         dialect = bind.dialect.name
         if dialect == "postgresql":
             op.alter_column("connectors", "base_url", existing_type=sa.String(500), nullable=True)
+        else:
+            # SQLite cannot ALTER COLUMN — use batch mode to recreate table
+            with op.batch_alter_table("connectors") as batch_op:
+                batch_op.alter_column("base_url", existing_type=sa.String(500), nullable=True)
 
     # -- Create database_schemas table --
     if not table_exists(bind, "database_schemas"):
