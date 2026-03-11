@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        **For critical vulnerabilities** (RCE, auth bypass, data exposure): please use [GitHub Security Advisories](https://github.com/fim-ai/fim-agent/security/advisories/new) or email security@fim.ai instead of this public form.
+        **For critical vulnerabilities** (RCE, auth bypass, data exposure): please use [GitHub Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new) or email security@fim.ai instead of this public form.
 
         This template is for non-critical security concerns: hardening suggestions, dependency warnings, best practice improvements, etc.
 

@@ -491,7 +491,7 @@ class ConnectorTestActionTool(_ConnectorBuilderBase):
             url = f"{base}/{path.lstrip('/')}"
 
             # Build headers with auth
-            headers: dict[str, str] = {"User-Agent": "FIM-Agent/1.0 (connector_test)"}
+            headers: dict[str, str] = {"User-Agent": "FIM-One/1.0 (connector_test)"}
             auth = None
             auth_config = connector.auth_config or {}
 
@@ -683,7 +683,7 @@ class ConnectorTestConnectionTool(_ConnectorBuilderBase):
         if _p.scheme not in {"http", "https"}:
             return f"[Error] Unsafe URL scheme '{_p.scheme}'."
 
-        headers: dict[str, str] = {"User-Agent": "FIM-Agent/1.0 (connection_test)"}
+        headers: dict[str, str] = {"User-Agent": "FIM-One/1.0 (connection_test)"}
         auth = None
         auth_config = connector.auth_config or {}
 

@@ -36,7 +36,7 @@ def _resolve_secret_key() -> str:
     #   parents[0] = src/fim_one/web/
     #   parents[1] = src/fim_one/
     #   parents[2] = src/
-    #   parents[3] = project root (fim-agent/)
+    #   parents[3] = project root (fim-one/)
     project_root = Path(__file__).resolve().parents[3]
     env_file = project_root / ".env"
 

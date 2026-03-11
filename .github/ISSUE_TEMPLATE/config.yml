@@ -1,13 +1,13 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security Vulnerability (Critical)
-    url: https://github.com/fim-ai/fim-agent/security/advisories/new
+    url: https://github.com/fim-ai/fim-one/security/advisories/new
     about: For critical security vulnerabilities, please use GitHub Security Advisories for private disclosure.
   - name: Discord Community
     url: https://discord.gg/z64czxdC7z
     about: Chat with the maintainer and other users in real time.
   - name: Questions & Discussions
-    url: https://github.com/fim-ai/fim-agent/discussions
+    url: https://github.com/fim-ai/fim-one/discussions
     about: Ask questions, share ideas, or discuss use cases.
   - name: Documentation
     url: https://docs.fim.ai

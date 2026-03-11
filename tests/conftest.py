@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for fim-agent tests."""
+"""Shared pytest fixtures for fim-one tests."""
 
 from __future__ import annotations
 

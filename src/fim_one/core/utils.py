@@ -1,4 +1,4 @@
-"""Shared utility helpers for fim-agent core modules."""
+"""Shared utility helpers for fim-one core modules."""
 
 from __future__ import annotations
 

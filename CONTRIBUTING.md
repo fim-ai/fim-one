@@ -75,7 +75,7 @@ Bug fixes and improvements are welcome. New features are accepted too — we'll 
 If you discover a security issue, please report it responsibly:
 
 1. **Email**: security@fim.ai (preferred)
-2. **GitHub**: Use [Security Advisories](https://github.com/fim-ai/fim-agent/security/advisories/new) (private)
+2. **GitHub**: Use [Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new) (private)
 
 What we're looking for:
 
@@ -315,15 +315,15 @@ Before submitting, ensure:
 
 1. Create a feature branch from `master`
 2. Make your changes with atomic commits
-3. Push to your fork and open a PR against `fim-ai/fim-agent:master`
+3. Push to your fork and open a PR against `fim-ai/fim-one:master`
 4. Fill in the PR template
 5. Wait for review — maintainers aim to respond within 48 hours
 
 ## Community
 
 - [Discord](https://discord.gg/z64czxdC7z) — chat with the maintainer and other users
-- [GitHub Issues](https://github.com/fim-ai/fim-agent/issues) — bugs, security, and field test reports
-- [GitHub Discussions](https://github.com/fim-ai/fim-agent/discussions) — questions, ideas, and use case sharing
+- [GitHub Issues](https://github.com/fim-ai/fim-one/issues) — bugs, security, and field test reports
+- [GitHub Discussions](https://github.com/fim-ai/fim-one/discussions) — questions, ideas, and use case sharing
 - [Twitter / X](https://x.com/fim_one) — announcements and updates
 - [Documentation](https://docs.fim.ai) — guides and API reference
 

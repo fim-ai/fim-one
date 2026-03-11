@@ -4,18 +4,18 @@
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-Source%20Available-orange)
-[![GitHub stars](https://img.shields.io/github/stars/fim-ai/fim-agent?style=social)](https://github.com/fim-ai/fim-agent/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/fim-ai/fim-agent?style=social)](https://github.com/fim-ai/fim-agent/network)
-[![GitHub issues](https://img.shields.io/github/issues/fim-ai/fim-agent)](https://github.com/fim-ai/fim-agent/issues)
+[![GitHub stars](https://img.shields.io/github/stars/fim-ai/fim-one?style=social)](https://github.com/fim-ai/fim-one/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/fim-ai/fim-one?style=social)](https://github.com/fim-ai/fim-one/network)
+[![GitHub issues](https://img.shields.io/github/issues/fim-ai/fim-one)](https://github.com/fim-ai/fim-one/issues)
 [![Follow on X](https://img.shields.io/twitter/follow/fim_one?style=social)](https://x.com/fim_one)
 [![Discord](https://img.shields.io/discord/1480638265206771742?logo=discord&label=discord)](https://discord.gg/z64czxdC7z)
-[![Product Hunt](https://img.shields.io/badge/Product%20Hunt-FIM%20One-DA552F?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/fim-agent)
+[![Product Hunt](https://img.shields.io/badge/Product%20Hunt-FIM%20One-DA552F?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/fim-one)
 
 🌐 **English** | [🇨🇳 中文](README.zh.md)
 
 **AI-Powered Connector Hub — embed into one system as a Copilot, or connect them all as a Hub.**
 
-🌐 [Website](https://agent.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-agent)
+🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
@@ -247,8 +247,8 @@ graph TB
 No local Python or Node.js required — everything is built inside the container.
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 # Configure — only LLM_API_KEY is required
 cp example.env .env
@@ -277,8 +277,8 @@ Data is persisted in Docker named volumes (`fim-data`, `fim-uploads`) and surviv
 Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 cp example.env .env
 # Edit .env: set LLM_API_KEY
@@ -383,16 +383,16 @@ We welcome contributions of all kinds — code, docs, translations, bug reports,
 **Quick links:**
 
 - [**Contributing Guide**](CONTRIBUTING.md) — setup, conventions, PR process
-- [**Good First Issues**](https://github.com/fim-ai/fim-agent/labels/good%20first%20issue) — curated for newcomers
-- [**Open Issues**](https://github.com/fim-ai/fim-agent/issues) — bugs & feature requests
+- [**Good First Issues**](https://github.com/fim-ai/fim-one/labels/good%20first%20issue) — curated for newcomers
+- [**Open Issues**](https://github.com/fim-ai/fim-one/issues) — bugs & feature requests
 
 ## Star History
 
-<a href="https://star-history.com/#fim-ai/fim-agent&Date">
+<a href="https://star-history.com/#fim-ai/fim-one&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
   </picture>
 </a>
 
@@ -411,7 +411,7 @@ Thanks to these wonderful people ([emoji key](https://allcontributors.org/docs/e
 <!-- prettier-ignore-end -->
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-[![Contributors](https://contrib.rocks/image?repo=fim-ai/fim-agent)](https://github.com/fim-ai/fim-agent/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=fim-ai/fim-one)](https://github.com/fim-ai/fim-one/graphs/contributors)
 
 This project follows the [all-contributors](https://allcontributors.org/) specification. Contributions of any kind welcome!
 
@@ -423,7 +423,7 @@ FIM One Source Available License. This is **not** an OSI-approved open source li
 
 **Restricted**: multi-tenant SaaS, competing agent platforms, white-labeling, removing branding.
 
-For commercial licensing inquiries, please open an issue on [GitHub](https://github.com/fim-ai/fim-agent).
+For commercial licensing inquiries, please open an issue on [GitHub](https://github.com/fim-ai/fim-one).
 
 See [LICENSE](LICENSE) for full terms.
 
@@ -431,6 +431,6 @@ See [LICENSE](LICENSE) for full terms.
 
 <div align="center">
 
-🌐 [Website](https://agent.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-agent)
+🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>

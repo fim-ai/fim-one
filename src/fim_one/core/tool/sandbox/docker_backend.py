@@ -17,7 +17,7 @@ Environment variables (all optional):
   DOCKER_CPUS            — Default CPU quota per container (default: 0.5)
   DOCKER_HOST_DATA_DIR   — Host-side path of the ``/app/data`` volume mount.
                            Required for DooD (Docker-outside-of-Docker)
-                           deployments where fim-agent runs inside a container
+                           deployments where fim-one runs inside a container
                            but spawns sandbox containers via the host daemon.
 """
 
@@ -76,7 +76,7 @@ class DockerBackend:
         self._shell_image = shell_image
         self._default_memory = default_memory
         self._default_cpu = default_cpu
-        # DooD path translation: when fim-agent runs inside a container and
+        # DooD path translation: when fim-one runs inside a container and
         # spawns sandbox containers via the host Docker socket, sandbox paths are
         # container-internal (e.g. /app/data/sandbox/…). The host daemon can't see
         # them.  If host_data_dir is set, we translate /app/data/… → host path.
@@ -95,7 +95,7 @@ class DockerBackend:
         container data prefix (``/app/data``) with the host-side mount path so
         that ``docker run -v`` points to a real directory on the host.
 
-        When not configured (fim-agent runs directly on host), the path is
+        When not configured (fim-one runs directly on host), the path is
         returned as-is.
         """
         if self._host_data_dir is None:

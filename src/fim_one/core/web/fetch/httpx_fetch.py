@@ -12,7 +12,7 @@ from .base import BaseWebFetch
 
 _DEFAULT_TIMEOUT = 30
 _DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; FIM-Agent/1.0; +https://fim.ai)",
+    "User-Agent": "Mozilla/5.0 (compatible; FIM-One/1.0; +https://fim.ai)",
     "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
 }
 _SKIP_TAGS = frozenset({"script", "style", "head", "noscript", "svg", "iframe", "nav", "footer"})

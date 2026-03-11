@@ -4,18 +4,18 @@
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-Source%20Available-orange)
-[![GitHub stars](https://img.shields.io/github/stars/fim-ai/fim-agent?style=social)](https://github.com/fim-ai/fim-agent/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/fim-ai/fim-agent?style=social)](https://github.com/fim-ai/fim-agent/network)
-[![GitHub issues](https://img.shields.io/github/issues/fim-ai/fim-agent)](https://github.com/fim-ai/fim-agent/issues)
+[![GitHub stars](https://img.shields.io/github/stars/fim-ai/fim-one?style=social)](https://github.com/fim-ai/fim-one/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/fim-ai/fim-one?style=social)](https://github.com/fim-ai/fim-one/network)
+[![GitHub issues](https://img.shields.io/github/issues/fim-ai/fim-one)](https://github.com/fim-ai/fim-one/issues)
 [![Follow on X](https://img.shields.io/twitter/follow/fim_one?style=social)](https://x.com/fim_one)
 [![Discord](https://img.shields.io/discord/1480638265206771742?logo=discord&label=discord)](https://discord.gg/z64czxdC7z)
-[![Product Hunt](https://img.shields.io/badge/Product%20Hunt-FIM%20One-DA552F?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/fim-agent)
+[![Product Hunt](https://img.shields.io/badge/Product%20Hunt-FIM%20One-DA552F?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/fim-one)
 
 [🌐 English](README.md) | 🇨🇳 **中文**
 
 **AI 驱动的连接器中枢 — 嵌入单个系统作为 Copilot，或连接所有系统成为 Hub。**
 
-🌐 [官网](https://agent.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-agent)
+🌐 [官网](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
@@ -247,8 +247,8 @@ graph TB
 无需本地安装 Python 或 Node.js — 一切在容器内构建完成。
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 # 配置 — 仅 LLM_API_KEY 为必填项
 cp example.env .env
@@ -277,8 +277,8 @@ docker compose logs -f        # 查看日志
 前置条件：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 18+、pnpm。
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 cp example.env .env
 # 编辑 .env：设置 LLM_API_KEY
@@ -383,16 +383,16 @@ mypy src/
 **快速入口：**
 
 - [**贡献指南**](CONTRIBUTING.md) — 环境搭建、代码规范、PR 流程
-- [**Good First Issues**](https://github.com/fim-ai/fim-agent/labels/good%20first%20issue) — 新手友好的入门任务
-- [**Open Issues**](https://github.com/fim-ai/fim-agent/issues) — Bug 和功能需求
+- [**Good First Issues**](https://github.com/fim-ai/fim-one/labels/good%20first%20issue) — 新手友好的入门任务
+- [**Open Issues**](https://github.com/fim-ai/fim-one/issues) — Bug 和功能需求
 
 ## Star 趋势
 
-<a href="https://star-history.com/#fim-ai/fim-agent&Date">
+<a href="https://star-history.com/#fim-ai/fim-one&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fim-ai/fim-agent&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
   </picture>
 </a>
 
@@ -411,7 +411,7 @@ mypy src/
 <!-- prettier-ignore-end -->
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-[![Contributors](https://contrib.rocks/image?repo=fim-ai/fim-agent)](https://github.com/fim-ai/fim-agent/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=fim-ai/fim-one)](https://github.com/fim-ai/fim-one/graphs/contributors)
 
 本项目遵循 [all-contributors](https://allcontributors.org/) 规范，欢迎任何形式的贡献！
 
@@ -423,7 +423,7 @@ FIM One Source Available License。这 **不是** OSI 批准的开源许可证�
 
 **限制**：多租户 SaaS、竞争性 Agent 平台、白标、移除品牌标识。
 
-如有商业授权需求，请在 [GitHub](https://github.com/fim-ai/fim-agent) 上提交 Issue。
+如有商业授权需求，请在 [GitHub](https://github.com/fim-ai/fim-one) 上提交 Issue。
 
 完整条款见 [LICENSE](LICENSE)。
 
@@ -431,6 +431,6 @@ FIM One Source Available License。这 **不是** OSI 批准的开源许可证�
 
 <div align="center">
 
-🌐 [官网](https://agent.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-agent/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-agent)
+🌐 [官网](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/fim_one) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>

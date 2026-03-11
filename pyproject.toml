@@ -79,9 +79,9 @@ database = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/fim-ai/fim-agent"
-Repository = "https://github.com/fim-ai/fim-agent"
-Issues = "https://github.com/fim-ai/fim-agent/issues"
+Homepage = "https://github.com/fim-ai/fim-one"
+Repository = "https://github.com/fim-ai/fim-one"
+Issues = "https://github.com/fim-ai/fim-one/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fim_one"]

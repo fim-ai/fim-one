@@ -16,7 +16,7 @@ _DEFAULT_TIMEOUT_SECONDS: int = 30
 _MAX_TIMEOUT_SECONDS: int = 120
 _MAX_RESPONSE_BYTES: int = 200 * 1024  # 200 KB
 _MAX_REDIRECTS: int = 5
-_USER_AGENT = "FIM-Agent/1.0 (http_request tool)"
+_USER_AGENT = "FIM-One/1.0 (http_request tool)"
 
 
 def _looks_like_json(text: str) -> bool:

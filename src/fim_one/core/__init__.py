@@ -1,1 +1,1 @@
-"""Core components of the fim-agent runtime."""
+"""Core components of the fim-one runtime."""

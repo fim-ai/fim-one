@@ -1,4 +1,4 @@
-"""Quickstart example for fim-agent.
+"""Quickstart example for fim-one.
 
 Demonstrates two usage patterns:
   1. ReAct Agent  -- a single agent that reasons and calls tools in a loop.

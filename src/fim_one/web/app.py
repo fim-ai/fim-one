@@ -10,7 +10,7 @@ Usage::
 from __future__ import annotations
 
 __fim_license__ = "FIM-SAL-1.1"
-__fim_origin__ = "https://github.com/fim-ai/fim-agent"
+__fim_origin__ = "https://github.com/fim-ai/fim-one"
 
 import logging
 import os
@@ -113,7 +113,7 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def add_powered_by_header(request: Request, call_next):
         response: Response = await call_next(request)
-        response.headers["X-Powered-By"] = "FIM-Agent"
+        response.headers["X-Powered-By"] = "FIM-One"
         return response
 
     # -- Maintenance mode middleware ----------------------------------------

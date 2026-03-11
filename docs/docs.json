@@ -207,25 +207,25 @@
   "logo": {
     "light": "/logo-light.svg",
     "dark": "/logo-dark.svg",
-    "href": "https://agent.fim.ai"
+    "href": "https://one.fim.ai"
   },
   "navbar": {
     "links": [
       {
         "label": "GitHub",
-        "href": "https://github.com/fim-ai/fim-agent"
+        "href": "https://github.com/fim-ai/fim-one"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Get Started",
-      "href": "https://agent.fim.ai"
+      "href": "https://one.fim.ai"
     }
   },
   "footer": {
     "socials": {
       "x": "https://x.com/fim_one",
-      "github": "https://github.com/fim-ai/fim-agent"
+      "github": "https://github.com/fim-ai/fim-one"
     }
   }
 }

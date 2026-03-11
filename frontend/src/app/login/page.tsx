@@ -426,7 +426,7 @@ function LoginPageInner() {
         </div>
 
         {/* Top — logo */}
-        <a href="https://agent.fim.ai" target="_blank" rel="noopener noreferrer">
+        <a href="https://one.fim.ai" target="_blank" rel="noopener noreferrer">
           <AnimatedLogo appName={APP_NAME} />
         </a>
 
@@ -476,7 +476,7 @@ function LoginPageInner() {
 
         <div className="w-full max-w-sm">
           {/* Mobile-only logo (< lg) */}
-          <a href="https://agent.fim.ai" target="_blank" rel="noopener noreferrer" className="mb-8 flex items-center justify-center gap-2 lg:hidden">
+          <a href="https://one.fim.ai" target="_blank" rel="noopener noreferrer" className="mb-8 flex items-center justify-center gap-2 lg:hidden">
             <img src="/fim-mark-light.svg" alt="FIM" className="h-8 w-auto dark:hidden" />
             <img src="/fim-mark.svg" alt="FIM" className="h-8 w-auto hidden dark:block" />
             <span
@@ -1071,7 +1071,7 @@ function LoginPageInner() {
         {/* Footer links — locale-aware */}
         <div className="absolute bottom-10 left-0 right-0 flex justify-center gap-4">
           <a
-            href={`https://agent.fim.ai/${locale}/privacy`}
+            href={`https://one.fim.ai/${locale}/privacy`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -1079,7 +1079,7 @@ function LoginPageInner() {
             {t("privacyPolicy")}
           </a>
           <a
-            href={`https://agent.fim.ai/${locale}/terms`}
+            href={`https://one.fim.ai/${locale}/terms`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-muted-foreground hover:text-foreground transition-colors"

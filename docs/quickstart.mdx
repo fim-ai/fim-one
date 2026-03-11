@@ -8,8 +8,8 @@ description: "Get FIM One running in minutes with Docker or local development."
 No local Python or Node.js required — everything is built inside the container.
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 # Configure — only LLM_API_KEY is required
 cp example.env .env
@@ -38,8 +38,8 @@ Data is persisted in Docker named volumes (`fim-data`, `fim-uploads`) and surviv
 Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 cp example.env .env
 # Edit .env: set LLM_API_KEY
@@ -91,7 +91,7 @@ For a complete list of all configuration options, see the [Environment Variables
 
 | Service | Purpose | Configured by |
 |---------|---------|---------------|
-| **fim-agent** | API + Frontend | `.env` (your LLM keys, etc.) |
+| **fim-one** | API + Frontend | `.env` (your LLM keys, etc.) |
 | **Redis** | Cross-worker interrupt relay | Auto-configured by compose |
 
 ```bash

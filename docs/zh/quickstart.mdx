@@ -10,8 +10,8 @@ description: "通过 Docker 或本地开发，在几分钟内运行 FIM One。"
 无需在本地安装 Python 或 Node.js——所有内容都在容器内完成构建。
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 # 配置 — 仅需设置 LLM_API_KEY
 cp example.env .env
@@ -42,8 +42,8 @@ docker compose logs -f        # 查看日志
 先决条件：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 18+、pnpm。
 
 ```bash
-git clone https://github.com/fim-ai/fim-agent.git
-cd fim-agent
+git clone https://github.com/fim-ai/fim-one.git
+cd fim-one
 
 cp example.env .env
 # 编辑 .env：设置 LLM_API_KEY
@@ -99,7 +99,7 @@ JINA_API_KEY=jina_...                       # 启用网页工具 + RAG
 
 | 服务 | 用途 | 配置方式 |
 |------|------|---------|
-| **fim-agent** | API + 前端 | `.env`（LLM 密钥等） |
+| **fim-one** | API + 前端 | `.env`（LLM 密钥等） |
 | **Redis** | 跨进程中断中继 | Compose 自动配置 |
 
 ```bash
