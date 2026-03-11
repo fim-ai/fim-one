@@ -105,6 +105,7 @@ class DbMemory(BaseMemory):
         self.was_compacted: bool = False
         self._original_count: int = 0
         self._compacted_count: int = 0
+        self.compacted_message_ids: list[str] = []
 
     async def get_messages(self) -> list[ChatMessage]:
         """Load conversation history from DB, trim trailing user msg, compact.
@@ -134,6 +135,7 @@ class DbMemory(BaseMemory):
                 rows = result.scalars().all()
 
                 messages: list[ChatMessage] = []
+                id_for_msg: dict[int, str] = {}  # id(ChatMessage) → DB row ID
                 for row in rows:
                     content: str | list[dict[str, Any]] = row.content or ""
                     # Reconstruct vision content when a user message had images.
@@ -156,15 +158,40 @@ class DbMemory(BaseMemory):
                                 content = ChatMessage.build_vision_content(
                                     row.content or "", image_urls,
                                 )
-                    messages.append(
-                        ChatMessage(role=row.role, content=content),
-                    )
+                    msg = ChatMessage(role=row.role, content=content)
+                    messages.append(msg)
+                    id_for_msg[id(msg)] = str(row.id)
 
             # Drop the trailing user message — chat.py already saved the
             # current query to DB before creating this memory, and the agent
             # will append it again via messages.append(user(query)).
             if messages and messages[-1].role == "user":
-                messages.pop()
+                popped = messages.pop()
+                id_for_msg.pop(id(popped), None)
+
+            # Snapshot all IDs before filtering / compaction.
+            all_ids = {
+                id_for_msg[id(m)]
+                for m in messages
+                if id(m) in id_for_msg
+            }
+
+            # Drop empty assistant messages — native FC tool-calling
+            # intermediates whose content is empty.  They carry no
+            # semantic value for history compaction.
+            pre_filter = len(messages)
+            messages = [
+                m for m in messages
+                if not (
+                    m.role == "assistant"
+                    and not CompactUtils.content_as_text(m.content).strip()
+                )
+            ]
+            if len(messages) < pre_filter:
+                logger.debug(
+                    "DbMemory: dropped %d empty assistant message(s)",
+                    pre_filter - len(messages),
+                )
 
             self._original_count = len(messages)
 
@@ -175,6 +202,20 @@ class DbMemory(BaseMemory):
                 )
             else:
                 result = CompactUtils.smart_truncate(messages, self._max_tokens)
+
+            # Track which original messages survived compaction.
+            surviving_ids = {
+                id_for_msg[id(m)]
+                for m in result
+                if id(m) in id_for_msg
+            }
+            self.compacted_message_ids = sorted(all_ids - surviving_ids)
+            if self.compacted_message_ids:
+                logger.info(
+                    "DbMemory: %d message(s) compacted (IDs: %s)",
+                    len(self.compacted_message_ids),
+                    self.compacted_message_ids[:10],
+                )
 
             self._compacted_count = len(result)
             self.was_compacted = self._compacted_count < self._original_count
