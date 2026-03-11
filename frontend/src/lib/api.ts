@@ -1280,3 +1280,65 @@ export const modelApi = {
       body: JSON.stringify({ role }),
     }).then((r) => r.data),
 }
+
+// --- Organizations API (user-facing) ---
+export interface UserOrg {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  icon: string | null
+  owner_id: string
+  is_active: boolean
+  member_count: number
+  created_at: string
+  my_role: "owner" | "admin" | "member"
+}
+
+export interface OrgMember {
+  user_id: string
+  username: string | null
+  display_name: string | null
+  email: string | null
+  avatar: string | null
+  role: "owner" | "admin" | "member"
+  joined_at: string
+}
+
+export const orgApi = {
+  list: () =>
+    apiFetch<UserOrg[]>("/api/orgs"),
+
+  create: (body: { name: string; slug: string; description?: string | null; icon?: string | null }) =>
+    apiFetch<UserOrg>("/api/orgs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  update: (orgId: string, body: { name?: string; description?: string | null; icon?: string | null }) =>
+    apiFetch<UserOrg>(`/api/orgs/${orgId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  delete: (orgId: string) =>
+    apiFetch<void>(`/api/orgs/${orgId}`, { method: "DELETE" }),
+
+  listMembers: (orgId: string) =>
+    apiFetch<OrgMember[]>(`/api/orgs/${orgId}/members`),
+
+  addMember: (orgId: string, body: { username_or_email: string; role: string }) =>
+    apiFetch<OrgMember>(`/api/orgs/${orgId}/members`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  changeRole: (orgId: string, userId: string, role: string) =>
+    apiFetch<OrgMember>(`/api/orgs/${orgId}/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ role }),
+    }),
+
+  removeMember: (orgId: string, userId: string) =>
+    apiFetch<void>(`/api/orgs/${orgId}/members/${userId}`, { method: "DELETE" }),
+}

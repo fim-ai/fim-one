@@ -3,19 +3,21 @@
 import { useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense } from "react"
-import { Palette, Settings, User } from "lucide-react"
+import { Building2, Palette, Settings, User } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { GeneralSettings } from "@/components/settings/general-settings"
 import { AccountSettings } from "@/components/settings/account-settings"
 import { AppearanceSettings } from "@/components/settings/appearance-settings"
+import { OrganizationSettings } from "@/components/settings/organization-settings"
 
-const TAB_KEYS = ["general", "account", "appearance"] as const
+const TAB_KEYS = ["general", "account", "appearance", "organizations"] as const
 const TAB_ICONS = {
   general: Settings,
   account: User,
   appearance: Palette,
+  organizations: Building2,
 } as const
 
 type TabKey = (typeof TAB_KEYS)[number]
@@ -85,6 +87,7 @@ function SettingsContent() {
             {activeTab === "general" && <GeneralSettings />}
             {activeTab === "account" && <AccountSettings />}
             {activeTab === "appearance" && <AppearanceSettings />}
+            {activeTab === "organizations" && <OrganizationSettings />}
           </div>
         </div>
       </div>

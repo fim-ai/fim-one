@@ -4,7 +4,8 @@
   "tabs": {
     "general": "通用",
     "account": "账户",
-    "appearance": "外观"
+    "appearance": "外观",
+    "organizations": "组织"
   },
 
   "general": {

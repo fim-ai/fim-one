@@ -15,20 +15,7 @@ description: "FIM Agent 的所有重要变更。"
   ### 新增
 </div>
 
-* **数据库连接器 (Phase 1-3)**：智能体现在可以检查数据库表结构并对 PostgreSQL、MySQL、Oracle、SQL Server 及国产数据库（达梦、人大金仓、南大通用、瀚高）执行只读 SQL 查询。核心能力包括：
-  * **Fernet 加密**：数据库密码静态加密存储（基于 `JWT_SECRET_KEY` 派生）
-  * **SQL 安全层**：sqlparse 语句分类 + 单语句限制 + 危险模式黑名单
-  * **数据库驱动**：`DatabaseDriver` 抽象基类，PostgreSQL (`asyncpg`) 和 MySQL (`aiomysql`) 实现；连接池管理器（LRU 淘汰，最大 50）
-  * **`DatabaseToolAdapter`**：每个数据库连接器自动创建 3 个工具（`list_tables`、`describe_table`、`query`），绑定到智能体后自动在聊天中加载
-  * **8 个新 API 端点**：测试连接、表结构发现、Schema CRUD、查询执行、AI 驱动的表结构标注
-  * **Schema 管理器 UI**：双面板布局，支持表结构发现、AI 标注、内联编辑、可见性开关
-  * **查询试验台**：SQL 文本框 + 运行/清空按钮 + 结果表格 + 截断提示
-  * **多态连接器详情页**：API 连接器显示 设置+动作；数据库连接器显示 设置+表结构+查询
-  * **新建连接器下拉菜单**：拆分为"新建 API 连接器"/"新建数据库连接器"
-  * **连接器卡片**：数据库类型显示 host:port/database 及驱动徽章
-  * **数据库连接器设置表单**：8 种数据库类型自动填充端口，SSL/只读开关，测试连接
-  * **59 个单元测试**，覆盖 SQL 安全、加密和适配器逻辑
-  * 新增可选依赖组 `[database]`，包含 `sqlparse`、`cryptography`、`aiomysql`
+* **设置页：组织标签页** — 用户可在设置页直接创建、加入和管理组织。功能包括：创建组织对话框（名称、自动生成标识符、描述、Emoji 图标）、编辑对话框（仅所有者）、成员管理抽屉（所有者/管理员/成员角色，带颜色徽章），以及行内操作（非所有者可退出，所有者可删除）。所有组织操作调用用户侧 `/api/orgs` 端点。完整 i18n 支持（中英文）。
 * **SSE 协议 v2 — 实时回答流式传输**：后端 `StreamChunk` 新增 `delta_reasoning` 和 `usage` 字段；LLM 请求包含用量追踪；ReAct `_run_native()` 现在通过 `stream_chat` 进行流式传输。SSE 协议在回答后立即发送 `done`，随后将 `suggestions`、`title` 和 `end` 作为独立事件发送。LLM 执行期间提前释放 DB 会话。SQLite 连接池大小从 5 提升至 20
 * **AI Builder 扩展 — 7 个新工具 + `is_builder` 标志**：三个新连接器构建器工具（`GetSettings`、`TestConnection`、`ImportOpenAPI`）和四个新智能体构建器工具（`ListConnectors`、`AddConnector`、`RemoveConnector`、`SetModel`）。智能体新增 `is_builder` 布尔字段及 Alembic 迁移。构建器提示词在会话创建时自动刷新。OpenAPI 导入新增 SSRF 防护
 * **SSE v2 前端 — 流式光标、DAG 轮次快照、UI 优化**：前端 hooks 解析 `end` / `suggestions` / `title` 事件。DAG 重新规划显示之前失败轮次为可折叠卡片。CSS 点脉冲流式光标。DAG 布局与步骤状态解耦。侧边栏折叠时新增新建对话按钮。连接器编辑器溢出修复。`font-mono` 替换为 `tabular-nums`
@@ -42,10 +29,15 @@ description: "FIM Agent 的所有重要变更。"
 * **管理后台：健康看板显示推理强度**：管理员健康检查看板现在显示推理强度标签
 * **导出：PDF 格式**：对话现在可以导出为 PDF 文档（需要 `reportlab` + `Markdown` 额外依赖）
 * **start.sh：WORKERS 环境变量**：设置 `WORKERS=N` 以在 portal/api 模式下以多 worker 运行 uvicorn
-* **记忆：压缩追踪**：`DbMemory` 现在追踪哪些消息在压缩中被移除（`compacted_message_ids`），过滤空的 assistant 消息（原生函数调用中间体，无内容），并将 ChatMessage 对象映射到其数据库行 ID，以实现精确的压缩审计
-* **临时数据库连接测试**：新增 `POST /api/connectors/test-connection` 端点，允许在保存连接器之前测试数据库连通性。前端新增 `testConnectionAdhoc()` API 客户端方法；数据库连接器表单在无 `connector.id` 时使用临时端点，首次保存前即可使用"测试连接"功能
-* **KingbaseES/瀚高驱动校验**：数据库驱动正则校验模式中新增 `kingbasees` 和 `highgo`
-* **Schema 管理器：列可见性即时切换**：列可见性开关现在即时保存，采用乐观 UI 更新 + 错误时回滚，替代之前的批量保存方式
+
+* **Docker Compose 部署**：单镜像 (API + Frontend) 、用于数据持久化的命名卷，以及独立模式的 Next.js 输出模式
+* **管理后台：登录历史记录**：认证端点现在会将每次登录尝试 (IP 地址、User-Agent、成功/失败及原因) 记录到 `LoginHistory` 表中，用于安全审计
+* **管理后台：文件浏览器**：新增管理后台文件浏览器端点，用于列出和下载用户上传的文件，并支持分页
+* **管理后台：增强的智能体/知识库视图**：管理后台智能体列表和知识库视图现已提供 `model_name`、`tools`、`kb_ids` 和 `embedding_model` 字段，提升可见性
+* **聊天：敏感词拦截**：ReAct 和 `inject_message` 聊天端点现在都会执行敏感词过滤，拦截包含已配置敏感词的消息
+* **SSE：结构化错误处理**：`useSSE` hook 中的 `onError` 回调已从普通字符串升级为 `ApiError` 对象，以提供更丰富的错误上下文 (错误代码、参数)
+* **UI：`formatTokens` 工具**：新增用于显示令牌计数的格式化辅助工具，支持基于区域设置的数字格式化
+* **UI：`Checkbox` 和 `FadeIn` 组件**：新增 shadcn 风格的复选框组件和淡入动画包装组件
 
 <div id="changed">
   ### 变更
@@ -63,6 +55,9 @@ description: "FIM Agent 的所有重要变更。"
 * **智能中转路由**：根据 URL 路径模式自动检测 API 协议（如 `/claude` 或 `/anthropic` → Anthropic 原生，`/gemini` → Google 原生），为第三方中转平台自动启用正确的认证头和参数转换，无需手动配置提供商
 * **结构化输出降级**：统一的 `structured_llm_call()` 工具，支持 3 级提取（Native FC → JSON Mode → 纯文本 + 正则兜底）。重构 DAG 规划器、计划分析器和工具选择，使用共享工具替代各自为政的 JSON 解析，实现所有结构化 LLM 调用点的一致重试和降级策略
 
+* **文档：ASCII → Mermaid 图表**：所有使用框线字符绘制的 ASCII 图均已转换为原生 Mermaid 图表 (共 12 张，分布在 6 个页面) ，以获得更好的渲染效果和交互性
+* **文档：深色模式主题**：优化了 Mintlify 的颜色配置——深色模式下采用暖琥珀色强调色、渐变背景装饰，以及与项目主题一致的背景颜色
+
 <div id="docs">
   ### 文档
 </div>
@@ -70,18 +65,10 @@ description: "FIM Agent 的所有重要变更。"
 * **架构图表布局修复**：将 Mermaid 流程图从左右布局（`LR`）切换为上下布局（`TD`）以提升可读性，移除 `mode: "wide"` frontmatter，新增 `custom.css` 实现 Mermaid SVG 居中渲染
 * **Mermaid 节点标签换行修复**：将所有架构和概念文档中 Mermaid 流程图节点标签的 `\n` 替换为 `<br/>`（中英文同步）——Mermaid 在带引号的标签中会将 `\n` 渲染为字面文本
 
-<div id="changed-2">
-  ### 变更
-</div>
-
-* **数据库连接器：测试连接位置调整**：将"测试连接"按钮从表单底部移至密码字段之后，用户填写完连接信息后即可测试连通性
-
 <div id="fixed">
   ### 已修复
 </div>
 
-* **连接器设置标签页滚动**：API 和数据库连接器设置表单均改用 `flex-1 min-h-0` 替代 `h-full`，确保 flex 链中高度正确解析；`ScrollArea` 添加 `min-h-0` 以允许缩小到内容高度以下
-* **连接器表单 nullable base_url**：处理数据库连接器引入的可空 `base_url`，API 连接器表单中添加 `|| ""` 回退
 * **Docker 沙箱 (DooD) 卷挂载修复**：修复 `CODE_EXEC_BACKEND=docker` 在容器内运行时（docker-compose 部署）`-v` 绑定挂载为空的问题。沙箱目录从 `tmp/conversations/` 迁移至 `data/sandbox/`（在已挂载的 `./data:/app/data` 卷下）。新增 `DOCKER_HOST_DATA_DIR` 环境变量，将容器内部路径翻译为宿主机可见路径。修复 `_PROJECT_ROOT` 解析为 `/app/src/`（而非 `/app/`）的问题
 * **安全：Python 沙箱 AST dunder 校验**：通过 AST dunder 属性校验阻止沙箱逃逸
 * **安全：MCP stdio 默认值 + 命令允许列表**：统一 MCP stdio 传输默认值（现默认禁用），并新增命令允许列表（`ALLOWED_STDIO_COMMANDS`）
@@ -93,68 +80,14 @@ description: "FIM Agent 的所有重要变更。"
 * **DAG：历史记录显示步骤卡片**：历史轮次现在在展开的折叠区域中渲染步骤卡片（之前被 `hideStepCards` 隐藏）
 * **DAG：重新规划时清除旧分析**：重新规划开始时，第一轮"目标未达成"的分析会立即清除，且第二轮的"正在分析结果..."加载提示可正确显示
 * **UI：聊天搜索框焦点环**：为搜索输入框添加 `focus-visible:outline-none`，防止焦点环溢出
-* **Agent AI 优化无变更检测**：后端在应用修改前对比新旧值，跳过相同字段；前端在实际无变更时显示提示性 toast，而非误报成功
 * **导出：PDF 可读性**：增加了所有 PDF 样式的行距 (leading) 和单元格内边距，提升文本可读性
 * **导出：移除表情符号过滤**：移除了 DOCX 和 PDF 导出中对最终回答内容不必要的 `_strip_emoji()` 调用，保留原始内容
 * **管理后台：统计页面 PG 崩溃**：修复管理后台统计页面在 PostgreSQL 上崩溃的问题 — `GROUP BY` 中使用参数化的 `coalesce()` 导致 `GroupingError`；已改用 `literal()` 列默认值
-* **连接器设置标签页滚动**：修复连接器设置标签页无法滚动的问题，在 `TabsContent` 上补充了缺失的 `overflow-hidden flex flex-col`
-* **连接器表单 base_url 类型错误**：修复 connector-settings-form 中可空 `base_url` 的类型错误
-
-<div id="added-org-visibility">
-  ### 新增（组织与可见性）
-</div>
-
-* **组织系统**：组织的完整 CRUD，支持基于角色的成员管理 (owner/admin/member)；认证辅助函数 (`get_user_org_ids`、`require_org_member/admin/owner`)；管理端点 `/api/admin/organizations`；前端管理员组织组件，含成员管理 UI
-* **三级资源可见性**：智能体、连接器、知识库和 MCP 服务器新增 `visibility` 列 (personal/org/global) 及 `org_id`；统一的 `build_visibility_filter()` 查询辅助函数；用户可见资源 = 个人 + 组织共享 + 全局
-* **发布/取消发布 API**：四种资源类型均新增 `POST /api/{resource}/{id}/publish` 和 `POST /api/{resource}/{id}/unpublish` 端点，用于组织/全局共享
-* **所有者委托**：已发布的智能体在聊天中可透明访问所有者的连接器和知识库，消费者无需自行持有凭据
-* **管理员设置可见性端点**：替代旧版"克隆为全局"工作流；管理员可直接设置任意资源的可见性
-* **组织管理 UI**：管理面板组织表格，含创建/编辑/删除对话框、成员管理 (添加/移除/角色变更)，完整国际化 (中英文)
-
-<div id="changed-org-visibility">
-  ### 变更（组织与可见性）
-</div>
-
-* 资源列表查询现在通过 `build_visibility_filter()` 使用统一的可见性过滤器 (个人 + 组织共享 + 全局)
-* 全局资源现在使用引用模型替代克隆模型——源资源直接以 `visibility='global'` 发布
-* 智能体、连接器、知识库和 MCP 服务器的响应 Schema 现在包含 `visibility` 和 `org_id` 字段
-
-<div id="fixed-org-visibility">
-  ### 已修复（组织与可见性）
-</div>
-
-* 旧版克隆智能体 (`user_id=NULL`) 已通过数据迁移回填转为引用模型
-* 可见性迁移回填中的 SQLite 布尔字面量处理修复
-* 移除了 auth.py 中重复的 `get_user_org_ids` 辅助函数
-
-<div id="added-docker-admin">
-  ### 新增（Docker 与管理后台）
-</div>
-
-* **Docker Compose 部署**：单镜像 (API + Frontend) 、用于数据持久化的命名卷，以及独立模式的 Next.js 输出模式
-* **管理后台：登录历史记录**：认证端点现在会将每次登录尝试 (IP 地址、User-Agent、成功/失败及原因) 记录到 `LoginHistory` 表中，用于安全审计
-* **管理后台：文件浏览器**：新增管理后台文件浏览器端点，用于列出和下载用户上传的文件，并支持分页
-* **管理后台：增强的智能体/知识库视图**：管理后台智能体列表和知识库视图现已提供 `model_name`、`tools`、`kb_ids` 和 `embedding_model` 字段，提升可见性
-* **聊天：敏感词拦截**：ReAct 和 `inject_message` 聊天端点现在都会执行敏感词过滤，拦截包含已配置敏感词的消息
-* **SSE：结构化错误处理**：`useSSE` hook 中的 `onError` 回调已从普通字符串升级为 `ApiError` 对象，以提供更丰富的错误上下文 (错误代码、参数)
-* **UI：`formatTokens` 工具**：新增用于显示令牌计数的格式化辅助工具，支持基于区域设置的数字格式化
-* **UI：`Checkbox` 和 `FadeIn` 组件**：新增 shadcn 风格的复选框组件和淡入动画包装组件
-
-<div id="changed-docker-admin">
-  ### 变更（Docker 与管理后台）
-</div>
-
-* **文档：ASCII → Mermaid 图表**：所有使用框线字符绘制的 ASCII 图均已转换为原生 Mermaid 图表 (共 12 张，分布在 6 个页面) ，以获得更好的渲染效果和交互性
-* **文档：深色模式主题**：优化了 Mintlify 的颜色配置——深色模式下采用暖琥珀色强调色、渐变背景装饰，以及与项目主题一致的背景颜色
-
-<div id="fixed-docker-admin">
-  ### 已修复（Docker 与管理后台）
-</div>
 
 * **导出：RFC 5987 文件名支持**：优先使用 Content-Disposition 头中 UTF-8 编码的 `filename*`，而非普通 `filename`，修复导出对话时中日韩文件名乱码问题
 * **Docker i18n 失效**：将 `messages/` 目录复制到独立输出中，并添加 `outputFileTracingIncludes`，以便 next-intl 在运行时发现 locale JSON 文件
 * **Docker 启动竞态条件**：在启动 Next.js 之前，于 entrypoint 中添加 API 就绪等待循环 (Python socket 轮询) ，避免出现 `e.map is not a function` SSR 错误
-* **工件：按会话 created&#95;at 排序**：按会话创建时间而不是文件 mtime 对工件进行排序 (mtime 在 Docker 卷上不可靠)
+* **工件：按会话 created&#95;at 排序**：按会话创建时间而不是文件 mtime 对工件进行排序 (mtime 在 Docker 卷上不可靠) 
 * **OAuth：根据 window.location 端口自动检测生产环境 API URL**：浏览器自动检测现在可在生产环境中正确处理自定义端口 (不再仅限于 3000)
 * **Docker：DooD 沙箱卷挂载路径不匹配**：当在容器内以 `CODE_EXEC_BACKEND=docker`（Docker-outside-of-Docker）运行时，沙箱脚本被写入容器内部路径，对宿主机 Docker 守护进程不可见，导致空的 `-v` 挂载和"No such file or directory"错误。通过将沙箱目录移至 `data/sandbox/`、新增 `DOCKER_HOST_DATA_DIR` 环境变量及 `_resolve_host_path()` 路径转换函数，并处理空字符串环境变量边界情况来修复
 

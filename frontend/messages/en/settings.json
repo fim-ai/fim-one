@@ -4,7 +4,8 @@
   "tabs": {
     "general": "General",
     "account": "Account",
-    "appearance": "Appearance"
+    "appearance": "Appearance",
+    "organizations": "Organizations"
   },
 
   "general": {
