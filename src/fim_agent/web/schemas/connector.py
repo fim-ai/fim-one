@@ -66,7 +66,7 @@ class ConnectorCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
     icon: str | None = None
-    type: str = "api"
+    type: str = Field(default="api", pattern=r"^(api|database)$")
     base_url: str | None = Field(default=None, max_length=500)
     auth_type: str = "none"
     auth_config: dict[str, Any] | None = None
