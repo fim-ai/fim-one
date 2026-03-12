@@ -125,9 +125,14 @@ async def list_conversations(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    base = select(Conversation).where(
-        Conversation.user_id == current_user.id,
-        Conversation.status == conv_status,
+    base = (
+        select(Conversation)
+        .outerjoin(Agent, Agent.id == Conversation.agent_id)
+        .where(
+            Conversation.user_id == current_user.id,
+            Conversation.status == conv_status,
+            or_(Conversation.agent_id.is_(None), Agent.is_builder == False),  # noqa: E712
+        )
     )
 
     if q:
