@@ -25,7 +25,7 @@
   "kbDocs": "{count} docs",
   "kbChunks": "{count} chunks",
   "kbEmpty": "No knowledge bases yet",
-  "connectorsTitle": "Connector Health",
+  "connectorsTitle": "Connectors",
   "connectorCallsToday": "{count} calls today",
   "connectorsEmpty": "No connectors configured",
   "statusActive": "Active",

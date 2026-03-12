@@ -25,7 +25,7 @@
   "kbDocs": "{count} 篇文档",
   "kbChunks": "{count} 个分片",
   "kbEmpty": "暂无知识库",
-  "connectorsTitle": "连接器状态",
+  "connectorsTitle": "连接器",
   "connectorCallsToday": "今日 {count} 次调用",
   "connectorsEmpty": "尚未配置连接器",
   "statusActive": "正常",

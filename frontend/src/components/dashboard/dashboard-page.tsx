@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations, useLocale } from "next-intl"
-import { Loader2, MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, ArrowRight, Activity, Library, Zap, Clock } from "lucide-react"
+import { Loader2, MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, Activity, Library, Zap, Clock } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN, enUS } from "date-fns/locale"
 import {
@@ -447,36 +447,30 @@ export function DashboardPage() {
                   ) : (
                     <ul className="divide-y divide-border">
                       {stats.recent_conversations.slice(0, 6).map((conv) => (
-                        <li key={conv.id} className="flex items-center gap-3 px-5 py-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="truncate text-sm font-medium text-foreground">
-                              {conv.title || t("untitled")}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {conv.agent_name && (
-                                <Badge
-                                  variant="secondary"
-                                  className="h-4 px-1.5 text-[10px] font-normal"
-                                >
-                                  {conv.agent_name}
-                                </Badge>
-                              )}
-                              <span className="text-xs text-muted-foreground">
-                                {relativeTime(conv.updated_at ?? conv.created_at, locale)}
-                              </span>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="shrink-0 h-7 gap-1 text-xs"
-                            asChild
+                        <li key={conv.id}>
+                          <Link
+                            href={`/?c=${conv.id}`}
+                            className="flex items-center gap-3 px-5 py-1.5 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
-                            <Link href={`/?c=${conv.id}`}>
-                              {t("recentResume")}
-                              <ArrowRight className="h-3 w-3" />
-                            </Link>
-                          </Button>
+                            <div className="flex-1 min-w-0">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {conv.title || t("untitled")}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {conv.agent_name && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="h-4 px-1.5 text-[10px] font-normal"
+                                  >
+                                    {conv.agent_name}
+                                  </Badge>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                  {relativeTime(conv.updated_at ?? conv.created_at, locale)}
+                                </span>
+                              </div>
+                            </div>
+                          </Link>
                         </li>
                       ))}
                     </ul>
@@ -597,7 +591,7 @@ export function DashboardPage() {
                         <li key={connector.id}>
                           <Link
                             href={`/connectors/${connector.id}`}
-                            className="flex items-center gap-3 px-5 py-2 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                            className="flex items-center gap-3 px-5 py-1.5 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                           >
                             <Plug className="h-4 w-4 shrink-0 text-muted-foreground" />
                             <div className="min-w-0 flex-1">
