@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Bot, FlaskConical, LayoutDashboard, Layers, Library, Loader2, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, Sun, Wrench, X } from "lucide-react"
+import { Bot, FlaskConical, LayoutDashboard, Layers, Library, Loader2, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, Sun, Wrench, X } from "lucide-react"
 import { getApiBaseUrl } from "@/lib/constants"
 import { setMaintenanceCallback } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -17,12 +17,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useTheme } from "next-themes"
+import { motion, AnimatePresence } from "motion/react"
 import { useAuth } from "@/contexts/auth-context"
 import { ConversationProvider, useConversation } from "@/contexts/conversation-context"
 import { ConversationSidebar } from "@/components/layout/conversation-sidebar"
 import { ChatSearchDialog } from "@/components/layout/chat-search-dialog"
 import { UserMenu } from "@/components/layout/user-menu"
 import { NavigationProgress } from "@/components/layout/navigation-progress"
+import { GettingStartedCard } from "@/components/layout/getting-started-card"
 
 /** Wraps children in a right-side tooltip when the sidebar is collapsed. */
 function SidebarTooltip({
@@ -262,6 +264,108 @@ function MaintenanceOverlay() {
   )
 }
 
+const LOGO_PARTICLES = [
+  { angle: 0,   dist: 28, color: "#6366f1" },
+  { angle: 45,  dist: 26, color: "#8b5cf6" },
+  { angle: 90,  dist: 30, color: "#ec4899" },
+  { angle: 135, dist: 27, color: "#f59e0b" },
+  { angle: 180, dist: 28, color: "#10b981" },
+  { angle: 225, dist: 25, color: "#3b82f6" },
+  { angle: 270, dist: 30, color: "#f97316" },
+  { angle: 315, dist: 26, color: "#14b8a6" },
+] as const
+
+function LogoEasterEgg() {
+  const router = useRouter()
+  const [popping, setPopping] = useState(false)
+
+  const handleClick = () => {
+    router.push("/")
+    if (popping) return
+    setPopping(true)
+    setTimeout(() => setPopping(false), 800)
+  }
+
+  return (
+    <div className="relative" onClick={handleClick}>
+      <motion.button
+        className="flex items-center gap-2 rounded-md px-1 -mx-1 hover:opacity-70 focus-visible:outline-none cursor-pointer"
+        animate={popping ? { y: [0, -5, 2, -2, 0] } : {}}
+        transition={{ duration: 0.45, ease: "easeInOut" }}
+      >
+        <img src="/fim-mark-light.svg" alt="FIM" className="h-5 w-auto shrink-0 dark:hidden" />
+        <img src="/fim-mark.svg" alt="FIM" className="h-5 w-auto shrink-0 hidden dark:block" />
+        <span className="text-base font-bold tracking-tight text-sidebar-foreground" style={{ fontFamily: "var(--font-cabinet), sans-serif" }}>{APP_NAME}</span>
+      </motion.button>
+      <AnimatePresence>
+        {popping && LOGO_PARTICLES.map(({ angle, dist, color }) => {
+          const rad = (angle * Math.PI) / 180
+          return (
+            <motion.span
+              key={angle}
+              className="absolute rounded-full pointer-events-none"
+              style={{ width: 4, height: 4, background: color, left: "50%", top: "50%", marginLeft: -2, marginTop: -2 }}
+              initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+              animate={{ x: Math.cos(rad) * dist, y: Math.sin(rad) * dist, opacity: 0, scale: 0 }}
+              exit={{}}
+              transition={{ duration: 0.55, ease: "easeOut" }}
+            />
+          )
+        })}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function SidebarNav({ collapsed }: { collapsed: boolean }) {
+  const t = useTranslations("layout")
+  const pathname = usePathname()
+  const { activeId, clearActive } = useConversation()
+
+  const navLink = (href: string, active: boolean, icon: React.ReactNode, label: string, onClick?: () => void) => (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+        collapsed && "h-9 w-9 justify-center px-0"
+      )}
+    >
+      {icon}
+      {!collapsed && <span>{label}</span>}
+    </Link>
+  )
+
+  return (
+    <div className={cn("px-3 py-2 shrink-0", collapsed && "flex flex-col items-center gap-1")}>
+      <SidebarTooltip label={t("dashboard")} collapsed={collapsed}>
+        {navLink("/", pathname === "/" && !activeId, <LayoutDashboard className="h-4 w-4" />, t("dashboard"), clearActive)}
+      </SidebarTooltip>
+      <SidebarTooltip label={t("agents")} collapsed={collapsed}>
+        {navLink("/agents", pathname === "/agents" || pathname.startsWith("/agents/"), <Bot className="h-4 w-4" />, t("agents"))}
+      </SidebarTooltip>
+      <SidebarTooltip label={t("knowledge")} collapsed={collapsed}>
+        {navLink("/kb", pathname === "/kb" || pathname.startsWith("/kb/"), <Library className="h-4 w-4" />, t("knowledge"))}
+      </SidebarTooltip>
+      <SidebarTooltip label={t("connectors")} collapsed={collapsed}>
+        {navLink("/connectors", pathname === "/connectors" || pathname.startsWith("/connectors/"), <Plug className="h-4 w-4 shrink-0" />, t("connectors"))}
+      </SidebarTooltip>
+      <SidebarTooltip label={t("tools")} collapsed={collapsed}>
+        {navLink("/tools", pathname === "/tools", <Wrench className="h-4 w-4" />, t("tools"))}
+      </SidebarTooltip>
+      <SidebarTooltip label={t("artifacts")} collapsed={collapsed}>
+        {navLink("/artifacts", pathname === "/artifacts", <Layers className="h-4 w-4" />, t("artifacts"))}
+      </SidebarTooltip>
+      <SidebarTooltip label={t("eval")} collapsed={collapsed}>
+        {navLink("/eval", pathname === "/eval" || pathname.startsWith("/eval/"), <FlaskConical className="h-4 w-4" />, t("eval"))}
+      </SidebarTooltip>
+    </div>
+  )
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useTranslations("layout")
   const [isMaintenance, setIsMaintenance] = useState(false)
@@ -348,11 +452,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </SidebarTooltip>
             ) : (
               <>
-                <Link href="/" className="flex items-center gap-2 rounded-md px-1 -mx-1 transition-colors hover:opacity-70">
-                  <img src="/fim-mark-light.svg" alt="FIM" className="h-5 w-auto shrink-0 dark:hidden" />
-                  <img src="/fim-mark.svg" alt="FIM" className="h-5 w-auto shrink-0 hidden dark:block" />
-                  <span className="text-base font-bold tracking-tight text-sidebar-foreground" style={{ fontFamily: 'var(--font-cabinet), sans-serif' }}>{APP_NAME}</span>
-                </Link>
+                <LogoEasterEgg />
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -376,128 +476,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Separator />
 
           {/* Navigation */}
-          <div className={cn("px-3 py-2 shrink-0", collapsed && "flex flex-col items-center gap-1")}>
-            <SidebarTooltip label={t("dashboard")} collapsed={collapsed}>
-              <Link
-                href="/"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                {!collapsed && <span>{t("dashboard")}</span>}
-              </Link>
-            </SidebarTooltip>
-            <SidebarTooltip label={t("agents")} collapsed={collapsed}>
-              <Link
-                href="/agents"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/agents" || pathname.startsWith("/agents/")
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <Bot className="h-4 w-4" />
-                {!collapsed && <span>{t("agents")}</span>}
-              </Link>
-            </SidebarTooltip>
-            <SidebarTooltip label={t("knowledge")} collapsed={collapsed}>
-              <Link
-                href="/kb"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/kb" || pathname.startsWith("/kb/")
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <Library className="h-4 w-4" />
-                {!collapsed && <span>{t("knowledge")}</span>}
-              </Link>
-            </SidebarTooltip>
-            <SidebarTooltip label={t("connectors")} collapsed={collapsed}>
-              <Link
-                href="/connectors"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/connectors" || pathname.startsWith("/connectors/")
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <Plug className="h-4 w-4 shrink-0" />
-                {!collapsed && <span>{t("connectors")}</span>}
-              </Link>
-            </SidebarTooltip>
-            <SidebarTooltip label={t("tools")} collapsed={collapsed}>
-              <Link
-                href="/tools"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/tools"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <Wrench className="h-4 w-4" />
-                {!collapsed && <span>{t("tools")}</span>}
-              </Link>
-            </SidebarTooltip>
-            <SidebarTooltip label={t("artifacts")} collapsed={collapsed}>
-              <Link
-                href="/artifacts"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/artifacts"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <Layers className="h-4 w-4" />
-                {!collapsed && <span>{t("artifacts")}</span>}
-              </Link>
-            </SidebarTooltip>
-            <SidebarTooltip label={t("allChats")} collapsed={collapsed}>
-              <Link
-                href="/chats"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/chats"
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <MessagesSquare className="h-4 w-4" />
-                {!collapsed && <span>{t("allChats")}</span>}
-              </Link>
-            </SidebarTooltip>
-            <SidebarTooltip label={t("eval")} collapsed={collapsed}>
-              <Link
-                href="/eval"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname === "/eval" || pathname.startsWith("/eval/")
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
-                  collapsed && "h-9 w-9 justify-center px-0"
-                )}
-              >
-                <FlaskConical className="h-4 w-4" />
-                {!collapsed && <span>{t("eval")}</span>}
-              </Link>
-            </SidebarTooltip>
-          </div>
+          <SidebarNav collapsed={collapsed} />
 
           <Separator />
 
@@ -508,6 +487,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           {/* Bottom area */}
           <div className={cn("shrink-0 pb-3", collapsed ? "px-2" : "px-3")}>
+            {/* Getting Started checklist */}
+            <div className={cn("mb-2", collapsed ? "flex justify-center" : "")}>
+              <GettingStartedCard collapsed={collapsed} />
+            </div>
             <Separator className="mb-2" />
             <SidebarFooter collapsed={collapsed} />
           </div>

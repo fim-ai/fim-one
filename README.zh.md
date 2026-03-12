@@ -61,6 +61,14 @@ graph LR
 
 核心始终不变：ReAct 推理循环、动态 DAG 规划与并发执行、可插拔工具，以及零供应商锁定的协议优先架构。
 
+### 使用智能体
+
+![使用智能体](https://github.com/user-attachments/assets/b03d7750-eae6-4b16-9242-4c500d53d6cf)
+
+### 使用规划模式
+
+![使用规划模式](https://github.com/user-attachments/assets/2b630496-2e62-4e14-bbdf-b8c707258390)
+
 ## 应用场景
 
 企业数据和业务流程被锁在 OA、ERP、财务和审批系统中。FIM One 让 AI Agent 能够读写这些系统 — 在不修改现有基础设施的前提下，实现跨系统流程自动化。

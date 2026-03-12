@@ -65,6 +65,14 @@ graph LR
 
 The core is always the same: ReAct reasoning loops, dynamic DAG planning with concurrent execution, pluggable tools, and a protocol-first architecture with zero vendor lock-in.
 
+### Using Agents
+
+![Using Agents](https://github.com/user-attachments/assets/b03d7750-eae6-4b16-9242-4c500d53d6cf)
+
+### Using Planner Mode
+
+![Using Planner Mode](https://github.com/user-attachments/assets/2b630496-2e62-4e14-bbdf-b8c707258390)
+
 ## Use Cases
 
 Enterprise data and workflows are locked inside OA, ERP, finance, and approval systems. FIM One lets AI agents read and write those systems — automating cross-system processes without modifying your existing infrastructure.

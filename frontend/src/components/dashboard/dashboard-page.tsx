@@ -530,7 +530,7 @@ export function DashboardPage() {
                             </p>
                             <Badge
                               variant="secondary"
-                              className="mt-1.5 h-4 px-1.5 text-[10px] font-normal"
+                              className="mt-1 h-5 px-2 text-xs font-normal"
                             >
                               {t("agentsConvCount", { count: agent.conversation_count })}
                             </Badge>
@@ -559,8 +559,11 @@ export function DashboardPage() {
                 </CardHeader>
                 <CardContent className="px-5 pb-4 pt-1">
                   {!stats?.top_kbs.length ? (
-                    <div className="py-6 text-center text-sm text-muted-foreground">
-                      {t("kbEmpty")}
+                    <div className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
+                      <p>{t("kbEmpty")}</p>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/kb/new">{t("kbCreate")}</Link>
+                      </Button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -601,8 +604,11 @@ export function DashboardPage() {
                 </CardHeader>
                 <CardContent className="px-0 pb-1">
                   {!stats?.connector_health.length ? (
-                    <div className="px-6 py-8 text-center text-sm text-muted-foreground">
-                      {t("connectorsEmpty")}
+                    <div className="flex flex-col items-center gap-3 px-6 py-8 text-sm text-muted-foreground">
+                      <p>{t("connectorsEmpty")}</p>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/connectors/new">{t("connectorsCreate")}</Link>
+                      </Button>
                     </div>
                   ) : (
                     <ul className="divide-y divide-border">
@@ -623,11 +629,21 @@ export function DashboardPage() {
                               <p className="truncate text-sm font-medium text-foreground">
                                 {connector.name}
                               </p>
-                              <span className="text-xs text-muted-foreground">
+                              <span className={cn(
+                                "inline-flex items-center rounded-full px-1.5 py-0 h-4 text-[10px] font-medium mt-0.5",
+                                connector.type === "database"
+                                  ? "bg-blue-500/10 text-blue-500"
+                                  : "bg-amber-500/10 text-amber-500"
+                              )}>
                                 {connector.type}
                               </span>
                             </div>
-                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                            <span className={cn(
+                              "shrink-0 inline-flex items-center rounded-full px-1.5 h-4 text-[10px] font-medium tabular-nums",
+                              connector.call_count_today === 0
+                                ? "bg-muted text-muted-foreground"
+                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            )}>
                               {connector.call_count_today === 0
                                 ? t("connectorNoCallsRecently")
                                 : t("connectorCallsToday", { count: connector.call_count_today })}
