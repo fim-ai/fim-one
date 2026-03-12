@@ -179,7 +179,9 @@ FIM One doesn't do BPM/FSM — workflow logic belongs to the target system, Conn
 
 #### Platform & Multi-Tenant
 - **JWT Auth** — Token-based SSE auth, conversation ownership, per-user resource isolation.
-- **Agent Management** — Create, configure, and publish agents with bound models, tools, and instructions. Per-agent execution mode (Standard/Planner) and temperature control.
+- **Agent Management** — Create, configure, and publish agents with bound models, tools, and instructions. Per-agent execution mode (Standard/Planner) and temperature control. Optional `discoverable` flag enables LLM auto-discovery via CallAgentTool.
+- **Platform Organization** — Built-in `platform` org auto-joins all users, replacing the legacy "global" visibility concept. Central hub for sharing resources (agents, connectors, knowledge bases, MCP servers) across the organization.
+- **Resource Subscriptions & Market** — Users browse and subscribe to shared resources from the org Market. Subscribe/unsubscribe via UI or API. All resource types support org-level publishing and subscription management.
 - **Admin Panel** — System stats dashboard (users, conversations, tokens, model usage charts, tokens-by-agent breakdown), connector call metrics (success rate, latency, call counts), user management with search/pagination, role toggle, password reset, account enable/disable, and per-tool enable/disable controls.
 - **First-Run Setup Wizard** — On first launch, the portal guides you through creating an admin account (username, password, email). This one-time setup becomes your login credential — no config files needed.
 - **Personal Center** — Per-user global system instructions, applied across all conversations.

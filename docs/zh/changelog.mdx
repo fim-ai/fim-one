@@ -11,7 +11,48 @@ description: "FIM One 的所有重要变更。"
   ## [未发布]
 </div>
 
-*(暂无内容)*
+<div id="added">
+  ### 新增
+</div>
+
+* **平台组织**：内置组织 `platform`（ID：`00000000-0000-0000-0000-000000000001`）— 所有新用户自动加入。该组织取代了"全局"可见性概念，为所有用户提供跨组织资源共享的中央枢纽。
+* **资源订阅**：用户现可订阅/取消订阅组织市场中的共享资源（智能体、连接器、知识库、MCP 服务器）。新增 `resource_subscriptions` 数据库表追踪订阅关系。
+* **市场 API**：新增端点用于浏览和管理订阅：
+  - `GET /api/market` — 浏览当前组织中的可用资源
+  - `POST /api/market/subscribe` — 订阅资源
+  - `DELETE /api/market/unsubscribe` — 取消订阅资源
+  - `GET /api/market/subscriptions` — 列出用户当前订阅
+* **市场页面**：门户中新增 `/market` 页面，用于浏览和管理对组织资源的订阅。
+* **智能体自动发现**：智能体新增 `discoverable` 布尔字段。`discoverable=true` 的智能体可通过 `call_agent` 工具被 LLM 自动发现并调用（仅限单级委派，无递归）。
+* **子智能体绑定**：智能体新增 `sub_agent_ids` 字段 — 可调用子智能体的显式白名单，实现细粒度访问控制。
+* **CallAgentTool**：内置工具，用于将任务委派给专家智能体，支持结构化输入验证和结果处理。
+* **MCP 服务器凭据**：新增 `mcp_server_credentials` 表，允许用户为 MCP 服务器设置环境变量和 HTTP 请求头的个人覆盖。
+* **MCP 凭据端点**：`PUT /api/mcp-servers/{id}/my-credentials` 允许用户为共享 MCP 服务器存储个人凭据覆盖。
+* **MCPServer 上的 `allow_fallback`**：布尔字段控制凭据回退行为 — 当为 `true` 时，缺失的用户凭据会回退到所有者默认值。
+* **连接器/知识库切换**：新增资源状态管理端点：
+  - `POST /api/connectors/{id}/toggle` — 暂停/恢复连接器
+  - `POST /api/knowledge-bases/{id}/toggle` — 暂停/恢复知识库
+* **独立知识库对话**：`ChatStreamRequest` 和 `Conversation` 新增 `kb_ids` 字段 — 用户现可直接与知识库聊天，无需将其绑定到智能体。
+* **平台组织保护**：平台组织无法删除，用户也无法自行离开。确保所有用户保持与组织枢纽的连接。
+
+<div id="changed">
+  ### 变更
+</div>
+
+* **可见性简化**：资源可见性从 `personal | org | global` 简化为 `personal | org`。"全局"资源现在发布到平台组织，保持向后兼容的同时简化了可见性模型。
+* **发布接口统一**：全部 4 种资源类型（智能体、连接器、知识库、MCP 服务器）现在仅支持 `scope="org"` 用于发布。不再有 `scope="global"` 或管理员专属全局发布端点。
+* **自动平台组织注册**：新用户在注册时自动添加到平台组织，确保立即获得共享组织资源的访问权限。
+* **管理后台清理**：移除"全局智能体"和"全局 MCP"管理标签页，因为全局资源现在通过平台组织进行管理。
+
+<div id="removed">
+  ### 移除
+</div>
+
+* 从智能体和 MCPServer 模型及所有 API 响应中移除 `is_global` 字段
+* 从智能体和 MCPServer 中移除 `cloned_from_agent_id` 和 `cloned_from_mcp_server_id` 字段
+* 移除全局智能体管理端点（`/api/admin/global-agents/*`）
+* 移除全局 MCP 服务器端点（`/api/admin/mcp-servers/*`）
+* 从资源、API 契约和前端逻辑中移除所有 `visibility="global"` 概念引用
 
 <div id="v075-2026-03-12">
   ## [v0.7.5] - 2026-03-12

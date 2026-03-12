@@ -9,7 +9,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
-*(nothing yet)*
+### Added
+
+- **Platform Organization**: Built-in org `platform` (ID: `00000000-0000-0000-0000-000000000001`) — all new users automatically join. This organization replaces the "global" visibility concept and provides a central hub for sharing resources across all users.
+- **Resource Subscriptions**: Users can now subscribe/unsubscribe to shared resources (agents, connectors, knowledge bases, MCP servers) from org Markets. New `resource_subscriptions` database table tracks subscription relationships.
+- **Market API**: New endpoints for browsing and managing subscriptions:
+  - `GET /api/market` — browse available resources in current org
+  - `POST /api/market/subscribe` — subscribe to a resource
+  - `DELETE /api/market/unsubscribe` — unsubscribe from a resource
+  - `GET /api/market/subscriptions` — list user's current subscriptions
+- **Market Page**: New `/market` page in Portal for browsing and managing subscriptions to org resources.
+- **Agent Auto-discovery**: New `discoverable` boolean field on agents. Agents with `discoverable=true` can be automatically discovered and called by LLMs via the `call_agent` tool (one-level delegation, no recursion).
+- **Sub-agent Binding**: New `sub_agent_ids` field on agents — explicit whitelist of callable sub-agents for fine-grained access control.
+- **CallAgentTool**: Built-in tool that delegates tasks to specialist agents with structured input validation and result handling.
+- **MCP Server Credentials**: New `mcp_server_credentials` table enables per-user environment variable and HTTP header overrides for MCP servers.
+- **MCP Credentials Endpoint**: `PUT /api/mcp-servers/{id}/my-credentials` allows users to store personal credential overrides for shared MCP servers.
+- **`allow_fallback` on MCPServer**: Boolean field controlling credential fallback behavior — when `true`, missing user credentials fall back to owner defaults.
+- **Connector/KB Toggle**: New endpoints for resource state management:
+  - `POST /api/connectors/{id}/toggle` — suspend/resume connector
+  - `POST /api/knowledge-bases/{id}/toggle` — suspend/resume knowledge base
+- **Standalone KB Conversations**: New `kb_ids` field on `ChatStreamRequest` and `Conversation` — users can now chat directly with knowledge bases without binding them to an agent.
+- **Platform Org Protection**: The Platform org cannot be deleted, and users cannot self-leave it. Ensures all users maintain connectivity to the organization hub.
+
+### Changed
+
+- **Visibility Simplified**: Resource visibility reduced from `personal | org | global` to `personal | org`. "Global" resources are now published to the Platform org, maintaining backwards-compatible behavior while simplifying the visibility model.
+- **Publish Interface Unified**: All 4 resource types (Agent, Connector, Knowledge Base, MCP Server) now only support `scope="org"` for publishing. No more `scope="global"` or admin-only global publishing endpoints.
+- **Auto-Platform Enrollment**: New users are automatically added to the Platform org on registration, ensuring immediate access to shared organizational resources.
+- **Admin Panel Cleanup**: Removed "Global Agents" and "Global MCP" admin tabs, as global resources are now managed through the Platform org.
+
+### Removed
+
+- Removed `is_global` field from Agent and MCPServer models and all API responses
+- Removed `cloned_from_agent_id` and `cloned_from_mcp_server_id` fields from Agent and MCPServer
+- Removed global agent management endpoints (`/api/admin/global-agents/*`)
+- Removed global MCP server endpoints (`/api/admin/mcp-servers/*`)
+- Removed all `visibility="global"` concept references from resources, API contracts, and frontend logic
 
 ## [v0.7.5] - 2026-03-12
 

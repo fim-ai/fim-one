@@ -181,6 +181,11 @@ flowchart LR
 * DAG 执行工具缓存——相同工具调用按次缓存，异步锁防惊群（`DAG_TOOL_CACHE`）
 * 逐步骤 LLM 验证，失败重试一次（`DAG_STEP_VERIFICATION`）
 * 自动路由：Fast LLM 将查询分类为 ReAct 或 DAG；`/api/auto` 端点；前端三态模式切换（`AUTO_ROUTING`）
+* [x] ~~**平台组织 + 资源订阅**~~：内置平台组织自动加入所有用户；市场 API 用于订阅共享资源；资源订阅表；基于组织的资源共享替代全局可见性
+* [x] ~~**智能体自动发现和子智能体绑定**~~：智能体上的 `discoverable` 标志；`sub_agent_ids` 白名单；CallAgentTool 用于向专家智能体委派任务
+* [x] ~~**MCP 服务器凭据 + 用户级覆盖**~~：`mcp_server_credentials` 表；`PUT /api/mcp-servers/{id}/my-credentials` 端点；`allow_fallback` 标志支持凭据回退行为
+* [x] ~~**连接器/知识库切换**~~：`POST /api/connectors/{id}/toggle` 和 `POST /api/knowledge-bases/{id}/toggle` 用于暂停/恢复资源
+* [x] ~~**独立知识库对话**~~：对话上的 `kb_ids` 字段支持无需 Agent 绑定的直接知识库聊天
 
 <div id="planned-versions">
   ## 规划版本
