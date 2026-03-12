@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { Plus, Trash2, Loader2, Search, Star, MoreHorizontal, Pencil, MessagesSquare, GitBranch, Zap } from "lucide-react"
+import { Plus, Trash2, Loader2, Search, Star, MoreHorizontal, Pencil, MessagesSquare, GitBranch, Zap, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -229,6 +229,8 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
                         </span>
                         {conv.mode === "dag" ? (
                           <GitBranch className="shrink-0 h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        ) : conv.mode === "auto" ? (
+                          <Sparkles className="shrink-0 h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
                         ) : (
                           <Zap className="shrink-0 h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
                         )}
