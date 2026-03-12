@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +34,16 @@ router = APIRouter(prefix="/api/mcp-servers", tags=["mcp-servers"])
 # ---------------------------------------------------------------------------
 
 
-def _to_response(srv: MCPServer) -> MCPServerResponse:
+def _mask_dict(d: dict | None) -> dict | None:
+    if not d:
+        return d
+    return {k: "***" for k in d}
+
+
+def _to_response(srv: MCPServer, *, is_owner: bool = True) -> MCPServerResponse:
+    # Mask sensitive fields for non-owners
+    env = srv.env if is_owner else _mask_dict(srv.env)
+    headers = srv.headers if is_owner else _mask_dict(srv.headers)
     return MCPServerResponse(
         id=srv.id,
         name=srv.name,
@@ -40,12 +51,13 @@ def _to_response(srv: MCPServer) -> MCPServerResponse:
         transport=srv.transport,
         command=srv.command,
         args=srv.args,
-        env=srv.env,
+        env=env,
         url=srv.url,
         working_dir=srv.working_dir,
-        headers=srv.headers,
+        headers=headers,
         is_active=srv.is_active,
         tool_count=srv.tool_count,
+        allow_fallback=getattr(srv, "allow_fallback", True),
         visibility=getattr(srv, "visibility", "personal"),
         org_id=getattr(srv, "org_id", None),
         created_at=srv.created_at.isoformat() if srv.created_at else "",
@@ -281,13 +293,6 @@ async def publish_mcp_server(
         await require_org_member(body.org_id, current_user, db)
         server.visibility = "org"
         server.org_id = body.org_id
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        server.visibility = "global"
-        server.org_id = None
-        if hasattr(server, "is_global"):
-            server.is_global = True
     else:
         raise AppError("invalid_scope", status_code=400)
 
@@ -325,12 +330,55 @@ async def unpublish_mcp_server(
 
     server.visibility = "personal"
     server.org_id = None
-    if hasattr(server, "is_global"):
-        server.is_global = False
 
     await db.commit()
     await db.refresh(server)
     return ApiResponse(data=_to_response(server).model_dump())
+
+
+class MyCredentialsRequest(BaseModel):
+    env: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
+
+
+@router.put("/{server_id}/my-credentials", response_model=ApiResponse)
+async def set_my_credentials(
+    server_id: str,
+    body: MyCredentialsRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Set personal env/headers override for a shared MCP server."""
+    from fim_one.web.models.mcp_server_credential import MCPServerCredential
+
+    # Verify server is accessible
+    srv_result = await db.execute(select(MCPServer).where(MCPServer.id == server_id))
+    srv = srv_result.scalar_one_or_none()
+    if srv is None:
+        raise AppError("mcp_server_not_found", status_code=404)
+
+    # Upsert credential
+    existing = await db.execute(
+        select(MCPServerCredential).where(
+            MCPServerCredential.server_id == server_id,
+            MCPServerCredential.user_id == current_user.id,
+        )
+    )
+    cred = existing.scalar_one_or_none()
+    if cred is None:
+        cred = MCPServerCredential(
+            server_id=server_id,
+            user_id=current_user.id,
+        )
+        db.add(cred)
+
+    if body.env is not None:
+        cred.env_blob = json.dumps(body.env)
+    if body.headers is not None:
+        cred.headers_blob = json.dumps(body.headers)
+
+    await db.commit()
+    return ApiResponse(data={"saved": True})
 
 
 @router.delete("/{server_id}", response_model=ApiResponse)

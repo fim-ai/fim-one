@@ -62,6 +62,7 @@ from .api.tools import router as tools_router
 from .api.eval_datasets import router as eval_datasets_router
 from .api.eval_runs import router as eval_runs_router
 from .api.dashboard import router as dashboard_router
+from .api.market import router as market_router
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,7 @@ def create_app() -> FastAPI:
     app.include_router(eval_datasets_router)
     app.include_router(eval_runs_router)
     app.include_router(dashboard_router)
+    app.include_router(market_router)
 
     # NOTE: /uploads is intentionally NOT mounted as a public StaticFiles route.
     # File downloads are served through the authenticated API endpoint at

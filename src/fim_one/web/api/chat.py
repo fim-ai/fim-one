@@ -897,7 +897,7 @@ async def _resolve_tools(
     try:
         from fim_one.db import create_session as _create_session
         from fim_one.web.models.mcp_server import MCPServer as _MCPServerModel
-        from sqlalchemy import true as _true
+        from sqlalchemy import true as _true, false as _sa_false
 
         async with _create_session() as _mcp_db:
             from fim_one.web.visibility import build_visibility_filter as _build_vis
@@ -905,7 +905,7 @@ async def _resolve_tools(
 
             _mcp_org_ids = await _get_org_ids(user_id, _mcp_db) if user_id else []
             _stmt = sa_select(_MCPServerModel).where(
-                _build_vis(_MCPServerModel, user_id, _mcp_org_ids) if user_id else (_MCPServerModel.is_global == _true()),
+                _build_vis(_MCPServerModel, user_id, _mcp_org_ids) if user_id else _sa_false(),
                 _MCPServerModel.is_active == _true(),
             )
             _result = await _mcp_db.execute(_stmt)

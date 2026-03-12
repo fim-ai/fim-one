@@ -64,6 +64,7 @@ from fim_one.web.schemas.auth import (
     VerifyForgotCodeRequest,
 )
 from fim_one.web.schemas.common import ApiResponse
+from fim_one.web.platform import ensure_platform_org, ensure_platform_membership
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -311,6 +312,12 @@ async def register(
     )
     db.add(user)
     await db.flush()
+
+    # Enroll user in Platform org
+    if is_first_user_check:
+        await ensure_platform_org(db, owner_id=user.id)
+    else:
+        await ensure_platform_membership(db, user.id)
 
     access = create_access_token(user.id, user.email)
     refresh = create_refresh_token(user.id, user.email)

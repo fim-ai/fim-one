@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Explicit re-exports (for convenience — callers can still import directly)
+from .call_agent import CallAgentTool
 from .calculator import CalculatorTool
 from .datetime_tool import DateTimeTool
 from .email_send import EmailSendTool
@@ -72,6 +73,7 @@ from .db_builder import (
 )
 
 __all__ = [
+    "CallAgentTool",
     "CalculatorTool",
     "DateTimeTool",
     "EmailSendTool",
@@ -147,6 +149,7 @@ _ARTIFACTS_KWARGS: dict[type, str] = {
 # Tools that require explicit configuration and should NOT be auto-discovered.
 # They are registered manually when the appropriate config is available.
 _SKIP_AUTO_DISCOVER: set[type] = {
+    CallAgentTool,  # requires available_agents list — injected by chat.py for multi-agent setups
     GroundedRetrieveTool,  # requires kb_ids — registered by _resolve_tools()
     EmailSendTool,  # requires SMTP_HOST/SMTP_USER/SMTP_PASS — registered below
     ConnectorListActionsTool,  # builder tools — injected by chat.py for builder agents

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -29,6 +29,7 @@ class Conversation(UUIDPKMixin, TimestampMixin, Base):
     model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     fast_llm_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    kb_ids: Any = Column(JSON, nullable=True)  # list[str] — standalone KB mode
 
     user: Mapped[User] = relationship(back_populates="conversations", lazy="raise")
     agent: Mapped[Agent | None] = relationship(back_populates="conversations", lazy="raise")

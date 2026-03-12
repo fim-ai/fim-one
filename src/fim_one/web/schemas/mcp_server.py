@@ -52,6 +52,7 @@ class MCPServerResponse(BaseModel):
     headers: dict[str, str] | None
     is_active: bool
     tool_count: int
+    allow_fallback: bool = True
     visibility: str = "personal"
     org_id: str | None = None
     created_at: str

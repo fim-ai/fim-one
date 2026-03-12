@@ -328,6 +328,9 @@ async def delete_org(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Delete an organization. Owner only."""
+    from fim_one.web.platform import PLATFORM_ORG_ID
+    if org_id == PLATFORM_ORG_ID:
+        raise AppError("cannot_delete_platform_org", status_code=403)
     await require_org_owner(org_id, current_user, db)
 
     result = await db.execute(
@@ -502,6 +505,10 @@ async def remove_member(
     """
     is_self = user_id == current_user.id
 
+    from fim_one.web.platform import PLATFORM_ORG_ID
+    if org_id == PLATFORM_ORG_ID and is_self:
+        raise AppError("cannot_leave_platform_org", status_code=403)
+
     if not is_self:
         # Must be admin+ to remove others
         actor_membership = await require_org_admin(org_id, current_user, db)
@@ -585,6 +592,9 @@ async def admin_delete_org(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Force-delete an organization. Admin only."""
+    from fim_one.web.platform import PLATFORM_ORG_ID
+    if org_id == PLATFORM_ORG_ID:
+        raise AppError("cannot_delete_platform_org", status_code=403)
     result = await db.execute(
         select(Organization)
         .options(selectinload(Organization.memberships))

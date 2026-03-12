@@ -15,6 +15,7 @@ from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.models import Agent, User
 from fim_one.web.models.connector import Connector
 from fim_one.web.models.knowledge_base import KnowledgeBase
+from fim_one.web.models.resource_subscription import ResourceSubscription
 from fim_one.web.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.visibility import build_visibility_filter
@@ -41,8 +42,9 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         published_at=(
             agent.published_at.isoformat() if agent.published_at else None
         ),
-        is_global=agent.is_global,
         is_builder=agent.is_builder,
+        discoverable=agent.discoverable,
+        sub_agent_ids=agent.sub_agent_ids,
         visibility=getattr(agent, "visibility", "personal"),
         org_id=getattr(agent, "org_id", None),
         created_at=agent.created_at.isoformat() if agent.created_at else "",
@@ -158,9 +160,19 @@ async def list_agents(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
     user_org_ids = await get_user_org_ids(current_user.id, db)
+
+    # Get subscribed agent IDs
+    sub_result = await db.execute(
+        select(ResourceSubscription.resource_id).where(
+            ResourceSubscription.user_id == current_user.id,
+            ResourceSubscription.resource_type == "agent",
+        )
+    )
+    subscribed_agent_ids = sub_result.scalars().all()
+
     base = select(Agent).where(
         Agent.is_builder == False,  # noqa: E712
-        build_visibility_filter(Agent, current_user.id, user_org_ids),
+        build_visibility_filter(Agent, current_user.id, user_org_ids, subscribed_ids=subscribed_agent_ids),
     )
     if agent_status is not None:
         base = base.where(Agent.status == agent_status)
@@ -242,24 +254,13 @@ async def publish_agent(
     """Publish agent to personal, org, or global scope."""
     agent = await _get_owned_agent(agent_id, current_user.id, db)
 
-    if body.scope == "personal":
-        # Activate for personal use only — visibility stays personal
-        agent.visibility = "personal"
-        agent.is_global = False
-        agent.org_id = None
-    elif body.scope == "org":
+    if body.scope == "org":
         if not body.org_id:
             raise AppError("org_id_required", status_code=400)
         from fim_one.web.auth import require_org_member
         await require_org_member(body.org_id, current_user, db)
         agent.visibility = "org"
         agent.org_id = body.org_id
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        agent.visibility = "global"
-        agent.is_global = True  # backward compat
-        agent.org_id = None
     else:
         raise AppError("invalid_scope", status_code=400)
 
@@ -327,7 +328,6 @@ async def unpublish_agent(
 
     agent.visibility = "personal"
     agent.org_id = None
-    agent.is_global = False  # backward compat
     agent.status = "draft"
     agent.published_at = None
 

@@ -21,17 +21,8 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
     user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True, index=True
     )
-    is_global: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="FALSE"
-    )
     is_builder: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="FALSE"
-    )
-    cloned_from_agent_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True
-    )
-    cloned_from_user_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True
     )
     visibility: Mapped[str] = mapped_column(
         String(20), nullable=False, default="personal", server_default="personal"
@@ -51,6 +42,10 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     kb_ids: Any = Column(JSON, nullable=True)
     connector_ids: Any = Column(JSON, nullable=True)
+    discoverable: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="FALSE"
+    )
+    sub_agent_ids: Any = Column(JSON, nullable=True)  # list[str] — explicit whitelist
     grounding_config: Any = Column(JSON, nullable=True)
     sandbox_config: Any = Column(JSON, nullable=True)
 

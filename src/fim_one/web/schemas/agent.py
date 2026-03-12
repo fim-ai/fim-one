@@ -53,8 +53,9 @@ class AgentResponse(BaseModel):
     execution_mode: str
     status: str
     published_at: str | None
-    is_global: bool = False
     is_builder: bool = False
+    discoverable: bool = False
+    sub_agent_ids: list[str] | None = None
     visibility: str = "personal"
     org_id: str | None = None
     created_at: str

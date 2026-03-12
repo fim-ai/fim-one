@@ -17,8 +17,10 @@ from .invite_code import InviteCode
 from .ip_rule import IpRule
 from .login_history import LoginHistory
 from .mcp_server import MCPServer
+from .mcp_server_credential import MCPServerCredential
 from .knowledge_base import KBDocument, KnowledgeBase
 from .message import Message
+from .resource_subscription import ResourceSubscription
 from .model_config import ModelConfig
 from .oauth_binding import UserOAuthBinding
 from .organization import Organization, OrgMembership
@@ -48,7 +50,9 @@ __all__ = [
     "KnowledgeBase",
     "LoginHistory",
     "MCPServer",
+    "MCPServerCredential",
     "Message",
+    "ResourceSubscription",
     "ModelConfig",
     "Organization",
     "OrgMembership",

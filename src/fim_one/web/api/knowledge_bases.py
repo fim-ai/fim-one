@@ -243,11 +243,6 @@ async def publish_kb(
         await require_org_member(body.org_id, current_user, db)
         kb.visibility = "org"
         kb.org_id = body.org_id
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        kb.visibility = "global"
-        kb.org_id = None
     else:
         raise AppError("invalid_scope", status_code=400)
 
@@ -1226,3 +1221,22 @@ async def _plain_llm_call(llm: Any, messages: list[Any]) -> str:
     # LLMResult.message is a ChatMessage with .content
     msg = result.message
     return msg.content or ""
+
+
+@router.post("/{kb_id}/toggle", response_model=ApiResponse)
+async def toggle_knowledge_base(
+    kb_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Toggle knowledge base status between active and suspended."""
+    result = await db.execute(select(KnowledgeBase).where(KnowledgeBase.id == kb_id))
+    kb = result.scalar_one_or_none()
+    if kb is None:
+        raise AppError("kb_not_found", status_code=404)
+    if kb.user_id != current_user.id:
+        raise AppError("permission_denied", status_code=403)
+
+    kb.status = "suspended" if kb.status == "active" else "active"
+    await db.commit()
+    return ApiResponse(data={"id": kb_id, "status": kb.status})

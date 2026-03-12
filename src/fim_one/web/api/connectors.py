@@ -535,11 +535,6 @@ async def publish_connector(
         await require_org_member(body.org_id, current_user, db)
         connector.visibility = "org"
         connector.org_id = body.org_id
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        connector.visibility = "global"
-        connector.org_id = None
     else:
         raise AppError("invalid_scope", status_code=400)
 
@@ -842,3 +837,22 @@ async def delete_action(
     await db.delete(action)
     await db.commit()
     return ApiResponse(data={"deleted": action_id})
+
+
+@router.post("/{connector_id}/toggle", response_model=ApiResponse)
+async def toggle_connector(
+    connector_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Toggle connector status between published and suspended."""
+    result = await db.execute(select(Connector).where(Connector.id == connector_id))
+    connector = result.scalar_one_or_none()
+    if connector is None:
+        raise AppError("connector_not_found", status_code=404)
+    if connector.user_id != current_user.id:
+        raise AppError("permission_denied", status_code=403)
+
+    connector.status = "suspended" if connector.status == "published" else "published"
+    await db.commit()
+    return ApiResponse(data={"id": connector_id, "status": connector.status})
