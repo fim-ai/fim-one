@@ -251,6 +251,7 @@ LiteLLM 根据 `LLM_BASE_URL` 自动检测提供商，并映射到正确的 API 
 | ------------------------------ | -- | ------- | ------------------------- |
 | `CONNECTOR_RESPONSE_MAX_CHARS` | 否  | `50000` | 非数组 JSON / 纯文本连接器响应的最大字符数 |
 | `CONNECTOR_RESPONSE_MAX_ITEMS` | 否  | `10`    | 当连接器响应为 JSON 数组时保留的最大数组项数 |
+| `CREDENTIAL_ENCRYPTION_KEY` | 否  | _(未设置)_ | 连接器凭据 Blob 的 Fernet 加密密钥。设置后，存储在 `connector_credentials` 表中的 Auth Token 将被加密保存。未设置时以明文 JSON 存储（向后兼容）。修改此密钥会使所有已加密的凭据失效。 |
 
 ---
 

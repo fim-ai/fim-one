@@ -17,6 +17,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Auto-routing (F1)**: Fast LLM classifies queries as ReAct or DAG execution mode. New `/api/auto` endpoint with SSE routing event. Frontend 3-way mode toggle (Auto/Standard/Planner). Configurable via `AUTO_ROUTING` (default: on)
 - **Design philosophy doc**: New `docs/design-philosophy.mdx` documenting architectural decisions — why Handoff, Backflow, Teams, and agent_hint were intentionally excluded from DAG execution
 
+- **Connector Credentials Encryption + Per-User Override** — Auth tokens (`bearer`, `api_key`, `basic`) are now extracted from `auth_config` and stored separately in a new `connector_credentials` table with optional Fernet encryption (set `CREDENTIAL_ENCRYPTION_KEY`). Sensitive fields are stripped from all API responses. New endpoints: `GET/PUT/DELETE /api/connectors/{id}/my-credentials` allow users to store personal credential overrides. `allow_fallback` column on connectors controls whether personal credential absence falls back to the connector owner's default. Chat tool loading resolves per-user credentials first, then falls back to owner credential when `allow_fallback=true`. Existing credentials are automatically migrated from `auth_config` by migration `s9u1w3y5a678`.
+
 ### Fixed
 - Fast model (`get_fast_llm()`) no longer inherits `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_TEMPERATURE`, and reasoning settings from the main model configuration
 

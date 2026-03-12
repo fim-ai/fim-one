@@ -22,6 +22,8 @@ description: "FIM One 的所有重要变更。"
 * **自动路由 (F1)**：Fast LLM 将查询分类为 ReAct 或 DAG 执行模式。新增 `/api/auto` 端点及 SSE 路由事件。前端三态模式切换（自动/标准/规划器）。通过 `AUTO_ROUTING` 配置（默认开启）
 * **设计理念文档**：新增 `docs/design-philosophy.mdx`，记录架构决策——为何 Handoff、Backflow、Teams 和 agent_hint 被有意排除在 DAG 执行之外
 
+* **连接器凭据加密 + 用户级覆盖** — Bearer Token、API Key、Basic 认证等敏感字段现已从 `auth_config` 中提取，单独存储至新的 `connector_credentials` 表，支持通过 `CREDENTIAL_ENCRYPTION_KEY` 进行 Fernet 加密。所有 API 响应中的敏感字段均已自动屏蔽。新增端点 `GET/PUT/DELETE /api/connectors/{id}/my-credentials` 允许用户存储个人凭据覆盖。连接器新增 `allow_fallback` 字段，控制当用户无个人凭据时是否回退到连接器所有者的默认凭据。Chat 工具加载时优先使用用户个人凭据，`allow_fallback=true` 时自动回退到默认凭据。迁移文件 `s9u1w3y5a678` 自动将现有凭据从 `auth_config` 迁移至新表。
+
 <div id="fixed">
   ### 已修复
 </div>

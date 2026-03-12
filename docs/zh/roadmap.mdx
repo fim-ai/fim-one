@@ -194,6 +194,7 @@ flowchart LR
 
 - [x] ~~**数据库连接器**：直接访问 SQL (PostgreSQL、MySQL、Oracle)~~ *(已在 v0.7.x 交付——Phase 1-3)*
 - [x] ~~**RBAC**：按用户/角色控制连接器访问权限~~ *(已在 v0.7.x 发布——组织系统 + 三级可见性)*
+- [x] **连接器凭据加密 + 用户级覆盖**：新建 `connector_credentials` 表，通过 `CREDENTIAL_ENCRYPTION_KEY` Fernet 加密；`allow_fallback` 标志；`GET/PUT/DELETE /my-credentials` 端点；Chat 工具加载时优先使用用户个人凭据
 - [ ] **连接器渐进式披露 (Phase 1-2)**：单个 `ConnectorMetaTool` 替代逐 action 注册；Tier 1 连接器名录注入 system prompt (~30 tokens/connector，对比原来 ~250 tokens/action)；`discover` + `execute` 子命令；feature flag 向后兼容
 - [ ] **YAML/JSON 连接器配置**：平台自动生成 MCP 服务器
 - [ ] **连接器导入/导出**：共享连接器模板

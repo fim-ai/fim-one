@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import yaml
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +20,7 @@ from fim_one.web.exceptions import AppError
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.models.connector import Connector, ConnectorAction
+from fim_one.web.models.connector_credential import ConnectorCredential
 from fim_one.web.models.user import User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.connector import (
@@ -29,6 +30,8 @@ from fim_one.web.schemas.connector import (
     ConnectorCreate,
     ConnectorResponse,
     ConnectorUpdate,
+    CredentialUpsertRequest,
+    MyCredentialStatus,
     OpenAPIImportRequest,
 )
 
@@ -72,22 +75,97 @@ def _mask_db_config(db_config: dict | None) -> dict | None:
     return masked
 
 
-def _connector_to_response(connector: Connector) -> ConnectorResponse:
+_AUTH_SENSITIVE_FIELDS: dict[str, list[str]] = {
+    "bearer": ["default_token"],
+    "api_key": ["default_api_key"],
+    "basic": ["default_username", "default_password"],
+}
+
+
+def _split_auth_config(
+    auth_type: str, auth_config: dict | None
+) -> tuple[dict, dict]:
+    """Split auth_config into (clean_config, cred_blob).
+
+    clean_config: non-sensitive fields only (token_prefix, header_name, etc.)
+    cred_blob: sensitive fields (default_token, default_api_key, etc.)
+    """
+    if not auth_config:
+        return {}, {}
+    sensitive = _AUTH_SENSITIVE_FIELDS.get(auth_type, [])
+    clean = {k: v for k, v in auth_config.items() if k not in sensitive}
+    cred_blob = {k: v for k, v in auth_config.items() if k in sensitive and v}
+    return clean, cred_blob
+
+
+def _strip_sensitive_auth_config(
+    auth_type: str, auth_config: dict | None
+) -> dict | None:
+    """Return auth_config with sensitive credential fields removed (for API responses)."""
+    if not auth_config:
+        return auth_config
+    sensitive = _AUTH_SENSITIVE_FIELDS.get(auth_type, [])
+    return {k: v for k, v in auth_config.items() if k not in sensitive}
+
+
+async def _upsert_default_credential(
+    connector_id: str, cred_blob: dict, db: AsyncSession
+) -> None:
+    """Create or update the connector-owner's default credential row (user_id=NULL)."""
+    from fim_one.core.security.encryption import encrypt_credential
+
+    encrypted = encrypt_credential(cred_blob)
+    existing = await db.execute(
+        select(ConnectorCredential).where(
+            ConnectorCredential.connector_id == connector_id,
+            ConnectorCredential.user_id.is_(None),
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        row.credentials_blob = encrypted
+    else:
+        row = ConnectorCredential(
+            connector_id=connector_id,
+            user_id=None,
+            credentials_blob=encrypted,
+        )
+        db.add(row)
+
+
+async def _has_default_credential(connector_id: str, db: AsyncSession) -> bool:
+    """Check whether a default (owner) credential row exists for this connector."""
+    result = await db.execute(
+        select(ConnectorCredential.id).where(
+            ConnectorCredential.connector_id == connector_id,
+            ConnectorCredential.user_id.is_(None),
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+def _connector_to_response(
+    connector: Connector,
+    has_default_credentials: bool = False,
+) -> ConnectorResponse:
     return ConnectorResponse(
         id=connector.id,
+        user_id=connector.user_id,
         name=connector.name,
         description=connector.description,
         icon=connector.icon,
         type=connector.type,
         base_url=connector.base_url,
         auth_type=connector.auth_type,
-        auth_config=connector.auth_config,
+        auth_config=_strip_sensitive_auth_config(connector.auth_type, connector.auth_config),
         db_config=_mask_db_config(connector.db_config),
         is_official=connector.is_official,
         forked_from=connector.forked_from,
         version=connector.version,
         visibility=getattr(connector, "visibility", "personal"),
         org_id=getattr(connector, "org_id", None),
+        allow_fallback=getattr(connector, "allow_fallback", True),
+        has_default_credentials=has_default_credentials,
         actions=[_action_to_response(a) for a in (connector.actions or [])],
         created_at=connector.created_at.isoformat() if connector.created_at else "",
         updated_at=connector.updated_at.isoformat() if connector.updated_at else None,
@@ -101,6 +179,27 @@ async def _get_owned_connector(
         select(Connector)
         .options(selectinload(Connector.actions))
         .where(Connector.id == connector_id, Connector.user_id == user_id)
+    )
+    connector = result.scalar_one_or_none()
+    if connector is None:
+        raise AppError("connector_not_found", status_code=404)
+    return connector
+
+
+async def _get_visible_connector(
+    connector_id: str, user_id: str, db: AsyncSession
+) -> Connector:
+    """Fetch a connector visible to the given user (own + org + global)."""
+    from fim_one.web.visibility import build_visibility_filter
+
+    user_org_ids = await get_user_org_ids(user_id, db)
+    result = await db.execute(
+        select(Connector)
+        .options(selectinload(Connector.actions))
+        .where(
+            Connector.id == connector_id,
+            build_visibility_filter(Connector, user_id, user_org_ids),
+        )
     )
     connector = result.scalar_one_or_none()
     if connector is None:
@@ -138,6 +237,9 @@ async def create_connector(
             detail="base_url is required for API connectors",
         )
 
+    # Split sensitive fields out of auth_config before storing
+    clean_auth_config, cred_blob = _split_auth_config(body.auth_type, body.auth_config)
+
     connector = Connector(
         user_id=current_user.id,
         name=body.name,
@@ -146,11 +248,16 @@ async def create_connector(
         type=body.type,
         base_url=body.base_url,
         auth_type=body.auth_type,
-        auth_config=body.auth_config,
+        auth_config=clean_auth_config or None,
         db_config=db_config,
         status="published",
     )
     db.add(connector)
+    await db.flush()  # get connector.id
+
+    if cred_blob:
+        await _upsert_default_credential(connector.id, cred_blob, db)
+
     await db.commit()
 
     # Reload with actions relationship for response serialization
@@ -160,7 +267,8 @@ async def create_connector(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    has_creds = await _has_default_credential(connector.id, db)
+    return ApiResponse(data=_connector_to_response(connector, has_default_credentials=has_creds).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse)
@@ -204,8 +312,22 @@ async def get_connector(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    connector = await _get_owned_connector(connector_id, current_user.id, db)
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    from fim_one.web.visibility import build_visibility_filter
+
+    user_org_ids = await get_user_org_ids(current_user.id, db)
+    result = await db.execute(
+        select(Connector)
+        .options(selectinload(Connector.actions))
+        .where(
+            Connector.id == connector_id,
+            build_visibility_filter(Connector, current_user.id, user_org_ids),
+        )
+    )
+    connector = result.scalar_one_or_none()
+    if connector is None:
+        raise AppError("connector_not_found", status_code=404)
+    has_creds = await _has_default_credential(connector_id, db)
+    return ApiResponse(data=_connector_to_response(connector, has_default_credentials=has_creds).model_dump())
 
 
 @router.put("/{connector_id}", response_model=ApiResponse)
@@ -240,6 +362,20 @@ async def update_connector(
         pool = ConnectionPoolManager.get_instance()
         await pool.close_driver(connector_id)
 
+    # Handle auth_config credential split
+    if "auth_config" in update_data:
+        auth_type = update_data.get("auth_type") or connector.auth_type
+        clean_config, cred_blob = _split_auth_config(auth_type, update_data["auth_config"])
+        update_data["auth_config"] = clean_config or None
+        # Only update credential if blob is non-empty; otherwise keep existing
+        if cred_blob:
+            await _upsert_default_credential(connector_id, cred_blob, db)
+
+    # Handle allow_fallback separately (it's a direct column, not JSON)
+    allow_fallback = update_data.pop("allow_fallback", None)
+    if allow_fallback is not None:
+        connector.allow_fallback = allow_fallback
+
     for field, value in update_data.items():
         setattr(connector, field, value)
 
@@ -261,7 +397,8 @@ async def update_connector(
         .where(Connector.id == connector.id)
     )
     connector = result.scalar_one()
-    return ApiResponse(data=_connector_to_response(connector).model_dump())
+    has_creds = await _has_default_credential(connector.id, db)
+    return ApiResponse(data=_connector_to_response(connector, has_default_credentials=has_creds).model_dump())
 
 
 @router.delete("/{connector_id}", response_model=ApiResponse)
@@ -274,6 +411,106 @@ async def delete_connector(
     await db.delete(connector)
     await db.commit()
     return ApiResponse(data={"deleted": connector_id})
+
+
+# ---------------------------------------------------------------------------
+# Per-user credential endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{connector_id}/my-credentials", response_model=ApiResponse)
+async def get_my_credentials(
+    connector_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Return whether the current user has personal credentials for this connector."""
+    connector = await _get_visible_connector(connector_id, current_user.id, db)
+    result = await db.execute(
+        select(ConnectorCredential).where(
+            ConnectorCredential.connector_id == connector_id,
+            ConnectorCredential.user_id == current_user.id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    return ApiResponse(
+        data=MyCredentialStatus(
+            has_credentials=row is not None,
+            auth_type=connector.auth_type,
+            allow_fallback=getattr(connector, "allow_fallback", True),
+        ).model_dump()
+    )
+
+
+@router.put("/{connector_id}/my-credentials", response_model=ApiResponse)
+async def upsert_my_credentials(
+    connector_id: str,
+    body: CredentialUpsertRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Create or replace the current user's personal credentials for this connector."""
+    connector = await _get_visible_connector(connector_id, current_user.id, db)
+
+    # Build credential blob from request based on connector auth_type
+    cred_blob: dict = {}
+    if connector.auth_type == "bearer" and body.token:
+        cred_blob["default_token"] = body.token
+    elif connector.auth_type == "api_key" and body.api_key:
+        cred_blob["default_api_key"] = body.api_key
+    elif connector.auth_type == "basic":
+        if body.username:
+            cred_blob["default_username"] = body.username
+        if body.password:
+            cred_blob["default_password"] = body.password
+
+    if not cred_blob:
+        raise AppError("no_credentials_provided", status_code=400)
+
+    from fim_one.core.security.encryption import encrypt_credential
+
+    encrypted = encrypt_credential(cred_blob)
+
+    existing = await db.execute(
+        select(ConnectorCredential).where(
+            ConnectorCredential.connector_id == connector_id,
+            ConnectorCredential.user_id == current_user.id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row:
+        row.credentials_blob = encrypted
+    else:
+        row = ConnectorCredential(
+            connector_id=connector_id,
+            user_id=current_user.id,
+            credentials_blob=encrypted,
+        )
+        db.add(row)
+
+    await db.commit()
+    return ApiResponse(data={"saved": True})
+
+
+@router.delete("/{connector_id}/my-credentials", response_model=ApiResponse)
+async def delete_my_credentials(
+    connector_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Delete the current user's personal credentials for this connector."""
+    await _get_visible_connector(connector_id, current_user.id, db)
+    result = await db.execute(
+        select(ConnectorCredential).where(
+            ConnectorCredential.connector_id == connector_id,
+            ConnectorCredential.user_id == current_user.id,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        await db.delete(row)
+        await db.commit()
+    return ApiResponse(data={"deleted": True})
 
 
 # ---------------------------------------------------------------------------

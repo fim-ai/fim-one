@@ -715,13 +715,47 @@ async def _resolve_tools(
                             tools.register(t)
                         db_tool_count += len(db_tools)
                     else:
-                        # API connector — existing logic
+                        # API connector — resolve per-user credentials
+                        from fim_one.web.models.connector_credential import (
+                            ConnectorCredential as ConnectorCredentialModel,
+                        )
+                        from fim_one.core.security.encryption import decrypt_credential
+
+                        resolved_creds: dict = {}
+                        _calling_user_id = user_id
+                        _allow_fallback = getattr(conn, "allow_fallback", True)
+
+                        if _calling_user_id:
+                            # Try user-specific credential first
+                            _user_cred_result = await session.execute(
+                                select(ConnectorCredentialModel).where(
+                                    ConnectorCredentialModel.connector_id == conn.id,
+                                    ConnectorCredentialModel.user_id == _calling_user_id,
+                                )
+                            )
+                            _user_cred_row = _user_cred_result.scalar_one_or_none()
+                            if _user_cred_row:
+                                resolved_creds = decrypt_credential(_user_cred_row.credentials_blob)
+
+                        if not resolved_creds and _allow_fallback:
+                            # Fall back to default (owner) credential
+                            _default_cred_result = await session.execute(
+                                select(ConnectorCredentialModel).where(
+                                    ConnectorCredentialModel.connector_id == conn.id,
+                                    ConnectorCredentialModel.user_id.is_(None),
+                                )
+                            )
+                            _default_cred_row = _default_cred_result.scalar_one_or_none()
+                            if _default_cred_row:
+                                resolved_creds = decrypt_credential(_default_cred_row.credentials_blob)
+
                         for action in (conn.actions or []):
                             adapter = ConnectorToolAdapter(
                                 connector_name=conn.name,
                                 connector_base_url=conn.base_url or "",
                                 connector_auth_type=conn.auth_type,
                                 connector_auth_config=conn.auth_config,
+                                auth_credentials=resolved_creds or None,
                                 action_name=action.name,
                                 action_description=action.description or "",
                                 action_method=action.method,

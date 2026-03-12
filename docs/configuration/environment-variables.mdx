@@ -229,6 +229,7 @@ Auto-registers the `email_send` built-in tool when `SMTP_HOST`, `SMTP_USER`, and
 |---|---|---|---|
 | `CONNECTOR_RESPONSE_MAX_CHARS` | No | `50000` | Max characters for non-array JSON / plain-text connector responses |
 | `CONNECTOR_RESPONSE_MAX_ITEMS` | No | `10` | Max array items to keep when connector response is a JSON array |
+| `CREDENTIAL_ENCRYPTION_KEY` | No | _(unset)_ | Fernet encryption key for connector credential blobs. When set, auth tokens stored in `connector_credentials` are encrypted at rest. If unset, credentials are stored as plaintext JSON (backward-compatible). Changing this key invalidates all existing encrypted credentials. |
 
 ---
 

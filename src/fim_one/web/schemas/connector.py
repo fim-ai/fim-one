@@ -94,10 +94,12 @@ class ConnectorUpdate(BaseModel):
     auth_type: str | None = None
     auth_config: dict[str, Any] | None = None
     db_config: dict[str, Any] | None = None
+    allow_fallback: bool | None = None
 
 
 class ConnectorResponse(BaseModel):
     id: str
+    user_id: str
     name: str
     description: str | None
     icon: str | None
@@ -111,6 +113,8 @@ class ConnectorResponse(BaseModel):
     version: int
     visibility: str = "personal"
     org_id: str | None = None
+    allow_fallback: bool = True
+    has_default_credentials: bool = False
     actions: list[ActionResponse]
     created_at: str
     updated_at: str | None
@@ -151,3 +155,16 @@ class AICreateConnectorResult(BaseModel):
     message: str = ""
     message_key: str = ""
     message_args: dict = {}
+
+
+class CredentialUpsertRequest(BaseModel):
+    token: str | None = None
+    api_key: str | None = None
+    username: str | None = None
+    password: str | None = None
+
+
+class MyCredentialStatus(BaseModel):
+    has_credentials: bool
+    auth_type: str
+    allow_fallback: bool

@@ -125,3 +125,54 @@ def decrypt_db_config(config: dict[str, Any]) -> dict[str, Any]:
             logger.warning("Failed to decrypt db_config password")
             result["password"] = ""
     return result
+
+
+# Separate credential encryption key (independent lifecycle from JWT_SECRET_KEY)
+_cred_fernet_instance = None
+
+
+def get_credential_key() -> bytes | None:
+    """Return Fernet key from CREDENTIAL_ENCRYPTION_KEY env var, or None if not set."""
+    secret = os.environ.get("CREDENTIAL_ENCRYPTION_KEY", "")
+    if not secret:
+        return None
+    return base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+
+
+def encrypt_credential(blob: dict) -> str:
+    """Encrypt a credential dict to a string.
+
+    Falls back to plaintext JSON if CREDENTIAL_ENCRYPTION_KEY is not configured.
+    """
+    import json
+    key = get_credential_key()
+    if not key:
+        return json.dumps(blob)
+    from cryptography.fernet import Fernet
+    f = Fernet(key)
+    return f.encrypt(json.dumps(blob).encode("utf-8")).decode("utf-8")
+
+
+def decrypt_credential(ciphertext: str) -> dict:
+    """Decrypt a credential string back to a dict.
+
+    Handles both Fernet tokens and plain JSON transparently.
+    Heuristic: if string starts with '{' treat as JSON; otherwise try Fernet decrypt.
+    """
+    import json
+    if ciphertext.startswith("{"):
+        try:
+            return json.loads(ciphertext)
+        except Exception:
+            return {}
+    key = get_credential_key()
+    if not key:
+        logger.warning("CREDENTIAL_ENCRYPTION_KEY not set but found non-JSON credential")
+        return {}
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(key)
+        return json.loads(f.decrypt(ciphertext.encode("utf-8")).decode("utf-8"))
+    except Exception:
+        logger.warning("Failed to decrypt credential blob")
+        return {}

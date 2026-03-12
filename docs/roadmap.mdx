@@ -162,6 +162,7 @@ flowchart LR
 
 - [x] ~~**Database connectors**: direct SQL access (PostgreSQL, MySQL, Oracle)~~ *(shipped in v0.7.x — Phase 1-3)*
 - [x] ~~**RBAC**: per-user/role connector access control~~ *(shipped in v0.7.x — org system + three-tier visibility)*
+- [x] **Connector credential encryption + per-user override**: `connector_credentials` table, Fernet encryption via `CREDENTIAL_ENCRYPTION_KEY`, `allow_fallback` flag, `GET/PUT/DELETE /my-credentials` endpoints, per-user credential resolution in chat tool loading
 - [ ] **Connector Progressive Disclosure (Phase 1-2)**: single `ConnectorMetaTool` replaces per-action tools; Tier 1 connector catalog in system prompt (~30 tokens/connector vs ~250 tokens/action); `discover` + `execute` subcommands; feature flag for backward compatibility
 - [ ] **YAML/JSON connector config**: platform auto-generates MCP server
 - [ ] **Connector import/export**: share connector templates
