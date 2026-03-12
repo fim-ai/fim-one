@@ -153,10 +153,24 @@ def _scan_conv_artifacts(conv_id: str, conv_title: str) -> list[dict]:
     return results
 
 
+def _matches_type(mime: str, artifact_type: str) -> bool:
+    """Mirror the frontend getFilter() categorisation for server-side filtering."""
+    if artifact_type == "images":
+        return mime.startswith("image/")
+    if artifact_type == "html":
+        return mime == "text/html"
+    if artifact_type == "code":
+        return (mime.startswith("text/") or mime == "application/json") and mime != "text/html"
+    if artifact_type == "files":
+        return not (mime.startswith("image/") or mime.startswith("text/") or mime == "application/json")
+    return True
+
+
 @global_artifacts_router.get("/artifacts", response_model=PaginatedResponse)
 async def list_all_artifacts(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    artifact_type: str | None = Query(None, alias="type"),
     current_user: User = Depends(get_current_user),
 ) -> PaginatedResponse:
     """List all artifacts across all conversations for the current user."""
@@ -182,6 +196,8 @@ async def list_all_artifacts(
     artifacts: list[dict] = [item for sublist in nested for item in sublist]
 
     artifacts.sort(key=lambda a: a["created_at"], reverse=True)
+    if artifact_type:
+        artifacts = [a for a in artifacts if _matches_type(a["mime_type"], artifact_type)]
     total = len(artifacts)
     start = (page - 1) * size
     items = artifacts[start : start + size]

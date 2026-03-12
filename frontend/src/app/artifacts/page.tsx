@@ -367,6 +367,7 @@ function ArtifactsContent() {
   const activeFilter = (searchParams.get("tab") as FilterType) || "all"
 
   const handleFilterChange = (tab: FilterType) => {
+    setPage(1)
     if (tab === "all") {
       router.replace("/artifacts")
     } else {
@@ -385,8 +386,9 @@ function ArtifactsContent() {
   useEffect(() => {
     setLoading(true)
     setSelected(null)
+    const typeParam = activeFilter !== "all" ? `&type=${activeFilter}` : ""
     apiFetch<{ items: ArtifactItem[]; total: number; page: number; size: number }>(
-      `/api/artifacts?page=${page}&size=${pageSize}`,
+      `/api/artifacts?page=${page}&size=${pageSize}${typeParam}`,
     )
       .then((res) => {
         setArtifacts(res.items)
@@ -397,12 +399,9 @@ function ArtifactsContent() {
         setTotal(0)
       })
       .finally(() => setLoading(false))
-  }, [page])
+  }, [page, activeFilter])
 
-  const filtered =
-    activeFilter === "all"
-      ? artifacts
-      : artifacts.filter((a) => getFilter(a.mime_type) === activeFilter)
+  const filtered = artifacts
 
   const selectedIndex = selected
     ? filtered.findIndex(
