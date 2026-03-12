@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations, useLocale } from "next-intl"
-import { Loader2, MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, ExternalLink, Activity, Library, Zap, Clock } from "lucide-react"
+import { Loader2, MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, ArrowRight, Activity, Library, Zap, Clock } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN, enUS } from "date-fns/locale"
 import {
@@ -474,7 +474,7 @@ export function DashboardPage() {
                           >
                             <Link href={`/?c=${conv.id}`}>
                               {t("recentResume")}
-                              <ExternalLink className="h-3 w-3" />
+                              <ArrowRight className="h-3 w-3" />
                             </Link>
                           </Button>
                         </li>
