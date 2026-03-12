@@ -292,9 +292,9 @@ export function DashboardPage() {
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {/* Conversations */}
             <Card>
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MessageSquare className="h-4 w-4" />
+              <CardContent className="p-4 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MessageSquare className="h-3.5 w-3.5" />
                   <span className="text-xs font-medium uppercase tracking-wide">
                     {t("statsConversations")}
                   </span>
@@ -310,9 +310,9 @@ export function DashboardPage() {
 
             {/* Agents */}
             <Card>
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Bot className="h-4 w-4" />
+              <CardContent className="p-4 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Bot className="h-3.5 w-3.5" />
                   <span className="text-xs font-medium uppercase tracking-wide">
                     {t("statsAgents")}
                   </span>
@@ -325,9 +325,9 @@ export function DashboardPage() {
 
             {/* Tokens */}
             <Card>
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Database className="h-4 w-4" />
+              <CardContent className="p-4 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Database className="h-3.5 w-3.5" />
                   <span className="text-xs font-medium uppercase tracking-wide">
                     {t("statsTokens")}
                   </span>
@@ -343,9 +343,9 @@ export function DashboardPage() {
 
             {/* Active Connectors */}
             <Card>
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Plug className="h-4 w-4" />
+              <CardContent className="p-4 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Plug className="h-3.5 w-3.5" />
                   <span className="text-xs font-medium uppercase tracking-wide">
                     {t("statsConnectors")}
                   </span>
@@ -363,7 +363,7 @@ export function DashboardPage() {
           <div className="h-[260px] rounded-xl bg-muted animate-pulse" />
         ) : (
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="px-4 pt-4 pb-2">
               <CardTitle className="flex items-center gap-2 text-base font-medium">
                 <Activity className="h-4 w-4 text-muted-foreground" />
                 {t("activityTitle")}
@@ -430,7 +430,7 @@ export function DashboardPage() {
 
               {/* Recent Conversations */}
               <Card>
-                <CardHeader className="pb-2">
+                <CardHeader className="px-4 pt-4 pb-2">
                   <CardTitle className="flex items-center gap-2 text-base font-medium">
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     {t("recentTitle")}
@@ -486,13 +486,13 @@ export function DashboardPage() {
 
               {/* My Agents */}
               <Card>
-                <CardHeader className="pb-2">
+                <CardHeader className="px-4 pt-4 pb-2">
                   <CardTitle className="flex items-center gap-2 text-base font-medium">
                     <Bot className="h-4 w-4 text-muted-foreground" />
                     {t("agentsTitle")}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-4 pb-4 pt-0">
                   {!stats?.top_agents.length ? (
                     <div className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
                       <p>{t("agentsEmpty")}</p>
@@ -538,50 +538,49 @@ export function DashboardPage() {
 
               {/* Knowledge Bases */}
               <Card>
-                <CardHeader className="pb-2">
+                <CardHeader className="px-4 pt-4 pb-2">
                   <CardTitle className="flex items-center gap-2 text-base font-medium">
                     <Library className="h-4 w-4 text-muted-foreground" />
                     {t("kbTitle")}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-0">
+                <CardContent className="px-4 pb-4 pt-0">
                   {!stats?.top_kbs.length ? (
-                    <div className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    <div className="py-6 text-center text-sm text-muted-foreground">
                       {t("kbEmpty")}
                     </div>
                   ) : (
-                    <ul className="divide-y divide-border">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {stats.top_kbs.slice(0, 3).map((kb) => (
-                        <li key={kb.id}>
-                          <Link
-                            href={`/kb/${kb.id}`}
-                            className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-sm"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Database className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              <span className="truncate text-sm font-medium text-foreground">
-                                {kb.name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0 ml-2">
-                              <Badge variant="secondary" className="text-xs font-normal">
-                                {t("kbDocs", { count: kb.document_count })}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs font-normal">
-                                {t("kbChunks", { count: kb.total_chunks })}
-                              </Badge>
-                            </div>
-                          </Link>
-                        </li>
+                        <Link
+                          key={kb.id}
+                          href={`/kb/${kb.id}`}
+                          className="flex flex-col gap-2 rounded-lg border border-border p-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Library className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="truncate text-sm font-medium text-foreground">
+                              {kb.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-xs font-normal">
+                              {t("kbDocs", { count: kb.document_count })}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs font-normal">
+                              {t("kbChunks", { count: kb.total_chunks })}
+                            </Badge>
+                          </div>
+                        </Link>
                       ))}
-                    </ul>
+                    </div>
                   )}
                 </CardContent>
               </Card>
 
               {/* Connector Health */}
               <Card>
-                <CardHeader className="pb-2">
+                <CardHeader className="px-4 pt-4 pb-2">
                   <CardTitle className="flex items-center gap-2 text-base font-medium">
                     <Zap className="h-4 w-4 text-muted-foreground" />
                     {t("connectorsTitle")}
@@ -595,25 +594,27 @@ export function DashboardPage() {
                   ) : (
                     <ul className="divide-y divide-border">
                       {stats.connector_health.map((connector) => (
-                        <li
-                          key={connector.id}
-                          className="flex items-center gap-3 px-4 py-3"
-                        >
-                          <Plug className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">
-                              {connector.name}
-                            </p>
-                            <Badge
-                              variant="outline"
-                              className="mt-0.5 h-4 px-1.5 text-[10px] font-normal"
-                            >
-                              {connector.type}
-                            </Badge>
-                          </div>
-                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                            {t("connectorCallsToday", { count: connector.call_count_today })}
-                          </span>
+                        <li key={connector.id}>
+                          <Link
+                            href={`/connectors/${connector.id}`}
+                            className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          >
+                            <Plug className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-foreground">
+                                {connector.name}
+                              </p>
+                              <Badge
+                                variant="outline"
+                                className="mt-0.5 h-4 px-1.5 text-[10px] font-normal"
+                              >
+                                {connector.type}
+                              </Badge>
+                            </div>
+                            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                              {t("connectorCallsToday", { count: connector.call_count_today })}
+                            </span>
+                          </Link>
                         </li>
                       ))}
                     </ul>
