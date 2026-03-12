@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class ConversationCreate(BaseModel):
     title: str = ""
-    mode: Literal["react", "dag"] = "react"
+    mode: Literal["react", "dag", "auto"] = "auto"
     agent_id: str | None = None
     model_name: str | None = None
 

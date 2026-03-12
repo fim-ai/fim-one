@@ -19,7 +19,7 @@ class AgentCreate(BaseModel):
     connector_ids: list[str] | None = None
     grounding_config: dict | None = None
     sandbox_config: dict | None = None
-    execution_mode: Literal["react", "dag"] = "react"
+    execution_mode: Literal["react", "dag", "auto"] = "auto"
 
 
 class AgentUpdate(BaseModel):
@@ -34,7 +34,7 @@ class AgentUpdate(BaseModel):
     connector_ids: list[str] | None = None
     grounding_config: dict | None = None
     sandbox_config: dict | None = None
-    execution_mode: Literal["react", "dag"] | None = None
+    execution_mode: Literal["react", "dag", "auto"] | None = None
 
 
 class AgentResponse(BaseModel):
