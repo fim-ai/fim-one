@@ -1468,3 +1468,60 @@ export const evalApi = {
   deleteRun: (id: string) =>
     apiFetch<ApiResponse<{ deleted: string }>>(`/api/eval/runs/${id}`, { method: "DELETE" }),
 }
+
+// --- Dashboard types ---
+export interface DashboardConversation {
+  id: string
+  title: string
+  agent_id: string | null
+  agent_name: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+export interface DashboardAgent {
+  id: string
+  name: string
+  icon: string | null
+  description: string | null
+  conversation_count: number
+}
+
+export interface DashboardKB {
+  id: string
+  name: string
+  document_count: number
+  total_chunks: number
+}
+
+export interface DashboardConnectorHealth {
+  id: string
+  name: string
+  type: string
+  status: string // "active" | "inactive" | "error"
+  call_count_today: number
+}
+
+export interface DashboardDayStat {
+  date: string
+  count: number
+}
+
+export interface DashboardStats {
+  total_conversations: number
+  total_agents: number
+  total_tokens: number
+  active_connectors: number
+  conversations_week_trend: number // percentage, e.g. 12.5 = +12.5%
+  tokens_week_trend: number
+  recent_conversations: DashboardConversation[]
+  top_agents: DashboardAgent[]
+  top_kbs: DashboardKB[]
+  connector_health: DashboardConnectorHealth[]
+  activity_trend: DashboardDayStat[]
+}
+
+// --- Dashboard API ---
+export const dashboardApi = {
+  stats: () => apiFetch<DashboardStats>("/api/dashboard/stats"),
+}

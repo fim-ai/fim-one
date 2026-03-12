@@ -127,37 +127,94 @@ def decrypt_db_config(config: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-# Separate credential encryption key (independent lifecycle from JWT_SECRET_KEY)
+# ---------------------------------------------------------------------------
+# Credential encryption key — auto-generated on first startup, same pattern
+# as JWT_SECRET_KEY in auth.py.  Persisted to .env so the key survives
+# restarts and encrypted credential rows remain readable.
+# ---------------------------------------------------------------------------
+
 _cred_fernet_instance = None
 
 
-def get_credential_key() -> bytes | None:
-    """Return Fernet key from CREDENTIAL_ENCRYPTION_KEY env var, or None if not set."""
-    secret = os.environ.get("CREDENTIAL_ENCRYPTION_KEY", "")
-    if not secret:
-        return None
-    return base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+def _resolve_credential_key() -> str:
+    """Return CREDENTIAL_ENCRYPTION_KEY, auto-generating and persisting it if absent.
+
+    Mirrors the ``_resolve_secret_key()`` pattern in ``auth.py``:
+    - If the env var is already set, use it as-is.
+    - Otherwise generate a secure 64-hex-char secret, write it to the project
+      ``.env`` file (creating it if necessary), inject it into the current
+      process, and log a warning so operators know to back it up.
+
+    Changing this key after credentials have been stored will make those rows
+    unreadable — treat it like a database encryption master key.
+    """
+    import re
+    import secrets
+    from pathlib import Path
+
+    val = os.environ.get("CREDENTIAL_ENCRYPTION_KEY", "")
+    if val:
+        return val
+
+    generated = secrets.token_hex(32)
+
+    # encryption.py lives at src/fim_one/core/security/encryption.py
+    # parents[0]=security/, [1]=core/, [2]=fim_one/, [3]=src/, [4]=project root
+    project_root = Path(__file__).resolve().parents[4]
+    env_file = project_root / ".env"
+
+    try:
+        content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+        new_line = f"CREDENTIAL_ENCRYPTION_KEY={generated}"
+        new_content, n = re.subn(
+            r'^#?\s*CREDENTIAL_ENCRYPTION_KEY=.*$',
+            new_line,
+            content,
+            flags=re.MULTILINE,
+        )
+        updated = new_content if n > 0 else (content.rstrip("\n") + ("\n" if content else "") + new_line + "\n")
+        env_file.write_text(updated, encoding="utf-8")
+        logger.warning(
+            "CREDENTIAL_ENCRYPTION_KEY was not set — auto-generated a secure key and "
+            "persisted it to %s. Back this key up: losing it makes all stored connector "
+            "credentials unreadable.",
+            env_file,
+        )
+    except OSError as exc:
+        logger.warning(
+            "CREDENTIAL_ENCRYPTION_KEY was not set and could not write to %s (%s). "
+            "A temporary in-memory key will be used — credentials will be unreadable after restart.",
+            env_file,
+            exc,
+        )
+
+    os.environ["CREDENTIAL_ENCRYPTION_KEY"] = generated
+    return generated
+
+
+# Module-level resolution — runs at import time so all callers get the same key.
+_CREDENTIAL_KEY_RAW: str = _resolve_credential_key()
+
+
+def get_credential_key() -> bytes:
+    """Return the Fernet-compatible credential encryption key (always set)."""
+    return base64.urlsafe_b64encode(hashlib.sha256(_CREDENTIAL_KEY_RAW.encode()).digest())
 
 
 def encrypt_credential(blob: dict) -> str:
-    """Encrypt a credential dict to a string.
-
-    Falls back to plaintext JSON if CREDENTIAL_ENCRYPTION_KEY is not configured.
-    """
+    """Encrypt a credential dict to a Fernet-encrypted string."""
     import json
-    key = get_credential_key()
-    if not key:
-        return json.dumps(blob)
     from cryptography.fernet import Fernet
-    f = Fernet(key)
+    f = Fernet(get_credential_key())
     return f.encrypt(json.dumps(blob).encode("utf-8")).decode("utf-8")
 
 
 def decrypt_credential(ciphertext: str) -> dict:
     """Decrypt a credential string back to a dict.
 
-    Handles both Fernet tokens and plain JSON transparently.
-    Heuristic: if string starts with '{' treat as JSON; otherwise try Fernet decrypt.
+    Handles legacy plaintext-JSON rows transparently: if the string starts
+    with ``{`` it is parsed directly (backward-compat for rows written before
+    the encryption key was configured).
     """
     import json
     if ciphertext.startswith("{"):
@@ -165,13 +222,9 @@ def decrypt_credential(ciphertext: str) -> dict:
             return json.loads(ciphertext)
         except Exception:
             return {}
-    key = get_credential_key()
-    if not key:
-        logger.warning("CREDENTIAL_ENCRYPTION_KEY not set but found non-JSON credential")
-        return {}
     try:
         from cryptography.fernet import Fernet
-        f = Fernet(key)
+        f = Fernet(get_credential_key())
         return json.loads(f.decrypt(ciphertext.encode("utf-8")).decode("utf-8"))
     except Exception:
         logger.warning("Failed to decrypt credential blob")

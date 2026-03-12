@@ -14,10 +14,16 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _reset_cred_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clear CREDENTIAL_ENCRYPTION_KEY and reset cached Fernet instance between tests."""
-    monkeypatch.delenv("CREDENTIAL_ENCRYPTION_KEY", raising=False)
+    """Reset CREDENTIAL_ENCRYPTION_KEY to a stable test value between tests.
+
+    The new implementation always encrypts (no plaintext fallback), so we set a
+    fixed test key rather than deleting the env var.  Tests that need a *different*
+    key can override with their own monkeypatch.setenv call.
+    """
     import fim_one.core.security.encryption as enc
 
+    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", "test-credential-key-for-unit-tests-1234")
+    enc._CREDENTIAL_KEY_RAW = "test-credential-key-for-unit-tests-1234"
     enc._cred_fernet_instance = None
     yield
     enc._cred_fernet_instance = None
@@ -31,16 +37,15 @@ def _reset_cred_key(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestEncryptCredential:
     """Tests for encrypt_credential and decrypt_credential functions."""
 
-    def test_plaintext_fallback_when_no_key(self) -> None:
-        """Without CREDENTIAL_ENCRYPTION_KEY, encrypt_credential returns plain JSON."""
+    def test_always_encrypts(self) -> None:
+        """encrypt_credential always produces Fernet ciphertext (never plaintext JSON)."""
         from fim_one.core.security.encryption import encrypt_credential
 
         result = encrypt_credential({"token": "abc"})
-        # Must be a valid JSON string
-        parsed = json.loads(result)
-        assert parsed["token"] == "abc"
-        # Should start with '{' (plain JSON, not Fernet token)
-        assert result.startswith("{")
+        # Must NOT be plain JSON — key is auto-generated at startup
+        assert not result.startswith("{")
+        with pytest.raises((json.JSONDecodeError, ValueError)):
+            json.loads(result)
 
     def test_encrypted_when_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """With CREDENTIAL_ENCRYPTION_KEY set, output is opaque Fernet ciphertext."""
