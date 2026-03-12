@@ -431,11 +431,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <ConversationProvider>
       <NavigationProgress />
       <TooltipProvider delayDuration={300}>
-      <div className="flex h-screen overflow-hidden bg-background">
+      <div className="relative flex h-screen overflow-hidden bg-background">
         {/* Sidebar */}
         <aside
           className={cn(
-            "flex flex-col border-r border-border bg-sidebar transition-all duration-200",
+            "flex flex-col border-r border-border/40 bg-sidebar/90 backdrop-blur-lg transition-all duration-200",
             collapsed ? "w-16" : "w-72",
           )}
         >

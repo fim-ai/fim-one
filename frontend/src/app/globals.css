@@ -119,6 +119,12 @@
   --sidebar-ring: oklch(0.72 0.14 70);
 }
 
+@utility glass-overlay {
+  /* Frosted glass overlay — used by Dialog/Sheet/AlertDialog backdrops */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
