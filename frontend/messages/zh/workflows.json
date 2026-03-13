@@ -199,5 +199,17 @@
   "edgeDefaultLabel": "否则",
   "editorUndo": "撤销",
   "editorRedo": "重做",
-  "editorAutoLayout": "自动布局"
+  "editorAutoLayout": "自动布局",
+  "importWorkflow": "导入工作流",
+  "exportWorkflow": "导出工作流",
+  "duplicateWorkflow": "复制工作流",
+  "importSuccess": "工作流导入成功",
+  "exportSuccess": "工作流已导出",
+  "duplicateSuccess": "工作流复制成功",
+  "importInvalidFormat": "无效的工作流文件格式",
+  "importInvalidBlueprint": "工作流蓝图无效",
+  "deleteNode": "删除节点",
+  "deleteNodeConfirm": "确定要删除此节点吗？连接的边也将被移除。",
+  "errorCannotDeleteStart": "无法删除开始节点",
+  "errorCannotDeleteEnd": "无法删除结束节点"
 }

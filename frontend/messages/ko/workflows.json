@@ -199,5 +199,17 @@
   "edgeDefaultLabel": "그 외",
   "editorUndo": "실행 취소",
   "editorRedo": "다시 실행",
-  "editorAutoLayout": "자동 레이아웃"
+  "editorAutoLayout": "자동 레이아웃",
+  "importWorkflow": "워크플로우 가져오기",
+  "exportWorkflow": "워크플로우 내보내기",
+  "duplicateWorkflow": "워크플로우 복제",
+  "importSuccess": "워크플로우를 성공적으로 가져왔습니다",
+  "exportSuccess": "워크플로우를 내보냈습니다",
+  "duplicateSuccess": "워크플로우를 성공적으로 복제했습니다",
+  "importInvalidFormat": "잘못된 워크플로우 파일 형식입니다",
+  "importInvalidBlueprint": "워크플로우 블루프린트가 유효하지 않습니다",
+  "deleteNode": "노드 삭제",
+  "deleteNodeConfirm": "이 노드를 삭제하시겠습니까? 연결된 엣지도 제거됩니다.",
+  "errorCannotDeleteStart": "시작 노드는 삭제할 수 없습니다",
+  "errorCannotDeleteEnd": "종료 노드는 삭제할 수 없습니다"
 }

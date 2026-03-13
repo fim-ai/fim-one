@@ -220,24 +220,107 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     setEdges(toSafeEdges(snapshot.edges))
   }, [redo, setNodes, setEdges, toSafeEdges])
 
-  // Keyboard shortcuts: Cmd+Z = undo, Cmd+Shift+Z = redo
+  // Delete selected nodes/edges handler
+  const handleDeleteSelected = useCallback(() => {
+    // Get currently selected nodes
+    const selectedNodes = nodes.filter((n) => n.selected)
+    // Get currently selected edges
+    const selectedEdges = edges.filter((e) => e.selected)
+
+    if (selectedNodes.length === 0 && selectedEdges.length === 0) return
+
+    // Check for protected node types (start, end)
+    for (const node of selectedNodes) {
+      if (node.type === "start") {
+        toast.error(t("errorCannotDeleteStart"))
+        return
+      }
+      if (node.type === "end") {
+        toast.error(t("errorCannotDeleteEnd"))
+        return
+      }
+    }
+
+    const deletedNodeIds = new Set(selectedNodes.map((n) => n.id))
+    const deletedEdgeIds = new Set(selectedEdges.map((e) => e.id))
+
+    // Remove selected nodes
+    if (deletedNodeIds.size > 0) {
+      setNodes((nds) => nds.filter((n) => !deletedNodeIds.has(n.id)))
+      // Remove edges connected to deleted nodes
+      setEdges((eds) =>
+        eds.filter(
+          (e) =>
+            !deletedNodeIds.has(e.source) &&
+            !deletedNodeIds.has(e.target) &&
+            !deletedEdgeIds.has(e.id),
+        ),
+      )
+    } else if (deletedEdgeIds.size > 0) {
+      // Only edges selected, no nodes
+      setEdges((eds) => eds.filter((e) => !deletedEdgeIds.has(e.id)))
+    }
+
+    // Clear selection if deleted node was the config-panel selected node
+    if (selectedNodeId && deletedNodeIds.has(selectedNodeId)) {
+      setSelectedNodeId(null)
+    }
+  }, [nodes, edges, selectedNodeId, setNodes, setEdges, t])
+
+  // Delete a specific node by ID (used by config panel)
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId)
+      if (!node) return
+
+      if (node.type === "start") {
+        toast.error(t("errorCannotDeleteStart"))
+        return
+      }
+      if (node.type === "end") {
+        toast.error(t("errorCannotDeleteEnd"))
+        return
+      }
+
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId))
+      setEdges((eds) =>
+        eds.filter((e) => e.source !== nodeId && e.target !== nodeId),
+      )
+
+      if (selectedNodeId === nodeId) {
+        setSelectedNodeId(null)
+      }
+    },
+    [nodes, selectedNodeId, setNodes, setEdges, t],
+  )
+
+  // Keyboard shortcuts: Cmd+Z = undo, Cmd+Shift+Z = redo, Backspace/Delete = delete selected
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return
       // Don't intercept when typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
 
-      e.preventDefault()
-      if (e.shiftKey) {
-        handleRedo()
-      } else {
-        handleUndo()
+      // Undo/Redo: Cmd+Z / Cmd+Shift+Z
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault()
+        if (e.shiftKey) {
+          handleRedo()
+        } else {
+          handleUndo()
+        }
+        return
+      }
+
+      // Delete selected nodes/edges: Backspace or Delete
+      if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault()
+        handleDeleteSelected()
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [handleUndo, handleRedo])
+  }, [handleUndo, handleRedo, handleDeleteSelected])
 
   // Notify parent of undo/redo state changes
   useEffect(() => {
@@ -441,6 +524,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           onInit={(instance) => { rfInstanceRef.current = instance }}
+          deleteKeyCode={null}
           fitView
           fitViewOptions={{ maxZoom: 1, padding: 0.4 }}
           colorMode={rfColorMode}
@@ -482,6 +566,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           node={selectedNode}
           allNodes={nodes}
           onUpdate={handleNodeDataUpdate}
+          onDelete={handleDeleteNode}
           onClose={() => setSelectedNodeId(null)}
         />
       )}

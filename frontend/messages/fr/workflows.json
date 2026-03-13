@@ -199,5 +199,17 @@
   "edgeDefaultLabel": "Sinon",
   "editorUndo": "Annuler",
   "editorRedo": "Rétablir",
-  "editorAutoLayout": "Disposition automatique"
+  "editorAutoLayout": "Disposition automatique",
+  "importWorkflow": "Importer le flux de travail",
+  "exportWorkflow": "Exporter le flux de travail",
+  "duplicateWorkflow": "Dupliquer le flux de travail",
+  "importSuccess": "Flux de travail importé avec succès",
+  "exportSuccess": "Flux de travail exporté",
+  "duplicateSuccess": "Flux de travail dupliqué avec succès",
+  "importInvalidFormat": "Format de fichier de flux de travail invalide",
+  "importInvalidBlueprint": "Le schéma du flux de travail est invalide",
+  "deleteNode": "Supprimer le nœud",
+  "deleteNodeConfirm": "Êtes-vous sûr de vouloir supprimer ce nœud ? Les connexions associées seront également supprimées.",
+  "errorCannotDeleteStart": "Impossible de supprimer le nœud de démarrage",
+  "errorCannotDeleteEnd": "Impossible de supprimer le nœud de fin"
 }

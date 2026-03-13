@@ -11,6 +11,17 @@ import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { VariablePicker } from "./variable-picker"
 import type { Node } from "@xyflow/react"
 import type { WorkflowNodeType } from "@/types/workflow"
@@ -19,11 +30,13 @@ interface NodeConfigPanelProps {
   node: Node | null
   allNodes: Node[]
   onUpdate: (nodeId: string, data: Record<string, unknown>) => void
+  onDelete: (nodeId: string) => void
   onClose: () => void
 }
 
-export function NodeConfigPanel({ node, allNodes, onUpdate, onClose }: NodeConfigPanelProps) {
+export function NodeConfigPanel({ node, allNodes, onUpdate, onDelete, onClose }: NodeConfigPanelProps) {
   const t = useTranslations("workflows")
+  const tc = useTranslations("common")
 
   const updateField = useCallback(
     (field: string, value: unknown) => {
@@ -72,6 +85,42 @@ export function NodeConfigPanel({ node, allNodes, onUpdate, onClose }: NodeConfi
             updateField={updateField}
             otherNodes={otherNodes}
           />
+
+          {/* Delete node button — disabled for start/end nodes */}
+          {nodeType !== "start" && nodeType !== "end" && (
+            <>
+              <Separator className="my-1" />
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-full gap-1.5"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t("deleteNode")}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent size="sm">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t("deleteNode")}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t("deleteNodeConfirm")}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      onClick={() => onDelete(node.id)}
+                    >
+                      {tc("delete")}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
         </div>
       </ScrollArea>
     </div>

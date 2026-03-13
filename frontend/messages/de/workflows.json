@@ -199,5 +199,17 @@
   "edgeDefaultLabel": "Sonst",
   "editorUndo": "Rückgängig machen",
   "editorRedo": "Wiederherstellen",
-  "editorAutoLayout": "Automatisches Layout"
+  "editorAutoLayout": "Automatisches Layout",
+  "importWorkflow": "Workflow importieren",
+  "exportWorkflow": "Workflow exportieren",
+  "duplicateWorkflow": "Workflow duplizieren",
+  "importSuccess": "Workflow erfolgreich importiert",
+  "exportSuccess": "Workflow exportiert",
+  "duplicateSuccess": "Workflow erfolgreich dupliziert",
+  "importInvalidFormat": "Ungültiges Workflow-Dateiformat",
+  "importInvalidBlueprint": "Workflow-Blueprint ist ungültig",
+  "deleteNode": "Knoten löschen",
+  "deleteNodeConfirm": "Sind Sie sicher, dass Sie diesen Knoten löschen möchten? Verbundene Kanten werden ebenfalls entfernt.",
+  "errorCannotDeleteStart": "Der Start-Knoten kann nicht gelöscht werden",
+  "errorCannotDeleteEnd": "Der End-Knoten kann nicht gelöscht werden"
 }

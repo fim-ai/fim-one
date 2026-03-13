@@ -8,7 +8,7 @@ import {
   useReactFlow,
 } from "@xyflow/react"
 import type { EdgeProps, Node } from "@xyflow/react"
-import { Plus } from "lucide-react"
+import { Plus, X } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import type {
@@ -164,6 +164,10 @@ export function AddNodeEdge({
     [id, source, target, sourceHandleId, targetHandleId, sourceX, sourceY, targetX, targetY, setEdges, setNodes],
   )
 
+  const handleDeleteEdge = useCallback(() => {
+    setEdges((edges) => edges.filter((e) => e.id !== id))
+  }, [id, setEdges])
+
   // Check which node types already exist as single-instance (start/end)
   const existingNodes = getNodes()
   const hasStart = existingNodes.some((n) => n.type === "start")
@@ -204,18 +208,32 @@ export function AddNodeEdge({
             if (!showPicker) setIsHovered(false)
           }}
         >
-          {/* Plus button */}
-          <button
-            className={cn(
-              "flex h-5 w-5 items-center justify-center rounded-full border bg-background shadow-sm transition-all duration-150",
-              "hover:bg-primary hover:text-primary-foreground hover:border-primary hover:scale-110",
-              "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
-              (isHovered || showPicker) ? "opacity-100 scale-100" : "opacity-0 scale-75",
-            )}
-            onClick={() => setShowPicker(!showPicker)}
-          >
-            <Plus className="h-3 w-3" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Delete edge button */}
+            <button
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full border bg-background shadow-sm transition-all duration-150",
+                "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive hover:scale-110",
+                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-destructive",
+                (isHovered || showPicker) ? "opacity-100 scale-100" : "opacity-0 scale-75",
+              )}
+              onClick={handleDeleteEdge}
+            >
+              <X className="h-3 w-3" />
+            </button>
+            {/* Plus button */}
+            <button
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full border bg-background shadow-sm transition-all duration-150",
+                "hover:bg-primary hover:text-primary-foreground hover:border-primary hover:scale-110",
+                "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+                (isHovered || showPicker) ? "opacity-100 scale-100" : "opacity-0 scale-75",
+              )}
+              onClick={() => setShowPicker(!showPicker)}
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
 
           {/* Node type picker */}
           {showPicker && (

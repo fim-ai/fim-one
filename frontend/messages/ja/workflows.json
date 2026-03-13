@@ -199,5 +199,17 @@
   "edgeDefaultLabel": "その他",
   "editorUndo": "元に戻す",
   "editorRedo": "やり直す",
-  "editorAutoLayout": "自動レイアウト"
+  "editorAutoLayout": "自動レイアウト",
+  "importWorkflow": "ワークフローをインポート",
+  "exportWorkflow": "ワークフローをエクスポート",
+  "duplicateWorkflow": "ワークフローを複製",
+  "importSuccess": "ワークフローが正常にインポートされました",
+  "exportSuccess": "ワークフローがエクスポートされました",
+  "duplicateSuccess": "ワークフローが正常に複製されました",
+  "importInvalidFormat": "無効なワークフローファイル形式です",
+  "importInvalidBlueprint": "ワークフロー設計図が無効です",
+  "deleteNode": "ノードを削除",
+  "deleteNodeConfirm": "このノードを削除してもよろしいですか？接続されたエッジも削除されます。",
+  "errorCannotDeleteStart": "スタートノードは削除できません",
+  "errorCannotDeleteEnd": "エンドノードは削除できません"
 }
