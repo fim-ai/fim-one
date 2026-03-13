@@ -256,8 +256,6 @@
   "noSearchResults": "Aucun flux de travail ne correspond à votre recherche.",
   "workflowCount": "{count} sur {total}",
   "sortUpdated": "Récemment modifiés",
-  "sortCreated": "Récemment créés",
-  "sortName": "Nom (A-Z)",
   "envVarsTitle": "Variables d'environnement",
   "envVarsDescription": "Configurez des variables d'environnement chiffrées (clés API, secrets) accessibles par les nœuds de flux de travail à l'exécution.",
   "envVarsEmpty": "Aucune variable d'environnement configurée pour le moment.",
@@ -483,5 +481,9 @@
   "variablesPanelTypeNumber": "Nombre",
   "variablesPanelTypeBoolean": "Booléen",
   "variablesPanelTypeJson": "JSON",
-  "variablesButton": "Variables"
+  "variablesButton": "Variables",
+  "sortNewest": "Plus récent d'abord",
+  "sortOldest": "Plus ancien d'abord",
+  "sortNameAsc": "Nom A-Z",
+  "sortNameDesc": "Nom Z-A"
 }

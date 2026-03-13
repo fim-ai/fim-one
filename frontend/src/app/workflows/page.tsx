@@ -50,7 +50,7 @@ export default function WorkflowsPage() {
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "active">("all")
-  const [sortBy, setSortBy] = useState<"updated" | "created" | "name">("updated")
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name_asc" | "name_desc" | "updated">("newest")
 
   // Auth guard
   useEffect(() => {
@@ -252,10 +252,20 @@ export default function WorkflowsPage() {
     }
     // Sort
     result = [...result].sort((a, b) => {
-      if (sortBy === "name") return a.name.localeCompare(b.name)
-      if (sortBy === "created") return (b.created_at ?? "").localeCompare(a.created_at ?? "")
-      // "updated" — most recently updated first
-      return (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
+      switch (sortBy) {
+        case "newest":
+          return b.created_at.localeCompare(a.created_at)
+        case "oldest":
+          return a.created_at.localeCompare(b.created_at)
+        case "name_asc":
+          return a.name.localeCompare(b.name)
+        case "name_desc":
+          return b.name.localeCompare(a.name)
+        case "updated":
+          return (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at)
+        default:
+          return 0
+      }
     })
     return result
   }, [workflows, searchQuery, statusFilter, sortBy])
@@ -325,13 +335,15 @@ export default function WorkflowsPage() {
             ))}
           </div>
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-            <SelectTrigger className="w-[140px] h-8 text-xs ml-auto">
+            <SelectTrigger className="w-[160px] h-8 text-xs ml-auto">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="newest" className="text-xs">{t("sortNewest")}</SelectItem>
+              <SelectItem value="oldest" className="text-xs">{t("sortOldest")}</SelectItem>
+              <SelectItem value="name_asc" className="text-xs">{t("sortNameAsc")}</SelectItem>
+              <SelectItem value="name_desc" className="text-xs">{t("sortNameDesc")}</SelectItem>
               <SelectItem value="updated" className="text-xs">{t("sortUpdated")}</SelectItem>
-              <SelectItem value="created" className="text-xs">{t("sortCreated")}</SelectItem>
-              <SelectItem value="name" className="text-xs">{t("sortName")}</SelectItem>
             </SelectContent>
           </Select>
           <span className="text-xs text-muted-foreground shrink-0">

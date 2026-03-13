@@ -43,9 +43,11 @@
   "searchPlaceholder": "Search workflows...",
   "noSearchResults": "No workflows match your search.",
   "workflowCount": "{count} of {total}",
+  "sortNewest": "Newest first",
+  "sortOldest": "Oldest first",
+  "sortNameAsc": "Name A-Z",
+  "sortNameDesc": "Name Z-A",
   "sortUpdated": "Recently updated",
-  "sortCreated": "Recently created",
-  "sortName": "Name (A-Z)",
 
   "nodeType_start": "Start",
   "nodeType_end": "End",

@@ -256,8 +256,6 @@
   "noSearchResults": "没有工作流与您的搜索匹配。",
   "workflowCount": "{count} 个，共 {total} 个",
   "sortUpdated": "最近更新",
-  "sortCreated": "最近创建",
-  "sortName": "名称 (A-Z)",
   "envVarsTitle": "环境变量",
   "envVarsDescription": "配置加密的环境变量（API密钥、密钥）供工作流节点在运行时访问。",
   "envVarsEmpty": "尚未配置环境变量。",
@@ -483,5 +481,9 @@
   "variablesPanelTypeNumber": "数字",
   "variablesPanelTypeBoolean": "布尔值",
   "variablesPanelTypeJson": "JSON",
-  "variablesButton": "变量"
+  "variablesButton": "变量",
+  "sortNewest": "最新优先",
+  "sortOldest": "最旧优先",
+  "sortNameAsc": "名称 A-Z",
+  "sortNameDesc": "名称 Z-A"
 }

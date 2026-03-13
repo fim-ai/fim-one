@@ -256,8 +256,6 @@
   "noSearchResults": "Keine Workflows entsprechen Ihrer Suche.",
   "workflowCount": "{count} von {total}",
   "sortUpdated": "Kürzlich aktualisiert",
-  "sortCreated": "Kürzlich erstellt",
-  "sortName": "Name (A-Z)",
   "envVarsTitle": "Umgebungsvariablen",
   "envVarsDescription": "Konfigurieren Sie verschlüsselte Umgebungsvariablen (API-Schlüssel, Geheimnisse), auf die Workflow-Knoten zur Laufzeit zugreifen können.",
   "envVarsEmpty": "Noch keine Umgebungsvariablen konfiguriert.",
@@ -483,5 +481,9 @@
   "variablesPanelTypeNumber": "Zahl",
   "variablesPanelTypeBoolean": "Boolesch",
   "variablesPanelTypeJson": "JSON",
-  "variablesButton": "Variablen"
+  "variablesButton": "Variablen",
+  "sortNewest": "Neueste zuerst",
+  "sortOldest": "Älteste zuerst",
+  "sortNameAsc": "Name A-Z",
+  "sortNameDesc": "Name Z-A"
 }

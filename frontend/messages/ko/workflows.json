@@ -256,8 +256,6 @@
   "noSearchResults": "검색과 일치하는 워크플로우가 없습니다.",
   "workflowCount": "{count}개 / {total}개",
   "sortUpdated": "최근 업데이트됨",
-  "sortCreated": "최근 생성됨",
-  "sortName": "이름 (A-Z)",
   "envVarsTitle": "환경 변수",
   "envVarsDescription": "워크플로우 노드에서 런타임에 액세스할 수 있는 암호화된 환경 변수(API 키, 시크릿)를 구성합니다.",
   "envVarsEmpty": "아직 구성된 환경 변수가 없습니다.",
@@ -483,5 +481,9 @@
   "variablesPanelTypeNumber": "숫자",
   "variablesPanelTypeBoolean": "부울",
   "variablesPanelTypeJson": "JSON",
-  "variablesButton": "변수"
+  "variablesButton": "변수",
+  "sortNewest": "최신순",
+  "sortOldest": "오래된순",
+  "sortNameAsc": "이름 A-Z",
+  "sortNameDesc": "이름 Z-A"
 }

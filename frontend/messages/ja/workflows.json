@@ -256,8 +256,6 @@
   "noSearchResults": "検索に一致するワークフローがありません。",
   "workflowCount": "{count} / {total}",
   "sortUpdated": "最近更新",
-  "sortCreated": "最近作成",
-  "sortName": "名前 (A-Z)",
   "envVarsTitle": "環境変数",
   "envVarsDescription": "暗号化された環境変数（APIキー、シークレット）を設定し、ワークフローノードが実行時にアクセスできるようにします。",
   "envVarsEmpty": "環境変数はまだ設定されていません。",
@@ -483,5 +481,9 @@
   "variablesPanelTypeNumber": "数値",
   "variablesPanelTypeBoolean": "ブール値",
   "variablesPanelTypeJson": "JSON",
-  "variablesButton": "変数"
+  "variablesButton": "変数",
+  "sortNewest": "最新順",
+  "sortOldest": "最古順",
+  "sortNameAsc": "名前 A-Z",
+  "sortNameDesc": "名前 Z-A"
 }
