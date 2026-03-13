@@ -581,14 +581,17 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
         return
       }
 
-      const wrapper = reactFlowWrapper.current
-      if (!wrapper) return
+      // Convert screen coordinates to flow coordinates (zoom-aware)
+      const rfInstance = rfInstanceRef.current
+      if (!rfInstance) return
 
-      const bounds = wrapper.getBoundingClientRect()
-      const position = {
-        x: event.clientX - bounds.left - 110,
-        y: event.clientY - bounds.top - 30,
-      }
+      const position = rfInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      })
+      // Offset to center the node at the drop point (node width ~220px, height ~60px)
+      position.x -= 110
+      position.y -= 30
 
       const newNode: Node = {
         id: `${nodeType}_${Date.now()}`,
