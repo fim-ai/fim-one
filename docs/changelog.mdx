@@ -29,6 +29,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Workflow Node Context Menu** — Right-click any node to access Configure, Copy, Duplicate, and Delete actions. Delete action is hidden for Start/End singleton nodes. Menu auto-closes on outside click or scroll.
+- **Workflow Phase 2 Templates** — Two new built-in templates (8 total): List Processing Pipeline (Start → ListOperation → Transform → End) and Enhanced Question Answering (Start → QuestionUnderstanding → LLM → End).
+- **Workflow Phase 2 Validation** — Extended blueprint validation warnings for ListOperation (missing input/expression), Transform (missing input/empty operations), Iterator (missing list variable), Loop (missing condition), DocumentExtractor, QuestionUnderstanding (missing input), ParameterExtractor (missing input text/empty params). Fixed: sort operation no longer incorrectly requires expression.
 - **Workflow Node Notes** — Per-node annotation feature. Click "Note" in any node's config panel to add a freeform note displayed as italic text below the node on the canvas. Auto-expanding textarea with `data.note` storage.
 - **Workflow Snap-to-Grid** — 16px snap grid matching the dot background pattern for precise node alignment.
 - **Workflow Connection Validation** — Prevents self-connections and duplicate edges in addition to existing Start/End restrictions.

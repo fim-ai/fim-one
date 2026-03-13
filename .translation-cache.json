@@ -14739,7 +14739,11 @@
       "configQuestionMode": "25aaa653a57aace3",
       "nodeDesc_questionUnderstanding": "0e604055506f598f",
       "inputType_text": "71988c4d8e0803ba",
-      "configExtractMode": "f3b3d60b1a878e9d"
+      "configExtractMode": "f3b3d60b1a878e9d",
+      "contextMenuConfigure": "6defafa2caa65304",
+      "contextMenuCopy": "e21f935f11d7e966",
+      "contextMenuDuplicate": "02cdaabfca805d6a",
+      "contextMenuDelete": "e2d0a54968ead24e"
     },
     "fr": {
       "editorUntitled": "942ce282b041e034",
@@ -15104,7 +15108,11 @@
       "configQuestionMode": "25aaa653a57aace3",
       "nodeDesc_questionUnderstanding": "0e604055506f598f",
       "inputType_text": "71988c4d8e0803ba",
-      "configExtractMode": "f3b3d60b1a878e9d"
+      "configExtractMode": "f3b3d60b1a878e9d",
+      "contextMenuConfigure": "6defafa2caa65304",
+      "contextMenuCopy": "e21f935f11d7e966",
+      "contextMenuDuplicate": "02cdaabfca805d6a",
+      "contextMenuDelete": "e2d0a54968ead24e"
     },
     "zh": {
       "editorUntitled": "942ce282b041e034",
@@ -15469,7 +15477,11 @@
       "configQuestionMode": "25aaa653a57aace3",
       "nodeDesc_questionUnderstanding": "0e604055506f598f",
       "inputType_text": "71988c4d8e0803ba",
-      "configExtractMode": "f3b3d60b1a878e9d"
+      "configExtractMode": "f3b3d60b1a878e9d",
+      "contextMenuConfigure": "6defafa2caa65304",
+      "contextMenuCopy": "e21f935f11d7e966",
+      "contextMenuDuplicate": "02cdaabfca805d6a",
+      "contextMenuDelete": "e2d0a54968ead24e"
     },
     "ja": {
       "editorUntitled": "942ce282b041e034",
@@ -15834,7 +15846,11 @@
       "configQuestionMode": "25aaa653a57aace3",
       "nodeDesc_questionUnderstanding": "0e604055506f598f",
       "inputType_text": "71988c4d8e0803ba",
-      "configExtractMode": "f3b3d60b1a878e9d"
+      "configExtractMode": "f3b3d60b1a878e9d",
+      "contextMenuConfigure": "6defafa2caa65304",
+      "contextMenuCopy": "e21f935f11d7e966",
+      "contextMenuDuplicate": "02cdaabfca805d6a",
+      "contextMenuDelete": "e2d0a54968ead24e"
     },
     "de": {
       "editorUntitled": "942ce282b041e034",
@@ -16199,7 +16215,11 @@
       "configQuestionMode": "25aaa653a57aace3",
       "nodeDesc_questionUnderstanding": "0e604055506f598f",
       "inputType_text": "71988c4d8e0803ba",
-      "configExtractMode": "f3b3d60b1a878e9d"
+      "configExtractMode": "f3b3d60b1a878e9d",
+      "contextMenuConfigure": "6defafa2caa65304",
+      "contextMenuCopy": "e21f935f11d7e966",
+      "contextMenuDuplicate": "02cdaabfca805d6a",
+      "contextMenuDelete": "e2d0a54968ead24e"
     }
   },
   "json_hashes/skills.json": {
