@@ -689,6 +689,216 @@ class TestConditionBranchExpressions:
         assert result.active_handles == ["condition-c1"]
 
 
+class TestTemplateTransformNode:
+    """Test the TemplateTransform node using Jinja2 sandbox."""
+
+    @pytest.mark.asyncio
+    async def test_jinja2_template_rendering(self):
+        """TemplateTransform should render Jinja2 templates with store variables."""
+        from fim_one.core.workflow.nodes import TemplateTransformExecutor
+        from fim_one.core.workflow.types import ExecutionContext, WorkflowNodeDef, NodeType
+
+        node = WorkflowNodeDef(
+            id="tmpl_1", type=NodeType.TEMPLATE_TRANSFORM,
+            data={
+                "type": "TEMPLATE_TRANSFORM",
+                "template": "Hello {{ name }}! You have {{ count }} items.",
+            },
+        )
+        store = VariableStore()
+        await store.set("name", "Alice")
+        await store.set("count", 3)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = TemplateTransformExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert "Alice" in str(result.output)
+        assert "3" in str(result.output)
+
+    @pytest.mark.asyncio
+    async def test_empty_template_fails(self):
+        """TemplateTransform with empty template should fail."""
+        from fim_one.core.workflow.nodes import TemplateTransformExecutor
+        from fim_one.core.workflow.types import ExecutionContext, WorkflowNodeDef, NodeType
+
+        node = WorkflowNodeDef(
+            id="tmpl_1", type=NodeType.TEMPLATE_TRANSFORM,
+            data={"type": "TEMPLATE_TRANSFORM", "template": ""},
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = TemplateTransformExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.FAILED
+        assert "no template" in (result.error or "").lower()
+
+
+class TestConditionBranchDefaultRoute:
+    """Test condition branch routing to the default (else) branch."""
+
+    @pytest.mark.asyncio
+    async def test_falls_through_to_default(self):
+        """When no condition matches, default handle is activated."""
+        from fim_one.core.workflow.nodes import ConditionBranchExecutor
+        from fim_one.core.workflow.types import ExecutionContext, WorkflowNodeDef, NodeType
+
+        node = WorkflowNodeDef(
+            id="cond_1", type=NodeType.CONDITION_BRANCH,
+            data={
+                "type": "CONDITION_BRANCH",
+                "mode": "expression",
+                "conditions": [
+                    {
+                        "id": "c1",
+                        "label": "Is Admin",
+                        "variable": "role",
+                        "operator": "==",
+                        "value": "admin",
+                    },
+                ],
+                "default_handle": "source-default",
+            },
+        )
+        store = VariableStore()
+        await store.set("role", "viewer")  # No match
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = ConditionBranchExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert result.active_handles == ["source-default"]
+
+    @pytest.mark.asyncio
+    async def test_numeric_comparison(self):
+        """ConditionBranch should handle numeric operators (> < etc.)."""
+        from fim_one.core.workflow.nodes import ConditionBranchExecutor
+        from fim_one.core.workflow.types import ExecutionContext, WorkflowNodeDef, NodeType
+
+        node = WorkflowNodeDef(
+            id="cond_1", type=NodeType.CONDITION_BRANCH,
+            data={
+                "type": "CONDITION_BRANCH",
+                "mode": "expression",
+                "conditions": [
+                    {
+                        "id": "c1",
+                        "label": "High Score",
+                        "variable": "score",
+                        "operator": ">",
+                        "value": "80",
+                    },
+                ],
+            },
+        )
+        store = VariableStore()
+        await store.set("score", 95)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = ConditionBranchExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert result.active_handles == ["condition-c1"]
+
+
+class TestEndNodeOutputMapping:
+    """Test the End node output mapping with variable interpolation."""
+
+    @pytest.mark.asyncio
+    async def test_output_mapping_with_interpolation(self):
+        """End node should interpolate {{var}} references in output mapping."""
+        from fim_one.core.workflow.nodes import EndExecutor
+        from fim_one.core.workflow.types import ExecutionContext, WorkflowNodeDef, NodeType
+
+        node = WorkflowNodeDef(
+            id="end_1", type=NodeType.END,
+            data={
+                "type": "END",
+                "output_mapping": {
+                    "greeting": "{{message}}",
+                    "direct_ref": "count",
+                },
+            },
+        )
+        store = VariableStore()
+        await store.set("message", "Hello World!")
+        await store.set("count", 42)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = EndExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output["greeting"] == "Hello World!"
+        # Direct variable reference (no {{...}} wrapper) resolves via store.get()
+        assert result.output["direct_ref"] == 42
+
+
+class TestFailBranchStrategy:
+    """Test the FAIL_BRANCH error strategy."""
+
+    @pytest.mark.asyncio
+    async def test_fail_branch_skips_downstream(self):
+        """FAIL_BRANCH should skip downstream nodes while other branches run."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "code_fail",
+                    "type": "codeExecution",
+                    "data": {
+                        "type": "CODE_EXECUTION",
+                        "code": "raise ValueError('boom')",
+                        "error_strategy": "fail_branch",
+                    },
+                },
+                {
+                    "id": "code_ok",
+                    "type": "codeExecution",
+                    "data": {
+                        "type": "CODE_EXECUTION",
+                        "code": "result = 'ok'",
+                    },
+                },
+                {
+                    "id": "after_fail",
+                    "type": "variableAssign",
+                    "data": {
+                        "type": "VARIABLE_ASSIGN",
+                        "assignments": [{"variable": "x", "value": "1"}],
+                    },
+                },
+                _end_node(),
+            ],
+            "edges": [
+                _edge("start_1", "code_fail"),
+                _edge("start_1", "code_ok"),
+                _edge("code_fail", "after_fail"),
+                _edge("code_ok", "end_1"),
+                _edge("after_fail", "end_1"),
+            ],
+        }
+        parsed = parse_blueprint(raw)
+        engine = WorkflowEngine(run_id="r", user_id="u", workflow_id="w")
+
+        events: list[tuple[str, dict]] = []
+        async for event_name, event_data in engine.execute_streaming(parsed):
+            events.append((event_name, event_data))
+
+        event_types_by_node = {}
+        for e_name, e_data in events:
+            nid = e_data.get("node_id", "")
+            if nid:
+                event_types_by_node[nid] = e_name
+
+        # code_fail should fail
+        assert event_types_by_node.get("code_fail") == "node_failed"
+        # after_fail should be skipped (downstream of failed node)
+        assert event_types_by_node.get("after_fail") == "node_skipped"
+        # code_ok should still complete (parallel branch)
+        assert event_types_by_node.get("code_ok") == "node_completed"
+
+
 class TestCodeExecutionNode:
     @pytest.mark.asyncio
     async def test_simple_code_execution(self):
