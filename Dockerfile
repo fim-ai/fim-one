@@ -30,9 +30,9 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 WORKDIR /app/frontend
 
-# Install dependencies first (layer cache)
+# Install dependencies (lockfile will be regenerated for pnpm 9 compatibility)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 # Copy source and build
 COPY frontend/ ./
