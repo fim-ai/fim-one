@@ -2,9 +2,26 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations } from "next-intl"
-import { Plus, Loader2, Server, LayoutGrid } from "lucide-react"
+import { Plus, Loader2, Clock } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { mcpServerApi } from "@/lib/api"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { mcpServerApi, orgApi } from "@/lib/api"
+import type { UserOrg } from "@/lib/api"
 import { MCPServerCard } from "@/components/tools/mcp-server-card"
 import { MCPServerDialog, type MCPServerInitialValues } from "@/components/tools/mcp-server-dialog"
 import { MCPHubDialog } from "@/components/tools/mcp-hub-dialog"
@@ -22,6 +39,8 @@ interface MCPServersSectionProps {
 
 export function MCPServersSection({ onReady, currentUserId }: MCPServersSectionProps) {
   const t = useTranslations("tools")
+  const tc = useTranslations("common")
+  const to = useTranslations("organizations")
 
   const [servers, setServers] = useState<MCPServerResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -32,6 +51,13 @@ export function MCPServersSection({ onReady, currentUserId }: MCPServersSectionP
   const [dialogInitialValues, setDialogInitialValues] = useState<MCPServerInitialValues | null>(null)
   const fromCatalogRef = useRef(false)
   const dialogSucceededRef = useRef(false)
+
+  // Publish / unpublish state
+  const [pendingPublishId, setPendingPublishId] = useState<string | null>(null)
+  const [pendingUnpublishId, setPendingUnpublishId] = useState<string | null>(null)
+  const [publishOrgId, setPublishOrgId] = useState<string>("")
+  const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
+  const [orgsLoading, setOrgsLoading] = useState(false)
 
   const loadServers = useCallback(async () => {
     try {
@@ -106,6 +132,64 @@ export function MCPServersSection({ onReady, currentUserId }: MCPServersSectionP
     })
   }
 
+  // Publish handlers
+  const handlePublish = (id: string) => {
+    setPendingPublishId(id)
+    setPublishOrgId("")
+    setOrgsLoading(true)
+    orgApi.list().then((orgs) => {
+      setUserOrgs(orgs)
+      if (orgs.length > 0) setPublishOrgId(orgs[0].id)
+    }).catch(() => {}).finally(() => setOrgsLoading(false))
+  }
+
+  const handleUnpublish = (id: string) => {
+    setPendingUnpublishId(id)
+  }
+
+  const handleResubmit = async (id: string) => {
+    try {
+      const updated = await mcpServerApi.resubmit(id)
+      setServers((prev) => prev.map((s) => (s.id === id ? updated : s)))
+      toast.success(t("resubmitSuccess"))
+    } catch {
+      toast.error(t("resubmitError"))
+    }
+  }
+
+  const confirmPublish = async () => {
+    if (!pendingPublishId || !publishOrgId) return
+    const id = pendingPublishId
+    setPendingPublishId(null)
+    try {
+      const updated = await mcpServerApi.publish(id, {
+        scope: "org",
+        org_id: publishOrgId,
+        allow_fallback: true,
+      })
+      setServers((prev) => prev.map((s) => (s.id === id ? updated : s)))
+      toast.success(t("mcpServerPublished"))
+    } catch {
+      toast.error(t("mcpServerPublishFailed"))
+    }
+  }
+
+  const confirmUnpublish = async () => {
+    if (!pendingUnpublishId) return
+    const id = pendingUnpublishId
+    setPendingUnpublishId(null)
+    try {
+      const updated = await mcpServerApi.unpublish(id)
+      setServers((prev) => prev.map((s) => (s.id === id ? updated : s)))
+      toast.success(t("mcpServerUnpublished"))
+    } catch {
+      toast.error(t("mcpServerUnpublishFailed"))
+    }
+  }
+
+  // Find selected org for review notice
+  const selectedOrg = publishOrgId ? userOrgs.find((o) => o.id === publishOrgId) : null
+
   return (
     <>
       {isLoading ? (
@@ -138,6 +222,9 @@ export function MCPServersSection({ onReady, currentUserId }: MCPServersSectionP
               onDelete={() => handleDelete(server.id)}
               onToggleActive={(isActive) => handleToggleActive(server.id, isActive)}
               onTest={() => handleTest(server.id)}
+              onPublish={(id) => handlePublish(id)}
+              onUnpublish={(id) => handleUnpublish(id)}
+              onResubmit={(id) => handleResubmit(id)}
               onCredentialsSaved={(serverId) => {
                 setServers((prev) => prev.map((s) => s.id === serverId ? { ...s, my_has_credentials: true } : s))
               }}
@@ -146,7 +233,7 @@ export function MCPServersSection({ onReady, currentUserId }: MCPServersSectionP
         </div>
       )}
 
-      {/* Dialog */}
+      {/* MCP Server create/edit dialog */}
       <MCPServerDialog
         open={dialogOpen}
         onOpenChange={(open) => {
@@ -165,6 +252,8 @@ export function MCPServersSection({ onReady, currentUserId }: MCPServersSectionP
         onSuccess={handleSuccess}
         allowStdio={allowStdio}
       />
+
+      {/* MCP Hub / catalog dialog */}
       <MCPHubDialog
         open={hubOpen}
         onOpenChange={setHubOpen}
@@ -176,6 +265,76 @@ export function MCPServersSection({ onReady, currentUserId }: MCPServersSectionP
           handleAdd(initial)
         }}
       />
+
+      {/* Publish to Org dialog */}
+      <Dialog open={pendingPublishId !== null} onOpenChange={(open) => { if (!open) setPendingPublishId(null) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("publishDialogTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("publishDialogDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              {orgsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                </div>
+              ) : userOrgs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("publishNoOrgs")}</p>
+              ) : (
+                <>
+                  <Select value={publishOrgId} onValueChange={setPublishOrgId}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t("publishSelectOrg")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {userOrgs.map((org) => (
+                        <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Review notice */}
+                  {selectedOrg?.review_mcp_servers && (
+                    <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
+                      <Clock className="h-4 w-4 shrink-0" />
+                      <span>{to("publishRequiresReview")}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingPublishId(null)}>{tc("cancel")}</Button>
+            <Button
+              className="px-6"
+              onClick={confirmPublish}
+              disabled={orgsLoading || userOrgs.length === 0 || !publishOrgId}
+            >
+              {tc("publish")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unpublish confirmation dialog */}
+      <Dialog open={pendingUnpublishId !== null} onOpenChange={(open) => { if (!open) setPendingUnpublishId(null) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("unpublishDialogTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("unpublishDialogDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" className="px-6" onClick={() => setPendingUnpublishId(null)}>{tc("cancel")}</Button>
+            <Button variant="secondary" className="px-6" onClick={confirmUnpublish}>{tc("unpublish")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

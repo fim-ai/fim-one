@@ -2,11 +2,14 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { MoreHorizontal, Pencil, Trash2, Terminal, Globe, FlaskConical, Loader2, CheckCircle2, XCircle, Key, AlertTriangle } from "lucide-react"
+import {
+  MoreHorizontal, Pencil, Trash2, Terminal, Globe, GlobeLock, FlaskConical,
+  Loader2, CheckCircle2, XCircle, Key, AlertTriangle, RotateCw,
+} from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -44,14 +47,31 @@ interface MCPServerCardProps {
   onDelete: () => void
   onToggleActive: (isActive: boolean) => void
   onTest: () => Promise<{ ok: boolean; tool_count?: number; error?: string }>
+  onPublish?: (id: string) => void
+  onUnpublish?: (id: string) => void
+  onResubmit?: (id: string) => void
   onCredentialsSaved?: (serverId: string) => void
 }
 
-export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggleActive, onTest, onCredentialsSaved }: MCPServerCardProps) {
+export function MCPServerCard({
+  server,
+  currentUserId,
+  onEdit,
+  onDelete,
+  onToggleActive,
+  onTest,
+  onPublish,
+  onUnpublish,
+  onResubmit,
+  onCredentialsSaved,
+}: MCPServerCardProps) {
   const t = useTranslations("tools")
   const tc = useTranslations("common")
+  const to = useTranslations("organizations")
+
   const endpoint = server.transport === "stdio" ? server.command : server.url
   const isRemoteTransport = server.transport === "sse" || server.transport === "streamable_http"
+
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; tool_count?: number; error?: string } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -62,6 +82,7 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
 
   const isOwner = !currentUserId || server.user_id === currentUserId
   const isOrgResource = server.visibility === "org" || server.visibility === "global"
+  const isPublished = server.publish_status === "approved" || server.visibility === "org"
   const needsKeyConfig = !server.allow_fallback && !server.my_has_credentials
 
   const handleTest = async () => {
@@ -82,14 +103,12 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
     try {
       const status = await mcpServerApi.getMyCredentials(server.id)
       if (status.has_credentials && status.env_keys.length > 0) {
-        // Pre-fill with empty values for existing keys (masked)
         const prefilled: Record<string, string> = {}
         for (const k of status.env_keys) {
           prefilled[k] = ""
         }
         setMyKeysEnv(prefilled)
       } else if (server.env) {
-        // Pre-populate with server env keys as empty template
         const template: Record<string, string> = {}
         for (const k of Object.keys(server.env)) {
           template[k] = ""
@@ -130,7 +149,6 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
   }
 
   const handleSaveMyKeys = async () => {
-    // Filter out empty keys
     const env: Record<string, string> = {}
     for (const [k, v] of Object.entries(myKeysEnv)) {
       if (k.trim()) env[k.trim()] = v
@@ -150,17 +168,13 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
 
   return (
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
-      {/* Header: name + badges + dropdown */}
+      {/* Header: name + toggle + dropdown */}
       <div className="flex items-center gap-2 mb-2">
         <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground">
           {server.name}
         </h3>
-        <Badge
-          variant="outline"
-          className="shrink-0 text-[10px] uppercase tracking-wide"
-        >
-          {server.transport === "streamable_http" ? "HTTP" : server.transport.toUpperCase()}
-        </Badge>
+
+        {/* Active toggle — owners only */}
         {isOwner && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -185,7 +199,8 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
             </TooltipContent>
           </Tooltip>
         )}
-        {/* Dropdown: owner sees full menu; non-owner of org resource sees only "Configure My Keys" */}
+
+        {/* Dropdown menu */}
         {isOwner ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -199,19 +214,39 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onEdit}>
-                <Pencil className="h-4 w-4" />
+                <Pencil className="mr-2 h-4 w-4" />
                 {tc("edit")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleTest} disabled={testing}>
                 {testing
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <FlaskConical className="h-4 w-4" />
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <FlaskConical className="mr-2 h-4 w-4" />
                 }
                 {t("testConnection")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              {/* Publish / Unpublish */}
+              {onPublish && onUnpublish && (
+                <DropdownMenuItem
+                  onClick={() => isPublished ? onUnpublish(server.id) : onPublish(server.id)}
+                >
+                  {isPublished
+                    ? <GlobeLock className="mr-2 h-4 w-4" />
+                    : <Globe className="mr-2 h-4 w-4" />
+                  }
+                  {isPublished ? tc("unpublish") : t("publishToOrg")}
+                </DropdownMenuItem>
+              )}
+              {/* Resubmit — only when pending_review or rejected */}
+              {onResubmit && (server.publish_status === "pending_review" || server.publish_status === "rejected") && (
+                <DropdownMenuItem onClick={() => onResubmit(server.id)}>
+                  <RotateCw className="mr-2 h-4 w-4" />
+                  {t("resubmit")}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="mr-2 h-4 w-4" />
                 {tc("delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -229,13 +264,54 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleOpenMyKeys}>
-                <Key className="h-4 w-4" />
+                <Key className="mr-2 h-4 w-4" />
                 {t("configureMyKeys")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
       </div>
+
+      {/* Publish review status badges */}
+      {(server.publish_status === "pending_review" || server.publish_status === "approved" || server.publish_status === "rejected") && (
+        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+          {server.publish_status === "pending_review" && (
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 h-5 border-amber-400 text-amber-600 dark:text-amber-400"
+            >
+              {to("publishStatusPending")}
+            </Badge>
+          )}
+          {server.publish_status === "approved" && (
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 h-5 border-emerald-400 text-emerald-600 dark:text-emerald-400"
+            >
+              {to("publishStatusApproved")}
+            </Badge>
+          )}
+          {server.publish_status === "rejected" && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 h-5 border-destructive text-destructive cursor-default"
+                  >
+                    {to("publishStatusRejected")}
+                  </Badge>
+                </TooltipTrigger>
+                {server.review_note && (
+                  <TooltipContent>
+                    <p>{to("rejectedNote", { note: server.review_note })}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+      )}
 
       {/* Key required warning badge */}
       {needsKeyConfig && (
@@ -251,24 +327,29 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
         </div>
       )}
 
-      {/* Endpoint */}
-      {endpoint && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <p className="text-xs text-muted-foreground truncate mb-1">
-              {isRemoteTransport ? (
-                <Globe className="inline h-3 w-3 mr-1 -mt-0.5" />
-              ) : (
-                <Terminal className="inline h-3 w-3 mr-1 -mt-0.5" />
-              )}
+      {/* Transport badge + Endpoint */}
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="shrink-0 text-[10px] font-mono uppercase tracking-wide text-muted-foreground/70 border border-border rounded px-1 py-0.5 leading-none">
+          {server.transport === "streamable_http" ? "HTTP" : server.transport.toUpperCase()}
+        </span>
+        {endpoint && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className="text-xs text-muted-foreground truncate">
+                {isRemoteTransport ? (
+                  <Globe className="inline h-3 w-3 mr-1 -mt-0.5" />
+                ) : (
+                  <Terminal className="inline h-3 w-3 mr-1 -mt-0.5" />
+                )}
+                {endpoint}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={5}>
               {endpoint}
-            </p>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>
-            {endpoint}
-          </TooltipContent>
-        </Tooltip>
-      )}
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
 
       {/* Tool count / test result */}
       {testResult ? (
@@ -289,7 +370,7 @@ export function MCPServerCard({ server, currentUserId, onEdit, onDelete, onToggl
         {server.description || t("noDescription")}
       </p>
 
-      {/* Delete confirmation — sibling of card content, not nested in dropdown */}
+      {/* Delete confirmation — sibling, not nested in dropdown */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent className="sm:max-w-sm">
           <AlertDialogHeader>
