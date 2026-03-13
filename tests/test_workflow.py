@@ -2610,3 +2610,84 @@ class TestBlueprintValidationAdvanced:
         warnings = validate_blueprint(bp)
         codes = [w.code for w in warnings]
         assert "empty_conditions" not in codes
+
+
+# ============================================================================
+# Templates
+# ============================================================================
+
+
+class TestTemplates:
+    """Test built-in workflow templates."""
+
+    def test_all_templates_load(self):
+        """All built-in templates should load without error."""
+        from fim_one.core.workflow.templates import WORKFLOW_TEMPLATES
+
+        assert len(WORKFLOW_TEMPLATES) >= 4
+
+    def test_list_returns_deep_copies(self):
+        """list_templates() should return independent copies."""
+        from fim_one.core.workflow.templates import list_templates
+
+        t1 = list_templates()
+        t2 = list_templates()
+        assert t1[0] is not t2[0]
+        assert t1[0]["blueprint"] is not t2[0]["blueprint"]
+
+    def test_get_template_by_id(self):
+        """get_template() should return a specific template by ID."""
+        from fim_one.core.workflow.templates import get_template
+
+        t = get_template("simple-llm-chain")
+        assert t is not None
+        assert t["name"] == "Simple LLM Chain"
+        assert "nodes" in t["blueprint"]
+        assert "edges" in t["blueprint"]
+
+    def test_get_template_unknown_returns_none(self):
+        """get_template() with unknown ID should return None."""
+        from fim_one.core.workflow.templates import get_template
+
+        assert get_template("nonexistent-template-xyz") is None
+
+    def test_all_templates_parse_as_valid_blueprints(self):
+        """Every template blueprint should pass parse_blueprint validation."""
+        from fim_one.core.workflow.templates import WORKFLOW_TEMPLATES
+
+        for tpl in WORKFLOW_TEMPLATES:
+            bp = parse_blueprint(tpl["blueprint"])
+            assert len(bp.nodes) >= 2, f"Template {tpl['id']} has too few nodes"
+            assert len(bp.edges) >= 1, f"Template {tpl['id']} has no edges"
+
+    def test_simple_llm_chain_structure(self):
+        """Simple LLM Chain should have Start → LLM → End."""
+        from fim_one.core.workflow.templates import get_template
+
+        t = get_template("simple-llm-chain")
+        bp = parse_blueprint(t["blueprint"])
+        types = {n.type for n in bp.nodes}
+        assert NodeType.START in types
+        assert NodeType.LLM in types
+        assert NodeType.END in types
+        assert len(bp.nodes) == 3
+        assert len(bp.edges) == 2
+
+    def test_conditional_router_has_condition_branch(self):
+        """Conditional Router should include a CONDITION_BRANCH node."""
+        from fim_one.core.workflow.templates import get_template
+
+        t = get_template("conditional-router")
+        bp = parse_blueprint(t["blueprint"])
+        types = {n.type for n in bp.nodes}
+        assert NodeType.CONDITION_BRANCH in types
+
+    def test_http_pipeline_has_http_and_template_nodes(self):
+        """HTTP API Pipeline should include HTTP_REQUEST and TEMPLATE_TRANSFORM."""
+        from fim_one.core.workflow.templates import get_template
+
+        t = get_template("http-api-pipeline")
+        bp = parse_blueprint(t["blueprint"])
+        types = {n.type for n in bp.nodes}
+        assert NodeType.HTTP_REQUEST in types
+        assert NodeType.TEMPLATE_TRANSFORM in types

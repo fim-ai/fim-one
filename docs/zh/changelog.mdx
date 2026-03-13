@@ -11,63 +11,68 @@ description: "FIM One 的所有重要更改。"
 
 ### 已更改
 
-- **工作流测试套件扩展至 68 个测试** — 新增 24 个测试，涵盖 eval 命名空间扁平化（17 个测试用于点号键解析、短别名生成、带扁平名称的 ConditionBranch/VariableAssign）和蓝图验证警告（7 个测试用于断开连接的节点、无法到达的端点、空条件/提示/代码）。工作流测试总数：34 → 68。
+- **工作流测试套件扩展至 105 个测试** — 添加了模板验证测试、导入/导出往返、变量存储高级方法、死锁检测、多条件分支、问题分类器和全面的蓝图验证。总数：68 → 97 → 105。
+- **工作流测试套件扩展至 68 个测试** — 添加了 24 个新测试，涵盖 eval 命名空间展平（17 个测试用于点分键解析、短别名生成、带平面名称的 ConditionBranch/VariableAssign）和蓝图验证警告（7 个测试用于断开连接的节点、无法到达的端点、空条件/提示/代码）。工作流测试总数：34 → 68。
 - **工作流编辑器大改版（Dify 风格）** — 受 Dify 启发的工作流编辑器完整视觉重设计：
   - 水平（从左到右）布局替代从上到下；所有 12 种节点类型使用左/右句柄
-  - 左侧彩色条形节点设计，紧凑 220px 宽度、较小图标和运行状态徽章
-  - 边上添加节点：自定义 `AddNodeEdge`，带"+"中点按钮和节点类型选择器弹窗，可分割现有边
-  - 更丰富的配置面板：LLM 节点的模型选择器下拉菜单、条件的操作符下拉菜单（==、!=、>、<、contains 等）、分区标题、所有输出节点的 `InsertVariableHint` 和 `OutputVariableField`
-  - 可折叠节点面板（仅图标模式）带类别分组；已放置的开始/结束节点变暗
-  - 放置时单一开始/结束验证；`fitViewOptions` 配合 `maxZoom:1` 防止小图表过度缩放
+  - 左侧彩色条形节点设计，宽度紧凑 220px，图标较小，运行状态徽章
+  - 边上添加节点：自定义 `AddNodeEdge`，具有"+"中点按钮和节点类型选择器弹窗，可分割现有边
+  - 更丰富的配置面板：LLM 节点的模型选择器下拉菜单、条件的运算符下拉菜单（==、!=、>、<、contains 等）、分区标题、所有输出节点的 `InsertVariableHint` 和 `OutputVariableField`
+  - 可折叠节点调色板（仅图标模式），具有分类分组；已放置的开始/结束节点变暗
+  - 放置时的单一开始/结束验证；`fitViewOptions` 配置 `maxZoom:1` 以防止小图表上过度缩放
 
 ### 新增
 
-- **智能体技能系统** — 按需加载智能体指令的技能：`Skill` 模型（名称、描述、内容、脚本）具有完整的 CRUD、发布审核和可见性生命周期；`read_skill(name)` 内置工具用于渐进式披露（~80% token 减少）；技能存根注入系统提示（~15 tokens/技能）；`compact_instructions` 每个智能体字段用于自定义 ContextGuard 压缩策略。
-- **技能 UI** — 技能列表页面、全页编辑器（内容/脚本/设置选项卡）、SkillCard 组件、侧边栏导航、智能体编辑器技能选择器，带有紧凑指令文本区域。
-- **工作流发布流程** — 工作流的发布/取消发布/重新提交端点，与现有的智能体发布模式相匹配。Organization 模型上的新 `review_workflows` 标志（带 Alembic 迁移）以启用组织级工作流审核门控。发布操作连接到工作流卡片和工具栏 UI。
-- **工作流蓝图系统** — 用于设计和执行多步自动化蓝图的可视化工作流编辑器：
-  - **12 种节点类型**：Start、End、LLM、ConditionBranch、QuestionClassifier、Agent、KnowledgeRetrieval、Connector、HTTPRequest、VariableAssign、TemplateTransform、CodeExecution — 每种都有自定义 React Flow 节点组件、特定类型图标和专用配置面板表单。
-  - **执行引擎**：`WorkflowEngine` 具有节点执行顺序的拓扑排序、基于 `asyncio.Semaphore` 的并发控制，以及基于 `active_handles` 激活/停用下游边的条件/分类器分支。
+- **智能体技能系统** — 按需加载智能体指令的技能：`Skill` 模型（名称、描述、内容、脚本）具有完整的 CRUD、发布审查和可见性生命周期；`read_skill(name)` 内置工具用于渐进式披露（~80% 令牌减少）；技能存根注入到系统提示中（~15 令牌/技能）；每个智能体的 `compact_instructions` 字段用于自定义 ContextGuard 压缩策略。
+- **技能 UI** — 技能列表页面、全页编辑器（内容/脚本/设置选项卡）、SkillCard 组件、侧边栏导航、智能体编辑器技能选择器和紧凑指令文本区域。
+- **工作流发布流程** — 工作流的发布/取消发布/重新提交端点，与现有智能体发布模式相匹配。Organization 模型上的新 `review_workflows` 标志（带 Alembic 迁移）以启用组织级工作流审查门控。发布操作连接到工作流卡和工具栏 UI。
+- **工作流蓝图系统** — 用于设计和执行多步骤自动化蓝图的可视化工作流编辑器：
+  - **12 种节点类型**：Start、End、LLM、ConditionBranch、QuestionClassifier、Agent、KnowledgeRetrieval、Connector、HTTPRequest、VariableAssign、TemplateTransform、CodeExecution — 每种都有自定义 React Flow 节点组件、特定类型的图标和专用配置面板表单。
+  - **执行引擎**：`WorkflowEngine` 具有节点执行顺序的拓扑排序、基于 `asyncio.Semaphore` 的并发控制，以及根据 `active_handles` 激活/停用下游边的条件/分类器分支。
   - **SSE 流式传输**：通过服务器发送事件的实时工作流执行进度 — 发出 `run_started`、`node_started`、`node_completed`、`node_failed`、`node_skipped`、`run_completed` 和 `run_failed` 事件。SSE 保活用于长时间运行的工作流；客户端断开连接检测触发取消。
-  - **变量存储**：线程安全的 `VariableStore`，具有 `{{node_id.output}}` 插值、平面名称回退解析、用于加密环境变量的 `env.*` 命名空间、`snapshot_safe()`（排除机密）和用于前端选择器的 `list_available_variables()`。
-  - **边标签**：`WorkflowEdgeDef` 携带 `source_handle` 和 `target_handle` 用于条件/分类器分支，启用标记边，直观显示每个连接代表的分支路径。
-  - **变量选择器组合框**：可搜索的组合框（基于 `Command` 的弹出窗口）用于从上游节点插入 `{{node_id.output}}` 引用 — 按节点类型分组，带有图标，集成到所有提示/模板/正文字段。
-  - **运行历史表单**：显示过去工作流执行运行的侧表单，包含状态、持续时间、输入/输出数据和每个节点的结果。通过 `GET /api/workflows/{id}/runs` 分页。
+  - **变量存储**：线程安全的 `VariableStore`，具有 `{{node_id.output}}` 插值、平面名称回退解析、用于加密环境变量的 `env.*` 命名空间、`snapshot_safe()`（排除机密）和 `list_available_variables()`（用于前端选择器）。
+  - **边标签**：`WorkflowEdgeDef` 携带 `source_handle` 和 `target_handle` 用于条件/分类器分支，启用标记边以直观指示每个连接代表的分支路径。
+  - **变量选择器组合框**：可搜索的组合框（基于 `Command` 的弹出窗口）用于从上游节点插入 `{{node_id.output}}` 引用 — 按节点类型分组并带有图标，集成到所有提示/模板/正文字段。
+  - **运行历史表单**：显示过去工作流执行运行的侧表单，包含状态、持续时间、输入/输出数据和每个节点的结果。通过 `GET /api/workflows/{id}/runs` 进行分页。
   - **工作流复制**：`POST /api/workflows/{id}/duplicate` 端点和 UI 操作以克隆现有工作流（复制蓝图、架构、描述；将状态重置为草稿）。
-  - **蓝图验证**：`POST /api/workflows/validate` 端点 — 验证蓝图而不保存（检查 Start/End 节点存在、重复 ID、未知节点类型、边引用、循环检测）。成功时返回节点/边计数，或返回特定验证错误。
-  - **错误策略**：每个节点的 `error_strategy` 字段，具有三种模式 — `STOP_WORKFLOW`（默认：停止所有剩余节点）、`CONTINUE`（标记为失败但让下游继续）、`FAIL_BRANCH`（跳过仅通过失败节点可达的所有节点）。
+  - **蓝图验证**：`POST /api/workflows/validate` 端点 — 验证蓝图而不保存（检查 Start/End 节点存在、重复 ID、未知节点类型、边引用、循环检测）。成功时返回节点/边计数或特定验证错误。
+  - **错误策略**：每个节点的 `error_strategy` 字段有三种模式 — `STOP_WORKFLOW`（默认：停止所有剩余节点）、`CONTINUE`（标记为失败但让下游继续）、`FAIL_BRANCH`（跳过所有仅通过失败节点可达的节点）。
   - **每个节点超时**：每个节点可配置的 `timeout_ms`（默认 30 秒），通过 `asyncio.wait_for` 强制执行；超时产生带有描述性错误消息的结构化 `FAILED` 结果。
-  - **节点配置面板**：每种类型的配置表单 — LLM 节点具有系统提示、模型选择器、模型层级（快速/主）切换、温度滑块、最大 token；ConditionBranch 具有运算符下拉菜单（==、!=、>、<、contains 等）以及表达式/LLM 模式；HTTPRequest 具有方法选择器、URL、标头编辑器（添加/删除键值对）、带有变量插入的正文；CodeExecution 具有语言选择器（Python/JavaScript）和语法适当的提示；所有输出节点包括 `OutputVariableField` 和 `InsertVariableBar`。
-  - **在边上添加节点**：自定义 `AddNodeEdge` 组件，带有"+"中点按钮 — 单击打开节点类型选择器弹出窗口，该弹出窗口内联插入新节点，将现有边分成两个连接。
-  - **自动布局（ELK.js）**：使用 ELK.js 分层算法的 `getAutoLayoutedNodes()` 实用程序，`elk.direction: RIGHT` 用于水平从左到右的节点排列。可配置的节点间距（节点之间 60px，层之间 120px）。
-  - **综合测试套件**：34 个测试涵盖解析器验证（Start/End 存在、重复 ID、未知类型、循环检测、错误策略/超时解析）、拓扑排序（线性和并行分支）、`VariableStore`（获取/设置、插值、环境注入、快照安全、节点输出）、引擎执行（Start-to-End、输入传递、取消、STOP_WORKFLOW、CONTINUE 策略）和节点执行器（VariableAssign、带变量的 CodeExecution、错误处理）。
-  - **后端 CRUD + API**：`Workflow` 和 `WorkflowRun` ORM 模型，带 Alembic 迁移；Pydantic 架构；完整 REST API（`/api/workflows/*`），具有创建、读取、更新、删除、列表、导入/导出；通过 `CREDENTIAL_ENCRYPTION_KEY` 的加密环境变量；变量内省端点（`GET /api/workflows/{id}/variables`）用于前端配置面板。
-  - **安全性**：代码执行节点使用 `subprocess` 而不是裸 `exec()` 进行操作系统级隔离；环境变量从 eval/模板执行上下文中过滤；`ExecutionContext` 跨所有节点执行器的连接。
-  - **前端**：使用 React Flow v12 构建的可视化编辑器 — 带有类别分组的拖放节点调色板（可折叠的仅图标模式）、12 个自定义节点组件、带有 SSE 驱动的实时执行状态的运行面板、带有卡片网格的工作流列表页面。完整的 i18n 支持（6 种语言）。
-- **工作流蓝图验证警告**：`validate_blueprint()` 现在除了返回错误外还返回非致命警告 — 检测断开连接的节点、无法到达的结束节点、空条件/提示/代码块。增强的 `POST /api/workflows/validate` 端点在验证结果旁边返回结构化警告。7 个新测试。
-- **工作流节点/边删除**：退格/删除键盘快捷键删除选定的节点和边。Start/End 节点受保护，不能删除。配置面板包括带有 AlertDialog 确认的"删除节点"按钮，用于显式删除。
-- **工作流导入/导出/复制 UI**：将工作流导出为 JSON 文件下载、自动格式检测导入、通过卡片下拉菜单复制工作流。`WorkflowExportFile` 架构信封用于可移植工作流共享。
-- **管理员：审核日志审计选项卡** — 管理员审计页面现在有一个分段的"系统日志/审核日志"切换。审核日志面板查询新的 `GET /api/admin/review-log` 端点（过滤器：组织、资源类型、操作；限制/偏移分页），并显示包含时间、组织名称、资源类型、资源名称、操作徽章（颜色编码：绿色=已批准、红色=已拒绝、琥珀色=已提交/已重新提交、静音=未发布）和操作员的表格。完整的 i18n（EN + ZH）。
-- **平台组织** — 内置组织 `platform`（ID：`00000000-0000-0000-0000-000000000001`）— 所有新用户自动加入。此组织替代了"全局"可见性概念，并为跨所有用户共享资源提供了中央枢纽。
-- **资源订阅** — 用户现在可以从组织市场订阅/取消订阅共享资源（智能体、连接器、知识库、MCP 服务器）。新的 `resource_subscriptions` 数据库表跟踪订阅关系。
-- **市场 API** — 用于浏览和管理订阅的新端点：
+  - **节点配置面板**：每种类型的配置表单 — LLM 节点具有系统提示、模型选择器、模型层（快速/主要）切换、温度滑块、最大令牌；ConditionBranch 具有运算符下拉菜单（==、!=、>、<、contains 等）和表达式/LLM 模式；HTTPRequest 具有方法选择器、URL、标头编辑器（添加/删除键值对）、带变量插入的正文；CodeExecution 具有语言选择器（Python/JavaScript）和语法适当的提示；所有输出节点都包括 `OutputVariableField` 和 `InsertVariableBar`。
+  - **在边上添加节点**：自定义 `AddNodeEdge` 组件，带有"+"中点按钮 — 单击打开节点类型选择器弹出窗口，在内联插入新节点，将现有边分成两个连接。
+  - **自动布局 (ELK.js)**：使用 ELK.js 分层算法的 `getAutoLayoutedNodes()` 实用程序，`elk.direction: RIGHT` 用于水平从左到右的节点排列。可配置的节点间距（节点之间 60px，层之间 120px）。
+  - **综合测试套件**：34 个测试涵盖解析器验证（Start/End 存在、重复 ID、未知类型、循环检测、错误策略/超时解析）、拓扑排序（线性和平行分支）、`VariableStore`（获取/设置、插值、环境注入、快照安全、节点输出）、引擎执行（Start 到 End、输入传递、取消、STOP_WORKFLOW、CONTINUE 策略）和节点执行器（VariableAssign、带变量的 CodeExecution、错误处理）。
+  - **后端 CRUD + API**：`Workflow` 和 `WorkflowRun` ORM 模型与 Alembic 迁移；Pydantic 架构；完整的 REST API（`/api/workflows/*`）具有创建、读取、更新、删除、列表、导入/导出；通过 `CREDENTIAL_ENCRYPTION_KEY` 的加密环境变量；变量内省端点（`GET /api/workflows/{id}/variables`）用于前端配置面板。
+  - **安全性**：代码执行节点使用 `subprocess` 而不是裸 `exec()` 以实现操作系统级隔离；环境变量从 eval/模板执行上下文中过滤；`ExecutionContext` 跨所有节点执行器的连接。
+  - **前端**：使用 React Flow v12 构建的可视化编辑器 — 带有类别分组（可折叠仅图标模式）的拖放节点调色板、12 个自定义节点组件、带有 SSE 驱动的实时执行状态的运行面板、带有卡网格的工作流列表页面。完整的 i18n 支持（6 种语言）。
+- **工作流蓝图验证警告**：`validate_blueprint()` 现在除了错误外还返回非致命警告 — 检测断开连接的节点、无法到达的结束节点、空条件/提示/代码块。增强的 `POST /api/workflows/validate` 端点返回结构化警告以及验证结果。7 个新测试。
+- **工作流节点/边删除**：退格/删除键盘快捷键删除选定的节点和边。Start/End 节点受保护不被删除。配置面板包括带有 AlertDialog 确认的"删除节点"按钮以进行显式删除。
+- **工作流导入/导出/复制 UI** — 将工作流导出为 JSON 文件下载、自动格式检测导入、通过卡下拉菜单复制工作流。`WorkflowExportFile` 架构信封用于便携式工作流共享。
+- **工作流模板**：4 个内置启动模板（简单 LLM 链、条件路由器、知识增强 QA、HTTP API 管道）。工作流创建时的模板选择器对话框，带有 `GET /api/workflows/templates` 和 `POST /api/workflows/from-template` 端点。
+- **工作流统计端点**：`GET /api/workflows/{id}/stats` 返回执行统计信息（总运行次数、成功率、平均持续时间、状态分解、最后运行时间戳）。
+- **工作流错误策略配置 UI**：配置面板中的每个节点高级配置部分，带有错误策略选择器（停止工作流/继续/失败分支）和自定义超时输入。
+- **工作流运行 URL 参数**：`?run=true` URL 参数在从列表页面导航到编辑器时自动打开运行面板。
+- **管理员：审查日志审计选项卡** — 管理员审计页面现在有分段的"系统日志/审查日志"切换。审查日志面板查询新的 `GET /api/admin/review-log` 端点（过滤器：组织、资源类型、操作；限制/偏移分页）并显示带有时间、组织名称、资源类型、资源名称、操作徽章（颜色编码：绿色=已批准、红色=已拒绝、琥珀色=已提交/已重新提交、静音=未发布）和操作员的表格。完整 i18n（EN + ZH）。
+- **平台组织**：内置组织 `platform`（ID：`00000000-0000-0000-0000-000000000001`）— 所有新用户自动加入。此组织替代了"全局"可见性概念，并为跨所有用户共享资源提供了中央枢纽。
+- **资源订阅**：用户现在可以从组织市场订阅/取消订阅共享资源（智能体、连接器、知识库、MCP 服务器）。新的 `resource_subscriptions` 数据库表跟踪订阅关系。
+- **市场 API**：用于浏览和管理订阅的新端点：
   - `GET /api/market` — 浏览当前组织中的可用资源
   - `POST /api/market/subscribe` — 订阅资源
   - `DELETE /api/market/unsubscribe` — 取消订阅资源
   - `GET /api/market/subscriptions` — 列出用户的当前订阅
-- **市场页面** — Portal 中的新 `/market` 页面，用于浏览和管理对组织资源的订阅。
-- **智能体自动发现** — 智能体上的新 `discoverable` 布尔字段。具有 `discoverable=true` 的智能体可以通过 `call_agent` 工具由 LLM 自动发现和调用（一级委托，无递归）。
-- **子智能体绑定** — 智能体上的新 `sub_agent_ids` 字段 — 可调用子智能体的显式白名单，用于细粒度访问控制。
-- **CallAgentTool** — 内置工具，将任务委托给专家智能体，具有结构化输入验证和结果处理。
-- **MCP 服务器凭证** — 新的 `mcp_server_credentials` 表为 MCP 服务器启用每个用户的环境变量和 HTTP 标头覆盖。
-- **MCP 凭证端点** — `PUT /api/mcp-servers/{id}/my-credentials` 允许用户为共享 MCP 服务器存储个人凭证覆盖。
-- **MCPServer 上的 `allow_fallback`** — 布尔字段控制凭证回退行为 — 当为 `true` 时，缺失的用户凭证回退到所有者默认值。
-- **连接器/知识库切换** — 用于资源状态管理的新端点：
+- **市场页面**：Portal 中的新 `/market` 页面，用于浏览和管理对组织资源的订阅。
+- **智能体自动发现**：智能体上的新 `discoverable` 布尔字段。具有 `discoverable=true` 的智能体可以通过 `call_agent` 工具由 LLM 自动发现和调用（一级委托，无递归）。
+- **子智能体绑定**：智能体上的新 `sub_agent_ids` 字段 — 可调用子智能体的显式白名单，用于细粒度访问控制。
+- **CallAgentTool**：内置工具，使用结构化输入验证和结果处理将任务委托给专家智能体。
+- **MCP 服务器凭证**：新的 `mcp_server_credentials` 表为 MCP 服务器启用每个用户的环境变量和 HTTP 标头覆盖。
+- **MCP 凭证端点**：`PUT /api/mcp-servers/{id}/my-credentials` 允许用户为共享 MCP 服务器存储个人凭证覆盖。
+- **MCPServer 上的 `allow_fallback`**：控制凭证回退行为的布尔字段 — 当为 `true` 时，缺失的用户凭证回退到所有者默认值。
+- **连接器/知识库切换**：用于资源状态管理的新端点：
   - `POST /api/connectors/{id}/toggle` — 暂停/恢复连接器
   - `POST /api/knowledge-bases/{id}/toggle` — 暂停/恢复知识库
-- **独立知识库对话** — `ChatStreamRequest` 和 `Conversation` 上的新 `kb_ids` 字段 — 用户现在可以直接与知识库聊天，而无需将其绑定到智能体。
-- **平台组织保护** — 平台组织无法删除，用户无法自行离开。确保所有用户保持与组织枢纽的连接。
-- **发布审核 UI（前端）** — 组织级发布审核系统前端 — 组织编辑对话框中的审核切换、带有类型/状态过滤器的 ReviewsSheet 和批准/拒绝工作流、智能体卡片上的发布状态徽章（待审核/已批准/已拒绝），带有拒绝原因工具提示、发布对话框中的审核通知（当目标组织需要审核时）、被拒绝资源的重新提交操作、组织管理员/所有者的"审核管理"下拉菜单。所有资源类型（智能体、连接器、知识库、MCP 服务器）获得 `publish_status`、`reviewed_by`、`reviewed_at`、`review_note` 类型字段。完整的 i18n（EN + ZH）。
+- **独立知识库对话**：`ChatStreamRequest` 和 `Conversation` 上的新 `kb_ids` 字段 — 用户现在可以直接与知识库聊天，而无需将其绑定到智能体。
+- **平台组织保护**：平台组织无法删除，用户无法自行离开。确保所有用户保持与组织枢纽的连接。
+- **发布审查 UI（前端）**：组织级发布审查系统前端 — 组织编辑对话框中的审查切换、带有类型/状态过滤器和批准/拒绝工作流的 ReviewsSheet、智能体卡上的发布状态徽章（待审/已批准/已拒绝）和拒绝注释工具提示、发布对话框中的审查通知（当目标组织需要审查时）、被拒绝资源的重新提交操作、组织管理员/所有者的"审查管理"下拉菜单。所有资源类型（智能体、连接器、知识库、MCP 服务器）获得 `publish_status`、`reviewed_by`、`reviewed_at`、`review_note` 类型字段。完整 i18n（EN + ZH）。
 
 ### 已修复
 

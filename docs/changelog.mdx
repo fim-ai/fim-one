@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **Workflow test suite expanded to 105 tests** — Added template validation tests, import/export round-trip, variable store advanced methods, deadlock detection, multi-condition branching, question classifier, and comprehensive blueprint validation. Total: 68 → 97 → 105.
 - **Workflow test suite expanded to 68 tests** — Added 24 new tests covering eval namespace flattening (17 tests for dotted key resolution, short alias generation, ConditionBranch/VariableAssign with flat names) and blueprint validation warnings (7 tests for disconnected nodes, unreachable ends, empty conditions/prompts/code). Total workflow test count: 34 → 68.
 - **Workflow Editor Overhaul (Dify-style)** — Complete visual redesign of the workflow editor inspired by Dify:
   - Horizontal (left-to-right) layout replacing top-to-bottom; all 12 node types use Left/Right handles
@@ -47,6 +48,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Workflow Blueprint Validation Warnings**: `validate_blueprint()` now returns non-fatal warnings in addition to errors — detects disconnected nodes, unreachable end nodes, empty conditions/prompts/code blocks. Enhanced `POST /api/workflows/validate` endpoint returns structured warnings alongside validation results. 7 new tests.
 - **Workflow Node/Edge Deletion**: Backspace/Delete keyboard shortcuts remove selected nodes and edges. Start/End nodes are protected from deletion. Config panel includes a "Delete Node" button with AlertDialog confirmation for explicit removal.
 - **Workflow Import/Export/Duplicate UI**: Export workflows as JSON file download, import with automatic format detection, duplicate workflow via card dropdown. `WorkflowExportFile` schema envelope for portable workflow sharing.
+- **Workflow Templates**: 4 built-in starter templates (Simple LLM Chain, Conditional Router, Knowledge-Augmented QA, HTTP API Pipeline). Template picker dialog on workflow creation with `GET /api/workflows/templates` and `POST /api/workflows/from-template` endpoints.
+- **Workflow Stats Endpoint**: `GET /api/workflows/{id}/stats` returns execution statistics (total runs, success rate, avg duration, status breakdown, last run timestamp).
+- **Workflow Error Strategy Config UI**: Per-node advanced configuration section in the config panel with error strategy selector (Stop Workflow / Continue / Fail Branch) and custom timeout input.
+- **Workflow Run URL Param**: `?run=true` URL parameter auto-opens the run panel when navigating to the editor from the list page.
 - **Admin: Review Log audit tab** — Admin audit page now has a segmented "System Log / Review Log" toggle. The Review Log panel queries the new `GET /api/admin/review-log` endpoint (filters: org, resource type, action; limit/offset pagination) and displays a table with time, org name, resource type, resource name, action badge (color-coded: green=approved, red=rejected, amber=submitted/resubmitted, muted=unpublished), and operator. Full i18n (EN + ZH).
 - **Platform Organization**: Built-in org `platform` (ID: `00000000-0000-0000-0000-000000000001`) — all new users automatically join. This organization replaces the "global" visibility concept and provides a central hub for sharing resources across all users.
 - **Resource Subscriptions**: Users can now subscribe/unsubscribe to shared resources (agents, connectors, knowledge bases, MCP servers) from org Markets. New `resource_subscriptions` database table tracks subscription relationships.
