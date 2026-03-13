@@ -52,7 +52,7 @@ class RegisterRequest(BaseModel):
 
 class SendVerificationCodeRequest(BaseModel):
     email: str = Field(..., max_length=255)
-    locale: str | None = Field(None, pattern=r"^(en|zh)$")
+    locale: str | None = Field(None, pattern=r"^(en|zh|ja|ko|de|fr)$")
 
     @field_validator("email")
     @classmethod
@@ -65,7 +65,7 @@ class SendVerificationCodeRequest(BaseModel):
 
 class SendLoginCodeRequest(BaseModel):
     email: str = Field(..., max_length=255)
-    locale: str | None = Field(None, pattern=r"^(en|zh)$")
+    locale: str | None = Field(None, pattern=r"^(en|zh|ja|ko|de|fr)$")
 
     @field_validator("email")
     @classmethod
@@ -103,7 +103,7 @@ class TokenResponse(BaseModel):
 class UpdateProfileRequest(BaseModel):
     display_name: str | None = Field(None, max_length=50)
     system_instructions: str | None = Field(None, max_length=2000)
-    preferred_language: str | None = Field(None, pattern=r"^(auto|en|zh)$")
+    preferred_language: str | None = Field(None, pattern=r"^(auto|en|zh|ja|ko|de|fr)$")
     onboarding_completed: bool | None = None
     avatar: str | None = None  # "builtin:cat", "builtin:star", etc. or None to remove
     username: str | None = Field(None, min_length=2, max_length=50)
@@ -127,13 +127,13 @@ class ResetPasswordRequest(BaseModel):
 
 
 class SendResetCodeRequest(BaseModel):
-    locale: str | None = Field(None, pattern=r"^(en|zh)$")
+    locale: str | None = Field(None, pattern=r"^(en|zh|ja|ko|de|fr)$")
 
 
 class SendForgotCodeRequest(BaseModel):
     """Unauthenticated: send OTP to reset a forgotten password."""
     email: str = Field(..., max_length=255)
-    locale: str | None = Field(None, pattern=r"^(en|zh)$")
+    locale: str | None = Field(None, pattern=r"^(en|zh|ja|ko|de|fr)$")
 
     @field_validator("email")
     @classmethod

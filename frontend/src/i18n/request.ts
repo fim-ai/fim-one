@@ -1,14 +1,36 @@
 import { getRequestConfig } from "next-intl/server"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
 import fs from "fs"
 import path from "path"
 
-const SUPPORTED_LOCALES = ["en", "zh"] as const
+const SUPPORTED_LOCALES = ["en", "zh", "ja", "ko", "de", "fr"] as const
 type Locale = (typeof SUPPORTED_LOCALES)[number]
 const DEFAULT_LOCALE: Locale = "en"
 
 function isSupported(v: string): v is Locale {
   return (SUPPORTED_LOCALES as readonly string[]).includes(v)
+}
+
+/**
+ * Parse Accept-Language header and return the best matching supported locale.
+ * e.g. "zh-CN,zh;q=0.9,en;q=0.8" → "zh"
+ */
+function detectFromAcceptLanguage(header: string): Locale | null {
+  const entries = header.split(",").map((part) => {
+    const [tag, qPart] = part.trim().split(";")
+    const q = qPart ? parseFloat(qPart.replace(/q=/, "")) : 1
+    return { tag: tag.trim().toLowerCase(), q }
+  })
+  entries.sort((a, b) => b.q - a.q)
+
+  for (const { tag } of entries) {
+    // Exact match: "en", "zh", "ja"
+    if (isSupported(tag)) return tag
+    // Prefix match: "zh-cn" → "zh", "en-us" → "en"
+    const prefix = tag.split("-")[0]
+    if (isSupported(prefix)) return prefix
+  }
+  return null
 }
 
 /**
@@ -33,8 +55,16 @@ export default getRequestConfig(async () => {
   const cookieStore = await cookies()
   const raw = cookieStore.get("NEXT_LOCALE")?.value ?? ""
 
-  // "auto" or missing → fall back to default
-  const locale: Locale = isSupported(raw) ? raw : DEFAULT_LOCALE
+  let locale: Locale
+  if (isSupported(raw)) {
+    // User explicitly chose a locale
+    locale = raw
+  } else {
+    // Auto: detect from browser Accept-Language header
+    const headerStore = await headers()
+    const acceptLang = headerStore.get("accept-language") ?? ""
+    locale = detectFromAcceptLanguage(acceptLang) ?? DEFAULT_LOCALE
+  }
 
   return {
     locale,

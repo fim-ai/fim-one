@@ -20,6 +20,7 @@ import {
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/contexts/auth-context"
+import type { UserInfo } from "@/types/auth"
 import { authApi } from "@/lib/api"
 import { useTranslations } from "next-intl"
 
@@ -31,6 +32,10 @@ const LANGUAGE_OPTIONS = [
   { value: "auto", label: "Auto" },
   { value: "en", label: "English" },
   { value: "zh", label: "中文" },
+  { value: "ja", label: "日本語" },
+  { value: "ko", label: "한국어" },
+  { value: "de", label: "Deutsch" },
+  { value: "fr", label: "Français" },
 ] as const
 
 export function UserMenu({ collapsed }: UserMenuProps) {
@@ -48,7 +53,7 @@ export function UserMenu({ collapsed }: UserMenuProps) {
     try {
       const updated = await authApi.updateProfile({ preferred_language: value })
       if (updated) {
-        updateUser({ preferred_language: value as "auto" | "en" | "zh" })
+        updateUser({ preferred_language: value as UserInfo["preferred_language"] })
       }
     } catch {
       // Silently fail — user will see old value

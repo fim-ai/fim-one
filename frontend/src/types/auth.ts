@@ -12,7 +12,7 @@ export interface UserInfo {
   avatar: string | null
   is_admin: boolean
   system_instructions?: string | null
-  preferred_language?: "auto" | "en" | "zh"
+  preferred_language?: "auto" | "en" | "zh" | "ja" | "ko" | "de" | "fr"
   oauth_provider?: string | null
   email?: string | null
   has_password?: boolean

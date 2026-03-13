@@ -8,13 +8,24 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from "@/components/ui/input-otp"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, Globe, Sun, Moon } from "lucide-react"
+import { Loader2, Globe, Sun, Moon, Check } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { APP_NAME, getApiBaseUrl, getApiDirectUrl } from "@/lib/constants"
 import { authApi, ApiError } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { toast } from "sonner"
 import { useTheme } from "next-themes"
+
+const LANGUAGE_OPTIONS = [
+  { value: "auto", label: "Auto" },
+  { value: "en", label: "English" },
+  { value: "zh", label: "中文" },
+  { value: "ja", label: "日本語" },
+  { value: "ko", label: "한국어" },
+  { value: "de", label: "Deutsch" },
+  { value: "fr", label: "Français" },
+]
 
 function LoginPageInner() {
   const t = useTranslations("auth")
@@ -397,6 +408,11 @@ function LoginPageInner() {
     await doRegister()
   }
 
+  // Read raw cookie to distinguish "auto" (no cookie) from explicit locale
+  const cookieLocale = typeof document !== "undefined"
+    ? (document.cookie.match(/NEXT_LOCALE=([^;]+)/)?.[1] ?? "auto")
+    : "auto"
+
   const handleLanguageSwitch = (lang: string) => {
     const cookieValue = lang === "auto" ? "" : lang
     document.cookie = cookieValue
@@ -464,14 +480,28 @@ function LoginPageInner() {
           >
             {resolvedTheme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </button>
-          <button
-            type="button"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            onClick={() => handleLanguageSwitch(locale === "zh" ? "en" : "zh")}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            {locale === "zh" ? "English" : "中文"}
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <Globe className="h-3.5 w-3.5" />
+                {LANGUAGE_OPTIONS.find((o) => o.value === cookieLocale)?.label ?? "Auto"}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => handleLanguageSwitch(opt.value)}
+                >
+                  <Check className={`h-3.5 w-3.5 ${cookieLocale === opt.value ? "opacity-100" : "opacity-0"}`} />
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="w-full max-w-sm">
