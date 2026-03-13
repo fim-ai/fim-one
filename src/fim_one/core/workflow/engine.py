@@ -8,6 +8,7 @@ controlling which downstream branches are activated.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections import defaultdict
@@ -48,10 +49,16 @@ class WorkflowEngine:
         max_concurrency: int = 5,
         cancel_event: asyncio.Event | None = None,
         env_vars: dict[str, str] | None = None,
+        run_id: str = "",
+        user_id: str = "",
+        workflow_id: str = "",
     ) -> None:
         self._max_concurrency = max_concurrency
         self._cancel_event = cancel_event
         self._env_vars = env_vars or {}
+        self._run_id = run_id
+        self._user_id = user_id
+        self._workflow_id = workflow_id
 
     async def execute_streaming(
         self,
@@ -142,9 +149,9 @@ class WorkflowEngine:
                 node = node_index[nid]
                 executor = get_executor(node.type)
                 ctx = ExecutionContext(
-                    run_id="",  # Filled by caller
-                    user_id="",
-                    workflow_id="",
+                    run_id=self._run_id,
+                    user_id=self._user_id,
+                    workflow_id=self._workflow_id,
                     env_vars=self._env_vars,
                 )
 
@@ -374,8 +381,6 @@ def _preview(value: Any, max_len: int = 200) -> str:
     if isinstance(value, str):
         return value[:max_len]
     try:
-        import json
-
         s = json.dumps(value, ensure_ascii=False, default=str)
         return s[:max_len]
     except Exception:

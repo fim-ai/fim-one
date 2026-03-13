@@ -31,6 +31,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "pyyaml>=6.0",
     "jinja2>=3.0",
+    "simpleeval>=0.9",
 ]
 
 [project.optional-dependencies]

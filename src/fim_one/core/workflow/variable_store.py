@@ -77,6 +77,11 @@ class VariableStore:
         async with self._lock:
             return dict(self._data)
 
+    async def snapshot_safe(self) -> dict[str, Any]:
+        """Return a snapshot excluding env.* variables (for expression/template contexts)."""
+        async with self._lock:
+            return {k: v for k, v in self._data.items() if not k.startswith("env.")}
+
     def snapshot_sync(self) -> dict[str, Any]:
         """Return a shallow copy without acquiring the lock (for non-async contexts).
 

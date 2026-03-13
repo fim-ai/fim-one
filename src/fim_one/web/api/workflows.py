@@ -332,21 +332,31 @@ async def run_workflow(
             blueprint = wf.blueprint
             parsed = parse_blueprint(blueprint)
 
-            def on_progress(node_id: str, event: str, data: dict[str, Any]) -> None:
-                node_results[node_id] = {
-                    **(node_results.get(node_id) or {}),
-                    **data,
-                }
-
             engine = WorkflowEngine(
                 max_concurrency=5,
                 cancel_event=cancel_event,
                 env_vars=env_vars,
+                run_id=run_id,
+                user_id=current_user.id,
+                workflow_id=wf.id,
             )
 
-            async for sse_event, sse_data in engine.execute_streaming(
-                parsed, body.inputs
-            ):
+            ait = engine.execute_streaming(parsed, body.inputs).__aiter__()
+            while True:
+                try:
+                    sse_event, sse_data = await asyncio.wait_for(
+                        ait.__anext__(), timeout=15.0
+                    )
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    # Keepalive comment to prevent proxy/browser timeout
+                    if await request.is_disconnected():
+                        cancel_event.set()
+                        break
+                    yield ": keepalive\n\n"
+                    continue
+
                 # Check for client disconnect
                 if await request.is_disconnected():
                     cancel_event.set()

@@ -7,8 +7,10 @@ returns a ``NodeResult``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import tempfile
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -233,12 +235,12 @@ class ConditionBranchExecutor:
     ) -> NodeResult:
         t0 = time.time()
         try:
-            from simpleeval import simple_eval, InvalidExpression
+            from simpleeval import simple_eval
 
             conditions = node.data.get("conditions", [])
             default_handle = node.data.get("default_handle", "default")
 
-            snapshot = await store.snapshot()
+            snapshot = await store.snapshot_safe()
             # Build evaluation namespace — flatten for simple access
             eval_names = dict(snapshot)
 
@@ -253,7 +255,7 @@ class ConditionBranchExecutor:
                     if result:
                         active_handle = handle
                         break
-                except (InvalidExpression, Exception) as e:
+                except Exception as e:
                     logger.warning(
                         "Condition expression '%s' failed: %s", expr, e
                     )
@@ -755,7 +757,7 @@ class VariableAssignExecutor:
             from simpleeval import simple_eval
 
             assignments = node.data.get("assignments", [])
-            snapshot = await store.snapshot()
+            snapshot = await store.snapshot_safe()
 
             results: dict[str, Any] = {}
             for assignment in assignments:
@@ -828,7 +830,7 @@ class TemplateTransformExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            snapshot = await store.snapshot()
+            snapshot = await store.snapshot_safe()
             env = SandboxedEnvironment()
             template = env.from_string(template_str)
             output = template.render(**snapshot)
@@ -857,10 +859,12 @@ class TemplateTransformExecutor:
 
 
 class CodeExecutionExecutor:
-    """Execute Python code in a sandboxed environment.
+    """Execute Python code in a subprocess for isolation.
 
-    Uses RestrictedPython for safe execution with limited builtins.
-    Falls back to the built-in python_exec tool pattern if available.
+    The user code is written to a temporary file and executed via
+    ``asyncio.create_subprocess_exec`` with a 30-second timeout.  The code
+    should print its result as JSON to stdout.  This avoids blocking the
+    event loop **and** prevents sandbox escape (no in-process ``exec``).
     """
 
     async def execute(
@@ -870,6 +874,7 @@ class CodeExecutionExecutor:
         context: ExecutionContext,
     ) -> NodeResult:
         t0 = time.time()
+        tmp_path: str | None = None
         try:
             code = node.data.get("code", "")
             if not code:
@@ -880,63 +885,81 @@ class CodeExecutionExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            snapshot = await store.snapshot()
+            snapshot = await store.snapshot_safe()
 
-            # Safe execution using a restricted globals dict
-            safe_globals: dict[str, Any] = {
-                "__builtins__": {
-                    "len": len,
-                    "str": str,
-                    "int": int,
-                    "float": float,
-                    "bool": bool,
-                    "list": list,
-                    "dict": dict,
-                    "tuple": tuple,
-                    "set": set,
-                    "range": range,
-                    "enumerate": enumerate,
-                    "zip": zip,
-                    "map": map,
-                    "filter": filter,
-                    "sorted": sorted,
-                    "min": min,
-                    "max": max,
-                    "sum": sum,
-                    "abs": abs,
-                    "round": round,
-                    "isinstance": isinstance,
-                    "type": type,
-                    "print": lambda *a, **kw: None,  # suppress output
-                    "True": True,
-                    "False": False,
-                    "None": None,
-                },
-                "json": __import__("json"),
-                "math": __import__("math"),
-                "re": __import__("re"),
-                "variables": snapshot,
-            }
-            safe_locals: dict[str, Any] = {}
+            # Build a wrapper script that injects variables and captures output
+            wrapper = (
+                "import json, math, re, sys\n"
+                f"variables = json.loads({json.dumps(json.dumps(snapshot, default=str))})\n"
+                "\n"
+                f"{code}\n"
+                "\n"
+                "# Emit result as JSON to stdout\n"
+                "if 'result' in dir() and result is not None:\n"
+                "    _out = result\n"
+                "elif 'output' in dir() and output is not None:\n"
+                "    _out = output\n"
+                "else:\n"
+                "    _out = None\n"
+                "if _out is not None:\n"
+                "    print(json.dumps(_out, default=str))\n"
+            )
 
-            exec(code, safe_globals, safe_locals)  # noqa: S102
+            # Write to temp file
+            fd = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False
+            )
+            tmp_path = fd.name
+            fd.write(wrapper)
+            fd.close()
 
-            # Extract the 'result' variable if the code set one
-            output = safe_locals.get("result", safe_locals.get("output"))
-            if output is None:
-                # Collect all non-private locals
-                output = {
-                    k: v
-                    for k, v in safe_locals.items()
-                    if not k.startswith("_")
-                }
+            # Run in subprocess with 30s timeout
+            import sys
+
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, tmp_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    proc.communicate(), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="Code execution timed out (30s limit)",
+                    duration_ms=_ms_since(t0),
+                )
+
+            if proc.returncode != 0:
+                stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"Code execution error: {stderr_text[:500]}",
+                    duration_ms=_ms_since(t0),
+                )
+
+            stdout_text = stdout_bytes.decode("utf-8", errors="replace").strip()
+
+            # Parse stdout as JSON if possible, else use raw string
+            output: Any = None
+            if stdout_text:
+                try:
+                    output = json.loads(stdout_text)
+                except (json.JSONDecodeError, ValueError):
+                    output = stdout_text
 
             await store.set(f"{node.id}.output", output)
 
             return NodeResult(
                 node_id=node.id,
                 status=NodeStatus.COMPLETED,
-                output=str(output)[:500],
+                output=str(output)[:500] if output is not None else "",
                 duration_ms=_ms_since(t0),
             )
         except Exception as exc:
@@ -947,6 +970,14 @@ class CodeExecutionExecutor:
                 error=f"Code execution error: {exc}",
                 duration_ms=_ms_since(t0),
             )
+        finally:
+            if tmp_path:
+                import os
+
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
 
 # ---------------------------------------------------------------------------
