@@ -5923,3 +5923,285 @@ class TestQuestionUnderstandingNode:
         assert stored == "Rewritten question text"
         stored_output = await store.get("qu_1.output")
         assert stored_output == "Rewritten question text"
+
+
+# =========================================================================
+# Phase 2 Validation Warnings
+# =========================================================================
+
+
+class TestPhase2Validation:
+    """Test validation warnings for Phase 2 node types.
+
+    Each test creates a minimal blueprint (Start -> End connected) with a
+    disconnected node under test, calls validate_blueprint(), and asserts the
+    expected warning code appears. The disconnected_node warning is expected
+    and filtered out when checking for the specific warning.
+    """
+
+    @staticmethod
+    def _make_blueprint_with_extra_node(
+        node_id: str, node_type: str, node_data: dict[str, Any]
+    ) -> dict:
+        """Build a valid Start->End blueprint with an extra disconnected node."""
+        return {
+            "nodes": [
+                _start_node(),
+                _end_node(),
+                {
+                    "id": node_id,
+                    "type": "custom",
+                    "position": {"x": 50, "y": 50},
+                    "data": {"type": node_type, **node_data},
+                },
+            ],
+            "edges": [_edge("start_1", "end_1")],
+        }
+
+    @staticmethod
+    def _non_disconnected_codes(warnings: list[BlueprintWarning]) -> list[str]:
+        """Return warning codes excluding disconnected_node."""
+        return [w.code for w in warnings if w.code != "disconnected_node"]
+
+    # -- ListOperation --
+
+    def test_list_operation_missing_input_variable(self):
+        """ListOperation with empty input_variable should warn missing_input_variable."""
+        raw = self._make_blueprint_with_extra_node(
+            "lo", "LIST_OPERATION", {"input_variable": "", "operation": "flatten"}
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_input_variable" in codes
+        assert any(w.node_id == "lo" for w in warnings if w.code == "missing_input_variable")
+
+    def test_list_operation_filter_missing_expression(self):
+        """ListOperation filter with empty expression should warn missing_expression."""
+        raw = self._make_blueprint_with_extra_node(
+            "lo", "LIST_OPERATION",
+            {"input_variable": "items", "operation": "filter", "expression": ""},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_expression" in codes
+
+    def test_list_operation_map_missing_expression(self):
+        """ListOperation map with empty expression should warn missing_expression."""
+        raw = self._make_blueprint_with_extra_node(
+            "lo", "LIST_OPERATION",
+            {"input_variable": "items", "operation": "map", "expression": ""},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_expression" in codes
+
+    def test_list_operation_sort_no_warning_without_expression(self):
+        """Sort operation does NOT require an expression (natural sort)."""
+        raw = self._make_blueprint_with_extra_node(
+            "lo", "LIST_OPERATION",
+            {"input_variable": "items", "operation": "sort"},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = self._non_disconnected_codes(warnings)
+        assert "missing_expression" not in codes
+
+    def test_list_operation_valid_no_warnings(self):
+        """Complete ListOperation should have no warnings besides disconnected_node."""
+        raw = self._make_blueprint_with_extra_node(
+            "lo", "LIST_OPERATION",
+            {"input_variable": "items", "operation": "filter", "expression": "x > 0"},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = self._non_disconnected_codes(warnings)
+        assert len(codes) == 0
+
+    # -- Transform --
+
+    def test_transform_missing_input_variable(self):
+        """Transform with empty input_variable should warn missing_input_variable."""
+        raw = self._make_blueprint_with_extra_node(
+            "tf", "TRANSFORM",
+            {"input_variable": "", "operations": [{"type": "uppercase"}]},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_input_variable" in codes
+        assert any(w.node_id == "tf" for w in warnings if w.code == "missing_input_variable")
+
+    def test_transform_empty_operations(self):
+        """Transform with empty operations list should warn empty_operations."""
+        raw = self._make_blueprint_with_extra_node(
+            "tf", "TRANSFORM",
+            {"input_variable": "data", "operations": []},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "empty_operations" in codes
+
+    def test_transform_valid_no_warnings(self):
+        """Complete Transform should have no warnings besides disconnected_node."""
+        raw = self._make_blueprint_with_extra_node(
+            "tf", "TRANSFORM",
+            {"input_variable": "data", "operations": [{"type": "uppercase"}]},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = self._non_disconnected_codes(warnings)
+        assert len(codes) == 0
+
+    # -- Iterator --
+
+    def test_iterator_missing_list_variable(self):
+        """Iterator with empty list_variable should warn missing_list_variable."""
+        raw = self._make_blueprint_with_extra_node(
+            "it", "ITERATOR", {"list_variable": ""},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_list_variable" in codes
+        assert any(w.node_id == "it" for w in warnings if w.code == "missing_list_variable")
+
+    # -- Loop --
+
+    def test_loop_missing_condition(self):
+        """Loop with empty condition should warn missing_condition."""
+        raw = self._make_blueprint_with_extra_node(
+            "lp", "LOOP", {"condition": ""},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_condition" in codes
+        assert any(w.node_id == "lp" for w in warnings if w.code == "missing_condition")
+
+    # -- DocumentExtractor --
+
+    def test_document_extractor_missing_input_variable(self):
+        """DocumentExtractor with empty input_variable should warn."""
+        raw = self._make_blueprint_with_extra_node(
+            "de", "DOCUMENT_EXTRACTOR", {"input_variable": ""},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_input_variable" in codes
+        assert any(w.node_id == "de" for w in warnings if w.code == "missing_input_variable")
+
+    # -- QuestionUnderstanding --
+
+    def test_question_understanding_missing_input_variable(self):
+        """QuestionUnderstanding with empty input_variable should warn."""
+        raw = self._make_blueprint_with_extra_node(
+            "qu", "QUESTION_UNDERSTANDING", {"input_variable": ""},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_input_variable" in codes
+        assert any(w.node_id == "qu" for w in warnings if w.code == "missing_input_variable")
+
+    # -- ParameterExtractor --
+
+    def test_parameter_extractor_missing_input_text(self):
+        """ParameterExtractor with empty input_text should warn missing_input_text."""
+        raw = self._make_blueprint_with_extra_node(
+            "pe", "PARAMETER_EXTRACTOR",
+            {"input_text": "", "parameters": [{"name": "city", "type": "string"}]},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "missing_input_text" in codes
+        assert any(w.node_id == "pe" for w in warnings if w.code == "missing_input_text")
+
+    def test_parameter_extractor_empty_parameters(self):
+        """ParameterExtractor with empty parameters list should warn empty_parameters."""
+        raw = self._make_blueprint_with_extra_node(
+            "pe", "PARAMETER_EXTRACTOR",
+            {"input_text": "some text", "parameters": []},
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "empty_parameters" in codes
+
+    def test_parameter_extractor_valid_no_warnings(self):
+        """Complete ParameterExtractor should have no warnings besides disconnected_node."""
+        raw = self._make_blueprint_with_extra_node(
+            "pe", "PARAMETER_EXTRACTOR",
+            {
+                "input_text": "Extract the city from: I live in Paris",
+                "parameters": [{"name": "city", "type": "string"}],
+            },
+        )
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = self._non_disconnected_codes(warnings)
+        assert len(codes) == 0
+
+
+# =========================================================================
+# Template System Tests
+# =========================================================================
+
+
+class TestTemplatesPhase2:
+    """Comprehensive tests for the built-in template system."""
+
+    def test_all_templates_listed(self):
+        """list_templates() should return exactly 8 templates."""
+        from fim_one.core.workflow.templates import list_templates
+
+        templates = list_templates()
+        assert len(templates) == 8
+
+    def test_template_ids_unique(self):
+        """All template IDs should be unique."""
+        from fim_one.core.workflow.templates import list_templates
+
+        templates = list_templates()
+        ids = [t["id"] for t in templates]
+        assert len(ids) == len(set(ids)), f"Duplicate IDs found: {ids}"
+
+    def test_templates_have_required_fields(self):
+        """Each template must have id, name, description, icon, category, blueprint."""
+        from fim_one.core.workflow.templates import list_templates
+
+        required_fields = {"id", "name", "description", "icon", "category", "blueprint"}
+        for tpl in list_templates():
+            missing = required_fields - set(tpl.keys())
+            assert not missing, (
+                f"Template '{tpl.get('id', '???')}' is missing fields: {missing}"
+            )
+
+    def test_templates_parseable(self):
+        """Each template's blueprint must parse without error via parse_blueprint()."""
+        from fim_one.core.workflow.templates import list_templates
+
+        for tpl in list_templates():
+            bp = parse_blueprint(tpl["blueprint"])
+            # Every blueprint should have at least Start + End
+            type_set = {n.type for n in bp.nodes}
+            assert NodeType.START in type_set, f"Template '{tpl['id']}' missing START node"
+            assert NodeType.END in type_set, f"Template '{tpl['id']}' missing END node"
+
+    def test_get_template_returns_deep_copy(self):
+        """get_template(id) should return independent deep copies on each call."""
+        from fim_one.core.workflow.templates import get_template
+
+        t1 = get_template("simple-llm-chain")
+        t2 = get_template("simple-llm-chain")
+        assert t1 is not t2
+        assert t1["blueprint"] is not t2["blueprint"]
+        assert t1["blueprint"]["nodes"] is not t2["blueprint"]["nodes"]
+        # Mutating one should not affect the other
+        t1["blueprint"]["nodes"].append({"id": "mutated"})
+        assert len(t1["blueprint"]["nodes"]) != len(t2["blueprint"]["nodes"])

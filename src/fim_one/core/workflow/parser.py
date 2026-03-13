@@ -343,7 +343,7 @@ def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
                     message="List operation node has no input variable",
                 ))
             operation = node.data.get("operation", "")
-            if operation in ("filter", "map", "sort") and not node.data.get("expression"):
+            if operation in ("filter", "map") and not node.data.get("expression"):
                 warnings.append(BlueprintWarning(
                     node_id=node.id,
                     code="missing_expression",
