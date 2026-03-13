@@ -7191,3 +7191,191 @@ class TestSubWorkflowENVValidation:
         warnings = validate_blueprint(bp)
         codes = [w.code for w in warnings]
         assert "missing_env_keys" not in codes
+
+
+# =========================================================================
+# Validate / Dry-Run schema tests
+# =========================================================================
+
+
+class TestValidateAndDryRunSchemas:
+    """Tests for the WorkflowValidateResponse, WorkflowDryRunResponse,
+    and related schema models used by the /validate and dry_run endpoints."""
+
+    def test_validate_response_valid_blueprint(self):
+        """WorkflowValidateResponse should serialize a valid result."""
+        from fim_one.web.schemas.workflow import (
+            BlueprintWarningItem,
+            WorkflowValidateResponse,
+        )
+
+        resp = WorkflowValidateResponse(
+            valid=True,
+            errors=[],
+            warnings=[
+                BlueprintWarningItem(
+                    node_id="llm_1", code="empty_prompt", message="No prompt"
+                )
+            ],
+            node_count=3,
+            edge_count=2,
+            topology_order=["start_1", "llm_1", "end_1"],
+        )
+        d = resp.model_dump()
+        assert d["valid"] is True
+        assert d["node_count"] == 3
+        assert d["edge_count"] == 2
+        assert d["topology_order"] == ["start_1", "llm_1", "end_1"]
+        assert len(d["warnings"]) == 1
+        assert d["warnings"][0]["code"] == "empty_prompt"
+
+    def test_validate_response_invalid_blueprint(self):
+        from fim_one.web.schemas.workflow import WorkflowValidateResponse
+
+        resp = WorkflowValidateResponse(
+            valid=False,
+            errors=["Blueprint has no nodes"],
+        )
+        d = resp.model_dump()
+        assert d["valid"] is False
+        assert "Blueprint has no nodes" in d["errors"]
+        assert d["node_count"] == 0
+        assert d["topology_order"] == []
+
+    def test_dry_run_response_with_execution_plan(self):
+        from fim_one.web.schemas.workflow import (
+            DryRunNodePlan,
+            WorkflowDryRunResponse,
+        )
+
+        plan = [
+            DryRunNodePlan(node_id="start_1", node_type="START", position=0),
+            DryRunNodePlan(
+                node_id="llm_1", node_type="LLM", position=1, has_warnings=True
+            ),
+            DryRunNodePlan(node_id="end_1", node_type="END", position=2),
+        ]
+        resp = WorkflowDryRunResponse(
+            valid=True,
+            node_count=3,
+            edge_count=2,
+            topology_order=["start_1", "llm_1", "end_1"],
+            execution_plan=plan,
+        )
+        d = resp.model_dump()
+        assert d["valid"] is True
+        assert len(d["execution_plan"]) == 3
+        assert d["execution_plan"][1]["has_warnings"] is True
+        assert d["execution_plan"][0]["node_type"] == "START"
+
+    def test_run_request_dry_run_default_false(self):
+        """WorkflowRunRequest.dry_run defaults to False."""
+        from fim_one.web.schemas.workflow import WorkflowRunRequest
+
+        req = WorkflowRunRequest(inputs={"query": "hello"})
+        assert req.dry_run is False
+
+    def test_run_request_dry_run_true(self):
+        from fim_one.web.schemas.workflow import WorkflowRunRequest
+
+        req = WorkflowRunRequest(inputs={}, dry_run=True)
+        assert req.dry_run is True
+
+    def test_dry_run_integration_with_parser(self):
+        """Simulate what the dry-run endpoint does: parse, validate, topo-sort,
+        build execution plan."""
+        from fim_one.web.schemas.workflow import (
+            BlueprintWarningItem,
+            DryRunNodePlan,
+            WorkflowDryRunResponse,
+        )
+
+        raw = {
+            "nodes": [
+                _start_node(),
+                _llm_node("llm_1", prompt=""),  # empty prompt -> warning
+                _end_node(),
+            ],
+            "edges": [_edge("start_1", "llm_1"), _edge("llm_1", "end_1")],
+        }
+        parsed = parse_blueprint(raw)
+        bp_warnings = validate_blueprint(parsed)
+        topo_order = topological_sort(parsed)
+        node_index = {n.id: n for n in parsed.nodes}
+
+        node_warning_ids: set[str] = set()
+        for w in bp_warnings:
+            if w.node_id:
+                node_warning_ids.add(w.node_id)
+
+        execution_plan = [
+            DryRunNodePlan(
+                node_id=nid,
+                node_type=node_index[nid].type.value,
+                position=idx,
+                has_warnings=nid in node_warning_ids,
+            )
+            for idx, nid in enumerate(topo_order)
+        ]
+
+        resp = WorkflowDryRunResponse(
+            valid=True,
+            warnings=[
+                BlueprintWarningItem(
+                    node_id=w.node_id, code=w.code, message=w.message
+                )
+                for w in bp_warnings
+            ],
+            node_count=len(parsed.nodes),
+            edge_count=len(parsed.edges),
+            topology_order=topo_order,
+            execution_plan=execution_plan,
+        )
+
+        d = resp.model_dump()
+        assert d["valid"] is True
+        assert d["node_count"] == 3
+        assert d["edge_count"] == 2
+        assert len(d["topology_order"]) == 3
+        assert d["topology_order"][0] == "start_1"
+        assert d["topology_order"][-1] == "end_1"
+
+        # The LLM node with empty prompt should have a warning
+        llm_plan = next(p for p in d["execution_plan"] if p["node_id"] == "llm_1")
+        assert llm_plan["has_warnings"] is True
+        assert llm_plan["node_type"] == "LLM"
+
+        # Start and End nodes should not have warnings
+        start_plan = next(p for p in d["execution_plan"] if p["node_id"] == "start_1")
+        assert start_plan["has_warnings"] is False
+
+    def test_dry_run_invalid_blueprint_errors(self):
+        """Dry-run on a blueprint with cycles should produce errors."""
+        from fim_one.web.schemas.workflow import WorkflowDryRunResponse
+
+        raw = {
+            "nodes": [
+                _start_node(),
+                _llm_node("a"),
+                _llm_node("b"),
+                _end_node(),
+            ],
+            "edges": [
+                _edge("start_1", "a"),
+                _edge("a", "b"),
+                _edge("b", "a"),  # cycle
+                _edge("b", "end_1"),
+            ],
+        }
+        try:
+            parse_blueprint(raw)
+            assert False, "Expected BlueprintValidationError for cyclic graph"
+        except BlueprintValidationError as exc:
+            resp = WorkflowDryRunResponse(
+                valid=False,
+                errors=[str(exc)],
+            )
+            d = resp.model_dump()
+            assert d["valid"] is False
+            assert len(d["errors"]) == 1
+            assert "cycle" in d["errors"][0].lower()

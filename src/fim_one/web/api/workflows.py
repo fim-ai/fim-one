@@ -20,10 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session, create_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
-from fim_one.web.models import User, Workflow, WorkflowRun
+from fim_one.web.models import User, Workflow, WorkflowRun, WorkflowVersion
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.workflow import (
+    BlueprintWarningItem,
+    DryRunNodePlan,
     WorkflowCreate,
+    WorkflowDryRunResponse,
     WorkflowEnvVarsUpdate,
     WorkflowExportData,
     WorkflowExportFile,
@@ -34,6 +37,8 @@ from fim_one.web.schemas.workflow import (
     WorkflowRunResponse,
     WorkflowTemplateResponse,
     WorkflowUpdate,
+    WorkflowValidateResponse,
+    WorkflowVersionResponse,
 )
 from fim_one.web.visibility import build_visibility_filter
 
@@ -97,6 +102,20 @@ def _run_to_response(run: WorkflowRun) -> WorkflowRunResponse:
         error=run.error,
         created_at=run.created_at.isoformat() if run.created_at else "",
         updated_at=run.updated_at.isoformat() if run.updated_at else None,
+    )
+
+
+def _version_to_response(v: WorkflowVersion) -> WorkflowVersionResponse:
+    return WorkflowVersionResponse(
+        id=v.id,
+        workflow_id=v.workflow_id,
+        version_number=v.version_number,
+        blueprint=v.blueprint or {},
+        input_schema=v.input_schema,
+        output_schema=v.output_schema,
+        change_summary=v.change_summary,
+        created_by=v.created_by,
+        created_at=v.created_at.isoformat() if v.created_at else "",
     )
 
 
@@ -351,6 +370,34 @@ async def update_workflow(
         wf.input_schema = input_schema
         wf.output_schema = output_schema
 
+        # Auto-version: snapshot blueprint when it actually changes
+        new_bp = update_data["blueprint"]
+        latest_result = await db.execute(
+            select(WorkflowVersion)
+            .where(WorkflowVersion.workflow_id == workflow_id)
+            .order_by(WorkflowVersion.version_number.desc())
+            .limit(1)
+        )
+        latest_ver = latest_result.scalar_one_or_none()
+
+        # Compare blueprints — only version if different (or no version yet)
+        should_version = latest_ver is None or json.dumps(
+            latest_ver.blueprint, sort_keys=True
+        ) != json.dumps(new_bp, sort_keys=True)
+
+        if should_version:
+            next_num = (latest_ver.version_number + 1) if latest_ver else 1
+            ver = WorkflowVersion(
+                workflow_id=workflow_id,
+                version_number=next_num,
+                blueprint=new_bp,
+                input_schema=input_schema,
+                output_schema=output_schema,
+                change_summary=None,
+                created_by=current_user.id,
+            )
+            db.add(ver)
+
     content_changed = bool(update_data.keys() - {"is_active"})
     if content_changed:
         from fim_one.web.publish_review import check_edit_revert
@@ -586,6 +633,62 @@ async def validate_blueprint_endpoint(
         })
 
 
+@router.post("/{workflow_id}/validate", response_model=ApiResponse)
+async def validate_workflow(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Validate a saved workflow's blueprint and return structural analysis.
+
+    Parses the blueprint, runs ``validate_blueprint()`` for warnings, and
+    returns a structured ``WorkflowValidateResponse`` with topology order.
+    Does **not** execute the workflow.
+    """
+    from fim_one.core.workflow.parser import (
+        BlueprintValidationError,
+        parse_blueprint,
+        topological_sort,
+        validate_blueprint as _validate,
+    )
+
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+
+    blueprint = wf.blueprint
+    if not blueprint or not blueprint.get("nodes"):
+        return ApiResponse(data=WorkflowValidateResponse(
+            valid=False,
+            errors=["Blueprint is empty or has no nodes"],
+        ).model_dump())
+
+    try:
+        parsed = parse_blueprint(blueprint)
+    except BlueprintValidationError as exc:
+        return ApiResponse(data=WorkflowValidateResponse(
+            valid=False,
+            errors=[str(exc)],
+        ).model_dump())
+
+    warnings = _validate(parsed)
+    topo_order = topological_sort(parsed)
+
+    return ApiResponse(data=WorkflowValidateResponse(
+        valid=True,
+        errors=[],
+        warnings=[
+            BlueprintWarningItem(
+                node_id=w.node_id,
+                code=w.code,
+                message=w.message,
+            )
+            for w in warnings
+        ],
+        node_count=len(parsed.nodes),
+        edge_count=len(parsed.edges),
+        topology_order=topo_order,
+    ).model_dump())
+
+
 # ---------------------------------------------------------------------------
 # Execution endpoint (SSE streaming)
 # ---------------------------------------------------------------------------
@@ -602,9 +705,80 @@ async def run_workflow(
     request: Request,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> StreamingResponse:
-    """Execute a workflow and stream progress via SSE."""
+) -> Response:
+    """Execute a workflow and stream progress via SSE.
+
+    When ``body.dry_run`` is ``True``, parse and validate the blueprint,
+    compute the topological execution order, and return a JSON response
+    with the planned execution plan — no nodes are actually executed.
+    """
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+
+    # --- Dry-run mode: validate + return execution plan, no execution ---
+    if body.dry_run:
+        from fim_one.core.workflow.parser import (
+            BlueprintValidationError,
+            parse_blueprint,
+            topological_sort,
+            validate_blueprint as _validate,
+        )
+
+        blueprint = wf.blueprint
+        if not blueprint or not blueprint.get("nodes"):
+            dry_result = WorkflowDryRunResponse(
+                valid=False,
+                errors=["Blueprint is empty or has no nodes"],
+            )
+            return ApiResponse(data=dry_result.model_dump())
+
+        try:
+            parsed = parse_blueprint(blueprint)
+        except BlueprintValidationError as exc:
+            dry_result = WorkflowDryRunResponse(
+                valid=False,
+                errors=[str(exc)],
+            )
+            return ApiResponse(data=dry_result.model_dump())
+
+        bp_warnings = _validate(parsed)
+        topo_order = topological_sort(parsed)
+        node_index = {n.id: n for n in parsed.nodes}
+
+        # Build per-node warning lookup
+        node_warning_ids: set[str] = set()
+        for w in bp_warnings:
+            if w.node_id:
+                node_warning_ids.add(w.node_id)
+
+        execution_plan = [
+            DryRunNodePlan(
+                node_id=nid,
+                node_type=node_index[nid].type.value,
+                position=idx,
+                has_warnings=nid in node_warning_ids,
+            )
+            for idx, nid in enumerate(topo_order)
+        ]
+
+        dry_result = WorkflowDryRunResponse(
+            valid=True,
+            errors=[],
+            warnings=[
+                BlueprintWarningItem(
+                    node_id=w.node_id,
+                    code=w.code,
+                    message=w.message,
+                )
+                for w in bp_warnings
+            ],
+            node_count=len(parsed.nodes),
+            edge_count=len(parsed.edges),
+            topology_order=topo_order,
+            execution_plan=execution_plan,
+        )
+        return ApiResponse(data=dry_result.model_dump())
+
+    # --- Normal execution mode (SSE streaming) ---
 
     # Create run record
     run_id = str(uuid.uuid4())
@@ -831,6 +1005,124 @@ async def get_workflow_variables(
         }
 
     return ApiResponse(data=variables_map)
+
+
+# ---------------------------------------------------------------------------
+# Version history endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{workflow_id}/versions", response_model=PaginatedResponse)
+async def list_workflow_versions(
+    workflow_id: str,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> PaginatedResponse:
+    """List all versions for a workflow, newest first."""
+    await _get_accessible_workflow(workflow_id, current_user.id, db)
+
+    base = select(WorkflowVersion).where(WorkflowVersion.workflow_id == workflow_id)
+
+    count_result = await db.execute(
+        select(func.count()).select_from(base.subquery())
+    )
+    total = count_result.scalar_one()
+
+    result = await db.execute(
+        base.order_by(WorkflowVersion.version_number.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    versions = result.scalars().all()
+
+    return PaginatedResponse(
+        items=[_version_to_response(v).model_dump() for v in versions],
+        total=total,
+        page=page,
+        size=size,
+        pages=math.ceil(total / size) if total else 0,
+    )
+
+
+@router.get("/{workflow_id}/versions/{version_id}", response_model=ApiResponse)
+async def get_workflow_version(
+    workflow_id: str,
+    version_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Get a specific workflow version by ID."""
+    await _get_accessible_workflow(workflow_id, current_user.id, db)
+
+    result = await db.execute(
+        select(WorkflowVersion).where(
+            WorkflowVersion.id == version_id,
+            WorkflowVersion.workflow_id == workflow_id,
+        )
+    )
+    ver = result.scalar_one_or_none()
+    if ver is None:
+        raise AppError("workflow_version_not_found", status_code=404)
+
+    return ApiResponse(data=_version_to_response(ver).model_dump())
+
+
+@router.post("/{workflow_id}/versions/{version_id}/restore", response_model=ApiResponse)
+async def restore_workflow_version(
+    workflow_id: str,
+    version_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Restore a workflow to a specific version's blueprint.
+
+    Creates a new version entry to record the restore action, then updates
+    the workflow's live blueprint to match the restored version.
+    """
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+
+    # Fetch the version to restore
+    result = await db.execute(
+        select(WorkflowVersion).where(
+            WorkflowVersion.id == version_id,
+            WorkflowVersion.workflow_id == workflow_id,
+        )
+    )
+    ver = result.scalar_one_or_none()
+    if ver is None:
+        raise AppError("workflow_version_not_found", status_code=404)
+
+    # Apply the restored blueprint
+    wf.blueprint = ver.blueprint
+    input_schema, output_schema = _extract_schemas_from_blueprint(ver.blueprint)
+    wf.input_schema = input_schema
+    wf.output_schema = output_schema
+
+    # Create a new version entry to record the restore
+    latest_result = await db.execute(
+        select(func.max(WorkflowVersion.version_number)).where(
+            WorkflowVersion.workflow_id == workflow_id
+        )
+    )
+    max_num = latest_result.scalar_one() or 0
+
+    restore_ver = WorkflowVersion(
+        workflow_id=workflow_id,
+        version_number=max_num + 1,
+        blueprint=ver.blueprint,
+        input_schema=input_schema,
+        output_schema=output_schema,
+        change_summary=f"Restored from version {ver.version_number}",
+        created_by=current_user.id,
+    )
+    db.add(restore_ver)
+
+    await db.commit()
+    result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
+    wf = result.scalar_one()
+    return ApiResponse(data=_workflow_to_response(wf).model_dump())
 
 
 # ---------------------------------------------------------------------------
