@@ -146,6 +146,77 @@ class VariableStore:
             })
         return results
 
+    async def evaluate_expression(self, expression: str) -> Any:
+        """Safely evaluate a Python expression with store variables as context.
+
+        Uses ``simpleeval`` for sandboxed evaluation. All store variables
+        (excluding ``env.*``) are available in the expression namespace.
+        Common builtins (``len``, ``str``, ``int``, ``float``, ``bool``,
+        ``abs``, ``min``, ``max``, ``sum``, ``round``, ``sorted``) are also
+        available.
+
+        Returns the expression result, or raises ``ValueError`` on failure.
+        """
+        try:
+            from simpleeval import simple_eval, DEFAULT_OPERATORS
+        except ImportError:
+            raise RuntimeError("simpleeval is required for expression evaluation")
+
+        data = await self.snapshot_safe()
+
+        # Build a flat namespace: both full keys and last-segment aliases
+        names: dict[str, Any] = {}
+        for key, value in data.items():
+            names[key] = value
+            # Also expose the last segment as a shortcut
+            parts = key.split(".")
+            if len(parts) == 2:
+                short = parts[1]
+                if short not in names:
+                    names[short] = value
+
+        safe_functions = {
+            "len": len,
+            "str": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "abs": abs,
+            "min": min,
+            "max": max,
+            "sum": sum,
+            "round": round,
+            "sorted": sorted,
+        }
+
+        try:
+            return simple_eval(
+                expression,
+                operators=DEFAULT_OPERATORS,
+                names=names,
+                functions=safe_functions,
+            )
+        except Exception as exc:
+            raise ValueError(f"Expression evaluation failed: {exc}") from exc
+
+    async def has(self, name: str) -> bool:
+        """Check if a variable exists in the store."""
+        async with self._lock:
+            return name in self._data
+
+    async def delete(self, name: str) -> bool:
+        """Delete a variable from the store. Returns True if it existed."""
+        async with self._lock:
+            if name in self._data:
+                del self._data[name]
+                return True
+            return False
+
+    async def keys(self) -> list[str]:
+        """Return all variable keys."""
+        async with self._lock:
+            return list(self._data.keys())
+
     def snapshot_sync(self) -> dict[str, Any]:
         """Return a shallow copy without acquiring the lock (for non-async contexts).
 

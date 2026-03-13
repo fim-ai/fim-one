@@ -238,8 +238,27 @@ class WorkflowEngine:
                     },
                 ))
 
+        async def _execute_once(
+            node: "WorkflowNodeDef",
+            executor: Any,
+            ctx: ExecutionContext,
+        ) -> NodeResult:
+            """Run an executor once, enforcing the per-node timeout."""
+            timeout_sec = node.timeout_ms / 1000
+            try:
+                return await asyncio.wait_for(
+                    executor.execute(node, store, ctx),
+                    timeout=timeout_sec,
+                )
+            except asyncio.TimeoutError:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"Node execution timed out after {node.timeout_ms}ms",
+                )
+
         async def _run_node(nid: str) -> None:
-            """Execute a single node with semaphore and per-node timeout."""
+            """Execute a single node with retry, semaphore, and per-node timeout."""
             async with semaphore:
                 node = node_index[nid]
                 executor = get_executor(node.type)
@@ -250,25 +269,52 @@ class WorkflowEngine:
                     env_vars=self._env_vars,
                 )
 
+                # Retry config from node data (default: no retry)
+                retry_count = max(int(node.data.get("retry_count", 0)), 0)
+                retry_delay_ms = max(int(node.data.get("retry_delay_ms", 1000)), 0)
+
                 await event_queue.put((
                     "node_started",
                     {"node_id": nid, "node_type": node.type.value},
                 ))
 
                 try:
-                    # Per-node timeout enforcement
-                    timeout_sec = node.timeout_ms / 1000
-                    try:
-                        result = await asyncio.wait_for(
-                            executor.execute(node, store, ctx),
-                            timeout=timeout_sec,
-                        )
-                    except asyncio.TimeoutError:
-                        result = NodeResult(
-                            node_id=node.id,
-                            status=NodeStatus.FAILED,
-                            error=f"Node execution timed out after {node.timeout_ms}ms",
-                        )
+                    result = await _execute_once(node, executor, ctx)
+
+                    # Retry loop: attempt up to retry_count additional times
+                    attempt = 0
+                    while (
+                        result.status == NodeStatus.FAILED
+                        and attempt < retry_count
+                    ):
+                        attempt += 1
+                        # Exponential backoff: delay * 2^(attempt-1)
+                        delay_sec = (retry_delay_ms / 1000) * (2 ** (attempt - 1))
+                        # Cap at 60 seconds
+                        delay_sec = min(delay_sec, 60.0)
+
+                        await event_queue.put((
+                            "node_retrying",
+                            {
+                                "node_id": nid,
+                                "node_type": node.type.value,
+                                "attempt": attempt,
+                                "max_retries": retry_count,
+                                "delay_ms": int(delay_sec * 1000),
+                                "previous_error": result.error,
+                            },
+                        ))
+
+                        # Check for cancellation before waiting
+                        if self._cancel_event and self._cancel_event.is_set():
+                            break
+
+                        await asyncio.sleep(delay_sec)
+
+                        if self._cancel_event and self._cancel_event.is_set():
+                            break
+
+                        result = await _execute_once(node, executor, ctx)
 
                     node_results[nid] = result
 
@@ -290,6 +336,7 @@ class WorkflowEngine:
                                 "status": "completed",
                                 "output_preview": _preview(result.output),
                                 "duration_ms": result.duration_ms,
+                                "retries_used": attempt if retry_count > 0 else 0,
                             },
                         ))
                     else:
