@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useTranslations } from "next-intl"
 import {
   MoreHorizontal, Pencil, Trash2, Terminal, Globe, GlobeLock, FlaskConical,
-  Loader2, CheckCircle2, XCircle, Key, AlertTriangle, RotateCw,
+  Loader2, CheckCircle2, XCircle, Key, AlertTriangle, RotateCw, Power,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -168,37 +168,25 @@ export function MCPServerCard({
 
   return (
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
-      {/* Header: name + toggle + dropdown */}
+      {/* Header: status dot + name + dropdown */}
       <div className="flex items-center gap-2 mb-2">
+        {/* Status indicator dot */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className={`shrink-0 inline-block h-2 w-2 rounded-full transition-colors ${
+                server.is_active ? "bg-green-500" : "bg-muted-foreground/40"
+              }`}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={5}>
+            {server.is_active ? tc("enabled") : tc("disabled")}
+          </TooltipContent>
+        </Tooltip>
+
         <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground">
           {server.name}
         </h3>
-
-        {/* Active toggle — owners only */}
-        {isOwner && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={server.is_active}
-                onClick={() => onToggleActive(!server.is_active)}
-                className={`relative shrink-0 inline-flex h-4 w-7 items-center rounded-full transition-colors focus-visible:outline-none ${
-                  server.is_active ? "bg-green-500" : "bg-muted-foreground/30"
-                }`}
-              >
-                <span
-                  className={`inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${
-                    server.is_active ? "translate-x-[14px]" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" sideOffset={5}>
-              {server.is_active ? tc("disable") : tc("enable")}
-            </TooltipContent>
-          </Tooltip>
-        )}
 
         {/* Dropdown menu */}
         {isOwner ? (
@@ -223,6 +211,10 @@ export function MCPServerCard({
                   : <FlaskConical className="mr-2 h-4 w-4" />
                 }
                 {t("testConnection")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onToggleActive(!server.is_active)}>
+                <Power className="mr-2 h-4 w-4" />
+                {server.is_active ? tc("disable") : tc("enable")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {/* Publish / Unpublish */}
