@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **Workflow test suite expanded to 138 tests** — Added 20 tests for Phase 2 Iterator (9 tests: basic list, JSON parsing, max_iterations, empty list, missing config, None-to-empty, template refs, non-list rejection, metadata) and VariableAggregator (11 tests: list/concat/merge/first_non_empty modes, edge cases for empty inputs, None skipping, unknown mode). Total: 118 → 138.
 - **Workflow test suite expanded to 118 tests** — Added 7 tests for ConditionBranch LLM mode (exact match, case-insensitive, fuzzy, no-match fallback, DEFAULT response, no-candidates, variable interpolation). Total: 111 → 118.
 - **Workflow run-mode visual feedback overhaul** — Ring-based node status styling replacing border-based approach, animated status dots with ping effect for running nodes, `useMemo`-derived `displayNodes`/`displayEdges` for clean state separation, and edge animation between completed-to-running nodes.
 - **Workflow test suite expanded to 105 tests** — Added template validation tests, import/export round-trip, variable store advanced methods, deadlock detection, multi-condition branching, question classifier, and comprehensive blueprint validation. Total: 68 → 97 → 105.
@@ -34,6 +35,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Workflow Inline Description Editing** — Click the description line in the toolbar to open a popover textarea for editing workflow descriptions without navigating away.
 - **Workflow ConditionBranch LLM Mode** — Proper LLM-based condition evaluation replacing the naive "match first" stub. Builds a classification prompt from condition labels, calls the fast LLM, and uses case-insensitive + fuzzy matching.
 - **Reactive Edge Labels** — Edge labels for condition/classifier branches now use `useNodesData()` for real-time updates when conditions or classes are edited in the config panel.
+- **Workflow Statistics Panel** — Sheet-based stats display showing total runs, completed/failed/cancelled counts, success rate with visual progress bar, average duration, and last run time with relative formatting. Triggered from a BarChart3 icon in the toolbar.
+- **Phase 2 Workflow Nodes: Iterator & VariableAggregator** — Two new advanced node types:
+  - **Iterator**: Iterate over lists with configurable item/index variable names and max_iterations safety limit. Supports native lists, JSON string parsing, and template variable references.
+  - **VariableAggregator**: Merge outputs from multiple upstream branches via four modes — collect into list, concatenate strings (custom separator), merge dicts, or take first non-empty value.
+  - Full frontend integration: node components, palette entries, config panel forms, minimap colors, variable picker support. Backend executors registered in engine.
+- **Workflow Templates Expanded** — Added two new built-in templates (6 total): Data Processing Pipeline (Start → CodeExecution → TemplateTransform → End) and Agent with Knowledge Retrieval (Start → KnowledgeRetrieval → Agent → End). Fixed missing `icon` fields on new templates. Added missing i18n keys for "intermediate" and "advanced" template categories.
 - **Workflow ENV Variables Dialog** — Per-workflow encrypted environment variable management UI. Key-value editor with masked display, duplicate key detection, and inline validation. Connected to `GET/PUT /api/workflows/{id}/env` endpoints. Accessible via toolbar dropdown.
 - **Workflow Auto-Save** — 5-second debounced auto-save timer with immediate Cmd+S override. Save status indicator shows "Saving...", "Unsaved changes", or "Saved Xs ago" with 30s auto-refresh.
 - **Workflow List Search & Filter** — Client-side search by name/description, status filter buttons (All/Draft/Active), sort dropdown (Recently updated/created/Name A-Z), and empty state for no results.
