@@ -2240,6 +2240,312 @@ class TransformExecutor:
 
 
 # ---------------------------------------------------------------------------
+# 19. DocumentExtractor node
+# ---------------------------------------------------------------------------
+
+
+class DocumentExtractorExecutor:
+    """Extract content from documents in various modes.
+
+    This is a stub executor that handles basic text processing without
+    external dependencies.  Supported input types: ``text``, ``base64``,
+    ``url``.  Extract modes: ``full_text``, ``pages``, ``metadata``,
+    ``tables``.
+    """
+
+    @staticmethod
+    def output_schema() -> list[dict[str, str]]:
+        return [
+            {"name": "output", "type": "any", "description": "Extracted document content"},
+        ]
+
+    # Page delimiters: form-feed or markdown-style "---" separator
+    _PAGE_DELIMITERS = re.compile(r"\f|\n\n---\n\n")
+
+    def _split_pages(self, text: str) -> list[str]:
+        """Split text into pages by form-feed or ``---`` delimiter."""
+        return self._PAGE_DELIMITERS.split(text)
+
+    def _parse_page_range(self, spec: str, total: int) -> list[int]:
+        """Parse a page range spec like ``'1-5'`` or ``'3'`` into 0-based indices."""
+        spec = spec.strip()
+        if "-" in spec:
+            parts = spec.split("-", 1)
+            start = max(int(parts[0]) - 1, 0)
+            end = min(int(parts[1]), total)
+            return list(range(start, end))
+        else:
+            idx = int(spec) - 1
+            if 0 <= idx < total:
+                return [idx]
+            return []
+
+    async def execute(
+        self,
+        node: WorkflowNodeDef,
+        store: VariableStore,
+        context: ExecutionContext,
+    ) -> NodeResult:
+        import base64
+
+        t0 = time.time()
+        try:
+            input_variable: str = node.data.get("input_variable", "")
+            input_type: str = node.data.get("input_type", "text")
+            extract_mode: str = node.data.get("extract_mode", "full_text")
+            page_range: str | None = node.data.get("page_range")
+            output_variable: str = node.data.get("output_variable", "document_result")
+
+            if not input_variable:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="DocumentExtractor node has no input_variable configured",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Resolve the input variable
+            if "{{" in input_variable:
+                raw_value = await store.interpolate(input_variable)
+            else:
+                raw_value = await store.get(input_variable)
+
+            if raw_value is None:
+                raw_value = ""
+
+            raw_str = str(raw_value)
+
+            # --- Interpret input_type ---
+            if input_type == "url":
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="URL document fetching not yet supported",
+                    duration_ms=_ms_since(t0),
+                )
+            elif input_type == "base64":
+                try:
+                    decoded_bytes = base64.b64decode(raw_str)
+                    text = decoded_bytes.decode("utf-8")
+                except (UnicodeDecodeError, Exception):
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error="Binary document parsing not yet supported",
+                        duration_ms=_ms_since(t0),
+                    )
+            else:
+                # input_type == "text"
+                text = raw_str
+
+            # --- Apply extract_mode ---
+            result_value: Any
+            if extract_mode == "full_text":
+                result_value = text
+
+            elif extract_mode == "pages":
+                pages = self._split_pages(text)
+                if page_range:
+                    indices = self._parse_page_range(page_range, len(pages))
+                    result_value = [pages[i] for i in indices]
+                else:
+                    result_value = pages
+
+            elif extract_mode == "metadata":
+                pages = self._split_pages(text)
+                result_value = {
+                    "char_count": len(text),
+                    "word_count": len(text.split()),
+                    "line_count": text.count("\n") + (1 if text else 0),
+                    "page_count": len(pages),
+                }
+
+            elif extract_mode == "tables":
+                # Find markdown tables: consecutive lines matching |...|
+                table_lines: list[str] = []
+                tables: list[str] = []
+                for line in text.split("\n"):
+                    stripped = line.strip()
+                    if stripped.startswith("|") and stripped.endswith("|"):
+                        table_lines.append(line)
+                    else:
+                        if table_lines:
+                            tables.append("\n".join(table_lines))
+                            table_lines = []
+                if table_lines:
+                    tables.append("\n".join(table_lines))
+                result_value = tables
+
+            else:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"DocumentExtractor unknown extract_mode: {extract_mode}",
+                    duration_ms=_ms_since(t0),
+                )
+
+            await store.set(f"{node.id}.output", result_value)
+            await store.set(f"{node.id}.{output_variable}", result_value)
+
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output=result_value,
+                duration_ms=_ms_since(t0),
+            )
+        except Exception as exc:
+            logger.exception("DocumentExtractor node %s failed", node.id)
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error=f"DocumentExtractor error: {exc}",
+                duration_ms=_ms_since(t0),
+            )
+
+
+# ---------------------------------------------------------------------------
+# 20. QuestionUnderstanding node
+# ---------------------------------------------------------------------------
+
+
+class QuestionUnderstandingExecutor:
+    """Preprocess and enhance user questions using the fast LLM.
+
+    Modes:
+    - ``rewrite``: Rewrite the question for clarity.
+    - ``expand``: Expand with context and sub-questions.
+    - ``classify``: Classify intent and topic (returns JSON).
+    - ``decompose``: Break into simpler sub-questions (returns JSON array).
+    """
+
+    _DEFAULT_PROMPTS: dict[str, str] = {
+        "rewrite": (
+            "You are a question rewriter. Rewrite the following question to be "
+            "more clear, specific, and well-structured. Return only the rewritten question."
+        ),
+        "expand": (
+            "You are a question analyst. Expand the following question by adding "
+            "relevant context and generating sub-questions. Return the expanded "
+            "question with sub-questions."
+        ),
+        "classify": (
+            "You are a question classifier. Classify the following question. "
+            "Return a JSON object with keys: intent (string), topic (string), "
+            "confidence (float 0-1)."
+        ),
+        "decompose": (
+            "You are a question decomposer. Break the following complex question "
+            "into simpler sub-questions. Return a JSON array of strings."
+        ),
+    }
+
+    @staticmethod
+    def output_schema() -> list[dict[str, str]]:
+        return [
+            {"name": "output", "type": "any", "description": "Processed question result"},
+        ]
+
+    async def execute(
+        self,
+        node: WorkflowNodeDef,
+        store: VariableStore,
+        context: ExecutionContext,
+    ) -> NodeResult:
+        t0 = time.time()
+        try:
+            from fim_one.core.model.types import ChatMessage
+            from fim_one.web.deps import get_effective_fast_llm
+            from fim_one.db import create_session
+
+            input_variable: str = node.data.get("input_variable", "")
+            mode: str = node.data.get("mode", "rewrite")
+            custom_system_prompt: str | None = node.data.get("system_prompt")
+            output_variable: str = node.data.get("output_variable", "question_result")
+
+            if not input_variable:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="QuestionUnderstanding node has no input_variable configured",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Resolve the input variable (with interpolation)
+            if "{{" in input_variable:
+                question_text = await store.interpolate(input_variable)
+            else:
+                raw_value = await store.get(input_variable)
+                question_text = str(raw_value) if raw_value is not None else ""
+
+            if not question_text:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="QuestionUnderstanding input resolved to empty text",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Build system prompt
+            if custom_system_prompt:
+                system_prompt = custom_system_prompt
+            else:
+                system_prompt = self._DEFAULT_PROMPTS.get(mode)
+                if not system_prompt:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=f"QuestionUnderstanding unknown mode: {mode}",
+                        duration_ms=_ms_since(t0),
+                    )
+
+            # Call the fast LLM
+            async with create_session() as db:
+                llm = await get_effective_fast_llm(db)
+
+            result = await llm.chat([
+                ChatMessage(role="system", content=system_prompt),
+                ChatMessage(role="user", content=question_text),
+            ])
+
+            raw_response = (result.message.content or "").strip()
+
+            # For classify/decompose modes, try to parse as JSON
+            result_value: Any
+            if mode in ("classify", "decompose"):
+                # Strip markdown code fences if present
+                json_str = raw_response
+                if json_str.startswith("```"):
+                    lines = json_str.split("\n")
+                    lines = [ln for ln in lines if not ln.strip().startswith("```")]
+                    json_str = "\n".join(lines)
+                try:
+                    result_value = json.loads(json_str)
+                except (json.JSONDecodeError, ValueError):
+                    # Parsing failed — return raw text
+                    result_value = raw_response
+            else:
+                result_value = raw_response
+
+            await store.set(f"{node.id}.output", result_value)
+            await store.set(f"{node.id}.{output_variable}", result_value)
+
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output=result_value,
+                duration_ms=_ms_since(t0),
+            )
+        except Exception as exc:
+            logger.exception("QuestionUnderstanding node %s failed", node.id)
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error=f"QuestionUnderstanding error: {exc}",
+                duration_ms=_ms_since(t0),
+            )
+
+
+# ---------------------------------------------------------------------------
 # Registry — map NodeType to executor class
 # ---------------------------------------------------------------------------
 
@@ -2262,6 +2568,8 @@ EXECUTOR_REGISTRY: dict[NodeType, type] = {
     NodeType.LOOP: LoopExecutor,
     NodeType.LIST_OPERATION: ListOperationExecutor,
     NodeType.TRANSFORM: TransformExecutor,
+    NodeType.DOCUMENT_EXTRACTOR: DocumentExtractorExecutor,
+    NodeType.QUESTION_UNDERSTANDING: QuestionUnderstandingExecutor,
 }
 
 

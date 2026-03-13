@@ -5323,3 +5323,603 @@ class TestTransformNode:
 
         assert result.status == NodeStatus.COMPLETED
         assert result.output == "hello world"
+
+
+# =========================================================================
+# DocumentExtractor node executor tests
+# =========================================================================
+
+
+class TestDocumentExtractorNode:
+    """Test the DocumentExtractor executor -- document content processing."""
+
+    @pytest.mark.asyncio
+    async def test_full_text_mode_with_text_input(self):
+        """full_text mode should return the entire text as-is."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "full_text",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", "Hello world, this is a document.")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == "Hello world, this is a document."
+
+    @pytest.mark.asyncio
+    async def test_pages_mode_with_form_feed(self):
+        """pages mode should split text by form-feed characters."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        text = "Page 1 content\fPage 2 content\fPage 3 content"
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "pages",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", text)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == ["Page 1 content", "Page 2 content", "Page 3 content"]
+
+    @pytest.mark.asyncio
+    async def test_pages_mode_with_page_range(self):
+        """pages mode with page_range should return only the requested pages."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        text = "Page 1\fPage 2\fPage 3\fPage 4\fPage 5"
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "pages",
+                "page_range": "2-4",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", text)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == ["Page 2", "Page 3", "Page 4"]
+
+    @pytest.mark.asyncio
+    async def test_metadata_mode(self):
+        """metadata mode should return char/word/line/page counts."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        text = "Hello world\fSecond page\nWith two lines"
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "metadata",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", text)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        meta = result.output
+        assert meta["char_count"] == len(text)
+        assert meta["word_count"] == len(text.split())
+        assert meta["line_count"] == text.count("\n") + 1
+        assert meta["page_count"] == 2  # split by \f
+
+    @pytest.mark.asyncio
+    async def test_tables_mode(self):
+        """tables mode should extract markdown tables."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        text = (
+            "Some intro text\n"
+            "| Name | Age |\n"
+            "| --- | --- |\n"
+            "| Alice | 30 |\n"
+            "\n"
+            "More text\n"
+            "| Col1 | Col2 |\n"
+            "| a | b |\n"
+        )
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "tables",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", text)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert len(result.output) == 2
+        assert "Alice" in result.output[0]
+        assert "Col1" in result.output[1]
+
+    @pytest.mark.asyncio
+    async def test_base64_text_input(self):
+        """base64 input_type should decode base64-encoded UTF-8 text."""
+        import base64 as b64
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        original = "Hello from base64!"
+        encoded = b64.b64encode(original.encode("utf-8")).decode("ascii")
+
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "base64",
+                "extract_mode": "full_text",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", encoded)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == "Hello from base64!"
+
+    @pytest.mark.asyncio
+    async def test_base64_binary_input_fails(self):
+        """base64 input with non-UTF-8 binary data should return an error."""
+        import base64 as b64
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        # Create binary data that is not valid UTF-8
+        binary_data = bytes([0x80, 0x81, 0x82, 0xFF, 0xFE])
+        encoded = b64.b64encode(binary_data).decode("ascii")
+
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "base64",
+                "extract_mode": "full_text",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", encoded)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "binary" in (result.error or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_missing_input_variable(self):
+        """DocumentExtractor with no input_variable should fail."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_type": "text",
+                "extract_mode": "full_text",
+            },
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "input_variable" in (result.error or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_empty_text_input(self):
+        """DocumentExtractor with empty text should still succeed (full_text returns empty)."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "full_text",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", "")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == ""
+
+    @pytest.mark.asyncio
+    async def test_default_output_variable_name(self):
+        """DocumentExtractor should store result in 'document_result' by default."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "full_text",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", "Test content")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        stored = await store.get("de_1.document_result")
+        assert stored == "Test content"
+        # Also stored in standard output key
+        stored_output = await store.get("de_1.output")
+        assert stored_output == "Test content"
+
+    @pytest.mark.asyncio
+    async def test_url_input_type_not_supported(self):
+        """URL input type should return a not-yet-supported error."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "url",
+                "extract_mode": "full_text",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", "https://example.com/doc.pdf")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "not yet supported" in (result.error or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_pages_mode_with_dash_delimiter(self):
+        """pages mode should also split by --- delimiter."""
+        from fim_one.core.workflow.nodes import DocumentExtractorExecutor
+
+        text = "Page 1 content\n\n---\n\nPage 2 content\n\n---\n\nPage 3 content"
+        node = WorkflowNodeDef(
+            id="de_1", type=NodeType.DOCUMENT_EXTRACTOR,
+            data={
+                "type": "DOCUMENT_EXTRACTOR",
+                "input_variable": "doc",
+                "input_type": "text",
+                "extract_mode": "pages",
+            },
+        )
+        store = VariableStore()
+        await store.set("doc", text)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = DocumentExtractorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert len(result.output) == 3
+        assert result.output[0] == "Page 1 content"
+
+
+# =========================================================================
+# QuestionUnderstanding node executor tests
+# =========================================================================
+
+
+class TestQuestionUnderstandingNode:
+    """Test the QuestionUnderstanding executor with mocked LLM calls."""
+
+    def _mock_llm_setup(self, response_content: str):
+        """Helper to set up LLM mocking -- returns (mock_modules_dict, mock_llm)."""
+        import sys
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_llm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.message.content = response_content
+        mock_llm.chat = AsyncMock(return_value=mock_result)
+
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_create_session = MagicMock(return_value=mock_cm)
+        mock_get_fast_llm = AsyncMock(return_value=mock_llm)
+
+        return {
+            "fim_one.db": MagicMock(create_session=mock_create_session),
+            "fim_one.web.deps": MagicMock(get_effective_fast_llm=mock_get_fast_llm),
+        }, mock_llm
+
+    @pytest.mark.asyncio
+    async def test_rewrite_mode(self):
+        """rewrite mode should return the LLM's rewritten text."""
+        import sys
+        from unittest.mock import patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        modules, mock_llm = self._mock_llm_setup("What are the main benefits of renewable energy sources?")
+
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "input_variable": "question",
+                "mode": "rewrite",
+            },
+        )
+        store = VariableStore()
+        await store.set("question", "what is good about green energy")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, modules):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == "What are the main benefits of renewable energy sources?"
+
+    @pytest.mark.asyncio
+    async def test_classify_mode_returns_parsed_json(self):
+        """classify mode should parse the LLM response as JSON."""
+        import sys
+        from unittest.mock import patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        classify_json = '{"intent": "information_seeking", "topic": "technology", "confidence": 0.95}'
+        modules, _ = self._mock_llm_setup(classify_json)
+
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "input_variable": "question",
+                "mode": "classify",
+            },
+        )
+        store = VariableStore()
+        await store.set("question", "How does machine learning work?")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, modules):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert isinstance(result.output, dict)
+        assert result.output["intent"] == "information_seeking"
+        assert result.output["confidence"] == 0.95
+
+    @pytest.mark.asyncio
+    async def test_decompose_mode_returns_json_array(self):
+        """decompose mode should parse the LLM response as a JSON array."""
+        import sys
+        from unittest.mock import patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        decompose_json = '["What is AI?", "How is AI used in healthcare?", "What are the ethical concerns?"]'
+        modules, _ = self._mock_llm_setup(decompose_json)
+
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "input_variable": "question",
+                "mode": "decompose",
+            },
+        )
+        store = VariableStore()
+        await store.set("question", "What are the implications of AI in healthcare?")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, modules):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert isinstance(result.output, list)
+        assert len(result.output) == 3
+        assert "What is AI?" in result.output
+
+    @pytest.mark.asyncio
+    async def test_expand_mode(self):
+        """expand mode should return the LLM's expanded text."""
+        import sys
+        from unittest.mock import patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        expanded = "What is quantum computing?\n\nSub-questions:\n1. How does it differ from classical computing?\n2. What are its applications?"
+        modules, _ = self._mock_llm_setup(expanded)
+
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "input_variable": "question",
+                "mode": "expand",
+            },
+        )
+        store = VariableStore()
+        await store.set("question", "What is quantum computing?")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, modules):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert "Sub-questions" in result.output
+
+    @pytest.mark.asyncio
+    async def test_custom_system_prompt_override(self):
+        """Custom system_prompt should override the default prompt."""
+        import sys
+        from unittest.mock import patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        modules, mock_llm = self._mock_llm_setup("Custom processed result")
+
+        custom_prompt = "You are a specialized question handler. Process this question uniquely."
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "input_variable": "question",
+                "mode": "rewrite",
+                "system_prompt": custom_prompt,
+            },
+        )
+        store = VariableStore()
+        await store.set("question", "Some question")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, modules):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        # Verify the custom prompt was used
+        call_args = mock_llm.chat.call_args[0][0]
+        assert call_args[0].content == custom_prompt
+
+    @pytest.mark.asyncio
+    async def test_missing_input_variable(self):
+        """QuestionUnderstanding with no input_variable should fail."""
+        import sys
+        from unittest.mock import MagicMock, patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "mode": "rewrite",
+            },
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, {
+            "fim_one.db": MagicMock(),
+            "fim_one.web.deps": MagicMock(),
+        }):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "input_variable" in (result.error or "").lower()
+
+    @pytest.mark.asyncio
+    async def test_variable_interpolation_in_input(self):
+        """QuestionUnderstanding should interpolate {{ref}} in input_variable."""
+        import sys
+        from unittest.mock import patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        modules, mock_llm = self._mock_llm_setup("Improved: What is Python programming?")
+
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "input_variable": "{{user_input}}",
+                "mode": "rewrite",
+            },
+        )
+        store = VariableStore()
+        await store.set("user_input", "what is python")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, modules):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        # Verify the interpolated text was sent to the LLM
+        call_args = mock_llm.chat.call_args[0][0]
+        assert call_args[1].content == "what is python"
+
+    @pytest.mark.asyncio
+    async def test_default_output_variable_name(self):
+        """QuestionUnderstanding should store result in 'question_result' by default."""
+        import sys
+        from unittest.mock import patch
+        from fim_one.core.workflow.nodes import QuestionUnderstandingExecutor
+
+        modules, _ = self._mock_llm_setup("Rewritten question text")
+
+        node = WorkflowNodeDef(
+            id="qu_1", type=NodeType.QUESTION_UNDERSTANDING,
+            data={
+                "type": "QUESTION_UNDERSTANDING",
+                "input_variable": "question",
+                "mode": "rewrite",
+            },
+        )
+        store = VariableStore()
+        await store.set("question", "original question")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        with patch.dict(sys.modules, modules):
+            executor = QuestionUnderstandingExecutor()
+            result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        stored = await store.get("qu_1.question_result")
+        assert stored == "Rewritten question text"
+        stored_output = await store.get("qu_1.output")
+        assert stored_output == "Rewritten question text"
