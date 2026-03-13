@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Bot, FlaskConical, GitBranch, LayoutDashboard, Layers, Library, Loader2, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, ShoppingBag, Sun, Wrench, X } from "lucide-react"
+import { BookOpen, Bot, FlaskConical, GitBranch, LayoutDashboard, Layers, Library, Loader2, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, ShoppingBag, Sun, Wrench, X } from "lucide-react"
 import { getApiBaseUrl } from "@/lib/constants"
 import { setMaintenanceCallback } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -355,6 +355,9 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
       </SidebarTooltip>
       <SidebarTooltip label={t("workflows")} collapsed={collapsed}>
         {navLink("/workflows", pathname === "/workflows" || pathname.startsWith("/workflows/"), <GitBranch className="h-4 w-4" />, t("workflows"))}
+      </SidebarTooltip>
+      <SidebarTooltip label={t("skills")} collapsed={collapsed}>
+        {navLink("/skills", pathname === "/skills" || pathname.startsWith("/skills/"), <BookOpen className="h-4 w-4" />, t("skills"))}
       </SidebarTooltip>
       <SidebarTooltip label={t("tools")} collapsed={collapsed}>
         {navLink("/tools", pathname === "/tools", <Wrench className="h-4 w-4" />, t("tools"))}

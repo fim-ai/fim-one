@@ -26,6 +26,8 @@ export interface AgentResponse {
   is_builder?: boolean
   discoverable?: boolean
   sub_agent_ids?: string[] | null
+  skill_ids?: string[] | null
+  compact_instructions?: string | null
   publish_status: string | null
   reviewed_by: string | null
   reviewed_at: string | null
@@ -48,6 +50,8 @@ export interface AgentCreate {
   grounding_config?: Record<string, unknown>
   sandbox_config?: SandboxConfig
   execution_mode?: "react" | "dag" | "auto"
+  skill_ids?: string[]
+  compact_instructions?: string | null
 }
 
 export interface AgentUpdate {
@@ -63,6 +67,8 @@ export interface AgentUpdate {
   grounding_config?: Record<string, unknown>
   sandbox_config?: SandboxConfig
   execution_mode?: "react" | "dag" | "auto"
+  skill_ids?: string[]
+  compact_instructions?: string | null
 }
 
 export interface AICreateAgentResult {

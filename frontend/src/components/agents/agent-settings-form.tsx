@@ -11,9 +11,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
 import { SuggestedPromptsEditor } from "@/components/agents/suggested-prompts-editor"
-import { agentApi, kbApi, connectorApi, modelApi } from "@/lib/api"
+import { agentApi, kbApi, connectorApi, modelApi, skillApi } from "@/lib/api"
 import type { AgentCreate, AgentResponse, SandboxConfig } from "@/types/agent"
 import type { ConnectorResponse } from "@/types/connector"
+import type { SkillResponse } from "@/types/skill"
 import type { ModelConfigResponse } from "@/types/model_config"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
@@ -65,10 +66,13 @@ export function AgentSettingsForm({
   const [selectedModelConfigId, setSelectedModelConfigId] = useState<string>("")
   const [selectedFastModelConfigId, setSelectedFastModelConfigId] = useState<string>("")
   const [discoverable, setDiscoverable] = useState<boolean>(false)
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([])
+  const [compactInstructions, setCompactInstructions] = useState<string>("")
   const [systemModels, setSystemModels] = useState<ModelConfigResponse[]>([])
 
   const [availableKBs, setAvailableKBs] = useState<{ id: string; name: string; document_count: number }[]>([])
   const [availableConnectors, setAvailableConnectors] = useState<ConnectorResponse[]>([])
+  const [availableSkills, setAvailableSkills] = useState<SkillResponse[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { data: catalog } = useToolCatalog()
 
@@ -94,6 +98,8 @@ export function AgentSettingsForm({
       setSelectedModelConfigId((agent.model_config_json?.model_config_id as string) ?? "")
       setSelectedFastModelConfigId((agent.model_config_json?.fast_model_config_id as string) ?? "")
       setDiscoverable(agent.discoverable ?? false)
+      setSelectedSkills(agent.skill_ids || [])
+      setCompactInstructions(agent.compact_instructions || "")
     } else {
       setName("")
       setIcon(null)
@@ -112,6 +118,8 @@ export function AgentSettingsForm({
       setSelectedModelConfigId("")
       setSelectedFastModelConfigId("")
       setDiscoverable(false)
+      setSelectedSkills([])
+      setCompactInstructions("")
     }
   }, [agent])
 
@@ -126,6 +134,10 @@ export function AgentSettingsForm({
       .then((d) => setAvailableConnectors(d.items || []))
       .catch(() => setAvailableConnectors([]))
     modelApi.list("llm").then(setSystemModels).catch(() => {})
+    skillApi
+      .list(1, 100)
+      .then((d) => setAvailableSkills((d.items || []) as SkillResponse[]))
+      .catch(() => setAvailableSkills([]))
   }, [])
 
   // Compute and notify dirty state
@@ -157,9 +169,11 @@ export function AgentSettingsForm({
       sandboxTimeout !== (agent.sandbox_config?.timeout != null ? String(agent.sandbox_config.timeout) : "") ||
       selectedModelConfigId !== ((agent.model_config_json?.model_config_id as string) ?? "") ||
       selectedFastModelConfigId !== ((agent.model_config_json?.fast_model_config_id as string) ?? "") ||
-      discoverable !== (agent.discoverable ?? false)
+      discoverable !== (agent.discoverable ?? false) ||
+      JSON.stringify(selectedSkills) !== JSON.stringify(agent.skill_ids || []) ||
+      compactInstructions !== (agent.compact_instructions || "")
     onDirtyChange(dirty)
-  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, selectedModelConfigId, selectedFastModelConfigId, discoverable, onDirtyChange])
+  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, selectedModelConfigId, selectedFastModelConfigId, discoverable, selectedSkills, compactInstructions, onDirtyChange])
 
   const toggleCategory = (cat: string) => {
     setToolCategories((prev) =>
@@ -222,6 +236,8 @@ export function AgentSettingsForm({
         ...(modelConfigJson !== undefined && { model_config_json: modelConfigJson }),
         ...(hasSandboxConfig && { sandbox_config: sandboxCfg }),
         discoverable,
+        skill_ids: selectedSkills,
+        compact_instructions: compactInstructions.trim() || null,
       }
 
       let result: AgentResponse
@@ -716,6 +732,82 @@ export function AgentSettingsForm({
               </div>
             </div>
           )}
+
+          {/* Bound Skills */}
+          {(availableSkills.length > 0 || selectedSkills.some((id) => !availableSkills.some((s) => s.id === id))) && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{t("skillIds")}</label>
+              <p className="text-xs text-muted-foreground">
+                {t("skillIdsHint")}
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {availableSkills.map((sk) => {
+                  const isChecked = selectedSkills.includes(sk.id)
+                  const toggleSkill = () =>
+                    setSelectedSkills((prev) =>
+                      prev.includes(sk.id)
+                        ? prev.filter((sid) => sid !== sk.id)
+                        : [...prev, sk.id]
+                    )
+                  return (
+                    <div
+                      key={sk.id}
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      tabIndex={0}
+                      onClick={toggleSkill}
+                      onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleSkill() } }}
+                      className="flex items-center gap-1.5 text-sm cursor-pointer select-none"
+                    >
+                      <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors ${isChecked ? "bg-primary border-primary" : "border-input"}`}>
+                        {isChecked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                      </div>
+                      <span className="text-muted-foreground">
+                        {sk.name}
+                      </span>
+                    </div>
+                  )
+                })}
+                {selectedSkills
+                  .filter((id) => !availableSkills.some((s) => s.id === id))
+                  .map((orphanId) => {
+                    const toggleOrphan = () =>
+                      setSelectedSkills((prev) => prev.filter((sid) => sid !== orphanId))
+                    return (
+                      <div
+                        key={orphanId}
+                        role="checkbox"
+                        aria-checked={true}
+                        tabIndex={0}
+                        onClick={toggleOrphan}
+                        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleOrphan() } }}
+                        className="flex items-center gap-1.5 text-sm cursor-pointer select-none rounded px-1 py-0.5 bg-destructive/10"
+                      >
+                        <div className="h-3.5 w-3.5 rounded border flex items-center justify-center transition-colors bg-primary border-primary">
+                          <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                        </div>
+                        <span className="text-destructive/80 truncate max-w-[200px]" title={orphanId}>
+                          {orphanId.length > 12 ? `${orphanId.slice(0, 12)}...` : orphanId}
+                        </span>
+                        <span className="text-destructive/60 text-xs">({t("deleted")})</span>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Compact Instructions */}
+          <div className="space-y-2">
+            <Label>{t("compactInstructions")}</Label>
+            <p className="text-xs text-muted-foreground">{t("compactInstructionsHint")}</p>
+            <Textarea
+              value={compactInstructions}
+              onChange={(e) => setCompactInstructions(e.target.value)}
+              placeholder={t("compactInstructionsPlaceholder")}
+              className="min-h-[80px] font-mono text-xs"
+            />
+          </div>
 
           {/* Suggested Prompts */}
           <div className="space-y-1.5">

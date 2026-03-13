@@ -150,5 +150,11 @@
   "disableOrgAgentDescription": "This will immediately stop all org members from using this agent. You can re-enable it at any time.",
   "agentEnabled": "Agent enabled",
   "agentDisabled": "Agent disabled",
-  "agentToggleFailed": "Failed to update agent status"
+  "agentToggleFailed": "Failed to update agent status",
+
+  "skillIds": "Bound Skills",
+  "skillIdsHint": "Skills are referenced by name in the system prompt. Full content loads on demand via read_skill().",
+  "compactInstructions": "Compact Instructions",
+  "compactInstructionsHint": "Custom prompt used when compressing conversation history. Leave empty to use default.",
+  "compactInstructionsPlaceholder": "Preserve order IDs, amounts, and customer names. Drop raw API responses and intermediate reasoning."
 }

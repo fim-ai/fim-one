@@ -85,11 +85,13 @@ class ContextGuard:
         default_budget: int = 32_000,
         max_message_chars: int = 50_000,
         usage_tracker: UsageTracker | None = None,
+        custom_compact_prompt: str | None = None,
     ) -> None:
         self._compact_llm = compact_llm
         self._default_budget = default_budget
         self.max_message_chars = max_message_chars
         self._usage_tracker = usage_tracker
+        self._custom_compact_prompt = custom_compact_prompt
 
     async def check_and_compact(
         self,
@@ -177,7 +179,7 @@ class ContextGuard:
 
         Falls back to :meth:`CompactUtils.smart_truncate` on failure.
         """
-        prompt = _COMPACT_PROMPTS.get(hint, _COMPACT_PROMPTS["general"])
+        prompt = self._custom_compact_prompt if self._custom_compact_prompt else _COMPACT_PROMPTS.get(hint, _COMPACT_PROMPTS["general"])
 
         # Keep system message(s) and recent messages; summarise old ones.
         # Split: system messages stay, keep last 4 user/assistant messages,

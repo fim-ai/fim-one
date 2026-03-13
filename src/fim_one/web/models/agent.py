@@ -47,6 +47,8 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
         Boolean, default=False, nullable=False, server_default="FALSE"
     )
     sub_agent_ids: Any = Column(JSON, nullable=True)  # list[str] — explicit whitelist
+    skill_ids: Any = Column(JSON, nullable=True)  # list[str]
+    compact_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     grounding_config: Any = Column(JSON, nullable=True)
     sandbox_config: Any = Column(JSON, nullable=True)
 

@@ -20,6 +20,8 @@ class AgentCreate(BaseModel):
     grounding_config: dict | None = None
     sandbox_config: dict | None = None
     execution_mode: Literal["react", "dag", "auto"] = "auto"
+    skill_ids: list[str] | None = None
+    compact_instructions: str | None = None
     is_active: bool = True
 
 
@@ -36,6 +38,8 @@ class AgentUpdate(BaseModel):
     grounding_config: dict | None = None
     sandbox_config: dict | None = None
     execution_mode: Literal["react", "dag", "auto"] | None = None
+    skill_ids: list[str] | None = None
+    compact_instructions: str | None = None
     is_active: bool | None = None
 
 
@@ -60,6 +64,8 @@ class AgentResponse(BaseModel):
     is_builder: bool = False
     discoverable: bool = False
     sub_agent_ids: list[str] | None = None
+    skill_ids: list[str] | None = None
+    compact_instructions: str | None = None
     visibility: str = "personal"
     org_id: str | None = None
     publish_status: str | None = None

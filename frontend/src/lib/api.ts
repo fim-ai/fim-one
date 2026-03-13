@@ -8,6 +8,7 @@ import type {
   PaginatedResponse,
 } from "@/types/conversation"
 import type { AgentResponse, AgentCreate, AgentUpdate, AICreateAgentResult, AIRefineAgentResult } from "@/types/agent"
+import type { SkillResponse, SkillCreate, SkillUpdate } from "@/types/skill"
 import type { FileUploadResponse, FileListItem } from "@/types/file"
 import type {
   KBResponse,
@@ -978,6 +979,47 @@ export const workflowApi = {
 
   resubmit: (id: string) =>
     apiFetch<ApiResponse<WorkflowResponse>>(`/api/workflows/${id}/resubmit`, {
+      method: "POST",
+    }).then((r) => r.data),
+}
+
+// --- Skill API ---
+export const skillApi = {
+  list: (page = 1, size = 50) =>
+    apiFetch<PaginatedResponse<SkillResponse>>(
+      `/api/skills?page=${page}&size=${size}`,
+    ),
+  get: (id: string) =>
+    apiFetch<ApiResponse<SkillResponse>>(`/api/skills/${id}`).then((r) => r.data),
+  create: (body: SkillCreate) =>
+    apiFetch<ApiResponse<SkillResponse>>("/api/skills", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+  update: (id: string, body: SkillUpdate) =>
+    apiFetch<ApiResponse<SkillResponse>>(`/api/skills/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+  delete: (id: string) =>
+    apiFetch<ApiResponse<{ deleted: string }>>(`/api/skills/${id}`, {
+      method: "DELETE",
+    }),
+  publish: (id: string, body: { scope: "org" | "global"; org_id?: string }) =>
+    apiFetch<ApiResponse<SkillResponse>>(`/api/skills/${id}/publish`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => r.data),
+  unpublish: (id: string) =>
+    apiFetch<ApiResponse<SkillResponse>>(`/api/skills/${id}/unpublish`, {
+      method: "POST",
+    }).then((r) => r.data),
+  resubmit: (id: string) =>
+    apiFetch<ApiResponse<SkillResponse>>(`/api/skills/${id}/resubmit`, {
+      method: "POST",
+    }).then((r) => r.data),
+  toggle: (id: string) =>
+    apiFetch<ApiResponse<SkillResponse>>(`/api/skills/${id}/toggle`, {
       method: "POST",
     }).then((r) => r.data),
 }

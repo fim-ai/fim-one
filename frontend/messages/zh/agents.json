@@ -130,5 +130,10 @@
   "disableOrgAgentDescription": "这将立即停止所有组织成员使用此智能体。您可以随时重新启用它。",
   "agentEnabled": "智能体已启用",
   "agentDisabled": "智能体已禁用",
-  "agentToggleFailed": "更新智能体状态失败"
+  "agentToggleFailed": "更新智能体状态失败",
+  "skillIds": "绑定技能",
+  "skillIdsHint": "技能在系统提示中按名称引用。完整内容通过 read_skill() 按需加载。",
+  "compactInstructions": "紧凑指令",
+  "compactInstructionsHint": "压缩对话历史时使用的自定义提示。留空则使用默认值。",
+  "compactInstructionsPlaceholder": "保留订单 ID、金额和客户名称。删除原始 API 响应和中间推理。"
 }

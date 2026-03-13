@@ -130,5 +130,10 @@
   "disableOrgAgentDescription": "Dies stoppt sofort alle Organisationsmitglieder von der Verwendung dieses Agenten. Sie können ihn jederzeit wieder aktivieren.",
   "agentEnabled": "Agent aktiviert",
   "agentDisabled": "Agent deaktiviert",
-  "agentToggleFailed": "Fehler beim Aktualisieren des Agent-Status"
+  "agentToggleFailed": "Fehler beim Aktualisieren des Agent-Status",
+  "skillIds": "Gebundene Fähigkeiten",
+  "skillIdsHint": "Fähigkeiten werden im Systemprompt nach Name referenziert. Vollständiger Inhalt wird bei Bedarf über read_skill() geladen.",
+  "compactInstructions": "Kompakte Anweisungen",
+  "compactInstructionsHint": "Benutzerdefinierter Prompt zur Komprimierung des Gesprächsverlaufs. Leer lassen, um Standard zu verwenden.",
+  "compactInstructionsPlaceholder": "Bestellnummern, Beträge und Kundennamen beibehalten. Rohe API-Antworten und Zwischenüberlegungen entfernen."
 }

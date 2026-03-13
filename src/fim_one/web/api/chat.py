@@ -488,6 +488,8 @@ async def _resolve_agent_config(
             "grounding_config": agent.grounding_config,
             "sandbox_config": agent.sandbox_config,
             "owner_user_id": agent.user_id,
+            "skill_ids": agent.skill_ids,
+            "compact_instructions": agent.compact_instructions,
         }
 
 
@@ -780,6 +782,13 @@ async def _resolve_tools(
         except Exception:
             logger.warning("Failed to load connector tools", exc_info=True)
 
+    # Load read_skill tool when the agent has bound skills.
+    skill_ids = agent_cfg.get("skill_ids") if agent_cfg else None
+    if skill_ids:
+        from fim_one.core.tool.builtin.read_skill import ReadSkillTool
+
+        tools.register(ReadSkillTool(skill_ids=skill_ids, user_id=user_id))
+
     # Inject Connector Builder tools when this is a Builder Agent.
     if agent_cfg and "builder" in (agent_cfg.get("tool_categories") or []):
         import re as _re
@@ -1067,6 +1076,33 @@ def _kb_system_hint(agent_cfg: dict[str, Any]) -> str:
     return hint
 
 
+async def _resolve_skill_stubs(skill_ids: list[str]) -> str:
+    """Return a compact stub block for all bound skills."""
+    from fim_one.db import create_session
+    from fim_one.web.models.skill import Skill
+
+    try:
+        async with create_session() as session:
+            result = await session.execute(
+                sa_select(Skill.name, Skill.description).where(
+                    Skill.id.in_(skill_ids), Skill.is_active == True  # noqa: E712
+                )
+            )
+            rows = result.all()
+        if not rows:
+            return ""
+        lines = [
+            "\n\n## Available Skills",
+            "Call read_skill(name) to load full content before executing any of these:",
+        ]
+        for name, desc in rows:
+            stub = f"- **{name}**" + (f": {desc}" if desc else "")
+            lines.append(stub)
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 async def _load_image_data_urls(
     image_ids: str, user_id: str | None,
 ) -> list[tuple[str, str, str]]:
@@ -1325,6 +1361,13 @@ async def react_endpoint(
         grounding_hint = _kb_system_hint(agent_cfg)
         extra_instructions = (extra_instructions or "") + grounding_hint
 
+    # Inject skill stubs when agent has bound skills
+    _react_skill_ids = agent_cfg.get("skill_ids") if agent_cfg else None
+    if _react_skill_ids:
+        _skill_stubs = await _resolve_skill_stubs(_react_skill_ids)
+        if _skill_stubs:
+            extra_instructions = (extra_instructions or "") + _skill_stubs
+
     # Load attached images (async to avoid blocking the event loop)
     image_data: list[tuple[str, str, str]] = []
     if image_ids:
@@ -1546,6 +1589,7 @@ async def react_endpoint(
                 compact_llm=fast_llm,
                 default_budget=_context_budget,
                 usage_tracker=fast_usage_tracker,
+                custom_compact_prompt=agent_cfg.get("compact_instructions") if agent_cfg else None,
             )
 
             # Inject fast usage tracker into grounded retrieve tool
@@ -1894,6 +1938,13 @@ async def dag_endpoint(
         grounding_hint = _kb_system_hint(agent_cfg)
         extra_instructions = (extra_instructions or "") + grounding_hint
 
+    # Inject skill stubs when agent has bound skills
+    _dag_skill_ids = agent_cfg.get("skill_ids") if agent_cfg else None
+    if _dag_skill_ids:
+        _skill_stubs = await _resolve_skill_stubs(_dag_skill_ids)
+        if _skill_stubs:
+            extra_instructions = (extra_instructions or "") + _skill_stubs
+
     # DAG uses a fast LLM for step execution; role='fast' -> role='general' -> ENV fallback.
     async with _create_session() as _fast_llm_db:
         fast_llm = await _resolve_fast_llm(agent_cfg, _fast_llm_db)
@@ -2146,6 +2197,7 @@ async def dag_endpoint(
                     compact_llm=fast_llm,
                     default_budget=_fast_context_budget,
                     usage_tracker=fast_usage_tracker,
+                    custom_compact_prompt=agent_cfg.get("compact_instructions") if agent_cfg else None,
                 )
 
                 # Inject fast usage tracker into grounded retrieve tool

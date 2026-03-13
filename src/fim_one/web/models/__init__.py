@@ -25,6 +25,7 @@ from .model_config import ModelConfig
 from .oauth_binding import UserOAuthBinding
 from .organization import Organization, OrgMembership
 from .sensitive_word import SensitiveWord
+from .skill import Skill
 from .system_setting import SystemSetting
 from .user import User
 from .workflow import Workflow, WorkflowRun
@@ -59,6 +60,7 @@ __all__ = [
     "OrgMembership",
     "SchemaColumn",
     "SensitiveWord",
+    "Skill",
     "SystemSetting",
     "User",
     "UserOAuthBinding",

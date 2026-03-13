@@ -130,5 +130,10 @@
   "disableOrgAgentDescription": "これにより、組織のすべてのメンバーがこのエージェントを使用できなくなります。いつでも再度有効にできます。",
   "agentEnabled": "エージェントが有効です",
   "agentDisabled": "エージェントが無効です",
-  "agentToggleFailed": "エージェントのステータス更新に失敗しました"
+  "agentToggleFailed": "エージェントのステータス更新に失敗しました",
+  "skillIds": "バインドされたスキル",
+  "skillIdsHint": "スキルはシステムプロンプト内で名前で参照されます。完全なコンテンツはread_skill()経由でオンデマンドで読み込まれます。",
+  "compactInstructions": "コンパクト指示",
+  "compactInstructionsHint": "会話履歴を圧縮する際に使用されるカスタムプロンプト。空のままにするとデフォルトを使用します。",
+  "compactInstructionsPlaceholder": "注文ID、金額、顧客名の順序を保持します。生のAPI応答と中間推論は削除します。"
 }

@@ -130,5 +130,10 @@
   "disableOrgAgentDescription": "이렇게 하면 모든 조직 구성원이 즉시 이 에이전트를 사용할 수 없게 됩니다. 언제든지 다시 활성화할 수 있습니다.",
   "agentEnabled": "에이전트 활성화됨",
   "agentDisabled": "에이전트 비활성화됨",
-  "agentToggleFailed": "에이전트 상태 업데이트 실패"
+  "agentToggleFailed": "에이전트 상태 업데이트 실패",
+  "skillIds": "바인딩된 스킬",
+  "skillIdsHint": "스킬은 시스템 프롬프트에서 이름으로 참조됩니다. 전체 콘텐츠는 read_skill()을 통해 필요에 따라 로드됩니다.",
+  "compactInstructions": "간단한 지침",
+  "compactInstructionsHint": "대화 기록을 압축할 때 사용되는 사용자 정의 프롬프트입니다. 비워두면 기본값을 사용합니다.",
+  "compactInstructionsPlaceholder": "주문 ID, 금액 및 고객 이름을 유지합니다. 원본 API 응답 및 중간 추론은 제거합니다."
 }

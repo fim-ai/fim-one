@@ -47,6 +47,8 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         is_builder=agent.is_builder,
         discoverable=agent.discoverable,
         sub_agent_ids=agent.sub_agent_ids,
+        skill_ids=agent.skill_ids,
+        compact_instructions=agent.compact_instructions,
         visibility=getattr(agent, "visibility", "personal"),
         org_id=getattr(agent, "org_id", None),
         publish_status=getattr(agent, "publish_status", None),
@@ -99,8 +101,9 @@ async def _validate_binding_ownership(
     db: AsyncSession,
     connector_ids: list[str] | None = None,
     kb_ids: list[str] | None = None,
+    skill_ids: list[str] | None = None,
 ) -> None:
-    """Verify that all referenced connector_ids and kb_ids belong to the user.
+    """Verify that all referenced connector_ids, kb_ids, and skill_ids belong to the user.
 
     Raises HTTP 403 if any referenced resource is not owned by the user.
     """
@@ -124,6 +127,18 @@ async def _validate_binding_ownership(
         if owned_count != len(kb_ids):
             raise AppError("kb_ownership_denied", status_code=403)
 
+    if skill_ids:
+        from fim_one.web.models.skill import Skill
+
+        result = await db.execute(
+            select(func.count())
+            .select_from(Skill)
+            .where(Skill.id.in_(skill_ids), Skill.user_id == user_id)
+        )
+        owned_count = result.scalar_one()
+        if owned_count != len(skill_ids):
+            raise AppError("skill_ownership_denied", status_code=403)
+
 
 @router.post("", response_model=ApiResponse)
 async def create_agent(
@@ -135,6 +150,7 @@ async def create_agent(
         current_user.id, db,
         connector_ids=body.connector_ids,
         kb_ids=body.kb_ids,
+        skill_ids=body.skill_ids,
     )
     agent = Agent(
         user_id=current_user.id,
@@ -150,6 +166,8 @@ async def create_agent(
         grounding_config=body.grounding_config,
         sandbox_config=body.sandbox_config,
         execution_mode=body.execution_mode,
+        skill_ids=body.skill_ids,
+        compact_instructions=body.compact_instructions,
         status="draft",
     )
     db.add(agent)
@@ -230,6 +248,7 @@ async def update_agent(
         current_user.id, db,
         connector_ids=update_data.get("connector_ids"),
         kb_ids=update_data.get("kb_ids"),
+        skill_ids=update_data.get("skill_ids"),
     )
     for field, value in update_data.items():
         setattr(agent, field, value)
