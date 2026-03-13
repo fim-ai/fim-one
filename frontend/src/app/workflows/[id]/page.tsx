@@ -29,6 +29,7 @@ import { WorkflowToolbar, type ValidationResult } from "@/components/workflows/w
 import { WorkflowEditor } from "@/components/workflows/workflow-editor"
 import type { WorkflowEditorHandle } from "@/components/workflows/workflow-editor"
 import { RunHistorySheet } from "@/components/workflows/run-history-sheet"
+import { WorkflowStatsPanel } from "@/components/workflows/workflow-stats-panel"
 import { EnvVarsDialog } from "@/components/workflows/env-vars-dialog"
 import type {
   WorkflowResponse,
@@ -76,6 +77,9 @@ export default function WorkflowEditorPage() {
 
   // History sheet state
   const [historyOpen, setHistoryOpen] = useState(false)
+
+  // Stats panel state
+  const [statsOpen, setStatsOpen] = useState(false)
 
   // Env vars dialog state
   const [showEnvDialog, setShowEnvDialog] = useState(false)
@@ -636,6 +640,7 @@ export default function WorkflowEditorPage() {
         onDuplicate={handleDuplicate}
         onDelete={() => setShowDeleteDialog(true)}
         onHistory={() => setHistoryOpen(true)}
+        onStats={() => setStatsOpen(true)}
         onAutoLayout={handleAutoLayout}
         onPublish={handlePublishClick}
         onUnpublish={handleUnpublishClick}
@@ -796,6 +801,13 @@ export default function WorkflowEditorPage() {
         open={historyOpen}
         onOpenChange={setHistoryOpen}
         nodeTypeMap={nodeTypeMap}
+      />
+
+      {/* Stats Panel */}
+      <WorkflowStatsPanel
+        workflowId={workflowId}
+        open={statsOpen}
+        onOpenChange={setStatsOpen}
       />
     </div>
   )

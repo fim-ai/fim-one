@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl"
 import {
   AlertTriangle,
   ArrowLeft,
+  BarChart3,
   CheckCircle2,
   Copy,
   Download,
@@ -80,6 +81,7 @@ interface WorkflowToolbarProps {
   onDuplicate: () => void
   onDelete: () => void
   onHistory: () => void
+  onStats: () => void
   onAutoLayout: () => void
   onPublish?: () => void
   onUnpublish?: () => void
@@ -114,6 +116,7 @@ export function WorkflowToolbar({
   onDelete,
   onAutoLayout,
   onHistory,
+  onStats,
   onPublish,
   onUnpublish,
   onResubmit,
@@ -408,6 +411,20 @@ export function WorkflowToolbar({
           <History className="h-3.5 w-3.5" />
           {t("historyButton")}
         </Button>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onStats}
+              aria-label={t("statsButton")}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("statsButton")}</TooltipContent>
+        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
