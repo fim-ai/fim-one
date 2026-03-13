@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge-bases"])
 
 _UPLOADS_DIR = Path("uploads") / "kb"
+_MAX_FILE_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50")) * 1024 * 1024
 _SUPPORTED_EXTENSIONS = {
     ".pdf", ".docx", ".md", ".markdown", ".html", ".htm", ".csv", ".txt",
     ".xlsx", ".xls", ".pptx",
@@ -441,6 +443,14 @@ async def upload_document(
             detail="Invalid filename",
         )
     content = await file.read()
+    if len(content) > _MAX_FILE_SIZE:
+        max_mb = _MAX_FILE_SIZE // (1024 * 1024)
+        raise AppError(
+            "file_too_large",
+            status_code=413,
+            detail=f"File exceeds the {max_mb} MB limit",
+            detail_args={"max_mb": max_mb},
+        )
     file_path.write_bytes(content)
 
     # Create document record
