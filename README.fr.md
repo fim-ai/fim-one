@@ -87,10 +87,12 @@ Le Copilot prouve la valeur au sein d'un système. Le Hub déverrouille la valeu
 FIM One ne réplique pas la logique de flux de travail qui existe déjà dans vos systèmes cibles :
 
 - **Pas de moteur BPM/FSM** — Les chaînes d'approbation, le routage, l'escalade et les machines d'état sont la responsabilité du système cible. Ces systèmes ont passé des années à construire cette logique.
-- **Pas d'éditeur de flux de travail par glisser-déposer** — Utilisez Dify si vous avez besoin de diagrammes visuels. Le planificateur DAG de FIM One génère des graphes d'exécution dynamiquement.
-- **Connector = appel API** — Du point de vue du connecteur, « transférer l'approbation » = un appel API, « rejeter avec raison » = un appel API. Toutes les opérations de flux de travail complexes se réduisent à des requêtes HTTP. FIM One appelle l'API ; le système cible gère l'état.
+- **Pas de moteur de flux de travail BPM/FSM** — Les Blueprints de flux de travail de FIM One sont des modèles d'automatisation (appels LLM, branches conditionnelles, actions de connecteur), pas de gestion des processus métier. Les chaînes d'approbation, les règles de routage et les machines d'état appartiennent au système cible.
+- **Connecteur = appel API** — Du point de vue du connecteur, « transférer l'approbation » = un appel API, « rejeter avec raison » = un appel API. Toutes les opérations de flux de travail complexes se réduisent à des requêtes HTTP. FIM One appelle l'API ; le système cible gère l'état.
 
-C'est une limite architecturale délibérée, pas une lacune de capacité.### Positionnement Concurrentiel
+C'est une limite architecturale délibérée, pas une lacune en matière de capacités.
+
+### Positionnement Concurrentiel
 
 |                        | Dify                       | Manus            | Coze                  | FIM One                      |
 | ---------------------- | -------------------------- | ---------------- | --------------------- | ---------------------------- |
@@ -132,7 +134,12 @@ FIM One ne fait pas de BPM/FSM — la logique de workflow appartient au système
 - **Replanification DAG** — Révise automatiquement le plan jusqu'à 3 fois lorsque les objectifs ne sont pas atteints.
 - **Agent ReAct** — Boucle structurée de raisonnement et d'action avec récupération automatique des erreurs.
 - **Routage Automatique** — La classification automatique des requêtes achemine chaque demande vers le mode d'exécution optimal (ReAct ou DAG). L'interface supporte un commutateur 3 positions (Auto/Standard/Planner). Configurable via `AUTO_ROUTING`.
-- **Réflexion Étendue** — Activez le raisonnement chaîne de pensée pour les modèles supportés (OpenAI o-series, Gemini 2.5+, Claude) via `LLM_REASONING_EFFORT`. Le raisonnement du modèle est affiché dans l'étape « thinking » de l'interface.#### Outils et intégrations
+- **Réflexion Étendue** — Activez le raisonnement chaîne de pensée pour les modèles supportés (OpenAI o-series, Gemini 2.5+, Claude) via `LLM_REASONING_EFFORT`. Le raisonnement du modèle est affiché dans l'étape « thinking » de l'interface.#### Plans de travail
+- **Éditeur de flux de travail visuel** — Concevez des plans d'automatisation multi-étapes avec un canevas glisser-déposer construit sur React Flow v12. 12 types de nœuds : Start, End, LLM, Condition Branch, Question Classifier, Agent, Knowledge Retrieval, Connecteur, HTTP Request, Variable Assign, Template Transform, Code Execution.
+- **Moteur d'exécution topologique** — Les flux de travail exécutent les nœuds dans l'ordre des dépendances avec branchement conditionnel, passage de variables entre nœuds et diffusion en continu du statut SSE en temps réel.
+- **Import/Export** — Partagez les plans de travail sous forme JSON. Variables d'environnement chiffrées pour une gestion sécurisée des identifiants.
+
+#### Outils et intégrations
 - **Système d'outils enfichable** — Découverte automatique ; livré avec exécuteur Python, exécuteur Node.js, calculatrice, recherche/récupération web, requête HTTP, exécution shell, et plus.
 - **Sandbox enfichable** — `python_exec` / `node_exec` / `shell_exec` s'exécutent en mode local ou Docker (`CODE_EXEC_BACKEND=docker`) pour l'isolation au niveau du système d'exploitation (`--network=none`, `--memory=256m`). Sûr pour les déploiements SaaS et multi-locataires.
 - **Protocole MCP** — Connectez n'importe quel serveur MCP en tant qu'outils. L'écosystème MCP tiers fonctionne immédiatement.

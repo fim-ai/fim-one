@@ -11,27 +11,32 @@ description: "FIM One의 모든 주목할 만한 변경 사항입니다."
 
 ### 추가됨
 
-- **Admin: Review Log 감사 탭** — Admin 감사 페이지에 이제 "System Log / Review Log" 토글이 있는 분할 패널이 있습니다. Review Log 패널은 새로운 `GET /api/admin/review-log` 엔드포인트를 쿼리하고(필터: org, 리소스 유형, 작업; limit/offset 페이지네이션), 시간, org 이름, 리소스 유형, 리소스 이름, 작업 배지(색상 코딩: 녹색=승인됨, 빨강=거부됨, 황색=제출됨/재제출됨, 회색=미발행), 운영자를 표시하는 테이블을 표시합니다. 전체 i18n (EN + ZH).
-- **플랫폼 Organization**: 기본 제공 org `platform` (ID: `00000000-0000-0000-0000-000000000001`) — 모든 신규 사용자가 자동으로 가입합니다. 이 organization은 "global" 가시성 개념을 대체하고 모든 사용자 간에 리소스를 공유하기 위한 중앙 허브를 제공합니다.
-- **리소스 구독**: 사용자는 이제 org Markets에서 공유 리소스(에이전트, 커넥터, 지식 베이스, MCP 서버)를 구독/구독 취소할 수 있습니다. 새로운 `resource_subscriptions` 데이터베이스 테이블이 구독 관계를 추적합니다.
-- **Market API**: 구독 탐색 및 관리를 위한 새로운 엔드포인트:
-  - `GET /api/market` — 현재 org에서 사용 가능한 리소스 탐색
+- **Workflow Blueprint System** — 다단계 자동화 블루프린트를 설계하고 실행하기 위한 시각적 워크플로우 편집기. 풀스택 구현:
+  - **백엔드**: Alembic 마이그레이션이 포함된 `Workflow` 및 `WorkflowRun` ORM 모델; CRUD + 검증을 위한 Pydantic 스키마; 생성, 읽기, 업데이트, 삭제, 목록, 가져오기/내보내기가 포함된 전체 REST API (`/api/workflows/*`); 실시간 실행 상태 스트리밍을 위한 SSE 기반 실행 엔드포인트; 기존 `CREDENTIAL_ENCRYPTION_KEY`를 통한 암호화된 환경 변수.
+  - **실행 엔진**: 노드 실행 순서를 위한 위상 정렬, 조건 분기 지원 및 노드 간 데이터 전달을 위한 `VariableStore`가 포함된 `WorkflowEngine`. 12개 노드 실행기: Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution.
+  - **프론트엔드**: React Flow v12로 구축된 시각적 워크플로우 편집기 — 드래그 앤 드롭 노드 팔레트, 타입별 아이콘 및 구성이 포함된 12개 커스텀 노드 컴포넌트, 타입별 폼이 있는 노드 구성 패널, 연결 검증, SSE 기반 라이브 실행 상태가 있는 실행 패널, 카드 그리드가 있는 워크플로우 목록 페이지. 전체 i18n 지원 (6개 언어).
+  - **보안**: 코드 실행 노드는 OS 수준 격리를 위해 베어 `exec()` 대신 `subprocess`를 사용; eval/템플릿 실행 컨텍스트에서 필터링된 환경 변수; 장시간 실행 워크플로우를 위한 SSE keepalive; 모든 노드 실행기 전반에 걸친 적절한 `ExecutionContext` 연결.
+- **관리자: 검토 로그 감사 탭** — 관리자 감사 페이지에는 이제 분할된 "System Log / Review Log" 토글이 있습니다. 검토 로그 패널은 새로운 `GET /api/admin/review-log` 엔드포인트를 쿼리하고 (필터: org, 리소스 타입, 작업; limit/offset 페이지네이션) 시간, org 이름, 리소스 타입, 리소스 이름, 작업 배지 (색상 코드: 녹색=승인됨, 빨강=거부됨, 황색=제출됨/재제출됨, 회색=미발행됨) 및 운영자가 있는 테이블을 표시합니다. 전체 i18n (EN + ZH).
+- **플랫폼 조직**: 기본 제공 org `platform` (ID: `00000000-0000-0000-0000-000000000001`) — 모든 신규 사용자가 자동으로 가입합니다. 이 조직은 "global" 가시성 개념을 대체하고 모든 사용자 간에 리소스를 공유하기 위한 중앙 허브를 제공합니다.
+- **리소스 구독**: 사용자는 이제 org 마켓에서 공유 리소스 (에이전트, 커넥터, 지식 베이스, MCP 서버)를 구독/구독 취소할 수 있습니다. 새로운 `resource_subscriptions` 데이터베이스 테이블이 구독 관계를 추적합니다.
+- **마켓 API**: 구독 검색 및 관리를 위한 새로운 엔드포인트:
+  - `GET /api/market` — 현재 org에서 사용 가능한 리소스 검색
   - `POST /api/market/subscribe` — 리소스 구독
   - `DELETE /api/market/unsubscribe` — 리소스 구독 취소
   - `GET /api/market/subscriptions` — 사용자의 현재 구독 목록
-- **Market 페이지**: Portal의 새로운 `/market` 페이지로 org 리소스에 대한 구독을 탐색하고 관리합니다.
-- **에이전트 자동 발견**: 에이전트의 새로운 `discoverable` 부울 필드입니다. `discoverable=true`인 에이전트는 `call_agent` 도구를 통해 LLM에 의해 자동으로 발견되고 호출될 수 있습니다(1단계 위임, 재귀 없음).
-- **Sub-agent 바인딩**: 에이전트의 새로운 `sub_agent_ids` 필드 — 세밀한 접근 제어를 위한 호출 가능한 sub-agent의 명시적 화이트리스트입니다.
-- **CallAgentTool**: 구조화된 입력 검증 및 결과 처리를 통해 전문가 에이전트에게 작업을 위임하는 기본 제공 도구입니다.
-- **MCP 서버 자격증명**: 새로운 `mcp_server_credentials` 테이블은 MCP 서버에 대한 사용자별 환경 변수 및 HTTP 헤더 재정의를 활성화합니다.
-- **MCP 자격증명 엔드포인트**: `PUT /api/mcp-servers/{id}/my-credentials`를 통해 사용자는 공유 MCP 서버에 대한 개인 자격증명 재정의를 저장할 수 있습니다.
-- **MCPServer의 `allow_fallback`**: 자격증명 폴백 동작을 제어하는 부울 필드 — `true`일 때, 누락된 사용자 자격증명은 소유자 기본값으로 폴백됩니다.
-- **Connector/KB 토글**: 리소스 상태 관리를 위한 새로운 엔드포인트:
-  - `POST /api/connectors/{id}/toggle` — connector 일시 중단/재개
-  - `POST /api/knowledge-bases/{id}/toggle` — 지식 베이스 일시 중단/재개
-- **독립형 KB 대화**: `ChatStreamRequest` 및 `Conversation`의 새로운 `kb_ids` 필드 — 사용자는 이제 에이전트에 바인딩하지 않고도 지식 베이스와 직접 대화할 수 있습니다.
-- **플랫폼 Org 보호**: Platform org는 삭제할 수 없으며, 사용자는 이를 자체 탈퇴할 수 없습니다. 모든 사용자가 organization 허브에 대한 연결을 유지하도록 보장합니다.
-- **Publish Review UI (Frontend)**: Org 수준 publish review 시스템 프론트엔드 — org 편집 대화상자의 review 토글, 유형/상태 필터 및 승인/거부 워크플로우가 있는 ReviewsSheet, 에이전트 카드의 publish 상태 배지(대기 중/승인됨/거부됨) 및 거부 사유에 대한 툴팁, publish 대화상자의 review 공지(대상 org에서 review가 필요한 경우), 거부된 리소스에 대한 재제출 작업, org admin/소유자를 위한 "Review Management" 드롭다운입니다. 모든 리소스 유형(에이전트, 커넥터, KB, MCP 서버)은 `publish_status`, `reviewed_by`, `reviewed_at`, `review_note` 유형 필드를 획득합니다. 전체 i18n (EN + ZH).
+- **마켓 페이지**: Portal의 새로운 `/market` 페이지로 org 리소스에 대한 구독 검색 및 관리.
+- **에이전트 자동 발견**: 에이전트의 새로운 `discoverable` 부울 필드. `discoverable=true`인 에이전트는 `call_agent` 도구를 통해 LLM에 의해 자동으로 발견되고 호출될 수 있습니다 (1단계 위임, 재귀 없음).
+- **하위 에이전트 바인딩**: 에이전트의 새로운 `sub_agent_ids` 필드 — 세분화된 액세스 제어를 위한 호출 가능한 하위 에이전트의 명시적 화이트리스트.
+- **CallAgentTool**: 구조화된 입력 검증 및 결과 처리를 통해 전문 에이전트에게 작업을 위임하는 기본 제공 도구.
+- **MCP 서버 자격증명**: 새로운 `mcp_server_credentials` 테이블을 통해 MCP 서버에 대한 사용자별 환경 변수 및 HTTP 헤더 재정의를 활성화합니다.
+- **MCP 자격증명 엔드포인트**: `PUT /api/mcp-servers/{id}/my-credentials`를 통해 사용자가 공유 MCP 서버에 대한 개인 자격증명 재정의를 저장할 수 있습니다.
+- **MCPServer의 `allow_fallback`**: 자격증명 폴백 동작을 제어하는 부울 필드 — `true`일 때 누락된 사용자 자격증명이 소유자 기본값으로 폴백됩니다.
+- **커넥터/KB 토글**: 리소스 상태 관리를 위한 새로운 엔드포인트:
+  - `POST /api/connectors/{id}/toggle` — 커넥터 일시 중지/재개
+  - `POST /api/knowledge-bases/{id}/toggle` — 지식 베이스 일시 중지/재개
+- **독립형 KB 대화**: `ChatStreamRequest` 및 `Conversation`의 새로운 `kb_ids` 필드 — 사용자는 이제 에이전트에 바인딩하지 않고 지식 베이스와 직접 채팅할 수 있습니다.
+- **플랫폼 Org 보호**: 플랫폼 org는 삭제할 수 없으며 사용자는 자신을 떠날 수 없습니다. 모든 사용자가 조직 허브에 대한 연결을 유지하도록 합니다.
+- **발행 검토 UI (프론트엔드)**: Org 수준 발행 검토 시스템 프론트엔드 — org 편집 대화상자의 검토 토글, 타입/상태 필터 및 승인/거부 워크플로우가 있는 ReviewsSheet, 에이전트 카드의 발행 상태 배지 (대기 중/승인됨/거부됨) 및 거부 사유에 대한 도구 설명, 대상 org에서 검토가 필요할 때 발행 대화상자의 검토 공지, 거부된 리소스에 대한 재제출 작업, org 관리자/소유자를 위한 "검토 관리" 드롭다운. 모든 리소스 타입 (에이전트, 커넥터, KB, MCP 서버)은 `publish_status`, `reviewed_by`, `reviewed_at`, `review_note` 타입 필드를 획득합니다. 전체 i18n (EN + ZH).
 
 ### 수정됨
 

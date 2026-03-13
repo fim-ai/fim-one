@@ -86,11 +86,13 @@ Copilot beweist seinen Wert in einem System. Hub erschließt Wert über alle Sys
 
 FIM One repliziert keine Workflow-Logik, die bereits in Ihren Zielsystemen vorhanden ist:
 
-- **Keine BPM/FSM-Engine** — Genehmigungsketten, Routing, Eskalation und State Machines sind Aufgabe des Zielsystems. Diese Systeme haben Jahre damit verbracht, diese Logik aufzubauen.
-- **Kein Drag-and-Drop-Workflow-Editor** — Verwenden Sie Dify, wenn Sie visuelle Flowcharts benötigen. Der DAG-Planer von FIM One generiert Ausführungsgraphen dynamisch.
-- **Connector = API-Aufruf** — Aus der Perspektive des Connectors ist „Genehmigung übertragen" = ein API-Aufruf, „mit Grund ablehnen" = ein API-Aufruf. Alle komplexen Workflow-Operationen reduzieren sich auf HTTP-Anfragen. FIM One ruft die API auf; das Zielsystem verwaltet den Zustand.
+- **Keine BPM/FSM-Engine** — Genehmigungsketten, Routing, Eskalation und State Machines sind Aufgabe des Zielsystems. Diese Systeme haben Jahre damit verbracht, diese Logik zu entwickeln.
+- **Keine BPM/FSM-Workflow-Engine** — Die Workflow Blueprints von FIM One sind Automatisierungsvorlagen (LLM-Aufrufe, Bedingungsverzweigungen, Connector-Aktionen), keine Business-Process-Management-Systeme. Genehmigungsketten, Routing-Regeln und State Machines gehören in das Zielsystem.
+- **Connector = API-Aufruf** — Aus der Perspektive des Connectors ist „Genehmigung übertragen" = ein API-Aufruf, „mit Grund ablehnen" = ein API-Aufruf. Alle komplexen Workflow-Operationen reduzieren sich auf HTTP-Anfragen. FIM One ruft die API auf; das Zielsystem verwaltet den Status.
 
-Dies ist eine bewusste architektonische Grenze, keine Fähigkeitslücke.### Wettbewerbspositionierung
+Dies ist eine bewusste architektonische Grenze, keine Funktionslücke.
+
+### Wettbewerbspositionierung
 
 |                        | Dify                       | Manus            | Coze                  | FIM One                      |
 | ---------------------- | -------------------------- | ---------------- | --------------------- | ---------------------------- |
@@ -132,7 +134,12 @@ FIM One führt kein BPM/FSM durch — Workflow-Logik gehört zum Zielsystem, Con
 - **DAG Re-Planning** — Überarbeitet den Plan automatisch bis zu 3 Runden, wenn Ziele nicht erreicht werden.
 - **ReAct Agent** — Strukturierte Reasoning-and-Acting-Schleife mit automatischer Fehlerwiederherstellung.
 - **Auto-Routing** — Automatische Abfrageklassifizierung leitet jede Anfrage zum optimalen Ausführungsmodus (ReAct oder DAG). Frontend unterstützt 3-Wege-Umschalter (Auto/Standard/Planner). Konfigurierbar über `AUTO_ROUTING`.
-- **Extended Thinking** — Aktiviert Chain-of-Thought-Reasoning für unterstützte Modelle (OpenAI o-series, Gemini 2.5+, Claude) über `LLM_REASONING_EFFORT`. Das Reasoning des Modells wird im UI-Schritt "thinking" angezeigt.#### Tools & Integrations
+- **Extended Thinking** — Aktiviert Chain-of-Thought-Reasoning für unterstützte Modelle (OpenAI o-series, Gemini 2.5+, Claude) über `LLM_REASONING_EFFORT`. Das Reasoning des Modells wird im UI-Schritt "thinking" angezeigt.#### Workflow-Blaupausen
+- **Visual Workflow Editor** — Entwerfen Sie mehrstufige Automatisierungs-Blaupausen mit einer Drag-and-Drop-Canvas basierend auf React Flow v12. 12 Knotentypen: Start, End, LLM, Condition Branch, Question Classifier, Agent, Knowledge Retrieval, Connector, HTTP Request, Variable Assign, Template Transform, Code Execution.
+- **Topological Execution Engine** — Workflows führen Knoten in Abhängigkeitsreihenfolge aus mit Bedingungsverzweigung, knotenübergreifender Variablenweitergabe und Echtzeit-SSE-Status-Streaming.
+- **Import/Export** — Teilen Sie Workflow-Blaupausen als JSON. Verschlüsselte Umgebungsvariablen für sichere Anmeldedatenverwaltung.
+
+#### Tools & Integrations
 - **Pluggable Tool System** — Automatische Erkennung; wird mit Python-Executor, Node.js-Executor, Rechner, Websuche/Abruf, HTTP-Anfrage, Shell-Ausführung und mehr ausgeliefert.
 - **Pluggable Sandbox** — `python_exec` / `node_exec` / `shell_exec` werden im lokalen oder Docker-Modus (`CODE_EXEC_BACKEND=docker`) mit Isolation auf Betriebssystemebene (`--network=none`, `--memory=256m`) ausgeführt. Sicher für SaaS- und Multi-Tenant-Bereitstellungen.
 - **MCP Protocol** — Verbinden Sie jeden MCP-Server als Tools. Das Ökosystem von Drittanbieter-MCP funktioniert sofort.

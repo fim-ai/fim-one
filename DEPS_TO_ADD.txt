@@ -1,9 +1,0 @@
-Dependencies to add to pyproject.toml for the workflow blueprint system:
-
-1. simpleeval - Safe expression evaluation for ConditionBranch and VariableAssign nodes
-   Command: uv add simpleeval
-
-Already present:
-- jinja2>=3.0 (used for TemplateTransform nodes via SandboxedEnvironment)
-- httpx (used for HTTPRequest nodes)
-- cryptography (used for env var encryption via Fernet)

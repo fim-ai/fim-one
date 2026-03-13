@@ -161,25 +161,26 @@ flowchart LR
 
 ## 计划版本
 
-### v0.8 — 连接器声明式配置 + 渐进式信息展示
+### v0.8 — 连接器声明式配置 + 渐进式信息披露
 
-**目标**: 使定义连接器更容易，无需编写 Python 代码，并优化工具和指令向 LLM 的暴露方式。
+**目标**: 使定义连接器无需编写 Python 代码更容易，并优化工具和指令如何暴露给 LLM。
 
 - [x] ~~**数据库连接器**: 直接 SQL 访问 (PostgreSQL, MySQL, Oracle)~~ *(在 v0.7.x 中发布 — 第 1-3 阶段)*
 - [x] ~~**RBAC**: 按用户/角色的连接器访问控制~~ *(在 v0.7.x 中发布 — 组织系统 + 三层可见性)*
 - [x] **连接器凭证加密 + 按用户覆盖**: `connector_credentials` 表，通过 `CREDENTIAL_ENCRYPTION_KEY` 的 Fernet 加密，`allow_fallback` 标志，`GET/PUT/DELETE /my-credentials` 端点，聊天工具加载中的按用户凭证解析
-- [x] **发布审核 UI**: 组织级发布审核系统 — 按组织的审核切换，带有批准/拒绝工作流的 ReviewsSheet，资源卡上的状态徽章，发布对话框中的审核通知，被拒绝资源的重新提交
-- [ ] **连接器渐进式信息展示 (第 1-2 阶段)**: 单个 `ConnectorMetaTool` 替代按操作工具；系统提示仅接收轻量级**存根** (名称 + 1 行描述，约 30 个令牌/连接器 vs 约 250 个令牌/操作)；智能体调用 `discover(connector)` 按需加载完整操作架构 — 架构仅在模型选择连接器时加载，保持提示前缀稳定以便缓存。镜像 Claude Code 的 `defer_loading: true` 内部模式。`execute` 子命令；向后兼容的功能标志。
-- [ ] **智能体技能系统 + 紧凑指令**: 智能体指令的按需技能加载 — `Skill` 模型 (名称、内容/SOP、可选脚本) 附加到智能体；在系统提示中仅按名称引用 (~10 个令牌/技能)；智能体调用 `read_skill(name)` 按需加载完整内容。将按对话指令令牌成本降低约 80%，同时允许更丰富的 SOP 库。与 ConnectorMetaTool 的渐进式信息展示在指令级别的对应物。启用"指令 + 工具 + 技能"差异化故事。还向 Agent 模型添加 `compact_instructions` 字段 — 按智能体压缩优先级列表注入到 `ContextGuard` 中进行压缩 (例如，"保留订单 ID 和金额，删除原始 API 响应")，替换当前的静态通用提示。受 Claude Code 的 Compact Instructions 模式启发。
+- [x] **发布审查 UI**: 组织级发布审查系统 — 按组织审查切换，带有批准/拒绝工作流的 ReviewsSheet，资源卡上的状态徽章，发布对话框中的审查通知，被拒绝资源的重新提交
+- [ ] **连接器渐进式信息披露 (第 1-2 阶段)**: 单个 `ConnectorMetaTool` 替代按操作工具；系统提示仅接收轻量级**存根** (名称 + 1 行描述，~30 tokens/连接器 vs ~250 tokens/操作)；智能体调用 `discover(connector)` 按需加载完整操作模式 — 模式仅在模型选择连接器时加载，保持提示前缀稳定以便缓存。镜像 Claude Code 的 `defer_loading: true` 内部模式。`execute` 子命令；向后兼容的功能标志。
+- [ ] **智能体技能系统 + 紧凑指令**: 智能体指令的按需技能加载 — `Skill` 模型 (名称、内容/SOP、可选脚本) 附加到智能体；在系统提示中仅按名称引用 (~10 tokens/技能)；智能体调用 `read_skill(name)` 按需加载完整内容。将按对话指令令牌成本降低约 ~80%，同时允许更丰富的 SOP 库。与 ConnectorMetaTool 渐进式信息披露在指令级别的对应物。启用"指令 + 工具 + 技能"差异化故事。还向 Agent 模型添加 `compact_instructions` 字段 — 按智能体压缩优先级列表注入到 `ContextGuard` 中进行压缩 (例如，"保留订单 ID 和金额，删除原始 API 响应")，替换当前静态通用提示。受 Claude Code 的紧凑指令模式启发。
 - [ ] **YAML/JSON 连接器配置**: 平台自动生成 MCP 服务器
 - [ ] **连接器导入/导出**: 共享连接器模板
-- [ ] **连接器分支**: 克隆 + 自定义现有连接器
+- [ ] **连接器分叉**: 克隆 + 自定义现有连接器
 - [ ] **数据库连接器第 4 阶段**: 企业驱动程序 — Oracle (`oracledb`)、SQL Server (`aioodbc`)、达梦 DM8 (`aioodbc` + DM ODBC)、南大通用 GBase (`aioodbc` + GBase ODBC)
 - [ ] **消息推送**: Lark、WeCom、Slack、Email 通知操作
-- [x] **操作审计**: 详细的谁做了什么的日志记录 — 添加了管理员审核日志审计选项卡 (按组织/资源的发布审核跟踪)
-- [ ] **语义架构注解**: 使用 `semantic_tag`、`description` 和 `pii` 标志扩展连接器架构字段；注解在 LLM 工具描述中展示，以便智能体理解字段意图，无需从列名猜测
+- [x] **工作流蓝图系统**: 用于设计和执行多步自动化蓝图的可视化工作流编辑器 — `Workflow` / `WorkflowRun` ORM 模型，完整 CRUD + SSE 执行 API，导入/导出，具有拓扑执行和 12 种节点类型的 `WorkflowEngine` (Start、End、LLM、ConditionBranch、QuestionClassifier、Agent、KnowledgeRetrieval、Connector、HTTPRequest、VariableAssign、TemplateTransform、CodeExecution)，React Flow v12 可视化编辑器，具有拖放调色板和节点配置面板，基于子进程的代码执行安全
+- [x] **操作审计**: 详细记录谁做了什么 — 添加了管理员审查日志审计选项卡 (按组织/资源的发布审查跟踪)
+- [ ] **语义模式注解**: 使用 `semantic_tag`、`description` 和 `pii` 标志扩展连接器模式字段；注解在 LLM 工具描述中显示，以便智能体无需从列名猜测即可理解字段意图
 
-**影响**: 实施工程师 (无需 Python) 可在 1-2 小时内添加连接器。工具定义和智能体指令的令牌成本在规模上下降约 80–93%。
+**影响**: 实施工程师 (无需 Python) 可在 1-2 小时内添加连接器。大规模工具定义和智能体指令的令牌成本下降约 ~80–93%。
 
 ### v0.9 — 可观测性 + 生产强化
 

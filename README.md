@@ -101,7 +101,7 @@ Copilot proves value inside one system. Hub unlocks value across all systems.
 FIM One does not replicate workflow logic that already exists in your target systems:
 
 - **No BPM/FSM engine** — Approval chains, routing, escalation, and state machines are the target system's responsibility. These systems spent years building this logic.
-- **No drag-and-drop workflow editor** — Use Dify if you need visual flowcharts. FIM One's DAG planner generates execution graphs dynamically.
+- **No BPM/FSM workflow engine** — FIM One's Workflow Blueprints are automation templates (LLM calls, condition branches, connector actions), not business process management. Approval chains, routing rules, and state machines belong in the target system.
 - **Connector = API call** — From the connector's perspective, "transfer approval" = one API call, "reject with reason" = one API call. All complex workflow operations collapse to HTTP requests. FIM One calls the API; the target system manages the state.
 
 This is a deliberate architectural boundary, not a capability gap.
@@ -157,6 +157,11 @@ FIM One doesn't do BPM/FSM — workflow logic belongs to the target system, Conn
 - **ReAct Agent** — Structured reasoning-and-acting loop with automatic error recovery.
 - **Auto-Routing** — Automatic query classification routes each request to the optimal execution mode (ReAct or DAG). Frontend supports 3-way toggle (Auto/Standard/Planner). Configurable via `AUTO_ROUTING`.
 - **Extended Thinking** — Enable chain-of-thought reasoning for supported models (OpenAI o-series, Gemini 2.5+, Claude) via `LLM_REASONING_EFFORT`. The model's reasoning is surfaced in the UI "thinking" step.
+
+#### Workflow Blueprints
+- **Visual Workflow Editor** — Design multi-step automation blueprints with a drag-and-drop canvas built on React Flow v12. 12 node types: Start, End, LLM, Condition Branch, Question Classifier, Agent, Knowledge Retrieval, Connector, HTTP Request, Variable Assign, Template Transform, Code Execution.
+- **Topological Execution Engine** — Workflows execute nodes in dependency order with condition branching, cross-node variable passing, and real-time SSE status streaming.
+- **Import/Export** — Share workflow blueprints as JSON. Encrypted environment variables for secure credential handling.
 
 #### Tools & Integrations
 - **Pluggable Tool System** — Auto-discovery; ships with Python executor, Node.js executor, calculator, web search/fetch, HTTP request, shell exec, and more.

@@ -176,6 +176,7 @@ flowchart LR
 - [ ] **Connector fork**: clone + customize existing connectors
 - [ ] **Database connectors Phase 4**: enterprise drivers — Oracle (`oracledb`), SQL Server (`aioodbc`), 达梦 DM8 (`aioodbc` + DM ODBC), 南大通用 GBase (`aioodbc` + GBase ODBC)
 - [ ] **Message push**: Lark, WeCom, Slack, Email notification actions
+- [x] **Workflow Blueprint System**: Visual workflow editor for designing and executing multi-step automation blueprints — `Workflow` / `WorkflowRun` ORM models, full CRUD + SSE execution API, import/export, `WorkflowEngine` with topological execution and 12 node types (Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution), React Flow v12 visual editor with drag-and-drop palette and node config panel, subprocess-based code execution security
 - [x] **Operation audit**: detailed logging of who did what — admin review log audit tab added (publish review trail per org/resource)
 - [ ] **Semantic Schema Annotations**: extend connector schema fields with `semantic_tag`, `description`, and `pii` flags; annotations surfaced in LLM tool descriptions so the agent understands field intent without guessing from column names
 

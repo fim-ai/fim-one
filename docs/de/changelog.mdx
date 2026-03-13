@@ -11,27 +11,32 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **Admin: Review Log Audit-Tab** — Die Admin-Audit-Seite hat jetzt einen segmentierten Toggle „System Log / Review Log". Das Review Log Panel fragt den neuen `GET /api/admin/review-log` Endpunkt ab (Filter: org, Ressourcentyp, Aktion; Limit/Offset-Paginierung) und zeigt eine Tabelle mit Zeit, Org-Name, Ressourcentyp, Ressourcenname, Aktions-Badge (farbcodiert: grün=genehmigt, rot=abgelehnt, bernsteinfarben=eingereicht/erneut eingereicht, gedimmt=unveröffentlicht) und Operator an. Vollständige i18n (EN + ZH).
-- **Platform-Organisation**: Integrierte Org `platform` (ID: `00000000-0000-0000-0000-000000000001`) — alle neuen Benutzer treten automatisch bei. Diese Organisation ersetzt das Konzept der „globalen" Sichtbarkeit und bietet einen zentralen Hub zum Teilen von Ressourcen über alle Benutzer hinweg.
-- **Ressourcen-Abos**: Benutzer können sich jetzt von gemeinsam genutzten Ressourcen (Agenten, Konnektoren, Wissensdatenbanken, MCP-Server) aus Org-Märkten abonnieren/abmelden. Neue `resource_subscriptions` Datenbanktabelle verfolgt Abonnementbeziehungen.
-- **Market API**: Neue Endpunkte zum Durchsuchen und Verwalten von Abos:
-  - `GET /api/market` — verfügbare Ressourcen in der aktuellen Org durchsuchen
-  - `POST /api/market/subscribe` — eine Ressource abonnieren
-  - `DELETE /api/market/unsubscribe` — eine Ressource abmelden
-  - `GET /api/market/subscriptions` — aktuelle Abos des Benutzers auflisten
-- **Market-Seite**: Neue `/market` Seite im Portal zum Durchsuchen und Verwalten von Abos für Org-Ressourcen.
-- **Agent-Autodiscovery**: Neues boolesches Feld `discoverable` auf Agenten. Agenten mit `discoverable=true` können automatisch erkannt und von LLMs über das Tool `call_agent` aufgerufen werden (einstufige Delegierung, keine Rekursion).
-- **Sub-Agent-Bindung**: Neues Feld `sub_agent_ids` auf Agenten — explizite Whitelist aufrufbarer Sub-Agenten für granulare Zugriffskontrolle.
+- **Workflow Blueprint System** — Visueller Workflow-Editor zum Entwerfen und Ausführen mehrstufiger Automatisierungs-Blueprints. Vollständige Stack-Implementierung:
+  - **Backend**: `Workflow` und `WorkflowRun` ORM-Modelle mit Alembic-Migration; Pydantic-Schemas für CRUD + Validierung; vollständige REST API (`/api/workflows/*`) mit Create, Read, Update, Delete, List, Import/Export; SSE-basierter Ausführungs-Endpoint für Echtzeit-Laufstatus-Streaming; verschlüsselte Umgebungsvariablen über vorhandenen `CREDENTIAL_ENCRYPTION_KEY`.
+  - **Execution Engine**: `WorkflowEngine` mit topologischer Sortierung für Knotenausführungsreihenfolge, Bedingungsverzweigungsunterstützung und `VariableStore` für knotenübergreifende Datenübergabe. 12 Knotenausführer: Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution.
+  - **Frontend**: Visueller Workflow-Editor mit React Flow v12 — Drag-and-Drop-Knotenpalette, 12 benutzerdefinierte Knotenkomponenten mit typspezifischen Symbolen und Konfiguration, Knotenkonfigurationspanel mit typspezifischen Formularen, Verbindungsvalidierung, Ausführungspanel mit SSE-gesteuertem Live-Ausführungsstatus, Workflow-Listenseite mit Kartengitter. Vollständige i18n-Unterstützung (6 Sprachen).
+  - **Sicherheit**: Code-Ausführungsknoten verwendet `subprocess` statt bloßem `exec()` für OS-Level-Isolation; Umgebungsvariablen gefiltert aus Eval-/Template-Ausführungskontexten; SSE-Keepalive für lange laufende Workflows; ordnungsgemäße `ExecutionContext`-Verdrahtung über alle Knotenausführer.
+- **Admin: Review Log Audit-Tab** — Admin-Audit-Seite hat jetzt einen segmentierten Toggle „System Log / Review Log". Das Review Log-Panel fragt den neuen `GET /api/admin/review-log` Endpoint ab (Filter: Org, Ressourcentyp, Aktion; Limit/Offset-Pagination) und zeigt eine Tabelle mit Zeit, Org-Name, Ressourcentyp, Ressourcenname, Aktions-Badge (farbcodiert: grün=genehmigt, rot=abgelehnt, bernstein=eingereicht/erneut eingereicht, gedimmt=unveröffentlicht) und Operator. Vollständige i18n (EN + ZH).
+- **Platform Organization**: Integrierte Org `platform` (ID: `00000000-0000-0000-0000-000000000001`) — alle neuen Benutzer treten automatisch bei. Diese Organisation ersetzt das Konzept der „globalen" Sichtbarkeit und bietet einen zentralen Hub zum Teilen von Ressourcen über alle Benutzer hinweg.
+- **Resource Subscriptions**: Benutzer können sich jetzt von gemeinsamen Ressourcen (Agenten, Konnektoren, Wissensdatenbanken, MCP-Server) aus Org-Märkten abonnieren/abmelden. Neue `resource_subscriptions` Datenbanktabelle verfolgt Abonnementbeziehungen.
+- **Market API**: Neue Endpoints zum Durchsuchen und Verwalten von Abonnements:
+  - `GET /api/market` — verfügbare Ressourcen in aktueller Org durchsuchen
+  - `POST /api/market/subscribe` — Ressource abonnieren
+  - `DELETE /api/market/unsubscribe` — Ressource abmelden
+  - `GET /api/market/subscriptions` — aktuelle Abonnements des Benutzers auflisten
+- **Market Page**: Neue `/market` Seite im Portal zum Durchsuchen und Verwalten von Abonnements für Org-Ressourcen.
+- **Agent Auto-discovery**: Neues `discoverable` Boolean-Feld auf Agenten. Agenten mit `discoverable=true` können automatisch erkannt und von LLMs über das `call_agent` Tool aufgerufen werden (einstufige Delegation, keine Rekursion).
+- **Sub-agent Binding**: Neues `sub_agent_ids` Feld auf Agenten — explizite Whitelist aufrufbarer Sub-Agenten für granulare Zugriffskontrolle.
 - **CallAgentTool**: Integriertes Tool, das Aufgaben an spezialisierte Agenten mit strukturierter Eingabevalidierung und Ergebnisbehandlung delegiert.
-- **MCP-Server-Anmeldedaten**: Neue Tabelle `mcp_server_credentials` ermöglicht Überschreibungen von Umgebungsvariablen und HTTP-Headern pro Benutzer für MCP-Server.
-- **MCP-Anmeldedaten-Endpunkt**: `PUT /api/mcp-servers/{id}/my-credentials` ermöglicht Benutzern, persönliche Anmeldedaten-Überschreibungen für gemeinsam genutzte MCP-Server zu speichern.
-- **`allow_fallback` auf MCPServer**: Boolesches Feld, das das Fallback-Verhalten für Anmeldedaten steuert — wenn `true`, fallen fehlende Benutzer-Anmeldedaten auf Standardwerte des Eigentümers zurück.
-- **Konnektor/KB-Toggle**: Neue Endpunkte für Ressourcenzustandsverwaltung:
+- **MCP Server Credentials**: Neue `mcp_server_credentials` Tabelle ermöglicht Umgebungsvariablen- und HTTP-Header-Overrides pro Benutzer für MCP-Server.
+- **MCP Credentials Endpoint**: `PUT /api/mcp-servers/{id}/my-credentials` ermöglicht Benutzern, persönliche Credential-Overrides für gemeinsame MCP-Server zu speichern.
+- **`allow_fallback` auf MCPServer**: Boolean-Feld, das Credential-Fallback-Verhalten steuert — wenn `true`, fallen fehlende Benutzer-Credentials auf Standardwerte des Eigentümers zurück.
+- **Connector/KB Toggle**: Neue Endpoints für Ressourcenzustandsverwaltung:
   - `POST /api/connectors/{id}/toggle` — Konnektor aussetzen/fortsetzen
   - `POST /api/knowledge-bases/{id}/toggle` — Wissensdatenbank aussetzen/fortsetzen
-- **Standalone-KB-Gespräche**: Neues Feld `kb_ids` auf `ChatStreamRequest` und `Conversation` — Benutzer können jetzt direkt mit Wissensdatenbanken chatten, ohne sie an einen Agenten zu binden.
-- **Platform-Org-Schutz**: Die Platform-Org kann nicht gelöscht werden, und Benutzer können sie nicht selbst verlassen. Stellt sicher, dass alle Benutzer die Konnektivität zum Organisations-Hub beibehalten.
-- **Publish Review UI (Frontend)**: Org-Level-Veröffentlichungsprüfungssystem Frontend — Review-Toggle im Org-Bearbeitungsdialog, ReviewsSheet mit Typ-/Status-Filtern und Genehmigungs-/Ablehnungs-Workflow, Veröffentlichungsstatus-Badges (ausstehend/genehmigt/abgelehnt) auf Agent-Karten mit Tooltip für Ablehnungsnotizen, Review-Hinweis im Veröffentlichungsdialog, wenn die Ziel-Org eine Überprüfung erfordert, Aktion „Erneut einreichen" für abgelehnte Ressourcen, Dropdown „Review-Verwaltung" für Org-Admin/Eigentümer. Alle Ressourcentypen (Agenten, Konnektoren, KBs, MCP-Server) erhalten Typfelder `publish_status`, `reviewed_by`, `reviewed_at`, `review_note`. Vollständige i18n (EN + ZH).
+- **Standalone KB Conversations**: Neues `kb_ids` Feld auf `ChatStreamRequest` und `Conversation` — Benutzer können jetzt direkt mit Wissensdatenbanken chatten, ohne sie an einen Agenten zu binden.
+- **Platform Org Protection**: Die Platform Org kann nicht gelöscht werden, und Benutzer können sie nicht selbst verlassen. Stellt sicher, dass alle Benutzer die Konnektivität zur Organisations-Hub beibehalten.
+- **Publish Review UI (Frontend)**: Org-Level Publish Review System Frontend — Review-Toggle im Org-Bearbeitungsdialog, ReviewsSheet mit Typ-/Status-Filtern und Genehmigung/Ablehnung-Workflow, Publish-Status-Badges (ausstehend/genehmigt/abgelehnt) auf Agent-Karten mit Tooltip für Ablehnungsnotizen, Review-Hinweis im Publish-Dialog, wenn Ziel-Org Review erfordert, Aktion erneut einreichen für abgelehnte Ressourcen, „Review Management" Dropdown für Org-Admin/Eigentümer. Alle Ressourcentypen (Agenten, Konnektoren, KBs, MCP-Server) erhalten `publish_status`, `reviewed_by`, `reviewed_at`, `review_note` Typfelder. Vollständige i18n (EN + ZH).
 
 ### Behoben
 

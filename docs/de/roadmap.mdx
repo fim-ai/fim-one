@@ -161,25 +161,26 @@ flowchart LR
 
 ## Geplante Versionen
 
-### v0.8 — Connector-Deklarative Konfiguration + Progressive Offenlegung
+### v0.8 — Konnektoren deklarative Konfiguration + Progressive Offenlegung
 
-**Ziel**: Vereinfachung der Connector-Definition ohne Python-Code und Optimierung der Exposition von Tools und Anweisungen gegenüber dem LLM.
+**Ziel**: Vereinfachung der Konnektoren-Definition ohne Python-Code und Optimierung der Exposition von Werkzeugen und Anweisungen gegenüber dem LLM.
 
-- [x] ~~**Datenbank-Connectors**: direkter SQL-Zugriff (PostgreSQL, MySQL, Oracle)~~ *(in v0.7.x ausgeliefert — Phase 1-3)*
-- [x] ~~**RBAC**: Connector-Zugriffskontrolle pro Benutzer/Rolle~~ *(in v0.7.x ausgeliefert — Org-System + dreistufige Sichtbarkeit)*
-- [x] **Connector-Anmeldedaten-Verschlüsselung + Benutzer-Override**: `connector_credentials`-Tabelle, Fernet-Verschlüsselung über `CREDENTIAL_ENCRYPTION_KEY`, `allow_fallback`-Flag, `GET/PUT/DELETE /my-credentials`-Endpunkte, Anmeldedaten-Auflösung pro Benutzer beim Laden von Chat-Tools
-- [x] **Publish-Review-UI**: Org-übergreifendes Publish-Review-System — Review-Toggle pro Org, ReviewsSheet mit Genehmigung/Ablehnung-Workflow, Status-Badges auf Ressourcen-Karten, Review-Hinweis im Publish-Dialog, erneute Einreichung für abgelehnte Ressourcen
-- [ ] **Connector Progressive Offenlegung (Phase 1-2)**: einzelnes `ConnectorMetaTool` ersetzt Pro-Action-Tools; System-Prompt erhält nur leichte **Stubs** (Name + 1-zeilige Beschreibung, ~30 Token/Connector vs ~250 Token/Action); Agent ruft `discover(connector)` auf, um vollständiges Action-Schema bei Bedarf zu laden — Schema wird nur geladen, wenn das Modell einen Connector auswählt, wodurch das Prompt-Präfix für Caching stabil bleibt. Spiegelt Clauds Code-internes Muster `defer_loading: true`. `execute`-Unterbefehl; Feature-Flag für Rückwärtskompatibilität.
-- [ ] **Agent-Skill-System + Kompakte Anweisungen**: On-Demand-Skill-Laden für Agent-Anweisungen — `Skill`-Modell (Name, Inhalt/SOP, optionale Scripts) an Agents angehängt; in System-Prompt nur nach Name referenziert (~10 Token/Skill); Agent ruft `read_skill(name)` auf, um vollständigen Inhalt bei Bedarf zu laden. Reduziert Pro-Konversations-Anweisungs-Token-Kosten um ~80%, während umfangreichere SOP-Bibliotheken ermöglicht werden. Gegenstück zu ConnectorMetaTools Progressive Offenlegung auf Anweisungsebene angewendet. Ermöglicht die Differenzierungsgeschichte „Anweisungen + Tools + Skills". Fügt auch `compact_instructions`-Feld zum Agent-Modell hinzu — Pro-Agent-Komprimierungspriorität-Liste in `ContextGuard` beim Komprimieren eingefügt (z. B. „Bestellungs-IDs und Beträge beibehalten, rohe API-Antworten verwerfen"), ersetzt das aktuelle statische generische Prompt. Inspiriert von Clauds Code Compact Instructions-Muster.
-- [ ] **YAML/JSON-Connector-Konfiguration**: Plattform generiert automatisch MCP-Server
-- [ ] **Connector-Import/Export**: Connector-Templates teilen
-- [ ] **Connector-Fork**: Klonen + Anpassung vorhandener Connectors
-- [ ] **Datenbank-Connectors Phase 4**: Enterprise-Treiber — Oracle (`oracledb`), SQL Server (`aioodbc`), 达梦 DM8 (`aioodbc` + DM ODBC), 南大通用 GBase (`aioodbc` + GBase ODBC)
-- [ ] **Nachrichtenversand**: Lark, WeCom, Slack, Email-Benachrichtigungsaktionen
-- [x] **Operationsprüfung**: detailliertes Logging wer was getan hat — Admin-Review-Log-Audit-Tab hinzugefügt (Publish-Review-Trail pro Org/Ressource)
-- [ ] **Semantische Schema-Annotationen**: Connector-Schema-Felder mit `semantic_tag`, `description` und `pii`-Flags erweitern; Annotationen in LLM-Tool-Beschreibungen angezeigt, damit der Agent die Feldabsicht versteht, ohne von Spaltennamen zu raten
+- [x] ~~**Datenbank-Konnektoren**: direkter SQL-Zugriff (PostgreSQL, MySQL, Oracle)~~ *(ausgeliefert in v0.7.x — Phase 1-3)*
+- [x] ~~**RBAC**: Konnektoren-Zugriffskontrolle pro Benutzer/Rolle~~ *(ausgeliefert in v0.7.x — Org-System + dreistufige Sichtbarkeit)*
+- [x] **Konnektoren-Anmeldedaten-Verschlüsselung + Außerkraftsetzung pro Benutzer**: `connector_credentials`-Tabelle, Fernet-Verschlüsselung über `CREDENTIAL_ENCRYPTION_KEY`, `allow_fallback`-Flag, `GET/PUT/DELETE /my-credentials`-Endpunkte, Auflösung von Anmeldedaten pro Benutzer beim Laden von Chat-Werkzeugen
+- [x] **Veröffentlichungs-Review-UI**: Org-weites Veröffentlichungs-Review-System — Review-Toggle pro Org, ReviewsSheet mit Genehmigung/Ablehnung-Workflow, Status-Badges auf Ressourcen-Karten, Review-Hinweis im Veröffentlichungsdialog, erneute Einreichung für abgelehnte Ressourcen
+- [ ] **Konnektoren Progressive Offenlegung (Phase 1-2)**: einzelnes `ConnectorMetaTool` ersetzt pro-Aktion-Werkzeuge; System-Prompt erhält nur leichte **Stubs** (Name + 1-zeilige Beschreibung, ~30 Token/Konnektor vs. ~250 Token/Aktion); Agent ruft `discover(connector)` auf, um vollständiges Action-Schema bei Bedarf zu laden — Schema wird nur geladen, wenn das Modell einen Konnektor auswählt, wodurch das Prompt-Präfix für Caching stabil bleibt. Spiegelt Claude Code's `defer_loading: true` internes Muster. `execute`-Unterbefehl; Feature-Flag für Rückwärtskompatibilität.
+- [ ] **Agent-Fähigkeits-System + Kompakte Anweisungen**: On-Demand-Laden von Agent-Anweisungen — `Skill`-Modell (Name, Inhalt/SOP, optionale Skripte) an Agenten angehängt; im System-Prompt nur nach Name referenziert (~10 Token/Fähigkeit); Agent ruft `read_skill(name)` auf, um vollständigen Inhalt bei Bedarf zu laden. Reduziert Pro-Konversations-Anweisungs-Token-Kosten um ~80%, während umfangreichere SOP-Bibliotheken ermöglicht werden. Gegenstück zur Progressive Offenlegung von ConnectorMetaTool auf Anweisungsebene angewendet. Ermöglicht die Differenzierungsgeschichte „Anweisungen + Werkzeuge + Fähigkeiten". Fügt auch `compact_instructions`-Feld zum Agent-Modell hinzu — Pro-Agent-Kompressionspriorität-Liste in `ContextGuard` beim Komprimieren eingefügt (z. B. „Bestellungs-IDs und Beträge beibehalten, rohe API-Antworten verwerfen"), ersetzt die aktuelle statische generische Eingabeaufforderung. Inspiriert von Claude Code's Compact Instructions-Muster.
+- [ ] **YAML/JSON-Konnektoren-Konfiguration**: Plattform generiert automatisch MCP-Server
+- [ ] **Konnektoren-Import/Export**: Konnektoren-Vorlagen teilen
+- [ ] **Konnektoren-Fork**: Klonen + Anpassung bestehender Konnektoren
+- [ ] **Datenbank-Konnektoren Phase 4**: Enterprise-Treiber — Oracle (`oracledb`), SQL Server (`aioodbc`), 达梦 DM8 (`aioodbc` + DM ODBC), 南大通用 GBase (`aioodbc` + GBase ODBC)
+- [ ] **Nachrichtenversand**: Lark, WeCom, Slack, E-Mail-Benachrichtigungsaktionen
+- [x] **Workflow-Blueprint-System**: Visueller Workflow-Editor zum Entwerfen und Ausführen mehrstufiger Automatisierungs-Blueprints — `Workflow` / `WorkflowRun` ORM-Modelle, vollständige CRUD + SSE-Ausführungs-API, Import/Export, `WorkflowEngine` mit topologischer Ausführung und 12 Knotentypen (Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution), React Flow v12 visueller Editor mit Drag-and-Drop-Palette und Knotenkonfigurationspanel, Subprocess-basierte Code-Ausführungssicherheit
+- [x] **Operationsaudit**: detaillierte Protokollierung wer was getan hat — Admin-Review-Log-Audit-Tab hinzugefügt (Veröffentlichungs-Review-Trail pro Org/Ressource)
+- [ ] **Semantische Schema-Annotationen**: Erweitern von Konnektoren-Schema-Feldern mit `semantic_tag`, `description` und `pii`-Flags; Annotationen in LLM-Werkzeugbeschreibungen angezeigt, damit der Agent die Feldabsicht versteht, ohne von Spaltennamen zu raten
 
-**Auswirkung**: Implementierungsingenieure (kein Python erforderlich) können Connectors in 1–2 Stunden hinzufügen. Token-Kosten für Tool-Definitionen und Agent-Anweisungen sinken um ~80–93% im großen Maßstab.
+**Auswirkung**: Implementierungsingenieure (kein Python erforderlich) können Konnektoren in 1-2 Stunden hinzufügen. Token-Kosten für Werkzeugdefinitionen und Agent-Anweisungen sinken um ~80–93% im großen Maßstab.
 
 ### v0.9 — Observability + Production Hardening
 
