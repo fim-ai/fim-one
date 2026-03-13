@@ -28,6 +28,8 @@ const categoryColorMap: Record<string, string> = {
   humanIntervention: "bg-sky-500",
   mcp: "bg-violet-500",
   builtinTool: "bg-zinc-500",
+  subWorkflow: "bg-indigo-500",
+  env: "bg-amber-600",
 }
 
 const runStatusStyles: Record<NodeRunStatus, { ring: string; extra: string }> = {

@@ -28,6 +28,8 @@ import {
   UserCheck,
   Cable,
   Wrench,
+  Workflow,
+  KeyRound,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -54,6 +56,7 @@ const categories: NodePaletteCategory[] = [
       { type: "start", icon: <Play className="h-3.5 w-3.5" />, color: "text-green-500" },
       { type: "end", icon: <Square className="h-3.5 w-3.5" />, color: "text-red-500" },
       { type: "humanIntervention", icon: <UserCheck className="h-3.5 w-3.5" />, color: "text-sky-500" },
+      { type: "subWorkflow", icon: <Workflow className="h-3.5 w-3.5" />, color: "text-indigo-500" },
     ],
   },
   {
@@ -94,6 +97,7 @@ const categories: NodePaletteCategory[] = [
       { type: "listOperation", icon: <ListFilter className="h-3.5 w-3.5" />, color: "text-lime-500" },
       { type: "transform", icon: <ArrowRightLeft className="h-3.5 w-3.5" />, color: "text-rose-500" },
       { type: "documentExtractor", icon: <FileScan className="h-3.5 w-3.5" />, color: "text-amber-600" },
+      { type: "env", icon: <KeyRound className="h-3.5 w-3.5" />, color: "text-amber-600" },
     ],
   },
 ]

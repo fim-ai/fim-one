@@ -62,6 +62,8 @@ import { QuestionUnderstandingNode } from "./nodes/question-understanding-node"
 import { HumanInterventionNode } from "./nodes/human-intervention-node"
 import { MCPNode } from "./nodes/mcp-node"
 import { BuiltinToolNode } from "./nodes/builtin-tool-node"
+import { SubWorkflowNode } from "./nodes/sub-workflow-node"
+import { ENVNode } from "./nodes/env-node"
 
 // MUST be defined outside the component to prevent ReactFlow infinite re-renders
 const nodeTypes = {
@@ -88,6 +90,8 @@ const nodeTypes = {
   humanIntervention: HumanInterventionNode,
   mcp: MCPNode,
   builtinTool: BuiltinToolNode,
+  subWorkflow: SubWorkflowNode,
+  env: ENVNode,
 }
 
 // Custom edge types - defined outside component for stability
@@ -120,6 +124,8 @@ const minimapNodeColor: Record<string, string> = {
   humanIntervention: "#0ea5e9",
   mcp: "#8b5cf6",
   builtinTool: "#71717a",
+  subWorkflow: "#6366f1",
+  env: "#d97706",
 }
 
 const getMinimapNodeColor = (node: Node) => minimapNodeColor[node.type ?? ""] ?? "#6b7280"
@@ -148,6 +154,8 @@ const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
   humanIntervention: { prompt_message: "", assignee: "", timeout_hours: 24, output_variable: "approval_result" },
   mcp: { server_id: "", tool_name: "", parameters: {}, output_variable: "mcp_result" },
   builtinTool: { tool_id: "", parameters: {}, output_variable: "tool_result" },
+  subWorkflow: { workflow_id: "", input_mapping: {}, output_variable: "sub_result" },
+  env: { env_keys: [], output_variable: "env_result" },
 }
 
 interface WorkflowEditorProps {
@@ -791,6 +799,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
             nodeStrokeWidth={3}
             pannable
             zoomable
+            nodeColor={(node) => minimapNodeColor[node.type ?? ""] ?? "#6b7280"}
             className="!bg-background/80 !border-border"
           />
         </ReactFlow>

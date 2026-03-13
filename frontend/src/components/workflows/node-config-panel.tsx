@@ -351,6 +351,10 @@ function NodeConfigFields({ nodeType, data, updateField, otherNodes }: NodeConfi
       return <MCPConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
     case "builtinTool":
       return <BuiltinToolConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
+    case "subWorkflow":
+      return <SubWorkflowConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
+    case "env":
+      return <ENVConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
     default:
       return <p className="text-xs text-muted-foreground">No configuration available</p>
   }
@@ -1288,6 +1292,72 @@ function TemplateTransformConfig({ data, updateField, t, otherNodes }: ConfigPro
       </div>
 
       <OutputVariableField data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
+    </div>
+  )
+}
+
+function SubWorkflowConfig({ data, updateField, t }: ConfigProps) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configSubWorkflowId")}</label>
+        <Input
+          className="h-7 text-xs"
+          placeholder={t("configSubWorkflowIdPlaceholder")}
+          value={(data.workflow_id ?? "") as string}
+          onChange={(e) => updateField("workflow_id", e.target.value)}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configOutputVariable")}</label>
+        <Input
+          className="h-7 text-xs"
+          placeholder="sub_result"
+          value={(data.output_variable ?? "") as string}
+          onChange={(e) => updateField("output_variable", e.target.value)}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        {t("configSubWorkflowNote")}
+      </p>
+    </div>
+  )
+}
+
+function ENVConfig({ data, updateField, t }: ConfigProps) {
+  const envKeys = (data.env_keys ?? []) as string[]
+  const textValue = envKeys.join("\n")
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configEnvKeys")}</label>
+        <Textarea
+          className="text-xs resize-none font-mono"
+          rows={5}
+          placeholder={t("configEnvKeysPlaceholder")}
+          value={textValue}
+          onChange={(e) => {
+            const keys = e.target.value
+              .split("\n")
+              .map((k) => k.trim())
+              .filter((k) => k.length > 0)
+            updateField("env_keys", keys)
+          }}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configOutputVariable")}</label>
+        <Input
+          className="h-7 text-xs"
+          placeholder="env_result"
+          value={(data.output_variable ?? "") as string}
+          onChange={(e) => updateField("output_variable", e.target.value)}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        {t("configEnvNote")}
+      </p>
     </div>
   )
 }

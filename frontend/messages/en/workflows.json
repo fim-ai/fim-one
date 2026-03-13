@@ -67,6 +67,8 @@
   "nodeType_transform": "Transform",
   "nodeType_documentExtractor": "Document Extractor",
   "nodeType_questionUnderstanding": "Question Understanding",
+  "nodeType_subWorkflow": "Sub-Workflow",
+  "nodeType_env": "Environment",
 
   "nodeDesc_start": "Entry point with input variables",
   "nodeDesc_end": "Output results and end workflow",
@@ -88,6 +90,8 @@
   "nodeDesc_transform": "Apply a pipeline of data transformations",
   "nodeDesc_documentExtractor": "Extract text, metadata, or tables from documents",
   "nodeDesc_questionUnderstanding": "Preprocess and enhance user questions with LLM",
+  "nodeDesc_subWorkflow": "Execute another workflow as a sub-process",
+  "nodeDesc_env": "Read environment variables from encrypted storage",
 
   "categoryFlow": "Flow",
   "categoryAI": "AI",
@@ -468,5 +472,15 @@
   "nodeStatsMin": "min",
   "nodeStatsMax": "max",
   "nodeStatsButton": "Node Stats",
-  "nodeStatsRunsAnalyzed": "{count} runs analyzed"
+  "nodeStatsRunsAnalyzed": "{count} runs analyzed",
+
+  "configSubWorkflowId": "Sub-Workflow ID",
+  "configSubWorkflowIdPlaceholder": "Enter workflow ID...",
+  "configSubWorkflowInputMapping": "Input Mapping",
+  "configSubWorkflowNote": "Input mapping forwards variables from the current workflow to the sub-workflow.",
+  "configEnvKeys": "Environment Variable Keys",
+  "configEnvKeysPlaceholder": "Enter one key per line...",
+  "configEnvNote": "Variables are read from the workflow's encrypted environment storage.",
+  "inputMappingCount": "{count} mappings",
+  "envKeyCount": "{count} keys"
 }

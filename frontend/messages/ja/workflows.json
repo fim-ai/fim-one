@@ -408,7 +408,7 @@
   "nodeStatsTitle": "ノード統計",
   "nodeStatsDescription": "最近の実行からのノード単位の実行パフォーマンス",
   "nodeStatsEmpty": "実行データはまだありません。ワークフローを実行して統計を確認してください。",
-  "nodeStatsTotalRuns": "総実行数",
+  "nodeStatsTotalRuns": "総実行回数",
   "nodeStatsCompleted": "完了",
   "nodeStatsFailed": "失敗",
   "nodeStatsSkipped": "スキップ",
@@ -418,5 +418,18 @@
   "nodeStatsMin": "最小",
   "nodeStatsMax": "最大",
   "nodeStatsButton": "ノード統計",
-  "nodeStatsRunsAnalyzed": "{count}回の実行を分析"
+  "nodeStatsRunsAnalyzed": "{count}回の実行を分析",
+  "nodeType_subWorkflow": "サブワークフロー",
+  "nodeType_env": "環境",
+  "nodeDesc_subWorkflow": "別のワークフローをサブプロセスとして実行",
+  "nodeDesc_env": "暗号化されたストレージから環境変数を読み取る",
+  "configSubWorkflowId": "サブワークフロー ID",
+  "configSubWorkflowIdPlaceholder": "ワークフロー ID を入力...",
+  "configSubWorkflowInputMapping": "入力マッピング",
+  "configSubWorkflowNote": "入力マッピングは、現在のワークフローの変数をサブワークフローに転送します。",
+  "configEnvKeys": "環境変数キー",
+  "configEnvKeysPlaceholder": "1行に1つのキーを入力...",
+  "configEnvNote": "変数はワークフローの暗号化された環境ストレージから読み取られます。",
+  "inputMappingCount": "{count}個のマッピング",
+  "envKeyCount": "{count}個のキー"
 }

@@ -71,6 +71,8 @@ export type WorkflowNodeType =
   | "humanIntervention"
   | "mcp"
   | "builtinTool"
+  | "subWorkflow"
+  | "env"
 
 // --- Per-node data interfaces ---
 
@@ -245,6 +247,18 @@ export interface ParameterExtractorNodeData {
   }>
   extraction_prompt?: string
 }
+
+export interface SubWorkflowNodeData {
+  workflow_id: string
+  input_mapping: Record<string, string>
+  output_variable: string
+}
+
+export interface ENVNodeData {
+  env_keys: string[]
+  output_variable: string
+}
+
 
 // --- Create / Update payloads ---
 

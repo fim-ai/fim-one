@@ -407,7 +407,7 @@
   "shortcutsAction_delete": "Supprimer la sélection",
   "nodeStatsTitle": "Statistiques des nœuds",
   "nodeStatsDescription": "Performance d'exécution par nœud à partir des exécutions récentes",
-  "nodeStatsEmpty": "Aucune donnée d'exécution pour le moment. Exécutez le workflow pour voir les statistiques.",
+  "nodeStatsEmpty": "Aucune donnée d'exécution pour le moment. Exécutez le flux de travail pour voir les statistiques.",
   "nodeStatsTotalRuns": "Exécutions totales",
   "nodeStatsCompleted": "Complétées",
   "nodeStatsFailed": "Échouées",
@@ -418,5 +418,18 @@
   "nodeStatsMin": "min",
   "nodeStatsMax": "max",
   "nodeStatsButton": "Statistiques des nœuds",
-  "nodeStatsRunsAnalyzed": "{count} exécutions analysées"
+  "nodeStatsRunsAnalyzed": "{count} exécutions analysées",
+  "nodeType_subWorkflow": "Sous-flux de travail",
+  "nodeType_env": "Environnement",
+  "nodeDesc_subWorkflow": "Exécuter un autre flux de travail en tant que sous-processus",
+  "nodeDesc_env": "Lire les variables d'environnement depuis le stockage chiffré",
+  "configSubWorkflowId": "ID du sous-flux de travail",
+  "configSubWorkflowIdPlaceholder": "Entrez l'ID du flux de travail...",
+  "configSubWorkflowInputMapping": "Mappage des entrées",
+  "configSubWorkflowNote": "Le mappage des entrées transfère les variables du flux de travail actuel vers le sous-flux de travail.",
+  "configEnvKeys": "Clés des variables d'environnement",
+  "configEnvKeysPlaceholder": "Entrez une clé par ligne...",
+  "configEnvNote": "Les variables sont lues depuis le stockage d'environnement chiffré du flux de travail.",
+  "inputMappingCount": "{count} mappages",
+  "envKeyCount": "{count} clés"
 }

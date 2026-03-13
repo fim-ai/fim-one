@@ -398,7 +398,7 @@
   "shortcutsAction_save": "保存工作流",
   "shortcutsAction_undo": "撤销",
   "shortcutsAction_redo": "重做",
-  "shortcutsAction_deselect": "取消全选 / 关闭面板",
+  "shortcutsAction_deselect": "取消全选/关闭面板",
   "shortcutsAction_shortcuts": "显示此对话框",
   "shortcutsAction_selectAll": "选择所有节点",
   "shortcutsAction_copy": "复制选定节点",
@@ -418,5 +418,18 @@
   "nodeStatsMin": "最小",
   "nodeStatsMax": "最大",
   "nodeStatsButton": "节点统计",
-  "nodeStatsRunsAnalyzed": "已分析 {count} 次运行"
+  "nodeStatsRunsAnalyzed": "已分析 {count} 次运行",
+  "nodeType_subWorkflow": "子工作流",
+  "nodeType_env": "环境",
+  "nodeDesc_subWorkflow": "将另一个工作流作为子流程执行",
+  "nodeDesc_env": "从加密存储中读取环境变量",
+  "configSubWorkflowId": "子工作流 ID",
+  "configSubWorkflowIdPlaceholder": "输入工作流 ID...",
+  "configSubWorkflowInputMapping": "输入映射",
+  "configSubWorkflowNote": "输入映射将当前工作流中的变量转发到子工作流。",
+  "configEnvKeys": "环境变量键",
+  "configEnvKeysPlaceholder": "每行输入一个键...",
+  "configEnvNote": "变量从工作流的加密环境存储中读取。",
+  "inputMappingCount": "{count} 个映射",
+  "envKeyCount": "{count} 个键"
 }

@@ -399,7 +399,7 @@
   "shortcutsAction_undo": "실행 취소",
   "shortcutsAction_redo": "다시 실행",
   "shortcutsAction_deselect": "모두 선택 해제 / 패널 닫기",
-  "shortcutsAction_shortcuts": "이 대화상자 표시",
+  "shortcutsAction_shortcuts": "이 대화 표시",
   "shortcutsAction_selectAll": "모든 노드 선택",
   "shortcutsAction_copy": "선택한 노드 복사",
   "shortcutsAction_paste": "복사한 노드 붙여넣기",
@@ -418,5 +418,18 @@
   "nodeStatsMin": "최소",
   "nodeStatsMax": "최대",
   "nodeStatsButton": "노드 통계",
-  "nodeStatsRunsAnalyzed": "{count}개 실행 분석됨"
+  "nodeStatsRunsAnalyzed": "{count}개 실행 분석됨",
+  "nodeType_subWorkflow": "하위 워크플로우",
+  "nodeType_env": "환경",
+  "nodeDesc_subWorkflow": "다른 워크플로우를 하위 프로세스로 실행",
+  "nodeDesc_env": "암호화된 저장소에서 환경 변수 읽기",
+  "configSubWorkflowId": "하위 워크플로우 ID",
+  "configSubWorkflowIdPlaceholder": "워크플로우 ID 입력...",
+  "configSubWorkflowInputMapping": "입력 매핑",
+  "configSubWorkflowNote": "입력 매핑은 현재 워크플로우의 변수를 하위 워크플로우로 전달합니다.",
+  "configEnvKeys": "환경 변수 키",
+  "configEnvKeysPlaceholder": "한 줄에 하나의 키 입력...",
+  "configEnvNote": "변수는 워크플로우의 암호화된 환경 저장소에서 읽습니다.",
+  "inputMappingCount": "{count}개 매핑",
+  "envKeyCount": "{count}개 키"
 }
