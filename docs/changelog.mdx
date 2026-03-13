@@ -24,6 +24,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Workflow Keyboard Shortcuts** — Copy (Cmd+C), paste (Cmd+V), duplicate (Cmd+D), select all (Cmd+A), Escape to deselect. Copy/paste generates new IDs and offsets positions; Start/End nodes are excluded from copy to maintain singleton constraint.
+- **Workflow Inline Description Editing** — Click the description line in the toolbar to open a popover textarea for editing workflow descriptions without navigating away.
+- **Workflow ConditionBranch LLM Mode** — Proper LLM-based condition evaluation replacing the naive "match first" stub. Builds a classification prompt from condition labels, calls the fast LLM, and uses case-insensitive + fuzzy matching.
+- **Reactive Edge Labels** — Edge labels for condition/classifier branches now use `useNodesData()` for real-time updates when conditions or classes are edited in the config panel.
 - **Workflow ENV Variables Dialog** — Per-workflow encrypted environment variable management UI. Key-value editor with masked display, duplicate key detection, and inline validation. Connected to `GET/PUT /api/workflows/{id}/env` endpoints. Accessible via toolbar dropdown.
 - **Workflow Auto-Save** — 5-second debounced auto-save timer with immediate Cmd+S override. Save status indicator shows "Saving...", "Unsaved changes", or "Saved Xs ago" with 30s auto-refresh.
 - **Workflow List Search & Filter** — Client-side search by name/description, status filter buttons (All/Draft/Active), sort dropdown (Recently updated/created/Name A-Z), and empty state for no results.
