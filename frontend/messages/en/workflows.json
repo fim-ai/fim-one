@@ -406,5 +406,10 @@
   "questionMode_rewrite": "Rewrite",
   "questionMode_expand": "Expand",
   "questionMode_classify": "Classify",
-  "questionMode_decompose": "Decompose"
+  "questionMode_decompose": "Decompose",
+
+  "contextMenuConfigure": "Configure",
+  "contextMenuCopy": "Copy",
+  "contextMenuDuplicate": "Duplicate",
+  "contextMenuDelete": "Delete"
 }

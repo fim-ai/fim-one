@@ -23,6 +23,7 @@ import type {
 import "@xyflow/react/dist/style.css"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
+import { Copy, Trash2, Settings, Clipboard } from "lucide-react"
 
 import { useWorkflowHistory } from "@/hooks/use-workflow-history"
 import { getAutoLayoutedNodes } from "./auto-layout"
@@ -205,6 +206,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     } as Edge)),
   )
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
 
   // --- Undo/Redo history ---
   const initialNodesRef = useRef(
@@ -665,7 +667,28 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
 
   const onPaneClick = useCallback(() => {
     setSelectedNodeId(null)
+    setContextMenu(null)
   }, [])
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      event.preventDefault()
+      setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id })
+    },
+    [],
+  )
+
+  // Close context menu on scroll or click outside
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    window.addEventListener("click", close)
+    window.addEventListener("scroll", close, true)
+    return () => {
+      window.removeEventListener("click", close)
+      window.removeEventListener("scroll", close, true)
+    }
+  }, [contextMenu])
 
   const handleNodeDataUpdate = useCallback(
     (nodeId: string, data: Record<string, unknown>) => {
@@ -719,6 +742,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           onDrop={onDrop}
           onDragOver={onDragOver}
           onNodeClick={onNodeClick}
+          onNodeContextMenu={onNodeContextMenu}
           onPaneClick={onPaneClick}
           onInit={(instance) => { rfInstanceRef.current = instance }}
           deleteKeyCode={null}
@@ -739,6 +763,70 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
             className="!bg-background/80 !border-border"
           />
         </ReactFlow>
+
+        {/* Node context menu */}
+        {contextMenu && (() => {
+          const ctxNode = nodes.find((n) => n.id === contextMenu.nodeId)
+          const isStartOrEnd = ctxNode?.type === "start" || ctxNode?.type === "end"
+          return (
+            <div
+              className="fixed z-50 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md animate-in fade-in-0 zoom-in-95"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
+                onClick={() => {
+                  setSelectedNodeId(contextMenu.nodeId)
+                  setContextMenu(null)
+                }}
+              >
+                <Settings className="h-3.5 w-3.5" />
+                {t("contextMenuConfigure")}
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
+                onClick={() => {
+                  if (ctxNode) {
+                    copiedNodesRef.current = {
+                      nodes: [{ ...ctxNode, data: { ...ctxNode.data } }],
+                      edges: [],
+                    }
+                  }
+                  setContextMenu(null)
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                {t("contextMenuCopy")}
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent/50 transition-colors"
+                onClick={() => {
+                  handleDuplicateSelected()
+                  setContextMenu(null)
+                }}
+              >
+                <Clipboard className="h-3.5 w-3.5" />
+                {t("contextMenuDuplicate")}
+              </button>
+              {!isStartOrEnd && (
+                <>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                    onClick={() => {
+                      handleDeleteNode(contextMenu.nodeId)
+                      setContextMenu(null)
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t("contextMenuDelete")}
+                  </button>
+                </>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Run Panel (overlay at bottom) */}
         <RunPanel

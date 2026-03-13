@@ -361,5 +361,9 @@
   "questionMode_rewrite": "Réécrire",
   "questionMode_expand": "Développer",
   "questionMode_classify": "Classifier",
-  "questionMode_decompose": "Décomposer"
+  "questionMode_decompose": "Décomposer",
+  "contextMenuConfigure": "Configurer",
+  "contextMenuCopy": "Copier",
+  "contextMenuDuplicate": "Dupliquer",
+  "contextMenuDelete": "Supprimer"
 }

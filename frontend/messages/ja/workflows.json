@@ -361,5 +361,9 @@
   "questionMode_rewrite": "書き直し",
   "questionMode_expand": "展開",
   "questionMode_classify": "分類",
-  "questionMode_decompose": "分解"
+  "questionMode_decompose": "分解",
+  "contextMenuConfigure": "設定",
+  "contextMenuCopy": "コピー",
+  "contextMenuDuplicate": "複製",
+  "contextMenuDelete": "削除"
 }

@@ -361,5 +361,9 @@
   "questionMode_rewrite": "다시 작성",
   "questionMode_expand": "확장",
   "questionMode_classify": "분류",
-  "questionMode_decompose": "분해"
+  "questionMode_decompose": "분해",
+  "contextMenuConfigure": "구성",
+  "contextMenuCopy": "복사",
+  "contextMenuDuplicate": "복제",
+  "contextMenuDelete": "삭제"
 }

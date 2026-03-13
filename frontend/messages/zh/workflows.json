@@ -361,5 +361,9 @@
   "questionMode_rewrite": "改写",
   "questionMode_expand": "扩展",
   "questionMode_classify": "分类",
-  "questionMode_decompose": "分解"
+  "questionMode_decompose": "分解",
+  "contextMenuConfigure": "配置",
+  "contextMenuCopy": "复制",
+  "contextMenuDuplicate": "复制",
+  "contextMenuDelete": "删除"
 }
