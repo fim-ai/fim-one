@@ -1,6 +1,6 @@
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from "./constants"
 import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
-import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse } from "@/types/workflow"
+import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse } from "@/types/workflow"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -1012,6 +1012,11 @@ export const workflowApi = {
 
   getStats: (id: string) =>
     apiFetch<ApiResponse<WorkflowStats>>(`/api/workflows/${id}/stats`).then((r) => r.data),
+
+  getAnalytics: (id: string, days = 30) =>
+    apiFetch<ApiResponse<WorkflowAnalyticsResponse>>(
+      `/api/workflows/${id}/analytics?days=${days}`,
+    ).then((r) => r.data),
 
   getTemplates: () =>
     apiFetch<ApiResponse<WorkflowTemplate[]>>("/api/workflows/templates").then((r) => r.data),

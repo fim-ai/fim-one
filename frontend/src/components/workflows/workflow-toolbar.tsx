@@ -94,6 +94,7 @@ interface WorkflowToolbarProps {
   onResubmit?: () => void
   onEnvVars?: () => void
   onVariables?: () => void
+  onAnalytics?: () => void
 }
 
 export function WorkflowToolbar({
@@ -132,6 +133,7 @@ export function WorkflowToolbar({
   onResubmit,
   onEnvVars,
   onVariables,
+  onAnalytics,
 }: WorkflowToolbarProps) {
   const t = useTranslations("workflows")
   const to = useTranslations("organizations")
@@ -523,6 +525,12 @@ export function WorkflowToolbar({
               <DropdownMenuItem onClick={onEnvVars}>
                 <Key className="h-4 w-4" />
                 {t("envVarsMenuItem")}
+              </DropdownMenuItem>
+            )}
+            {onAnalytics && (
+              <DropdownMenuItem onClick={onAnalytics}>
+                <BarChart3 className="h-4 w-4" />
+                {t("analyticsButton")}
               </DropdownMenuItem>
             )}
             {onNodeStats && (

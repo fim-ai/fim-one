@@ -35,6 +35,7 @@ import { NodeStatsPanel } from "@/components/workflows/node-stats-panel"
 import { ValidationPanel } from "@/components/workflows/validation-panel"
 import { EnvVarsDialog } from "@/components/workflows/env-vars-dialog"
 import { VariablesPanel } from "@/components/workflows/variables-panel"
+import { AnalyticsPanel } from "@/components/workflows/analytics-panel"
 import type {
   WorkflowResponse,
   WorkflowBlueprint,
@@ -96,6 +97,9 @@ export default function WorkflowEditorPage() {
 
   // Variables panel state
   const [variablesPanelOpen, setVariablesPanelOpen] = useState(false)
+
+  // Analytics panel state
+  const [analyticsOpen, setAnalyticsOpen] = useState(false)
 
   // Undo/redo state (synced from editor via callback)
   const [canUndo, setCanUndo] = useState(false)
@@ -714,6 +718,7 @@ export default function WorkflowEditorPage() {
         onResubmit={handleResubmit}
         onEnvVars={() => setShowEnvDialog(true)}
         onVariables={() => setVariablesPanelOpen(true)}
+        onAnalytics={() => setAnalyticsOpen(true)}
       />
 
       <WorkflowEditor
@@ -908,6 +913,14 @@ export default function WorkflowEditorPage() {
         onOpenChange={setVariablesPanelOpen}
         variables={blueprintRef.current.variables ?? []}
         onChange={handleVariablesChange}
+      />
+
+      {/* Analytics Panel */}
+      <AnalyticsPanel
+        workflowId={workflowId}
+        open={analyticsOpen}
+        onOpenChange={setAnalyticsOpen}
+        nodeTypeMap={nodeTypeMap}
       />
     </div>
   )

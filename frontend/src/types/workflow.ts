@@ -335,6 +335,34 @@ export interface NodeRunResult {
 
 export type NodeRunStatus = "pending" | "running" | "completed" | "failed" | "skipped" | "retrying"
 
+// --- Analytics (detailed) ---
+
+export interface RunsPerDayEntry {
+  date: string
+  count: number
+  completed: number
+  failed: number
+}
+
+export interface MostFailedNodeEntry {
+  node_id: string
+  failure_count: number
+  total_runs: number
+}
+
+export interface WorkflowAnalyticsResponse {
+  total_runs: number
+  status_distribution: Record<string, number>
+  success_rate: number
+  avg_duration_ms: number
+  p50_duration_ms: number
+  p95_duration_ms: number
+  p99_duration_ms: number
+  runs_per_day: RunsPerDayEntry[]
+  most_failed_nodes: MostFailedNodeEntry[]
+  avg_nodes_per_run: number
+}
+
 // --- Stats ---
 
 export interface WorkflowStats {
