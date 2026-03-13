@@ -265,12 +265,12 @@ cd frontend && pnpm install && cd ..# 启动（带热重载）
 | `./start.sh dev` | 相同，带热重载（Python `--reload` + Next.js HMR）      | 相同                                     |
 | `./start.sh api` | 仅 FastAPI（无头模式，用于集成或测试）                 | http://localhost:8000/api                |### 生产部署
 
-两种选项都适用于生产环境：
+两种方法都适用于生产环境：
 
-| 方法     | 命令                   | 最适合                                      |
-| ---------- | ---------------------- | ------------------------------------------- |
-| **Docker** | `docker compose up -d` | 无需干预的部署，轻松更新          |
-| **Script** | `./start.sh`           | 裸机服务器，自定义进程管理器 |
+| 方法       | 命令                   | 最适合                              |
+| ---------- | ---------------------- | ----------------------------------- |
+| **Docker** | `docker compose up -d` | 无需干预的部署、轻松更新            |
+| **脚本**   | `./start.sh`           | 裸金属服务器、自定义进程管理器      |
 
 对于任一方法，在前面放置 Nginx 反向代理以支持 HTTPS 和自定义域名：
 
@@ -278,11 +278,25 @@ cd frontend && pnpm install && cd ..# 启动（带热重载）
 User → Nginx (443/HTTPS) → localhost:3000
 ```
 
-API 在内部运行在端口 8000 — Next.js 自动代理 `/api/*` 请求。只需要暴露端口 3000。
+API 在内部运行于端口 8000 — Next.js 自动代理 `/api/*` 请求。只需暴露端口 3000。
+
+**更新正在运行的部署**（零停机时间）：
+
+```bash
+cd /path/to/fim-one \
+  && git pull origin master \
+  && sudo docker compose build \
+  && sudo docker compose up -d \
+  && sudo docker image prune -f
+```
+
+`build` 首先运行，而旧容器继续提供流量。`up -d` 然后仅替换镜像已更改的容器 — 停机时间约为 10 秒而非数分钟。
 
 如果使用代码执行沙箱（`CODE_EXEC_BACKEND=docker`），挂载 Docker socket：
 
-```yaml# docker-compose.yml
+```yaml
+```
+# docker-compose.yml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```## 配置### 推荐设置

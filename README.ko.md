@@ -265,24 +265,37 @@ cd frontend && pnpm install && cd ..# 핫 리로드를 사용하여 시작
 | `./start.sh dev` | 동일하며, 핫 리로드 포함 (Python `--reload` + Next.js HMR) | 동일                                     |
 | `./start.sh api` | FastAPI만 (헤드리스, 통합 또는 테스트용)                | http://localhost:8000/api                |### 프로덕션 배포
 
-두 가지 옵션 모두 프로덕션에서 작동합니다:
+두 옵션 모두 프로덕션에서 작동합니다:
 
 | 방법       | 명령어                 | 최적 사용 사례                              |
 | ---------- | ---------------------- | ------------------------------------------- |
 | **Docker** | `docker compose up -d` | 무관리 배포, 쉬운 업데이트                  |
-| **Script** | `./start.sh`           | 베어메탈 서버, 커스텀 프로세스 매니저       |
+| **Script** | `./start.sh`           | 베어메탈 서버, 커스텀 프로세스 관리자       |
 
-두 방법 모두에서 HTTPS와 커스텀 도메인을 위해 Nginx 리버스 프록시를 앞에 배치하세요:
+두 방법 모두 HTTPS와 커스텀 도메인을 위해 Nginx 역프록시를 앞에 배치하세요:
 
 ```
 User → Nginx (443/HTTPS) → localhost:3000
 ```
 
-API는 내부적으로 포트 8000에서 실행됩니다 — Next.js가 `/api/*` 요청을 자동으로 프록시합니다. 포트 3000만 노출하면 됩니다.
+API는 내부적으로 포트 8000에서 실행되며, Next.js가 `/api/*` 요청을 자동으로 프록시합니다. 포트 3000만 노출하면 됩니다.
+
+**실행 중인 배포 업데이트** (무중단):
+
+```bash
+cd /path/to/fim-one \
+  && git pull origin master \
+  && sudo docker compose build \
+  && sudo docker compose up -d \
+  && sudo docker image prune -f
+```
+
+`build`는 먼저 실행되고 기존 컨테이너는 계속 트래픽을 처리합니다. `up -d`는 이미지가 변경된 컨테이너만 교체하므로, 다운타임이 몇 분 대신 약 10초입니다.
 
 코드 실행 샌드박스(`CODE_EXEC_BACKEND=docker`)를 사용하는 경우 Docker 소켓을 마운트하세요:
 
-```yaml# docker-compose.yml
+```yaml
+# docker-compose.yml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```## 구성### 권장 설정

@@ -262,26 +262,39 @@ cd frontend && pnpm install && cd ..# Starten (mit Hot Reload)
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
 | `./start.sh`     | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
 | `./start.sh dev` | Dasselbe, mit Hot Reload (Python `--reload` + Next.js HMR) | Dasselbe                                 |
-| `./start.sh api` | Nur FastAPI (headless, für Integration oder Tests)      | http://localhost:8000/api                |### Production-Bereitstellung
+| `./start.sh api` | Nur FastAPI (headless, für Integration oder Tests)      | http://localhost:8000/api                |### Produktionsbereitstellung
 
 Beide Optionen funktionieren in der Produktion:
 
 | Methode    | Befehl                 | Am besten für                               |
 | ---------- | ---------------------- | ------------------------------------------- |
 | **Docker** | `docker compose up -d` | Wartungsfreie Bereitstellung, einfache Updates |
-| **Script** | `./start.sh`           | Bare-Metal-Server, benutzerdefinierte Process Manager |
+| **Script** | `./start.sh`           | Bare-Metal-Server, benutzerdefinierte Prozessmanager |
 
-Für beide Methoden setzen Sie einen Nginx-Reverse-Proxy davor für HTTPS und benutzerdefinierte Domain:
+Für beide Methoden einen Nginx-Reverse-Proxy davor für HTTPS und benutzerdefinierte Domain:
 
 ```
 User → Nginx (443/HTTPS) → localhost:3000
 ```
 
-Die API läuft intern auf Port 8000 — Next.js leitet `/api/*`-Anfragen automatisch weiter. Nur Port 3000 muss freigegeben werden.
+Die API läuft intern auf Port 8000 — Next.js leitet `/api/*`-Anfragen automatisch weiter. Nur Port 3000 muss freigelegt werden.
 
-Wenn Sie die Code-Execution-Sandbox verwenden (`CODE_EXEC_BACKEND=docker`), mounten Sie den Docker-Socket:
+**Aktualisierung einer laufenden Bereitstellung** (ohne Ausfallzeit):
 
-```yaml# docker-compose.yml
+```bash
+cd /path/to/fim-one \
+  && git pull origin master \
+  && sudo docker compose build \
+  && sudo docker compose up -d \
+  && sudo docker image prune -f
+```
+
+`build` wird zuerst ausgeführt, während alte Container weiterhin Traffic bedienen. `up -d` ersetzt dann nur die Container, deren Image sich geändert hat — die Ausfallzeit beträgt ~10 Sekunden statt Minuten.
+
+Wenn Sie die Code-Ausführungs-Sandbox verwenden (`CODE_EXEC_BACKEND=docker`), mounten Sie den Docker-Socket:
+
+```yaml
+# docker-compose.yml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```## Konfiguration### Empfohlenes Setup

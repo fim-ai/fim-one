@@ -263,7 +263,7 @@ cd frontend && pnpm install && cd ..# Lancer (avec rechargement à chaud)
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
 | `./start.sh`     | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
 | `./start.sh dev` | Identique, avec rechargement à chaud (Python `--reload` + Next.js HMR) | Identique                                     |
-| `./start.sh api` | FastAPI uniquement (sans interface, pour intégration ou test)     | http://localhost:8000/api                |### Déploiement en Production
+| `./start.sh api` | FastAPI uniquement (sans interface, pour intégration ou test)     | http://localhost:8000/api                |### Déploiement en production
 
 Les deux options fonctionnent en production :
 
@@ -272,7 +272,7 @@ Les deux options fonctionnent en production :
 | **Docker** | `docker compose up -d` | Déploiement sans intervention, mises à jour faciles |
 | **Script** | `./start.sh`           | Serveurs bare-metal, gestionnaires de processus personnalisés |
 
-Pour l'une ou l'autre méthode, placez un reverse proxy Nginx devant pour HTTPS et un domaine personnalisé :
+Pour l'une ou l'autre méthode, placez un proxy inverse Nginx devant pour HTTPS et un domaine personnalisé :
 
 ```
 User → Nginx (443/HTTPS) → localhost:3000
@@ -280,9 +280,23 @@ User → Nginx (443/HTTPS) → localhost:3000
 
 L'API s'exécute en interne sur le port 8000 — Next.js proxifie automatiquement les requêtes `/api/*`. Seul le port 3000 doit être exposé.
 
-Si vous utilisez le sandbox d'exécution de code (`CODE_EXEC_BACKEND=docker`), montez le socket Docker :
+**Mise à jour d'un déploiement en cours d'exécution** (sans interruption de service) :
 
-```yaml# docker-compose.yml
+```bash
+cd /path/to/fim-one \
+  && git pull origin master \
+  && sudo docker compose build \
+  && sudo docker compose up -d \
+  && sudo docker image prune -f
+```
+
+`build` s'exécute d'abord tandis que les anciens conteneurs continuent à servir le trafic. `up -d` remplace ensuite uniquement les conteneurs dont l'image a changé — le temps d'arrêt est d'environ 10 secondes au lieu de minutes.
+
+Si vous utilisez le bac à sable d'exécution de code (`CODE_EXEC_BACKEND=docker`), montez le socket Docker :
+
+```yaml
+```
+# docker-compose.yml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```## Configuration### Configuration recommandée

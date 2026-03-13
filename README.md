@@ -335,6 +335,18 @@ User → Nginx (443/HTTPS) → localhost:3000
 
 The API runs internally on port 8000 — Next.js proxies `/api/*` requests automatically. Only port 3000 needs to be exposed.
 
+**Updating a running deployment** (zero-downtime):
+
+```bash
+cd /path/to/fim-one \
+  && git pull origin master \
+  && sudo docker compose build \
+  && sudo docker compose up -d \
+  && sudo docker image prune -f
+```
+
+`build` runs first while old containers keep serving traffic. `up -d` then replaces only the containers whose image changed — downtime is ~10 seconds instead of minutes.
+
 If you use the code execution sandbox (`CODE_EXEC_BACKEND=docker`), mount the Docker socket:
 
 ```yaml

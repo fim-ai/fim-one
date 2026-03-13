@@ -270,7 +270,7 @@ cd frontend && pnpm install && cd ..# 起動（ホットリロード付き）
 | 方法     | コマンド                | 最適な用途                                    |
 | ---------- | ---------------------- | ------------------------------------------- |
 | **Docker** | `docker compose up -d` | ハンズオフデプロイ、簡単なアップデート          |
-| **Script** | `./start.sh`           | ベアメタルサーバー、カスタムプロセスマネージャー |
+| **スクリプト** | `./start.sh`           | ベアメタルサーバー、カスタムプロセスマネージャー |
 
 どちらの方法でも、HTTPS とカスタムドメイン用に Nginx リバースプロキシをフロントに配置してください:
 
@@ -278,11 +278,24 @@ cd frontend && pnpm install && cd ..# 起動（ホットリロード付き）
 User → Nginx (443/HTTPS) → localhost:3000
 ```
 
-API は内部的にポート 8000 で実行されます — Next.js が `/api/*` リクエストを自動的にプロキシします。ポート 3000 のみを公開する必要があります。
+API は内部的にポート 8000 で実行されます — Next.js は `/api/*` リクエストを自動的にプロキシします。ポート 3000 のみを公開する必要があります。
+
+**実行中のデプロイメントを更新する** (ダウンタイムなし):
+
+```bash
+cd /path/to/fim-one \
+  && git pull origin master \
+  && sudo docker compose build \
+  && sudo docker compose up -d \
+  && sudo docker image prune -f
+```
+
+`build` は古いコンテナがトラフィックを処理し続けている間に最初に実行されます。その後 `up -d` はイメージが変更されたコンテナのみを置き換えます — ダウンタイムは数分ではなく約 10 秒です。
 
 コード実行サンドボックス (`CODE_EXEC_BACKEND=docker`) を使用する場合は、Docker ソケットをマウントしてください:
 
-```yaml# docker-compose.yml
+```yaml
+# docker-compose.yml
 volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```## 設定### 推奨セットアップ
