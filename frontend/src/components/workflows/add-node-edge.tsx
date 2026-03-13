@@ -12,11 +12,8 @@ import type { EdgeProps, Node } from "@xyflow/react"
 import { Plus, X } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
-import type {
-  WorkflowNodeType,
-  ConditionNodeData,
-  QuestionClassifierNodeData,
-} from "@/types/workflow"
+import { resolveEdgeLabel } from "./edges/labeled-edge"
+import type { WorkflowNodeType } from "@/types/workflow"
 
 const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
   start: { variables: [] },
@@ -108,33 +105,16 @@ export function AddNodeEdge({
   })
 
   // Resolve edge label from condition/classifier source nodes
-  const edgeLabel = useMemo(() => {
-    if (!sourceHandleId || !sourceNodeData) return null
-
-    if (sourceNodeData.type === "conditionBranch") {
-      const nodeData = sourceNodeData.data as unknown as ConditionNodeData
-      const conditions = nodeData.conditions ?? []
-      // sourceHandle format: "condition-{id}"
-      const conditionId = sourceHandleId.replace(/^condition-/, "")
-      const matched = conditions.find((c) => c.id === conditionId)
-      if (matched) return matched.label || null
-      // Fallback for default handle
-      if (sourceHandleId === "source-default") return t("edgeDefaultLabel")
-      return null
-    }
-
-    if (sourceNodeData.type === "questionClassifier") {
-      const nodeData = sourceNodeData.data as unknown as QuestionClassifierNodeData
-      const classes = nodeData.classes ?? []
-      // sourceHandle format: "class-{id}"
-      const classId = sourceHandleId.replace(/^class-/, "")
-      const matched = classes.find((c) => c.id === classId)
-      if (matched) return matched.label || null
-      return null
-    }
-
-    return null
-  }, [sourceHandleId, sourceNodeData, t])
+  const edgeLabel = useMemo(
+    () =>
+      resolveEdgeLabel(
+        sourceHandleId,
+        sourceNodeData?.type,
+        sourceNodeData?.data as Record<string, unknown> | undefined,
+        t("edgeDefaultLabel"),
+      ),
+    [sourceHandleId, sourceNodeData, t],
+  )
 
   // Position the label near the source end of the edge (1/4 of the way from source)
   const edgeLabelX = sourceX + (labelX - sourceX) * 0.45
