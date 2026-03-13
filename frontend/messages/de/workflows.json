@@ -376,5 +376,16 @@
   "configPromptMessagePlaceholder": "Beschreiben Sie, was der Prüfer überprüfen sollte...",
   "configAssignee": "Beauftragte Person",
   "configAssigneePlaceholder": "Benutzername oder E-Mail (optional)",
-  "configTimeoutHours": "Timeout (Stunden)"
+  "configTimeoutHours": "Timeout (Stunden)",
+  "runPanelRetrying": "Wiederholungsversuch {attempt}/{max}...",
+  "nodeType_mcp": "MCP Tool",
+  "nodeDesc_mcp": "MCP-Server-Tool ausführen",
+  "nodeType_builtinTool": "Integriertes Tool",
+  "nodeDesc_builtinTool": "Systemtool ausführen",
+  "configServerId": "MCP Server",
+  "configServerIdPlaceholder": "Server-ID oder Name",
+  "configToolName": "Tool-Name",
+  "configToolNamePlaceholder": "Auszuführendes Tool",
+  "configToolId": "Tool",
+  "configToolIdPlaceholder": "Wählen Sie ein integriertes Tool"
 }

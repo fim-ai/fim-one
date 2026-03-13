@@ -40,6 +40,8 @@ const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
   documentExtractor: { input_variable: "", input_type: "text", extract_mode: "full_text", output_variable: "document_result" },
   questionUnderstanding: { input_variable: "", mode: "rewrite", output_variable: "question_result" },
   humanIntervention: { prompt_message: "", assignee: "", timeout_hours: 24, output_variable: "approval_result" },
+  mcp: { server_id: "", tool_name: "", parameters: {}, output_variable: "mcp_result" },
+  builtinTool: { tool_id: "", parameters: {}, output_variable: "tool_result" },
 }
 
 const nodeTypeOptions: { type: WorkflowNodeType; color: string }[] = [
@@ -62,6 +64,8 @@ const nodeTypeOptions: { type: WorkflowNodeType; color: string }[] = [
   { type: "documentExtractor", color: "text-amber-600" },
   { type: "questionUnderstanding", color: "text-pink-500" },
   { type: "humanIntervention", color: "text-sky-500" },
+  { type: "mcp", color: "text-violet-500" },
+  { type: "builtinTool", color: "text-zinc-500" },
 ]
 
 export function AddNodeEdge({

@@ -25,6 +25,8 @@ import {
   FileScan,
   MessageCircleQuestion,
   UserCheck,
+  Cable,
+  Wrench,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -64,6 +66,8 @@ const nodeTypeIcons: Record<WorkflowNodeType, React.ReactNode> = {
   documentExtractor: <FileScan className="h-3 w-3" />,
   questionUnderstanding: <MessageCircleQuestion className="h-3 w-3" />,
   humanIntervention: <UserCheck className="h-3 w-3" />,
+  mcp: <Cable className="h-3 w-3" />,
+  builtinTool: <Wrench className="h-3 w-3" />,
 }
 
 const nodeTypeColors: Record<WorkflowNodeType, string> = {
@@ -88,6 +92,8 @@ const nodeTypeColors: Record<WorkflowNodeType, string> = {
   documentExtractor: "text-amber-600",
   questionUnderstanding: "text-pink-500",
   humanIntervention: "text-sky-500",
+  mcp: "text-violet-500",
+  builtinTool: "text-zinc-500",
 }
 
 // --- Helper: extract output variables from a node ---
@@ -152,6 +158,8 @@ export function getNodeOutputVariables(node: Node): NodeVariable[] {
     case "transform":
     case "documentExtractor":
     case "questionUnderstanding":
+    case "mcp":
+    case "builtinTool":
     case "humanIntervention": {
       const outputVar = (data.output_variable ?? "") as string
       if (outputVar) {

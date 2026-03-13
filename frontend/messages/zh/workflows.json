@@ -376,5 +376,16 @@
   "configPromptMessagePlaceholder": "描述审核人员应检查的内容...",
   "configAssignee": "指派人",
   "configAssigneePlaceholder": "用户名或邮箱（可选）",
-  "configTimeoutHours": "超时时间（小时）"
+  "configTimeoutHours": "超时时间（小时）",
+  "runPanelRetrying": "重试尝试 {attempt}/{max}...",
+  "nodeType_mcp": "MCP 工具",
+  "nodeDesc_mcp": "执行 MCP 服务器工具",
+  "nodeType_builtinTool": "内置工具",
+  "nodeDesc_builtinTool": "执行系统工具",
+  "configServerId": "MCP 服务器",
+  "configServerIdPlaceholder": "服务器 ID 或名称",
+  "configToolName": "工具名称",
+  "configToolNamePlaceholder": "要执行的工具",
+  "configToolId": "工具",
+  "configToolIdPlaceholder": "选择内置工具"
 }

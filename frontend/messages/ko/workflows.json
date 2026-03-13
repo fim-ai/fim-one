@@ -376,5 +376,16 @@
   "configPromptMessagePlaceholder": "검토자가 확인해야 할 사항을 설명하세요...",
   "configAssignee": "담당자",
   "configAssigneePlaceholder": "사용자명 또는 이메일 (선택사항)",
-  "configTimeoutHours": "시간 초과 (시간)"
+  "configTimeoutHours": "시간 초과 (시간)",
+  "runPanelRetrying": "재시도 {attempt}/{max}...",
+  "nodeType_mcp": "MCP Tool",
+  "nodeDesc_mcp": "MCP 서버 도구 실행",
+  "nodeType_builtinTool": "기본 도구",
+  "nodeDesc_builtinTool": "시스템 도구 실행",
+  "configServerId": "MCP 서버",
+  "configServerIdPlaceholder": "서버 ID 또는 이름",
+  "configToolName": "도구 이름",
+  "configToolNamePlaceholder": "실행할 도구",
+  "configToolId": "도구",
+  "configToolIdPlaceholder": "기본 도구 선택"
 }

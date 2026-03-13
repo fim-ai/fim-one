@@ -69,6 +69,8 @@ export type WorkflowNodeType =
   | "documentExtractor"
   | "questionUnderstanding"
   | "humanIntervention"
+  | "mcp"
+  | "builtinTool"
 
 // --- Per-node data interfaces ---
 
@@ -220,6 +222,19 @@ export interface HumanInterventionNodeData {
   output_variable: string
 }
 
+export interface MCPNodeData {
+  server_id: string
+  tool_name: string
+  parameters: Record<string, unknown>
+  output_variable: string
+}
+
+export interface BuiltinToolNodeData {
+  tool_id: string
+  parameters: Record<string, unknown>
+  output_variable: string
+}
+
 export interface ParameterExtractorNodeData {
   input_text: string
   parameters: Array<{
@@ -267,17 +282,19 @@ export interface WorkflowRunResponse {
 }
 
 export interface NodeRunResult {
-  status: "pending" | "running" | "completed" | "failed" | "skipped"
+  status: "pending" | "running" | "completed" | "failed" | "skipped" | "retrying"
   output: unknown
   error: string | null
   started_at: string | null
   completed_at: string | null
   duration_ms: number | null
+  retryAttempt?: number
+  maxRetries?: number
 }
 
 // --- Node run status for canvas overlay ---
 
-export type NodeRunStatus = "pending" | "running" | "completed" | "failed" | "skipped"
+export type NodeRunStatus = "pending" | "running" | "completed" | "failed" | "skipped" | "retrying"
 
 // --- Stats ---
 

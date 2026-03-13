@@ -296,6 +296,10 @@ function NodeConfigFields({ nodeType, data, updateField, otherNodes }: NodeConfi
       return <QuestionUnderstandingConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
     case "humanIntervention":
       return <HumanInterventionConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
+    case "mcp":
+      return <MCPConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
+    case "builtinTool":
+      return <BuiltinToolConfig data={data} updateField={updateField} t={t} otherNodes={otherNodes} />
     default:
       return <p className="text-xs text-muted-foreground">No configuration available</p>
   }
@@ -2136,6 +2140,71 @@ function HumanInterventionConfig({ data, updateField, t }: ConfigProps) {
         <Input
           className="h-7 text-xs font-mono"
           value={(data.output_variable ?? "approval_result") as string}
+          onChange={(e) => updateField("output_variable", e.target.value)}
+        />
+      </div>
+    </div>
+  )
+}
+
+function MCPConfig({ data, updateField, t }: ConfigProps) {
+  return (
+    <div className="space-y-3">
+      {/* Server ID */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configServerId")}</label>
+        <Input
+          className="h-7 text-xs"
+          placeholder={t("configServerIdPlaceholder")}
+          value={(data.server_id ?? "") as string}
+          onChange={(e) => updateField("server_id", e.target.value)}
+        />
+      </div>
+
+      {/* Tool Name */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configToolName")}</label>
+        <Input
+          className="h-7 text-xs"
+          placeholder={t("configToolNamePlaceholder")}
+          value={(data.tool_name ?? "") as string}
+          onChange={(e) => updateField("tool_name", e.target.value)}
+        />
+      </div>
+
+      {/* Output variable */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configOutputVariable")}</label>
+        <Input
+          className="h-7 text-xs font-mono"
+          value={(data.output_variable ?? "mcp_result") as string}
+          onChange={(e) => updateField("output_variable", e.target.value)}
+        />
+      </div>
+    </div>
+  )
+}
+
+function BuiltinToolConfig({ data, updateField, t }: ConfigProps) {
+  return (
+    <div className="space-y-3">
+      {/* Tool ID */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configToolId")}</label>
+        <Input
+          className="h-7 text-xs"
+          placeholder={t("configToolIdPlaceholder")}
+          value={(data.tool_id ?? "") as string}
+          onChange={(e) => updateField("tool_id", e.target.value)}
+        />
+      </div>
+
+      {/* Output variable */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t("configOutputVariable")}</label>
+        <Input
+          className="h-7 text-xs font-mono"
+          value={(data.output_variable ?? "tool_result") as string}
           onChange={(e) => updateField("output_variable", e.target.value)}
         />
       </div>

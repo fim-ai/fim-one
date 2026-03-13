@@ -376,5 +376,16 @@
   "configPromptMessagePlaceholder": "レビュアーが確認すべき内容を説明してください...",
   "configAssignee": "担当者",
   "configAssigneePlaceholder": "ユーザー名またはメールアドレス（オプション）",
-  "configTimeoutHours": "タイムアウト（時間）"
+  "configTimeoutHours": "タイムアウト（時間）",
+  "runPanelRetrying": "再試行 {attempt}/{max}...",
+  "nodeType_mcp": "MCPツール",
+  "nodeDesc_mcp": "MCPサーバーツールを実行",
+  "nodeType_builtinTool": "組み込みツール",
+  "nodeDesc_builtinTool": "システムツールを実行",
+  "configServerId": "MCPサーバー",
+  "configServerIdPlaceholder": "サーバーIDまたは名前",
+  "configToolName": "ツール名",
+  "configToolNamePlaceholder": "実行するツール",
+  "configToolId": "ツール",
+  "configToolIdPlaceholder": "組み込みツールを選択"
 }

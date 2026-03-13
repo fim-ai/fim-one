@@ -14,6 +14,7 @@ import {
   SkipForward,
   ChevronDown,
   Ban,
+  RotateCw,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -58,6 +59,7 @@ const nodeStatusIcons: Record<NodeRunStatus, React.ReactNode> = {
   completed: <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />,
   failed: <XCircle className="h-3.5 w-3.5 text-red-500" />,
   skipped: <SkipForward className="h-3.5 w-3.5 text-zinc-400" />,
+  retrying: <RotateCw className="h-3.5 w-3.5 text-amber-500 animate-spin" />,
 }
 
 const statusBadgeClass: Record<WorkflowRunResponse["status"], string> = {

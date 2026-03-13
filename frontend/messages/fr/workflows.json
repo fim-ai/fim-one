@@ -376,5 +376,16 @@
   "configPromptMessagePlaceholder": "Décrivez ce que l'examinateur doit vérifier...",
   "configAssignee": "Assigné à",
   "configAssigneePlaceholder": "Nom d'utilisateur ou e-mail (facultatif)",
-  "configTimeoutHours": "Délai d'expiration (heures)"
+  "configTimeoutHours": "Délai d'expiration (heures)",
+  "runPanelRetrying": "Tentative de réessai {attempt}/{max}...",
+  "nodeType_mcp": "Outil MCP",
+  "nodeDesc_mcp": "Exécuter l'outil du serveur MCP",
+  "nodeType_builtinTool": "Outil intégré",
+  "nodeDesc_builtinTool": "Exécuter l'outil système",
+  "configServerId": "Serveur MCP",
+  "configServerIdPlaceholder": "ID ou nom du serveur",
+  "configToolName": "Nom de l'outil",
+  "configToolNamePlaceholder": "Outil à exécuter",
+  "configToolId": "Outil",
+  "configToolIdPlaceholder": "Sélectionner un outil intégré"
 }

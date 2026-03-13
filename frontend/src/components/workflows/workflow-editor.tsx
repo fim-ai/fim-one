@@ -59,6 +59,8 @@ import { TransformNode } from "./nodes/transform-node"
 import { DocumentExtractorNode } from "./nodes/document-extractor-node"
 import { QuestionUnderstandingNode } from "./nodes/question-understanding-node"
 import { HumanInterventionNode } from "./nodes/human-intervention-node"
+import { MCPNode } from "./nodes/mcp-node"
+import { BuiltinToolNode } from "./nodes/builtin-tool-node"
 
 // MUST be defined outside the component to prevent ReactFlow infinite re-renders
 const nodeTypes = {
@@ -83,6 +85,8 @@ const nodeTypes = {
   documentExtractor: DocumentExtractorNode,
   questionUnderstanding: QuestionUnderstandingNode,
   humanIntervention: HumanInterventionNode,
+  mcp: MCPNode,
+  builtinTool: BuiltinToolNode,
 }
 
 // Custom edge types - defined outside component for stability
@@ -113,6 +117,8 @@ const minimapNodeColor: Record<string, string> = {
   documentExtractor: "#d97706",
   questionUnderstanding: "#ec4899",
   humanIntervention: "#0ea5e9",
+  mcp: "#8b5cf6",
+  builtinTool: "#71717a",
 }
 
 const getMinimapNodeColor = (node: Node) => minimapNodeColor[node.type ?? ""] ?? "#6b7280"
@@ -139,6 +145,8 @@ const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
   documentExtractor: { input_variable: "", input_type: "text", extract_mode: "full_text", output_variable: "document_result" },
   questionUnderstanding: { input_variable: "", mode: "rewrite", output_variable: "question_result" },
   humanIntervention: { prompt_message: "", assignee: "", timeout_hours: 24, output_variable: "approval_result" },
+  mcp: { server_id: "", tool_name: "", parameters: {}, output_variable: "mcp_result" },
+  builtinTool: { tool_id: "", parameters: {}, output_variable: "tool_result" },
 }
 
 interface WorkflowEditorProps {
@@ -544,7 +552,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     return edges.map((edge) => {
       const sourceStatus = nodeResults[edge.source]?.status
       const targetStatus = nodeResults[edge.target]?.status
-      const shouldAnimate = sourceStatus === "completed" && targetStatus === "running"
+      const shouldAnimate = sourceStatus === "completed" && (targetStatus === "running" || targetStatus === "retrying")
       if (!shouldAnimate && !edge.animated) return edge
       return { ...edge, animated: shouldAnimate }
     })

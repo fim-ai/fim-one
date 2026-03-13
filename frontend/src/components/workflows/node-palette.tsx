@@ -26,6 +26,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   UserCheck,
+  Cable,
+  Wrench,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -78,6 +80,8 @@ const categories: NodePaletteCategory[] = [
     items: [
       { type: "connector", icon: <Plug className="h-3.5 w-3.5" />, color: "text-purple-500" },
       { type: "httpRequest", icon: <Globe className="h-3.5 w-3.5" />, color: "text-slate-500" },
+      { type: "mcp", icon: <Cable className="h-3.5 w-3.5" />, color: "text-violet-500" },
+      { type: "builtinTool", icon: <Wrench className="h-3.5 w-3.5" />, color: "text-zinc-500" },
     ],
   },
   {

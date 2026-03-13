@@ -147,6 +147,7 @@
   "runPanelClose": "Close",
   "runPanelStartRun": "Start Run",
   "runPanelRunAgain": "Run Again",
+  "runPanelRetrying": "Retry attempt {attempt}/{max}...",
   "runPanelProgress": "{completed}/{total} nodes completed",
   "runPanelShowOutput": "Show output",
   "runPanelHideOutput": "Hide output",
@@ -423,5 +424,16 @@
   "configPromptMessagePlaceholder": "Describe what the reviewer should check...",
   "configAssignee": "Assignee",
   "configAssigneePlaceholder": "Username or email (optional)",
-  "configTimeoutHours": "Timeout (hours)"
+  "configTimeoutHours": "Timeout (hours)",
+
+  "nodeType_mcp": "MCP Tool",
+  "nodeDesc_mcp": "Execute MCP server tool",
+  "nodeType_builtinTool": "Builtin Tool",
+  "nodeDesc_builtinTool": "Execute system tool",
+  "configServerId": "MCP Server",
+  "configServerIdPlaceholder": "Server ID or name",
+  "configToolName": "Tool Name",
+  "configToolNamePlaceholder": "Tool to execute",
+  "configToolId": "Tool",
+  "configToolIdPlaceholder": "Select a builtin tool"
 }

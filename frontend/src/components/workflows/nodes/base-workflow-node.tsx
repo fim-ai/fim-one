@@ -26,6 +26,8 @@ const categoryColorMap: Record<string, string> = {
   documentExtractor: "bg-amber-600",
   questionUnderstanding: "bg-pink-500",
   humanIntervention: "bg-sky-500",
+  mcp: "bg-violet-500",
+  builtinTool: "bg-zinc-500",
 }
 
 const runStatusStyles: Record<NodeRunStatus, { ring: string; extra: string }> = {
@@ -34,6 +36,7 @@ const runStatusStyles: Record<NodeRunStatus, { ring: string; extra: string }> = 
   completed: { ring: "ring-2 ring-green-500/30", extra: "" },
   failed: { ring: "ring-2 ring-red-500/30", extra: "" },
   skipped: { ring: "", extra: "opacity-50" },
+  retrying: { ring: "ring-2 ring-amber-500/50", extra: "animate-pulse" },
 }
 
 const statusDotColor: Record<NodeRunStatus, string> = {
@@ -42,6 +45,7 @@ const statusDotColor: Record<NodeRunStatus, string> = {
   completed: "bg-green-500",
   failed: "bg-red-500",
   skipped: "bg-gray-400",
+  retrying: "bg-amber-500",
 }
 
 interface BaseWorkflowNodeProps {
@@ -87,7 +91,7 @@ function BaseWorkflowNodeComponent({
                 statusDotColor[runStatus],
               )}
             />
-            {runStatus === "running" && (
+            {(runStatus === "running" || runStatus === "retrying") && (
               <span
                 className={cn(
                   "absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-card animate-ping z-10",
@@ -144,6 +148,7 @@ function RunStatusBadge({ status }: { status: NodeRunStatus }) {
     completed: { bg: "bg-green-500/10", text: "text-green-500", label: "OK" },
     failed: { bg: "bg-red-500/10", text: "text-red-500", label: "ERR" },
     skipped: { bg: "bg-zinc-500/10", text: "text-zinc-500", label: "SKIP" },
+    retrying: { bg: "bg-amber-500/10", text: "text-amber-500", label: "RETRY" },
   }
   const c = config[status]
   return (
