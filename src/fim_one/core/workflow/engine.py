@@ -203,6 +203,7 @@ class WorkflowEngine:
                         "node_id": nid,
                         "node_type": node.type.value,
                         "error": result.error,
+                        "input_preview": result.input_preview,
                         "duration_ms": result.duration_ms,
                         "error_strategy": "continue",
                     },
@@ -219,6 +220,7 @@ class WorkflowEngine:
                         "node_id": nid,
                         "node_type": node.type.value,
                         "error": result.error,
+                        "input_preview": result.input_preview,
                         "duration_ms": result.duration_ms,
                         "error_strategy": "fail_branch",
                         "skipped_downstream": sorted(downstream),
@@ -235,6 +237,7 @@ class WorkflowEngine:
                         "node_id": nid,
                         "node_type": node.type.value,
                         "error": result.error,
+                        "input_preview": result.input_preview,
                         "duration_ms": result.duration_ms,
                         "error_strategy": "stop_workflow",
                     },
@@ -275,9 +278,17 @@ class WorkflowEngine:
                 retry_count = max(int(node.data.get("retry_count", 0)), 0)
                 retry_delay_ms = max(int(node.data.get("retry_delay_ms", 1000)), 0)
 
+                # Capture inputs from predecessor nodes for debugging
+                pred_ids = predecessors.get(nid, set())
+                input_preview = await _capture_input_preview(store, pred_ids)
+
                 await event_queue.put((
                     "node_started",
-                    {"node_id": nid, "node_type": node.type.value},
+                    {
+                        "node_id": nid,
+                        "node_type": node.type.value,
+                        "input_preview": input_preview,
+                    },
                 ))
 
                 try:
@@ -318,6 +329,8 @@ class WorkflowEngine:
 
                         result = await _execute_once(node, executor, ctx)
 
+                    # Attach the input snapshot to the result for persistence
+                    result.input_preview = input_preview
                     node_results[nid] = result
 
                     if result.status == NodeStatus.COMPLETED:
@@ -336,6 +349,7 @@ class WorkflowEngine:
                                 "node_id": nid,
                                 "node_type": node.type.value,
                                 "status": "completed",
+                                "input_preview": input_preview,
                                 "output_preview": _preview(result.output),
                                 "duration_ms": result.duration_ms,
                                 "retries_used": attempt if retry_count > 0 else 0,
@@ -348,7 +362,11 @@ class WorkflowEngine:
                     node_status[nid] = NodeStatus.FAILED
                     await event_queue.put((
                         "node_failed",
-                        {"node_id": nid, "error": "Cancelled"},
+                        {
+                            "node_id": nid,
+                            "error": "Cancelled",
+                            "input_preview": input_preview,
+                        },
                     ))
                     raise
                 except Exception as exc:
@@ -357,6 +375,7 @@ class WorkflowEngine:
                         node_id=nid,
                         status=NodeStatus.FAILED,
                         error=str(exc),
+                        input_preview=input_preview,
                     )
                     node_results[nid] = result
                     await _handle_node_failure(nid, result)
@@ -622,3 +641,32 @@ def _preview(value: Any, max_len: int = 200) -> str:
         return s[:max_len]
     except Exception:
         return str(value)[:max_len]
+
+
+async def _capture_input_preview(
+    store: VariableStore,
+    predecessor_ids: set[str],
+    max_len: int = 500,
+) -> str:
+    """Snapshot the predecessor outputs from the variable store for debugging.
+
+    Collects all variables under each predecessor's namespace (``{node_id}.*``)
+    and returns a truncated JSON string.  Environment variables are excluded.
+    """
+    if not predecessor_ids:
+        return "{}"
+    inputs: dict[str, Any] = {}
+    for pred_id in sorted(predecessor_ids):
+        node_outputs = await store.get_node_outputs(pred_id)
+        if node_outputs:
+            inputs[pred_id] = node_outputs
+    # Also include workflow-level inputs (input.* namespace)
+    snapshot = await store.snapshot()
+    input_vars = {k: v for k, v in snapshot.items() if k.startswith("input.")}
+    if input_vars:
+        inputs["__input__"] = input_vars
+    try:
+        s = json.dumps(inputs, ensure_ascii=False, default=str)
+        return s[:max_len]
+    except Exception:
+        return str(inputs)[:max_len]

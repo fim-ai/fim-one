@@ -104,6 +104,7 @@ class NodeResult:
     error: str | None = None
     active_handles: list[str] | None = None  # For condition/classifier nodes
     duration_ms: int = 0
+    input_preview: str | None = None  # JSON snapshot of inputs (truncated to 500 chars)
 
 
 @dataclass
