@@ -485,5 +485,10 @@
   "sortNewest": "最新順",
   "sortOldest": "最古順",
   "sortNameAsc": "名前 A-Z",
-  "sortNameDesc": "名前 Z-A"
+  "sortNameDesc": "名前 Z-A",
+  "galleryTitle": "テンプレートから作成",
+  "galleryDescription": "テンプレートギャラリーを参照して、事前構築されたテンプレートからワークフローを作成します",
+  "galleryEmpty": "このカテゴリでは利用可能なテンプレートがありません",
+  "gallerySelectHint": "続行するにはテンプレートを選択してください",
+  "fromTemplate": "テンプレートから"
 }

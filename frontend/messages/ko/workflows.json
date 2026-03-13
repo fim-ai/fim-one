@@ -485,5 +485,10 @@
   "sortNewest": "최신순",
   "sortOldest": "오래된순",
   "sortNameAsc": "이름 A-Z",
-  "sortNameDesc": "이름 Z-A"
+  "sortNameDesc": "이름 Z-A",
+  "galleryTitle": "템플릿에서 생성",
+  "galleryDescription": "템플릿 갤러리를 탐색하고 사전 구축된 템플릿에서 워크플로우 생성",
+  "galleryEmpty": "이 카테고리에서 사용 가능한 템플릿이 없습니다",
+  "gallerySelectHint": "계속하려면 템플릿을 선택하세요",
+  "fromTemplate": "템플릿에서"
 }

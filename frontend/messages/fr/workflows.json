@@ -485,5 +485,10 @@
   "sortNewest": "Plus récent d'abord",
   "sortOldest": "Plus ancien d'abord",
   "sortNameAsc": "Nom A-Z",
-  "sortNameDesc": "Nom Z-A"
+  "sortNameDesc": "Nom Z-A",
+  "galleryTitle": "Créer à partir d'un modèle",
+  "galleryDescription": "Parcourez la galerie de modèles et créez un flux de travail à partir d'un modèle prédéfini",
+  "galleryEmpty": "Aucun modèle disponible dans cette catégorie",
+  "gallerySelectHint": "Sélectionnez un modèle pour continuer",
+  "fromTemplate": "À partir d'un modèle"
 }

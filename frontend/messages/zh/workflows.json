@@ -485,5 +485,10 @@
   "sortNewest": "最新优先",
   "sortOldest": "最旧优先",
   "sortNameAsc": "名称 A-Z",
-  "sortNameDesc": "名称 Z-A"
+  "sortNameDesc": "名称 Z-A",
+  "galleryTitle": "从模板创建",
+  "galleryDescription": "浏览模板库并从预构建的模板创建工作流",
+  "galleryEmpty": "此类别中没有可用的模板",
+  "gallerySelectHint": "选择模板以继续",
+  "fromTemplate": "从模板"
 }

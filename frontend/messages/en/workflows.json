@@ -311,6 +311,12 @@
   "templateCreateSuccess": "Workflow created from template",
   "templateCreateFailed": "Failed to create workflow from template",
 
+  "galleryTitle": "Create from Template",
+  "galleryDescription": "Browse template gallery and create a workflow from a pre-built template",
+  "galleryEmpty": "No templates available in this category",
+  "gallerySelectHint": "Select a template to continue",
+  "fromTemplate": "From Template",
+
   "statsTitle": "Statistics",
   "statsTotalRuns": "Total Runs",
   "statsCompleted": "Completed",

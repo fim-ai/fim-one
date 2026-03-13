@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, GitBranch, Upload, Loader2, Clock, Search } from "lucide-react"
+import { Plus, GitBranch, Upload, Loader2, Clock, Search, LayoutTemplate } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -27,6 +27,7 @@ import { workflowApi, orgApi } from "@/lib/api"
 import type { UserOrg } from "@/lib/api"
 import { WorkflowCard } from "@/components/workflows/workflow-card"
 import { TemplatePicker } from "@/components/workflows/template-picker"
+import { TemplateGalleryDialog } from "@/components/workflows/template-gallery-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { WorkflowResponse } from "@/types/workflow"
 
@@ -47,6 +48,7 @@ export default function WorkflowsPage() {
   const [orgsLoading, setOrgsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false)
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "active">("all")
@@ -290,6 +292,10 @@ export default function WorkflowsPage() {
             <Upload className="h-3.5 w-3.5" />
             {tc("import")}
           </Button>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTemplateGallery(true)}>
+            <LayoutTemplate className="h-3.5 w-3.5" />
+            {t("fromTemplate")}
+          </Button>
           <Button size="sm" className="gap-1.5" onClick={() => setShowTemplatePicker(true)}>
             <Plus className="h-4 w-4" />
             {t("newWorkflow")}
@@ -496,6 +502,12 @@ export default function WorkflowsPage() {
         onSelectTemplate={handleCreateFromTemplate}
         onCreateBlank={handleCreateBlank}
         isCreating={isCreatingFromTemplate}
+      />
+
+      {/* Template Gallery */}
+      <TemplateGalleryDialog
+        open={showTemplateGallery}
+        onOpenChange={setShowTemplateGallery}
       />
     </div>
   )

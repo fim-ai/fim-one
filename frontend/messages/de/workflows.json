@@ -485,5 +485,10 @@
   "sortNewest": "Neueste zuerst",
   "sortOldest": "Älteste zuerst",
   "sortNameAsc": "Name A-Z",
-  "sortNameDesc": "Name Z-A"
+  "sortNameDesc": "Name Z-A",
+  "galleryTitle": "Aus Vorlage erstellen",
+  "galleryDescription": "Durchsuchen Sie die Vorlagengalerie und erstellen Sie einen Workflow aus einer vorgefertigten Vorlage",
+  "galleryEmpty": "Keine Vorlagen in dieser Kategorie verfügbar",
+  "gallerySelectHint": "Wählen Sie eine Vorlage aus, um fortzufahren",
+  "fromTemplate": "Aus Vorlage"
 }
