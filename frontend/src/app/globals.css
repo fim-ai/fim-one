@@ -52,6 +52,8 @@
 
 :root {
   --radius: 0.625rem;
+  --card-shadow: 0 1px 3px -1px oklch(0.40 0.02 70 / 0.06);
+  --card-shadow-hover: 0 4px 12px -3px oklch(0.35 0.02 70 / 0.10);
   --background: oklch(0.98 0.005 80);
   --foreground: oklch(0.18 0.01 60);
   --card: oklch(0.98 0.005 80);
@@ -86,6 +88,8 @@
 }
 
 .dark {
+  --card-shadow: 0 1px 3px -1px rgb(0 0 0 / 0.30);
+  --card-shadow-hover: 0 4px 12px -3px rgb(0 0 0 / 0.40);
   --background: oklch(0.17 0.008 55);
   --foreground: oklch(0.90 0.008 75);
   --card: oklch(0.20 0.007 55);
@@ -117,6 +121,14 @@
   --sidebar-accent-foreground: oklch(0.90 0.008 75);
   --sidebar-border: oklch(0.28 0.006 55);
   --sidebar-ring: oklch(0.72 0.14 70);
+}
+
+@utility card-shadow {
+  box-shadow: var(--card-shadow);
+}
+
+@utility card-shadow-hover {
+  box-shadow: var(--card-shadow-hover);
 }
 
 @utility glass-overlay {

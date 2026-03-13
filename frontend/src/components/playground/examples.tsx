@@ -135,8 +135,8 @@ export function Examples({
               disabled={disabled}
               onClick={() => handleSelect(prompt)}
               className={
-                "group relative flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 shadow-sm" +
-                " hover:border-primary/30 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5" +
+                "group relative flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 card-shadow" +
+                " hover:border-primary/30 hover:card-shadow-hover hover:-translate-y-0.5" +
                 " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background" +
                 (disabled ? " opacity-50 pointer-events-none" : " cursor-pointer")
               }
@@ -194,8 +194,8 @@ export function Examples({
               disabled={disabled}
               onClick={() => handleSelect(example.text)}
               className={
-                "group relative flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 shadow-sm" +
-                " hover:border-primary/30 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5" +
+                "group relative flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all duration-200 card-shadow" +
+                " hover:border-primary/30 hover:card-shadow-hover hover:-translate-y-0.5" +
                 " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background" +
                 (disabled ? " opacity-50 pointer-events-none" : " cursor-pointer")
               }
