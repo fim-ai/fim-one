@@ -20,7 +20,6 @@
     "cmdk": "^1.1.1",
     "dagre": "^0.8.5",
     "date-fns": "^4.1.0",
-    "elkjs": "^0.11.1",
     "frimousse": "^0.3.0",
     "highlight.js": "^11.11.1",
     "input-otp": "^1.4.2",
