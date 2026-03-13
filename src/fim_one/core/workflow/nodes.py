@@ -1271,6 +1271,225 @@ class CodeExecutionExecutor:
 
 
 # ---------------------------------------------------------------------------
+# 13. Iterator node
+# ---------------------------------------------------------------------------
+
+
+class IteratorExecutor:
+    """Validate and prepare a list for iteration by downstream nodes.
+
+    The executor resolves the ``list_variable`` from the store, validates
+    it is a list (or a JSON string that parses to a list), and stores it
+    as the node's output along with metadata.  The actual iteration loop
+    (setting ``current_item`` / ``current_index`` per iteration) is
+    handled by the engine — this executor just validates and prepares.
+    """
+
+    @staticmethod
+    def output_schema() -> list[dict[str, str]]:
+        return [
+            {"name": "output", "type": "array", "description": "The resolved list of items to iterate over"},
+            {"name": "count", "type": "integer", "description": "Number of items in the list"},
+        ]
+
+    async def execute(
+        self,
+        node: WorkflowNodeDef,
+        store: VariableStore,
+        context: ExecutionContext,
+    ) -> NodeResult:
+        t0 = time.time()
+        try:
+            list_variable = node.data.get("list_variable", "")
+            iterator_variable = node.data.get("iterator_variable", "current_item")
+            index_variable = node.data.get("index_variable", "current_index")
+            max_iterations = node.data.get("max_iterations", 100)
+
+            if not list_variable:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="Iterator node has no list_variable configured",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Resolve the list variable — support both {{ref}} and direct key
+            if "{{" in list_variable:
+                raw_value = await store.interpolate(list_variable)
+            else:
+                raw_value = await store.get(list_variable)
+
+            # Parse as list: if raw_value is a string, try JSON parse
+            items: list[Any]
+            if isinstance(raw_value, list):
+                items = raw_value
+            elif isinstance(raw_value, str):
+                raw_value = raw_value.strip()
+                if not raw_value:
+                    items = []
+                else:
+                    try:
+                        parsed = json.loads(raw_value)
+                        if isinstance(parsed, list):
+                            items = parsed
+                        else:
+                            return NodeResult(
+                                node_id=node.id,
+                                status=NodeStatus.FAILED,
+                                error=f"Iterator list_variable resolved to non-list JSON: {type(parsed).__name__}",
+                                duration_ms=_ms_since(t0),
+                            )
+                    except (json.JSONDecodeError, ValueError):
+                        return NodeResult(
+                            node_id=node.id,
+                            status=NodeStatus.FAILED,
+                            error=f"Iterator list_variable is not valid JSON list: {raw_value[:100]}",
+                            duration_ms=_ms_since(t0),
+                        )
+            elif raw_value is None:
+                items = []
+            else:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"Iterator list_variable resolved to unsupported type: {type(raw_value).__name__}",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Enforce max_iterations limit
+            if len(items) > max_iterations:
+                items = items[:max_iterations]
+
+            # Store the list and metadata for the engine and downstream nodes
+            await store.set(f"{node.id}.output", items)
+            await store.set(f"{node.id}.count", len(items))
+            await store.set(f"{node.id}.iterator_variable", iterator_variable)
+            await store.set(f"{node.id}.index_variable", index_variable)
+
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output=items,
+                duration_ms=_ms_since(t0),
+            )
+        except Exception as exc:
+            logger.exception("Iterator node %s failed", node.id)
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error=f"Iterator error: {exc}",
+                duration_ms=_ms_since(t0),
+            )
+
+
+# ---------------------------------------------------------------------------
+# 14. VariableAggregator node
+# ---------------------------------------------------------------------------
+
+
+class VariableAggregatorExecutor:
+    """Merge outputs from multiple upstream nodes into a single variable.
+
+    Supports four aggregation modes:
+    - ``list``:  collect all resolved values into an array.
+    - ``concat``:  concatenate string representations with a separator.
+    - ``merge``:  deep-merge dict values (later dicts override earlier).
+    - ``first_non_empty``:  return the first non-null/non-empty value.
+    """
+
+    @staticmethod
+    def output_schema() -> list[dict[str, str]]:
+        return [
+            {"name": "output", "type": "any", "description": "Aggregated result from multiple variables"},
+        ]
+
+    async def execute(
+        self,
+        node: WorkflowNodeDef,
+        store: VariableStore,
+        context: ExecutionContext,
+    ) -> NodeResult:
+        t0 = time.time()
+        try:
+            variables: list[str] = node.data.get("variables", [])
+            mode: str = node.data.get("mode", "list")
+            separator: str = node.data.get("separator", "\n")
+
+            if not variables:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="VariableAggregator has no variables configured",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Resolve each variable reference
+            resolved: list[Any] = []
+            for var_ref in variables:
+                if isinstance(var_ref, str) and "{{" in var_ref:
+                    value = await store.interpolate(var_ref)
+                    # interpolate returns the placeholder as-is if unresolved
+                    if value == var_ref:
+                        value = None
+                elif isinstance(var_ref, str):
+                    value = await store.get(var_ref)
+                else:
+                    value = var_ref
+                resolved.append(value)
+
+            # Aggregate based on mode
+            output: Any
+            if mode == "list":
+                output = resolved
+
+            elif mode == "concat":
+                parts: list[str] = []
+                for val in resolved:
+                    if val is not None:
+                        parts.append(str(val))
+                output = separator.join(parts)
+
+            elif mode == "merge":
+                merged: dict[str, Any] = {}
+                for val in resolved:
+                    if isinstance(val, dict):
+                        merged.update(val)
+                output = merged
+
+            elif mode == "first_non_empty":
+                output = None
+                for val in resolved:
+                    if val is not None and val != "" and val != [] and val != {}:
+                        output = val
+                        break
+
+            else:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"VariableAggregator unknown mode: {mode}",
+                    duration_ms=_ms_since(t0),
+                )
+
+            await store.set(f"{node.id}.output", output)
+
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output=output,
+                duration_ms=_ms_since(t0),
+            )
+        except Exception as exc:
+            logger.exception("VariableAggregator node %s failed", node.id)
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error=f"VariableAggregator error: {exc}",
+                duration_ms=_ms_since(t0),
+            )
+
+
+# ---------------------------------------------------------------------------
 # Registry — map NodeType to executor class
 # ---------------------------------------------------------------------------
 
@@ -1287,6 +1506,8 @@ EXECUTOR_REGISTRY: dict[NodeType, type] = {
     NodeType.VARIABLE_ASSIGN: VariableAssignExecutor,
     NodeType.TEMPLATE_TRANSFORM: TemplateTransformExecutor,
     NodeType.CODE_EXECUTION: CodeExecutionExecutor,
+    NodeType.ITERATOR: IteratorExecutor,
+    NodeType.VARIABLE_AGGREGATOR: VariableAggregatorExecutor,
 }
 
 

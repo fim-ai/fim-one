@@ -3092,3 +3092,517 @@ class TestConditionBranchLLMMode:
         # The interpolated prompt should contain "95" (the variable value), not "{{score}}"
         assert "95" in system_msg.content
         assert "{{score}}" not in system_msg.content
+
+
+# =========================================================================
+# Iterator node tests
+# =========================================================================
+
+
+class TestIteratorNode:
+    """Test the IteratorExecutor — validates and prepares lists for iteration."""
+
+    @pytest.mark.asyncio
+    async def test_basic_list_iteration(self):
+        """Iterator should resolve a list variable and store it as output."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "items",
+                "iterator_variable": "current_item",
+                "index_variable": "current_index",
+            },
+        )
+        store = VariableStore()
+        await store.set("items", ["apple", "banana", "cherry"])
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == ["apple", "banana", "cherry"]
+
+        # Check that list and count are stored in the variable store
+        stored_output = await store.get("iter_1.output")
+        assert stored_output == ["apple", "banana", "cherry"]
+        stored_count = await store.get("iter_1.count")
+        assert stored_count == 3
+
+    @pytest.mark.asyncio
+    async def test_string_json_parsing(self):
+        """Iterator should parse a JSON string into a list."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "json_list",
+            },
+        )
+        store = VariableStore()
+        await store.set("json_list", '[1, 2, 3, 4, 5]')
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == [1, 2, 3, 4, 5]
+        assert await store.get("iter_1.count") == 5
+
+    @pytest.mark.asyncio
+    async def test_max_iterations_limit(self):
+        """Iterator should truncate the list to max_iterations."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "big_list",
+                "max_iterations": 3,
+            },
+        )
+        store = VariableStore()
+        await store.set("big_list", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == [1, 2, 3]
+        assert await store.get("iter_1.count") == 3
+
+    @pytest.mark.asyncio
+    async def test_empty_list(self):
+        """Iterator should handle an empty list gracefully."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "empty_list",
+            },
+        )
+        store = VariableStore()
+        await store.set("empty_list", [])
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == []
+        assert await store.get("iter_1.count") == 0
+
+    @pytest.mark.asyncio
+    async def test_missing_list_variable(self):
+        """Iterator should fail if no list_variable is configured."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={"type": "ITERATOR"},
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "list_variable" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_none_resolves_to_empty_list(self):
+        """Iterator should treat None as an empty list."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "nonexistent_key",
+            },
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == []
+
+    @pytest.mark.asyncio
+    async def test_template_variable_reference(self):
+        """Iterator should resolve {{node_id.output}} style references."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "{{upstream.output}}",
+            },
+        )
+        store = VariableStore()
+        await store.set("upstream.output", '["x", "y", "z"]')
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == ["x", "y", "z"]
+
+    @pytest.mark.asyncio
+    async def test_non_list_json_fails(self):
+        """Iterator should fail if JSON parses to a non-list type."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "not_a_list",
+            },
+        )
+        store = VariableStore()
+        await store.set("not_a_list", '{"key": "value"}')
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "non-list" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_iterator_stores_metadata(self):
+        """Iterator should store iterator_variable and index_variable names."""
+        from fim_one.core.workflow.nodes import IteratorExecutor
+
+        node = WorkflowNodeDef(
+            id="iter_1",
+            type=NodeType.ITERATOR,
+            data={
+                "type": "ITERATOR",
+                "list_variable": "items",
+                "iterator_variable": "item",
+                "index_variable": "idx",
+            },
+        )
+        store = VariableStore()
+        await store.set("items", ["a", "b"])
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = IteratorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert await store.get("iter_1.iterator_variable") == "item"
+        assert await store.get("iter_1.index_variable") == "idx"
+
+
+# =========================================================================
+# VariableAggregator node tests
+# =========================================================================
+
+
+class TestVariableAggregatorNode:
+    """Test the VariableAggregatorExecutor — merges upstream outputs."""
+
+    @pytest.mark.asyncio
+    async def test_list_mode(self):
+        """List mode should collect all values into an array."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["node_a.output", "node_b.output", "node_c.output"],
+                "mode": "list",
+            },
+        )
+        store = VariableStore()
+        await store.set("node_a.output", "alpha")
+        await store.set("node_b.output", "beta")
+        await store.set("node_c.output", "gamma")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == ["alpha", "beta", "gamma"]
+        assert await store.get("agg_1.output") == ["alpha", "beta", "gamma"]
+
+    @pytest.mark.asyncio
+    async def test_concat_mode(self):
+        """Concat mode should join string values with separator."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["node_a.output", "node_b.output"],
+                "mode": "concat",
+                "separator": " | ",
+            },
+        )
+        store = VariableStore()
+        await store.set("node_a.output", "Hello")
+        await store.set("node_b.output", "World")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == "Hello | World"
+
+    @pytest.mark.asyncio
+    async def test_concat_default_separator(self):
+        """Concat mode should use newline as default separator."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["a.output", "b.output"],
+                "mode": "concat",
+            },
+        )
+        store = VariableStore()
+        await store.set("a.output", "line1")
+        await store.set("b.output", "line2")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == "line1\nline2"
+
+    @pytest.mark.asyncio
+    async def test_merge_mode(self):
+        """Merge mode should deep-merge dict values."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["node_a.output", "node_b.output"],
+                "mode": "merge",
+            },
+        )
+        store = VariableStore()
+        await store.set("node_a.output", {"name": "Alice", "age": 30})
+        await store.set("node_b.output", {"city": "NYC", "age": 31})
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == {"name": "Alice", "age": 31, "city": "NYC"}
+
+    @pytest.mark.asyncio
+    async def test_merge_mode_skips_non_dicts(self):
+        """Merge mode should skip non-dict values."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["a.output", "b.output", "c.output"],
+                "mode": "merge",
+            },
+        )
+        store = VariableStore()
+        await store.set("a.output", {"key1": "val1"})
+        await store.set("b.output", "not a dict")
+        await store.set("c.output", {"key2": "val2"})
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == {"key1": "val1", "key2": "val2"}
+
+    @pytest.mark.asyncio
+    async def test_first_non_empty_mode(self):
+        """first_non_empty should return the first non-null/non-empty value."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["a.output", "b.output", "c.output"],
+                "mode": "first_non_empty",
+            },
+        )
+        store = VariableStore()
+        # a.output is not set → resolves to None
+        await store.set("b.output", "")  # empty string
+        await store.set("c.output", "found it")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == "found it"
+
+    @pytest.mark.asyncio
+    async def test_first_non_empty_all_empty(self):
+        """first_non_empty should return None if all values are empty."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["a.output", "b.output"],
+                "mode": "first_non_empty",
+            },
+        )
+        store = VariableStore()
+        # Neither set → both resolve to None
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output is None
+
+    @pytest.mark.asyncio
+    async def test_empty_variables_list(self):
+        """Aggregator should fail if no variables are configured."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": [],
+                "mode": "list",
+            },
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "no variables" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_template_variable_references(self):
+        """Aggregator should resolve {{node_id.output}} style references."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["{{node_a.output}}", "{{node_b.output}}"],
+                "mode": "list",
+            },
+        )
+        store = VariableStore()
+        await store.set("node_a.output", 100)
+        await store.set("node_b.output", 200)
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        # Note: interpolate converts to string, so values come back as strings
+        assert result.output == ["100", "200"]
+
+    @pytest.mark.asyncio
+    async def test_concat_mode_skips_none(self):
+        """Concat mode should skip None values."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["a.output", "b.output", "c.output"],
+                "mode": "concat",
+                "separator": ", ",
+            },
+        )
+        store = VariableStore()
+        await store.set("a.output", "first")
+        # b.output not set → None
+        await store.set("c.output", "third")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output == "first, third"
+
+    @pytest.mark.asyncio
+    async def test_unknown_mode_fails(self):
+        """Aggregator should fail with an unknown mode."""
+        from fim_one.core.workflow.nodes import VariableAggregatorExecutor
+
+        node = WorkflowNodeDef(
+            id="agg_1",
+            type=NodeType.VARIABLE_AGGREGATOR,
+            data={
+                "type": "VARIABLE_AGGREGATOR",
+                "variables": ["a.output"],
+                "mode": "bogus_mode",
+            },
+        )
+        store = VariableStore()
+        await store.set("a.output", "value")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = VariableAggregatorExecutor()
+        result = await executor.execute(node, store, ctx)
+
+        assert result.status == NodeStatus.FAILED
+        assert "unknown mode" in (result.error or "")
