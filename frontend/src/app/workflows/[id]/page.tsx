@@ -27,6 +27,7 @@ import type { UserOrg } from "@/lib/api"
 import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { WorkflowToolbar } from "@/components/workflows/workflow-toolbar"
 import { WorkflowEditor } from "@/components/workflows/workflow-editor"
+import type { WorkflowEditorHandle } from "@/components/workflows/workflow-editor"
 import { RunHistorySheet } from "@/components/workflows/run-history-sheet"
 import type {
   WorkflowResponse,
@@ -58,6 +59,7 @@ export default function WorkflowEditorPage() {
   const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
   const [orgsLoading, setOrgsLoading] = useState(false)
   const pendingNavigationRef = useRef<string | null>(null)
+  const editorRef = useRef<WorkflowEditorHandle>(null)
 
   // Run state
   const [isRunning, setIsRunning] = useState(false)
@@ -70,6 +72,23 @@ export default function WorkflowEditorPage() {
 
   // History sheet state
   const [historyOpen, setHistoryOpen] = useState(false)
+
+  // Undo/redo state (synced from editor via callback)
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+
+  const handleUndoRedoChange = useCallback((newCanUndo: boolean, newCanRedo: boolean) => {
+    setCanUndo(newCanUndo)
+    setCanRedo(newCanRedo)
+  }, [])
+
+  const handleUndo = useCallback(() => {
+    editorRef.current?.undo()
+  }, [])
+
+  const handleRedo = useCallback(() => {
+    editorRef.current?.redo()
+  }, [])
 
   // Blueprint state managed by editor
   const blueprintRef = useRef<WorkflowBlueprint>({
@@ -459,6 +478,10 @@ export default function WorkflowEditorPage() {
     }
   }, [workflow, to])
 
+  const handleAutoLayout = useCallback(() => {
+    editorRef.current?.autoLayout()
+  }, [])
+
   // Find selected org for review notice
   const selectedOrg = publishOrgId
     ? userOrgs.find((o) => o.id === publishOrgId)
@@ -507,6 +530,10 @@ export default function WorkflowEditorPage() {
         isSaving={isSaving}
         isRunning={isRunning}
         isDuplicating={isDuplicating}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onNameChange={handleNameChange}
         onSave={handleSave}
         onRun={handleRun}
@@ -515,14 +542,17 @@ export default function WorkflowEditorPage() {
         onDuplicate={handleDuplicate}
         onDelete={() => setShowDeleteDialog(true)}
         onHistory={() => setHistoryOpen(true)}
+        onAutoLayout={handleAutoLayout}
         onPublish={handlePublishClick}
         onUnpublish={handleUnpublishClick}
         onResubmit={handleResubmit}
       />
 
       <WorkflowEditor
+        ref={editorRef}
         blueprint={workflow.blueprint}
         onBlueprintChange={handleBlueprintChange}
+        onUndoRedoChange={handleUndoRedoChange}
         isRunning={isRunning}
         runPanelOpen={runPanelOpen}
         startVariables={startVariables}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useRef, useState, useEffect, useMemo } from "react"
+import { useCallback, useRef, useState, useEffect, useMemo, useImperativeHandle, forwardRef } from "react"
 import { useTheme } from "next-themes"
 import {
   ReactFlow,
@@ -14,14 +14,18 @@ import {
 } from "@xyflow/react"
 import type {
   Connection,
+  Edge,
   NodeMouseHandler,
   Node,
   EdgeTypes,
+  ReactFlowInstance,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { toast } from "sonner"
 import { useTranslations } from "next-intl"
 
+import { useWorkflowHistory } from "@/hooks/use-workflow-history"
+import { getAutoLayoutedNodes } from "./auto-layout"
 import { NodePalette } from "./node-palette"
 import { NodeConfigPanel } from "./node-config-panel"
 import { RunPanel } from "./run-panel"
@@ -85,6 +89,7 @@ const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
 interface WorkflowEditorProps {
   blueprint: WorkflowBlueprint
   onBlueprintChange: (blueprint: WorkflowBlueprint) => void
+  onUndoRedoChange?: (canUndo: boolean, canRedo: boolean) => void
   isRunning: boolean
   runPanelOpen: boolean
   startVariables: StartNodeData["variables"]
@@ -100,9 +105,18 @@ interface WorkflowEditorProps {
   onCloseRunPanel: () => void
 }
 
-export function WorkflowEditor({
+export interface WorkflowEditorHandle {
+  autoLayout: () => void
+  undo: () => void
+  redo: () => void
+  canUndo: boolean
+  canRedo: boolean
+}
+
+export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorProps>(function WorkflowEditor({
   blueprint,
   onBlueprintChange,
+  onUndoRedoChange,
   isRunning,
   runPanelOpen,
   startVariables,
@@ -116,11 +130,12 @@ export function WorkflowEditor({
   onRunAgain,
   onCancelRun,
   onCloseRunPanel,
-}: WorkflowEditorProps) {
+}, ref) {
   const t = useTranslations("workflows")
   const { resolvedTheme } = useTheme()
   const rfColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
+  const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState(
     blueprint.nodes.map((n) => ({
@@ -135,11 +150,99 @@ export function WorkflowEditor({
       id: e.id,
       source: e.source,
       target: e.target,
+      sourceHandle: e.sourceHandle ?? undefined,
+      targetHandle: e.targetHandle ?? undefined,
+    } as Edge)),
+  )
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+
+  // --- Undo/Redo history ---
+  const initialNodesRef = useRef(
+    blueprint.nodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: n.data,
+    } as Node)),
+  )
+  const initialEdgesRef = useRef(
+    blueprint.edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
       sourceHandle: e.sourceHandle,
       targetHandle: e.targetHandle,
     })),
   )
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const { pushState, undo, redo, canUndo, canRedo } = useWorkflowHistory(
+    initialNodesRef.current,
+    initialEdgesRef.current,
+  )
+
+  // Track whether we are currently restoring from history to avoid re-pushing
+  const isRestoringRef = useRef(false)
+
+  // Push nodes/edges to history whenever they change (skipped during restore)
+  useEffect(() => {
+    if (isRestoringRef.current) {
+      isRestoringRef.current = false
+      return
+    }
+    pushState(nodes, edges)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges])
+
+  // Normalize edges: convert null sourceHandle/targetHandle to undefined
+  // (React Flow Edge type allows null, but useEdgesState infers stricter types)
+  const toSafeEdges = useCallback(
+    (raw: Edge[]) =>
+      raw.map((e) => ({
+        ...e,
+        sourceHandle: e.sourceHandle ?? undefined,
+        targetHandle: e.targetHandle ?? undefined,
+      })),
+    [],
+  )
+
+  const handleUndo = useCallback(() => {
+    const snapshot = undo()
+    if (!snapshot) return
+    isRestoringRef.current = true
+    setNodes(snapshot.nodes)
+    setEdges(toSafeEdges(snapshot.edges))
+  }, [undo, setNodes, setEdges, toSafeEdges])
+
+  const handleRedo = useCallback(() => {
+    const snapshot = redo()
+    if (!snapshot) return
+    isRestoringRef.current = true
+    setNodes(snapshot.nodes)
+    setEdges(toSafeEdges(snapshot.edges))
+  }, [redo, setNodes, setEdges, toSafeEdges])
+
+  // Keyboard shortcuts: Cmd+Z = undo, Cmd+Shift+Z = redo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return
+      // Don't intercept when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
+
+      e.preventDefault()
+      if (e.shiftKey) {
+        handleRedo()
+      } else {
+        handleUndo()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [handleUndo, handleRedo])
+
+  // Notify parent of undo/redo state changes
+  useEffect(() => {
+    onUndoRedoChange?.(canUndo, canRedo)
+  }, [canUndo, canRedo, onUndoRedoChange])
 
   // Track which node types exist for palette dimming
   const existingNodeTypes = useMemo(() => {
@@ -299,6 +402,23 @@ export function WorkflowEditor({
     ? nodes.find((n) => n.id === selectedNodeId) ?? null
     : null
 
+  const handleAutoLayout = useCallback(async () => {
+    const layoutedNodes = await getAutoLayoutedNodes(nodes, edges)
+    setNodes(layoutedNodes)
+    // Wait a tick for React Flow to process the position changes, then fit view
+    requestAnimationFrame(() => {
+      rfInstanceRef.current?.fitView({ duration: 300, padding: 0.4 })
+    })
+  }, [nodes, edges, setNodes])
+
+  useImperativeHandle(ref, () => ({
+    autoLayout: handleAutoLayout,
+    undo: handleUndo,
+    redo: handleRedo,
+    canUndo,
+    canRedo,
+  }), [handleAutoLayout, handleUndo, handleRedo, canUndo, canRedo])
+
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden relative">
       {/* Left palette */}
@@ -320,6 +440,7 @@ export function WorkflowEditor({
           onDragOver={onDragOver}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
+          onInit={(instance) => { rfInstanceRef.current = instance }}
           fitView
           fitViewOptions={{ maxZoom: 1, padding: 0.4 }}
           colorMode={rfColorMode}
@@ -366,4 +487,4 @@ export function WorkflowEditor({
       )}
     </div>
   )
-}
+})

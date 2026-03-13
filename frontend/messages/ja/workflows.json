@@ -196,5 +196,8 @@
   "configCodeOutputHint_python": "'result'という名前の変数に結果を割り当てます",
   "configCodeOutputHint_javascript": "'output'という名前の変数に結果を割り当てます",
   "configCodeHint": "以下にコードを記述します。出力変数を使用して値を返します。",
-  "edgeDefaultLabel": "その他"
+  "edgeDefaultLabel": "その他",
+  "editorUndo": "元に戻す",
+  "editorRedo": "やり直す",
+  "editorAutoLayout": "自動レイアウト"
 }

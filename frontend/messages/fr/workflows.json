@@ -196,5 +196,8 @@
   "configCodeOutputHint_python": "Attribuez votre résultat à une variable nommée 'result'",
   "configCodeOutputHint_javascript": "Attribuez votre résultat à une variable nommée 'output'",
   "configCodeHint": "Écrivez votre code ci-dessous. Retournez les valeurs via la variable output.",
-  "edgeDefaultLabel": "Sinon"
+  "edgeDefaultLabel": "Sinon",
+  "editorUndo": "Annuler",
+  "editorRedo": "Rétablir",
+  "editorAutoLayout": "Disposition automatique"
 }

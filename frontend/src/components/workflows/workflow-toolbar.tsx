@@ -10,12 +10,15 @@ import {
   Globe,
   GlobeLock,
   History,
+  LayoutGrid,
   Loader2,
   MoreHorizontal,
   Play,
+  Redo2,
   RotateCw,
   Save,
   Trash2,
+  Undo2,
   Upload,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -29,6 +32,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface WorkflowToolbarProps {
   name: string
@@ -38,6 +46,10 @@ interface WorkflowToolbarProps {
   isSaving: boolean
   isRunning: boolean
   isDuplicating?: boolean
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
   onNameChange: (name: string) => void
   onSave: () => void
   onRun: () => void
@@ -46,6 +58,7 @@ interface WorkflowToolbarProps {
   onDuplicate: () => void
   onDelete: () => void
   onHistory: () => void
+  onAutoLayout: () => void
   onPublish?: () => void
   onUnpublish?: () => void
   onResubmit?: () => void
@@ -59,6 +72,10 @@ export function WorkflowToolbar({
   isSaving,
   isRunning,
   isDuplicating = false,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onNameChange,
   onSave,
   onRun,
@@ -66,6 +83,7 @@ export function WorkflowToolbar({
   onImport,
   onDuplicate,
   onDelete,
+  onAutoLayout,
   onHistory,
   onPublish,
   onUnpublish,
@@ -159,6 +177,36 @@ export function WorkflowToolbar({
 
       {/* Action buttons */}
       <div className="flex items-center gap-1.5 shrink-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onUndo}
+              disabled={!canUndo}
+              aria-label={t("editorUndo")}
+            >
+              <Undo2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("editorUndo")}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onRedo}
+              disabled={!canRedo}
+              aria-label={t("editorRedo")}
+            >
+              <Redo2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("editorRedo")}</TooltipContent>
+        </Tooltip>
+
         <Button
           variant="outline"
           size="sm"
@@ -197,6 +245,20 @@ export function WorkflowToolbar({
           <History className="h-3.5 w-3.5" />
           {t("historyButton")}
         </Button>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onAutoLayout}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="sr-only">{t("editorAutoLayout")}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("editorAutoLayout")}</TooltipContent>
+        </Tooltip>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

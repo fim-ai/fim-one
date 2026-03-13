@@ -196,5 +196,8 @@
   "configCodeOutputHint_python": "'result'라는 변수에 결과 할당",
   "configCodeOutputHint_javascript": "'output'이라는 변수에 결과 할당",
   "configCodeHint": "아래에 코드를 작성하세요. 출력 변수를 통해 값을 반환하세요.",
-  "edgeDefaultLabel": "그 외"
+  "edgeDefaultLabel": "그 외",
+  "editorUndo": "실행 취소",
+  "editorRedo": "다시 실행",
+  "editorAutoLayout": "자동 레이아웃"
 }

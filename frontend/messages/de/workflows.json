@@ -196,5 +196,8 @@
   "configCodeOutputHint_python": "Weisen Sie Ihr Ergebnis einer Variablen namens 'result' zu",
   "configCodeOutputHint_javascript": "Weisen Sie Ihr Ergebnis einer Variablen namens 'output' zu",
   "configCodeHint": "Schreiben Sie Ihren Code unten. Geben Sie Werte über die output-Variable zurück.",
-  "edgeDefaultLabel": "Sonst"
+  "edgeDefaultLabel": "Sonst",
+  "editorUndo": "Rückgängig machen",
+  "editorRedo": "Wiederherstellen",
+  "editorAutoLayout": "Automatisches Layout"
 }
