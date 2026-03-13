@@ -741,6 +741,506 @@ _QUESTION_ENHANCED_QA: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
+# Template 9 — Human Approval Pipeline
+# ---------------------------------------------------------------------------
+
+_HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
+    "id": "human-approval-pipeline",
+    "name": "Human Approval Pipeline",
+    "description": (
+        "LLM summarizes a request, then pauses for human review before "
+        "routing based on approval."
+    ),
+    "icon": "UserCheck",
+    "category": "advanced",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "request_text",
+                                "type": "string",
+                                "required": True,
+                                "description": "The request to review and approve",
+                            }
+                        ]
+                    },
+                },
+                x=0,
+                y=250,
+            ),
+            _node(
+                "llm_1",
+                "LLM",
+                {
+                    "label": "Summarize Request",
+                    "prompt_template": (
+                        "Summarize the following request in 2-3 sentences, "
+                        "highlighting key points that a reviewer should consider:"
+                        "\n\n{{input.request_text}}"
+                    ),
+                    "model": "",
+                },
+                x=300,
+                y=250,
+            ),
+            _node(
+                "human_1",
+                "HUMAN_INTERVENTION",
+                {
+                    "label": "Human Review",
+                    "prompt_message": (
+                        "Please review the following summarized request and approve or reject:"
+                        "\n\n{{llm_1.output}}"
+                    ),
+                    "assignee": "",
+                    "timeout_hours": 24,
+                    "output_variable": "approval_result",
+                },
+                x=600,
+                y=250,
+            ),
+            _node(
+                "cond_1",
+                "CONDITION_BRANCH",
+                {
+                    "label": "Check Approval",
+                    "conditions": [
+                        {
+                            "id": "approved",
+                            "handle": "approved",
+                            "variable": "approval_result.status",
+                            "operator": "==",
+                            "value": "approved",
+                        }
+                    ],
+                    "default_handle": "rejected",
+                },
+                x=900,
+                y=250,
+            ),
+            _node(
+                "end_approved",
+                "END",
+                {
+                    "label": "Approved",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "Request approved: {{llm_1.output}}",
+                            }
+                        ]
+                    },
+                },
+                x=1200,
+                y=100,
+            ),
+            _node(
+                "end_rejected",
+                "END",
+                {
+                    "label": "Rejected",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "Request rejected.",
+                            }
+                        ]
+                    },
+                },
+                x=1200,
+                y=400,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-llm", "start_1", "llm_1"),
+            _edge("e-llm-human", "llm_1", "human_1"),
+            _edge("e-human-cond", "human_1", "cond_1"),
+            _edge(
+                "e-cond-approved",
+                "cond_1",
+                "end_approved",
+                source_handle="approved",
+            ),
+            _edge(
+                "e-cond-rejected",
+                "cond_1",
+                "end_rejected",
+                source_handle="rejected",
+            ),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Template 10 — Multi-Step Data Processing
+# ---------------------------------------------------------------------------
+
+_MULTI_STEP_DATA_PROCESSING: dict[str, Any] = {
+    "id": "multi-step-data-processing",
+    "name": "Multi-Step Data Processing",
+    "description": (
+        "Validate, transform, and process data through a multi-step "
+        "pipeline with error handling."
+    ),
+    "icon": "Layers",
+    "category": "data",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "raw_data",
+                                "type": "string",
+                                "required": True,
+                                "description": "Raw data to validate and process",
+                            }
+                        ]
+                    },
+                },
+                x=0,
+                y=250,
+            ),
+            _node(
+                "code_1",
+                "CODE_EXECUTION",
+                {
+                    "label": "Validate Data",
+                    "language": "python",
+                    "code": (
+                        "import json\n\n"
+                        "try:\n"
+                        "    data = json.loads(raw_data) if isinstance(raw_data, str) else raw_data\n"
+                        "    is_valid = isinstance(data, (list, dict)) and len(data) > 0\n"
+                        "except Exception:\n"
+                        "    is_valid = False\n"
+                        "    data = None\n\n"
+                        "result = {'is_valid': is_valid, 'data': data}\n"
+                    ),
+                    "output_variable": "validation",
+                },
+                x=300,
+                y=250,
+            ),
+            _node(
+                "cond_1",
+                "CONDITION_BRANCH",
+                {
+                    "label": "Is Valid?",
+                    "conditions": [
+                        {
+                            "id": "yes",
+                            "handle": "yes",
+                            "variable": "{{code_1.validation.is_valid}}",
+                            "operator": "==",
+                            "value": "True",
+                        }
+                    ],
+                    "default_handle": "no",
+                },
+                x=600,
+                y=250,
+            ),
+            _node(
+                "transform_1",
+                "TRANSFORM",
+                {
+                    "label": "Transform Data",
+                    "input_variable": "{{code_1.validation.data}}",
+                    "operations": [
+                        {"type": "type_cast", "config": {"target_type": "json"}},
+                    ],
+                    "output_variable": "transformed",
+                },
+                x=900,
+                y=100,
+            ),
+            _node(
+                "list_1",
+                "LIST_OPERATION",
+                {
+                    "label": "Process Items",
+                    "input_variable": "{{transform_1.transformed}}",
+                    "operation": "map",
+                    "expression": "str(item)",
+                    "output_variable": "processed",
+                },
+                x=1200,
+                y=100,
+            ),
+            _node(
+                "end_success",
+                "END",
+                {
+                    "label": "Success",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "{{list_1.processed}}",
+                            }
+                        ]
+                    },
+                },
+                x=1500,
+                y=100,
+            ),
+            _node(
+                "end_error",
+                "END",
+                {
+                    "label": "Error",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "Validation failed: input data is invalid.",
+                            }
+                        ]
+                    },
+                },
+                x=900,
+                y=400,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-code", "start_1", "code_1"),
+            _edge("e-code-cond", "code_1", "cond_1"),
+            _edge("e-cond-transform", "cond_1", "transform_1", source_handle="yes"),
+            _edge("e-transform-list", "transform_1", "list_1"),
+            _edge("e-list-end", "list_1", "end_success"),
+            _edge("e-cond-error", "cond_1", "end_error", source_handle="no"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Template 11 — Knowledge-Enhanced Agent
+# ---------------------------------------------------------------------------
+
+_KNOWLEDGE_ENHANCED_AGENT: dict[str, Any] = {
+    "id": "knowledge-enhanced-agent",
+    "name": "Knowledge-Enhanced Agent",
+    "description": (
+        "Enhance user queries, retrieve knowledge, and generate informed responses."
+    ),
+    "icon": "BrainCircuit",
+    "category": "ai",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "user_query",
+                                "type": "string",
+                                "required": True,
+                                "description": "User query to answer with knowledge",
+                            }
+                        ]
+                    },
+                },
+                x=0,
+                y=200,
+            ),
+            _node(
+                "qu_1",
+                "QUESTION_UNDERSTANDING",
+                {
+                    "label": "Rewrite Query",
+                    "input_variable": "{{input.user_query}}",
+                    "mode": "rewrite",
+                    "output_variable": "enhanced_query",
+                },
+                x=300,
+                y=200,
+            ),
+            _node(
+                "kb_1",
+                "KNOWLEDGE_RETRIEVAL",
+                {
+                    "label": "Knowledge Retrieval",
+                    "knowledge_base_id": "",
+                    "query": "{{qu_1.enhanced_query}}",
+                    "top_k": 5,
+                },
+                x=600,
+                y=200,
+            ),
+            _node(
+                "llm_1",
+                "LLM",
+                {
+                    "label": "Answer with Context",
+                    "prompt_template": (
+                        "You are a knowledgeable assistant. Use the following "
+                        "retrieved context to answer the user's question accurately. "
+                        "If the context is insufficient, say so clearly.\n\n"
+                        "Context:\n{{kb_1.output}}\n\n"
+                        "Original question: {{input.user_query}}\n"
+                        "Enhanced question: {{qu_1.enhanced_query}}"
+                    ),
+                    "model": "",
+                },
+                x=900,
+                y=200,
+            ),
+            _node(
+                "end_1",
+                "END",
+                {
+                    "label": "End",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "{{llm_1.output}}",
+                            }
+                        ]
+                    },
+                },
+                x=1200,
+                y=200,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-qu", "start_1", "qu_1"),
+            _edge("e-qu-kb", "qu_1", "kb_1"),
+            _edge("e-kb-llm", "kb_1", "llm_1"),
+            _edge("e-llm-end", "llm_1", "end_1"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Template 12 — Iterative Review Loop
+# ---------------------------------------------------------------------------
+
+_ITERATIVE_REVIEW_LOOP: dict[str, Any] = {
+    "id": "iterative-review-loop",
+    "name": "Iterative Review Loop",
+    "description": (
+        "Repeatedly review and improve text using LLM feedback "
+        "up to a maximum number of iterations."
+    ),
+    "icon": "RefreshCcw",
+    "category": "advanced",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "draft_text",
+                                "type": "string",
+                                "required": True,
+                                "description": "Initial draft text to review and improve",
+                            }
+                        ]
+                    },
+                },
+                x=0,
+                y=200,
+            ),
+            _node(
+                "loop_1",
+                "LOOP",
+                {
+                    "label": "Review Loop",
+                    "condition": "{{review_count}} < 3",
+                    "max_iterations": 3,
+                    "body_nodes": ["llm_review", "va_increment"],
+                },
+                x=300,
+                y=200,
+            ),
+            _node(
+                "llm_review",
+                "LLM",
+                {
+                    "label": "Review & Improve",
+                    "prompt_template": (
+                        "You are an expert editor. Review the following text and "
+                        "improve it for clarity, grammar, and style. Return "
+                        "only the improved version.\n\n"
+                        "Text:\n{{input.draft_text}}"
+                    ),
+                    "model": "",
+                },
+                x=600,
+                y=200,
+            ),
+            _node(
+                "va_increment",
+                "VARIABLE_ASSIGN",
+                {
+                    "label": "Increment Counter",
+                    "assignments": [
+                        {"variable": "review_count", "expression": "review_count + 1"},
+                    ],
+                },
+                x=900,
+                y=200,
+            ),
+            _node(
+                "end_1",
+                "END",
+                {
+                    "label": "End",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "{{llm_review.output}}",
+                            }
+                        ]
+                    },
+                },
+                x=1200,
+                y=200,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-loop", "start_1", "loop_1"),
+            _edge("e-loop-llm", "loop_1", "llm_review"),
+            _edge("e-llm-va", "llm_review", "va_increment"),
+            _edge("e-va-end", "va_increment", "end_1"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -753,6 +1253,10 @@ WORKFLOW_TEMPLATES: list[dict[str, Any]] = [
     _AGENT_WITH_KB,
     _LIST_TRANSFORM_PIPELINE,
     _QUESTION_ENHANCED_QA,
+    _HUMAN_APPROVAL_PIPELINE,
+    _MULTI_STEP_DATA_PROCESSING,
+    _KNOWLEDGE_ENHANCED_AGENT,
+    _ITERATIVE_REVIEW_LOOP,
 ]
 
 _TEMPLATES_BY_ID: dict[str, dict[str, Any]] = {t["id"]: t for t in WORKFLOW_TEMPLATES}

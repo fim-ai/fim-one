@@ -2546,6 +2546,69 @@ class QuestionUnderstandingExecutor:
 
 
 # ---------------------------------------------------------------------------
+# Human Intervention node
+# ---------------------------------------------------------------------------
+
+
+class HumanInterventionExecutor:
+    """Pause for human review/approval. Currently auto-approves (stub)."""
+
+    @staticmethod
+    def output_schema() -> list[dict[str, str]]:
+        return [
+            {"name": "output", "type": "object", "description": "Approval result with status, message, and assignee"},
+        ]
+
+    async def execute(
+        self,
+        node: WorkflowNodeDef,
+        store: VariableStore,
+        context: ExecutionContext,
+    ) -> NodeResult:
+        t0 = time.time()
+        try:
+            prompt_message = await store.interpolate(
+                node.data.get("prompt_message") or "Please review and approve."
+            )
+            assignee = node.data.get("assignee", "")
+            timeout_hours = node.data.get("timeout_hours", 24)
+            output_var = node.data.get("output_variable", "approval_result")
+
+            # In production, this would create a review task and pause execution.
+            # For now, auto-approve immediately.
+            logger.info(
+                "HumanIntervention node %s: prompt=%r, assignee=%r, timeout=%dh",
+                node.id, prompt_message, assignee, timeout_hours,
+            )
+
+            result = {
+                "status": "approved",
+                "message": f"Auto-approved (human review pending implementation). Prompt: {prompt_message}",
+                "assignee": assignee,
+                "timeout_hours": timeout_hours,
+            }
+
+            await store.set(output_var, result)
+            await store.set(f"{node.id}.output", result)
+            await store.set(f"{node.id}.{output_var}", result)
+
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output=result,
+                duration_ms=_ms_since(t0),
+            )
+        except Exception as exc:
+            logger.exception("HumanIntervention node %s failed", node.id)
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.FAILED,
+                error=f"HumanIntervention error: {exc}",
+                duration_ms=_ms_since(t0),
+            )
+
+
+# ---------------------------------------------------------------------------
 # Registry — map NodeType to executor class
 # ---------------------------------------------------------------------------
 
@@ -2570,6 +2633,7 @@ EXECUTOR_REGISTRY: dict[NodeType, type] = {
     NodeType.TRANSFORM: TransformExecutor,
     NodeType.DOCUMENT_EXTRACTOR: DocumentExtractorExecutor,
     NodeType.QUESTION_UNDERSTANDING: QuestionUnderstandingExecutor,
+    NodeType.HUMAN_INTERVENTION: HumanInterventionExecutor,
 }
 
 

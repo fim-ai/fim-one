@@ -391,6 +391,14 @@ def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
                     code="missing_input_variable",
                     message="Question understanding node has no input variable",
                 ))
+        elif node.type == NodeType.HUMAN_INTERVENTION:
+            prompt_msg = node.data.get("prompt_message", "")
+            if not prompt_msg:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="empty_prompt_message",
+                    message="Human intervention node has no review prompt",
+                ))
         elif node.type == NodeType.PARAMETER_EXTRACTOR:
             if not node.data.get("input_text"):
                 warnings.append(BlueprintWarning(

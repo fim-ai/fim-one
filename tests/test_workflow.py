@@ -6161,7 +6161,7 @@ class TestTemplatesPhase2:
         from fim_one.core.workflow.templates import list_templates
 
         templates = list_templates()
-        assert len(templates) == 8
+        assert len(templates) == 12
 
     def test_template_ids_unique(self):
         """All template IDs should be unique."""
@@ -6205,3 +6205,272 @@ class TestTemplatesPhase2:
         # Mutating one should not affect the other
         t1["blueprint"]["nodes"].append({"id": "mutated"})
         assert len(t1["blueprint"]["nodes"]) != len(t2["blueprint"]["nodes"])
+
+
+# =========================================================================
+# HumanIntervention node executor tests
+# =========================================================================
+
+
+class TestHumanInterventionNode:
+    """Test the HumanInterventionExecutor (auto-approve stub)."""
+
+    @pytest.mark.asyncio
+    async def test_basic_auto_approve_defaults(self):
+        """HumanIntervention should auto-approve with default values."""
+        from fim_one.core.workflow.nodes import HumanInterventionExecutor
+
+        node = WorkflowNodeDef(
+            id="human_1",
+            type=NodeType.HUMAN_INTERVENTION,
+            data={"type": "HUMAN_INTERVENTION"},
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = HumanInterventionExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output["status"] == "approved"
+        assert result.output["assignee"] == ""
+        assert result.output["timeout_hours"] == 24
+
+    @pytest.mark.asyncio
+    async def test_custom_prompt_with_variable_interpolation(self):
+        """HumanIntervention should interpolate {{variables}} in prompt_message."""
+        from fim_one.core.workflow.nodes import HumanInterventionExecutor
+
+        node = WorkflowNodeDef(
+            id="human_1",
+            type=NodeType.HUMAN_INTERVENTION,
+            data={
+                "type": "HUMAN_INTERVENTION",
+                "prompt_message": "Review request from {{input.user_name}}",
+            },
+        )
+        store = VariableStore()
+        await store.set("input.user_name", "Alice")
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = HumanInterventionExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert "Alice" in result.output["message"]
+
+    @pytest.mark.asyncio
+    async def test_custom_assignee_and_timeout(self):
+        """HumanIntervention should pass through assignee and timeout_hours."""
+        from fim_one.core.workflow.nodes import HumanInterventionExecutor
+
+        node = WorkflowNodeDef(
+            id="human_1",
+            type=NodeType.HUMAN_INTERVENTION,
+            data={
+                "type": "HUMAN_INTERVENTION",
+                "assignee": "bob@example.com",
+                "timeout_hours": 48,
+            },
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = HumanInterventionExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert result.output["assignee"] == "bob@example.com"
+        assert result.output["timeout_hours"] == 48
+
+    @pytest.mark.asyncio
+    async def test_output_variable_assignment(self):
+        """HumanIntervention should set the output variable in the store."""
+        from fim_one.core.workflow.nodes import HumanInterventionExecutor
+
+        node = WorkflowNodeDef(
+            id="human_1",
+            type=NodeType.HUMAN_INTERVENTION,
+            data={
+                "type": "HUMAN_INTERVENTION",
+                "output_variable": "review_result",
+            },
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = HumanInterventionExecutor()
+        await executor.execute(node, store, ctx)
+
+        stored = await store.get("review_result")
+        assert stored is not None
+        assert stored["status"] == "approved"
+
+        # Also check node-namespaced output
+        node_output = await store.get("human_1.output")
+        assert node_output is not None
+        assert node_output["status"] == "approved"
+
+    @pytest.mark.asyncio
+    async def test_empty_prompt_uses_default(self):
+        """HumanIntervention with empty prompt_message should use default."""
+        from fim_one.core.workflow.nodes import HumanInterventionExecutor
+
+        node = WorkflowNodeDef(
+            id="human_1",
+            type=NodeType.HUMAN_INTERVENTION,
+            data={
+                "type": "HUMAN_INTERVENTION",
+                "prompt_message": "",
+            },
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = HumanInterventionExecutor()
+        result = await executor.execute(node, store, ctx)
+        assert result.status == NodeStatus.COMPLETED
+        assert "Please review and approve" in result.output["message"]
+
+    @pytest.mark.asyncio
+    async def test_missing_output_variable_uses_default(self):
+        """HumanIntervention with no output_variable key should use 'approval_result'."""
+        from fim_one.core.workflow.nodes import HumanInterventionExecutor
+
+        node = WorkflowNodeDef(
+            id="human_1",
+            type=NodeType.HUMAN_INTERVENTION,
+            data={"type": "HUMAN_INTERVENTION"},
+        )
+        store = VariableStore()
+        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+
+        executor = HumanInterventionExecutor()
+        await executor.execute(node, store, ctx)
+
+        stored = await store.get("approval_result")
+        assert stored is not None
+        assert stored["status"] == "approved"
+
+    @pytest.mark.asyncio
+    async def test_validation_warning_empty_prompt(self):
+        """validate_blueprint should warn when HUMAN_INTERVENTION has no prompt_message."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "human_1",
+                    "type": "humanIntervention",
+                    "data": {
+                        "type": "HUMAN_INTERVENTION",
+                    },
+                },
+                _end_node(),
+            ],
+            "edges": [
+                _edge("start_1", "human_1"),
+                _edge("human_1", "end_1"),
+            ],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "empty_prompt_message" in codes
+
+    @pytest.mark.asyncio
+    async def test_validation_no_warning_with_prompt(self):
+        """validate_blueprint should NOT warn when HUMAN_INTERVENTION has a prompt_message."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "human_1",
+                    "type": "humanIntervention",
+                    "data": {
+                        "type": "HUMAN_INTERVENTION",
+                        "prompt_message": "Please review this.",
+                    },
+                },
+                _end_node(),
+            ],
+            "edges": [
+                _edge("start_1", "human_1"),
+                _edge("human_1", "end_1"),
+            ],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "empty_prompt_message" not in codes
+
+
+# =========================================================================
+# New template tests
+# =========================================================================
+
+
+class TestNewTemplates:
+    """Test the 4 new workflow templates parse correctly."""
+
+    def test_human_approval_pipeline_parses(self):
+        """Human Approval Pipeline template should parse without errors."""
+        from fim_one.core.workflow.templates import get_template
+
+        tpl = get_template("human-approval-pipeline")
+        assert tpl is not None
+        bp = parse_blueprint(tpl["blueprint"])
+        type_set = {n.type for n in bp.nodes}
+        assert NodeType.START in type_set
+        assert NodeType.END in type_set
+        assert NodeType.LLM in type_set
+        assert NodeType.HUMAN_INTERVENTION in type_set
+        assert NodeType.CONDITION_BRANCH in type_set
+        order = topological_sort(bp)
+        assert order[0] == "start_1"
+
+    def test_multi_step_data_processing_parses(self):
+        """Multi-Step Data Processing template should parse without errors."""
+        from fim_one.core.workflow.templates import get_template
+
+        tpl = get_template("multi-step-data-processing")
+        assert tpl is not None
+        bp = parse_blueprint(tpl["blueprint"])
+        type_set = {n.type for n in bp.nodes}
+        assert NodeType.START in type_set
+        assert NodeType.END in type_set
+        assert NodeType.CODE_EXECUTION in type_set
+        assert NodeType.CONDITION_BRANCH in type_set
+        assert NodeType.TRANSFORM in type_set
+        assert NodeType.LIST_OPERATION in type_set
+        order = topological_sort(bp)
+        assert order[0] == "start_1"
+
+    def test_knowledge_enhanced_agent_parses(self):
+        """Knowledge-Enhanced Agent template should parse without errors."""
+        from fim_one.core.workflow.templates import get_template
+
+        tpl = get_template("knowledge-enhanced-agent")
+        assert tpl is not None
+        bp = parse_blueprint(tpl["blueprint"])
+        type_set = {n.type for n in bp.nodes}
+        assert NodeType.START in type_set
+        assert NodeType.END in type_set
+        assert NodeType.QUESTION_UNDERSTANDING in type_set
+        assert NodeType.KNOWLEDGE_RETRIEVAL in type_set
+        assert NodeType.LLM in type_set
+        order = topological_sort(bp)
+        assert order[0] == "start_1"
+        assert order[-1] == "end_1"
+
+    def test_iterative_review_loop_parses(self):
+        """Iterative Review Loop template should parse without errors."""
+        from fim_one.core.workflow.templates import get_template
+
+        tpl = get_template("iterative-review-loop")
+        assert tpl is not None
+        bp = parse_blueprint(tpl["blueprint"])
+        type_set = {n.type for n in bp.nodes}
+        assert NodeType.START in type_set
+        assert NodeType.END in type_set
+        assert NodeType.LOOP in type_set
+        assert NodeType.LLM in type_set
+        assert NodeType.VARIABLE_ASSIGN in type_set
+        order = topological_sort(bp)
+        assert order[0] == "start_1"
