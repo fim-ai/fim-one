@@ -1241,6 +1241,212 @@ _ITERATIVE_REVIEW_LOOP: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
+# Template 13 — Secure API Integration (ENV + HTTP)
+# ---------------------------------------------------------------------------
+
+_SECURE_API_INTEGRATION: dict[str, Any] = {
+    "id": "secure-api-integration",
+    "name": "Secure API Integration",
+    "description": "Read API keys from encrypted env storage, then call an external API with authentication",
+    "icon": "KeyRound",
+    "category": "integration",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "endpoint",
+                                "type": "string",
+                                "required": True,
+                                "description": "API endpoint path",
+                            },
+                            {
+                                "name": "payload",
+                                "type": "string",
+                                "required": False,
+                                "default": "{}",
+                                "description": "Request body JSON",
+                            },
+                        ]
+                    },
+                },
+                x=100, y=200,
+            ),
+            _node(
+                "env_creds",
+                "ENV",
+                {
+                    "label": "Load Credentials",
+                    "env_keys": ["API_KEY", "API_BASE_URL"],
+                    "output_variable": "credentials",
+                },
+                x=350, y=200,
+            ),
+            _node(
+                "http_call",
+                "HTTP_REQUEST",
+                {
+                    "label": "Call External API",
+                    "method": "POST",
+                    "url": "{{env_creds.API_BASE_URL}}{{start.endpoint}}",
+                    "headers": {
+                        "Authorization": "Bearer {{env_creds.API_KEY}}",
+                        "Content-Type": "application/json",
+                    },
+                    "body": "{{start.payload}}",
+                    "output_variable": "api_response",
+                },
+                x=600, y=200,
+            ),
+            _node(
+                "cond_check",
+                "CONDITION_BRANCH",
+                {
+                    "label": "Check Response",
+                    "mode": "expression",
+                    "conditions": [
+                        {
+                            "id": "success",
+                            "label": "Success",
+                            "expression": "api_response.status_code == 200",
+                        },
+                    ],
+                },
+                x=850, y=200,
+            ),
+            _node(
+                "end_success",
+                "END",
+                {
+                    "label": "Success",
+                    "output_mapping": {
+                        "response": "{{http_call.api_response}}",
+                        "status": "success",
+                    },
+                },
+                x=1100, y=100,
+            ),
+            _node(
+                "end_error",
+                "END",
+                {
+                    "label": "Error",
+                    "output_mapping": {
+                        "error": "{{http_call.api_response}}",
+                        "status": "error",
+                    },
+                },
+                x=1100, y=300,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-env", "start_1", "env_creds"),
+            _edge("e-env-http", "env_creds", "http_call"),
+            _edge("e-http-cond", "http_call", "cond_check"),
+            _edge("e-cond-success", "cond_check", "end_success", source_handle="success"),
+            _edge("e-cond-error", "cond_check", "end_error", source_handle="default"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Template 14 — Sub-Workflow Orchestration
+# ---------------------------------------------------------------------------
+
+_SUB_WORKFLOW_ORCHESTRATION: dict[str, Any] = {
+    "id": "sub-workflow-orchestration",
+    "name": "Sub-Workflow Orchestration",
+    "description": "Process input through an LLM, then delegate to a sub-workflow for specialized handling",
+    "icon": "GitBranch",
+    "category": "basic",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "task_description",
+                                "type": "string",
+                                "required": True,
+                                "description": "What needs to be done",
+                            },
+                        ]
+                    },
+                },
+                x=100, y=200,
+            ),
+            _node(
+                "llm_classify",
+                "LLM",
+                {
+                    "label": "Analyze Task",
+                    "prompt_template": "Analyze this task and extract the key parameters:\n\n{{start.task_description}}\n\nReturn a JSON object with: category, priority, and summary.",
+                    "output_variable": "analysis",
+                    "temperature": 0.3,
+                },
+                x=350, y=200,
+            ),
+            _node(
+                "sub_process",
+                "SUB_WORKFLOW",
+                {
+                    "label": "Delegate to Handler",
+                    "workflow_id": "",
+                    "input_mapping": {
+                        "task": "{{start.task_description}}",
+                        "analysis": "{{llm_classify.analysis}}",
+                    },
+                    "output_variable": "handler_result",
+                },
+                x=600, y=200,
+            ),
+            _node(
+                "llm_summarize",
+                "LLM",
+                {
+                    "label": "Summarize Result",
+                    "prompt_template": "Summarize the processing result:\n\nOriginal task: {{start.task_description}}\nHandler output: {{sub_process.handler_result}}\n\nProvide a brief status update.",
+                    "output_variable": "summary",
+                    "temperature": 0.5,
+                },
+                x=850, y=200,
+            ),
+            _node(
+                "end_1",
+                "END",
+                {
+                    "label": "Done",
+                    "output_mapping": {
+                        "summary": "{{llm_summarize.summary}}",
+                        "details": "{{sub_process.handler_result}}",
+                    },
+                },
+                x=1100, y=200,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-llm", "start_1", "llm_classify"),
+            _edge("e-llm-sub", "llm_classify", "sub_process"),
+            _edge("e-sub-sum", "sub_process", "llm_summarize"),
+            _edge("e-sum-end", "llm_summarize", "end_1"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -1257,6 +1463,8 @@ WORKFLOW_TEMPLATES: list[dict[str, Any]] = [
     _MULTI_STEP_DATA_PROCESSING,
     _KNOWLEDGE_ENHANCED_AGENT,
     _ITERATIVE_REVIEW_LOOP,
+    _SECURE_API_INTEGRATION,
+    _SUB_WORKFLOW_ORCHESTRATION,
 ]
 
 _TEMPLATES_BY_ID: dict[str, dict[str, Any]] = {t["id"]: t for t in WORKFLOW_TEMPLATES}

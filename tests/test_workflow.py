@@ -6161,7 +6161,7 @@ class TestTemplatesPhase2:
         from fim_one.core.workflow.templates import list_templates
 
         templates = list_templates()
-        assert len(templates) == 12
+        assert len(templates) == 14
 
     def test_template_ids_unique(self):
         """All template IDs should be unique."""
@@ -6472,6 +6472,36 @@ class TestNewTemplates:
         assert NodeType.LOOP in type_set
         assert NodeType.LLM in type_set
         assert NodeType.VARIABLE_ASSIGN in type_set
+        order = topological_sort(bp)
+        assert order[0] == "start_1"
+
+    def test_secure_api_integration_parses(self):
+        """Secure API Integration template should parse without errors."""
+        from fim_one.core.workflow.templates import get_template
+
+        tpl = get_template("secure-api-integration")
+        assert tpl is not None
+        bp = parse_blueprint(tpl["blueprint"])
+        type_set = {n.type for n in bp.nodes}
+        assert NodeType.START in type_set
+        assert NodeType.ENV in type_set
+        assert NodeType.HTTP_REQUEST in type_set
+        assert NodeType.CONDITION_BRANCH in type_set
+        order = topological_sort(bp)
+        assert order[0] == "start_1"
+
+    def test_sub_workflow_orchestration_parses(self):
+        """Sub-Workflow Orchestration template should parse without errors."""
+        from fim_one.core.workflow.templates import get_template
+
+        tpl = get_template("sub-workflow-orchestration")
+        assert tpl is not None
+        bp = parse_blueprint(tpl["blueprint"])
+        type_set = {n.type for n in bp.nodes}
+        assert NodeType.START in type_set
+        assert NodeType.END in type_set
+        assert NodeType.LLM in type_set
+        assert NodeType.SUB_WORKFLOW in type_set
         order = topological_sort(bp)
         assert order[0] == "start_1"
 
