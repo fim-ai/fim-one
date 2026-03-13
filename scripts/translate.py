@@ -589,7 +589,15 @@ def _translate_sections(
 
         def _translate_one(idx: int, section: str) -> tuple[int, str | None]:
             try:
-                return idx, llm_chat(config, system_prompt, section)
+                translated = llm_chat(config, system_prompt, section)
+                # Preserve trailing whitespace from original section.
+                # LLMs often strip trailing newlines, which causes sections
+                # to be glued together (e.g. "...value).## Next Heading").
+                orig_stripped = section.rstrip()
+                trailing = section[len(orig_stripped):]
+                if trailing and not translated.endswith(trailing):
+                    translated = translated.rstrip() + trailing
+                return idx, translated
             except Exception as exc:
                 tprint(f"  [{locale}] {src_path.name}: WARNING section {idx} failed — {exc}")
                 return idx, None  # None = failure, do NOT cache
