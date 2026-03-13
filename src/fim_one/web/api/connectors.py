@@ -166,6 +166,14 @@ def _connector_to_response(
         org_id=getattr(connector, "org_id", None),
         allow_fallback=getattr(connector, "allow_fallback", True),
         has_default_credentials=has_default_credentials,
+        publish_status=getattr(connector, "publish_status", None),
+        reviewed_by=getattr(connector, "reviewed_by", None),
+        reviewed_at=(
+            connector.reviewed_at.isoformat()
+            if getattr(connector, "reviewed_at", None)
+            else None
+        ),
+        review_note=getattr(connector, "review_note", None),
         actions=[_action_to_response(a) for a in (connector.actions or [])],
         created_at=connector.created_at.isoformat() if connector.created_at else "",
         updated_at=connector.updated_at.isoformat() if connector.updated_at else None,
@@ -388,6 +396,10 @@ async def update_connector(
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(connector, "auth_config")
 
+    from fim_one.web.publish_review import check_edit_revert
+
+    reverted = await check_edit_revert(connector, db)
+
     await db.commit()
 
     # Reload with actions relationship for response serialization
@@ -398,7 +410,10 @@ async def update_connector(
     )
     connector = result.scalar_one()
     has_creds = await _has_default_credential(connector.id, db)
-    return ApiResponse(data=_connector_to_response(connector, has_default_credentials=has_creds).model_dump())
+    data = _connector_to_response(connector, has_default_credentials=has_creds).model_dump()
+    if reverted:
+        data["publish_status_reverted"] = True
+    return ApiResponse(data=data)
 
 
 @router.delete("/{connector_id}", response_model=ApiResponse)
@@ -411,6 +426,37 @@ async def delete_connector(
     await db.delete(connector)
     await db.commit()
     return ApiResponse(data={"deleted": connector_id})
+
+
+# ---------------------------------------------------------------------------
+# Resubmit
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{connector_id}/resubmit", response_model=ApiResponse)
+async def resubmit_connector(
+    connector_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Resubmit a rejected connector for review."""
+    connector = await _get_owned_connector(connector_id, current_user.id, db)
+    if connector.publish_status != "rejected":
+        raise AppError("not_rejected", status_code=400)
+    connector.publish_status = "pending_review"
+    connector.reviewed_by = None
+    connector.reviewed_at = None
+    connector.review_note = None
+    await db.commit()
+    await db.refresh(connector)
+
+    result = await db.execute(
+        select(Connector)
+        .options(selectinload(Connector.actions))
+        .where(Connector.id == connector.id)
+    )
+    connector = result.scalar_one()
+    return ApiResponse(data=_connector_to_response(connector).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -535,6 +581,8 @@ async def publish_connector(
         await require_org_member(body.org_id, current_user, db)
         connector.visibility = "org"
         connector.org_id = body.org_id
+        from fim_one.web.publish_review import apply_publish_status
+        await apply_publish_status(connector, body.org_id, db)
     elif body.scope == "global":
         if not current_user.is_admin:
             raise AppError("admin_required_for_global", status_code=403)

@@ -52,6 +52,7 @@ class OrgUpdate(BaseModel):
     slug: str | None = Field(None, max_length=100)
     is_active: bool | None = None
     settings: dict | None = None
+    require_publish_review: bool | None = None
 
 
 class MemberAdd(BaseModel):
@@ -74,6 +75,7 @@ class OrgResponse(BaseModel):
     parent_id: str | None = None
     settings: dict | None = None
     is_active: bool
+    require_publish_review: bool = False
     created_at: str
     updated_at: str | None = None
 
@@ -118,6 +120,7 @@ def _org_to_response(org: Organization) -> OrgResponse:
         parent_id=org.parent_id,
         settings=org.settings,
         is_active=org.is_active,
+        require_publish_review=getattr(org, "require_publish_review", False),
         created_at=org.created_at.isoformat() if org.created_at else "",
         updated_at=org.updated_at.isoformat() if org.updated_at else None,
     )
@@ -134,6 +137,7 @@ def _org_with_role(org: Organization, role: str, member_count: int = 0) -> OrgWi
         parent_id=org.parent_id,
         settings=org.settings,
         is_active=org.is_active,
+        require_publish_review=getattr(org, "require_publish_review", False),
         created_at=org.created_at.isoformat() if org.created_at else "",
         updated_at=org.updated_at.isoformat() if org.updated_at else None,
         role=role,

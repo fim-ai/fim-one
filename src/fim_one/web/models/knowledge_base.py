@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Column, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -34,6 +35,12 @@ class KnowledgeBase(UUIDPKMixin, TimestampMixin, Base):
     org_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("organizations.id"), nullable=True, index=True
     )
+
+    # Publish review fields
+    publish_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="knowledge_bases", lazy="raise")
     documents: Mapped[list[KBDocument]] = relationship(

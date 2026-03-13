@@ -23,8 +23,18 @@ def build_visibility_filter(model, user_id: str, user_org_ids: list[str]):
     ]
 
     if user_org_ids:
+        # Only show org resources that either don't need review or are approved.
+        # pending_review and rejected resources are hidden from other org members
+        # (the owner still sees them via the user_id == user_id condition above).
         conditions.append(
-            and_(model.visibility == "org", model.org_id.in_(user_org_ids))
+            and_(
+                model.visibility == "org",
+                model.org_id.in_(user_org_ids),
+                or_(
+                    model.publish_status == None,  # noqa: E711 — no review needed
+                    model.publish_status == "approved",
+                ),
+            )
         )
 
     # For global: check is_global for backward compat, or visibility == 'global'

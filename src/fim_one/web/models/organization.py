@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import sqlalchemy as sa
 from sqlalchemy import JSON, Boolean, Column, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +32,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     settings: Any = Column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default="TRUE"
+    )
+    require_publish_review: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=sa.text("FALSE")
     )
 
     owner: Mapped[User] = relationship(foreign_keys=[owner_id], lazy="raise")

@@ -45,6 +45,12 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         is_builder=agent.is_builder,
         visibility=getattr(agent, "visibility", "personal"),
         org_id=getattr(agent, "org_id", None),
+        publish_status=getattr(agent, "publish_status", None),
+        reviewed_by=getattr(agent, "reviewed_by", None),
+        reviewed_at=(
+            agent.reviewed_at.isoformat() if getattr(agent, "reviewed_at", None) else None
+        ),
+        review_note=getattr(agent, "review_note", None),
         created_at=agent.created_at.isoformat() if agent.created_at else "",
         updated_at=agent.updated_at.isoformat() if agent.updated_at else None,
     )
@@ -214,10 +220,17 @@ async def update_agent(
     for field, value in update_data.items():
         setattr(agent, field, value)
 
+    from fim_one.web.publish_review import check_edit_revert
+
+    reverted = await check_edit_revert(agent, db)
+
     await db.commit()
     result = await db.execute(select(Agent).where(Agent.id == agent.id))
     agent = result.scalar_one()
-    return ApiResponse(data=_agent_to_response(agent).model_dump())
+    data = _agent_to_response(agent).model_dump()
+    if reverted:
+        data["publish_status_reverted"] = True
+    return ApiResponse(data=data)
 
 
 @router.delete("/{agent_id}", response_model=ApiResponse)
@@ -254,6 +267,8 @@ async def publish_agent(
         await require_org_member(body.org_id, current_user, db)
         agent.visibility = "org"
         agent.org_id = body.org_id
+        from fim_one.web.publish_review import apply_publish_status
+        await apply_publish_status(agent, body.org_id, db)
     elif body.scope == "global":
         if not current_user.is_admin:
             raise AppError("admin_required_for_global", status_code=403)
@@ -296,6 +311,25 @@ async def publish_agent(
     data = _agent_to_response(agent).model_dump()
     data["warnings"] = warnings
     return ApiResponse(data=data)
+
+
+@router.post("/{agent_id}/resubmit", response_model=ApiResponse)
+async def resubmit_agent(
+    agent_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Resubmit a rejected agent for review."""
+    agent = await _get_owned_agent(agent_id, current_user.id, db)
+    if agent.publish_status != "rejected":
+        raise AppError("not_rejected", status_code=400)
+    agent.publish_status = "pending_review"
+    agent.reviewed_by = None
+    agent.reviewed_at = None
+    agent.review_note = None
+    await db.commit()
+    await db.refresh(agent)
+    return ApiResponse(data=_agent_to_response(agent).model_dump())
 
 
 @router.post("/{agent_id}/unpublish", response_model=ApiResponse)

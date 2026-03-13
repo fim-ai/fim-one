@@ -57,6 +57,10 @@ class AgentResponse(BaseModel):
     is_builder: bool = False
     visibility: str = "personal"
     org_id: str | None = None
+    publish_status: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    review_note: str | None = None
     created_at: str
     updated_at: str | None
 

@@ -48,6 +48,12 @@ def _to_response(srv: MCPServer) -> MCPServerResponse:
         tool_count=srv.tool_count,
         visibility=getattr(srv, "visibility", "personal"),
         org_id=getattr(srv, "org_id", None),
+        publish_status=getattr(srv, "publish_status", None),
+        reviewed_by=getattr(srv, "reviewed_by", None),
+        reviewed_at=(
+            srv.reviewed_at.isoformat() if getattr(srv, "reviewed_at", None) else None
+        ),
+        review_note=getattr(srv, "review_note", None),
         created_at=srv.created_at.isoformat() if srv.created_at else "",
         updated_at=srv.updated_at.isoformat() if srv.updated_at else None,
     )
@@ -202,11 +208,18 @@ async def update_mcp_server(
     for field, value in update_data.items():
         setattr(server, field, value)
 
+    from fim_one.web.publish_review import check_edit_revert
+
+    reverted = await check_edit_revert(server, db)
+
     await db.commit()
 
     result = await db.execute(select(MCPServer).where(MCPServer.id == server.id))
     server = result.scalar_one()
-    return ApiResponse(data=_to_response(server).model_dump())
+    data = _to_response(server).model_dump()
+    if reverted:
+        data["publish_status_reverted"] = True
+    return ApiResponse(data=data)
 
 
 @router.post("/{server_id}/test", response_model=ApiResponse)
@@ -281,6 +294,8 @@ async def publish_mcp_server(
         await require_org_member(body.org_id, current_user, db)
         server.visibility = "org"
         server.org_id = body.org_id
+        from fim_one.web.publish_review import apply_publish_status
+        await apply_publish_status(server, body.org_id, db)
     elif body.scope == "global":
         if not current_user.is_admin:
             raise AppError("admin_required_for_global", status_code=403)
@@ -291,6 +306,25 @@ async def publish_mcp_server(
     else:
         raise AppError("invalid_scope", status_code=400)
 
+    await db.commit()
+    await db.refresh(server)
+    return ApiResponse(data=_to_response(server).model_dump())
+
+
+@router.post("/{server_id}/resubmit", response_model=ApiResponse)
+async def resubmit_mcp_server(
+    server_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Resubmit a rejected MCP server for review."""
+    server = await _get_owned_server(server_id, current_user.id, db)
+    if server.publish_status != "rejected":
+        raise AppError("not_rejected", status_code=400)
+    server.publish_status = "pending_review"
+    server.reviewed_by = None
+    server.reviewed_at = None
+    server.review_note = None
     await db.commit()
     await db.refresh(server)
     return ApiResponse(data=_to_response(server).model_dump())

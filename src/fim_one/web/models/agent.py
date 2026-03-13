@@ -54,6 +54,12 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
     grounding_config: Any = Column(JSON, nullable=True)
     sandbox_config: Any = Column(JSON, nullable=True)
 
+    # Publish review fields
+    publish_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     user: Mapped[User | None] = relationship(back_populates="agents", lazy="raise")
     conversations: Mapped[list[Conversation]] = relationship(
         back_populates="agent", lazy="raise", passive_deletes=True

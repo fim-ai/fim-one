@@ -115,6 +115,10 @@ class ConnectorResponse(BaseModel):
     org_id: str | None = None
     allow_fallback: bool = True
     has_default_credentials: bool = False
+    publish_status: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: str | None = None
+    review_note: str | None = None
     actions: list[ActionResponse]
     created_at: str
     updated_at: str | None

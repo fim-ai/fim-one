@@ -65,6 +65,12 @@ def _kb_to_response(kb: KnowledgeBase) -> KBResponse:
         status=kb.status,
         visibility=getattr(kb, "visibility", "personal"),
         org_id=getattr(kb, "org_id", None),
+        publish_status=getattr(kb, "publish_status", None),
+        reviewed_by=getattr(kb, "reviewed_by", None),
+        reviewed_at=(
+            kb.reviewed_at.isoformat() if getattr(kb, "reviewed_at", None) else None
+        ),
+        review_note=getattr(kb, "review_note", None),
         created_at=kb.created_at.isoformat() if kb.created_at else "",
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
     )
@@ -181,12 +187,20 @@ async def update_kb(
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(kb, field, value)
+
+    from fim_one.web.publish_review import check_edit_revert
+
+    reverted = await check_edit_revert(kb, db)
+
     await db.commit()
     result = await db.execute(
         select(KnowledgeBase).where(KnowledgeBase.id == kb.id)
     )
     kb = result.scalar_one()
-    return ApiResponse(data=_kb_to_response(kb).model_dump())
+    data = _kb_to_response(kb).model_dump()
+    if reverted:
+        data["publish_status_reverted"] = True
+    return ApiResponse(data=data)
 
 
 @router.delete("/{kb_id}", response_model=ApiResponse)
@@ -243,6 +257,8 @@ async def publish_kb(
         await require_org_member(body.org_id, current_user, db)
         kb.visibility = "org"
         kb.org_id = body.org_id
+        from fim_one.web.publish_review import apply_publish_status
+        await apply_publish_status(kb, body.org_id, db)
     elif body.scope == "global":
         if not current_user.is_admin:
             raise AppError("admin_required_for_global", status_code=403)
@@ -251,6 +267,25 @@ async def publish_kb(
     else:
         raise AppError("invalid_scope", status_code=400)
 
+    await db.commit()
+    await db.refresh(kb)
+    return ApiResponse(data=_kb_to_response(kb).model_dump())
+
+
+@router.post("/{kb_id}/resubmit", response_model=ApiResponse)
+async def resubmit_kb(
+    kb_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Resubmit a rejected knowledge base for review."""
+    kb = await _get_owned_kb(kb_id, current_user.id, db)
+    if kb.publish_status != "rejected":
+        raise AppError("not_rejected", status_code=400)
+    kb.publish_status = "pending_review"
+    kb.reviewed_by = None
+    kb.reviewed_at = None
+    kb.review_note = None
     await db.commit()
     await db.refresh(kb)
     return ApiResponse(data=_kb_to_response(kb).model_dump())
