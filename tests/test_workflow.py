@@ -378,7 +378,7 @@ class TestEngineLinear:
             events.append((event_name, event_data))
 
         event_types = [e[0] for e in events]
-        assert "run_started" in event_types or "node_started" in event_types
+        assert "run_started" in event_types, "Engine should emit run_started"
         # Should have node_started and node_completed for both nodes
         started_nodes = [
             e[1]["node_id"] for e in events if e[0] == "node_started"

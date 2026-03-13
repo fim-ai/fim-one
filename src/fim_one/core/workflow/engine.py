@@ -87,6 +87,13 @@ class WorkflowEngine:
             for key, value in inputs.items():
                 await store.set(f"input.{key}", value)
 
+        # Emit run_started event
+        yield "run_started", {
+            "run_id": self._run_id,
+            "workflow_id": self._workflow_id,
+            "node_count": len(blueprint.nodes),
+        }
+
         # Build graph structures
         node_index = {n.id: n for n in blueprint.nodes}
         topo_order = topological_sort(blueprint)
