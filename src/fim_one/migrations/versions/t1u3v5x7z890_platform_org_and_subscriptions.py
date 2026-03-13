@@ -28,8 +28,10 @@ def upgrade() -> None:
 
     # 1. Find first admin user (or first user)
     # Users table uses is_admin boolean column (not a role column)
+    dialect = bind.dialect.name
+    true_literal = "1" if dialect == "sqlite" else "TRUE"
     admin_row = bind.execute(
-        sa.text("SELECT id FROM users WHERE is_admin=1 ORDER BY created_at ASC LIMIT 1")
+        sa.text(f"SELECT id FROM users WHERE is_admin={true_literal} ORDER BY created_at ASC LIMIT 1")
     ).fetchone()
     if admin_row is None:
         admin_row = bind.execute(
@@ -50,7 +52,7 @@ def upgrade() -> None:
             bind.execute(
                 sa.text(
                     "INSERT INTO organizations (id, name, slug, description, owner_id, is_active, created_at, updated_at) "
-                    "VALUES (:id, :name, :slug, :desc, :owner, 1, :now, :now)"
+                    f"VALUES (:id, :name, :slug, :desc, :owner, {true_literal}, :now, :now)"
                 ),
                 {
                     "id": PLATFORM_ORG_ID,
