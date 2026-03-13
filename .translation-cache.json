@@ -840,7 +840,11 @@
       "styleConcise": "e43f88622db146db",
       "styleChallengeDesc": "1f88bed859b8d820",
       "projectAutomation": "8c77d9a4d4e57b1c",
-      "projectAPI": "4390d3a660be6ec7"
+      "projectAPI": "4390d3a660be6ec7",
+      "completionTitle": "f27331bdd8a08b10",
+      "goToDashboard": "73aefc65d2476d1d",
+      "completionSubtitle": "94296f8b3f6872f6",
+      "redirectingIn": "2029f3fc50f68a21"
     },
     "ja": {
       "styleDetailed": "d86ef7ac8d586206",
@@ -885,7 +889,11 @@
       "styleConcise": "e43f88622db146db",
       "styleChallengeDesc": "1f88bed859b8d820",
       "projectAutomation": "8c77d9a4d4e57b1c",
-      "projectAPI": "4390d3a660be6ec7"
+      "projectAPI": "4390d3a660be6ec7",
+      "completionTitle": "f27331bdd8a08b10",
+      "goToDashboard": "73aefc65d2476d1d",
+      "completionSubtitle": "94296f8b3f6872f6",
+      "redirectingIn": "2029f3fc50f68a21"
     },
     "fr": {
       "styleDetailed": "d86ef7ac8d586206",
@@ -930,7 +938,11 @@
       "styleConcise": "e43f88622db146db",
       "styleChallengeDesc": "1f88bed859b8d820",
       "projectAutomation": "8c77d9a4d4e57b1c",
-      "projectAPI": "4390d3a660be6ec7"
+      "projectAPI": "4390d3a660be6ec7",
+      "completionTitle": "f27331bdd8a08b10",
+      "goToDashboard": "73aefc65d2476d1d",
+      "completionSubtitle": "94296f8b3f6872f6",
+      "redirectingIn": "2029f3fc50f68a21"
     },
     "ko": {
       "styleDetailed": "d86ef7ac8d586206",
@@ -975,7 +987,11 @@
       "styleConcise": "e43f88622db146db",
       "styleChallengeDesc": "1f88bed859b8d820",
       "projectAutomation": "8c77d9a4d4e57b1c",
-      "projectAPI": "4390d3a660be6ec7"
+      "projectAPI": "4390d3a660be6ec7",
+      "completionTitle": "f27331bdd8a08b10",
+      "goToDashboard": "73aefc65d2476d1d",
+      "completionSubtitle": "94296f8b3f6872f6",
+      "redirectingIn": "2029f3fc50f68a21"
     },
     "zh": {
       "roleResearcher": "918fcd73c354a245",
@@ -1020,7 +1036,11 @@
       "step1Title": "d82e5fe24eed3db4",
       "getStarted": "983f311018642b0a",
       "projectAutomation": "8c77d9a4d4e57b1c",
-      "projectAPI": "4390d3a660be6ec7"
+      "projectAPI": "4390d3a660be6ec7",
+      "completionTitle": "f27331bdd8a08b10",
+      "goToDashboard": "73aefc65d2476d1d",
+      "completionSubtitle": "94296f8b3f6872f6",
+      "redirectingIn": "2029f3fc50f68a21"
     }
   },
   "json_hashes/auth.json": {
