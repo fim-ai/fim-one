@@ -27,6 +27,7 @@ from .organization import Organization, OrgMembership
 from .sensitive_word import SensitiveWord
 from .system_setting import SystemSetting
 from .user import User
+from .workflow import Workflow, WorkflowRun
 
 __all__ = [
     "Agent",
@@ -61,4 +62,6 @@ __all__ = [
     "SystemSetting",
     "User",
     "UserOAuthBinding",
+    "Workflow",
+    "WorkflowRun",
 ]

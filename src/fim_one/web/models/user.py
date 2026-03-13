@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .mcp_server import MCPServer
     from .model_config import ModelConfig
     from .oauth_binding import UserOAuthBinding
+    from .workflow import Workflow
 
 
 class User(UUIDPKMixin, TimestampMixin, Base):
@@ -65,5 +66,8 @@ class User(UUIDPKMixin, TimestampMixin, Base):
         back_populates="user", lazy="raise", cascade="all, delete-orphan"
     )
     oauth_bindings: Mapped[list[UserOAuthBinding]] = relationship(
+        back_populates="user", lazy="raise", cascade="all, delete-orphan"
+    )
+    workflows: Mapped[list[Workflow]] = relationship(
         back_populates="user", lazy="raise", cascade="all, delete-orphan"
     )
