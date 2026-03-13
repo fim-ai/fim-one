@@ -12,6 +12,9 @@ import logging
 import os
 from typing import Any
 
+from sqlalchemy import Text
+from sqlalchemy.types import TypeDecorator
+
 logger = logging.getLogger(__name__)
 
 # Lazy-initialised Fernet instance (avoid import-time dependency on cryptography)
@@ -229,3 +232,47 @@ def decrypt_credential(ciphertext: str) -> dict:
     except Exception:
         logger.warning("Failed to decrypt credential blob")
         return {}
+
+
+def encrypt_string(plaintext: str) -> str:
+    """Encrypt a plain string using CREDENTIAL_ENCRYPTION_KEY."""
+    from cryptography.fernet import Fernet
+    f = Fernet(get_credential_key())
+    return f.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_string(ciphertext: str) -> str:
+    """Decrypt a Fernet-encrypted string. Legacy plaintext returned as-is."""
+    if not ciphertext:
+        return ciphertext
+    if not ciphertext.startswith("gAAAAA"):
+        return ciphertext  # legacy plaintext — backward compat
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(get_credential_key())
+        return f.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    except Exception:
+        logger.warning("Failed to decrypt string field, returning empty")
+        return ""
+
+
+class EncryptedString(TypeDecorator):
+    """Column type that stores a Python string as Fernet-encrypted text.
+
+    - On write: plaintext -> Fernet encrypt -> store ciphertext string
+    - On read: ciphertext -> Fernet decrypt -> return plaintext
+    - Backward-compatible: reads legacy plaintext via prefix check
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return encrypt_string(value)
+
+    def process_result_value(self, result, dialect):
+        if result is None:
+            return None
+        return decrypt_string(result)

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from fim_one.core.security.encryption import EncryptedString
+
 from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
 
 if TYPE_CHECKING:
@@ -21,7 +23,7 @@ class ModelConfig(UUIDPKMixin, TimestampMixin, Base):
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    api_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    api_key: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
     category: Mapped[str] = mapped_column(String(20), default="llm")
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
