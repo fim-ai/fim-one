@@ -477,3 +477,159 @@ class TestEngineRetry:
         events = await _collect_events(engine, bp)
         retry_events = [e for e in events if e[0] == "node_retrying"]
         assert len(retry_events) == 0
+
+
+# ---------------------------------------------------------------------------
+# Workflow-Level Timeout
+# ---------------------------------------------------------------------------
+
+
+class TestWorkflowTimeout:
+    """Test the workflow_timeout_ms engine parameter."""
+
+    @pytest.mark.asyncio
+    async def test_no_timeout_by_default(self):
+        """With default workflow_timeout_ms=0, no timeout is applied."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                _end_node(),
+            ],
+            "edges": [_edge("start_1", "end_1")],
+        }
+        bp = parse_blueprint(raw)
+        engine = WorkflowEngine(max_concurrency=1)
+
+        events = await _collect_events(engine, bp)
+        event_names = [e[0] for e in events]
+        assert "run_completed" in event_names
+        assert "run_failed" not in event_names
+
+    @pytest.mark.asyncio
+    async def test_generous_timeout_completes(self):
+        """A generous timeout should let the workflow complete normally."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                _end_node(),
+            ],
+            "edges": [_edge("start_1", "end_1")],
+        }
+        bp = parse_blueprint(raw)
+        engine = WorkflowEngine(max_concurrency=1, workflow_timeout_ms=60000)
+
+        events = await _collect_events(engine, bp)
+        event_names = [e[0] for e in events]
+        assert "run_completed" in event_names
+
+    @pytest.mark.asyncio
+    async def test_tight_timeout_with_slow_node(self):
+        """A very tight timeout should trigger when a node takes too long."""
+        from unittest.mock import patch
+
+        # Create a blueprint with a slow LLM node (will be mocked)
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "slow_1",
+                    "type": "custom",
+                    "position": {"x": 200, "y": 0},
+                    "data": {
+                        "type": "LLM",
+                        "prompt_template": "test",
+                        "output_variable": "result",
+                        "timeout_ms": 30000,
+                    },
+                },
+                _end_node(),
+            ],
+            "edges": [
+                _edge("start_1", "slow_1"),
+                _edge("slow_1", "end_1"),
+            ],
+        }
+        bp = parse_blueprint(raw)
+
+        # Mock the LLM executor to sleep for 5 seconds.
+        # patch replaces the class method with a Mock, so side_effect
+        # receives (node, store, ctx) — no ``self``.
+        async def slow_execute(node, store, ctx):
+            await asyncio.sleep(5)
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output="done",
+            )
+
+        # Use a 50ms workflow timeout — the slow executor will be interrupted
+        engine = WorkflowEngine(max_concurrency=1, workflow_timeout_ms=50)
+
+        with patch(
+            "fim_one.core.workflow.nodes.LLMExecutor.execute",
+            side_effect=slow_execute,
+        ):
+            events = await _collect_events(engine, bp)
+
+        event_names = [e[0] for e in events]
+        # Should have a run_failed event with timeout message
+        assert "run_failed" in event_names
+        fail_event = next(e for e in events if e[0] == "run_failed")
+        assert "timed out" in fail_event[1].get("error", "")
+
+    @pytest.mark.asyncio
+    async def test_timeout_skips_pending_nodes(self):
+        """When workflow times out, pending nodes should be skipped."""
+        from unittest.mock import patch
+
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "slow_1",
+                    "type": "custom",
+                    "position": {"x": 200, "y": 0},
+                    "data": {
+                        "type": "LLM",
+                        "prompt_template": "test",
+                        "output_variable": "r1",
+                        "timeout_ms": 30000,
+                    },
+                },
+                {
+                    "id": "after_slow",
+                    "type": "custom",
+                    "position": {"x": 400, "y": 0},
+                    "data": {
+                        "type": "VARIABLE_ASSIGN",
+                        "assignments": [],
+                    },
+                },
+                _end_node(),
+            ],
+            "edges": [
+                _edge("start_1", "slow_1"),
+                _edge("slow_1", "after_slow"),
+                _edge("after_slow", "end_1"),
+            ],
+        }
+        bp = parse_blueprint(raw)
+
+        async def slow_execute(node, store, ctx):
+            await asyncio.sleep(5)
+            return NodeResult(
+                node_id=node.id, status=NodeStatus.COMPLETED, output="done"
+            )
+
+        engine = WorkflowEngine(max_concurrency=1, workflow_timeout_ms=50)
+
+        with patch(
+            "fim_one.core.workflow.nodes.LLMExecutor.execute",
+            side_effect=slow_execute,
+        ):
+            events = await _collect_events(engine, bp)
+
+        skip_events = [e for e in events if e[0] == "node_skipped"]
+        skipped_reasons = [e[1].get("reason", "") for e in skip_events]
+        # At least some nodes should be skipped due to timeout
+        assert any("timeout" in r.lower() or "Workflow timeout" in r for r in skipped_reasons)

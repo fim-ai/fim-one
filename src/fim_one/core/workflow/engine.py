@@ -53,6 +53,7 @@ class WorkflowEngine:
         run_id: str = "",
         user_id: str = "",
         workflow_id: str = "",
+        workflow_timeout_ms: int = 0,
     ) -> None:
         self._max_concurrency = max_concurrency
         self._cancel_event = cancel_event
@@ -60,6 +61,7 @@ class WorkflowEngine:
         self._run_id = run_id
         self._user_id = user_id
         self._workflow_id = workflow_id
+        self._workflow_timeout_ms = workflow_timeout_ms  # 0 = no limit
 
     async def execute_streaming(
         self,
@@ -361,8 +363,42 @@ class WorkflowEngine:
 
         async def _orchestrator() -> None:
             """Main orchestration loop — runs until all nodes are done."""
+            _workflow_timed_out = False
             try:
                 while pending or running_tasks:
+                    # Check for workflow-level timeout
+                    if self._workflow_timeout_ms > 0:
+                        elapsed_ms = int((time.time() - start_time) * 1000)
+                        if elapsed_ms >= self._workflow_timeout_ms:
+                            logger.warning(
+                                "Workflow %s timed out after %dms",
+                                self._workflow_id, elapsed_ms,
+                            )
+                            for nid in sorted(pending):
+                                node_status[nid] = NodeStatus.SKIPPED
+                                await event_queue.put((
+                                    "node_skipped",
+                                    {"node_id": nid, "reason": "Workflow timeout exceeded"},
+                                ))
+                            pending.clear()
+                            for task in running_tasks:
+                                task.cancel()
+                            if running_tasks:
+                                await asyncio.gather(
+                                    *running_tasks, return_exceptions=True
+                                )
+                            running_tasks.clear()
+                            await event_queue.put((
+                                "run_failed",
+                                {
+                                    "status": "failed",
+                                    "error": f"Workflow execution timed out after {self._workflow_timeout_ms}ms",
+                                    "duration_ms": elapsed_ms,
+                                },
+                            ))
+                            _workflow_timed_out = True
+                            break
+
                     # Check for cancellation
                     if self._cancel_event and self._cancel_event.is_set():
                         for nid in sorted(pending):
@@ -423,11 +459,26 @@ class WorkflowEngine:
                             pending.clear()
                         break
 
-                    # Wait for at least one task to complete
+                    # Wait for at least one task to complete.
+                    # If a workflow timeout is set, cap the wait so the loop
+                    # can re-check the timeout at the top of the next iteration.
+                    wait_timeout: float | None = None
+                    if self._workflow_timeout_ms > 0:
+                        remaining_ms = self._workflow_timeout_ms - int(
+                            (time.time() - start_time) * 1000
+                        )
+                        wait_timeout = max(remaining_ms / 1000.0, 0.01)
+
                     done, _ = await asyncio.wait(
                         running_tasks.keys(),
                         return_when=asyncio.FIRST_COMPLETED,
+                        timeout=wait_timeout,
                     )
+
+                    # If wait timed out (no tasks finished), loop back to
+                    # check the workflow timeout at the top of the loop.
+                    if not done:
+                        continue
 
                     for finished_task in done:
                         nid = running_tasks.pop(finished_task)
@@ -458,7 +509,11 @@ class WorkflowEngine:
                             ))
                         pending.clear()
 
-                # Determine final status
+                # Determine final status (skip if already handled by timeout)
+                if _workflow_timed_out:
+                    await event_queue.put(("__done__", {}))
+                    return
+
                 elapsed_ms = int((time.time() - start_time) * 1000)
                 failed_nodes = [
                     nid
