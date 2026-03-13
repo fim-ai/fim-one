@@ -254,5 +254,8 @@
   "editorSavedMinutesAgo": "Enregistré il y a {minutes}m",
   "searchPlaceholder": "Rechercher des flux de travail...",
   "noSearchResults": "Aucun flux de travail ne correspond à votre recherche.",
-  "workflowCount": "{count} sur {total} flux de travail"
+  "workflowCount": "{count} sur {total}",
+  "sortUpdated": "Récemment modifiés",
+  "sortCreated": "Récemment créés",
+  "sortName": "Nom (A-Z)"
 }

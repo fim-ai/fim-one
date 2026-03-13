@@ -50,6 +50,7 @@ export default function WorkflowsPage() {
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "active">("all")
+  const [sortBy, setSortBy] = useState<"updated" | "created" | "name">("updated")
 
   // Auth guard
   useEffect(() => {
@@ -235,7 +236,7 @@ export default function WorkflowsPage() {
     ? userOrgs.find((o) => o.id === publishOrgId)
     : null
 
-  // Filter workflows by search query and status
+  // Filter and sort workflows
   const filteredWorkflows = useMemo(() => {
     let result = workflows
     if (statusFilter !== "all") {
@@ -249,8 +250,15 @@ export default function WorkflowsPage() {
           (w.description ?? "").toLowerCase().includes(q),
       )
     }
+    // Sort
+    result = [...result].sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name)
+      if (sortBy === "created") return (b.created_at ?? "").localeCompare(a.created_at ?? "")
+      // "updated" — most recently updated first
+      return (b.updated_at ?? b.created_at ?? "").localeCompare(a.updated_at ?? a.created_at ?? "")
+    })
     return result
-  }, [workflows, searchQuery, statusFilter])
+  }, [workflows, searchQuery, statusFilter, sortBy])
 
   if (authLoading || !user) return null
 
@@ -316,7 +324,17 @@ export default function WorkflowsPage() {
               </button>
             ))}
           </div>
-          <span className="text-xs text-muted-foreground ml-auto">
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+            <SelectTrigger className="w-[140px] h-8 text-xs ml-auto">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="updated" className="text-xs">{t("sortUpdated")}</SelectItem>
+              <SelectItem value="created" className="text-xs">{t("sortCreated")}</SelectItem>
+              <SelectItem value="name" className="text-xs">{t("sortName")}</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground shrink-0">
             {t("workflowCount", { count: filteredWorkflows.length, total: workflows.length })}
           </span>
         </div>

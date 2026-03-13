@@ -254,5 +254,8 @@
   "editorSavedMinutesAgo": "{minutes}분 전에 저장됨",
   "searchPlaceholder": "워크플로우 검색...",
   "noSearchResults": "검색과 일치하는 워크플로우가 없습니다.",
-  "workflowCount": "{count}개 / {total}개 워크플로우"
+  "workflowCount": "{count}개 / {total}개",
+  "sortUpdated": "최근 업데이트됨",
+  "sortCreated": "최근 생성됨",
+  "sortName": "이름 (A-Z)"
 }

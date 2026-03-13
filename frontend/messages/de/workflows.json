@@ -254,5 +254,8 @@
   "editorSavedMinutesAgo": "Vor {minutes}m gespeichert",
   "searchPlaceholder": "Workflows durchsuchen...",
   "noSearchResults": "Keine Workflows entsprechen Ihrer Suche.",
-  "workflowCount": "{count} von {total} Workflows"
+  "workflowCount": "{count} von {total}",
+  "sortUpdated": "Kürzlich aktualisiert",
+  "sortCreated": "Kürzlich erstellt",
+  "sortName": "Name (A-Z)"
 }

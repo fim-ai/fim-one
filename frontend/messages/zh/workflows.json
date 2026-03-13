@@ -254,5 +254,8 @@
   "editorSavedMinutesAgo": "已保存 {minutes}分钟前",
   "searchPlaceholder": "搜索工作流...",
   "noSearchResults": "没有工作流与您的搜索匹配。",
-  "workflowCount": "{count} 个，共 {total} 个工作流"
+  "workflowCount": "{count} 个，共 {total} 个",
+  "sortUpdated": "最近更新",
+  "sortCreated": "最近创建",
+  "sortName": "名称 (A-Z)"
 }

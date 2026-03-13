@@ -253,19 +253,23 @@ export default function WorkflowEditorPage() {
     }, 5000)
   }, [triggerValidation, handleSave])
 
-  // Keyboard shortcuts (Cmd+S to save)
+  // Keyboard shortcuts (Cmd+S to save immediately, cancels pending auto-save)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault()
-        if (isDirty && !isSaving) {
+        if (!isSaving) {
+          if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current)
+            autoSaveTimerRef.current = null
+          }
           handleSave()
         }
       }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
-  }, [isDirty, isSaving, handleSave])
+  }, [isSaving, handleSave])
 
   const handleRun = useCallback(() => {
     setRunPanelOpen(true)

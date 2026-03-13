@@ -254,5 +254,8 @@
   "editorSavedMinutesAgo": "{minutes}分前に保存",
   "searchPlaceholder": "ワークフローを検索...",
   "noSearchResults": "検索に一致するワークフローがありません。",
-  "workflowCount": "{count} / {total} ワークフロー"
+  "workflowCount": "{count} / {total}",
+  "sortUpdated": "最近更新",
+  "sortCreated": "最近作成",
+  "sortName": "名前 (A-Z)"
 }
