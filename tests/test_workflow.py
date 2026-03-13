@@ -14,8 +14,10 @@ from typing import Any
 
 from fim_one.core.workflow.parser import (
     BlueprintValidationError,
+    BlueprintWarning,
     parse_blueprint,
     topological_sort,
+    validate_blueprint,
 )
 from fim_one.core.workflow.types import (
     ErrorStrategy,
@@ -1603,3 +1605,125 @@ class TestEngineEnvVars:
         # The output should NOT contain the actual secret
         preview = tmpl_completed[0][1].get("output_preview", "")
         assert "sk-test-123" not in preview
+
+
+# =========================================================================
+# Blueprint validation (non-fatal warnings)
+# =========================================================================
+
+
+class TestBlueprintValidation:
+    """Test the validate_blueprint() soft warning system."""
+
+    def test_valid_blueprint_no_warnings(self):
+        """A well-connected blueprint should produce no warnings."""
+        bp = parse_blueprint(_simple_blueprint())
+        warnings = validate_blueprint(bp)
+        assert len(warnings) == 0
+
+    def test_disconnected_node_warning(self):
+        """A node with no edges should produce a disconnected warning."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                _llm_node("orphan"),
+                _end_node(),
+            ],
+            "edges": [_edge("start_1", "end_1")],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "disconnected_node" in codes
+        assert any(w.node_id == "orphan" for w in warnings)
+
+    def test_start_no_outgoing_warning(self):
+        """Start node with no outgoing edges should warn."""
+        raw = {
+            "nodes": [_start_node(), _end_node()],
+            "edges": [],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "start_no_outgoing" in codes
+
+    def test_end_unreachable_warning(self):
+        """End node not reachable from Start should warn."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                _llm_node("a"),
+                _end_node("end_1"),
+                _end_node("end_2"),
+            ],
+            "edges": [
+                _edge("start_1", "a"),
+                _edge("a", "end_1"),
+                # end_2 has no incoming edges from the start path
+            ],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "end_unreachable" in codes or "end_no_incoming" in codes
+
+    def test_empty_conditions_warning(self):
+        """Condition branch with no conditions should warn."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "cond_1",
+                    "type": "conditionBranch",
+                    "data": {
+                        "type": "CONDITION_BRANCH",
+                        "conditions": [],  # empty!
+                    },
+                },
+                _end_node(),
+            ],
+            "edges": [_edge("start_1", "cond_1"), _edge("cond_1", "end_1")],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "empty_conditions" in codes
+
+    def test_empty_llm_prompt_warning(self):
+        """LLM node with no prompt should warn."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "llm_1",
+                    "type": "llm",
+                    "data": {"type": "LLM", "prompt_template": ""},
+                },
+                _end_node(),
+            ],
+            "edges": [_edge("start_1", "llm_1"), _edge("llm_1", "end_1")],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "empty_prompt" in codes
+
+    def test_empty_code_warning(self):
+        """Code node with no code should warn."""
+        raw = {
+            "nodes": [
+                _start_node(),
+                {
+                    "id": "code_1",
+                    "type": "codeExecution",
+                    "data": {"type": "CODE_EXECUTION", "code": ""},
+                },
+                _end_node(),
+            ],
+            "edges": [_edge("start_1", "code_1"), _edge("code_1", "end_1")],
+        }
+        bp = parse_blueprint(raw)
+        warnings = validate_blueprint(bp)
+        codes = [w.code for w in warnings]
+        assert "empty_code" in codes

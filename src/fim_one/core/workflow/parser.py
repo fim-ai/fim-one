@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from dataclasses import dataclass
 from typing import Any
 
 from .types import ErrorStrategy, NodeType, WorkflowBlueprint, WorkflowEdgeDef, WorkflowNodeDef
@@ -10,6 +11,15 @@ from .types import ErrorStrategy, NodeType, WorkflowBlueprint, WorkflowEdgeDef, 
 
 class BlueprintValidationError(ValueError):
     """Raised when a blueprint fails structural validation."""
+
+
+@dataclass
+class BlueprintWarning:
+    """Non-fatal validation issue (blueprint can still be saved/executed)."""
+
+    node_id: str | None
+    code: str
+    message: str
 
 
 def _resolve_node_type(raw: str) -> NodeType:
@@ -219,3 +229,111 @@ def topological_sort(blueprint: WorkflowBlueprint) -> list[str]:
                 queue.append(neighbor)
 
     return result
+
+
+def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
+    """Return non-fatal warnings about a parsed blueprint.
+
+    These don't prevent saving or execution but indicate potential problems:
+    - Disconnected nodes (no incoming or outgoing edges)
+    - End node unreachable from Start
+    - Condition/classifier nodes with no conditions defined
+    - Nodes with empty required fields
+    """
+    warnings: list[BlueprintWarning] = []
+    node_index = {n.id: n for n in blueprint.nodes}
+
+    # Build in/out edge sets
+    has_incoming: set[str] = set()
+    has_outgoing: set[str] = set()
+    for edge in blueprint.edges:
+        has_outgoing.add(edge.source)
+        has_incoming.add(edge.target)
+
+    # Check disconnected nodes
+    for node in blueprint.nodes:
+        if node.type == NodeType.START:
+            if node.id not in has_outgoing:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="start_no_outgoing",
+                    message="Start node has no outgoing connections",
+                ))
+        elif node.type == NodeType.END:
+            if node.id not in has_incoming:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="end_no_incoming",
+                    message="End node has no incoming connections",
+                ))
+        else:
+            if node.id not in has_incoming and node.id not in has_outgoing:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="disconnected_node",
+                    message=f"Node '{node.id}' has no connections",
+                ))
+
+    # Check reachability: Start → End via BFS
+    start_node = next((n for n in blueprint.nodes if n.type == NodeType.START), None)
+    end_nodes = {n.id for n in blueprint.nodes if n.type == NodeType.END}
+    if start_node and end_nodes:
+        adjacency: dict[str, list[str]] = defaultdict(list)
+        for edge in blueprint.edges:
+            adjacency[edge.source].append(edge.target)
+
+        # BFS from start
+        reachable: set[str] = set()
+        queue = deque([start_node.id])
+        while queue:
+            nid = queue.popleft()
+            if nid in reachable:
+                continue
+            reachable.add(nid)
+            for neighbor in adjacency.get(nid, []):
+                queue.append(neighbor)
+
+        unreachable_ends = end_nodes - reachable
+        for end_id in unreachable_ends:
+            warnings.append(BlueprintWarning(
+                node_id=end_id,
+                code="end_unreachable",
+                message=f"End node '{end_id}' is not reachable from Start",
+            ))
+
+    # Node-specific checks
+    for node in blueprint.nodes:
+        if node.type == NodeType.CONDITION_BRANCH:
+            conditions = node.data.get("conditions", [])
+            if not conditions:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="empty_conditions",
+                    message="Condition branch has no conditions defined",
+                ))
+        elif node.type == NodeType.QUESTION_CLASSIFIER:
+            classes = node.data.get("classes", []) or node.data.get("categories", [])
+            if not classes:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="empty_classes",
+                    message="Question classifier has no classes defined",
+                ))
+        elif node.type == NodeType.LLM:
+            prompt = node.data.get("prompt_template", "") or node.data.get("prompt", "")
+            if not prompt:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="empty_prompt",
+                    message="LLM node has no prompt template",
+                ))
+        elif node.type == NodeType.CODE_EXECUTION:
+            code = node.data.get("code", "")
+            if not code:
+                warnings.append(BlueprintWarning(
+                    node_id=node.id,
+                    code="empty_code",
+                    message="Code execution node has no code",
+                ))
+
+    return warnings

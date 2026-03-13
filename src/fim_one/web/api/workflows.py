@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,8 @@ from fim_one.web.schemas.workflow import (
     WorkflowCreate,
     WorkflowEnvVarsUpdate,
     WorkflowExportData,
-    WorkflowImportRequest,
+    WorkflowExportFile,
+    WorkflowImportFileRequest,
     WorkflowResponse,
     WorkflowRunRequest,
     WorkflowRunResponse,
@@ -486,28 +487,43 @@ async def unpublish_workflow(
 
 
 @router.post("/validate", response_model=ApiResponse)
-async def validate_blueprint(
+async def validate_blueprint_endpoint(
     body: dict,
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ApiResponse:
     """Validate a workflow blueprint without saving it.
 
-    Returns validation errors or a success message with node/edge counts.
+    Returns hard errors (blueprint can't parse) or soft warnings
+    (blueprint is valid but has potential issues like disconnected nodes).
     """
-    from fim_one.core.workflow.parser import BlueprintValidationError, parse_blueprint
+    from fim_one.core.workflow.parser import (
+        BlueprintValidationError,
+        parse_blueprint,
+        validate_blueprint as _validate,
+    )
 
     blueprint = body.get("blueprint", body)
     try:
         parsed = parse_blueprint(blueprint)
+        warnings = _validate(parsed)
         return ApiResponse(data={
             "valid": True,
             "node_count": len(parsed.nodes),
             "edge_count": len(parsed.edges),
+            "warnings": [
+                {
+                    "node_id": w.node_id,
+                    "code": w.code,
+                    "message": w.message,
+                }
+                for w in warnings
+            ],
         })
     except BlueprintValidationError as exc:
         return ApiResponse(data={
             "valid": False,
             "error": str(exc),
+            "warnings": [],
         })
 
 
@@ -858,12 +874,16 @@ async def cancel_workflow_run(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{workflow_id}/export", response_model=ApiResponse)
+@router.get("/{workflow_id}/export")
 async def export_workflow(
     workflow_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
+) -> Response:
+    """Export a workflow as a downloadable JSON file.
+
+    Returns a ``fim_workflow_v1`` envelope stripped of user/org metadata.
+    """
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
     export_data = WorkflowExportData(
         name=wf.name,
@@ -873,19 +893,75 @@ async def export_workflow(
         input_schema=wf.input_schema,
         output_schema=wf.output_schema,
     )
-    return ApiResponse(data=export_data.model_dump())
+    envelope = WorkflowExportFile(
+        format="fim_workflow_v1",
+        exported_at=datetime.now(UTC).isoformat(),
+        workflow=export_data,
+    )
+    content = json.dumps(envelope.model_dump(), ensure_ascii=False, indent=2)
+    # Sanitise filename: replace whitespace/special chars
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "-" for c in wf.name)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="workflow-{safe_name}.json"',
+        },
+    )
 
 
 @router.post("/import", response_model=ApiResponse)
 async def import_workflow(
-    body: WorkflowImportRequest,
+    body: WorkflowImportFileRequest,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    data = body.data
+    """Import a workflow from an exported JSON payload.
+
+    Accepts the ``fim_workflow_v1`` envelope format:
+    ``{ "format": "fim_workflow_v1", "exported_at": ..., "workflow": {...} }``
+
+    Also accepts the legacy shape ``{ "data": {...} }`` for backwards
+    compatibility.
+    """
+    # Resolve the workflow data from either envelope or legacy shape
+    data = body.workflow or body.data
+    if data is None:
+        raise AppError("import_invalid_format", status_code=400)
+
+    # Validate format field when present
+    if body.format is not None and body.format != "fim_workflow_v1":
+        raise AppError("import_invalid_format", status_code=400)
+
+    # Validate blueprint structure: must have nodes with at least a start node
+    blueprint = data.blueprint
+    nodes = blueprint.get("nodes", [])
+    if not nodes:
+        raise AppError("import_invalid_blueprint", status_code=400)
+
+    has_start = any(
+        (n.get("data", {}) or {}).get("type", "").upper() == "START"
+        or n.get("type", "").upper() == "START"
+        for n in nodes
+    )
+    if not has_start:
+        raise AppError("import_invalid_blueprint", status_code=400)
+
+    # Deduplicate name: append " (imported)" if a workflow with the same
+    # name already exists for this user.
+    name = data.name
+    existing = await db.execute(
+        select(func.count()).where(
+            Workflow.user_id == current_user.id,
+            Workflow.name == name,
+        )
+    )
+    if existing.scalar_one() > 0:
+        name = f"{name} (imported)"
+
     wf = Workflow(
         user_id=current_user.id,
-        name=data.name,
+        name=name,
         icon=data.icon,
         description=data.description,
         blueprint=data.blueprint,
