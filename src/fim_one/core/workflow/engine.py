@@ -14,7 +14,7 @@ import time
 from collections import defaultdict
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from .nodes import EXECUTOR_REGISTRY, get_executor
 from .parser import topological_sort
@@ -30,6 +30,16 @@ from .types import (
 from .variable_store import VariableStore
 
 logger = logging.getLogger(__name__)
+
+# Maximum size for trace detail values (e.g. HTTP response body)
+_TRACE_MAX_BYTES = 10 * 1024  # 10 KB
+
+
+def _truncate(value: str, max_len: int = _TRACE_MAX_BYTES) -> str:
+    """Truncate a string to *max_len* characters."""
+    if len(value) <= max_len:
+        return value
+    return value[:max_len] + f"... (truncated, {len(value)} total chars)"
 
 
 class WorkflowEngine:
@@ -54,6 +64,7 @@ class WorkflowEngine:
         user_id: str = "",
         workflow_id: str = "",
         workflow_timeout_ms: int = 600_000,  # default 10 min
+        trace_level: Literal["normal", "debug"] = "normal",
     ) -> None:
         self._max_concurrency = max_concurrency
         self._cancel_event = cancel_event
@@ -62,6 +73,7 @@ class WorkflowEngine:
         self._user_id = user_id
         self._workflow_id = workflow_id
         self._workflow_timeout_ms = workflow_timeout_ms  # 0 = no limit
+        self._trace_level = trace_level
 
     async def execute_streaming(
         self,
@@ -333,6 +345,17 @@ class WorkflowEngine:
                     # Attach the input snapshot to the result for persistence
                     result.input_preview = input_preview
                     node_results[nid] = result
+
+                    # Build debug trace data if in debug mode
+                    if self._trace_level == "debug":
+                        trace: dict[str, Any] = {}
+                        try:
+                            trace["variable_snapshot"] = store.to_dict()
+                        except Exception:
+                            trace["variable_snapshot"] = None
+                        if hasattr(result, "_trace_details"):
+                            trace.update(result._trace_details)  # type: ignore[attr-defined]
+                        result._trace = trace  # type: ignore[attr-defined]
 
                     if result.status == NodeStatus.COMPLETED:
                         node_status[nid] = NodeStatus.COMPLETED

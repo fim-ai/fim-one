@@ -352,6 +352,12 @@ export interface NodeRunResult {
   input_preview?: unknown
   retryAttempt?: number
   maxRetries?: number
+  node_type?: string
+  trace?: {
+    variable_snapshot?: Record<string, unknown> | null
+    input_snapshot?: Record<string, unknown> | null
+    [key: string]: unknown
+  }
 }
 
 /** Overlay data injected into node.data during workflow runs for canvas display */

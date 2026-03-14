@@ -718,5 +718,18 @@
   "clearRunOverlay": "クリア",
   "recentlyUsed": "最近使用したもの",
   "noNodeSearchResults": "一致するノードがありません",
-  "searchNodes": "ノードを検索..."
+  "searchNodes": "ノードを検索...",
+  "viewTrace": "トレースを表示",
+  "executionTrace": "実行トレース",
+  "traceInput": "入力",
+  "traceOutput": "出力",
+  "traceVariables": "変数",
+  "traceDetails": "トレース詳細",
+  "traceError": "エラー",
+  "copyToClipboard": "コピー",
+  "copied": "コピーしました！",
+  "noTraceData": "トレースデータがありません。詳細なトレースを取得するにはデバッグモードで実行してください。",
+  "enableDebugTrace": "デバッグトレースを有効にする",
+  "debugTraceEnabled": "デバッグトレースが有効になりました - 詳細な実行データをキャプチャします",
+  "debugTraceDisabled": "通常モード - 完全なトレースを取得するにはデバッグで実行してください"
 }

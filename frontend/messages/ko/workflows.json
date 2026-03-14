@@ -718,5 +718,18 @@
   "clearRunOverlay": "지우기",
   "recentlyUsed": "최근 사용",
   "noNodeSearchResults": "일치하는 노드 없음",
-  "searchNodes": "노드 검색..."
+  "searchNodes": "노드 검색...",
+  "viewTrace": "추적 보기",
+  "executionTrace": "실행 추적",
+  "traceInput": "입력",
+  "traceOutput": "출력",
+  "traceVariables": "변수",
+  "traceDetails": "추적 세부 정보",
+  "traceError": "오류",
+  "copyToClipboard": "복사",
+  "copied": "복사됨!",
+  "noTraceData": "사용 가능한 추적 데이터가 없습니다. 자세한 추적을 위해 디버그 모드로 실행하세요.",
+  "enableDebugTrace": "디버그 추적 활성화",
+  "debugTraceEnabled": "디버그 추적 활성화됨 - 상세한 실행 데이터 캡처",
+  "debugTraceDisabled": "일반 모드 - 전체 추적을 위해 디버그로 실행하세요"
 }

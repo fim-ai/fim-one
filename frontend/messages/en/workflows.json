@@ -787,5 +787,19 @@
   "clearRunOverlay": "Clear",
 
   "favorite": "Favorite",
-  "unfavorite": "Unfavorite"
+  "unfavorite": "Unfavorite",
+
+  "viewTrace": "View Trace",
+  "executionTrace": "Execution Trace",
+  "traceInput": "Input",
+  "traceOutput": "Output",
+  "traceVariables": "Variables",
+  "traceDetails": "Trace Details",
+  "traceError": "Error",
+  "copyToClipboard": "Copy",
+  "copied": "Copied!",
+  "noTraceData": "No trace data available. Run with debug mode for detailed traces.",
+  "enableDebugTrace": "Enable Debug Trace",
+  "debugTraceEnabled": "Debug trace enabled - captures detailed execution data",
+  "debugTraceDisabled": "Normal mode - run with debug for full trace"
 }

@@ -718,5 +718,18 @@
   "clearRunOverlay": "清除",
   "recentlyUsed": "最近使用",
   "noNodeSearchResults": "没有匹配的节点",
-  "searchNodes": "搜索节点..."
+  "searchNodes": "搜索节点...",
+  "viewTrace": "查看追踪",
+  "executionTrace": "执行追踪",
+  "traceInput": "输入",
+  "traceOutput": "输出",
+  "traceVariables": "变量",
+  "traceDetails": "追踪详情",
+  "traceError": "错误",
+  "copyToClipboard": "复制",
+  "copied": "已复制！",
+  "noTraceData": "没有可用的追踪数据。以调试模式运行以获取详细追踪。",
+  "enableDebugTrace": "启用调试追踪",
+  "debugTraceEnabled": "调试追踪已启用 - 捕获详细的执行数据",
+  "debugTraceDisabled": "普通模式 - 以调试模式运行以获取完整追踪"
 }

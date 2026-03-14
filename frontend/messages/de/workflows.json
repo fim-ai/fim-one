@@ -718,5 +718,18 @@
   "clearRunOverlay": "Löschen",
   "recentlyUsed": "Kürzlich verwendet",
   "noNodeSearchResults": "Keine übereinstimmenden Knoten",
-  "searchNodes": "Knoten durchsuchen..."
+  "searchNodes": "Knoten durchsuchen...",
+  "viewTrace": "Trace anzeigen",
+  "executionTrace": "Ausführungs-Trace",
+  "traceInput": "Eingabe",
+  "traceOutput": "Ausgabe",
+  "traceVariables": "Variablen",
+  "traceDetails": "Trace-Details",
+  "traceError": "Fehler",
+  "copyToClipboard": "Kopieren",
+  "copied": "Kopiert!",
+  "noTraceData": "Keine Trace-Daten verfügbar. Führen Sie mit Debug-Modus aus, um detaillierte Traces zu erhalten.",
+  "enableDebugTrace": "Debug-Trace aktivieren",
+  "debugTraceEnabled": "Debug-Trace aktiviert - erfasst detaillierte Ausführungsdaten",
+  "debugTraceDisabled": "Normalmodus - führen Sie mit Debug aus, um vollständige Traces zu erhalten"
 }

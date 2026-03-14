@@ -718,5 +718,18 @@
   "clearRunOverlay": "Effacer",
   "recentlyUsed": "Récemment utilisé",
   "noNodeSearchResults": "Aucun nœud correspondant",
-  "searchNodes": "Rechercher des nœuds..."
+  "searchNodes": "Rechercher des nœuds...",
+  "viewTrace": "Afficher la trace",
+  "executionTrace": "Trace d'exécution",
+  "traceInput": "Entrée",
+  "traceOutput": "Sortie",
+  "traceVariables": "Variables",
+  "traceDetails": "Détails de la trace",
+  "traceError": "Erreur",
+  "copyToClipboard": "Copier",
+  "copied": "Copié !",
+  "noTraceData": "Aucune donnée de trace disponible. Exécutez en mode débogage pour des traces détaillées.",
+  "enableDebugTrace": "Activer la trace de débogage",
+  "debugTraceEnabled": "Trace de débogage activée - capture les données d'exécution détaillées",
+  "debugTraceDisabled": "Mode normal - exécutez avec le débogage pour la trace complète"
 }
