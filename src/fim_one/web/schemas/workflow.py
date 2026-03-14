@@ -485,3 +485,37 @@ class WorkflowApiKeyResponse(BaseModel):
 
     api_key: str
     workflow_id: str
+
+
+# ---------------------------------------------------------------------------
+# Test Node (single-node isolated execution)
+# ---------------------------------------------------------------------------
+
+
+class TestNodeRequest(BaseModel):
+    """Request body for testing a single workflow node in isolation."""
+
+    node_id: str = Field(min_length=1, description="ID of the node to test")
+    variables: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Mock variable values to populate the variable store",
+    )
+    env_vars: dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional environment variable overrides for this test run",
+    )
+
+
+class TestNodeResponse(BaseModel):
+    """Result of a single-node test execution."""
+
+    node_id: str
+    node_type: str
+    status: str  # completed | failed
+    output: Any = None
+    error: str | None = None
+    duration_ms: int
+    variables_after: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Variable store snapshot after execution",
+    )

@@ -30,6 +30,8 @@ from fim_one.web.schemas.workflow import (
     DryRunNodePlan,
     MostFailedNode,
     RunsPerDay,
+    TestNodeRequest,
+    TestNodeResponse,
     WorkflowAnalyticsResponse,
     WorkflowApiKeyResponse,
     WorkflowBatchRunRequest,
@@ -1450,6 +1452,190 @@ async def test_webhook(
                 "error": str(exc),
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# Test Node (single-node isolated execution)
+# ---------------------------------------------------------------------------
+
+@router.post("/{workflow_id}/test-node", response_model=ApiResponse)
+async def test_node(
+    workflow_id: str,
+    body: TestNodeRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Test a single workflow node in isolation with mock variable inputs.
+
+    Executes the specified node without creating a WorkflowRun record.
+    Useful for debugging individual nodes during workflow development.
+    """
+    from fim_one.core.workflow.nodes import get_executor
+    from fim_one.core.workflow.types import ExecutionContext, NodeType
+    from fim_one.core.workflow.variable_store import VariableStore
+
+    # Node types that cannot be meaningfully tested in isolation
+    non_testable = frozenset({NodeType.START, NodeType.END})
+
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+
+    if not wf.blueprint or not wf.blueprint.get("nodes"):
+        raise AppError("blueprint_empty", status_code=400)
+
+    # Find the target node in the blueprint
+    raw_nodes = wf.blueprint.get("nodes", [])
+    target_node_raw = None
+    for n in raw_nodes:
+        if n.get("id") == body.node_id:
+            target_node_raw = n
+            break
+
+    if target_node_raw is None:
+        raise AppError(
+            "node_not_found",
+            status_code=404,
+            detail=f"Node '{body.node_id}' not found in workflow blueprint",
+        )
+
+    # Parse node type
+    node_data = target_node_raw.get("data", {}) or {}
+    raw_type = node_data.get("type", "") or target_node_raw.get("type", "")
+    if not raw_type:
+        raise AppError("node_type_missing", status_code=400)
+
+    from fim_one.core.workflow.parser import _resolve_node_type
+    from fim_one.core.workflow.types import (
+        ErrorStrategy,
+        WorkflowNodeDef,
+    )
+
+    try:
+        node_type = _resolve_node_type(raw_type)
+    except ValueError as exc:
+        raise AppError(f"invalid_node_type: {exc}", status_code=400)
+
+    # Reject non-testable node types
+    if node_type in non_testable:
+        raise AppError(
+            "node_not_testable",
+            status_code=400,
+            detail=f"Node type '{node_type.value}' cannot be tested in isolation",
+        )
+
+    # Build a WorkflowNodeDef from raw data
+    raw_error_strategy = node_data.get("error_strategy", "")
+    error_strategy = ErrorStrategy.STOP_WORKFLOW
+    if raw_error_strategy:
+        try:
+            error_strategy = ErrorStrategy(
+                raw_error_strategy.lower().replace("-", "_")
+            )
+        except ValueError:
+            pass
+
+    raw_timeout = node_data.get("timeout_ms")
+    timeout_ms = 30000
+    if raw_timeout is not None:
+        try:
+            timeout_ms = int(raw_timeout)
+            if timeout_ms <= 0:
+                timeout_ms = 30000
+        except (TypeError, ValueError):
+            pass
+
+    node_def = WorkflowNodeDef(
+        id=body.node_id,
+        type=node_type,
+        data=node_data,
+        position=target_node_raw.get("position", {}),
+        error_strategy=error_strategy,
+        timeout_ms=timeout_ms,
+    )
+
+    # Merge workflow env vars with user-provided overrides
+    env_vars: dict[str, str] = {}
+    if wf.env_vars_blob:
+        try:
+            from fim_one.core.security.encryption import decrypt_credential
+
+            env_vars = decrypt_credential(wf.env_vars_blob)
+        except Exception:
+            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+
+    # User-provided env_vars override the stored ones
+    env_vars.update(body.env_vars)
+
+    # Populate variable store with mock variables and env vars
+    store = VariableStore(env_vars=env_vars)
+    for key, value in body.variables.items():
+        await store.set(key, value)
+
+    # Build execution context (temporary run_id, no real run record)
+    context = ExecutionContext(
+        run_id=f"test-{uuid.uuid4()}",
+        user_id=current_user.id,
+        workflow_id=wf.id,
+        env_vars=env_vars,
+    )
+
+    # Resolve executor and run the node with a timeout
+    try:
+        executor = get_executor(node_type)
+    except ValueError as exc:
+        raise AppError(f"executor_not_found: {exc}", status_code=400)
+
+    start_time = time.time()
+    try:
+        result = await asyncio.wait_for(
+            executor.execute(node_def, store, context),
+            timeout=30.0,
+        )
+    except asyncio.TimeoutError:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        snapshot = await store.snapshot()
+        return ApiResponse(
+            data=TestNodeResponse(
+                node_id=body.node_id,
+                node_type=node_type.value,
+                status="failed",
+                error="Node execution timed out after 30 seconds",
+                duration_ms=elapsed_ms,
+                variables_after=snapshot,
+            ).model_dump()
+        )
+    except Exception as exc:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        snapshot = await store.snapshot()
+        logger.warning(
+            "Test-node execution error for node %s in workflow %s: %s",
+            body.node_id,
+            wf.id,
+            exc,
+        )
+        return ApiResponse(
+            data=TestNodeResponse(
+                node_id=body.node_id,
+                node_type=node_type.value,
+                status="failed",
+                error=f"{type(exc).__name__}: {exc}",
+                duration_ms=elapsed_ms,
+                variables_after=snapshot,
+            ).model_dump()
+        )
+
+    # Success path
+    snapshot = await store.snapshot()
+    return ApiResponse(
+        data=TestNodeResponse(
+            node_id=body.node_id,
+            node_type=node_type.value,
+            status=result.status.value,
+            output=result.output,
+            error=result.error,
+            duration_ms=result.duration_ms,
+            variables_after=snapshot,
+        ).model_dump()
+    )
 
 
 # ---------------------------------------------------------------------------
