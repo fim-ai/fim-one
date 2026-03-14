@@ -38,6 +38,7 @@ import type {
   WorkflowNodeType,
   StartNodeData,
   NodeRunResult,
+  WorkflowLogEvent,
 } from "@/types/workflow"
 
 import { StartNode } from "./nodes/start-node"
@@ -172,6 +173,7 @@ interface WorkflowEditorProps {
   runDuration: number | null
   nodeTypeMap: Record<string, WorkflowNodeType>
   totalNodeCount: number
+  logEvents: WorkflowLogEvent[]
   onStartRun: (inputs: Record<string, unknown>) => void
   onRunAgain: () => void
   onCancelRun: () => void
@@ -199,6 +201,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
   runDuration,
   nodeTypeMap,
   totalNodeCount,
+  logEvents,
   onStartRun,
   onRunAgain,
   onCancelRun,
@@ -1119,6 +1122,7 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
           runDuration={runDuration}
           nodeTypeMap={nodeTypeMap}
           totalNodeCount={totalNodeCount}
+          logEvents={logEvents}
           onStartRun={onStartRun}
           onRunAgain={onRunAgain}
           onCancel={onCancelRun}

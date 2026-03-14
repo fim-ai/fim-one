@@ -347,6 +347,24 @@ export interface NodeRunOverlayData {
 
 export type NodeRunStatus = "pending" | "running" | "completed" | "failed" | "skipped" | "retrying"
 
+// --- Execution log event for run panel ---
+
+export type WorkflowLogEventType =
+  | "node_started"
+  | "node_completed"
+  | "node_failed"
+  | "node_skipped"
+  | "node_retrying"
+  | "run_completed"
+  | "run_failed"
+
+export interface WorkflowLogEvent {
+  timestamp: number
+  eventType: WorkflowLogEventType
+  nodeId: string | null
+  details: Record<string, unknown>
+}
+
 // --- Analytics (detailed) ---
 
 export interface RunsPerDayEntry {
@@ -420,6 +438,23 @@ export interface WorkflowTemplate {
 export interface WorkflowFromTemplateRequest {
   template_id: string
   name?: string
+}
+
+// --- Batch Run types ---
+
+export interface BatchRunResultItem {
+  run_id: string
+  inputs: Record<string, unknown>
+  status: "completed" | "failed"
+  outputs: Record<string, unknown> | null
+  error: string | null
+  duration_ms: number | null
+}
+
+export interface WorkflowBatchRunResponse {
+  batch_id: string
+  total: number
+  results: BatchRunResultItem[]
 }
 
 // --- Schedule types ---

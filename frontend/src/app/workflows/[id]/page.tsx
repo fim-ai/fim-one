@@ -39,6 +39,7 @@ import { AnalyticsPanel } from "@/components/workflows/analytics-panel"
 import { WebhookConfigDialog } from "@/components/workflows/webhook-config-dialog"
 import { ApiKeyDialog } from "@/components/workflows/api-key-dialog"
 import { ScheduleDialog } from "@/components/workflows/schedule-dialog"
+import { BatchRunDialog } from "@/components/workflows/batch-run-dialog"
 import type {
   WorkflowResponse,
   WorkflowBlueprint,
@@ -47,6 +48,8 @@ import type {
   WorkflowValidateResponse,
   StartNodeData,
   NodeRunResult,
+  WorkflowLogEvent,
+  WorkflowLogEventType,
 } from "@/types/workflow"
 
 export default function WorkflowEditorPage() {
@@ -84,6 +87,7 @@ export default function WorkflowEditorPage() {
   const [finalError, setFinalError] = useState<string | null>(null)
   const [runDuration, setRunDuration] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const [logEvents, setLogEvents] = useState<WorkflowLogEvent[]>([])
 
   // History sheet state
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -113,6 +117,9 @@ export default function WorkflowEditorPage() {
   // Schedule dialog state
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
   const [scheduleActive, setScheduleActive] = useState(false)
+
+  // Batch run dialog state
+  const [showBatchRunDialog, setShowBatchRunDialog] = useState(false)
 
   // Undo/redo state (synced from editor via callback)
   const [canUndo, setCanUndo] = useState(false)
@@ -366,6 +373,7 @@ export default function WorkflowEditorPage() {
     setFinalOutputs(null)
     setFinalError(null)
     setRunDuration(null)
+    setLogEvents([])
   }, [])
 
   const handleStartRun = useCallback(
@@ -384,6 +392,7 @@ export default function WorkflowEditorPage() {
       setFinalOutputs(null)
       setFinalError(null)
       setRunDuration(null)
+      setLogEvents([])
 
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem(ACCESS_TOKEN_KEY) : null
@@ -418,6 +427,23 @@ export default function WorkflowEditorPage() {
         const dispatch = (eventType: string, rawData: string) => {
           try {
             const data = JSON.parse(rawData) as Record<string, unknown>
+
+            // Push raw event to execution log
+            const knownEvents: WorkflowLogEventType[] = [
+              "node_started", "node_completed", "node_failed",
+              "node_skipped", "node_retrying", "run_completed", "run_failed",
+            ]
+            if (knownEvents.includes(eventType as WorkflowLogEventType)) {
+              setLogEvents((prev) => [
+                ...prev,
+                {
+                  timestamp: Date.now(),
+                  eventType: eventType as WorkflowLogEventType,
+                  nodeId: (data.node_id as string) ?? null,
+                  details: data,
+                },
+              ])
+            }
 
             if (
               eventType === "node_started" ||
@@ -768,6 +794,7 @@ export default function WorkflowEditorPage() {
         apiKeyConfigured={!!workflow.has_api_key}
         onSchedule={() => setShowScheduleDialog(true)}
         scheduleActive={scheduleActive}
+        onBatchRun={() => setShowBatchRunDialog(true)}
       />
 
       <WorkflowEditor
@@ -784,6 +811,7 @@ export default function WorkflowEditorPage() {
         runDuration={runDuration}
         nodeTypeMap={nodeTypeMap}
         totalNodeCount={totalNodeCount}
+        logEvents={logEvents}
         onStartRun={handleStartRun}
         onRunAgain={handleRunAgain}
         onCancelRun={handleCancelRun}
@@ -996,6 +1024,13 @@ export default function WorkflowEditorPage() {
         open={showScheduleDialog}
         onOpenChange={setShowScheduleDialog}
         onScheduleChange={handleScheduleChange}
+      />
+
+      {/* Batch Run Dialog */}
+      <BatchRunDialog
+        workflowId={workflowId}
+        open={showBatchRunDialog}
+        onOpenChange={setShowBatchRunDialog}
       />
     </div>
   )
