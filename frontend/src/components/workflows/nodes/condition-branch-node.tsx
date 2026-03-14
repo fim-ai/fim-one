@@ -6,11 +6,11 @@ import type { NodeProps } from "@xyflow/react"
 import { GitBranch } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { BaseWorkflowNode } from "./base-workflow-node"
-import type { ConditionNodeData, NodeRunStatus } from "@/types/workflow"
+import type { ConditionNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/workflow"
 
 function ConditionBranchNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as ConditionNodeData & { runStatus?: NodeRunStatus; note?: string }
+  const nodeData = data as unknown as ConditionNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
   const conditions = nodeData.conditions ?? []
 
   // Calculate vertical spacing for stacked source handles on the right
@@ -25,6 +25,7 @@ function ConditionBranchNodeComponent({ data, selected }: NodeProps) {
       note={nodeData.note}
       selected={selected}
       runStatus={nodeData.runStatus}
+      runOverlay={nodeData._runOverlay}
     >
       {conditions.length > 0 && (
         <div className="space-y-0.5">

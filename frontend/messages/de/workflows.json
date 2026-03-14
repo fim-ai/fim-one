@@ -515,5 +515,8 @@
   "analyticsCompleted": "Abgeschlossen",
   "analyticsFailed": "Fehlgeschlagen",
   "analyticsCancelled": "Abgebrochen",
-  "analyticsRuns": "Ausführungen"
+  "analyticsRuns": "Ausführungen",
+  "runOverlayInput": "Eingabe",
+  "runOverlayOutput": "Ausgabe",
+  "runOverlayError": "Fehler"
 }

@@ -551,15 +551,38 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
     return types
   }, [nodes])
 
-  // Derived nodes with run status merged — pure derivation, no state mutation
+  // Derived nodes with run status + overlay merged — pure derivation, no state mutation
   const displayNodes = useMemo(() => {
     if (!nodeResults || (!runPanelOpen && !isRunning)) return nodes
     return nodes.map((node) => {
       const result = nodeResults[node.id]
       const newStatus = result?.status
       if (!newStatus) return node
-      if (node.data.runStatus === newStatus) return node
-      return { ...node, data: { ...node.data, runStatus: newStatus } }
+
+      // Build overlay data for duration badge & tooltip
+      const truncate = (v: unknown): string | null => {
+        if (v == null) return null
+        const s = typeof v === "string" ? v : JSON.stringify(v)
+        return s.length > 120 ? s.slice(0, 120) + "..." : s
+      }
+      const _runOverlay = {
+        durationMs: result.duration_ms ?? null,
+        inputPreview: truncate(result.input_preview),
+        outputPreview: truncate(result.output),
+        runError: result.error ?? null,
+      }
+
+      // Skip update if status and overlay haven't changed
+      const prev = node.data._runOverlay as typeof _runOverlay | undefined
+      if (
+        node.data.runStatus === newStatus &&
+        prev?.durationMs === _runOverlay.durationMs &&
+        prev?.runError === _runOverlay.runError
+      ) {
+        return node
+      }
+
+      return { ...node, data: { ...node.data, runStatus: newStatus, _runOverlay } }
     })
   }, [nodes, nodeResults, runPanelOpen, isRunning])
 

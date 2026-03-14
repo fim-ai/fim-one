@@ -515,5 +515,8 @@
   "analyticsCompleted": "완료됨",
   "analyticsFailed": "실패함",
   "analyticsCancelled": "취소됨",
-  "analyticsRuns": "실행"
+  "analyticsRuns": "실행",
+  "runOverlayInput": "입력",
+  "runOverlayOutput": "출력",
+  "runOverlayError": "오류"
 }

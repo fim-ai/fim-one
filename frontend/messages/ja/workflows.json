@@ -515,5 +515,8 @@
   "analyticsCompleted": "完了",
   "analyticsFailed": "失敗",
   "analyticsCancelled": "キャンセル",
-  "analyticsRuns": "実行"
+  "analyticsRuns": "実行",
+  "runOverlayInput": "入力",
+  "runOverlayOutput": "出力",
+  "runOverlayError": "エラー"
 }

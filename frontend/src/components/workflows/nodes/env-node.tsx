@@ -6,11 +6,11 @@ import type { NodeProps } from "@xyflow/react"
 import { KeyRound } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { BaseWorkflowNode } from "./base-workflow-node"
-import type { ENVNodeData, NodeRunStatus } from "@/types/workflow"
+import type { ENVNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/workflow"
 
 function ENVNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as ENVNodeData & { runStatus?: NodeRunStatus }
+  const nodeData = data as unknown as ENVNodeData & { runStatus?: NodeRunStatus; _runOverlay?: NodeRunOverlayData }
 
   const keyCount = (nodeData.env_keys ?? []).length
 
@@ -21,6 +21,7 @@ function ENVNodeComponent({ data, selected }: NodeProps) {
       title={t("nodeType_env")}
       selected={selected}
       runStatus={nodeData.runStatus}
+      runOverlay={nodeData._runOverlay}
     >
       <div className="space-y-0.5">
         {keyCount > 0 && (

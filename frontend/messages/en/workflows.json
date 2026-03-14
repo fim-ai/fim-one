@@ -571,5 +571,9 @@
   "analyticsCompleted": "Completed",
   "analyticsFailed": "Failed",
   "analyticsCancelled": "Cancelled",
-  "analyticsRuns": "runs"
+  "analyticsRuns": "runs",
+
+  "runOverlayInput": "Input",
+  "runOverlayOutput": "Output",
+  "runOverlayError": "Error"
 }

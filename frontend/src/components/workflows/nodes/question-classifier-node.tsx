@@ -6,11 +6,11 @@ import type { NodeProps } from "@xyflow/react"
 import { MessageSquareMore } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { BaseWorkflowNode } from "./base-workflow-node"
-import type { QuestionClassifierNodeData, NodeRunStatus } from "@/types/workflow"
+import type { QuestionClassifierNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/workflow"
 
 function QuestionClassifierNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as QuestionClassifierNodeData & { runStatus?: NodeRunStatus; note?: string }
+  const nodeData = data as unknown as QuestionClassifierNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
   const classes = nodeData.classes ?? []
 
   // Calculate vertical spacing for stacked source handles on the right
@@ -25,6 +25,7 @@ function QuestionClassifierNodeComponent({ data, selected }: NodeProps) {
       note={nodeData.note}
       selected={selected}
       runStatus={nodeData.runStatus}
+      runOverlay={nodeData._runOverlay}
     >
       {classes.length > 0 && (
         <div className="space-y-0.5">

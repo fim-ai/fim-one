@@ -6,11 +6,11 @@ import type { NodeProps } from "@xyflow/react"
 import { Bot } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { BaseWorkflowNode } from "./base-workflow-node"
-import type { AgentNodeData, NodeRunStatus } from "@/types/workflow"
+import type { AgentNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/workflow"
 
 function AgentNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as AgentNodeData & { runStatus?: NodeRunStatus; agent_name?: string; note?: string }
+  const nodeData = data as unknown as AgentNodeData & { runStatus?: NodeRunStatus; agent_name?: string; note?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -20,6 +20,7 @@ function AgentNodeComponent({ data, selected }: NodeProps) {
       note={nodeData.note}
       selected={selected}
       runStatus={nodeData.runStatus}
+      runOverlay={nodeData._runOverlay}
     >
       {nodeData.agent_name && (
         <p className="text-[10px] text-muted-foreground truncate">

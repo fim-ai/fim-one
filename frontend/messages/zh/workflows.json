@@ -515,5 +515,8 @@
   "analyticsCompleted": "已完成",
   "analyticsFailed": "已失败",
   "analyticsCancelled": "已取消",
-  "analyticsRuns": "次运行"
+  "analyticsRuns": "次运行",
+  "runOverlayInput": "输入",
+  "runOverlayOutput": "输出",
+  "runOverlayError": "错误"
 }

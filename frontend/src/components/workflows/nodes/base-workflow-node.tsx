@@ -1,8 +1,16 @@
 "use client"
 
 import { memo } from "react"
+import { Loader2, Clock, AlertCircle } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
-import type { NodeRunStatus, WorkflowNodeType } from "@/types/workflow"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import type { NodeRunStatus, NodeRunOverlayData, WorkflowNodeType } from "@/types/workflow"
 
 const categoryColorMap: Record<string, string> = {
   start: "bg-green-500",
@@ -50,6 +58,11 @@ const statusDotColor: Record<NodeRunStatus, string> = {
   retrying: "bg-amber-500",
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
 interface BaseWorkflowNodeProps {
   nodeType: WorkflowNodeType
   icon: React.ReactNode
@@ -57,6 +70,7 @@ interface BaseWorkflowNodeProps {
   note?: string
   selected?: boolean
   runStatus?: NodeRunStatus
+  runOverlay?: NodeRunOverlayData
   children?: React.ReactNode
 }
 
@@ -67,71 +81,132 @@ function BaseWorkflowNodeComponent({
   note,
   selected,
   runStatus,
+  runOverlay,
   children,
 }: BaseWorkflowNodeProps) {
+  const t = useTranslations("workflows")
   const barColor = categoryColorMap[nodeType] ?? "bg-muted"
   const statusStyle = runStatus ? runStatusStyles[runStatus] : null
   const showDot = runStatus && runStatus !== "pending"
+  const showOverlay = runStatus && runStatus !== "pending" && runOverlay
+  const hasTooltipContent =
+    showOverlay &&
+    (runOverlay.durationMs != null ||
+      runOverlay.inputPreview ||
+      runOverlay.outputPreview ||
+      runOverlay.runError)
 
-  return (
-    <div className="flex flex-col items-start">
-      <div
-        className={cn(
-          "relative w-[220px] rounded-md border bg-card shadow-sm transition-all duration-150 overflow-visible",
-          statusStyle ? statusStyle.ring : "",
-          statusStyle?.extra,
-          !statusStyle && "border-border",
-          selected && "outline-2 outline-offset-1 outline-primary",
-        )}
-      >
-        {/* Status dot in top-right corner */}
-        {showDot && (
-          <>
+  const nodeCard = (
+    <div
+      className={cn(
+        "relative w-[220px] rounded-md border bg-card shadow-sm transition-all duration-150 overflow-visible",
+        statusStyle ? statusStyle.ring : "",
+        statusStyle?.extra,
+        !statusStyle && "border-border",
+        selected && "outline-2 outline-offset-1 outline-primary",
+      )}
+    >
+      {/* Status dot in top-right corner */}
+      {showDot && (
+        <>
+          <span
+            className={cn(
+              "absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-card z-10",
+              statusDotColor[runStatus],
+            )}
+          />
+          {(runStatus === "running" || runStatus === "retrying") && (
             <span
               className={cn(
-                "absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-card z-10",
+                "absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-card animate-ping z-10",
                 statusDotColor[runStatus],
               )}
             />
-            {(runStatus === "running" || runStatus === "retrying") && (
-              <span
-                className={cn(
-                  "absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-card animate-ping z-10",
-                  statusDotColor[runStatus],
-                )}
-              />
-            )}
-          </>
-        )}
+          )}
+        </>
+      )}
 
-        <div className="flex flex-row">
-          {/* Left color bar */}
-          <div className={cn("w-1 shrink-0 rounded-l-md", barColor)} />
+      <div className="flex flex-row">
+        {/* Left color bar */}
+        <div className={cn("w-1 shrink-0 rounded-l-md", barColor)} />
 
-          {/* Content area */}
-          <div className="flex-1 min-w-0">
-            {/* Icon + title row */}
-            <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted/60">
-                {icon}
-              </div>
-              <span className="text-[11px] font-medium text-card-foreground truncate flex-1">
-                {title}
-              </span>
-              {runStatus && runStatus !== "pending" && (
-                <RunStatusBadge status={runStatus} />
-              )}
+        {/* Content area */}
+        <div className="flex-1 min-w-0">
+          {/* Icon + title row */}
+          <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted/60">
+              {icon}
             </div>
-
-            {/* Node-specific content */}
-            {children && (
-              <div className="px-2.5 pb-2 pt-0">
-                {children}
-              </div>
+            <span className="text-[11px] font-medium text-card-foreground truncate flex-1">
+              {title}
+            </span>
+            {runStatus && runStatus !== "pending" && (
+              <RunStatusBadge status={runStatus} />
             )}
           </div>
+
+          {/* Node-specific content */}
+          {children && (
+            <div className="px-2.5 pb-2 pt-0">
+              {children}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Execution overlay: duration badge, spinner, error indicator */}
+      {showOverlay && (
+        <div className="absolute -bottom-0.5 right-1 flex items-center gap-1 translate-y-full z-10">
+          {runStatus === "running" && (
+            <span className="flex items-center gap-0.5 text-[10px] bg-blue-500/10 text-blue-500 rounded px-1 py-px">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            </span>
+          )}
+          {runStatus === "retrying" && (
+            <span className="flex items-center gap-0.5 text-[10px] bg-amber-500/10 text-amber-500 rounded px-1 py-px">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            </span>
+          )}
+          {runStatus === "failed" && (
+            <span className="flex items-center gap-0.5 text-[10px] bg-red-500/10 text-red-500 rounded px-1 py-px">
+              <AlertCircle className="h-2.5 w-2.5" />
+            </span>
+          )}
+          {runStatus === "completed" && runOverlay.durationMs != null && (
+            <span className="flex items-center gap-0.5 text-[10px] bg-muted text-muted-foreground rounded px-1 py-px">
+              <Clock className="h-2.5 w-2.5" />
+              {formatDuration(runOverlay.durationMs)}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col items-start">
+      {hasTooltipContent ? (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {nodeCard}
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              sideOffset={8}
+              className="max-w-[280px] space-y-1 text-left"
+            >
+              <RunTooltipContent
+                status={runStatus}
+                overlay={runOverlay}
+                t={t}
+              />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        nodeCard
+      )}
 
       {/* Note annotation below the node */}
       {note && (
@@ -140,6 +215,55 @@ function BaseWorkflowNodeComponent({
         </p>
       )}
     </div>
+  )
+}
+
+function RunTooltipContent({
+  status,
+  overlay,
+  t,
+}: {
+  status: NodeRunStatus
+  overlay: NodeRunOverlayData
+  t: ReturnType<typeof useTranslations<"workflows">>
+}) {
+  const statusLabel = t(`runStatus_${status === "retrying" ? "running" : status}` as Parameters<typeof t>[0])
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5">
+        <span
+          className={cn(
+            "h-1.5 w-1.5 rounded-full shrink-0",
+            statusDotColor[status] || "bg-zinc-400",
+          )}
+        />
+        <span className="font-medium">{statusLabel}</span>
+        {overlay.durationMs != null && (
+          <span className="text-background/70 ml-auto">
+            {formatDuration(overlay.durationMs)}
+          </span>
+        )}
+      </div>
+      {overlay.inputPreview && (
+        <div>
+          <span className="text-background/60">{t("runOverlayInput")}:</span>{" "}
+          <span className="break-all">{overlay.inputPreview}</span>
+        </div>
+      )}
+      {overlay.outputPreview && (
+        <div>
+          <span className="text-background/60">{t("runOverlayOutput")}:</span>{" "}
+          <span className="break-all">{overlay.outputPreview}</span>
+        </div>
+      )}
+      {overlay.runError && (
+        <div className="text-red-300">
+          <span className="text-red-400">{t("runOverlayError")}:</span>{" "}
+          <span className="break-all">{overlay.runError}</span>
+        </div>
+      )}
+    </>
   )
 }
 

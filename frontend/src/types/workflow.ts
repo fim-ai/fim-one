@@ -327,8 +327,17 @@ export interface NodeRunResult {
   started_at: string | null
   completed_at: string | null
   duration_ms: number | null
+  input_preview?: unknown
   retryAttempt?: number
   maxRetries?: number
+}
+
+/** Overlay data injected into node.data during workflow runs for canvas display */
+export interface NodeRunOverlayData {
+  durationMs: number | null
+  inputPreview: string | null
+  outputPreview: string | null
+  runError: string | null
 }
 
 // --- Node run status for canvas overlay ---

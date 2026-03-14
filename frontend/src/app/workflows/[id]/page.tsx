@@ -406,19 +406,23 @@ export default function WorkflowEditorPage() {
                 : eventType === "node_failed" ? "failed"
                 : eventType === "node_retrying" ? "retrying"
                 : "skipped"
-              setNodeResults((prev) => ({
-                ...(prev ?? {}),
-                [nodeId]: {
-                  status,
-                  output: data.output_preview ?? null,
-                  error: ((data.error ?? data.previous_error) as string) ?? null,
-                  started_at: null,
-                  completed_at: null,
-                  duration_ms: (data.duration_ms as number) ?? null,
-                  retryAttempt: (data.attempt as number) ?? undefined,
-                  maxRetries: (data.max_retries as number) ?? undefined,
-                },
-              }))
+              setNodeResults((prev) => {
+                const existing = prev?.[nodeId]
+                return {
+                  ...(prev ?? {}),
+                  [nodeId]: {
+                    status,
+                    output: data.output_preview ?? existing?.output ?? null,
+                    error: ((data.error ?? data.previous_error) as string) ?? null,
+                    started_at: null,
+                    completed_at: null,
+                    duration_ms: (data.duration_ms as number) ?? existing?.duration_ms ?? null,
+                    input_preview: data.input_preview ?? existing?.input_preview ?? undefined,
+                    retryAttempt: (data.attempt as number) ?? undefined,
+                    maxRetries: (data.max_retries as number) ?? undefined,
+                  },
+                }
+              })
             } else if (eventType === "run_completed") {
               setFinalOutputs((data.outputs ?? null) as Record<string, unknown> | null)
               setRunDuration((data.duration_ms ?? null) as number | null)

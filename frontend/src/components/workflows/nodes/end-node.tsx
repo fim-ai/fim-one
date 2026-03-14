@@ -6,11 +6,11 @@ import type { NodeProps } from "@xyflow/react"
 import { Square } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { BaseWorkflowNode } from "./base-workflow-node"
-import type { EndNodeData, NodeRunStatus } from "@/types/workflow"
+import type { EndNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/workflow"
 
 function EndNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as EndNodeData & { runStatus?: NodeRunStatus; note?: string }
+  const nodeData = data as unknown as EndNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
   const mappingCount = nodeData.output_mapping
     ? Object.keys(nodeData.output_mapping).length
     : 0
@@ -23,6 +23,7 @@ function EndNodeComponent({ data, selected }: NodeProps) {
       note={nodeData.note}
       selected={selected}
       runStatus={nodeData.runStatus}
+      runOverlay={nodeData._runOverlay}
     >
       <p className="text-[10px] text-muted-foreground">
         {t("mappingCount", { count: mappingCount })}
