@@ -34,6 +34,12 @@ class UserInfo(BaseModel):
     has_connector: bool = False
     has_agent: bool = False
     has_conversation: bool = False
+    # Personal settings
+    timezone: str | None = None
+    default_agent_id: str | None = None
+    default_exec_mode: str | None = None
+    default_reasoning: bool | None = None
+    totp_enabled: bool = False
 
 
 class RegisterRequest(BaseModel):
@@ -107,6 +113,11 @@ class UpdateProfileRequest(BaseModel):
     onboarding_completed: bool | None = None
     avatar: str | None = None  # "builtin:cat", "builtin:star", etc. or None to remove
     username: str | None = Field(None, min_length=2, max_length=50)
+    # Personal settings
+    timezone: str | None = Field(None, max_length=50)
+    default_agent_id: str | None = Field(None, max_length=36)
+    default_exec_mode: str | None = Field(None, pattern=r"^(react|dag|auto)$")
+    default_reasoning: bool | None = None
 
 
 class ChangePasswordRequest(BaseModel):
