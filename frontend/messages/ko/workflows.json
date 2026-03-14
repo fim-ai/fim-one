@@ -704,5 +704,13 @@
   "versionDiffEdgeChanges": "엣지 변경 사항",
   "versionDiffFieldChanged": "{field} 변경됨",
   "versionDiffNoChanges": "이 버전들 간에 변경 사항이 없습니다",
-  "versionDiffCompare": "비교"
+  "versionDiffCompare": "비교",
+  "exportRuns": "실행 내보내기",
+  "exportRunsSuccess": "실행 기록이 내보내졌습니다",
+  "testNodeKeyPlaceholder": "key",
+  "testNodeValuePlaceholder": "value",
+  "testNodeEnvKeyPlaceholder": "ENV_KEY",
+  "testNodeEnvValuePlaceholder": "value",
+  "favorite": "즐겨찾기",
+  "unfavorite": "즐겨찾기 제거"
 }

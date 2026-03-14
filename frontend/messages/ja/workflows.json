@@ -704,5 +704,13 @@
   "versionDiffEdgeChanges": "エッジの変更",
   "versionDiffFieldChanged": "{field} が変更されました",
   "versionDiffNoChanges": "これらのバージョン間に変更はありません",
-  "versionDiffCompare": "比較"
+  "versionDiffCompare": "比較",
+  "exportRuns": "実行をエクスポート",
+  "exportRunsSuccess": "実行履歴がエクスポートされました",
+  "testNodeKeyPlaceholder": "キー",
+  "testNodeValuePlaceholder": "値",
+  "testNodeEnvKeyPlaceholder": "ENV_KEY",
+  "testNodeEnvValuePlaceholder": "値",
+  "favorite": "お気に入り",
+  "unfavorite": "お気に入りを削除"
 }

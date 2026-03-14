@@ -704,5 +704,13 @@
   "versionDiffEdgeChanges": "Modifications des liens",
   "versionDiffFieldChanged": "{field} modifié",
   "versionDiffNoChanges": "Aucune modification entre ces versions",
-  "versionDiffCompare": "Comparer"
+  "versionDiffCompare": "Comparer",
+  "exportRuns": "Exporter les exécutions",
+  "exportRunsSuccess": "Historique des exécutions exporté",
+  "testNodeKeyPlaceholder": "clé",
+  "testNodeValuePlaceholder": "valeur",
+  "testNodeEnvKeyPlaceholder": "ENV_KEY",
+  "testNodeEnvValuePlaceholder": "valeur",
+  "favorite": "Ajouter aux favoris",
+  "unfavorite": "Retirer des favoris"
 }

@@ -704,5 +704,13 @@
   "versionDiffEdgeChanges": "Kantenänderungen",
   "versionDiffFieldChanged": "{field} geändert",
   "versionDiffNoChanges": "Keine Änderungen zwischen diesen Versionen",
-  "versionDiffCompare": "Vergleichen"
+  "versionDiffCompare": "Vergleichen",
+  "exportRuns": "Ausführungen exportieren",
+  "exportRunsSuccess": "Ausführungsverlauf exportiert",
+  "testNodeKeyPlaceholder": "key",
+  "testNodeValuePlaceholder": "value",
+  "testNodeEnvKeyPlaceholder": "ENV_KEY",
+  "testNodeEnvValuePlaceholder": "value",
+  "favorite": "Favorit",
+  "unfavorite": "Aus Favoriten entfernen"
 }

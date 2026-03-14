@@ -704,5 +704,13 @@
   "versionDiffEdgeChanges": "边变更",
   "versionDiffFieldChanged": "{field} 已变更",
   "versionDiffNoChanges": "这些版本之间没有变更",
-  "versionDiffCompare": "比较"
+  "versionDiffCompare": "比较",
+  "exportRuns": "导出运行",
+  "exportRunsSuccess": "运行历史已导出",
+  "testNodeKeyPlaceholder": "key",
+  "testNodeValuePlaceholder": "value",
+  "testNodeEnvKeyPlaceholder": "ENV_KEY",
+  "testNodeEnvValuePlaceholder": "value",
+  "favorite": "收藏",
+  "unfavorite": "取消收藏"
 }

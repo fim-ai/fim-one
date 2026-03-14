@@ -746,6 +746,8 @@
   "batchRunExported": "Batch results exported",
   "batchRunApiError": "Batch run failed",
   "batchRunReset": "New Batch",
+  "exportRuns": "Export Runs",
+  "exportRunsSuccess": "Run history exported",
   "historyDeleteRun": "Delete run",
   "historyRunDeleted": "Run deleted",
   "historyRunDeleteFailed": "Failed to delete run",
@@ -767,8 +769,15 @@
   "testNodeDuration": "Duration",
   "testNodeVariablesAfter": "Variables After",
   "testNodeAddVariable": "Add Variable",
+  "testNodeKeyPlaceholder": "key",
+  "testNodeValuePlaceholder": "value",
+  "testNodeEnvKeyPlaceholder": "ENV_KEY",
+  "testNodeEnvValuePlaceholder": "value",
   "testNodeNotTestable": "This node type cannot be tested in isolation",
   "testNodeSuccess": "Node test completed",
   "testNodeFailed": "Node test failed",
-  "contextMenuTestNode": "Test Node"
+  "contextMenuTestNode": "Test Node",
+
+  "favorite": "Favorite",
+  "unfavorite": "Unfavorite"
 }
