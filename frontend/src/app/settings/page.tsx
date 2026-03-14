@@ -3,7 +3,17 @@
 import { useEffect, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Building2, Palette, Settings, User } from "lucide-react"
+import {
+  Building2,
+  Key,
+  Palette,
+  Settings,
+  User,
+  ShieldCheck,
+  BarChart3,
+  Bell,
+  BookMarked,
+} from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
@@ -11,13 +21,34 @@ import { GeneralSettings } from "@/components/settings/general-settings"
 import { AccountSettings } from "@/components/settings/account-settings"
 import { AppearanceSettings } from "@/components/settings/appearance-settings"
 import { OrganizationSettings } from "@/components/settings/organization-settings"
+import { ApiKeysSettings } from "@/components/settings/api-keys-settings"
+import { CredentialsSettings } from "@/components/settings/credentials-settings"
+import { UsageSettings } from "@/components/settings/usage-settings"
+import { NotificationsSettings } from "@/components/settings/notifications-settings"
+import { SubscriptionsSettings } from "@/components/settings/subscriptions-settings"
 
-const TAB_KEYS = ["general", "account", "organizations", "appearance"] as const
+const TAB_KEYS = [
+  "general",
+  "account",
+  "appearance",
+  "organizations",
+  "api-keys",
+  "credentials",
+  "usage",
+  "notifications",
+  "subscriptions",
+] as const
+
 const TAB_ICONS = {
   general: Settings,
   account: User,
   appearance: Palette,
   organizations: Building2,
+  "api-keys": Key,
+  credentials: ShieldCheck,
+  usage: BarChart3,
+  notifications: Bell,
+  subscriptions: BookMarked,
 } as const
 
 type TabKey = (typeof TAB_KEYS)[number]
@@ -52,9 +83,10 @@ function SettingsContent() {
       {/* Body: left nav + right content */}
       <div className="flex flex-1 min-h-0">
         {/* Left nav */}
-        <nav className="w-52 shrink-0 border-r border-border/40 p-4 space-y-1">
+        <nav className="w-52 shrink-0 border-r border-border/40 p-4 space-y-1 overflow-y-auto">
           {TAB_KEYS.map((key) => {
             const Icon = TAB_ICONS[key]
+            const tabLabelKey = key === "api-keys" ? "apiKeys" : key
             return (
               <Link
                 key={key}
@@ -67,7 +99,7 @@ function SettingsContent() {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                <span>{t(`tabs.${key}`)}</span>
+                <span>{t(`tabs.${tabLabelKey}`)}</span>
               </Link>
             )
           })}
@@ -80,6 +112,11 @@ function SettingsContent() {
             {activeTab === "account" && <AccountSettings />}
             {activeTab === "appearance" && <AppearanceSettings />}
             {activeTab === "organizations" && <OrganizationSettings />}
+            {activeTab === "api-keys" && <ApiKeysSettings />}
+            {activeTab === "credentials" && <CredentialsSettings />}
+            {activeTab === "usage" && <UsageSettings />}
+            {activeTab === "notifications" && <NotificationsSettings />}
+            {activeTab === "subscriptions" && <SubscriptionsSettings />}
           </div>
         </div>
       </div>

@@ -65,6 +65,9 @@ importers:
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      qrcode.react:
+        specifier: ^4.2.0
+        version: 4.2.0(react@18.3.1)
       radix-ui:
         specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -129,6 +132,9 @@ importers:
       '@types/node':
         specifier: ^20
         version: 20.19.37
+      '@types/qrcode.react':
+        specifier: ^3.0.0
+        version: 3.0.0(react@18.3.1)
       '@types/react':
         specifier: ^18
         version: 18.3.28
@@ -1803,6 +1809,10 @@ packages:
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
+
+  '@types/qrcode.react@3.0.0':
+    resolution: {integrity: sha512-VPHYhnDfvt4LjlWajpYWRBVqmftEEza3GJVhe8sS5Wew0n4nTkg3+2MYunAiU6t04AZt0s/hkkMovefWeENjAQ==}
+    deprecated: This is a stub types definition. qrcode.react provides its own type definitions, so you do not need this installed.
 
   '@types/react-dom@18.3.7':
     resolution: {integrity: sha512-MEe3UeoENYVFXzoXEWsvcpg6ZvlrFNlOQ7EOsvhI3CfAXwzPfO8Qwuxd40nepsYKqyyVQnTdEfv68q91yLcKrQ==}
@@ -3999,6 +4009,11 @@ packages:
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
+
+  qrcode.react@4.2.0:
+    resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   qs@6.15.0:
     resolution: {integrity: sha512-mAZTtNCeetKMH+pSjrb76NAM8V9a05I9aBZOHztWy/UqcJdQYNsf59vrRKWnojAT9Y+GbIvoTBC++CPHqpDBhQ==}
@@ -6420,6 +6435,12 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/prop-types@15.7.15': {}
+
+  '@types/qrcode.react@3.0.0(react@18.3.1)':
+    dependencies:
+      qrcode.react: 4.2.0(react@18.3.1)
+    transitivePeerDependencies:
+      - react
 
   '@types/react-dom@18.3.7(@types/react@18.3.28)':
     dependencies:
@@ -8983,6 +9004,10 @@ snapshots:
       ipaddr.js: 1.9.1
 
   punycode@2.3.1: {}
+
+  qrcode.react@4.2.0(react@18.3.1):
+    dependencies:
+      react: 18.3.1
 
   qs@6.15.0:
     dependencies:
