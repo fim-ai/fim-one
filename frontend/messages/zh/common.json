@@ -114,5 +114,6 @@
   "installed": "已安装",
   "fromMarket": "来自市场",
   "uninstall": "卸载",
-  "uninstalled": "资源已卸载"
+  "uninstalled": "资源已卸载",
+  "publishedToMarket": "已发布到市场"
 }

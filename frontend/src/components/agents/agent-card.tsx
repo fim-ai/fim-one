@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Bot, Download, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, Radar, RotateCw, Users } from "lucide-react"
+import { Bot, CheckCircle2, Clock, Download, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, Radar, RotateCw, Store, Users, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { MARKET_ORG_ID } from "@/lib/constants"
 import type { AgentResponse } from "@/types/agent"
 
 interface AgentCardProps {
@@ -46,6 +47,7 @@ export function AgentCard({
   const isPublished = agent.status === "published"
   const isDiscoverable = agent.discoverable === true
   const isOwner = !currentUserId || agent.user_id === currentUserId
+  const isOrgResource = agent.visibility !== "personal"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const source = (agent as any).source as string | undefined
   const isInstalled = source === "installed"
@@ -160,31 +162,53 @@ export function AgentCard({
           </Badge>
         )}
 
-        {/* Publish review status badges */}
-        {agent.publish_status === "pending_review" && (
+        {/* Owner visibility badge */}
+        {isOwner && isOrgResource && (
           <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 h-5 border-amber-400 text-amber-600 dark:text-amber-400"
+            variant="secondary"
+            className={cn(
+              "text-[10px] px-1.5 py-0 h-5",
+              agent.org_id === MARKET_ORG_ID
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : "bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
+            )}
           >
+            {agent.org_id === MARKET_ORG_ID ? (
+              <><Store className="h-2.5 w-2.5 mr-0.5" />{tc("publishedToMarket")}</>
+            ) : (
+              <><Globe className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
+            )}
+          </Badge>
+        )}
+
+        {/* Publish review status badges */}
+        {isOwner && agent.publish_status === "pending_review" && (
+          <Badge
+            variant="secondary"
+            className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+          >
+            <Clock className="h-2.5 w-2.5 mr-0.5" />
             {to("publishStatusPending")}
           </Badge>
         )}
-        {agent.publish_status === "approved" && (
+        {isOwner && agent.publish_status === "approved" && (
           <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 h-5 border-emerald-400 text-emerald-600 dark:text-emerald-400"
+            variant="secondary"
+            className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
           >
+            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
             {to("publishStatusApproved")}
           </Badge>
         )}
-        {agent.publish_status === "rejected" && (
+        {isOwner && agent.publish_status === "rejected" && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Badge
-                  variant="outline"
-                  className="text-[10px] px-1.5 py-0 h-5 border-destructive text-destructive cursor-default"
+                  variant="secondary"
+                  className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20 cursor-default"
                 >
+                  <XCircle className="h-2.5 w-2.5 mr-0.5" />
                   {to("publishStatusRejected")}
                 </Badge>
               </TooltipTrigger>

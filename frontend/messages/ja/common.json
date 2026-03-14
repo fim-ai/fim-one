@@ -114,5 +114,6 @@
   "installed": "インストール済み",
   "fromMarket": "マーケットから",
   "uninstall": "アンインストール",
-  "uninstalled": "リソースがアンインストールされました"
+  "uninstalled": "リソースがアンインストールされました",
+  "publishedToMarket": "マーケットに公開済み"
 }

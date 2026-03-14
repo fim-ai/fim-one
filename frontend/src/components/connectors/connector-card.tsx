@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { MoreHorizontal, PackageMinus, Pencil, Plug, Trash2, Globe, GlobeLock, RotateCw, Database, Download, Copy, Eye, Users } from "lucide-react"
+import { CheckCircle2, Clock, MoreHorizontal, PackageMinus, Pencil, Plug, Trash2, Globe, GlobeLock, RotateCw, Database, Download, Copy, Eye, Store, Users, XCircle } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip"
+import { MARKET_ORG_ID } from "@/lib/constants"
 import type { ConnectorResponse } from "@/types/connector"
 
 interface ConnectorCardProps {
@@ -162,48 +163,7 @@ export function ConnectorCard({
         </DropdownMenu>
       </div>
 
-      {/* Publish review status badges -- owner only */}
-      {isOwner && (connector.publish_status === "pending_review" || connector.publish_status === "approved" || connector.publish_status === "rejected") && (
-        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-          {connector.publish_status === "pending_review" && (
-            <Badge
-              variant="outline"
-              className="text-[10px] px-1.5 py-0 h-5 border-amber-400 text-amber-600 dark:text-amber-400"
-            >
-              {to("publishStatusPending")}
-            </Badge>
-          )}
-          {connector.publish_status === "approved" && (
-            <Badge
-              variant="outline"
-              className="text-[10px] px-1.5 py-0 h-5 border-emerald-400 text-emerald-600 dark:text-emerald-400"
-            >
-              {to("publishStatusApproved")}
-            </Badge>
-          )}
-          {connector.publish_status === "rejected" && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] px-1.5 py-0 h-5 border-destructive text-destructive cursor-default"
-                  >
-                    {to("publishStatusRejected")}
-                  </Badge>
-                </TooltipTrigger>
-                {connector.review_note && (
-                  <TooltipContent>
-                    <p>{to("rejectedNote", { note: connector.review_note })}</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
-      )}
-
-      {/* Installed / Shared badge */}
+      {/* Installed / Shared badge (non-owner) */}
       {isInstalled && (
         <div className="flex items-center gap-1.5 mb-1.5">
           <Badge
@@ -224,6 +184,71 @@ export function ConnectorCard({
             <Users className="h-2.5 w-2.5 mr-0.5" />
             {tc("shared")}
           </Badge>
+        </div>
+      )}
+
+      {/* Owner visibility badge */}
+      {isOwner && isOrgResource && (
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Badge
+            variant="secondary"
+            className={cn(
+              "text-[10px] px-1.5 py-0 h-5",
+              connector.org_id === MARKET_ORG_ID
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : "bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
+            )}
+          >
+            {connector.org_id === MARKET_ORG_ID ? (
+              <><Store className="h-2.5 w-2.5 mr-0.5" />{tc("publishedToMarket")}</>
+            ) : (
+              <><Globe className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
+            )}
+          </Badge>
+        </div>
+      )}
+
+      {/* Publish review status badges -- owner only */}
+      {isOwner && (connector.publish_status === "pending_review" || connector.publish_status === "approved" || connector.publish_status === "rejected") && (
+        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+          {connector.publish_status === "pending_review" && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+            >
+              <Clock className="h-2.5 w-2.5 mr-0.5" />
+              {to("publishStatusPending")}
+            </Badge>
+          )}
+          {connector.publish_status === "approved" && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+            >
+              <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+              {to("publishStatusApproved")}
+            </Badge>
+          )}
+          {connector.publish_status === "rejected" && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20 cursor-default"
+                  >
+                    <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                    {to("publishStatusRejected")}
+                  </Badge>
+                </TooltipTrigger>
+                {connector.review_note && (
+                  <TooltipContent>
+                    <p>{to("rejectedNote", { note: connector.review_note })}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       )}
 

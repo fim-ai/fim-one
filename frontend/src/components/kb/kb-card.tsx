@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Download, Eye, MoreHorizontal, PackageMinus, Pencil, Trash2, Users } from "lucide-react"
+import { CheckCircle2, Clock, Download, Eye, Globe, MoreHorizontal, PackageMinus, Pencil, Store, Trash2, Users, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { MARKET_ORG_ID } from "@/lib/constants"
 import type { KBResponse } from "@/types/kb"
 
 interface KBCardProps {
@@ -32,7 +39,9 @@ export function KBCard({
 }: KBCardProps) {
   const t = useTranslations("kb")
   const tc = useTranslations("common")
+  const to = useTranslations("organizations")
   const isOwner = !currentUserId || kb.user_id === currentUserId
+  const isOrgResource = kb.visibility === "org" || kb.visibility === "global"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const source = (kb as any).source as string | undefined
   const isInstalled = source === "installed"
@@ -121,7 +130,7 @@ export function KBCard({
         )}
       </div>
 
-      {/* Installed / Shared badge */}
+      {/* Installed / Shared badge (non-owner) */}
       {isInstalled && (
         <div className="flex items-center gap-1.5 mb-1.5">
           <Badge
@@ -142,6 +151,71 @@ export function KBCard({
             <Users className="h-2.5 w-2.5 mr-0.5" />
             {tc("shared")}
           </Badge>
+        </div>
+      )}
+
+      {/* Owner visibility badge */}
+      {isOwner && isOrgResource && (
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Badge
+            variant="secondary"
+            className={cn(
+              "text-[10px] px-1.5 py-0 h-5",
+              kb.org_id === MARKET_ORG_ID
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : "bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
+            )}
+          >
+            {kb.org_id === MARKET_ORG_ID ? (
+              <><Store className="h-2.5 w-2.5 mr-0.5" />{tc("publishedToMarket")}</>
+            ) : (
+              <><Globe className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
+            )}
+          </Badge>
+        </div>
+      )}
+
+      {/* Publish review status badges — owner only */}
+      {isOwner && (kb.publish_status === "pending_review" || kb.publish_status === "approved" || kb.publish_status === "rejected") && (
+        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+          {kb.publish_status === "pending_review" && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+            >
+              <Clock className="h-2.5 w-2.5 mr-0.5" />
+              {to("publishStatusPending")}
+            </Badge>
+          )}
+          {kb.publish_status === "approved" && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+            >
+              <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+              {to("publishStatusApproved")}
+            </Badge>
+          )}
+          {kb.publish_status === "rejected" && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20 cursor-default"
+                  >
+                    <XCircle className="h-2.5 w-2.5 mr-0.5" />
+                    {to("publishStatusRejected")}
+                  </Badge>
+                </TooltipTrigger>
+                {kb.review_note && (
+                  <TooltipContent>
+                    <p>{to("rejectedNote", { note: kb.review_note })}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       )}
 

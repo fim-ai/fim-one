@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
   Activity,
+  CheckCircle2,
+  Clock,
   Copy,
   Download,
   Eye,
@@ -16,8 +18,10 @@ import {
   Play,
   RotateCw,
   Star,
+  Store,
   Trash2,
   Users,
+  XCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +39,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { MARKET_ORG_ID } from "@/lib/constants"
 import type { WorkflowResponse } from "@/types/workflow"
 
 interface WorkflowCardProps {
@@ -69,6 +74,7 @@ export function WorkflowCard({
   const tc = useTranslations("common")
   const isPublished = workflow.visibility !== "personal"
   const isOwner = !currentUserId || workflow.user_id === currentUserId
+  const isOrgResource = workflow.visibility !== "personal"
   const isActive = workflow.status === "active"
   const source = (workflow as unknown as { source?: string }).source
   const isInstalled = source === "installed"
@@ -226,31 +232,53 @@ export function WorkflowCard({
           </Badge>
         )}
 
-        {/* Publish review status badges */}
-        {workflow.publish_status === "pending_review" && (
+        {/* Owner visibility badge */}
+        {isOwner && isOrgResource && (
           <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 h-5 border-amber-400 text-amber-600 dark:text-amber-400"
+            variant="secondary"
+            className={cn(
+              "text-[10px] px-1.5 py-0 h-5",
+              workflow.org_id === MARKET_ORG_ID
+                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                : "bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
+            )}
           >
+            {workflow.org_id === MARKET_ORG_ID ? (
+              <><Store className="h-2.5 w-2.5 mr-0.5" />{tc("publishedToMarket")}</>
+            ) : (
+              <><Globe className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
+            )}
+          </Badge>
+        )}
+
+        {/* Publish review status badges */}
+        {isOwner && workflow.publish_status === "pending_review" && (
+          <Badge
+            variant="secondary"
+            className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+          >
+            <Clock className="h-2.5 w-2.5 mr-0.5" />
             {to("publishStatusPending")}
           </Badge>
         )}
-        {workflow.publish_status === "approved" && (
+        {isOwner && workflow.publish_status === "approved" && (
           <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 h-5 border-emerald-400 text-emerald-600 dark:text-emerald-400"
+            variant="secondary"
+            className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
           >
+            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
             {to("publishStatusApproved")}
           </Badge>
         )}
-        {workflow.publish_status === "rejected" && (
+        {isOwner && workflow.publish_status === "rejected" && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Badge
-                  variant="outline"
-                  className="text-[10px] px-1.5 py-0 h-5 border-destructive text-destructive cursor-default"
+                  variant="secondary"
+                  className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20 cursor-default"
                 >
+                  <XCircle className="h-2.5 w-2.5 mr-0.5" />
                   {to("publishStatusRejected")}
                 </Badge>
               </TooltipTrigger>
