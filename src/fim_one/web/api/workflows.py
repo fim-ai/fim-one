@@ -97,6 +97,7 @@ def _workflow_to_response(wf: Workflow) -> WorkflowResponse:
             else None
         ),
         review_note=getattr(wf, "review_note", None),
+        webhook_url=getattr(wf, "webhook_url", None),
         created_at=wf.created_at.isoformat() if wf.created_at else "",
         updated_at=wf.updated_at.isoformat() if wf.updated_at else None,
     )
@@ -713,6 +714,34 @@ async def validate_workflow(
 _running_tasks: dict[str, asyncio.Event] = {}
 
 
+async def _deliver_webhook(
+    webhook_url: str,
+    payload: dict[str, Any],
+) -> None:
+    """Fire-and-forget POST to a workflow webhook URL.
+
+    Logs errors but never raises — callers should schedule this as a
+    background task so it doesn't block the SSE stream.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                webhook_url,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Webhook-Source": "fim-one",
+                },
+            )
+            logger.info(
+                "Webhook delivered to %s — status %d", webhook_url, resp.status_code
+            )
+    except Exception:
+        logger.exception("Webhook delivery failed for %s", webhook_url)
+
+
 @router.post("/{workflow_id}/run")
 async def run_workflow(
     workflow_id: str,
@@ -931,6 +960,25 @@ async def run_workflow(
             except Exception:
                 logger.exception("Failed to persist workflow run %s", run_id)
 
+            # Fire webhook if configured (fire-and-forget)
+            wf_webhook_url = getattr(wf, "webhook_url", None)
+            if wf_webhook_url and final_status in ("completed", "failed"):
+                webhook_payload = {
+                    "event": (
+                        "run_completed"
+                        if final_status == "completed"
+                        else "run_failed"
+                    ),
+                    "workflow_id": wf.id,
+                    "run_id": run_id,
+                    "status": final_status,
+                    "outputs": outputs or None,
+                    "error": error_msg,
+                    "duration_ms": elapsed_ms,
+                    "completed_at": datetime.now(UTC).isoformat(),
+                }
+                asyncio.create_task(_deliver_webhook(wf_webhook_url, webhook_payload))
+
             yield _sse("end", {})
 
     return StreamingResponse(
@@ -941,6 +989,74 @@ async def run_workflow(
             "Cache-Control": "no-cache, no-store",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Webhook test
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{workflow_id}/test-webhook", response_model=ApiResponse)
+async def test_webhook(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Send a test payload to the workflow's configured webhook URL."""
+    import httpx
+
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+
+    webhook_url = getattr(wf, "webhook_url", None)
+    if not webhook_url:
+        raise AppError("webhook_url_not_configured", status_code=400)
+
+    test_payload = {
+        "event": "test",
+        "workflow_id": wf.id,
+        "run_id": "test-00000000-0000-0000-0000-000000000000",
+        "status": "completed",
+        "outputs": {"message": "This is a test webhook delivery from FIM One."},
+        "error": None,
+        "duration_ms": 0,
+        "completed_at": datetime.now(UTC).isoformat(),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                webhook_url,
+                json=test_payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Webhook-Source": "fim-one",
+                },
+            )
+        return ApiResponse(
+            data={
+                "success": 200 <= resp.status_code < 300,
+                "status_code": resp.status_code,
+                "webhook_url": webhook_url,
+            }
+        )
+    except httpx.TimeoutException:
+        return ApiResponse(
+            data={
+                "success": False,
+                "status_code": None,
+                "webhook_url": webhook_url,
+                "error": "Request timed out after 10 seconds",
+            }
+        )
+    except Exception as exc:
+        return ApiResponse(
+            data={
+                "success": False,
+                "status_code": None,
+                "webhook_url": webhook_url,
+                "error": str(exc),
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

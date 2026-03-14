@@ -30,6 +30,7 @@ class WorkflowUpdate(BaseModel):
     blueprint: dict | None = None
     status: str | None = None
     is_active: bool | None = None
+    webhook_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +56,7 @@ class WorkflowResponse(BaseModel):
     reviewed_by: str | None = None
     reviewed_at: str | None = None
     review_note: str | None = None
+    webhook_url: str | None = None
     created_at: str
     updated_at: str | None
 

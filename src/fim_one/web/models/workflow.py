@@ -51,6 +51,9 @@ class Workflow(UUIDPKMixin, TimestampMixin, Base):
     )
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Optional webhook URL — receives POST on run completion/failure
+    webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     # Encrypted env vars for workflow (stored as encrypted JSON)
     env_vars_blob: Mapped[str | None] = mapped_column(Text, nullable=True)
 
