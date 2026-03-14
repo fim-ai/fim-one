@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
+from fim_one.web.platform import is_market_org
 from fim_one.web.models import Agent, User
 from fim_one.web.models.connector import Connector
 from fim_one.web.models.knowledge_base import KnowledgeBase
@@ -296,7 +297,8 @@ async def publish_agent(
         if not body.org_id:
             raise AppError("org_id_required", status_code=400)
         from fim_one.web.auth import require_org_member
-        await require_org_member(body.org_id, current_user, db)
+        if not is_market_org(body.org_id):
+            await require_org_member(body.org_id, current_user, db)
         agent.visibility = "org"
         agent.org_id = body.org_id
         from fim_one.web.publish_review import apply_publish_status

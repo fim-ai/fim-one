@@ -9,6 +9,18 @@ from fim_one.web.models.organization import OrgMembership, Organization
 PLATFORM_ORG_SLUG = "platform"
 PLATFORM_ORG_ID = "00000000-0000-0000-0000-000000000001"
 
+MARKET_ORG_SLUG = "market"
+MARKET_ORG_ID = "00000000-0000-0000-0000-000000000002"
+
+
+def is_market_org(org_id: str) -> bool:
+    """Return True if *org_id* is the built-in Market organisation.
+
+    The Market org allows any authenticated user to publish without
+    a membership check.
+    """
+    return org_id == MARKET_ORG_ID
+
 
 async def ensure_platform_org(db: AsyncSession, owner_id: str) -> str:
     """Create the Platform org if it doesn't exist. Return its ID."""

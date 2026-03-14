@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.exceptions import AppError
+from fim_one.web.platform import is_market_org
 from fim_one.web.deps import get_embedding, get_kb_manager
 from fim_one.web.models import KBDocument, KnowledgeBase, User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
@@ -262,7 +263,8 @@ async def publish_kb(
         if not body.org_id:
             raise AppError("org_id_required", status_code=400)
         from fim_one.web.auth import require_org_member
-        await require_org_member(body.org_id, current_user, db)
+        if not is_market_org(body.org_id):
+            await require_org_member(body.org_id, current_user, db)
         kb.visibility = "org"
         kb.org_id = body.org_id
         from fim_one.web.publish_review import apply_publish_status
