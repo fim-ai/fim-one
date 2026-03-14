@@ -53,5 +53,8 @@
   "skills": "技能",
   "sectionBuild": "构建",
   "sectionResources": "资源",
-  "sectionOperate": "运维"
+  "sectionOperate": "运维",
+  "mobileOverlayTitle": "为桌面设计",
+  "mobileOverlayDescription": "FIM One 的编排体验是为大屏幕构建的。请在桌面浏览器上访问以获得完整体验。",
+  "mobileOverlayContinue": "仍然继续"
 }

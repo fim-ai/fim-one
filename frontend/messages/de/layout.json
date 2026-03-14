@@ -53,5 +53,8 @@
   "skills": "Fähigkeiten",
   "sectionBuild": "Erstellen",
   "sectionResources": "Ressourcen",
-  "sectionOperate": "Betreiben"
+  "sectionOperate": "Betreiben",
+  "mobileOverlayTitle": "Für Desktop konzipiert",
+  "mobileOverlayDescription": "FIM One's Orchestrierungserlebnis ist für größere Bildschirme konzipiert. Bitte besuchen Sie uns mit einem Desktop-Browser für das vollständige Erlebnis.",
+  "mobileOverlayContinue": "Trotzdem fortfahren"
 }

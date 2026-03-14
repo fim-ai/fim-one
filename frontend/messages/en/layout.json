@@ -53,5 +53,8 @@
   "gsConnector": "Create a Connector",
   "gsAgent": "Create an Agent",
   "gsChat": "Start a Conversation",
-  "gsStart": "Start →"
+  "gsStart": "Start →",
+  "mobileOverlayTitle": "Designed for Desktop",
+  "mobileOverlayDescription": "FIM One's orchestration experience is built for larger screens. Please visit on a desktop browser for the full experience.",
+  "mobileOverlayContinue": "Continue anyway"
 }

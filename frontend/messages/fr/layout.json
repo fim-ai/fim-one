@@ -53,5 +53,8 @@
   "skills": "Compétences",
   "sectionBuild": "Construire",
   "sectionResources": "Ressources",
-  "sectionOperate": "Exploiter"
+  "sectionOperate": "Exploiter",
+  "mobileOverlayTitle": "Conçu pour le bureau",
+  "mobileOverlayDescription": "L'expérience d'orchestration de FIM One est conçue pour les grands écrans. Veuillez visiter sur un navigateur de bureau pour l'expérience complète.",
+  "mobileOverlayContinue": "Continuer quand même"
 }

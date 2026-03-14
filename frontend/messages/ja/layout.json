@@ -53,5 +53,8 @@
   "skills": "スキル",
   "sectionBuild": "ビルド",
   "sectionResources": "リソース",
-  "sectionOperate": "運用"
+  "sectionOperate": "運用",
+  "mobileOverlayTitle": "デスクトップ向けに設計されています",
+  "mobileOverlayDescription": "FIM One のオーケストレーション体験は、より大きな画面向けに構築されています。完全な体験のために、デスクトップブラウザでアクセスしてください。",
+  "mobileOverlayContinue": "とにかく続行"
 }

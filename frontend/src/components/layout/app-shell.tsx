@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { BookOpen, Bot, FlaskConical, GitBranch, LayoutDashboard, Layers, Library, Loader2, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, ShoppingBag, Sun, Wrench, X } from "lucide-react"
+import { BookOpen, Bot, FlaskConical, GitBranch, LayoutDashboard, Layers, Library, Loader2, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Plug, Plus, Search, ShoppingBag, Sun, Wrench, X } from "lucide-react"
 import { getApiBaseUrl } from "@/lib/constants"
 import { setMaintenanceCallback } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -264,6 +264,35 @@ function MaintenanceOverlay() {
   )
 }
 
+function MobileOverlay() {
+  const t = useTranslations("layout")
+  const [dismissed, setDismissed] = useState(false)
+
+  if (dismissed) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background px-8 md:hidden">
+      <div className="flex flex-col items-center gap-6 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+          <Monitor className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold">{t("mobileOverlayTitle")}</h1>
+          <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
+            {t("mobileOverlayDescription")}
+          </p>
+        </div>
+        <button
+          onClick={() => setDismissed(true)}
+          className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors"
+        >
+          {t("mobileOverlayContinue")}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 const LOGO_PARTICLES = [
   { angle: 0,   dist: 28, color: "#6366f1" },
   { angle: 45,  dist: 26, color: "#8b5cf6" },
@@ -459,6 +488,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Authenticated: full layout with conversation sidebar
   return (
     <ConversationProvider>
+      <MobileOverlay />
       <NavigationProgress />
       <TooltipProvider delayDuration={300}>
       <div className="relative flex h-screen overflow-hidden bg-background">

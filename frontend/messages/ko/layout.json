@@ -53,5 +53,8 @@
   "skills": "스킬",
   "sectionBuild": "빌드",
   "sectionResources": "리소스",
-  "sectionOperate": "운영"
+  "sectionOperate": "운영",
+  "mobileOverlayTitle": "데스크톱용으로 설계됨",
+  "mobileOverlayDescription": "FIM One의 오케스트레이션 경험은 더 큰 화면을 위해 구축되었습니다. 전체 경험을 위해 데스크톱 브라우저에서 방문해주세요.",
+  "mobileOverlayContinue": "계속 진행"
 }
