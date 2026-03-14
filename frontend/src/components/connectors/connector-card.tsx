@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { CheckCircle2, Clock, MoreHorizontal, PackageMinus, Pencil, Plug, Trash2, Globe, GlobeLock, RotateCw, Database, Download, Copy, Eye, Store, Users, XCircle } from "lucide-react"
+import { Building2, CheckCircle2, Clock, MoreHorizontal, PackageMinus, Pencil, Plug, Trash2, Globe, GlobeLock, RotateCw, Database, Download, Copy, Eye, ShoppingBag, XCircle } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -181,7 +181,7 @@ export function ConnectorCard({
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
           >
-            <Users className="h-2.5 w-2.5 mr-0.5" />
+            <Building2 className="h-2.5 w-2.5 mr-0.5" />
             {tc("shared")}
           </Badge>
         </div>
@@ -200,9 +200,9 @@ export function ConnectorCard({
             )}
           >
             {connector.org_id === MARKET_ORG_ID ? (
-              <><Store className="h-2.5 w-2.5 mr-0.5" />{tc("publishedToMarket")}</>
+              <><ShoppingBag className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
             ) : (
-              <><Globe className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
+              <><Building2 className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
             )}
           </Badge>
         </div>

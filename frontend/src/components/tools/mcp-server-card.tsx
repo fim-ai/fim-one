@@ -3,8 +3,8 @@
 import { useState } from "react"
 import { useTranslations } from "next-intl"
 import {
-  Clock, Download, MoreHorizontal, PackageMinus, Pencil, Trash2, Terminal, Globe, GlobeLock, FlaskConical,
-  Loader2, CheckCircle2, XCircle, Key, AlertTriangle, RotateCw, Power, Store, Users,
+  Building2, Clock, Download, MoreHorizontal, PackageMinus, Pencil, Trash2, Terminal, Globe, GlobeLock, FlaskConical,
+  Loader2, CheckCircle2, XCircle, Key, AlertTriangle, RotateCw, Power, ShoppingBag,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -326,7 +326,7 @@ export function MCPServerCard({
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
           >
-            <Users className="h-2.5 w-2.5 mr-0.5" />
+            <Building2 className="h-2.5 w-2.5 mr-0.5" />
             {tc("shared")}
           </Badge>
         </div>
@@ -345,9 +345,9 @@ export function MCPServerCard({
             )}
           >
             {server.org_id === MARKET_ORG_ID ? (
-              <><Store className="h-2.5 w-2.5 mr-0.5" />{tc("publishedToMarket")}</>
+              <><ShoppingBag className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
             ) : (
-              <><Globe className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
+              <><Building2 className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
             )}
           </Badge>
         </div>

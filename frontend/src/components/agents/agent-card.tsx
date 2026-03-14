@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Bot, CheckCircle2, Clock, Download, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, Radar, RotateCw, Store, Users, XCircle } from "lucide-react"
+import { Bot, Building2, CheckCircle2, Clock, Download, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, Radar, RotateCw, ShoppingBag, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -148,7 +148,7 @@ export function AgentCard({
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
           >
-            <Users className="h-2.5 w-2.5 mr-0.5" />
+            <Building2 className="h-2.5 w-2.5 mr-0.5" />
             {tc("shared")}
           </Badge>
         )}
@@ -174,9 +174,9 @@ export function AgentCard({
             )}
           >
             {agent.org_id === MARKET_ORG_ID ? (
-              <><Store className="h-2.5 w-2.5 mr-0.5" />{tc("publishedToMarket")}</>
+              <><ShoppingBag className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
             ) : (
-              <><Globe className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
+              <><Building2 className="h-2.5 w-2.5 mr-0.5" />{tc("published")}</>
             )}
           </Badge>
         )}
