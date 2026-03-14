@@ -34,6 +34,7 @@ class UserInfo(BaseModel):
     has_connector: bool = False
     has_agent: bool = False
     has_conversation: bool = False
+    privacy_accepted_at: datetime | None = None
 
 
 class RegisterRequest(BaseModel):
@@ -41,6 +42,7 @@ class RegisterRequest(BaseModel):
     email: str = Field(..., max_length=255)
     invite_code: str | None = None
     verification_code: str | None = None
+    privacy_accepted: bool = False
 
     @field_validator("email")
     @classmethod

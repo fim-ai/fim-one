@@ -10,8 +10,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
-from fastapi.responses import FileResponse
-from sqlalchemy import func, select, update
+from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import delete, func, select, update
 
 from fim_one.web.email import _smtp_configured, send_verification_email
 from fim_one.web.exceptions import AppError
@@ -40,9 +40,18 @@ from fim_one.web.auth import (
 )
 from fim_one.web.models import LoginHistory, User
 from fim_one.web.models.agent import Agent
+from fim_one.web.models.api_key import ApiKey
 from fim_one.web.models.connector import Connector
+from fim_one.web.models.connector_call_log import ConnectorCallLog
 from fim_one.web.models.conversation import Conversation
+from fim_one.web.models.eval import EvalCase, EvalCaseResult, EvalDataset, EvalRun
+from fim_one.web.models.knowledge_base import KnowledgeBase
+from fim_one.web.models.model_config import ModelConfig
 from fim_one.web.models.oauth_binding import UserOAuthBinding
+from fim_one.web.models.organization import OrgMembership
+from fim_one.web.models.resource_subscription import ResourceSubscription
+from fim_one.web.models.skill import Skill
+from fim_one.web.models.workflow import Workflow, WorkflowRun
 from fim_one.web.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
@@ -102,6 +111,7 @@ def _build_user_info(
         has_connector=has_connector,
         has_agent=has_agent,
         has_conversation=has_conversation,
+        privacy_accepted_at=getattr(user, "privacy_accepted_at", None),
     )
 
 
@@ -309,6 +319,7 @@ async def register(
         password_hash=hash_password(body.password),
         email=body.email,
         is_admin=is_first_user_check,
+        privacy_accepted_at=datetime.now(UTC) if body.privacy_accepted else None,
     )
     db.add(user)
     await db.flush()
@@ -573,6 +584,302 @@ async def me(
         has_agent=has_agent_row.first() is not None,
         has_conversation=has_conversation_row.first() is not None,
     ).model_dump())
+
+
+def _dt(v: datetime | None) -> str | None:
+    """Serialize a datetime to ISO 8601 string or None."""
+    return v.isoformat() if v else None
+
+
+@router.get("/me/export")
+async def export_my_data(
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> JSONResponse:
+    """Export all user data as JSON (GDPR Article 15 & 20 — right of access & portability)."""
+    uid = current_user.id
+
+    # --- Profile ---
+    result = await db.execute(
+        select(User).options(selectinload(User.oauth_bindings)).where(User.id == uid)
+    )
+    user = result.scalar_one()
+    profile = {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "email": user.email,
+        "is_admin": user.is_admin,
+        "preferred_language": user.preferred_language,
+        "onboarding_completed": user.onboarding_completed,
+        "avatar": user.avatar,
+        "oauth_provider": user.oauth_provider,
+        "system_instructions": user.system_instructions,
+        "privacy_accepted_at": _dt(getattr(user, "privacy_accepted_at", None)),
+        "created_at": _dt(user.created_at),
+        "updated_at": _dt(user.updated_at),
+        "oauth_bindings": [
+            {
+                "provider": b.provider,
+                "email": b.email,
+                "display_name": b.display_name,
+                "bound_at": _dt(b.bound_at),
+            }
+            for b in (user.oauth_bindings or [])
+        ],
+    }
+
+    # --- Conversations + Messages ---
+    conv_result = await db.execute(
+        select(Conversation)
+        .options(selectinload(Conversation.messages))
+        .where(Conversation.user_id == uid)
+    )
+    conversations = []
+    for conv in conv_result.scalars().all():
+        conversations.append({
+            "id": conv.id,
+            "title": conv.title,
+            "mode": conv.mode,
+            "agent_id": conv.agent_id,
+            "status": conv.status,
+            "starred": conv.starred,
+            "model_name": conv.model_name,
+            "total_tokens": conv.total_tokens,
+            "created_at": _dt(conv.created_at),
+            "updated_at": _dt(conv.updated_at),
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "message_type": m.message_type,
+                    "created_at": _dt(m.created_at),
+                }
+                for m in (conv.messages or [])
+            ],
+        })
+
+    # --- Agents ---
+    agent_result = await db.execute(select(Agent).where(Agent.user_id == uid))
+    agents = [
+        {
+            "id": a.id,
+            "name": a.name,
+            "description": a.description,
+            "instructions": a.instructions,
+            "execution_mode": a.execution_mode,
+            "status": a.status,
+            "icon": a.icon,
+            "created_at": _dt(a.created_at),
+            "updated_at": _dt(a.updated_at),
+        }
+        for a in agent_result.scalars().all()
+    ]
+
+    # --- Knowledge Bases ---
+    kb_result = await db.execute(select(KnowledgeBase).where(KnowledgeBase.user_id == uid))
+    knowledge_bases = [
+        {
+            "id": kb.id,
+            "name": kb.name,
+            "description": kb.description,
+            "chunk_strategy": kb.chunk_strategy,
+            "chunk_size": kb.chunk_size,
+            "document_count": kb.document_count,
+            "status": kb.status,
+            "created_at": _dt(kb.created_at),
+            "updated_at": _dt(kb.updated_at),
+        }
+        for kb in kb_result.scalars().all()
+    ]
+
+    # --- Connectors (exclude credentials) ---
+    conn_result = await db.execute(select(Connector).where(Connector.user_id == uid))
+    connectors = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "description": c.description,
+            "type": c.type,
+            "base_url": c.base_url,
+            "auth_type": c.auth_type,
+            "status": c.status,
+            "created_at": _dt(c.created_at),
+            "updated_at": _dt(c.updated_at),
+        }
+        for c in conn_result.scalars().all()
+    ]
+
+    # --- Model Configs (exclude api_key) ---
+    mc_result = await db.execute(select(ModelConfig).where(ModelConfig.user_id == uid))
+    model_configs = [
+        {
+            "id": mc.id,
+            "name": mc.name,
+            "provider": mc.provider,
+            "model_name": mc.model_name,
+            "base_url": mc.base_url,
+            "category": mc.category,
+            "role": mc.role,
+            "is_default": mc.is_default,
+            "created_at": _dt(mc.created_at),
+            "updated_at": _dt(mc.updated_at),
+        }
+        for mc in mc_result.scalars().all()
+    ]
+
+    # --- Workflows + Runs ---
+    wf_result = await db.execute(
+        select(Workflow).options(selectinload(Workflow.runs)).where(Workflow.user_id == uid)
+    )
+    workflows = []
+    for wf in wf_result.scalars().all():
+        workflows.append({
+            "id": wf.id,
+            "name": wf.name,
+            "description": wf.description,
+            "status": wf.status,
+            "created_at": _dt(wf.created_at),
+            "updated_at": _dt(wf.updated_at),
+            "runs": [
+                {
+                    "id": r.id,
+                    "status": r.status,
+                    "started_at": _dt(r.started_at),
+                    "completed_at": _dt(r.completed_at),
+                    "duration_ms": r.duration_ms,
+                    "error": r.error,
+                    "created_at": _dt(r.created_at),
+                }
+                for r in (wf.runs or [])
+            ],
+        })
+
+    # --- Skills ---
+    skill_result = await db.execute(select(Skill).where(Skill.user_id == uid))
+    skills = [
+        {
+            "id": s.id,
+            "name": s.name,
+            "description": s.description,
+            "content": s.content,
+            "status": s.status,
+            "created_at": _dt(s.created_at),
+            "updated_at": _dt(s.updated_at),
+        }
+        for s in skill_result.scalars().all()
+    ]
+
+    # --- API Keys (metadata only — exclude key_hash) ---
+    ak_result = await db.execute(select(ApiKey).where(ApiKey.user_id == uid))
+    api_keys = [
+        {
+            "id": ak.id,
+            "name": ak.name,
+            "key_prefix": ak.key_prefix,
+            "scopes": ak.scopes,
+            "is_active": ak.is_active,
+            "expires_at": _dt(ak.expires_at),
+            "last_used_at": _dt(ak.last_used_at),
+            "total_requests": ak.total_requests,
+            "created_at": _dt(ak.created_at),
+        }
+        for ak in ak_result.scalars().all()
+    ]
+
+    # --- Login History ---
+    lh_result = await db.execute(select(LoginHistory).where(LoginHistory.user_id == uid))
+    login_history = [
+        {
+            "id": lh.id,
+            "ip_address": lh.ip_address,
+            "user_agent": lh.user_agent,
+            "success": lh.success,
+            "failure_reason": lh.failure_reason,
+            "created_at": _dt(lh.created_at),
+        }
+        for lh in lh_result.scalars().all()
+    ]
+
+    # --- Org Memberships ---
+    om_result = await db.execute(select(OrgMembership).where(OrgMembership.user_id == uid))
+    org_memberships = [
+        {
+            "id": om.id,
+            "org_id": om.org_id,
+            "role": om.role,
+            "created_at": _dt(om.created_at),
+        }
+        for om in om_result.scalars().all()
+    ]
+
+    # --- Eval Data ---
+    ed_result = await db.execute(select(EvalDataset).where(EvalDataset.user_id == uid))
+    eval_datasets = [
+        {
+            "id": ed.id,
+            "name": ed.name,
+            "description": ed.description,
+            "created_at": _dt(ed.created_at),
+        }
+        for ed in ed_result.scalars().all()
+    ]
+
+    ec_result = await db.execute(select(EvalCase).where(EvalCase.user_id == uid))
+    eval_cases = [
+        {
+            "id": ec.id,
+            "dataset_id": ec.dataset_id,
+            "prompt": ec.prompt,
+            "expected_behavior": ec.expected_behavior,
+            "created_at": _dt(ec.created_at),
+        }
+        for ec in ec_result.scalars().all()
+    ]
+
+    er_result = await db.execute(select(EvalRun).where(EvalRun.user_id == uid))
+    eval_runs = [
+        {
+            "id": er.id,
+            "agent_id": er.agent_id,
+            "dataset_id": er.dataset_id,
+            "status": er.status,
+            "total_cases": er.total_cases,
+            "passed_cases": er.passed_cases,
+            "failed_cases": er.failed_cases,
+            "completed_at": _dt(er.completed_at),
+            "created_at": _dt(er.created_at),
+        }
+        for er in er_result.scalars().all()
+    ]
+
+    # --- Assemble export ---
+    export_data = {
+        "export_date": datetime.now(UTC).isoformat(),
+        "profile": profile,
+        "conversations": conversations,
+        "agents": agents,
+        "knowledge_bases": knowledge_bases,
+        "connectors": connectors,
+        "model_configs": model_configs,
+        "workflows": workflows,
+        "skills": skills,
+        "api_keys": api_keys,
+        "login_history": login_history,
+        "org_memberships": org_memberships,
+        "eval_datasets": eval_datasets,
+        "eval_cases": eval_cases,
+        "eval_runs": eval_runs,
+    }
+
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    return JSONResponse(
+        content=export_data,
+        headers={
+            "Content-Disposition": f'attachment; filename="fim-one-data-export-{today}.json"',
+        },
+    )
 
 
 @router.patch("/profile", response_model=ApiResponse)
@@ -1172,6 +1479,41 @@ async def delete_own_account(
             target_label=label,
             detail=audit_detail,
         )
+    )
+
+    # --- Explicit deletion of tables NOT covered by ORM cascade ---
+
+    # 1. API keys (user_id nullable, no cascade)
+    await db.execute(delete(ApiKey).where(ApiKey.user_id == user_id))
+
+    # 2. Login history (user_id nullable, no cascade)
+    await db.execute(delete(LoginHistory).where(LoginHistory.user_id == user_id))
+
+    # 3. Eval data (FK to users, no cascade) — delete in order: case_results → runs → cases → datasets
+    eval_run_ids_q = select(EvalRun.id).where(EvalRun.user_id == user_id)
+    await db.execute(delete(EvalCaseResult).where(EvalCaseResult.run_id.in_(eval_run_ids_q)))
+    await db.execute(delete(EvalRun).where(EvalRun.user_id == user_id))
+    await db.execute(delete(EvalCase).where(EvalCase.user_id == user_id))
+    await db.execute(delete(EvalDataset).where(EvalDataset.user_id == user_id))
+
+    # 4. Connector call logs (user_id nullable, no cascade)
+    await db.execute(delete(ConnectorCallLog).where(ConnectorCallLog.user_id == user_id))
+
+    # 5. Resource subscriptions (user_id FK, no cascade)
+    await db.execute(delete(ResourceSubscription).where(ResourceSubscription.user_id == user_id))
+
+    # 6. Email verifications (matched by email, no FK to users)
+    user_email = current_user.email
+    await db.execute(delete(EmailVerification).where(EmailVerification.email == user_email))
+
+    # 7. Org memberships (user_id FK, no cascade on user delete)
+    await db.execute(delete(OrgMembership).where(OrgMembership.user_id == user_id))
+
+    # 8. Anonymize audit_logs — preserve records but remove admin_id reference
+    await db.execute(
+        update(AuditLog)
+        .where(AuditLog.admin_id == user_id)
+        .values(admin_id=None)
     )
 
     # --- DB delete (eagerly load all relationships for cascade) ---

@@ -47,6 +47,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
     username_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    privacy_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     conversations: Mapped[list[Conversation]] = relationship(
         back_populates="user", lazy="raise", cascade="all, delete-orphan"
