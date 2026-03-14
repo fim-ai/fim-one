@@ -290,6 +290,22 @@ export interface WorkflowValidateResponse {
   topology_order: string[]
 }
 
+// --- Import result types ---
+
+export interface UnresolvedReference {
+  node_id: string
+  node_type: string
+  field_name: string
+  referenced_id: string
+  resource_type: string
+}
+
+export interface WorkflowImportResult {
+  workflow: WorkflowResponse
+  unresolved_references: UnresolvedReference[]
+  warnings: string[]
+}
+
 // --- Create / Update payloads ---
 
 export interface WorkflowCreate {

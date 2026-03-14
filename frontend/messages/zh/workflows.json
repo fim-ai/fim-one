@@ -674,5 +674,6 @@
   "runCount": "{count} 次运行",
   "successRate": "{rate}% 成功率",
   "lastRunAt": "最后运行于 {time}",
-  "noRuns": "暂无运行记录"
+  "noRuns": "暂无运行记录",
+  "importUnresolvedWarning": "工作流导入时存在 {count} 个未解析的引用。某些节点可能引用了此环境中不存在的智能体、连接器或知识库。"
 }

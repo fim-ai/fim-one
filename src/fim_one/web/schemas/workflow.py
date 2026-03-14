@@ -262,6 +262,25 @@ class WorkflowImportFileRequest(BaseModel):
     data: WorkflowExportData | None = None
 
 
+class UnresolvedReferenceItem(BaseModel):
+    """A single unresolved external resource reference in an imported blueprint."""
+
+    node_id: str
+    node_type: str
+    field_name: str
+    referenced_id: str
+    resource_type: str
+
+
+class WorkflowImportResponse(BaseModel):
+    """Response for workflow import — includes the created workflow plus any
+    unresolved reference warnings."""
+
+    workflow: WorkflowResponse
+    unresolved_references: list[UnresolvedReferenceItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Env vars
 # ---------------------------------------------------------------------------

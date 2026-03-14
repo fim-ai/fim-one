@@ -24,6 +24,7 @@
   "importInvalidBlueprint": "Workflow blueprint is invalid",
   "workflowImported": "Workflow imported",
   "workflowImportFailed": "Failed to import workflow",
+  "importUnresolvedWarning": "Workflow imported with {count} unresolved reference(s). Some nodes may reference agents, connectors, or knowledge bases that don't exist in this environment.",
 
   "publishDialogTitle": "Publish workflow?",
   "publishDialogDescription": "Once published, this workflow will be available to organization members.",

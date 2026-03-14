@@ -674,5 +674,6 @@
   "runCount": "{count} exécutions",
   "successRate": "{rate}% de réussite",
   "lastRunAt": "Dernière exécution {time}",
-  "noRuns": "Aucune exécution pour le moment"
+  "noRuns": "Aucune exécution pour le moment",
+  "importUnresolvedWarning": "Workflow importé avec {count} référence(s) non résolue(s). Certains nœuds peuvent référencer des agents, connecteurs ou bases de connaissances qui n'existent pas dans cet environnement."
 }

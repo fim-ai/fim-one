@@ -7,7 +7,9 @@ conditional branching.
 """
 
 from .engine import WorkflowEngine
+from .import_resolver import ImportResolution, resolve_blueprint_references
 from .parser import BlueprintValidationError, parse_blueprint, topological_sort
+from .scheduler import WorkflowScheduler
 from .types import (
     ErrorStrategy,
     ExecutionContext,
@@ -24,6 +26,7 @@ __all__ = [
     "BlueprintValidationError",
     "ErrorStrategy",
     "ExecutionContext",
+    "ImportResolution",
     "NodeResult",
     "NodeStatus",
     "NodeType",
@@ -32,6 +35,8 @@ __all__ = [
     "WorkflowEdgeDef",
     "WorkflowEngine",
     "WorkflowNodeDef",
+    "WorkflowScheduler",
     "parse_blueprint",
+    "resolve_blueprint_references",
     "topological_sort",
 ]

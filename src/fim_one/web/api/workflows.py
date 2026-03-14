@@ -41,7 +41,9 @@ from fim_one.web.schemas.workflow import (
     WorkflowExportFile,
     WorkflowFromTemplateRequest,
     WorkflowImportFileRequest,
+    WorkflowImportResponse,
     WorkflowResponse,
+    UnresolvedReferenceItem,
     WorkflowRunRequest,
     WorkflowRunResponse,
     WorkflowScheduleResponse,
@@ -2308,7 +2310,15 @@ async def import_workflow(
 
     Also accepts the legacy shape ``{ "data": {...} }`` for backwards
     compatibility.
+
+    The response includes an ``unresolved_references`` list and ``warnings``
+    for any nodes that reference external resources (agents, connectors,
+    knowledge bases, sub-workflows, MCP servers) that do not exist or are
+    not accessible to the importing user.  The import still succeeds even
+    when references are unresolved.
     """
+    from fim_one.core.workflow import parse_blueprint, resolve_blueprint_references
+
     # Resolve the workflow data from either envelope or legacy shape
     data = body.workflow or body.data
     if data is None:
@@ -2319,8 +2329,8 @@ async def import_workflow(
         raise AppError("import_invalid_format", status_code=400)
 
     # Validate blueprint structure: must have nodes with at least a start node
-    blueprint = data.blueprint
-    nodes = blueprint.get("nodes", [])
+    raw_blueprint = data.blueprint
+    nodes = raw_blueprint.get("nodes", [])
     if not nodes:
         raise AppError("import_invalid_blueprint", status_code=400)
 
@@ -2331,6 +2341,18 @@ async def import_workflow(
     )
     if not has_start:
         raise AppError("import_invalid_blueprint", status_code=400)
+
+    # Parse the blueprint so the resolver can work with typed node definitions
+    try:
+        parsed_bp = parse_blueprint(raw_blueprint)
+    except Exception:
+        raise AppError("import_invalid_blueprint", status_code=400)
+
+    # Resolve external references
+    user_org_ids = await get_user_org_ids(current_user.id, db)
+    resolution = await resolve_blueprint_references(
+        parsed_bp, db, current_user.id, user_org_ids
+    )
 
     # Deduplicate name: append " (imported)" if a workflow with the same
     # name already exists for this user.
@@ -2358,7 +2380,22 @@ async def import_workflow(
     await db.commit()
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+
+    import_response = WorkflowImportResponse(
+        workflow=_workflow_to_response(wf),
+        unresolved_references=[
+            UnresolvedReferenceItem(
+                node_id=u.node_id,
+                node_type=u.node_type,
+                field_name=u.field_name,
+                referenced_id=u.referenced_id,
+                resource_type=u.resource_type,
+            )
+            for u in resolution.unresolved
+        ],
+        warnings=resolution.warnings,
+    )
+    return ApiResponse(data=import_response.model_dump())
 
 
 # ---------------------------------------------------------------------------

@@ -223,9 +223,15 @@ export default function WorkflowsPage() {
         parsed.format === "fim_workflow_v1" || parsed.workflow || parsed.data
           ? parsed
           : { data: parsed }
-      const workflow = await workflowApi.import(fileData)
-      setWorkflows((prev) => [workflow, ...prev])
-      toast.success(t("workflowImported"))
+      const result = await workflowApi.import(fileData)
+      setWorkflows((prev) => [result.workflow, ...prev])
+      if (result.unresolved_references.length > 0) {
+        toast.warning(
+          t("importUnresolvedWarning", { count: result.unresolved_references.length })
+        )
+      } else {
+        toast.success(t("workflowImported"))
+      }
     } catch {
       toast.error(t("workflowImportFailed"))
     }

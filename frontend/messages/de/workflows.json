@@ -674,5 +674,6 @@
   "runCount": "{count} Ausführungen",
   "successRate": "{rate}% Erfolgsquote",
   "lastRunAt": "Letzte Ausführung {time}",
-  "noRuns": "Noch keine Ausführungen"
+  "noRuns": "Noch keine Ausführungen",
+  "importUnresolvedWarning": "Workflow mit {count} ungelöster(n) Referenz(en) importiert. Einige Knoten können auf Agenten, Konnektoren oder Wissensdatenbanken verweisen, die in dieser Umgebung nicht vorhanden sind."
 }

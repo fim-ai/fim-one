@@ -1,6 +1,6 @@
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from "./constants"
 import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
-import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse } from "@/types/workflow"
+import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult } from "@/types/workflow"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -985,7 +985,7 @@ export const workflowApi = {
     ),
 
   import: (fileData: Record<string, unknown>) =>
-    apiFetch<ApiResponse<WorkflowResponse>>("/api/workflows/import", {
+    apiFetch<ApiResponse<WorkflowImportResult>>("/api/workflows/import", {
       method: "POST",
       body: JSON.stringify(fileData),
     }).then((r) => r.data),
