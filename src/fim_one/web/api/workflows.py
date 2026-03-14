@@ -3,20 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import math
 import secrets
+import socket
 import time
 import uuid
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session, create_session
@@ -85,6 +88,75 @@ def _percentile(sorted_values: list[int], pct: int) -> int:
     n = len(sorted_values)
     idx = max(0, min(math.ceil(pct / 100 * n) - 1, n - 1))
     return sorted_values[idx]
+
+
+def _validate_webhook_url(url: str) -> None:
+    """Validate a webhook URL to prevent SSRF attacks.
+
+    Only allows ``http://`` and ``https://`` schemes and rejects URLs
+    that resolve to private/loopback IP ranges or ``localhost``.
+
+    Raises
+    ------
+    AppError
+        If the URL is invalid or points to a private/internal address.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        raise AppError(
+            "invalid_webhook_url",
+            status_code=400,
+            detail="Invalid webhook URL",
+        )
+
+    # Scheme check
+    if parsed.scheme not in ("http", "https"):
+        raise AppError(
+            "invalid_webhook_url",
+            status_code=400,
+            detail="Webhook URL must use http or https scheme",
+        )
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise AppError(
+            "invalid_webhook_url",
+            status_code=400,
+            detail="Webhook URL must include a hostname",
+        )
+
+    # Reject localhost by name
+    if hostname.lower() in ("localhost", "localhost.localdomain"):
+        raise AppError(
+            "invalid_webhook_url",
+            status_code=400,
+            detail="Webhook URL must not point to localhost",
+        )
+
+    # Resolve hostname to IP and check for private/loopback ranges
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        raise AppError(
+            "invalid_webhook_url",
+            status_code=400,
+            detail="Could not resolve webhook URL hostname",
+        )
+
+    for family, _type, _proto, _canonname, sockaddr in addr_infos:
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+
+        if ip.is_loopback or ip.is_private or ip.is_reserved or ip.is_link_local:
+            raise AppError(
+                "invalid_webhook_url",
+                status_code=400,
+                detail="Webhook URL must not point to a private or internal address",
+            )
 
 
 def _sse(event: str, data: Any) -> str:
@@ -742,6 +814,10 @@ async def update_workflow(
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     update_data = body.model_dump(exclude_unset=True)
+
+    # Validate webhook URL against SSRF before applying
+    if "webhook_url" in update_data and update_data["webhook_url"] is not None:
+        _validate_webhook_url(update_data["webhook_url"])
 
     # Capture old blueprint BEFORE applying updates (for diff computation)
     old_blueprint: dict | None = None
@@ -1602,6 +1678,9 @@ async def test_webhook(
     webhook_url = getattr(wf, "webhook_url", None)
     if not webhook_url:
         raise AppError("webhook_url_not_configured", status_code=400)
+
+    # Validate against SSRF before making the request
+    _validate_webhook_url(webhook_url)
 
     test_payload = {
         "event": "test",
