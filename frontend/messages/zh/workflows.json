@@ -670,5 +670,9 @@
   "historyClearAllTitle": "清除运行历史",
   "historyClearAllDescription": "这将永久删除所有已完成、失败和已取消的运行。活跃运行将被保留。",
   "historyRunsCleared": "已清除 {count} 个运行",
-  "historyRunsClearFailed": "清除运行失败"
+  "historyRunsClearFailed": "清除运行失败",
+  "runCount": "{count} 次运行",
+  "successRate": "{rate}% 成功率",
+  "lastRunAt": "最后运行于 {time}",
+  "noRuns": "暂无运行记录"
 }

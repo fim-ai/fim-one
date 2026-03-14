@@ -20,6 +20,9 @@ export interface WorkflowResponse {
   review_note: string | null
   webhook_url: string | null
   has_api_key: boolean
+  total_runs: number
+  last_run_at: string | null
+  success_rate: number | null
   created_at: string
   updated_at: string
 }

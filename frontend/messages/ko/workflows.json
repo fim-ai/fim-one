@@ -670,5 +670,9 @@
   "historyClearAllTitle": "실행 기록 지우기",
   "historyClearAllDescription": "완료된 모든 실행, 실패한 실행 및 취소된 실행이 영구적으로 삭제됩니다. 활성 실행은 유지됩니다.",
   "historyRunsCleared": "{count}개의 실행이 지워졌습니다",
-  "historyRunsClearFailed": "실행 지우기에 실패했습니다"
+  "historyRunsClearFailed": "실행 지우기에 실패했습니다",
+  "runCount": "{count}회 실행",
+  "successRate": "{rate}% 성공",
+  "lastRunAt": "마지막 실행 {time}",
+  "noRuns": "아직 실행 없음"
 }

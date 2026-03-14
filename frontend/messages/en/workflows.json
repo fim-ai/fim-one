@@ -38,6 +38,10 @@
   "workflowUnpublishFailed": "Failed to unpublish workflow",
 
   "nodeCount": "{count} nodes",
+  "runCount": "{count} runs",
+  "successRate": "{rate}% success",
+  "lastRunAt": "Last run {time}",
+  "noRuns": "No runs yet",
   "statusDraft": "Draft",
   "statusActive": "Active",
   "searchPlaceholder": "Search workflows...",

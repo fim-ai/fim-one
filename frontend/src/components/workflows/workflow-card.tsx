@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import {
+  Activity,
   Copy,
   Download,
   GitBranch,
@@ -185,9 +186,33 @@ export function WorkflowCard({
       </div>
 
       {/* Description */}
-      <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-3">
+      <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-2">
         {workflow.description || t("noDescription")}
       </p>
+
+      {/* Run stats */}
+      {workflow.total_runs > 0 ? (
+        <div className="flex items-center gap-2 mb-3 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-0.5">
+            <Activity className="h-3 w-3" />
+            {t("runCount", { count: workflow.total_runs })}
+          </span>
+          {workflow.success_rate != null && (
+            <span className={cn(
+              workflow.success_rate >= 80 ? "text-emerald-600 dark:text-emerald-400" :
+              workflow.success_rate >= 50 ? "text-amber-600 dark:text-amber-400" :
+              "text-destructive",
+            )}>
+              {t("successRate", { rate: workflow.success_rate })}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 mb-3 text-[10px] text-muted-foreground opacity-50">
+          <Activity className="h-3 w-3" />
+          {t("noRuns")}
+        </div>
+      )}
 
       {/* Edit CTA */}
       <Button

@@ -304,8 +304,41 @@ async def list_workflows(
     )
     workflows = result.scalars().all()
 
+    # Batch-fetch run stats for all workflows on this page (single query)
+    wf_ids = [w.id for w in workflows]
+    run_stats: dict[str, dict] = {}
+    if wf_ids:
+        stats_q = await db.execute(
+            select(
+                WorkflowRun.workflow_id,
+                func.count().label("total"),
+                func.count(
+                    func.nullif(WorkflowRun.status != "completed", True)
+                ).label("completed"),
+                func.max(WorkflowRun.created_at).label("last_run"),
+            )
+            .where(WorkflowRun.workflow_id.in_(wf_ids))
+            .group_by(WorkflowRun.workflow_id)
+        )
+        for row in stats_q:
+            rate = (row.completed / row.total * 100) if row.total else None
+            run_stats[row.workflow_id] = {
+                "total_runs": row.total,
+                "last_run_at": row.last_run.isoformat() if row.last_run else None,
+                "success_rate": round(rate, 1) if rate is not None else None,
+            }
+
+    items = []
+    for w in workflows:
+        resp = _workflow_to_response(w)
+        stats = run_stats.get(w.id, {})
+        resp.total_runs = stats.get("total_runs", 0)
+        resp.last_run_at = stats.get("last_run_at")
+        resp.success_rate = stats.get("success_rate")
+        items.append(resp.model_dump())
+
     return PaginatedResponse(
-        items=[_workflow_to_response(w).model_dump() for w in workflows],
+        items=items,
         total=total,
         page=page,
         size=size,

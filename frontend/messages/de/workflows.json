@@ -670,5 +670,9 @@
   "historyClearAllTitle": "Ausführungsverlauf löschen",
   "historyClearAllDescription": "Dies löscht dauerhaft alle abgeschlossenen, fehlgeschlagenen und abgebrochenen Ausführungen. Aktive Ausführungen bleiben erhalten.",
   "historyRunsCleared": "{count} Ausführungen gelöscht",
-  "historyRunsClearFailed": "Fehler beim Löschen der Ausführungen"
+  "historyRunsClearFailed": "Fehler beim Löschen der Ausführungen",
+  "runCount": "{count} Ausführungen",
+  "successRate": "{rate}% Erfolgsquote",
+  "lastRunAt": "Letzte Ausführung {time}",
+  "noRuns": "Noch keine Ausführungen"
 }

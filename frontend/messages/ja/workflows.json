@@ -670,5 +670,9 @@
   "historyClearAllTitle": "実行履歴をクリア",
   "historyClearAllDescription": "これにより、完了、失敗、キャンセルされたすべての実行が永久に削除されます。アクティブな実行は保持されます。",
   "historyRunsCleared": "{count}件の実行がクリアされました",
-  "historyRunsClearFailed": "実行のクリアに失敗しました"
+  "historyRunsClearFailed": "実行のクリアに失敗しました",
+  "runCount": "{count}回の実行",
+  "successRate": "{rate}%の成功率",
+  "lastRunAt": "最後の実行 {time}",
+  "noRuns": "まだ実行がありません"
 }

@@ -64,6 +64,9 @@ class WorkflowResponse(BaseModel):
     schedule_inputs: dict[str, Any] | None = None
     schedule_timezone: str = "UTC"
     has_api_key: bool = False
+    total_runs: int = 0
+    last_run_at: str | None = None
+    success_rate: float | None = None
     created_at: str
     updated_at: str | None
 
