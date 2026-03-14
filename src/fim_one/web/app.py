@@ -50,7 +50,10 @@ from .api.agent_ai import router as agent_ai_router
 from .api.connector_ai import router as connector_ai_router
 from .api.builder import router as builder_router
 from .api.connectors import router as connectors_router
-from .api.organizations import router as organizations_router, admin_router as admin_organizations_router
+from .api.organizations import (
+    router as organizations_router,
+    admin_router as admin_organizations_router,
+)
 from .api.reviews import router as reviews_router
 from .api.db_connectors import router as db_connectors_router
 from .api.conversations import router as conversations_router
@@ -67,7 +70,10 @@ from .api.dashboard import router as dashboard_router
 from .api.market import router as market_router
 from .api.skills import router as skills_router
 from .api.workflows import router as workflows_router
-from .api.workflow_templates import router as workflow_templates_router, admin_router as admin_workflow_templates_router
+from .api.workflow_templates import (
+    router as workflow_templates_router,
+    admin_router as admin_workflow_templates_router,
+)
 from .api.hooks import router as hooks_router
 from .api.metrics import router as metrics_router
 from .api.notifications import router as notifications_router
@@ -102,7 +108,9 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     cleaner = WorkflowRunCleaner(
         max_age_days=int(os.getenv("WORKFLOW_RUN_MAX_AGE_DAYS", "30")),
         max_runs_per_workflow=int(os.getenv("WORKFLOW_RUN_MAX_PER_WORKFLOW", "100")),
-        cleanup_interval_hours=int(os.getenv("WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS", "24")),
+        cleanup_interval_hours=int(
+            os.getenv("WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS", "24")
+        ),
     )
     cleanup_task = asyncio.create_task(cleaner.run_loop())
 
@@ -152,7 +160,7 @@ def create_app() -> FastAPI:
     """
     # -- License notice (stderr — cannot be silenced by log config) ----------
     print(
-        "🚀 FIM One v0.6 — Licensed under FIM One Source Available License\n"
+        "🚀 FIM One — Licensed under FIM One Source Available License\n"
         "Copyright 2024-2026 Beijing Feimu Network Technology Co., Ltd.",
         file=sys.stderr,
     )
@@ -176,7 +184,10 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def maintenance_mode_gate(request: Request, call_next):
         path = request.url.path
-        if any(path.startswith(p) for p in _MAINTENANCE_PASS) or request.method == "OPTIONS":
+        if (
+            any(path.startswith(p) for p in _MAINTENANCE_PASS)
+            or request.method == "OPTIONS"
+        ):
             return await call_next(request)
 
         now = time.monotonic()
@@ -185,6 +196,7 @@ def create_app() -> FastAPI:
             is_maintenance = cached[0]
         else:
             from fim_one.db import create_session
+
             async with create_session() as db:
                 value = await get_setting(db, SETTING_MAINTENANCE_MODE, default="false")
             is_maintenance = value.lower() == "true"
@@ -193,14 +205,18 @@ def create_app() -> FastAPI:
         if is_maintenance:
             return JSONResponse(
                 status_code=503,
-                content={"detail": "System is under maintenance. Please try again later."},
+                content={
+                    "detail": "System is under maintenance. Please try again later."
+                },
                 headers={"Retry-After": "300"},
             )
         return await call_next(request)
 
     # -- Exception handlers -------------------------------------------------
     @app.exception_handler(AppError)
-    async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:  # noqa: ARG001
+    async def app_error_handler(
+        request: Request, exc: AppError
+    ) -> JSONResponse:  # noqa: ARG001
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -211,7 +227,9 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(HTTPException)
-    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:  # noqa: ARG001
+    async def http_exception_handler(
+        request: Request, exc: HTTPException
+    ) -> JSONResponse:  # noqa: ARG001
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -222,7 +240,9 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:  # noqa: ARG001
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:  # noqa: ARG001
         def _safe_errors(errors: list) -> list:
             """Stringify any non-serializable values (e.g. Pydantic v2 ctx exception objects)."""
             safe = []
@@ -252,9 +272,7 @@ def create_app() -> FastAPI:
     # to any origin).  List explicit allowed origins only; operators can extend
     # via the CORS_ORIGINS env var (comma-separated).
     _extra_origins = [
-        o.strip()
-        for o in os.environ.get("CORS_ORIGINS", "").split(",")
-        if o.strip()
+        o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()
     ]
     app.add_middleware(
         CORSMiddleware,
