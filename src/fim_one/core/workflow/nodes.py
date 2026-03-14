@@ -320,6 +320,26 @@ class ConditionBranchExecutor:
                     value = cond.get("value", "")
                     expr = cond.get("expression", "")
 
+                    # M8: If mode is "expression" but this condition has no
+                    # expression and no variable (i.e. it was configured with
+                    # an llm_prompt instead), fall through to LLM evaluation
+                    # for this condition rather than silently skipping it.
+                    if not expr and not variable and cond.get("llm_prompt"):
+                        logger.warning(
+                            "ConditionBranch node %s condition '%s' has no "
+                            "expression but has llm_prompt; falling through "
+                            "to LLM evaluation for this condition.",
+                            node.id, cond_id,
+                        )
+                        # Delegate just this condition to LLM evaluation
+                        llm_handle = await self._evaluate_llm(
+                            node, [cond], store, default_handle,
+                        )
+                        if llm_handle is not None:
+                            active_handle = llm_handle
+                            break
+                        continue
+
                     if not expr and variable:
                         # Auto-build expression from structured fields
                         if operator in ("is_empty",):
@@ -1116,9 +1136,28 @@ class TemplateTransformExecutor:
                 )
 
             snapshot = await store.snapshot_safe()
+
+            # M7: Convert dotted keys to nested dicts so Jinja2
+            # ``{{ llm_1.output }}`` works (attribute access).  Keep
+            # original dotted keys in the namespace for backward compat
+            # via ``{{ data['llm_1.output'] }}``.
+            template_ns: dict[str, Any] = {}
+            for key, val in snapshot.items():
+                # Keep the dotted key accessible via __getitem__
+                template_ns[key] = val
+                # Build nested dict: "llm_1.output" -> {"llm_1": {"output": ...}}
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    d = template_ns
+                    for part in parts[:-1]:
+                        if part not in d or not isinstance(d[part], dict):
+                            d[part] = {}
+                        d = d[part]
+                    d[parts[-1]] = val
+
             env = SandboxedEnvironment()
             template = env.from_string(template_str)
-            output = template.render(**snapshot)
+            output = template.render(**template_ns)
 
             await store.set(f"{node.id}.output", output)
 
