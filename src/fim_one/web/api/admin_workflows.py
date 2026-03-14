@@ -16,6 +16,12 @@ from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
 from fim_one.web.models import User, Workflow, WorkflowRun
 from fim_one.web.schemas.common import PaginatedResponse
+from fim_one.web.schemas.workflow import (
+    BatchOperationResponse,
+    BatchWorkflowDeleteRequest,
+    BatchWorkflowPublishRequest,
+    BatchWorkflowToggleRequest,
+)
 
 from fim_one.web.api.admin_utils import write_audit
 
@@ -218,4 +224,113 @@ async def admin_delete_workflow(
         target_type="workflow",
         target_id=workflow_id,
         target_label=workflow_name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batch operations
+# ---------------------------------------------------------------------------
+
+
+@router.post("/workflows/batch-delete", response_model=BatchOperationResponse)
+async def batch_delete_workflows(
+    body: BatchWorkflowDeleteRequest,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> BatchOperationResponse:
+    """Batch-delete workflows by IDs. Skips IDs that do not exist."""
+    result = await db.execute(
+        select(Workflow).where(Workflow.id.in_(body.workflow_ids))
+    )
+    workflows = result.scalars().all()
+
+    count = 0
+    deleted_names: list[str] = []
+    for wf in workflows:
+        deleted_names.append(wf.name)
+        await db.delete(wf)
+        count += 1
+
+    await db.commit()
+
+    if count > 0:
+        await write_audit(
+            db,
+            current_user,
+            "workflow.admin_batch_delete",
+            target_type="workflow",
+            detail=f"Deleted {count} workflow(s): {', '.join(deleted_names[:10])}",
+        )
+
+    return BatchOperationResponse(
+        count=count,
+        message=f"Deleted {count} workflow(s)",
+    )
+
+
+@router.post("/workflows/batch-toggle", response_model=BatchOperationResponse)
+async def batch_toggle_workflows(
+    body: BatchWorkflowToggleRequest,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> BatchOperationResponse:
+    """Batch-set is_active for workflows by IDs. Skips IDs that do not exist."""
+    result = await db.execute(
+        select(Workflow).where(Workflow.id.in_(body.workflow_ids))
+    )
+    workflows = result.scalars().all()
+
+    count = 0
+    for wf in workflows:
+        wf.is_active = body.is_active
+        count += 1
+
+    await db.commit()
+
+    if count > 0:
+        await write_audit(
+            db,
+            current_user,
+            "workflow.admin_batch_toggle",
+            target_type="workflow",
+            detail=f"Set is_active={body.is_active} for {count} workflow(s)",
+        )
+
+    return BatchOperationResponse(
+        count=count,
+        message=f"Updated {count} workflow(s) to is_active={body.is_active}",
+    )
+
+
+@router.post("/workflows/batch-publish", response_model=BatchOperationResponse)
+async def batch_publish_workflows(
+    body: BatchWorkflowPublishRequest,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> BatchOperationResponse:
+    """Batch-set status (active/draft) for workflows by IDs."""
+    result = await db.execute(
+        select(Workflow).where(Workflow.id.in_(body.workflow_ids))
+    )
+    workflows = result.scalars().all()
+
+    count = 0
+    for wf in workflows:
+        wf.status = body.status
+        count += 1
+
+    await db.commit()
+
+    if count > 0:
+        await write_audit(
+            db,
+            current_user,
+            "workflow.admin_batch_publish",
+            target_type="workflow",
+            detail=f"Set status={body.status} for {count} workflow(s)",
+        )
+
+    return BatchOperationResponse(
+        count=count,
+        message=f"Updated {count} workflow(s) to status={body.status}",
     )

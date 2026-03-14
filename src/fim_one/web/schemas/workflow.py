@@ -519,3 +519,35 @@ class NodeTestResponse(BaseModel):
         default_factory=dict,
         description="Variable store snapshot after execution",
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin batch operations
+# ---------------------------------------------------------------------------
+
+
+class BatchWorkflowDeleteRequest(BaseModel):
+    """Request body for batch-deleting workflows."""
+
+    workflow_ids: list[str] = Field(..., min_length=1, max_length=100)
+
+
+class BatchWorkflowToggleRequest(BaseModel):
+    """Request body for batch-toggling workflow is_active state."""
+
+    workflow_ids: list[str] = Field(..., min_length=1, max_length=100)
+    is_active: bool
+
+
+class BatchWorkflowPublishRequest(BaseModel):
+    """Request body for batch-publishing/unpublishing workflows."""
+
+    workflow_ids: list[str] = Field(..., min_length=1, max_length=100)
+    status: str  # "active" or "draft"
+
+
+class BatchOperationResponse(BaseModel):
+    """Response for batch operations."""
+
+    count: int
+    message: str
