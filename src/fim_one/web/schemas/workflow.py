@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +59,11 @@ class WorkflowResponse(BaseModel):
     reviewed_at: str | None = None
     review_note: str | None = None
     webhook_url: str | None = None
+    schedule_cron: str | None = None
+    schedule_enabled: bool = False
+    schedule_inputs: dict[str, Any] | None = None
+    schedule_timezone: str = "UTC"
+    has_api_key: bool = False
     created_at: str
     updated_at: str | None
 
@@ -321,3 +328,139 @@ class WorkflowAnalyticsResponse(BaseModel):
     runs_per_day: list[RunsPerDay] = Field(default_factory=list)
     most_failed_nodes: list[MostFailedNode] = Field(default_factory=list)
     avg_nodes_per_run: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# Schedule (cron-based trigger)
+# ---------------------------------------------------------------------------
+
+# Allowed ranges for 5-field cron expressions (min hour dom month dow)
+_CRON_FIELD_RANGES = [
+    (0, 59),   # minute
+    (0, 23),   # hour
+    (1, 31),   # day of month
+    (1, 12),   # month
+    (0, 7),    # day of week (0 and 7 both = Sunday)
+]
+
+# Matches a single cron token: number, range (1-5), step (*/2, 1-5/2), or list (1,3,5)
+# Also allows named days/months (MON-FRI, JAN-DEC)
+_CRON_TOKEN_RE = re.compile(
+    r"^(?:\*|[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?)(?:/\d+)?$"
+)
+
+
+def _validate_cron(expr: str) -> str | None:
+    """Validate a 5-field cron expression.
+
+    Returns None if valid, or an error message string if invalid.
+    Supports: ``*``, ranges (``1-5``), steps (``*/2``), lists (``1,3,5``),
+    and named days/months (``MON-FRI``, ``JAN``).
+    """
+    parts = expr.strip().split()
+    if len(parts) != 5:
+        return f"Cron expression must have exactly 5 fields, got {len(parts)}"
+
+    for i, part in enumerate(parts):
+        # A field can be a comma-separated list of tokens
+        tokens = part.split(",")
+        for token in tokens:
+            if not token:
+                return f"Empty token in field {i + 1}"
+            if not _CRON_TOKEN_RE.match(token):
+                return f"Invalid token '{token}' in field {i + 1}"
+
+    return None
+
+
+def _compute_next_run(cron_expr: str, tz_name: str = "UTC") -> str | None:
+    """Compute the next scheduled run time from a cron expression.
+
+    Uses ``croniter`` if available; otherwise returns ``None``.
+    """
+    try:
+        from croniter import croniter
+    except ImportError:
+        # TODO: croniter not installed — return None gracefully
+        return None
+
+    try:
+        import zoneinfo
+
+        tz = zoneinfo.ZoneInfo(tz_name)
+    except Exception:
+        tz = timezone.utc
+
+    now = datetime.now(tz=tz)
+    try:
+        it = croniter(cron_expr, now)
+        next_dt: datetime = it.get_next(datetime)
+        return next_dt.isoformat()
+    except Exception:
+        return None
+
+
+class WorkflowScheduleUpdate(BaseModel):
+    """Request body to set or update a workflow's scheduled trigger."""
+
+    cron: str | None = Field(
+        None,
+        max_length=100,
+        description="5-field cron expression (min hour dom month dow).",
+        examples=["0 9 * * MON-FRI", "*/15 * * * *"],
+    )
+    enabled: bool = False
+    inputs: dict[str, Any] | None = None
+    timezone: str = Field(
+        default="UTC",
+        max_length=50,
+        description="IANA timezone name for schedule evaluation.",
+    )
+
+    @field_validator("cron")
+    @classmethod
+    def validate_cron_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        err = _validate_cron(v)
+        if err:
+            raise ValueError(err)
+        return v.strip()
+
+
+class WorkflowScheduleResponse(BaseModel):
+    """Current schedule configuration for a workflow."""
+
+    schedule_cron: str | None = None
+    schedule_enabled: bool = False
+    schedule_inputs: dict[str, Any] | None = None
+    schedule_timezone: str = "UTC"
+    next_run_at: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Public trigger (API key)
+# ---------------------------------------------------------------------------
+
+
+class WorkflowTriggerRequest(BaseModel):
+    """Input payload for the public trigger endpoint."""
+
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowTriggerResponse(BaseModel):
+    """Response from the public trigger endpoint."""
+
+    run_id: str
+    status: str
+    outputs: dict[str, Any] | None = None
+    error: str | None = None
+    duration_ms: int | None = None
+
+
+class WorkflowApiKeyResponse(BaseModel):
+    """Response after generating an API key (shown once)."""
+
+    api_key: str
+    workflow_id: str

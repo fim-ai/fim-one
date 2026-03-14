@@ -54,8 +54,23 @@ class Workflow(UUIDPKMixin, TimestampMixin, Base):
     # Optional webhook URL — receives POST on run completion/failure
     webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # API key for external trigger (public endpoint, no user auth)
+    api_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+
     # Encrypted env vars for workflow (stored as encrypted JSON)
     env_vars_blob: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Scheduled trigger fields
+    schedule_cron: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    schedule_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=sa.text("FALSE")
+    )
+    schedule_inputs: Any = Column(JSON, nullable=True)
+    schedule_timezone: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default="UTC", server_default="UTC"
+    )
 
     user: Mapped[User | None] = relationship(back_populates="workflows", lazy="raise")
     runs: Mapped[list[WorkflowRun]] = relationship(

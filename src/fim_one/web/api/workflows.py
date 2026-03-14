@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import math
+import secrets
 import time
 import uuid
 from collections import defaultdict
@@ -30,6 +31,7 @@ from fim_one.web.schemas.workflow import (
     MostFailedNode,
     RunsPerDay,
     WorkflowAnalyticsResponse,
+    WorkflowApiKeyResponse,
     WorkflowBatchRunRequest,
     WorkflowBatchRunResponse,
     WorkflowCreate,
@@ -42,10 +44,15 @@ from fim_one.web.schemas.workflow import (
     WorkflowResponse,
     WorkflowRunRequest,
     WorkflowRunResponse,
+    WorkflowScheduleResponse,
+    WorkflowScheduleUpdate,
     WorkflowTemplateResponse,
+    WorkflowTriggerRequest,
+    WorkflowTriggerResponse,
     WorkflowUpdate,
     WorkflowValidateResponse,
     WorkflowVersionResponse,
+    _compute_next_run,
 )
 from fim_one.web.visibility import build_visibility_filter
 
@@ -101,6 +108,11 @@ def _workflow_to_response(wf: Workflow) -> WorkflowResponse:
         ),
         review_note=getattr(wf, "review_note", None),
         webhook_url=getattr(wf, "webhook_url", None),
+        schedule_cron=getattr(wf, "schedule_cron", None),
+        schedule_enabled=getattr(wf, "schedule_enabled", False),
+        schedule_inputs=getattr(wf, "schedule_inputs", None),
+        schedule_timezone=getattr(wf, "schedule_timezone", "UTC") or "UTC",
+        has_api_key=bool(getattr(wf, "api_key", None)),
         created_at=wf.created_at.isoformat() if wf.created_at else "",
         updated_at=wf.updated_at.isoformat() if wf.updated_at else None,
     )
@@ -351,6 +363,171 @@ async def create_workflow_from_template(
     result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
     wf = result.scalar_one()
     return ApiResponse(data=_workflow_to_response(wf).model_dump())
+
+
+# ---------------------------------------------------------------------------
+# Public trigger (API key auth, no user session required)
+# Must be registered BEFORE /{workflow_id} parameterised routes.
+# ---------------------------------------------------------------------------
+
+
+@router.post("/trigger/{api_key}", response_model=ApiResponse)
+async def trigger_workflow(
+    api_key: str,
+    body: WorkflowTriggerRequest,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Trigger a workflow execution via its API key (no user auth required).
+
+    This is the public webhook-style endpoint for external systems to invoke
+    a workflow.  The workflow is looked up by its unique ``api_key`` field.
+    Runs synchronously (non-SSE) and returns the final result.
+    """
+    # Look up workflow by API key
+    result = await db.execute(
+        select(Workflow).where(Workflow.api_key == api_key)
+    )
+    wf = result.scalar_one_or_none()
+    if wf is None:
+        raise AppError("invalid_api_key", status_code=401, detail="Invalid API key")
+
+    if not wf.is_active:
+        raise AppError("workflow_inactive", status_code=403, detail="Workflow is inactive")
+
+    if not wf.blueprint or not wf.blueprint.get("nodes"):
+        raise AppError("blueprint_empty", status_code=400)
+
+    # Rate limit: reject if there's already a running run for this workflow
+    running_result = await db.execute(
+        select(func.count()).where(
+            WorkflowRun.workflow_id == wf.id,
+            WorkflowRun.status.in_(["pending", "running"]),
+        )
+    )
+    if running_result.scalar_one() > 0:
+        raise AppError(
+            "workflow_already_running",
+            status_code=429,
+            detail="Workflow already has a running execution. Please wait for it to complete.",
+        )
+
+    from fim_one.core.workflow.engine import WorkflowEngine
+    from fim_one.core.workflow.parser import BlueprintValidationError, parse_blueprint
+
+    try:
+        parsed = parse_blueprint(wf.blueprint)
+    except BlueprintValidationError as exc:
+        raise AppError(f"invalid_blueprint: {exc}", status_code=400)
+
+    # Decrypt env vars if present
+    env_vars: dict[str, str] = {}
+    if wf.env_vars_blob:
+        try:
+            from fim_one.core.security.encryption import decrypt_credential
+
+            env_vars = decrypt_credential(wf.env_vars_blob)
+        except Exception:
+            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+
+    # Create run record
+    run_id = str(uuid.uuid4())
+    run = WorkflowRun(
+        id=run_id,
+        workflow_id=wf.id,
+        user_id=wf.user_id,  # attribute run to the workflow owner
+        blueprint_snapshot=wf.blueprint,
+        inputs=body.inputs,
+        status="running",
+    )
+    db.add(run)
+    await db.commit()
+
+    # Execute synchronously (non-SSE)
+    start_time = time.time()
+    final_status = "completed"
+    outputs: dict[str, Any] = {}
+    node_results: dict[str, Any] = {}
+    error_msg: str | None = None
+
+    try:
+        engine = WorkflowEngine(
+            max_concurrency=5,
+            env_vars=env_vars,
+            run_id=run_id,
+            user_id=wf.user_id,
+            workflow_id=wf.id,
+        )
+
+        async for event_name, event_data in engine.execute_streaming(
+            parsed, body.inputs
+        ):
+            if event_name in (
+                "node_started",
+                "node_completed",
+                "node_failed",
+                "node_skipped",
+            ):
+                nid = event_data.get("node_id", "")
+                node_results[nid] = {
+                    **(node_results.get(nid) or {}),
+                    **event_data,
+                }
+            elif event_name == "run_completed":
+                outputs = event_data.get("outputs", {})
+                final_status = event_data.get("status", "completed")
+            elif event_name == "run_failed":
+                final_status = "failed"
+                error_msg = event_data.get("error")
+
+    except Exception as exc:
+        final_status = "failed"
+        error_msg = f"{type(exc).__name__}: {exc}"
+        logger.exception("Trigger execution failed for run %s", run_id)
+
+    elapsed_ms = int((time.time() - start_time) * 1000)
+
+    # Persist run results
+    try:
+        async with create_session() as persist_db:
+            result = await persist_db.execute(
+                select(WorkflowRun).where(WorkflowRun.id == run_id)
+            )
+            db_run = result.scalar_one_or_none()
+            if db_run:
+                db_run.status = final_status
+                db_run.outputs = outputs or None
+                db_run.node_results = node_results or None
+                db_run.started_at = datetime.fromtimestamp(start_time, tz=UTC)
+                db_run.completed_at = datetime.now(UTC)
+                db_run.duration_ms = elapsed_ms
+                db_run.error = error_msg
+                await persist_db.commit()
+    except Exception:
+        logger.exception("Failed to persist trigger run %s", run_id)
+
+    # Fire webhook if configured (fire-and-forget)
+    wf_webhook_url = getattr(wf, "webhook_url", None)
+    if wf_webhook_url and final_status in ("completed", "failed"):
+        webhook_payload = {
+            "event": "run_completed" if final_status == "completed" else "run_failed",
+            "workflow_id": wf.id,
+            "run_id": run_id,
+            "status": final_status,
+            "outputs": outputs or None,
+            "error": error_msg,
+            "duration_ms": elapsed_ms,
+            "completed_at": datetime.now(UTC).isoformat(),
+        }
+        asyncio.create_task(_deliver_webhook(wf_webhook_url, webhook_payload))
+
+    trigger_response = WorkflowTriggerResponse(
+        run_id=run_id,
+        status=final_status,
+        outputs=outputs or None,
+        error=error_msg,
+        duration_ms=elapsed_ms,
+    )
+    return ApiResponse(data=trigger_response.model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -1241,6 +1418,108 @@ async def test_webhook(
 
 
 # ---------------------------------------------------------------------------
+# Schedule (cron-based trigger) endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{workflow_id}/schedule", response_model=ApiResponse)
+async def get_workflow_schedule(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Get the current schedule configuration for a workflow."""
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+
+    cron = getattr(wf, "schedule_cron", None)
+    enabled = getattr(wf, "schedule_enabled", False)
+    tz = getattr(wf, "schedule_timezone", "UTC") or "UTC"
+
+    next_run: str | None = None
+    if cron and enabled:
+        next_run = _compute_next_run(cron, tz)
+
+    return ApiResponse(
+        data=WorkflowScheduleResponse(
+            schedule_cron=cron,
+            schedule_enabled=enabled,
+            schedule_inputs=getattr(wf, "schedule_inputs", None),
+            schedule_timezone=tz,
+            next_run_at=next_run,
+        ).model_dump()
+    )
+
+
+@router.put("/{workflow_id}/schedule", response_model=ApiResponse)
+async def update_workflow_schedule(
+    workflow_id: str,
+    body: WorkflowScheduleUpdate,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Set or update the schedule configuration for a workflow."""
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+
+    # If enabling without a cron expression, reject
+    if body.enabled and not body.cron:
+        raise AppError(
+            "schedule_cron_required",
+            status_code=400,
+            detail="A cron expression is required when enabling a schedule.",
+        )
+
+    wf.schedule_cron = body.cron
+    wf.schedule_enabled = body.enabled
+    wf.schedule_inputs = body.inputs
+    wf.schedule_timezone = body.timezone
+
+    await db.commit()
+    await db.refresh(wf)
+
+    tz = wf.schedule_timezone or "UTC"
+    next_run: str | None = None
+    if wf.schedule_cron and wf.schedule_enabled:
+        next_run = _compute_next_run(wf.schedule_cron, tz)
+
+    return ApiResponse(
+        data=WorkflowScheduleResponse(
+            schedule_cron=wf.schedule_cron,
+            schedule_enabled=wf.schedule_enabled,
+            schedule_inputs=wf.schedule_inputs,
+            schedule_timezone=tz,
+            next_run_at=next_run,
+        ).model_dump()
+    )
+
+
+@router.delete("/{workflow_id}/schedule", response_model=ApiResponse)
+async def delete_workflow_schedule(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Clear the schedule configuration for a workflow."""
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+
+    wf.schedule_cron = None
+    wf.schedule_enabled = False
+    wf.schedule_inputs = None
+    wf.schedule_timezone = "UTC"
+
+    await db.commit()
+
+    return ApiResponse(
+        data=WorkflowScheduleResponse(
+            schedule_cron=None,
+            schedule_enabled=False,
+            schedule_inputs=None,
+            schedule_timezone="UTC",
+            next_run_at=None,
+        ).model_dump()
+    )
+
+
+# ---------------------------------------------------------------------------
 # Variable introspection (for frontend config panels)
 # ---------------------------------------------------------------------------
 
@@ -2023,3 +2302,51 @@ async def update_workflow_env(
     return ApiResponse(
         data={"keys": list(body.env_vars.keys()) if body.env_vars else []}
     )
+
+
+# ---------------------------------------------------------------------------
+# API key management (for public trigger endpoint)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{workflow_id}/generate-api-key", response_model=ApiResponse)
+async def generate_workflow_api_key(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Generate a new API key for external workflow triggering.
+
+    The key is returned in the response and is only shown once.
+    If an existing key exists, it is replaced.
+    """
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+
+    # Generate a new API key: wf_ prefix + 43-char token = ~46 chars total
+    new_key = f"wf_{secrets.token_urlsafe(32)}"
+    wf.api_key = new_key
+    await db.commit()
+
+    response = WorkflowApiKeyResponse(
+        api_key=new_key,
+        workflow_id=wf.id,
+    )
+    return ApiResponse(data=response.model_dump())
+
+
+@router.delete("/{workflow_id}/api-key", response_model=ApiResponse)
+async def revoke_workflow_api_key(
+    workflow_id: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Revoke the API key for a workflow, disabling external triggers."""
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+
+    if not wf.api_key:
+        raise AppError("no_api_key", status_code=404, detail="Workflow has no API key")
+
+    wf.api_key = None
+    await db.commit()
+
+    return ApiResponse(data={"revoked": True, "workflow_id": wf.id})
