@@ -2609,7 +2609,17 @@ class HumanInterventionExecutor:
 
 
 class MCPExecutor:
-    """Execute an MCP server tool. Currently a stub — returns simulated result."""
+    """Connect to an MCP server, invoke a tool, and store the result.
+
+    Node data shape::
+
+        {
+            "server_id": "uuid-of-mcp-server",
+            "tool_name": "tool_name_string",
+            "parameters": {"key": "{{variable}}", ...},
+            "output_variable": "result_var_name"
+        }
+    """
 
     @staticmethod
     def output_schema() -> list[dict[str, str]]:
@@ -2624,57 +2634,188 @@ class MCPExecutor:
         context: ExecutionContext,
     ) -> NodeResult:
         t0 = time.time()
+        mcp_client = None
         try:
-            server_id = node.data.get("server_id", "")
-            tool_name = node.data.get("tool_name", "")
-            params_raw = node.data.get("parameters", {})
-            output_var = node.data.get("output_variable", "mcp_result")
+            server_id: str = node.data.get("server_id", "")
+            tool_name: str = node.data.get("tool_name", "")
+            params_template: dict[str, Any] = node.data.get("parameters", {})
+            output_variable: str = node.data.get("output_variable", "")
 
             if not server_id:
                 return NodeResult(
                     node_id=node.id,
                     status=NodeStatus.FAILED,
-                    error="MCP node missing server_id",
+                    error="MCP node requires server_id",
                     duration_ms=_ms_since(t0),
                 )
             if not tool_name:
                 return NodeResult(
                     node_id=node.id,
                     status=NodeStatus.FAILED,
-                    error="MCP node missing tool_name",
+                    error="MCP node requires tool_name",
                     duration_ms=_ms_since(t0),
                 )
 
-            # Interpolate parameter values
-            params = {}
-            for key, val in params_raw.items():
-                if isinstance(val, str):
+            # Interpolate parameters
+            params: dict[str, Any] = {}
+            for key, val in params_template.items():
+                if isinstance(val, str) and "{{" in val:
                     params[key] = await store.interpolate(val)
                 else:
                     params[key] = val
 
-            # Stub: in production this would call the MCP client
+            # Load MCP server config from DB
+            from fim_one.db import create_session
+            from fim_one.web.models.mcp_server import MCPServer
+            from sqlalchemy import select
+
+            async with create_session() as db:
+                result = await db.execute(
+                    select(MCPServer).where(MCPServer.id == server_id)
+                )
+                server = result.scalar_one_or_none()
+
+                if not server:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=f"MCP server '{server_id}' not found",
+                        duration_ms=_ms_since(t0),
+                    )
+
+                if not server.is_active:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=f"MCP server '{server.name}' is disabled",
+                        duration_ms=_ms_since(t0),
+                    )
+
+                # Resolve per-user credentials vs server-level env/headers
+                effective_env: dict[str, str] | None = server.env
+                effective_headers: dict[str, str] | None = server.headers
+
+                if context.user_id:
+                    try:
+                        from fim_one.web.models.mcp_server_credential import (
+                            MCPServerCredential,
+                        )
+
+                        cred_result = await db.execute(
+                            select(MCPServerCredential).where(
+                                MCPServerCredential.server_id == server_id,
+                                MCPServerCredential.user_id == context.user_id,
+                            )
+                        )
+                        cred = cred_result.scalar_one_or_none()
+                        if cred:
+                            if cred.env_blob:
+                                effective_env = {
+                                    **(effective_env or {}),
+                                    **cred.env_blob,
+                                }
+                            if cred.headers_blob:
+                                effective_headers = {
+                                    **(effective_headers or {}),
+                                    **cred.headers_blob,
+                                }
+                    except Exception:
+                        logger.warning(
+                            "Failed to load MCP credentials for user %s, server %s",
+                            context.user_id,
+                            server_id,
+                            exc_info=True,
+                        )
+
+            # Connect to MCP server and discover tools
+            from fim_one.core.mcp import MCPClient
+
+            mcp_client = MCPClient()
+
+            tools: list[Any] = []
+            if server.transport == "stdio" and server.command:
+                from fim_one.core.security import is_stdio_allowed
+
+                if not is_stdio_allowed():
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=(
+                            "STDIO MCP transport is disabled. "
+                            "Set ALLOW_STDIO_MCP=true to enable."
+                        ),
+                        duration_ms=_ms_since(t0),
+                    )
+                tools = await mcp_client.connect_stdio(
+                    name=server.name,
+                    command=server.command,
+                    args=server.args or [],
+                    env=effective_env,
+                    working_dir=server.working_dir,
+                )
+            elif server.transport == "sse" and server.url:
+                tools = await mcp_client.connect_sse(
+                    name=server.name,
+                    url=server.url,
+                    headers=effective_headers,
+                )
+            elif server.transport == "streamable_http" and server.url:
+                tools = await mcp_client.connect_streamable_http(
+                    name=server.name,
+                    url=server.url,
+                    headers=effective_headers,
+                )
+            else:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=(
+                        f"MCP server '{server.name}' has unsupported or "
+                        f"misconfigured transport: {server.transport}"
+                    ),
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Find the requested tool by original name
+            target_tool = None
+            for t in tools:
+                # MCPToolAdapter stores original name as _original_name
+                original = getattr(t, "_original_name", "")
+                if original == tool_name:
+                    target_tool = t
+                    break
+
+            if target_tool is None:
+                available = [getattr(t, "_original_name", t.name) for t in tools]
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=(
+                        f"Tool '{tool_name}' not found on MCP server "
+                        f"'{server.name}'. Available tools: {available}"
+                    ),
+                    duration_ms=_ms_since(t0),
+                )
+
+            # Execute the tool
             logger.info(
-                "MCP node %s: server=%s, tool=%s, params=%s",
-                node.id, server_id, tool_name, params,
+                "MCP node %s calling %s.%s with params: %s",
+                node.id,
+                server.name,
+                tool_name,
+                list(params.keys()),
             )
+            output = await target_tool.run(**params)
 
-            result = {
-                "server_id": server_id,
-                "tool_name": tool_name,
-                "parameters": params,
-                "result": f"MCP tool '{tool_name}' execution pending implementation",
-                "status": "stub",
-            }
-
-            await store.set(output_var, result)
-            await store.set(f"{node.id}.output", result)
-            await store.set(f"{node.id}.{output_var}", result)
+            # Store output
+            await store.set(f"{node.id}.output", output)
+            if output_variable:
+                await store.set(output_variable, output)
 
             return NodeResult(
                 node_id=node.id,
                 status=NodeStatus.COMPLETED,
-                output=result,
+                output=output[:500] if isinstance(output, str) else str(output)[:500],
                 duration_ms=_ms_since(t0),
             )
         except Exception as exc:
@@ -2682,9 +2823,19 @@ class MCPExecutor:
             return NodeResult(
                 node_id=node.id,
                 status=NodeStatus.FAILED,
-                error=f"MCP error: {exc}",
+                error=f"MCP tool error: {exc}",
                 duration_ms=_ms_since(t0),
             )
+        finally:
+            if mcp_client:
+                try:
+                    await mcp_client.disconnect_all()
+                except Exception:
+                    logger.warning(
+                        "Failed to disconnect MCP client for node %s",
+                        node.id,
+                        exc_info=True,
+                    )
 
 
 class BuiltinToolExecutor:

@@ -2247,29 +2247,11 @@ class TestResolveJsonPath:
 
 
 class TestMCPExecutor:
-    """Tests for MCPExecutor — MCP tool invocation (currently a stub)."""
+    """Tests for MCPExecutor — basic validation (real implementation).
 
-    @pytest.mark.asyncio
-    async def test_happy_path(self):
-        """MCP executor stores server_id, tool_name, and parameters."""
-        executor = MCPExecutor()
-        store = VariableStore()
-        ctx = _make_ctx()
-
-        node = _make_node("mcp_1", NodeType.MCP, {
-            "server_id": "server-abc",
-            "tool_name": "search",
-            "parameters": {"query": "test"},
-        })
-
-        result = await executor.execute(node, store, ctx)
-
-        assert result.status == NodeStatus.COMPLETED
-        output = result.output
-        assert output["server_id"] == "server-abc"
-        assert output["tool_name"] == "search"
-        assert output["parameters"] == {"query": "test"}
-        assert output["status"] == "stub"
+    Comprehensive tests with DB/MCP mocking are in
+    tests/test_workflow_mcp_executor.py.
+    """
 
     @pytest.mark.asyncio
     async def test_missing_server_id_fails(self):
@@ -2285,7 +2267,7 @@ class TestMCPExecutor:
         result = await executor.execute(node, store, ctx)
 
         assert result.status == NodeStatus.FAILED
-        assert "missing server_id" in result.error
+        assert "server_id" in result.error
 
     @pytest.mark.asyncio
     async def test_missing_tool_name_fails(self):
@@ -2301,46 +2283,7 @@ class TestMCPExecutor:
         result = await executor.execute(node, store, ctx)
 
         assert result.status == NodeStatus.FAILED
-        assert "missing tool_name" in result.error
-
-    @pytest.mark.asyncio
-    async def test_parameter_interpolation(self):
-        """MCP executor interpolates {{}} variables in parameters."""
-        executor = MCPExecutor()
-        store = VariableStore()
-        ctx = _make_ctx()
-        await store.set("user.query", "interpolated value")
-
-        node = _make_node("mcp_1", NodeType.MCP, {
-            "server_id": "server-abc",
-            "tool_name": "search",
-            "parameters": {"query": "{{user.query}}"},
-        })
-
-        result = await executor.execute(node, store, ctx)
-
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["parameters"]["query"] == "interpolated value"
-
-    @pytest.mark.asyncio
-    async def test_stores_in_all_locations(self):
-        """MCP executor stores result in output_variable, node.output, and node.output_variable."""
-        executor = MCPExecutor()
-        store = VariableStore()
-        ctx = _make_ctx()
-
-        node = _make_node("mcp_1", NodeType.MCP, {
-            "server_id": "s1",
-            "tool_name": "t1",
-            "output_variable": "my_mcp_result",
-        })
-
-        result = await executor.execute(node, store, ctx)
-
-        assert result.status == NodeStatus.COMPLETED
-        assert await store.get("my_mcp_result") is not None
-        assert await store.get("mcp_1.output") is not None
-        assert await store.get("mcp_1.my_mcp_result") is not None
+        assert "tool_name" in result.error
 
 
 # ===========================================================================

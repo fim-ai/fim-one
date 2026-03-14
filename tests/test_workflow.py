@@ -6512,32 +6512,11 @@ class TestNewTemplates:
 
 
 class TestMCPNode:
-    """Test the MCPExecutor (stub implementation)."""
+    """Test the MCPExecutor (real implementation).
 
-    @pytest.mark.asyncio
-    async def test_basic_stub_execution(self):
-        """MCP node should return stub result with server_id and tool_name."""
-        from fim_one.core.workflow.nodes import MCPExecutor
-
-        node = WorkflowNodeDef(
-            id="mcp_1",
-            type=NodeType.MCP,
-            data={
-                "type": "MCP",
-                "server_id": "my-server",
-                "tool_name": "search",
-                "parameters": {"query": "hello"},
-            },
-        )
-        store = VariableStore()
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
-
-        executor = MCPExecutor()
-        result = await executor.execute(node, store, ctx)
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["server_id"] == "my-server"
-        assert result.output["tool_name"] == "search"
-        assert result.output["status"] == "stub"
+    Comprehensive tests are in tests/test_workflow_mcp_executor.py.
+    These tests verify basic validation behavior without DB mocking.
+    """
 
     @pytest.mark.asyncio
     async def test_missing_server_id_fails(self):
@@ -6580,87 +6559,6 @@ class TestMCPNode:
         result = await executor.execute(node, store, ctx)
         assert result.status == NodeStatus.FAILED
         assert "tool_name" in result.error
-
-    @pytest.mark.asyncio
-    async def test_parameter_interpolation(self):
-        """MCP node should interpolate {{variables}} in parameter values."""
-        from fim_one.core.workflow.nodes import MCPExecutor
-
-        node = WorkflowNodeDef(
-            id="mcp_1",
-            type=NodeType.MCP,
-            data={
-                "type": "MCP",
-                "server_id": "my-server",
-                "tool_name": "search",
-                "parameters": {"query": "{{input.search_term}}", "limit": 10},
-            },
-        )
-        store = VariableStore()
-        await store.set("input.search_term", "workflow engines")
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
-
-        executor = MCPExecutor()
-        result = await executor.execute(node, store, ctx)
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["parameters"]["query"] == "workflow engines"
-        assert result.output["parameters"]["limit"] == 10
-
-    @pytest.mark.asyncio
-    async def test_output_variable_assignment(self):
-        """MCP node should set default output variable in the store."""
-        from fim_one.core.workflow.nodes import MCPExecutor
-
-        node = WorkflowNodeDef(
-            id="mcp_1",
-            type=NodeType.MCP,
-            data={
-                "type": "MCP",
-                "server_id": "my-server",
-                "tool_name": "search",
-            },
-        )
-        store = VariableStore()
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
-
-        executor = MCPExecutor()
-        await executor.execute(node, store, ctx)
-
-        stored = await store.get("mcp_result")
-        assert stored is not None
-        assert stored["server_id"] == "my-server"
-
-        node_output = await store.get("mcp_1.output")
-        assert node_output is not None
-        assert node_output["tool_name"] == "search"
-
-    @pytest.mark.asyncio
-    async def test_custom_output_variable(self):
-        """MCP node should respect custom output_variable name."""
-        from fim_one.core.workflow.nodes import MCPExecutor
-
-        node = WorkflowNodeDef(
-            id="mcp_1",
-            type=NodeType.MCP,
-            data={
-                "type": "MCP",
-                "server_id": "my-server",
-                "tool_name": "search",
-                "output_variable": "search_output",
-            },
-        )
-        store = VariableStore()
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
-
-        executor = MCPExecutor()
-        await executor.execute(node, store, ctx)
-
-        stored = await store.get("search_output")
-        assert stored is not None
-        assert stored["status"] == "stub"
-
-        namespaced = await store.get("mcp_1.search_output")
-        assert namespaced is not None
 
 
 # =========================================================================
