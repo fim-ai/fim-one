@@ -9,28 +9,33 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Non publié]
 
-### Ajouts
+### Ajouté
 
-- **Délai d'expiration au niveau du flux de travail** — Nouveau paramètre `workflow_timeout_ms` dans le moteur qui annule tous les nœuds en attente/en cours lorsqu'il est dépassé, avec attente asynchrone bornée pour une détection de délai d'expiration réactive.
+- **Délai d'expiration au niveau du flux de travail** — Nouveau paramètre `workflow_timeout_ms` dans le moteur qui annule tous les nœuds en attente/en cours en cas de dépassement, avec attente asynchrone bornée pour une détection de délai d'expiration réactive.
 - **Réexécution avec les dernières entrées** — Le bouton "Exécuter à nouveau" pré-remplit le formulaire d'entrée avec les valeurs de l'exécution précédente.
-- **Filtre de statut de l'historique d'exécution** — Menu déroulant pour filtrer les exécutions de flux de travail par Terminé/Échoué/Annulé/En cours.
-- **Historique des versions du flux de travail** — Versioning automatique lors de l'enregistrement du schéma avec des points de terminaison API list/get/restore pour revenir à des versions antérieures.
-- **Point de terminaison de validation** — `POST /validate` pour la validation structurelle du schéma sans exécution.
-- **Mode d'exécution à blanc** — `POST /run` avec `dry_run=true` retourne le plan d'exécution en JSON sans exécuter.
+- **Filtre de statut de l'historique d'exécution** — Liste déroulante pour filtrer les exécutions de flux de travail par Terminé/Échoué/Annulé/En cours.
+- **Historique des versions du flux de travail** — Versioning automatique à la sauvegarde du blueprint avec des points de terminaison API list/get/restore pour revenir à des versions antérieures.
+- **Point de terminaison de validation** — `POST /validate` pour la validation structurelle du blueprint sans exécution.
+- **Mode de simulation** — `POST /run` avec `dry_run=true` retourne le plan d'exécution en JSON sans exécuter.
 - **13 tests de routage de branche conditionnelle** — Couverture complète pour le branchement, la fusion, l'imbrication et le routage du classificateur.
-- **Panneau de statistiques d'exécution par nœud** — Nouveau panneau de statistiques (`node-stats-panel.tsx`) affichant les taux de succès par nœud, les durées moyennes et les compteurs d'échecs triés du pire au meilleur. Intégré à la barre d'outils du flux de travail. Nouvelle méthode client API `getNodeStats` et type `NodeStatEntry` pour la consommation frontend.
-- **Nœuds de phase 3 : SubWorkflow et ENV** — Deux nouveaux types de nœuds avec exécuteurs backend, validation du parseur et 14 nouveaux tests (total : 304 → 306) :
-  - **SubWorkflow** : Exécuteur stub pour l'orchestration de flux de travail imbriqués — sélectionnez un flux de travail cible et mappez les variables d'entrée/sortie.
+- **Panneau de statistiques d'exécution par nœud** — Nouveau panneau de statistiques (`node-stats-panel.tsx`) affichant les taux de réussite par nœud, les durées moyennes et les compteurs d'échecs triés du pire au meilleur. Intégré à la barre d'outils du flux de travail. Nouvelle méthode client API `getNodeStats` et type `NodeStatEntry` pour la consommation frontend.
+- **Nœuds de phase 3 : SubWorkflow et ENV** — Deux nouveaux types de nœuds avec exécuteurs backend, validation d'analyseur et 14 nouveaux tests (total : 304 → 306) :
+  - **SubWorkflow** : Exécuteur stub pour l'orchestration de flux de travail imbriqué — sélectionnez un flux de travail cible et mappez les variables d'entrée/sortie.
   - **ENV** : Lit les variables d'environnement chiffrées à l'exécution avec sélection de clé et valeurs par défaut de secours.
-- **Composants frontend SubWorkflow et ENV** — Intégration frontend complète : `sub-workflow-node.tsx` et `env-node.tsx` avec formulaires de configuration, entrées de palette, couleurs de minimap et entrées d'enregistrement de type de nœud dans tous les mappages de type.
+- **Composants frontend SubWorkflow et ENV** — Intégration frontend complète : `sub-workflow-node.tsx` et `env-node.tsx` avec formulaires de configuration, entrées de palette, couleurs de minimap et entrées de type de nœud dans tous les mappages de type.
 - **Deux nouveaux modèles de flux de travail (14 au total)** — "Intégration API sécurisée" (ENV → HTTP avec en-têtes d'authentification) et "Orchestration de sous-flux de travail" (LLM → SubWorkflow → résumer).
 - **Dialogue des raccourcis clavier** — Appuyez sur `?` pour afficher tous les raccourcis clavier disponibles dans une superposition de dialogue.
-- **Capture d'aperçu d'entrée de nœud** — Les événements d'exécution incluent maintenant du JSON tronqué des sorties des prédécesseurs pour le débogage.
-- **Point de terminaison d'analyse du flux de travail** — `GET /analytics` retourne le nombre total d'exécutions, la distribution des statuts, le taux de succès, les percentiles de durée p50/p95/p99, les tendances quotidiennes et les nœuds les plus défaillants.
-- **Panneau du tableau de bord d'analyse** — Cartes de statistiques, barre de distribution des statuts, graphique quotidien en CSS pur, barres de percentiles et tableau des nœuds défaillants avec sélecteur de plage 7j/14j/30j.
-- **Dialogue de galerie de modèles** — Navigation en grille visuelle des modèles de flux de travail avec filtres de catégorie.
-- **Bords étiquetés** — Noms de branche conditionnelle et classificateur affichés sous forme de pastilles sur les bords.
-- **Panneau de variables du flux de travail** — Définir, modifier et supprimer les variables au niveau du flux de travail avec type/défaut/description.
+- **Capture d'aperçu d'entrée de nœud** — Les événements d'exécution incluent désormais du JSON tronqué des sorties des prédécesseurs pour le débogage.
+- **Point de terminaison d'analyse du flux de travail** — `GET /analytics` retourne le nombre total d'exécutions, la distribution des statuts, le taux de réussite, les centiles de durée p50/p95/p99, les tendances quotidiennes et les nœuds les plus défaillants.
+- **Panneau du tableau de bord d'analyse** — Cartes de statistiques, barre de distribution des statuts, graphique quotidien en CSS pur, barres de centiles et tableau des nœuds défaillants avec sélecteur de plage 7j/14j/30j.
+- **Dialogue de la galerie de modèles** — Navigation en grille visuelle des modèles de flux de travail avec filtres de catégorie et création en un clic.
+- **Arêtes étiquetées** — Noms des branches conditionnelles et du classificateur affichés sous forme de pilules sur les arêtes.
+- **Panneau des variables du flux de travail** — Définissez, modifiez et supprimez les variables au niveau du flux de travail avec type/valeur par défaut/description.
+- **Point de terminaison d'exécution par lot** — `POST /batch-run` exécute un flux de travail avec jusqu'à 100 ensembles d'entrées simultanément, avec parallélisme configurable (1–10).
+- **Dialogue de comparaison d'exécution** — Diff côte à côte de deux exécutions montrant le statut par nœud, la durée et les différences d'entrée.
+- **Dialogue de configuration du webhook** — Définissez, testez et effacez une URL de webhook avec validation en ligne et test de connectivité.
+- **Recherche de nœud sur le canevas** — `Cmd+F` pour rechercher les nœuds par type, ID et contenu avec correspondances mises en évidence et navigation par flèches.
+- **Commentaires/annotations de nœud** — Zone de texte Notes réductible dans le panneau de configuration avec une icône d'indicateur sur le canevas.
 
 ### Modifié
 

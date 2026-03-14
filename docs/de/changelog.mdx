@@ -11,26 +11,31 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **Workflow-Level-Timeout** — Neuer `workflow_timeout_ms`-Parameter in der Engine bricht alle ausstehenden/laufenden Knoten ab, wenn überschritten, mit begrenztem asynchronem Warten für responsives Timeout-Erkennung.
-- **Erneut ausführen mit letzten Eingaben** — Schaltfläche "Erneut ausführen" füllt das Eingabeformular mit Werten aus dem vorherigen Durchlauf vor.
-- **Ausführungsverlauf-Statusfilter** — Dropdown zum Filtern von Workflow-Durchläufen nach Abgeschlossen/Fehlgeschlagen/Abgebrochen/Wird ausgeführt.
-- **Workflow-Versionsverlauf** — Automatische Versionierung beim Speichern von Blueprints mit List/Get/Restore-API-Endpunkten zum Wiederherstellen vorheriger Versionen.
-- **Validierungsendpunkt** — `POST /validate` für strukturelle Blueprint-Validierung ohne Ausführung.
+- **Workflow-Level-Timeout** — Neuer `workflow_timeout_ms`-Parameter in der Engine bricht alle ausstehenden/laufenden Knoten ab, wenn überschritten, mit begrenztem asynchronem Warten für responsive Timeout-Erkennung.
+- **Erneut ausführen mit letzten Eingaben** — "Erneut ausführen"-Schaltfläche füllt das Eingabeformular mit Werten aus dem vorherigen Lauf vor.
+- **Statusfilter für Ausführungsverlauf** — Dropdown zum Filtern von Workflow-Läufen nach Abgeschlossen/Fehlgeschlagen/Abgebrochen/Läuft.
+- **Workflow-Versionsverlauf** — Automatische Versionierung beim Speichern von Blueprints mit List/Get/Restore-API-Endpunkten zum Zurückgreifen auf vorherige Versionen.
+- **Validate-Endpunkt** — `POST /validate` für strukturelle Blueprint-Validierung ohne Ausführung.
 - **Dry-Run-Modus** — `POST /run` mit `dry_run=true` gibt den Ausführungsplan als JSON zurück, ohne ihn auszuführen.
-- **13 Bedingungsverzweigungstests** — Umfassende Abdeckung für Verzweigungen, Zusammenführungen, Verschachtelungen und Klassifizierer-Routing.
-- **Pro-Knoten-Ausführungsstatistik-Panel** — Neues Statistik-Panel (`node-stats-panel.tsx`) mit Pro-Knoten-Erfolgsquoten, durchschnittlichen Dauern und Fehlerzählungen, sortiert nach schlimmsten zuerst. In die Workflow-Symbolleiste integriert. Neue `getNodeStats`-API-Client-Methode und `NodeStatEntry`-Typ für Frontend-Verbrauch.
+- **13 Condition-Branch-Routing-Tests** — Umfassende Abdeckung für Verzweigung, Zusammenführung, Verschachtelung und Classifier-Routing.
+- **Pro-Knoten-Ausführungsstatistik-Panel** — Neues Stats-Panel (`node-stats-panel.tsx`) mit Erfolgsquoten pro Knoten, durchschnittlichen Dauern und Fehlerzählern, sortiert nach schlechtesten zuerst. Integriert in die Workflow-Symbolleiste. Neue `getNodeStats`-API-Client-Methode und `NodeStatEntry`-Typ für Frontend-Verbrauch.
 - **Phase-3-Knoten: SubWorkflow und ENV** — Zwei neue Knotentypen mit Backend-Executoren, Parser-Validierung und 14 neuen Tests (insgesamt: 304 → 306):
-  - **SubWorkflow**: Stub-Executor für verschachtelte Workflow-Orchestrierung — wählen Sie einen Ziel-Workflow und ordnen Sie Eingabe-/Ausgabevariablen zu.
+  - **SubWorkflow**: Stub-Executor für verschachtelte Workflow-Orchestrierung — wählen Sie einen Ziel-Workflow aus und ordnen Sie Eingabe-/Ausgabevariablen zu.
   - **ENV**: Liest verschlüsselte Umgebungsvariablen zur Laufzeit mit Schlüsselauswahl und Fallback-Standardwerten.
-- **SubWorkflow- und ENV-Frontend-Komponenten** — Vollständige Frontend-Integration: `sub-workflow-node.tsx` und `env-node.tsx` mit Konfigurationsformularen, Palette-Einträgen, Minimap-Farben und Knotentyp-Datensatzeinträgen über alle Typzuordnungen.
+- **SubWorkflow- und ENV-Frontend-Komponenten** — Vollständige Frontend-Integration: `sub-workflow-node.tsx` und `env-node.tsx` mit Konfigurationsformularen, Palette-Einträgen, Minimap-Farben und Knotentyp-Datensatzeinträgen über alle Typkarten.
 - **Zwei neue Workflow-Vorlagen (14 insgesamt)** — "Sichere API-Integration" (ENV → HTTP mit Auth-Headern) und "Sub-Workflow-Orchestrierung" (LLM → SubWorkflow → Zusammenfassung).
 - **Tastaturkürzel-Dialog** — Drücken Sie `?`, um alle verfügbaren Tastaturkürzel in einem Dialog-Overlay anzuzeigen.
-- **Knoten-Eingabevorschau-Erfassung** — Ausführungsereignisse enthalten nun abgeschnittenes JSON von Vorgänger-Ausgaben zum Debuggen.
-- **Workflow-Analyse-Endpunkt** — `GET /analytics` gibt Gesamtdurchläufe, Statusverteilung, Erfolgsquote, p50/p95/p99-Dauer-Perzentile, tägliche Trends und am häufigsten fehlgeschlagene Knoten zurück.
-- **Analytics-Dashboard-Panel** — Statistische Karten, Statusverteilungsbalken, reines CSS-Tagesdiagramm, Perzentil-Balken und Tabelle fehlgeschlagener Knoten mit 7d/14d/30d-Bereichswähler.
-- **Vorlagengalerie-Dialog** — Visuelle Rasteransicht von Workflow-Vorlagen mit Kategoriefiltern.
-- **Beschriftete Kanten** — Bedingung und Klassifizierer-Zweignamen werden als Pillen auf Kanten angezeigt.
-- **Workflow-Variablenpanel** — Definieren, bearbeiten und löschen Sie Workflow-Level-Variablen mit Typ/Standard/Beschreibung.
+- **Knoten-Eingabe-Vorschau-Erfassung** — Ausführungsereignisse enthalten jetzt gekürzte JSON-Daten von Vorgänger-Ausgaben zum Debuggen.
+- **Workflow-Analytics-Endpunkt** — `GET /analytics` gibt Gesamtläufe, Statusverteilung, Erfolgsquote, p50/p95/p99-Dauer-Perzentile, tägliche Trends und am häufigsten fehlgeschlagene Knoten zurück.
+- **Analytics-Dashboard-Panel** — Stat-Karten, Statusverteilungsbalken, reines CSS-Tagesdiagramm, Perzentil-Balken und Tabelle fehlgeschlagener Knoten mit 7T/14T/30T-Bereichsauswahl.
+- **Template-Gallery-Dialog** — Visuelles Grid-Browsing von Workflow-Vorlagen mit Kategoriefiltern und One-Click-Erstellung.
+- **Beschriftete Kanten** — Condition- und Classifier-Branch-Namen werden als Pills auf Kanten angezeigt.
+- **Workflow-Variablen-Panel** — Definieren, bearbeiten und löschen Sie Workflow-Level-Variablen mit Typ/Standard/Beschreibung.
+- **Batch-Ausführungs-Endpunkt** — `POST /batch-run` führt einen Workflow mit bis zu 100 Eingabesätzen gleichzeitig aus, mit konfigurierbarem Parallelismus (1–10).
+- **Run-Vergleichs-Dialog** — Nebeneinander-Diff von zwei Läufen mit Pro-Knoten-Status, Dauer und Eingabedifferenzen.
+- **Webhook-Konfiguration-Dialog** — Legen Sie eine Webhook-URL fest, testen Sie sie und löschen Sie sie mit Inline-Validierung und Konnektivitätstest.
+- **Canvas-Knotensuche** — `Cmd+F` zum Suchen von Knoten nach Typ, ID und Inhalt mit hervorgehobenen Übereinstimmungen und Pfeiltasten-Navigation.
+- **Knotenkommentare/Anmerkungen** — Einklappbares Notes-Textfeld im Konfigurationspanel mit Canvas-Indikator-Symbol.
 
 ### Geändert
 

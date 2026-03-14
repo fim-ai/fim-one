@@ -28,9 +28,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Node input preview capture** — Execution events now include truncated JSON of predecessor outputs for debugging.
 - **Workflow analytics endpoint** — `GET /analytics` returns total runs, status distribution, success rate, p50/p95/p99 duration percentiles, daily trends, and most-failed nodes.
 - **Analytics dashboard panel** — Stat cards, status distribution bar, pure CSS daily chart, percentile bars, and failed nodes table with 7d/14d/30d range selector.
-- **Template gallery dialog** — Visual grid browsing of workflow templates with category filters.
+- **Template gallery dialog** — Visual grid browsing of workflow templates with category filters and one-click creation.
 - **Labeled edges** — Condition and classifier branch names shown as pills on edges.
 - **Workflow variables panel** — Define, edit, and delete workflow-level variables with type/default/description.
+- **Batch execution endpoint** — `POST /batch-run` runs a workflow with up to 100 input sets concurrently, with configurable parallelism (1–10).
+- **Run comparison dialog** — Side-by-side diff of two runs showing per-node status, duration, and input differences.
+- **Webhook configuration dialog** — Set, test, and clear a webhook URL with inline validation and connectivity test.
+- **Canvas node search** — `Cmd+F` to search nodes by type, ID, and content with highlighted matches and arrow-key navigation.
+- **Node comments/annotations** — Collapsible Notes textarea in the config panel with a canvas indicator icon.
 
 ### Changed
 
