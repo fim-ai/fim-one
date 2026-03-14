@@ -1,6 +1,6 @@
 import { getApiBaseUrl, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from "./constants"
 import type { UserInfo, TokenResponse, LoginRequest, LoginWithCodeRequest, RegisterRequest, ChangePasswordRequest, SetPasswordRequest, SetupRequest } from "@/types/auth"
-import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, TestNodeRequest, TestNodeResponse } from "@/types/workflow"
+import type { WorkflowResponse, WorkflowCreate, WorkflowUpdate, WorkflowRunResponse, WorkflowStats, WorkflowTemplate, NodeStatsResponse, WorkflowValidateResponse, WorkflowVersionResponse, WorkflowAnalyticsResponse, WorkflowScheduleResponse, WorkflowScheduleUpdate, WorkflowBatchRunResponse, WorkflowImportResult, NodeTestRequest, NodeTestResponse } from "@/types/workflow"
 import type {
   ConversationResponse,
   ConversationDetail,
@@ -1116,8 +1116,8 @@ export const workflowApi = {
       { method: "DELETE" },
     ).then((r) => r.data),
 
-  testNode: (workflowId: string, body: TestNodeRequest) =>
-    apiFetch<ApiResponse<TestNodeResponse>>(
+  testNode: (workflowId: string, body: NodeTestRequest) =>
+    apiFetch<ApiResponse<NodeTestResponse>>(
       `/api/workflows/${workflowId}/test-node`,
       { method: "POST", body: JSON.stringify(body) },
     ).then((r) => r.data),

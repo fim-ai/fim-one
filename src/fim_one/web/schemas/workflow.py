@@ -492,7 +492,7 @@ class WorkflowApiKeyResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class TestNodeRequest(BaseModel):
+class NodeTestRequest(BaseModel):
     """Request body for testing a single workflow node in isolation."""
 
     node_id: str = Field(min_length=1, description="ID of the node to test")
@@ -506,7 +506,7 @@ class TestNodeRequest(BaseModel):
     )
 
 
-class TestNodeResponse(BaseModel):
+class NodeTestResponse(BaseModel):
     """Result of a single-node test execution."""
 
     node_id: str

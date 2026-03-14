@@ -1,7 +1,7 @@
 """Tests for the test-node (single-node isolated execution) feature.
 
 Covers:
-- TestNodeRequest / TestNodeResponse schema validation
+- NodeTestRequest / NodeTestResponse schema validation
 - Node lookup in blueprint
 - Non-testable node type rejection (START, END)
 - Successful isolated execution of testable node types
@@ -29,7 +29,7 @@ from fim_one.core.workflow.types import (
     WorkflowNodeDef,
 )
 from fim_one.core.workflow.variable_store import VariableStore
-from fim_one.web.schemas.workflow import TestNodeRequest, TestNodeResponse
+from fim_one.web.schemas.workflow import NodeTestRequest, NodeTestResponse
 
 
 # ---------------------------------------------------------------------------
@@ -145,22 +145,22 @@ def _blueprint_with_nodes(*nodes: dict) -> dict:
 
 
 class TestSchemas:
-    """Test TestNodeRequest and TestNodeResponse schema validation."""
+    """Test NodeTestRequest and NodeTestResponse schema validation."""
 
     def test_request_requires_node_id(self):
         """node_id is required and must be non-empty."""
         with pytest.raises(ValidationError):
-            TestNodeRequest(node_id="")
+            NodeTestRequest(node_id="")
 
     def test_request_defaults(self):
         """variables and env_vars default to empty dicts."""
-        req = TestNodeRequest(node_id="llm_1")
+        req = NodeTestRequest(node_id="llm_1")
         assert req.node_id == "llm_1"
         assert req.variables == {}
         assert req.env_vars == {}
 
     def test_request_with_variables(self):
-        req = TestNodeRequest(
+        req = NodeTestRequest(
             node_id="code_1",
             variables={"input.name": "Alice", "score": 95},
             env_vars={"API_KEY": "test-key-123"},
@@ -169,7 +169,7 @@ class TestSchemas:
         assert req.env_vars["API_KEY"] == "test-key-123"
 
     def test_response_construction(self):
-        resp = TestNodeResponse(
+        resp = NodeTestResponse(
             node_id="llm_1",
             node_type="LLM",
             status="completed",
@@ -182,7 +182,7 @@ class TestSchemas:
         assert resp.error is None
 
     def test_response_failed(self):
-        resp = TestNodeResponse(
+        resp = NodeTestResponse(
             node_id="code_1",
             node_type="CODE_EXECUTION",
             status="failed",
@@ -462,7 +462,7 @@ class TestIsolatedExecution:
 
 
 class TestResponseConstruction:
-    """Verify TestNodeResponse is correctly built from execution results."""
+    """Verify NodeTestResponse is correctly built from execution results."""
 
     @pytest.mark.asyncio
     async def test_success_response(self):
@@ -480,7 +480,7 @@ class TestResponseConstruction:
         await store.set("code_1.result", 25)
 
         snapshot = await store.snapshot()
-        resp = TestNodeResponse(
+        resp = NodeTestResponse(
             node_id=result.node_id,
             node_type="CODE_EXECUTION",
             status=result.status.value,
@@ -502,7 +502,7 @@ class TestResponseConstruction:
         store = VariableStore()
         snapshot = await store.snapshot()
 
-        resp = TestNodeResponse(
+        resp = NodeTestResponse(
             node_id="code_1",
             node_type="CODE_EXECUTION",
             status="failed",
@@ -522,7 +522,7 @@ class TestResponseConstruction:
         await store.set("input.data", "partial")
         snapshot = await store.snapshot()
 
-        resp = TestNodeResponse(
+        resp = NodeTestResponse(
             node_id="code_slow",
             node_type="CODE_EXECUTION",
             status="failed",

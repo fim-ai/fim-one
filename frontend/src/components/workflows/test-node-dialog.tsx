@@ -27,7 +27,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { workflowApi } from "@/lib/api"
-import type { TestNodeResponse } from "@/types/workflow"
+import type { NodeTestResponse } from "@/types/workflow"
 import type { WorkflowNodeType } from "@/types/workflow"
 
 interface KeyValueRow {
@@ -62,7 +62,7 @@ export function TestNodeDialog({
   const [envVars, setEnvVars] = useState<KeyValueRow[]>([])
   const [envExpanded, setEnvExpanded] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
-  const [result, setResult] = useState<TestNodeResponse | null>(null)
+  const [result, setResult] = useState<NodeTestResponse | null>(null)
   const [varsAfterExpanded, setVarsAfterExpanded] = useState(false)
 
   // --- Variable rows ---

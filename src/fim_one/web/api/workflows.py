@@ -30,8 +30,8 @@ from fim_one.web.schemas.workflow import (
     DryRunNodePlan,
     MostFailedNode,
     RunsPerDay,
-    TestNodeRequest,
-    TestNodeResponse,
+    NodeTestRequest,
+    NodeTestResponse,
     WorkflowAnalyticsResponse,
     WorkflowApiKeyResponse,
     WorkflowBatchRunRequest,
@@ -1461,7 +1461,7 @@ async def test_webhook(
 @router.post("/{workflow_id}/test-node", response_model=ApiResponse)
 async def test_node(
     workflow_id: str,
-    body: TestNodeRequest,
+    body: NodeTestRequest,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
@@ -1594,7 +1594,7 @@ async def test_node(
         elapsed_ms = int((time.time() - start_time) * 1000)
         snapshot = await store.snapshot()
         return ApiResponse(
-            data=TestNodeResponse(
+            data=NodeTestResponse(
                 node_id=body.node_id,
                 node_type=node_type.value,
                 status="failed",
@@ -1613,7 +1613,7 @@ async def test_node(
             exc,
         )
         return ApiResponse(
-            data=TestNodeResponse(
+            data=NodeTestResponse(
                 node_id=body.node_id,
                 node_type=node_type.value,
                 status="failed",
@@ -1626,7 +1626,7 @@ async def test_node(
     # Success path
     snapshot = await store.snapshot()
     return ApiResponse(
-        data=TestNodeResponse(
+        data=NodeTestResponse(
             node_id=body.node_id,
             node_type=node_type.value,
             status=result.status.value,

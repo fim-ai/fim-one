@@ -495,13 +495,13 @@ export interface WorkflowScheduleUpdate {
 
 // --- Test Node types ---
 
-export interface TestNodeRequest {
+export interface NodeTestRequest {
   node_id: string
   variables: Record<string, unknown>
   env_vars?: Record<string, string>
 }
 
-export interface TestNodeResponse {
+export interface NodeTestResponse {
   node_id: string
   node_type: string
   status: "completed" | "failed"
