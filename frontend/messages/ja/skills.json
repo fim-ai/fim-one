@@ -66,5 +66,11 @@
   "settingUsageHint": "エージェントはシステムプロンプトにコンパクトなスタブを表示します。フルコンテンツはread_skill()を呼び出すときにオンデマンドで読み込まれます。",
   "settingStubPreview": "スタブプレビュー（システムプロンプトに注入）",
   "settingReadSkillCall": "ツール呼び出し",
-  "settingReadSkillCallHint": "エージェントはこの正確な呼び出しを使用して、会話中にフルスキルコンテンツを読み込みます。"
+  "settingReadSkillCallHint": "エージェントはこの正確な呼び出しを使用して、会話中にフルスキルコンテンツを読み込みます。",
+  "emptyTitle": "スキルはまだありません",
+  "emptyDescription": "最初のスキルを作成して開始してください。",
+  "editSkill": "スキルを編集",
+  "saveChanges": "変更を保存",
+  "discardAndClose": "破棄して閉じる",
+  "publishStatusReverted": "コンテンツが変更されました — 公開ステータスは保留中のレビューに戻されました"
 }

@@ -66,5 +66,11 @@
   "settingUsageHint": "智能体在其系统提示中看到一个紧凑的存根。当它调用 read_skill() 时，完整内容按需加载。",
   "settingStubPreview": "存根预览（注入到系统提示中）",
   "settingReadSkillCall": "工具调用",
-  "settingReadSkillCallHint": "智能体使用此确切调用在对话期间加载完整技能内容。"
+  "settingReadSkillCallHint": "智能体使用此确切调用在对话期间加载完整技能内容。",
+  "emptyTitle": "还没有技能",
+  "emptyDescription": "创建您的第一个技能以开始使用。",
+  "editSkill": "编辑技能",
+  "saveChanges": "保存更改",
+  "discardAndClose": "放弃并关闭",
+  "publishStatusReverted": "内容已更改 — 发布状态已恢复为待审核"
 }

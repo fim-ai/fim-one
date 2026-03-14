@@ -4,6 +4,8 @@
   "newSkill": "New Skill",
   "createSkill": "Create Skill",
   "emptyState": "No skills yet. Create your first skill to get started.",
+  "emptyTitle": "No skills yet",
+  "emptyDescription": "Create your first skill to get started.",
   "noDescription": "No description",
 
   "deleteDialogTitle": "Delete skill?",
@@ -68,6 +70,11 @@
   "settingStubPreview": "Stub preview (injected into system prompt)",
   "settingReadSkillCall": "Tool call",
   "settingReadSkillCallHint": "The agent uses this exact call to load full skill content during a conversation.",
+
+  "editSkill": "Edit Skill",
+  "saveChanges": "Save Changes",
+  "discardAndClose": "Discard & Close",
+  "publishStatusReverted": "Content changed — publish status reverted to pending review",
 
   "unsavedChangesTitle": "Unsaved changes",
   "unsavedChangesDescription": "You have unsaved changes. Leaving this page will discard them.",

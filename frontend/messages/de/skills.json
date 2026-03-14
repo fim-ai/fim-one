@@ -66,5 +66,11 @@
   "settingUsageHint": "Der Agent sieht einen kompakten Stub in seinem Systemprompt. Vollständiger Inhalt wird bei Bedarf geladen, wenn er read_skill() aufruft.",
   "settingStubPreview": "Stub-Vorschau (in Systemprompt eingefügt)",
   "settingReadSkillCall": "Tool-Aufruf",
-  "settingReadSkillCallHint": "Der Agent verwendet diesen genauen Aufruf, um vollständige Fähigkeitsinhalte während eines Gesprächs zu laden."
+  "settingReadSkillCallHint": "Der Agent verwendet diesen genauen Aufruf, um vollständige Fähigkeitsinhalte während eines Gesprächs zu laden.",
+  "emptyTitle": "Noch keine Fähigkeiten",
+  "emptyDescription": "Erstellen Sie Ihre erste Fähigkeit, um zu beginnen.",
+  "editSkill": "Fähigkeit bearbeiten",
+  "saveChanges": "Änderungen speichern",
+  "discardAndClose": "Verwerfen und schließen",
+  "publishStatusReverted": "Inhalt geändert — Veröffentlichungsstatus auf ausstehende Überprüfung zurückgesetzt"
 }

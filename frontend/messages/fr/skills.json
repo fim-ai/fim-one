@@ -66,5 +66,11 @@
   "settingUsageHint": "L'agent voit un stub compact dans son invite système. Le contenu complet est chargé à la demande lorsqu'il appelle read_skill().",
   "settingStubPreview": "Aperçu du stub (injecté dans l'invite système)",
   "settingReadSkillCall": "Appel d'outil",
-  "settingReadSkillCallHint": "L'agent utilise cet appel exact pour charger le contenu complet de la compétence lors d'une conversation."
+  "settingReadSkillCallHint": "L'agent utilise cet appel exact pour charger le contenu complet de la compétence lors d'une conversation.",
+  "emptyTitle": "Aucune compétence pour le moment",
+  "emptyDescription": "Créez votre première compétence pour commencer.",
+  "editSkill": "Modifier la compétence",
+  "saveChanges": "Enregistrer les modifications",
+  "discardAndClose": "Abandonner et fermer",
+  "publishStatusReverted": "Contenu modifié — statut de publication rétabli à en attente d'examen"
 }

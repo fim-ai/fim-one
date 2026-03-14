@@ -66,5 +66,11 @@
   "settingUsageHint": "에이전트는 시스템 프롬프트에서 간단한 스텁을 봅니다. 전체 콘텐츠는 read_skill()을 호출할 때 필요에 따라 로드됩니다.",
   "settingStubPreview": "스텁 미리보기 (시스템 프롬프트에 주입됨)",
   "settingReadSkillCall": "도구 호출",
-  "settingReadSkillCallHint": "에이전트는 대화 중 전체 스킬 콘텐츠를 로드하기 위해 이 정확한 호출을 사용합니다."
+  "settingReadSkillCallHint": "에이전트는 대화 중 전체 스킬 콘텐츠를 로드하기 위해 이 정확한 호출을 사용합니다.",
+  "emptyTitle": "아직 스킬이 없습니다",
+  "emptyDescription": "시작하려면 첫 번째 스킬을 만드세요.",
+  "editSkill": "스킬 편집",
+  "saveChanges": "변경 사항 저장",
+  "discardAndClose": "폐기 및 닫기",
+  "publishStatusReverted": "콘텐츠가 변경되었습니다 — 게시 상태가 검토 대기 중으로 되돌려졌습니다"
 }
