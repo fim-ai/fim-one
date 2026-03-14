@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  Bell,
   Braces,
   CheckCircle2,
   Copy,
@@ -95,6 +96,8 @@ interface WorkflowToolbarProps {
   onEnvVars?: () => void
   onVariables?: () => void
   onAnalytics?: () => void
+  onWebhook?: () => void
+  webhookConfigured?: boolean
 }
 
 export function WorkflowToolbar({
@@ -134,6 +137,8 @@ export function WorkflowToolbar({
   onEnvVars,
   onVariables,
   onAnalytics,
+  onWebhook,
+  webhookConfigured = false,
 }: WorkflowToolbarProps) {
   const t = useTranslations("workflows")
   const to = useTranslations("organizations")
@@ -525,6 +530,17 @@ export function WorkflowToolbar({
               <DropdownMenuItem onClick={onEnvVars}>
                 <Key className="h-4 w-4" />
                 {t("envVarsMenuItem")}
+              </DropdownMenuItem>
+            )}
+            {onWebhook && (
+              <DropdownMenuItem onClick={onWebhook}>
+                <span className="relative">
+                  <Bell className="h-4 w-4" />
+                  {webhookConfigured && (
+                    <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  )}
+                </span>
+                {t("webhookMenuItem")}
               </DropdownMenuItem>
             )}
             {onAnalytics && (

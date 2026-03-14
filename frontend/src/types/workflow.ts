@@ -18,6 +18,7 @@ export interface WorkflowResponse {
   reviewed_by: string | null
   reviewed_at: string | null
   review_note: string | null
+  webhook_url: string | null
   created_at: string
   updated_at: string
 }
@@ -302,6 +303,7 @@ export interface WorkflowUpdate {
   input_schema?: Record<string, unknown> | null
   output_schema?: Record<string, unknown> | null
   status?: "draft" | "active"
+  webhook_url?: string | null
 }
 
 // --- Run types ---

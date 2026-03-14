@@ -36,6 +36,7 @@ import { ValidationPanel } from "@/components/workflows/validation-panel"
 import { EnvVarsDialog } from "@/components/workflows/env-vars-dialog"
 import { VariablesPanel } from "@/components/workflows/variables-panel"
 import { AnalyticsPanel } from "@/components/workflows/analytics-panel"
+import { WebhookConfigDialog } from "@/components/workflows/webhook-config-dialog"
 import type {
   WorkflowResponse,
   WorkflowBlueprint,
@@ -100,6 +101,9 @@ export default function WorkflowEditorPage() {
 
   // Analytics panel state
   const [analyticsOpen, setAnalyticsOpen] = useState(false)
+
+  // Webhook dialog state
+  const [showWebhookDialog, setShowWebhookDialog] = useState(false)
 
   // Undo/redo state (synced from editor via callback)
   const [canUndo, setCanUndo] = useState(false)
@@ -608,6 +612,10 @@ export default function WorkflowEditorPage() {
     }
   }, [workflow, to])
 
+  const handleWebhookSaved = useCallback((webhookUrl: string | null) => {
+    setWorkflow((prev) => prev ? { ...prev, webhook_url: webhookUrl } : prev)
+  }, [])
+
   const handleAutoLayout = useCallback(() => {
     editorRef.current?.autoLayout()
   }, [])
@@ -723,6 +731,8 @@ export default function WorkflowEditorPage() {
         onEnvVars={() => setShowEnvDialog(true)}
         onVariables={() => setVariablesPanelOpen(true)}
         onAnalytics={() => setAnalyticsOpen(true)}
+        onWebhook={() => setShowWebhookDialog(true)}
+        webhookConfigured={!!workflow.webhook_url}
       />
 
       <WorkflowEditor
@@ -925,6 +935,15 @@ export default function WorkflowEditorPage() {
         open={analyticsOpen}
         onOpenChange={setAnalyticsOpen}
         nodeTypeMap={nodeTypeMap}
+      />
+
+      {/* Webhook Config Dialog */}
+      <WebhookConfigDialog
+        workflowId={workflowId}
+        webhookUrl={workflow.webhook_url}
+        open={showWebhookDialog}
+        onOpenChange={setShowWebhookDialog}
+        onSaved={handleWebhookSaved}
       />
     </div>
   )

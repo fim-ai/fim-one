@@ -1057,6 +1057,12 @@ export const workflowApi = {
       `/api/workflows/${workflowId}/versions/${versionId}/restore`,
       { method: "POST" },
     ).then((r) => r.data),
+
+  testWebhook: (id: string) =>
+    apiFetch<ApiResponse<{ success: boolean; status_code?: number; error?: string }>>(
+      `/api/workflows/${id}/test-webhook`,
+      { method: "POST" },
+    ).then((r) => r.data),
 }
 
 // --- Skill API ---
