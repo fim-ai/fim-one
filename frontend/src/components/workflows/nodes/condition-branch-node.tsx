@@ -10,7 +10,7 @@ import type { ConditionNodeData, NodeRunStatus, NodeRunOverlayData } from "@/typ
 
 function ConditionBranchNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as ConditionNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as ConditionNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
   const conditions = nodeData.conditions ?? []
 
   // Calculate vertical spacing for stacked source handles on the right
@@ -23,6 +23,7 @@ function ConditionBranchNodeComponent({ data, selected }: NodeProps) {
       icon={<GitBranch className="h-3 w-3 text-orange-500" />}
       title={t("nodeType_conditionBranch")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

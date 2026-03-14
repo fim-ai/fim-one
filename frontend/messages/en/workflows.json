@@ -626,5 +626,9 @@
   "canvasSearchPlaceholder": "Search nodes...",
   "canvasSearchCount": "{current} of {total}",
   "canvasSearchNoResults": "No results",
-  "shortcutsAction_search": "Search nodes"
+  "shortcutsAction_search": "Search nodes",
+
+  "configCommentSection": "Notes",
+  "configCommentPlaceholder": "Add a comment or annotation for this node...",
+  "configCommentPreview": "{preview}"
 }

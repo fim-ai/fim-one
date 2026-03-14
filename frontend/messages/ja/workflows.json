@@ -566,5 +566,8 @@
   "canvasSearchPlaceholder": "ノードを検索...",
   "canvasSearchCount": "{current} / {total}",
   "canvasSearchNoResults": "結果がありません",
-  "shortcutsAction_search": "ノードを検索"
+  "shortcutsAction_search": "ノードを検索",
+  "configCommentSection": "メモ",
+  "configCommentPlaceholder": "このノードのコメントまたは注釈を追加してください...",
+  "configCommentPreview": "{preview}"
 }

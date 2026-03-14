@@ -10,7 +10,7 @@ import type { HumanInterventionNodeData, NodeRunStatus, NodeRunOverlayData } fro
 
 function HumanInterventionNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as HumanInterventionNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as HumanInterventionNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function HumanInterventionNodeComponent({ data, selected }: NodeProps) {
       icon={<UserCheck className="h-3 w-3 text-sky-500" />}
       title={t("nodeType_humanIntervention")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

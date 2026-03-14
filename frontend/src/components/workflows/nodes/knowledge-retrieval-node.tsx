@@ -10,7 +10,7 @@ import type { KnowledgeRetrievalNodeData, NodeRunStatus, NodeRunOverlayData } fr
 
 function KnowledgeRetrievalNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as KnowledgeRetrievalNodeData & { runStatus?: NodeRunStatus; kb_name?: string; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as KnowledgeRetrievalNodeData & { runStatus?: NodeRunStatus; kb_name?: string; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function KnowledgeRetrievalNodeComponent({ data, selected }: NodeProps) {
       icon={<Library className="h-3 w-3 text-teal-500" />}
       title={t("nodeType_knowledgeRetrieval")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

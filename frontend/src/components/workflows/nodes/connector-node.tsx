@@ -10,7 +10,7 @@ import type { ConnectorNodeData, NodeRunStatus, NodeRunOverlayData } from "@/typ
 
 function ConnectorNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as ConnectorNodeData & { runStatus?: NodeRunStatus; connector_name?: string; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as ConnectorNodeData & { runStatus?: NodeRunStatus; connector_name?: string; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function ConnectorNodeComponent({ data, selected }: NodeProps) {
       icon={<Plug className="h-3 w-3 text-purple-500" />}
       title={t("nodeType_connector")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

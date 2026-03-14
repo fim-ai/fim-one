@@ -10,7 +10,7 @@ import type { BuiltinToolNodeData, NodeRunStatus, NodeRunOverlayData } from "@/t
 
 function BuiltinToolNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as BuiltinToolNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as BuiltinToolNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function BuiltinToolNodeComponent({ data, selected }: NodeProps) {
       icon={<Wrench className="h-3 w-3 text-zinc-500" />}
       title={t("nodeType_builtinTool")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

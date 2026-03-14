@@ -10,7 +10,7 @@ import type { LLMNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/wor
 
 function LLMNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as LLMNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as LLMNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function LLMNodeComponent({ data, selected }: NodeProps) {
       icon={<Brain className="h-3 w-3 text-blue-500" />}
       title={t("nodeType_llm")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

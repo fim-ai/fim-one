@@ -10,7 +10,7 @@ import type { TransformNodeData, NodeRunStatus, NodeRunOverlayData } from "@/typ
 
 function TransformNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as TransformNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as TransformNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
   const opCount = nodeData.operations?.length ?? 0
 
   return (
@@ -19,6 +19,7 @@ function TransformNodeComponent({ data, selected }: NodeProps) {
       icon={<ArrowRightLeft className="h-3 w-3 text-rose-500" />}
       title={t("nodeType_transform")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

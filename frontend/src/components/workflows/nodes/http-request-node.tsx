@@ -10,7 +10,7 @@ import type { HTTPRequestNodeData, NodeRunStatus, NodeRunOverlayData } from "@/t
 
 function HTTPRequestNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as HTTPRequestNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as HTTPRequestNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function HTTPRequestNodeComponent({ data, selected }: NodeProps) {
       icon={<Globe className="h-3 w-3 text-slate-500" />}
       title={t("nodeType_httpRequest")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

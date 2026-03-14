@@ -10,7 +10,7 @@ import type { MCPNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/wor
 
 function MCPNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as MCPNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as MCPNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function MCPNodeComponent({ data, selected }: NodeProps) {
       icon={<Cable className="h-3 w-3 text-violet-500" />}
       title={t("nodeType_mcp")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

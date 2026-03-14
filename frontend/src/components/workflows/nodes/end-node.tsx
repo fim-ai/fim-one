@@ -10,7 +10,7 @@ import type { EndNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/wor
 
 function EndNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as EndNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as EndNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
   const mappingCount = nodeData.output_mapping
     ? Object.keys(nodeData.output_mapping).length
     : 0
@@ -21,6 +21,7 @@ function EndNodeComponent({ data, selected }: NodeProps) {
       icon={<Square className="h-3 w-3 text-red-500" />}
       title={t("nodeType_end")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

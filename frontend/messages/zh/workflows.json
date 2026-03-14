@@ -566,5 +566,8 @@
   "canvasSearchPlaceholder": "搜索节点...",
   "canvasSearchCount": "{current} / {total}",
   "canvasSearchNoResults": "无结果",
-  "shortcutsAction_search": "搜索节点"
+  "shortcutsAction_search": "搜索节点",
+  "configCommentSection": "备注",
+  "configCommentPlaceholder": "为此节点添加注释或说明...",
+  "configCommentPreview": "{preview}"
 }

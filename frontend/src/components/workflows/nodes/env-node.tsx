@@ -10,7 +10,7 @@ import type { ENVNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/wor
 
 function ENVNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as ENVNodeData & { runStatus?: NodeRunStatus; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as ENVNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   const keyCount = (nodeData.env_keys ?? []).length
 
@@ -19,6 +19,8 @@ function ENVNodeComponent({ data, selected }: NodeProps) {
       nodeType="env"
       icon={<KeyRound className="h-3.5 w-3.5 text-amber-600" />}
       title={t("nodeType_env")}
+      note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

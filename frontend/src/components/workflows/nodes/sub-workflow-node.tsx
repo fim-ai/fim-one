@@ -10,7 +10,7 @@ import type { SubWorkflowNodeData, NodeRunStatus, NodeRunOverlayData } from "@/t
 
 function SubWorkflowNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as SubWorkflowNodeData & { runStatus?: NodeRunStatus; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as SubWorkflowNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   const mappingCount = Object.keys(nodeData.input_mapping ?? {}).length
 
@@ -19,6 +19,8 @@ function SubWorkflowNodeComponent({ data, selected }: NodeProps) {
       nodeType="subWorkflow"
       icon={<GitBranch className="h-3.5 w-3.5 text-indigo-500" />}
       title={t("nodeType_subWorkflow")}
+      note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

@@ -10,7 +10,7 @@ import type { VariableAggregatorNodeData, NodeRunStatus, NodeRunOverlayData } fr
 
 function VariableAggregatorNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as VariableAggregatorNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as VariableAggregatorNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
   const count = nodeData.variables?.length ?? 0
   const mode = nodeData.mode ?? "list"
 
@@ -20,6 +20,7 @@ function VariableAggregatorNodeComponent({ data, selected }: NodeProps) {
       icon={<Combine className="h-3 w-3 text-sky-500" />}
       title={t("nodeType_variableAggregator")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

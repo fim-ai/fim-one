@@ -566,5 +566,8 @@
   "canvasSearchPlaceholder": "노드 검색...",
   "canvasSearchCount": "{current}/{total}",
   "canvasSearchNoResults": "결과 없음",
-  "shortcutsAction_search": "노드 검색"
+  "shortcutsAction_search": "노드 검색",
+  "configCommentSection": "메모",
+  "configCommentPlaceholder": "이 노드에 대한 주석 또는 설명을 추가하세요...",
+  "configCommentPreview": "{preview}"
 }

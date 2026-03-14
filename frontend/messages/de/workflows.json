@@ -566,5 +566,8 @@
   "canvasSearchPlaceholder": "Knoten durchsuchen...",
   "canvasSearchCount": "{current} von {total}",
   "canvasSearchNoResults": "Keine Ergebnisse",
-  "shortcutsAction_search": "Knoten durchsuchen"
+  "shortcutsAction_search": "Knoten durchsuchen",
+  "configCommentSection": "Notizen",
+  "configCommentPlaceholder": "Fügen Sie einen Kommentar oder eine Anmerkung für diesen Knoten hinzu...",
+  "configCommentPreview": "{preview}"
 }

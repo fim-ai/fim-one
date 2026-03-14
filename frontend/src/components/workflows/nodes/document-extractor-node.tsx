@@ -10,7 +10,7 @@ import type { DocumentExtractorNodeData, NodeRunStatus, NodeRunOverlayData } fro
 
 function DocumentExtractorNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as DocumentExtractorNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as DocumentExtractorNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
   const extractMode = nodeData.extract_mode ?? "full_text"
   const inputType = nodeData.input_type ?? "text"
 
@@ -20,6 +20,7 @@ function DocumentExtractorNodeComponent({ data, selected }: NodeProps) {
       icon={<FileScan className="h-3 w-3 text-amber-600" />}
       title={t("nodeType_documentExtractor")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

@@ -10,7 +10,7 @@ import type { IteratorNodeData, NodeRunStatus, NodeRunOverlayData } from "@/type
 
 function IteratorNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as IteratorNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as IteratorNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
   const maxIter = nodeData.max_iterations ?? 100
 
   return (
@@ -19,6 +19,7 @@ function IteratorNodeComponent({ data, selected }: NodeProps) {
       icon={<Repeat className="h-3 w-3 text-cyan-500" />}
       title={t("nodeType_iterator")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

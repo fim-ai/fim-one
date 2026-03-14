@@ -566,5 +566,8 @@
   "canvasSearchPlaceholder": "Rechercher des nœuds...",
   "canvasSearchCount": "{current} sur {total}",
   "canvasSearchNoResults": "Aucun résultat",
-  "shortcutsAction_search": "Rechercher des nœuds"
+  "shortcutsAction_search": "Rechercher des nœuds",
+  "configCommentSection": "Notes",
+  "configCommentPlaceholder": "Ajouter un commentaire ou une annotation pour ce nœud...",
+  "configCommentPreview": "{preview}"
 }

@@ -10,7 +10,7 @@ import type { ListOperationNodeData, NodeRunStatus, NodeRunOverlayData } from "@
 
 function ListOperationNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as ListOperationNodeData & { runStatus?: NodeRunStatus; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as ListOperationNodeData & { runStatus?: NodeRunStatus; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
   const operation = nodeData.operation ?? "filter"
 
   return (
@@ -19,6 +19,7 @@ function ListOperationNodeComponent({ data, selected }: NodeProps) {
       icon={<ListFilter className="h-3 w-3 text-lime-500" />}
       title={t("nodeType_listOperation")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}

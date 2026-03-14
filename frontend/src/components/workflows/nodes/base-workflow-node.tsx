@@ -1,7 +1,7 @@
 "use client"
 
 import { memo } from "react"
-import { Loader2, Clock, AlertCircle } from "lucide-react"
+import { Loader2, Clock, AlertCircle, MessageSquare } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import {
@@ -68,6 +68,7 @@ interface BaseWorkflowNodeProps {
   icon: React.ReactNode
   title: string
   note?: string
+  comment?: string
   selected?: boolean
   runStatus?: NodeRunStatus
   runOverlay?: NodeRunOverlayData
@@ -79,6 +80,7 @@ function BaseWorkflowNodeComponent({
   icon,
   title,
   note,
+  comment,
   selected,
   runStatus,
   runOverlay,
@@ -124,6 +126,31 @@ function BaseWorkflowNodeComponent({
             />
           )}
         </>
+      )}
+
+      {/* Comment indicator icon */}
+      {comment && (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "absolute top-1 right-1 z-10 flex items-center justify-center",
+                  showDot && "top-3",
+                )}
+              >
+                <MessageSquare className="h-3 w-3 text-muted-foreground/60" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              sideOffset={4}
+              className="max-w-[220px] text-left"
+            >
+              <p className="text-xs whitespace-pre-wrap break-words">{comment}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
 
       <div className="flex flex-row">

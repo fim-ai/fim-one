@@ -10,7 +10,7 @@ import type { AgentNodeData, NodeRunStatus, NodeRunOverlayData } from "@/types/w
 
 function AgentNodeComponent({ data, selected }: NodeProps) {
   const t = useTranslations("workflows")
-  const nodeData = data as unknown as AgentNodeData & { runStatus?: NodeRunStatus; agent_name?: string; note?: string; _runOverlay?: NodeRunOverlayData }
+  const nodeData = data as unknown as AgentNodeData & { runStatus?: NodeRunStatus; agent_name?: string; note?: string; comment?: string; _runOverlay?: NodeRunOverlayData }
 
   return (
     <BaseWorkflowNode
@@ -18,6 +18,7 @@ function AgentNodeComponent({ data, selected }: NodeProps) {
       icon={<Bot className="h-3 w-3 text-indigo-500" />}
       title={t("nodeType_agent")}
       note={nodeData.note}
+      comment={nodeData.comment}
       selected={selected}
       runStatus={nodeData.runStatus}
       runOverlay={nodeData._runOverlay}
