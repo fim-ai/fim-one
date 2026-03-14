@@ -675,5 +675,21 @@
   "successRate": "{rate}% 成功率",
   "lastRunAt": "最后运行于 {time}",
   "noRuns": "暂无运行记录",
-  "importUnresolvedWarning": "工作流导入时存在 {count} 个未解析的引用。某些节点可能引用了此环境中不存在的智能体、连接器或知识库。"
+  "importUnresolvedWarning": "工作流导入时存在 {count} 个未解析的引用。某些节点可能引用了此环境中不存在的智能体、连接器或知识库。",
+  "testNode": "测试节点",
+  "testNodeTitle": "测试: {name}",
+  "testNodeVariables": "输入变量",
+  "testNodeEnvVars": "环境变量",
+  "testNodeRun": "运行测试",
+  "testNodeRunning": "测试中...",
+  "testNodeResult": "结果",
+  "testNodeOutput": "输出",
+  "testNodeError": "错误",
+  "testNodeDuration": "耗时",
+  "testNodeVariablesAfter": "测试后变量",
+  "testNodeAddVariable": "添加变量",
+  "testNodeNotTestable": "此节点类型无法单独测试",
+  "testNodeSuccess": "节点测试完成",
+  "testNodeFailed": "节点测试失败",
+  "contextMenuTestNode": "测试节点"
 }

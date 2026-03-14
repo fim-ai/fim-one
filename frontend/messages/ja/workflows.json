@@ -675,5 +675,21 @@
   "successRate": "{rate}%の成功率",
   "lastRunAt": "最後の実行 {time}",
   "noRuns": "まだ実行がありません",
-  "importUnresolvedWarning": "ワークフローが{count}個の未解決参照でインポートされました。一部のノードは、この環境に存在しないエージェント、コネクタ、またはナレッジベースを参照している可能性があります。"
+  "importUnresolvedWarning": "ワークフローが{count}個の未解決参照でインポートされました。一部のノードは、この環境に存在しないエージェント、コネクタ、またはナレッジベースを参照している可能性があります。",
+  "testNode": "テストノード",
+  "testNodeTitle": "テスト: {name}",
+  "testNodeVariables": "入力変数",
+  "testNodeEnvVars": "環境変数",
+  "testNodeRun": "テストを実行",
+  "testNodeRunning": "テスト中...",
+  "testNodeResult": "結果",
+  "testNodeOutput": "出力",
+  "testNodeError": "エラー",
+  "testNodeDuration": "実行時間",
+  "testNodeVariablesAfter": "実行後の変数",
+  "testNodeAddVariable": "変数を追加",
+  "testNodeNotTestable": "このノードタイプは単独でテストできません",
+  "testNodeSuccess": "ノードテストが完了しました",
+  "testNodeFailed": "ノードテストが失敗しました",
+  "contextMenuTestNode": "ノードをテスト"
 }

@@ -739,5 +739,22 @@
   "historyClearAllTitle": "Clear Run History",
   "historyClearAllDescription": "This will permanently delete all completed, failed, and cancelled runs. Active runs will be preserved.",
   "historyRunsCleared": "{count} runs cleared",
-  "historyRunsClearFailed": "Failed to clear runs"
+  "historyRunsClearFailed": "Failed to clear runs",
+
+  "testNode": "Test Node",
+  "testNodeTitle": "Test: {name}",
+  "testNodeVariables": "Input Variables",
+  "testNodeEnvVars": "Environment Variables",
+  "testNodeRun": "Run Test",
+  "testNodeRunning": "Testing...",
+  "testNodeResult": "Result",
+  "testNodeOutput": "Output",
+  "testNodeError": "Error",
+  "testNodeDuration": "Duration",
+  "testNodeVariablesAfter": "Variables After",
+  "testNodeAddVariable": "Add Variable",
+  "testNodeNotTestable": "This node type cannot be tested in isolation",
+  "testNodeSuccess": "Node test completed",
+  "testNodeFailed": "Node test failed",
+  "contextMenuTestNode": "Test Node"
 }

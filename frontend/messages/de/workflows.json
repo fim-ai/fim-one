@@ -675,5 +675,21 @@
   "successRate": "{rate}% Erfolgsquote",
   "lastRunAt": "Letzte Ausführung {time}",
   "noRuns": "Noch keine Ausführungen",
-  "importUnresolvedWarning": "Workflow mit {count} ungelöster(n) Referenz(en) importiert. Einige Knoten können auf Agenten, Konnektoren oder Wissensdatenbanken verweisen, die in dieser Umgebung nicht vorhanden sind."
+  "importUnresolvedWarning": "Workflow mit {count} ungelöster(n) Referenz(en) importiert. Einige Knoten können auf Agenten, Konnektoren oder Wissensdatenbanken verweisen, die in dieser Umgebung nicht vorhanden sind.",
+  "testNode": "Testknoten",
+  "testNodeTitle": "Test: {name}",
+  "testNodeVariables": "Eingabevariablen",
+  "testNodeEnvVars": "Umgebungsvariablen",
+  "testNodeRun": "Test ausführen",
+  "testNodeRunning": "Wird getestet...",
+  "testNodeResult": "Ergebnis",
+  "testNodeOutput": "Ausgabe",
+  "testNodeError": "Fehler",
+  "testNodeDuration": "Dauer",
+  "testNodeVariablesAfter": "Variablen danach",
+  "testNodeAddVariable": "Variable hinzufügen",
+  "testNodeNotTestable": "Dieser Knotentyp kann nicht isoliert getestet werden",
+  "testNodeSuccess": "Knotentests abgeschlossen",
+  "testNodeFailed": "Knotentest fehlgeschlagen",
+  "contextMenuTestNode": "Knoten testen"
 }

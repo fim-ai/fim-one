@@ -675,5 +675,21 @@
   "successRate": "{rate}% 성공",
   "lastRunAt": "마지막 실행 {time}",
   "noRuns": "아직 실행 없음",
-  "importUnresolvedWarning": "워크플로우를 {count}개의 미해결 참조와 함께 가져왔습니다. 일부 노드는 이 환경에 존재하지 않는 에이전트, 커넥터 또는 지식 베이스를 참조할 수 있습니다."
+  "importUnresolvedWarning": "워크플로우를 {count}개의 미해결 참조와 함께 가져왔습니다. 일부 노드는 이 환경에 존재하지 않는 에이전트, 커넥터 또는 지식 베이스를 참조할 수 있습니다.",
+  "testNode": "테스트 노드",
+  "testNodeTitle": "테스트: {name}",
+  "testNodeVariables": "입력 변수",
+  "testNodeEnvVars": "환경 변수",
+  "testNodeRun": "테스트 실행",
+  "testNodeRunning": "테스트 중...",
+  "testNodeResult": "결과",
+  "testNodeOutput": "출력",
+  "testNodeError": "오류",
+  "testNodeDuration": "소요 시간",
+  "testNodeVariablesAfter": "이후 변수",
+  "testNodeAddVariable": "변수 추가",
+  "testNodeNotTestable": "이 노드 유형은 독립적으로 테스트할 수 없습니다",
+  "testNodeSuccess": "노드 테스트 완료됨",
+  "testNodeFailed": "노드 테스트 실패",
+  "contextMenuTestNode": "노드 테스트"
 }

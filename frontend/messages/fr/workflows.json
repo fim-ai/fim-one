@@ -675,5 +675,21 @@
   "successRate": "{rate}% de réussite",
   "lastRunAt": "Dernière exécution {time}",
   "noRuns": "Aucune exécution pour le moment",
-  "importUnresolvedWarning": "Workflow importé avec {count} référence(s) non résolue(s). Certains nœuds peuvent référencer des agents, connecteurs ou bases de connaissances qui n'existent pas dans cet environnement."
+  "importUnresolvedWarning": "Workflow importé avec {count} référence(s) non résolue(s). Certains nœuds peuvent référencer des agents, connecteurs ou bases de connaissances qui n'existent pas dans cet environnement.",
+  "testNode": "Nœud de test",
+  "testNodeTitle": "Test : {name}",
+  "testNodeVariables": "Variables d'entrée",
+  "testNodeEnvVars": "Variables d'environnement",
+  "testNodeRun": "Exécuter le test",
+  "testNodeRunning": "Test en cours...",
+  "testNodeResult": "Résultat",
+  "testNodeOutput": "Sortie",
+  "testNodeError": "Erreur",
+  "testNodeDuration": "Durée",
+  "testNodeVariablesAfter": "Variables après",
+  "testNodeAddVariable": "Ajouter une variable",
+  "testNodeNotTestable": "Ce type de nœud ne peut pas être testé isolément",
+  "testNodeSuccess": "Test du nœud terminé",
+  "testNodeFailed": "Échec du test du nœud",
+  "contextMenuTestNode": "Tester le nœud"
 }

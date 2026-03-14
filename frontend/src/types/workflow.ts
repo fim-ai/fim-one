@@ -493,6 +493,24 @@ export interface WorkflowScheduleUpdate {
   timezone?: string
 }
 
+// --- Test Node types ---
+
+export interface TestNodeRequest {
+  node_id: string
+  variables: Record<string, unknown>
+  env_vars?: Record<string, string>
+}
+
+export interface TestNodeResponse {
+  node_id: string
+  node_type: string
+  status: "completed" | "failed"
+  output: unknown
+  error: string | null
+  duration_ms: number
+  variables_after: Record<string, unknown>
+}
+
 // --- Version types ---
 
 export interface WorkflowVersionResponse {
