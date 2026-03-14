@@ -1,6 +1,9 @@
 """Shared visibility filter — two-tier: personal | org.
 
-Global visibility has been replaced by Platform org membership.
+Market org resources are visible only via ResourceSubscription.
+Nobody joins Market org, so MARKET_ORG_ID is never in user_org_ids and the
+org condition is naturally skipped for Market resources.  Subscribed Market
+resources flow through the subscribed_ids path instead.
 """
 from __future__ import annotations
 
@@ -21,6 +24,10 @@ def build_visibility_filter(
     - user owns the resource (any visibility), OR
     - resource is published to an org the user belongs to, OR
     - resource id is in the user's subscription list
+
+    Market org resources: Nobody joins Market org, so MARKET_ORG_ID is never
+    present in ``user_org_ids`` and the org-membership condition is skipped.
+    Subscribed Market resources are included via ``subscribed_ids``.
     """
     conditions = [
         model.user_id == user_id,  # own resources (any visibility)

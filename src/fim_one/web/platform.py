@@ -9,6 +9,12 @@ from fim_one.web.models.organization import OrgMembership, Organization
 PLATFORM_ORG_SLUG = "platform"
 PLATFORM_ORG_ID = "00000000-0000-0000-0000-000000000001"
 
+# Shadow Market alias — same org, new semantic name.
+# The "Platform" org is now the global Market: nobody joins it,
+# resources are discovered via browse_market and accessed via
+# ResourceSubscription.  Keep PLATFORM_ORG_ID for migration compat.
+MARKET_ORG_ID = PLATFORM_ORG_ID
+
 
 async def ensure_platform_org(db: AsyncSession, owner_id: str) -> str:
     """Create the Platform org if it doesn't exist. Return its ID."""

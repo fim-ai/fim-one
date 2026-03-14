@@ -23,7 +23,7 @@ from fim_one.web.auth import (
 from fim_one.web.exceptions import AppError
 from fim_one.web.models.organization import OrgMembership, Organization
 from fim_one.web.models.user import User
-from fim_one.web.platform import PLATFORM_ORG_ID
+from fim_one.web.platform import MARKET_ORG_ID
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 
 # ---------------------------------------------------------------------------
@@ -275,10 +275,14 @@ async def list_my_orgs(
     items = []
     for m in memberships:
         org = orgs_by_id.get(m.org_id)
-        if org:
-            # Hide member count for Platform org (prevents leaking total user count)
-            count = 0 if org.id == PLATFORM_ORG_ID else counts_by_org.get(m.org_id, 0)
-            items.append(_org_with_role(org, m.role, count).model_dump())
+        if not org:
+            continue
+        # Defensive: Market org is a shadow org — never show it in the user's
+        # org list (users shouldn't have memberships, but filter just in case).
+        if org.id == MARKET_ORG_ID:
+            continue
+        count = counts_by_org.get(m.org_id, 0)
+        items.append(_org_with_role(org, m.role, count).model_dump())
 
     return ApiResponse(data=items)
 
@@ -299,8 +303,8 @@ async def get_org(
     if org is None:
         raise AppError("org_not_found", status_code=404)
 
-    # Hide member count for Platform org (prevents leaking total user count)
-    if org_id == PLATFORM_ORG_ID:
+    # Hide member count for Market org (prevents leaking total user count)
+    if org_id == MARKET_ORG_ID:
         member_count = 0
     else:
         count_result = await db.execute(
@@ -360,8 +364,8 @@ async def delete_org(
 ) -> ApiResponse:
     """Delete an organization. Owner only."""
 
-    if org_id == PLATFORM_ORG_ID:
-        raise AppError("cannot_delete_platform_org", status_code=403)
+    if org_id == MARKET_ORG_ID:
+        raise AppError("cannot_delete_market_org", status_code=403)
     await require_org_owner(org_id, current_user, db)
 
     result = await db.execute(
@@ -536,8 +540,8 @@ async def remove_member(
     """
     is_self = user_id == current_user.id
 
-    if org_id == PLATFORM_ORG_ID and is_self:
-        raise AppError("cannot_leave_platform_org", status_code=403)
+    if org_id == MARKET_ORG_ID and is_self:
+        raise AppError("cannot_leave_market_org", status_code=403)
 
     if not is_self:
         # Must be admin+ to remove others
@@ -696,8 +700,8 @@ async def admin_delete_org(
 ) -> ApiResponse:
     """Force-delete an organization. Admin only."""
 
-    if org_id == PLATFORM_ORG_ID:
-        raise AppError("cannot_delete_platform_org", status_code=403)
+    if org_id == MARKET_ORG_ID:
+        raise AppError("cannot_delete_market_org", status_code=403)
     result = await db.execute(
         select(Organization)
         .options(selectinload(Organization.memberships))
