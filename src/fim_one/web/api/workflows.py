@@ -495,8 +495,18 @@ async def trigger_workflow(
             workflow_id=wf.id,
         )
 
+        from fim_one.core.workflow.types import ExecutionContext
+
+        exec_context = ExecutionContext(
+            run_id=run_id,
+            user_id=wf.user_id,
+            workflow_id=wf.id,
+            env_vars=env_vars,
+            db_session_factory=create_session,
+        )
+
         async for event_name, event_data in engine.execute_streaming(
-            parsed, body.inputs
+            parsed, body.inputs, context=exec_context
         ):
             if event_name in (
                 "node_started",
@@ -1092,7 +1102,17 @@ async def run_workflow(
                 workflow_id=wf.id,
             )
 
-            ait = engine.execute_streaming(parsed, body.inputs).__aiter__()
+            from fim_one.core.workflow.types import ExecutionContext as _EC
+
+            _sse_ctx = _EC(
+                run_id=run_id,
+                user_id=current_user.id,
+                workflow_id=wf.id,
+                env_vars=env_vars,
+                db_session_factory=create_session,
+            )
+
+            ait = engine.execute_streaming(parsed, body.inputs, context=_sse_ctx).__aiter__()
             while True:
                 try:
                     sse_event, sse_data = await asyncio.wait_for(
@@ -1294,8 +1314,18 @@ async def batch_run_workflow(
                     workflow_id=wf.id,
                 )
 
+                from fim_one.core.workflow.types import ExecutionContext as _BatchEC
+
+                _batch_ctx = _BatchEC(
+                    run_id=run_id,
+                    user_id=current_user.id,
+                    workflow_id=wf.id,
+                    env_vars=env_vars,
+                    db_session_factory=create_session,
+                )
+
                 async for event_name, event_data in engine.execute_streaming(
-                    parsed, inputs
+                    parsed, inputs, context=_batch_ctx
                 ):
                     if event_name in (
                         "node_started",

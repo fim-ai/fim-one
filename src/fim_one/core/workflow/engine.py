@@ -67,6 +67,7 @@ class WorkflowEngine:
         self,
         blueprint: WorkflowBlueprint,
         inputs: dict[str, Any] | None = None,
+        context: ExecutionContext | None = None,
     ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         """Execute the workflow and yield SSE events as they occur.
 
@@ -267,7 +268,7 @@ class WorkflowEngine:
             async with semaphore:
                 node = node_index[nid]
                 executor = get_executor(node.type)
-                ctx = ExecutionContext(
+                ctx = context or ExecutionContext(
                     run_id=self._run_id,
                     user_id=self._user_id,
                     workflow_id=self._workflow_id,

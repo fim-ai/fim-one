@@ -6919,10 +6919,14 @@ class TestMCPBuiltinValidation:
 
 
 class TestSubWorkflowNode:
-    """Test the SubWorkflowExecutor (stub implementation)."""
+    """Test the SubWorkflowExecutor (requires db_session_factory).
+
+    Comprehensive tests are in test_workflow_subworkflow.py.
+    These tests verify basic guard checks without DB mocking.
+    """
 
     @pytest.mark.asyncio
-    async def test_basic_execution(self):
+    async def test_no_db_factory_fails(self):
         from fim_one.core.workflow.nodes import SubWorkflowExecutor
 
         node = WorkflowNodeDef(
@@ -6940,13 +6944,14 @@ class TestSubWorkflowNode:
 
         executor = SubWorkflowExecutor()
         result = await executor.execute(node, store, ctx)
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["sub_workflow_id"] == "wf-abc-123"
-        assert result.output["inputs"]["query"] == "hello world"
+        assert result.status == NodeStatus.FAILED
+        assert "db_session_factory" in result.error
 
     @pytest.mark.asyncio
     async def test_empty_workflow_id_fails(self):
+        """Empty workflow_id should fail before checking db_session_factory."""
         from fim_one.core.workflow.nodes import SubWorkflowExecutor
+        from unittest.mock import MagicMock
 
         node = WorkflowNodeDef(
             id="sub_1",
@@ -6954,14 +6959,18 @@ class TestSubWorkflowNode:
             data={"type": "SUB_WORKFLOW", "workflow_id": ""},
         )
         store = VariableStore()
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+        # Provide a fake factory so we get past the factory check
+        ctx = ExecutionContext(
+            run_id="r", user_id="u", workflow_id="w",
+            db_session_factory=MagicMock(),
+        )
 
         result = await SubWorkflowExecutor().execute(node, store, ctx)
         assert result.status == NodeStatus.FAILED
-        assert "workflow_id" in result.error
+        assert "workflow_id" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_input_mapping_interpolation(self):
+    async def test_depth_limit_exceeded(self):
         from fim_one.core.workflow.nodes import SubWorkflowExecutor
 
         node = WorkflowNodeDef(
@@ -6970,57 +6979,24 @@ class TestSubWorkflowNode:
             data={
                 "type": "SUB_WORKFLOW",
                 "workflow_id": "wf-123",
-                "input_mapping": {"text": "Process: {{start.query}}"},
             },
         )
         store = VariableStore()
-        await store.set("start.query", "test input")
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
+        ctx = ExecutionContext(
+            run_id="r", user_id="u", workflow_id="w",
+            depth=5,
+        )
 
         result = await SubWorkflowExecutor().execute(node, store, ctx)
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["inputs"]["text"] == "Process: test input"
+        assert result.status == NodeStatus.FAILED
+        assert "depth" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_output_stored_in_variable(self):
-        from fim_one.core.workflow.nodes import SubWorkflowExecutor
+    async def test_executor_in_registry(self):
+        from fim_one.core.workflow.nodes import get_executor, SubWorkflowExecutor
 
-        node = WorkflowNodeDef(
-            id="sub_1",
-            type=NodeType.SUB_WORKFLOW,
-            data={
-                "type": "SUB_WORKFLOW",
-                "workflow_id": "wf-123",
-                "output_variable": "my_sub",
-            },
-        )
-        store = VariableStore()
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
-
-        await SubWorkflowExecutor().execute(node, store, ctx)
-        val = await store.get("my_sub")
-        assert val is not None
-        assert val["sub_workflow_id"] == "wf-123"
-
-    @pytest.mark.asyncio
-    async def test_empty_input_mapping(self):
-        from fim_one.core.workflow.nodes import SubWorkflowExecutor
-
-        node = WorkflowNodeDef(
-            id="sub_1",
-            type=NodeType.SUB_WORKFLOW,
-            data={
-                "type": "SUB_WORKFLOW",
-                "workflow_id": "wf-123",
-                "input_mapping": {},
-            },
-        )
-        store = VariableStore()
-        ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
-
-        result = await SubWorkflowExecutor().execute(node, store, ctx)
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["inputs"] == {}
+        executor = get_executor(NodeType.SUB_WORKFLOW)
+        assert isinstance(executor, SubWorkflowExecutor)
 
 
 class TestENVNode:

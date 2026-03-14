@@ -11,74 +11,74 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **Workflow-Test-Node-Endpunkt** — `POST /api/workflows/{id}/test-node` für isolierte Einzelknoten-Ausführung mit Mock-VariableStore, 30s-Timeout, START/END-Ablehnung. Frontend `TestNodeDialog`-Sheet mit Schlüssel-Wert-Variableneingabe, Umgebungsvariablen-Bereich, JSON-Ergebnis-Viewer. Integriert in Knoten-Konfigurationspanel (Test-Button) und Editor-Kontextmenü. 23 Tests.
-- **Workflow-Versions-Diff-Dialog** — Nebeneinander-Vergleich von zwei Blueprint-Versionen mit angezeigten hinzugefügten/entfernten/geänderten Knoten und Kanten. Farbcodierte Indikatoren (Smaragd=hinzugefügt, Destruktiv=entfernt, Bernstein=geändert). Integriert in Versionshistorie-Sheet mit „Vergleichen"-Button pro Version.
-- **35 End-to-End-Lifecycle-Tests** — Umfassende Workflow-Lifecycle-Tests mit Abdeckung von Erstellen, Bearbeiten, Validieren, Ausführen, Versionierung, Wiederherstellen und Löschen von Workflows.
-- **Workflow-Ausführungsstatistiken auf Liste und Karten** — Backend ruft Ausführungszählungen und Erfolgsquoten über GROUP-BY-Subquery ab; Frontend zeigt Statistiken auf Workflow-Karten mit farbcodierten Erfolgsquoten-Indikatoren an.
-- **Workflow-Scheduler-Daemon** — Hintergrund-Async-Service, der alle 60 Sekunden nach fälligen cron-basierten Workflows abfragt. Croniter-Timezone-Unterstützung, Semaphor-basierte Concurrency-Kontrolle, `last_scheduled_at`-Tracking und Webhook-Zustellung für geplante Ausführungsergebnisse. 14 Scheduler-Daemon-Tests.
+- **Workflow-Test-Node-Endpunkt** — `POST /api/workflows/{id}/test-node` für isolierte Single-Node-Ausführung mit Mock VariableStore, 30s Timeout, START/END-Ablehnung. Frontend `TestNodeDialog` Sheet mit Key-Value-Variableneingabe, Umgebungsvariablen-Bereich, JSON-Ergebnis-Viewer. Integriert in Node-Konfigurationspanel (Test-Button) und Editor-Kontextmenü. 23 Tests.
+- **Workflow-Versionsdiff-Dialog** — Nebeneinander-Vergleich zweier Blueprint-Versionen mit hinzugefügten/entfernten/geänderten Knoten und Kanten. Farbcodierte Indikatoren (Smaragd=hinzugefügt, Destruktiv=entfernt, Bernstein=geändert). Integriert in Versionsverlauf-Sheet mit "Vergleichen"-Button pro Version.
+- **35 End-to-End-Lifecycle-Tests** — Umfassende Workflow-Lifecycle-Tests mit Abdeckung von Erstellen, Bearbeiten, Validieren, Ausführen, Versionieren, Wiederherstellen und Löschen von Workflows.
+- **Workflow-Run-Statistiken auf Liste und Karten** — Backend ruft Laufzählungen und Erfolgsquoten über GROUP BY Subquery ab; Frontend zeigt Statistiken auf Workflow-Karten mit farbcodierten Erfolgsquoten-Indikatoren an.
+- **Workflow-Scheduler-Daemon** — Hintergrund-Async-Service, der alle 60 Sekunden nach fälligen cron-basierten Workflows abfragt. Croniter-Timezone-Unterstützung, Semaphore-basierte Parallelitätskontrolle, `last_scheduled_at`-Verfolgung und Webhook-Zustellung für geplante Laufergebnisse. 14 Scheduler-Daemon-Tests.
 - **Workflow-Import-Konfliktlöser** — Erkennt ungelöste Agent/Connector/KB/MCP-Referenzen während Workflow-Import. Batch-DB-Abfragen mit Sichtbarkeitsfilterung; Frontend zeigt Toast-Warnungen für fehlende externe Abhängigkeiten an. 17 Import-Konfliktlöser-Tests.
-- **Workflow-Delete-Run- und Clear-Runs-Endpunkte** — `DELETE /api/workflows/{id}/runs/{run_id}` für einzelne Ausführungslöschung; `DELETE /api/workflows/{id}/runs` zum Löschen aller abgeschlossenen Ausführungen. Frontend-Bestätigungsdialoge für beide Aktionen.
-- **56 Workflow-Validierungs-Warnungs-Tests** — Umfassende Abdeckung von Phase-2-Knoten-Validierungswarnungen.
-- **137 Workflow-Phase-2-Knoten-Executor-Tests** — Vollständige Testabdeckung für alle Phase-2-Knotentyp-Executors.
-- **Geplante Trigger** — Cron-Konfiguration pro Workflow mit Timezone-Auswahl, Standardeingaben und Berechnung der nächsten Ausführung. Frontend-Dialog mit voreingestellten Cron-Buttons (alle 5 Min / stündlich / täglich / wöchentlich / monatlich).
-- **Öffentlicher API-Trigger-Endpunkt** — Pro-Workflow-API-Schlüssel (`wf_`-Präfix) für externe Ausführung ohne Benutzerauthentifizierung, mit Rate-Limiting.
-- **API-Schlüssel-Verwaltungsdialog** — Generieren, Neugenerieren und Widerrufen von Workflow-API-Schlüsseln mit Kopier-Button, Trigger-URL-Anzeige und cURL/JavaScript-Verwendungsbeispielen.
-- **Real-Time-Ausführungsprotokoll-Viewer** — Chronologischer SSE-Ereignisstrom im Run-Panel mit Zeitstempeln, farbcodierten Ereignistyp-Badges und Filter-Umschaltern pro Ereignistyp.
+- **Workflow-Delete-Run- und Clear-Runs-Endpunkte** — `DELETE /api/workflows/{id}/runs/{run_id}` für einzelne Run-Löschung; `DELETE /api/workflows/{id}/runs` zum Löschen aller abgeschlossenen Runs. Frontend-Bestätigungsdialoge für beide Aktionen.
+- **56 Workflow-Validierungs-Warnungs-Tests** — Umfassende Abdeckung von Phase-2-Node-Validierungswarnungen.
+- **137 Workflow-Phase-2-Node-Executor-Tests** — Vollständige Testabdeckung für alle Phase-2-Node-Typ-Executoren.
+- **Geplante Trigger** — Cron-Konfiguration pro Workflow mit Timezone-Auswahl, Standardeingaben und Next-Run-At-Berechnung. Frontend-Dialog mit voreingestellten Cron-Buttons (alle 5 Min / stündlich / täglich / wöchentlich / monatlich).
+- **Public-API-Trigger-Endpunkt** — Pro-Workflow-API-Schlüssel (`wf_` Präfix) für externe Ausführung ohne Benutzerauthentifizierung, mit Rate Limiting.
+- **API-Schlüssel-Verwaltungsdialog** — Generieren, Regenerieren und Widerrufen von Workflow-API-Schlüsseln mit Kopierbutton, Trigger-URL-Anzeige und cURL/JavaScript-Verwendungsbeispielen.
+- **Echtzeit-Ausführungsprotokoll-Viewer** — Chronologischer SSE-Ereignisstrom im Run-Panel mit Zeitstempeln, farbcodierten Event-Typ-Badges und Filterumschaltern pro Event-Typ.
 - **Batch-Run-Dialog** — Workflows mit mehreren Eingabesätzen ausführen (JSON-Editor), konfigurierbare Parallelität (1-10), einklappbare Pro-Element-Ergebnisse und JSON-Export.
 - **30 geplante Trigger-Tests** — Cron-Validierung, Schema-Handling und Timezone-Unterstützung.
 - **14 Batch-Ausführungs-Tests** — Schema-Validierung und gleichzeitige Engine-Ausführung.
-- **Workflow-Level-Timeout** — Neuer `workflow_timeout_ms`-Parameter in der Engine bricht alle ausstehenden/laufenden Knoten ab, wenn überschritten, mit begrenztem asynchronem Warten für responsives Timeout-Erkennung.
-- **Erneut ausführen mit letzten Eingaben** — „Erneut ausführen"-Button füllt das Eingabeformular mit Werten aus der vorherigen Ausführung vor.
-- **Ausführungshistorie-Statusfilter** — Dropdown zum Filtern von Workflow-Ausführungen nach Abgeschlossen/Fehlgeschlagen/Abgebrochen/Laufend.
-- **Workflow-Versionshistorie** — Auto-Versionierung beim Blueprint-Speichern mit List/Get/Restore-API-Endpunkten zum Wiederherstellen vorheriger Versionen.
+- **Workflow-Level-Timeout** — Neuer `workflow_timeout_ms`-Parameter in der Engine bricht alle ausstehenden/laufenden Knoten ab, wenn überschritten, mit begrenztem asynchronem Warten für reaktive Timeout-Erkennung.
+- **Erneute Ausführung mit letzten Eingaben** — "Erneut ausführen"-Button füllt das Eingabeformular mit Werten aus dem vorherigen Run vor.
+- **Run-Verlauf-Statusfilter** — Dropdown zum Filtern von Workflow-Runs nach Abgeschlossen/Fehlgeschlagen/Abgebrochen/Laufend.
+- **Workflow-Versionsverlauf** — Auto-Versionierung beim Blueprint-Speichern mit List/Get/Restore-API-Endpunkten zum Zurücksetzen auf vorherige Versionen.
 - **Validierungs-Endpunkt** — `POST /validate` für strukturelle Blueprint-Validierung ohne Ausführung.
 - **Dry-Run-Modus** — `POST /run` mit `dry_run=true` gibt den Ausführungsplan als JSON zurück, ohne auszuführen.
 - **13 Condition-Branch-Routing-Tests** — Umfassende Abdeckung für Verzweigung, Zusammenführung, Verschachtelung und Klassifizierer-Routing.
-- **Pro-Knoten-Ausführungsstatistik-Panel** — Neues Statistik-Panel (`node-stats-panel.tsx`) mit Pro-Knoten-Erfolgsquoten, durchschnittlichen Dauern und Fehlerzählungen, sortiert nach schlimmsten zuerst. Integriert in die Workflow-Symbolleiste. Neue `getNodeStats`-API-Client-Methode und `NodeStatEntry`-Typ für Frontend-Verbrauch.
-- **Phase-3-Knoten: SubWorkflow und ENV** — Zwei neue Knotentypen mit Backend-Executors, Parser-Validierung und 14 neue Tests (insgesamt: 304 → 306):
-  - **SubWorkflow**: Stub-Executor für verschachtelte Workflow-Orchestrierung — wählen Sie einen Ziel-Workflow und ordnen Sie Eingabe-/Ausgabevariablen zu.
+- **Pro-Node-Ausführungsstatistik-Panel** — Neues Statistik-Panel (`node-stats-panel.tsx`) mit Pro-Node-Erfolgsquoten, durchschnittlichen Dauern und Fehlerzählungen, sortiert nach schlechtesten zuerst. Integriert in die Workflow-Symbolleiste. Neue `getNodeStats`-API-Client-Methode und `NodeStatEntry`-Typ für Frontend-Verbrauch.
+- **Phase-3-Knoten: SubWorkflow und ENV** — Zwei neue Node-Typen mit Backend-Executoren, Parser-Validierung und 14 neue Tests (insgesamt: 304 → 306):
+  - **SubWorkflow**: Stub-Executor für verschachtelte Workflow-Orchestrierung — wählen Sie einen Ziel-Workflow und ordnen Sie Input/Output-Variablen zu.
   - **ENV**: Liest verschlüsselte Umgebungsvariablen zur Laufzeit mit Schlüsselauswahl und Fallback-Standardwerten.
-- **SubWorkflow- und ENV-Frontend-Komponenten** — Vollständige Frontend-Integration: `sub-workflow-node.tsx` und `env-node.tsx` mit Konfigurationsformularen, Palette-Einträgen, Minimap-Farben und Knotentyp-Datensatz-Einträgen über alle Typkarten.
-- **Zwei neue Workflow-Vorlagen (14 insgesamt)** — „Sichere API-Integration" (ENV → HTTP mit Auth-Headern) und „Sub-Workflow-Orchestrierung" (LLM → SubWorkflow → Zusammenfassung).
-- **Tastaturkürzel-Dialog** — Drücken Sie `?`, um alle verfügbaren Tastaturkürzel in einem Dialog-Overlay anzuzeigen.
-- **Knoten-Eingabe-Vorschau-Erfassung** — Ausführungsereignisse enthalten nun gekürzte JSON der Vorgänger-Ausgaben zum Debuggen.
-- **Workflow-Analytics-Endpunkt** — `GET /analytics` gibt Gesamtausführungen, Statusverteilung, Erfolgsquote, p50/p95/p99-Dauer-Perzentile, tägliche Trends und am häufigsten fehlgeschlagene Knoten zurück.
-- **Analytics-Dashboard-Panel** — Stat-Karten, Statusverteilungs-Balken, reines CSS-Tagesdiagramm, Perzentil-Balken und Tabelle fehlgeschlagener Knoten mit 7d/14d/30d-Bereichswähler.
-- **Template-Gallery-Dialog** — Visuelle Raster-Durchsicht von Workflow-Vorlagen mit Kategoriefiltern und One-Click-Erstellung.
-- **Beschriftete Kanten** — Condition- und Klassifizierer-Branch-Namen werden als Pillen auf Kanten angezeigt.
+- **SubWorkflow- und ENV-Frontend-Komponenten** — Vollständige Frontend-Integration: `sub-workflow-node.tsx` und `env-node.tsx` mit Konfigurationsformularen, Palette-Einträgen, Minimap-Farben und Node-Typ-Datensatz-Einträgen über alle Typ-Maps.
+- **Zwei neue Workflow-Vorlagen (14 insgesamt)** — "Sichere API-Integration" (ENV → HTTP mit Auth-Headern) und "Sub-Workflow-Orchestrierung" (LLM → SubWorkflow → Zusammenfassung).
+- **Tastaturkürzel-Dialog** — Drücken Sie `?` um alle verfügbaren Tastaturkürzel in einem Dialog-Overlay anzuzeigen.
+- **Node-Input-Vorschau-Erfassung** — Ausführungsereignisse enthalten jetzt gekürzte JSON-Ausgaben von Vorgänger-Outputs zum Debuggen.
+- **Workflow-Analytics-Endpunkt** — `GET /analytics` gibt Gesamtläufe, Statusverteilung, Erfolgsquote, p50/p95/p99-Dauer-Perzentile, tägliche Trends und am häufigsten fehlgeschlagene Knoten zurück.
+- **Analytics-Dashboard-Panel** — Stat-Karten, Statusverteilungs-Balken, reines CSS-Tagesdiagramm, Perzentil-Balken und Tabelle fehlgeschlagener Knoten mit 7d/14d/30d-Bereichsauswahl.
+- **Template-Gallery-Dialog** — Visuelle Grid-Durchsicht von Workflow-Vorlagen mit Kategoriefiltern und One-Click-Erstellung.
+- **Beschriftete Kanten** — Condition- und Klassifizierer-Branch-Namen werden als Pills auf Kanten angezeigt.
 - **Workflow-Variablen-Panel** — Definieren, Bearbeiten und Löschen von Workflow-Level-Variablen mit Typ/Standard/Beschreibung.
 - **Batch-Ausführungs-Endpunkt** — `POST /batch-run` führt einen Workflow mit bis zu 100 Eingabesätzen gleichzeitig aus, mit konfigurierbarer Parallelität (1–10).
-- **Run-Vergleichs-Dialog** — Nebeneinander-Diff von zwei Ausführungen mit Pro-Knoten-Status, Dauer und Eingabedifferenzen.
-- **Webhook-Konfigurationsdialog** — Festlegen, Testen und Löschen einer Webhook-URL mit Inline-Validierung und Konnektivitätstest.
-- **Canvas-Knotensuche** — `Cmd+F` zum Durchsuchen von Knoten nach Typ, ID und Inhalt mit hervorgehobenen Übereinstimmungen und Pfeiltasten-Navigation.
-- **Knoten-Kommentare/Anmerkungen** — Einklappbares Notes-Textfeld im Konfigurationspanel mit Canvas-Indikator-Symbol.
+- **Run-Vergleichs-Dialog** — Nebeneinander-Diff zweier Runs mit Pro-Node-Status, Dauer und Input-Unterschieden.
+- **Webhook-Konfigurationsdialog** — Legen Sie eine Webhook-URL fest, testen Sie sie und löschen Sie sie mit Inline-Validierung und Konnektivitätstest.
+- **Canvas-Node-Suche** — `Cmd+F` zum Suchen von Knoten nach Typ, ID und Inhalt mit hervorgehobenen Treffern und Pfeiltasten-Navigation.
+- **Node-Kommentare/Anmerkungen** — Einklappbares Notes-Textarea im Konfigurationspanel mit Canvas-Indikator-Symbol.
 
 ### Geändert
 
 - **NodeTest-Schema-Umbenennung** — `TestNodeRequest`/`TestNodeResponse` in `NodeTestRequest`/`NodeTestResponse` umbenannt, um pytest-Sammlungswarnungen zu vermeiden.
 
-- **Ausführungsbereich Results/Logs-Registerkarten** — Der Ausführungsbereich verwendet jetzt ein Registerkarten-Layout (Results + Logs) für bessere Organisation von Ausführungsergebnissen und Event-Streams.
-- **elkjs durch leichtgewichtigen BFS-Auto-Layout ersetzt** — Benutzerdefinierter BFS-Algorithmus ersetzt elkjs (430 kB); `/workflows/[id]`-Bundle von 473 kB auf 43 kB reduziert.
+- **Run-Panel Results/Logs-Registerkarten** — Run-Panel verwendet jetzt ein Registerkarten-Layout (Results + Logs) für bessere Organisation von Ausführungsergebnissen und Event-Streams.
+- **elkjs durch leichten BFS-Auto-Layout ersetzt** — Benutzerdefinierter BFS-Algorithmus ersetzt elkjs (430 kB); `/workflows/[id]`-Bundle von 473 kB auf 43 kB reduziert.
 - **Erweiterte Sortieroptionen für Workflow-Liste** — Neueste, Älteste, Name A-Z, Name Z-A, Zuletzt aktualisiert.
-- **Workflow-Testsuite auf 306 Tests erweitert** — 14 Phase-3-Tests für SubWorkflow- und ENV-Node-Ausführer hinzugefügt. Pro-Node-Ausführungsstatistik-Tests hinzugefügt. Gesamt: 275 → 306.
-- **Workflow-Testsuite auf 275 Tests erweitert** — 23 erweiterte Engine-Tests hinzugefügt (Wiederholung mit exponentiellem Backoff, Abbruch während Wiederholung, Ausdrucksevaluierung, Variable-Store-Helfer) in separater Testdatei. Gesamt: 252 → 275.
-- **Workflow-Testsuite auf 252 Tests erweitert** — HumanIntervention-Tests hinzugefügt (8: automatische Genehmigung, Interpolation, Bevollmächtigter/Timeout, Standardwerte, Validierungswarnungen) und neue Template-Tests (4: Genehmigungspipeline mit Mensch, mehrstufige Datenverarbeitung, wissensgestützter Agent, iterative Überprüfungsschleife). Gesamt: 240 → 252.
-- **Workflow-Testsuite auf 240 Tests erweitert** — Phase-2-Validierungstests hinzugefügt (15 Tests für ListOperation, Transform, Iterator, Loop, DocumentExtractor, QuestionUnderstanding, ParameterExtractor-Warnungen) und Phase-2-Template-Tests (5 Tests für neue Templates). Gesamt: 220 → 240.
-- **Workflow-Testsuite auf 220 Tests erweitert** — 20 Tests für DocumentExtractor hinzugefügt (12 Tests: full_text/pages/metadata/tables-Modi, Base64-Dekodierung, page_range-Parsing, URL-Stub-Fehler, leere Eingabe, Bindestrich-Trennzeichen) und QuestionUnderstanding (8 Tests: Rewrite/Classify/Decompose/Expand-Modi mit LLM-Mocking, benutzerdefinierte Systemaufforderung, Variable-Interpolation, fehlende Eingabe). Gesamt: 200 → 220.
-- **Workflow-Testsuite auf 200 Tests erweitert** — 50 Tests für ListOperation hinzugefügt (21 Tests: Filter, Map, Sort, Slice, Flatten, Unique, Reverse, Length, JSON-String-Eingabe, ungültige Typen, fehlende Konfiguration, Index-im-Bereich, Standard-Ausgabevariable) und Transform (29 Tests: json_path, type_cast alle Typen, Format-Template, regex_extract, string_op alle Varianten, math_op alle Varianten, 5-Schritte-Pipeline-Verkettung, Division durch Null, Wildcard-Pfad, unbekannte Operationen). Gesamt: 150 → 200.
-- **Workflow-Testsuite auf 150 Tests erweitert** — 12 Tests für Loop hinzugefügt (6 Tests: einfaches Zählen, max_iterations-Sicherheit, Null-Iterationen, leere Bedingung, benutzerdefinierter Variablenname, Variable-Interpolation) und ParameterExtractor (6 Tests: einfache Extraktion, fehlende Eingabe, leere Parameter, ungültiges JSON, Variable-Interpolation, Extraktionsaufforderung-Einbeziehung). Gesamt: 138 → 150.
-- **Workflow-Testsuite auf 138 Tests erweitert** — 20 Tests für Phase-2-Iterator hinzugefügt (9 Tests: einfache Liste, JSON-Parsing, max_iterations, leere Liste, fehlende Konfiguration, None-zu-leer, Template-Referenzen, Nicht-Liste-Ablehnung, Metadaten) und VariableAggregator (11 Tests: list/concat/merge/first_non_empty-Modi, Grenzfälle für leere Eingaben, None-Überspringung, unbekannter Modus). Gesamt: 118 → 138.
-- **Workflow-Testsuite auf 118 Tests erweitert** — 7 Tests für ConditionBranch LLM-Modus hinzugefügt (exakte Übereinstimmung, Groß-/Kleinschreibung ignoriert, Fuzzy, Keine-Übereinstimmung-Fallback, DEFAULT-Antwort, Keine-Kandidaten, Variable-Interpolation). Gesamt: 111 → 118.
-- **Überholung des visuellen Feedbacks im Workflow-Run-Modus** — Ring-basierte Node-Status-Gestaltung ersetzt grenzbasierte Herangehensweise, animierte Status-Punkte mit Ping-Effekt für laufende Knoten, `useMemo`-abgeleitete `displayNodes`/`displayEdges` für saubere Zustandstrennung und Kantenanimation zwischen abgeschlossenen und laufenden Knoten.
-- **Workflow-Testsuite auf 105 Tests erweitert** — Template-Validierungstests, Import/Export-Roundtrip, erweiterte Variable-Store-Methoden, Deadlock-Erkennung, Multi-Bedingung-Verzweigung, Frage-Klassifizierer und umfassende Blueprint-Validierung hinzugefügt. Gesamt: 68 → 97 → 105.
-- **Workflow-Testsuite auf 68 Tests erweitert** — 24 neue Tests hinzugefügt, die Eval-Namespace-Abflachung abdecken (17 Tests für gepunktete Schlüsselauflösung, Kurz-Alias-Generierung, ConditionBranch/VariableAssign mit flachen Namen) und Blueprint-Validierungswarnungen (7 Tests für getrennte Knoten, unerreichbare Enden, leere Bedingungen/Aufforderungen/Code). Gesamte Workflow-Testanzahl: 34 → 68.
-- **Workflow-Editor-Überholung (Dify-Stil)** — Vollständiges visuelles Redesign des Workflow-Editors inspiriert von Dify:
-  - Horizontales (von links nach rechts) Layout ersetzt von oben nach unten; alle 12 Node-Typen verwenden Left/Right-Handles
-  - Left-Farbleisten-Node-Design mit kompakter 220px-Breite, kleineren Symbolen und Run-Status-Abzeichen
-  - Add-Node-on-Edge: benutzerdefiniertes `AddNodeEdge` mit „+"-Mittelpunkt-Button und Node-Typ-Picker-Popup, das vorhandene Kanten teilt
-  - Reicherer Konfigurationsbereich: Modellauswahl-Dropdown für LLM-Knoten, Operator-Dropdowns (==, !=, >, <, contains, etc.) für Bedingungen, Abschnittsüberschriften, `InsertVariableHint` und `OutputVariableField` für alle Ausgabe-Knoten
-  - Zusammenklappbare Node-Palette (nur Symbole-Modus) mit Kategoriegruppe; Start/End-Knoten gedimmt, wenn bereits platziert
-  - Single-Start/End-Validierung beim Ablegen; `fitViewOptions` mit `maxZoom:1`, um überdimensioniertes Zoomen bei kleinen Graphen zu verhindern
+- **Workflow-Test-Suite auf 306 Tests erweitert** — 14 Phase-3-Tests für SubWorkflow- und ENV-Node-Executoren hinzugefügt. Pro-Node-Ausführungsstatistik-Tests hinzugefügt. Gesamt: 275 → 306.
+- **Workflow-Test-Suite auf 275 Tests erweitert** — 23 erweiterte Engine-Tests hinzugefügt (Wiederholung mit exponentiellem Backoff, Abbruch während Wiederholung, Ausdrucksauswertung, Variable-Store-Hilfsfunktionen) in separater Testdatei. Gesamt: 252 → 275.
+- **Workflow-Test-Suite auf 252 Tests erweitert** — HumanIntervention-Tests hinzugefügt (8: automatische Genehmigung, Interpolation, Beauftragte/Timeout, Standards, Validierungswarnungen) und neue Template-Tests (4: menschliche Genehmigungspipeline, mehrstufige Datenverarbeitung, wissensgestützter Agent, iterative Überprüfungsschleife). Gesamt: 240 → 252.
+- **Workflow-Test-Suite auf 240 Tests erweitert** — Phase-2-Validierungstests hinzugefügt (15 Tests für ListOperation, Transform, Iterator, Loop, DocumentExtractor, QuestionUnderstanding, ParameterExtractor-Warnungen) und Phase-2-Template-Tests (5 Tests für neue Templates). Gesamt: 220 → 240.
+- **Workflow-Test-Suite auf 220 Tests erweitert** — 20 Tests für DocumentExtractor hinzugefügt (12 Tests: full_text/pages/metadata/tables-Modi, Base64-Dekodierung, page_range-Analyse, URL-Stub-Fehler, leere Eingabe, Bindestrich-Trennzeichen) und QuestionUnderstanding (8 Tests: Umschreib-/Klassifizierungs-/Zerlegungsmodi mit LLM-Mocking, benutzerdefinierte Systemaufforderung, Variable-Interpolation, fehlende Eingabe). Gesamt: 200 → 220.
+- **Workflow-Test-Suite auf 200 Tests erweitert** — 50 Tests für ListOperation hinzugefügt (21 Tests: Filter, Map, Sort, Slice, Flatten, Unique, Reverse, Length, JSON-String-Eingabe, ungültige Typen, fehlende Konfiguration, Index-im-Bereich, Standard-Ausgabevariable) und Transform (29 Tests: json_path, Typumwandlung alle Typen, Format-Template, regex_extract, string_op alle Varianten, math_op alle Varianten, 5-Schritte-Pipeline-Verkettung, Division durch Null, Wildcard-Pfad, unbekannte Operationen). Gesamt: 150 → 200.
+- **Workflow-Test-Suite auf 150 Tests erweitert** — 12 Tests für Loop hinzugefügt (6 Tests: grundlegendes Zählen, max_iterations-Sicherheit, Null-Iterationen, leere Bedingung, benutzerdefinierter Variablenname, Variable-Interpolation) und ParameterExtractor (6 Tests: grundlegende Extraktion, fehlende Eingabe, leere Parameter, ungültiges JSON, Variable-Interpolation, Extraktionsaufforderung-Einbeziehung). Gesamt: 138 → 150.
+- **Workflow-Test-Suite auf 138 Tests erweitert** — 20 Tests für Phase-2-Iterator hinzugefügt (9 Tests: grundlegende Liste, JSON-Analyse, max_iterations, leere Liste, fehlende Konfiguration, None-zu-leer, Template-Referenzen, Nicht-Liste-Ablehnung, Metadaten) und VariableAggregator (11 Tests: list/concat/merge/first_non_empty-Modi, Grenzfälle für leere Eingaben, None-Überspringen, unbekannter Modus). Gesamt: 118 → 138.
+- **Workflow-Test-Suite auf 118 Tests erweitert** — 7 Tests für ConditionBranch-LLM-Modus hinzugefügt (exakte Übereinstimmung, Groß-/Kleinschreibung ignoriert, Fuzzy, Keine-Übereinstimmung-Fallback, DEFAULT-Antwort, keine Kandidaten, Variable-Interpolation). Gesamt: 111 → 118.
+- **Überholung des visuellen Feedbacks im Workflow-Run-Modus** — Ring-basierte Node-Status-Gestaltung ersetzt grenzbasierte Methode, animierte Status-Punkte mit Ping-Effekt für laufende Nodes, `useMemo`-abgeleitete `displayNodes`/`displayEdges` für saubere Zustandstrennung und Kantenanimation zwischen abgeschlossenen und laufenden Nodes.
+- **Workflow-Test-Suite auf 105 Tests erweitert** — Template-Validierungstests, Import/Export-Roundtrip, erweiterte Variable-Store-Methoden, Deadlock-Erkennung, Multi-Bedingungsverzweigung, Fragen-Klassifizierer und umfassende Blueprint-Validierung hinzugefügt. Gesamt: 68 → 97 → 105.
+- **Workflow-Test-Suite auf 68 Tests erweitert** — 24 neue Tests hinzugefügt, die eval-Namespace-Abflachung abdecken (17 Tests für gepunktete Schlüsselauflösung, Kurzalias-Generierung, ConditionBranch/VariableAssign mit flachen Namen) und Blueprint-Validierungswarnungen (7 Tests für getrennte Nodes, unerreichbare Enden, leere Bedingungen/Aufforderungen/Code). Gesamte Workflow-Test-Anzahl: 34 → 68.
+- **Workflow-Editor-Überholung (Dify-Stil)** — Vollständige visuelle Neugestaltung des Workflow-Editors inspiriert von Dify:
+  - Horizontales (von links nach rechts) Layout ersetzt von oben nach unten; alle 12 Node-Typen verwenden Left/Right-Griffe
+  - Node-Design mit linkem Farbbalken, kompakte 220px Breite, kleinere Symbole und Run-Status-Abzeichen
+  - Add-Node-on-Edge: benutzerdefiniertes `AddNodeEdge` mit „+"-Mittelpunkt-Schaltfläche und Node-Typ-Picker-Popup, das vorhandene Kanten teilt
+  - Umfangreicheres Konfigurationspanel: Modellwähler-Dropdown für LLM-Nodes, Operator-Dropdowns (==, !=, >, <, contains, etc.) für Bedingungen, Abschnittsüberschriften, `InsertVariableHint` und `OutputVariableField` für alle Ausgabe-Nodes
+  - Einklappbare Node-Palette (nur Symbole-Modus) mit Kategoriegruppen; Start/End-Nodes abgeblendet, wenn bereits platziert
+  - Single Start/End-Validierung beim Ablegen; `fitViewOptions` mit `maxZoom:1`, um übermäßiges Zoomen bei kleinen Graphen zu verhindern
 
 ### Hinzugefügt
 

@@ -2447,101 +2447,60 @@ class TestBuiltinToolExecutor:
 
 
 class TestSubWorkflowExecutor:
-    """Tests for SubWorkflowExecutor — sub-workflow invocation (currently a stub)."""
+    """Tests for SubWorkflowExecutor guard checks.
+
+    Full integration tests with DB mocking are in test_workflow_subworkflow.py.
+    """
 
     @pytest.mark.asyncio
-    async def test_happy_path(self):
-        """SubWorkflow executor validates config and resolves input mapping."""
+    async def test_no_db_factory_fails(self):
+        """SubWorkflow executor fails without db_session_factory."""
         executor = SubWorkflowExecutor()
         store = VariableStore()
         ctx = _make_ctx()
-        await store.set("upstream.result", "some data")
 
         node = _make_node("sub_1", NodeType.SUB_WORKFLOW, {
             "workflow_id": "wf-child-001",
-            "input_mapping": {
-                "data": "{{upstream.result}}",
-                "static_param": "fixed_value",
-            },
         })
 
         result = await executor.execute(node, store, ctx)
 
-        assert result.status == NodeStatus.COMPLETED
-        output = result.output
-        assert output["sub_workflow_id"] == "wf-child-001"
-        assert output["inputs"]["data"] == "some data"
-        assert output["inputs"]["static_param"] == "fixed_value"
+        assert result.status == NodeStatus.FAILED
+        assert "db_session_factory" in result.error
 
     @pytest.mark.asyncio
     async def test_missing_workflow_id_fails(self):
         """SubWorkflow executor fails when workflow_id is missing."""
+        from unittest.mock import MagicMock
+
         executor = SubWorkflowExecutor()
         store = VariableStore()
         ctx = _make_ctx()
+        ctx.db_session_factory = MagicMock()
 
         node = _make_node("sub_1", NodeType.SUB_WORKFLOW, {})
 
         result = await executor.execute(node, store, ctx)
 
         assert result.status == NodeStatus.FAILED
-        assert "requires a workflow_id" in result.error
+        assert "workflow_id" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_empty_input_mapping(self):
-        """SubWorkflow executor handles empty input_mapping."""
+    async def test_depth_exceeded_fails(self):
+        """SubWorkflow executor fails when recursion depth is exceeded."""
         executor = SubWorkflowExecutor()
         store = VariableStore()
         ctx = _make_ctx()
-
-        node = _make_node("sub_1", NodeType.SUB_WORKFLOW, {
-            "workflow_id": "wf-child-002",
-        })
-
-        result = await executor.execute(node, store, ctx)
-
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["inputs"] == {}
-
-    @pytest.mark.asyncio
-    async def test_stores_in_all_locations(self):
-        """SubWorkflow stores result in output_variable, node.output, and node.output_variable."""
-        executor = SubWorkflowExecutor()
-        store = VariableStore()
-        ctx = _make_ctx()
+        ctx.depth = 5
 
         node = _make_node("sub_1", NodeType.SUB_WORKFLOW, {
             "workflow_id": "wf-123",
-            "output_variable": "sub_output",
         })
 
         result = await executor.execute(node, store, ctx)
 
-        assert result.status == NodeStatus.COMPLETED
-        assert await store.get("sub_output") is not None
-        assert await store.get("sub_1.output") is not None
-        assert await store.get("sub_1.sub_output") is not None
-
-    @pytest.mark.asyncio
-    async def test_non_string_input_mapping_values(self):
-        """SubWorkflow passes non-string mapping values unchanged."""
-        executor = SubWorkflowExecutor()
-        store = VariableStore()
-        ctx = _make_ctx()
-
-        node = _make_node("sub_1", NodeType.SUB_WORKFLOW, {
-            "workflow_id": "wf-123",
-            "input_mapping": {
-                "count": 5,
-                "enabled": True,
-            },
-        })
-
-        result = await executor.execute(node, store, ctx)
-
-        assert result.status == NodeStatus.COMPLETED
-        assert result.output["inputs"]["count"] == 5
-        assert result.output["inputs"]["enabled"] is True
+        assert result.status == NodeStatus.FAILED
+        assert "depth" in result.error.lower()
 
 
 # ===========================================================================

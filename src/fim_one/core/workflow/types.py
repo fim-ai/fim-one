@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 
 class NodeType(str, Enum):
@@ -115,3 +115,5 @@ class ExecutionContext:
     user_id: str
     workflow_id: str
     env_vars: dict[str, str] = field(default_factory=dict)
+    db_session_factory: Callable[[], Any] | None = None
+    depth: int = 0

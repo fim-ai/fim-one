@@ -2758,17 +2758,24 @@ class BuiltinToolExecutor:
 
 
 # ---------------------------------------------------------------------------
-# SubWorkflow — calls another workflow by ID (stub: validates config only)
+# SubWorkflow — loads and executes another workflow as a nested run
 # ---------------------------------------------------------------------------
 
 
 class SubWorkflowExecutor:
-    """Execute another workflow as a sub-process.
+    """Load another workflow from the database and execute it as a nested run.
 
-    Currently a stub that validates configuration and resolves input mappings.
-    Full recursive execution requires database access not yet available in
-    the executor context.
+    Node data keys:
+    - ``workflow_id``: UUID of the target workflow to execute.
+    - ``input_mapping``: dict mapping sub-workflow input keys to ``{{var}}``
+      templates resolved against the parent store.
+    - ``output_variable``: name under which to store the sub-workflow outputs
+      (defaults to ``"sub_result"``).
+
+    Recursion depth is capped at ``MAX_DEPTH`` (5) to prevent infinite loops.
     """
+
+    MAX_DEPTH: int = 5
 
     async def execute(
         self,
@@ -2778,47 +2785,124 @@ class SubWorkflowExecutor:
     ) -> NodeResult:
         t0 = time.time()
         try:
+            # --- Guard: recursion depth ---
+            if context.depth >= self.MAX_DEPTH:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"Max sub-workflow nesting depth ({self.MAX_DEPTH}) exceeded",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # --- Guard: need a DB session factory ---
+            if context.db_session_factory is None:
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error="SubWorkflow requires database access (db_session_factory is None)",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # --- Load target workflow from DB ---
             workflow_id = node.data.get("workflow_id", "")
             if not workflow_id:
                 return NodeResult(
                     node_id=node.id,
                     status=NodeStatus.FAILED,
-                    error="SubWorkflow node requires a workflow_id",
+                    error="SubWorkflow node is missing 'workflow_id'",
                     duration_ms=_ms_since(t0),
                 )
 
-            output_var = node.data.get("output_variable", "sub_result")
+            from sqlalchemy import select as sa_select
 
-            # Resolve input_mapping — interpolate each value from the store
-            input_mapping: dict = node.data.get("input_mapping", {})
-            resolved_inputs: dict[str, Any] = {}
-            for key, val in input_mapping.items():
-                if isinstance(val, str):
-                    resolved_inputs[key] = await store.interpolate(val)
-                else:
-                    resolved_inputs[key] = val
+            async with context.db_session_factory() as session:
+                from fim_one.web.models.workflow import Workflow
 
-            logger.info(
-                "SubWorkflow node %s: workflow_id=%s, inputs=%s",
-                node.id, workflow_id, resolved_inputs,
+                result = await session.execute(
+                    sa_select(Workflow).where(
+                        Workflow.id == workflow_id,
+                        Workflow.is_active == True,  # noqa: E712
+                    )
+                )
+                workflow = result.scalar_one_or_none()
+                if workflow is None:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=f"Sub-workflow '{workflow_id}' not found or inactive",
+                        duration_ms=_ms_since(t0),
+                    )
+                blueprint_raw = workflow.blueprint
+
+            # --- Parse blueprint ---
+            from fim_one.core.workflow.parser import parse_blueprint
+
+            parsed_blueprint = parse_blueprint(blueprint_raw)
+
+            # --- Resolve input_mapping against the parent store ---
+            input_mapping: dict[str, Any] = node.data.get("input_mapping", {})
+            sub_inputs: dict[str, Any] = {}
+            for key, val_template in input_mapping.items():
+                sub_inputs[key] = await store.interpolate(str(val_template))
+
+            # --- Create nested engine with reduced concurrency ---
+            from fim_one.core.workflow.engine import WorkflowEngine
+
+            sub_run_id = f"{context.run_id}:sub:{node.id}"
+
+            sub_engine = WorkflowEngine(
+                max_concurrency=3,
+                env_vars=context.env_vars,
+                run_id=sub_run_id,
+                user_id=context.user_id,
+                workflow_id=workflow_id,
             )
 
-            result = {
-                "sub_workflow_id": workflow_id,
-                "inputs": resolved_inputs,
-                "note": "Sub-workflow execution pending full implementation",
-            }
+            # --- Create sub-context with incremented depth ---
+            sub_context = ExecutionContext(
+                run_id=sub_run_id,
+                user_id=context.user_id,
+                workflow_id=workflow_id,
+                env_vars=context.env_vars,
+                db_session_factory=context.db_session_factory,
+                depth=context.depth + 1,
+            )
 
-            await store.set(output_var, result)
-            await store.set(f"{node.id}.output", result)
-            await store.set(f"{node.id}.{output_var}", result)
+            # --- Execute via streaming and collect final result ---
+            sub_outputs: dict[str, Any] = {}
+            sub_status: str = "completed"
+            sub_error: str | None = None
+
+            async for event_name, event_data in sub_engine.execute_streaming(
+                parsed_blueprint, sub_inputs, context=sub_context
+            ):
+                if event_name == "run_completed":
+                    sub_outputs = event_data.get("outputs", {})
+                    sub_status = event_data.get("status", "completed")
+                elif event_name == "run_failed":
+                    sub_status = "failed"
+                    sub_error = event_data.get("error", "Sub-workflow failed")
+
+            if sub_status == "failed":
+                return NodeResult(
+                    node_id=node.id,
+                    status=NodeStatus.FAILED,
+                    error=f"Sub-workflow execution failed: {sub_error}",
+                    duration_ms=_ms_since(t0),
+                )
+
+            # --- Store outputs ---
+            output_var = node.data.get("output_variable", "sub_result")
+            await store.set(f"{node.id}.{output_var}", sub_outputs)
+            await store.set(f"{node.id}.output", sub_outputs)
 
             return NodeResult(
                 node_id=node.id,
                 status=NodeStatus.COMPLETED,
-                output=result,
+                output=sub_outputs,
                 duration_ms=_ms_since(t0),
             )
+
         except Exception as exc:
             logger.exception("SubWorkflow node %s failed", node.id)
             return NodeResult(
