@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { Monitor, Moon, Sun } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
+import { Separator } from "@/components/ui/separator"
 
 const THEME_KEYS = ["system", "light", "dark"] as const
 const THEME_ICONS = {
@@ -28,6 +29,37 @@ export function AppearanceSettings() {
     light: "light",
     dark: "dark",
   }
+
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
+  const ctrlKey = isMac ? "\u2318" : "Ctrl"
+
+  const shortcutGroups = [
+    {
+      labelKey: "shortcutsChatGroup",
+      shortcuts: [
+        { keys: ["Enter"], labelKey: "shortcutsSendMessage" },
+        { keys: ["Shift", "Enter"], labelKey: "shortcutsNewLine" },
+        { keys: [ctrlKey, "/"], labelKey: "shortcutsToggleSidebar" },
+      ],
+    },
+    {
+      labelKey: "shortcutsNavigationGroup",
+      shortcuts: [
+        { keys: [ctrlKey, "K"], labelKey: "shortcutsQuickSearch" },
+        { keys: ["Esc"], labelKey: "shortcutsCloseDialog" },
+      ],
+    },
+    {
+      labelKey: "shortcutsWorkflowGroup",
+      shortcuts: [
+        { keys: ["?"], labelKey: "shortcutsShowShortcuts" },
+        { keys: [ctrlKey, "A"], labelKey: "shortcutsSelectAll" },
+        { keys: ["Delete"], labelKey: "shortcutsDeleteSelected" },
+        { keys: [ctrlKey, "Z"], labelKey: "shortcutsUndo" },
+        { keys: [ctrlKey, "S"], labelKey: "shortcutsSave" },
+      ],
+    },
+  ]
 
   return (
     <div className="space-y-6">
@@ -81,6 +113,52 @@ export function AppearanceSettings() {
               </button>
             )
           })}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Keyboard Shortcuts */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-medium text-foreground">{t("keyboardShortcutsTitle")}</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            {t("keyboardShortcutsDescription")}
+          </p>
+        </div>
+
+        <div className="space-y-4 max-w-xl">
+          {shortcutGroups.map((group) => (
+            <div key={group.labelKey} className="space-y-2">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {t(group.labelKey)}
+              </h4>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {group.shortcuts.map((shortcut) => (
+                  <div
+                    key={shortcut.labelKey}
+                    className="flex items-center justify-between px-3 py-2"
+                  >
+                    <span className="text-sm text-foreground">
+                      {t(shortcut.labelKey)}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {shortcut.keys.map((key, idx) => (
+                        <span key={idx}>
+                          {idx > 0 && (
+                            <span className="text-xs text-muted-foreground mx-0.5">+</span>
+                          )}
+                          <kbd className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded border border-border bg-muted text-xs font-mono text-muted-foreground">
+                            {key}
+                          </kbd>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
