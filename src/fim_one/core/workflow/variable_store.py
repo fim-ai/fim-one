@@ -7,9 +7,11 @@ encrypted environment variables.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import Any
 
+logger = logging.getLogger(__name__)
 
 _VAR_PATTERN = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\}\}")
 
@@ -71,10 +73,29 @@ class VariableStore:
             # 2. Fallback: flat name matches the last segment of a dotted key
             #    e.g. "output" might match "llm_1.output"
             if "." not in var_name:
+                matches: list[tuple[str, Any]] = []
                 for key, val in data_snapshot.items():
                     parts = key.split(".")
                     if len(parts) == 2 and parts[1] == var_name:
-                        return val
+                        matches.append((key, val))
+
+                if len(matches) == 1:
+                    return matches[0][1]
+                if len(matches) > 1:
+                    # Non-deterministic: multiple nodes expose the same
+                    # variable name.  Return the first match but warn the
+                    # user so they can switch to qualified names.
+                    match_keys = [m[0] for m in matches]
+                    logger.warning(
+                        "Ambiguous variable reference '{{%s}}' matches "
+                        "multiple store keys: %s — returning first match. "
+                        "Use a fully-qualified name (e.g. '{{%s}}') to avoid "
+                        "non-deterministic resolution.",
+                        var_name,
+                        match_keys,
+                        match_keys[0],
+                    )
+                    return matches[0][1]
 
             return None
 
@@ -223,3 +244,11 @@ class VariableStore:
         Only safe to call when no concurrent writes are happening.
         """
         return dict(self._data)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a shallow copy (alias for ``snapshot_sync``).
+
+        Provides a synchronous dict serialisation used by the engine's
+        debug-trace code path.
+        """
+        return self.snapshot_sync()

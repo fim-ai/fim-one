@@ -151,13 +151,25 @@ def parse_blueprint(raw: dict[str, Any]) -> WorkflowBlueprint:
                 f"Edge target '{target}' references unknown node"
             )
 
+        source_handle = e.get("sourceHandle")
+        target_handle = e.get("targetHandle")
+        # Build a collision-safe auto-ID when the edge dict has no explicit ID.
+        # Including handles prevents duplicates when multiple edges connect the
+        # same source/target pair (e.g. condition nodes with different handles).
+        if e.get("id"):
+            edge_id = e["id"]
+        else:
+            sh = source_handle or ""
+            th = target_handle or ""
+            edge_id = f"{source}:{sh}->{target}:{th}"
+
         edges.append(
             WorkflowEdgeDef(
-                id=e.get("id", f"{source}->{target}"),
+                id=edge_id,
                 source=source,
                 target=target,
-                source_handle=e.get("sourceHandle"),
-                target_handle=e.get("targetHandle"),
+                source_handle=source_handle,
+                target_handle=target_handle,
             )
         )
 
