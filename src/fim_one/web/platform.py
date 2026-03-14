@@ -13,6 +13,18 @@ MARKET_ORG_ID = "00000000-0000-0000-0000-000000000001"
 PLATFORM_ORG_ID = MARKET_ORG_ID
 PLATFORM_ORG_SLUG = MARKET_ORG_SLUG
 
+MARKET_ORG_SLUG = "market"
+MARKET_ORG_ID = "00000000-0000-0000-0000-000000000002"
+
+
+def is_market_org(org_id: str) -> bool:
+    """Return True if *org_id* is the built-in Market organisation.
+
+    The Market org allows any authenticated user to publish without
+    a membership check.
+    """
+    return org_id == MARKET_ORG_ID
+
 
 def is_market_org(org_id: str) -> bool:
     """Return True if the given org_id is the Market org."""

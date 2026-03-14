@@ -15,6 +15,7 @@ from fim_one.core.security import is_stdio_allowed, validate_stdio_command
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
+from fim_one.web.platform import is_market_org
 from fim_one.web.models.mcp_server import MCPServer
 from fim_one.web.models.user import User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
@@ -350,7 +351,8 @@ async def publish_mcp_server(
         if not body.org_id:
             raise AppError("org_id_required", status_code=400)
         from fim_one.web.auth import require_org_member
-        await require_org_member(body.org_id, current_user, db)
+        if not is_market_org(body.org_id):
+            await require_org_member(body.org_id, current_user, db)
         server.visibility = "org"
         server.org_id = body.org_id
         server.allow_fallback = body.allow_fallback

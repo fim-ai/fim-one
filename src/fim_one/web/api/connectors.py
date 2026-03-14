@@ -21,6 +21,7 @@ from fim_one.core.tool.connector.semantic_tags import get_all_semantic_tags
 from fim_one.web.exceptions import AppError
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user, get_user_org_ids
+from fim_one.web.platform import is_market_org
 from fim_one.web.models.connector import Connector, ConnectorAction
 from fim_one.web.models.connector_credential import ConnectorCredential
 from fim_one.web.models.user import User
@@ -690,7 +691,8 @@ async def publish_connector(
         if not body.org_id:
             raise AppError("org_id_required", status_code=400)
         from fim_one.web.auth import require_org_member
-        await require_org_member(body.org_id, current_user, db)
+        if not is_market_org(body.org_id):
+            await require_org_member(body.org_id, current_user, db)
         connector.visibility = "org"
         connector.org_id = body.org_id
         from fim_one.web.publish_review import apply_publish_status
