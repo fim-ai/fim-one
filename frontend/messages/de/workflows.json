@@ -732,5 +732,8 @@
   "enableDebugTrace": "Debug-Trace aktivieren",
   "debugTraceEnabled": "Debug-Trace aktiviert - erfasst detaillierte Ausführungsdaten",
   "debugTraceDisabled": "Normalmodus - führen Sie mit Debug aus, um vollständige Traces zu erhalten",
-  "validationIssues": "Validierungsprobleme"
+  "validationIssues": "Validierungsprobleme",
+  "emptyTitle": "Noch keine Workflows",
+  "emptyDescription": "Erstellen Sie Ihren ersten Workflow, um komplexe Aufgaben zu automatisieren.",
+  "noSearchResultsDescription": "Versuchen Sie, Ihre Suche oder Filter anzupassen."
 }

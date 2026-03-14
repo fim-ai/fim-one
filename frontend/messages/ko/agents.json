@@ -135,5 +135,7 @@
   "skillIdsHint": "스킬은 시스템 프롬프트에서 이름으로 참조됩니다. 전체 콘텐츠는 read_skill()을 통해 필요에 따라 로드됩니다.",
   "compactInstructions": "간단한 지침",
   "compactInstructionsHint": "대화 기록을 압축할 때 사용되는 사용자 정의 프롬프트입니다. 비워두면 기본값을 사용합니다.",
-  "compactInstructionsPlaceholder": "주문 ID, 금액 및 고객 이름을 유지합니다. 원본 API 응답 및 중간 추론은 제거합니다."
+  "compactInstructionsPlaceholder": "주문 ID, 금액 및 고객 이름을 유지합니다. 원본 API 응답 및 중간 추론은 제거합니다.",
+  "emptyTitle": "에이전트가 없습니다",
+  "emptyDescription": "시작하려면 첫 번째 에이전트를 만드세요."
 }

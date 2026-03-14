@@ -2,6 +2,8 @@
   "title": "Marketplace",
   "description": "Browse and install shared resources from the marketplace",
   "empty": "No resources available in the marketplace",
+  "emptyTitle": "No resources yet",
+  "emptyDescription": "Resources published to the marketplace will appear here.",
   "subscribed": "Subscribed",
   "subscribe": "Subscribe",
   "unsubscribe": "Unsubscribe",

@@ -218,5 +218,7 @@
   "exportFailed": "Échec de l'export du connecteur",
   "importFailed": "Échec de l'import du connecteur",
   "forkFailed": "Échec de la duplication du connecteur",
-  "importFileInvalid": "Fichier JSON invalide"
+  "importFileInvalid": "Fichier JSON invalide",
+  "emptyTitle": "Aucun connecteur pour le moment",
+  "emptyDescription": "Créez votre premier connecteur pour lier des API externes et des services."
 }

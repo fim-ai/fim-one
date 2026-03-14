@@ -732,5 +732,8 @@
   "enableDebugTrace": "Activer la trace de débogage",
   "debugTraceEnabled": "Trace de débogage activée - capture les données d'exécution détaillées",
   "debugTraceDisabled": "Mode normal - exécutez avec le débogage pour la trace complète",
-  "validationIssues": "Problèmes de validation"
+  "validationIssues": "Problèmes de validation",
+  "emptyTitle": "Aucun flux de travail pour le moment",
+  "emptyDescription": "Créez votre premier flux de travail pour automatiser des tâches complexes.",
+  "noSearchResultsDescription": "Essayez d'ajuster votre recherche ou vos filtres."
 }

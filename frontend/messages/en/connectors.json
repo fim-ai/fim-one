@@ -8,6 +8,8 @@
   "newDatabaseConnector": "New Database Connector",
   "createConnector": "Create Connector",
   "emptyState": "No connectors yet. Create your first one to connect external APIs.",
+  "emptyTitle": "No connectors yet",
+  "emptyDescription": "Create your first connector to link external APIs and services.",
   "connectorDeleted": "Connector deleted",
   "connectorDeleteFailed": "Failed to delete connector",
   "deleteConnectorTitle": "Delete connector?",

@@ -732,5 +732,8 @@
   "enableDebugTrace": "디버그 추적 활성화",
   "debugTraceEnabled": "디버그 추적 활성화됨 - 상세한 실행 데이터 캡처",
   "debugTraceDisabled": "일반 모드 - 전체 추적을 위해 디버그로 실행하세요",
-  "validationIssues": "유효성 검사 문제"
+  "validationIssues": "유효성 검사 문제",
+  "emptyTitle": "아직 워크플로우가 없습니다",
+  "emptyDescription": "첫 번째 워크플로우를 만들어 복잡한 작업을 자동화하세요.",
+  "noSearchResultsDescription": "검색 또는 필터를 조정해보세요."
 }

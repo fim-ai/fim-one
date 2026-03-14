@@ -24,5 +24,7 @@
   "install": "インストール",
   "uninstall": "アンインストール",
   "installSuccess": "正常にインストールされました",
-  "uninstallSuccess": "正常にアンインストールされました"
+  "uninstallSuccess": "正常にアンインストールされました",
+  "emptyTitle": "リソースはまだありません",
+  "emptyDescription": "マーケットプレイスに公開されたリソースがここに表示されます。"
 }

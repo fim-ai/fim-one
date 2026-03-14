@@ -218,5 +218,7 @@
   "exportFailed": "コネクタのエクスポートに失敗しました",
   "importFailed": "コネクタのインポートに失敗しました",
   "forkFailed": "コネクタのフォークに失敗しました",
-  "importFileInvalid": "無効な JSON ファイルです"
+  "importFileInvalid": "無効な JSON ファイルです",
+  "emptyTitle": "コネクタがまだありません",
+  "emptyDescription": "最初のコネクタを作成して、外部APIとサービスをリンクします。"
 }

@@ -732,5 +732,8 @@
   "enableDebugTrace": "デバッグトレースを有効にする",
   "debugTraceEnabled": "デバッグトレースが有効になりました - 詳細な実行データをキャプチャします",
   "debugTraceDisabled": "通常モード - 完全なトレースを取得するにはデバッグで実行してください",
-  "validationIssues": "検証の問題"
+  "validationIssues": "検証の問題",
+  "emptyTitle": "ワークフローがまだありません",
+  "emptyDescription": "複雑なタスクを自動化するために最初のワークフローを作成してください。",
+  "noSearchResultsDescription": "検索またはフィルターを調整してみてください。"
 }

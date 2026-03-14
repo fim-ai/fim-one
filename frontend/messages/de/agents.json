@@ -135,5 +135,7 @@
   "skillIdsHint": "Fähigkeiten werden im Systemprompt nach Name referenziert. Vollständiger Inhalt wird bei Bedarf über read_skill() geladen.",
   "compactInstructions": "Kompakte Anweisungen",
   "compactInstructionsHint": "Benutzerdefinierter Prompt zur Komprimierung des Gesprächsverlaufs. Leer lassen, um Standard zu verwenden.",
-  "compactInstructionsPlaceholder": "Bestellnummern, Beträge und Kundennamen beibehalten. Rohe API-Antworten und Zwischenüberlegungen entfernen."
+  "compactInstructionsPlaceholder": "Bestellnummern, Beträge und Kundennamen beibehalten. Rohe API-Antworten und Zwischenüberlegungen entfernen.",
+  "emptyTitle": "Noch keine Agenten",
+  "emptyDescription": "Erstellen Sie Ihren ersten Agenten, um zu beginnen."
 }

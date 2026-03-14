@@ -135,5 +135,7 @@
   "skillIdsHint": "Les compétences sont référencées par nom dans l'invite système. Le contenu complet se charge à la demande via read_skill().",
   "compactInstructions": "Instructions compactes",
   "compactInstructionsHint": "Invite personnalisée utilisée lors de la compression de l'historique de conversation. Laissez vide pour utiliser la valeur par défaut.",
-  "compactInstructionsPlaceholder": "Conservez les ID de commande, les montants et les noms de clients. Supprimez les réponses API brutes et le raisonnement intermédiaire."
+  "compactInstructionsPlaceholder": "Conservez les ID de commande, les montants et les noms de clients. Supprimez les réponses API brutes et le raisonnement intermédiaire.",
+  "emptyTitle": "Aucun agent pour le moment",
+  "emptyDescription": "Créez votre premier agent pour commencer."
 }

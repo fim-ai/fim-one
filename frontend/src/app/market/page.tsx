@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { ShoppingBag } from 'lucide-react'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -95,7 +96,11 @@ function MarketContent() {
         {loading ? (
           <div className="text-center py-12 text-muted-foreground">{tc('loading')}</div>
         ) : items.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">{t('empty')}</div>
+          <EmptyState
+            icon={<ShoppingBag />}
+            title={t("emptyTitle")}
+            description={t("emptyDescription")}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {items.map((item) => (

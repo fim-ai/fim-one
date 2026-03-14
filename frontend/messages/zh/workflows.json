@@ -732,5 +732,8 @@
   "enableDebugTrace": "启用调试追踪",
   "debugTraceEnabled": "调试追踪已启用 - 捕获详细的执行数据",
   "debugTraceDisabled": "普通模式 - 以调试模式运行以获取完整追踪",
-  "validationIssues": "验证问题"
+  "validationIssues": "验证问题",
+  "emptyTitle": "还没有工作流",
+  "emptyDescription": "创建您的第一个工作流来自动化复杂任务。",
+  "noSearchResultsDescription": "尝试调整您的搜索或筛选条件。"
 }

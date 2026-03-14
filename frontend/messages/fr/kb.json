@@ -136,5 +136,7 @@
   "publish": "Publier dans l'organisation",
   "unpublish": "Revenir au personnel",
   "resubmit": "Renvoyer pour examen",
-  "orgBadge": "Organisation"
+  "orgBadge": "Organisation",
+  "emptyTitle": "Aucune base de connaissances pour le moment",
+  "emptyDescription": "Créez votre première base de connaissances pour organiser et récupérer des informations."
 }

@@ -136,5 +136,7 @@
   "publish": "发布到组织",
   "unpublish": "恢复为个人",
   "resubmit": "重新提交审核",
-  "orgBadge": "组织"
+  "orgBadge": "组织",
+  "emptyTitle": "还没有知识库",
+  "emptyDescription": "创建您的第一个知识库来组织和检索信息。"
 }

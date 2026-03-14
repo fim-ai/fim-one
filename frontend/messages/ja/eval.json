@@ -70,5 +70,9 @@
   "latencyMax": "最大",
   "latencyAvg": "平均",
   "distribution": "結果の分布",
-  "latencyDistribution": "レイテンシ（ms）"
+  "latencyDistribution": "レイテンシ（ms）",
+  "noDatasetsTitle": "データセットがまだありません",
+  "noDatasetsDescription": "エージェントの評価を開始するためにデータセットを作成してください。",
+  "noRunsTitle": "評価実行がまだありません",
+  "noRunsDescription": "ここに結果を表示するために評価を実行してください。"
 }

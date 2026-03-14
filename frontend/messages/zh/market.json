@@ -24,5 +24,7 @@
   "install": "安装",
   "uninstall": "卸载",
   "installSuccess": "安装成功",
-  "uninstallSuccess": "卸载成功"
+  "uninstallSuccess": "卸载成功",
+  "emptyTitle": "暂无资源",
+  "emptyDescription": "发布到市场的资源将显示在此处。"
 }

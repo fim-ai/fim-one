@@ -218,5 +218,7 @@
   "exportFailed": "커넥터 내보내기 실패",
   "importFailed": "커넥터 가져오기 실패",
   "forkFailed": "커넥터 포크 실패",
-  "importFileInvalid": "유효하지 않은 JSON 파일입니다"
+  "importFileInvalid": "유효하지 않은 JSON 파일입니다",
+  "emptyTitle": "아직 커넥터가 없습니다",
+  "emptyDescription": "외부 API 및 서비스를 연결하기 위해 첫 번째 커넥터를 만드세요."
 }

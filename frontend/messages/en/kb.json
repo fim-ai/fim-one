@@ -5,6 +5,8 @@
   "createKnowledgeBase": "Create Knowledge Base",
   "editKnowledgeBase": "Edit Knowledge Base",
   "emptyState": "No knowledge bases yet. Create your first one to get started.",
+  "emptyTitle": "No knowledge bases yet",
+  "emptyDescription": "Create your first knowledge base to organize and retrieve information.",
   "knowledgeBaseUpdated": "Knowledge base updated",
   "knowledgeBaseCreated": "Knowledge base created",
   "knowledgeBaseDeleted": "Knowledge base deleted",

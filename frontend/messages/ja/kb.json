@@ -136,5 +136,7 @@
   "publish": "組織に公開",
   "unpublish": "個人用に戻す",
   "resubmit": "レビューのために再送信",
-  "orgBadge": "組織"
+  "orgBadge": "組織",
+  "emptyTitle": "ナレッジベースがまだありません",
+  "emptyDescription": "最初のナレッジベースを作成して、情報を整理および取得します。"
 }

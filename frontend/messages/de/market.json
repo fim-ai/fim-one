@@ -24,5 +24,7 @@
   "install": "Installieren",
   "uninstall": "Deinstallieren",
   "installSuccess": "Erfolgreich installiert",
-  "uninstallSuccess": "Erfolgreich deinstalliert"
+  "uninstallSuccess": "Erfolgreich deinstalliert",
+  "emptyTitle": "Noch keine Ressourcen",
+  "emptyDescription": "Ressourcen, die im Marketplace veröffentlicht werden, werden hier angezeigt."
 }

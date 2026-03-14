@@ -4,6 +4,8 @@
   "newWorkflow": "New Workflow",
   "createWorkflow": "Create Workflow",
   "emptyState": "No workflows yet. Create your first workflow to get started.",
+  "emptyTitle": "No workflows yet",
+  "emptyDescription": "Create your first workflow to automate complex tasks.",
   "noDescription": "No description",
 
   "deleteDialogTitle": "Delete workflow?",
@@ -47,6 +49,7 @@
   "statusActive": "Active",
   "searchPlaceholder": "Search workflows...",
   "noSearchResults": "No workflows match your search.",
+  "noSearchResultsDescription": "Try adjusting your search or filters.",
   "workflowCount": "{count} of {total}",
   "sortNewest": "Newest first",
   "sortOldest": "Oldest first",

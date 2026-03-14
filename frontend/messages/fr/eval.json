@@ -70,5 +70,9 @@
   "latencyMax": "Max",
   "latencyAvg": "Moy",
   "distribution": "Distribution des résultats",
-  "latencyDistribution": "Latence (ms)"
+  "latencyDistribution": "Latence (ms)",
+  "noDatasetsTitle": "Aucun ensemble de données pour le moment",
+  "noDatasetsDescription": "Créez un ensemble de données pour commencer à évaluer vos agents.",
+  "noRunsTitle": "Aucune exécution d'évaluation pour le moment",
+  "noRunsDescription": "Exécutez une évaluation pour voir les résultats ici."
 }

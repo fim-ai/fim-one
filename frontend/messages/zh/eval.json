@@ -70,5 +70,9 @@
   "latencyMax": "最大值",
   "latencyAvg": "平均值",
   "distribution": "结果分布",
-  "latencyDistribution": "延迟（ms）"
+  "latencyDistribution": "延迟（ms）",
+  "noDatasetsTitle": "还没有数据集",
+  "noDatasetsDescription": "创建数据集以开始评估您的智能体。",
+  "noRunsTitle": "还没有评估运行",
+  "noRunsDescription": "运行评估以在此处查看结果。"
 }

@@ -218,5 +218,7 @@
   "exportFailed": "Fehler beim Exportieren des Connectors",
   "importFailed": "Fehler beim Importieren des Connectors",
   "forkFailed": "Fehler beim Forken des Connectors",
-  "importFileInvalid": "Ungültige JSON-Datei"
+  "importFileInvalid": "Ungültige JSON-Datei",
+  "emptyTitle": "Noch keine Konnektoren",
+  "emptyDescription": "Erstellen Sie Ihren ersten Konnektor, um externe APIs und Dienste zu verbinden."
 }

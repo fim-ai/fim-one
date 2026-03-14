@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations } from "next-intl"
-import { Plus, Star, Loader2, Trash2, MoreHorizontal, Check, Pencil, MessagesSquare } from "lucide-react"
+import { Plus, Star, Loader2, Trash2, MoreHorizontal, Check, Pencil, MessagesSquare, Search, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { EmptyState } from "@/components/shared/empty-state"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -287,9 +288,19 @@ export default function ChatsPage() {
           ))}
         </div>
       ) : sorted.length === 0 ? (
-        <div className="py-16 text-center text-sm text-muted-foreground">
-          {debouncedQuery ? tc("noResults") : t("noConversationsYet")}
-        </div>
+        debouncedQuery ? (
+          <EmptyState
+            icon={<Search />}
+            title={tc("noResultsTitle")}
+            description={tc("noResultsDescription")}
+          />
+        ) : (
+          <EmptyState
+            icon={<MessageSquare />}
+            title={t("noConversationsTitle")}
+            description={t("noConversationsDescription")}
+          />
+        )
       ) : (
         <div className="space-y-1">
           {sorted.map((conv) => (

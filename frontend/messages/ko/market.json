@@ -24,5 +24,7 @@
   "install": "설치",
   "uninstall": "제거",
   "installSuccess": "성공적으로 설치되었습니다",
-  "uninstallSuccess": "성공적으로 제거되었습니다"
+  "uninstallSuccess": "성공적으로 제거되었습니다",
+  "emptyTitle": "아직 리소스가 없습니다",
+  "emptyDescription": "마켓플레이스에 게시된 리소스가 여기에 표시됩니다."
 }

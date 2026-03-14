@@ -136,5 +136,7 @@
   "publish": "In Organisation veröffentlichen",
   "unpublish": "Zu persönlich zurücksetzen",
   "resubmit": "Zur Überprüfung erneut einreichen",
-  "orgBadge": "Organisation"
+  "orgBadge": "Organisation",
+  "emptyTitle": "Noch keine Wissensdatenbanken",
+  "emptyDescription": "Erstellen Sie Ihre erste Wissensdatenbank, um Informationen zu organisieren und abzurufen."
 }

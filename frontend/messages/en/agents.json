@@ -4,6 +4,8 @@
   "newAgent": "New Agent",
   "createAgent": "Create Agent",
   "emptyState": "No agents yet. Create your first agent to get started.",
+  "emptyTitle": "No agents yet",
+  "emptyDescription": "Create your first agent to get started.",
   "agent": "Agent",
 
   "deleteDialogTitle": "Delete agent?",

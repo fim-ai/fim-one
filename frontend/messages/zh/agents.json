@@ -135,5 +135,7 @@
   "skillIdsHint": "技能在系统提示中按名称引用。完整内容通过 read_skill() 按需加载。",
   "compactInstructions": "紧凑指令",
   "compactInstructionsHint": "压缩对话历史时使用的自定义提示。留空则使用默认值。",
-  "compactInstructionsPlaceholder": "保留订单 ID、金额和客户名称。删除原始 API 响应和中间推理。"
+  "compactInstructionsPlaceholder": "保留订单 ID、金额和客户名称。删除原始 API 响应和中间推理。",
+  "emptyTitle": "还没有智能体",
+  "emptyDescription": "创建您的第一个智能体以开始使用。"
 }

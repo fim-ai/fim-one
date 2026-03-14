@@ -136,5 +136,7 @@
   "publish": "조직에 게시",
   "unpublish": "개인용으로 되돌리기",
   "resubmit": "검토를 위해 다시 제출",
-  "orgBadge": "조직"
+  "orgBadge": "조직",
+  "emptyTitle": "아직 지식 기반이 없습니다",
+  "emptyDescription": "정보를 구성하고 검색하기 위해 첫 번째 지식 기반을 만드세요."
 }

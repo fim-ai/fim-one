@@ -70,5 +70,9 @@
   "latencyMax": "최대",
   "latencyAvg": "평균",
   "distribution": "결과 분포",
-  "latencyDistribution": "지연시간 (ms)"
+  "latencyDistribution": "지연시간 (ms)",
+  "noDatasetsTitle": "아직 데이터셋이 없습니다",
+  "noDatasetsDescription": "에이전트 평가를 시작하려면 데이터셋을 생성하세요.",
+  "noRunsTitle": "아직 평가 실행이 없습니다",
+  "noRunsDescription": "평가를 실행하여 여기서 결과를 확인하세요."
 }

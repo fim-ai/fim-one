@@ -24,5 +24,7 @@
   "install": "Installer",
   "uninstall": "Désinstaller",
   "installSuccess": "Installé avec succès",
-  "uninstallSuccess": "Désinstallé avec succès"
+  "uninstallSuccess": "Désinstallé avec succès",
+  "emptyTitle": "Aucune ressource pour le moment",
+  "emptyDescription": "Les ressources publiées sur la marketplace apparaîtront ici."
 }

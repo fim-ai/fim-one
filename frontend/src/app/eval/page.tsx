@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { FlaskConical, MoreHorizontal, Plus, Loader2, Trash2, Eye, Pencil } from "lucide-react"
+import { EmptyState } from "@/components/shared/empty-state"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -299,7 +300,11 @@ function EvalPageContent() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : datasets.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-12">{t("noDatasets")}</p>
+              <EmptyState
+                icon={<FlaskConical />}
+                title={t("noDatasetsTitle")}
+                description={t("noDatasetsDescription")}
+              />
             ) : (
               <div className="rounded-md border">
                 <table className="w-full text-sm">
@@ -396,7 +401,11 @@ function EvalPageContent() {
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : runs.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-12">{t("noRuns")}</p>
+              <EmptyState
+                icon={<FlaskConical />}
+                title={t("noRunsTitle")}
+                description={t("noRunsDescription")}
+              />
             ) : (
               <div className="rounded-md border">
                 <table className="w-full text-sm">

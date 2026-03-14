@@ -218,5 +218,7 @@
   "exportFailed": "连接器导出失败",
   "importFailed": "连接器导入失败",
   "forkFailed": "连接器复刻失败",
-  "importFileInvalid": "无效的 JSON 文件"
+  "importFileInvalid": "无效的 JSON 文件",
+  "emptyTitle": "还没有连接器",
+  "emptyDescription": "创建您的第一个连接器以链接外部 API 和服务。"
 }
