@@ -13,7 +13,9 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**Hub de connecteurs alimenté par l'IA — intégrez-le dans un système en tant que Copilot, ou connectez-les tous en tant que Hub.**
+**Vos systèmes ne communiquent pas entre eux. FIM One les connecte tous à l'IA — sans modification de code, sans migration de données.**
+
+*Hub de connecteurs alimenté par l'IA — intégrez-le dans un système en tant que Copilot, ou connectez-les tous en tant que Hub.*
 
 🌐 [Site web](https://one.fim.ai/) · 📖 [Documentation](https://docs.fim.ai) · 📋 [Journal des modifications](https://docs.fim.ai/changelog) · 🐛 [Signaler un bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
@@ -21,7 +23,7 @@
 
 > [!TIP]
 > **☁️ Ignorez la configuration — essayez FIM One sur le Cloud.**
-> Une version gérée est disponible à **[cloud.fim.ai](https://cloud.fim.ai/)** : pas de Docker, pas de clés API, pas de configuration. Connectez-vous et commencez à connecter vos systèmes en quelques secondes. _Accès anticipé, les retours sont les bienvenus._
+> Une version gérée est disponible sur **[cloud.fim.ai](https://cloud.fim.ai/)** : pas de Docker, pas de clés API, pas de configuration. Connectez-vous et commencez à connecter vos systèmes en quelques secondes. _Accès anticipé, les retours sont les bienvenus._
 
 ---
 
@@ -43,12 +45,12 @@
 - [Contributeurs](#contributeurs)
 - [Licence](#licence)## Aperçu
 
-FIM One est un framework Python agnostique des fournisseurs pour construire des agents IA qui planifient et exécutent dynamiquement des tâches complexes. Ce qui le rend différent est l'architecture **Connector Hub** — trois modes de livraison, un cœur d'agent unique :
+Chaque entreprise dispose de systèmes qui ne communiquent pas entre eux — ERP, CRM, OA, finance, RH, bases de données personnalisées. L'IA de chaque fournisseur est intelligente dans son propre environnement, mais aveugle à tout le reste. FIM One est le **hub externe et tiers** qui les connecte tous via l'IA — sans modifier votre infrastructure existante. Trois modes de livraison, un cœur d'agent unique :
 
-| Mode           | Ce que c'est                                                                       | Comment y accéder                       |
-| -------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
-| **Standalone** | Assistant IA polyvalent — recherche, code, base de connaissances                      | Portail                                  |
-| **Copilot**    | IA intégrée dans un système hôte — fonctionne aux côtés des utilisateurs dans leur interface existante        | iframe / widget / intégration dans les pages hôtes |
+| Mode           | Qu'est-ce que c'est                                                                       | Comment y accéder                       |
+| -------------- | ----------------------------------------------------------------------------------------- | --------------------------------------- |
+| **Standalone** | Assistant IA polyvalent — recherche, code, base de connaissances                          | Portail                                 |
+| **Copilot**    | IA intégrée dans un système hôte — fonctionne aux côtés des utilisateurs dans leur UI existante | iframe / widget / intégration dans les pages hôtes |
 | **Hub**        | Orchestration IA centrale — tous vos systèmes connectés, intelligence inter-systèmes | Portail / API                            |
 
 ```mermaid
@@ -61,7 +63,9 @@ graph LR
     API[Custom API] --> Hub
 ```
 
-Le cœur reste toujours le même : boucles de raisonnement ReAct, planification DAG dynamique avec exécution concurrente, outils enfichables, et une architecture orientée protocole sans dépendance à un fournisseur.### Utilisation des Agents
+Le cœur reste toujours le même : boucles de raisonnement ReAct, planification DAG dynamique avec exécution concurrente, outils enfichables, et une architecture orientée protocole sans dépendance à un fournisseur.
+
+### Utilisation des Agents
 
 ![Using Agents](https://github.com/user-attachments/assets/b03d7750-eae6-4b16-9242-4c500d53d6cf)### Utilisation du mode Planificateur
 
@@ -153,12 +157,12 @@ FIM One ne fait pas de BPM/FSM — la logique de workflow appartient au système
 - **Interruption conversationnelle** — Envoyez des messages de suivi pendant que l'agent s'exécute ; injectés à la limite d'itération suivante.
 - **Thème sombre / clair / système** — Support complet des thèmes avec détection des préférences système.
 - **Palette de commandes** — Recherche de conversation, mise en favori, opérations par lot et renommage de titre.#### Plateforme et Multi-locataire
-- **JWT Auth** — Authentification SSE basée sur les jetons, propriété des conversations, isolation des ressources par utilisateur.
-- **Gestion des agents** — Créer, configurer et publier des agents avec modèles, outils et instructions liés. Mode d'exécution par agent (Standard/Planner) et contrôle de température. Le flag `discoverable` optionnel active la découverte automatique par LLM via CallAgentTool.
-- **Système de compétences des agents** — Chargement progressif des instructions pour les agents. Les compétences (SOP, scripts, connaissances métier) sont référencées dans le prompt système comme des stubs légers (~15 jetons chacun) ; les agents appellent `read_skill(name)` pour charger le contenu complet à la demande, réduisant le coût des jetons d'instruction par conversation d'environ 80 %. Champ `compact_instructions` par agent pour une stratégie de compaction ContextGuard personnalisée.
-- **Organisation de la plateforme** — Org `platform` intégrée qui rejoint automatiquement tous les utilisateurs, remplaçant le concept hérité de visibilité « globale ». Hub central pour partager des ressources (agents, connecteurs, bases de connaissances, serveurs MCP) dans l'organisation.
-- **Abonnements aux ressources et Marché** — Les utilisateurs parcourent et s'abonnent aux ressources partagées du Marché de l'org. S'abonner/se désabonner via l'interface utilisateur ou l'API. Tous les types de ressources supportent la publication au niveau de l'org et la gestion des abonnements.
-- **Panneau d'administration** — Tableau de bord des statistiques système (utilisateurs, conversations, jetons, graphiques d'utilisation des modèles, ventilation des jetons par agent), métriques d'appels de connecteurs (taux de succès, latence, nombre d'appels), gestion des utilisateurs avec recherche/pagination, basculement de rôle, réinitialisation de mot de passe, activation/désactivation de compte et contrôles d'activation/désactivation par outil.
+- **Authentification JWT** — Authentification SSE basée sur les jetons, propriété des conversations, isolation des ressources par utilisateur.
+- **Gestion des agents** — Créer, configurer et publier des agents avec modèles, outils et instructions liés. Mode d'exécution par agent (Standard/Planner) et contrôle de température. Le drapeau `discoverable` optionnel active la découverte automatique par LLM via CallAgentTool.
+- **Système de compétences des agents** — Chargement progressif des instructions pour les agents. Les compétences (POS, scripts, connaissances métier) sont référencées dans l'invite système sous forme de stubs légers (~15 jetons chacun) ; les agents appellent `read_skill(name)` pour charger le contenu complet à la demande, réduisant le coût des jetons d'instruction par conversation d'environ 80 %. Champ `compact_instructions` par agent pour une stratégie de compaction ContextGuard personnalisée.
+- **Marketplace (Shadow Market Org)** — L'organisation Market intégrée fonctionne comme une entité backend invisible pour le partage de ressources. Les ressources sont découvertes via la navigation du marketplace et explicitement souscrites (modèle pull) — pas d'adhésion automatique. La publication sur le marketplace nécessite toujours un examen.
+- **Abonnements aux ressources** — Les utilisateurs parcourent et s'abonnent aux ressources partagées du Marketplace. S'abonner/se désabonner via l'interface utilisateur ou l'API. Tous les types de ressources (agents, connecteurs, bases de connaissances, serveurs MCP, compétences, workflows) prennent en charge la publication sur le marketplace et la gestion des abonnements.
+- **Panneau d'administration** — Tableau de bord des statistiques système (utilisateurs, conversations, jetons, graphiques d'utilisation des modèles, répartition des jetons par agent), métriques d'appels de connecteurs (taux de succès, latence, nombre d'appels), gestion des utilisateurs avec recherche/pagination, basculement de rôle, réinitialisation de mot de passe, activation/désactivation de compte et contrôles d'activation/désactivation par outil.
 - **Assistant de configuration au premier lancement** — Au premier lancement, le portail vous guide dans la création d'un compte administrateur (nom d'utilisateur, mot de passe, e-mail). Cette configuration unique devient votre identifiant de connexion — aucun fichier de configuration nécessaire.
 - **Centre personnel** — Instructions système globales par utilisateur, appliquées à toutes les conversations.
 - **Préférence de langue** — Paramètre de langue par utilisateur (auto/en/zh) qui dirige toutes les réponses LLM vers la langue choisie.

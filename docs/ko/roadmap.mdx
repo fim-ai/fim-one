@@ -123,7 +123,7 @@ flowchart LR
 - **전역 MCP 서버**: 관리자 프로비저닝, 모든 세션에서 로드
 - **하위 호환성**: registration_enabled → registration_mode 자동 마이그레이션
 
-### v0.7.x (2026-03-07 to 2026-03-12) — 안정성 + 폴리시
+### v0.7.x (2026-03-07 to 2026-03-12) — 안정성 + 개선
 - 초대 코드 관리
 - 사용자별 할당량 (429 적용)
 - 구조화된 감사 로깅
@@ -137,23 +137,23 @@ flowchart LR
 - 관리자 도구별 활성화/비활성화 (비활성화된 도구는 런타임에 채팅에서 제외)
 - MCP 서버 관리를 커넥터 페이지로 이동
 - 이중 데이터베이스 지원: SQLite (제로 설정 기본값) + PostgreSQL (프로덕션); Docker Compose는 PostgreSQL 자동 프로비저닝
-- 모델 구성 문서 페이지 (공급자별 확장 사고 설정 포함)
-- SSE Protocol v2: `delta_reasoning`, `usage` 필드 및 분할된 `done`/`suggestions`/`title`/`end` 이벤트를 포함한 실시간 답변 스트리밍; SQLite 풀 크기 5 -> 20
+- 모델 구성 문서 페이지 (제공자별 확장 사고 설정 포함)
+- SSE Protocol v2: `delta_reasoning`, `usage` 필드를 포함한 실시간 답변 스트리밍, `done`/`suggestions`/`title`/`end` 이벤트 분할; SQLite 풀 크기 5 -> 20
 - AI Builder 확장: 7개의 새로운 빌더 도구 (GetSettings, TestConnection, ImportOpenAPI for connectors; ListConnectors, AddConnector, RemoveConnector, SetModel for agents), 에이전트의 `is_builder` 플래그, 빌더 프롬프트 자동 새로고침, SSRF 가드
-- SSE v2 프론트엔드: 스트리밍 점 펄스 커서, 축소 가능한 카드로 DAG 재계획 라운드 스냅샷, DAG 레이아웃을 단계 상태에서 분리
+- SSE v2 프론트엔드: 스트리밍 점 펄스 커서, 축소 가능한 카드로 표시되는 DAG 재계획 라운드 스냅샷, DAG 레이아웃과 단계 상태 분리
 - AI Builder 개념 문서 페이지 (커넥터 및 에이전트 빌더 가이드 포함)
 - 조직 시스템: 역할 기반 멤버십 (소유자/관리자/멤버)을 포함한 전체 CRUD, 관리자 관리 UI
-- 에이전트, 커넥터, 지식 기반, MCP 서버에 대한 3계층 리소스 가시성 (개인/조직/전역)
+- 에이전트, 커넥터, 지식 기반, MCP 서버에 대한 3단계 리소스 가시성 (개인/조직/전역)
 - 모든 리소스 유형에 대한 게시/게시 취소 API; 게시된 에이전트에 대한 소유자 위임
-- 관리자 설정-가시성 엔드포인트 (클론-투-글로벌 대체); 통합 `build_visibility_filter()` 쿼리 헬퍼
-- 데이터베이스 커넥터 (Phase 1-3): PG/MySQL/Oracle/SQL Server + 중국 레거시 DB에 대한 직접 SQL 액세스; 스키마 내부 검사, AI 주석, 읽기 전용 쿼리 실행, 암호화된 자격 증명, 커넥터당 3개 도구 (`list_tables`, `describe_table`, `query`)
-- **평가 센터**: 정량적 에이전트 품질 벤치마킹 — 테스트 데이터셋 CRUD (프롬프트 + 예상 동작 + 어설션), 평가 실행 (병렬 실행 + LLM 채점자 + 사례별 통과/실패/지연/토큰 결과), 자동 폴링을 포함한 결과 뷰어; 마이그레이션 `r8t0v2x4z567`
-- 3가지 모델 역할 (General/Fast/Reasoning) (계층별 env 구성 격리 포함); 빠른 모델은 더 이상 주 모델 설정을 상속하지 않음
+- 관리자 설정 가시성 엔드포인트 (복제-전역 대체); 통합 `build_visibility_filter()` 쿼리 헬퍼
+- 데이터베이스 커넥터 (1-3단계): PG/MySQL/Oracle/SQL Server + 중국 레거시 DB에 대한 직접 SQL 액세스; 스키마 내부 검사, AI 주석, 읽기 전용 쿼리 실행, 암호화된 자격 증명, 커넥터당 3개 도구 (`list_tables`, `describe_table`, `query`)
+- **평가 센터**: 정량적 에이전트 품질 벤치마킹 — 테스트 데이터셋 CRUD (프롬프트 + 예상 동작 + 어설션), 평가 실행 (병렬 실행 + LLM 채점자 + 케이스별 통과/실패/지연/토큰 결과), 자동 폴링을 포함한 결과 뷰어; 마이그레이션 `r8t0v2x4z567`
+- 3가지 모델 역할 (General/Fast/Reasoning) (티어별 env 구성 격리 포함); 빠른 모델은 더 이상 주 모델 설정을 상속하지 않음
 - 구조화된 데이터 및 아티팩트 전달을 위한 일반 문자열 단계 결과를 대체하는 `StepOutput` 데이터클래스
-- DAG 실행을 위한 도구 캐시 — 비동기 잠금 스탬피드 방지를 포함한 실행별 동일 도구 호출 캐시 (`DAG_TOOL_CACHE`)
+- DAG 실행을 위한 도구 캐시 — 실행당 동일한 도구 호출 캐시 (비동기 잠금 스탬피드 방지 포함) (`DAG_TOOL_CACHE`)
 - 실패 시 1회 재시도를 포함한 단계별 LLM 검증 (`DAG_STEP_VERIFICATION`)
 - 자동 라우팅: 빠른 LLM이 쿼리를 ReAct 또는 DAG로 분류; `/api/auto` 엔드포인트; 프론트엔드 3방향 모드 토글 (`AUTO_ROUTING`)
-- [x] ~~**플랫폼 조직 + 리소스 구독**~~: 기본 제공 플랫폼 조직이 모든 사용자 자동 참여; 공유 리소스 구독을 위한 Market API; 리소스 구독 테이블; 전역 가시성을 대체하는 조직 기반 리소스 공유
+- [x] ~~**Shadow Market 조직 + 리소스 구독**~~: 기본 제공 Market 조직 (shadow, 자동 가입 없음)이 Platform 조직을 대체; 마켓플레이스 브라우징 및 명시적 구독을 통해 발견된 리소스 (풀 모델); 공유 리소스 구독을 위한 Market API; Market에 게시하려면 항상 검토 필요; 리소스 구독 테이블; 전역 가시성을 대체하는 조직 기반 리소스 공유
 - [x] ~~**에이전트 자동 발견 및 하위 에이전트 바인딩**~~: 에이전트의 `discoverable` 플래그; `sub_agent_ids` 화이트리스트; 전문가 에이전트에 작업을 위임하기 위한 CallAgentTool
 - [x] ~~**MCP 서버 자격 증명 + 사용자별 재정의**~~: `mcp_server_credentials` 테이블; `PUT /api/mcp-servers/{id}/my-credentials` 엔드포인트; 자격 증명 폴백 동작을 위한 `allow_fallback` 플래그
 - [x] ~~**커넥터/KB 토글**~~: 리소스 일시 중단/재개를 위한 `POST /api/connectors/{id}/toggle` 및 `POST /api/knowledge-bases/{id}/toggle`

@@ -13,7 +13,9 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**AI-Powered Connector Hub — embed into one system as a Copilot, or connect them all as a Hub.**
+**Your systems don't talk to each other. FIM One connects them all to AI — zero code changes, zero data migration.**
+
+*AI-Powered Connector Hub — embed into one system as a Copilot, or connect them all as a Hub.*
 
 🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
@@ -45,7 +47,7 @@
 
 ## Overview
 
-FIM One is a provider-agnostic Python framework for building AI agents that dynamically plan and execute complex tasks. What makes it different is the **Connector Hub** architecture — three delivery modes, one agent core:
+Every company has systems that don't talk to each other — ERP, CRM, OA, finance, HR, custom databases. Each vendor's AI is smart inside its own walls, but blind to everything else. FIM One is the **external, third-party hub** that connects them all through AI — without modifying your existing infrastructure. Three delivery modes, one agent core:
 
 | Mode           | What it is                                                                       | How you access it                       |
 | -------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
@@ -186,8 +188,8 @@ FIM One doesn't do BPM/FSM — workflow logic belongs to the target system, Conn
 - **JWT Auth** — Token-based SSE auth, conversation ownership, per-user resource isolation.
 - **Agent Management** — Create, configure, and publish agents with bound models, tools, and instructions. Per-agent execution mode (Standard/Planner) and temperature control. Optional `discoverable` flag enables LLM auto-discovery via CallAgentTool.
 - **Agent Skill System** — Progressive instruction loading for agents. Skills (SOPs, scripts, domain knowledge) are referenced in the system prompt as lightweight stubs (~15 tokens each); agents call `read_skill(name)` to load full content on demand, reducing per-conversation instruction token cost by ~80%. Per-agent `compact_instructions` field for custom ContextGuard compaction strategy.
-- **Platform Organization** — Built-in `platform` org auto-joins all users, replacing the legacy "global" visibility concept. Central hub for sharing resources (agents, connectors, knowledge bases, MCP servers) across the organization.
-- **Resource Subscriptions & Market** — Users browse and subscribe to shared resources from the org Market. Subscribe/unsubscribe via UI or API. All resource types support org-level publishing and subscription management.
+- **Marketplace (Shadow Market Org)** — Built-in Market org operates as an invisible backend entity for resource sharing. Resources are discovered via marketplace browsing and explicitly subscribed to (pull model) — no auto-join membership. Publishing to the marketplace always requires review.
+- **Resource Subscriptions** — Users browse and subscribe to shared resources from the Marketplace. Subscribe/unsubscribe via UI or API. All resource types (agents, connectors, knowledge bases, MCP servers, skills, workflows) support marketplace publishing and subscription management.
 - **Admin Panel** — System stats dashboard (users, conversations, tokens, model usage charts, tokens-by-agent breakdown), connector call metrics (success rate, latency, call counts), user management with search/pagination, role toggle, password reset, account enable/disable, and per-tool enable/disable controls.
 - **First-Run Setup Wizard** — On first launch, the portal guides you through creating an admin account (username, password, email). This one-time setup becomes your login credential — no config files needed.
 - **Personal Center** — Per-user global system instructions, applied across all conversations.

@@ -13,15 +13,17 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**AI 驱动的连接器中心 — 作为副驾驶嵌入单个系统，或作为中心连接所有系统。**
+**您的系统无法相互通信。FIM One 将它们全部连接到 AI — 零代码更改，零数据迁移。**
 
-🌐 [网站](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+*AI 驱动的连接器中心 — 作为 Copilot 嵌入到一个系统中，或作为中心连接所有系统。*
+
+🌐 [网站](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告错误](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ 跳过设置 — 在云端尝试 FIM One。**
-> 托管版本已在 **[cloud.fim.ai](https://cloud.fim.ai/)** 上线：无需 Docker、无需 API 密钥、无需配置。登录后即可在几秒内开始连接您的系统。_早期访问，欢迎反馈。_
+> **☁️ 跳过设置 — 在云上尝试 FIM One。**
+> 托管版本现已在 **[cloud.fim.ai](https://cloud.fim.ai/)** 上线：无需 Docker，无需 API 密钥，无需配置。登录并在几秒内开始连接您的系统。_早期访问，欢迎反馈。_
 
 ---
 
@@ -43,13 +45,13 @@
 - [贡献者](#contributors)
 - [许可证](#license)## 概述
 
-FIM One 是一个与提供商无关的 Python 框架，用于构建能够动态规划和执行复杂任务的 AI 代理。它的独特之处在于 **Connector Hub** 架构 — 三种交付模式，一个代理核心：
+每家公司都有相互不通的系统——ERP、CRM、OA、财务、HR、自定义数据库。每个厂商的 AI 在自己的领地内很聪明，但对其他一切都一无所知。FIM One 是**外部、第三方中枢**，通过 AI 将它们全部连接起来——无需修改现有基础设施。三种交付模式，一个智能体核心：
 
 | 模式           | 定义                                                                       | 访问方式                       |
 | -------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
-| **Standalone** | 通用 AI 助手 — 搜索、代码、知识库                      | Portal                                  |
-| **Copilot**    | 嵌入主系统的 AI — 在用户现有 UI 中与用户协同工作        | iframe / widget / embed into host pages |
-| **Hub**        | 中央 AI 编排 — 所有系统互联，跨系统智能 | Portal / API                            |
+| **独立版** | 通用 AI 助手——搜索、代码、知识库                      | 门户网站                                  |
+| **副驾驶**    | 嵌入宿主系统的 AI——在用户现有 UI 中与用户并肩工作        | iframe / 小部件 / 嵌入宿主页面 |
+| **中枢**        | 中央 AI 编排——所有系统互联，跨系统智能 | 门户网站 / API                            |
 
 ```mermaid
 graph LR
@@ -61,7 +63,9 @@ graph LR
     API[Custom API] --> Hub
 ```
 
-核心始终保持一致：ReAct 推理循环、支持并发执行的动态 DAG 规划、可插拔工具，以及采用协议优先架构，零供应商锁定。### 使用 Agents
+核心始终如一：ReAct 推理循环、支持并发执行的动态 DAG 规划、可插拔工具，以及协议优先架构，零厂商锁定。
+
+### 使用 Agents
 
 ![Using Agents](https://github.com/user-attachments/assets/b03d7750-eae6-4b16-9242-4c500d53d6cf)### 使用规划器模式
 
@@ -155,13 +159,13 @@ FIM One 不做 BPM/FSM — 工作流逻辑属于目标系统，Connectors 只是
 - **Command Palette** — Conversation search, starring, batch operations, and title rename.#### 平台与多租户
 - **JWT 认证** — 基于令牌的 SSE 认证、对话所有权、按用户资源隔离。
 - **智能体管理** — 创建、配置和发布绑定了模型、工具和指令的智能体。按智能体执行模式（标准/规划器）和温度控制。可选的 `discoverable` 标志启用 LLM 通过 CallAgentTool 自动发现。
-- **智能体技能系统** — 为智能体进行渐进式指令加载。技能（SOP、脚本、领域知识）在系统提示中作为轻量级存根（每个约 15 个令牌）引用；智能体调用 `read_skill(name)` 按需加载完整内容，将每次对话的指令令牌成本降低约 80%。按智能体的 `compact_instructions` 字段用于自定义 ContextGuard 压缩策略。
-- **平台组织** — 内置 `platform` 组织自动加入所有用户，取代了旧的"全局"可见性概念。用于在组织内共享资源（智能体、连接器、知识库、MCP 服务器）的中心枢纽。
-- **资源订阅与市场** — 用户浏览并订阅来自组织市场的共享资源。通过 UI 或 API 订阅/取消订阅。所有资源类型都支持组织级别的发布和订阅管理。
-- **管理面板** — 系统统计仪表板（用户、对话、令牌、模型使用图表、按智能体的令牌分解）、连接器调用指标（成功率、延迟、调用次数）、用户管理（搜索/分页）、角色切换、密码重置、账户启用/禁用，以及按工具启用/禁用控制。
-- **首次运行设置向导** — 首次启动时，门户将引导您创建管理员账户（用户名、密码、电子邮件）。这个一次性设置成为您的登录凭证——无需配置文件。
+- **智能体技能系统** — 智能体的渐进式指令加载。技能（SOP、脚本、领域知识）在系统提示中作为轻量级存根引用（每个约 15 个令牌）；智能体调用 `read_skill(name)` 按需加载完整内容，将每次对话的指令令牌成本降低约 80%。按智能体的 `compact_instructions` 字段用于自定义 ContextGuard 压缩策略。
+- **市场（影子市场组织）** — 内置市场组织作为不可见的后端实体用于资源共享。资源通过市场浏览发现并显式订阅（拉取模型）— 无自动加入成员资格。发布到市场始终需要审核。
+- **资源订阅** — 用户浏览并订阅来自市场的共享资源。通过 UI 或 API 订阅/取消订阅。所有资源类型（智能体、连接器、知识库、MCP 服务器、技能、工作流）都支持市场发布和订阅管理。
+- **管理面板** — 系统统计仪表板（用户、对话、令牌、模型使用图表、按智能体的令牌分解）、连接器调用指标（成功率、延迟、调用计数）、用户管理（搜索/分页）、角色切换、密码重置、账户启用/禁用和按工具启用/禁用控制。
+- **首次运行设置向导** — 首次启动时，门户引导您创建管理员账户（用户名、密码、电子邮件）。这个一次性设置成为您的登录凭证 — 无需配置文件。
 - **个人中心** — 按用户的全局系统指令，应用于所有对话。
-- **语言偏好** — 按用户语言设置（自动/en/zh），指导所有 LLM 响应使用所选语言。
+- **语言偏好** — 按用户的语言设置（自动/en/zh），指导所有 LLM 响应使用所选语言。
 
 #### 上下文与内存
 - **LLM Compact** — 自动 LLM 驱动的摘要总结，保持在令牌预算范围内。

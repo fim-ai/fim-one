@@ -13,14 +13,16 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**KI-gesteuerte Connector-Hub — als Copilot in ein System einbetten oder alle als Hub verbinden.**
+**Ihre Systeme kommunizieren nicht miteinander. FIM One verbindet sie alle mit KI — ohne Code-Änderungen, ohne Datenmigration.**
+
+*KI-gesteuerte Connector-Hub — als Copilot in ein System eingebettet oder als Hub alle verbunden.*
 
 🌐 [Website](https://one.fim.ai/) · 📖 [Dokumentation](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Bug melden](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ Setup überspringen — FIM One in der Cloud testen.**
+> **☁️ Setup überspringen — probieren Sie FIM One in der Cloud.**
 > Eine verwaltete Version ist live unter **[cloud.fim.ai](https://cloud.fim.ai/)**: kein Docker, keine API-Schlüssel, keine Konfiguration. Melden Sie sich an und verbinden Sie Ihre Systeme in Sekunden. _Early Access, Feedback willkommen._
 
 ---
@@ -43,13 +45,13 @@
 - [Mitwirkende](#contributors)
 - [Lizenz](#license)## Übersicht
 
-FIM One ist ein anbieterunabhängiges Python-Framework zum Erstellen von AI-Agenten, die komplexe Aufgaben dynamisch planen und ausführen. Das Besondere ist die **Connector Hub**-Architektur — drei Liefermodi, ein Agent-Kern:
+Jedes Unternehmen hat Systeme, die nicht miteinander kommunizieren — ERP, CRM, OA, Finanzen, HR, benutzerdefinierte Datenbanken. Die KI jedes Anbieters ist intelligent innerhalb ihrer eigenen Mauern, aber blind für alles andere. FIM One ist der **externe, unabhängige Hub**, der sie alle durch KI verbindet — ohne Ihre bestehende Infrastruktur zu verändern. Drei Bereitstellungsmodi, ein Agent-Kern:
 
 | Modus           | Was es ist                                                                       | Wie Sie darauf zugreifen                       |
 | -------------- | -------------------------------------------------------------------------------- | --------------------------------------- |
-| **Standalone** | Universeller AI-Assistent — Suche, Code, Wissensdatenbank                      | Portal                                  |
-| **Copilot**    | AI eingebettet in ein Host-System — funktioniert neben Benutzern in ihrer bestehenden UI        | iframe / Widget / Einbettung in Host-Seiten |
-| **Hub**        | Zentrale AI-Orchestrierung — alle Ihre Systeme verbunden, systemübergreifende Intelligenz | Portal / API                            |
+| **Standalone** | Universeller KI-Assistent — Suche, Code, Wissensdatenbank                      | Portal                                  |
+| **Copilot**    | KI eingebettet in ein Host-System — arbeitet neben Benutzern in ihrer bestehenden UI        | iframe / Widget / Einbettung in Host-Seiten |
+| **Hub**        | Zentrale KI-Orchestrierung — alle Ihre Systeme verbunden, systemübergreifende Intelligenz | Portal / API                            |
 
 ```mermaid
 graph LR
@@ -61,7 +63,9 @@ graph LR
     API[Custom API] --> Hub
 ```
 
-Der Kern ist immer gleich: ReAct-Reasoning-Schleifen, dynamische DAG-Planung mit gleichzeitiger Ausführung, austauschbare Tools und eine protokollorientierte Architektur ohne Vendor Lock-in.### Agents verwenden
+Der Kern ist immer derselbe: ReAct-Reasoning-Schleifen, dynamische DAG-Planung mit paralleler Ausführung, erweiterbare Tools und eine protokollorientierte Architektur ohne Vendor Lock-in.
+
+### Agents verwenden
 
 ![Using Agents](https://github.com/user-attachments/assets/b03d7750-eae6-4b16-9242-4c500d53d6cf)### Planner Mode verwenden
 
@@ -152,14 +156,14 @@ FIM One führt kein BPM/FSM durch — Workflow-Logik gehört zum Zielsystem, Con
 - **DAG Visualization** — Interaktiver Flussgraph mit Live-Status, Abhängigkeitskanten, Klick-zum-Scrollen und Re-Plan-Runden-Snapshots als zusammenklappbare Karten.
 - **Conversational Interrupt** — Senden Sie Folgefragen, während der Agent läuft; eingefügt an der nächsten Iterationsgrenze.
 - **Dark / Light / System Theme** — Vollständige Theme-Unterstützung mit Systemeinstellungs-Erkennung.
-- **Command Palette** — Konversationssuche, Favoriten, Batch-Operationen und Titel-Umbenennung.#### Plattform & Multi-Mandantenfähigkeit
+- **Command Palette** — Konversationssuche, Favoriten, Batch-Operationen und Titel-Umbenennung.#### Plattform & Multi-Mandanten
 - **JWT Auth** — Token-basierte SSE-Authentifizierung, Gesprächseigentümerschaft, Ressourcenisolation pro Benutzer.
-- **Agent-Verwaltung** — Erstellen, konfigurieren und veröffentlichen Sie Agenten mit gebundenen Modellen, Tools und Anweisungen. Ausführungsmodus pro Agent (Standard/Planner) und Temperaturkontrolle. Das optionale Flag `discoverable` ermöglicht die automatische LLM-Erkennung über CallAgentTool.
-- **Agent-Fähigkeitensystem** — Progressive Anweisungsladung für Agenten. Fähigkeiten (SOPs, Skripte, Domänenwissen) werden im System-Prompt als leichte Stubs (~15 Token pro Stück) referenziert; Agenten rufen `read_skill(name)` auf, um vollständige Inhalte bei Bedarf zu laden, wodurch die Anweisungs-Token-Kosten pro Gespräch um ~80% reduziert werden. Feld `compact_instructions` pro Agent für benutzerdefinierte ContextGuard-Kompaktierungsstrategie.
-- **Plattform-Organisation** — Integrierte `platform`-Organisation tritt automatisch allen Benutzern bei und ersetzt das veraltete Konzept der „globalen" Sichtbarkeit. Zentraler Hub zum Teilen von Ressourcen (Agenten, Konnektoren, Wissensdatenbanken, MCP-Server) in der gesamten Organisation.
-- **Ressourcen-Abos & Marktplatz** — Benutzer durchsuchen und abonnieren gemeinsam genutzte Ressourcen aus dem Organisations-Marktplatz. Abonnieren/Abmelden über UI oder API. Alle Ressourcentypen unterstützen Veröffentlichung und Abonnementverwaltung auf Organisationsebene.
-- **Admin-Panel** — System-Statistik-Dashboard (Benutzer, Gespräche, Token, Modellnutzungsdiagramme, Token-nach-Agent-Aufschlüsselung), Konnektor-Aufrufsmetriken (Erfolgsquote, Latenz, Aufrufsanzahl), Benutzerverwaltung mit Suche/Paginierung, Rollenwechsel, Passwort-Zurücksetzen, Konto aktivieren/deaktivieren und Steuerelemente zum Aktivieren/Deaktivieren pro Tool.
-- **First-Run-Setup-Assistent** — Beim ersten Start führt Sie das Portal durch die Erstellung eines Admin-Kontos (Benutzername, Passwort, E-Mail). Dieses einmalige Setup wird zu Ihren Anmeldedaten – keine Konfigurationsdateien erforderlich.
+- **Agent-Verwaltung** — Erstellen, konfigurieren und veröffentlichen Sie Agenten mit gebundenen Modellen, Tools und Anweisungen. Pro-Agent-Ausführungsmodus (Standard/Planner) und Temperaturkontrolle. Optional `discoverable` Flag ermöglicht LLM-Auto-Discovery über CallAgentTool.
+- **Agent-Fähigkeitensystem** — Progressive Anweisungsladung für Agenten. Fähigkeiten (SOPs, Skripte, Domänenwissen) werden im System-Prompt als leichte Stubs (~15 Token pro Stück) referenziert; Agenten rufen `read_skill(name)` auf, um vollständige Inhalte bei Bedarf zu laden, was die Anweisungs-Token-Kosten pro Gespräch um ~80% reduziert. Pro-Agent `compact_instructions` Feld für benutzerdefinierte ContextGuard-Kompaktierungsstrategie.
+- **Marketplace (Shadow Market Org)** — Integrierte Market-Org fungiert als unsichtbare Backend-Entität für Ressourcenfreigabe. Ressourcen werden durch Marketplace-Browsing entdeckt und explizit abonniert (Pull-Modell) — keine automatische Mitgliedschaft. Die Veröffentlichung im Marketplace erfordert immer eine Überprüfung.
+- **Ressourcen-Abonnements** — Benutzer durchsuchen und abonnieren freigegebene Ressourcen aus dem Marketplace. Abonnieren/Abmelden über UI oder API. Alle Ressourcentypen (Agenten, Konnektoren, Wissensdatenbanken, MCP-Server, Fähigkeiten, Workflows) unterstützen Marketplace-Veröffentlichung und Abonnementverwaltung.
+- **Admin-Panel** — System-Statistik-Dashboard (Benutzer, Gespräche, Token, Modellnutzungsdiagramme, Token-nach-Agent-Aufschlüsselung), Konnektoren-Aufrufsmetriken (Erfolgsquote, Latenz, Aufrufsanzahl), Benutzerverwaltung mit Suche/Paginierung, Rollenwechsel, Passwort-Zurücksetzen, Konto aktivieren/deaktivieren und Pro-Tool-Aktivierungs-/Deaktivierungssteuerungen.
+- **First-Run Setup Wizard** — Beim ersten Start führt Sie das Portal durch die Erstellung eines Admin-Kontos (Benutzername, Passwort, E-Mail). Dieses einmalige Setup wird zu Ihren Login-Anmeldedaten — keine Konfigurationsdateien erforderlich.
 - **Persönliches Zentrum** — Globale Systemanweisungen pro Benutzer, angewendet auf alle Gespräche.
 - **Spracheinstellung** — Spracheinstellung pro Benutzer (auto/en/zh), die alle LLM-Antworten in die gewählte Sprache lenkt.
 

@@ -125,39 +125,39 @@ flowchart LR
 
 ### v0.7.x (2026-03-07 bis 2026-03-12) — Stabilität + Verbesserungen
 - Einladungscode-Verwaltung
-- Pro-Benutzer-Kontingente (429-Durchsetzung)
+- Benutzer-spezifische Kontingente (429-Durchsetzung)
 - Strukturiertes Audit-Logging
 - Filterung sensibler Wörter
 - Admin-Anmeldungsverlauf
 - Admin-Dateibrowser
 - Erweiterte Admin-Ansichten (Felder model_name, tools, kb_ids)
 - Docker Compose-Bereitstellung (einzelnes Image, benannte Volumes)
-- OAuth-Autoekennung aus window.location
-- Unterstützung für erweitertes Denken / Reasoning (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) für OpenAI o-Serie, Gemini 2.5+, Claude
-- Admin pro Werkzeug aktivieren/deaktivieren (deaktivierte Werkzeuge zur Laufzeit aus Chat ausgeschlossen)
-- MCP-Server-Verwaltung auf Connectors-Seite verschoben
+- OAuth-Automatische Erkennung von window.location
+- Erweitertes Denken / Reasoning-Unterstützung (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) für OpenAI o-Serie, Gemini 2.5+, Claude
+- Admin pro-Tool Aktivieren/Deaktivieren (deaktivierte Tools werden zur Laufzeit aus dem Chat ausgeschlossen)
+- MCP-Server-Verwaltung auf die Seite „Konnektoren" verschoben
 - Duale Datenbankunterstützung: SQLite (Null-Konfiguration Standard) + PostgreSQL (Produktion); Docker Compose stellt PostgreSQL automatisch bereit
-- Dokumentationsseite zur Modellkonfiguration mit erweitertem Thinking-Setup pro Anbieter
-- SSE-Protokoll v2: Echtzeit-Antwort-Streaming mit `delta_reasoning`-, `usage`-Feldern und aufgeteilten `done`-/`suggestions`-/`title`-/`end`-Ereignissen; SQLite-Pool-Größe 5 -> 20
-- AI Builder-Erweiterung: 7 neue Builder-Werkzeuge (GetSettings, TestConnection, ImportOpenAPI für Connectors; ListConnectors, AddConnector, RemoveConnector, SetModel für Agenten), `is_builder`-Flag auf Agenten, automatische Builder-Prompt-Aktualisierung, SSRF-Schutz
-- SSE v2 Frontend: Streaming-Punkt-Puls-Cursor, DAG-Neuplan-Runden-Snapshots als einklappbare Karten, DAG-Layout entkoppelt von Schrittständen
-- Konzeptdokumentationsseite für AI Builder mit Connector- und Agent-Builder-Leitfäden
-- Organisationssystem: vollständige CRUD mit rollenbasierter Mitgliedschaft (Besitzer/Admin/Mitglied), Admin-Verwaltungs-UI
-- Dreiebenen-Ressourcensichtbarkeit (persönlich/Org/global) für Agenten, Connectors, Wissensdatenbanken, MCP-Server
-- Veröffentlichungs-/Unveröffentlichungs-API für alle Ressourcentypen; Besitzerdelegation für veröffentlichte Agenten
-- Admin-Set-Visibility-Endpunkt (ersetzt Clone-to-Global); einheitlicher `build_visibility_filter()`-Abfrage-Helfer
-- Datenbank-Connectors (Phase 1-3): direkter SQL-Zugriff auf PG/MySQL/Oracle/SQL Server + chinesische Legacy-DBs; Schema-Introspection, KI-Anmerkung, schreibgeschützte Abfrageausführung, verschlüsselte Anmeldedaten, 3 Werkzeuge pro Connector (`list_tables`, `describe_table`, `query`)
-- **Evaluation Center**: quantitative Agenten-Qualitätsbenchmarking — Test-Dataset CRUD (Prompt + erwartetes Verhalten + Assertions), Eval-Läufe (parallele Ausführung + LLM-Bewerter + Pro-Fall-Bestanden/Fehlgeschlagen/Latenz/Token-Ergebnisse), Ergebnis-Viewer mit automatischem Polling; Migration `r8t0v2x4z567`
-- Drei Modellrollen (General/Fast/Reasoning) mit Pro-Tier-Umgebungskonfigurationsisolation; Fast-Modell erbt nicht mehr die Hauptmodell-Einstellungen
-- `StepOutput`-Datenklasse ersetzt einfache String-Schrittergebnisse für strukturierte Daten und Artefakt-Übergabe
-- Werkzeug-Cache für DAG-Ausführung — identische Werkzeugaufrufe pro Lauf gecacht mit asynchronem Lock-Stampede-Schutz (`DAG_TOOL_CACHE`)
+- Dokumentationsseite zur Modellkonfiguration mit Extended-Thinking-Setup pro Anbieter
+- SSE Protocol v2: Echtzeit-Antwort-Streaming mit `delta_reasoning`, `usage`-Feldern und geteilten `done`/`suggestions`/`title`/`end`-Events; SQLite-Pool-Größe 5 -> 20
+- AI Builder-Erweiterung: 7 neue Builder-Tools (GetSettings, TestConnection, ImportOpenAPI für Konnektoren; ListConnectors, AddConnector, RemoveConnector, SetModel für Agenten), `is_builder`-Flag auf Agenten, automatische Builder-Prompt-Aktualisierung, SSRF-Schutz
+- SSE v2 Frontend: Streaming-Punkt-Puls-Cursor, DAG-Neuplan-Runden-Snapshots als einklappbare Karten, DAG-Layout entkoppelt von Schrittzuständen
+- Konzeptdokumentationsseite für AI Builder mit Konnektoren- und Agenten-Builder-Leitfäden
+- Organisationssystem: vollständige CRUD-Operationen mit rollenbasierter Mitgliedschaft (Eigentümer/Admin/Mitglied), Admin-Verwaltungs-UI
+- Dreiebenen-Ressourcensichtbarkeit (persönlich/Org/global) für Agenten, Konnektoren, Wissensdatenbanken, MCP-Server
+- Veröffentlichungs-/Unveröffentlichungs-API für alle Ressourcentypen; Eigentümerdelegation für veröffentlichte Agenten
+- Admin-Set-Visibility-Endpoint (ersetzt Clone-to-Global); einheitlicher `build_visibility_filter()`-Abfrage-Helper
+- Datenbank-Konnektoren (Phase 1-3): direkter SQL-Zugriff auf PG/MySQL/Oracle/SQL Server + chinesische Legacy-DBs; Schema-Introspection, KI-Annotation, schreibgeschützte Abfrageausführung, verschlüsselte Anmeldedaten, 3 Tools pro Konnektor (`list_tables`, `describe_table`, `query`)
+- **Evaluierungszentrum**: quantitatives Benchmarking der Agentenqualität — Test-Dataset CRUD (Prompt + erwartetes Verhalten + Assertions), Eval-Läufe (parallele Ausführung + LLM-Bewerter + Pro-Fall Pass/Fail/Latenz/Token-Ergebnisse), Ergebnis-Viewer mit automatischem Polling; Migration `r8t0v2x4z567`
+- Drei Modellrollen (Allgemein/Schnell/Reasoning) mit isolierter Umgebungskonfiguration pro Tier; Schnellmodell erbt keine Hauptmodell-Einstellungen mehr
+- `StepOutput`-Dataclass ersetzt einfache String-Schrittergebnisse für strukturierte Daten und Artefakt-Übergabe
+- Tool-Cache für DAG-Ausführung — identische Tool-Aufrufe pro Lauf gecacht mit asynchronem Lock-Stampede-Schutz (`DAG_TOOL_CACHE`)
 - Pro-Schritt-LLM-Verifizierung mit 1 Wiederholung bei Fehler (`DAG_STEP_VERIFICATION`)
-- Auto-Routing: schnelles LLM klassifiziert Abfragen als ReAct oder DAG; `/api/auto`-Endpunkt; Frontend 3-Wege-Modusumschalter (`AUTO_ROUTING`)
-- [x] ~~**Plattform-Organisation + Ressourcen-Abonnements**~~: Integrierte Plattform-Org tritt automatisch allen Benutzern bei; Market-API zum Abonnieren gemeinsamer Ressourcen; Ressourcen-Abonnementtabelle; Org-basierte Ressourcenfreigabe ersetzt globale Sichtbarkeit
-- [x] ~~**Agent-Autoekennung und Sub-Agent-Bindung**~~: `discoverable`-Flag auf Agenten; `sub_agent_ids`-Whitelist; CallAgentTool zum Delegieren von Aufgaben an Spezialisten-Agenten
-- [x] ~~**MCP-Server-Anmeldedaten + Pro-Benutzer-Überschreibung**~~: `mcp_server_credentials`-Tabelle; `PUT /api/mcp-servers/{id}/my-credentials`-Endpunkt; `allow_fallback`-Flag für Anmeldedaten-Fallback-Verhalten
-- [x] ~~**Connector/KB-Umschalter**~~: `POST /api/connectors/{id}/toggle` und `POST /api/knowledge-bases/{id}/toggle` zum Unterbrechen/Fortsetzen von Ressourcen
-- [x] ~~**Eigenständige KB-Gespräche**~~: `kb_ids`-Feld auf Gesprächen für direkten KB-Chat ohne Agent-Bindung
+- Auto-Routing: schnelles LLM klassifiziert Abfragen als ReAct oder DAG; `/api/auto`-Endpoint; Frontend 3-Wege-Modusumschalter (`AUTO_ROUTING`)
+- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: Integrierte Market-Org (Shadow, kein automatischer Beitritt) ersetzt Platform-Org; Ressourcen werden durch Marketplace-Browsing entdeckt und explizit abonniert (Pull-Modell); Market-API zum Abonnieren gemeinsamer Ressourcen; Veröffentlichung auf Market erfordert immer Überprüfung; Ressourcen-Abonnements-Tabelle; Org-basierte Ressourcenfreigabe ersetzt globale Sichtbarkeit
+- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: `discoverable`-Flag auf Agenten; `sub_agent_ids`-Whitelist; CallAgentTool zum Delegieren von Aufgaben an spezialisierte Agenten
+- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials`-Tabelle; `PUT /api/mcp-servers/{id}/my-credentials`-Endpoint; `allow_fallback`-Flag für Fallback-Verhalten bei Anmeldedaten
+- [x] ~~**Connector/KB Toggle**~~: `POST /api/connectors/{id}/toggle` und `POST /api/knowledge-bases/{id}/toggle` zum Aussetzen/Fortsetzen von Ressourcen
+- [x] ~~**Standalone KB Conversations**~~: `kb_ids`-Feld auf Konversationen für direkten KB-Chat ohne Agent-Bindung
 
 ## Geplante Versionen
 

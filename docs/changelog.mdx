@@ -11,6 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Shadow Market org** — Transformed the built-in Platform org into a shadow Market org. Resources are now discovered via marketplace browsing and explicitly subscribed to (pull model) instead of auto-visible via membership (push model). Non-admin users no longer auto-join any org on registration; the Market org operates as an invisible backend entity that users interact with only through the marketplace UI.
+- **Marketplace publish with mandatory review** — Publishing to the Market org now always requires review, except for Market org owner/admins. The publish dialog shows a "Publish to Marketplace" option with a mandatory review notice.
+- **Skill and Workflow marketplace browsing** — Added Skill and Workflow resource types to the marketplace, enabling community discovery and subscription for all five resource types (agents, connectors, knowledge bases, MCP servers, skills/workflows).
+- **Market org publish endpoint bypass** — Six resource publish endpoints now skip membership checks for the Market org, allowing any user to publish resources to the marketplace without being a member.
+- **Platform-to-Market migration** — Alembic migration renames the Platform org to Market and removes all non-owner memberships, completing the transition from push-based to pull-based resource sharing.
 - **Workflow version change summaries** — `compute_blueprint_diff()` auto-generates human-readable summaries from blueprint diffs when saving new versions, describing added/removed/modified nodes and edges.
 - **Workflow run retention cleanup** — Background cleanup task that purges old workflow runs based on configurable age and count limits. Per-workflow retention overrides. Admin endpoint for manual cleanup trigger. New env vars: `WORKFLOW_RUN_MAX_AGE_DAYS`, `WORKFLOW_RUN_MAX_PER_WORKFLOW`, `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS`.
 - **Connector circuit breaker** — Three-state circuit breaker (closed/open/half-open) with per-connector failure tracking. Detects 5xx errors and temporarily disables failing connectors. Monitoring endpoints for circuit breaker state inspection.

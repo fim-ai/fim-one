@@ -127,37 +127,37 @@ flowchart LR
 - 招待コード管理
 - ユーザーごとのクォータ (429 強制)
 - 構造化監査ログ
-- 機密単語フィルタリング
+- 機密ワードフィルタリング
 - 管理者ログイン履歴
 - 管理者ファイルブラウザ
-- 拡張管理者ビュー (model_name、tools、kb_ids フィールド)
+- 強化された管理者ビュー (model_name、tools、kb_ids フィールド)
 - Docker Compose デプロイメント (単一イメージ、名前付きボリューム)
 - OAuth 自動検出 (window.location から)
-- 拡張思考/推論サポート (`LLM_REASONING_EFFORT`、`LLM_REASONING_BUDGET_TOKENS`) — OpenAI o シリーズ、Gemini 2.5+、Claude 対応
-- 管理者ツール単位の有効/無効切り替え (無効ツールはチャット実行時に除外)
+- 拡張思考 / 推論サポート (`LLM_REASONING_EFFORT`、`LLM_REASONING_BUDGET_TOKENS`) OpenAI o シリーズ、Gemini 2.5+、Claude 向け
+- 管理者ツール単位の有効/無効切り替え (無効なツールはチャット実行時に除外)
 - MCP サーバー管理をコネクタページに移動
-- デュアルデータベースサポート: SQLite (ゼロ設定デフォルト) + PostgreSQL (本番環境); Docker Compose は PostgreSQL を自動プロビジョニング
-- モデル設定ドキュメントページ (プロバイダーごとの拡張思考セットアップ付き)
-- SSE Protocol v2: リアルタイム回答ストリーミング (`delta_reasoning`、`usage` フィールド付き、`done`/`suggestions`/`title`/`end` イベント分割); SQLite プール サイズ 5 → 20
-- AI Builder 拡張: 7 つの新しいビルダーツール (GetSettings、TestConnection、ImportOpenAPI (コネクタ用); ListConnectors、AddConnector、RemoveConnector、SetModel (エージェント用))、エージェントの `is_builder` フラグ、ビルダープロンプト自動更新、SSRF ガード
-- SSE v2 フロントエンド: ストリーミングドット パルスカーソル、DAG 再計画ラウンドスナップショット (折りたたみ可能カード)、DAG レイアウトをステップ状態から分離
-- AI Builder コンセプトドキュメントページ (コネクタおよびエージェントビルダーガイド付き)
-- 組織システム: 完全な CRUD、ロールベースのメンバーシップ (オーナー/管理者/メンバー)、管理者管理 UI
-- 3 層リソース可視性 (個人/組織/グローバル) — エージェント、コネクタ、ナレッジベース、MCP サーバー
+- デュアルデータベースサポート: SQLite (ゼロコンフィグデフォルト) + PostgreSQL (本番環境); Docker Compose は自動的に PostgreSQL をプロビジョニング
+- モデル設定ドキュメントページ (プロバイダーごとの拡張思考セットアップ)
+- SSE Protocol v2: リアルタイム回答ストリーミング (`delta_reasoning`、`usage` フィールド、および分割 `done`/`suggestions`/`title`/`end` イベント); SQLite プール サイズ 5 -> 20
+- AI Builder 拡張: 7 つの新しいビルダーツール (GetSettings、TestConnection、ImportOpenAPI (コネクタ向け); ListConnectors、AddConnector、RemoveConnector、SetModel (エージェント向け))、エージェント上の `is_builder` フラグ、ビルダープロンプト自動更新、SSRF ガード
+- SSE v2 フロントエンド: ストリーミングドットパルスカーソル、DAG 再計画ラウンドスナップショット (折りたたみ可能なカード)、DAG レイアウトをステップ状態から分離
+- AI Builder コンセプトドキュメントページ (コネクタおよびエージェントビルダーガイド)
+- 組織システム: 完全な CRUD (ロールベースのメンバーシップ: オーナー/管理者/メンバー)、管理者管理 UI
+- 3 段階のリソース可視性 (個人/組織/グローバル) エージェント、コネクタ、ナレッジベース、MCP サーバー向け
 - すべてのリソースタイプの公開/非公開 API; 公開エージェントのオーナー委譲
-- 管理者設定可視性エンドポイント (クローン・トゥ・グローバルに置き換え); 統一された `build_visibility_filter()` クエリヘルパー
-- データベースコネクタ (フェーズ 1-3): PG/MySQL/Oracle/SQL Server + 中国レガシー DB への直接 SQL アクセス; スキーマ内省、AI 注釈、読み取り専用クエリ実行、暗号化された認証情報、コネクタあたり 3 つのツール (`list_tables`、`describe_table`、`query`)
-- **評価センター**: 定量的エージェント品質ベンチマーク — テストデータセット CRUD (プロンプト + 期待される動作 + アサーション)、評価実行 (並列実行 + LLM グレーダー + ケースごとの合格/不合格/レイテンシ/トークン結果)、自動ポーリング付き結果ビューア; マイグレーション `r8t0v2x4z567`
-- 3 つのモデルロール (General/Fast/Reasoning) — ティアごとの環境設定分離; 高速モデルはメインモデル設定を継承しない
-- 構造化データとアーティファクト渡しのための `StepOutput` データクラス (プレーン文字列ステップ結果に置き換え)
-- DAG 実行用ツールキャッシュ — 実行ごとに同一ツール呼び出しをキャッシュ (非同期ロック スタンピード防止付き) (`DAG_TOOL_CACHE`)
-- ステップごとの LLM 検証 (失敗時に 1 回再試行) (`DAG_STEP_VERIFICATION`)
+- 管理者設定可視性エンドポイント (クローン・トゥ・グローバルを置き換え); 統一された `build_visibility_filter()` クエリヘルパー
+- データベースコネクタ (フェーズ 1-3): PG/MySQL/Oracle/SQL Server + 中国レガシー DB への直接 SQL アクセス; スキーマ内省、AI アノテーション、読み取り専用クエリ実行、暗号化された認証情報、コネクタごと 3 つのツール (`list_tables`、`describe_table`、`query`)
+- **評価センター**: 定量的なエージェント品質ベンチマーク — テストデータセット CRUD (プロンプト + 期待される動作 + アサーション)、評価実行 (並列実行 + LLM グレーダー + ケースごとの合格/不合格/レイテンシ/トークン結果)、自動ポーリング付き結果ビューア; マイグレーション `r8t0v2x4z567`
+- 3 つのモデルロール (General/Fast/Reasoning) (ティアごとの env コンフィグ分離); 高速モデルはメインモデル設定を継承しない
+- `StepOutput` データクラス (構造化データとアーティファクト渡し用の通常文字列ステップ結果を置き換え)
+- DAG 実行用ツールキャッシュ — 実行ごとの同一ツール呼び出しキャッシュ (非同期ロック スタンピード防止付き) (`DAG_TOOL_CACHE`)
+- ステップごとの LLM 検証 (失敗時 1 回の再試行) (`DAG_STEP_VERIFICATION`)
 - 自動ルーティング: 高速 LLM がクエリを ReAct または DAG として分類; `/api/auto` エンドポイント; フロントエンド 3 方向モード切り替え (`AUTO_ROUTING`)
-- [x] ~~**プラットフォーム組織 + リソースサブスクリプション**~~: 組み込みプラットフォーム組織がすべてのユーザーに自動参加; 共有リソースをサブスクライブするための Market API; リソースサブスクリプションテーブル; グローバル可視性に置き換わる組織ベースのリソース共有
-- [x] ~~**エージェント自動検出とサブエージェントバインディング**~~: エージェントの `discoverable` フラグ; `sub_agent_ids` ホワイトリスト; 専門エージェントへのタスク委譲用 CallAgentTool
-- [x] ~~**MCP サーバー認証情報 + ユーザーごとのオーバーライド**~~: `mcp_server_credentials` テーブル; `PUT /api/mcp-servers/{id}/my-credentials` エンドポイント; 認証情報フォールバック動作用 `allow_fallback` フラグ
-- [x] ~~**コネクタ/KB 切り替え**~~: `POST /api/connectors/{id}/toggle` および `POST /api/knowledge-bases/{id}/toggle` (リソースの一時停止/再開用)
-- [x] ~~**スタンドアロン KB 会話**~~: 会話の `kb_ids` フィールド (エージェントバインディングなしの直接 KB チャット用)
+- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: 組み込み Market org (shadow、自動参加なし) は Platform org を置き換え; マーケットプレイスブラウジングおよび明示的なサブスクリプション経由でリソースを発見 (プルモデル); Market API (共有リソースへのサブスクリプション); Market への公開は常にレビューが必要; リソースサブスクリプションテーブル; グローバル可視性を置き換える org ベースのリソース共有
+- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: エージェント上の `discoverable` フラグ; `sub_agent_ids` ホワイトリスト; CallAgentTool (タスクを専門エージェントに委譲)
+- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials` テーブル; `PUT /api/mcp-servers/{id}/my-credentials` エンドポイント; 認証情報フォールバック動作用の `allow_fallback` フラグ
+- [x] ~~**Connector/KB Toggle**~~: `POST /api/connectors/{id}/toggle` および `POST /api/knowledge-bases/{id}/toggle` (リソースの一時停止/再開)
+- [x] ~~**Standalone KB Conversations**~~: 会話上の `kb_ids` フィールド (エージェントバインディングなしの直接 KB チャット)
 
 ## 計画されているバージョン
 

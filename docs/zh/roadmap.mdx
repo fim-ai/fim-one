@@ -138,26 +138,26 @@ flowchart LR
 - MCP 服务器管理移至连接器页面
 - 双数据库支持：SQLite（零配置默认）+ PostgreSQL（生产环境）；Docker Compose 自动配置 PostgreSQL
 - 模型配置文档页面，包含每个提供商的扩展思考设置
-- SSE 协议 v2：实时答案流式传输，包含 `delta_reasoning`、`usage` 字段，以及分离的 `done`/`suggestions`/`title`/`end` 事件；SQLite 连接池大小 5 -> 20
-- AI Builder 扩展：7 个新的 builder 工具（GetSettings、TestConnection、ImportOpenAPI 用于连接器；ListConnectors、AddConnector、RemoveConnector、SetModel 用于智能体），智能体上的 `is_builder` 标志，builder 提示自动刷新，SSRF 防护
+- SSE 协议 v2：实时答案流式传输，包含 `delta_reasoning`、`usage` 字段，以及拆分的 `done`/`suggestions`/`title`/`end` 事件；SQLite 连接池大小 5 -> 20
+- AI Builder 扩展：7 个新的构建器工具（GetSettings、TestConnection、ImportOpenAPI 用于连接器；ListConnectors、AddConnector、RemoveConnector、SetModel 用于智能体），智能体上的 `is_builder` 标志，构建器提示自动刷新，SSRF 防护
 - SSE v2 前端：流式点脉冲光标，DAG 重新规划轮快照作为可折叠卡片，DAG 布局与步骤状态解耦
-- AI Builder 概念文档页面，包含连接器和智能体 builder 指南
+- AI Builder 概念文档页面，包含连接器和智能体构建器指南
 - 组织系统：完整的 CRUD 操作，基于角色的成员资格（所有者/管理员/成员），管理员管理 UI
 - 三层资源可见性（个人/组织/全局）用于智能体、连接器、知识库、MCP 服务器
 - 发布/取消发布 API 用于所有资源类型；已发布智能体的所有者委派
-- 管理员设置可见性端点（替代克隆到全局）；统一的 `build_visibility_filter()` 查询助手
+- 管理员设置可见性端点（替换克隆到全局）；统一的 `build_visibility_filter()` 查询助手
 - 数据库连接器（第 1-3 阶段）：直接 SQL 访问 PG/MySQL/Oracle/SQL Server + 中文遗留数据库；模式内省、AI 注释、只读查询执行、加密凭证、每个连接器 3 个工具（`list_tables`、`describe_table`、`query`）
-- **评估中心**：定量智能体质量基准测试 — 测试数据集 CRUD（提示 + 预期行为 + 断言），评估运行（并行执行 + LLM 评分器 + 每个案例的通过/失败/延迟/令牌结果），结果查看器带自动轮询；迁移 `r8t0v2x4z567`
+- **评估中心**：定量智能体质量基准测试 — 测试数据集 CRUD（提示 + 预期行为 + 断言），评估运行（并行执行 + LLM 评分器 + 每个案例的通过/失败/延迟/令牌结果），带自动轮询的结果查看器；迁移 `r8t0v2x4z567`
 - 三个模型角色（通用/快速/推理）具有按层级的环境配置隔离；快速模型不再继承主模型设置
-- `StepOutput` 数据类替代纯字符串步骤结果，用于结构化数据和工件传递
-- DAG 执行的工具缓存 — 每次运行中相同的工具调用缓存，带异步锁雷鸣羊群防护（`DAG_TOOL_CACHE`）
+- `StepOutput` 数据类替换纯字符串步骤结果，用于结构化数据和工件传递
+- DAG 执行的工具缓存 — 每次运行中相同的工具调用缓存，具有异步锁雷鸣羊群防护（`DAG_TOOL_CACHE`）
 - 按步骤 LLM 验证，失败时重试 1 次（`DAG_STEP_VERIFICATION`）
-- 自动路由：快速 LLM 将查询分类为 ReAct 或 DAG；`/api/auto` 端点；前端 3 路模式切换（`AUTO_ROUTING`）
-- [x] ~~**平台组织 + 资源订阅**~~：内置平台组织自动加入所有用户；市场 API 用于订阅共享资源；资源订阅表；基于组织的资源共享替代全局可见性
-- [x] ~~**智能体自动发现和子智能体绑定**~~：智能体上的 `discoverable` 标志；`sub_agent_ids` 白名单；CallAgentTool 用于将任务委派给专家智能体
-- [x] ~~**MCP 服务器凭证 + 按用户覆盖**~~：`mcp_server_credentials` 表；`PUT /api/mcp-servers/{id}/my-credentials` 端点；`allow_fallback` 标志用于凭证回退行为
+- 自动路由：快速 LLM 将查询分类为 ReAct 或 DAG；`/api/auto` 端点；前端 3 向模式切换（`AUTO_ROUTING`）
+- [x] ~~**影子市场组织 + 资源订阅**~~：内置市场组织（影子，无自动加入）替换平台组织；通过市场浏览发现资源并明确订阅（拉取模型）；用于订阅共享资源的市场 API；发布到市场始终需要审查；资源订阅表；基于组织的资源共享替换全局可见性
+- [x] ~~**智能体自动发现和子智能体绑定**~~：智能体上的 `discoverable` 标志；`sub_agent_ids` 白名单；CallAgentTool 用于委派任务给专家智能体
+- [x] ~~**MCP 服务器凭证 + 按用户覆盖**~~：`mcp_server_credentials` 表；`PUT /api/mcp-servers/{id}/my-credentials` 端点；凭证回退行为的 `allow_fallback` 标志
 - [x] ~~**连接器/知识库切换**~~：`POST /api/connectors/{id}/toggle` 和 `POST /api/knowledge-bases/{id}/toggle` 用于暂停/恢复资源
-- [x] ~~**独立知识库对话**~~：对话上的 `kb_ids` 字段用于直接知识库聊天，无需智能体绑定
+- [x] ~~**独立知识库对话**~~：对话上的 `kb_ids` 字段，用于直接知识库聊天，无需智能体绑定
 
 ## 计划版本
 
