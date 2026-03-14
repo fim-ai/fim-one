@@ -182,5 +182,9 @@
         "config": "在 console.cloud.google.com 启用 Maps API → 粘贴到 GOOGLE_MAPS_API_KEY"
       }
     }
-  }
+  },
+  "noServersTitle": "还没有 MCP 服务器",
+  "noServersDescription": "添加 MCP 服务器以使用外部工具扩展您的智能体。",
+  "commandRequired": "STDIO 传输需要命令",
+  "urlRequired": "此传输需要服务器 URL"
 }

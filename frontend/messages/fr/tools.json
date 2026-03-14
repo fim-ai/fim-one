@@ -182,5 +182,9 @@
         "config": "Activez l'API Maps sur console.cloud.google.com → collez dans GOOGLE_MAPS_API_KEY"
       }
     }
-  }
+  },
+  "noServersTitle": "Aucun serveur MCP pour le moment",
+  "noServersDescription": "Ajoutez un serveur MCP pour étendre vos agents avec des outils externes.",
+  "commandRequired": "La commande est requise pour le transport STDIO",
+  "urlRequired": "L'URL du serveur est requise pour ce transport"
 }

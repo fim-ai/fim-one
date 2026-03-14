@@ -182,5 +182,9 @@
         "config": "console.cloud.google.com에서 Maps API 활성화 → GOOGLE_MAPS_API_KEY에 붙여넣기"
       }
     }
-  }
+  },
+  "noServersTitle": "아직 MCP 서버가 없습니다",
+  "noServersDescription": "MCP 서버를 추가하여 에이전트를 외부 도구로 확장하세요.",
+  "commandRequired": "STDIO 전송에는 명령이 필요합니다",
+  "urlRequired": "이 전송에는 서버 URL이 필요합니다"
 }

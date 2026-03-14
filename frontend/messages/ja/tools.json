@@ -182,5 +182,9 @@
         "config": "console.cloud.google.comでMaps APIを有効化 → GOOGLE_MAPS_API_KEYに貼り付けてください"
       }
     }
-  }
+  },
+  "noServersTitle": "MCPサーバーがまだありません",
+  "noServersDescription": "MCPサーバーを追加して、エージェントを外部ツールで拡張します。",
+  "commandRequired": "STDIOトランスポートにはコマンドが必要です",
+  "urlRequired": "このトランスポートにはサーバーURLが必要です"
 }

@@ -71,6 +71,16 @@ export function MCPServerDialog({
   const [isActive, setIsActive] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors(prev => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+  }
 
   // Detect Smithery-sourced servers and derive the registry URL for guidance
   const smitheryUrl = useMemo(() => {
@@ -89,6 +99,7 @@ export function MCPServerDialog({
   // Reset form when dialog opens or server changes
   useEffect(() => {
     if (open) {
+      setFieldErrors({})
       if (server) {
         setName(server.name)
         setDescription(server.description || "")
@@ -186,6 +197,19 @@ export function MCPServerDialog({
 
   const handleSubmit = async () => {
     if (!name.trim()) return
+
+    // Validate transport-specific required fields
+    const errors: Record<string, string> = {}
+    if (transport === "stdio" && !command.trim()) {
+      errors.command = t("commandRequired")
+    }
+    if ((transport === "sse" || transport === "streamable_http") && !url.trim()) {
+      errors.url = t("urlRequired")
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(prev => ({ ...prev, ...errors }))
+      return
+    }
 
     setIsSaving(true)
     try {
@@ -305,7 +329,7 @@ export function MCPServerDialog({
                   type="button"
                   variant={transport === "stdio" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setTransport("stdio")}
+                  onClick={() => { setTransport("stdio"); setFieldErrors({}) }}
                 >
                   STDIO
                 </Button>
@@ -314,7 +338,7 @@ export function MCPServerDialog({
                 type="button"
                 variant={transport === "sse" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setTransport("sse")}
+                onClick={() => { setTransport("sse"); setFieldErrors({}) }}
               >
                 SSE
               </Button>
@@ -322,7 +346,7 @@ export function MCPServerDialog({
                 type="button"
                 variant={transport === "streamable_http" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setTransport("streamable_http")}
+                onClick={() => { setTransport("streamable_http"); setFieldErrors({}) }}
               >
                 {t("streamableHttp")}
               </Button>
@@ -333,12 +357,16 @@ export function MCPServerDialog({
           {transport === "stdio" && allowStdio && (
             <>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium">{t("command")}</label>
+                <label className="text-sm font-medium">{t("command")} <span className="text-destructive">*</span></label>
                 <Input
                   placeholder={t("commandPlaceholder")}
                   value={command}
-                  onChange={(e) => setCommand(e.target.value)}
+                  onChange={(e) => { setCommand(e.target.value); clearFieldError("command") }}
+                  aria-invalid={!!fieldErrors.command}
                 />
+                {fieldErrors.command && (
+                  <p className="text-sm text-destructive">{fieldErrors.command}</p>
+                )}
               </div>
               <div className="grid gap-1.5">
                 <label className="text-sm font-medium">{t("arguments")}</label>
@@ -407,12 +435,16 @@ export function MCPServerDialog({
           {(transport === "sse" || transport === "streamable_http") && (
             <>
               <div className="grid gap-1.5">
-                <label className="text-sm font-medium">{t("serverUrl")}</label>
+                <label className="text-sm font-medium">{t("serverUrl")} <span className="text-destructive">*</span></label>
                 <Input
                   placeholder={transport === "sse" ? "e.g. http://localhost:3001/sse" : "e.g. http://localhost:3001/mcp"}
                   value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  onChange={(e) => { setUrl(e.target.value); clearFieldError("url") }}
+                  aria-invalid={!!fieldErrors.url}
                 />
+                {fieldErrors.url && (
+                  <p className="text-sm text-destructive">{fieldErrors.url}</p>
+                )}
               </div>
               <div className="grid gap-1.5">
                 <div className="flex items-center justify-between">
