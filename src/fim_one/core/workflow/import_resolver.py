@@ -112,6 +112,7 @@ async def _query_accessible_ids(
     candidate_ids: set[str],
     user_id: str,
     user_org_ids: list[str],
+    subscribed_ids: list[str] | None = None,
 ) -> dict[str, str | None]:
     """Query the DB for which candidate IDs exist and are accessible.
 
@@ -128,7 +129,9 @@ async def _query_accessible_ids(
 
     stmt = select(model.id, model.name).where(
         model.id.in_(candidate_ids),
-        build_visibility_filter(model, user_id, user_org_ids),
+        build_visibility_filter(
+            model, user_id, user_org_ids, subscribed_ids=subscribed_ids
+        ),
     )
     result = await db.execute(stmt)
     return {row[0]: row[1] for row in result.all()}
@@ -158,6 +161,7 @@ async def resolve_blueprint_references(
     db: AsyncSession,
     user_id: str,
     user_org_ids: list[str] | None = None,
+    subscribed_ids: list[str] | None = None,
 ) -> ImportResolution:
     """Resolve all external resource references in a blueprint.
 
@@ -176,6 +180,10 @@ async def resolve_blueprint_references(
     user_org_ids:
         Organization IDs the user belongs to (for visibility filtering).
         If None, defaults to an empty list.
+    subscribed_ids:
+        Resource IDs the user has subscribed to from the Market.
+        If None, the function will query the ResourceSubscription table
+        to obtain them automatically.
 
     Returns
     -------
@@ -185,6 +193,17 @@ async def resolve_blueprint_references(
     """
     if user_org_ids is None:
         user_org_ids = []
+
+    # Fetch subscribed resource IDs if not provided by the caller
+    if subscribed_ids is None:
+        from fim_one.web.models.resource_subscription import ResourceSubscription
+
+        sub_result = await db.execute(
+            select(ResourceSubscription.resource_id).where(
+                ResourceSubscription.user_id == user_id,
+            )
+        )
+        subscribed_ids = list(sub_result.scalars().all())
 
     refs = _extract_references(blueprint)
     if not refs:
@@ -200,7 +219,8 @@ async def resolve_blueprint_references(
     for resource_type, type_refs in refs_by_type.items():
         candidate_ids = {r.referenced_id for r in type_refs}
         accessible_by_type[resource_type] = await _query_accessible_ids(
-            db, resource_type, candidate_ids, user_id, user_org_ids
+            db, resource_type, candidate_ids, user_id, user_org_ids,
+            subscribed_ids=subscribed_ids,
         )
 
     # Classify each reference
