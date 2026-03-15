@@ -105,14 +105,14 @@ export function AdminSchedules() {
               <Zap className="h-4 w-4" />
               <p className="text-xs font-medium">{t("activeSchedules")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums text-green-600 dark:text-green-400">{stats.active}</p>
+            <p className="text-2xl font-semibold tabular-nums text-green-600 dark:text-green-400">{stats.active ?? 0}</p>
           </div>
           <div className="rounded-md border border-border bg-muted/30 p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Calendar className="h-4 w-4" />
               <p className="text-xs font-medium">{t("totalSchedules")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums">{stats.total}</p>
+            <p className="text-2xl font-semibold tabular-nums">{stats.total ?? 0}</p>
           </div>
           <div className="rounded-md border border-border bg-muted/30 p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
@@ -128,7 +128,7 @@ export function AdminSchedules() {
               <AlertTriangle className="h-4 w-4" />
               <p className="text-xs font-medium">{t("failedIn24h")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums text-red-600 dark:text-red-400">{stats.failed_24h}</p>
+            <p className="text-2xl font-semibold tabular-nums text-red-600 dark:text-red-400">{stats.failed_24h ?? 0}</p>
           </div>
         </div>
       )}

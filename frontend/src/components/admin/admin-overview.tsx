@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { Users, MessageSquare, Zap, Bot, Database, BookOpen, FileText, Hash, Plug } from "lucide-react"
+import { Users, MessageSquare, Zap, Bot, Database, BookOpen, FileText, Hash, Plug, Package, AlertCircle } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { apiFetch } from "@/lib/api"
@@ -41,11 +41,11 @@ interface AdminStats {
 }
 
 const CHART_COLORS = [
-  "hsl(217, 91%, 60%)",
-  "hsl(217, 91%, 72%)",
-  "hsl(217, 91%, 50%)",
-  "hsl(199, 89%, 60%)",
-  "hsl(245, 75%, 65%)",
+  "hsl(40, 50%, 52%)",
+  "hsl(40, 40%, 62%)",
+  "hsl(38, 55%, 42%)",
+  "hsl(35, 45%, 56%)",
+  "hsl(45, 30%, 48%)",
 ]
 
 function BarTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number }[]; label?: string }) {
@@ -119,12 +119,16 @@ export function AdminOverview() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [resourceOverview, setResourceOverview] = useState<{ resources: { resource_type: string; total: number; active: number; inactive: number; stale_count: number }[]; total_resources: number; total_active: number; total_inactive: number } | null>(null)
 
   useEffect(() => {
     apiFetch<AdminStats>("/api/admin/stats")
       .then((data) => setStats(data))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load stats"))
       .finally(() => setIsLoading(false))
+    apiFetch<typeof resourceOverview>("/api/admin/resources/overview")
+      .then((data) => setResourceOverview(data))
+      .catch(() => {}) // non-critical
   }, [])
 
   if (error) {
@@ -351,6 +355,50 @@ export function AdminOverview() {
           )}
         </div>
       </div>
+
+      {/* Section 5 — Resource Lifecycle */}
+      {resourceOverview && resourceOverview.resources.length > 0 && (
+        <>
+          <Separator />
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-medium">{t("resourceLifecycle")}</h3>
+              <p className="text-sm text-muted-foreground">{t("resourceLifecycleDesc")}</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <StatCard icon={Package} label={t("totalResources")} value={resourceOverview.total_resources} />
+              <StatCard icon={Zap} label={t("activeResources")} value={resourceOverview.total_active} />
+              <StatCard icon={AlertCircle} label={t("inactiveResources")} value={resourceOverview.total_inactive} />
+            </div>
+
+            <div className="rounded-md border border-border overflow-x-auto">
+              <table className="w-full min-w-max text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("resourceType")}</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("rlTotal")}</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("rlActive")}</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("rlInactive")}</th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("rlStale")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {resourceOverview.resources.map((r) => (
+                    <tr key={r.resource_type} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 font-medium text-foreground capitalize">{r.resource_type.replace("_", " ")}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{r.total}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-green-600 dark:text-green-400">{r.active}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-yellow-600 dark:text-yellow-400">{r.inactive}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{r.stale_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

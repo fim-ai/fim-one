@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations, useLocale } from "next-intl"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
   Loader2,
@@ -60,9 +61,9 @@ export function AdminNotifications() {
     setEvLoading(true)
     try {
       const data = await adminApi.listNotificationEvents({ page: evPage, size: PAGE_SIZE })
-      setEvents(data.items)
-      setEvTotal(data.total)
-      setEvPages(Math.max(1, Math.ceil(data.total / PAGE_SIZE)))
+      setEvents(data.items ?? [])
+      setEvTotal(data.total ?? 0)
+      setEvPages(Math.max(1, Math.ceil((data.total ?? 0) / PAGE_SIZE)))
     } catch (err) {
       toast.error(getErrorMessage(err, tError))
     } finally {
@@ -160,25 +161,27 @@ export function AdminNotifications() {
       </div>
 
       {/* Sub-tab toggle */}
-      <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 w-fit">
-        <Button
-          variant={view === "events" ? "default" : "ghost"}
-          size="sm"
-          className="gap-1.5"
+      <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 gap-0.5">
+        <button
           onClick={() => setView("events")}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            view === "events" ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
         >
-          <Bell className="h-4 w-4" />
+          <Bell className="h-3.5 w-3.5" />
           {t("eventsTab")}
-        </Button>
-        <Button
-          variant={view === "config" ? "default" : "ghost"}
-          size="sm"
-          className="gap-1.5"
+        </button>
+        <button
           onClick={() => setView("config")}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            view === "config" ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
         >
-          <Settings2 className="h-4 w-4" />
+          <Settings2 className="h-3.5 w-3.5" />
           {t("configTab")}
-        </Button>
+        </button>
       </div>
 
       {/* ===================== EVENTS ===================== */}
@@ -186,11 +189,11 @@ export function AdminNotifications() {
         <>
           <p className="text-xs text-muted-foreground">{t("autoRefresh")}</p>
 
-          {evLoading && events.length === 0 ? (
+          {evLoading && (!events || events.length === 0) ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : events.length === 0 ? (
+          ) : !events || events.length === 0 ? (
             <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
               {t("noEvents")}
             </div>

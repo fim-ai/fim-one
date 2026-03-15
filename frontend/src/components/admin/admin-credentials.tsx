@@ -6,8 +6,6 @@ import { toast } from "sonner"
 import {
   Loader2,
   Search,
-  MoreHorizontal,
-  ShieldOff,
   KeyRound,
   Plug,
   Server,
@@ -16,22 +14,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Select,
   SelectContent,
@@ -59,10 +41,6 @@ export function AdminCredentials() {
   const [typeFilter, setTypeFilter] = useState("__default__")
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<AdminCredentialStats | null>(null)
-
-  // --- Dialog ---
-  const [revokeTarget, setRevokeTarget] = useState<AdminCredential | null>(null)
-  const [isMutating, setIsMutating] = useState(false)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -107,27 +85,6 @@ export function AdminCredentials() {
     }, 300)
   }
 
-  // --- Revoke ---
-  const handleRevoke = async () => {
-    if (!revokeTarget) return
-    setIsMutating(true)
-    try {
-      if (revokeTarget.type === "connector") {
-        await adminApi.revokeConnectorCredential(revokeTarget.id)
-      } else {
-        await adminApi.revokeMcpCredential(revokeTarget.id)
-      }
-      toast.success(t("credentialRevoked"))
-      setRevokeTarget(null)
-      loadCredentials()
-      loadStats()
-    } catch (err) {
-      toast.error(getErrorMessage(err, tError))
-    } finally {
-      setIsMutating(false)
-    }
-  }
-
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -144,28 +101,28 @@ export function AdminCredentials() {
               <KeyRound className="h-4 w-4" />
               <p className="text-xs font-medium">{t("totalCredentials")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums">{stats.total}</p>
+            <p className="text-2xl font-semibold tabular-nums">{stats.total_credentials ?? 0}</p>
           </div>
           <div className="rounded-md border border-border bg-muted/30 p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Plug className="h-4 w-4" />
               <p className="text-xs font-medium">{t("connectorCredentials")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums">{stats.connector_count}</p>
+            <p className="text-2xl font-semibold tabular-nums">{stats.connector_credentials ?? 0}</p>
           </div>
           <div className="rounded-md border border-border bg-muted/30 p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Server className="h-4 w-4" />
               <p className="text-xs font-medium">{t("mcpCredentials")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums">{stats.mcp_count}</p>
+            <p className="text-2xl font-semibold tabular-nums">{stats.mcp_credentials ?? 0}</p>
           </div>
           <div className="rounded-md border border-border bg-muted/30 p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <Users className="h-4 w-4" />
               <p className="text-xs font-medium">{t("usersWithCredentials")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums">{stats.users_with_credentials}</p>
+            <p className="text-2xl font-semibold tabular-nums">{stats.users_with_credentials ?? 0}</p>
           </div>
         </div>
       )}
@@ -211,7 +168,6 @@ export function AdminCredentials() {
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colType")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colStatus")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colUpdated")}</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{tc("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -220,9 +176,9 @@ export function AdminCredentials() {
                   <td className="px-4 py-3 font-medium text-foreground">
                     {cred.username || cred.email || "--"}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{cred.resource_name}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{cred.resource_name || t("unknownResource")}</td>
                   <td className="px-4 py-3">
-                    {cred.type === "connector" ? (
+                    {cred.resource_type === "connector" ? (
                       <Badge variant="secondary" className="gap-1">
                         <Plug className="h-3 w-3" />
                         {t("typeConnector")}
@@ -240,25 +196,7 @@ export function AdminCredentials() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {new Date(cred.updated_at).toLocaleDateString(locale)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setRevokeTarget(cred)}
-                        >
-                          <ShieldOff className="mr-2 h-4 w-4" />
-                          {t("revoke")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {cred.updated_at ? new Date(cred.updated_at).toLocaleDateString(locale) : "--"}
                   </td>
                 </tr>
               ))}
@@ -283,31 +221,6 @@ export function AdminCredentials() {
         </div>
       )}
 
-      {/* --- Revoke AlertDialog --- */}
-      <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => { if (!open) setRevokeTarget(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("revokeConfirm")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("revokeConfirmDesc", {
-                resource: revokeTarget?.resource_name || "",
-                user: revokeTarget?.username || revokeTarget?.email || "",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={handleRevoke}
-              disabled={isMutating}
-            >
-              {isMutating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t("revoke")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

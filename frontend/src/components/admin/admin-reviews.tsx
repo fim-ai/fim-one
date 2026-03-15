@@ -65,9 +65,9 @@ export function AdminReviews() {
     setIsLoading(true)
     try {
       const data = await adminApi.listPendingReviews({ page, size: PAGE_SIZE })
-      setReviews(data.items)
-      setTotal(data.total)
-      setPages(Math.max(1, Math.ceil(data.total / PAGE_SIZE)))
+      setReviews(data.items ?? [])
+      setTotal(data.total ?? 0)
+      setPages(Math.max(1, Math.ceil((data.total ?? 0) / PAGE_SIZE)))
     } catch (err) {
       toast.error(getErrorMessage(err, tError))
     } finally {

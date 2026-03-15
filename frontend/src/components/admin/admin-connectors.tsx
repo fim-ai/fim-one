@@ -18,11 +18,11 @@ import {
 } from "recharts"
 
 const CHART_COLORS = [
-  "hsl(217, 91%, 60%)",
-  "hsl(217, 91%, 72%)",
-  "hsl(217, 91%, 50%)",
-  "hsl(199, 89%, 60%)",
-  "hsl(245, 75%, 65%)",
+  "hsl(40, 50%, 52%)",
+  "hsl(40, 40%, 62%)",
+  "hsl(38, 55%, 42%)",
+  "hsl(35, 45%, 56%)",
+  "hsl(45, 30%, 48%)",
 ]
 
 const TICK_STYLE = { fill: "currentColor", fontSize: 11 } as const

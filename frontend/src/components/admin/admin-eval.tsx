@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
   Loader2,
@@ -202,7 +203,7 @@ export function AdminEval() {
               <p className="text-xs font-medium">{t("avgPassRate")}</p>
             </div>
             <p className="text-2xl font-semibold tabular-nums">
-              {stats.avg_pass_rate !== null ? `${stats.avg_pass_rate.toFixed(1)}%` : "--"}
+              {stats.avg_pass_rate != null ? `${stats.avg_pass_rate.toFixed(1)}%` : "--"}
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/30 p-4">
@@ -210,31 +211,33 @@ export function AdminEval() {
               <Coins className="h-4 w-4" />
               <p className="text-xs font-medium">{t("totalTokensUsed")}</p>
             </div>
-            <p className="text-2xl font-semibold tabular-nums">{formatTokens(stats.total_tokens)}</p>
+            <p className="text-2xl font-semibold tabular-nums">{formatTokens(stats.total_tokens ?? 0)}</p>
           </div>
         </div>
       )}
 
       {/* Sub-tab toggle */}
-      <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 w-fit">
-        <Button
-          variant={view === "datasets" ? "default" : "ghost"}
-          size="sm"
-          className="gap-1.5"
+      <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 gap-0.5">
+        <button
           onClick={() => setView("datasets")}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            view === "datasets" ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
         >
-          <Database className="h-4 w-4" />
+          <Database className="h-3.5 w-3.5" />
           {t("datasetsTab")}
-        </Button>
-        <Button
-          variant={view === "runs" ? "default" : "ghost"}
-          size="sm"
-          className="gap-1.5"
+        </button>
+        <button
           onClick={() => setView("runs")}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            view === "runs" ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
         >
-          <Play className="h-4 w-4" />
+          <Play className="h-3.5 w-3.5" />
           {t("runsTab")}
-        </Button>
+        </button>
       </div>
 
       {/* ===================== DATASETS ===================== */}
@@ -363,14 +366,14 @@ export function AdminEval() {
                                 style={{ width: `${run.pass_rate}%` }}
                               />
                             </div>
-                            <span className="text-xs tabular-nums">{run.pass_rate.toFixed(1)}%</span>
+                            <span className="text-xs tabular-nums">{(run.pass_rate ?? 0).toFixed(1)}%</span>
                           </div>
                         ) : (
                           <span className="text-muted-foreground/50">--</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
-                        {formatTokens(run.tokens_used)}
+                        {formatTokens(run.tokens_used ?? 0)}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
                         {new Date(run.created_at).toLocaleDateString(locale)}

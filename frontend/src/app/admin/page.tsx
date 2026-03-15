@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 import {
   LayoutDashboard, Activity, Plug, Settings, Shield, Users, MessageSquare,
-  HardDrive, Cpu, Lock, Key, BookOpen, FileText, BarChart3, Wrench,
+  HardDrive, Cpu, Lock, Key, Bot, BookOpen, FileText, BarChart3, Wrench,
   Building2, GitBranch, Sparkles, FlaskConical, KeyRound, ClipboardCheck,
   Calendar, Bell, Scan, Webhook, Package,
 } from "lucide-react"
@@ -23,7 +23,8 @@ import { AdminModels } from "@/components/admin/admin-models"
 import { AdminHealth } from "@/components/admin/admin-health"
 import { AdminSecurity } from "@/components/admin/admin-security"
 import { AdminApiKeys } from "@/components/admin/admin-api-keys"
-import { AdminResources } from "@/components/admin/admin-resources"
+import { AdminAgents } from "@/components/admin/admin-agents"
+import { AdminKnowledgeBases } from "@/components/admin/admin-knowledge-bases"
 import { AdminContent } from "@/components/admin/admin-content"
 import { AdminAnalytics } from "@/components/admin/admin-analytics"
 import { AdminTools } from "@/components/admin/admin-tools"
@@ -56,37 +57,38 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    // Core
+    // Overview — no label, always at top
     items: [
       { key: "overview", icon: LayoutDashboard },
       { key: "health", icon: Activity },
-      { key: "users", icon: Users },
-      { key: "organizations", icon: Building2 },
     ],
   },
   {
-    // Resources
+    label: "platform",
     items: [
-      { key: "resources", icon: BookOpen },
+      { key: "users", icon: Users },
+      { key: "organizations", icon: Building2 },
+      { key: "conversations", icon: MessageSquare },
+      { key: "content", icon: FileText },
+      { key: "reviews", icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: "resources",
+    items: [
+      { key: "agents", icon: Bot },
+      { key: "knowledgeBases", icon: BookOpen },
       { key: "connectors", icon: Plug },
       { key: "skills", icon: Sparkles },
       { key: "workflows", icon: GitBranch },
       { key: "schedules", icon: Calendar },
+      { key: "evaluations", icon: FlaskConical },
       { key: "tools", icon: Wrench },
       { key: "models", icon: Cpu },
     ],
   },
   {
-    // Content
-    items: [
-      { key: "conversations", icon: MessageSquare },
-      { key: "content", icon: FileText },
-      { key: "evaluations", icon: FlaskConical },
-      { key: "reviews", icon: ClipboardCheck },
-    ],
-  },
-  {
-    // Security
+    label: "security",
     items: [
       { key: "security", icon: Lock },
       { key: "apikeys", icon: Key },
@@ -94,7 +96,7 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Operations
+    label: "operations",
     items: [
       { key: "analytics", icon: BarChart3 },
       { key: "notifications", icon: Bell },
@@ -103,13 +105,13 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Settings
+    label: "system",
     items: [
       { key: "settings", icon: Settings },
     ],
   },
   {
-    // Coming Soon
+    label: "comingSoon",
     items: [
       { key: "traces", icon: Scan, dimmed: true },
       { key: "hooks", icon: Webhook, dimmed: true },
@@ -160,8 +162,14 @@ function AdminPanelContent() {
         <nav className="w-52 shrink-0 border-r border-border/40 p-4 space-y-0.5 overflow-y-auto">
           {NAV_GROUPS.map((group, gi) => (
             <div key={gi}>
-              {gi > 0 && (
-                <div className="my-2 border-t border-border/30" />
+              {group.label ? (
+                <div className="px-2 pt-3 pb-1">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                    {t(`sections.${group.label}`)}
+                  </span>
+                </div>
+              ) : (
+                gi > 0 && <div className="my-2 border-t border-border/30" />
               )}
               {group.items.map(({ key, icon: Icon, dimmed }) => (
                 <Link
@@ -204,7 +212,8 @@ function AdminPanelContent() {
           {activeTab === "security" && <AdminSecurity />}
           {activeTab === "apikeys" && <AdminApiKeys />}
           {activeTab === "credentials" && <AdminCredentials />}
-          {activeTab === "resources" && <AdminResources />}
+          {activeTab === "agents" && <AdminAgents />}
+          {activeTab === "knowledgeBases" && <AdminKnowledgeBases />}
           {activeTab === "content" && <AdminContent />}
           {activeTab === "analytics" && <AdminAnalytics />}
           {activeTab === "notifications" && <AdminNotifications />}

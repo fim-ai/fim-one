@@ -241,7 +241,7 @@ export function AdminWorkflows() {
                 <tr key={wf.id} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">
                     <div className="flex items-center gap-2">
-                      {wf.icon && <span className="text-base">{wf.icon}</span>}
+                      {wf.icon && !wf.name?.startsWith(wf.icon) && <span className="text-base">{wf.icon}</span>}
                       <span className="truncate max-w-[200px]">{wf.name}</span>
                       {!wf.is_active && (
                         <Badge variant="outline" className="border-red-500/40 text-red-600 dark:text-red-400 text-[10px] px-1.5 py-0">

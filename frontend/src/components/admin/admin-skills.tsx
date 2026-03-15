@@ -105,7 +105,7 @@ export function AdminSkills() {
   // --- Toggle active ---
   const handleToggleActive = async (skill: AdminSkillInfo) => {
     try {
-      const result = await adminApi.toggleSkillActive(skill.id)
+      const result = await adminApi.toggleSkillActive(skill.id, !skill.is_active)
       toast.success(result.is_active ? t("skillEnabled") : t("skillDisabled"))
       await loadSkills()
     } catch (err: unknown) {

@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { adminApi } from "@/lib/api"
 import type {
   AdminAnalyticsByAgent,
@@ -82,18 +83,21 @@ export function AdminAnalytics() {
       </div>
 
       {/* Sub-tab toggle */}
-      <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 w-fit flex-wrap">
+      <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 gap-0.5 flex-wrap">
         {tabs.map(({ key, icon: Icon, label }) => (
-          <Button
+          <button
             key={key}
-            variant={activeTab === key ? "default" : "ghost"}
-            size="sm"
-            className="gap-1.5"
             onClick={() => setActiveTab(key)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+              activeTab === key
+                ? "bg-background shadow-xs text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-3.5 w-3.5" />
             {label}
-          </Button>
+          </button>
         ))}
       </div>
 
@@ -158,16 +162,18 @@ function AnalyticsSection({
   return (
     <div className="space-y-6">
       {/* Period selector */}
-      <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 w-fit">
+      <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 gap-0.5">
         {(["week", "month", "all"] as const).map((p) => (
-          <Button
+          <button
             key={p}
-            variant={period === p ? "default" : "ghost"}
-            size="sm"
             onClick={() => setPeriod(p)}
+            className={cn(
+              "px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+              period === p ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
           >
             {t(p === "week" ? "periodWeek" : p === "month" ? "periodMonth" : "periodAll")}
-          </Button>
+          </button>
         ))}
       </div>
 
@@ -383,11 +389,14 @@ function ByAgentSection({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 w-fit">
+      <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 gap-0.5">
         {(["7d", "30d", "90d"] as const).map((p) => (
-          <Button key={p} variant={period === p ? "default" : "ghost"} size="sm" onClick={() => setPeriod(p)}>
-            {te(`period${p.toUpperCase()}`)}
-          </Button>
+          <button key={p} onClick={() => setPeriod(p)} className={cn(
+            "px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            period === p ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}>
+            {te(`period${p}`)}
+          </button>
         ))}
       </div>
 
@@ -416,9 +425,9 @@ function ByAgentSection({
                 <tr key={i} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{item.agent_name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{item.owner || "--"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{item.conversations.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.total_tokens)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.avg_tokens_per_conv)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{(item.conversations ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.total_tokens ?? 0)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{formatTokens(item.avg_tokens_per_conv ?? 0)}</td>
                 </tr>
               ))}
             </tbody>
@@ -462,11 +471,14 @@ function ByConnectorSection({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 w-fit">
+      <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 gap-0.5">
         {(["7d", "30d", "90d"] as const).map((p) => (
-          <Button key={p} variant={period === p ? "default" : "ghost"} size="sm" onClick={() => setPeriod(p)}>
-            {te(`period${p.toUpperCase()}`)}
-          </Button>
+          <button key={p} onClick={() => setPeriod(p)} className={cn(
+            "px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            period === p ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}>
+            {te(`period${p}`)}
+          </button>
         ))}
       </div>
 
@@ -494,20 +506,20 @@ function ByConnectorSection({
               {data.map((item, i) => (
                 <tr key={i} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{item.connector_name}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{item.total_calls.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{(item.total_calls ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
                         <div
                           className="h-full rounded-full bg-green-500"
-                          style={{ width: `${item.success_rate}%` }}
+                          style={{ width: `${item.success_rate ?? 0}%` }}
                         />
                       </div>
-                      <span className="text-xs tabular-nums">{item.success_rate.toFixed(1)}%</span>
+                      <span className="text-xs tabular-nums">{(item.success_rate ?? 0).toFixed(1)}%</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{Math.round(item.avg_response_time_ms)}ms</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-red-600 dark:text-red-400">{item.errors}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{Math.round(item.avg_response_time_ms ?? 0)}ms</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-red-600 dark:text-red-400">{item.errors ?? 0}</td>
                 </tr>
               ))}
             </tbody>
@@ -551,11 +563,14 @@ function ByWorkflowSection({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 p-1 w-fit">
+      <div className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5 gap-0.5">
         {(["7d", "30d", "90d"] as const).map((p) => (
-          <Button key={p} variant={period === p ? "default" : "ghost"} size="sm" onClick={() => setPeriod(p)}>
-            {te(`period${p.toUpperCase()}`)}
-          </Button>
+          <button key={p} onClick={() => setPeriod(p)} className={cn(
+            "px-3 py-1.5 text-sm rounded-sm transition-colors font-medium",
+            period === p ? "bg-background shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}>
+            {te(`period${p}`)}
+          </button>
         ))}
       </div>
 
@@ -584,19 +599,19 @@ function ByWorkflowSection({
                 <tr key={i} className="hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{item.workflow_name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{item.owner || "--"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{item.total_runs.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{(item.total_runs ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-16 rounded-full bg-muted overflow-hidden">
                         <div
                           className="h-full rounded-full bg-green-500"
-                          style={{ width: `${item.success_rate}%` }}
+                          style={{ width: `${item.success_rate ?? 0}%` }}
                         />
                       </div>
-                      <span className="text-xs tabular-nums">{item.success_rate.toFixed(1)}%</span>
+                      <span className="text-xs tabular-nums">{(item.success_rate ?? 0).toFixed(1)}%</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{Math.round(item.avg_duration_ms)}ms</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{Math.round(item.avg_duration_ms ?? 0)}ms</td>
                 </tr>
               ))}
             </tbody>
@@ -656,15 +671,15 @@ function CostProjectionSection({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-medium text-muted-foreground">{te("projectedTokens")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.projected_tokens)}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.projected_tokens ?? 0)}</p>
         </div>
         <div className="rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-medium text-muted-foreground">{te("dailyAverage")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.daily_avg)}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.daily_avg ?? 0)}</p>
         </div>
         <div className="rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-medium text-muted-foreground">{te("trailingTotal")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.trailing_total)}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{formatTokens(data.trailing_total ?? 0)}</p>
         </div>
       </div>
     </div>
