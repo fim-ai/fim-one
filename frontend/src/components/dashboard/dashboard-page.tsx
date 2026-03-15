@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations, useLocale } from "next-intl"
-import { MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, Activity, Library, Clock, ChevronRight, Zap, ShoppingBag, Sparkles, Package } from "lucide-react"
+import { MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, Activity, Library, Clock, ChevronRight, ShoppingBag } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { zhCN, enUS } from "date-fns/locale"
 import {
@@ -280,16 +280,6 @@ export function DashboardPage() {
     },
   ]
 
-  // Quick action links
-  const quickActions = [
-    { Icon: Zap, label: t("quickWorkflows"), href: "/workflows" },
-    { Icon: Sparkles, label: t("quickSkills"), href: "/skills" },
-    { Icon: Library, label: t("quickKnowledgeBase"), href: "/kb" },
-    { Icon: Plug, label: t("quickConnectors"), href: "/connectors" },
-    { Icon: ShoppingBag, label: t("quickMarket"), href: "/market" },
-    { Icon: Package, label: t("quickArtifacts"), href: "/artifacts" },
-  ]
-
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       <div className="w-full space-y-4 p-6">
@@ -525,21 +515,7 @@ export function DashboardPage() {
           </div>
         )}
 
-        {/* ---- 4. Quick Actions Bar ---- */}
-        <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
-          {quickActions.map((action, i) => (
-            <Link
-              key={i}
-              href={action.href}
-              className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            >
-              <action.Icon className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">{action.label}</span>
-            </Link>
-          ))}
-        </div>
-
-        {/* ---- 5. Content Cards ---- */}
+        {/* ---- 4. Content Cards ---- */}
         {loading ? (
           <>
             {/* Row A skeleton */}
