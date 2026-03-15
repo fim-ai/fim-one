@@ -197,5 +197,9 @@
         "category": "code"
       }
     ]
-  }
+  },
+  "evidenceInsufficient": "Preuves insuffisantes",
+  "evidenceInsufficientDetail": "La confiance {confidence}% est inférieure au seuil requis de {threshold}%.",
+  "evidenceInsufficientHint": "Les preuves récupérées ne sont pas suffisamment fiables pour fournir une réponse confiante.",
+  "tryRephrase": "Essayez de reformuler votre question"
 }

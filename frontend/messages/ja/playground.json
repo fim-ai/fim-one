@@ -197,5 +197,9 @@
         "category": "code"
       }
     ]
-  }
+  },
+  "evidenceInsufficient": "証拠不足",
+  "evidenceInsufficientDetail": "信頼度 {confidence}% は必要な閾値 {threshold}% を下回っています。",
+  "evidenceInsufficientHint": "取得した証拠は、確実な回答を提供するのに十分な信頼性がありません。",
+  "tryRephrase": "質問を言い換えてみてください"
 }

@@ -197,5 +197,9 @@
         "category": "code"
       }
     ]
-  }
+  },
+  "evidenceInsufficient": "Beweis unzureichend",
+  "evidenceInsufficientDetail": "Konfidenz {confidence}% liegt unter dem erforderlichen Schwellenwert von {threshold}%.",
+  "evidenceInsufficientHint": "Die abgerufenen Belege sind nicht zuverlässig genug, um eine sichere Antwort zu geben.",
+  "tryRephrase": "Versuchen Sie, Ihre Frage umzuformulieren"
 }

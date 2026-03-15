@@ -197,5 +197,9 @@
         "category": "混合"
       }
     ]
-  }
+  },
+  "evidenceInsufficient": "证据不足",
+  "evidenceInsufficientDetail": "置信度 {confidence}% 低于所需阈值 {threshold}%。",
+  "evidenceInsufficientHint": "检索到的证据不够可靠，无法提供有把握的答案。",
+  "tryRephrase": "尝试重新表述您的问题"
 }

@@ -3,8 +3,10 @@
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { MarkdownContent } from "@/lib/markdown"
+import { parseInsufficientEvidence } from "@/lib/evidence-utils"
 import type { ArtifactInfo } from "./types"
 import { ArtifactChips } from "./artifact-chips"
+import { InsufficientEvidenceBlock } from "./insufficient-evidence-block"
 
 interface ObservationBlockProps {
   observation: string
@@ -52,6 +54,12 @@ export function ObservationBlock({
   const mdCls = isCompact ? COMPACT_MD_CLS : DEFAULT_MD_CLS
 
   const { text, lang } = useMemo(() => formatObservation(observation), [observation])
+
+  const insufficientEvidence = useMemo(() => parseInsufficientEvidence(observation), [observation])
+
+  if (insufficientEvidence) {
+    return <InsufficientEvidenceBlock data={insufficientEvidence} />
+  }
 
   // Explicit contentType overrides auto-detection
   const effectiveType = contentType || (lang === "json" ? "json" : "text")

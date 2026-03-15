@@ -197,5 +197,9 @@
         "category": "코드"
       }
     ]
-  }
+  },
+  "evidenceInsufficient": "증거 부족",
+  "evidenceInsufficientDetail": "신뢰도 {confidence}%가 필요한 임계값 {threshold}% 이하입니다.",
+  "evidenceInsufficientHint": "검색된 증거가 확실한 답변을 제공하기에 충분히 신뢰할 수 없습니다.",
+  "tryRephrase": "질문을 다시 표현해 보세요"
 }

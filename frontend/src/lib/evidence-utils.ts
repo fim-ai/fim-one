@@ -127,6 +127,26 @@ export function stripCitations(text: string): string {
     .replace(/\[\d+\](?!\()/g, "")
 }
 
+export interface InsufficientEvidence {
+  confidence: number
+  threshold: number
+}
+
+/**
+ * Parse the `[Evidence insufficient]` message from a grounded-generation tool
+ * observation and extract the confidence / threshold numbers.
+ *
+ * Expected format:
+ *   [Evidence insufficient] Confidence 35% is below the threshold 60%...
+ */
+export function parseInsufficientEvidence(content: string): InsufficientEvidence | null {
+  const match = content.match(
+    /\[Evidence insufficient\]\s*Confidence\s+(\d+)%\s+is below\s+the threshold\s+(\d+)%/
+  )
+  if (!match) return null
+  return { confidence: parseInt(match[1]), threshold: parseInt(match[2]) }
+}
+
 /**
  * Merge multiple ParsedEvidence blocks into a single unified result.
  *
