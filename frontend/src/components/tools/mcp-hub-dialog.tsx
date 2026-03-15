@@ -2,15 +2,19 @@
 
 import { useState, useMemo } from "react"
 import { useTranslations, useMessages } from "next-intl"
-import { Search, Key, Settings } from "lucide-react"
+import { Check, Key, LayoutTemplate } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { cn } from "@/lib/utils"
 import type { MCPServerResponse } from "@/types/mcp-server"
 import type { MCPServerInitialValues } from "./mcp-server-dialog"
 
@@ -215,7 +219,7 @@ const CATEGORY_STYLES: Record<string, string> = {
   Cloud:         "bg-sky-500/10 text-sky-600 ring-sky-500/20",
 }
 
-const ALL_CATEGORIES = ["All", ...Array.from(new Set(SERVERS.map((s) => s.category)))]
+const ALL_CATEGORIES = Array.from(new Set(SERVERS.map((s) => s.category)))
 
 // ---------------------------------------------------------------------------
 // Component
@@ -230,9 +234,10 @@ interface MCPHubDialogProps {
 
 export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialogProps) {
   const t = useTranslations("tools")
+  const tc = useTranslations("common")
   const messages = useMessages()
-  const [query, setQuery] = useState("")
-  const [activeCategory, setActiveCategory] = useState("All")
+  const [activeCategory, setActiveCategory] = useState("all")
+  const [selectedPackage, setSelectedPackage] = useState<string | null>(null)
 
   // Safe translation helpers using raw messages to avoid throwing on missing keys
   const mcpHub = ((messages["tools"] as Record<string, unknown>)?.["mcpHub"] ?? {}) as {
@@ -241,143 +246,162 @@ export function MCPHubDialog({ open, onOpenChange, onInstallLocal }: MCPHubDialo
   }
   const getCategoryLabel = (cat: string) => mcpHub.categories?.[cat] ?? cat
   const getServerDesc = (server: CuratedServer) => mcpHub.servers?.[server.name]?.desc ?? server.description
-  const getServerConfig = (server: CuratedServer) => mcpHub.servers?.[server.name]?.config ?? server.requiresConfig
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase()
-    return SERVERS.filter((s) => {
-      const matchesCategory = activeCategory === "All" || s.category === activeCategory
-      const matchesQuery = !q ||
-        s.name.toLowerCase().includes(q) ||
-        s.package.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q)
-      return matchesCategory && matchesQuery
-    })
-  }, [query, activeCategory])
+    if (activeCategory === "all") return SERVERS
+    return SERVERS.filter((s) => s.category === activeCategory)
+  }, [activeCategory])
 
-  const handleConfigure = (server: CuratedServer) => {
+  const selectedServer = useMemo(
+    () => SERVERS.find((s) => s.package === selectedPackage) ?? null,
+    [selectedPackage],
+  )
+
+  const handleConfigure = () => {
+    if (!selectedServer) return
     onInstallLocal({
-      name: server.name,
-      description: getServerDesc(server),
+      name: selectedServer.name,
+      description: getServerDesc(selectedServer),
       transport: "stdio",
-      command: server.command,
-      args: server.args,
-      env: server.env,
+      command: selectedServer.command,
+      args: selectedServer.args,
+      env: selectedServer.env,
     })
   }
 
+  // Reset selection when dialog opens
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setSelectedPackage(null)
+      setActiveCategory("all")
+    }
+    onOpenChange(nextOpen)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col gap-0 p-0">
-        <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
-          <DialogTitle>{t("mcpCatalog")}</DialogTitle>
-          <div className="relative mt-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t("searchServers")}
-              className="pl-9"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          {/* Category chips */}
-          <div className="flex items-center gap-1.5 mt-3 flex-wrap pb-3 border-b border-border/40">
-            {ALL_CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setActiveCategory(cat)}
-                className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors ${
-                  activeCategory === cat
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-transparent text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"
-                }`}
-              >
-                {getCategoryLabel(cat)}
-              </button>
-            ))}
-          </div>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <LayoutTemplate className="h-4 w-4" />
+            {t("mcpTemplateTitle")}
+          </DialogTitle>
+          <DialogDescription>{t("mcpTemplateDescription")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-sm text-muted-foreground">{t("noServersFound")}</p>
+        {/* Category filter tabs */}
+        <Tabs
+          value={activeCategory}
+          onValueChange={setActiveCategory}
+          className="w-full"
+        >
+          <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
+            <TabsTrigger value="all" className="text-xs">
+              {getCategoryLabel("All")}
+            </TabsTrigger>
+            {ALL_CATEGORIES.map((cat) => (
+              <TabsTrigger key={cat} value={cat} className="text-xs">
+                {getCategoryLabel(cat)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
+        {/* Server grid */}
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <LayoutTemplate className="h-10 w-10 text-muted-foreground/40 mb-3" />
+            <p className="text-sm text-muted-foreground">{t("noServersFound")}</p>
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[400px]">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 pr-3">
+              {filtered.map((server) => {
+                const isSelected = selectedPackage === server.package
+                return (
+                  <button
+                    key={server.package}
+                    type="button"
+                    className={cn(
+                      "relative text-left rounded-lg border p-4 transition-all",
+                      isSelected
+                        ? "border-ring bg-accent/20 ring-1 ring-ring"
+                        : "border-border hover:border-ring/40 hover:bg-accent/10",
+                    )}
+                    onClick={() =>
+                      setSelectedPackage(isSelected ? null : server.package)
+                    }
+                  >
+                    {/* Selected indicator */}
+                    {isSelected && (
+                      <div className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+                        <Check className="h-3 w-3 text-primary-foreground" />
+                      </div>
+                    )}
+
+                    {/* Icon */}
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted mb-3 text-muted-foreground">
+                      <span className="text-sm font-bold">
+                        {server.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Name + config hint */}
+                    <div className="flex items-center gap-1 pr-5">
+                      <p className="text-sm font-medium truncate">{server.name}</p>
+                      {server.requiresConfig && (
+                        <Key className="h-3 w-3 shrink-0 text-amber-600/70" />
+                      )}
+                    </div>
+
+                    {/* Description */}
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1 min-h-[2rem]">
+                      {getServerDesc(server)}
+                    </p>
+
+                    {/* Category badge */}
+                    <div className="flex items-center gap-2 mt-3">
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "text-[10px] ring-1",
+                          CATEGORY_STYLES[server.category] ?? "bg-muted text-muted-foreground ring-border",
+                        )}
+                      >
+                        {getCategoryLabel(server.category)}
+                      </Badge>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-          ) : (
-            <div className="space-y-2">
-              {filtered.map((server) => (
-                <CatalogCard
-                  key={server.package}
-                  server={server}
-                  onConfigure={() => handleConfigure(server)}
-                  configureLabel={t("configure")}
-                  categoryLabel={getCategoryLabel(server.category)}
-                  desc={getServerDesc(server)}
-                  configHint={getServerConfig(server)}
-                />
-              ))}
-            </div>
-          )}
+          </ScrollArea>
+        )}
+
+        {/* Footer actions */}
+        <div className="flex items-center justify-between pt-2">
+          <div className="text-xs text-muted-foreground">
+            {selectedServer
+              ? selectedServer.name
+              : t("mcpSelectHint")}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+            >
+              {tc("cancel")}
+            </Button>
+            <Button
+              onClick={handleConfigure}
+              disabled={!selectedServer}
+              className="gap-1.5"
+            >
+              {t("configure")}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Card
-// ---------------------------------------------------------------------------
-
-interface CatalogCardProps {
-  server: CuratedServer
-  onConfigure: () => void
-  configureLabel: string
-  categoryLabel: string
-  desc: string
-  configHint?: string
-}
-
-function CatalogCard({ server, onConfigure, configureLabel, categoryLabel, desc, configHint }: CatalogCardProps) {
-  return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-border/80 transition-colors">
-      {/* Avatar */}
-      <div className="h-8 w-8 rounded bg-muted flex items-center justify-center shrink-0 mt-0.5">
-        <span className="text-xs font-bold text-muted-foreground">
-          {server.name.charAt(0).toUpperCase()}
-        </span>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-sm font-medium text-foreground">{server.name}</span>
-          <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 shrink-0 ${CATEGORY_STYLES[server.category] ?? "bg-muted text-muted-foreground ring-border"}`}>
-            {categoryLabel}
-          </span>
-        </div>
-        <p className="text-xs font-mono text-muted-foreground truncate mt-0.5">{server.package}</p>
-        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{desc}</p>
-        {configHint && (
-          <p className="flex items-center gap-1 text-[10px] text-amber-600/80 mt-1.5">
-            <Key className="h-2.5 w-2.5 shrink-0" />
-            {configHint}
-          </p>
-        )}
-      </div>
-
-      {/* Action */}
-      <div className="shrink-0 mt-0.5">
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5 h-7 text-xs"
-          onClick={onConfigure}
-        >
-          <Settings className="h-3 w-3" />
-          {configureLabel}
-        </Button>
-      </div>
-    </div>
   )
 }

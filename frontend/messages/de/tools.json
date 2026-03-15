@@ -186,5 +186,8 @@
   "noServersTitle": "Noch keine MCP-Server",
   "noServersDescription": "Fügen Sie einen MCP-Server hinzu, um Ihre Agenten mit externen Tools zu erweitern.",
   "commandRequired": "Befehl ist für STDIO-Transport erforderlich",
-  "urlRequired": "Server-URL ist für diesen Transport erforderlich"
+  "urlRequired": "Server-URL ist für diesen Transport erforderlich",
+  "mcpTemplateTitle": "MCP-Server-Vorlagen",
+  "mcpTemplateDescription": "Wählen Sie einen vorgefertigten MCP-Server zum Konfigurieren und Installieren",
+  "mcpSelectHint": "Klicken Sie auf einen Server, um ihn auszuwählen"
 }

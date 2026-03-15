@@ -186,5 +186,8 @@
   "noServersTitle": "MCPサーバーがまだありません",
   "noServersDescription": "MCPサーバーを追加して、エージェントを外部ツールで拡張します。",
   "commandRequired": "STDIOトランスポートにはコマンドが必要です",
-  "urlRequired": "このトランスポートにはサーバーURLが必要です"
+  "urlRequired": "このトランスポートにはサーバーURLが必要です",
+  "mcpTemplateTitle": "MCPサーバーテンプレート",
+  "mcpTemplateDescription": "事前構築されたMCPサーバーを選択して構成およびインストールします",
+  "mcpSelectHint": "サーバーをクリックして選択します"
 }

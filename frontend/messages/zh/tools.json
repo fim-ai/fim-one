@@ -186,5 +186,8 @@
   "noServersTitle": "还没有 MCP 服务器",
   "noServersDescription": "添加 MCP 服务器以使用外部工具扩展您的智能体。",
   "commandRequired": "STDIO 传输需要命令",
-  "urlRequired": "此传输需要服务器 URL"
+  "urlRequired": "此传输需要服务器 URL",
+  "mcpTemplateTitle": "MCP 服务器模板",
+  "mcpTemplateDescription": "选择预构建的 MCP 服务器进行配置和安装",
+  "mcpSelectHint": "点击服务器以选择它"
 }
