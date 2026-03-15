@@ -872,7 +872,9 @@
     "configSaved": "Configuration de notification enregistrée",
     "totalItems": "{count} total",
     "previous": "Précédent",
-    "pageOf": "Page {page} sur {pages}"
+    "pageOf": "Page {page} sur {pages}",
+    "comingSoonTitle": "Déclencheurs d'événements à venir",
+    "comingSoonBody": "Le système de livraison des notifications (Email, Slack, Lark, WeCom) est prêt. Les déclencheurs basés sur les événements — alertes automatiques pour les défaillances de flux de travail, les pannes de connecteur, les limites de quota et les anomalies de connexion — sont en cours de développement. En attendant, les notifications peuvent être envoyées manuellement via l'API ou utilisées comme outil intégré dans les flux de travail et les conversations d'agent."
   },
   "placeholders": {
     "traces": {

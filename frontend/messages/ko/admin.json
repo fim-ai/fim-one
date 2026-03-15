@@ -872,7 +872,9 @@
     "configSaved": "알림 설정이 저장되었습니다",
     "totalItems": "총 {count}개",
     "previous": "이전",
-    "pageOf": "{pages}페 중 {page}페"
+    "pageOf": "{pages}페 중 {page}페",
+    "comingSoonTitle": "이벤트 트리거 곧 출시 예정",
+    "comingSoonBody": "알림 전달 시스템(이메일, Slack, Lark, WeCom)이 준비되었습니다. 워크플로우 실패, 커넥터 중단, 할당량 제한, 로그인 이상에 대한 자동 알림을 제공하는 이벤트 기반 트리거는 개발 중입니다. 그동안 API를 통해 수동으로 알림을 보내거나 워크플로우 및 에이전트 대화에서 기본 제공 도구로 사용할 수 있습니다."
   },
   "placeholders": {
     "traces": {

@@ -872,7 +872,9 @@
     "configSaved": "Benachrichtigungskonfiguration gespeichert",
     "totalItems": "{count} insgesamt",
     "previous": "Zurück",
-    "pageOf": "Seite {page} von {pages}"
+    "pageOf": "Seite {page} von {pages}",
+    "comingSoonTitle": "Event-Trigger kommen bald",
+    "comingSoonBody": "Das Benachrichtigungsversandsystem (Email, Slack, Lark, WeCom) ist einsatzbereit. Ereignisbasierte Trigger – automatische Benachrichtigungen für Workflow-Fehler, Connector-Ausfälle, Kontingentlimits und Anmeldeanomalieen – sind in Entwicklung. In der Zwischenzeit können Benachrichtigungen manuell über die API versendet oder als integriertes Tool in Workflows und Agent-Gesprächen verwendet werden."
   },
   "placeholders": {
     "traces": {

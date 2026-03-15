@@ -872,7 +872,9 @@
     "configSaved": "通知配置已保存",
     "totalItems": "共 {count} 项",
     "previous": "上一页",
-    "pageOf": "第 {page} 页，共 {pages} 页"
+    "pageOf": "第 {page} 页，共 {pages} 页",
+    "comingSoonTitle": "事件触发器即将推出",
+    "comingSoonBody": "通知投递系统（电子邮件、Slack、Lark、WeCom）已准备就绪。基于事件的触发器——用于工作流失败、连接器中断、配额限制和登录异常的自动警报——正在开发中。同时，可以通过 API 手动发送通知，或在工作流和智能体对话中用作内置工具。"
   },
   "placeholders": {
     "traces": {

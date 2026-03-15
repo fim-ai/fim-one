@@ -927,6 +927,8 @@
     "scheduleFailToggle": "Scheduled workflow failure",
     "loginAnomalyToggle": "Login anomaly detected",
     "configSaved": "Notification config saved",
+    "comingSoonTitle": "Event Triggers Coming Soon",
+    "comingSoonBody": "The notification delivery system (Email, Slack, Lark, WeCom) is ready. Event-based triggers — automatic alerts for workflow failures, connector outages, quota limits, and login anomalies — are under development. In the meantime, notifications can be sent manually via the API or used as a builtin tool in workflows and agent conversations.",
     "totalItems": "{count} total",
     "previous": "Previous",
     "pageOf": "Page {page} of {pages}"
