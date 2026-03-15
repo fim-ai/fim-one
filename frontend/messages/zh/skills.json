@@ -74,7 +74,7 @@
   "discardAndClose": "放弃并关闭",
   "publishStatusReverted": "内容已更改 — 发布状态已恢复为待审核",
   "resourceRefs": "资源引用",
-  "resourceRefsHint": "附加此技能引用的连接器、MCP 服务器、知识库或智能体。在内容中使用 @别名来引用它们。",
+  "resourceRefsHint": "此处添加的资源在加载此技能时会作为映射表暴露给智能体。在内容中使用 @alias 来精确指导智能体。绑定到智能体但未在此处列出的资源如果智能体认为相关，仍然可以被调用。",
   "addResource": "添加资源",
   "resourcePickerTitle": "添加资源引用",
   "resourcePickerDescription": "选择要在此技能中引用的资源。",

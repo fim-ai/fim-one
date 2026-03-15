@@ -31,8 +31,9 @@ const TYPE_ICONS: Record<ResourceRefType, React.ReactNode> = {
 }
 
 /**
- * Textarea with @mention autocomplete (keyboard-driven).
- * Type @ → arrow keys to navigate → Enter/Tab to insert → Escape to dismiss.
+ * Textarea with keyboard-driven @mention autocomplete.
+ * Dropdown is Portal'd to body for correct positioning.
+ * Use arrow keys + Enter/Tab to select, Escape to dismiss.
  */
 export function MentionTextarea({
   id,
@@ -57,7 +58,7 @@ export function MentionTextarea({
     return ref.alias.toLowerCase().includes(q) || ref.name.toLowerCase().includes(q)
   })
 
-  // Measure caret position using a mirror element → viewport coords
+  // Track caret position via mirror element → viewport coords
   const updateDropdownPosition = useCallback(() => {
     const textarea = textareaRef.current
     if (!textarea) return
@@ -66,8 +67,9 @@ export function MentionTextarea({
     const style = window.getComputedStyle(textarea)
     const lineHeight = parseInt(style.lineHeight || "20")
 
+    // Mirror the textarea to find where the caret is
     const mirror = document.createElement("div")
-    const props = [
+    const cssProps = [
       "fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing",
       "wordSpacing", "textIndent", "whiteSpace", "wordWrap", "overflowWrap",
       "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
@@ -77,7 +79,7 @@ export function MentionTextarea({
     mirror.style.visibility = "hidden"
     mirror.style.width = `${textarea.clientWidth}px`
     mirror.style.height = "auto"
-    for (const p of props) mirror.style[p] = style[p]
+    for (const p of cssProps) mirror.style[p] = style[p]
 
     mirror.textContent = value.slice(0, textarea.selectionStart)
     const marker = document.createElement("span")
@@ -91,12 +93,16 @@ export function MentionTextarea({
     const caretX = markerRect.left - mirrorRect.left
     document.body.removeChild(mirror)
 
+    // Convert to viewport-fixed coords
     let top = rect.top + caretY + lineHeight + 4 - textarea.scrollTop
     let left = rect.left + caretX
+
+    // Clamp to viewport
     if (top + 200 > window.innerHeight) top = rect.top + caretY - 200 - textarea.scrollTop
     left = Math.max(8, Math.min(left, window.innerWidth - 250))
+    top = Math.max(8, top)
 
-    setDropdownPosition({ top: Math.max(8, top), left })
+    setDropdownPosition({ top, left })
   }, [value])
 
   const handleChange = useCallback(
@@ -190,15 +196,14 @@ export function MentionTextarea({
 
       {showDropdown && suggestions.length > 0 && createPortal(
         <div
-          data-mention-dropdown=""
-          className="fixed z-[100] w-60 rounded-md border border-border/60 bg-popover/95 backdrop-blur-md shadow-lg overflow-hidden"
+          className="fixed z-[100] w-60 rounded-md border border-border/60 bg-popover/95 backdrop-blur-md shadow-lg overflow-hidden pointer-events-none"
           style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
         >
           <div className="max-h-[180px] overflow-y-auto py-1">
             {suggestions.map((ref, index) => (
               <div
                 key={`${ref.type}:${ref.id}`}
-                className={`flex items-center gap-2 w-full px-2.5 py-1.5 text-sm text-left transition-colors ${
+                className={`flex items-center gap-2 w-full px-2.5 py-1.5 text-sm transition-colors ${
                   index === selectedIndex
                     ? "bg-accent text-accent-foreground"
                     : "text-popover-foreground"

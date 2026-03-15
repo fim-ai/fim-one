@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
 import { Loader2, Plus, Pencil } from "lucide-react"
 import { toast } from "sonner"
@@ -53,7 +53,6 @@ export function SkillFormDialog({
   const [resourceRefs, setResourceRefs] = useState<ResourceRef[]>([])
   const [showResourcePicker, setShowResourcePicker] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
-  const mentionPortalRef = useRef<HTMLDivElement>(null)
 
   const t = useTranslations("skills")
   const tc = useTranslations("common")
@@ -113,15 +112,12 @@ export function SkillFormDialog({
     <>
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
-        className="sm:max-w-lg max-h-[90vh] flex flex-col !overflow-visible"
+        className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
         onInteractOutside={(e) => {
           if (showResourcePicker) { e.preventDefault(); return }
           if (isDirty) { e.preventDefault(); setShowCloseConfirm(true) }
         }}
       >
-        {/* Mention dropdown portal target — inside Dialog DOM but outside scroll */}
-        <div ref={mentionPortalRef} />
-
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {isEditing ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -129,7 +125,6 @@ export function SkillFormDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="overflow-y-auto flex-1 min-h-0">
         <form onSubmit={handleSubmit} className="space-y-5">
           <fieldset className="space-y-3">
             {/* Name */}
@@ -175,7 +170,6 @@ export function SkillFormDialog({
                 placeholder={t("fieldContentPlaceholder")}
                 className="min-h-[200px] resize-y font-mono text-sm"
                 resourceRefs={resourceRefs}
-                portalContainer={mentionPortalRef}
               />
             </div>
 
@@ -251,7 +245,6 @@ export function SkillFormDialog({
             </Button>
           </DialogFooter>
         </form>
-        </div>
       </DialogContent>
     </Dialog>
 

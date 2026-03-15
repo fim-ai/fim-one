@@ -77,7 +77,7 @@
   "publishStatusReverted": "Content changed — publish status reverted to pending review",
 
   "resourceRefs": "Resource References",
-  "resourceRefsHint": "Attach connectors, MCP servers, knowledge bases, or agents that this skill references. Use @alias in the content to reference them.",
+  "resourceRefsHint": "Resources added here are exposed to the agent as a mapping table when this skill is loaded. Use @alias in the content to direct the agent precisely. Resources bound to the agent but not listed here may still be invoked if the agent deems them relevant.",
   "addResource": "Add Resource",
   "resourcePickerTitle": "Add Resource Reference",
   "resourcePickerDescription": "Select a resource to reference in this skill.",

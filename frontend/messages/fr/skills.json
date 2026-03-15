@@ -74,7 +74,7 @@
   "discardAndClose": "Abandonner et fermer",
   "publishStatusReverted": "Contenu modifié — statut de publication rétabli à en attente d'examen",
   "resourceRefs": "Références de ressources",
-  "resourceRefsHint": "Attachez des connecteurs, des serveurs MCP, des bases de connaissances ou des agents que cette compétence référence. Utilisez @alias dans le contenu pour les référencer.",
+  "resourceRefsHint": "Les ressources ajoutées ici sont exposées à l'agent sous forme de tableau de mappage lors du chargement de cette compétence. Utilisez @alias dans le contenu pour diriger l'agent avec précision. Les ressources liées à l'agent mais non listées ici peuvent toujours être invoquées si l'agent les juge pertinentes.",
   "addResource": "Ajouter une ressource",
   "resourcePickerTitle": "Ajouter une référence de ressource",
   "resourcePickerDescription": "Sélectionnez une ressource à référencer dans cette compétence.",

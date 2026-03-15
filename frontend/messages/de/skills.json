@@ -74,7 +74,7 @@
   "discardAndClose": "Verwerfen und schließen",
   "publishStatusReverted": "Inhalt geändert — Veröffentlichungsstatus auf ausstehende Überprüfung zurückgesetzt",
   "resourceRefs": "Ressourcenreferenzen",
-  "resourceRefsHint": "Fügen Sie Konnektoren, MCP-Server, Wissensdatenbanken oder Agenten an, auf die diese Fähigkeit verweist. Verwenden Sie @alias im Inhalt, um darauf zu verweisen.",
+  "resourceRefsHint": "Ressourcen, die hier hinzugefügt werden, werden dem Agent als Zuordnungstabelle zur Verfügung gestellt, wenn diese Fähigkeit geladen wird. Verwenden Sie @alias im Inhalt, um den Agent präzise zu lenken. Ressourcen, die an den Agent gebunden, aber hier nicht aufgelistet sind, können dennoch aufgerufen werden, wenn der Agent sie für relevant erachtet.",
   "addResource": "Ressource hinzufügen",
   "resourcePickerTitle": "Ressourcenreferenz hinzufügen",
   "resourcePickerDescription": "Wählen Sie eine Ressource aus, auf die in dieser Fähigkeit verwiesen werden soll.",
