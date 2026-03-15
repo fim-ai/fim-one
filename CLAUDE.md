@@ -113,6 +113,15 @@ Dev uses SQLite, production uses PostgreSQL. One set of migration files must wor
 - Tests alongside features: every new module → `tests/test_*.py`
 - Keep `__init__.py` imports minimal — only re-export public API
 
+## Task Completion Report (MANDATORY)
+
+After finishing any code change, ALWAYS report to the user:
+
+1. **What changed** — list the files modified and a brief summary of each change
+2. **How to test** — provide concrete steps or commands the user can run to verify the change works (e.g., "open page X and click Y", "run `uv run pytest tests/test_foo.py`", "restart the dev server and check Z")
+
+This is a communication requirement only — it does NOT replace automated tests. Automated tests (CI, pre-commit hooks, `uv run pytest`) still run independently as usual.
+
 ## Post-Commit Documentation Sync (MANDATORY — DO NOT SKIP)
 
 > **CRITICAL**: After EVERY `git commit`, you MUST immediately run the checklist below BEFORE responding to the user or moving to the next task. This is non-negotiable. Failure to do this is a bug in your behavior.
