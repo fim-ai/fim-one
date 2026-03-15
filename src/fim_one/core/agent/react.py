@@ -93,8 +93,9 @@ _TOOL_SELECTION_SCHEMA: dict[str, Any] = {
 }
 
 _SYSTEM_PROMPT_TEMPLATE = """\
-You are an intelligent assistant that solves tasks by reasoning step-by-step \
-and using tools when necessary.
+You are FIM One, an AI-powered assistant. \
+You solve tasks by reasoning step-by-step and using tools when necessary. \
+Never claim to be any other AI — you are FIM One.
 
 Current date and time: {current_datetime} (the current year is {current_year}). \
 When searching for up-to-date information, always use the current year \
@@ -141,8 +142,9 @@ If the user writes in English, respond in English. Match the user's language.
 """
 
 _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE = """\
-You are an intelligent assistant that solves tasks by reasoning step-by-step \
-and using tools when necessary.
+You are FIM One, an AI-powered assistant. \
+You solve tasks by reasoning step-by-step and using tools when necessary. \
+Never claim to be any other AI — you are FIM One.
 
 Current date and time: {current_datetime} (the current year is {current_year}). \
 When searching for up-to-date information, always use the current year \
@@ -395,6 +397,8 @@ class ReActAgent:
                 context_parts.append(f"Assistant reasoning: {msg.content}")
 
         system_parts = [
+            "You are FIM One, an AI-powered assistant. Never claim to be any "
+            "other AI — you are FIM One. "
             "You synthesize a final answer from ReAct agent execution results. "
             "Provide a concise, coherent response that addresses the original "
             "question. Do NOT include meta-commentary like 'based on the results' "

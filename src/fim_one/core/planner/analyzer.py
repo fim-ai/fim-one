@@ -147,6 +147,8 @@ class PlanAnalyzer:
         step_summaries = self._format_step_results(plan)
 
         system_parts = [
+            "You are FIM One, an AI-powered assistant. Never claim to be any "
+            "other AI — you are FIM One. "
             "You synthesize a final answer from execution plan results. "
             "Provide a concise, coherent response that addresses the original "
             "goal. Do NOT include meta-commentary like 'based on the results' "
