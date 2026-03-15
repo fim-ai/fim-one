@@ -1,6 +1,7 @@
 export interface SkillResponse {
   id: string
   user_id: string | null
+  source?: string
   name: string
   description: string | null
   content: string

@@ -1,6 +1,6 @@
 {
   "title": "Marketplace",
-  "description": "Parcourir et installer des ressources partagées depuis la marketplace",
+  "description": "Parcourir et s'abonner aux ressources partagées de la marketplace",
   "empty": "Aucune ressource disponible dans le marketplace",
   "subscribed": "Abonné",
   "subscribe": "S'abonner",
@@ -20,11 +20,8 @@
   "publishTargetOrg": "Mon Organisation",
   "publishTargetMarketplace": "Marketplace",
   "marketplaceReviewLocked": "La Place de marché nécessite toujours un examen",
-  "installed": "Installé",
-  "install": "Installer",
-  "uninstall": "Désinstaller",
-  "installSuccess": "Installé avec succès",
-  "uninstallSuccess": "Désinstallé avec succès",
   "emptyTitle": "Aucune ressource pour le moment",
-  "emptyDescription": "Les ressources publiées sur la marketplace apparaîtront ici."
+  "emptyDescription": "Les ressources publiées sur la marketplace apparaîtront ici.",
+  "subscribeSuccess": "Abonnement réussi",
+  "unsubscribeSuccess": "Désabonnement réussi"
 }

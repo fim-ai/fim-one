@@ -1,6 +1,6 @@
 {
   "title": "마켓플레이스",
-  "description": "마켓플레이스에서 공유 리소스 찾아보기 및 설치",
+  "description": "마켓플레이스에서 공유 리소스 찾아보기 및 구독",
   "empty": "마켓플레이스에서 사용 가능한 리소스가 없습니다",
   "subscribed": "구독됨",
   "subscribe": "구독",
@@ -20,11 +20,8 @@
   "publishTargetOrg": "내 조직",
   "publishTargetMarketplace": "마켓플레이스",
   "marketplaceReviewLocked": "마켓플레이스는 항상 검토가 필요합니다",
-  "installed": "설치됨",
-  "install": "설치",
-  "uninstall": "제거",
-  "installSuccess": "성공적으로 설치되었습니다",
-  "uninstallSuccess": "성공적으로 제거되었습니다",
   "emptyTitle": "아직 리소스가 없습니다",
-  "emptyDescription": "마켓플레이스에 게시된 리소스가 여기에 표시됩니다."
+  "emptyDescription": "마켓플레이스에 게시된 리소스가 여기에 표시됩니다.",
+  "subscribeSuccess": "구독되었습니다",
+  "unsubscribeSuccess": "구독 취소되었습니다"
 }

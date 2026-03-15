@@ -54,6 +54,7 @@ export function SkillFormDialog({
   // Pre-fill when editing or reset when creating
   useEffect(() => {
     if (!open) return
+    setShowCloseConfirm(false)
     if (skill) {
       setName(skill.name)
       setDescription(skill.description || "")
@@ -73,7 +74,7 @@ export function SkillFormDialog({
       description !== (skill.description || "") ||
       content !== skill.content ||
       isActive !== skill.is_active
-    : name.trim().length > 0 || description.trim().length > 0
+    : name.trim().length > 0 || description.trim().length > 0 || content.trim().length > 0 || !isActive
 
   const handleClose = (open: boolean) => {
     if (!open && isDirty) { setShowCloseConfirm(true); return }

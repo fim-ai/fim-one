@@ -15,7 +15,6 @@ interface DailyUsage {
 interface AgentUsage {
   agent_name: string
   tokens: number
-  percentage: number
 }
 
 interface UsageData {
@@ -64,7 +63,7 @@ export function UsageSettings() {
   }
 
   // Calculate max daily tokens for bar chart scaling
-  const maxDaily = data?.daily ? Math.max(...data.daily.map((d) => d.tokens), 1) : 1
+  const maxDaily = data?.daily?.length ? Math.max(...data.daily.map((d) => d.tokens ?? 0), 1) : 1
 
   return (
     <div className="space-y-6">
@@ -107,7 +106,7 @@ export function UsageSettings() {
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-md border border-border p-4 space-y-1">
               <p className="text-xs font-medium text-muted-foreground">{t("totalTokens")}</p>
-              <p className="text-2xl font-bold tabular-nums">{formatNumber(data.total_tokens)}</p>
+              <p className="text-2xl font-bold tabular-nums">{formatNumber(data.total_tokens ?? 0)}</p>
             </div>
             <div className="rounded-md border border-border p-4 space-y-1">
               <p className="text-xs font-medium text-muted-foreground">{t("monthlyQuota")}</p>
@@ -117,9 +116,9 @@ export function UsageSettings() {
             </div>
             <div className="rounded-md border border-border p-4 space-y-1">
               <p className="text-xs font-medium text-muted-foreground">{t("quotaUsed")}</p>
-              {data.quota_used_pct !== null ? (
+              {data.quota_used_pct != null ? (
                 <div className="space-y-1.5">
-                  <p className="text-2xl font-bold tabular-nums">{data.quota_used_pct.toFixed(1)}%</p>
+                  <p className="text-2xl font-bold tabular-nums">{(data.quota_used_pct ?? 0).toFixed(1)}%</p>
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                     <div
                       className={cn(
@@ -157,12 +156,12 @@ export function UsageSettings() {
                     {data.daily.map((d) => (
                       <tr key={d.date} className="hover:bg-muted/20 transition-colors">
                         <td className="px-4 py-2 text-muted-foreground text-xs">{d.date}</td>
-                        <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(d.tokens)}</td>
+                        <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(d.tokens ?? 0)}</td>
                         <td className="px-4 py-2">
                           <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
                             <div
                               className="h-full rounded-full bg-primary/60 transition-all"
-                              style={{ width: `${(d.tokens / maxDaily) * 100}%` }}
+                              style={{ width: `${((d.tokens ?? 0) / maxDaily) * 100}%` }}
                             />
                           </div>
                         </td>
@@ -189,21 +188,24 @@ export function UsageSettings() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {data.by_agent.map((a) => (
-                      <tr key={a.agent_name} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-2 font-medium text-foreground">{a.agent_name}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{formatNumber(a.tokens)}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{a.percentage.toFixed(1)}%</td>
-                        <td className="px-4 py-2">
-                          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-primary/60 transition-all"
-                              style={{ width: `${Math.min(a.percentage, 100)}%` }}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {data.by_agent.map((a) => {
+                      const pct = data.total_tokens > 0 ? ((a.tokens ?? 0) / data.total_tokens) * 100 : 0
+                      return (
+                        <tr key={a.agent_name} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-2 font-medium text-foreground">{a.agent_name}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{formatNumber(a.tokens ?? 0)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{pct.toFixed(1)}%</td>
+                          <td className="px-4 py-2">
+                            <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-primary/60 transition-all"
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

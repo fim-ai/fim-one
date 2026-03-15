@@ -111,10 +111,17 @@
   "shared": "共有",
   "mine": "マイ",
   "fromOrg": "組織",
-  "installed": "インストール済み",
+  "installed": "購読済み",
   "fromMarket": "マーケットから",
-  "uninstall": "アンインストール",
-  "uninstalled": "リソースがアンインストールされました",
+  "uninstall": "購読解除",
+  "uninstalled": "リソースの購読を解除しました",
   "publishedToMarket": "マーケットに公開済み",
-  "install": "インストール"
+  "install": "購読",
+  "helpAndResources": "ヘルプとリソース",
+  "tools": "ツール",
+  "documentation": "ドキュメント",
+  "changelog": "変更履歴",
+  "roadmap": "ロードマップ",
+  "website": "ウェブサイト",
+  "discord": "Discord"
 }

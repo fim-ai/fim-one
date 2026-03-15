@@ -37,6 +37,7 @@ interface SubItem {
   resource_type: string
   resource_name: string
   resource_id: string
+  org_id: string
   publisher: string | null
   subscribed_at: string
 }
@@ -44,7 +45,9 @@ interface SubItem {
 const TYPE_LABEL_KEYS: Record<string, string> = {
   agent: "typeAgent",
   connector: "typeConnector",
+  knowledge_base: "typeKb",
   kb: "typeKb",
+  mcp_server: "typeMcp",
   mcp: "typeMcp",
   workflow: "typeWorkflow",
 }
@@ -52,7 +55,9 @@ const TYPE_LABEL_KEYS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   agent: "border-blue-500/30 bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400",
   connector: "border-purple-500/30 bg-purple-50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-400",
+  knowledge_base: "border-amber-500/30 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400",
   kb: "border-amber-500/30 bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400",
+  mcp_server: "border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400",
   mcp: "border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400",
   workflow: "border-pink-500/30 bg-pink-50 text-pink-700 dark:bg-pink-950/20 dark:text-pink-400",
 }
@@ -61,8 +66,10 @@ function getResourceUrl(type: string, id: string): string {
   switch (type) {
     case "agent": return `/agents/${id}`
     case "connector": return `/connectors/${id}`
-    case "kb": return `/knowledge-bases/${id}`
-    case "mcp": return `/mcp-servers/${id}`
+    case "knowledge_base":
+    case "kb": return `/kb/${id}`
+    case "mcp_server":
+    case "mcp": return `/connectors?tab=mcp`
     case "workflow": return `/workflows/${id}`
     default: return "#"
   }
@@ -96,8 +103,13 @@ export function SubscriptionsSettings() {
     if (!unsubTarget) return
     setUnsubbing(true)
     try {
-      await apiFetch(`/api/me/subscriptions/${unsubTarget.id}`, {
+      await apiFetch("/api/market/unsubscribe", {
         method: "DELETE",
+        body: JSON.stringify({
+          resource_type: unsubTarget.resource_type,
+          resource_id: unsubTarget.resource_id,
+          org_id: unsubTarget.org_id,
+        }),
       })
       toast.success(t("unsubscribeSuccess"))
       setUnsubTarget(null)

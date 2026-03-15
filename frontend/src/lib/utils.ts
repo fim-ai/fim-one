@@ -20,7 +20,8 @@ export function isImageFile(file: { filename: string; mime_type?: string | null 
 }
 
 /** Format token count into a human-friendly string (e.g. 1.23M, 3.4K). */
-export function formatTokens(n: number): string {
+export function formatTokens(n: number | null | undefined): string {
+  if (n == null) return "0"
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
   return n.toString()

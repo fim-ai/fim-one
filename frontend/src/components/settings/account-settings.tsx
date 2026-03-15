@@ -477,8 +477,14 @@ export function AccountSettings() {
 
       <Separator />
 
-      {/* Email Section */}
-      <EmailChangeSection user={user} t={t} refreshUser={refreshUser} />
+      {/* Email Section (read-only — change disabled due to OAuth binding safety concerns) */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-base font-medium">{t("emailTitle")}</h3>
+          <p className="text-sm text-muted-foreground">{t("emailDescription")}</p>
+        </div>
+        <p className="text-sm">{user?.email ?? ""}</p>
+      </div>
 
       <Separator />
 

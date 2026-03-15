@@ -12,9 +12,12 @@ import { apiFetch } from "@/lib/api"
 interface CredItem {
   id: string
   name: string
+  server_name?: string
+  server_id?: string
   resource_type: string
   resource_id: string
   status: "configured" | "not_configured"
+  created_at: string | null
   updated_at: string | null
 }
 
@@ -81,7 +84,7 @@ export function CredentialsSettings() {
               <tbody className="divide-y divide-border">
                 {data.connector_credentials.map((cred) => (
                   <tr key={cred.id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 font-medium text-foreground">{cred.name}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">{cred.name || cred.server_name || cred.server_id || "Unknown"}</td>
                     <td className="px-4 py-3">
                       {cred.status === "configured" ? (
                         <Badge variant="outline" className="border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400">
@@ -93,7 +96,7 @@ export function CredentialsSettings() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at)}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at || cred.created_at)}</td>
                     <td className="px-4 py-3 text-right">
                       <Button variant="ghost" size="sm" asChild>
                         <Link href={`/connectors/${cred.resource_id}`}>
@@ -126,13 +129,12 @@ export function CredentialsSettings() {
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("mcpName")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("colStatus")}</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("lastUpdated")}</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("manage")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {data.mcp_credentials.map((cred) => (
                   <tr key={cred.id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 font-medium text-foreground">{cred.name}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">{cred.name || cred.server_name || cred.server_id || "Unknown"}</td>
                     <td className="px-4 py-3">
                       {cred.status === "configured" ? (
                         <Badge variant="outline" className="border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400">
@@ -144,15 +146,7 @@ export function CredentialsSettings() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/mcp-servers/${cred.resource_id}`}>
-                          <ExternalLink className="mr-2 h-4 w-4" />
-                          {t("manage")}
-                        </Link>
-                      </Button>
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at || cred.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

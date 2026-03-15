@@ -164,11 +164,12 @@ function SkillsPageInner() {
     try {
       if (editingSkill) {
         const updated = await skillApi.update(editingSkill.id, data)
+        setSkills((prev) => prev.map((s) => (s.id === editingSkill.id ? updated : s)))
         if ((updated as unknown as Record<string, unknown>).publish_status_reverted) {
           toast.info(t("publishStatusReverted"))
+        } else {
+          toast.success(t("skillSaved"))
         }
-        setSkills((prev) => prev.map((s) => (s.id === editingSkill.id ? updated : s)))
-        toast.success(t("skillSaved"))
       } else {
         const created = await skillApi.create(data)
         setSkills((prev) => [created, ...prev])
@@ -323,7 +324,7 @@ function SkillsPageInner() {
                   </Select>
 
                   {/* Review notice -- skills may reuse agent review policy */}
-                  {(selectedOrg as UserOrg & { review_skills?: boolean })?.review_skills && (
+                  {selectedOrg?.review_skills && (
                     <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
                       <Clock className="h-4 w-4 shrink-0" />
                       <span>{to("publishRequiresReview")}</span>

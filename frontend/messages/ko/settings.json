@@ -55,7 +55,7 @@
     "redoOnboarding": "설정 마법사 다시 실행",
     "personalizationFailed": "설정 마법사 시작에 실패했습니다",
     "timezoneTitle": "시간대",
-    "timezoneDescription": "예약된 작업 및 타임스탬프의 기본 시간대를 설정합니다.",
+    "timezoneDescription": "예약된 작업 및 타임스탬프에 대한 기본 시간대를 설정합니다.",
     "timezonePlaceholder": "시간대 선택",
     "timezoneSaved": "시간대가 저장되었습니다",
     "timezoneSaveFailed": "시간대 저장에 실패했습니다",
@@ -231,7 +231,7 @@
     "enableTwoFactor": "2FA 활성화",
     "disableTwoFactor": "2FA 비활성화",
     "setupTwoFactorTitle": "2단계 인증 설정",
-    "setupTwoFactorDescription": "아래 QR 코드를 인증 앱(Google Authenticator, Authy 등)으로 스캔한 후 6자리 코드를 입력하여 확인합니다.",
+    "setupTwoFactorDescription": "아래의 QR 코드를 인증 앱(Google Authenticator, Authy 등)으로 스캔한 후 6자리 코드를 입력하여 확인합니다.",
     "setupTwoFactorStep1": "QR 코드 스캔",
     "setupTwoFactorStep2": "코드 입력",
     "setupTwoFactorStep3": "백업 코드",
@@ -248,7 +248,7 @@
     "backupCodesCopied": "백업 코드가 클립보드에 복사되었습니다",
     "regenerateBackupCodes": "백업 코드 재생성",
     "regenerateBackupCodesConfirm": "기존의 모든 백업 코드가 무효화되고 새로운 코드가 생성됩니다.",
-    "regenerateBackupCodesSuccess": "새로운 백업 코드가 생성되었습니다",
+    "regenerateBackupCodesSuccess": "새 백업 코드가 생성되었습니다",
     "regenerateBackupCodesFailed": "백업 코드 재생성에 실패했습니다",
     "disableTwoFactorTitle": "2단계 인증 비활성화",
     "disableTwoFactorDescription": "2단계 인증을 비활성화하려면 비밀번호를 입력하세요. 이렇게 하면 계정 보안이 감소합니다.",
@@ -291,13 +291,13 @@
     "shortcutsSendMessage": "메시지 전송",
     "shortcutsNewLine": "새 줄",
     "shortcutsToggleSidebar": "사이드바 토글",
-    "shortcutsNavigationGroup": "네비게이션",
+    "shortcutsNavigationGroup": "탐색",
     "shortcutsQuickSearch": "빠른 검색",
     "shortcutsCloseDialog": "대화 닫기",
     "shortcutsWorkflowGroup": "워크플로우 편집기",
     "shortcutsShowShortcuts": "단축키 표시",
     "shortcutsSelectAll": "모두 선택",
-    "shortcutsDeleteSelected": "선택 항목 삭제",
+    "shortcutsDeleteSelected": "선택한 항목 삭제",
     "shortcutsUndo": "실행 취소",
     "shortcutsSave": "저장"
   },
@@ -321,16 +321,17 @@
     "colStatus": "상태",
     "active": "활성",
     "inactive": "비활성",
-    "never": "없음",
+    "never": "절대 안 함",
     "noExpiry": "만료 없음",
-    "noKeys": "아직 API 키가 없습니다. 시작하려면 하나를 생성하세요.",
+    "noKeys": "아직 API 키가 없습니다. 시작하려면 하나를 만드세요.",
     "toggleActiveSuccess": "API 키 상태가 업데이트되었습니다",
     "toggleActiveFailed": "API 키 상태 업데이트에 실패했습니다",
     "deleteConfirmTitle": "API 키 삭제",
     "deleteConfirmDescription": "이 API 키를 영구적으로 삭제합니다. 이 키를 사용하는 모든 통합이 작동을 중지합니다.",
     "deleteSuccess": "API 키가 삭제되었습니다",
     "deleteFailed": "API 키 삭제에 실패했습니다",
-    "loadFailed": "API 키를 로드하지 못했습니다"
+    "loadFailed": "API 키 로드에 실패했습니다",
+    "comingSoonBanner": "API 키 인증이 곧 출시됩니다. 지금 키를 생성하고 관리할 수 있지만 아직 API 액세스에 사용할 수 없습니다."
   },
   "credentials": {
     "title": "내 자격증명",
@@ -346,7 +347,7 @@
     "manage": "관리",
     "noConnectorCredentials": "구성된 커넥터 자격증명이 없습니다.",
     "noMcpCredentials": "구성된 MCP 서버 자격증명이 없습니다.",
-    "loadFailed": "자격증명을 로드하지 못했습니다"
+    "loadFailed": "자격증명 로드에 실패했습니다"
   },
   "usage": {
     "title": "사용량",
@@ -367,16 +368,16 @@
     "agentTokens": "토큰",
     "agentPercent": "전체의 %",
     "noUsageData": "이 기간에 사용 가능한 사용량 데이터가 없습니다.",
-    "loadFailed": "사용량 데이터를 로드하지 못했습니다"
+    "loadFailed": "사용량 데이터 로드에 실패했습니다"
   },
   "notifications": {
     "title": "알림",
     "description": "중요한 이벤트에 대한 알림 방식을 선택합니다.",
-    "comingSoonBanner": "알림 전달이 곧 출시됩니다. 지금 환경설정을 구성하여 준비하세요.",
+    "comingSoonBanner": "알림 전달이 곧 제공될 예정입니다. 지금 환경설정을 구성하여 준비하세요.",
     "eventLabel": "이벤트",
     "emailLabel": "이메일",
-    "webhookLabel": "Webhook",
-    "webhookUrlLabel": "Webhook URL",
+    "webhookLabel": "웹훅",
+    "webhookUrlLabel": "웹훅 URL",
     "webhookUrlPlaceholder": "https://example.com/webhook",
     "eventQuotaWarning": "할당량 경고",
     "eventTaskFailure": "작업 실패",
@@ -386,7 +387,7 @@
     "savePreferences": "환경설정 저장",
     "saved": "알림 환경설정이 저장되었습니다",
     "saveFailed": "알림 환경설정 저장에 실패했습니다",
-    "loadFailed": "알림 환경설정을 로드하지 못했습니다"
+    "loadFailed": "알림 환경설정 로드에 실패했습니다"
   },
   "subscriptions": {
     "title": "구독",
@@ -404,9 +405,9 @@
     "unsubscribeConfirmTitle": "구독 취소",
     "unsubscribeConfirmDescription": "\"{name}\"의 구독을 취소하시겠습니까? 언제든지 마켓에서 다시 구독할 수 있습니다.",
     "unsubscribeSuccess": "구독이 취소되었습니다",
-    "unsubscribeFailed": "구독 취소에 실패했습니다",
-    "noSubscriptions": "아직 구독이 없습니다. 마켓을 둘러보고 공유된 리소스를 발견하세요.",
+    "unsubscribeFailed": "구독 해제에 실패했습니다",
+    "noSubscriptions": "아직 구독이 없습니다. 마켓을 둘러보고 공유 리소스를 발견하세요.",
     "browseMarket": "마켓 둘러보기",
-    "loadFailed": "구독 로드 실패"
+    "loadFailed": "구독을 로드하지 못했습니다"
   }
 }

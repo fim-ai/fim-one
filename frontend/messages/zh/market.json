@@ -1,6 +1,6 @@
 {
   "title": "市场",
-  "description": "从市场浏览和安装共享资源",
+  "description": "从市场浏览和订阅共享资源",
   "empty": "市场中没有可用的资源",
   "subscribed": "已订阅",
   "subscribe": "订阅",
@@ -20,11 +20,8 @@
   "publishTargetOrg": "我的组织",
   "publishTargetMarketplace": "市场",
   "marketplaceReviewLocked": "应用市场始终需要审核",
-  "installed": "已安装",
-  "install": "安装",
-  "uninstall": "卸载",
-  "installSuccess": "安装成功",
-  "uninstallSuccess": "卸载成功",
   "emptyTitle": "暂无资源",
-  "emptyDescription": "发布到市场的资源将显示在此处。"
+  "emptyDescription": "发布到市场的资源将显示在此处。",
+  "subscribeSuccess": "订阅成功",
+  "unsubscribeSuccess": "取消订阅成功"
 }

@@ -63,8 +63,7 @@ export function SkillCard({
   const isOwner = !currentUserId || skill.user_id === currentUserId
   const isOrgResource = skill.visibility === "org" || skill.visibility === "global"
   const isActive = skill.is_active
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const source = (skill as any).source as string | undefined
+  const source = skill.source
   const isInstalled = source === "installed"
   const isOrgShared = source === "org" || (!source && !isOwner)
 

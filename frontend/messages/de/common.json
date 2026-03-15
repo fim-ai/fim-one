@@ -111,10 +111,17 @@
   "shared": "Geteilt",
   "mine": "Meine",
   "fromOrg": "Organisation",
-  "installed": "Installiert",
+  "installed": "Abonniert",
   "fromMarket": "Aus dem Marktplatz",
-  "uninstall": "Deinstallieren",
-  "uninstalled": "Ressource deinstalliert",
+  "uninstall": "Abmelden",
+  "uninstalled": "Ressource abgemeldet",
   "publishedToMarket": "Im Marketplace veröffentlicht",
-  "install": "Installieren"
+  "install": "Abonnieren",
+  "helpAndResources": "Hilfe & Ressourcen",
+  "tools": "Tools",
+  "documentation": "Dokumentation",
+  "changelog": "Änderungsprotokoll",
+  "roadmap": "Roadmap",
+  "website": "Website",
+  "discord": "Discord"
 }

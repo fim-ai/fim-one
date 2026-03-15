@@ -111,10 +111,17 @@
   "shared": "已共享",
   "mine": "我的",
   "fromOrg": "组织",
-  "installed": "已安装",
+  "installed": "已订阅",
   "fromMarket": "来自市场",
-  "uninstall": "卸载",
-  "uninstalled": "资源已卸载",
+  "uninstall": "取消订阅",
+  "uninstalled": "资源已取消订阅",
   "publishedToMarket": "已发布到市场",
-  "install": "安装"
+  "install": "订阅",
+  "helpAndResources": "帮助与资源",
+  "tools": "工具",
+  "documentation": "文档",
+  "changelog": "更新日志",
+  "roadmap": "路线图",
+  "website": "网站",
+  "discord": "Discord"
 }

@@ -3,7 +3,20 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ChevronsUpDown, Languages, LayoutDashboard, LogOut, Settings } from "lucide-react"
+import {
+  BookOpen,
+  ChevronsUpDown,
+  ExternalLink,
+  FileText,
+  Globe,
+  Languages,
+  LayoutDashboard,
+  LogOut,
+  Map,
+  MessageCircle,
+  Settings,
+  Wrench,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import {
@@ -131,6 +144,57 @@ export function UserMenu({ collapsed }: UserMenuProps) {
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <BookOpen className="h-4 w-4" />
+            {t("helpAndResources")}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem asChild>
+              <Link href="/tools">
+                <Wrench className="h-4 w-4" />
+                {t("tools")}
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <a href="https://docs.fim.ai" target="_blank" rel="noopener noreferrer">
+                <BookOpen className="h-4 w-4" />
+                <span className="flex-1">{t("documentation")}</span>
+                <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href="https://docs.fim.ai/changelog" target="_blank" rel="noopener noreferrer">
+                <FileText className="h-4 w-4" />
+                <span className="flex-1">{t("changelog")}</span>
+                <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href="https://docs.fim.ai/roadmap" target="_blank" rel="noopener noreferrer">
+                <Map className="h-4 w-4" />
+                <span className="flex-1">{t("roadmap")}</span>
+                <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <a href="https://one.fim.ai" target="_blank" rel="noopener noreferrer">
+                <Globe className="h-4 w-4" />
+                <span className="flex-1">{t("website")}</span>
+                <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href="https://discord.gg/z64czxdC7z" target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="h-4 w-4" />
+                <span className="flex-1">{t("discord")}</span>
+                <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
+              </a>
+            </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSeparator />

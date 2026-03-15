@@ -191,6 +191,11 @@ export function ApiKeysSettings() {
 
   return (
     <div className="space-y-4">
+      {/* Coming Soon Banner */}
+      <div className="flex items-start gap-3 rounded-md border border-amber-500/30 bg-amber-50/50 p-3 dark:bg-amber-950/20">
+        <Key className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p className="text-sm text-amber-800 dark:text-amber-300">{t("comingSoonBanner")}</p>
+      </div>
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

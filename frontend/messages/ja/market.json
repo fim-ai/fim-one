@@ -1,6 +1,6 @@
 {
   "title": "マーケットプレイス",
-  "description": "マーケットプレイスから共有リソースを参照してインストール",
+  "description": "マーケットプレイスから共有リソースを閲覧して購読する",
   "empty": "マーケットプレイスで利用可能なリソースがありません",
   "subscribed": "購読済み",
   "subscribe": "購読",
@@ -20,11 +20,8 @@
   "publishTargetOrg": "マイ組織",
   "publishTargetMarketplace": "マーケットプレイス",
   "marketplaceReviewLocked": "マーケットプレイスは常にレビューが必要です",
-  "installed": "インストール済み",
-  "install": "インストール",
-  "uninstall": "アンインストール",
-  "installSuccess": "正常にインストールされました",
-  "uninstallSuccess": "正常にアンインストールされました",
   "emptyTitle": "リソースはまだありません",
-  "emptyDescription": "マーケットプレイスに公開されたリソースがここに表示されます。"
+  "emptyDescription": "マーケットプレイスに公開されたリソースがここに表示されます。",
+  "subscribeSuccess": "正常に購読しました",
+  "unsubscribeSuccess": "正常に購読を解除しました"
 }

@@ -397,10 +397,6 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
       <SidebarTooltip label={t("skills")} collapsed={collapsed}>
         {navLink("/skills", pathname === "/skills" || pathname.startsWith("/skills/"), <BookOpen className="h-4 w-4" />, t("skills"))}
       </SidebarTooltip>
-      <SidebarTooltip label={t("tools")} collapsed={collapsed}>
-        {navLink("/tools", pathname === "/tools", <Wrench className="h-4 w-4" />, t("tools"))}
-      </SidebarTooltip>
-
       {/* Resources section */}
       {sectionLabel(t("sectionResources"))}
       <SidebarTooltip label={t("knowledge")} collapsed={collapsed}>

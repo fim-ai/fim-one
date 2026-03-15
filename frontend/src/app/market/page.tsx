@@ -45,10 +45,10 @@ function MarketContent() {
     try {
       if (item.is_subscribed) {
         await api.unsubscribeResource({ resource_type: item.resource_type, resource_id: item.id, org_id: item.org_id })
-        toast.success(t('uninstallSuccess'))
+        toast.success(t('unsubscribeSuccess'))
       } else {
         await api.subscribeResource({ resource_type: item.resource_type, resource_id: item.id, org_id: item.org_id })
-        toast.success(t('installSuccess'))
+        toast.success(t('subscribeSuccess'))
       }
       fetchMarket()
     } catch {
@@ -127,7 +127,7 @@ function MarketContent() {
 
                 <div className="flex items-center justify-between">
                   {item.is_subscribed && (
-                    <Badge variant="outline" className="text-xs">{t('installed')}</Badge>
+                    <Badge variant="outline" className="text-xs">{t('subscribed')}</Badge>
                   )}
                   <Button
                     size="sm"
@@ -136,7 +136,7 @@ function MarketContent() {
                     onClick={() => handleSubscribe(item)}
                     className="ml-auto"
                   >
-                    {item.is_subscribed ? t('uninstall') : t('install')}
+                    {item.is_subscribed ? t('unsubscribe') : t('subscribe')}
                   </Button>
                 </div>
               </div>
