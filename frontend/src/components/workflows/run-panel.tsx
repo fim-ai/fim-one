@@ -387,7 +387,7 @@ export function RunPanel({
   const showTabs = isRunning || hasResults
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-10 border-t border-border bg-background/95 backdrop-blur-sm">
+    <div className="absolute bottom-0 left-0 right-0 z-10 border-t border-border bg-background/95 backdrop-blur-sm max-h-[50vh] overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-2 border-b border-border/40">
         <div className="flex items-center gap-2">
           <h3 className="text-xs font-semibold text-foreground">
@@ -489,7 +489,6 @@ export function RunPanel({
           </div>
 
           <TabsContent value="results">
-            <ScrollArea className="max-h-[240px]">
               <div className="p-4 space-y-4">
                 {/* Running/Results */}
                 {hasResults && (
@@ -559,7 +558,6 @@ export function RunPanel({
                   </div>
                 )}
               </div>
-            </ScrollArea>
           </TabsContent>
 
           <TabsContent value="logs">

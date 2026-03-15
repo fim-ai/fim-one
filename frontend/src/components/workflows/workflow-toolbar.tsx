@@ -320,18 +320,8 @@ export function WorkflowToolbar({
           <TooltipContent side="bottom">{t("editorRedo")}</TooltipContent>
         </Tooltip>
 
-        {/* Validation indicator */}
-        {isValidating ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground border-border">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t("validationChecking")}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{t("validationChecking")}</TooltipContent>
-          </Tooltip>
-        ) : validationResult ? (
+        {/* Validation indicator — hide spinner during auto-validation to avoid distracting flashing */}
+        {validationResult ? (
           validationResult.valid && validationResult.warnings.length === 0 ? (
             <Tooltip>
               <TooltipTrigger asChild>
