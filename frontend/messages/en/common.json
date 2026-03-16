@@ -104,6 +104,7 @@
   "unpublished": "Unpublished",
   "draft": "Draft",
   "shared": "Shared",
+  "orgShared": "Org Shared",
   "mine": "Mine",
   "fromOrg": "Organization",
   "subscribed": "Subscribed",
