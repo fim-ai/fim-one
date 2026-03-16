@@ -61,6 +61,7 @@
                 "pages": [
                   "architecture/system-overview",
                   "architecture/philosophy",
+                  "architecture/organization",
                   "architecture/context-management",
                   "architecture/connector-architecture",
                   "architecture/planning-landscape"
@@ -158,6 +159,7 @@
                 "pages": [
                   "zh/architecture/system-overview",
                   "zh/architecture/philosophy",
+                  "zh/architecture/organization",
                   "zh/architecture/context-management",
                   "zh/architecture/connector-architecture",
                   "zh/architecture/planning-landscape"
@@ -255,6 +257,7 @@
                 "pages": [
                   "ja/architecture/system-overview",
                   "ja/architecture/philosophy",
+                  "ja/architecture/organization",
                   "ja/architecture/context-management",
                   "ja/architecture/connector-architecture",
                   "ja/architecture/planning-landscape"
@@ -352,6 +355,7 @@
                 "pages": [
                   "ko/architecture/system-overview",
                   "ko/architecture/philosophy",
+                  "ko/architecture/organization",
                   "ko/architecture/context-management",
                   "ko/architecture/connector-architecture",
                   "ko/architecture/planning-landscape"
@@ -449,6 +453,7 @@
                 "pages": [
                   "de/architecture/system-overview",
                   "de/architecture/philosophy",
+                  "de/architecture/organization",
                   "de/architecture/context-management",
                   "de/architecture/connector-architecture",
                   "de/architecture/planning-landscape"
@@ -546,6 +551,7 @@
                 "pages": [
                   "fr/architecture/system-overview",
                   "fr/architecture/philosophy",
+                  "fr/architecture/organization",
                   "fr/architecture/context-management",
                   "fr/architecture/connector-architecture",
                   "fr/architecture/planning-landscape"

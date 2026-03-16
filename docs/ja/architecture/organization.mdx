@@ -1,0 +1,250 @@
+---
+title: "組織とマーケット"
+description: "FIM One がリソース共有をどのように構造化するか — チームレベルの組織からグローバルマーケットまで。"
+---
+
+## 概要
+
+FIM One は**組織**をコラボレーションとリソース配分の主要な単位として使用します。すべてのリソース(エージェント、コネクタ、ナレッジベース、MCP サーバー、ワークフロー、スキル)は**個人用**として開始され、組織に公開して共有することができます。
+
+2 つの異なる配布チャネルがあります:
+
+```mermaid
+flowchart TD
+    R["Personal Resource"]
+
+    subgraph OrgPublish["Org-Internal Publishing"]
+        O["Organization"]
+        M1["Member A"]
+        M2["Member B"]
+        M3["Member C"]
+    end
+
+    subgraph MarketPublish["Global Publishing"]
+        MK["Market (System Org)"]
+        S1["Subscriber X"]
+        S2["Subscriber Y"]
+        S3["Any User"]
+    end
+
+    R -->|"publish to org"| O
+    O --> M1
+    O --> M2
+    O --> M3
+
+    R -->|"publish to market"| MK
+    MK -->|"subscribe"| S1
+    MK -->|"subscribe"| S2
+    MK -->|"subscribe"| S3
+```
+
+| チャネル | 信頼モデル | レビュー | アクセス | 認証情報の処理 |
+|---|---|---|---|---|
+| **Organization** | 高信頼(チーム/企業) | オプション(リソースタイプごと) | すべてのメンバーに自動付与 | オーナーの認証情報にフォールバック |
+| **Market** | 信頼なし(グローバルコミュニティ) | 常に必須 | 最初にサブスクライブが必要 | フォールバックまたは独自のキーを使用 |
+
+## 組織
+
+### 作成と参加
+
+すべてのユーザーは**無制限**の組織を作成し、任意の数の組織に参加できます。組織には以下があります：
+
+- **オーナー**: 作成者で、完全な制御権を持つ
+- **管理者**: メンバーの管理と公開されたリソースのレビューができる
+- **メンバー**: 共有リソースの表示と使用ができる
+
+### リソースの公開
+
+ユーザーが組織にリソースを公開すると、対応するリソースリストにすべてのメンバーに表示されます — エージェントはエージェントリストに、コネクタはコネクタリストに表示されます。
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as Platform
+    participant O as Org Settings
+
+    U->>P: Publish Agent to Org
+    P->>O: Check review_agents flag
+    alt Review disabled
+        P->>P: publish_status = NULL (auto-approved)
+        P-->>U: Immediately visible to all members
+    else Review enabled
+        P->>P: publish_status = "pending_review"
+        P-->>U: Pending admin approval
+        Note over P: Org admin approves/rejects
+    end
+```
+
+**レビューはオプションです。** 各組織は、すべてのリソースタイプ（`review_agents`、`review_connectors`、`review_kbs`、`review_mcp_servers`、`review_workflows`、`review_skills`）に対して独立したレビュートグルを持っています。レビューが無効な場合、公開されたリソースはすべてのメンバーに即座に利用可能になります — 共有チームドライブと同様です。
+
+<Tip>
+組織の所有者は自動的にレビューをバイパスします。彼らの公開されたリソースは常に即座に利用可能です。
+</Tip>
+
+### 認証情報フォールバック
+
+認証情報（APIキー、データベースパスワードなど）が必要なコネクターとMCPサーバーの場合、FIM Oneは**フォールバックメカニズム**を提供します：
+
+```mermaid
+flowchart TD
+    E["Member uses a shared Connector"]
+    C1{"Member has own credential?"}
+    C2{"allow_fallback enabled?"}
+    C3{"Owner set default credential?"}
+
+    E --> C1
+    C1 -->|Yes| U["Use member's credential"]
+    C1 -->|No| C2
+    C2 -->|Yes| C3
+    C3 -->|Yes| F["Fallback to owner's default"]
+    C3 -->|No| ERR["Error: credential required"]
+    C2 -->|No| ERR2["Error: credential required"]
+```
+
+- **フォールバック有効** (`allow_fallback=true`、デフォルト)：独自の認証情報を提供しないメンバーは、所有者のデフォルト認証情報を自動的に使用します。これはチーム共有のAPIキーまたは内部サービスに最適です。
+- **フォールバック無効** (`allow_fallback=false`)：すべてのメンバーが独自の認証情報を設定する必要があります。これは各ユーザーが独自のAPIキーを必要とする場合（例：シート単位のSaaS ライセンス）に適切です。
+
+認証情報が不要なリソース（例：読み取り専用の公開APIコネクター、または認証なしのエージェント）は、すべてのメンバーにとって即座に機能します。設定は不要です。
+
+## Market（グローバルパブリッシング）
+
+**Market** は、FIM One のグローバルリソースマーケットプレイスとして機能する特別なシステム管理組織です。
+
+### Market の仕組み
+
+```mermaid
+flowchart LR
+    subgraph MarketOrg["Market Organization (System-Managed)"]
+        direction TB
+        R1["Published Agent"]
+        R2["Published Connector"]
+        R3["Published Workflow"]
+        Admin["System Admin<br/>(Market Owner)"]
+    end
+
+    U1["User A"] -->|"publish"| MarketOrg
+    Admin -->|"review & approve"| MarketOrg
+
+    MarketOrg -->|"browse & subscribe"| U2["User B"]
+    MarketOrg -->|"browse & subscribe"| U3["User C"]
+```
+
+主な特徴：
+
+1. **単一のグローバルインスタンス。** システムには正確に 1 つの Market 組織が存在します。プラットフォームの初期化中に自動的に作成されます。
+2. **すべてのユーザーが参加者。** すべてのユーザーは Market リソースを参照して購読できます。Market は常にアクセス可能で、デフォルトの検出チャネルです。
+3. **必須レビュー。** 通常の組織とは異なり、Market は**常に**レビューが必要です。公開されたすべてのリソースは、表示される前にシステム管理者によって承認される必要があります。このレビュー要件はロックされており、変更することはできません。
+4. **使用するには購読が必須。** ユーザーが Market リソースをリソースリストに表示させるには、明示的に購読する必要があります。これは、リソースが自動的にすべてのメンバーに利用可能な組織内共有とは異なります。
+
+### マーケットへの公開
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as Platform
+    participant A as System Admin
+
+    U->>P: Publish resource to Market
+    P->>P: publish_status = "pending_review"
+    P-->>U: Awaiting admin review
+
+    A->>P: Review & Approve
+    P->>P: publish_status = "approved"
+    P-->>A: Resource now visible in Market
+
+    Note over U,A: Other users can now discover and subscribe
+```
+
+### 購読と使用
+
+リソースが承認されてマーケットに掲載された後、任意のユーザーは以下のことができます:
+
+1. **マーケットを閲覧** して利用可能なリソースを発見する
+2. **リソースを購読** して使用したいリソースを選択する
+3. **リソースを使用** する — 認証情報が必要で、フォールバックをサポートしていない場合は、まず独自のキーを設定してください
+
+## 信頼境界
+
+Organization と Market の区別は、基本的な**信頼境界**を反映しています：
+
+```mermaid
+flowchart TB
+    subgraph Trusted["Organization (Trust Zone)"]
+        direction LR
+        T1["Shared by default"]
+        T2["Review optional"]
+        T3["Credential fallback OK"]
+    end
+
+    subgraph Untrusted["Market (No Trust Assumed)"]
+        direction LR
+        U1["Subscribe to access"]
+        U2["Review mandatory"]
+        U3["Bring your own key<br/>(or use fallback if allowed)"]
+    end
+
+    Trusted ---|"trust boundary"| Untrusted
+```
+
+### 組織内
+
+同じ組織のメンバーは、暗黙的な**信頼関係**を共有しています。組織のオーナーがこれらの人々をまとめることを決定しているため、以下が適用されます:
+
+- 公開されたリソースは**すぐに利用可能**です（レビューが明示的に有効になっていない限り）
+- 認証情報フォールバックにより、メンバーはオーナーの共有 API キーを使用できます
+- サブスクリプション手順は不要です — 組織に属していれば、共有されているすべてのものが表示されます
+
+これは、チームが実際に機能する方法を反映しています: 共有インフラストラクチャに関してチームメイトを信頼します。
+
+### マーケット全体
+
+マーケットは**グローバル**です — 誰でも公開でき、誰でも購読できます。事前の信頼関係がないため、以下のようになっています：
+
+- **レビューは必須**です。低品質または悪意のあるリソースがエコシステムに入るのを防ぐため
+- **購読が必須**です。ユーザーがリソースに明示的にオプトインするため（ワークスペースへの予期しない追加がない）
+- **認証情報の処理**は同じフォールバックメカニズムに従いますが、ユーザーはマーケットリソースをフォールバック付きで使用する場合、リクエストが公開者の認証情報を通じて流れることに注意する必要があります
+
+## リソース可視性サマリー
+
+FIM One のすべてのリソースには、アクセススコープを決定する `visibility` フィールドがあります:
+
+| 可視性 | スコープ | 表示可能なユーザー |
+|---|---|---|
+| `personal` | オーナーのみ | それを作成したユーザー |
+| `org` | 組織 | ターゲット組織のすべてのメンバー（承認された場合） |
+| `org` + Market | グローバル | サブスクライブしたすべてのユーザー（管理者が承認した場合） |
+
+可視性フィルタロジックは統一されています — 同じクエリがパーソナル、組織、およびサブスクライブされたリソースを処理します:
+
+```
+表示される条件:
+  1. あなたがそれを所有している（任意の可視性）、または
+  2. あなたが属する組織に公開されており、かつ承認されている、または
+  3. マーケットプレイスからそれをサブスクライブしている
+```
+
+## 実践的なシナリオ
+
+### シナリオ 1: チームがデータベースコネクタを共有する
+
+1. Alice がチームの PostgreSQL データベースへのコネクタを作成する
+2. Alice がそれをチームの組織に公開する（コネクタはレビュー無効）
+3. 組織メンバーの Bob と Carol は、すぐにコネクタリストに表示される
+4. コネクタは Alice のデータベース認証情報をフォールバックとして使用する — Bob と Carol は何も設定する必要がない
+5. 外部契約者の Dave が独自の読み取り専用認証情報が必要な場合、独自の認証情報でオーバーライドできる
+
+### シナリオ 2: エージェントをマーケットプレイスに公開する
+
+1. Alice は「Contract Analyzer」エージェントを構築し、マーケットプレイスに公開します
+2. システム管理者がレビューして承認します
+3. エージェントがマーケットプレイスの閲覧ページに表示されます
+4. Bob がそれを発見し、「Subscribe」をクリックすると、彼のエージェントリストに表示されます
+5. エージェントが `allow_fallback=false` の API キーが必要なコネクタを参照している場合 — Bob は使用する前に独自のキーを設定する必要があります
+
+### シナリオ 3: 厳密なレビューを行う組織
+
+1. コンプライアンス重視の企業が、組織で `review_agents=true` と `review_connectors=true` を有効にする
+2. 従業員が新しいエージェントを公開すると、「pending_review」状態になる
+3. 組織管理者がエージェント設定をレビューして承認する
+4. その後、他のメンバーが利用できるようになる
+5. 公開者が後で承認されたエージェントを編集すると、再承認のために自動的に「pending_review」に戻る

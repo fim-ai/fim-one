@@ -30,10 +30,13 @@ class _MockTool:
         name: str = "web_search",
         category: str = "search",
         display_name: str = "Web Search",
+        *,
+        cacheable: bool = False,
     ) -> None:
         self.name = name
         self.category = category
         self.display_name = display_name
+        self.cacheable = cacheable
         self.call_count = 0
 
     async def run(self, **kwargs: Any) -> str:
@@ -58,7 +61,7 @@ class TestIsCacheable:
     """Verify cacheability checks for different tool types."""
 
     def test_cacheable_tool(self) -> None:
-        tool = _MockTool(name="web_search", category="search")
+        tool = _MockTool(name="web_search", category="search", cacheable=True)
         assert _is_cacheable(tool) is True
 
     def test_uncacheable_by_name(self) -> None:
@@ -98,18 +101,27 @@ class TestIsCacheable:
         assert _is_cacheable(tool) is False
 
     def test_tool_without_name_attr(self) -> None:
-        """Object without name attribute should still be cacheable by default."""
+        """Object without name attribute is cacheable if it opts in."""
+
+        class Bare:
+            cacheable = True
+
+        assert _is_cacheable(Bare()) is True
+
+    def test_tool_without_cacheable_attr(self) -> None:
+        """Object without cacheable attribute should not be cacheable."""
 
         class Bare:
             pass
 
-        assert _is_cacheable(Bare()) is True
+        assert _is_cacheable(Bare()) is False
 
     def test_tool_without_category_attr(self) -> None:
-        """Object with name but no category should be cacheable (if name is OK)."""
+        """Object with name but no category is cacheable if it opts in."""
 
         class NameOnly:
             name = "web_search"
+            cacheable = True
 
         assert _is_cacheable(NameOnly()) is True
 
@@ -211,7 +223,7 @@ class TestCachedTool:
     """Verify _CachedTool wraps correctly."""
 
     async def test_run_uses_cache(self) -> None:
-        tool = _MockTool(name="web_search")
+        tool = _MockTool(name="web_search", cacheable=True)
         cache = ToolCache()
         cached = _CachedTool(tool, cache)
 
@@ -223,7 +235,7 @@ class TestCachedTool:
         assert cache.misses == 1
 
     async def test_run_different_args_calls_twice(self) -> None:
-        tool = _MockTool(name="web_search")
+        tool = _MockTool(name="web_search", cacheable=True)
         cache = ToolCache()
         cached = _CachedTool(tool, cache)
 
@@ -235,7 +247,7 @@ class TestCachedTool:
         assert cache.misses == 2
 
     def test_attribute_delegation(self) -> None:
-        tool = _MockTool(name="web_search", category="search", display_name="Web Search")
+        tool = _MockTool(name="web_search", category="search", display_name="Web Search", cacheable=True)
         cache = ToolCache()
         cached = _CachedTool(tool, cache)
 
@@ -254,7 +266,7 @@ class TestWrapToolsWithCache:
     """Verify wrap_tools_with_cache wraps cacheable and skips uncacheable."""
 
     def test_cacheable_tool_is_wrapped(self) -> None:
-        tool = _MockTool(name="web_search", category="search")
+        tool = _MockTool(name="web_search", category="search", cacheable=True)
         cache = ToolCache()
         wrapped = wrap_tools_with_cache([tool], cache)
         assert len(wrapped) == 1
@@ -268,7 +280,7 @@ class TestWrapToolsWithCache:
         assert wrapped[0] is tool  # Not wrapped
 
     def test_mixed_tools(self) -> None:
-        search = _MockTool(name="web_search", category="search")
+        search = _MockTool(name="web_search", category="search", cacheable=True)
         exec_tool = _MockTool(name="python_exec", category="code_execution")
         file_tool = _MockTool(name="file_read", category="file_ops")
         cache = ToolCache()

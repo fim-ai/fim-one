@@ -1,0 +1,250 @@
+---
+title: "Organisation & Markt"
+description: "Wie FIM One die Ressourcenfreigabe strukturiert – von Organisationen auf Teamebene bis zum globalen Markt."
+---
+
+## Übersicht
+
+FIM One verwendet **Organisationen** als primäre Einheit für Zusammenarbeit und Ressourcenverteilung. Jede Ressource (Agent, Connector, Knowledge Base, MCP Server, Workflow, Skill) beginnt als **persönlich** und kann in einer Organisation veröffentlicht werden, um sie zu teilen.
+
+Es gibt zwei unterschiedliche Verteilungskanäle:
+
+```mermaid
+flowchart TD
+    R["Personal Resource"]
+
+    subgraph OrgPublish["Org-Internal Publishing"]
+        O["Organization"]
+        M1["Member A"]
+        M2["Member B"]
+        M3["Member C"]
+    end
+
+    subgraph MarketPublish["Global Publishing"]
+        MK["Market (System Org)"]
+        S1["Subscriber X"]
+        S2["Subscriber Y"]
+        S3["Any User"]
+    end
+
+    R -->|"publish to org"| O
+    O --> M1
+    O --> M2
+    O --> M3
+
+    R -->|"publish to market"| MK
+    MK -->|"subscribe"| S1
+    MK -->|"subscribe"| S2
+    MK -->|"subscribe"| S3
+```
+
+| Kanal | Vertrauensmodell | Überprüfung | Zugriff | Anmeldedaten-Handling |
+|---|---|---|---|---|
+| **Organisation** | Hohes Vertrauen (Team/Unternehmen) | Optional (pro Ressourcentyp) | Automatisch für alle Mitglieder | Fallback auf Anmeldedaten des Eigentümers |
+| **Markt** | Kein Vertrauen (globale Community) | Immer erforderlich | Abonnement erforderlich | Fallback oder eigener Schlüssel |
+
+## Organisationen
+
+### Erstellen und Beitreten
+
+Jeder Benutzer kann **unbegrenzte** Organisationen erstellen und einer beliebigen Anzahl von ihnen beitreten. Eine Organisation hat:
+
+- **Eigentümer**: der Ersteller mit vollständiger Kontrolle
+- **Administratoren**: können Mitglieder verwalten und veröffentlichte Ressourcen überprüfen
+- **Mitglieder**: können freigegebene Ressourcen anzeigen und verwenden
+
+### Ressourcen veröffentlichen
+
+Wenn ein Benutzer eine Ressource in seiner Organisation veröffentlicht, wird sie in der entsprechenden Ressourcenliste für alle Mitglieder angezeigt — Agenten werden in der Agentenliste angezeigt, Konnektoren in der Konnektorenliste und so weiter.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as Platform
+    participant O as Org Settings
+
+    U->>P: Publish Agent to Org
+    P->>O: Check review_agents flag
+    alt Review disabled
+        P->>P: publish_status = NULL (auto-approved)
+        P-->>U: Immediately visible to all members
+    else Review enabled
+        P->>P: publish_status = "pending_review"
+        P-->>U: Pending admin approval
+        Note over P: Org admin approves/rejects
+    end
+```
+
+**Überprüfung ist optional.** Jede Organisation hat unabhängige Überprüfungs-Umschalter für jeden Ressourcentyp (`review_agents`, `review_connectors`, `review_kbs`, `review_mcp_servers`, `review_workflows`, `review_skills`). Wenn die Überprüfung deaktiviert ist, sind veröffentlichte Ressourcen sofort für alle Mitglieder verfügbar — ähnlich wie ein gemeinsames Team-Laufwerk.
+
+<Tip>
+Organisationsinhaber umgehen die Überprüfung automatisch. Ihre veröffentlichten Ressourcen sind immer sofort verfügbar.
+</Tip>
+
+### Credential-Fallback
+
+Für Konnektoren und MCP-Server, die Anmeldedaten erfordern (API-Schlüssel, Datenbankpasswörter usw.), bietet FIM One einen **Fallback-Mechanismus**:
+
+```mermaid
+flowchart TD
+    E["Member uses a shared Connector"]
+    C1{"Member has own credential?"}
+    C2{"allow_fallback enabled?"}
+    C3{"Owner set default credential?"}
+
+    E --> C1
+    C1 -->|Yes| U["Use member's credential"]
+    C1 -->|No| C2
+    C2 -->|Yes| C3
+    C3 -->|Yes| F["Fallback to owner's default"]
+    C3 -->|No| ERR["Error: credential required"]
+    C2 -->|No| ERR2["Error: credential required"]
+```
+
+- **Fallback aktiviert** (`allow_fallback=true`, Standard): Mitglieder, die ihre eigenen Anmeldedaten nicht bereitstellen, verwenden automatisch die Standard-Anmeldedaten des Eigentümers. Dies ist ideal für gemeinsam genutzte Team-API-Schlüssel oder interne Dienste.
+- **Fallback deaktiviert** (`allow_fallback=false`): Jedes Mitglied muss seine eigenen Anmeldedaten konfigurieren. Dies ist angemessen, wenn jeder Benutzer seinen eigenen API-Schlüssel benötigt (z. B. pro-Platz-SaaS-Lizenzen).
+
+Ressourcen, die keine Anmeldedaten erfordern (z. B. ein schreibgeschützter öffentlicher API-Konnektor oder ein Agent ohne Authentifizierung), funktionieren sofort für alle Mitglieder – keine Konfiguration erforderlich.
+
+## Market (Globale Veröffentlichung)
+
+Der **Market** ist eine spezielle, vom System verwaltete Organisation, die als globaler Ressourcen-Marktplatz von FIM One dient.
+
+### Wie der Marktplatz funktioniert
+
+```mermaid
+flowchart LR
+    subgraph MarketOrg["Market Organization (System-Managed)"]
+        direction TB
+        R1["Published Agent"]
+        R2["Published Connector"]
+        R3["Published Workflow"]
+        Admin["System Admin<br/>(Market Owner)"]
+    end
+
+    U1["User A"] -->|"publish"| MarketOrg
+    Admin -->|"review & approve"| MarketOrg
+
+    MarketOrg -->|"browse & subscribe"| U2["User B"]
+    MarketOrg -->|"browse & subscribe"| U3["User C"]
+```
+
+Wichtigste Merkmale:
+
+1. **Einzelne globale Instanz.** Es gibt genau eine Market-Organisation im System. Sie wird automatisch während der Plattforminitialisierung erstellt.
+2. **Alle sind Teilnehmer.** Alle Benutzer können Marktplatz-Ressourcen durchsuchen und abonnieren. Der Marktplatz ist immer zugänglich – er ist der Standard-Erkennungskanal.
+3. **Obligatorische Überprüfung.** Im Gegensatz zu regulären Organisationen erfordert der Marktplatz **immer** eine Überprüfung. Jede veröffentlichte Ressource muss von einem Systemadministrator genehmigt werden, bevor sie sichtbar wird. Diese Überprüfungsanforderung ist gesperrt und kann nicht geändert werden.
+4. **Abonnieren zum Verwenden.** Benutzer müssen eine Marktplatz-Ressource explizit abonnieren, bevor sie in ihren Ressourcenlisten angezeigt wird. Dies unterscheidet sich vom organisationsinternen Sharing, bei dem Ressourcen automatisch für alle Mitglieder verfügbar sind.
+
+### Veröffentlichung auf dem Marktplatz
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant P as Platform
+    participant A as System Admin
+
+    U->>P: Publish resource to Market
+    P->>P: publish_status = "pending_review"
+    P-->>U: Awaiting admin review
+
+    A->>P: Review & Approve
+    P->>P: publish_status = "approved"
+    P-->>A: Resource now visible in Market
+
+    Note over U,A: Other users can now discover and subscribe
+```
+
+### Abonnieren und Verwenden
+
+Nachdem eine Ressource genehmigt und im Marktplatz aufgelistet wurde, kann jeder Benutzer:
+
+1. **Den Marktplatz durchsuchen**, um verfügbare Ressourcen zu entdecken
+2. **Eine Ressource abonnieren**, die er verwenden möchte
+3. **Die Ressource verwenden** – wenn sie Anmeldedaten erfordert und kein Fallback unterstützt, müssen zunächst eigene Schlüssel konfiguriert werden
+
+## Vertrauensgrenze
+
+Die Unterscheidung zwischen Organisation und Markt spiegelt eine grundlegende **Vertrauensgrenze** wider:
+
+```mermaid
+flowchart TB
+    subgraph Trusted["Organization (Trust Zone)"]
+        direction LR
+        T1["Shared by default"]
+        T2["Review optional"]
+        T3["Credential fallback OK"]
+    end
+
+    subgraph Untrusted["Market (No Trust Assumed)"]
+        direction LR
+        U1["Subscribe to access"]
+        U2["Review mandatory"]
+        U3["Bring your own key<br/>(or use fallback if allowed)"]
+    end
+
+    Trusted ---|"trust boundary"| Untrusted
+```
+
+### Innerhalb einer Organisation
+
+Mitglieder derselben Organisation teilen eine implizite **Vertrauensbeziehung**. Der Organisationseigentümer hat entschieden, diese Personen zusammenzubringen, daher:
+
+- Veröffentlichte Ressourcen sind **sofort verfügbar** (es sei denn, die Überprüfung ist explizit aktiviert)
+- Credential-Fallback bedeutet, dass Mitglieder die gemeinsamen API-Schlüssel des Eigentümers verwenden können
+- Kein Abonnementschritt erforderlich — wenn Sie in der Organisation sind, sehen Sie alles, das freigegeben wurde
+
+Dies spiegelt wider, wie Teams in der Praxis funktionieren: Sie vertrauen Ihren Teamkollegen mit gemeinsamer Infrastruktur.
+
+### Across the Market
+
+Der Market ist **global** — jeder kann veröffentlichen und jeder kann abonnieren. Es gibt keine vorbestehende Vertrauensbeziehung, daher:
+
+- **Überprüfung ist obligatorisch**, um zu verhindern, dass minderwertige oder böswillige Ressourcen in das Ökosystem gelangen
+- **Abonnement ist erforderlich**, damit Benutzer explizit Ressourcen auswählen (keine unerwarteten Ergänzungen in ihrem Workspace)
+- **Credential-Handling** folgt demselben Fallback-Mechanismus, aber Benutzer sollten beachten, dass die Verwendung einer Market-Ressource mit Fallback bedeutet, dass ihre Anfragen durch die Anmeldedaten des Herausgebers fließen
+
+## Ressourcen-Sichtbarkeitszusammenfassung
+
+Jede Ressource in FIM One hat ein `visibility`-Feld, das ihren Zugriffsgeltungsbereich bestimmt:
+
+| Sichtbarkeit | Geltungsbereich | Wer kann es sehen |
+|---|---|---|
+| `personal` | Nur Eigentümer | Der Benutzer, der es erstellt hat |
+| `org` | Organisation | Alle Mitglieder der Zielorganisation (falls genehmigt) |
+| `org` + Market | Global | Jeder, der abonniert (falls vom Admin genehmigt) |
+
+Die Sichtbarkeitsfiltierungslogik ist einheitlich — dieselbe Abfrage verarbeitet persönliche, organisatorische und abonnierte Ressourcen:
+
+```
+Sichtbar wenn:
+  1. Du es besitzt (beliebige Sichtbarkeit), ODER
+  2. Es ist in einer Organisation veröffentlicht, der du angehörst UND genehmigt, ODER
+  3. Du hast es vom Market abonniert
+```
+
+## Praktische Szenarien
+
+### Szenario 1: Team teilt einen Datenbank-Konnektor
+
+1. Alice erstellt einen Konnektor zur PostgreSQL-Datenbank des Teams
+2. Alice veröffentlicht ihn in der Org ihres Teams (Überprüfung für Konnektoren deaktiviert)
+3. Bob und Carol sehen ihn als Org-Mitglieder sofort in ihrer Konnektoren-Liste
+4. Der Konnektor verwendet Alices Datenbank-Anmeldedaten als Fallback — Bob und Carol müssen nichts konfigurieren
+5. Wenn Dave (externer Auftragnehmer) seine eigenen Anmeldedaten mit Lesezugriff benötigt, kann er diese überschreiben
+
+### Szenario 2: Veröffentlichung eines Agenten auf dem Marktplatz
+
+1. Alice erstellt einen „Contract Analyzer" Agenten und veröffentlicht ihn auf dem Marktplatz
+2. Der Systemadministrator überprüft und genehmigt ihn
+3. Der Agent erscheint auf der Marktplatz-Browsing-Seite
+4. Bob entdeckt ihn, klickt auf „Abonnieren", und er erscheint in seiner Agentenliste
+5. Der Agent verweist auf einen Konnektor, der einen API-Schlüssel mit `allow_fallback=false` erfordert — Bob muss seinen eigenen Schlüssel konfigurieren, bevor er ihn verwendet
+
+### Szenario 3: Organisation mit strikter Überprüfung
+
+1. Ein compliance-fokussiertes Unternehmen aktiviert `review_agents=true` und `review_connectors=true` in ihrer Organisation
+2. Wenn ein Mitarbeiter einen neuen Agenten veröffentlicht, erhält dieser den Status "pending_review"
+3. Ein Organisations-Admin überprüft die Agenten-Konfiguration und genehmigt sie
+4. Erst dann wird sie für andere Mitglieder verfügbar
+5. Wenn der Herausgeber den genehmigten Agenten später bearbeitet, wird er automatisch in den Status "pending_review" zurückgesetzt, um erneut genehmigt zu werden
