@@ -3865,7 +3865,21 @@ class TestParameterExtractorNode:
 
 
 class TestLoopNode:
-    """Test the LoopExecutor — while-condition loop with safety limits."""
+    """Test the LoopExecutor — while-condition loop with safety limits.
+
+    LoopExecutor evaluates the condition once per call and returns
+    ``_loop_continue`` to tell the engine whether to re-invoke.  The
+    helper below simulates the engine's iteration cycle so each test
+    can assert the final outcome of a complete loop.
+    """
+
+    @staticmethod
+    async def _run_loop(executor, node, store, ctx) -> "NodeResult":
+        """Simulate the engine loop: call execute() until _loop_continue is False."""
+        while True:
+            result = await executor.execute(node, store, ctx)
+            if result.status != NodeStatus.COMPLETED or not result.output.get("_loop_continue"):
+                return result
 
     @pytest.mark.asyncio
     async def test_basic_loop_counting(self):
@@ -3886,7 +3900,7 @@ class TestLoopNode:
         ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
 
         executor = LoopExecutor()
-        result = await executor.execute(node, store, ctx)
+        result = await self._run_loop(executor, node, store, ctx)
 
         assert result.status == NodeStatus.COMPLETED
         assert result.output["iterations"] == 5
@@ -3912,7 +3926,7 @@ class TestLoopNode:
         ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
 
         executor = LoopExecutor()
-        result = await executor.execute(node, store, ctx)
+        result = await self._run_loop(executor, node, store, ctx)
 
         assert result.status == NodeStatus.COMPLETED
         assert result.output["iterations"] == 10
@@ -3985,7 +3999,7 @@ class TestLoopNode:
         ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
 
         executor = LoopExecutor()
-        result = await executor.execute(node, store, ctx)
+        result = await self._run_loop(executor, node, store, ctx)
 
         assert result.status == NodeStatus.COMPLETED
         assert result.output["iterations"] == 3
@@ -4014,7 +4028,7 @@ class TestLoopNode:
         ctx = ExecutionContext(run_id="r", user_id="u", workflow_id="w")
 
         executor = LoopExecutor()
-        result = await executor.execute(node, store, ctx)
+        result = await self._run_loop(executor, node, store, ctx)
 
         assert result.status == NodeStatus.COMPLETED
         assert result.output["iterations"] == 4
