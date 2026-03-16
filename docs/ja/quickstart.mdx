@@ -145,7 +145,11 @@ volumes:
 
 #### Cloudflare Tunnel
 
-ゼロオープンポートセットアップの場合は、Nginx の代わりに [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) を使用してください。すべてのトラフィックは Cloudflare のエッジを通過します。ポート 80/443 を公開したり、SSL 証明書を管理したり、ファイアウォールルールを設定する必要はありません。
+ゼロオープンポートセットアップの場合、Nginxの代わりに[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)を使用してください。すべてのトラフィックはCloudflareのエッジを通過します。ポート80/443を公開したり、SSLサーティフィケートを管理したり、ファイアウォールルールを設定する必要はありません。
+
+<Warning>
+**中国本土ユーザー**: Cloudflare Free/Pro/Businessプランは**中国本土にPoP（Points-of-Presence）がありません**。中国本土からのトラフィックは海外のエッジ（通常は米国西部）にルーティングされ、頻繁な502エラーと高レイテンシが発生します。主なユーザーが中国本土にいる場合は、Cloudflare Tunnelを**使用しないでください**。中国本土への確実なアクセスにはCloudflare Enterprise with China Network（JD Cloudパートナーシップ）が必要です。
+</Warning>
 
 ```
 User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
@@ -155,8 +159,8 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
 
 <Steps>
   <Step title="トンネルを作成する">
-    [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel** に移動します。
-    コネクタタイプとして **Cloudflared** を選択します。
+    [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel**に移動します。
+    コネクタタイプとして**Cloudflared**を選択します。
   </Step>
   <Step title="パブリックホスト名を設定する">
     トンネル設定でパブリックホスト名を追加します:
@@ -166,16 +170,16 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
     | **Type** | `HTTP` |
     | **URL** | `fim-one:3000` |
 
-    その他のすべての設定 (HTTP Host Header、Chunked Encoding、Timeouts、Access) はデフォルトのままにしてください。
+    その他のすべての設定（HTTP Host Header、Chunked Encoding、Timeouts、Access）はデフォルトのままにしてください。
 
-    <Note>`cloudflared` は同じ Docker ネットワーク内の別のコンテナとして実行されるため、URL は `localhost` ではなく Docker サービス名 `fim-one` を使用します。</Note>
+    <Note>URLは`localhost`ではなくDockerサービス名`fim-one`を使用します。これは`cloudflared`が同じDockerネットワーク内の別のコンテナとして実行されるためです。</Note>
   </Step>
   <Step title="トンネルトークンをコピーする">
-    トンネルの **Configure** ページで、インストールコマンドを見つけます。`eyJ...` で始まるトークンが含まれています。これをコピーしてください。
+    トンネルの**Configure**ページで、インストールコマンドを見つけます。これには`eyJ...`で始まるトークンが含まれています。それをコピーしてください。
   </Step>
-  <Step title="トークンを .env に追加する">
+  <Step title="トークンを.envに追加する">
     ```bash
-    # サーバーの .env ファイルに追加
+    # サーバーの.envファイルに追加
     CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiNj...
     ```
   </Step>
@@ -185,18 +189,18 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
     docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
     ```
 
-    `docker-compose.tunnel.yml` オーバーレイは `cloudflared` サイドカーコンテナを追加します。ベースの `docker-compose.yml` は変更されません。Cloudflare を使用していないコミュニティユーザーは、以前と同じように `docker compose up -d` を使用し続けることができます。
+    `docker-compose.tunnel.yml`オーバーレイは`cloudflared`サイドカーコンテナを追加します。ベースの`docker-compose.yml`は変更されません。Cloudflareを使用していないコミュニティユーザーは引き続き`docker compose up -d`を使用できます。
   </Step>
-  <Step title="古い DNS レコードを削除する">
-    ドメインに以前、サーバーの IP を指す A レコードがある場合は、Cloudflare DNS で **削除してください**。トンネルは自動的にそのエッジエンドポイントを指す CNAME レコードを作成します。
+  <Step title="古いDNSレコードを削除する">
+    ドメインが以前にサーバーのIPを指すAレコードを持っていた場合、Cloudflare DNSで**削除してください**。トンネルは自動的にそのエッジエンドポイントを指すCNAMEレコードを作成します。
   </Step>
   <Step title="サーバーポートを閉じる">
-    サーバーの `docker-compose.yml` から `ports` セクションを削除 (またはコメントアウト) してください。トラフィックはトンネルを通じてのみ流れるようになります。インバウンドポートは不要です。
+    サーバーの`docker-compose.yml`から`ports`セクションを削除（またはコメントアウト）してください。トラフィックはトンネルを通じてのみ流れるようになります。インバウンドポートは不要です。
   </Step>
 </Steps>
 
 <Tip>
-  Cloudflare Tunnel は Free を含むすべてのプランで無料です。帯域幅またはトラフィック制限はありません。
+  Cloudflare Tunnelはすべてのプラン（Freeを含む）で無料です。帯域幅またはトラフィック制限はありません。
 </Tip>
 
 ### スクリプトデプロイメント（ベアメタル）

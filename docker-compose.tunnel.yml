@@ -2,6 +2,14 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
 #
+# ⚠️  NOTICE FOR USERS IN MAINLAND CHINA:
+#   Cloudflare Free/Pro/Business plans have NO Points-of-Presence (PoPs) in
+#   mainland China. Traffic from mainland China is routed to overseas CF edges
+#   (typically US West), causing frequent 502 errors and high latency.
+#   Do NOT use this tunnel if your primary users are in mainland China.
+#   Cloudflare Enterprise with China Network (JD Cloud partnership) is required
+#   for reliable mainland China access.
+#
 # Prerequisites:
 #   1. Create a tunnel in CF Dashboard → Zero Trust → Networks → Tunnels
 #   2. Copy the tunnel token and set it in .env:
@@ -17,7 +25,7 @@
 services:
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate --protocol http2 run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
     depends_on:

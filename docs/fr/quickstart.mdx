@@ -146,6 +146,10 @@ volumes:
 
 Pour une configuration sans ports ouverts, utilisez [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) à la place de Nginx. Tout le trafic transite par le réseau périphérique de Cloudflare — pas besoin d'exposer les ports 80/443, de gérer les certificats SSL ou de configurer les règles de pare-feu.
 
+<Warning>
+**Utilisateurs de Chine continentale** : Les plans Cloudflare Free/Pro/Business n'ont **aucun PoP (Points-of-Presence) en Chine continentale**. Le trafic en provenance de Chine continentale est acheminé vers des serveurs périphériques à l'étranger (généralement US West), ce qui provoque des erreurs 502 fréquentes et une latence élevée. **N'utilisez pas** Cloudflare Tunnel si vos utilisateurs principaux sont en Chine continentale. Cloudflare Enterprise avec China Network (partenariat JD Cloud) est requis pour un accès fiable en Chine continentale.
+</Warning>
+
 ```
 User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
 ```
@@ -154,7 +158,7 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
 
 <Steps>
   <Step title="Créer un tunnel">
-    Allez à [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel**.
+    Allez sur [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel**.
     Choisissez **Cloudflared** comme type de connecteur.
   </Step>
   <Step title="Configurer le nom d'hôte public">
@@ -187,15 +191,15 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
     La surcouche `docker-compose.tunnel.yml` ajoute un conteneur sidecar `cloudflared`. Le fichier `docker-compose.yml` de base reste inchangé — les utilisateurs de la communauté sans Cloudflare peuvent continuer à utiliser `docker compose up -d` comme avant.
   </Step>
   <Step title="Supprimer l'ancien enregistrement DNS">
-    Si votre domaine avait précédemment un enregistrement A pointant vers l'adresse IP de votre serveur, **supprimez-le** dans le DNS Cloudflare. Le tunnel crée automatiquement un enregistrement CNAME pointant vers son point de terminaison périphérique.
+    Si votre domaine avait précédemment un enregistrement A pointant vers l'adresse IP de votre serveur, **supprimez-le** dans Cloudflare DNS. Le tunnel crée automatiquement un enregistrement CNAME pointant vers son point de terminaison périphérique.
   </Step>
   <Step title="Fermer les ports du serveur">
-    Supprimez (ou commentez) la section `ports` de `docker-compose.yml` sur votre serveur. Le trafic transite désormais exclusivement par le tunnel — aucun port entrant n'est nécessaire.
+    Supprimez (ou commentez) la section `ports` de `docker-compose.yml` sur votre serveur. Le trafic transite maintenant exclusivement par le tunnel — aucun port entrant n'est nécessaire.
   </Step>
 </Steps>
 
 <Tip>
-  Cloudflare Tunnel est gratuit sur tous les plans, y compris le plan gratuit. Il n'y a aucune limite de bande passante ou de trafic.
+  Cloudflare Tunnel est gratuit sur tous les plans, y compris Free. Il n'y a aucune limite de bande passante ou de trafic.
 </Tip>
 
 ### Déploiement de script (Bare Metal)

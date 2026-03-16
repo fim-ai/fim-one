@@ -335,6 +335,10 @@ Le backend construit les URLs de rappel comme : `{API_BASE_URL}/api/auth/oauth/{
 
 Acheminez tout le trafic via le réseau de Cloudflare au lieu d'exposer directement les ports. Élimine le besoin de Nginx, de certificats SSL et de règles de pare-feu ouvertes. Consultez la section [Déploiement en Production](/quickstart#cloudflare-tunnel) pour les instructions de configuration.
 
+<Warning>
+**Utilisateurs de la Chine continentale** : Les plans Cloudflare Free/Pro/Business n'ont pas de PoPs en Chine continentale. Le trafic est acheminé vers des edges à l'étranger, causant des erreurs 502 fréquentes. N'utilisez pas ceci si vos utilisateurs principaux sont en Chine continentale, sauf si vous disposez de Cloudflare Enterprise avec China Network.
+</Warning>
+
 | Variable | Requis | Par défaut | Description |
 |---|---|---|---|
 | `CLOUDFLARE_TUNNEL_TOKEN` | **Oui** (si vous utilisez Tunnel) | — | Jeton de Cloudflare Zero Trust → Networks → Tunnels → votre tunnel → Configure. Commence par `eyJ...`. Requis par le sidecar `cloudflared` dans `docker-compose.tunnel.yml`. |

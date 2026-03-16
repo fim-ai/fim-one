@@ -341,6 +341,10 @@ The backend constructs callback URLs as: `{API_BASE_URL}/api/auth/oauth/{provide
 
 Route all traffic through Cloudflare's network instead of exposing ports directly. Eliminates the need for Nginx, SSL certificates, and open firewall rules. See the [Production Deployment](/quickstart#cloudflare-tunnel) section for setup instructions.
 
+<Warning>
+**Mainland China users**: Cloudflare Free/Pro/Business plans have no PoPs in mainland China. Traffic is routed to overseas edges, causing frequent 502 errors. Do not use this if your primary users are in mainland China unless you have Cloudflare Enterprise with China Network.
+</Warning>
+
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `CLOUDFLARE_TUNNEL_TOKEN` | **Yes** (if using Tunnel) | — | Token from Cloudflare Zero Trust → Networks → Tunnels → your tunnel → Configure. Starts with `eyJ...`. Required by the `cloudflared` sidecar in `docker-compose.tunnel.yml`. |

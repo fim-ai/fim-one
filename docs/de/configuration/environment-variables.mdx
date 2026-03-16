@@ -335,9 +335,13 @@ Das Backend konstruiert Callback-URLs als: `{API_BASE_URL}/api/auth/oauth/{provi
 
 Leiten Sie den gesamten Datenverkehr über Cloudflares Netzwerk um, anstatt Ports direkt freizulegen. Eliminiert die Notwendigkeit für Nginx, SSL-Zertifikate und offene Firewall-Regeln. Siehe den Abschnitt [Production Deployment](/quickstart#cloudflare-tunnel) für Setupanweisungen.
 
+<Warning>
+**Benutzer in Festlandchina**: Cloudflare Free/Pro/Business-Pläne haben keine PoPs in Festlandchina. Der Datenverkehr wird zu Overseas-Edges weitergeleitet, was häufig zu 502-Fehlern führt. Verwenden Sie dies nicht, wenn Ihre primären Benutzer in Festlandchina sind, es sei denn, Sie haben Cloudflare Enterprise mit China Network.
+</Warning>
+
 | Variable | Erforderlich | Standard | Beschreibung |
 |---|---|---|---|
-| `CLOUDFLARE_TUNNEL_TOKEN` | **Ja** (bei Verwendung von Tunnel) | — | Token aus Cloudflare Zero Trust → Networks → Tunnels → your tunnel → Configure. Beginnt mit `eyJ...`. Erforderlich durch den `cloudflared` Sidecar in `docker-compose.tunnel.yml`. |
+| `CLOUDFLARE_TUNNEL_TOKEN` | **Ja** (bei Verwendung von Tunnel) | — | Token von Cloudflare Zero Trust → Networks → Tunnels → Ihr Tunnel → Configure. Beginnt mit `eyJ...`. Erforderlich durch den `cloudflared` Sidecar in `docker-compose.tunnel.yml`. |
 
 ---
 

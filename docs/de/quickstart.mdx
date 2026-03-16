@@ -147,11 +147,15 @@ volumes:
 
 Verwenden Sie für ein Setup ohne offene Ports [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) anstelle von Nginx. Der gesamte Datenverkehr fließt über Cloudflares Edge — es ist nicht erforderlich, die Ports 80/443 freizugeben, SSL-Zertifikate zu verwalten oder Firewall-Regeln zu konfigurieren.
 
+<Warning>
+**Benutzer in Festlandchina**: Cloudflare Free/Pro/Business-Pläne haben **keine PoPs (Points-of-Presence) in Festlandchina**. Der Datenverkehr aus Festlandchina wird zu Overseas-Edges weitergeleitet (typischerweise US West), was zu häufigen 502-Fehlern und hoher Latenz führt. Verwenden Sie **nicht** Cloudflare Tunnel, wenn Ihre primären Benutzer in Festlandchina ansässig sind. Cloudflare Enterprise mit China Network (JD Cloud-Partnerschaft) ist erforderlich für zuverlässigen Zugriff auf Festlandchina.
+</Warning>
+
 ```
 User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
 ```
 
-**Setup:**
+**Einrichtung:**
 
 <Steps>
   <Step title="Erstellen Sie einen Tunnel">
@@ -188,7 +192,7 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
     Das `docker-compose.tunnel.yml`-Overlay fügt einen `cloudflared`-Sidecar-Container hinzu. Die Basis-`docker-compose.yml` bleibt unverändert — Community-Benutzer ohne Cloudflare können weiterhin `docker compose up -d` wie zuvor verwenden.
   </Step>
   <Step title="Löschen Sie den alten DNS-Datensatz">
-    Falls Ihre Domain zuvor einen A-Datensatz hatte, der auf die IP-Adresse Ihres Servers verweist, **löschen Sie ihn** in Cloudflare DNS. Der Tunnel erstellt automatisch einen CNAME-Datensatz, der auf seinen Edge-Endpunkt verweist.
+    Wenn Ihre Domain zuvor einen A-Datensatz hatte, der auf die IP-Adresse Ihres Servers verweist, **löschen Sie ihn** in Cloudflare DNS. Der Tunnel erstellt automatisch einen CNAME-Datensatz, der auf seinen Edge-Endpunkt verweist.
   </Step>
   <Step title="Schließen Sie Server-Ports">
     Entfernen Sie (oder kommentieren Sie aus) den Abschnitt `ports` aus `docker-compose.yml` auf Ihrem Server. Der Datenverkehr fließt nun ausschließlich durch den Tunnel — keine eingehenden Ports erforderlich.
@@ -196,7 +200,7 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
 </Steps>
 
 <Tip>
-  Cloudflare Tunnel ist kostenlos für alle Pläne, einschließlich Free. Es gibt keine Bandbreiten- oder Datenverkehrsbeschränkungen.
+  Cloudflare Tunnel ist kostenlos in allen Plänen, einschließlich Free. Es gibt keine Bandbreiten- oder Datenverkehrslimits.
 </Tip>
 
 ### Script-Bereitstellung (Bare Metal)

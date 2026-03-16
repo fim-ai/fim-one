@@ -148,7 +148,11 @@ volumes:
 
 #### Cloudflare Tunnel
 
-对于零开放端口的设置，使用 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) 而不是 Nginx。所有流量都通过 Cloudflare 的边缘节点 — 无需暴露端口 80/443、管理 SSL 证书或配置防火墙规则。
+对于零开放端口的设置，使用 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) 代替 Nginx。所有流量都通过 Cloudflare 的边缘节点流动 — 无需暴露 80/443 端口、管理 SSL 证书或配置防火墙规则。
+
+<Warning>
+**中国大陆用户**：Cloudflare Free/Pro/Business 计划**在中国大陆没有 PoP（存在点）**。来自中国大陆的流量被路由到海外边缘节点（通常是美国西部），导致频繁的 502 错误和高延迟。如果您的主要用户在中国大陆，**不要**使用 Cloudflare Tunnel。需要 Cloudflare Enterprise with China Network（JD Cloud 合作）才能获得可靠的中国大陆访问。
+</Warning>
 
 ```
 User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
@@ -191,10 +195,10 @@ User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
     `docker-compose.tunnel.yml` 覆盖层添加了一个 `cloudflared` sidecar 容器。基础 `docker-compose.yml` 保持不变 — 没有 Cloudflare 的社区用户可以继续使用 `docker compose up -d`。
   </Step>
   <Step title="删除旧的 DNS 记录">
-    如果你的域名之前有一条指向服务器 IP 的 A 记录，在 Cloudflare DNS 中**删除它**。隧道会自动创建一条指向其边缘端点的 CNAME 记录。
+    如果您的域名之前有一条 A 记录指向您的服务器 IP，**在 Cloudflare DNS 中删除它**。隧道会自动创建一条 CNAME 记录指向其边缘端点。
   </Step>
   <Step title="关闭服务器端口">
-    从服务器上的 `docker-compose.yml` 中删除（或注释掉）`ports` 部分。流量现在完全通过隧道流动 — 无需入站端口。
+    从服务器上的 `docker-compose.yml` 中删除（或注释掉）`ports` 部分。流量现在完全通过隧道流动 — 不需要入站端口。
   </Step>
 </Steps>
 

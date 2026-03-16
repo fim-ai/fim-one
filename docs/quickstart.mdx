@@ -144,6 +144,10 @@ volumes:
 
 For a zero-open-ports setup, use [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) instead of Nginx. All traffic flows through Cloudflare's edge — no need to expose ports 80/443, manage SSL certificates, or configure firewall rules.
 
+<Warning>
+**Mainland China users**: Cloudflare Free/Pro/Business plans have **no PoPs (Points-of-Presence) in mainland China**. Traffic from mainland China is routed to overseas edges (typically US West), causing frequent 502 errors and high latency. Do **not** use Cloudflare Tunnel if your primary users are in mainland China. Cloudflare Enterprise with China Network (JD Cloud partnership) is required for reliable mainland access.
+</Warning>
+
 ```
 User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
 ```

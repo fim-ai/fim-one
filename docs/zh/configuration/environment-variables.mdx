@@ -337,11 +337,15 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 ## Cloudflare Tunnel（可选）
 
-通过 Cloudflare 的网络路由所有流量，而不是直接暴露端口。无需 Nginx、SSL 证书和开放防火墙规则。请参阅[生产部署](/quickstart#cloudflare-tunnel)部分了解设置说明。
+通过 Cloudflare 的网络路由所有流量，而不是直接暴露端口。无需 Nginx、SSL 证书和开放防火墙规则。有关设置说明，请参阅[生产部署](/quickstart#cloudflare-tunnel)部分。
+
+<Warning>
+**中国大陆用户**：Cloudflare Free/Pro/Business 计划在中国大陆没有 PoP。流量被路由到海外边缘节点，导致频繁出现 502 错误。除非您拥有带有中国网络的 Cloudflare Enterprise，否则如果您的主要用户在中国大陆，请勿使用此功能。
+</Warning>
 
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `CLOUDFLARE_TUNNEL_TOKEN` | **是**（如果使用 Tunnel） | — | 来自 Cloudflare Zero Trust → Networks → Tunnels → 你的 tunnel → Configure 的令牌。以 `eyJ...` 开头。`docker-compose.tunnel.yml` 中的 `cloudflared` sidecar 需要此令牌。 |
+| `CLOUDFLARE_TUNNEL_TOKEN` | **是**（如果使用 Tunnel） | — | 来自 Cloudflare Zero Trust → Networks → Tunnels → 您的 tunnel → Configure 的令牌。以 `eyJ...` 开头。由 `docker-compose.tunnel.yml` 中的 `cloudflared` sidecar 所需。 |
 
 ---
 
