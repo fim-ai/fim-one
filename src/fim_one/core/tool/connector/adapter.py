@@ -66,7 +66,7 @@ class ConnectorToolAdapter(BaseTool):
         self._base_url = connector_base_url.rstrip("/")
 
         try:
-            validate_url(connector_base_url)
+            validate_url(connector_base_url, allow_dns_failure=True)
         except ValueError as exc:
             raise ValueError(
                 f"Connector base URL blocked by SSRF policy: {exc}"
