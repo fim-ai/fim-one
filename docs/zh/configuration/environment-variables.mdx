@@ -335,6 +335,16 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 ---
 
+## Cloudflare Tunnel（可选）
+
+通过 Cloudflare 的网络路由所有流量，而不是直接暴露端口。无需 Nginx、SSL 证书和开放防火墙规则。请参阅[生产部署](/quickstart#cloudflare-tunnel)部分了解设置说明。
+
+| 变量 | 必需 | 默认值 | 描述 |
+|---|---|---|---|
+| `CLOUDFLARE_TUNNEL_TOKEN` | **是**（如果使用 Tunnel） | — | 来自 Cloudflare Zero Trust → Networks → Tunnels → 你的 tunnel → Configure 的令牌。以 `eyJ...` 开头。`docker-compose.tunnel.yml` 中的 `cloudflared` sidecar 需要此令牌。 |
+
+---
+
 ## 分析（可选）
 
 所有分析提供商都是可选的。设置任意组合 — 所有活跃提供商同时加载。全部留空以完全禁用分析（建议用于本地开发）。

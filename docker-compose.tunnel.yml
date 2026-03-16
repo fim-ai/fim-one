@@ -1,0 +1,25 @@
+# Cloudflare Tunnel overlay — use WITH the base compose file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+#
+# Prerequisites:
+#   1. Create a tunnel in CF Dashboard → Zero Trust → Networks → Tunnels
+#   2. Copy the tunnel token and set it in .env:
+#        CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiNj...
+#   3. In the tunnel's Public Hostname config, add:
+#        Type: HTTP  |  URL: fim-one:3000
+#
+# What this file does:
+#   - Adds a cloudflared sidecar that connects to Cloudflare's edge
+#   - You should remove the `ports` from docker-compose.yml on your server,
+#     or use `!override []` (requires Docker Compose v2.24+)
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - fim-one
+    restart: unless-stopped

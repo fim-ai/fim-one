@@ -146,6 +146,62 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+#### Cloudflare Tunnel
+
+对于零开放端口的设置，使用 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) 而不是 Nginx。所有流量都通过 Cloudflare 的边缘节点 — 无需暴露端口 80/443、管理 SSL 证书或配置防火墙规则。
+
+```
+User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
+```
+
+**设置：**
+
+<Steps>
+  <Step title="创建隧道">
+    前往 [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel**。
+    选择 **Cloudflared** 作为连接器类型。
+  </Step>
+  <Step title="配置公共主机名">
+    在隧道配置中，添加一个公共主机名：
+
+    | 字段 | 值 |
+    |-------|-------|
+    | **Type** | `HTTP` |
+    | **URL** | `fim-one:3000` |
+
+    将所有其他设置（HTTP Host Header、Chunked Encoding、Timeouts、Access）保留为默认值。
+
+    <Note>URL 使用 Docker 服务名称 `fim-one`，而不是 `localhost`，因为 `cloudflared` 作为同一 Docker 网络中的单独容器运行。</Note>
+  </Step>
+  <Step title="复制隧道令牌">
+    在隧道的 **Configure** 页面中，找到安装命令 — 它包含一个以 `eyJ...` 开头的令牌。复制它。
+  </Step>
+  <Step title="将令牌添加到 .env">
+    ```bash
+    # Add to your .env file on the server
+    CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiNj...
+    ```
+  </Step>
+  <Step title="使用隧道覆盖层部署">
+    ```bash
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml build
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+    ```
+
+    `docker-compose.tunnel.yml` 覆盖层添加了一个 `cloudflared` sidecar 容器。基础 `docker-compose.yml` 保持不变 — 没有 Cloudflare 的社区用户可以继续使用 `docker compose up -d`。
+  </Step>
+  <Step title="删除旧的 DNS 记录">
+    如果你的域名之前有一条指向服务器 IP 的 A 记录，在 Cloudflare DNS 中**删除它**。隧道会自动创建一条指向其边缘端点的 CNAME 记录。
+  </Step>
+  <Step title="关闭服务器端口">
+    从服务器上的 `docker-compose.yml` 中删除（或注释掉）`ports` 部分。流量现在完全通过隧道流动 — 无需入站端口。
+  </Step>
+</Steps>
+
+<Tip>
+  Cloudflare Tunnel 在所有计划（包括免费计划）上都是免费的。没有带宽或流量限制。
+</Tip>
+
 ### 脚本部署（裸机）
 
 对于裸机服务器或自定义进程管理器，直接使用 `./start.sh`：

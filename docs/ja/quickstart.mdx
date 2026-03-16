@@ -143,6 +143,62 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+#### Cloudflare Tunnel
+
+ゼロオープンポートセットアップの場合は、Nginx の代わりに [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) を使用してください。すべてのトラフィックは Cloudflare のエッジを通過します。ポート 80/443 を公開したり、SSL 証明書を管理したり、ファイアウォールルールを設定する必要はありません。
+
+```
+User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
+```
+
+**セットアップ:**
+
+<Steps>
+  <Step title="トンネルを作成する">
+    [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel** に移動します。
+    コネクタタイプとして **Cloudflared** を選択します。
+  </Step>
+  <Step title="パブリックホスト名を設定する">
+    トンネル設定でパブリックホスト名を追加します:
+
+    | フィールド | 値 |
+    |-------|-------|
+    | **Type** | `HTTP` |
+    | **URL** | `fim-one:3000` |
+
+    その他のすべての設定 (HTTP Host Header、Chunked Encoding、Timeouts、Access) はデフォルトのままにしてください。
+
+    <Note>`cloudflared` は同じ Docker ネットワーク内の別のコンテナとして実行されるため、URL は `localhost` ではなく Docker サービス名 `fim-one` を使用します。</Note>
+  </Step>
+  <Step title="トンネルトークンをコピーする">
+    トンネルの **Configure** ページで、インストールコマンドを見つけます。`eyJ...` で始まるトークンが含まれています。これをコピーしてください。
+  </Step>
+  <Step title="トークンを .env に追加する">
+    ```bash
+    # サーバーの .env ファイルに追加
+    CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiNj...
+    ```
+  </Step>
+  <Step title="トンネルオーバーレイでデプロイする">
+    ```bash
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml build
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+    ```
+
+    `docker-compose.tunnel.yml` オーバーレイは `cloudflared` サイドカーコンテナを追加します。ベースの `docker-compose.yml` は変更されません。Cloudflare を使用していないコミュニティユーザーは、以前と同じように `docker compose up -d` を使用し続けることができます。
+  </Step>
+  <Step title="古い DNS レコードを削除する">
+    ドメインに以前、サーバーの IP を指す A レコードがある場合は、Cloudflare DNS で **削除してください**。トンネルは自動的にそのエッジエンドポイントを指す CNAME レコードを作成します。
+  </Step>
+  <Step title="サーバーポートを閉じる">
+    サーバーの `docker-compose.yml` から `ports` セクションを削除 (またはコメントアウト) してください。トラフィックはトンネルを通じてのみ流れるようになります。インバウンドポートは不要です。
+  </Step>
+</Steps>
+
+<Tip>
+  Cloudflare Tunnel は Free を含むすべてのプランで無料です。帯域幅またはトラフィック制限はありません。
+</Tip>
+
 ### スクリプトデプロイメント（ベアメタル）
 
 ベアメタルサーバーまたはカスタムプロセスマネージャーの場合、`./start.sh` を直接使用します：

@@ -331,6 +331,16 @@ Das Backend konstruiert Callback-URLs als: `{API_BASE_URL}/api/auth/oauth/{provi
 
 ---
 
+## Cloudflare Tunnel (Optional)
+
+Leiten Sie den gesamten Datenverkehr über Cloudflares Netzwerk um, anstatt Ports direkt freizulegen. Eliminiert die Notwendigkeit für Nginx, SSL-Zertifikate und offene Firewall-Regeln. Siehe den Abschnitt [Production Deployment](/quickstart#cloudflare-tunnel) für Setupanweisungen.
+
+| Variable | Erforderlich | Standard | Beschreibung |
+|---|---|---|---|
+| `CLOUDFLARE_TUNNEL_TOKEN` | **Ja** (bei Verwendung von Tunnel) | — | Token aus Cloudflare Zero Trust → Networks → Tunnels → your tunnel → Configure. Beginnt mit `eyJ...`. Erforderlich durch den `cloudflared` Sidecar in `docker-compose.tunnel.yml`. |
+
+---
+
 ## Analytics (Optional)
 
 Alle Analytics-Anbieter sind optional. Legen Sie eine beliebige Kombination fest — alle aktiven Anbieter werden gleichzeitig geladen. Lassen Sie alle leer, um Analytics vollständig zu deaktivieren (empfohlen für lokale Entwicklung).

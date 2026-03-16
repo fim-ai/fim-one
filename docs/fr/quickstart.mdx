@@ -142,6 +142,62 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+#### Tunnel Cloudflare
+
+Pour une configuration sans ports ouverts, utilisez [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) à la place de Nginx. Tout le trafic transite par le réseau périphérique de Cloudflare — pas besoin d'exposer les ports 80/443, de gérer les certificats SSL ou de configurer les règles de pare-feu.
+
+```
+User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
+```
+
+**Configuration :**
+
+<Steps>
+  <Step title="Créer un tunnel">
+    Allez à [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel**.
+    Choisissez **Cloudflared** comme type de connecteur.
+  </Step>
+  <Step title="Configurer le nom d'hôte public">
+    Dans la configuration du tunnel, ajoutez un nom d'hôte public :
+
+    | Champ | Valeur |
+    |-------|--------|
+    | **Type** | `HTTP` |
+    | **URL** | `fim-one:3000` |
+
+    Laissez tous les autres paramètres (HTTP Host Header, Chunked Encoding, Timeouts, Access) à leurs valeurs par défaut.
+
+    <Note>L'URL utilise le nom du service Docker `fim-one`, pas `localhost`, car `cloudflared` s'exécute en tant que conteneur séparé dans le même réseau Docker.</Note>
+  </Step>
+  <Step title="Copier le jeton du tunnel">
+    Sur la page **Configure** du tunnel, trouvez la commande d'installation — elle contient un jeton commençant par `eyJ...`. Copiez-le.
+  </Step>
+  <Step title="Ajouter le jeton à .env">
+    ```bash
+    # Add to your .env file on the server
+    CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiNj...
+    ```
+  </Step>
+  <Step title="Déployer avec la surcouche tunnel">
+    ```bash
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml build
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+    ```
+
+    La surcouche `docker-compose.tunnel.yml` ajoute un conteneur sidecar `cloudflared`. Le fichier `docker-compose.yml` de base reste inchangé — les utilisateurs de la communauté sans Cloudflare peuvent continuer à utiliser `docker compose up -d` comme avant.
+  </Step>
+  <Step title="Supprimer l'ancien enregistrement DNS">
+    Si votre domaine avait précédemment un enregistrement A pointant vers l'adresse IP de votre serveur, **supprimez-le** dans le DNS Cloudflare. Le tunnel crée automatiquement un enregistrement CNAME pointant vers son point de terminaison périphérique.
+  </Step>
+  <Step title="Fermer les ports du serveur">
+    Supprimez (ou commentez) la section `ports` de `docker-compose.yml` sur votre serveur. Le trafic transite désormais exclusivement par le tunnel — aucun port entrant n'est nécessaire.
+  </Step>
+</Steps>
+
+<Tip>
+  Cloudflare Tunnel est gratuit sur tous les plans, y compris le plan gratuit. Il n'y a aucune limite de bande passante ou de trafic.
+</Tip>
+
 ### Déploiement de script (Bare Metal)
 
 Pour les serveurs bare-metal ou les gestionnaires de processus personnalisés, utilisez `./start.sh` directement :

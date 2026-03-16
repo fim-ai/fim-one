@@ -143,6 +143,62 @@ volumes:
   - /var/run/docker.sock:/var/run/docker.sock
 ```
 
+#### Cloudflare Tunnel
+
+Verwenden Sie für ein Setup ohne offene Ports [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) anstelle von Nginx. Der gesamte Datenverkehr fließt über Cloudflares Edge — es ist nicht erforderlich, die Ports 80/443 freizugeben, SSL-Zertifikate zu verwalten oder Firewall-Regeln zu konfigurieren.
+
+```
+User → Cloudflare Edge (SSL) → Tunnel → cloudflared → fim-one:3000
+```
+
+**Setup:**
+
+<Steps>
+  <Step title="Erstellen Sie einen Tunnel">
+    Gehen Sie zu [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → Networks → Tunnels → **Create a tunnel**.
+    Wählen Sie **Cloudflared** als Connector-Typ.
+  </Step>
+  <Step title="Konfigurieren Sie den öffentlichen Hostnamen">
+    Fügen Sie in der Tunnel-Konfiguration einen öffentlichen Hostnamen hinzu:
+
+    | Feld | Wert |
+    |-------|-------|
+    | **Type** | `HTTP` |
+    | **URL** | `fim-one:3000` |
+
+    Lassen Sie alle anderen Einstellungen (HTTP Host Header, Chunked Encoding, Timeouts, Access) auf ihren Standardwerten.
+
+    <Note>Die URL verwendet den Docker-Servicenamen `fim-one`, nicht `localhost`, da `cloudflared` als separater Container im selben Docker-Netzwerk ausgeführt wird.</Note>
+  </Step>
+  <Step title="Kopieren Sie das Tunnel-Token">
+    Suchen Sie auf der Seite **Configure** des Tunnels den Installationsbefehl — er enthält ein Token, das mit `eyJ...` beginnt. Kopieren Sie es.
+  </Step>
+  <Step title="Fügen Sie das Token zu .env hinzu">
+    ```bash
+    # Add to your .env file on the server
+    CLOUDFLARE_TUNNEL_TOKEN=eyJhIjoiNj...
+    ```
+  </Step>
+  <Step title="Stellen Sie mit dem Tunnel-Overlay bereit">
+    ```bash
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml build
+    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+    ```
+
+    Das `docker-compose.tunnel.yml`-Overlay fügt einen `cloudflared`-Sidecar-Container hinzu. Die Basis-`docker-compose.yml` bleibt unverändert — Community-Benutzer ohne Cloudflare können weiterhin `docker compose up -d` wie zuvor verwenden.
+  </Step>
+  <Step title="Löschen Sie den alten DNS-Datensatz">
+    Falls Ihre Domain zuvor einen A-Datensatz hatte, der auf die IP-Adresse Ihres Servers verweist, **löschen Sie ihn** in Cloudflare DNS. Der Tunnel erstellt automatisch einen CNAME-Datensatz, der auf seinen Edge-Endpunkt verweist.
+  </Step>
+  <Step title="Schließen Sie Server-Ports">
+    Entfernen Sie (oder kommentieren Sie aus) den Abschnitt `ports` aus `docker-compose.yml` auf Ihrem Server. Der Datenverkehr fließt nun ausschließlich durch den Tunnel — keine eingehenden Ports erforderlich.
+  </Step>
+</Steps>
+
+<Tip>
+  Cloudflare Tunnel ist kostenlos für alle Pläne, einschließlich Free. Es gibt keine Bandbreiten- oder Datenverkehrsbeschränkungen.
+</Tip>
+
 ### Script-Bereitstellung (Bare Metal)
 
 Für Bare-Metal-Server oder benutzerdefinierte Prozessmanager verwenden Sie `./start.sh` direkt:
