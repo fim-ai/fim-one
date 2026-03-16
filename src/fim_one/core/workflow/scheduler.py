@@ -199,6 +199,16 @@ class WorkflowScheduler:
 
     async def _dispatch_run(self, wf: Any) -> None:
         """Create a WorkflowRun record and launch execution in the background."""
+        # Skip if all concurrent slots are occupied — avoids updating
+        # last_scheduled_at when we cannot actually run the workflow.
+        if self._semaphore.locked():
+            logger.info(
+                "Scheduler: all concurrent slots busy, skipping '%s' (id=%s)",
+                wf.name,
+                wf.id,
+            )
+            return
+
         logger.info(
             "Scheduler triggering workflow '%s' (id=%s, cron=%s, tz=%s)",
             wf.name,
