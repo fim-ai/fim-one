@@ -120,8 +120,8 @@ def _make_context(
 
 
 @pytest.mark.asyncio
-async def test_missing_db_session_factory_errors() -> None:
-    """Executor should fail if db_session_factory is not provided."""
+async def test_missing_db_session_factory_auto_approves() -> None:
+    """Executor should auto-approve when db_session_factory is not provided."""
     executor = HumanInterventionExecutor()
     node = _make_node()
     store = VariableStore()
@@ -129,8 +129,9 @@ async def test_missing_db_session_factory_errors() -> None:
 
     result = await executor.execute(node, store, ctx)
 
-    assert result.status == NodeStatus.FAILED
-    assert "db_session_factory" in (result.error or "")
+    assert result.status == NodeStatus.COMPLETED
+    assert result.output["auto_approved"] is True
+    assert result.output["status"] == "approved"
 
 
 # ---------------------------------------------------------------------------
