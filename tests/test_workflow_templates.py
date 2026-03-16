@@ -558,6 +558,7 @@ class TestCreateWorkflowFromTemplate:
         wf_mock.schedule_inputs = None
         wf_mock.schedule_timezone = "UTC"
         wf_mock.api_key = None
+        wf_mock.change_summary = None
         wf_mock.created_at = datetime.now(timezone.utc)
         wf_mock.updated_at = None
 
@@ -604,6 +605,7 @@ class TestCreateWorkflowFromTemplate:
         wf_mock.is_active = True
         wf_mock.visibility = "personal"
         wf_mock.org_id = None
+        wf_mock.change_summary = None
         wf_mock.publish_status = None
         wf_mock.published_at = None
         wf_mock.reviewed_by = None
