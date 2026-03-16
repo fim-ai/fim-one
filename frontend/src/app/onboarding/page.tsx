@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { motion } from "motion/react"
 import confetti from "canvas-confetti"
@@ -114,11 +114,7 @@ export default function OnboardingPage() {
   const t = useTranslations("onboarding")
   const tError = useTranslations("errors")
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { user, isLoading: authLoading, updateUser } = useAuth()
-
-  // When triggered from settings, redirect back there on skip/complete
-  const returnTo = searchParams.get("from") === "settings" ? "/settings" : "/"
 
   const [step, setStep] = useState(1)
   const [direction, setDirection] = useState<"forward" | "backward">("forward")
@@ -148,9 +144,9 @@ export default function OnboardingPage() {
     if (!authLoading && !user) {
       router.replace("/login")
     } else if (!authLoading && user?.onboarding_completed && step !== 5) {
-      router.replace(returnTo)
+      router.replace("/")
     }
-  }, [authLoading, user, router, returnTo, step])
+  }, [authLoading, user, router, step])
 
   const goNext = useCallback(() => {
     if (step < TOTAL_STEPS) {
@@ -171,13 +167,13 @@ export default function OnboardingPage() {
     try {
       const updated = await authApi.updateProfile({ onboarding_completed: true })
       updateUser(updated)
-      router.replace(returnTo)
+      router.replace("/")
     } catch (err) {
       toast.error(getErrorMessage(err, tError))
     } finally {
       setSubmitting(false)
     }
-  }, [updateUser, router, returnTo, tError])
+  }, [updateUser, router, tError])
 
   const handleComplete = useCallback(async () => {
     setSubmitting(true)
@@ -232,14 +228,14 @@ export default function OnboardingPage() {
 
       if (next <= 0) {
         if (countdownRef.current) clearInterval(countdownRef.current)
-        router.replace(returnTo)
+        router.replace("/")
       }
     }, 1000)
 
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current)
     }
-  }, [step, router, returnTo])
+  }, [step, router])
 
   const toggleProject = (value: string) => {
     setSelectedProjects((prev) => {
@@ -527,7 +523,7 @@ export default function OnboardingPage() {
                   size="lg"
                   onClick={() => {
                     if (countdownRef.current) clearInterval(countdownRef.current)
-                    router.replace(returnTo)
+                    router.replace("/")
                   }}
                   className="min-w-[200px] text-base font-medium shadow-[0_0_20px_hsl(var(--primary)/0.3)] hover:shadow-[0_0_28px_hsl(var(--primary)/0.45)] transition-shadow duration-300 focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
                 >

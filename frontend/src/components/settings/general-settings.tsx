@@ -398,7 +398,7 @@ export function GeneralSettings() {
             try {
               const updated = await authApi.updateProfile({ onboarding_completed: false })
               updateUser(updated)
-              router.push("/onboarding?from=settings")
+              router.push("/onboarding")
             } catch {
               toast.error(t("personalizationFailed"))
             }
