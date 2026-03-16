@@ -142,12 +142,15 @@ async def test_successful_execution() -> None:
 
     assert result.status == NodeStatus.COMPLETED
     assert result.error is None
-    # The tool returns "10.0"
-    assert "10" in result.output
+    # The tool returns structured dict with result "10.0"
+    assert isinstance(result.output, dict)
+    assert result.output["tool_id"] == "add_numbers"
+    assert result.output["status"] == "completed"
+    assert "10" in result.output["result"]
 
-    # Verify the value was stored under the standard key
+    # Verify the value was stored under the standard key (now a dict)
     stored = await store.get("node-bt-1.output")
-    assert stored == "10.0"
+    assert stored["result"] == "10.0"
 
 
 @pytest.mark.asyncio
@@ -161,10 +164,12 @@ async def test_output_variable_stored() -> None:
     result = await executor.execute(node, store, _make_context())
 
     assert result.status == NodeStatus.COMPLETED
-    # Standard key
-    assert await store.get("node-bt-1.output") == "3.0"
-    # User-defined variable
-    assert await store.get("my_sum") == "3.0"
+    # Standard key — now a structured dict
+    stored = await store.get("node-bt-1.output")
+    assert stored["result"] == "3.0"
+    # User-defined variable — same structured dict
+    user_var = await store.get("my_sum")
+    assert user_var["result"] == "3.0"
 
 
 @pytest.mark.asyncio
@@ -180,7 +185,7 @@ async def test_parameter_interpolation() -> None:
     result = await executor.execute(node, store, _make_context())
 
     assert result.status == NodeStatus.COMPLETED
-    assert "20" in result.output
+    assert "20" in result.output["result"]
 
 
 @pytest.mark.asyncio
@@ -257,7 +262,7 @@ async def test_rich_tool_result() -> None:
 
     assert result.status == NodeStatus.COMPLETED
     stored = await store.get("node-bt-1.output")
-    assert stored == "rich output: hello"
+    assert stored["result"] == "rich output: hello"
 
 
 @pytest.mark.asyncio
@@ -273,7 +278,7 @@ async def test_empty_parameters() -> None:
     assert result.status == NodeStatus.COMPLETED
     # Default values: a=0, b=0 => "0.0"
     stored = await store.get("node-bt-1.output")
-    assert stored == "0.0"
+    assert stored["result"] == "0.0"
 
 
 @pytest.mark.asyncio
@@ -288,7 +293,7 @@ async def test_non_string_parameters_passed_through() -> None:
 
     assert result.status == NodeStatus.COMPLETED
     stored = await store.get("node-bt-1.output")
-    assert stored == "50.0"
+    assert stored["result"] == "50.0"
 
 
 @pytest.mark.asyncio
@@ -322,7 +327,7 @@ async def test_partial_interpolation() -> None:
 
     assert result.status == NodeStatus.COMPLETED
     stored = await store.get("node-bt-1.output")
-    assert stored == "125.0"
+    assert stored["result"] == "125.0"
 
 
 @pytest.mark.asyncio
@@ -340,8 +345,8 @@ async def test_duration_is_tracked() -> None:
 
 
 @pytest.mark.asyncio
-async def test_output_truncated_to_500_chars() -> None:
-    """Long tool output is truncated in the NodeResult but stored in full."""
+async def test_long_output_stored_in_full() -> None:
+    """Long tool output is stored in full inside the structured dict."""
 
     class LongOutputTool(BaseTool):
         @property
@@ -367,8 +372,9 @@ async def test_output_truncated_to_500_chars() -> None:
     result = await executor.execute(node, store, _make_context())
 
     assert result.status == NodeStatus.COMPLETED
-    # NodeResult.output is truncated to 500
-    assert len(result.output) == 500
-    # But the full output is stored in the variable store
+    # NodeResult.output is now a structured dict
+    assert isinstance(result.output, dict)
+    assert len(result.output["result"]) == 1000
+    # The full output is also stored in the variable store as a dict
     stored = await store.get("node-bt-1.output")
-    assert len(stored) == 1000
+    assert len(stored["result"]) == 1000
