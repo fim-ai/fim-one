@@ -6604,7 +6604,7 @@ class TestBuiltinToolNode:
         result = await executor.execute(node, store, ctx)
         assert result.status == NodeStatus.COMPLETED
         assert result.output["tool_id"] == "web_search"
-        assert result.output["status"] == "stub"
+        assert result.output["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_missing_tool_id_fails(self):
@@ -6699,10 +6699,12 @@ class TestBuiltinToolNode:
 
         stored = await store.get("search_data")
         assert stored is not None
-        assert stored["status"] == "stub"
+        assert stored["status"] == "completed"
 
-        namespaced = await store.get("tool_1.search_data")
-        assert namespaced is not None
+        # The old stub wrote a namespaced key; the real executor does not,
+        # but the standard node output key is always set.
+        node_out = await store.get("tool_1.output")
+        assert node_out is not None
 
 
 # =========================================================================

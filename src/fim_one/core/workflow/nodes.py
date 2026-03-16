@@ -3143,22 +3143,30 @@ class BuiltinToolExecutor:
 
             # Normalise output — tools may return str or ToolResult
             if isinstance(raw_result, ToolResult):
-                output: str = raw_result.content
+                result_text: str = raw_result.content
             else:
-                output = str(raw_result) if raw_result is not None else ""
+                result_text = str(raw_result) if raw_result is not None else ""
+
+            # Build structured output with metadata
+            output: dict[str, Any] = {
+                "tool_id": tool_id,
+                "parameters": params,
+                "result": result_text,
+                "status": "completed",
+            }
 
             # Store under the standard node output key
             await store.set(f"{node.id}.output", output)
 
             # Also store under a user-defined output variable if specified
-            output_variable = node.data.get("output_variable", "")
+            output_variable = node.data.get("output_variable", "tool_result")
             if output_variable:
                 await store.set(output_variable, output)
 
             return NodeResult(
                 node_id=node.id,
                 status=NodeStatus.COMPLETED,
-                output=output[:500],
+                output=output,
                 duration_ms=_ms_since(t0),
             )
         except Exception as exc:
