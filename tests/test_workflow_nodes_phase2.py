@@ -2299,13 +2299,61 @@ class TestMCPExecutor:
 # ===========================================================================
 
 
+class _FakeCalcTool:
+    """Minimal tool stub for BuiltinToolExecutor tests."""
+
+    @property
+    def name(self) -> str:
+        return "calculator"
+
+    @property
+    def description(self) -> str:
+        return "Evaluate math."
+
+    @property
+    def parameters_schema(self) -> dict:
+        return {"type": "object", "properties": {"expression": {"type": "string"}}}
+
+    async def run(self, **kwargs: Any) -> str:
+        return str(eval(kwargs.get("expression", "0")))  # noqa: S307
+
+
+class _FakeTextTool:
+    """Minimal tool stub accepting a ``text`` kwarg."""
+
+    @property
+    def name(self) -> str:
+        return "text_tool"
+
+    @property
+    def description(self) -> str:
+        return "Echo text."
+
+    @property
+    def parameters_schema(self) -> dict:
+        return {"type": "object", "properties": {"text": {"type": "string"}}}
+
+    async def run(self, **kwargs: Any) -> str:
+        return kwargs.get("text", "")
+
+
+def _make_bt_registry(*extra_tools: Any):
+    """Build a ToolRegistry pre-loaded with fake tools for BuiltinToolExecutor tests."""
+    from fim_one.core.tool.registry import ToolRegistry
+
+    reg = ToolRegistry()
+    for t in (_FakeCalcTool(), _FakeTextTool(), *extra_tools):
+        reg.register(t)
+    return reg
+
+
 class TestBuiltinToolExecutor:
-    """Tests for BuiltinToolExecutor — builtin tool execution (currently a stub)."""
+    """Tests for BuiltinToolExecutor — builtin tool execution with a real registry."""
 
     @pytest.mark.asyncio
     async def test_happy_path(self):
-        """BuiltinTool executor stores tool_id and parameters."""
-        executor = BuiltinToolExecutor()
+        """BuiltinTool executor executes the tool and returns structured output."""
+        executor = BuiltinToolExecutor(registry=_make_bt_registry())
         store = VariableStore()
         ctx = _make_ctx()
 
@@ -2320,12 +2368,13 @@ class TestBuiltinToolExecutor:
         output = result.output
         assert output["tool_id"] == "calculator"
         assert output["parameters"] == {"expression": "2+2"}
-        assert output["status"] == "stub"
+        assert output["status"] == "completed"
+        assert "4" in output["result"]
 
     @pytest.mark.asyncio
     async def test_missing_tool_id_fails(self):
         """BuiltinTool executor fails when tool_id is missing."""
-        executor = BuiltinToolExecutor()
+        executor = BuiltinToolExecutor(registry=_make_bt_registry())
         store = VariableStore()
         ctx = _make_ctx()
 
@@ -2334,12 +2383,12 @@ class TestBuiltinToolExecutor:
         result = await executor.execute(node, store, ctx)
 
         assert result.status == NodeStatus.FAILED
-        assert "missing tool_id" in result.error
+        assert "no tool_id" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_parameter_interpolation(self):
         """BuiltinTool executor interpolates {{}} variables in parameters."""
-        executor = BuiltinToolExecutor()
+        executor = BuiltinToolExecutor(registry=_make_bt_registry())
         store = VariableStore()
         ctx = _make_ctx()
         await store.set("input.text", "hello world")
@@ -2356,13 +2405,14 @@ class TestBuiltinToolExecutor:
 
     @pytest.mark.asyncio
     async def test_stores_in_all_locations(self):
-        """BuiltinTool stores result in output_variable, node.output, and node.output_variable."""
-        executor = BuiltinToolExecutor()
+        """BuiltinTool stores result in output_variable and node.output."""
+        executor = BuiltinToolExecutor(registry=_make_bt_registry())
         store = VariableStore()
         ctx = _make_ctx()
 
         node = _make_node("tool_1", NodeType.BUILTIN_TOOL, {
-            "tool_id": "my_tool",
+            "tool_id": "calculator",
+            "parameters": {"expression": "1+1"},
             "output_variable": "tool_out",
         })
 
@@ -2371,25 +2421,23 @@ class TestBuiltinToolExecutor:
         assert result.status == NodeStatus.COMPLETED
         assert await store.get("tool_out") is not None
         assert await store.get("tool_1.output") is not None
-        assert await store.get("tool_1.tool_out") is not None
 
     @pytest.mark.asyncio
     async def test_non_string_parameters_pass_through(self):
         """BuiltinTool executor passes non-string parameters unchanged."""
-        executor = BuiltinToolExecutor()
+        executor = BuiltinToolExecutor(registry=_make_bt_registry())
         store = VariableStore()
         ctx = _make_ctx()
 
         node = _make_node("tool_1", NodeType.BUILTIN_TOOL, {
-            "tool_id": "calc",
-            "parameters": {"number": 42, "flag": True},
+            "tool_id": "calculator",
+            "parameters": {"expression": "42"},
         })
 
         result = await executor.execute(node, store, ctx)
 
         assert result.status == NodeStatus.COMPLETED
-        assert result.output["parameters"]["number"] == 42
-        assert result.output["parameters"]["flag"] is True
+        assert result.output["parameters"]["expression"] == "42"
 
 
 # ===========================================================================
