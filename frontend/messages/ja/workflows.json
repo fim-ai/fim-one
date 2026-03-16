@@ -70,7 +70,7 @@
   "unsavedChangesDescription": "保存されていない変更があります。このページを離れると変更は破棄されます。",
   "stay": "留まる",
   "discardAndLeave": "破棄して離れる",
-  "runPanelTitle": "実行結果",
+  "runPanelTitle": "実行",
   "runPanelInputs": "入力",
   "runPanelProvideInputs": "ワークフローを実行するための入力値を指定してください",
   "runPanelNoInputs": "このワークフローに入力変数はありません",
@@ -147,7 +147,7 @@
   "workflowDuplicateFailed": "ワークフローの複製に失敗しました",
   "workflowExportFailed": "ワークフローのエクスポートに失敗しました",
   "runPanelRunAgain": "再度実行",
-  "runPanelProgress": "{completed}/{total} ノード完了",
+  "runPanelProgress": "{completed}/{total} ノード",
   "runPanelShowOutput": "出力を表示",
   "runPanelHideOutput": "出力を非表示",
   "historyTitle": "実行履歴",
@@ -748,5 +748,8 @@
   "variablesMenuItem": "変数",
   "statusDropdownDraft": "ドラフト",
   "statusDropdownActive": "アクティブ",
-  "statusChanged": "ワークフローステータスが更新されました"
+  "statusChanged": "ワークフローステータスが更新されました",
+  "runPanelStatusCompleted": "完了",
+  "runPanelStatusFailed": "失敗",
+  "runPanelStatusRunning": "実行中"
 }

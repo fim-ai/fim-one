@@ -730,24 +730,11 @@ export function RunPanel({
 
   return (
     <div className="flex flex-col h-full w-[420px] shrink-0 border-l border-border bg-background/95 backdrop-blur-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border/40 shrink-0">
-        <div className="flex items-center gap-2">
-          <h3 className="text-xs font-semibold text-foreground">
-            {t("runPanelTitle")}
-          </h3>
-          {isRunning && (
-            <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
-          )}
-          {/* Progress indicator */}
-          {(isRunning || hasResults) && totalNodeCount > 0 && (
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              {t("runPanelProgress", {
-                completed: completedCount,
-                total: totalNodeCount,
-              })}
-            </span>
-          )}
-        </div>
+      {/* Row 1: Title + action buttons */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
+        <h3 className="text-sm font-semibold text-foreground">
+          {t("runPanelTitle")}
+        </h3>
         <div className="flex items-center gap-1.5">
           {isRunning && (
             <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={onCancel}>
@@ -765,16 +752,58 @@ export function RunPanel({
               {t("runPanelRunAgain")}
             </Button>
           )}
-          {runDuration != null && (
-            <span className="text-[11px] text-muted-foreground tabular-nums">
-              {t("runPanelDuration")}: {fmtDuration(runDuration / 1000)}
-            </span>
-          )}
           <Button variant="ghost" size="icon-sm" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
+
+      {/* Row 2: Status bar (only visible when running or has results) */}
+      {(isRunning || hasResults) && (
+        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border/20 bg-muted/30 shrink-0">
+          {isRunning ? (
+            <>
+              <Loader2 className="h-3 w-3 text-blue-500 animate-spin shrink-0" />
+              <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
+                {t("runPanelStatusRunning")}
+              </span>
+            </>
+          ) : finalError ? (
+            <>
+              <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+              <span className="text-[11px] text-red-600 dark:text-red-400 font-medium">
+                {t("runPanelStatusFailed")}
+              </span>
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+              <span className="text-[11px] text-green-600 dark:text-green-400 font-medium">
+                {t("runPanelStatusCompleted")}
+              </span>
+            </>
+          )}
+          {totalNodeCount > 0 && (
+            <>
+              <span className="text-[11px] text-muted-foreground/50">·</span>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {t("runPanelProgress", {
+                  completed: completedCount,
+                  total: totalNodeCount,
+                })}
+              </span>
+            </>
+          )}
+          {runDuration != null && (
+            <>
+              <span className="text-[11px] text-muted-foreground/50">·</span>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {fmtDuration(runDuration / 1000)}
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Input form (no tabs) */}
       {showInputForm && (

@@ -70,7 +70,7 @@
   "unsavedChangesDescription": "저장하지 않은 변경 사항이 있습니다. 이 페이지를 떠나면 변경 사항이 삭제됩니다.",
   "stay": "머물기",
   "discardAndLeave": "삭제 후 떠나기",
-  "runPanelTitle": "실행 결과",
+  "runPanelTitle": "실행",
   "runPanelInputs": "입력",
   "runPanelProvideInputs": "워크플로우를 실행하기 위해 입력 값을 제공하세요",
   "runPanelNoInputs": "이 워크플로우에는 입력 변수가 없습니다",
@@ -147,7 +147,7 @@
   "workflowDuplicateFailed": "워크플로우 복제에 실패했습니다",
   "workflowExportFailed": "워크플로우 내보내기에 실패했습니다",
   "runPanelRunAgain": "다시 실행",
-  "runPanelProgress": "{completed}/{total}개 노드 완료됨",
+  "runPanelProgress": "{completed}/{total} 노드",
   "runPanelShowOutput": "출력 표시",
   "runPanelHideOutput": "출력 숨기기",
   "historyTitle": "실행 기록",
@@ -748,5 +748,8 @@
   "variablesMenuItem": "변수",
   "statusDropdownDraft": "초안",
   "statusDropdownActive": "활성",
-  "statusChanged": "워크플로우 상태가 업데이트되었습니다"
+  "statusChanged": "워크플로우 상태가 업데이트되었습니다",
+  "runPanelStatusCompleted": "완료됨",
+  "runPanelStatusFailed": "실패",
+  "runPanelStatusRunning": "실행 중"
 }

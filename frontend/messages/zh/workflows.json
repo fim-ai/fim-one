@@ -70,7 +70,7 @@
   "unsavedChangesDescription": "您有未保存的更改。离开此页面将丢弃这些更改。",
   "stay": "留下",
   "discardAndLeave": "丢弃并离开",
-  "runPanelTitle": "运行结果",
+  "runPanelTitle": "运行",
   "runPanelInputs": "输入",
   "runPanelProvideInputs": "提供输入值以运行工作流",
   "runPanelNoInputs": "此工作流没有输入变量",
@@ -147,7 +147,7 @@
   "workflowDuplicateFailed": "复制工作流失败",
   "workflowExportFailed": "导出工作流失败",
   "runPanelRunAgain": "再次运行",
-  "runPanelProgress": "{completed}/{total} 个节点已完成",
+  "runPanelProgress": "{completed}/{total} 个节点",
   "runPanelShowOutput": "显示输出",
   "runPanelHideOutput": "隐藏输出",
   "historyTitle": "运行历史",
@@ -748,5 +748,8 @@
   "variablesMenuItem": "变量",
   "statusDropdownDraft": "草稿",
   "statusDropdownActive": "活跃",
-  "statusChanged": "工作流状态已更新"
+  "statusChanged": "工作流状态已更新",
+  "runPanelStatusCompleted": "已完成",
+  "runPanelStatusFailed": "失败",
+  "runPanelStatusRunning": "运行中"
 }

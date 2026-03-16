@@ -70,7 +70,7 @@
   "unsavedChangesDescription": "Sie haben ungespeicherte Änderungen. Wenn Sie diese Seite verlassen, werden diese verworfen.",
   "stay": "Bleiben",
   "discardAndLeave": "Verwerfen und verlassen",
-  "runPanelTitle": "Ausführungsergebnisse",
+  "runPanelTitle": "Ausführung",
   "runPanelInputs": "Eingaben",
   "runPanelProvideInputs": "Geben Sie Eingabewerte ein, um den Workflow auszuführen",
   "runPanelNoInputs": "Dieser Workflow hat keine Eingabevariablen",
@@ -147,7 +147,7 @@
   "workflowDuplicateFailed": "Fehler beim Duplizieren des Workflows",
   "workflowExportFailed": "Fehler beim Exportieren des Workflows",
   "runPanelRunAgain": "Erneut ausführen",
-  "runPanelProgress": "{completed}/{total} Knoten abgeschlossen",
+  "runPanelProgress": "{completed}/{total} Knoten",
   "runPanelShowOutput": "Ausgabe anzeigen",
   "runPanelHideOutput": "Ausgabe ausblenden",
   "historyTitle": "Ausführungsverlauf",
@@ -748,5 +748,8 @@
   "variablesMenuItem": "Variablen",
   "statusDropdownDraft": "Entwurf",
   "statusDropdownActive": "Aktiv",
-  "statusChanged": "Workflow-Status aktualisiert"
+  "statusChanged": "Workflow-Status aktualisiert",
+  "runPanelStatusCompleted": "Abgeschlossen",
+  "runPanelStatusFailed": "Fehlgeschlagen",
+  "runPanelStatusRunning": "Wird ausgeführt"
 }

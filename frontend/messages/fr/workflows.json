@@ -70,7 +70,7 @@
   "unsavedChangesDescription": "Vous avez des modifications non enregistrées. Les quitter entraînera leur suppression.",
   "stay": "Rester",
   "discardAndLeave": "Abandonner et quitter",
-  "runPanelTitle": "Résultats de l'exécution",
+  "runPanelTitle": "Exécution",
   "runPanelInputs": "Entrées",
   "runPanelProvideInputs": "Fournir les valeurs d'entrée pour exécuter le flux de travail",
   "runPanelNoInputs": "Ce flux de travail n'a pas de variables d'entrée",
@@ -147,7 +147,7 @@
   "workflowDuplicateFailed": "Échec de la duplication du workflow",
   "workflowExportFailed": "Échec de l'export du workflow",
   "runPanelRunAgain": "Exécuter à nouveau",
-  "runPanelProgress": "{completed}/{total} nœuds complétés",
+  "runPanelProgress": "{completed}/{total} nœuds",
   "runPanelShowOutput": "Afficher la sortie",
   "runPanelHideOutput": "Masquer la sortie",
   "historyTitle": "Historique d'exécution",
@@ -748,5 +748,8 @@
   "variablesMenuItem": "Variables",
   "statusDropdownDraft": "Brouillon",
   "statusDropdownActive": "Actif",
-  "statusChanged": "Statut du flux de travail mis à jour"
+  "statusChanged": "Statut du flux de travail mis à jour",
+  "runPanelStatusCompleted": "Terminé",
+  "runPanelStatusFailed": "Échoué",
+  "runPanelStatusRunning": "En cours d'exécution"
 }
