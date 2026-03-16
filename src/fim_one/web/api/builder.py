@@ -168,7 +168,7 @@ async def create_builder_session(
         icon="\U0001f528",
         description=description,
         instructions=instructions,
-        execution_mode="react",
+        execution_mode="auto",
         tool_categories=tool_categories,
         status="draft",
         is_builder=True,

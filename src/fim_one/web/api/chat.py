@@ -2459,7 +2459,7 @@ async def dag_endpoint(
                                 "id": s.id,
                                 "task": s.task,
                                 "status": s.status,
-                                "result": s.result,
+                                "result": s.result.summary if s.result else None,
                                 "started_at": s.started_at,
                                 "completed_at": s.completed_at,
                                 "duration": s.duration,
