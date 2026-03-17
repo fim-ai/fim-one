@@ -426,6 +426,27 @@ async def subscribe_resource(
                     org_id=body.org_id,
                 )
                 db.add(dep_sub)
+
+        # Auto-subscribe connection dependencies (Connector, MCP Server).
+        # This makes them appear in the subscriber's resource list so they
+        # can configure credentials via the existing MyCredentials forms.
+        for dep in manifest.connection_deps:
+            existing_dep = await db.execute(
+                select(ResourceSubscription).where(
+                    ResourceSubscription.user_id == current_user.id,
+                    ResourceSubscription.resource_type == dep.resource_type,
+                    ResourceSubscription.resource_id == dep.resource_id,
+                )
+            )
+            if existing_dep.scalar_one_or_none() is None:
+                dep_sub = ResourceSubscription(
+                    user_id=current_user.id,
+                    resource_type=dep.resource_type,
+                    resource_id=dep.resource_id,
+                    org_id=body.org_id,
+                )
+                db.add(dep_sub)
+
         await db.commit()
 
     return ApiResponse(data={
@@ -483,6 +504,12 @@ async def unsubscribe_resource(
     # --- 3. Cascade-clean content deps for Solution-type resources ---
     if body.resource_type in SOLUTION_TYPES:
         await _cascade_clean_content_deps(
+            user_id=current_user.id,
+            unsubscribed_type=body.resource_type,
+            unsubscribed_id=body.resource_id,
+            db=db,
+        )
+        await _cascade_clean_connection_deps(
             user_id=current_user.id,
             unsubscribed_type=body.resource_type,
             unsubscribed_id=body.resource_id,
@@ -564,6 +591,83 @@ async def _cascade_clean_content_deps(
                 user_id, dep.resource_type, dep.resource_id,
             )
             await db.delete(dep_sub_obj)
+
+
+async def _cascade_clean_connection_deps(
+    *,
+    user_id: str,
+    unsubscribed_type: str,
+    unsubscribed_id: str,
+    db: AsyncSession,
+) -> None:
+    """Remove orphaned connection-dep subscriptions and credentials after a Solution is unsubscribed.
+
+    For each connection dep of the unsubscribed Solution, checks whether any
+    OTHER subscribed Solution still references it. If not, the connection-dep
+    subscription and associated user credentials are deleted.
+    """
+    manifest = await resolve_solution_dependencies(
+        unsubscribed_type, unsubscribed_id, db
+    )
+    if not manifest.connection_deps:
+        return
+
+    # Get all remaining Solution subscriptions for this user
+    other_subs_result = await db.execute(
+        select(ResourceSubscription).where(
+            ResourceSubscription.user_id == user_id,
+            ResourceSubscription.resource_type.in_(list(SOLUTION_TYPES)),
+            ResourceSubscription.resource_id != unsubscribed_id,
+        )
+    )
+    other_solution_subs = other_subs_result.scalars().all()
+
+    # Pre-resolve deps for each remaining Solution
+    other_conn_deps: set[tuple[str, str]] = set()
+    for other_sub in other_solution_subs:
+        other_manifest = await resolve_solution_dependencies(
+            other_sub.resource_type, other_sub.resource_id, db
+        )
+        for d in other_manifest.connection_deps:
+            other_conn_deps.add((d.resource_type, d.resource_id))
+
+    # Delete orphaned connection-dep subscriptions + credentials
+    for dep in manifest.connection_deps:
+        dep_key = (dep.resource_type, dep.resource_id)
+        if dep_key in other_conn_deps:
+            continue
+
+        # Delete subscription
+        dep_sub_result = await db.execute(
+            select(ResourceSubscription).where(
+                ResourceSubscription.user_id == user_id,
+                ResourceSubscription.resource_type == dep.resource_type,
+                ResourceSubscription.resource_id == dep.resource_id,
+            )
+        )
+        dep_sub_obj = dep_sub_result.scalar_one_or_none()
+        if dep_sub_obj:
+            logger.info(
+                "Cascade-deleting orphaned connection subscription: user=%s, type=%s, id=%s",
+                user_id, dep.resource_type, dep.resource_id,
+            )
+            await db.delete(dep_sub_obj)
+
+        # Delete associated credentials
+        if dep.resource_type == "connector":
+            await db.execute(
+                delete(ConnectorCredential).where(
+                    ConnectorCredential.connector_id == dep.resource_id,
+                    ConnectorCredential.user_id == user_id,
+                )
+            )
+        elif dep.resource_type == "mcp_server":
+            await db.execute(
+                delete(MCPServerCredential).where(
+                    MCPServerCredential.server_id == dep.resource_id,
+                    MCPServerCredential.user_id == user_id,
+                )
+            )
 
 
 @router.get("/subscriptions", response_model=ApiResponse)
