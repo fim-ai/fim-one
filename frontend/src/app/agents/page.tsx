@@ -38,7 +38,6 @@ import type { AgentResponse } from "@/types/agent"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { AgentTemplateGallery } from "@/components/agents/agent-template-gallery"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 function AgentsPageInner() {
   const t = useTranslations("agents")
@@ -47,8 +46,6 @@ function AgentsPageInner() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { scope, setScope, filterByScope } = useScopeFilter()
-
-  usePageTitle(t("title"))
 
   const [agents, setAgents] = useState<AgentResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)

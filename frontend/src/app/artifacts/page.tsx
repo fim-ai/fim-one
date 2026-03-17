@@ -30,7 +30,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 // ---------- types ----------
 
@@ -365,8 +364,6 @@ function ArtifactsContent() {
   const tLayout = useTranslations("layout")
   const router = useRouter()
   const searchParams = useSearchParams()
-
-  usePageTitle(t("title"))
 
   const activeFilter = (searchParams.get("tab") as FilterType) || "all"
 

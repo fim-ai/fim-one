@@ -27,7 +27,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { conversationApi } from "@/lib/api"
 import { useConversation } from "@/contexts/conversation-context"
 import type { ConversationResponse } from "@/types/conversation"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 function formatRelativeTime(dateStr: string, t: (key: string, values?: Record<string, number>) => string): string {
   const now = Date.now()
@@ -56,11 +55,8 @@ function sortConversations(convs: ConversationResponse[]): ConversationResponse[
 
 export default function ChatsPage() {
   const t = useTranslations("auth")
-  const tl = useTranslations("layout")
   const tc = useTranslations("common")
   const { loadConversations } = useConversation()
-
-  usePageTitle(tl("allChats"))
 
   const [conversations, setConversations] = useState<ConversationResponse[]>([])
   const [total, setTotal] = useState(0)

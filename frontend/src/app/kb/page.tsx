@@ -44,7 +44,6 @@ import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import type { KBResponse, KBCreate } from "@/types/kb"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 function KBPageInner() {
   const { user, isLoading: authLoading } = useAuth()
@@ -53,8 +52,6 @@ function KBPageInner() {
   const to = useTranslations("organizations")
   const tc = useTranslations("common")
   const { scope, setScope, filterByScope } = useScopeFilter()
-
-  usePageTitle(t("title"))
 
   const [knowledgeBases, setKnowledgeBases] = useState<KBResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)

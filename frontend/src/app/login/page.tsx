@@ -17,7 +17,6 @@ import { authApi, ApiError } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { toast } from "sonner"
 import { useTheme } from "next-themes"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 const LANGUAGE_OPTIONS = [
   { value: "auto", label: "Auto" },
@@ -38,8 +37,6 @@ function LoginPageInner() {
   const { resolvedTheme, setTheme } = useTheme()
   const router = useRouter()
   const searchParams = useSearchParams()
-
-  usePageTitle(t("signIn"))
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("")

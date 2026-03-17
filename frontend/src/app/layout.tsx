@@ -30,7 +30,10 @@ const cabinetGrotesk = localFont({
 })
 
 export const metadata: Metadata = {
-  title: APP_NAME,
+  title: {
+    default: APP_NAME,
+    template: `%s — ${APP_NAME}`,
+  },
   description: "Intelligent agent framework with fill-in-the-middle capabilities",
 }
 

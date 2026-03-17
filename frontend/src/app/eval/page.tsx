@@ -48,7 +48,6 @@ import { getErrorMessage } from "@/lib/error-utils"
 import type { EvalDatasetResponse, EvalRunResponse } from "@/types/eval"
 import type { AgentResponse } from "@/types/agent"
 import { cn } from "@/lib/utils"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 // Status badge helper
 function RunStatusBadge({ status }: { status: string }) {
@@ -87,8 +86,6 @@ function EvalPageContent() {
   const { user, isLoading: authLoading } = useAuth()
 
   const activeTab = searchParams.get("tab") ?? "datasets"
-
-  usePageTitle(t("title"))
 
   // Datasets state
   const [datasets, setDatasets] = useState<EvalDatasetResponse[]>([])

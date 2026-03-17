@@ -38,7 +38,6 @@ import { ScopeFilter } from "@/components/shared/scope-filter"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SkillTemplateGallery } from "@/components/skills/skill-template-gallery"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 function SkillsPageInner() {
   const t = useTranslations("skills")
@@ -47,8 +46,6 @@ function SkillsPageInner() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { scope, setScope, filterByScope } = useScopeFilter()
-
-  usePageTitle(t("title"))
 
   const [skills, setSkills] = useState<SkillResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
