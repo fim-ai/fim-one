@@ -1,20 +1,26 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Pencil, Sparkles } from "lucide-react"
+import { Check, ChevronsUpDown, Pencil, Sparkles } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,26 +36,44 @@ import { AvatarPickerDialog } from "@/components/settings/avatar-picker-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { authApi } from "@/lib/api"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 
 const MAX_INSTRUCTIONS_LENGTH = 2000
 const MAX_DISPLAY_NAME_LENGTH = 50
 const MAX_USERNAME_LENGTH = 50
 const MIN_USERNAME_LENGTH = 2
 
-const TIMEZONE_OPTIONS = [
+const TIMEZONE_FALLBACK = [
   "UTC",
   "America/New_York",
   "America/Chicago",
   "America/Denver",
   "America/Los_Angeles",
+  "America/Sao_Paulo",
   "Europe/London",
   "Europe/Paris",
   "Europe/Berlin",
+  "Europe/Moscow",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Bangkok",
   "Asia/Tokyo",
   "Asia/Shanghai",
   "Asia/Singapore",
   "Australia/Sydney",
+  "Pacific/Auckland",
 ]
+
+function getTimezoneOptions(): string[] {
+  try {
+    if (typeof Intl !== "undefined" && "supportedValuesOf" in Intl) {
+      return (Intl as unknown as { supportedValuesOf: (key: string) => string[] }).supportedValuesOf("timeZone")
+    }
+  } catch {
+    // Fallback for browsers that don't support supportedValuesOf
+  }
+  return TIMEZONE_FALLBACK
+}
 
 
 export function GeneralSettings() {
@@ -78,6 +102,8 @@ export function GeneralSettings() {
   // --- Timezone ---
   const [timezone, setTimezone] = useState("")
   const [savingTimezone, setSavingTimezone] = useState(false)
+  const [timezoneOpen, setTimezoneOpen] = useState(false)
+  const timezoneOptions = useMemo(() => getTimezoneOptions(), [])
 
   useEffect(() => {
     if (user) {
@@ -101,6 +127,10 @@ export function GeneralSettings() {
   // Display name validation
   const isDisplayNameDirty = displayName !== (user?.display_name || "")
   const isDisplayNameOverLimit = displayName.length > MAX_DISPLAY_NAME_LENGTH
+
+  // Timezone validation
+  const userTimezone = (user as unknown as Record<string, unknown>)?.timezone as string || ""
+  const isTimezoneDirty = timezone !== userTimezone
 
   // Instructions validation
   const isInstructionsDirty = instructions !== (user?.system_instructions || "")
@@ -176,12 +206,12 @@ export function GeneralSettings() {
     }
   }
 
-  const handleSaveTimezone = async (value: string) => {
-    setTimezone(value)
+  const handleSaveTimezone = async () => {
+    if (!isTimezoneDirty) return
     setSavingTimezone(true)
     try {
       const updated = await authApi.updateProfile({
-        timezone: value,
+        timezone: timezone,
       } as Parameters<typeof authApi.updateProfile>[0])
       updateUser(updated)
       toast.success(t("timezoneSaved"))
@@ -363,23 +393,60 @@ export function GeneralSettings() {
           </p>
         </div>
 
-        <Select
-          value={timezone || "__default__"}
-          onValueChange={(value) => handleSaveTimezone(value === "__default__" ? "" : value)}
-          disabled={savingTimezone}
-        >
-          <SelectTrigger className="w-full max-w-sm">
-            <SelectValue placeholder={t("timezonePlaceholder")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__default__">{t("timezonePlaceholder")}</SelectItem>
-            {TIMEZONE_OPTIONS.map((tz) => (
-              <SelectItem key={tz} value={tz}>
-                {tz}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="space-y-2">
+          <Popover open={timezoneOpen} onOpenChange={setTimezoneOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={timezoneOpen}
+                className="w-full max-w-sm justify-between font-normal"
+              >
+                <span className="truncate">
+                  {timezone || t("timezonePlaceholder")}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <Command>
+                <CommandInput placeholder={tc("searchPlaceholder")} />
+                <CommandList>
+                  <CommandEmpty>{tc("noResults")}</CommandEmpty>
+                  <CommandGroup>
+                    {timezoneOptions.map((tz) => (
+                      <CommandItem
+                        key={tz}
+                        value={tz}
+                        onSelect={() => {
+                          setTimezone(tz === timezone ? "" : tz)
+                          setTimezoneOpen(false)
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            timezone === tz ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {tz}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          <div className="flex items-center justify-end max-w-sm">
+            <Button
+              size="sm"
+              onClick={handleSaveTimezone}
+              disabled={!isTimezoneDirty || savingTimezone}
+            >
+              {savingTimezone ? tc("saving") : tc("save")}
+            </Button>
+          </div>
+        </div>
       </div>
 
       <Separator />

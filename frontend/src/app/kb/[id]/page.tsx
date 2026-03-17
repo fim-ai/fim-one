@@ -38,6 +38,7 @@ import { MdCreateDialog } from "@/components/kb/md-create-dialog"
 import { Pagination } from "@/components/kb/pagination"
 import { KBAIPanel } from "@/components/kb/kb-ai-panel"
 import type { KBResponse, KBDocumentResponse, KBRetrieveResult } from "@/types/kb"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 export default function KBDetailPage() {
   const params = useParams<{ id: string }>()
@@ -48,6 +49,9 @@ export default function KBDetailPage() {
   const tc = useTranslations("common")
 
   const [kb, setKb] = useState<KBResponse | null>(null)
+
+  usePageTitle(kb?.name)
+
   const [documents, setDocuments] = useState<KBDocumentResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<"documents" | "search" | "ai">("documents")

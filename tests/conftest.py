@@ -51,6 +51,7 @@ class FakeLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: Any = None,
     ) -> LLMResult:
         idx = min(self._call_count, len(self._responses) - 1)
         self._call_count += 1

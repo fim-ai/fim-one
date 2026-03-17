@@ -307,6 +307,7 @@ async def publish_agent(
         raise AppError("invalid_scope", status_code=400)
 
     agent.published_at = datetime.now(UTC)
+    agent.status = "published"
 
     # Audit log: submitted (org scope only — org_id is set at this point)
     if body.scope == "org" and body.org_id:
@@ -429,6 +430,7 @@ async def unpublish_agent(
     agent.org_id = None
     agent.published_at = None
     agent.publish_status = None
+    agent.status = "draft"
 
     await db.commit()
     await db.refresh(agent)

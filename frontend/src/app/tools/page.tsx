@@ -6,11 +6,14 @@ import { useTranslations } from "next-intl"
 import { Wrench } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { BuiltinToolsSection } from "@/components/tools/builtin-tools-section"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 export default function ToolsPage() {
   const t = useTranslations("tools")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
+
+  usePageTitle(t("pageTitle"))
 
   // Auth guard
   useEffect(() => {

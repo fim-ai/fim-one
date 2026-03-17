@@ -1,5 +1,6 @@
 {
   "title": "Artifacts",
+  "description": "Files and media generated during conversations",
   "count": "{count, plural, one {# artifact} other {# artifacts}}",
   "filterAll": "All",
   "filterImages": "Images",

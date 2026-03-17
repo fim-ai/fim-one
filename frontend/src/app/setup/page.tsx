@@ -8,10 +8,13 @@ import { Input } from "@/components/ui/input"
 import { Loader2, ShieldCheck } from "lucide-react"
 import { APP_NAME, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from "@/lib/constants"
 import { authApi, ApiError } from "@/lib/api"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 export default function SetupPage() {
   const t = useTranslations("auth")
   const router = useRouter()
+
+  usePageTitle(t("oneTimeSetup"))
 
   // Setup status check
   const [checking, setChecking] = useState(true)

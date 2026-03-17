@@ -1,6 +1,6 @@
 """Model abstraction layer for LLM providers."""
 
-from .base import BaseLLM
+from .base import REASONING_INHERIT, BaseLLM
 from .config import ModelConfig, create_registry_from_configs
 from .openai_compatible import OpenAICompatibleLLM
 from .rate_limit import RateLimitConfig, TokenBucketRateLimiter
@@ -12,6 +12,7 @@ from .usage import UsageSummary, UsageTracker
 
 __all__ = [
     "BaseLLM",
+    "REASONING_INHERIT",
     "ChatMessage",
     "LLMResult",
     "ModelConfig",

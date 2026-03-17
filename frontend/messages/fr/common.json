@@ -128,5 +128,9 @@
   "publishedMarket": "Publié · Marché",
   "publishedOrg": "Publié · Organisation",
   "subscribedMarket": "Abonné · Marché",
-  "subscribedOrg": "Abonné · Organisation"
+  "subscribedOrg": "Abonné · Org",
+  "previous": "Précédent",
+  "pageInfo": "Page {current} sur {total}",
+  "uninstallConfirmTitle": "Se désabonner",
+  "uninstallConfirmDescription": "Êtes-vous sûr de vouloir vous désabonner de cette ressource ? Vous pouvez vous réabonner depuis le Marché à tout moment."
 }

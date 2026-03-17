@@ -36,6 +36,7 @@ import {
   Swords,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 const TOTAL_STEPS = 5
 
@@ -115,6 +116,8 @@ export default function OnboardingPage() {
   const tError = useTranslations("errors")
   const router = useRouter()
   const { user, isLoading: authLoading, updateUser } = useAuth()
+
+  usePageTitle(t("welcomeTitle"))
 
   const [step, setStep] = useState(1)
   const [direction, setDirection] = useState<"forward" | "backward">("forward")

@@ -54,6 +54,7 @@ class CapturingFakeLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: Any = None,
     ) -> LLMResult:
         self.all_messages.append(list(messages))
         idx = min(self._call_count, len(self._responses) - 1)
@@ -104,6 +105,7 @@ class CapturingNativeFakeLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: Any = None,
     ) -> LLMResult:
         self.all_messages.append(list(messages))
         idx = min(self._call_count, len(self._responses) - 1)

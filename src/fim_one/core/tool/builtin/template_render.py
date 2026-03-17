@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -104,10 +105,7 @@ class TemplateRenderTool(BaseTool):
         from ..base import ToolResult
 
         # HTML → artifact + iframe preview
-        if (
-            self._artifacts_dir
-            and ("<html" in result.lower() or "<!doctype" in result.lower())
-        ):
+        if self._artifacts_dir and self._looks_like_html(result):
             from ..artifact_utils import save_content_artifact
 
             artifact = save_content_artifact(result, "rendered.html", self._artifacts_dir)
@@ -117,12 +115,43 @@ class TemplateRenderTool(BaseTool):
         # so tables, JSON code blocks, lists, and raw text all render correctly)
         return ToolResult(content=result, content_type="markdown")
 
+    # Block-level HTML tags that strongly signal renderable HTML content
+    _BLOCK_TAG_RE = re.compile(
+        r"<(?:div|table|section|article|header|footer|main|nav|ul|ol|form|svg|canvas)\b",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _looks_like_html(text: str) -> bool:
+        """Detect whether rendered output is HTML (full document or fragment).
+
+        Handles three cases:
+        1. Full document: ``<html`` or ``<!doctype``
+        2. Fragment with embedded CSS: ``<style>...</style>``
+        3. Fragment with multiple block-level tags (e.g. ``<div>...<table>...``)
+        """
+        lower = text.lower()
+        # Full HTML document
+        if "<html" in lower or "<!doctype" in lower:
+            return True
+        # Embedded <style> block is a very strong signal
+        if "<style" in lower and "</style>" in lower:
+            return True
+        # Two or more block-level HTML tags → likely an HTML fragment
+        if len(TemplateRenderTool._BLOCK_TAG_RE.findall(text)) >= 2:
+            return True
+        return False
+
     def _render_jinja2(self, template_str: str, ctx: dict) -> str:
         try:
             env = Environment(undefined=StrictUndefined, autoescape=False)
             return env.from_string(template_str).render(**ctx)
         except TemplateError as exc:
-            return f"[Error] Template error: {exc}"
+            available = ", ".join(sorted(ctx.keys())) if ctx else "(none)"
+            return (
+                f"[Error] Template error: {exc}. "
+                f"Available context variables: {available}"
+            )
         except Exception as exc:
             return f"[Error] {type(exc).__name__}: {exc}"
 

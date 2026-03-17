@@ -128,5 +128,9 @@
   "publishedMarket": "公開 · マーケット",
   "publishedOrg": "公開 · 組織",
   "subscribedMarket": "購読済み · マーケット",
-  "subscribedOrg": "購読済み · 組織"
+  "subscribedOrg": "購読済み · 組織",
+  "previous": "前へ",
+  "pageInfo": "{current} / {total} ページ",
+  "uninstallConfirmTitle": "購読解除",
+  "uninstallConfirmDescription": "このリソースの購読を解除してもよろしいですか？いつでもマーケットから再度購読できます。"
 }

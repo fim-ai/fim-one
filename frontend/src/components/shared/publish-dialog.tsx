@@ -39,10 +39,10 @@ interface PublishDialogProps {
   onOrgChange: (id: string) => void
   /** Whether the selected org requires publish review */
   requiresReview: boolean
-  allowFallback: boolean
-  onAllowFallbackChange: (value: boolean) => void
-  fallbackLabel: string
-  fallbackHelp: string
+  allowFallback?: boolean
+  onAllowFallbackChange?: (value: boolean) => void
+  fallbackLabel?: string
+  fallbackHelp?: string
   noOrgsText: string
   selectOrgPlaceholder: string
   onConfirm: () => void
@@ -204,30 +204,32 @@ export function PublishDialog({
               </>
             )}
 
-            {/* allow_fallback toggle */}
-            <div className="flex items-center justify-between gap-3 pt-1">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="allow-fallback" className="text-sm font-medium cursor-pointer">
-                  {fallbackLabel}
-                </Label>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <CircleHelp className="h-3.5 w-3.5 text-muted-foreground cursor-default" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-64">
-                      <p>{fallbackHelp}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+            {/* allow_fallback toggle — only for Component types (connector, mcp_server) */}
+            {onAllowFallbackChange && (
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <Label htmlFor="allow-fallback" className="text-sm font-medium cursor-pointer">
+                    {fallbackLabel}
+                  </Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <CircleHelp className="h-3.5 w-3.5 text-muted-foreground cursor-default" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-64">
+                        <p>{fallbackHelp}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Switch
+                  id="allow-fallback"
+                  checked={allowFallback}
+                  onCheckedChange={onAllowFallbackChange}
+                  className="shrink-0"
+                />
               </div>
-              <Switch
-                id="allow-fallback"
-                checked={allowFallback}
-                onCheckedChange={onAllowFallbackChange}
-                className="shrink-0"
-              />
-            </div>
+            )}
           </div>
           {/* Dependency preview -- only for Solutions */}
           {deps && (deps.content_deps.length > 0 || deps.connection_deps.length > 0) && (

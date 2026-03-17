@@ -1,6 +1,6 @@
 {
   "title": "市场",
-  "description": "浏览和订阅共享资源",
+  "description": "从市场浏览和订阅共享资源",
   "empty": "市场中没有可用的资源",
   "subscribed": "已订阅",
   "subscribe": "订阅",
@@ -24,12 +24,30 @@
   "emptyDescription": "发布到市场的资源将显示在此处。",
   "subscribeSuccess": "订阅成功",
   "unsubscribeSuccess": "取消订阅成功",
+  "categorySolutions": "解决方案",
+  "categoryComponents": "组件",
+  "detailBy": "由 {author}",
+  "detailCreated": "创建于",
+  "detailType": "类型",
+  "detailDetails": "详情",
+  "subscribeSuccessTitle": "订阅成功！",
+  "subscribeSuccessDescription": "\"{name}\" 已添加到您的工作区。",
+  "goToConfigure": "去配置",
+  "stayHere": "留在这里",
+  "typeSingular": {
+    "agent": "智能体",
+    "connector": "连接器",
+    "knowledge_base": "知识库",
+    "mcp_server": "MCP Server",
+    "skill": "技能",
+    "workflow": "工作流"
+  },
+  "unsubscribeConfirmTitle": "取消订阅",
+  "scopeGlobalMarket": "全球市场",
+  "scopeOrg": "组织",
   "dependenciesLabel": "依赖项",
   "contentDepsIncluded": "包括：{items}（订阅者自动包含）",
   "connectionDepsRequired": "需要设置：{items}（订阅者需要提供凭证）",
-  "scopeLabel": "范围",
-  "scopeGlobalMarket": "全球市场",
-  "scopeOrg": "组织",
-  "categorySolutions": "解决方案",
-  "categoryComponents": "组件"
+  "unsubscribeConfirmDescription": "Are you sure you want to unsubscribe from \"{name}\"? You can re-subscribe at any time.",
+  "scopeLabel": "Scope"
 }

@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Plus, Plug, Trash2, LayoutTemplate, Database, Globe, ChevronDown, Upload, Search } from "lucide-react"
+import { Plus, Plug, Trash2, LayoutTemplate, Database, Globe, ChevronDown, Upload, Search, Server } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -40,10 +41,13 @@ import { ConnectorCard } from "@/components/connectors/connector-card"
 import { MCPServersSection, type MCPServersSectionActions } from "@/components/tools/mcp-servers-section"
 import type { ConnectorResponse } from "@/types/connector"
 import { toast } from "sonner"
+import { Input } from "@/components/ui/input"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { EmptyState } from "@/components/shared/empty-state"
+import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import { ConnectorTemplateGallery } from "@/components/connectors/connector-template-gallery"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 function ConnectorsPageInner() {
   const { user, isLoading: authLoading } = useAuth()
@@ -58,9 +62,12 @@ function ConnectorsPageInner() {
   const activeTab = searchParams.get("tab") === "mcp" ? "mcp" : "connectors"
   const { scope, setScope, filterByScope } = useScopeFilter()
 
+  usePageTitle(t("title"))
+
   const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [pendingUninstallId, setPendingUninstallId] = useState<string | null>(null)
   const [pendingPublishId, setPendingPublishId] = useState<string | null>(null)
   const [pendingUnpublishId, setPendingUnpublishId] = useState<string | null>(null)
   const [publishOrgId, setPublishOrgId] = useState<string>("")
@@ -68,6 +75,8 @@ function ConnectorsPageInner() {
   const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
   const [orgsLoading, setOrgsLoading] = useState(false)
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Auth guard
   useEffect(() => {
@@ -126,7 +135,12 @@ function ConnectorsPageInner() {
     }
   }
 
-  const handleUninstall = async (id: string) => {
+  const handleUninstall = (id: string) => setPendingUninstallId(id)
+
+  const confirmUninstall = async () => {
+    if (!pendingUninstallId) return
+    const id = pendingUninstallId
+    setPendingUninstallId(null)
     try {
       await marketApi.unsubscribe({ resource_type: "connector", resource_id: id })
       setConnectors((prev) => prev.filter((c) => c.id !== id))
@@ -249,6 +263,23 @@ function ConnectorsPageInner() {
     [connectors, scope, user, filterByScope],
   )
 
+  const searchedConnectors = useMemo(() => {
+    if (!searchQuery.trim()) return filteredConnectors
+    const q = searchQuery.toLowerCase()
+    return filteredConnectors.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.description ?? "").toLowerCase().includes(q)
+    )
+  }, [filteredConnectors, searchQuery])
+
+  const connectorTotalPages = Math.ceil(searchedConnectors.length / PAGE_SIZE)
+  const paginatedConnectors = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return searchedConnectors.slice(start, start + PAGE_SIZE)
+  }, [searchedConnectors, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery, scope, activeTab])
+
   if (authLoading || !user) return null
 
   return (
@@ -326,19 +357,40 @@ function ConnectorsPageInner() {
 
       {/* Tabs */}
       <Tabs value={activeTab} className="flex flex-col flex-1 overflow-hidden">
-        <div className="px-6 pt-4 shrink-0">
-          <TabsList>
-            <TabsTrigger value="connectors" asChild>
-              <Link href="/connectors">{t("connectorsTab")}</Link>
-            </TabsTrigger>
-            <TabsTrigger value="mcp" asChild>
-              <Link href="/connectors?tab=mcp">{t("mcpTab")}</Link>
-            </TabsTrigger>
-          </TabsList>
+        <div className="border-b px-6 shrink-0">
+          <nav className="flex gap-4 -mb-px">
+            {([
+              { value: "connectors", href: "/connectors", label: t("connectorsTab"), icon: Database },
+              { value: "mcp", href: "/connectors?tab=mcp", label: t("mcpTab"), icon: Server },
+            ] as const).map((tab) => (
+              <Link
+                key={tab.value}
+                href={tab.href}
+                className={cn(
+                  "py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5",
+                  activeTab === tab.value
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <tab.icon className="h-3.5 w-3.5" />
+                {tab.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
-        <div className="px-6 pt-3 shrink-0">
+        <div className="flex items-center gap-3 px-6 pt-3 shrink-0">
           <ScopeFilter value={scope} onChange={setScope} />
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              className="h-8 pl-8 text-xs"
+              placeholder={tc("searchPlaceholder")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
 
         {/* Connectors tab */}
@@ -363,35 +415,38 @@ function ConnectorsPageInner() {
                 </Button>
               }
             />
-          ) : filteredConnectors.length === 0 ? (
+          ) : searchedConnectors.length === 0 ? (
             <EmptyState
               icon={<Search />}
               title={tc("noResultsTitle")}
               description={tc("noResultsDescription")}
             />
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredConnectors.map((connector) => (
-                <ConnectorCard
-                  key={connector.id}
-                  connector={connector}
-                  currentUserId={user.id}
-                  onDelete={handleDelete}
-                  onPublish={handlePublish}
-                  onUnpublish={handleUnpublish}
-                  onUninstall={handleUninstall}
-                  onResubmit={handleResubmit}
-                  onExport={handleExport}
-                  onFork={handleFork}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {paginatedConnectors.map((connector) => (
+                  <ConnectorCard
+                    key={connector.id}
+                    connector={connector}
+                    currentUserId={user.id}
+                    onDelete={handleDelete}
+                    onPublish={handlePublish}
+                    onUnpublish={handleUnpublish}
+                    onUninstall={handleUninstall}
+                    onResubmit={handleResubmit}
+                    onExport={handleExport}
+                    onFork={handleFork}
+                  />
+                ))}
+              </div>
+              <ListPagination currentPage={currentPage} totalPages={connectorTotalPages} onPageChange={setCurrentPage} />
+            </>
           )}
         </TabsContent>
 
         {/* MCP Servers tab */}
         <TabsContent value="mcp" className="flex-1 overflow-y-auto px-6 py-4 mt-0">
-          <MCPServersSection onReady={(actions) => { mcpActionsRef.current = actions }} currentUserId={user.id} scope={scope} />
+          <MCPServersSection onReady={(actions) => { mcpActionsRef.current = actions }} currentUserId={user.id} scope={scope} searchQuery={searchQuery} currentPage={currentPage} onPageChange={setCurrentPage} />
         </TabsContent>
       </Tabs>
 
@@ -446,6 +501,27 @@ function ConnectorsPageInner() {
             <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={confirmUnpublish}>
               {t("unpublish")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Uninstall Confirmation */}
+      <AlertDialog open={pendingUninstallId !== null} onOpenChange={(open) => { if (!open) setPendingUninstallId(null) }}>
+        <AlertDialogContent className="sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tc("uninstallConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {tc("uninstallConfirmDescription")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmUninstall}
+            >
+              {tc("uninstall")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

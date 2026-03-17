@@ -127,6 +127,10 @@
   "orgShared": "Organisation",
   "publishedMarket": "Veröffentlicht · Marktplatz",
   "publishedOrg": "Veröffentlicht · Organisation",
-  "subscribedMarket": "Abonniert · Markt",
-  "subscribedOrg": "Abonniert · Organisation"
+  "subscribedMarket": "Abonniert · Marktplatz",
+  "subscribedOrg": "Abonniert · Organisation",
+  "previous": "Zurück",
+  "pageInfo": "Seite {current} von {total}",
+  "uninstallConfirmTitle": "Abmelden",
+  "uninstallConfirmDescription": "Möchten Sie sich wirklich von dieser Ressource abmelden? Sie können sich jederzeit über den Marktplatz erneut anmelden."
 }

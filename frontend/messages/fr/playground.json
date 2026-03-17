@@ -120,82 +120,28 @@
   },
   "examples": {
     "react": [
-      {
-        "text": "Trouvez les 5 dépôts les plus populaires sur GitHub -- lequel est le #1 et combien d'étoiles a-t-il ?",
-        "category": "web"
-      },
-      {
-        "text": "Recherchez « Sorting algorithm » sur Wikipedia et créez un tableau comparatif de Bubble Sort, Quick Sort et Merge Sort par complexité temporelle",
-        "category": "web"
-      },
-      {
-        "text": "Simulez le problème de Monty Hall 10 000 fois -- devriez-vous changer de porte ? Afficher les taux de victoire",
-        "category": "code"
-      },
-      {
-        "text": "Écrivez du Python pour calculer les 30 premiers nombres de Fibonacci et leur convergence du nombre d'or, enregistrez les résultats sous fibonacci.csv",
-        "category": "code"
-      },
-      {
-        "text": "Quelle heure est-il à New York, Londres et Tokyo maintenant ? Utilisez template_render pour créer un tableau de bord d'horloge mondiale HTML stylisé",
-        "category": "hybrid"
-      },
-      {
-        "text": "Trouvez une API REST publique avec des posts fictifs, récupérez-en 100, puis écrivez du Python pour classer les 5 auteurs les plus prolifiques et leur longueur moyenne de titre de post",
-        "category": "hybrid"
-      }
+      "Trouvez les 5 dépôts les plus populaires sur GitHub -- lequel est #1 et combien d'étoiles a-t-il ?",
+      "Recherchez « Sorting algorithm » sur Wikipedia et créez un tableau comparatif de Bubble Sort, Quick Sort et Merge Sort par complexité temporelle",
+      "Simulez le problème de Monty Hall 10 000 fois -- devriez-vous changer de porte ? Affichez les taux de victoire",
+      "Écrivez du Python pour calculer les 30 premiers nombres de Fibonacci et leur convergence du nombre d'or, enregistrez les résultats sous forme de fibonacci.csv",
+      "Quelle heure est-il à New York, Londres et Tokyo en ce moment ? Utilisez template_render pour créer un tableau de bord d'horloge mondiale stylisé en HTML",
+      "Trouvez une API REST publique avec des publications fictives, récupérez-en 100, puis écrivez du Python pour classer les 5 auteurs les plus prolifiques et leur longueur moyenne de titre de publication"
     ],
     "dag": [
-      {
-        "text": "Recherchez les 3 dépôts les plus populaires pour Facebook, Google et Microsoft sur GitHub en parallèle, puis comparez quel géant technologique a la moyenne d'étoiles la plus élevée",
-        "category": "web"
-      },
-      {
-        "text": "Recherchez Python, Rust et Go sur Wikipedia en parallèle, puis construisez un tableau comparatif : année de création, créateur, système de types et force clé",
-        "category": "web"
-      },
-      {
-        "text": "Générez un labyrinthe 20x20, puis lancez BFS vs DFS en parallèle -- lequel explore le moins de cellules ? Visualisez les deux solutions en art ASCII",
-        "category": "code"
-      },
-      {
-        "text": "Calculez les 50 premiers nombres de Fibonacci, les 50 premiers nombres premiers et les 50 premiers nombres triangulaires en parallèle, puis trouvez les nombres qui apparaissent dans plusieurs séquences",
-        "category": "code"
-      },
-      {
-        "text": "Obtenez l'heure actuelle à New York, Londres, Tokyo, Sydney et Dubaï en parallèle, puis utilisez template_render pour créer un tableau de bord d'horloge mondiale HTML stylisé",
-        "category": "hybrid"
-      },
-      {
-        "text": "Trouvez une API REST publique avec des posts et des todos, récupérez les deux en parallèle, puis écrivez du Python pour corréler : les auteurs les plus prolifiques complètent-ils aussi le plus de todos ?",
-        "category": "hybrid"
-      }
+      "Recherchez les 3 dépôts les plus populaires pour Facebook, Google et Microsoft sur GitHub en parallèle, puis comparez quel géant technologique a la moyenne d'étoiles la plus élevée",
+      "Recherchez Python, Rust et Go sur Wikipedia en parallèle, puis créez un tableau comparatif : année de création, créateur, système de types et force clé",
+      "Générez un labyrinthe 20x20, puis comparez BFS et DFS en parallèle -- lequel explore le moins de cellules ? Visualisez les deux solutions en art ASCII",
+      "Calculez les 50 premiers nombres de Fibonacci, les 50 premiers nombres premiers et les 50 premiers nombres triangulaires en parallèle, puis trouvez les nombres qui apparaissent dans plusieurs séquences",
+      "Obtenez l'heure actuelle à New York, Londres, Tokyo, Sydney et Dubaï en parallèle, puis utilisez template_render pour créer un tableau de bord d'horloge mondiale stylisé en HTML",
+      "Trouvez une API REST publique avec des publications et des tâches, récupérez les deux en parallèle, puis écrivez du Python pour corréler : les auteurs les plus prolifiques complètent-ils aussi le plus de tâches ?"
     ],
     "auto": [
-      {
-        "text": "Récupérez le changelog Node.js LTS et résumez les 5 changements les plus impactants pour un développeur backend typique",
-        "category": "web"
-      },
-      {
-        "text": "Simulez le lancement de deux dés 50 000 fois — imprimez un tableau de fréquences de chaque somme possible et identifiez les résultats les plus et les moins courants",
-        "category": "code"
-      },
-      {
-        "text": "Récupérez 100 messages de JSONPlaceholder, classez les 5 utilisateurs les plus actifs par nombre de messages, et utilisez template_render pour afficher leurs statistiques sous forme de carte de classement stylisée",
-        "category": "hybrid"
-      },
-      {
-        "text": "Recherchez GPT-4 et Claude 3 sur Wikipedia — comparez leurs dates de sortie, fenêtres de contexte et capacités phares — puis produisez un tableau de comparaison markdown propre",
-        "category": "web"
-      },
-      {
-        "text": "Recherchez React, Vue et Svelte simultanément — pour chacun, récupérez les téléchargements hebdomadaires npm, les étoiles GitHub et la dernière version — puis classez-les et produisez une fiche de notation HTML stylisée avec des badges de médailles",
-        "category": "hybrid"
-      },
-      {
-        "text": "En parallèle : (1) implémentez le tri par fusion et le tri rapide, comparez les deux sur 10 000 entiers aléatoires ; (2) trouvez tous les nombres de Fibonacci jusqu'à l'index 50 qui sont aussi premiers ; (3) résolvez N-Queens pour N=8 et comptez toutes les solutions — compilez tout dans un rapport HTML stylisé",
-        "category": "code"
-      }
+      "Récupérez le journal des modifications de Node.js LTS et résumez les 5 changements les plus impactants pour un développeur backend typique",
+      "Simulez le lancer de deux dés 50 000 fois -- affichez un tableau de fréquence de chaque somme possible et identifiez les résultats les plus et les moins courants",
+      "Récupérez 100 publications de JSONPlaceholder, classez les 5 utilisateurs les plus actifs par nombre de publications, et utilisez template_render pour afficher leurs statistiques sous forme de carte de classement stylisée",
+      "Recherchez GPT-4 et Claude 3 sur Wikipedia -- comparez leurs dates de sortie, fenêtres de contexte et capacités phares -- puis produisez un tableau comparatif markdown propre",
+      "Recherchez React, Vue et Svelte simultanément -- pour chacun, récupérez les téléchargements hebdomadaires npm, les étoiles GitHub et la dernière version -- puis classez-les et produisez une fiche de notation HTML stylisée avec des badges de médailles",
+      "En parallèle : (1) implémentez merge sort et quick sort, comparez les deux sur 10 000 entiers aléatoires ; (2) trouvez tous les nombres de Fibonacci jusqu'à l'index 50 qui sont aussi premiers ; (3) résolvez N-Queens pour N=8 et comptez toutes les solutions -- compilez tout dans un rapport HTML stylisé"
     ]
   },
   "evidenceInsufficient": "Preuves insuffisantes",

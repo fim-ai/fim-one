@@ -1,6 +1,7 @@
 "use client"
 
 import { useTranslations } from "next-intl"
+import { cn } from "@/lib/utils"
 import type { ScopeValue } from "@/hooks/use-scope-filter"
 
 interface ScopeFilterProps {
@@ -21,16 +22,17 @@ export function ScopeFilter({ value, onChange }: ScopeFilterProps) {
   const tc = useTranslations("common")
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {SCOPES.map((key) => (
         <button
           key={key}
           onClick={() => onChange(key)}
-          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+          className={cn(
+            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
             value === key
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground hover:text-foreground"
-          }`}
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
+          )}
         >
           {tc(SCOPE_LABELS[key])}
         </button>

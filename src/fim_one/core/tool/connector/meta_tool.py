@@ -113,7 +113,16 @@ class ConnectorMetaTool(BaseTool):
 
     @property
     def parameters_schema(self) -> dict[str, Any]:
-        connector_names = sorted(self._stubs.keys())
+        # Filter out empty names (e.g. pure non-ASCII connector names that
+        # sanitize to "").  Gemini rejects empty enum arrays and empty strings
+        # inside enum arrays.
+        connector_names = sorted(n for n in self._stubs.keys() if n)
+        connector_prop: dict[str, Any] = {
+            "type": "string",
+            "description": "Connector name",
+        }
+        if connector_names:
+            connector_prop["enum"] = connector_names
         return {
             "type": "object",
             "properties": {
@@ -125,11 +134,7 @@ class ConnectorMetaTool(BaseTool):
                         "execute: run an action."
                     ),
                 },
-                "connector": {
-                    "type": "string",
-                    "enum": connector_names,
-                    "description": "Connector name",
-                },
+                "connector": connector_prop,
                 "action": {
                     "type": "string",
                     "description": "Action name (required for execute)",
@@ -327,8 +332,11 @@ def build_connector_meta_tool(
     configs: dict[str, dict[str, Any]] = {}
 
     for conn in connectors:
-        # Sanitize connector name to match ConnectorToolAdapter convention
+        # Sanitize connector name to match ConnectorToolAdapter convention.
+        # Fall back to connector ID prefix if the name is pure non-ASCII.
         safe_name = re.sub(r"[^a-zA-Z0-9]", "_", conn.name.lower()).strip("_")
+        if not safe_name:
+            safe_name = f"connector_{getattr(conn, 'id', '')[:8] or len(stubs)}"
 
         actions: list[ActionStub] = []
         for action in (conn.actions or []):

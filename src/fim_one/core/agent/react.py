@@ -135,9 +135,9 @@ For example, generate data AND analyse it in one script when feasible.
 answer content — a separate synthesis step will produce the full answer.
 - Do NOT generate charts, plots, or images (e.g. matplotlib) unless the user \
 explicitly asks for visualisation. Prefer text tables and formatted output.
-- LANGUAGE: Always respond in the same language as the user's query. If the \
-user writes in Chinese, your reasoning and final_answer must be in Chinese. \
-If the user writes in English, respond in English. Match the user's language.
+- LANGUAGE: By default, respond in the same language as the user's query. \
+However, if an Agent Directive specifies different language behaviour \
+(e.g. a translation agent), follow the Agent Directive instead.
 - CRITICAL: Your ENTIRE response must be a single JSON object. No markdown, no plain text, no code fences.
 """
 
@@ -160,8 +160,9 @@ different arguments or move on with the information you have.
 - When you have gathered enough information to answer, STOP calling tools and \
 respond with just a brief text (e.g. "done"). Do NOT write any answer content \
 — a separate synthesis step will produce the full answer.
-- LANGUAGE: Always respond in the same language as the user's query. If the \
-user writes in Chinese, respond in Chinese. If in English, respond in English.
+- LANGUAGE: By default, respond in the same language as the user's query. \
+However, if an Agent Directive specifies different language behaviour \
+(e.g. a translation agent), follow the Agent Directive instead.
 """
 
 
@@ -218,10 +219,14 @@ class ReActAgent:
         context_guard: ContextGuard | None = None,
         hook_registry: HookRegistry | None = None,
         workspace: AgentWorkspace | None = None,
+        fast_llm: BaseLLM | None = None,
+        user_timezone: str | None = None,
     ) -> None:
         self._llm = llm
+        self._fast_llm = fast_llm
         self._tools = tools
         self._system_prompt_override = system_prompt
+        self._user_timezone = user_timezone
         self._extra_instructions = extra_instructions
         self._max_iterations = max_iterations
         self._use_native_tools = use_native_tools
@@ -406,8 +411,9 @@ class ReActAgent:
             "",
             "Guidelines:",
             "- Present key results clearly; use markdown formatting when helpful.",
-            "- LANGUAGE: The answer must be in the same language as the original "
-            "question. If the question is in Chinese, respond in Chinese.",
+            "- LANGUAGE: By default answer in the same language as the original "
+            "question. If the agent reasoning shows a different target language "
+            "(e.g. a translation task), use that language instead.",
         ]
         if language_directive:
             system_parts.append(f"- {language_directive}")
@@ -479,8 +485,9 @@ class ReActAgent:
             )
 
         try:
+            selection_llm = self._fast_llm or self._llm
             call_result = await structured_llm_call(
-                self._llm,
+                selection_llm,
                 [
                     ChatMessage(role="system", content="You are a tool selection assistant. Respond only with JSON."),
                     ChatMessage(role="user", content=prompt),
@@ -594,9 +601,12 @@ class ReActAgent:
                     messages, hint="react_iteration",
                 )
 
+            # Suppress extended thinking for tool iterations — reasoning
+            # about "which tool + what params" doesn't benefit from it.
             result: LLMResult = await self._llm.chat(
                 messages,
                 response_format=response_format,
+                reasoning_effort=None,
             )
             await usage_tracker.record(result.usage)
 
@@ -813,10 +823,12 @@ class ReActAgent:
 
             # Use non-streaming chat() for all iterations -- fast tool loops.
             # The final answer is streamed separately via stream_answer().
+            # Suppress extended thinking — tool selection doesn't benefit.
             result: LLMResult = await self._llm.chat(
                 messages,
                 tools=tools_payload,
                 tool_choice=tool_choice,
+                reasoning_effort=None,
             )
             await usage_tracker.record(result.usage)
 
@@ -1140,6 +1152,23 @@ class ReActAgent:
             pinned=True,
         ))
 
+    def _get_localized_time(self) -> tuple[datetime, str, int]:
+        """Return ``(datetime_obj, formatted_str, year)`` in the user's tz."""
+        import zoneinfo
+
+        utc_now = datetime.now(timezone.utc)
+        tz_name = self._user_timezone
+        if tz_name:
+            try:
+                tz = zoneinfo.ZoneInfo(tz_name)
+                local_now = utc_now.astimezone(tz)
+                formatted = local_now.strftime(f"%Y-%m-%d %H:%M ({tz_name})")
+                return local_now, formatted, local_now.year
+            except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+                pass  # invalid tz name, fall through to UTC
+        formatted = utc_now.strftime("%Y-%m-%d %H:%M UTC")
+        return utc_now, formatted, utc_now.year
+
     def _build_system_prompt(
         self, tools: ToolRegistry | None = None,
     ) -> str:
@@ -1155,13 +1184,12 @@ class ReActAgent:
         if self._system_prompt_override is not None:
             return self._system_prompt_override
 
-        now_dt = datetime.now(timezone.utc)
-        now = now_dt.strftime("%Y-%m-%d %H:%M UTC")
+        now_dt, now, year = self._get_localized_time()
         tool_descriptions = self._format_tool_descriptions(tools=tools)
         prompt = _SYSTEM_PROMPT_TEMPLATE.format(
             tool_descriptions=tool_descriptions,
             current_datetime=now,
-            current_year=now_dt.year,
+            current_year=year,
         )
         if self._extra_instructions:
             prompt += f"\n\nAdditional instructions:\n{self._extra_instructions}"
@@ -1178,11 +1206,10 @@ class ReActAgent:
         if self._system_prompt_override is not None:
             return self._system_prompt_override
 
-        now_dt = datetime.now(timezone.utc)
-        now = now_dt.strftime("%Y-%m-%d %H:%M UTC")
+        now_dt, now, year = self._get_localized_time()
         prompt = _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE.format(
             current_datetime=now,
-            current_year=now_dt.year,
+            current_year=year,
         )
         if self._extra_instructions:
             prompt += f"\n\nAdditional instructions:\n{self._extra_instructions}"

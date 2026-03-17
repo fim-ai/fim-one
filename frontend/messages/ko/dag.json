@@ -12,5 +12,7 @@
   "download": "다운로드",
   "openInNewTab": "새 탭에서 열기",
   "generatedFiles": "생성된 파일",
-  "htmlPreview": "HTML 미리보기"
+  "htmlPreview": "HTML 미리보기",
+  "deliverables": "결과물",
+  "generatedFilesCount": "생성된 파일 ({count})"
 }

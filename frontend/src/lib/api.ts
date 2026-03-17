@@ -2193,6 +2193,7 @@ export interface MarketItem {
   owner_username: string | null
   is_subscribed: boolean
   publish_status: string | null
+  created_at: string | null
 }
 
 export interface MarketSubscription {

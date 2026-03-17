@@ -40,6 +40,13 @@ export interface ReactDoneEvent {
   suggestions?: string[]
   /** Auto-generated conversation title (first message only). */
   title?: string
+  /** Final deliverable artifacts classified by the agent. */
+  deliverables?: Array<{
+    name: string
+    url: string
+    mime_type: string
+    size: number
+  }>
 }
 
 /** Streaming answer chunk event (emitted before `done`). */
@@ -116,4 +123,11 @@ export interface DagDoneEvent {
   suggestions?: string[]
   /** Auto-generated conversation title (first message only). */
   title?: string
+  /** Final deliverable artifacts classified by the agent. */
+  deliverables?: Array<{
+    name: string
+    url: string
+    mime_type: string
+    size: number
+  }>
 }

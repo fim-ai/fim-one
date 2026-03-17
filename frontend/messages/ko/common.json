@@ -127,6 +127,10 @@
   "orgShared": "조직",
   "publishedMarket": "게시됨 · 마켓",
   "publishedOrg": "게시됨 · 조직",
-  "subscribedMarket": "구독됨 · 마켓",
-  "subscribedOrg": "구독됨 · 조직"
+  "subscribedMarket": "구독함 · 마켓",
+  "subscribedOrg": "구독함 · 조직",
+  "previous": "이전",
+  "pageInfo": "{current}/{total} 페이지",
+  "uninstallConfirmTitle": "구독 취소",
+  "uninstallConfirmDescription": "이 리소스의 구독을 취소하시겠습니까? 언제든지 마켓에서 다시 구독할 수 있습니다."
 }

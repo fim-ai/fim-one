@@ -162,12 +162,25 @@ def extract_json_value(text: str) -> Any | None:
 
 
 def get_language_directive(preferred_language: str | None) -> str | None:
-    """Return a language directive string, or ``None`` if *auto*."""
+    """Return a soft language preference string, or ``None`` if *auto*.
+
+    The directive is intentionally phrased as a *preference* rather than an
+    absolute override so that agent-level instructions (e.g. a translation
+    agent) can take precedence when the task itself requires a specific
+    language behaviour.
+    """
     if not preferred_language or preferred_language == "auto":
         return None
     directives = {
-        "en": "LANGUAGE OVERRIDE: You MUST respond in English regardless of the query language.",
-        "zh": "LANGUAGE OVERRIDE: 你必须使用中文回复，无论用户使用什么语言提问。",
+        "en": (
+            "Language preference: The user prefers responses in English. "
+            "Follow this preference unless the agent directive or the task "
+            "itself requires a different language (e.g. translation)."
+        ),
+        "zh": (
+            "Language preference: 用户偏好使用中文回复。"
+            "请遵循此偏好，除非 Agent 指令或任务本身要求使用其他语言（如翻译任务）。"
+        ),
     }
     return directives.get(preferred_language)
 

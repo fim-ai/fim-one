@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl"
 import { Plus, Loader2, Wrench, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import {
   Dialog,
   DialogContent,
@@ -32,9 +33,12 @@ interface MCPServersSectionProps {
   onReady?: (actions: MCPServersSectionActions) => void
   currentUserId?: string
   scope?: ScopeValue
+  searchQuery?: string
+  currentPage?: number
+  onPageChange?: (page: number) => void
 }
 
-export function MCPServersSection({ onReady, currentUserId, scope = "all" }: MCPServersSectionProps) {
+export function MCPServersSection({ onReady, currentUserId, scope = "all", searchQuery = "", currentPage = 1, onPageChange }: MCPServersSectionProps) {
   const t = useTranslations("tools")
   const tc = useTranslations("common")
   const to = useTranslations("organizations")
@@ -216,6 +220,21 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all" }: MCP
     [servers, scope, currentUserId],
   )
 
+  const searchedServers = useMemo(() => {
+    if (!searchQuery.trim()) return filteredServers
+    const q = searchQuery.toLowerCase()
+    return filteredServers.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      (s.description ?? "").toLowerCase().includes(q)
+    )
+  }, [filteredServers, searchQuery])
+
+  const mcpTotalPages = Math.ceil(searchedServers.length / PAGE_SIZE)
+  const paginatedServers = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return searchedServers.slice(start, start + PAGE_SIZE)
+  }, [searchedServers, currentPage])
+
   return (
     <>
       {isLoading ? (
@@ -234,33 +253,36 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all" }: MCP
             </Button>
           }
         />
-      ) : filteredServers.length === 0 ? (
+      ) : searchedServers.length === 0 ? (
         <EmptyState
           icon={<Search />}
           title={tc("noResultsTitle")}
           description={tc("noResultsDescription")}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredServers.map((server) => (
-            <MCPServerCard
-              key={server.id}
-              server={server}
-              currentUserId={currentUserId}
-              onEdit={() => handleEdit(server)}
-              onDelete={() => handleDelete(server.id)}
-              onToggleActive={(isActive) => handleToggleActive(server.id, isActive)}
-              onTest={() => handleTest(server.id)}
-              onPublish={(id) => handlePublish(id)}
-              onUnpublish={(id) => handleUnpublish(id)}
-              onUninstall={handleUninstall}
-              onResubmit={(id) => handleResubmit(id)}
-              onCredentialsSaved={(serverId, hasCredentials) => {
-                setServers((prev) => prev.map((s) => s.id === serverId ? { ...s, my_has_credentials: hasCredentials } : s))
-              }}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {paginatedServers.map((server) => (
+              <MCPServerCard
+                key={server.id}
+                server={server}
+                currentUserId={currentUserId}
+                onEdit={() => handleEdit(server)}
+                onDelete={() => handleDelete(server.id)}
+                onToggleActive={(isActive) => handleToggleActive(server.id, isActive)}
+                onTest={() => handleTest(server.id)}
+                onPublish={(id) => handlePublish(id)}
+                onUnpublish={(id) => handleUnpublish(id)}
+                onUninstall={handleUninstall}
+                onResubmit={(id) => handleResubmit(id)}
+                onCredentialsSaved={(serverId, hasCredentials) => {
+                  setServers((prev) => prev.map((s) => s.id === serverId ? { ...s, my_has_credentials: hasCredentials } : s))
+                }}
+              />
+            ))}
+          </div>
+          <ListPagination currentPage={currentPage} totalPages={mcpTotalPages} onPageChange={onPageChange ?? (() => {})} />
+        </>
       )}
 
       {/* MCP Server create/edit dialog */}

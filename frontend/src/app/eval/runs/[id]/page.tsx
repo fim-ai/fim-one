@@ -17,6 +17,7 @@ import { evalApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { EvalRunDetailResponse, EvalCaseResultResponse } from "@/types/eval"
 import { cn } from "@/lib/utils"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 function StatusBadge({ status }: { status: string }) {
   const t = useTranslations("eval")
@@ -259,6 +260,9 @@ export default function RunResultsPage() {
   const { user, isLoading: authLoading } = useAuth()
 
   const [run, setRun] = useState<EvalRunDetailResponse | null>(null)
+
+  usePageTitle(run ? `${run.agent_name} — ${run.dataset_name}` : undefined)
+
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

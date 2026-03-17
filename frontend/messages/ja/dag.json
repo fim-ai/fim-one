@@ -12,5 +12,7 @@
   "download": "ダウンロード",
   "openInNewTab": "新しいタブで開く",
   "generatedFiles": "生成されたファイル",
-  "htmlPreview": "HTMLプレビュー"
+  "htmlPreview": "HTMLプレビュー",
+  "deliverables": "成果物",
+  "generatedFilesCount": "生成されたファイル ({count})"
 }

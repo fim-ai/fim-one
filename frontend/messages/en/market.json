@@ -1,6 +1,6 @@
 {
-  "title": "Market",
-  "description": "Browse and subscribe to shared resources",
+  "title": "Marketplace",
+  "description": "Browse and subscribe to shared resources from the marketplace",
   "empty": "No resources available in the marketplace",
   "emptyTitle": "No resources yet",
   "emptyDescription": "Resources published to the marketplace will appear here.",
@@ -9,6 +9,8 @@
   "unsubscribe": "Unsubscribe",
   "subscribeSuccess": "Subscribed successfully",
   "unsubscribeSuccess": "Unsubscribed successfully",
+  "unsubscribeConfirmTitle": "Unsubscribe",
+  "unsubscribeConfirmDescription": "Are you sure you want to unsubscribe from \"{name}\"? You can re-subscribe at any time.",
   "publishToMarketplace": "Publish to Marketplace",
   "marketplaceReviewRequired": "All resources published to the Marketplace require admin review before they become visible.",
   "publishTarget": "Publish Target",
@@ -23,6 +25,14 @@
   "dependenciesLabel": "Dependencies",
   "contentDepsIncluded": "Includes: {items} (auto-included for subscribers)",
   "connectionDepsRequired": "Requires setup: {items} (subscribers will need to provide credentials)",
+  "detailBy": "by {author}",
+  "detailCreated": "Created",
+  "detailType": "Type",
+  "detailDetails": "Details",
+  "subscribeSuccessTitle": "Subscribed!",
+  "subscribeSuccessDescription": "\"{name}\" has been added to your workspace.",
+  "goToConfigure": "Go configure",
+  "stayHere": "Stay here",
   "types": {
     "all": "All",
     "agent": "Agents",
@@ -31,5 +41,13 @@
     "mcp_server": "MCP Servers",
     "skill": "Skills",
     "workflow": "Workflows"
+  },
+  "typeSingular": {
+    "agent": "Agent",
+    "connector": "Connector",
+    "knowledge_base": "Knowledge Base",
+    "mcp_server": "MCP Server",
+    "skill": "Skill",
+    "workflow": "Workflow"
   }
 }

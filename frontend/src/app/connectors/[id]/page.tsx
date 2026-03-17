@@ -18,6 +18,7 @@ import { SchemaManager } from "@/components/connectors/schema-manager"
 import { QueryPlayground } from "@/components/connectors/query-playground"
 import { AIActionPanel } from "@/components/connectors/ai-action-panel"
 import type { ConnectorResponse } from "@/types/connector"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 function ConnectorEditorPageInner() {
   const params = useParams()
@@ -29,6 +30,9 @@ function ConnectorEditorPageInner() {
   const id = params.id as string
   const [connector, setConnector] = useState<ConnectorResponse | null>(null)
   const [isNew, setIsNew] = useState(id === "new")
+
+  usePageTitle(isNew ? t("newConnector") : connector?.name)
+
   const activeTab = searchParams.get("tab") || "connector"
   const [isLoading, setIsLoading] = useState(id !== "new")
   const [formDirty, setFormDirty] = useState(false)

@@ -37,6 +37,7 @@ import type { StepState, RoundSnapshot } from "@/hooks/use-dag-steps"
 import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
 import { IterationCard, ArtifactChips } from "@/components/steps"
 import type { IterationData } from "@/components/steps"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import { CollapsibleText } from "@/components/playground/collapsible-text"
 import { SuggestedFollowups } from "./suggested-followups"
 import { stripCitations } from "@/lib/evidence-utils"
@@ -594,6 +595,12 @@ function DagDoneCard({ done, stepStates, suggestions, onSuggestionSelect }: { do
     state.iterations.flatMap(iter => iter.artifacts ?? [])
   )
 
+  // Compute deliverables and other artifacts
+  const deliverables = done.deliverables ?? []
+  const otherArtifacts = deliverables.length > 0
+    ? allArtifacts.filter(a => !deliverables.some(d => d.url === a.url))
+    : []
+
   return (
     <Card className="border-green-500/20 py-4">
       <CardHeader className="pb-0">
@@ -627,7 +634,32 @@ function DagDoneCard({ done, stepStates, suggestions, onSuggestionSelect }: { do
           content={stripCitations(done.answer)}
           className="prose-sm text-sm text-foreground/90"
         />
-        {allArtifacts.length > 0 && (
+        {deliverables.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border/30">
+            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+              {tDag("deliverables")}
+            </p>
+            <ArtifactChips artifacts={deliverables} />
+          </div>
+        )}
+        {otherArtifacts.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-border/20">
+            <Collapsible defaultOpen={false}>
+              <CollapsibleTrigger className="flex items-center gap-1.5 cursor-pointer group">
+                <ChevronRight className="h-3 w-3 text-muted-foreground/60 transition-transform duration-200 group-data-[state=open]:rotate-90" />
+                <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                  {tDag("generatedFilesCount", { count: otherArtifacts.length })}
+                </p>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="opacity-60 mt-1.5">
+                  <ArtifactChips artifacts={otherArtifacts} />
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
+        {deliverables.length === 0 && allArtifacts.length > 0 && (
           <div className="mt-3 pt-3 border-t border-border/30">
             <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
               {tDag("generatedFiles")}

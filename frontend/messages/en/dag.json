@@ -11,6 +11,8 @@
   "arguments": "Arguments",
   "download": "Download",
   "openInNewTab": "Open in new tab",
+  "deliverables": "Deliverables",
   "generatedFiles": "Generated Files",
+  "generatedFilesCount": "Generated Files ({count})",
   "htmlPreview": "HTML Preview"
 }

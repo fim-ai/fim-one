@@ -19,5 +19,6 @@
   "page": "ページ",
   "of": "の",
   "previousPage": "前のページ",
-  "nextPage": "次のページ"
+  "nextPage": "次のページ",
+  "description": "会話中に生成されたファイルとメディア"
 }

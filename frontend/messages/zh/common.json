@@ -128,5 +128,9 @@
   "publishedMarket": "已发布 · 市场",
   "publishedOrg": "已发布 · 组织",
   "subscribedMarket": "已订阅 · 市场",
-  "subscribedOrg": "已订阅 · 组织"
+  "subscribedOrg": "已订阅 · 组织",
+  "previous": "上一页",
+  "pageInfo": "第 {current} 页，共 {total} 页",
+  "uninstallConfirmTitle": "取消订阅",
+  "uninstallConfirmDescription": "确定要取消订阅此资源吗？您可以随时从市场重新订阅。"
 }

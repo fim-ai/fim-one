@@ -19,5 +19,6 @@
   "page": "Page",
   "of": "sur",
   "previousPage": "Page précédente",
-  "nextPage": "Page suivante"
+  "nextPage": "Page suivante",
+  "description": "Fichiers et médias générés lors des conversations"
 }

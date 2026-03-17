@@ -39,6 +39,7 @@ import { AdminNotifications } from "@/components/admin/admin-notifications"
 import { AdminTraces } from "@/components/admin/admin-traces"
 import { AdminHooks } from "@/components/admin/admin-hooks"
 import { AdminPackages } from "@/components/admin/admin-packages"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 // ---------------------------------------------------------------------------
 // Tab definitions grouped logically
@@ -131,6 +132,8 @@ function AdminPanelContent() {
   const t = useTranslations("admin")
 
   const activeTab = (searchParams.get("tab") as TabKey) || "overview"
+
+  usePageTitle(t("panelTitle"))
 
   // Auth guard: admin only
   useEffect(() => {

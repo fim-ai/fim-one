@@ -12,5 +12,7 @@
   "download": "Herunterladen",
   "openInNewTab": "In neuem Tab öffnen",
   "generatedFiles": "Generierte Dateien",
-  "htmlPreview": "HTML-Vorschau"
+  "htmlPreview": "HTML-Vorschau",
+  "deliverables": "Lieferergebnisse",
+  "generatedFilesCount": "Generierte Dateien ({count})"
 }

@@ -39,6 +39,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { evalApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { EvalDatasetResponse, EvalCaseResponse } from "@/types/eval"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 function AssertionList({
   assertions,
@@ -90,6 +91,9 @@ export default function DatasetCasesPage() {
   const { user, isLoading: authLoading } = useAuth()
 
   const [dataset, setDataset] = useState<EvalDatasetResponse | null>(null)
+
+  usePageTitle(dataset?.name)
+
   const [cases, setCases] = useState<EvalCaseResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)

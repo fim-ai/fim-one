@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import mimetypes
@@ -173,11 +174,16 @@ async def list_all_artifacts(
     artifact_type: str | None = Query(None, alias="type"),
     current_user: User = Depends(get_current_user),
 ) -> PaginatedResponse:
-    """List all artifacts across all conversations for the current user."""
+    """List all artifacts across all conversations for the current user.
+
+    Only deliverables (final outputs classified by the fast LLM) are returned.
+    Conversations without deliverable metadata are excluded entirely to avoid
+    exposing intermediate artifacts.
+    """
     from sqlalchemy import select as sa_select
 
     from fim_one.db import create_session
-    from fim_one.web.models import Conversation
+    from fim_one.web.models import Conversation, Message
 
     async with create_session() as session:
         result = await session.execute(
@@ -187,6 +193,52 @@ async def list_all_artifacts(
         )
         conversations = result.all()
 
+    conv_ids = [conv_id for conv_id, _ in conversations]
+
+    # ── Collect deliverable URLs from assistant messages ──────────────
+    # Maps conversation_id → set of deliverable artifact URLs.
+    # A conversation present in this dict (even with an empty set) means
+    # it has deliverable metadata and should be filtered; absence means
+    # the conversation pre-dates the feature and all artifacts are kept.
+    conv_deliverable_urls: dict[str, set[str]] = {}
+
+    if conv_ids:
+        async with create_session() as session:
+            msg_result = await session.execute(
+                sa_select(Message.conversation_id, Message.metadata_).where(
+                    Message.conversation_id.in_(conv_ids),
+                    Message.role == "assistant",
+                    Message.metadata_.isnot(None),
+                )
+            )
+            for row_conv_id, raw_meta in msg_result.all():
+                # metadata_ may already be a dict (JSON driver) or a string (SQLite).
+                meta: dict | None = None
+                if isinstance(raw_meta, str):
+                    try:
+                        meta = json.loads(raw_meta)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                elif isinstance(raw_meta, dict):
+                    meta = raw_meta
+                if not meta:
+                    continue
+
+                deliverables = meta.get("deliverables")
+                if deliverables is None:
+                    # This assistant message has metadata but no deliverables
+                    # key — skip it (doesn't count as "has deliverable info").
+                    continue
+
+                # Mark this conversation as having deliverable info.
+                if row_conv_id not in conv_deliverable_urls:
+                    conv_deliverable_urls[row_conv_id] = set()
+                for d in deliverables:
+                    url = d.get("url")
+                    if url:
+                        conv_deliverable_urls[row_conv_id].add(url)
+
+    # ── Filesystem scan (unchanged) ──────────────────────────────────
     # Offload all filesystem scans to the thread pool concurrently so the
     # event loop is never blocked by Path.iterdir() / f.stat() calls.
     nested = await asyncio.gather(*[
@@ -194,6 +246,16 @@ async def list_all_artifacts(
         for conv_id, conv_title in conversations
     ])
     artifacts: list[dict] = [item for sublist in nested for item in sublist]
+
+    # ── Filter to deliverables only ──────────────────────────────────
+    # Only keep artifacts explicitly marked as deliverables.
+    # Conversations without deliverable metadata are excluded entirely
+    # to avoid exposing intermediate/dirty artifacts.
+    all_deliverable_urls: set[str] = set()
+    for urls in conv_deliverable_urls.values():
+        all_deliverable_urls |= urls
+
+    artifacts = [a for a in artifacts if a["url"] in all_deliverable_urls]
 
     artifacts.sort(key=lambda a: a["created_at"], reverse=True)
     if artifact_type:

@@ -51,6 +51,7 @@ import type {
   WorkflowLogEvent,
   WorkflowLogEventType,
 } from "@/types/workflow"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 export default function WorkflowEditorPage() {
   const t = useTranslations("workflows")
@@ -64,6 +65,9 @@ export default function WorkflowEditorPage() {
   const workflowId = params.id as string
 
   const [workflow, setWorkflow] = useState<WorkflowResponse | null>(null)
+
+  usePageTitle(workflow?.name)
+
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isDuplicating, setIsDuplicating] = useState(false)

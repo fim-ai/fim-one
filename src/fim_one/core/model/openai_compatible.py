@@ -13,7 +13,10 @@ from typing import Any
 
 import litellm
 
-from .base import BaseLLM
+from .base import REASONING_INHERIT, BaseLLM
+
+# Local alias — shorter than importing from base everywhere.
+_REASONING_INHERIT = REASONING_INHERIT
 from .rate_limit import RateLimitConfig, TokenBucketRateLimiter
 from .retry import RetryConfig, retry_async_call, retry_async_iterator
 from .types import ChatMessage, LLMResult, StreamChunk, ToolCallRequest
@@ -164,6 +167,7 @@ class OpenAICompatibleLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | object | None = _REASONING_INHERIT,
     ) -> LLMResult:
         """Send a non-streaming chat completion request.
 
@@ -179,6 +183,7 @@ class OpenAICompatibleLLM(BaseLLM):
             temperature=temperature,
             max_tokens=max_tokens,
             response_format=response_format,
+            reasoning_effort=reasoning_effort,
         )
 
     async def _chat_impl(
@@ -190,6 +195,7 @@ class OpenAICompatibleLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | object | None = _REASONING_INHERIT,
     ) -> LLMResult:
         """Inner implementation of ``chat()`` -- one attempt, no retry."""
         if self._rate_limiter is not None:
@@ -203,6 +209,7 @@ class OpenAICompatibleLLM(BaseLLM):
             max_tokens=max_tokens,
             response_format=response_format,
             stream=False,
+            reasoning_effort=reasoning_effort,
         )
         response = await litellm.acompletion(**kwargs)
 
@@ -384,8 +391,15 @@ class OpenAICompatibleLLM(BaseLLM):
         max_tokens: int | None,
         response_format: dict[str, Any] | None = None,
         stream: bool = False,
+        reasoning_effort: str | object | None = _REASONING_INHERIT,
     ) -> dict[str, Any]:
-        """Build the keyword arguments dict for ``litellm.acompletion()``."""
+        """Build the keyword arguments dict for ``litellm.acompletion()``.
+
+        Args:
+            reasoning_effort: Per-call override.  ``_REASONING_INHERIT``
+                (default) falls back to the instance-level setting;
+                ``None`` suppresses reasoning; a string overrides the level.
+        """
         effective_temperature = (
             temperature if temperature is not None else self._default_temperature
         )
@@ -409,7 +423,14 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["tool_choice"] = tool_choice
         if response_format is not None:
             kwargs["response_format"] = response_format
-        if self._reasoning_effort:
+
+        # Resolve effective reasoning effort: per-call override > instance default.
+        effective_reasoning = (
+            self._reasoning_effort
+            if reasoning_effort is _REASONING_INHERIT
+            else reasoning_effort
+        )
+        if effective_reasoning:
             # GPT-5.x /v1/chat/completions rejects reasoning_effort when
             # tools are present.  Silently skip to keep agent workflows working.
             if tools and self._model.lower().startswith("gpt-5"):
@@ -431,7 +452,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 #   - Anthropic: reasoning_effort → thinking param (auto budget)
                 #   - OpenAI o-series: reasoning_effort passed through
                 #   - Others: drop_params=True handles unsupported cases
-                kwargs["reasoning_effort"] = self._reasoning_effort
+                kwargs["reasoning_effort"] = effective_reasoning
                 # LiteLLM maps reasoning_effort → thinking for Anthropic/Bedrock;
                 # Bedrock rejects temperature != 1.0 when thinking is enabled
                 if self._litellm_model.startswith("anthropic/"):

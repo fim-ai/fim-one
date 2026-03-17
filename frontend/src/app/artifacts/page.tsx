@@ -30,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 // ---------- types ----------
 
@@ -365,6 +366,8 @@ function ArtifactsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  usePageTitle(t("title"))
+
   const activeFilter = (searchParams.get("tab") as FilterType) || "all"
 
   const [artifacts, setArtifacts] = useState<ArtifactItem[]>([])
@@ -438,16 +441,12 @@ function ArtifactsContent() {
       <div className="flex-1 min-w-0 overflow-y-auto">
         <div className="px-6 py-6">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <Layers className="h-6 w-6" />
+          <div className="mb-6">
+            <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Layers className="h-5 w-5" />
               {t("title")}
             </h1>
-            {!loading && (
-              <span className="text-sm text-muted-foreground">
-                {t("count", { count: total })}
-              </span>
-            )}
+            <p className="text-sm text-muted-foreground">{t("description")}</p>
           </div>
 
           {/* Filter tabs */}

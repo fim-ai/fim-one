@@ -129,28 +129,28 @@
   },
   "examples": {
     "react": [
-      { "text": "Find the top 5 most-starred repositories on GitHub -- which one is #1 and how many stars does it have?", "category": "web" },
-      { "text": "Look up 'Sorting algorithm' on Wikipedia and create a comparison table of Bubble Sort, Quick Sort, and Merge Sort by time complexity", "category": "web" },
-      { "text": "Simulate the Monty Hall problem 10,000 times -- should you switch doors? Show the win rates", "category": "code" },
-      { "text": "Write Python to calculate the first 30 Fibonacci numbers and their golden ratio convergence, save the results as fibonacci.csv", "category": "code" },
-      { "text": "What time is it in New York, London, and Tokyo right now? Use template_render to create a styled HTML world clock dashboard", "category": "hybrid" },
-      { "text": "Find a public REST API with dummy posts, fetch 100 of them, then write Python to rank the top 5 most prolific authors and their average post title length", "category": "hybrid" }
+      "Find the top 5 most-starred repositories on GitHub -- which one is #1 and how many stars does it have?",
+      "Look up 'Sorting algorithm' on Wikipedia and create a comparison table of Bubble Sort, Quick Sort, and Merge Sort by time complexity",
+      "Simulate the Monty Hall problem 10,000 times -- should you switch doors? Show the win rates",
+      "Write Python to calculate the first 30 Fibonacci numbers and their golden ratio convergence, save the results as fibonacci.csv",
+      "What time is it in New York, London, and Tokyo right now? Use template_render to create a styled HTML world clock dashboard",
+      "Find a public REST API with dummy posts, fetch 100 of them, then write Python to rank the top 5 most prolific authors and their average post title length"
     ],
     "dag": [
-      { "text": "Look up the top 3 most-starred repos for Facebook, Google, and Microsoft on GitHub in parallel, then compare which tech giant has the highest average stars", "category": "web" },
-      { "text": "Look up Python, Rust, and Go on Wikipedia in parallel, then build a comparison table: creation year, creator, type system, and key strength", "category": "web" },
-      { "text": "Generate a 20x20 maze, then race BFS vs DFS in parallel -- which explores fewer cells? Visualize both solutions in ASCII art", "category": "code" },
-      { "text": "Compute the first 50 Fibonacci numbers, first 50 primes, and first 50 triangular numbers in parallel, then find which numbers appear in multiple sequences", "category": "code" },
-      { "text": "Get the current time in New York, London, Tokyo, Sydney, and Dubai in parallel, then use template_render to create a styled HTML world clock dashboard", "category": "hybrid" },
-      { "text": "Find a public REST API with posts and todos, fetch both in parallel, then write Python to correlate: do the most prolific posters also complete the most todos?", "category": "hybrid" }
+      "Look up the top 3 most-starred repos for Facebook, Google, and Microsoft on GitHub in parallel, then compare which tech giant has the highest average stars",
+      "Look up Python, Rust, and Go on Wikipedia in parallel, then build a comparison table: creation year, creator, type system, and key strength",
+      "Generate a 20x20 maze, then race BFS vs DFS in parallel -- which explores fewer cells? Visualize both solutions in ASCII art",
+      "Compute the first 50 Fibonacci numbers, first 50 primes, and first 50 triangular numbers in parallel, then find which numbers appear in multiple sequences",
+      "Get the current time in New York, London, Tokyo, Sydney, and Dubai in parallel, then use template_render to create a styled HTML world clock dashboard",
+      "Find a public REST API with posts and todos, fetch both in parallel, then write Python to correlate: do the most prolific posters also complete the most todos?"
     ],
     "auto": [
-      { "text": "Fetch the Node.js LTS changelog and summarize the 5 most impactful changes for a typical backend developer", "category": "web" },
-      { "text": "Simulate rolling two dice 50,000 times — print a frequency table of every possible sum and identify the most and least common outcomes", "category": "code" },
-      { "text": "Fetch 100 posts from JSONPlaceholder, rank the top 5 most active users by post count, and use template_render to display their stats as a styled leaderboard card", "category": "hybrid" },
-      { "text": "Look up GPT-4 and Claude 3 on Wikipedia — compare their release dates, context windows, and flagship capabilities — then produce a clean markdown comparison table", "category": "web" },
-      { "text": "Research React, Vue, and Svelte simultaneously — for each fetch npm weekly downloads, GitHub stars, and latest version — then rank them and produce a styled HTML scorecard with medal badges", "category": "hybrid" },
-      { "text": "In parallel: (1) implement merge sort and quick sort, benchmark both on 10,000 random integers; (2) find all Fibonacci numbers up to index 50 that are also prime; (3) solve N-Queens for N=8 and count all solutions — compile everything into one styled HTML report", "category": "code" }
+      "Fetch the Node.js LTS changelog and summarize the 5 most impactful changes for a typical backend developer",
+      "Simulate rolling two dice 50,000 times — print a frequency table of every possible sum and identify the most and least common outcomes",
+      "Fetch 100 posts from JSONPlaceholder, rank the top 5 most active users by post count, and use template_render to display their stats as a styled leaderboard card",
+      "Look up GPT-4 and Claude 3 on Wikipedia — compare their release dates, context windows, and flagship capabilities — then produce a clean markdown comparison table",
+      "Research React, Vue, and Svelte simultaneously — for each fetch npm weekly downloads, GitHub stars, and latest version — then rank them and produce a styled HTML scorecard with medal badges",
+      "In parallel: (1) implement merge sort and quick sort, benchmark both on 10,000 random integers; (2) find all Fibonacci numbers up to index 50 that are also prime; (3) solve N-Queens for N=8 and count all solutions — compile everything into one styled HTML report"
     ]
   }
 }

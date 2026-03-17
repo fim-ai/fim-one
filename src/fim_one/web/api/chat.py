@@ -338,21 +338,96 @@ async def _generate_title(
 
 
 # ---------------------------------------------------------------------------
+# Deliverable classification helper
+# ---------------------------------------------------------------------------
+
+
+async def _classify_deliverables(
+    fast_llm: "BaseLLM",
+    answer: str,
+    artifacts: list[dict[str, Any]],
+    *,
+    usage_tracker: "UsageTracker | None" = None,
+) -> list[dict[str, Any]]:
+    """Classify which artifacts are final deliverables vs intermediate outputs.
+
+    Uses a fast LLM to decide which artifacts from an agent execution are the
+    final outputs the user actually wants.  When there is only one artifact it
+    is returned directly without an LLM call.
+
+    On any failure the function returns **all** artifacts so that nothing is
+    accidentally hidden from the user (graceful degradation).
+    """
+    if not artifacts:
+        return []
+    if len(artifacts) == 1:
+        return artifacts
+
+    try:
+        system_prompt = (
+            "You classify which artifacts from an AI agent execution are final "
+            "deliverables (outputs the user actually wants) vs intermediate outputs "
+            "(search results, intermediate computations, drafts that were superseded).\n\n"
+            "Return ONLY a JSON array of the artifact indices that are deliverables.\n"
+            "Example: [0, 3] means artifacts 0 and 3 are deliverables.\n"
+            "If ALL artifacts are deliverables, return all indices.\n"
+            "If NONE are clearly deliverables, return all indices."
+        )
+
+        artifact_lines: list[str] = []
+        for i, a in enumerate(artifacts):
+            name = a.get("name", "untitled")
+            mime = a.get("mime_type", "unknown")
+            tool = a.get("tool_name", "")
+            artifact_lines.append(f"[{i}] {name} ({mime}, from {tool})")
+
+        truncated_answer = answer[:2000]
+        user_content = (
+            f"Agent answer (truncated):\n{truncated_answer}\n\n"
+            f"Artifacts:\n" + "\n".join(artifact_lines)
+        )
+
+        result = await fast_llm.chat([
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(role="user", content=user_content),
+        ])
+
+        raw = (result.message.content or "").strip()
+        if usage_tracker and result.usage:
+            await usage_tracker.record(result.usage)
+
+        indices = extract_json_value(raw)
+        if isinstance(indices, list) and all(isinstance(i, int) for i in indices):
+            valid = [idx for idx in indices if 0 <= idx < len(artifacts)]
+            if valid:
+                return [artifacts[idx] for idx in valid]
+
+        logger.debug(
+            "_classify_deliverables: unexpected JSON structure: %s",
+            type(indices),
+        )
+        return artifacts
+    except Exception:
+        logger.debug("_classify_deliverables failed", exc_info=True)
+        return artifacts
+
+
+# ---------------------------------------------------------------------------
 # Auth & agent resolution helpers
 # ---------------------------------------------------------------------------
 
 
 async def _resolve_user(
     token: str | None,
-) -> tuple[str | None, str | None, str | None]:
+) -> tuple[str | None, str | None, str | None, str | None]:
     """Validate a JWT query-param token (or SSE ticket JWT) and return
-    ``(user_id, system_instructions, preferred_language)``.
+    ``(user_id, system_instructions, preferred_language, timezone)``.
 
-    Returns ``(None, None, None)`` when *token* is not provided.
+    Returns ``(None, None, None, None)`` when *token* is not provided.
     Raises HTTPException(401) on invalid/expired tokens.
     """
     if not token:
-        return None, None, None
+        return None, None, None, None
 
     import jwt as pyjwt
     from fim_one.web.auth import SECRET_KEY, ALGORITHM
@@ -373,6 +448,7 @@ async def _resolve_user(
     # -- Fetch full user record from DB ------------------------------------
     system_instructions: str | None = None
     preferred_language: str | None = None
+    user_timezone: str | None = None
     try:
         from fim_one.db import create_session
         from fim_one.web.models import User
@@ -387,29 +463,30 @@ async def _resolve_user(
 
             # Fix #11a: reject disabled accounts
             if not user.is_active:
-                return None, None, None
+                return None, None, None, None
 
             # Fix #11b: reject tokens issued before a force-logout event
             if user.tokens_invalidated_at is not None:
                 iat = payload.get("iat")
                 if iat is None:
-                    return None, None, None
+                    return None, None, None, None
                 token_issued = (
                     datetime.fromtimestamp(iat, tz=UTC)
                     if isinstance(iat, (int, float))
                     else iat
                 )
                 if token_issued <= user.tokens_invalidated_at.replace(tzinfo=UTC):
-                    return None, None, None
+                    return None, None, None, None
 
             system_instructions = user.system_instructions
             preferred_language = user.preferred_language
+            user_timezone = getattr(user, "timezone", None)
     except HTTPException:
         raise
     except Exception:
         logger.warning("Failed to load user record", exc_info=True)
 
-    return user_id, system_instructions, preferred_language
+    return user_id, system_instructions, preferred_language, user_timezone
 
 
 async def _validate_conversation_ownership(
@@ -1651,9 +1728,13 @@ async def react_endpoint(
         )
 
     # -- Pre-stream resolution (before StreamingResponse) -------------------
-    current_user_id, user_system_instructions, preferred_language = await _resolve_user(token)
+    current_user_id, user_system_instructions, preferred_language, user_timezone = await _resolve_user(token)
     if current_user_id is None:
         raise AppError("authentication_required", status_code=401)
+
+    # Timezone: user profile → X-Timezone header → UTC fallback
+    if not user_timezone:
+        user_timezone = request.headers.get("X-Timezone") or None
 
     # Run independent validations and agent config resolution in parallel
     _parallel_tasks: list[Any] = [_check_token_quota(current_user_id)]
@@ -1679,19 +1760,24 @@ async def react_endpoint(
         ) from exc
     tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
-
-    # Merge user personal instructions + agent-specific instructions
-    parts: list[str] = []
-    if user_system_instructions:
-        parts.append(f"User's personal instructions:\n{user_system_instructions}")
-    if agent_instructions:
-        parts.append(agent_instructions)
-    extra_instructions = "\n\n".join(parts) if parts else None
-
-    # Prepend language directive when user has an explicit language preference
     lang_directive = get_language_directive(preferred_language)
+
+    # -- Layered extra_instructions assembly --------------------------------
+    # Priority (high → low):
+    #   1. Agent Directive   — the agent's core purpose / identity
+    #   2. User Preferences  — language preference + personal instructions
+    #   3. Capabilities      — KB hints, skills (additive)
+    parts: list[str] = []
+    if agent_instructions:
+        parts.append(f"## Agent Directive\n{agent_instructions}")
+    pref_parts: list[str] = []
     if lang_directive:
-        extra_instructions = f"{lang_directive}\n\n{extra_instructions}" if extra_instructions else lang_directive
+        pref_parts.append(lang_directive)
+    if user_system_instructions:
+        pref_parts.append(f"User's personal instructions:\n{user_system_instructions}")
+    if pref_parts:
+        parts.append("## User Preferences\n" + "\n\n".join(pref_parts))
+    extra_instructions = "\n\n".join(parts) if parts else None
 
     if agent_cfg and agent_cfg.get("kb_ids"):
         grounding_hint = _kb_system_hint(agent_cfg)
@@ -1945,6 +2031,8 @@ async def react_endpoint(
                 max_iterations=get_react_max_iterations(),
                 memory=memory,
                 context_guard=context_guard,
+                fast_llm=fast_llm,
+                user_timezone=user_timezone,
             )
 
             image_urls = [url for _, _, url in image_data] if image_data else None
@@ -2030,6 +2118,25 @@ async def react_endpoint(
                     )
             yield _emit(sse_events, "answer", {"status": "done"})
 
+            # -- Classify deliverables from all artifacts --
+            all_artifacts_with_context: list[dict[str, Any]] = []
+            for evt in sse_events:
+                if evt["event"] == "step":
+                    step_data = evt["data"]
+                    if step_data.get("status") == "done" and step_data.get("artifacts"):
+                        for a in step_data["artifacts"]:
+                            all_artifacts_with_context.append({
+                                **a,
+                                "tool_name": step_data.get("tool_name", ""),
+                            })
+
+            deliverables: list[dict[str, Any]] = []
+            if all_artifacts_with_context and fast_llm:
+                deliverables = await _classify_deliverables(
+                    fast_llm, answer, all_artifacts_with_context,
+                    usage_tracker=fast_usage_tracker,
+                )
+
             elapsed = round(time.time() - t0, 2)
             last_iter_elapsed = round(time.time() - iter_start, 2)
             done_payload: dict[str, Any] = {
@@ -2038,6 +2145,12 @@ async def react_endpoint(
                 "elapsed": elapsed,
                 "iter_elapsed": last_iter_elapsed,
             }
+            if deliverables:
+                # Strip tool_name from deliverable dicts before sending to client
+                done_payload["deliverables"] = [
+                    {k: v for k, v in d.items() if k != "tool_name"}
+                    for d in deliverables
+                ]
             if result.usage is not None:
                 done_payload["usage"] = {
                     "prompt_tokens": result.usage.prompt_tokens,
@@ -2232,9 +2345,13 @@ async def dag_endpoint(
     dag_user_metadata_str = body.user_metadata
 
     # -- Pre-stream resolution ----------------------------------------------
-    current_user_id, user_system_instructions, preferred_language = await _resolve_user(token)
+    current_user_id, user_system_instructions, preferred_language, user_timezone = await _resolve_user(token)
     if current_user_id is None:
         raise AppError("authentication_required", status_code=401)
+
+    # Timezone: user profile → X-Timezone header → UTC fallback
+    if not user_timezone:
+        user_timezone = request.headers.get("X-Timezone") or None
 
     # Run independent validations and agent config resolution in parallel
     _parallel_tasks_dag: list[Any] = [_check_token_quota(current_user_id)]
@@ -2260,19 +2377,20 @@ async def dag_endpoint(
         ) from exc
     tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
-
-    # Merge user personal instructions + agent-specific instructions
-    parts: list[str] = []
-    if user_system_instructions:
-        parts.append(f"User's personal instructions:\n{user_system_instructions}")
-    if agent_instructions:
-        parts.append(agent_instructions)
-    extra_instructions = "\n\n".join(parts) if parts else None
-
-    # Prepend language directive when user has an explicit language preference
     lang_directive = get_language_directive(preferred_language)
+
+    # -- Layered extra_instructions assembly (mirrors ReAct path) -----------
+    parts: list[str] = []
+    if agent_instructions:
+        parts.append(f"## Agent Directive\n{agent_instructions}")
+    pref_parts: list[str] = []
     if lang_directive:
-        extra_instructions = f"{lang_directive}\n\n{extra_instructions}" if extra_instructions else lang_directive
+        pref_parts.append(lang_directive)
+    if user_system_instructions:
+        pref_parts.append(f"User's personal instructions:\n{user_system_instructions}")
+    if pref_parts:
+        parts.append("## User Preferences\n" + "\n\n".join(pref_parts))
+    extra_instructions = "\n\n".join(parts) if parts else None
 
     if agent_cfg and agent_cfg.get("kb_ids"):
         grounding_hint = _kb_system_hint(agent_cfg)
@@ -2562,6 +2680,7 @@ async def dag_endpoint(
                     extra_instructions=extra_instructions,
                     max_iterations=dag_step_max_iters,
                     context_guard=dag_context_guard,
+                    user_timezone=user_timezone,
                 )
                 registry = get_model_registry()
                 exec_stop_event = asyncio.Event()
@@ -2816,6 +2935,25 @@ async def dag_endpoint(
 
             yield _emit(sse_events, "answer", {"status": "done"})
 
+            # -- Classify deliverables from all artifacts --
+            dag_all_artifacts: list[dict[str, Any]] = []
+            for evt in sse_events:
+                if evt["event"] == "step_progress":
+                    sp_data = evt["data"]
+                    if sp_data.get("artifacts"):
+                        for a in sp_data["artifacts"]:
+                            dag_all_artifacts.append({
+                                **a,
+                                "tool_name": sp_data.get("tool_name", ""),
+                            })
+
+            dag_deliverables: list[dict[str, Any]] = []
+            if dag_all_artifacts and fast_llm:
+                dag_deliverables = await _classify_deliverables(
+                    fast_llm, answer, dag_all_artifacts,
+                    usage_tracker=fast_usage_tracker,
+                )
+
             dag_done_payload: dict[str, Any] = {
                 "answer": answer,
                 "achieved": analysis.achieved,
@@ -2823,6 +2961,12 @@ async def dag_endpoint(
                 "elapsed": elapsed,
                 "rounds": plan.current_round,
             }
+            if dag_deliverables:
+                # Strip tool_name from deliverable dicts before sending to client
+                dag_done_payload["deliverables"] = [
+                    {k: v for k, v in d.items() if k != "tool_name"}
+                    for d in dag_deliverables
+                ]
             if cumulative_usage is not None:
                 dag_done_payload["usage"] = {
                     "prompt_tokens": cumulative_usage.prompt_tokens,
@@ -3030,7 +3174,7 @@ async def auto_endpoint(
     token = body.token
 
     # -- Pre-stream: resolve auth to get fast_llm for classification --------
-    current_user_id, _, _ = await _resolve_user(token)
+    current_user_id, _, _, _ = await _resolve_user(token)
     if current_user_id is None:
         raise AppError("authentication_required", status_code=401)
 

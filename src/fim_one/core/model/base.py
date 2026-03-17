@@ -11,6 +11,10 @@ from typing import Any
 
 from .types import ChatMessage, LLMResult, StreamChunk
 
+# Sentinel: "use the instance-level reasoning_effort configured at construction".
+# Passing ``None`` explicitly means "suppress reasoning for this call".
+REASONING_INHERIT = object()
+
 
 class BaseLLM(ABC):
     """Abstract base for all LLM implementations.
@@ -30,6 +34,7 @@ class BaseLLM(ABC):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | object | None = REASONING_INHERIT,
     ) -> LLMResult:
         """Send a chat completion request.
 
@@ -41,6 +46,10 @@ class BaseLLM(ABC):
             temperature: Sampling temperature override.
             max_tokens: Maximum tokens to generate.
             response_format: Optional response format constraint (e.g. JSON mode).
+            reasoning_effort: Per-call reasoning override.  ``REASONING_INHERIT``
+                (default) uses the instance-level setting; ``None`` suppresses
+                reasoning for this call; ``"low"``/``"medium"``/``"high"``
+                overrides the effort level.
 
         Returns:
             An ``LLMResult`` containing the assistant message and token usage.

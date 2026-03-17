@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Bot, Building2, Clock, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, RotateCw, ShoppingBag, XCircle } from "lucide-react"
-import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -44,7 +43,6 @@ export function AgentCard({
   const t = useTranslations("agents")
   const to = useTranslations("organizations")
   const tc = useTranslations("common")
-  const isPublished = agent.status === "published"
   const isOwner = !currentUserId || agent.user_id === currentUserId
   const isOrgResource = agent.visibility !== "personal"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,9 +81,9 @@ export function AgentCard({
                   {tc("edit")}
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => isPublished ? onUnpublish(agent.id) : onPublish(agent.id)}>
-                {isPublished ? <GlobeLock className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
-                {isPublished ? tc("unpublish") : tc("publish")}
+              <DropdownMenuItem onClick={() => isOrgResource ? onUnpublish(agent.id) : onPublish(agent.id)}>
+                {isOrgResource ? <GlobeLock className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
+                {isOrgResource ? tc("unpublish") : tc("publish")}
               </DropdownMenuItem>
               {agent.publish_status === "rejected" && onResubmit && (
                 <DropdownMenuItem onClick={() => onResubmit(agent.id)}>
@@ -130,17 +128,6 @@ export function AgentCard({
 
       {/* Status badges */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-        <Badge
-          variant="secondary"
-          className={cn(
-            "text-[10px] px-1.5 py-0 h-5",
-            isPublished
-              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-              : "opacity-60"
-          )}
-        >
-          {isPublished ? tc("published") : tc("draft")}
-        </Badge>
         {isFromMarket && (
           <Badge
             variant="secondary"
@@ -220,7 +207,7 @@ export function AgentCard({
       </p>
 
       {/* Start Chat CTA — published owner agents or any non-owner shared agent */}
-      {(isPublished || !isOwner) && (
+      {(isOrgResource || !isOwner) && (
         <Button
           variant="outline"
           size="sm"

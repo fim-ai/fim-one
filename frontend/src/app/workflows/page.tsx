@@ -16,6 +16,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -31,7 +41,9 @@ import { TemplateGalleryDialog } from "@/components/workflows/template-gallery-d
 import { Skeleton } from "@/components/ui/skeleton"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { ScopeFilter } from "@/components/shared/scope-filter"
+import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import type { WorkflowResponse } from "@/types/workflow"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 function WorkflowsPageInner() {
   const t = useTranslations("workflows")
@@ -42,9 +54,12 @@ function WorkflowsPageInner() {
   const router = useRouter()
   const { scope, setScope, filterByScope } = useScopeFilter()
 
+  usePageTitle(t("title"))
+
   const [workflows, setWorkflows] = useState<WorkflowResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [pendingUninstallId, setPendingUninstallId] = useState<string | null>(null)
   const [pendingPublishId, setPendingPublishId] = useState<string | null>(null)
   const [pendingUnpublishId, setPendingUnpublishId] = useState<string | null>(null)
   const [publishOrgId, setPublishOrgId] = useState<string>("")
@@ -55,8 +70,7 @@ function WorkflowsPageInner() {
   const [showTemplateGallery, setShowTemplateGallery] = useState(false)
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "active">("all")
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name_asc" | "name_desc" | "updated">("newest")
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Auth guard
   useEffect(() => {
@@ -64,6 +78,9 @@ function WorkflowsPageInner() {
       router.replace("/login")
     }
   }, [authLoading, user, router])
+
+  // Reset pagination when filters change
+  useEffect(() => { setCurrentPage(1) }, [searchQuery, scope])
 
   const loadWorkflows = useCallback(async () => {
     try {
@@ -106,7 +123,12 @@ function WorkflowsPageInner() {
     }
   }
 
-  const handleUninstall = async (id: string) => {
+  const handleUninstall = (id: string) => setPendingUninstallId(id)
+
+  const confirmUninstall = async () => {
+    if (!pendingUninstallId) return
+    const id = pendingUninstallId
+    setPendingUninstallId(null)
     try {
       await marketApi.unsubscribe({ resource_type: "workflow", resource_id: id })
       setWorkflows((prev) => prev.filter((w) => w.id !== id))
@@ -246,12 +268,9 @@ function WorkflowsPageInner() {
     ? userOrgs.find((o) => o.id === publishOrgId)
     : null
 
-  // Filter and sort workflows
+  // Filter workflows by scope + search
   const filteredWorkflows = useMemo(() => {
     let result = user ? filterByScope(workflows, user.id) : workflows
-    if (statusFilter !== "all") {
-      result = result.filter((w) => w.status === statusFilter)
-    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       result = result.filter(
@@ -260,25 +279,14 @@ function WorkflowsPageInner() {
           (w.description ?? "").toLowerCase().includes(q),
       )
     }
-    // Sort by selected criteria
-    result = [...result].sort((a, b) => {
-      switch (sortBy) {
-        case "newest":
-          return b.created_at.localeCompare(a.created_at)
-        case "oldest":
-          return a.created_at.localeCompare(b.created_at)
-        case "name_asc":
-          return a.name.localeCompare(b.name)
-        case "name_desc":
-          return b.name.localeCompare(a.name)
-        case "updated":
-          return (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at)
-        default:
-          return 0
-      }
-    })
     return result
-  }, [workflows, searchQuery, statusFilter, sortBy, scope, user, filterByScope])
+  }, [workflows, searchQuery, scope, user, filterByScope])
+
+  const totalPages = Math.ceil(filteredWorkflows.length / PAGE_SIZE)
+  const paginatedWorkflows = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return filteredWorkflows.slice(start, start + PAGE_SIZE)
+  }, [filteredWorkflows, currentPage])
 
   if (authLoading || !user) return null
 
@@ -322,48 +330,17 @@ function WorkflowsPageInner() {
 
       {/* Search + Filter bar */}
       {!isLoading && workflows.length > 0 && (
-        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border/20 shrink-0">
+        <div className="flex items-center gap-3 px-6 py-2.5 border-b border-border/20 shrink-0">
           <ScopeFilter value={scope} onChange={setScope} />
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               className="h-8 pl-8 text-xs"
-              placeholder={t("searchPlaceholder")}
+              placeholder={tc("searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex rounded-md border border-border overflow-hidden">
-            {(["all", "draft", "active"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`px-2.5 h-8 text-xs font-medium transition-colors ${
-                  statusFilter === s
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background text-muted-foreground hover:bg-muted"
-                } ${s !== "all" ? "border-l border-border" : ""}`}
-                onClick={() => setStatusFilter(s)}
-              >
-                {s === "all" ? tc("all") : t(`status${s.charAt(0).toUpperCase() + s.slice(1)}` as Parameters<typeof t>[0])}
-              </button>
-            ))}
-          </div>
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-            <SelectTrigger className="w-[160px] h-8 text-xs ml-auto">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="newest" className="text-xs">{t("sortNewest")}</SelectItem>
-              <SelectItem value="oldest" className="text-xs">{t("sortOldest")}</SelectItem>
-              <SelectItem value="name_asc" className="text-xs">{t("sortNameAsc")}</SelectItem>
-              <SelectItem value="name_desc" className="text-xs">{t("sortNameDesc")}</SelectItem>
-              <SelectItem value="updated" className="text-xs">{t("sortUpdated")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-muted-foreground shrink-0">
-            {t("workflowCount", { count: filteredWorkflows.length, total: workflows.length })}
-          </span>
         </div>
       )}
 
@@ -394,22 +371,25 @@ function WorkflowsPageInner() {
             description={t("noSearchResultsDescription")}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredWorkflows.map((workflow) => (
-              <WorkflowCard
-                key={workflow.id}
-                workflow={workflow}
-                currentUserId={user.id}
-                onDelete={handleDelete}
-                onExport={handleExport}
-                onDuplicate={handleDuplicate}
-                onPublish={handlePublish}
-                onUnpublish={handleUnpublish}
-                onUninstall={handleUninstall}
-                onResubmit={handleResubmit}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {paginatedWorkflows.map((workflow) => (
+                <WorkflowCard
+                  key={workflow.id}
+                  workflow={workflow}
+                  currentUserId={user.id}
+                  onDelete={handleDelete}
+                  onExport={handleExport}
+                  onDuplicate={handleDuplicate}
+                  onPublish={handlePublish}
+                  onUnpublish={handleUnpublish}
+                  onUninstall={handleUninstall}
+                  onResubmit={handleResubmit}
+                />
+              ))}
+            </div>
+            <ListPagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+          </>
         )}
       </div>
 
@@ -520,6 +500,27 @@ function WorkflowsPageInner() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Uninstall Confirmation */}
+      <AlertDialog open={pendingUninstallId !== null} onOpenChange={(open) => { if (!open) setPendingUninstallId(null) }}>
+        <AlertDialogContent className="sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tc("uninstallConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {tc("uninstallConfirmDescription")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmUninstall}
+            >
+              {tc("uninstall")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Template Gallery */}
       <TemplateGalleryDialog

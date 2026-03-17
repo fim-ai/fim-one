@@ -22,6 +22,7 @@ import { agentApi } from "@/lib/api"
 import { AgentSettingsForm } from "@/components/agents/agent-settings-form"
 import { AgentAIPanel } from "@/components/agents/agent-ai-panel"
 import type { AgentResponse } from "@/types/agent"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 export default function AgentEditorPage() {
   const t = useTranslations("agents")
@@ -33,6 +34,8 @@ export default function AgentEditorPage() {
   const [agent, setAgent] = useState<AgentResponse | null>(null)
   const [isNew, setIsNew] = useState(id === "new")
   const [isLoading, setIsLoading] = useState(id !== "new")
+
+  usePageTitle(isNew ? t("newAgent") : agent?.name)
   const [formDirty, setFormDirty] = useState(false)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [builderActive, setBuilderActive] = useState(false)

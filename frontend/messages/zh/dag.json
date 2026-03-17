@@ -12,5 +12,7 @@
   "download": "下载",
   "openInNewTab": "在新标签页中打开",
   "generatedFiles": "生成的文件",
-  "htmlPreview": "HTML 预览"
+  "htmlPreview": "HTML 预览",
+  "deliverables": "可交付成果",
+  "generatedFilesCount": "生成的文件 ({count})"
 }

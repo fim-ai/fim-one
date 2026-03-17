@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { FlaskConical, MoreHorizontal, Plus, Loader2, Trash2, Eye, Pencil } from "lucide-react"
+import { FlaskConical, MoreHorizontal, Plus, Loader2, Trash2, Eye, Pencil, Table2, Play } from "lucide-react"
 import { EmptyState } from "@/components/shared/empty-state"
 import { Button } from "@/components/ui/button"
 import {
@@ -48,6 +48,7 @@ import { getErrorMessage } from "@/lib/error-utils"
 import type { EvalDatasetResponse, EvalRunResponse } from "@/types/eval"
 import type { AgentResponse } from "@/types/agent"
 import { cn } from "@/lib/utils"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 // Status badge helper
 function RunStatusBadge({ status }: { status: string }) {
@@ -86,6 +87,8 @@ function EvalPageContent() {
   const { user, isLoading: authLoading } = useAuth()
 
   const activeTab = searchParams.get("tab") ?? "datasets"
+
+  usePageTitle(t("title"))
 
   // Datasets state
   const [datasets, setDatasets] = useState<EvalDatasetResponse[]>([])
@@ -247,11 +250,29 @@ function EvalPageContent() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b px-6 py-4">
-        <div className="flex items-center gap-2 mb-1">
-          <FlaskConical className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">{t("title")}</h1>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <FlaskConical className="h-5 w-5 text-muted-foreground" />
+              <h1 className="text-xl font-semibold">{t("title")}</h1>
+            </div>
+            <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {activeTab === "datasets" && (
+              <Button size="sm" onClick={() => { setDsName(""); setDsDescription(""); setDsFieldError(null); setCreateDatasetOpen(true) }}>
+                <Plus className="h-4 w-4 mr-2" />
+                {t("newDataset")}
+              </Button>
+            )}
+            {activeTab === "runs" && (
+              <Button size="sm" onClick={() => { setRunAgentId(""); setRunDatasetId(""); loadAgents(); setStartRunOpen(true) }}>
+                <Plus className="h-4 w-4 mr-2" />
+                {t("newRun")}
+              </Button>
+            )}
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       {/* Tabs */}
@@ -262,12 +283,13 @@ function EvalPageContent() {
               key={tab}
               onClick={() => switchTab(tab)}
               className={cn(
-                "py-3 text-sm font-medium border-b-2 transition-colors",
+                "py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5",
                 activeTab === tab
                   ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
+              {tab === "datasets" ? <Table2 className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
               {tab === "datasets" ? t("datasetsTab") : t("runsTab")}
             </button>
           ))}
@@ -278,23 +300,6 @@ function EvalPageContent() {
       <div className="flex-1 overflow-auto p-6">
         {activeTab === "datasets" && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-muted-foreground">
-                {datasets.length} {t("datasetsTab").toLowerCase()}
-              </span>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setDsName("")
-                  setDsDescription("")
-                  setDsFieldError(null)
-                  setCreateDatasetOpen(true)
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                {t("newDataset")}
-              </Button>
-            </div>
             {datasetsLoading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -379,23 +384,6 @@ function EvalPageContent() {
 
         {activeTab === "runs" && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm text-muted-foreground">
-                {runs.length} {t("runsTab").toLowerCase()}
-              </span>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setRunAgentId("")
-                  setRunDatasetId("")
-                  loadAgents()
-                  setStartRunOpen(true)
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                {t("newRun")}
-              </Button>
-            </div>
             {runsLoading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

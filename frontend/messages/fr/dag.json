@@ -12,5 +12,7 @@
   "download": "Télécharger",
   "openInNewTab": "Ouvrir dans un nouvel onglet",
   "generatedFiles": "Fichiers générés",
-  "htmlPreview": "Aperçu HTML"
+  "htmlPreview": "Aperçu HTML",
+  "deliverables": "Livrables",
+  "generatedFilesCount": "Fichiers générés ({count})"
 }

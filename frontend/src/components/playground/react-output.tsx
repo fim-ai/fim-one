@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { MarkdownContent } from "@/lib/markdown"
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, Wrench, Brain, CheckCircle2, Clock, RefreshCw, BarChart3, ChevronDown, ChevronUp } from "lucide-react"
+import { Loader2, Wrench, Brain, CheckCircle2, Clock, RefreshCw, BarChart3, ChevronDown, ChevronUp, ChevronRight } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { fmtDuration } from "@/lib/utils"
@@ -19,6 +19,7 @@ import type { StepItem } from "@/hooks/use-react-steps"
 import { ReferencesSection } from "./references-section"
 import { IterationCard, ArtifactChips } from "@/components/steps"
 import type { IterationData } from "@/components/steps"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import { CollapsibleText } from "@/components/playground/collapsible-text"
 import { SuggestedFollowups } from "./suggested-followups"
 import { parseEvidence, parseSimpleEvidence, mergeEvidence, type ParsedEvidence } from "@/lib/evidence-utils"
@@ -294,6 +295,12 @@ function DoneCard({ done, items, suggestions, onSuggestionSelect }: { done: Reac
     .filter(i => i.event === "step")
     .flatMap(i => (i.data as ReactStepEvent).artifacts ?? [])
 
+  // Compute deliverables and other artifacts
+  const deliverables = done.deliverables ?? []
+  const otherArtifacts = deliverables.length > 0
+    ? allArtifacts.filter(a => !deliverables.some(d => d.url === a.url))
+    : []
+
   // Pre-compute evidence for both EvidenceProvider (citations) and ReferencesSection
   const evidence = useMemo<ParsedEvidence | null>(() => {
     const blocks: ParsedEvidence[] = []
@@ -342,7 +349,32 @@ function DoneCard({ done, items, suggestions, onSuggestionSelect }: { done: Reac
             className="prose-sm text-sm text-foreground/90"
           />
         </EvidenceProvider>
-        {allArtifacts.length > 0 && (
+        {deliverables.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border/30">
+            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+              {tDag("deliverables")}
+            </p>
+            <ArtifactChips artifacts={deliverables} />
+          </div>
+        )}
+        {otherArtifacts.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-border/20">
+            <Collapsible defaultOpen={false}>
+              <CollapsibleTrigger className="flex items-center gap-1.5 cursor-pointer group">
+                <ChevronRight className="h-3 w-3 text-muted-foreground/60 transition-transform duration-200 group-data-[state=open]:rotate-90" />
+                <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                  {tDag("generatedFilesCount", { count: otherArtifacts.length })}
+                </p>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="opacity-60 mt-1.5">
+                  <ArtifactChips artifacts={otherArtifacts} />
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        )}
+        {deliverables.length === 0 && allArtifacts.length > 0 && (
           <div className="mt-3 pt-3 border-t border-border/30">
             <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
               {tDag("generatedFiles")}

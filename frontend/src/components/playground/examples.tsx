@@ -15,13 +15,15 @@ interface ExamplesProps {
   agentIcon?: string | null
 }
 
+type ExampleCategory = "web" | "code" | "hybrid"
+
 interface ExampleItem {
   text: string
-  category: "web" | "code" | "hybrid"
+  category: ExampleCategory
 }
 
 const CATEGORY_META: Record<
-  ExampleItem["category"],
+  ExampleCategory,
   { icon: typeof Globe; tKey: string; color: string }
 > = {
   web: {
@@ -39,6 +41,17 @@ const CATEGORY_META: Record<
     tKey: "categoryHybrid",
     color: "text-amber-400",
   },
+}
+
+/**
+ * Category assignments per mode — kept in code (not i18n) because these are
+ * programmatic enum values, not translatable UI text.  Order must match the
+ * corresponding `examples.<mode>` string arrays in playground.json.
+ */
+const EXAMPLE_CATEGORIES: Record<AgentMode, ExampleCategory[]> = {
+  react:  ["web", "web", "code", "code", "hybrid", "hybrid"],
+  dag:    ["web", "web", "code", "code", "hybrid", "hybrid"],
+  auto:   ["web", "code", "hybrid", "web", "hybrid", "code"],
 }
 
 
@@ -93,8 +106,12 @@ export function Examples({
   agentIcon,
 }: ExamplesProps) {
   const t = useTranslations("playground")
-  const examplesKey = mode
-  const allExamples = t.raw(`examples.${examplesKey}`) as ExampleItem[]
+  const texts = t.raw(`examples.${mode}`) as string[]
+  const categories = EXAMPLE_CATEGORIES[mode]
+  const allExamples: ExampleItem[] = useMemo(
+    () => texts.map((text, i) => ({ text, category: categories[i] ?? "web" })),
+    [texts, categories]
+  )
   const examples = useMemo(
     () => pickExamples(allExamples, DISPLAY_COUNT),
     [allExamples]

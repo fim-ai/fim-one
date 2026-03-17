@@ -26,6 +26,7 @@ import { CredentialsSettings } from "@/components/settings/credentials-settings"
 import { UsageSettings } from "@/components/settings/usage-settings"
 import { NotificationsSettings } from "@/components/settings/notifications-settings"
 import { SubscriptionsSettings } from "@/components/settings/subscriptions-settings"
+import { usePageTitle } from "@/hooks/use-page-title"
 
 const TAB_KEYS = [
   "general",
@@ -60,6 +61,8 @@ function SettingsContent() {
   const t = useTranslations("settings")
 
   const activeTab = (searchParams.get("tab") as TabKey) || "general"
+
+  usePageTitle(t("title"))
 
   // Auth guard
   useEffect(() => {
