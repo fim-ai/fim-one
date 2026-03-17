@@ -51,5 +51,8 @@
   "contentDepsIncluded": "Gebündelte Wissensdatenbank: {items}",
   "connectionDepsRequired": "Erfordert Einrichtung: {items} (Abonnenten müssen Anmeldedaten bereitstellen)",
   "depIncluded": "Enthalten: {name}",
-  "depRequiresSetup": "Erfordert Einrichtung: {name}"
+  "depRequiresSetup": "Erfordert Einrichtung: {name}",
+  "credentialSetupRequired": "Die folgenden Abhängigkeiten erfordern eine Anmeldedaten-Konfiguration:",
+  "credentialSetupWarning": "Ohne Anmeldedaten kann diese Ressource nicht ordnungsgemäß funktionieren.",
+  "configureDep": "Konfigurieren"
 }

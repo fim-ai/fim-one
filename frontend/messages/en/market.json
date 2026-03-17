@@ -34,6 +34,9 @@
   "detailDetails": "Details",
   "subscribeSuccessTitle": "Subscribed!",
   "subscribeSuccessDescription": "\"{name}\" has been added to your workspace.",
+  "credentialSetupRequired": "The following dependencies require credential setup:",
+  "credentialSetupWarning": "Without credentials, this resource cannot function properly.",
+  "configureDep": "Configure",
   "goToConfigure": "Go configure",
   "stayHere": "Stay here",
   "types": {

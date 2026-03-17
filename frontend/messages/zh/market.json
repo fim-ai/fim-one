@@ -51,5 +51,8 @@
   "unsubscribeConfirmDescription": "Are you sure you want to unsubscribe from \"{name}\"? You can re-subscribe at any time.",
   "scopeLabel": "Scope",
   "depIncluded": "包含：{name}",
-  "depRequiresSetup": "需要设置：{name}"
+  "depRequiresSetup": "需要设置：{name}",
+  "credentialSetupRequired": "以下依赖项需要设置凭证：",
+  "credentialSetupWarning": "没有凭证，此资源无法正常运行。",
+  "configureDep": "配置"
 }

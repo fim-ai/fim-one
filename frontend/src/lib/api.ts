@@ -2234,7 +2234,7 @@ export const marketApi = {
   },
 
   subscribe: (body: { resource_type: string; resource_id: string; org_id?: string }) =>
-    apiFetch<ApiResponse<unknown>>('/api/market/subscribe', {
+    apiFetch<ApiResponse<{ subscribed: boolean; dependencies?: DependencyManifest }>>('/api/market/subscribe', {
       method: 'POST',
       body: JSON.stringify({ ...body, org_id: body.org_id ?? MARKET_ORG_ID }),
     }),

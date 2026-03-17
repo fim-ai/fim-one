@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Database, Server } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -27,7 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { api, type MarketItem } from '@/lib/api'
+import { api, type DependencyManifest, type MarketItem } from '@/lib/api'
 
 const RESOURCE_ROUTES: Record<string, string> = {
   agent: '/agents',
@@ -56,11 +57,13 @@ export function ResourceDetailModal({
   const router = useRouter()
   const [subscribing, setSubscribing] = useState(false)
   const [subscribeSuccess, setSubscribeSuccess] = useState(false)
+  const [subscribeDeps, setSubscribeDeps] = useState<DependencyManifest | null>(null)
   const [showUnsubConfirm, setShowUnsubConfirm] = useState(false)
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setSubscribeSuccess(false)
+      setSubscribeDeps(null)
     }
     onOpenChange(nextOpen)
   }
@@ -69,11 +72,15 @@ export function ResourceDetailModal({
     if (!item) return
     setSubscribing(true)
     try {
-      await api.subscribeResource({
+      const res = await api.subscribeResource({
         resource_type: item.resource_type,
         resource_id: item.id,
         org_id: item.org_id,
       })
+      // Extract dependency manifest from response
+      if (res?.data?.dependencies) {
+        setSubscribeDeps(res.data.dependencies)
+      }
       setSubscribeSuccess(true)
     } catch {
       toast.error(tc('error'))
@@ -117,6 +124,8 @@ export function ResourceDetailModal({
 
   if (!item) return null
 
+  const depsNeedingSetup = subscribeDeps?.connection_deps.filter(d => !d.allow_fallback) ?? []
+
   const isSolution = ['agent', 'skill', 'workflow'].includes(item.resource_type)
   const categoryLabel = isSolution ? t('categorySolutions') : t('categoryComponents')
   const authorParts: string[] = []
@@ -140,6 +149,32 @@ export function ResourceDetailModal({
               </DialogDescription>
             </div>
           </div>
+
+          {/* Connection deps needing credential setup */}
+          {depsNeedingSetup.length > 0 && (
+            <div className="space-y-2 border-t pt-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>{t('credentialSetupRequired')}</span>
+              </div>
+              {depsNeedingSetup.map((dep) => (
+                <Link
+                  key={`${dep.resource_type}:${dep.resource_id}`}
+                  href={dep.resource_type === 'mcp_server' ? `/mcp/${dep.resource_id}` : `/connectors/${dep.resource_id}`}
+                  className="flex items-center justify-between gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                  onClick={() => { handleOpenChange(false); onSubscribeSuccess() }}
+                >
+                  <span className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                    {dep.resource_type === 'mcp_server' ? <Server className="h-3.5 w-3.5 shrink-0" /> : <Database className="h-3.5 w-3.5 shrink-0" />}
+                    {dep.resource_name}
+                  </span>
+                  <span className="text-xs text-amber-600 dark:text-amber-400">{t('configureDep')} &rarr;</span>
+                </Link>
+              ))}
+              <p className="text-xs text-muted-foreground">{t('credentialSetupWarning')}</p>
+            </div>
+          )}
+
           <DialogFooter className="sm:justify-center gap-2">
             <Button onClick={handleGoConfigure}>
               {t('goToConfigure')} &rarr;

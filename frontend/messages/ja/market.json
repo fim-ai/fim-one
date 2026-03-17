@@ -51,5 +51,8 @@
   "contentDepsIncluded": "バンドルされたナレッジベース: {items}",
   "connectionDepsRequired": "セットアップが必要: {items}（購読者は認証情報を提供する必要があります）",
   "depIncluded": "含まれています: {name}",
-  "depRequiresSetup": "セットアップが必要: {name}"
+  "depRequiresSetup": "セットアップが必要: {name}",
+  "credentialSetupRequired": "次の依存関係には認証情報の設定が必要です:",
+  "credentialSetupWarning": "認証情報がないと、このリソースは正常に機能できません。",
+  "configureDep": "設定"
 }

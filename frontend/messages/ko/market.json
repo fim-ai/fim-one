@@ -51,5 +51,8 @@
   "contentDepsIncluded": "번들 지식 기반: {items}",
   "connectionDepsRequired": "설정 필요: {items} (구독자가 자격 증명을 제공해야 함)",
   "depIncluded": "포함됨: {name}",
-  "depRequiresSetup": "설정 필요: {name}"
+  "depRequiresSetup": "설정 필요: {name}",
+  "credentialSetupRequired": "다음 종속성에는 자격증명 설정이 필요합니다:",
+  "credentialSetupWarning": "자격증명이 없으면 이 리소스가 제대로 작동할 수 없습니다.",
+  "configureDep": "구성"
 }
