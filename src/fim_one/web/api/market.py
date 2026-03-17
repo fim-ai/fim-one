@@ -398,13 +398,19 @@ async def subscribe_resource(
         db.add(sub)
         await db.commit()
 
-    # Auto-subscribe content dependencies for Solutions
+    # Auto-subscribe content dependencies for Solutions.
+    # NOTE: knowledge_base deps are intentionally skipped — the agent
+    # accesses bound KBs via owner delegation (chat.py resolves KB owners
+    # at runtime), so creating a subscription would only leak the KB into
+    # the subscriber's KB list without adding functional value.
     manifest = None
     if body.resource_type in SOLUTION_TYPES:
         manifest = await resolve_solution_dependencies(
             body.resource_type, body.resource_id, db
         )
         for dep in manifest.content_deps:
+            if dep.resource_type == "knowledge_base":
+                continue  # black-box: accessed via owner delegation
             existing_dep = await db.execute(
                 select(ResourceSubscription).where(
                     ResourceSubscription.user_id == current_user.id,
@@ -533,8 +539,13 @@ async def _cascade_clean_content_deps(
     for dep_set in other_dep_sets:
         all_still_needed |= dep_set
 
-    # Delete orphaned content-dep subscriptions
+    # Delete orphaned content-dep subscriptions.
+    # KB deps are skipped — we never auto-create KB subscriptions for agent
+    # deps (they use owner delegation), so touching them here would risk
+    # deleting a user's *direct* KB subscription.
     for dep in manifest.content_deps:
+        if dep.resource_type == "knowledge_base":
+            continue  # never auto-subscribed; skip to avoid side-effects
         dep_key = (dep.resource_type, dep.resource_id)
         if dep_key in all_still_needed:
             continue

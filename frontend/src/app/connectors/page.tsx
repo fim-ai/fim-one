@@ -47,7 +47,6 @@ import { ScopeFilter } from "@/components/shared/scope-filter"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import { ConnectorTemplateGallery } from "@/components/connectors/connector-template-gallery"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 function ConnectorsPageInner() {
   const { user, isLoading: authLoading } = useAuth()
@@ -62,8 +61,6 @@ function ConnectorsPageInner() {
   const activeTab = searchParams.get("tab") === "mcp" ? "mcp" : "connectors"
   const { scope, setScope, filterByScope } = useScopeFilter()
 
-  usePageTitle(t("title"))
-
   const [connectors, setConnectors] = useState<ConnectorResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
@@ -71,7 +68,6 @@ function ConnectorsPageInner() {
   const [pendingPublishId, setPendingPublishId] = useState<string | null>(null)
   const [pendingUnpublishId, setPendingUnpublishId] = useState<string | null>(null)
   const [publishOrgId, setPublishOrgId] = useState<string>("")
-  const [publishAllowFallback, setPublishAllowFallback] = useState(true)
   const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
   const [orgsLoading, setOrgsLoading] = useState(false)
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false)
@@ -116,7 +112,6 @@ function ConnectorsPageInner() {
   const handlePublish = (id: string) => {
     setPendingPublishId(id)
     setPublishOrgId("")
-    setPublishAllowFallback(true)
     setOrgsLoading(true)
     orgApi.list().then((orgs) => {
       setUserOrgs(orgs)
@@ -230,7 +225,6 @@ function ConnectorsPageInner() {
       const updated = await connectorApi.publish(id, {
         scope: "org",
         org_id: publishOrgId,
-        allow_fallback: publishAllowFallback,
       })
       setConnectors((prev) => prev.map((c) => (c.id === id ? updated : c)))
       toast.success(t("connectorPublished"))
@@ -479,10 +473,16 @@ function ConnectorsPageInner() {
         selectedOrgId={publishOrgId}
         onOrgChange={setPublishOrgId}
         requiresReview={!!selectedOrg?.review_connectors}
-        allowFallback={publishAllowFallback}
-        onAllowFallbackChange={setPublishAllowFallback}
-        fallbackLabel={t("publishAllowFallback")}
-        fallbackHelp={t("publishAllowFallbackDescription")}
+        allowFallback={(() => {
+          if (!pendingPublishId) return undefined
+          const c = connectors.find(c => c.id === pendingPublishId)
+          return c?.type === "database" ? undefined : c?.allow_fallback
+        })()}
+        fallbackLabel={(() => {
+          if (!pendingPublishId) return undefined
+          const c = connectors.find(c => c.id === pendingPublishId)
+          return c?.type === "database" ? undefined : t("publishAllowFallback")
+        })()}
         noOrgsText={t("publishNoOrgs")}
         selectOrgPlaceholder={t("publishSelectOrg")}
         onConfirm={confirmPublish}

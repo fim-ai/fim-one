@@ -1,12 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Clock, CircleHelp, Store, Building2, Layers, KeyRound } from "lucide-react"
+import { Loader2, Clock, Store, Building2, Library, Bot, Database, Server, Info } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Dialog,
   DialogContent,
@@ -39,10 +37,9 @@ interface PublishDialogProps {
   onOrgChange: (id: string) => void
   /** Whether the selected org requires publish review */
   requiresReview: boolean
+  /** Read-only: current fallback status, shown as informational text when defined */
   allowFallback?: boolean
-  onAllowFallbackChange?: (value: boolean) => void
   fallbackLabel?: string
-  fallbackHelp?: string
   noOrgsText: string
   selectOrgPlaceholder: string
   onConfirm: () => void
@@ -65,9 +62,7 @@ export function PublishDialog({
   onOrgChange,
   requiresReview,
   allowFallback,
-  onAllowFallbackChange,
   fallbackLabel,
-  fallbackHelp,
   noOrgsText,
   selectOrgPlaceholder,
   onConfirm,
@@ -204,49 +199,39 @@ export function PublishDialog({
               </>
             )}
 
-            {/* allow_fallback toggle — only for Component types (connector, mcp_server) */}
-            {onAllowFallbackChange && (
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <div className="flex items-center gap-1.5">
-                  <Label htmlFor="allow-fallback" className="text-sm font-medium cursor-pointer">
-                    {fallbackLabel}
-                  </Label>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <CircleHelp className="h-3.5 w-3.5 text-muted-foreground cursor-default" />
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-64">
-                        <p>{fallbackHelp}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                <Switch
-                  id="allow-fallback"
-                  checked={allowFallback}
-                  onCheckedChange={onAllowFallbackChange}
-                  className="shrink-0"
-                />
+            {/* allow_fallback read-only status — shown for Component types (connector, mcp_server) */}
+            {allowFallback !== undefined && (
+              <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2.5 text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5 shrink-0" />
+                <p>
+                  {fallbackLabel}: <span className="font-medium">{allowFallback ? tc("enabled") : tc("disabled")}</span>
+                </p>
               </div>
             )}
           </div>
-          {/* Dependency preview -- only for Solutions */}
+          {/* Dependency preview -- per-item rows with type icons */}
           {deps && (deps.content_deps.length > 0 || deps.connection_deps.length > 0) && (
-            <div className="space-y-2 border-t pt-3">
+            <div className="space-y-1.5 border-t pt-3">
               <p className="text-xs font-medium text-muted-foreground">{tm("dependenciesLabel")}</p>
-              {deps.content_deps.length > 0 && (
-                <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <Layers className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>{tm("contentDepsIncluded", { items: deps.content_deps.map(d => d.resource_name).join(", ") })}</span>
+              {deps.content_deps.map((d) => (
+                <div key={`${d.resource_type}:${d.resource_id}`} className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 border border-border/50 px-2.5 py-1.5 rounded-md">
+                  {d.resource_type === "agent" ? <Bot className="h-3.5 w-3.5 shrink-0" /> : <Library className="h-3.5 w-3.5 shrink-0" />}
+                  <span>{tm("depIncluded", { name: d.resource_name })}</span>
                 </div>
-              )}
-              {deps.connection_deps.length > 0 && (
-                <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
-                  <KeyRound className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>{tm("connectionDepsRequired", { items: deps.connection_deps.map(d => d.resource_name).join(", ") })}</span>
+              ))}
+              {deps.connection_deps.map((d) => (
+                <div
+                  key={`${d.resource_type}:${d.resource_id}`}
+                  className={`flex items-center gap-2 text-sm px-2.5 py-1.5 rounded-md ${
+                    d.allow_fallback
+                      ? "text-muted-foreground bg-muted/50 border border-border/50"
+                      : "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20"
+                  }`}
+                >
+                  {d.resource_type === "mcp_server" ? <Server className="h-3.5 w-3.5 shrink-0" /> : <Database className="h-3.5 w-3.5 shrink-0" />}
+                  <span>{d.allow_fallback ? tm("depIncluded", { name: d.resource_name }) : tm("depRequiresSetup", { name: d.resource_name })}</span>
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>

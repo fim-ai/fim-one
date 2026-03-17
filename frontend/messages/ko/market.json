@@ -48,6 +48,8 @@
   "scopeGlobalMarket": "글로벌 마켓",
   "scopeOrg": "조직",
   "dependenciesLabel": "종속성",
-  "contentDepsIncluded": "포함: {items} (구독자를 위해 자동 포함됨)",
-  "connectionDepsRequired": "설정 필요: {items} (구독자가 자격 증명을 제공해야 함)"
+  "contentDepsIncluded": "번들 지식 기반: {items}",
+  "connectionDepsRequired": "설정 필요: {items} (구독자가 자격 증명을 제공해야 함)",
+  "depIncluded": "포함됨: {name}",
+  "depRequiresSetup": "설정 필요: {name}"
 }

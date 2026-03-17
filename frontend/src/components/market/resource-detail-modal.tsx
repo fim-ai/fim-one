@@ -17,6 +17,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { api, type MarketItem } from '@/lib/api'
 
 const RESOURCE_ROUTES: Record<string, string> = {
@@ -46,6 +56,7 @@ export function ResourceDetailModal({
   const router = useRouter()
   const [subscribing, setSubscribing] = useState(false)
   const [subscribeSuccess, setSubscribeSuccess] = useState(false)
+  const [showUnsubConfirm, setShowUnsubConfirm] = useState(false)
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -155,7 +166,10 @@ export function ResourceDetailModal({
               {categoryLabel}
             </Badge>
           </div>
-          <DialogTitle>{item.name}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {item.icon && <span className="text-xl leading-none">{item.icon}</span>}
+            {item.name}
+          </DialogTitle>
           {authorText && (
             <DialogDescription>
               {t('detailBy', { author: authorText })}
@@ -194,7 +208,7 @@ export function ResourceDetailModal({
             <Button
               variant="outline"
               disabled={subscribing}
-              onClick={handleUnsubscribe}
+              onClick={() => setShowUnsubConfirm(true)}
             >
               {t('unsubscribe')}
             </Button>
@@ -205,6 +219,27 @@ export function ResourceDetailModal({
           )}
         </DialogFooter>
       </DialogContent>
+
+      {/* Unsubscribe Confirmation */}
+      <AlertDialog open={showUnsubConfirm} onOpenChange={setShowUnsubConfirm}>
+        <AlertDialogContent className="sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('unsubscribeConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('unsubscribeConfirmDescription', { name: item.name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleUnsubscribe}
+            >
+              {t('unsubscribe')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

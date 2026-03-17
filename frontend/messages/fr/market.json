@@ -48,6 +48,8 @@
   "scopeGlobalMarket": "Marché mondial",
   "scopeOrg": "Organisation",
   "dependenciesLabel": "Dépendances",
-  "contentDepsIncluded": "Inclut : {items} (inclus automatiquement pour les abonnés)",
-  "connectionDepsRequired": "Configuration requise : {items} (les abonnés devront fournir des identifiants)"
+  "contentDepsIncluded": "Base de connaissances groupée : {items}",
+  "connectionDepsRequired": "Configuration requise : {items} (les abonnés devront fournir des identifiants)",
+  "depIncluded": "Inclus : {name}",
+  "depRequiresSetup": "Nécessite une configuration : {name}"
 }

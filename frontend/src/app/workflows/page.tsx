@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from "rea
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, GitBranch, Upload, Loader2, Clock, Search, LayoutTemplate, Layers, KeyRound } from "lucide-react"
+import { Plus, GitBranch, Upload, Loader2, Search, LayoutTemplate } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -25,16 +25,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { PublishDialog } from "@/components/shared/publish-dialog"
 import { useAuth } from "@/contexts/auth-context"
 import { workflowApi, marketApi, orgApi } from "@/lib/api"
-import type { UserOrg, DependencyManifest } from "@/lib/api"
+import type { UserOrg } from "@/lib/api"
 import { EmptyState } from "@/components/shared/empty-state"
 import { WorkflowCard } from "@/components/workflows/workflow-card"
 import { TemplateGalleryDialog } from "@/components/workflows/template-gallery-dialog"
@@ -43,18 +37,14 @@ import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import type { WorkflowResponse } from "@/types/workflow"
-import { usePageTitle } from "@/hooks/use-page-title"
 
 function WorkflowsPageInner() {
   const t = useTranslations("workflows")
   const to = useTranslations("organizations")
   const tc = useTranslations("common")
-  const tm = useTranslations("market")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { scope, setScope, filterByScope } = useScopeFilter()
-
-  usePageTitle(t("title"))
 
   const [workflows, setWorkflows] = useState<WorkflowResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -65,7 +55,6 @@ function WorkflowsPageInner() {
   const [publishOrgId, setPublishOrgId] = useState<string>("")
   const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
   const [orgsLoading, setOrgsLoading] = useState(false)
-  const [deps, setDeps] = useState<DependencyManifest | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showTemplateGallery, setShowTemplateGallery] = useState(false)
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState(false)
@@ -107,9 +96,6 @@ function WorkflowsPageInner() {
       setUserOrgs(orgs)
       if (orgs.length > 0) setPublishOrgId(orgs[0].id)
     }).catch(() => {}).finally(() => setOrgsLoading(false))
-    marketApi.dependencies({ resource_type: "workflow", resource_id: id })
-      .then(res => setDeps(res.data))
-      .catch(() => setDeps(null))
   }
   const handleUnpublish = (id: string) => setPendingUnpublishId(id)
 
@@ -412,78 +398,23 @@ function WorkflowsPageInner() {
         </DialogContent>
       </Dialog>
 
-      {/* Publish Confirmation */}
-      <Dialog open={pendingPublishId !== null} onOpenChange={(open) => { if (!open) setPendingPublishId(null) }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("publishDialogTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("publishDialogDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              {orgsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                </div>
-              ) : userOrgs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t("publishNoOrgs")}</p>
-              ) : (
-                <>
-                  <Select value={publishOrgId} onValueChange={setPublishOrgId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t("publishSelectOrg")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {userOrgs.map((org) => (
-                        <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {/* Review notice */}
-                  {selectedOrg?.review_workflows && (
-                    <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
-                      <Clock className="h-4 w-4 shrink-0" />
-                      <span>{to("publishRequiresReview")}</span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Dependency preview */}
-            {deps && (deps.content_deps.length > 0 || deps.connection_deps.length > 0) && (
-              <div className="space-y-2 border-t pt-3">
-                <p className="text-xs font-medium text-muted-foreground">{tm("dependenciesLabel")}</p>
-                {deps.content_deps.length > 0 && (
-                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <Layers className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>{tm("contentDepsIncluded", { items: deps.content_deps.map(d => d.resource_name).join(", ") })}</span>
-                  </div>
-                )}
-                {deps.connection_deps.length > 0 && (
-                  <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
-                    <KeyRound className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>{tm("connectionDepsRequired", { items: deps.connection_deps.map(d => d.resource_name).join(", ") })}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingPublishId(null)}>{tc("cancel")}</Button>
-            <Button
-              className="px-6"
-              onClick={confirmPublish}
-              disabled={orgsLoading || userOrgs.length === 0 || !publishOrgId}
-            >
-              {tc("publish")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Publish Confirmation — shared dialog with org/marketplace toggle */}
+      <PublishDialog
+        open={pendingPublishId !== null}
+        onOpenChange={(open) => { if (!open) setPendingPublishId(null) }}
+        title={t("publishDialogTitle")}
+        description={t("publishDialogDescription")}
+        orgs={userOrgs}
+        orgsLoading={orgsLoading}
+        selectedOrgId={publishOrgId}
+        onOrgChange={setPublishOrgId}
+        requiresReview={!!selectedOrg?.review_workflows}
+        noOrgsText={t("publishNoOrgs")}
+        selectOrgPlaceholder={t("publishSelectOrg")}
+        onConfirm={confirmPublish}
+        resourceType="workflow"
+        resourceId={pendingPublishId ?? undefined}
+      />
 
       {/* Unpublish Confirmation */}
       <Dialog open={pendingUnpublishId !== null} onOpenChange={(open) => { if (!open) setPendingUnpublishId(null) }}>

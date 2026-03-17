@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils'
 import { api, orgApi, type MarketItem, type UserOrg } from '@/lib/api'
 import { ResourceDetailModal } from '@/components/market/resource-detail-modal'
 import { toast } from 'sonner'
-import { usePageTitle } from '@/hooks/use-page-title'
 
 const CATEGORY_MAP = {
   solutions: ['all', 'agent', 'skill', 'workflow'],
@@ -39,8 +38,6 @@ function MarketContent() {
   const [orgs, setOrgs] = useState<UserOrg[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-
-  usePageTitle(t('title'))
 
   const scope = searchParams.get('scope') || 'market'
   const category = (searchParams.get('category') || 'solutions') as MarketCategory
@@ -236,7 +233,10 @@ function MarketContent() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-medium truncate">{item.name}</h3>
+                    <h3 className="font-medium truncate flex items-center gap-1.5">
+                      {item.icon && <span className="shrink-0 text-base leading-none">{item.icon}</span>}
+                      <span className="truncate">{item.name}</span>
+                    </h3>
                     {item.description && (
                       <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
                         {item.description}

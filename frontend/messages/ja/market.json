@@ -48,6 +48,8 @@
   "scopeGlobalMarket": "グローバルマーケット",
   "scopeOrg": "組織",
   "dependenciesLabel": "依存関係",
-  "contentDepsIncluded": "含まれるもの: {items}（購読者向けに自動含有）",
-  "connectionDepsRequired": "セットアップが必要: {items}（購読者は認証情報を提供する必要があります）"
+  "contentDepsIncluded": "バンドルされたナレッジベース: {items}",
+  "connectionDepsRequired": "セットアップが必要: {items}（購読者は認証情報を提供する必要があります）",
+  "depIncluded": "含まれています: {name}",
+  "depRequiresSetup": "セットアップが必要: {name}"
 }

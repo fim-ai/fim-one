@@ -162,7 +162,7 @@ export function ConnectorSettingsForm({
       if (connector) {
         result = await connectorApi.update(connector.id, {
           ...data,
-          ...(connector.visibility !== "personal" && authType !== "none" && { allow_fallback: allowFallback }),
+          ...(authType !== "none" && { allow_fallback: allowFallback }),
         })
       } else {
         result = await connectorApi.create(data)
@@ -371,8 +371,8 @@ export function ConnectorSettingsForm({
             </div>
           )}
 
-          {/* Allow Fallback — only shown in edit mode for non-personal connectors with auth */}
-          {connector && connector.visibility !== "personal" && authType !== "none" && (
+          {/* Allow Fallback — shown in edit mode for connectors with auth (regardless of visibility) */}
+          {connector && authType !== "none" && (
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <div className="space-y-0.5">
                 <p className="text-sm font-medium">{t("allowFallback")}</p>

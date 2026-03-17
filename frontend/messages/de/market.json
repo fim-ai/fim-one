@@ -48,6 +48,8 @@
   "scopeGlobalMarket": "Globaler Markt",
   "scopeOrg": "Organisation",
   "dependenciesLabel": "Abhängigkeiten",
-  "contentDepsIncluded": "Enthält: {items} (automatisch für Abonnenten enthalten)",
-  "connectionDepsRequired": "Erfordert Einrichtung: {items} (Abonnenten müssen Anmeldedaten bereitstellen)"
+  "contentDepsIncluded": "Gebündelte Wissensdatenbank: {items}",
+  "connectionDepsRequired": "Erfordert Einrichtung: {items} (Abonnenten müssen Anmeldedaten bereitstellen)",
+  "depIncluded": "Enthalten: {name}",
+  "depRequiresSetup": "Erfordert Einrichtung: {name}"
 }

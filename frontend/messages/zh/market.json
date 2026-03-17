@@ -46,8 +46,10 @@
   "scopeGlobalMarket": "全球市场",
   "scopeOrg": "组织",
   "dependenciesLabel": "依赖项",
-  "contentDepsIncluded": "包括：{items}（订阅者自动包含）",
+  "contentDepsIncluded": "捆绑知识库：{items}",
   "connectionDepsRequired": "需要设置：{items}（订阅者需要提供凭证）",
   "unsubscribeConfirmDescription": "Are you sure you want to unsubscribe from \"{name}\"? You can re-subscribe at any time.",
-  "scopeLabel": "Scope"
+  "scopeLabel": "Scope",
+  "depIncluded": "包含：{name}",
+  "depRequiresSetup": "需要设置：{name}"
 }

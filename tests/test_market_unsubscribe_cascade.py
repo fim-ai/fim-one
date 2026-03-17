@@ -16,8 +16,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fim_one.db.base import Base
+from fim_one.web.api.market import SOLUTION_TYPES
 from fim_one.web.dependency_analyzer import (
-    SOLUTION_TYPES,
     ContentDep,
     resolve_solution_dependencies,
 )
@@ -458,10 +458,10 @@ class TestCascadeCleanContentDeps:
     """Test the _cascade_clean_content_deps logic directly."""
 
     @pytest.mark.asyncio
-    async def test_orphaned_kb_sub_deleted(
+    async def test_kb_sub_not_touched_by_cascade(
         self, async_session: AsyncSession, user_a: User
     ) -> None:
-        """When an agent is unsubscribed, its orphaned KB subscription is deleted."""
+        """KB subscriptions are never cascade-deleted — KBs are accessed via owner delegation."""
         from fim_one.web.api.market import _cascade_clean_content_deps
 
         kb_id = str(uuid.uuid4())
@@ -484,7 +484,7 @@ class TestCascadeCleanContentDeps:
         )
         async_session.add(kb)
 
-        # User subscriptions: agent + kb
+        # User subscriptions: agent + kb (kb sub could be a legacy or direct sub)
         sub_agent = _make_sub(user_a.id, "agent", agent_id)
         sub_kb = _make_sub(user_a.id, "knowledge_base", kb_id)
         async_session.add_all([sub_agent, sub_kb])
@@ -501,7 +501,7 @@ class TestCascadeCleanContentDeps:
         )
         await async_session.commit()
 
-        # KB subscription should be deleted (orphaned)
+        # KB subscription should remain — cascade skips KB deps
         result = await async_session.execute(
             select(ResourceSubscription).where(
                 ResourceSubscription.user_id == user_a.id,
@@ -509,7 +509,7 @@ class TestCascadeCleanContentDeps:
                 ResourceSubscription.resource_id == kb_id,
             )
         )
-        assert result.scalar_one_or_none() is None
+        assert result.scalar_one_or_none() is not None
 
     @pytest.mark.asyncio
     async def test_shared_kb_sub_kept(
@@ -566,10 +566,10 @@ class TestCascadeCleanContentDeps:
         assert result.scalar_one_or_none() is not None
 
     @pytest.mark.asyncio
-    async def test_multiple_deps_partial_cleanup(
+    async def test_multiple_kb_deps_all_kept(
         self, async_session: AsyncSession, user_a: User
     ) -> None:
-        """Agent with multiple deps: only orphaned ones are cleaned, shared ones kept."""
+        """Agent with multiple KB deps: all KB subs are kept (cascade skips KBs)."""
         from fim_one.web.api.market import _cascade_clean_content_deps
 
         kb1_id = str(uuid.uuid4())
@@ -592,7 +592,7 @@ class TestCascadeCleanContentDeps:
         )
         async_session.add_all([agent_a, agent_b])
 
-        # User subscriptions
+        # User subscriptions (legacy or direct KB subs)
         sub_a = _make_sub(user_a.id, "agent", agent_a_id)
         sub_b = _make_sub(user_a.id, "agent", agent_b_id)
         sub_kb1 = _make_sub(user_a.id, "knowledge_base", kb1_id)
@@ -611,7 +611,7 @@ class TestCascadeCleanContentDeps:
         )
         await async_session.commit()
 
-        # KB1 should remain (still needed by agent B)
+        # Both KB subs should remain — cascade never touches KB subs
         result1 = await async_session.execute(
             select(ResourceSubscription).where(
                 ResourceSubscription.user_id == user_a.id,
@@ -621,7 +621,6 @@ class TestCascadeCleanContentDeps:
         )
         assert result1.scalar_one_or_none() is not None
 
-        # KB2 should be deleted (orphaned)
         result2 = await async_session.execute(
             select(ResourceSubscription).where(
                 ResourceSubscription.user_id == user_a.id,
@@ -629,7 +628,7 @@ class TestCascadeCleanContentDeps:
                 ResourceSubscription.resource_id == kb2_id,
             )
         )
-        assert result2.scalar_one_or_none() is None
+        assert result2.scalar_one_or_none() is not None
 
     @pytest.mark.asyncio
     async def test_no_deps_no_error(
