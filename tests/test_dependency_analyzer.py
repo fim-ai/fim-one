@@ -317,6 +317,7 @@ class TestResolveAgentDependencies:
             kb_ids=["kb-1"],
             connector_ids=["conn-1"],
             mcp_server_ids=None,
+            skill_ids=None,
         )
         kb = SimpleNamespace(id="kb-1", name="My KB")
         conn = _fake_connector(id="conn-1", name="My Connector", auth_type="bearer")
@@ -342,7 +343,7 @@ class TestResolveAgentDependencies:
     @pytest.mark.asyncio
     async def test_agent_with_empty_ids(self) -> None:
         agent = SimpleNamespace(
-            id="agt-1", name="Agent", kb_ids=None, connector_ids=None, mcp_server_ids=None
+            id="agt-1", name="Agent", kb_ids=None, connector_ids=None, mcp_server_ids=None, skill_ids=None
         )
         db = _mock_db_fetch({"agt-1": agent})
         manifest = await resolve_solution_dependencies("agent", "agt-1", db)
@@ -447,6 +448,7 @@ class TestResolveSkillDependencies:
             kb_ids=["kb-1"],
             connector_ids=["conn-1"],
             mcp_server_ids=None,
+            skill_ids=None,
         )
         kb = SimpleNamespace(id="kb-1", name="Agent KB")
         conn = _fake_connector(id="conn-1", name="Agent Conn", auth_type="bearer")

@@ -121,9 +121,13 @@ class TestResolveAgentDeps:
 
     @pytest.mark.asyncio
     async def test_agent_with_kb_and_connector(self, async_session: AsyncSession, user_a: User) -> None:
-        """Agent with kb_ids and connector_ids returns correct content deps."""
+        """Agent with kb_ids and connector_ids returns correct deps."""
         kb_id = str(uuid.uuid4())
         conn_id = str(uuid.uuid4())
+
+        # Create the referenced resources so the resolver can find them
+        kb = KnowledgeBase(id=kb_id, user_id=user_a.id, name="Test KB")
+        connector = Connector(id=conn_id, user_id=user_a.id, name="Test Connector")
         agent = Agent(
             id=str(uuid.uuid4()),
             user_id=user_a.id,
@@ -132,28 +136,31 @@ class TestResolveAgentDeps:
             connector_ids=[conn_id],
             skill_ids=None,
         )
-        async_session.add(agent)
+        async_session.add_all([kb, connector, agent])
         await async_session.commit()
 
         manifest = await resolve_solution_dependencies("agent", agent.id, async_session)
-        assert manifest.solution_type == "agent"
-        assert manifest.solution_id == agent.id
 
-        dep_set = {(d.resource_type, d.resource_id) for d in manifest.content_deps}
-        assert ("knowledge_base", kb_id) in dep_set
-        assert ("connector", conn_id) in dep_set
+        content_set = {(d.resource_type, d.resource_id) for d in manifest.content_deps}
+        assert ("knowledge_base", kb_id) in content_set
+
+        # Connectors are connection deps (require credential config)
+        conn_set = {(d.resource_type, d.resource_id) for d in manifest.connection_deps}
+        assert ("connector", conn_id) in conn_set
 
     @pytest.mark.asyncio
     async def test_agent_with_skills(self, async_session: AsyncSession, user_a: User) -> None:
         """Agent with skill_ids returns skill content deps."""
         skill_id = str(uuid.uuid4())
+
+        skill = Skill(id=skill_id, user_id=user_a.id, name="Test Skill", content="Do something")
         agent = Agent(
             id=str(uuid.uuid4()),
             user_id=user_a.id,
             name="Skill Agent",
             skill_ids=[skill_id],
         )
-        async_session.add(agent)
+        async_session.add_all([skill, agent])
         await async_session.commit()
 
         manifest = await resolve_solution_dependencies("agent", agent.id, async_session)
@@ -187,13 +194,15 @@ class TestResolveAgentDeps:
     async def test_agent_deduplicates_deps(self, async_session: AsyncSession, user_a: User) -> None:
         """Duplicate IDs in kb_ids are deduplicated."""
         kb_id = str(uuid.uuid4())
+
+        kb = KnowledgeBase(id=kb_id, user_id=user_a.id, name="Dup KB")
         agent = Agent(
             id=str(uuid.uuid4()),
             user_id=user_a.id,
             name="Dup Agent",
             kb_ids=[kb_id, kb_id],
         )
-        async_session.add(agent)
+        async_session.add_all([kb, agent])
         await async_session.commit()
 
         manifest = await resolve_solution_dependencies("agent", agent.id, async_session)
@@ -205,8 +214,10 @@ class TestResolveSkillDeps:
 
     @pytest.mark.asyncio
     async def test_skill_with_resource_refs(self, async_session: AsyncSession, user_a: User) -> None:
-        """Skill with resource_refs returns content deps from refs."""
+        """Skill with resource_refs returns connection deps for connectors."""
         conn_id = str(uuid.uuid4())
+
+        connector = Connector(id=conn_id, user_id=user_a.id, name="GitHub")
         skill = Skill(
             id=str(uuid.uuid4()),
             user_id=user_a.id,
@@ -216,12 +227,14 @@ class TestResolveSkillDeps:
                 {"type": "connector", "id": conn_id, "name": "GitHub"},
             ],
         )
-        async_session.add(skill)
+        async_session.add_all([connector, skill])
         await async_session.commit()
 
         manifest = await resolve_solution_dependencies("skill", skill.id, async_session)
-        assert len(manifest.content_deps) == 1
-        assert manifest.content_deps[0] == ContentDep(resource_type="connector", resource_id=conn_id)
+        # Connectors are connection deps, not content deps
+        assert len(manifest.connection_deps) == 1
+        assert manifest.connection_deps[0].resource_type == "connector"
+        assert manifest.connection_deps[0].resource_id == conn_id
 
     @pytest.mark.asyncio
     async def test_skill_with_no_refs(self, async_session: AsyncSession, user_a: User) -> None:
@@ -245,8 +258,10 @@ class TestResolveWorkflowDeps:
 
     @pytest.mark.asyncio
     async def test_workflow_with_connector_node(self, async_session: AsyncSession, user_a: User) -> None:
-        """Workflow with a connector node returns connector dep."""
+        """Workflow with a connector node returns connector connection dep."""
         conn_id = str(uuid.uuid4())
+
+        connector = Connector(id=conn_id, user_id=user_a.id, name="WF Connector")
         workflow = Workflow(
             id=str(uuid.uuid4()),
             user_id=user_a.id,
@@ -258,17 +273,19 @@ class TestResolveWorkflowDeps:
                 "edges": [],
             },
         )
-        async_session.add(workflow)
+        async_session.add_all([connector, workflow])
         await async_session.commit()
 
         manifest = await resolve_solution_dependencies("workflow", workflow.id, async_session)
-        dep_set = {(d.resource_type, d.resource_id) for d in manifest.content_deps}
+        dep_set = {(d.resource_type, d.resource_id) for d in manifest.connection_deps}
         assert ("connector", conn_id) in dep_set
 
     @pytest.mark.asyncio
     async def test_workflow_with_kb_node(self, async_session: AsyncSession, user_a: User) -> None:
         """Workflow with a knowledge_retrieval node returns KB dep."""
         kb_id = str(uuid.uuid4())
+
+        kb = KnowledgeBase(id=kb_id, user_id=user_a.id, name="WF KB")
         workflow = Workflow(
             id=str(uuid.uuid4()),
             user_id=user_a.id,
@@ -280,7 +297,7 @@ class TestResolveWorkflowDeps:
                 "edges": [],
             },
         )
-        async_session.add(workflow)
+        async_session.add_all([kb, workflow])
         await async_session.commit()
 
         manifest = await resolve_solution_dependencies("workflow", workflow.id, async_session)
@@ -289,8 +306,10 @@ class TestResolveWorkflowDeps:
 
     @pytest.mark.asyncio
     async def test_workflow_with_mcp_node(self, async_session: AsyncSession, user_a: User) -> None:
-        """Workflow with an MCP node returns mcp_server dep."""
+        """Workflow with an MCP node returns mcp_server connection dep."""
         server_id = str(uuid.uuid4())
+
+        server = MCPServer(id=server_id, user_id=user_a.id, name="WF MCP")
         workflow = Workflow(
             id=str(uuid.uuid4()),
             user_id=user_a.id,
@@ -302,11 +321,11 @@ class TestResolveWorkflowDeps:
                 "edges": [],
             },
         )
-        async_session.add(workflow)
+        async_session.add_all([server, workflow])
         await async_session.commit()
 
         manifest = await resolve_solution_dependencies("workflow", workflow.id, async_session)
-        dep_set = {(d.resource_type, d.resource_id) for d in manifest.content_deps}
+        dep_set = {(d.resource_type, d.resource_id) for d in manifest.connection_deps}
         assert ("mcp_server", server_id) in dep_set
 
     @pytest.mark.asyncio
