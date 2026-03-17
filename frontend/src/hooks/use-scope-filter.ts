@@ -30,7 +30,7 @@ export function useScopeFilter() {
     <T extends { user_id: string | null; source?: string }>(items: T[], currentUserId: string) => {
       if (scope === "mine") return items.filter((i) => i.user_id === currentUserId)
       if (scope === "org") return items.filter((i) => i.user_id !== currentUserId)
-      if (scope === "installed") return items.filter((i) => i.source === "installed")
+      if (scope === "installed") return items.filter((i) => i.source === "market")
       return items
     },
     [scope],

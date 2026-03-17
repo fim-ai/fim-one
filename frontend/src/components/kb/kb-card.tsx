@@ -44,8 +44,9 @@ export function KBCard({
   const isOrgResource = kb.visibility === "org" || kb.visibility === "global"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const source = (kb as any).source as string | undefined
-  const isInstalled = source === "installed"
-  const isOrgShared = source === "org" || (!source && !isOwner)
+  const isFromMarket = source === "market"
+  const isFromOrg = source === "org"
+  const isSubscribed = isFromMarket || isFromOrg
   return (
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
       {/* Header: name + hover menu */}
@@ -82,7 +83,7 @@ export function KBCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : !isOwner && onUninstall ? (
+        ) : !isOwner && isSubscribed && onUninstall ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -103,8 +104,8 @@ export function KBCard({
         ) : null}
       </div>
 
-      {/* Installed / Shared badge (non-owner) */}
-      {isInstalled && (
+      {/* Subscriber badge — Market */}
+      {isFromMarket && (
         <div className="flex items-center gap-1.5 mb-1.5">
           <Badge
             variant="secondary"
@@ -115,7 +116,8 @@ export function KBCard({
           </Badge>
         </div>
       )}
-      {!isInstalled && isOrgShared && (
+      {/* Subscriber badge — Organization */}
+      {isFromOrg && (
         <div className="flex items-center gap-1.5 mb-1.5">
           <Badge
             variant="secondary"
@@ -135,7 +137,7 @@ export function KBCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
           >
             <ShoppingBag className="h-2.5 w-2.5 mr-0.5" />
-            {tc("installed")}
+            {tc("publishedMarket")}
           </Badge>
         </div>
       )}
@@ -148,7 +150,7 @@ export function KBCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
           >
             <Building2 className="h-2.5 w-2.5 mr-0.5" />
-            {tc("shared")}
+            {tc("publishedOrg")}
           </Badge>
         </div>
       )}

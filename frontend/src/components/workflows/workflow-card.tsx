@@ -72,8 +72,9 @@ export function WorkflowCard({
   const isOrgResource = workflow.visibility !== "personal"
   const isActive = workflow.status === "active"
   const source = (workflow as unknown as { source?: string }).source
-  const isInstalled = source === "installed"
-  const isOrgShared = source === "org" || (!source && !isOwner)
+  const isFromMarket = source === "market"
+  const isFromOrg = source === "org"
+  const isSubscribed = isFromMarket || isFromOrg
   const nodeCount = workflow.blueprint?.nodes?.length ?? 0
 
   return (
@@ -137,7 +138,7 @@ export function WorkflowCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : isInstalled && onUninstall ? (
+        ) : isSubscribed && onUninstall ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -173,7 +174,7 @@ export function WorkflowCard({
         >
           {isPublished ? tc("published") : isActive ? t("statusActive") : t("statusDraft")}
         </Badge>
-        {isInstalled && (
+        {isFromMarket && (
           <Badge
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
@@ -182,7 +183,7 @@ export function WorkflowCard({
             {tc("installed")}
           </Badge>
         )}
-        {!isInstalled && isOrgShared && (
+        {isFromOrg && (
           <Badge
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
@@ -204,7 +205,7 @@ export function WorkflowCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
           >
             <ShoppingBag className="h-2.5 w-2.5 mr-0.5" />
-            {tc("installed")}
+            {tc("publishedMarket")}
           </Badge>
         )}
 
@@ -215,7 +216,7 @@ export function WorkflowCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
           >
             <Building2 className="h-2.5 w-2.5 mr-0.5" />
-            {tc("shared")}
+            {tc("publishedOrg")}
           </Badge>
         )}
 

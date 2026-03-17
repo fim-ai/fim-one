@@ -124,5 +124,7 @@
   "roadmap": "로드맵",
   "website": "웹사이트",
   "discord": "Discord",
-  "orgShared": "조직"
+  "orgShared": "조직",
+  "publishedMarket": "게시됨 · 마켓",
+  "publishedOrg": "게시됨 · 조직"
 }

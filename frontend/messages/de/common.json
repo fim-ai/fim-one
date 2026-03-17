@@ -124,5 +124,7 @@
   "roadmap": "Roadmap",
   "website": "Website",
   "discord": "Discord",
-  "orgShared": "Organisation"
+  "orgShared": "Organisation",
+  "publishedMarket": "Veröffentlicht · Marktplatz",
+  "publishedOrg": "Veröffentlicht · Organisation"
 }

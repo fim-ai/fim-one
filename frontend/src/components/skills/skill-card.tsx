@@ -63,8 +63,9 @@ export function SkillCard({
   const isOrgResource = skill.visibility === "org" || skill.visibility === "global"
   const isActive = skill.is_active
   const source = skill.source
-  const isInstalled = source === "installed"
-  const isOrgShared = source === "org" || (!source && !isOwner)
+  const isFromMarket = source === "market"
+  const isFromOrg = source === "org"
+  const isSubscribed = isFromMarket || isFromOrg
 
   return (
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
@@ -107,7 +108,7 @@ export function SkillCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : isInstalled && onUninstall ? (
+        ) : isSubscribed && onUninstall ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -144,7 +145,7 @@ export function SkillCard({
           {isPublished ? tc("published") : isActive ? t("statusActive") : t("statusDraft")}
         </Badge>
 
-        {isInstalled && (
+        {isFromMarket && (
           <Badge
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
@@ -153,7 +154,7 @@ export function SkillCard({
             {tc("installed")}
           </Badge>
         )}
-        {!isInstalled && isOrgShared && (
+        {isFromOrg && (
           <Badge
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
@@ -170,7 +171,7 @@ export function SkillCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
           >
             <ShoppingBag className="h-2.5 w-2.5 mr-0.5" />
-            {tc("installed")}
+            {tc("publishedMarket")}
           </Badge>
         )}
 
@@ -181,7 +182,7 @@ export function SkillCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
           >
             <Building2 className="h-2.5 w-2.5 mr-0.5" />
-            {tc("shared")}
+            {tc("publishedOrg")}
           </Badge>
         )}
 

@@ -58,8 +58,9 @@ export function ConnectorCard({
   const isOrgResource = connector.visibility === "org" || connector.visibility === "global"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const source = (connector as any).source as string | undefined
-  const isInstalled = source === "installed"
-  const isOrgShared = source === "org" || (!source && !isOwner && isOrgResource)
+  const isFromMarket = source === "market"
+  const isFromOrg = source === "org"
+  const isSubscribed = isFromMarket || isFromOrg
 
   // For database connectors, show host:port/database
   const dbConfig = connector.db_config
@@ -135,7 +136,7 @@ export function ConnectorCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : (!isOwner && onUninstall) || onFork ? (
+        ) : (!isOwner && isSubscribed && onUninstall) || onFork ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -153,7 +154,7 @@ export function ConnectorCard({
                   {t("forkConnector")}
                 </DropdownMenuItem>
               )}
-              {!isOwner && onUninstall && (
+              {!isOwner && isSubscribed && onUninstall && (
                 <>
                   {onFork && <DropdownMenuSeparator />}
                   <DropdownMenuItem variant="destructive" onClick={() => onUninstall(connector.id)}>
@@ -167,8 +168,8 @@ export function ConnectorCard({
         ) : null}
       </div>
 
-      {/* Installed / Shared badge (non-owner) */}
-      {isInstalled && (
+      {/* Subscriber badge — Market */}
+      {isFromMarket && (
         <div className="flex items-center gap-1.5 mb-1.5">
           <Badge
             variant="secondary"
@@ -179,7 +180,8 @@ export function ConnectorCard({
           </Badge>
         </div>
       )}
-      {!isInstalled && isOrgShared && (
+      {/* Subscriber badge — Organization */}
+      {isFromOrg && (
         <div className="flex items-center gap-1.5 mb-1.5">
           <Badge
             variant="secondary"
@@ -199,7 +201,7 @@ export function ConnectorCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
           >
             <ShoppingBag className="h-2.5 w-2.5 mr-0.5" />
-            {tc("installed")}
+            {tc("publishedMarket")}
           </Badge>
         </div>
       )}
@@ -212,7 +214,7 @@ export function ConnectorCard({
             className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
           >
             <Building2 className="h-2.5 w-2.5 mr-0.5" />
-            {tc("shared")}
+            {tc("publishedOrg")}
           </Badge>
         </div>
       )}

@@ -210,7 +210,7 @@ export function MCPServersSection({ onReady, currentUserId, scope = "all" }: MCP
       if (scope === "mine") return servers.filter((s) => s.user_id === currentUserId)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (scope === "installed") return servers.filter((s) => (s as any).source === "installed")
+      if (scope === "installed") return servers.filter((s) => (s as any).source === "market")
       return servers.filter((s) => s.user_id !== currentUserId)
     },
     [servers, scope, currentUserId],

@@ -113,6 +113,8 @@
   "install": "Subscribe",
   "uninstall": "Unsubscribe",
   "installed": "Market",
+  "publishedMarket": "Published \u00B7 Market",
+  "publishedOrg": "Published \u00B7 Org",
   "createdAt": "Created",
   "you": "You",
   "fromMarket": "From Market",
