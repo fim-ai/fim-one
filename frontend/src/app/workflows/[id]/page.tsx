@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Loader2, Clock } from "lucide-react"
+import { Loader2, Clock, Layers, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,8 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
-import { workflowApi, orgApi } from "@/lib/api"
-import type { UserOrg } from "@/lib/api"
+import { workflowApi, orgApi, marketApi } from "@/lib/api"
+import type { UserOrg, DependencyManifest } from "@/lib/api"
 import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { WorkflowToolbar, type ValidationResult } from "@/components/workflows/workflow-toolbar"
 import { WorkflowEditor } from "@/components/workflows/workflow-editor"
@@ -56,6 +56,7 @@ export default function WorkflowEditorPage() {
   const t = useTranslations("workflows")
   const to = useTranslations("organizations")
   const tc = useTranslations("common")
+  const tm = useTranslations("market")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const params = useParams()
@@ -77,6 +78,7 @@ export default function WorkflowEditorPage() {
   const [publishOrgId, setPublishOrgId] = useState<string>("")
   const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
   const [orgsLoading, setOrgsLoading] = useState(false)
+  const [deps, setDeps] = useState<DependencyManifest | null>(null)
   const pendingNavigationRef = useRef<string | null>(null)
   const editorRef = useRef<WorkflowEditorHandle>(null)
 
@@ -676,7 +678,10 @@ export default function WorkflowEditorPage() {
       setUserOrgs(orgs)
       if (orgs.length > 0) setPublishOrgId(orgs[0].id)
     }).catch(() => {}).finally(() => setOrgsLoading(false))
-  }, [])
+    marketApi.dependencies({ resource_type: "workflow", resource_id: workflowId })
+      .then(res => setDeps(res.data))
+      .catch(() => setDeps(null))
+  }, [workflowId])
 
   const confirmPublish = useCallback(async () => {
     if (!workflow || !publishOrgId) return
@@ -977,6 +982,25 @@ export default function WorkflowEditorPage() {
                 </>
               )}
             </div>
+
+            {/* Dependency preview */}
+            {deps && (deps.content_deps.length > 0 || deps.connection_deps.length > 0) && (
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground">{tm("dependenciesLabel")}</p>
+                {deps.content_deps.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <Layers className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{tm("contentDepsIncluded", { items: deps.content_deps.map(d => d.resource_name).join(", ") })}</span>
+                  </div>
+                )}
+                {deps.connection_deps.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
+                    <KeyRound className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{tm("connectionDepsRequired", { items: deps.connection_deps.map(d => d.resource_name).join(", ") })}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => setShowPublishDialog(false)}>{tc("cancel")}</Button>

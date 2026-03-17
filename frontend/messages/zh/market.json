@@ -23,5 +23,8 @@
   "emptyTitle": "暂无资源",
   "emptyDescription": "发布到市场的资源将显示在此处。",
   "subscribeSuccess": "订阅成功",
-  "unsubscribeSuccess": "取消订阅成功"
+  "unsubscribeSuccess": "取消订阅成功",
+  "dependenciesLabel": "依赖项",
+  "contentDepsIncluded": "包括：{items}（订阅者自动包含）",
+  "connectionDepsRequired": "需要设置：{items}（订阅者需要提供凭证）"
 }

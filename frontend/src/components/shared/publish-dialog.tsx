@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Clock, CircleHelp, Store, Building2 } from "lucide-react"
+import { Loader2, Clock, CircleHelp, Store, Building2, Layers, KeyRound } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { UserOrg } from "@/lib/api"
+import { marketApi } from "@/lib/api"
+import type { UserOrg, DependencyManifest } from "@/lib/api"
 import { MARKET_ORG_ID } from "@/lib/constants"
 
 type PublishTarget = "organization" | "marketplace"
@@ -45,6 +46,10 @@ interface PublishDialogProps {
   noOrgsText: string
   selectOrgPlaceholder: string
   onConfirm: () => void
+  /** Resource type being published (for dependency analysis) */
+  resourceType?: string
+  /** Resource ID being published (for dependency analysis) */
+  resourceId?: string
 }
 
 export function PublishDialog({
@@ -64,12 +69,15 @@ export function PublishDialog({
   noOrgsText,
   selectOrgPlaceholder,
   onConfirm,
+  resourceType,
+  resourceId,
 }: PublishDialogProps) {
   const tc = useTranslations("common")
   const to = useTranslations("organizations")
   const tm = useTranslations("market")
 
   const [publishTarget, setPublishTarget] = useState<PublishTarget>("organization")
+  const [deps, setDeps] = useState<DependencyManifest | null>(null)
 
   // When switching to marketplace, set org_id to MARKET_ORG_ID
   // When switching back, reset to first org or empty
@@ -90,6 +98,17 @@ export function PublishDialog({
       setPublishTarget("organization")
     }
   }, [open])
+
+  // Fetch dependencies for Solution types
+  useEffect(() => {
+    if (open && resourceType && resourceId && ['agent', 'skill', 'workflow'].includes(resourceType)) {
+      marketApi.dependencies({ resource_type: resourceType, resource_id: resourceId })
+        .then(res => setDeps(res.data))
+        .catch(() => setDeps(null))
+    } else {
+      setDeps(null)
+    }
+  }, [open, resourceType, resourceId])
 
   const isMarketplace = publishTarget === "marketplace"
   const effectiveRequiresReview = isMarketplace ? true : requiresReview
@@ -202,6 +221,24 @@ export function PublishDialog({
               />
             </div>
           </div>
+          {/* Dependency preview -- only for Solutions */}
+          {deps && (deps.content_deps.length > 0 || deps.connection_deps.length > 0) && (
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-xs font-medium text-muted-foreground">{tm("dependenciesLabel")}</p>
+              {deps.content_deps.length > 0 && (
+                <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <Layers className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{tm("contentDepsIncluded", { items: deps.content_deps.map(d => d.resource_name).join(", ") })}</span>
+                </div>
+              )}
+              {deps.connection_deps.length > 0 && (
+                <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
+                  <KeyRound className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{tm("connectionDepsRequired", { items: deps.connection_deps.map(d => d.resource_name).join(", ") })}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" className="px-6" onClick={() => onOpenChange(false)}>{tc("cancel")}</Button>

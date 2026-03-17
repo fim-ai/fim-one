@@ -23,5 +23,8 @@
   "emptyTitle": "リソースはまだありません",
   "emptyDescription": "マーケットプレイスに公開されたリソースがここに表示されます。",
   "subscribeSuccess": "正常に購読しました",
-  "unsubscribeSuccess": "正常に購読を解除しました"
+  "unsubscribeSuccess": "正常に購読を解除しました",
+  "dependenciesLabel": "依存関係",
+  "contentDepsIncluded": "含まれるもの: {items} (サブスクライバー向けに自動的に含まれます)",
+  "connectionDepsRequired": "セットアップが必要: {items} (サブスクライバーは認証情報を提供する必要があります)"
 }

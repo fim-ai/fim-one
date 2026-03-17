@@ -2201,6 +2201,11 @@ export interface MarketSubscription {
   org_id: string
 }
 
+export interface DependencyManifest {
+  content_deps: Array<{ resource_type: string; resource_id: string; resource_name: string }>
+  connection_deps: Array<{ resource_type: string; resource_id: string; resource_name: string; credential_schema: Record<string, unknown> }>
+}
+
 // --- Market API ---
 export const marketApi = {
   browse: async (params?: { resource_type?: string; page?: number; size?: number }) => {
@@ -2228,6 +2233,13 @@ export const marketApi = {
     const sp = resource_type ? `?resource_type=${resource_type}` : ''
     return apiFetch<ApiResponse<MarketSubscription[]>>(`/api/market/subscriptions${sp}`)
   },
+
+  dependencies: (params: { resource_type: string; resource_id: string }) => {
+    const sp = new URLSearchParams()
+    sp.set('resource_type', params.resource_type)
+    sp.set('resource_id', params.resource_id)
+    return apiFetch<ApiResponse<DependencyManifest>>(`/api/market/dependencies?${sp}`)
+  },
 }
 
 // --- Convenience api object (used by Market page) ---
@@ -2236,6 +2248,7 @@ export const api = {
   subscribeResource: marketApi.subscribe,
   unsubscribeResource: marketApi.unsubscribe,
   listSubscriptions: marketApi.listSubscriptions,
+  getResourceDependencies: marketApi.dependencies,
 
   setMcpMyCredentials: (serverId: string, body: { env?: Record<string, string>; headers?: Record<string, string> }) =>
     apiFetch<ApiResponse<unknown>>(`/api/mcp-servers/${serverId}/my-credentials`, { method: 'PUT', body: JSON.stringify(body) }),

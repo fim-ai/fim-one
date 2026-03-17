@@ -23,5 +23,8 @@
   "emptyTitle": "Noch keine Ressourcen",
   "emptyDescription": "Ressourcen, die im Marketplace veröffentlicht werden, werden hier angezeigt.",
   "subscribeSuccess": "Erfolgreich abonniert",
-  "unsubscribeSuccess": "Abonnement erfolgreich gekündigt"
+  "unsubscribeSuccess": "Abonnement erfolgreich gekündigt",
+  "dependenciesLabel": "Abhängigkeiten",
+  "contentDepsIncluded": "Enthält: {items} (automatisch für Abonnenten enthalten)",
+  "connectionDepsRequired": "Erforderliche Einrichtung: {items} (Abonnenten müssen Anmeldedaten bereitstellen)"
 }

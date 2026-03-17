@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, BookOpen, Loader2, Clock, Search, LayoutTemplate } from "lucide-react"
+import { Plus, BookOpen, Loader2, Clock, Search, LayoutTemplate, Layers, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { useAuth } from "@/contexts/auth-context"
 import { skillApi, marketApi, orgApi } from "@/lib/api"
-import type { UserOrg } from "@/lib/api"
+import type { UserOrg, DependencyManifest } from "@/lib/api"
 import { SkillCard } from "@/components/skills/skill-card"
 import { SkillFormDialog } from "@/components/skills/skill-form-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -37,6 +37,7 @@ function SkillsPageInner() {
   const t = useTranslations("skills")
   const to = useTranslations("organizations")
   const tc = useTranslations("common")
+  const tm = useTranslations("market")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { scope, setScope, filterByScope } = useScopeFilter()
@@ -49,6 +50,7 @@ function SkillsPageInner() {
   const [publishOrgId, setPublishOrgId] = useState<string>("")
   const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
   const [orgsLoading, setOrgsLoading] = useState(false)
+  const [deps, setDeps] = useState<DependencyManifest | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSkill, setEditingSkill] = useState<SkillResponse | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -86,6 +88,9 @@ function SkillsPageInner() {
       setUserOrgs(orgs)
       if (orgs.length > 0) setPublishOrgId(orgs[0].id)
     }).catch(() => {}).finally(() => setOrgsLoading(false))
+    marketApi.dependencies({ resource_type: "skill", resource_id: id })
+      .then(res => setDeps(res.data))
+      .catch(() => setDeps(null))
   }
   const handleUnpublish = (id: string) => setPendingUnpublishId(id)
 
@@ -350,6 +355,25 @@ function SkillsPageInner() {
                 </>
               )}
             </div>
+
+            {/* Dependency preview */}
+            {deps && (deps.content_deps.length > 0 || deps.connection_deps.length > 0) && (
+              <div className="space-y-2 border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground">{tm("dependenciesLabel")}</p>
+                {deps.content_deps.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <Layers className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{tm("contentDepsIncluded", { items: deps.content_deps.map(d => d.resource_name).join(", ") })}</span>
+                  </div>
+                )}
+                {deps.connection_deps.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
+                    <KeyRound className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{tm("connectionDepsRequired", { items: deps.connection_deps.map(d => d.resource_name).join(", ") })}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => setPendingPublishId(null)}>{tc("cancel")}</Button>

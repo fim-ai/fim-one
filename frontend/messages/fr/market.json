@@ -23,5 +23,8 @@
   "emptyTitle": "Aucune ressource pour le moment",
   "emptyDescription": "Les ressources publiées sur la marketplace apparaîtront ici.",
   "subscribeSuccess": "Abonnement réussi",
-  "unsubscribeSuccess": "Désabonnement réussi"
+  "unsubscribeSuccess": "Désabonnement réussi",
+  "dependenciesLabel": "Dépendances",
+  "contentDepsIncluded": "Inclut : {items} (inclus automatiquement pour les abonnés)",
+  "connectionDepsRequired": "Configuration requise : {items} (les abonnés devront fournir des identifiants)"
 }

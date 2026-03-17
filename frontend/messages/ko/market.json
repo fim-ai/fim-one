@@ -23,5 +23,8 @@
   "emptyTitle": "아직 리소스가 없습니다",
   "emptyDescription": "마켓플레이스에 게시된 리소스가 여기에 표시됩니다.",
   "subscribeSuccess": "구독되었습니다",
-  "unsubscribeSuccess": "구독 취소되었습니다"
+  "unsubscribeSuccess": "구독 취소되었습니다",
+  "dependenciesLabel": "종속성",
+  "contentDepsIncluded": "포함: {items} (구독자를 위해 자동 포함됨)",
+  "connectionDepsRequired": "설정 필요: {items} (구독자는 자격증명을 제공해야 함)"
 }
