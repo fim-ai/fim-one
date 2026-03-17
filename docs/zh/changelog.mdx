@@ -221,13 +221,16 @@ description: "FIM One 的所有重要更改。"
 ### 已修复
 
 - **模板 API 客户端端点路径** — 更新工作流模板 API 客户端以使用新的 `/api/workflow-templates` 路径，修复了损坏的模板 CRUD 操作。
-- **工作流 eval 命名空间扁平化**：修复了 ConditionBranch 和 VariableAssign 无法解析短变量名称（例如当存储中有 `input.score` 时的 `score`）的问题。添加了 `_flatten_eval_names()` 辅助函数，在 eval 命名空间中创建短别名，启用点号键解析而无需完整路径引用。
+- **工作流 eval 命名空间展平**：修复了 ConditionBranch 和 VariableAssign 无法解析短变量名称（例如当存储中有 `input.score` 时的 `score`）的问题。添加了 `_flatten_eval_names()` 辅助函数，在 eval 命名空间中创建短别名，无需完整路径引用即可启用点式键解析。
 - **工作流 `run_started` SSE 事件**：`run_started` 事件在 SSE 协议中有文档记录，但从未实际发出。现在在编排器循环开始前产生，以便前端使用者接收执行启动信号。
 - **工作流 SSE 事件名称不匹配**：修复了 SSE 事件名称 — `node_status` 重命名为 `node_started`/`node_completed`/`node_failed`/`node_skipped` 以匹配前端 SSE 处理程序的期望。
-- **工作流 `NodeRunResult.duration` 字段名称**：修复了 `duration` 为 `duration_ms` 以匹配 Pydantic 模式和前端解析。
+- **工作流 `NodeRunResult.duration` 字段名称**：修复了 `duration` 为 `duration_ms` 以匹配 Pydantic 架构和前端解析。
 - **工作流导出/导入 API 响应包装**：修复了工作流导出和导入端点的响应信封包装。
-- **`is_active` 切换时无需重新审查**：在智能体、连接器、知识库或 MCP 服务器上切换 `is_active` 不再将 `publish_status` 从 `approved` 还原为 `pending_review`。`check_edit_revert` 守卫现在仅在实际内容字段更改时触发（不仅仅是 `is_active`）。
-- **条件分支的级联跳过** — 被跳过的条件/分类器节点现在正确停用传出边，防止下游节点意外运行。
+- **`is_active` 切换时无需重新审查**：在智能体、连接器、知识库或 MCP 服务器上切换 `is_active` 不再将 `publish_status` 从 `approved` 还原为 `pending_review`。`check_edit_revert` 保护现在仅在实际内容字段更改时触发（不仅仅是 `is_active`）。
+- **条件分支的级联跳过** — 跳过的条件/分类器节点现在正确停用传出边，防止下游节点意外运行。
+- **依赖分析器 `skill_ids` 解析** — `_resolve_agent` 现在解析智能体引用的 `skill_ids`；以前在依赖分析期间技能被无声地忽略。
+- **工作流节点类型匹配不区分大小写** — 依赖分析器中的工作流节点类型匹配现在不区分大小写；具有小写类型的蓝图（例如 `"connector"` 对比 `"CONNECTOR"`）现在可以正确解析。
+- **依赖分析器测试夹具** — 修复了依赖分析器测试中由缺失 DB 夹具记录和不正确的依赖类型断言引起的 7 个测试失败。
 
 ### Changed
 

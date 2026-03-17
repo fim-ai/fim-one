@@ -228,6 +228,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Workflow export/import API response wrapping**: Fixed response envelope wrapping for workflow export and import endpoints.
 - **No re-review on `is_active` toggle**: Toggling `is_active` on agents, connectors, knowledge bases, or MCP servers no longer reverts `publish_status` from `approved` back to `pending_review`. The `check_edit_revert` guard now only fires when actual content fields change (not just `is_active`).
 - **Cascade-skip for condition branches** — Skipped condition/classifier nodes now correctly deactivate outgoing edges, preventing downstream nodes from running unexpectedly.
+- **Dependency analyzer `skill_ids` resolution** — `_resolve_agent` now resolves `skill_ids` referenced by agents; previously skills were silently ignored during dependency analysis.
+- **Case-insensitive workflow node type matching** — Workflow node type matching in the dependency analyzer is now case-insensitive; blueprints with lowercase types (e.g. `"connector"` vs `"CONNECTOR"`) now resolve correctly.
+- **Dependency analyzer test fixtures** — Fixed 7 test failures in dependency analyzer tests caused by missing DB fixture records and incorrect dependency type assertions.
 
 ### Changed
 

@@ -220,14 +220,17 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Template-API-Client-Endpunktpfade** — Der Workflow-Template-API-Client wurde aktualisiert, um neue `/api/workflow-templates`-Pfade zu verwenden und fehlerhafte Template-CRUD-Operationen zu beheben.
-- **Workflow-Eval-Namespace-Vereinfachung**: Behoben, dass ConditionBranch und VariableAssign kurze Variablennamen nicht auflösen konnten (z. B. `score`, wenn der Store `input.score` enthielt). Hinzugefügt wurde ein `_flatten_eval_names()`-Hilfsprogramm, das kurze Aliase im Eval-Namespace erstellt und die Auflösung von Punktnotationsschlüsseln ohne vollständige Pfadreferenzen ermöglicht.
-- **Workflow-`run_started`-SSE-Event**: Das `run_started`-Event war im SSE-Protokoll dokumentiert, wurde aber nie tatsächlich gesendet. Jetzt wird es vor Beginn der Orchestrator-Schleife gesendet, sodass Frontend-Consumer das Ausführungsstartssignal erhalten.
-- **Workflow-SSE-Event-Namenskonflikt**: SSE-Event-Namen behoben — `node_status` in `node_started`/`node_completed`/`node_failed`/`node_skipped` umbenannt, um den Frontend-SSE-Handler-Erwartungen zu entsprechen.
-- **Workflow-`NodeRunResult.duration`-Feldname**: `duration` in `duration_ms` korrigiert, um dem Pydantic-Schema und der Frontend-Analyse zu entsprechen.
-- **Workflow-Export/Import-API-Response-Wrapping**: Response-Envelope-Wrapping für Workflow-Export- und Import-Endpunkte behoben.
+- **Template-API-Client-Endpunkt-Pfade** — Workflow-Template-API-Client aktualisiert, um neue `/api/workflow-templates`-Pfade zu verwenden und fehlerhafte Template-CRUD-Operationen zu beheben.
+- **Workflow-Eval-Namespace-Flattening**: ConditionBranch und VariableAssign konnten kurze Variablennamen nicht auflösen (z. B. `score`, wenn der Store `input.score` enthielt). `_flatten_eval_names()`-Hilfsfunktion hinzugefügt, die kurze Aliase im Eval-Namespace erstellt und die Auflösung von Punktnotation ohne vollständige Pfadreferenzen ermöglicht.
+- **Workflow `run_started` SSE-Ereignis**: Das `run_started`-Ereignis war im SSE-Protokoll dokumentiert, wurde aber nie tatsächlich ausgegeben. Wird jetzt vor Beginn der Orchestrator-Schleife ausgegeben, sodass Frontend-Consumer das Ausführungsstartssignal erhalten.
+- **Workflow-SSE-Ereignisname-Nichtübereinstimmung**: SSE-Ereignisnamen behoben — `node_status` in `node_started`/`node_completed`/`node_failed`/`node_skipped` umbenannt, um den Frontend-SSE-Handler-Erwartungen zu entsprechen.
+- **Workflow `NodeRunResult.duration`-Feldname**: `duration` in `duration_ms` korrigiert, um dem Pydantic-Schema und dem Frontend-Parsing zu entsprechen.
+- **Workflow-Export-/Import-API-Antwort-Wrapping**: Response-Envelope-Wrapping für Workflow-Export- und Import-Endpunkte behoben.
 - **Keine Überprüfung bei `is_active`-Umschalter**: Das Umschalten von `is_active` bei Agenten, Konnektoren, Wissensdatenbanken oder MCP-Servern setzt `publish_status` nicht mehr von `approved` auf `pending_review` zurück. Die `check_edit_revert`-Schutzvorrichtung wird jetzt nur ausgelöst, wenn sich tatsächliche Inhaltsfelder ändern (nicht nur `is_active`).
-- **Cascade-Skip für Bedingungszweige** — Übersprungene Bedingungen-/Klassifiziererknoten deaktivieren jetzt korrekt ausgehende Kanten und verhindern, dass nachgelagerte Knoten unerwartet ausgeführt werden.
+- **Cascade-Skip für Bedingungszweige** — Übersprungene Bedingung-/Klassifiziererknoten deaktivieren jetzt korrekt ausgehende Kanten und verhindern, dass nachgelagerte Knoten unerwartet ausgeführt werden.
+- **Abhängigkeitsanalyzer `skill_ids`-Auflösung** — `_resolve_agent` löst jetzt `skill_ids` auf, auf die von Agenten verwiesen wird; zuvor wurden Fähigkeiten während der Abhängigkeitsanalyse stillschweigend ignoriert.
+- **Workflow-Knotentyp-Matching ohne Berücksichtigung der Groß-/Kleinschreibung** — Workflow-Knotentyp-Matching im Abhängigkeitsanalyzer berücksichtigt jetzt nicht die Groß-/Kleinschreibung; Blueprints mit Kleinbuchstaben-Typen (z. B. `"connector"` vs `"CONNECTOR"`) werden jetzt korrekt aufgelöst.
+- **Abhängigkeitsanalyzer-Test-Fixtures** — 7 Testfehler in Abhängigkeitsanalyzer-Tests behoben, die durch fehlende DB-Fixture-Datensätze und falsche Abhängigkeitstyp-Assertions verursacht wurden.
 
 ### Geändert
 

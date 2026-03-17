@@ -220,14 +220,17 @@ description: "FIM One의 모든 주목할 만한 변경 사항입니다."
 
 ### 수정됨
 
-- **Template API 클라이언트 엔드포인트 경로** — 워크플로우 템플릿 API 클라이언트를 새로운 `/api/workflow-templates` 경로를 사용하도록 업데이트하여 손상된 템플릿 CRUD 작업을 수정했습니다.
-- **워크플로우 eval 네임스페이스 평탄화**: ConditionBranch 및 VariableAssign이 짧은 변수 이름(예: 저장소에 `input.score`가 있을 때 `score`)을 해석하지 못하는 문제를 수정했습니다. 전체 경로 참조 없이 점으로 구분된 키 해석을 가능하게 하는 eval 네임스페이스에서 짧은 별칭을 생성하는 `_flatten_eval_names()` 헬퍼를 추가했습니다.
-- **워크플로우 `run_started` SSE 이벤트**: `run_started` 이벤트는 SSE 프로토콜에 문서화되었지만 실제로 발생하지 않았습니다. 이제 오케스트레이터 루프가 시작되기 전에 생성되므로 프론트엔드 소비자가 실행 시작 신호를 받습니다.
-- **워크플로우 SSE 이벤트 이름 불일치**: SSE 이벤트 이름을 수정했습니다 — `node_status`를 `node_started`/`node_completed`/`node_failed`/`node_skipped`로 이름을 바꿔 프론트엔드 SSE 핸들러 예상과 일치하도록 했습니다.
-- **워크플로우 `NodeRunResult.duration` 필드 이름**: `duration`을 `duration_ms`로 수정하여 Pydantic 스키마 및 프론트엔드 파싱과 일치하도록 했습니다.
-- **워크플로우 내보내기/가져오기 API 응답 래핑**: 워크플로우 내보내기 및 가져오기 엔드포인트의 응답 봉투 래핑을 수정했습니다.
-- **`is_active` 토글 시 재검토 없음**: 에이전트, 커넥터, 지식 베이스 또는 MCP 서버에서 `is_active`를 토글해도 더 이상 `publish_status`를 `approved`에서 `pending_review`로 되돌리지 않습니다. `check_edit_revert` 가드는 이제 실제 콘텐츠 필드가 변경될 때만 작동합니다(`is_active`만 변경되는 경우는 아님).
-- **조건 분기에 대한 캐스케이드 스킵** — 건너뛴 조건/분류자 노드는 이제 나가는 엣지를 올바르게 비활성화하여 다운스트림 노드가 예기치 않게 실행되는 것을 방지합니다.
+- **Template API client endpoint paths** — 워크플로우 템플릿 API 클라이언트를 새로운 `/api/workflow-templates` 경로를 사용하도록 업데이트하여 손상된 템플릿 CRUD 작업을 수정했습니다.
+- **Workflow eval namespace flattening**: ConditionBranch와 VariableAssign이 짧은 변수 이름(예: 저장소에 `input.score`가 있을 때 `score`)을 확인하지 못하는 문제를 수정했습니다. eval namespace에 짧은 별칭을 생성하는 `_flatten_eval_names()` 헬퍼를 추가하여 전체 경로 참조 없이 점 표기법 키 확인을 가능하게 했습니다.
+- **Workflow `run_started` SSE event**: `run_started` 이벤트는 SSE 프로토콜에 문서화되었지만 실제로 발생하지 않았습니다. 이제 오케스트레이터 루프가 시작되기 전에 발생하므로 프론트엔드 소비자가 실행 시작 신호를 받습니다.
+- **Workflow SSE event name mismatch**: SSE 이벤트 이름을 수정했습니다 — `node_status`를 `node_started`/`node_completed`/`node_failed`/`node_skipped`로 이름을 변경하여 프론트엔드 SSE 핸들러 예상과 일치하도록 했습니다.
+- **Workflow `NodeRunResult.duration` field name**: `duration`을 `duration_ms`로 수정하여 Pydantic 스키마 및 프론트엔드 파싱과 일치하도록 했습니다.
+- **Workflow export/import API response wrapping**: 워크플로우 내보내기 및 가져오기 엔드포인트의 응답 봉투 래핑을 수정했습니다.
+- **No re-review on `is_active` toggle**: 에이전트, 커넥터, 지식 베이스 또는 MCP 서버에서 `is_active`를 토글해도 더 이상 `publish_status`를 `approved`에서 `pending_review`로 되돌리지 않습니다. `check_edit_revert` 가드는 이제 실제 콘텐츠 필드가 변경될 때만 작동합니다(`is_active`만 변경되는 경우는 제외).
+- **Cascade-skip for condition branches** — 건너뛴 조건/분류자 노드는 이제 나가는 엣지를 올바르게 비활성화하여 다운스트림 노드가 예기치 않게 실행되는 것을 방지합니다.
+- **Dependency analyzer `skill_ids` resolution** — `_resolve_agent`는 이제 에이전트가 참조하는 `skill_ids`를 확인합니다. 이전에는 의존성 분석 중에 스킬이 자동으로 무시되었습니다.
+- **Case-insensitive workflow node type matching** — 의존성 분석기의 워크플로우 노드 타입 매칭이 이제 대소문자를 구분하지 않습니다. 소문자 타입(예: `"connector"` vs `"CONNECTOR"`)이 있는 블루프린트가 이제 올바르게 확인됩니다.
+- **Dependency analyzer test fixtures** — 누락된 DB 픽스처 레코드 및 잘못된 의존성 타입 어설션으로 인한 의존성 분석기 테스트의 7가지 테스트 실패를 수정했습니다.
 
 ### Changed
 
