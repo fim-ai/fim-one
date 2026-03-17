@@ -11,6 +11,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Agent directive in ReAct synthesis** — New `agent_directive` parameter on `ReActAgent` injects the agent's core purpose (e.g. "translate Chinese to English") into the synthesis system prompt, ensuring the final answer honours the agent's identity instead of defaulting to conversational replies. Wired in both ReAct and DAG chat endpoints.
+
 - **Marketplace redesign Phase 1 — Solutions + Components two-tier model** — Replaced the flat 6-type Market tab with a structured two-level navigation: top-level category toggle (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server) and type sub-tabs. Added scope selector dropdown to switch between Global Market and user's organizations. KB removed from Market scope (org-only). Unified org and market sharing: both now require explicit subscription (no more org auto-appear).
 
 ### Changed
