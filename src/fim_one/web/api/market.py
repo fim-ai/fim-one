@@ -20,7 +20,7 @@ from fim_one.web.models.agent import Agent
 from fim_one.web.models.connector import Connector
 from fim_one.web.models.knowledge_base import KnowledgeBase
 from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.organization import Organization
+from fim_one.web.models.organization import OrgMembership, Organization
 from fim_one.web.models.resource_subscription import ResourceSubscription
 from fim_one.web.models.skill import Skill
 from fim_one.web.models.user import User
@@ -131,6 +131,11 @@ def _workflow_market_info(w: Workflow) -> dict:
 # Browse
 # ---------------------------------------------------------------------------
 
+# Category constants for marketplace browsing
+SOLUTION_TYPES = ["agent", "skill", "workflow"]
+COMPONENT_TYPES = ["connector", "mcp_server"]
+MARKET_RESOURCE_TYPES = SOLUTION_TYPES + COMPONENT_TYPES
+
 # All supported resource types and their (model, info_fn, active_status) tuples
 _ALL_RESOURCE_TYPES = [
     "agent", "connector", "knowledge_base", "mcp_server", "skill", "workflow",
@@ -140,17 +145,39 @@ _ALL_RESOURCE_TYPES = [
 @router.get("", response_model=ApiResponse)
 async def browse_market(
     resource_type: str | None = Query(None),
+    scope: str = Query("market"),  # "market" (default) or "org:{org_id}"
+    category: str | None = Query(None),  # "solutions" | "components" | None (all)
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Browse published resources in the global Market org.
+    """Browse published resources in the Market or an org.
 
-    The Market org is a shadow org — no membership required.  Only resources
-    with ``publish_status IS NULL`` (no review needed) or ``approved`` are
-    shown.  The current user's own resources are excluded.
+    Scope determines which org to browse:
+    - ``market`` (default) — the global Market shadow org, open to all.
+    - ``org:{org_id}`` — a specific org (membership required).
+
+    Only resources with ``publish_status IS NULL`` (no review needed) or
+    ``approved`` are shown.  The current user's own resources are excluded.
     """
+    # Parse scope → browse_org_id
+    if scope == "market":
+        browse_org_id = MARKET_ORG_ID
+    elif scope.startswith("org:"):
+        org_id = scope[4:]
+        membership = await db.execute(
+            select(OrgMembership).where(
+                OrgMembership.org_id == org_id,
+                OrgMembership.user_id == current_user.id,
+            )
+        )
+        if membership.scalar_one_or_none() is None:
+            raise AppError("not_org_member", status_code=403)
+        browse_org_id = org_id
+    else:
+        raise AppError("invalid_scope", status_code=400)
+
     # Get already-subscribed resource ids
     sub_result = await db.execute(
         select(ResourceSubscription.resource_id).where(
@@ -159,11 +186,18 @@ async def browse_market(
     )
     subscribed_ids = set(sub_result.scalars().all())
 
-    types_to_query = (
-        [resource_type]
-        if resource_type in _ALL_RESOURCE_TYPES
-        else _ALL_RESOURCE_TYPES
-    )
+    # Determine resource types to query
+    if resource_type in _ALL_RESOURCE_TYPES:
+        types_to_query = [resource_type]
+    elif category == "solutions":
+        types_to_query = SOLUTION_TYPES
+    elif category == "components":
+        types_to_query = COMPONENT_TYPES
+    elif browse_org_id == MARKET_ORG_ID:
+        types_to_query = MARKET_RESOURCE_TYPES
+    else:
+        # Org scope: include all types (KB stays visible in org scope)
+        types_to_query = _ALL_RESOURCE_TYPES
 
     model_map: dict[str, tuple] = {
         "agent": (Agent, _agent_market_info, "published"),
@@ -183,7 +217,7 @@ async def browse_market(
         model_cls, info_fn, active_status = model_map[rtype]
         q = select(model_cls).where(
             model_cls.visibility == "org",
-            model_cls.org_id == MARKET_ORG_ID,
+            model_cls.org_id == browse_org_id,
             model_cls.user_id != current_user.id,  # exclude own resources
             # Only show approved / no-review-needed resources
             or_(
@@ -263,21 +297,49 @@ async def subscribe_resource(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Subscribe to a resource from the Market.
+    """Subscribe to a resource from the Market or an org.
 
     For Market org subscriptions the only requirement is that the resource
     exists and is approved (publish_status is NULL or 'approved').
     No membership check — the Market is open to all authenticated users.
+
+    For org subscriptions the user must be a member of the org and the
+    resource must exist, be visible, and be approved.
     """
-    # Validate resource exists and is approved for Market org resources
+    model_cls = _RESOURCE_MODELS.get(body.resource_type)
+    if model_cls is None:
+        raise AppError("invalid_resource_type", status_code=400)
+
     if body.org_id == MARKET_ORG_ID:
-        model_cls = _RESOURCE_MODELS.get(body.resource_type)
-        if model_cls is None:
-            raise AppError("invalid_resource_type", status_code=400)
+        # Market: no membership check needed, just validate resource
         res_result = await db.execute(
             select(model_cls).where(
                 model_cls.id == body.resource_id,
                 model_cls.org_id == MARKET_ORG_ID,
+                or_(
+                    model_cls.publish_status == None,  # noqa: E711
+                    model_cls.publish_status == "approved",
+                ),
+            )
+        )
+        if res_result.scalar_one_or_none() is None:
+            raise AppError("resource_not_found", status_code=404)
+    else:
+        # Org subscription: validate membership + resource exists and is approved
+        membership = await db.execute(
+            select(OrgMembership).where(
+                OrgMembership.org_id == body.org_id,
+                OrgMembership.user_id == current_user.id,
+            )
+        )
+        if membership.scalar_one_or_none() is None:
+            raise AppError("not_org_member", status_code=403)
+
+        res_result = await db.execute(
+            select(model_cls).where(
+                model_cls.id == body.resource_id,
+                model_cls.org_id == body.org_id,
+                model_cls.visibility == "org",
                 or_(
                     model_cls.publish_status == None,  # noqa: E711
                     model_cls.publish_status == "approved",
