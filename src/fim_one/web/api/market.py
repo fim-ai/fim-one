@@ -141,6 +141,9 @@ _ALL_RESOURCE_TYPES = [
     "agent", "connector", "knowledge_base", "mcp_server", "skill", "workflow",
 ]
 
+# Solution types — resources that can have dependency trees
+SOLUTION_TYPES = {"agent", "skill", "workflow"}
+
 
 @router.get("", response_model=ApiResponse)
 async def browse_market(
@@ -277,6 +280,33 @@ async def browse_market(
 
 
 # ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+
+
+@router.get("/dependencies", response_model=ApiResponse)
+async def get_resource_dependencies(
+    resource_type: str = Query(...),  # noqa: B008
+    resource_id: str = Query(...),  # noqa: B008
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Analyze dependencies for a Solution resource.
+
+    Returns a DependencyManifest with content deps (auto-subscribed)
+    and connection deps (requiring credentials).
+    Only applicable to solution types: agent, skill, workflow.
+    """
+    if resource_type not in SOLUTION_TYPES:
+        return ApiResponse(data={"content_deps": [], "connection_deps": []})
+
+    from fim_one.web.dependency_analyzer import resolve_solution_dependencies
+
+    manifest = await resolve_solution_dependencies(resource_type, resource_id, db)
+    return ApiResponse(data=manifest.to_dict())
+
+
+# ---------------------------------------------------------------------------
 # Subscribe / Unsubscribe
 # ---------------------------------------------------------------------------
 
@@ -366,7 +396,37 @@ async def subscribe_resource(
         db.add(sub)
         await db.commit()
 
-    return ApiResponse(data={"subscribed": True})
+    # Auto-subscribe content dependencies for Solutions
+    manifest = None
+    if body.resource_type in SOLUTION_TYPES:
+        from fim_one.web.dependency_analyzer import resolve_solution_dependencies
+
+        manifest = await resolve_solution_dependencies(
+            body.resource_type, body.resource_id, db
+        )
+        for dep in manifest.content_deps:
+            existing_dep = await db.execute(
+                select(ResourceSubscription).where(
+                    ResourceSubscription.user_id == current_user.id,
+                    ResourceSubscription.resource_type == dep.resource_type,
+                    ResourceSubscription.resource_id == dep.resource_id,
+                )
+            )
+            if existing_dep.scalar_one_or_none() is None:
+                dep_sub = ResourceSubscription(
+                    user_id=current_user.id,
+                    resource_type=dep.resource_type,
+                    resource_id=dep.resource_id,
+                    org_id=body.org_id,
+                )
+                db.add(dep_sub)
+        await db.commit()
+
+    return ApiResponse(data={
+        "subscribed": True,
+        # Include manifest so frontend knows about connection deps
+        **({"dependencies": manifest.to_dict()} if manifest is not None else {}),
+    })
 
 
 @router.delete("/unsubscribe", response_model=ApiResponse)
