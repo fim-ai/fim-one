@@ -34,12 +34,12 @@ Chaque entreprise dispose de systèmes qui ne communiquent pas entre eux — ERP
 
 ```mermaid
 graph LR
-    ERP --> Hub["FIM One Hub"]
-    Database --> Hub
-    Lark --> Hub
-    CRM --> Hub
-    OA --> Hub
-    API[Custom API] --> Hub
+    ERP <--> Hub["🔗 FIM One Hub"]
+    Database <--> Hub
+    Lark <--> Hub
+    Hub <--> CRM
+    Hub <--> OA
+    Hub <--> API[Custom API]
 ```
 
 ### Captures d'écran

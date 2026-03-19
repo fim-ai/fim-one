@@ -24,22 +24,22 @@
 
 ## 概述
 
-每个公司都有相互不连接的系统——ERP、CRM、OA、财务、HR、自定义数据库。FIM One 是**AI 驱动的中枢**，可以连接它们所有系统，而无需修改现有基础设施。
+每个公司都有相互不通的系统——ERP、CRM、OA、财务、HR、自定义数据库。FIM One 是**AI 驱动的枢纽**，可以连接它们所有系统，而无需修改现有基础设施。
 
 | 模式           | 说明                                              | 访问方式                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
 | **独立模式** | 通用 AI 助手——搜索、代码、知识库         | 门户网站                  |
-| **副驾驶模式**    | 嵌入在主机系统 UI 中的 AI                       | iframe / widget / embed |
-| **中枢模式**    | 跨所有连接系统的中央 AI 编排   | 门户网站 / API            |
+| **副驾驶模式**    | 嵌入在主系统 UI 中的 AI                       | iframe / widget / embed |
+| **枢纽模式**        | 跨所有连接系统的中央 AI 编排   | 门户网站 / API            |
 
 ```mermaid
 graph LR
-    ERP --> Hub["FIM One Hub"]
-    Database --> Hub
-    Lark --> Hub
-    CRM --> Hub
-    OA --> Hub
-    API[Custom API] --> Hub
+    ERP <--> Hub["🔗 FIM One Hub"]
+    Database <--> Hub
+    Lark <--> Hub
+    Hub <--> CRM
+    Hub <--> OA
+    Hub <--> API[Custom API]
 ```
 
 ### 截图

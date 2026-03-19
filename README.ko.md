@@ -28,18 +28,18 @@
 
 | 모드           | 설명                                              | 접근 방식                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
-| **독립형** | 범용 AI 어시스턴트 — 검색, 코드, 지식베이스         | 포털                  |
-| **코파일럿**    | 호스트 시스템의 UI에 내장된 AI                       | iframe / 위젯 / 임베드 |
-| **허브**        | 모든 연결된 시스템 전반의 중앙 AI 오케스트레이션   | 포털 / API            |
+| **Standalone** | 범용 AI 어시스턴트 — 검색, 코드, 지식베이스         | Portal                  |
+| **Copilot**    | 호스트 시스템의 UI에 내장된 AI                       | iframe / widget / embed |
+| **Hub**        | 연결된 모든 시스템 전반의 중앙 AI 오케스트레이션   | Portal / API            |
 
 ```mermaid
 graph LR
-    ERP --> Hub["FIM One Hub"]
-    Database --> Hub
-    Lark --> Hub
-    CRM --> Hub
-    OA --> Hub
-    API[Custom API] --> Hub
+    ERP <--> Hub["🔗 FIM One Hub"]
+    Database <--> Hub
+    Lark <--> Hub
+    Hub <--> CRM
+    Hub <--> OA
+    Hub <--> API[Custom API]
 ```
 
 ### 스크린샷

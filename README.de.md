@@ -24,22 +24,22 @@
 
 ## Übersicht
 
-Jedes Unternehmen hat Systeme, die nicht miteinander kommunizieren — ERP, CRM, OA, Finanzen, HR, benutzerdefinierte Datenbanken. FIM One ist der **KI-gestützte Hub**, der sie alle verbindet, ohne Ihre bestehende Infrastruktur zu ändern.
+Jedes Unternehmen hat Systeme, die nicht miteinander kommunizieren — ERP, CRM, OA, Finanzen, HR, benutzerdefinierte Datenbanken. FIM One ist der **KI-gestützte Hub**, der sie alle verbindet, ohne Ihre vorhandene Infrastruktur zu ändern.
 
 | Modus          | Was es ist                                              | Zugriff                 |
 | -------------- | ------------------------------------------------------- | ----------------------- |
-| **Standalone** | Universeller KI-Assistent — Suche, Code, Wissensdatenbank | Portal                  |
-| **Copilot**    | KI eingebettet in die Benutzeroberfläche eines Host-Systems | iframe / Widget / Embed |
+| **Standalone** | Universeller KI-Assistent — Suche, Code, KB            | Portal                  |
+| **Copilot**    | KI eingebettet in die Benutzeroberfläche eines Systems  | iframe / widget / embed |
 | **Hub**        | Zentrale KI-Orchestrierung über alle verbundenen Systeme | Portal / API            |
 
 ```mermaid
 graph LR
-    ERP --> Hub["FIM One Hub"]
-    Database --> Hub
-    Lark --> Hub
-    CRM --> Hub
-    OA --> Hub
-    API[Custom API] --> Hub
+    ERP <--> Hub["🔗 FIM One Hub"]
+    Database <--> Hub
+    Lark <--> Hub
+    Hub <--> CRM
+    Hub <--> OA
+    Hub <--> API[Custom API]
 ```
 
 ### Screenshots
