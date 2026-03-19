@@ -88,7 +88,7 @@ class DashboardStatsResponse(BaseModel):
     top_agents: list[DashboardAgent]                   # top 4 by conversation count
     top_kbs: list[DashboardKB]                         # top 3 by document_count
     connector_health: list[DashboardConnectorHealth]   # all connectors accessible to user
-    activity_trend: list[DashboardDayStat]             # 14 days, zero-filled
+    activity_trend: list[DashboardDayStat]             # 7 days, zero-filled
     # workflow stats
     total_workflows: int                               # total active workflows owned by user
     workflow_runs_today: int                            # runs started today
@@ -414,10 +414,10 @@ async def get_dashboard_stats(
     ]
 
     # ------------------------------------------------------------------
-    # 7. Activity trend (14 days, zero-filled)
+    # 7. Activity trend (7 days, zero-filled)
     # ------------------------------------------------------------------
 
-    activity_cutoff = datetime.now(timezone.utc) - timedelta(days=14)
+    activity_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     trend_rows = await db.execute(
         select(
             func.date(Conversation.created_at).label("day"),
@@ -433,10 +433,10 @@ async def get_dashboard_stats(
     )
 
     today_date = date.today()
-    # Build ordered map from oldest to newest (13 days ago → today)
+    # Build ordered map from oldest to newest (6 days ago → today)
     date_map: dict[str, dict] = {
         str(today_date - timedelta(days=i)): {"count": 0, "tokens": 0}
-        for i in range(13, -1, -1)
+        for i in range(6, -1, -1)
     }
     for row in trend_rows.all():
         key = str(row.day)
