@@ -9,6 +9,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Added
+
+- **File attachment download** — File attachment cards in chat messages are now clickable to download the original file via authenticated fetch. Download icon indicator and hover state added for discoverability.
+- **Intelligent Document Processing (Vision-Aware) roadmap item** — Added planned feature for adaptive document handling based on model vision capabilities (three tiers: vision-first, hybrid, text-only).
+
+### Fixed
+
+- **DAG step card layout** — Redesigned `StepProgressCard` so task text wraps below the step badge instead of truncating on a single line. Tool badges in step nodes now only display when no `tools_used` exist but `tool_hint` is present, avoiding redundant display.
+
 ## [v0.8] - 2026-03-20
 
 ### Added

@@ -9,6 +9,15 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Dateianhang-Download** — Dateianhang-Karten in Chat-Nachrichten sind nun anklickbar, um die Originaldatei über authentifizierten Abruf herunterzuladen. Download-Symbol-Indikator und Hover-Status wurden für bessere Erkennbarkeit hinzugefügt.
+- **Intelligent Document Processing (Vision-Aware) Roadmap-Element** — Geplante Funktion für adaptive Dokumentverarbeitung basierend auf den Vision-Fähigkeiten des Modells hinzugefügt (drei Stufen: Vision-First, Hybrid, Nur-Text).
+
+### Behoben
+
+- **DAG-Schrittkartenayout** — `StepProgressCard` wurde neu gestaltet, sodass der Aufgabentext unter dem Schrittabzeichen umbricht, anstatt auf einer einzelnen Zeile abgeschnitten zu werden. Werkzeugabzeichen in Schrittknoten werden jetzt nur angezeigt, wenn keine `tools_used` vorhanden sind, aber `tool_hint` vorhanden ist, um redundante Anzeige zu vermeiden.
+
 ## [v0.8] - 2026-03-20
 
 ### Hinzugefügt

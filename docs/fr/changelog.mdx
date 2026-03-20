@@ -9,6 +9,15 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Non publié]
 
+### Ajouté
+
+- **Téléchargement de pièces jointes** — Les cartes de pièces jointes dans les messages de chat sont maintenant cliquables pour télécharger le fichier original via une récupération authentifiée. Un indicateur d'icône de téléchargement et un état de survol ont été ajoutés pour la découverte.
+- **Traitement intelligent des documents (Vision-Aware) - élément de feuille de route** — Ajout d'une fonctionnalité prévue pour la gestion adaptative des documents en fonction des capacités de vision du modèle (trois niveaux : vision-first, hybride, texte uniquement).
+
+### Corrigé
+
+- **Disposition de la carte d'étape DAG** — Redessiné `StepProgressCard` pour que le texte de la tâche s'enroule sous le badge d'étape au lieu de se tronquer sur une seule ligne. Les badges d'outil dans les nœuds d'étape ne s'affichent désormais que lorsqu'aucun `tools_used` n'existe mais que `tool_hint` est présent, évitant un affichage redondant.
+
 ## [v0.8] - 2026-03-20
 
 ### Ajouté
