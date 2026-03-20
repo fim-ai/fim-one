@@ -9,6 +9,8 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { CollapsibleText } from "@/components/playground/collapsible-text"
 import { ClipMessageContent } from "@/components/playground/clip-message-content"
 import type { ClipMessageMetadata } from "@/components/playground/clip-message-content"
+import { FileMessageContent } from "@/components/playground/file-message-content"
+import type { FileMessageMetadata } from "@/components/playground/file-message-content"
 import type { MessageResponse } from "@/types/conversation"
 
 interface HistoryMessagesProps {
@@ -46,12 +48,23 @@ function UserMessage({ content, metadata, avatar, userId, displayName }: { conte
       }
     : null
 
+  // Detect file metadata
+  const hasFileMeta = Array.isArray(metadata?.files) && (metadata.files as unknown[]).length > 0
+  const fileMetadata: FileMessageMetadata | null = hasFileMeta
+    ? {
+        files: metadata!.files as FileMessageMetadata["files"],
+        userQuery: (metadata!.userQuery as string) ?? "",
+      }
+    : null
+
   return (
-    <div className={cn("flex gap-3", !clipMetadata && "items-center")}>
+    <div className={cn("flex gap-3", !clipMetadata && !fileMetadata && "items-center")}>
       <UserAvatar avatar={avatar} userId={userId} fallback={fallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
       <div className="flex-1">
         {clipMetadata ? (
           <ClipMessageContent metadata={clipMetadata} />
+        ) : fileMetadata ? (
+          <FileMessageContent metadata={fileMetadata} />
         ) : (
           <CollapsibleText content={content ?? ""} className="text-sm text-foreground whitespace-pre-wrap" />
         )}

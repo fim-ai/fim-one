@@ -17,6 +17,8 @@ import { ExportDialog } from "@/components/playground/export-dialog"
 import { CollapsibleText } from "@/components/playground/collapsible-text"
 import { ClipMessageContent } from "@/components/playground/clip-message-content"
 import type { ClipMessageMetadata } from "@/components/playground/clip-message-content"
+import { FileMessageContent } from "@/components/playground/file-message-content"
+import type { FileMessageMetadata } from "@/components/playground/file-message-content"
 import { useDagSteps } from "@/hooks/use-dag-steps"
 import { useReactSteps } from "@/hooks/use-react-steps"
 import { useMediaQuery } from "@/hooks/use-media-query"
@@ -493,16 +495,27 @@ function HistoryTurn({ userContent, userMetadata, assistantMetadata, sseMessages
       }
     : null
 
+  // Detect file metadata in user message
+  const hasFileMeta = Array.isArray(userMetadata?.files) && (userMetadata.files as unknown[]).length > 0
+  const fileMetadata: FileMessageMetadata | null = hasFileMeta
+    ? {
+        files: userMetadata!.files as FileMessageMetadata["files"],
+        userQuery: (userMetadata!.userQuery as string) ?? "",
+      }
+    : null
+
   return (
     <>
       {userContent && (
-        <div className={cn("flex gap-3", !clipMetadata && "items-center")}>
+        <div className={cn("flex gap-3", !clipMetadata && !fileMetadata && "items-center")}>
           <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
           <div className="flex-1">
             {clipMetadata ? (
               <ClipMessageContent metadata={clipMetadata} />
+            ) : fileMetadata ? (
+              <FileMessageContent metadata={fileMetadata} />
             ) : (
-              <CollapsibleText content={userContent} className="text-sm text-foreground whitespace-pre-wrap" />
+              <CollapsibleText content={userContent ?? ""} className="text-sm text-foreground whitespace-pre-wrap" />
             )}
             {Array.isArray(userMetadata?.images) && userMetadata.images.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
@@ -650,6 +663,7 @@ function PlaygroundContent({
   const pendingFilesRef = useRef<PendingFile[]>([])
   const uploadPromisesRef = useRef<Map<string, Promise<FileUploadResponse | void>>>(new Map())
   const [pendingImages, setPendingImages] = useState<Array<{ file_id: string; filename: string }>>([])
+  const [pendingFilesMetadata, setPendingFilesMetadata] = useState<FileMessageMetadata | null>(null)
   const isUploading = pendingFiles.some((f) => f.status === "uploading")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -781,6 +795,7 @@ function PlaygroundContent({
     setClips([])
     setExpandedClips(new Set())
     setPendingClipMetadata(null)
+    setPendingFilesMetadata(null)
     onRunWithQuery(q)
     requestAnimationFrame(() => scrollViewportToBottom())
   }, [onRunWithQuery, scrollViewportToBottom])
@@ -860,11 +875,12 @@ function PlaygroundContent({
     }
   }, [hasMessages])
 
-  // Clear pending images and clip metadata when pending query is cleared
+  // Clear pending images, clip metadata, and file metadata when pending query is cleared
   useEffect(() => {
     if (!pendingQuery) {
       setPendingImages([])
       setPendingClipMetadata(null)
+      setPendingFilesMetadata(null)
     }
   }, [pendingQuery])
 
@@ -1186,9 +1202,25 @@ function PlaygroundContent({
     // Image files: pass as image_ids parameter
     const imageIds = imageFiles.map((f) => f.file_id)
 
-    // Save image info and clip metadata for pending display before clearing
+    // Build file metadata for non-image attachments (persisted for history rendering)
+    let fileMetadata: FileMessageMetadata | null = null
+    if (textFiles.length > 0) {
+      fileMetadata = {
+        files: textFiles.map((f) => ({
+          file_id: f.file_id,
+          filename: f.filename,
+          size: f.size, // file size in bytes (for formatFileSize display)
+          mime_type: f.mime_type,
+          content_preview: f.content_preview?.slice(0, 100) ?? null,
+        })),
+        userQuery: query.trim(), // original typed text before file content injection
+      }
+    }
+
+    // Save image info, clip metadata, and file metadata for pending display before clearing
     setPendingImages(imageFiles.map((f) => ({ file_id: f.file_id, filename: f.filename })))
     setPendingClipMetadata(clipMetadata)
+    setPendingFilesMetadata(fileMetadata)
 
     // Clean up preview URLs
     uploadedFiles.forEach((f) => {
@@ -1200,11 +1232,21 @@ function PlaygroundContent({
     setExpandedClips(new Set())
 
     // Build user_metadata to persist with the message
-    const userMetadata: Record<string, unknown> | undefined = clipMetadata
-      ? { clips: clipMetadata.clips, userQuery: clipMetadata.userQuery }
-      : undefined
+    const userMetadata: Record<string, unknown> = {}
+    if (clipMetadata) {
+      userMetadata.clips = clipMetadata.clips
+      userMetadata.userQuery = clipMetadata.userQuery
+    }
+    if (fileMetadata) {
+      userMetadata.files = fileMetadata.files
+      // When both clips and files are present, clips.userQuery is already the typed text.
+      // When only files (no clips), store userQuery from fileMetadata.
+      if (!clipMetadata) {
+        userMetadata.userQuery = fileMetadata.userQuery
+      }
+    }
 
-    onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined, userMetadata)
+    onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined, Object.keys(userMetadata).length > 0 ? userMetadata : undefined)
     requestAnimationFrame(() => scrollViewportToBottom())
   }, [clips, query, onRunWithQuery, scrollViewportToBottom, t, tError])
 
@@ -1369,11 +1411,13 @@ function PlaygroundContent({
                   )}
                   {/* Current turn: user message + live output */}
                   {pendingQuery && (
-                    <div className={cn("flex gap-3", !pendingClipMetadata && "items-center")}>
+                    <div className={cn("flex gap-3", !pendingClipMetadata && !pendingFilesMetadata && "items-center")}>
                       <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
                       <div className="flex-1">
                         {pendingClipMetadata ? (
                           <ClipMessageContent metadata={pendingClipMetadata} />
+                        ) : pendingFilesMetadata ? (
+                          <FileMessageContent metadata={pendingFilesMetadata} />
                         ) : (
                           <CollapsibleText content={pendingQuery} className="text-sm text-foreground whitespace-pre-wrap" />
                         )}
