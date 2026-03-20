@@ -152,5 +152,6 @@
   "conflictWarningOne": "1 個のソースがこのトピックについて矛盾した情報を持っています",
   "viewConflicts": "詳細を表示",
   "hideConflicts": "非表示",
-  "citationRelevance": "関連性: {value}%"
+  "citationRelevance": "関連性: {value}%",
+  "retryUpload": "アップロードを再試行"
 }

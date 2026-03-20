@@ -78,5 +78,6 @@
   "email_not_registered": "Kein Konto mit dieser E-Mail-Adresse gefunden.",
   "sensitive_word_blocked": "Ihre Nachricht wurde blockiert, da sie eingeschränkte Inhalte enthält.",
   "sensitive_word_duplicate": "Dieses sensible Wort existiert bereits.",
-  "sensitive_word_not_found": "Sensibles Wort nicht gefunden."
+  "sensitive_word_not_found": "Sensibles Wort nicht gefunden.",
+  "someFilesFailedUpload": "Einige Dateien konnten nicht hochgeladen werden. Entfernen Sie diese oder versuchen Sie es erneut, bevor Sie senden."
 }

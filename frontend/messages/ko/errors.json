@@ -78,5 +78,6 @@
   "email_not_registered": "이 이메일 주소로 등록된 계정이 없습니다.",
   "sensitive_word_blocked": "제한된 콘텐츠가 포함되어 있어 메시지가 차단되었습니다.",
   "sensitive_word_duplicate": "이 민감한 단어는 이미 존재합니다.",
-  "sensitive_word_not_found": "민감한 단어를 찾을 수 없습니다."
+  "sensitive_word_not_found": "민감한 단어를 찾을 수 없습니다.",
+  "someFilesFailedUpload": "일부 파일 업로드에 실패했습니다. 전송하기 전에 파일을 제거하거나 다시 시도하세요."
 }

@@ -78,5 +78,6 @@
   "email_not_registered": "未找到使用此电子邮件地址的账户。",
   "sensitive_word_blocked": "您的消息因包含受限内容而被阻止。",
   "sensitive_word_duplicate": "此敏感词已存在。",
-  "sensitive_word_not_found": "找不到敏感词。"
+  "sensitive_word_not_found": "找不到敏感词。",
+  "someFilesFailedUpload": "某些文件上传失败。请删除它们或在发送前重试。"
 }

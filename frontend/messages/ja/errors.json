@@ -78,5 +78,6 @@
   "email_not_registered": "このメールアドレスで登録されたアカウントが見つかりません。",
   "sensitive_word_blocked": "制限されたコンテンツが含まれているため、メッセージがブロックされました。",
   "sensitive_word_duplicate": "この機密ワードは既に存在します。",
-  "sensitive_word_not_found": "機密ワードが見つかりません。"
+  "sensitive_word_not_found": "機密ワードが見つかりません。",
+  "someFilesFailedUpload": "一部のファイルのアップロードに失敗しました。送信する前に削除するか再試行してください。"
 }

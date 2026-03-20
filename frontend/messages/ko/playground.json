@@ -152,5 +152,6 @@
   "conflictWarningOne": "1개의 출처에 이 주제에 대한 상충하는 정보가 있습니다",
   "viewConflicts": "세부 정보 보기",
   "hideConflicts": "숨기기",
-  "citationRelevance": "관련성: {value}%"
+  "citationRelevance": "관련성: {value}%",
+  "retryUpload": "업로드 다시 시도"
 }

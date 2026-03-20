@@ -86,6 +86,8 @@ interface PendingFile {
   id: string
   file: File
   previewUrl?: string
+  status: "uploading" | "uploaded" | "failed"
+  uploadResult?: FileUploadResponse
 }
 
 interface PlaygroundPageProps {
@@ -643,11 +645,18 @@ function PlaygroundContent({
   const [agentsLoaded, setAgentsLoaded] = useState(false)
   const [agentSelectorOpen, setAgentSelectorOpen] = useState(false)
 
-  // File upload (lazy — files stored locally until send)
+  // File upload (eager — files upload immediately when attached)
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
+  const pendingFilesRef = useRef<PendingFile[]>([])
+  const uploadPromisesRef = useRef<Map<string, Promise<FileUploadResponse | void>>>(new Map())
   const [pendingImages, setPendingImages] = useState<Array<{ file_id: string; filename: string }>>([])
-  const [isUploading, setIsUploading] = useState(false)
+  const isUploading = pendingFiles.some((f) => f.status === "uploading")
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Keep pendingFilesRef in sync with state so async callbacks can read latest
+  useEffect(() => {
+    pendingFilesRef.current = pendingFiles
+  }, [pendingFiles])
 
   // Pasted clips (long text folded into cards)
   const [clips, setClips] = useState<PastedClip[]>([])
@@ -758,9 +767,16 @@ function PlaygroundContent({
     // Clear any pending files/images/clips so they don't show up as "still attached"
     // on the follow-up turn. The suggestion never sends them to the backend anyway.
     setPendingFiles((prev) => {
-      prev.forEach((pf) => { if (pf.previewUrl) URL.revokeObjectURL(pf.previewUrl) })
+      prev.forEach((pf) => {
+        if (pf.previewUrl) URL.revokeObjectURL(pf.previewUrl)
+        // Clean up server-side uploaded files
+        if (pf.status === "uploaded" && pf.uploadResult) {
+          fileApi.delete(pf.uploadResult.file_id).catch(() => {})
+        }
+      })
       return []
     })
+    uploadPromisesRef.current.clear()
     setPendingImages([])
     setClips([])
     setExpandedClips(new Set())
@@ -913,7 +929,7 @@ function PlaygroundContent({
     return valid
   }, [t])
 
-  // Add files locally — no server upload yet (lazy upload on send)
+  // Add files and start uploading immediately (eager upload)
   const addFiles = useCallback((files: File[]) => {
     const validFiles = validateFiles(files)
     if (!validFiles.length) return
@@ -921,8 +937,25 @@ function PlaygroundContent({
       id: crypto.randomUUID(),
       file,
       previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      status: "uploading" as const,
     }))
     setPendingFiles((prev) => [...prev, ...newPending])
+    // Trigger upload for each file immediately
+    for (const pf of newPending) {
+      const promise = fileApi.upload(pf.file).then((result) => {
+        setPendingFiles((prev) =>
+          prev.map((f) => f.id === pf.id ? { ...f, status: "uploaded" as const, uploadResult: result } : f)
+        )
+        uploadPromisesRef.current.delete(pf.id)
+        return result
+      }).catch(() => {
+        setPendingFiles((prev) =>
+          prev.map((f) => f.id === pf.id ? { ...f, status: "failed" as const } : f)
+        )
+        uploadPromisesRef.current.delete(pf.id)
+      })
+      uploadPromisesRef.current.set(pf.id, promise)
+    }
   }, [validateFiles])
 
   // File input handler
@@ -1002,8 +1035,35 @@ function PlaygroundContent({
     setPendingFiles((prev) => {
       const file = prev.find((f) => f.id === fileId)
       if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl)
+      // Clean up server-side uploaded file
+      if (file?.status === "uploaded" && file.uploadResult) {
+        fileApi.delete(file.uploadResult.file_id).catch(() => {})
+      }
+      // Clean up any in-flight upload promise
+      uploadPromisesRef.current.delete(fileId)
       return prev.filter((f) => f.id !== fileId)
     })
+  }, [])
+
+  const retryFileUpload = useCallback((fileId: string) => {
+    const file = pendingFilesRef.current.find((f) => f.id === fileId)
+    if (!file) return
+    setPendingFiles((prev) =>
+      prev.map((f) => f.id === fileId ? { ...f, status: "uploading" as const } : f)
+    )
+    const promise = fileApi.upload(file.file).then((result) => {
+      setPendingFiles((prev) =>
+        prev.map((f) => f.id === fileId ? { ...f, status: "uploaded" as const, uploadResult: result } : f)
+      )
+      uploadPromisesRef.current.delete(fileId)
+      return result
+    }).catch(() => {
+      setPendingFiles((prev) =>
+        prev.map((f) => f.id === fileId ? { ...f, status: "failed" as const } : f)
+      )
+      uploadPromisesRef.current.delete(fileId)
+    })
+    uploadPromisesRef.current.set(fileId, promise)
   }, [])
 
   const removeClip = useCallback((clipId: string) => {
@@ -1028,32 +1088,42 @@ function PlaygroundContent({
   }, [])
 
   // Run with file content injection (text files), clips, and image_ids passthrough.
-  // Files are uploaded lazily — only when the user sends the message.
+  // Files are uploaded eagerly — already uploading when attached.
   const handleRunWithFiles = useCallback(async () => {
     // Reset IME composing state — compositionEnd may not fire when
     // the user clicks the Send button instead of pressing Enter.
     composingRef.current = false
     setComposing(false)
 
+    const currentFiles = pendingFilesRef.current
+    const hasUploadableFiles = currentFiles.some((f) => f.status !== "failed")
     let finalQuery = query.trim()
-    if (!finalQuery && clips.length === 0 && pendingFiles.length === 0) return
+    if (!finalQuery && clips.length === 0 && !hasUploadableFiles) return
 
-    // Lazy upload: send pending files to server NOW
-    const uploadedFiles: (FileUploadResponse & { previewUrl?: string })[] = []
-    if (pendingFiles.length > 0) {
-      setIsUploading(true)
-      try {
-        for (const pf of pendingFiles) {
-          const result = await fileApi.upload(pf.file)
-          uploadedFiles.push({ ...result, previewUrl: pf.previewUrl })
-        }
-      } catch (err) {
-        toast.error(getErrorMessage(err, tError))
-        setIsUploading(false)
-        return
-      }
-      setIsUploading(false)
+    // Check for failed files — block send if there are ONLY failed files with no text/clips
+    const failedFiles = currentFiles.filter((f) => f.status === "failed")
+    if (failedFiles.length > 0 && !finalQuery && clips.length === 0 && !hasUploadableFiles) {
+      toast.error(tError("someFilesFailedUpload") || `${failedFiles.length} file(s) failed to upload`)
+      return
     }
+
+    // Wait for any still-uploading files to complete
+    if (uploadPromisesRef.current.size > 0) {
+      await Promise.allSettled(uploadPromisesRef.current.values())
+    }
+
+    // Re-read latest state after awaiting
+    const latestFiles = pendingFilesRef.current
+    const stillFailed = latestFiles.filter((f) => f.status === "failed")
+    if (stillFailed.length > 0) {
+      toast.error(tError("someFilesFailedUpload") || `${stillFailed.length} file(s) failed to upload. Remove them or retry before sending.`)
+      return
+    }
+
+    // Use already-uploaded results
+    const uploadedFiles: (FileUploadResponse & { previewUrl?: string })[] = latestFiles
+      .filter((f) => f.status === "uploaded" && f.uploadResult)
+      .map((f) => ({ ...f.uploadResult!, previewUrl: f.previewUrl }))
 
     const textFiles = uploadedFiles.filter((f) => !isImageFile(f))
     const imageFiles = uploadedFiles.filter((f) => isImageFile(f))
@@ -1125,6 +1195,7 @@ function PlaygroundContent({
       if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
     })
     setPendingFiles([])
+    uploadPromisesRef.current.clear()
     setClips([])
     setExpandedClips(new Set())
 
@@ -1135,7 +1206,7 @@ function PlaygroundContent({
 
     onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined, userMetadata)
     requestAnimationFrame(() => scrollViewportToBottom())
-  }, [pendingFiles, clips, query, onRunWithQuery, scrollViewportToBottom, t, tError])
+  }, [clips, query, onRunWithQuery, scrollViewportToBottom, t, tError])
 
   const handleKeyDownWithFiles = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1446,7 +1517,7 @@ function PlaygroundContent({
 
       {/* Input area -- pinned to bottom */}
       <div className="shrink-0 space-y-2">
-        {/* Pending files (not yet uploaded — lazy upload on send) */}
+        {/* Pending files (uploading eagerly) */}
         {pendingFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 pb-2">
             {pendingFiles.map((pf) => {
@@ -1454,7 +1525,12 @@ function PlaygroundContent({
               return (
                 <div
                   key={pf.id}
-                  className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-xs"
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
+                    pf.status === "failed"
+                      ? "border-destructive/60 bg-destructive/10"
+                      : "border-border/60 bg-muted/30"
+                  )}
                 >
                   {isImage && pf.previewUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
@@ -1468,6 +1544,22 @@ function PlaygroundContent({
                   )}
                   <span className="max-w-[150px] truncate">{pf.file.name}</span>
                   <span className="text-muted-foreground">({formatFileSize(pf.file.size)})</span>
+                  {/* Upload status indicator */}
+                  {pf.status === "uploading" && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  )}
+                  {pf.status === "uploaded" && (
+                    <Check className="h-3 w-3 text-green-500" />
+                  )}
+                  {pf.status === "failed" && (
+                    <button
+                      onClick={() => retryFileUpload(pf.id)}
+                      className="text-destructive hover:text-destructive/80"
+                      title={t("retryUpload")}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </button>
+                  )}
                   <button
                     onClick={() => removeFile(pf.id)}
                     className="ml-0.5 text-muted-foreground hover:text-foreground"
@@ -1569,7 +1661,7 @@ function PlaygroundContent({
           />
           <Button
             onClick={isRunning ? ((query.trim() || composing) ? handleRunWithFiles : onAbort) : handleRunWithFiles}
-            disabled={!isRunning && !query.trim() && !composing && clips.length === 0 && pendingFiles.length === 0}
+            disabled={!isRunning && !query.trim() && !composing && clips.length === 0 && !pendingFiles.some((f) => f.status !== "failed")}
             className="h-[72px] w-16 shrink-0"
             variant={isRunning && !query.trim() && !composing ? "destructive" : "default"}
           >

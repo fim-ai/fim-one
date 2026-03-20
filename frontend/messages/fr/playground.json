@@ -152,5 +152,6 @@
   "conflictWarningOne": "1 source contient des informations contradictoires sur ce sujet",
   "viewConflicts": "Afficher les détails",
   "hideConflicts": "Masquer",
-  "citationRelevance": "Pertinence : {value}%"
+  "citationRelevance": "Pertinence : {value}%",
+  "retryUpload": "Réessayer le téléchargement"
 }

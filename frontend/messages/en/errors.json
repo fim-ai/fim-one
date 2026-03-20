@@ -94,5 +94,7 @@
 
   "sensitive_word_blocked": "Your message was blocked because it contains restricted content.",
   "sensitive_word_duplicate": "This sensitive word already exists.",
-  "sensitive_word_not_found": "Sensitive word not found."
+  "sensitive_word_not_found": "Sensitive word not found.",
+
+  "someFilesFailedUpload": "Some files failed to upload. Remove them or retry before sending."
 }
