@@ -3,9 +3,9 @@ title: "Modellverwaltung"
 description: "Konfigurieren Sie LLM-Anbieter, Modelle und Modellgruppen im Admin-Panel."
 ---
 
-FIM One bietet eine vollständige Admin-Benutzeroberfläche zur Verwaltung von LLM-Anbietern und Modellen. Dieser Leitfaden behandelt das Hinzufügen von Anbietern, die Konfiguration einzelner Modelle, die Optimierung erweiterter Structured-Output-Einstellungen und die Organisation von Modellen in Gruppen für schnelle Umschaltung.
+FIM One bietet eine vollständige Admin-Benutzeroberfläche zur Verwaltung von LLM-Anbietern und Modellen. Diese Anleitung behandelt das Hinzufügen von Anbietern, die Konfiguration einzelner Modelle, die Optimierung erweiterter Einstellungen für strukturierte Ausgaben und die Organisation von Modellen in Gruppen für schnelle Umschaltung.
 
-Für ENV-basierte Konfiguration (ohne Admin-Benutzeroberfläche) siehe [Umgebungsvariablen](/configuration/environment-variables). Für Empfehlungen zur Modellauswahl siehe [Empfohlene Modelle](/configuration/models).
+Für ENV-basierte Konfiguration (ohne Admin-UI) siehe [Umgebungsvariablen](/configuration/environment-variables). Für Empfehlungen zur Modellauswahl siehe [Empfohlene Modelle](/configuration/models).
 
 ## Architektur: Anbieter, Modell, Gruppe
 
@@ -13,9 +13,9 @@ FIM One organisiert die LLM-Konfiguration in drei Ebenen:
 
 | Ebene | Was es darstellt | Beispiel |
 |---|---|---|
-| **Anbieter** | Ein Satz gemeinsamer Anmeldedaten (API-Schlüssel + Basis-URL). Ein Anbieter kann viele Modelle hosten. | "Mein OpenAI-Konto", "Unternehmens-Bedrock-Relay" |
+| **Anbieter** | Ein Satz gemeinsamer Anmeldedaten (API-Schlüssel + Basis-URL). Ein Anbieter kann viele Modelle hosten. | "Mein OpenAI-Konto", "Company Bedrock Relay" |
 | **Modell** | Ein einzelnes Modell unter einem Anbieter. Hat seinen eigenen Anzeigenamen, API-Modellbezeichner und erweiterte Einstellungen. | "GPT-4o", "Claude Sonnet 4.6" |
-| **Modellgruppe** | Eine benannte Voreinstellung, die Modelle Rollen zuweist (Allgemein / Schnell / Reasoning). Das Aktivieren einer Gruppe wechselt alle Rollen auf einmal. | "Produktion (OpenAI)", "Budget (DeepSeek)" |
+| **Modellgruppe** | Eine benannte Voreinstellung, die Modelle Rollen zuweist (Allgemein / Schnell / Reasoning). Das Aktivieren einer Gruppe wechselt alle Rollen auf einmal. | "Production (OpenAI)", "Budget (DeepSeek)" |
 
 ```
 Provider: "My OpenAI Account"
@@ -35,25 +35,25 @@ Group: "Production"
 
 ---
 
-## Anbieter hinzufügen
+## Einen Anbieter hinzufügen
 
 <Steps>
   <Step title="Öffnen Sie die Seite „Modelle"">
-    Navigieren Sie zu **Admin** (Seitenleiste) und wählen Sie die Registerkarte **Modelle**.
+    Navigieren Sie zu **Admin** (Seitenleiste) und wählen Sie die Registerkarte **Modelle** aus.
   </Step>
   <Step title="Klicken Sie auf „Anbieter hinzufügen"">
     Klicken Sie auf die Schaltfläche **Anbieter hinzufügen** im oberen rechten Bereich des Abschnitts „Anbieter".
   </Step>
   <Step title="Wählen Sie eine Voreinstellung oder verwenden Sie einen benutzerdefinierten Endpunkt">
-    Das Dialogfeld zeigt Voreinstellungsschaltflächen für häufige Anbieter: **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI** und **OpenAI Compatible** (benutzerdefinierter Endpunkt). Durch Klicken auf eine Voreinstellung werden der Anbieter-Name und die Basis-URL automatisch ausgefüllt.
+    Das Dialogfeld zeigt Voreinstellungsschaltflächen für gängige Anbieter: **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI** und **OpenAI Compatible** (benutzerdefinierter Endpunkt). Durch Klicken auf eine Voreinstellung werden der Anbieter-Name und die Basis-URL automatisch ausgefüllt.
 
     Wählen Sie **OpenAI Compatible**, wenn Ihr Anbieter nicht aufgelistet ist (z. B. ein Drittanbieter-Relay, Ollama oder ein anderer OpenAI-kompatibler Endpunkt).
   </Step>
   <Step title="Geben Sie Anmeldedaten ein">
     Füllen Sie die erforderlichen Felder aus:
-    - **Anbieter-Name** – Eine benutzerfreundliche Bezeichnung (z. B. „Mein OpenAI-Konto"). Dies dient nur zu Ihrer Referenz.
+    - **Anbieter-Name** – Eine benutzerfreundliche Bezeichnung (z. B. „Mein OpenAI-Konto"). Dies dient nur als Referenz für Sie.
     - **Basis-URL** – Der API-Endpunkt. Voreinstellungen füllen dies automatisch aus. Geben Sie für benutzerdefinierte Endpunkte die vollständige URL ein (z. B. `http://localhost:11434/v1` für Ollama).
-    - **API-Schlüssel** – Der API-Schlüssel Ihres Anbieters. Geben Sie für lokale Modelle (Ollama) eine beliebige nicht-leere Zeichenfolge ein (z. B. `ollama`).
+    - **API-Schlüssel** – Der API-Schlüssel Ihres Anbieters. Geben Sie für lokale Modelle (Ollama) eine beliebige nicht-leere Zeichenkette ein (z. B. `ollama`).
   </Step>
   <Step title="Speichern">
     Klicken Sie auf **Erstellen**. Der Anbieter wird in der Liste angezeigt und ist bereit, damit Sie Modelle unter ihm hinzufügen können.
@@ -61,24 +61,22 @@ Group: "Production"
 </Steps>
 
 <Tip>
-Sie können mehrere Anbieter für denselben Service erstellen. Beispielsweise zwei „OpenAI"-Anbieter mit unterschiedlichen API-Schlüsseln für separate Abrechnungskonten oder ein „Anthropic (Direkt)" und „Anthropic (über Bedrock)" mit unterschiedlichen Basis-URLs.
+Sie können mehrere Anbieter für denselben Dienst erstellen. Beispielsweise zwei „OpenAI"-Anbieter mit unterschiedlichen API-Schlüsseln für separate Abrechnungskonten oder ein „Anthropic (Direkt)" und „Anthropic (über Bedrock)" mit unterschiedlichen Basis-URLs.
 </Tip>
 
----
-
-## Ein Modell hinzufügen
+## Hinzufügen eines Modells
 
 <Steps>
   <Step title="Einen Anbieter erweitern">
-    Klicken Sie auf der Seite „Modelle" auf das Chevron neben einem vorhandenen Anbieter, um ihn zu erweitern und seine Modelle anzuzeigen.
+    Klicken Sie auf der Seite "Modelle" auf das Chevron neben einem vorhandenen Anbieter, um ihn zu erweitern und seine Modelle anzuzeigen.
   </Step>
-  <Step title="Klicken Sie auf „Modell hinzufügen"">
+  <Step title="Klicken Sie auf Modell hinzufügen">
     Klicken Sie auf die Schaltfläche **Modell hinzufügen**, die unter dem erweiterten Anbieter angezeigt wird.
   </Step>
   <Step title="Modelldetails eingeben">
     Füllen Sie die zwei erforderlichen Felder aus:
-    - **Anzeigename** – Ein benutzerfreundlicher Name, der in der Benutzeroberfläche angezeigt wird (z. B. „GPT-4o", „Claude Sonnet"). Kann beliebig sein.
-    - **Modellname (API)** – Der genaue Modellbezeichner, der an die API gesendet wird (z. B. `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). Dies muss dem entsprechen, was Ihr Anbieter erwartet.
+    - **Anzeigename** -- Ein benutzerfreundlicher Name, der in der Benutzeroberfläche angezeigt wird (z. B. "GPT-4o", "Claude Sonnet"). Kann beliebig sein.
+    - **Modellname (API)** -- Der genaue Modellbezeichner, der an die API gesendet wird (z. B. `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). Dies muss dem entsprechen, was Ihr Anbieter erwartet.
   </Step>
   <Step title="Erweiterte Einstellungen konfigurieren (optional)">
     Klicken Sie auf den Schalter **Erweitert**, um zusätzliche Einstellungen anzuzeigen: Max. Ausgabe-Token, Kontextgröße, Temperatur, Native Funktionsaufrufe und JSON-Modus. Weitere Informationen zu den einzelnen Einstellungen finden Sie im Abschnitt [Erweiterte Einstellungen](#advanced-settings) unten.
@@ -88,31 +86,29 @@ Sie können mehrere Anbieter für denselben Service erstellen. Beispielsweise zw
   </Step>
 </Steps>
 
----
-
 ## Erweiterte Einstellungen
 
-Jedes Modell hat erweiterte Einstellungen, die steuern, wie FIM One mit der API des Anbieters für die Extraktion strukturierter Ausgaben interagiert. Diese Einstellungen finden Sie unter dem Schalter **Erweitert** im Dialog zum Erstellen/Bearbeiten von Modellen.
+Jedes Modell hat erweiterte Einstellungen, die steuern, wie FIM One mit der API des Anbieters für die Extraktion strukturierter Ausgaben interagiert. Diese Einstellungen finden Sie unter dem Schalter **Advanced** im Dialog zum Erstellen/Bearbeiten von Modellen.
 
-### Native Funktionsaufrufe
+### Native Function Calling
 
 **Einstellungsname:** Native Function Calling (gespeichert als `tool_choice_enabled`)
 
 **Standard:** AN
 
-Steuert, ob FIM One erzwungenes `tool_choice` für die Extraktion strukturierter Ausgaben verwendet. Dies ist Stufe 1 in der Degradationskette für strukturierte Ausgaben -- die zuverlässigste Methode, wenn das Modell dies unterstützt.
+Steuert, ob FIM One erzwungenes `tool_choice` für die Extraktion strukturierter Ausgaben verwendet. Dies ist Level 1 in der Degradationskette für strukturierte Ausgaben -- die zuverlässigste Methode, wenn das Modell dies unterstützt.
 
 **Wann deaktivieren:**
-- Ihr Modell gibt Fehler wie `"tool_choice 'specified' is incompatible with thinking enabled"` zurück -- häufig bei Modellen mit immer aktiviertem Denken (DeepSeek R1, Kimi K2.5)
-- Anfragen für strukturierte Ausgaben sind konsistent langsam mit einer ~10-Sekunden-Strafe pro Aufruf, gefolgt von einem Fallback zu JSON Mode
+- Ihr Modell gibt Fehler wie `"tool_choice 'specified' is incompatible with thinking enabled"` zurück -- häufig bei Modellen mit ständig aktiviertem Denken (DeepSeek R1, Kimi K2.5)
+- Anfragen für strukturierte Ausgaben sind konsistent langsam mit einer Strafe von etwa 10 Sekunden pro Aufruf, gefolgt von einem Fallback zu JSON Mode
 
-**Auswirkung bei Deaktivierung:** FIM One überspringt Stufe 1 (native Funktionsaufrufe) und beginnt mit Stufe 2 (JSON Mode) für strukturierte Ausgaben. Der Funktionsaufruf des ReAct-Agenten ist völlig unbeeinträchtigt -- er verwendet `tool_choice="auto"`, das mit allen Modellen unabhängig von dieser Einstellung funktioniert.
+**Auswirkung bei Deaktivierung:** FIM One überspringt Level 1 (Native Function Calling) und startet bei Level 2 (JSON Mode) für strukturierte Ausgaben. Der ReAct-Agent's Tool-Aufrufe sind völlig unbeeinträchtigt -- er verwendet `tool_choice="auto"`, das mit allen Modellen unabhängig von dieser Einstellung funktioniert.
 
 <Note>
-Diese Einstellung betrifft nur die **erzwungene** Werkzeugauswahl, die für die Extraktion strukturierter Ausgaben verwendet wird (DAG-Planung, Schema-Annotation). Sie betrifft **nicht** den ReAct-Agenten, der frei entscheidet, wann Werkzeuge mit `tool_choice="auto"` aufgerufen werden.
+Diese Einstellung betrifft nur **erzwungene** Tool-Auswahl, die für die Extraktion strukturierter Ausgaben verwendet wird (DAG-Planung, Schema-Annotation). Sie betrifft **nicht** den ReAct-Agent, der frei entscheidet, wann Tools mit `tool_choice="auto"` aufgerufen werden.
 </Note>
 
-Technische Details finden Sie unter [LLM-Anbieter-Kompatibilität -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled).
+Technische Details finden Sie unter [LLM-Provider-Kompatibilität -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled).
 
 ### JSON Mode
 
@@ -131,7 +127,7 @@ For technical details, see [LLM Provider Compatibility -- json_mode_enabled](/ar
 
 ### Temperatur
 
-**Standard:** 0.7 (geerbt aus der globalen Einstellung, wenn nicht gesetzt)
+**Standard:** 0.7 (geerbt von der globalen Einstellung, wenn nicht gesetzt)
 
 Steuert die Zufälligkeit der Modellausgabe. Bereich: 0 (deterministisch) bis 2 (hochkreativ).
 
@@ -141,11 +137,11 @@ Wenn Reasoning/Extended Thinking für Anthropic-Modelle aktiviert ist, wird die 
 
 ### Max Output Tokens
 
-Die maximale Anzahl von Tokens, die das Modell in einer einzelnen Antwort generieren kann. Lassen Sie dieses Feld leer, um den Systemstandard (64.000) zu verwenden. Für lokale Modelle mit begrenztem VRAM sollten Sie diesen Wert explizit auf einen niedrigeren Wert setzen (z. B. 8192).
+Die maximale Anzahl von Tokens, die das Modell in einer einzelnen Antwort generieren kann. Lassen Sie dieses Feld leer, um den Systemstandard (64.000) zu verwenden. Für lokale Modelle mit begrenztem VRAM setzen Sie diesen Wert explizit auf einen niedrigeren Wert (z. B. 8192).
 
-### Kontextfenstergröße
+### Kontextgröße
 
-Die Größe des Kontextfensters des Modells in Token. Lassen Sie dieses Feld leer, um den Systemstandard (128.000) zu verwenden. Stellen Sie dies so ein, dass es der tatsächlichen Fähigkeit Ihres Modells entspricht – bei lokalen Modellen liegt dies oft zwischen 4K-32K, je nach Modell und verfügbarem Speicher.
+Die Größe des Kontextfensters des Modells in Token. Lassen Sie dieses Feld leer, um den Systemstandard (128.000) zu verwenden. Stellen Sie dies auf die tatsächliche Kapazität Ihres Modells ein – bei lokalen Modellen liegt dies oft zwischen 4K und 32K, je nach Modell und verfügbarem Speicher.
 
 ## Empfohlene Konfiguration
 
@@ -156,63 +152,63 @@ Die folgende Tabelle behandelt häufige Anbieter und Modelle. Daten stammen aus 
 ### Schnellregeln
 
 - **Native FC AN** für Modelle mit Funktionsaufrufen-Unterstützung (die meisten modernen Modelle)
-- **Native FC AUS** für Modelle mit ständigem Denken, die erzwungene `tool_choice` ablehnen
-- **JSON-Modus AN** für die meisten Modelle (sichere Standardeinstellung)
-- **JSON-Modus AUS** nur für AWS Bedrock-Relays (Prefill-Ablehnung)
+- **Native FC AUS** für Modelle mit ständiger Denkfunktion, die erzwungene `tool_choice` ablehnen
+- **JSON Mode AN** für die meisten Modelle (sichere Standardeinstellung)
+- **JSON Mode AUS** nur für AWS Bedrock-Relays (Prefill-Ablehnung)
 
 ### Pro-Anbieter-Konfigurationsmatrix
 
 **OpenAI**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `gpt-5.4` | Allgemein | 1.050K | 128K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning |
 | `gpt-5.4-mini` | Schnell | 400K | 128K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning |
-| `o3-pro` | Reasoning | 200K | 100K | AN | AN | Reasoning-Modell; FC funktioniert mit automatisch deaktiviertem Thinking |
+| `o3-pro` | Reasoning | 200K | 100K | AN | AN | Reasoning-Modell; FC funktioniert mit automatisch deaktiviertem Denken |
 
 **Anthropic (Claude)**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
-| `claude-sonnet-4-6` | Allgemein | 1.000K | 64K | AN | AN | Funktionsaufrufe + Reasoning; Thinking automatisch deaktiviert für FC |
+| `claude-sonnet-4-6` | Allgemein | 1.000K | 64K | AN | AN | Funktionsaufrufe + Reasoning; Denken automatisch deaktiviert für FC |
 | `claude-haiku-4-5` | Schnell | 200K | 64K | AN | AN | Funktionsaufrufe unterstützt |
-| `claude-opus-4-6` | Reasoning | 1.000K | 128K | AN | AN | Funktionsaufrufe + Reasoning; Thinking automatisch deaktiviert für FC |
+| `claude-opus-4-6` | Reasoning | 1.000K | 128K | AN | AN | Funktionsaufrufe + Reasoning; Denken automatisch deaktiviert für FC |
 
 **Google Gemini**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `gemini-3.1-pro-preview` | Allgemein | 1.048K | 65K | AN | AN | Neueste Vorschau; Nachfolger des veralteten gemini-3-pro-preview |
-| `gemini-2.5-pro` | Schnell | 1.048K | 65K | AN | AN | Stabiles GA; produktionsreif |
+| `gemini-2.5-pro` | Schnell | 1.048K | 65K | AN | AN | Stabiles GA; produktionsbereit |
 | `gemini-3.1-pro-preview` | Reasoning | 1.048K | 65K | AN | AN | Thinking-Unterstützung mit konfigurierbarem thinking_level |
 
 **DeepSeek**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `deepseek-chat` | Allgemein | 128K | 8K | AN | AN | V3.2 Non-Thinking-Modus; FC + JSON-Modus unterstützt |
 | `deepseek-chat` | Schnell | 128K | 8K | AN | AN | Gleiches Modell wie Allgemein; nur zwei offizielle API-Modell-IDs vorhanden |
-| `deepseek-reasoner` | Reasoning | 128K | 64K | **AUS** | AN | Thinking immer aktiviert; erzwungene tool_choice abgelehnt; 64K beinhaltet CoT |
+| `deepseek-reasoner` | Reasoning | 128K | 64K | **AUS** | AN | Thinking immer aktiviert; erzwungene tool_choice abgelehnt; 64K enthält CoT |
 
 **xAI (Grok)**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `grok-4-1-fast-non-reasoning` | Allgemein | 2.000K | 30K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe |
-| `grok-3-mini-fast` | Schnell | 131K | 131K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning; 131K ist gemeinsames Kontext-Budget |
+| `grok-3-mini-fast` | Schnell | 131K | 131K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning; 131K ist gemeinsames Kontextbudget |
 | `grok-4-1-fast-reasoning` | Reasoning | 2.000K | 30K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning |
 
 **Qwen (Alibaba Cloud)**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `qwen3.5-plus` | Allgemein | 1.000K | 64K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe |
 | `qwen-turbo-latest` | Schnell | 1.000K | 16K | AN | AN | FC wahrscheinlich unterstützt (UniAPI-Tags unvollständig) |
-| `qwq-plus` | Reasoning | 131K | 16K | AN | AN | Reasoning + Funktionsaufrufe; Thinking umschaltbar via enable_thinking |
+| `qwq-plus` | Reasoning | 131K | 16K | AN | AN | Reasoning + Funktionsaufrufe; Denken umschaltbar über enable_thinking |
 
 **Zhipu (GLM)**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `glm-4.7` | Allgemein | 200K | 128K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning |
 | `glm-4.7-flashx` | Schnell | 200K | 128K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning |
@@ -220,23 +216,23 @@ Die folgende Tabelle behandelt häufige Anbieter und Modelle. Daten stammen aus 
 
 **Moonshot (Kimi)**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
-| `kimi-k2.5` | Allgemein | 262K | 65K | **AUS** | AN | FC funktioniert, aber erzwungene tool_choice wird abgelehnt, wenn Thinking aktiviert ist (Standard) |
+| `kimi-k2.5` | Allgemein | 262K | 65K | **AUS** | AN | FC funktioniert, aber erzwungene tool_choice abgelehnt, wenn Denken aktiviert ist (Standard) |
 | `kimi-k2` | Schnell | 131K | 32K | AN | AN | Non-Thinking; natives FC funktioniert (in Produktion verifiziert) |
-| `kimi-k2-thinking` | Reasoning | 131K | -- | **AUS** | AN | Thinking immer aktiviert; erzwungene tool_choice abgelehnt |
+| `kimi-k2-thinking` | Reasoning | 131K | -- | **AUS** | AN | Denken immer aktiviert; erzwungene tool_choice abgelehnt |
 
 **MiniMax**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `MiniMax-M2.5` | Allgemein | 205K | 65K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe (in Produktion verifiziert) |
 | `MiniMax-M2.5-highspeed` | Schnell | 205K | 65K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe (in Produktion verifiziert) |
-| `MiniMax-M1` | Reasoning | 1.000K | 80K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe; 456B-Parameter-Hybrid-MoE |
+| `MiniMax-M1` | Reasoning | 1.000K | 80K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe; 456B Parameter Hybrid-MoE |
 
 **ByteDance (Doubao)**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
 | `doubao-seed-2-0-pro` | Allgemein | 256K | 128K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning |
 | `doubao-seed-1-6` | Schnell | 256K | 16K | AN | AN | Funktionsaufrufe + strukturierte Ausgabe + Reasoning |
@@ -244,25 +240,25 @@ Die folgende Tabelle behandelt häufige Anbieter und Modelle. Daten stammen aus 
 
 **Meta (Llama)**
 
-| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Notizen |
+| Modell | Rolle | Kontext | Max. Ausgabe | Native FC | JSON-Modus | Hinweise |
 |---|---|---|---|---|---|---|
-| `llama-3.3-70b` | Allgemein | 131K | 16K | AN | AN | FC + JSON-Modus hängen vom Hosting-Anbieter ab; Max. Ausgabe variiert (2K–16K) |
+| `llama-3.3-70b` | Allgemein | 131K | 16K | AN | AN | FC + JSON-Modus hängen vom Hosting-Anbieter ab; max. Ausgabe variiert (2K–16K) |
 
 <Note>
-**"--" in Max. Ausgabe** bedeutet, dass der Anbieter kein Limit angegeben hat. In der Praxis unterstützen diese Modelle typischerweise 4K–16K Ausgabe-Token. Legen Sie **Max. Ausgabe-Token** explizit in den erweiterten Einstellungen des Modells fest, wenn Sie einen bestimmten Wert benötigen.
+**"--" in Max. Ausgabe** bedeutet, dass der Anbieter kein Limit angegeben hat. In der Praxis unterstützen diese Modelle typischerweise 4K-16K Ausgabe-Token. Legen Sie **Max. Ausgabe-Token** explizit in den erweiterten Einstellungen des Modells fest, wenn Sie einen bestimmten Wert benötigen.
 </Note>
 
 <Tip>
-**Diagnose:** Überprüfen Sie Ihre Anwendungsprotokolle auf `structured_llm_call: native_fc call raised`-Warnungen. Wenn Sie diese Warnungen gefolgt von erfolgreicher JSON-Modus-Extraktion sehen, profitiert das Modell nicht von nativen Funktionsaufrufen. Deaktivieren Sie **Native Funktionsaufrufe** für dieses Modell, um den verschwendeten API-Aufruf und die ~10-Sekunden-Latenzstrafe pro strukturierter Ausgabeanfrage zu vermeiden.
+**Diagnose:** Überprüfen Sie Ihre Anwendungsprotokolle auf Warnungen `structured_llm_call: native_fc call raised`. Wenn Sie diese Warnungen gefolgt von erfolgreicher JSON-Modus-Extraktion sehen, profitiert das Modell nicht von nativen Funktionsaufrufen. Deaktivieren Sie **Native Funktionsaufrufe** für dieses Modell, um den verschwendeten API-Aufruf und die Latenzstrafe von ~10 Sekunden pro strukturierter Ausgabeanfrage zu vermeiden.
 </Tip>
 
 <Warning>
-Modellkapazitäten ändern sich häufig, wenn Anbieter ihre APIs aktualisieren. Die obigen Empfehlungen basieren auf Daten vom **22.03.2026** (UniAPI-Kapazitäts-Tags + Produktions-Laufzeit-Verifizierung). Wenn ein Modell, das zuvor funktioniert hat, Fehler zurückgibt, überprüfen Sie das Änderungsprotokoll des Anbieters auf Breaking Changes.
+Modellkapazitäten ändern sich häufig, wenn Anbieter ihre APIs aktualisieren. Die obigen Empfehlungen basieren auf Daten vom **22.03.2026** (UniAPI-Kapazitäts-Tags + Produktions-Laufzeit-Verifizierung). Wenn ein Modell, das zuvor funktioniert hat, Fehler zurückgibt, überprüfen Sie das Changelog des Anbieters auf Breaking Changes.
 </Warning>
 
 ## Modellgruppen
 
-Modellgruppen ermöglichen es dir, Modelle bestimmten Rollen zuzuweisen und mit einem einzigen Klick zwischen Konfigurationen zu wechseln.
+Mit Modellgruppen können Sie Modelle bestimmten Rollen zuweisen und mit einem einzigen Klick zwischen Konfigurationen wechseln.
 
 ### Rollen
 
@@ -287,7 +283,7 @@ FIM One verwendet drei Modellrollen. Jede Rolle erfüllt einen anderen Zweck in 
     Geben Sie einen aussagekräftigen Namen ein (z. B. „Production (OpenAI)", „Budget (DeepSeek)", „Local Dev").
   </Step>
   <Step title="Weisen Sie Modelle Rollen zu">
-    Wählen Sie für jede Rolle (General, Fast, Reasoning) ein Modell aus dem Dropdown-Menü aus. Das Dropdown-Menü zeigt alle aktiven Modelle von aktiven Anbietern an, gruppiert nach Anbieter. Sie können eine Rolle unzugewiesen lassen – sie wird dann auf das Modell „General" zurückgreifen (oder auf ENV-konfigurierte Modelle, wenn „General" auch unzugewiesen ist).
+    Wählen Sie für jede Rolle (General, Fast, Reasoning) ein Modell aus dem Dropdown-Menü aus. Das Dropdown-Menü zeigt alle aktiven Modelle von aktiven Anbietern, gruppiert nach Anbieter-Name. Sie können eine Rolle unzugewiesen lassen – sie wird dann auf das General-Modell zurückgreifen (oder auf ENV-konfigurierte Modelle, wenn General auch unzugewiesen ist).
   </Step>
   <Step title="Speichern">
     Klicken Sie auf **Erstellen**. Die Gruppe ist nun zur Aktivierung verfügbar.
@@ -296,12 +292,12 @@ FIM One verwendet drei Modellrollen. Jede Rolle erfüllt einen anderen Zweck in 
 
 ### Aktivierung einer Gruppe
 
-Um eine Modellgruppe zu aktivieren, verwenden Sie das Dropdown-Menü oder das Aktivierungssteuerelement auf der Seite „Modelle". Es kann jeweils nur eine Gruppe aktiv sein. Durch die Aktivierung einer Gruppe werden ihre Modellzuweisungen sofort auf alle neuen Konversationen angewendet.
+Um eine Modellgruppe zu aktivieren, verwenden Sie das Dropdown-Menü oder die Aktivierungskontrolle auf der Seite „Modelle". Es kann jeweils nur eine Gruppe aktiv sein. Die Aktivierung einer Gruppe wendet ihre Modellzuweisungen sofort auf alle neuen Konversationen an.
 
 Um die aktuelle Gruppe zu deaktivieren (Rückgriff auf ENV-konfigurierte Modelle), wählen Sie die Deaktivierungsoption.
 
 <Warning>
-Das Wechseln der aktiven Modellgruppe beeinflusst **alle neuen Konversationen** systemweit. Laufende Konversationen verwenden weiterhin das Modell, das aktiv war, als sie gestartet wurden.
+Das Wechseln der aktiven Modellgruppe beeinflusst **alle neuen Konversationen** systemweit. Bestehende laufende Konversationen verwenden weiterhin das Modell, das aktiv war, als sie gestartet wurden.
 </Warning>
 
 ## ENV-Fallback
@@ -310,17 +306,17 @@ Wenn keine vom Administrator konfigurierte Modellgruppe aktiv ist, greift FIM On
 
 | Rolle | ENV-Variable |
 |---|---|
-| Allgemein | `LLM_MODEL` |
-| Schnell | `FAST_LLM_MODEL` (greift auf `LLM_MODEL` zurück) |
+| General | `LLM_MODEL` |
+| Fast | `FAST_LLM_MODEL` (greift auf `LLM_MODEL` zurück) |
 | Reasoning | `REASONING_LLM_MODEL` (greift auf `LLM_MODEL` zurück) |
 
-Vom Administrator konfigurierte Modelle haben immer Vorrang vor ENV-Variablen. Die Systemgesundheitsprüfung berücksichtigt beide Quellen – solange entweder eine aktive Modellgruppe oder gültige ENV-Variablen konfiguriert sind, meldet das LLM-Subsystem einen fehlerfreien Zustand.
+Vom Administrator konfigurierte Modelle haben immer Vorrang vor ENV-Variablen. Die Systemzustandsprüfung berücksichtigt beide Quellen – solange entweder eine aktive Modellgruppe oder gültige ENV-Variablen konfiguriert sind, meldet das LLM-Subsystem einen fehlerfreien Status.
 
-Die vollständige ENV-Referenz finden Sie unter [Umgebungsvariablen](/configuration/environment-variables#llm-required).
+Die vollständige ENV-Referenz finden Sie unter [Environment Variables](/configuration/environment-variables#llm-required).
 
 ## Export und Import
 
-Die Seite „Models" unterstützt den Export Ihrer gesamten Anbieter- und Modellkonfiguration (Anbieter, Modelle und Gruppen) als JSON-Datei und deren Import auf einer anderen Instanz. Dies ist nützlich für:
+Die Seite „Models" unterstützt den Export Ihrer gesamten Anbieter- und Modellkonfiguration (Anbieter, Modelle und Gruppen) als JSON-Datei und den Import auf einer anderen Instanz. Dies ist nützlich für:
 
 - Migration der Konfiguration zwischen Entwicklungs-, Staging- und Produktionsumgebungen
 - Freigabe einer bewährten Modellkonfiguration für Teammitglieder

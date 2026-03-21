@@ -3,19 +3,19 @@ title: "Gestion des modèles"
 description: "Configurez les fournisseurs LLM, les modèles et les groupes de modèles dans le panneau d'administration."
 ---
 
-FIM One fournit une interface d'administration complète pour gérer les fournisseurs LLM et les modèles. Ce guide couvre comment ajouter des fournisseurs, configurer des modèles individuels, affiner les paramètres avancés de sortie structurée et organiser les modèles en groupes pour un changement en un clic.
+FIM One fournit une interface d'administration complète pour gérer les fournisseurs LLM et les modèles. Ce guide couvre comment ajouter des fournisseurs, configurer des modèles individuels, affiner les paramètres de sortie structurée avancée et organiser les modèles en groupes pour un changement en un clic.
 
 Pour la configuration basée sur les variables d'environnement (sans interface d'administration), voir [Variables d'environnement](/configuration/environment-variables). Pour les recommandations de sélection de modèles, voir [Modèles recommandés](/configuration/models).
 
-## Architecture: Fournisseur, Modèle, Groupe
+## Architecture : Fournisseur, Modèle, Groupe
 
 FIM One organise la configuration des LLM en trois niveaux :
 
 | Niveau | Ce qu'il représente | Exemple |
 |---|---|---|
-| **Fournisseur** | Un ensemble d'identifiants partagés (clé API + URL de base). Un fournisseur peut héberger de nombreux modèles. | "Mon compte OpenAI", "Relais Bedrock d'entreprise" |
-| **Modèle** | Un modèle individuel sous un fournisseur. Possède son propre nom d'affichage, identifiant de modèle API et paramètres avancés. | "GPT-4o", "Claude Sonnet 4.6" |
-| **Groupe de modèles** | Un préréglage nommé qui assigne des modèles à des rôles (Général / Rapide / Raisonnement). L'activation d'un groupe bascule tous les rôles à la fois. | "Production (OpenAI)", "Budget (DeepSeek)" |
+| **Fournisseur** | Un ensemble d'identifiants partagés (clé API + URL de base). Un fournisseur peut héberger de nombreux modèles. | « Mon compte OpenAI », « Relais Bedrock d'entreprise » |
+| **Modèle** | Un modèle individuel sous un fournisseur. Possède son propre nom d'affichage, identifiant de modèle API et paramètres avancés. | « GPT-4o », « Claude Sonnet 4.6 » |
+| **Groupe de modèles** | Un préréglage nommé qui assigne des modèles à des rôles (Général / Rapide / Raisonnement). L'activation d'un groupe bascule tous les rôles à la fois. | « Production (OpenAI) », « Budget (DeepSeek) » |
 
 ```
 Provider: "My OpenAI Account"
@@ -32,8 +32,6 @@ Group: "Production"
   ├── Fast    → GPT-5 Nano
   └── Reasoning → o3
 ```
-
----
 
 ## Ajouter un fournisseur
 
@@ -52,11 +50,11 @@ Group: "Production"
   <Step title="Entrer les identifiants">
     Remplissez les champs obligatoires :
     - **Nom du fournisseur** -- Un libellé convivial (par exemple, « Mon compte OpenAI »). Ceci est uniquement pour votre référence.
-    - **URL de base** -- Le point de terminaison API. Les préréglages remplissent cela automatiquement. Pour les points de terminaison personnalisés, entrez l'URL complète (par exemple, `http://localhost:11434/v1` pour Ollama).
+    - **URL de base** -- Le point de terminaison API. Les préréglages remplissent ceci automatiquement. Pour les points de terminaison personnalisés, entrez l'URL complète (par exemple, `http://localhost:11434/v1` pour Ollama).
     - **Clé API** -- La clé API de votre fournisseur. Pour les modèles locaux (Ollama), entrez une chaîne non vide (par exemple, `ollama`).
   </Step>
   <Step title="Enregistrer">
-    Cliquez sur **Créer**. Le fournisseur apparaît dans la liste, prêt pour que vous y ajoutiez des modèles.
+    Cliquez sur **Créer**. Le fournisseur apparaît dans la liste, prêt pour que vous ajoutiez des modèles sous celui-ci.
   </Step>
 </Steps>
 
@@ -75,11 +73,11 @@ Vous pouvez créer plusieurs fournisseurs pour le même service. Par exemple, de
   </Step>
   <Step title="Entrer les détails du modèle">
     Remplissez les deux champs obligatoires :
-    - **Nom d'affichage** -- Un nom lisible affiché dans l'interface utilisateur (par exemple, « GPT-4o », « Claude Sonnet »). Peut être n'importe quoi.
+    - **Nom d'affichage** -- Un nom lisible affiché dans l'interface utilisateur (par exemple, « GPT-4o », « Claude Sonnet »). Peut être n'importe quel nom de votre choix.
     - **Nom du modèle (API)** -- L'identifiant exact du modèle envoyé à l'API (par exemple, `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). Doit correspondre à ce que votre fournisseur attend.
   </Step>
   <Step title="Configurer les paramètres avancés (facultatif)">
-    Cliquez sur le bouton bascule **Avancé** pour révéler les paramètres supplémentaires : Jetons de sortie maximaux, Taille du contexte, Température, Appel de fonction natif et Mode JSON. Consultez la section [Paramètres avancés](#advanced-settings) ci-dessous pour plus de détails sur chacun.
+    Cliquez sur le bouton bascule **Avancé** pour révéler les paramètres supplémentaires : Jetons de sortie maximum, Taille du contexte, Température, Appels de fonction natifs et Mode JSON. Consultez la section [Paramètres avancés](#advanced-settings) ci-dessous pour plus de détails sur chacun.
   </Step>
   <Step title="Enregistrer">
     Cliquez sur **Créer**. Le modèle apparaît sous son fournisseur et est maintenant disponible pour l'attribution aux groupes de modèles.
@@ -90,7 +88,7 @@ Vous pouvez créer plusieurs fournisseurs pour le même service. Par exemple, de
 
 ## Paramètres avancés
 
-Chaque modèle dispose de paramètres avancés qui contrôlent la façon dont FIM One interagit avec l'API du fournisseur pour l'extraction de sortie structurée. Ces paramètres se trouvent sous le bouton bascule **Avancé** dans la boîte de dialogue de création/édition du modèle.
+Chaque modèle dispose de paramètres avancés qui contrôlent la façon dont FIM One interagit avec l'API du fournisseur pour l'extraction de sorties structurées. Ces paramètres se trouvent sous le bouton bascule **Advanced** dans la boîte de dialogue de création/édition du modèle.
 
 ### Appel de fonction natif
 
@@ -98,13 +96,13 @@ Chaque modèle dispose de paramètres avancés qui contrôlent la façon dont FI
 
 **Par défaut :** ACTIVÉ
 
-Contrôle si FIM One utilise `tool_choice` forcé pour l'extraction de sortie structurée. C'est le niveau 1 dans la chaîne de dégradation de sortie structurée -- la méthode la plus fiable lorsque le modèle la supporte.
+Contrôle si FIM One utilise `tool_choice` forcé pour l'extraction de sortie structurée. C'est le niveau 1 dans la chaîne de dégradation de sortie structurée -- la méthode la plus fiable quand le modèle la supporte.
 
 **Quand désactiver :**
-- Votre modèle retourne des erreurs comme `"tool_choice 'specified' is incompatible with thinking enabled"` -- courant avec les modèles à réflexion toujours active (DeepSeek R1, Kimi K2.5)
-- Les demandes de sortie structurée sont régulièrement lentes avec une pénalité d'environ 10 secondes par appel, suivie d'une réversion à JSON Mode de toute façon
+- Votre modèle retourne des erreurs comme `"tool_choice 'specified' is incompatible with thinking enabled"` -- courant avec les modèles à réflexion toujours activée (DeepSeek R1, Kimi K2.5)
+- Les demandes de sortie structurée sont constamment lentes avec une pénalité d'environ 10 secondes par appel, suivie d'un retour à JSON Mode de toute façon
 
-**Effet quand désactivé :** FIM One ignore le niveau 1 (appel de fonction natif) et commence au niveau 2 (JSON Mode) pour la sortie structurée. L'appel d'outil de l'agent ReAct n'est complètement pas affecté -- il utilise `tool_choice="auto"`, qui fonctionne avec tous les modèles indépendamment de ce paramètre.
+**Effet quand désactivé :** FIM One ignore le niveau 1 (appel de fonction natif) et commence à partir du niveau 2 (JSON Mode) pour la sortie structurée. L'appel d'outil de l'agent ReAct n'est complètement pas affecté -- il utilise `tool_choice="auto"`, qui fonctionne avec tous les modèles indépendamment de ce paramètre.
 
 <Note>
 Ce paramètre affecte uniquement la sélection d'outil **forcée** utilisée pour l'extraction de sortie structurée (planification DAG, annotation de schéma). Il n'affecte **pas** l'agent ReAct, qui décide librement quand appeler des outils en utilisant `tool_choice="auto"`.
@@ -116,12 +114,12 @@ Pour les détails techniques, voir [Compatibilité des fournisseurs LLM -- tool_
 
 **Nom du paramètre :** JSON Mode (stocké sous `json_mode_enabled`)
 
-**Valeur par défaut :** ACTIVÉ
+**Par défaut :** ACTIVÉ
 
 Contrôle si FIM One utilise `response_format=json_object` pour la sortie structurée. Ceci est le Niveau 2 dans la chaîne de dégradation.
 
 **Quand désactiver :**
-- Votre fournisseur rejette le préfixage des messages d'assistant -- principalement les relais AWS Bedrock, qui lèvent `"This model does not support assistant message prefill"`
+- Votre fournisseur rejette le préfixage des messages d'assistant -- principalement les relais AWS Bedrock, qui lancent `"This model does not support assistant message prefill"`
 
 **Effet quand désactivé :** FIM One ignore le Niveau 2 (Mode JSON) et bascule au Niveau 3 (extraction de texte brut). Les modèles modernes produisent du JSON valide à partir des instructions de prompt seules, il n'y a donc généralement aucune perte de qualité.
 
@@ -139,19 +137,19 @@ Lorsque le raisonnement/la réflexion étendue est activé pour les modèles Ant
 
 ### Tokens de sortie maximaux
 
-Le nombre maximum de jetons que le modèle peut générer dans une seule réponse. Laissez vide pour utiliser la valeur par défaut du système (64 000). Pour les modèles locaux avec une VRAM limitée, définissez explicitement cette valeur sur un nombre inférieur (par exemple, 8192).
+Le nombre maximum de tokens que le modèle peut générer dans une seule réponse. Laissez vide pour utiliser la valeur par défaut du système (64 000). Pour les modèles locaux avec une VRAM limitée, définissez explicitement cette valeur à un nombre inférieur (par exemple, 8192).
 
 ### Taille du contexte
 
-La taille de la fenêtre de contexte du modèle en tokens. Laissez vide pour utiliser la valeur par défaut du système (128 000). Définissez cette valeur pour correspondre à la capacité réelle de votre modèle -- pour les modèles locaux, cela est souvent 4K-32K selon le modèle et la mémoire disponible.
+La taille de la fenêtre de contexte du modèle en jetons. Laissez vide pour utiliser la valeur par défaut du système (128 000). Définissez cette valeur en fonction de la capacité réelle de votre modèle -- pour les modèles locaux, c'est souvent 4K-32K selon le modèle et la mémoire disponible.
 
 ---
 
 ## Configuration recommandée
 
-La plupart des modèles fonctionnent correctement avec les paramètres par défaut (les deux bascules activées). Ajustez uniquement en cas d'erreurs ou de latence inutile.
+La plupart des modèles fonctionnent correctement avec les paramètres par défaut (les deux commutateurs activés). Ajustez uniquement si vous rencontrez des erreurs ou une latence inutile.
 
-Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données proviennent des balises de capacité UniAPI et ont été vérifiées par rapport au comportement à l'exécution au **2026-03-22**. Les capacités des modèles changent fréquemment -- si vous rencontrez des erreurs, consultez la dernière documentation de votre fournisseur.
+Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données proviennent des balises de capacité UniAPI et ont été vérifiées par rapport au comportement d'exécution au **2026-03-22**. Les capacités des modèles changent fréquemment -- si vous rencontrez des erreurs, consultez la dernière documentation de votre fournisseur.
 
 ### Règles rapides
 
@@ -182,7 +180,7 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `gemini-3.1-pro-preview` | Général | 1,048K | 65K | ON | ON | Aperçu le plus récent ; successeur de gemini-3-pro-preview déprécié |
+| `gemini-3.1-pro-preview` | Général | 1,048K | 65K | ON | ON | Dernier aperçu ; successeur de gemini-3-pro-preview déprécié |
 | `gemini-2.5-pro` | Rapide | 1,048K | 65K | ON | ON | GA stable ; prêt pour la production |
 | `gemini-3.1-pro-preview` | Raisonnement | 1,048K | 65K | ON | ON | Support de la pensée avec thinking_level configurable |
 
@@ -257,22 +255,22 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 </Tip>
 
 <Warning>
-Les capacités des modèles changent fréquemment à mesure que les fournisseurs mettent à jour leurs API. Les recommandations ci-dessus sont basées sur les données du **2026-03-22** (tags de capacité UniAPI + vérification runtime en production). Si un modèle qui fonctionnait précédemment commence à retourner des erreurs, consultez le journal des modifications du fournisseur pour les modifications de rupture.
+Les capacités des modèles changent fréquemment à mesure que les fournisseurs mettent à jour leurs API. Les recommandations ci-dessus sont basées sur les données du **2026-03-22** (tags de capacité UniAPI + vérification du runtime en production). Si un modèle qui fonctionnait précédemment commence à retourner des erreurs, consultez le journal des modifications du fournisseur pour les changements cassants.
 </Warning>
 
 ## Groupes de modèles
 
-Les groupes de modèles vous permettent d'assigner des modèles à des rôles spécifiques et de basculer entre les configurations en un seul clic.
+Les groupes de modèles vous permettent d'attribuer des modèles à des rôles spécifiques et de basculer entre les configurations en un seul clic.
 
 ### Rôles
 
-FIM One utilise trois rôles de modèle. Chaque rôle remplit un objectif différent dans le pipeline d'exécution :
+FIM One utilise trois rôles de modèle. Chaque rôle remplit une fonction différente dans le pipeline d'exécution :
 
 | Rôle | Utilisé pour | Recommandation |
 |---|---|---|
-| **General** | Planification, analyse, agent ReAct, raisonnement complexe | Votre modèle le plus capable (par ex., `gpt-4o`, `claude-sonnet-4-6`) |
-| **Fast** | Exécution des étapes DAG, compaction de contexte | Optimisé pour la vitesse et le coût (par ex., `gpt-5-nano`, `deepseek-chat`). Bascule vers General s'il n'est pas assigné. |
-| **Reasoning** | Tâches nécessitant une analyse approfondie -- planification complexe, preuves mathématiques, logique multi-étapes | Un modèle de raisonnement puissant (par ex., `o3`, `deepseek-reasoner`). Bascule vers General s'il n'est pas assigné. |
+| **General** | Planification, analyse, agent ReAct, raisonnement complexe | Votre modèle le plus performant (par exemple, `gpt-4o`, `claude-sonnet-4-6`) |
+| **Fast** | Exécution des étapes DAG, compaction de contexte | Optimisé pour la vitesse et le coût (par exemple, `gpt-5-nano`, `deepseek-chat`). Bascule vers General s'il n'est pas assigné. |
+| **Reasoning** | Tâches nécessitant une analyse approfondie -- planification complexe, preuves mathématiques, logique multi-étapes | Un modèle de raisonnement performant (par exemple, `o3`, `deepseek-reasoner`). Bascule vers General s'il n'est pas assigné. |
 
 ### Création d'un groupe de modèles
 
@@ -298,7 +296,7 @@ FIM One utilise trois rôles de modèle. Chaque rôle remplit un objectif diffé
 
 Pour activer un groupe de modèles, utilisez la liste déroulante ou le contrôle d'activation sur la page Modèles. Un seul groupe peut être actif à la fois. L'activation d'un groupe applique immédiatement ses attributions de modèles à toutes les nouvelles conversations.
 
-Pour désactiver le groupe actuel (revenir aux modèles configurés par ENV), sélectionnez l'option de désactivation.
+Pour désactiver le groupe actuel (revenir aux modèles configurés via ENV), sélectionnez l'option de désactivation.
 
 <Warning>
 Le changement du groupe de modèles actif affecte **toutes les nouvelles conversations** à l'échelle du système. Les conversations en cours existantes continuent d'utiliser le modèle qui était actif au moment de leur démarrage.
@@ -308,19 +306,19 @@ Le changement du groupe de modèles actif affecte **toutes les nouvelles convers
 
 ## Secours ENV
 
-Lorsqu'aucun groupe de modèles configuré par l'administrateur n'est actif, FIM One revient à une configuration basée sur ENV :
+Lorsqu'aucun groupe de modèles configuré par l'administrateur n'est actif, FIM One utilise une configuration basée sur les variables d'environnement :
 
 | Rôle | Variable ENV |
 |---|---|
 | Général | `LLM_MODEL` |
-| Rapide | `FAST_LLM_MODEL` (revient à `LLM_MODEL`) |
-| Raisonnement | `REASONING_LLM_MODEL` (revient à `LLM_MODEL`) |
+| Rapide | `FAST_LLM_MODEL` (utilise `LLM_MODEL` par défaut) |
+| Raisonnement | `REASONING_LLM_MODEL` (utilise `LLM_MODEL` par défaut) |
 
 Les modèles configurés par l'administrateur ont toujours la priorité sur les variables ENV. La vérification de l'intégrité du système considère les deux sources -- tant qu'un groupe de modèles actif ou des variables ENV valides sont configurés, le sous-système LLM signale un état sain.
 
 Pour la référence ENV complète, consultez [Variables d'environnement](/configuration/environment-variables#llm-required).
 
-## Exportation et importation
+## Exporter et importer
 
 La page Modèles prend en charge l'exportation de l'intégralité de votre configuration de fournisseur et de modèle (fournisseurs, modèles et groupes) sous forme de fichier JSON, et son importation sur une autre instance. Ceci est utile pour :
 
