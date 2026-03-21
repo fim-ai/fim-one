@@ -20,7 +20,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **DAG-Schrittkartenayout** — `StepProgressCard` wurde neu gestaltet, sodass der Aufgabentext unter dem Schrittabzeichen umbricht, anstatt auf einer einzelnen Zeile abgeschnitten zu werden. Werkzeugabzeichen in Schrittknoten werden jetzt nur angezeigt, wenn keine `tools_used` vorhanden sind, aber `tool_hint` vorhanden ist, um redundante Anzeige zu vermeiden.
+- **DAG-Schrittkartenleayout** — `StepProgressCard` wurde neu gestaltet, sodass der Aufgabentext unter dem Schrittabzeichen umbrochen wird, anstatt auf einer einzelnen Zeile abgeschnitten zu werden. Werkzeugabzeichen in Schrittknoten werden jetzt nur angezeigt, wenn keine `tools_used` vorhanden sind, aber `tool_hint` vorhanden ist, um redundante Anzeige zu vermeiden.
+- **MCP-Servereigentümer-Umgehung für allow_fallback** — Der Servereigentümer wird nicht mehr durch die Einschränkung `allow_fallback=False` blockiert. Zuvor konnte sogar der Ersteller eines MCP-Servers übersprungen werden, wenn `allow_fallback=False` gesetzt war; jetzt werden nur Nicht-Eigentümer-Benutzer ohne Anmeldedaten ausgeschlossen.
 
 ## [v0.8] - 2026-03-20
 

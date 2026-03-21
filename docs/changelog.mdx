@@ -21,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 
 - **DAG step card layout** — Redesigned `StepProgressCard` so task text wraps below the step badge instead of truncating on a single line. Tool badges in step nodes now only display when no `tools_used` exist but `tool_hint` is present, avoiding redundant display.
+- **MCP server owner bypass for allow_fallback** — Server owner is no longer blocked by `allow_fallback=False` restriction. Previously, even the creator of an MCP server could be skipped if `allow_fallback=False` was set; now only non-owner users without credentials are excluded.
 
 ## [v0.8] - 2026-03-20
 

@@ -1353,8 +1353,8 @@ async def _connect_pending_mcp_servers(tools: ToolRegistry) -> Any:
                             if _cred.headers_blob
                             else _srv.headers
                         )
-                    elif not getattr(_srv, "allow_fallback", True):
-                        # allow_fallback=False and user has no credential — skip
+                    elif not getattr(_srv, "allow_fallback", True) and _srv.user_id != _mcp_user_id:
+                        # allow_fallback=False and non-owner has no credential — skip
                         logger.info(
                             "Skipping MCP server %r: allow_fallback=False and user has no credentials",
                             _srv.name,

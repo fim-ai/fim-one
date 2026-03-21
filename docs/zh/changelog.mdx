@@ -20,7 +20,8 @@ description: "FIM One 的所有重要更改。"
 
 ### 已修复
 
-- **DAG 步骤卡片布局** — 重新设计了 `StepProgressCard`，使任务文本在步骤徽章下方换行，而不是在单行上截断。步骤节点中的工具徽章现在仅在不存在 `tools_used` 但存在 `tool_hint` 时显示，避免冗余显示。
+- **DAG 步骤卡片布局** — 重新设计了 `StepProgressCard`，使任务文本换行显示在步骤徽章下方，而不是在单行上截断。步骤节点中的工具徽章现在仅在不存在 `tools_used` 但存在 `tool_hint` 时显示，避免冗余显示。
+- **MCP 服务器所有者绕过 allow_fallback** — 服务器所有者不再受 `allow_fallback=False` 限制阻止。之前，即使设置了 `allow_fallback=False`，MCP 服务器的创建者也可能被跳过；现在仅排除没有凭证的非所有者用户。
 
 ## [v0.8] - 2026-03-20
 

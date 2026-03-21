@@ -20,7 +20,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Corrigé
 
-- **Disposition de la carte d'étape DAG** — Redessiné `StepProgressCard` pour que le texte de la tâche s'enroule sous le badge d'étape au lieu de se tronquer sur une seule ligne. Les badges d'outil dans les nœuds d'étape ne s'affichent désormais que lorsqu'aucun `tools_used` n'existe mais que `tool_hint` est présent, évitant un affichage redondant.
+- **Disposition de la carte d'étape DAG** — Redessiné `StepProgressCard` pour que le texte de la tâche s'enroule sous le badge d'étape au lieu de se tronquer sur une seule ligne. Les badges d'outil dans les nœuds d'étape s'affichent désormais uniquement lorsqu'aucun `tools_used` n'existe mais que `tool_hint` est présent, évitant un affichage redondant.
+- **Contournement du propriétaire du serveur MCP pour allow_fallback** — Le propriétaire du serveur n'est plus bloqué par la restriction `allow_fallback=False`. Auparavant, même le créateur d'un serveur MCP pouvait être ignoré si `allow_fallback=False` était défini ; désormais, seuls les utilisateurs non-propriétaires sans identifiants sont exclus.
 
 ## [v0.8] - 2026-03-20
 
