@@ -143,7 +143,7 @@ export default function AgentEditorPage() {
           {isNew ? t("newAgent") : agent?.name || t("agent")}
         </h1>
         <div className="flex-1" />
-        {agent && agent.status === "published" && (
+        {agent && !isNew && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
