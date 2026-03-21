@@ -55,21 +55,22 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `LLM_TEMPERATURE` | 否 | `0.7` | 默认采样温度 |
 | `LLM_CONTEXT_SIZE` | 否 | `128000` | 主 LLM 的上下文窗口大小 |
 | `LLM_MAX_OUTPUT_TOKENS` | 否 | `64000` | 主 LLM 每次调用的最大输出令牌数 |
-| `FAST_LLM_API_KEY` | 否 | *（回退到 `LLM_API_KEY`）* | 快速模型提供商的 API 密钥。当快速模型由不同的提供商托管时使用 |
+| `FAST_LLM_API_KEY` | 否 | *（回退到 `LLM_API_KEY`）* | 快速模型提供商的 API 密钥。当快速模型由不同提供商托管时使用 |
 | `FAST_LLM_BASE_URL` | 否 | *（回退到 `LLM_BASE_URL`）* | 快速模型提供商的基础 URL |
 | `FAST_LLM_TEMPERATURE` | 否 | *（回退到 `LLM_TEMPERATURE`）* | 快速模型的采样温度 |
 | `FAST_LLM_CONTEXT_SIZE` | 否 | *（回退到 `LLM_CONTEXT_SIZE`）* | 快速 LLM 的上下文窗口大小 |
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | 否 | *（回退到 `LLM_MAX_OUTPUT_TOKENS`）* | 快速 LLM 每次调用的最大输出令牌数 |
-| `LLM_REASONING_EFFORT` | 否 | *（已禁用）* | 支持的模型的扩展思考级别（OpenAI o 系列、Gemini 2.5+、Claude）。值：`low`、`medium`、`high`。LiteLLM 会自动将其转换为每个提供商的原生格式。模型的思维链在 UI"思考"步骤中显示。 |
-| `LLM_REASONING_BUDGET_TOKENS` | 否 | *（从努力级别自动计算）* | Anthropic 思考的显式令牌预算（最少 1024）。对于 OpenAI/Gemini，直接使用努力级别。仅在设置 `LLM_REASONING_EFFORT` 时有效。 |
-| `LLM_JSON_MODE_ENABLED` | 否 | `true` | `response_format=json_object` 的全局开关。如果您的提供商拒绝 LiteLLM 的助手预填充注入（例如 AWS Bedrock 中继 → 第 2 次及以后智能体迭代上的 `ValidationException`），请设置为 `false`。禁用时，结构化调用跳过 JSON 模式并回退到纯文本正则表达式提取 — 无质量损失。适用于所有模型（ENV 配置和管理员配置）。 |
+| `LLM_REASONING_EFFORT` | 否 | *（禁用）* | 支持的模型的扩展思考级别（OpenAI o 系列、Gemini 2.5+、Claude）。值：`low`、`medium`、`high`。LiteLLM 会自动将其转换为每个提供商的原生格式。模型的思维链在 UI"思考"步骤中显示。 |
+| `LLM_REASONING_BUDGET_TOKENS` | 否 | *（从 effort 自动计算）* | Anthropic 思考的显式令牌预算（最少 1024）。对于 OpenAI/Gemini，直接使用 effort 级别。仅在设置 `LLM_REASONING_EFFORT` 时有效。 |
+| `LLM_JSON_MODE_ENABLED` | 否 | `true` | `response_format=json_object` 的全局切换。如果您的提供商拒绝 LiteLLM 的助手预填充注入（例如 AWS Bedrock 中继 → 第 2 次及以后的智能体迭代出现 `ValidationException`），设置为 `false`。禁用时，结构化调用跳过 JSON 模式并回退到纯文本正则表达式提取 — 无质量损失。适用于所有模型（ENV 配置和管理员配置）。 |
+| `LLM_TOOL_CHOICE_ENABLED` | 否 | `true` | 结构化输出提取中强制 `tool_choice` 的全局切换（级别 1 — 原生函数调用）。如果您的模型在强制工具选择时返回错误（例如拒绝 `tool_choice='specified'` 的思考模式模型），设置为 `false`。禁用时，结构化调用跳过原生 FC 并从 JSON 模式开始。每个模型的覆盖可在设置 → 模型 → 高级中获得。 |
 | `REASONING_LLM_MODEL` | 否 | *（回退到 `LLM_MODEL`）* | 推理层的模型名称。用于需要深度分析的任务（例如 DAG 规划、计划分析） |
 | `REASONING_LLM_API_KEY` | 否 | *（回退到 `LLM_API_KEY`）* | 推理模型提供商的 API 密钥 |
 | `REASONING_LLM_BASE_URL` | 否 | *（回退到 `LLM_BASE_URL`）* | 推理模型提供商的基础 URL |
 | `REASONING_LLM_TEMPERATURE` | 否 | *（回退到 `LLM_TEMPERATURE`）* | 推理模型的采样温度 |
 | `REASONING_LLM_CONTEXT_SIZE` | 否 | *（回退到 `LLM_CONTEXT_SIZE`）* | 推理模型的上下文窗口大小 |
 | `REASONING_LLM_MAX_OUTPUT_TOKENS` | 否 | *（回退到 `LLM_MAX_OUTPUT_TOKENS`）* | 推理模型每次调用的最大输出令牌数 |
-| `REASONING_LLM_EFFORT` | 否 | *（回退到 `LLM_REASONING_EFFORT`）* | 推理模型层的推理努力级别。值：`low`、`medium`、`high` |
+| `REASONING_LLM_EFFORT` | 否 | *（回退到 `LLM_REASONING_EFFORT`）* | 推理模型层的推理 effort 级别。值：`low`、`medium`、`high` |
 | `REASONING_LLM_BUDGET` | 否 | *（回退到 `LLM_REASONING_BUDGET_TOKENS`）* | 推理的令牌预算（主要用于 Anthropic）。覆盖推理层的自动计算预算 |
 
 > **解析顺序**：用户偏好 → 管理员模型（数据库）→ ENV 回退。如果在管理员 → 模型中配置了角色为"通用"的管理员模型，这些 ENV 变量仅作为回退。健康检查会考虑两个来源。

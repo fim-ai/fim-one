@@ -55,24 +55,25 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `LLM_TEMPERATURE` | Non | `0.7` | Température d'échantillonnage par défaut |
 | `LLM_CONTEXT_SIZE` | Non | `128000` | Taille de la fenêtre de contexte pour le LLM principal |
 | `LLM_MAX_OUTPUT_TOKENS` | Non | `64000` | Nombre maximal de jetons de sortie par appel pour le LLM principal |
-| `FAST_LLM_API_KEY` | Non | *(revient à `LLM_API_KEY`)* | Clé API du fournisseur du modèle rapide. À utiliser lorsque le modèle rapide est hébergé par un fournisseur différent du modèle principal |
-| `FAST_LLM_BASE_URL` | Non | *(revient à `LLM_BASE_URL`)* | URL de base du fournisseur du modèle rapide |
+| `FAST_LLM_API_KEY` | Non | *(revient à `LLM_API_KEY`)* | Clé API du fournisseur de modèle rapide. À utiliser lorsque le modèle rapide est hébergé par un fournisseur différent du modèle principal |
+| `FAST_LLM_BASE_URL` | Non | *(revient à `LLM_BASE_URL`)* | URL de base du fournisseur de modèle rapide |
 | `FAST_LLM_TEMPERATURE` | Non | *(revient à `LLM_TEMPERATURE`)* | Température d'échantillonnage pour le modèle rapide |
 | `FAST_LLM_CONTEXT_SIZE` | Non | *(revient à `LLM_CONTEXT_SIZE`)* | Taille de la fenêtre de contexte pour le LLM rapide |
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | Non | *(revient à `LLM_MAX_OUTPUT_TOKENS`)* | Nombre maximal de jetons de sortie par appel pour le LLM rapide |
-| `LLM_REASONING_EFFORT` | Non | *(désactivé)* | Niveau de réflexion étendue pour les modèles supportés (série o d'OpenAI, Gemini 2.5+, Claude). Valeurs : `low`, `medium`, `high`. LiteLLM traduit cela au format natif de chaque fournisseur automatiquement. La chaîne de pensée du modèle est affichée dans l'étape « thinking » de l'interface utilisateur. |
+| `LLM_REASONING_EFFORT` | Non | *(désactivé)* | Niveau de réflexion étendue pour les modèles supportés (OpenAI série o, Gemini 2.5+, Claude). Valeurs : `low`, `medium`, `high`. LiteLLM traduit cela au format natif de chaque fournisseur automatiquement. La chaîne de réflexion du modèle est affichée dans l'étape « thinking » de l'interface utilisateur. |
 | `LLM_REASONING_BUDGET_TOKENS` | Non | *(auto à partir de l'effort)* | Budget de jetons explicite pour la réflexion Anthropic (minimum 1024). Pour OpenAI/Gemini, le niveau d'effort est utilisé directement. Effectif uniquement lorsque `LLM_REASONING_EFFORT` est défini. |
-| `LLM_JSON_MODE_ENABLED` | Non | `true` | Basculement global pour `response_format=json_object`. Définissez à `false` si votre fournisseur rejette l'injection de préfixe assistant de LiteLLM (par exemple, relais AWS Bedrock → `ValidationException` à la 2e itération d'agent et au-delà). Lorsque désactivé, les appels structurés ignorent le mode JSON et reviennent à l'extraction regex en texte brut — aucune perte de qualité. S'applique à tous les modèles (configurés par ENV et configurés par Admin). |
+| `LLM_JSON_MODE_ENABLED` | Non | `true` | Basculement global pour `response_format=json_object`. Définir à `false` si votre fournisseur rejette l'injection de préfixe assistant de LiteLLM (par exemple, relais AWS Bedrock → `ValidationException` à la 2e itération d'agent et au-delà). Lorsque désactivé, les appels structurés ignorent le mode JSON et reviennent à l'extraction regex en texte brut — aucune perte de qualité. S'applique à tous les modèles (configurés par ENV et configurés par Admin). |
+| `LLM_TOOL_CHOICE_ENABLED` | Non | `true` | Basculement global pour `tool_choice` forcé dans l'extraction de sortie structurée (Niveau 1 — Appel de fonction natif). Définir à `false` si votre modèle retourne des erreurs avec la sélection d'outil forcée (par exemple, les modèles en mode réflexion qui rejettent `tool_choice='specified'`). Lorsque désactivé, les appels structurés ignorent le FC natif et commencent à partir du mode JSON. Remplacement par modèle disponible dans Paramètres → Modèles → Avancé. |
 | `REASONING_LLM_MODEL` | Non | *(revient à `LLM_MODEL`)* | Nom du modèle pour le niveau de réflexion. Utilisé pour les tâches nécessitant une analyse approfondie (par exemple, planification DAG, analyse de plan) |
-| `REASONING_LLM_API_KEY` | Non | *(revient à `LLM_API_KEY`)* | Clé API du fournisseur du modèle de réflexion |
-| `REASONING_LLM_BASE_URL` | Non | *(revient à `LLM_BASE_URL`)* | URL de base du fournisseur du modèle de réflexion |
+| `REASONING_LLM_API_KEY` | Non | *(revient à `LLM_API_KEY`)* | Clé API du fournisseur de modèle de réflexion |
+| `REASONING_LLM_BASE_URL` | Non | *(revient à `LLM_BASE_URL`)* | URL de base du fournisseur de modèle de réflexion |
 | `REASONING_LLM_TEMPERATURE` | Non | *(revient à `LLM_TEMPERATURE`)* | Température d'échantillonnage pour le modèle de réflexion |
 | `REASONING_LLM_CONTEXT_SIZE` | Non | *(revient à `LLM_CONTEXT_SIZE`)* | Taille de la fenêtre de contexte pour le modèle de réflexion |
 | `REASONING_LLM_MAX_OUTPUT_TOKENS` | Non | *(revient à `LLM_MAX_OUTPUT_TOKENS`)* | Nombre maximal de jetons de sortie par appel pour le modèle de réflexion |
 | `REASONING_LLM_EFFORT` | Non | *(revient à `LLM_REASONING_EFFORT`)* | Niveau d'effort de réflexion pour le niveau du modèle de réflexion. Valeurs : `low`, `medium`, `high` |
 | `REASONING_LLM_BUDGET` | Non | *(revient à `LLM_REASONING_BUDGET_TOKENS`)* | Budget de jetons pour la réflexion (principalement Anthropic). Remplace le budget calculé automatiquement pour le niveau de réflexion |
 
-> **Ordre de résolution** : Préférence utilisateur → Modèles Admin (BD) → Fallback ENV. Si un modèle admin avec le rôle « General » est configuré dans Admin → Models, ces variables ENV servent de fallback uniquement. La vérification de santé considère les deux sources.
+> **Ordre de résolution** : Préférence utilisateur → Modèles Admin (BD) → Secours ENV. Si un modèle admin avec le rôle « General » est configuré dans Admin → Modèles, ces variables ENV servent de secours uniquement. La vérification de santé considère les deux sources.
 
 ### Réflexion étendue (Raisonnement)
 

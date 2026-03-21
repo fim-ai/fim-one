@@ -60,9 +60,10 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `FAST_LLM_TEMPERATURE` | 아니오 | *(`LLM_TEMPERATURE`로 폴백)* | 빠른 모델의 샘플링 온도 |
 | `FAST_LLM_CONTEXT_SIZE` | 아니오 | *(`LLM_CONTEXT_SIZE`로 폴백)* | 빠른 LLM의 컨텍스트 윈도우 크기 |
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | 아니오 | *(`LLM_MAX_OUTPUT_TOKENS`로 폴백)* | 빠른 LLM의 호출당 최대 출력 토큰 |
-| `LLM_REASONING_EFFORT` | 아니오 | *(비활성화됨)* | 지원되는 모델의 확장 사고 수준 (OpenAI o-series, Gemini 2.5+, Claude). 값: `low`, `medium`, `high`. LiteLLM은 이를 각 제공자의 네이티브 형식으로 자동 변환합니다. 모델의 사고 과정은 UI "thinking" 단계에 표시됩니다. |
-| `LLM_REASONING_BUDGET_TOKENS` | 아니오 | *(노력에서 자동)* | Anthropic 사고를 위한 명시적 토큰 예산 (최소 1024). OpenAI/Gemini의 경우 노력 수준이 직접 사용됩니다. `LLM_REASONING_EFFORT`가 설정된 경우에만 효과적입니다. |
-| `LLM_JSON_MODE_ENABLED` | 아니오 | `true` | `response_format=json_object`의 전역 토글. 제공자가 LiteLLM의 어시스턴트 프리필 주입을 거부하는 경우 `false`로 설정 (예: AWS Bedrock 릴레이 → 2번째 이상 에이전트 반복에서 `ValidationException`). 비활성화되면 구조화된 호출은 JSON 모드를 건너뛰고 일반 텍스트 정규식 추출로 폴백됨 — 품질 손실 없음. 모든 모델에 적용됨 (ENV 구성 및 관리자 구성). |
+| `LLM_REASONING_EFFORT` | 아니오 | *(비활성화됨)* | 지원되는 모델의 확장 사고 수준 (OpenAI o-series, Gemini 2.5+, Claude). 값: `low`, `medium`, `high`. LiteLLM은 이를 각 제공자의 기본 형식으로 자동 변환합니다. 모델의 사고 과정은 UI "thinking" 단계에 표시됩니다. |
+| `LLM_REASONING_BUDGET_TOKENS` | 아니오 | *(노력에서 자동)* | Anthropic 사고를 위한 명시적 토큰 예산 (최소 1024). OpenAI/Gemini의 경우 노력 수준이 직접 사용됩니다. `LLM_REASONING_EFFORT`가 설정되었을 때만 유효합니다. |
+| `LLM_JSON_MODE_ENABLED` | 아니오 | `true` | `response_format=json_object`의 전역 토글. 제공자가 LiteLLM의 어시스턴트 프리필 주입을 거부하는 경우 `false`로 설정하세요 (예: AWS Bedrock 릴레이 → 2번째 이상 에이전트 반복에서 `ValidationException`). 비활성화되면 구조화된 호출은 JSON 모드를 건너뛰고 일반 텍스트 정규식 추출로 폴백됩니다 — 품질 손실 없음. 모든 모델 (ENV 구성 및 관리자 구성)에 적용됩니다. |
+| `LLM_TOOL_CHOICE_ENABLED` | 아니오 | `true` | 구조화된 출력 추출에서 강제 `tool_choice`의 전역 토글 (레벨 1 — 기본 함수 호출). 모델이 강제 도구 선택으로 오류를 반환하는 경우 `false`로 설정하세요 (예: `tool_choice='specified'`를 거부하는 사고 모드 모델). 비활성화되면 구조화된 호출은 기본 FC를 건너뛰고 JSON 모드에서 시작합니다. 설정 → 모델 → 고급에서 모델별 재정의 가능. |
 | `REASONING_LLM_MODEL` | 아니오 | *(`LLM_MODEL`로 폴백)* | 추론 계층의 모델 이름. 깊은 분석이 필요한 작업에 사용됨 (예: DAG 계획, 계획 분석) |
 | `REASONING_LLM_API_KEY` | 아니오 | *(`LLM_API_KEY`로 폴백)* | 추론 모델 제공자의 API 키 |
 | `REASONING_LLM_BASE_URL` | 아니오 | *(`LLM_BASE_URL`로 폴백)* | 추론 모델 제공자의 기본 URL |
@@ -70,9 +71,9 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `REASONING_LLM_CONTEXT_SIZE` | 아니오 | *(`LLM_CONTEXT_SIZE`로 폴백)* | 추론 모델의 컨텍스트 윈도우 크기 |
 | `REASONING_LLM_MAX_OUTPUT_TOKENS` | 아니오 | *(`LLM_MAX_OUTPUT_TOKENS`로 폴백)* | 추론 모델의 호출당 최대 출력 토큰 |
 | `REASONING_LLM_EFFORT` | 아니오 | *(`LLM_REASONING_EFFORT`로 폴백)* | 추론 모델 계층의 추론 노력 수준. 값: `low`, `medium`, `high` |
-| `REASONING_LLM_BUDGET` | 아니오 | *(`LLM_REASONING_BUDGET_TOKENS`로 폴백)* | 추론을 위한 토큰 예산 (주로 Anthropic). 추론 계층의 자동 계산된 예산을 재정의 |
+| `REASONING_LLM_BUDGET` | 아니오 | *(`LLM_REASONING_BUDGET_TOKENS`로 폴백)* | 추론을 위한 토큰 예산 (주로 Anthropic). 추론 계층의 자동 계산 예산을 재정의합니다 |
 
-> **해결 순서**: 사용자 기본 설정 → 관리자 모델 (DB) → ENV 폴백. 관리자 → 모델에서 역할이 "General"인 관리자 모델이 구성된 경우, 이 ENV 변수는 폴백으로만 제공됩니다. 상태 확인은 두 소스를 모두 고려합니다.
+> **해결 순서**: 사용자 기본 설정 → 관리자 모델 (DB) → ENV 폴백. 관리자 → 모델에서 역할이 "General"인 관리자 모델이 구성된 경우, 이 ENV 변수는 폴백으로만 작동합니다. 상태 확인은 두 소스를 모두 고려합니다.
 
 ### 확장 사고 (추론)
 

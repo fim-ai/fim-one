@@ -11,9 +11,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Ajouté
 
-- **Tableau de compatibilité de sortie structurée** dans la documentation des modèles — Affiche les fournisseurs qui prennent en charge l'appel de fonction natif, le mode JSON et les évaluations de fiabilité de la planification.
-- **Téléchargement de pièces jointes** — Les cartes de pièces jointes dans les messages de chat sont maintenant cliquables pour télécharger le fichier original via une récupération authentifiée. L'icône de téléchargement et l'état de survol ont été ajoutés pour la découverte.
-- **Élément de feuille de route Traitement intelligent des documents (Vision-Aware)** — Ajout d'une fonctionnalité prévue pour la gestion adaptative des documents en fonction des capacités de vision du modèle (trois niveaux : vision-first, hybride, texte uniquement).
+- **Bascule Native Function Calling par modèle** — Nouveau paramètre `tool_choice_enabled` (global ENV + Admin par modèle) contrôlant si le `tool_choice` forcé est tenté pour l'extraction de sortie structurée. Les modèles qui rejettent la sélection d'outil forcée (par ex. les modèles en mode réflexion) peuvent ignorer le Niveau 1 et passer directement au Mode JSON, éliminant la pénalité d'environ 10s par appel structuré. Configurable dans Paramètres → Modèles → Avancé.
+- **Tableau de compatibilité de sortie structurée** dans la documentation des modèles — Affiche les fournisseurs qui supportent l'appel de fonction native, le mode JSON et les évaluations de fiabilité de la planification.
+- **Téléchargement de pièce jointe** — Les cartes de pièce jointe dans les messages de chat sont maintenant cliquables pour télécharger le fichier original via une récupération authentifiée. Indicateur d'icône de téléchargement et état de survol ajoutés pour la découvrabilité.
+- **Traitement intelligent des documents (Vision-Aware) élément de feuille de route** — Fonctionnalité planifiée pour la gestion adaptative des documents en fonction des capacités de vision du modèle (trois niveaux : vision en priorité, hybride, texte uniquement).
 
 ### Modifié
 
@@ -23,11 +24,12 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Corrections
 
-- **Chaîne de dégradation de sortie structurée** — Le fallback à 3 niveaux (FC natif → mode JSON → extraction de texte brut) traverse maintenant correctement tous les niveaux quand un modèle produit du JSON malformé. Auparavant, il s'arrêtait au niveau 2 avec une `ValueError`.
+- **Chaîne de dégradation de la sortie structurée** — Le basculement à 3 niveaux (FC natif → mode JSON → extraction de texte brut) traverse maintenant correctement tous les niveaux lorsqu'un modèle produit du JSON malformé. Auparavant, il s'arrêtait au niveau 2 avec une `ValueError`.
+- **Valeur DB `json_mode_enabled` ignorée** — Les modèles configurés via Admin (groupes de modèles) utilisent maintenant correctement leur paramètre `json_mode_enabled` par modèle au lieu de toujours se replier sur la variable d'environnement `LLM_JSON_MODE_ENABLED`.
 - **Message d'échec de planification DAG** — Les échecs de planification affichent maintenant un message bilingue convivial suggérant un changement de modèle au lieu d'une erreur de pipeline brute.
-- **Disposition de la carte d'étape DAG** — `StepProgressCard` a été repensée pour que le texte de la tâche s'enroule sous le badge d'étape au lieu de se tronquer sur une seule ligne. Les badges d'outil dans les nœuds d'étape s'affichent maintenant uniquement quand aucun `tools_used` n'existe mais que `tool_hint` est présent, évitant un affichage redondant.
-- **Contournement du propriétaire du serveur MCP pour allow_fallback** — Le propriétaire du serveur n'est plus bloqué par la restriction `allow_fallback=False`. Auparavant, même le créateur d'un serveur MCP pouvait être ignoré si `allow_fallback=False` était défini ; maintenant seuls les utilisateurs non-propriétaires sans identifiants sont exclus.
-- **Validation de la clé API du fournisseur de modèle** — La création d'un fournisseur non-compatible-openai nécessite maintenant une clé API avec validation d'erreur en ligne, indicateur d'astérisque obligatoire et attribut d'accessibilité `aria-invalid` approprié.
+- **Disposition de la carte d'étape DAG** — Redessin de `StepProgressCard` pour que le texte de la tâche s'enroule sous le badge d'étape au lieu de se tronquer sur une seule ligne. Les badges d'outils dans les nœuds d'étape ne s'affichent maintenant que lorsqu'aucun `tools_used` n'existe mais que `tool_hint` est présent, évitant un affichage redondant.
+- **Contournement du propriétaire du serveur MCP pour allow_fallback** — Le propriétaire du serveur n'est plus bloqué par la restriction `allow_fallback=False`. Auparavant, même le créateur d'un serveur MCP pouvait être ignoré si `allow_fallback=False` était défini ; maintenant, seuls les utilisateurs non-propriétaires sans identifiants sont exclus.
+- **Validation de la clé API du fournisseur de modèle** — La création d'un fournisseur non compatible avec openai nécessite maintenant une clé API avec validation d'erreur en ligne, indicateur d'astérisque obligatoire et attribut d'accessibilité `aria-invalid` approprié.
 
 ## [v0.8] - 2026-03-20
 

@@ -60,19 +60,20 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `FAST_LLM_TEMPERATURE` | Nein | *(fällt auf `LLM_TEMPERATURE` zurück)* | Sampling-Temperatur für das schnelle Modell |
 | `FAST_LLM_CONTEXT_SIZE` | Nein | *(fällt auf `LLM_CONTEXT_SIZE` zurück)* | Kontextfenstergröße für das schnelle LLM |
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | Nein | *(fällt auf `LLM_MAX_OUTPUT_TOKENS` zurück)* | Max. Ausgabe-Token pro Aufruf für das schnelle LLM |
-| `LLM_REASONING_EFFORT` | Nein | *(deaktiviert)* | Ebene des erweiterten Denkens für unterstützte Modelle (OpenAI o-Serie, Gemini 2.5+, Claude). Werte: `low`, `medium`, `high`. LiteLLM übersetzt dies automatisch in das native Format jedes Anbieters. Die Gedankenkette des Modells wird im UI-Schritt „Denken" angezeigt. |
-| `LLM_REASONING_BUDGET_TOKENS` | Nein | *(automatisch aus Aufwand)* | Explizites Token-Budget für Anthropic-Denken (Minimum 1024). Für OpenAI/Gemini wird die Aufwandsebene direkt verwendet. Nur wirksam, wenn `LLM_REASONING_EFFORT` gesetzt ist. |
-| `LLM_JSON_MODE_ENABLED` | Nein | `true` | Globaler Schalter für `response_format=json_object`. Setzen Sie auf `false`, wenn Ihr Anbieter LiteLLMs Assistent-Prefill-Injektion ablehnt (z. B. AWS Bedrock Relay → `ValidationException` bei der 2. und nachfolgenden Agent-Iteration). Wenn deaktiviert, überspringen strukturierte Aufrufe den JSON-Modus und fallen auf Regex-Extraktion im Klartext zurück — kein Qualitätsverlust. Gilt für alle Modelle (ENV-konfiguriert und Admin-konfiguriert). |
-| `REASONING_LLM_MODEL` | Nein | *(fällt auf `LLM_MODEL` zurück)* | Modellname für die Reasoning-Ebene. Verwendet für Aufgaben, die tiefe Analyse erfordern (z. B. DAG-Planung, Plananalyse) |
+| `LLM_REASONING_EFFORT` | Nein | *(deaktiviert)* | Stufe des erweiterten Denkens für unterstützte Modelle (OpenAI o-Serie, Gemini 2.5+, Claude). Werte: `low`, `medium`, `high`. LiteLLM übersetzt dies automatisch in das native Format jedes Anbieters. Die Chain-of-Thought des Modells wird im UI-Schritt „Denken" angezeigt. |
+| `LLM_REASONING_BUDGET_TOKENS` | Nein | *(automatisch aus Aufwand)* | Explizites Token-Budget für Anthropic-Denken (Minimum 1024). Für OpenAI/Gemini wird die Aufwandsstufe direkt verwendet. Nur wirksam, wenn `LLM_REASONING_EFFORT` gesetzt ist. |
+| `LLM_JSON_MODE_ENABLED` | Nein | `true` | Globaler Schalter für `response_format=json_object`. Setzen Sie auf `false`, wenn Ihr Anbieter LiteLLMs Assistant-Prefill-Injektion ablehnt (z. B. AWS Bedrock-Relay → `ValidationException` bei der 2. und nachfolgenden Agent-Iteration). Wenn deaktiviert, überspringen strukturierte Aufrufe den JSON-Modus und fallen auf einfache Regex-Extraktion zurück — kein Qualitätsverlust. Gilt für alle Modelle (ENV-konfiguriert und Admin-konfiguriert). |
+| `LLM_TOOL_CHOICE_ENABLED` | Nein | `true` | Globaler Schalter für erzwungene `tool_choice` bei der strukturierten Ausgabeextraktion (Stufe 1 — Native Function Calling). Setzen Sie auf `false`, wenn Ihr Modell Fehler bei erzwungener Werkzeugauswahl zurückgibt (z. B. Denk-Modus-Modelle, die `tool_choice='specified'` ablehnen). Wenn deaktiviert, überspringen strukturierte Aufrufe natives FC und beginnen mit dem JSON-Modus. Pro-Modell-Überschreibung verfügbar unter Einstellungen → Modelle → Erweitert. |
+| `REASONING_LLM_MODEL` | Nein | *(fällt auf `LLM_MODEL` zurück)* | Modellname für die Reasoning-Ebene. Verwendet für Aufgaben, die tiefe Analyse erfordern (z. B. DAG-Planung, Plan-Analyse) |
 | `REASONING_LLM_API_KEY` | Nein | *(fällt auf `LLM_API_KEY` zurück)* | API-Schlüssel für den Anbieter des Reasoning-Modells |
 | `REASONING_LLM_BASE_URL` | Nein | *(fällt auf `LLM_BASE_URL` zurück)* | Basis-URL für den Anbieter des Reasoning-Modells |
 | `REASONING_LLM_TEMPERATURE` | Nein | *(fällt auf `LLM_TEMPERATURE` zurück)* | Sampling-Temperatur für das Reasoning-Modell |
 | `REASONING_LLM_CONTEXT_SIZE` | Nein | *(fällt auf `LLM_CONTEXT_SIZE` zurück)* | Kontextfenstergröße für das Reasoning-Modell |
 | `REASONING_LLM_MAX_OUTPUT_TOKENS` | Nein | *(fällt auf `LLM_MAX_OUTPUT_TOKENS` zurück)* | Max. Ausgabe-Token pro Aufruf für das Reasoning-Modell |
-| `REASONING_LLM_EFFORT` | Nein | *(fällt auf `LLM_REASONING_EFFORT` zurück)* | Reasoning-Aufwandsebene für die Reasoning-Modell-Ebene. Werte: `low`, `medium`, `high` |
+| `REASONING_LLM_EFFORT` | Nein | *(fällt auf `LLM_REASONING_EFFORT` zurück)* | Reasoning-Aufwandsstufe für die Reasoning-Modell-Ebene. Werte: `low`, `medium`, `high` |
 | `REASONING_LLM_BUDGET` | Nein | *(fällt auf `LLM_REASONING_BUDGET_TOKENS` zurück)* | Token-Budget für Reasoning (hauptsächlich Anthropic). Überschreibt das automatisch berechnete Budget für die Reasoning-Ebene |
 
-> **Auflösungsreihenfolge**: Benutzereinstellung → Admin-Modelle (DB) → ENV-Fallback. Wenn ein Admin-Modell mit der Rolle „General" in Admin → Modelle konfiguriert ist, dienen diese ENV-Variablen nur als Fallback. Die Integritätsprüfung berücksichtigt beide Quellen.
+> **Auflösungsreihenfolge**: Benutzereinstellung → Admin-Modelle (DB) → ENV-Fallback. Wenn ein Admin-Modell mit der Rolle „Allgemein" in Admin → Modelle konfiguriert ist, dienen diese ENV-Variablen nur als Fallback. Die Integritätsprüfung berücksichtigt beide Quellen.
 
 ### Extended Thinking (Reasoning)
 
