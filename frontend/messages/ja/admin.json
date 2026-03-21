@@ -671,8 +671,8 @@
     "keyCopied": "キーをクリップボードにコピーしました",
     "keyWarning": "このキーを安全に保存してください。このダイアログを閉じた後は取得できません。",
     "noKeys": "まだAPIキーが作成されていません。",
-    "comingSoonTitle": "近日公開予定",
-    "comingSoonDesc": "APIキー認証は開発中です。キーの作成と管理はできますが、APIリクエストの認証にはまだ使用できません。スコープ強制、レート制限、ユーザーセルフサービスが計画されています。"
+    "activeBannerTitle": "APIキーがアクティブです",
+    "activeBannerDesc": "APIキーでAPIリクエストを認証できるようになりました。Authorizationヘッダーでベアラートークンを使用してください。<link>APIリファレンスを表示 →</link>"
   },
   "content": {
     "title": "コンテンツモデレーション",

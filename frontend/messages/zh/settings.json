@@ -331,7 +331,7 @@
     "deleteSuccess": "API密钥已删除",
     "deleteFailed": "删除API密钥失败",
     "loadFailed": "加载API密钥失败",
-    "comingSoonBanner": "API 密钥认证即将推出。您现在可以创建和管理密钥，但还不能用于 API 访问。"
+    "activeBanner": "API 密钥现已激活！使用它们以编程方式对 API 请求进行身份验证。<link>查看 API 参考 →</link>"
   },
   "credentials": {
     "title": "我的凭证",

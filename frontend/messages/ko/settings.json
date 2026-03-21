@@ -331,7 +331,7 @@
     "deleteSuccess": "API 키가 삭제되었습니다",
     "deleteFailed": "API 키 삭제에 실패했습니다",
     "loadFailed": "API 키 로드에 실패했습니다",
-    "comingSoonBanner": "API 키 인증이 곧 출시됩니다. 지금 키를 생성하고 관리할 수 있지만 아직 API 액세스에 사용할 수 없습니다."
+    "activeBanner": "API 키가 이제 활성화되었습니다! 프로그래밍 방식으로 API 요청을 인증하는 데 사용하세요. <link>API 참조 보기 →</link>"
   },
   "credentials": {
     "title": "내 자격증명",

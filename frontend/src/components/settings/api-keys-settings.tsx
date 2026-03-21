@@ -191,10 +191,18 @@ export function ApiKeysSettings() {
 
   return (
     <div className="space-y-4">
-      {/* Coming Soon Banner */}
-      <div className="flex items-start gap-3 rounded-md border border-amber-500/30 bg-amber-50/50 p-3 dark:bg-amber-950/20">
-        <Key className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-        <p className="text-sm text-amber-800 dark:text-amber-300">{t("comingSoonBanner")}</p>
+      {/* API Keys Active Banner */}
+      <div className="flex items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-50/50 p-3 dark:bg-emerald-950/20">
+        <Key className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <p className="text-sm text-emerald-800 dark:text-emerald-300">
+          {t.rich("activeBanner", {
+            link: (chunks) => (
+              <a href="https://docs.fim.ai/api/authentication" target="_blank" rel="noopener noreferrer" className="underline hover:text-emerald-900 dark:hover:text-emerald-200">
+                {chunks}
+              </a>
+            ),
+          })}
+        </p>
       </div>
       {/* Header */}
       <div className="flex items-start justify-between">

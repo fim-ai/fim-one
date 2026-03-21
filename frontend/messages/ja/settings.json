@@ -331,7 +331,7 @@
     "deleteSuccess": "APIキーが削除されました",
     "deleteFailed": "APIキーの削除に失敗しました",
     "loadFailed": "APIキーの読み込みに失敗しました",
-    "comingSoonBanner": "API キー認証はまもなく利用可能になります。キーを作成および管理できますが、まだ API アクセスには使用できません。"
+    "activeBanner": "APIキーがアクティブになりました！プログラムでAPIリクエストを認証するために使用できます。<link>API リファレンスを表示 →</link>"
   },
   "credentials": {
     "title": "マイ認証情報",

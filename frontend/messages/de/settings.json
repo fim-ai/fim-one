@@ -331,7 +331,7 @@
     "deleteSuccess": "API-Schlüssel gelöscht",
     "deleteFailed": "Fehler beim Löschen des API-Schlüssels",
     "loadFailed": "Fehler beim Laden der API-Schlüssel",
-    "comingSoonBanner": "API-Schlüssel-Authentifizierung kommt bald. Sie können Schlüssel jetzt erstellen und verwalten, aber sie können noch nicht für API-Zugriff verwendet werden."
+    "activeBanner": "API-Schlüssel sind jetzt aktiv! Verwenden Sie sie, um API-Anfragen programmgesteuert zu authentifizieren. <link>API-Referenz anzeigen →</link>"
   },
   "credentials": {
     "title": "Meine Anmeldedaten",

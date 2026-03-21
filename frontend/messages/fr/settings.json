@@ -331,7 +331,7 @@
     "deleteSuccess": "Clé API supprimée",
     "deleteFailed": "Échec de la suppression de la clé API",
     "loadFailed": "Échec du chargement des clés API",
-    "comingSoonBanner": "L'authentification par clé API sera bientôt disponible. Vous pouvez créer et gérer des clés maintenant, mais elles ne peuvent pas encore être utilisées pour l'accès API."
+    "activeBanner": "Les clés API sont maintenant actives ! Utilisez-les pour authentifier les demandes API par programmation. <link>Voir la référence API →</link>"
   },
   "credentials": {
     "title": "Mes identifiants",

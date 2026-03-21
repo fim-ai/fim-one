@@ -671,8 +671,8 @@
     "keyCopied": "Schlüssel in die Zwischenablage kopiert",
     "keyWarning": "Speichern Sie diesen Schlüssel sicher. Er kann nach dem Schließen dieses Dialogs nicht mehr abgerufen werden.",
     "noKeys": "Noch keine API-Schlüssel erstellt.",
-    "comingSoonTitle": "Demnächst verfügbar",
-    "comingSoonDesc": "API-Schlüssel-Authentifizierung ist in Entwicklung. Schlüssel können erstellt und verwaltet werden, können aber noch keine API-Anfragen authentifizieren. Bereichsdurchsetzung, Ratenbegrenzung und Selbstbedienung für Benutzer sind geplant."
+    "activeBannerTitle": "API-Schlüssel aktiv",
+    "activeBannerDesc": "API-Schlüssel können jetzt API-Anfragen authentifizieren. Verwenden Sie Bearer-Token im Authorization-Header. <link>API-Referenz anzeigen →</link>"
   },
   "content": {
     "title": "Inhaltsmoderation",

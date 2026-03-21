@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations } from "next-intl"
 import { format } from "date-fns"
-import { Key, Plus, Loader2, Trash2, Copy, Check, MoreHorizontal, Info, CalendarIcon, ShieldOff } from "lucide-react"
+import { Key, Plus, Loader2, Trash2, Copy, Check, MoreHorizontal, CalendarIcon, ShieldOff } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -243,12 +243,20 @@ export function AdminApiKeys() {
         </Button>
       </div>
 
-      {/* Coming Soon notice */}
-      <div className="rounded-md border border-blue-500/30 bg-blue-50 dark:bg-blue-950/20 px-4 py-3 flex items-start gap-3">
-        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+      {/* API Keys Active banner */}
+      <div className="rounded-md border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3 flex items-start gap-3">
+        <Key className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
         <div>
-          <p className="text-sm font-medium text-blue-700 dark:text-blue-300">{t("comingSoonTitle")}</p>
-          <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mt-0.5">{t("comingSoonDesc")}</p>
+          <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">{t("activeBannerTitle")}</p>
+          <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
+            {t.rich("activeBannerDesc", {
+              link: (chunks) => (
+                <a href="https://docs.fim.ai/api/authentication" target="_blank" rel="noopener noreferrer" className="underline hover:text-emerald-800 dark:hover:text-emerald-200">
+                  {chunks}
+                </a>
+              ),
+            })}
+          </p>
         </div>
       </div>
 

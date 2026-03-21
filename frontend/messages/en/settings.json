@@ -331,7 +331,7 @@
   "apiKeys": {
     "title": "API Keys",
     "description": "Manage your personal API keys for programmatic access.",
-    "comingSoonBanner": "API key authentication is coming soon. You can create and manage keys now, but they cannot be used for API access yet.",
+    "activeBanner": "API keys are now active! Use them to authenticate API requests programmatically. <link>View API Reference →</link>",
     "createKey": "Create API Key",
     "keyNameLabel": "Key Name",
     "keyNamePlaceholder": "e.g. My Integration",

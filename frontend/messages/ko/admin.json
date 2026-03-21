@@ -671,8 +671,8 @@
     "keyCopied": "키가 클립보드에 복사되었습니다",
     "keyWarning": "이 키를 안전하게 저장하세요. 이 대화상자를 닫은 후에는 검색할 수 없습니다.",
     "noKeys": "아직 생성된 API 키가 없습니다.",
-    "comingSoonTitle": "곧 출시",
-    "comingSoonDesc": "API 키 인증이 개발 중입니다. 키를 생성하고 관리할 수 있지만 아직 API 요청을 인증할 수 없습니다. 범위 적용, 속도 제한 및 사용자 셀프 서비스가 계획되어 있습니다."
+    "activeBannerTitle": "API 키 활성화됨",
+    "activeBannerDesc": "API 키로 API 요청을 인증할 수 있습니다. Authorization 헤더에서 Bearer 토큰을 사용하세요. <link>API 참고 자료 보기 →</link>"
   },
   "content": {
     "title": "콘텐츠 조정",

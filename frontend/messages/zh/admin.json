@@ -671,8 +671,8 @@
     "keyCopied": "密钥已复制到剪贴板",
     "keyWarning": "请安全保存此密钥。关闭此对话框后无法检索。",
     "noKeys": "尚未创建API密钥。",
-    "comingSoonTitle": "即将推出",
-    "comingSoonDesc": "API密钥身份验证正在开发中。可以创建和管理密钥，但暂不能用于API请求身份验证。计划中包括作用域强制、速率限制和用户自助服务。"
+    "activeBannerTitle": "API 密钥已激活",
+    "activeBannerDesc": "API 密钥现在可以对 API 请求进行身份验证。在 Authorization 标头中使用 Bearer 令牌。<link>查看 API 参考 →</link>"
   },
   "content": {
     "title": "内容审核",

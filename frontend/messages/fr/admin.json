@@ -671,8 +671,8 @@
     "keyCopied": "Clé copiée dans le presse-papiers",
     "keyWarning": "Enregistrez cette clé de manière sécurisée. Elle ne peut pas être récupérée après la fermeture de cette boîte de dialogue.",
     "noKeys": "Aucune clé API créée pour le moment.",
-    "comingSoonTitle": "À venir",
-    "comingSoonDesc": "L'authentification par clé API est en cours de développement. Les clés peuvent être créées et gérées, mais ne peuvent pas encore authentifier les requêtes API. L'application des portées, la limitation de débit et l'auto-service utilisateur sont prévus."
+    "activeBannerTitle": "Clés API actives",
+    "activeBannerDesc": "Les clés API peuvent désormais authentifier les demandes API. Utilisez les jetons Bearer dans l'en-tête Authorization. <link>Voir la référence API →</link>"
   },
   "content": {
     "title": "Modération du contenu",

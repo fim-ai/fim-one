@@ -681,8 +681,8 @@
     "keyCopied": "Key copied to clipboard",
     "keyWarning": "Save this key securely. It cannot be retrieved after closing this dialog.",
     "noKeys": "No API keys created yet.",
-    "comingSoonTitle": "Coming Soon",
-    "comingSoonDesc": "API key authentication is under development. Keys can be created and managed, but cannot yet authenticate API requests. Scope enforcement, rate limiting, and user self-service are planned."
+    "activeBannerTitle": "API Keys Active",
+    "activeBannerDesc": "API keys can now authenticate API requests. Use Bearer tokens in the Authorization header. <link>View API Reference →</link>"
   },
   "agents": {
     "title": "Agents",
