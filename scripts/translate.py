@@ -898,14 +898,24 @@ def all_en_mdx_files() -> list[Path]:
     return sorted(results)
 
 
-def sync_docs_navigation() -> bool:
-    """Sync docs.json navigation: ensure every locale mirrors the EN tab/group/page structure.
+def _tab_has_openapi(tab: dict) -> bool:
+    """Return True if any page in this tab is an openapi dict entry."""
+    return any(
+        isinstance(p, dict)
+        for g in tab.get("groups", [])
+        for p in g.get("pages", [])
+    )
 
-    - Tabs and groups are matched by index. Missing locale tabs/groups are created
-      from the EN template (using EN names as fallback until the next LLM pass).
+
+def sync_docs_navigation() -> bool:
+    """Sync docs.json navigation: ensure every locale mirrors the EN page structure.
+
+    - Tabs containing openapi dict entries (e.g. API Reference) are **skipped**
+      for locale blocks — Mintlify auto-generates those pages only for the
+      default language and they break locale builds if duplicated.
+    - Remaining tabs are matched sequentially between EN and locale using
+      separate index counters to avoid cross-contamination when EN has more tabs.
     - String page entries are prefixed with the locale code (e.g. "faq" → "zh/faq").
-    - Dict page entries (e.g. {"openapi": "POST /api/react"}) are copied as-is
-      since they reference auto-generated content that doesn't need locale prefixes.
 
     Returns True if docs.json was modified.
     """
@@ -938,28 +948,41 @@ def sync_docs_navigation() -> bool:
     modified = False
     en_tabs = en_block.get("tabs", [])
 
+    # EN tabs that are eligible for locale sync (no openapi entries)
+    en_syncable = [(i, t) for i, t in enumerate(en_tabs) if not _tab_has_openapi(t)]
+
     for locale, locale_lang in locale_blocks:
         locale_tabs = locale_lang.get("tabs", [])
 
-        # ── Structural alignment: ensure same number of tabs ──
-        while len(locale_tabs) < len(en_tabs):
-            en_tab = en_tabs[len(locale_tabs)]
+        # ── Remove any locale tab that contains openapi entries (stale) ──
+        cleaned = [t for t in locale_tabs if not _tab_has_openapi(t)]
+        if len(cleaned) != len(locale_tabs):
+            tprint(f"  [docs.json] {locale}: removed openapi tab(s) (not supported in locales)")
+            locale_tabs = cleaned
+            modified = True
+
+        # ── Structural alignment: match locale tab count to syncable EN tabs ──
+        expected_count = len(en_syncable)
+
+        while len(locale_tabs) < expected_count:
+            _, en_tab = en_syncable[len(locale_tabs)]
             locale_tabs.append({"tab": en_tab.get("tab", ""), "groups": []})
             tprint(f"  [docs.json] {locale}: adding missing tab '{en_tab.get('tab', '')}'")
             modified = True
 
-        if len(locale_tabs) > len(en_tabs):
-            locale_tabs[:] = locale_tabs[: len(en_tabs)]
+        if len(locale_tabs) > expected_count:
+            locale_tabs[:] = locale_tabs[:expected_count]
             tprint(f"  [docs.json] {locale}: trimmed extra tabs")
             modified = True
 
         locale_lang["tabs"] = locale_tabs
 
-        for tab_idx, en_tab in enumerate(en_tabs):
+        # ── Sync each syncable EN tab with its locale counterpart ──
+        for locale_tab_idx, (_, en_tab) in enumerate(en_syncable):
             en_groups = en_tab.get("groups", [])
-            locale_groups = locale_tabs[tab_idx].get("groups", [])
+            locale_groups = locale_tabs[locale_tab_idx].get("groups", [])
 
-            # ── Structural alignment: ensure same number of groups per tab ──
+            # Structural alignment: ensure same number of groups
             while len(locale_groups) < len(en_groups):
                 en_group = en_groups[len(locale_groups)]
                 new_group: dict[str, Any] = {
@@ -971,7 +994,7 @@ def sync_docs_navigation() -> bool:
                 locale_groups.append(new_group)
                 tprint(
                     f"  [docs.json] {locale}: adding missing group "
-                    f"'{en_group.get('group', '')}' in tab '{locale_tabs[tab_idx].get('tab', '')}'"
+                    f"'{en_group.get('group', '')}' in tab '{locale_tabs[locale_tab_idx].get('tab', '')}'"
                 )
                 modified = True
 
@@ -979,28 +1002,25 @@ def sync_docs_navigation() -> bool:
                 locale_groups[:] = locale_groups[: len(en_groups)]
                 tprint(
                     f"  [docs.json] {locale}: trimmed extra groups in "
-                    f"tab '{locale_tabs[tab_idx].get('tab', '')}'"
+                    f"tab '{locale_tabs[locale_tab_idx].get('tab', '')}'"
                 )
                 modified = True
 
-            locale_tabs[tab_idx]["groups"] = locale_groups
+            locale_tabs[locale_tab_idx]["groups"] = locale_groups
 
-            # ── Page alignment within each group ──
+            # Page alignment within each group
             for group_idx, en_group in enumerate(en_groups):
                 en_pages = en_group.get("pages", [])
                 locale_pages = locale_groups[group_idx].get("pages", [])
 
-                # Build expected locale pages from EN pages
                 new_pages: list = []
                 for en_page in en_pages:
                     if isinstance(en_page, dict):
-                        # OpenAPI / special entries: copy as-is (no locale prefix)
                         new_pages.append(en_page)
                     else:
                         new_pages.append(f"{locale}/{en_page}")
 
                 if new_pages != locale_pages:
-                    # Log additions / removals (only for string entries)
                     old_strs = {p for p in locale_pages if isinstance(p, str)}
                     new_strs = {p for p in new_pages if isinstance(p, str)}
                     for p in sorted(new_strs - old_strs):
