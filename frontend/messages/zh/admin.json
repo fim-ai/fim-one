@@ -371,7 +371,8 @@
     "importCreated": "已创建：{providers} 个提供商、{models} 个模型、{groups} 个组",
     "importSkipped": "已跳过：{providers} 个提供商、{models} 个模型、{groups} 个组",
     "exportSuccess": "模型配置已导出",
-    "noFileSelected": "请选择一个 JSON 文件"
+    "noFileSelected": "请选择一个 JSON 文件",
+    "addProviderHint": "不确定您的提供商设置？查看<link>LLM 提供商兼容性指南</link>了解已知问题。"
   },
   "tools": {
     "title": "内置工具",

@@ -371,7 +371,8 @@
     "importCreated": "作成: {providers}個のプロバイダー、{models}個のモデル、{groups}個のグループ",
     "importSkipped": "スキップ: {providers}個のプロバイダー、{models}個のモデル、{groups}個のグループ",
     "exportSuccess": "モデル設定がエクスポートされました",
-    "noFileSelected": "JSONファイルを選択してください"
+    "noFileSelected": "JSONファイルを選択してください",
+    "addProviderHint": "プロバイダーの設定がわかりませんか？<link>LLM プロバイダー互換性ガイド</link>で既知の問題を確認してください。"
   },
   "tools": {
     "title": "組み込みツール",

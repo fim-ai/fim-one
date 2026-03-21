@@ -23,6 +23,8 @@ import {
   AlertTriangle,
   Download,
   Upload,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -71,6 +73,19 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { cn } from "@/lib/utils"
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -254,6 +269,22 @@ function ProviderFormDialog({ open, onOpenChange, provider, onSuccess }: Provide
         >
           <DialogHeader>
             <DialogTitle>{isEdit ? t("editProvider") : t("addProvider")}</DialogTitle>
+            {!isEdit && (
+              <p className="text-sm text-muted-foreground">
+                {t.rich("addProviderHint", {
+                  link: (chunks) => (
+                    <a
+                      href="https://docs.fim.ai/architecture/llm-provider-guide"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline underline-offset-4 hover:text-primary/80"
+                    >
+                      {chunks}
+                    </a>
+                  ),
+                })}
+              </p>
+            )}
           </DialogHeader>
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-4 py-2">
@@ -674,6 +705,7 @@ function GroupFormDialog({ open, onOpenChange, group, providers, onSuccess }: Gr
   const [isSaving, setIsSaving] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<{ name?: string }>({})
+  const [openCombobox, setOpenCombobox] = useState<string | null>(null)
 
   // Build grouped model options: only active models from active providers
   const modelOptions = providers
@@ -746,6 +778,16 @@ function GroupFormDialog({ open, onOpenChange, group, providers, onSuccess }: Gr
     }
   }
 
+  const getModelLabel = (modelId: string) => {
+    if (modelId === "__default__") return null
+    for (const group of modelOptions) {
+      for (const m of group.models) {
+        if (m.id === modelId) return `${m.name} (${m.model_name})`
+      }
+    }
+    return null
+  }
+
   const renderModelSelect = (
     label: string,
     value: string,
@@ -754,25 +796,68 @@ function GroupFormDialog({ open, onOpenChange, group, providers, onSuccess }: Gr
   ) => (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full" id={id}>
-          <SelectValue placeholder={t("selectModel")} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__default__">{t("clearSelection")}</SelectItem>
-          {modelOptions.map((group) => (
-            <SelectGroup key={group.providerName}>
-              <SelectLabel>{group.providerName}</SelectLabel>
-              {group.models.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  <span>{m.name}</span>
-                  <span className="text-xs text-muted-foreground ml-1">({m.model_name})</span>
-                </SelectItem>
+      <Popover open={openCombobox === id} onOpenChange={(open) => setOpenCombobox(open ? id : null)}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={openCombobox === id}
+            className="w-full justify-between font-normal"
+            id={id}
+          >
+            <span className="truncate">
+              {getModelLabel(value) ?? t("selectModel")}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command>
+            <CommandInput placeholder={tc("searchPlaceholder")} />
+            <CommandList>
+              <CommandEmpty>{tc("noResults")}</CommandEmpty>
+              <CommandItem
+                value="__clear__"
+                onSelect={() => {
+                  onChange("__default__")
+                  setOpenCombobox(null)
+                }}
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    value === "__default__" ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                {t("clearSelection")}
+              </CommandItem>
+              {modelOptions.map((group) => (
+                <CommandGroup key={group.providerName} heading={group.providerName}>
+                  {group.models.map((m) => (
+                    <CommandItem
+                      key={m.id}
+                      value={`${group.providerName} ${m.name} ${m.model_name}`}
+                      onSelect={() => {
+                        onChange(m.id)
+                        setOpenCombobox(null)
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === m.id ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <span>{m.name}</span>
+                      <span className="text-xs text-muted-foreground ml-1">({m.model_name})</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
               ))}
-            </SelectGroup>
-          ))}
-        </SelectContent>
-      </Select>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 
@@ -888,7 +973,7 @@ function ProviderCard({
 }: ProviderCardProps) {
   const t = useTranslations("admin.models")
   const tc = useTranslations("common")
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   return (
     <div className="rounded-lg border bg-card">
@@ -1311,6 +1396,9 @@ export function AdminModels() {
   const [isExporting, setIsExporting] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
 
+  // Active profile combobox
+  const [profileComboboxOpen, setProfileComboboxOpen] = useState(false)
+
   const handleExport = async () => {
     setIsExporting(true)
     try {
@@ -1489,23 +1577,67 @@ export function AdminModels() {
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <Label className="text-sm text-muted-foreground shrink-0">{t("currentProfile")}:</Label>
-                <Select
-                  value={activeGroupId ?? "__env__"}
-                  onValueChange={handleProfileSwitch}
-                  disabled={isSwitching}
-                >
-                  <SelectTrigger className="w-full max-w-[260px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__env__">{t("defaultEnv")}</SelectItem>
-                    {groups.map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={profileComboboxOpen} onOpenChange={setProfileComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={profileComboboxOpen}
+                      disabled={isSwitching}
+                      className="w-full max-w-[260px] justify-between font-normal"
+                    >
+                      <span className="truncate">
+                        {activeGroupId
+                          ? groups.find((g) => g.id === activeGroupId)?.name ?? t("defaultEnv")
+                          : t("defaultEnv")}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder={tc("searchPlaceholder")} />
+                      <CommandList>
+                        <CommandEmpty>{tc("noResults")}</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value={t("defaultEnv")}
+                            onSelect={() => {
+                              handleProfileSwitch("__env__")
+                              setProfileComboboxOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                !activeGroupId ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {t("defaultEnv")}
+                          </CommandItem>
+                          {groups.map((g) => (
+                            <CommandItem
+                              key={g.id}
+                              value={g.name}
+                              onSelect={() => {
+                                handleProfileSwitch(g.id)
+                                setProfileComboboxOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  activeGroupId === g.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {g.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {isSwitching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               </div>
               <div>

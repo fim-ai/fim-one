@@ -310,6 +310,7 @@
     "providerPreset": "Provider Type",
     "presetCustom": "OpenAI Compatible",
     "addProvider": "Add Provider",
+    "addProviderHint": "Not sure about your provider's settings? Check the <link>LLM Provider Compatibility Guide</link> for known gotchas.",
     "editProvider": "Edit Provider",
     "deleteProvider": "Delete Provider",
     "deleteProviderConfirm": "Are you sure you want to delete provider \"{name}\"? All models under this provider will also be deleted.",

@@ -371,7 +371,8 @@
     "importCreated": "Erstellt: {providers} Anbieter, {models} Modelle, {groups} Gruppen",
     "importSkipped": "Übersprungen: {providers} Anbieter, {models} Modelle, {groups} Gruppen",
     "exportSuccess": "Modellkonfiguration exportiert",
-    "noFileSelected": "Bitte wählen Sie eine JSON-Datei aus"
+    "noFileSelected": "Bitte wählen Sie eine JSON-Datei aus",
+    "addProviderHint": "Unsicher über die Einstellungen Ihres Anbieters? Lesen Sie den <link>LLM-Anbieter-Kompatibilitätsleitfaden</link> für bekannte Probleme."
   },
   "tools": {
     "title": "Integrierte Tools",

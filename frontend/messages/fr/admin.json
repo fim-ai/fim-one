@@ -371,7 +371,8 @@
     "importCreated": "Créé : {providers} fournisseurs, {models} modèles, {groups} groupes",
     "importSkipped": "Ignoré : {providers} fournisseurs, {models} modèles, {groups} groupes",
     "exportSuccess": "Configuration du modèle exportée",
-    "noFileSelected": "Veuillez sélectionner un fichier JSON"
+    "noFileSelected": "Veuillez sélectionner un fichier JSON",
+    "addProviderHint": "Vous ne savez pas comment configurer votre fournisseur ? Consultez le <link>Guide de compatibilité des fournisseurs LLM</link> pour connaître les pièges courants."
   },
   "tools": {
     "title": "Outils intégrés",
