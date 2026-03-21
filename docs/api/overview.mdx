@@ -1,0 +1,196 @@
+---
+title: "API Overview"
+description: "Getting started with the FIM One REST API"
+---
+
+FIM One provides a REST API for programmatic access to AI agents, conversations, knowledge bases, and more.
+
+## Base URL
+
+```
+https://your-domain.com/api
+```
+
+## Authentication
+
+All API requests require authentication via an API key or JWT token.
+
+### Using API Key
+
+Include your API key in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer fim_your_api_key_here" \
+  https://your-domain.com/api/agents
+```
+
+### Using JWT Token
+
+For SSE streaming endpoints (`/api/react` and `/api/dag`), you can pass the token in the request body instead:
+
+```json
+{
+  "q": "What's the weather today?",
+  "token": "your_jwt_token_here"
+}
+```
+
+See [Authentication](/api/authentication) for detailed setup instructions.
+
+## Response Format
+
+### Success Response
+
+All successful API responses follow this structure:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "conv_123abc",
+    "title": "My Conversation",
+    "created_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+### Error Response
+
+Error responses include an error code and human-readable message:
+
+```json
+{
+  "success": false,
+  "error": "conversation_not_found",
+  "message": "The conversation does not exist or has been deleted"
+}
+```
+
+### Paginated Responses
+
+List endpoints return paginated results:
+
+```json
+{
+  "items": [
+    { "id": "item_1", "name": "First Item" },
+    { "id": "item_2", "name": "Second Item" }
+  ],
+  "total": 42,
+  "page": 1,
+  "size": 20,
+  "pages": 3
+}
+```
+
+## Streaming (Server-Sent Events)
+
+Chat endpoints (`POST /api/react` and `POST /api/dag`) return Server-Sent Events for real-time streaming. Each event has a `type` field indicating its content:
+
+| Event Type | Description |
+|-----------|-------------|
+| `step` | ReAct reasoning step (tool calls, thinking) |
+| `step_progress` | DAG step progress (started/iteration/completed) |
+| `phase` | Pipeline phase transition (planning/executing/analyzing) |
+| `compact` | Context compaction occurred |
+| `answer` | Streamed answer text (start/delta/done) |
+| `done` | Final result payload |
+| `suggestions` | Suggested follow-up questions |
+| `title` | Auto-generated conversation title |
+| `end` | Stream terminator (always last) |
+
+### Example SSE Stream
+
+```
+event: step
+data: {"type": "tool_call", "tool": "search", "input": "Paris weather"}
+
+event: answer
+data: {"type": "delta", "text": "Based on current data, "}
+
+event: answer
+data: {"type": "delta", "text": "Paris has pleasant weather."}
+
+event: done
+data: {"answer": "Based on current data, Paris has pleasant weather.", "tokens": 128}
+
+event: suggestions
+data: ["What about tomorrow's forecast?", "Compare with other European cities"]
+
+event: end
+data: {}
+```
+
+## Rate Limiting
+
+Per-key rate limiting is planned for a future release. Currently there are no enforced per-key request limits, but please use the API responsibly.
+
+## Pagination
+
+List endpoints support pagination via query parameters:
+
+```bash
+curl "https://your-domain.com/api/conversations?page=2&size=50" \
+  -H "Authorization: Bearer fim_your_api_key_here"
+```
+
+Parameters:
+- `page` (default: 1) — page number, starting from 1
+- `size` (default: 20) — items per page, max 100
+
+## Timestamps
+
+All timestamps are in ISO 8601 format with UTC timezone:
+
+```json
+{
+  "created_at": "2024-01-15T10:30:45.123456Z",
+  "updated_at": "2024-01-15T14:22:10.654321Z"
+}
+```
+
+## Error Codes
+
+Common error codes and their meanings:
+
+| Error Code | HTTP Status | Meaning |
+|-----------|-------------|---------|
+| `unauthorized` | 401 | Invalid or missing authentication |
+| `forbidden` | 403 | User lacks permission for this resource |
+| `not_found` | 404 | Resource does not exist |
+| `bad_request` | 400 | Invalid request parameters |
+| `rate_limit_exceeded` | 429 | Too many requests (planned) |
+| `internal_error` | 500 | Server error |
+
+## API Playground
+
+Each endpoint page includes an interactive API Playground where you can:
+
+- Test requests directly from your browser
+- View real responses
+- Copy request code in multiple languages
+- Authenticate with your API key
+
+<Note>
+The API Playground runs requests from your browser, so ensure your API key has appropriate CORS permissions (usually enabled by default for same-origin requests).
+</Note>
+
+## SDK Availability
+
+While FIM One API is fully REST-based, SDKs are available (or coming soon) in popular languages:
+
+- **Python**: Coming soon
+- **JavaScript/TypeScript**: Coming soon
+- **Go**: Coming soon
+
+## Versioning
+
+The current API version is `v0.8.0`. Version is not included in the URL path; breaking changes will be signaled through major version bumps and a migration period.
+
+## Support
+
+For API issues or questions:
+
+- **Documentation**: See detailed guides on each endpoint
+- **GitHub Issues**: Report bugs at https://github.com/fim-ai/fim-one/issues
+- **Discord Community**: Join our community for discussion

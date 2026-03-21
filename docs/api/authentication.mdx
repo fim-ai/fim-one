@@ -1,0 +1,356 @@
+---
+title: "Authentication"
+description: "How to authenticate with the FIM One API"
+---
+
+## Overview
+
+FIM One API supports two authentication methods:
+
+1. **API Keys** — Simple, long-lived tokens for service-to-service integration
+2. **JWT Tokens** — Short-lived tokens from user login (for SSE endpoints)
+
+Most integrations should use **API Keys**.
+
+## API Keys
+
+API keys are long-lived credentials tied to your user account. They're ideal for:
+
+- Server-to-server integrations
+- Scheduled scripts and automation
+- External applications accessing FIM One
+
+### Creating an API Key
+
+1. Log in to your FIM One portal
+2. Go to **Settings → API Keys**
+3. Click **Create API Key**
+4. Enter a name (e.g., "Production Integration")
+5. (Optional) Set scopes to limit access
+6. (Optional) Set an expiration date
+7. Click **Create**
+8. Copy the key immediately — it's only shown once
+
+The full key looks like: `fim_your44characterkeystringhere` (starts with `fim_` prefix)
+
+### Using API Keys
+
+Include the key in the `Authorization` header as a Bearer token:
+
+```bash
+curl -H "Authorization: Bearer fim_your_api_key_here" \
+  https://your-domain.com/api/conversations
+```
+
+Or in Python:
+
+```python
+import requests
+
+headers = {
+    "Authorization": "Bearer fim_your_api_key_here"
+}
+
+response = requests.get(
+    "https://your-domain.com/api/conversations",
+    headers=headers
+)
+print(response.json())
+```
+
+### API Key Features
+
+**Visibility**: Each key shows:
+- Key prefix (first 8 chars for identification)
+- Creation date
+- Last used timestamp
+- Total request count
+- Active status
+- Expiration date (if set)
+
+**Management**: You can:
+- Enable/disable keys without deleting them
+- Set automatic expiration dates
+- Delete keys permanently
+- Track usage patterns
+
+### Scopes
+
+Scopes limit what an API key can access. If no scopes are set, the key has full access.
+
+Available scopes:
+
+| Scope | Allows |
+|-------|--------|
+| `chat` | POST /api/react, POST /api/dag, POST /api/chat/inject |
+| `agents` | GET /api/agents, GET /api/agents/{id} |
+| `kb` | GET /api/knowledge-bases, POST /api/knowledge-bases/{id}/retrieve |
+| `connectors` | Connector CRUD (connector_specific endpoints) |
+| `admin` | Administrative endpoints |
+
+Create a key with scopes:
+
+```bash
+curl -X POST https://your-domain.com/api/me/api-keys \
+  -H "Authorization: Bearer your_current_api_key_or_jwt" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Chat-only Integration",
+    "scopes": "chat"
+  }'
+```
+
+## JWT Tokens
+
+JWT tokens are short-lived and issued at login. They're used for:
+
+- **SSE Streaming Endpoints**: Pass tokens in the request body for `/api/react` and `/api/dag`
+- **Portal Session**: Frontend authentication
+
+### Getting a JWT Token
+
+JWT tokens are automatically issued when you log in through the web portal or call the authentication endpoint:
+
+```bash
+curl -X POST https://your-domain.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "your_password"
+  }'
+```
+
+Response:
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 7200,
+  "user": { ... }
+}
+```
+
+### Using JWT for Streaming
+
+For SSE endpoints, include the token in the request body:
+
+```bash
+curl -X POST https://your-domain.com/api/react \
+  -H "Content-Type: application/json" \
+  -d '{
+    "q": "What are the top 3 Python frameworks?",
+    "token": "your_jwt_token_here"
+  }'
+```
+
+Or from JavaScript using `fetch` with a readable stream (the endpoint is POST-only, so native `EventSource` which only supports GET cannot be used):
+
+```javascript
+const response = await fetch("https://your-domain.com/api/react", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    q: "Hello",
+    token: "fim_your_api_key_here"
+  })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const chunk = decoder.decode(value);
+  // Parse SSE events from chunk
+  console.log(chunk);
+}
+```
+
+### Token Refresh
+
+Access tokens expire after 2 hours. Use the refresh token to get a new access token without re-logging in:
+
+```bash
+curl -X POST https://your-domain.com/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "your_refresh_token_here"
+  }'
+```
+
+## Security Best Practices
+
+### API Keys
+
+<Warning>
+**Never commit API keys to version control.** They provide full access to your data.
+</Warning>
+
+1. **Store in environment variables**:
+   ```bash
+   export FIM_API_KEY="fim_your_api_key_here"
+   ```
+   Then reference in code:
+   ```python
+   api_key = os.environ.get("FIM_API_KEY")
+   ```
+
+2. **Use key rotation**:
+   - Create a new key
+   - Update your application
+   - Delete the old key
+   - Repeat quarterly
+
+3. **Set expiration dates**:
+   - Use short-lived keys for temporary integrations
+   - Require re-authentication periodically
+
+4. **Use scoped keys**:
+   - Don't use "full access" keys unless necessary
+   - Create separate keys for different services
+   - Limits damage if a key is compromised
+
+5. **Monitor usage**:
+   - Check "last used" timestamps
+   - Review request counts
+   - Delete unused keys
+
+### JWT Tokens
+
+1. **Keep short-lived**: Access tokens expire after 2 hours
+2. **Secure storage**:
+   - In browsers: use HttpOnly cookies (safer than localStorage)
+   - In servers: use secure session storage
+3. **Never expose in logs**: Log only the token prefix, not the full token
+4. **Use HTTPS only**: Never send tokens over unencrypted connections
+
+## Rate Limits
+
+Per-key rate limiting is planned for a future release. Currently there are no enforced per-key request limits.
+
+## Troubleshooting
+
+### Invalid Token Error
+
+```json
+{
+  "error": "invalid_token",
+  "message": "The provided token is invalid or expired"
+}
+```
+
+**Causes**:
+- API key prefix is wrong (must start with `fim_`)
+- JWT token has expired (refresh it)
+- Token is malformed or corrupted
+- API key has been deleted
+
+**Solution**: Verify your token format and re-generate if necessary
+
+### Unauthorized Error
+
+```json
+{
+  "error": "unauthorized",
+  "message": "Authentication required"
+}
+```
+
+**Causes**:
+- No Authorization header provided
+- Token is missing from request body (for SSE endpoints)
+- API key is disabled
+
+**Solution**: Include a valid token in every request
+
+### Forbidden Error
+
+```json
+{
+  "error": "forbidden",
+  "message": "Your API key does not have permission to access this resource"
+}
+```
+
+**Causes**:
+- API key has scoped access and lacks the required scope
+- User account has restricted permissions
+
+**Solution**: Use a key with the appropriate scope or increase key privileges
+
+### Expired Token
+
+```json
+{
+  "error": "token_expired",
+  "message": "Your token has expired. Please refresh your authentication."
+}
+```
+
+**Solution**: Use the refresh token to get a new access token:
+
+```bash
+curl -X POST https://your-domain.com/api/auth/refresh \
+  -d '{"refresh_token": "your_refresh_token"}'
+```
+
+## Environment Variable Setup
+
+### Python
+
+```python
+import os
+from dotenv import load_dotenv
+import requests
+
+# Load from .env file
+load_dotenv()
+
+api_key = os.getenv("FIM_API_KEY")
+base_url = os.getenv("FIM_API_BASE_URL", "https://your-domain.com/api")
+
+headers = {"Authorization": f"Bearer {api_key}"}
+
+# Now use in requests
+response = requests.get(f"{base_url}/agents", headers=headers)
+```
+
+### Node.js
+
+```javascript
+const api_key = process.env.FIM_API_KEY;
+const base_url = process.env.FIM_API_BASE_URL || "https://your-domain.com/api";
+
+const headers = {
+  "Authorization": `Bearer ${api_key}`,
+  "Content-Type": "application/json"
+};
+
+// Use in fetch
+const response = await fetch(`${base_url}/agents`, {
+  headers: headers
+});
+```
+
+### Bash
+
+```bash
+#!/bin/bash
+
+FIM_API_KEY="${FIM_API_KEY:-$(cat ~/.fim_api_key)}"
+FIM_API_BASE_URL="${FIM_API_BASE_URL:-https://your-domain.com/api}"
+
+curl -H "Authorization: Bearer $FIM_API_KEY" \
+  "$FIM_API_BASE_URL/agents"
+```
+
+## Support
+
+For authentication issues:
+
+- Check the [API Overview](/api/overview) for response format details
+- Review token expiration with `GET /api/auth/verify`
+- Contact support if you believe a key has been compromised

@@ -1,0 +1,1314 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FIM One API",
+    "description": "AI-Powered Connector Hub — programmatic access to agents, conversations, knowledge bases, and more.",
+    "version": "0.8.0",
+    "contact": {
+      "name": "FIM One Support",
+      "url": "https://github.com/fim-ai/fim-one"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://your-domain.com",
+      "description": "Your FIM One instance"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "API Key (fim_xxx) or JWT token"
+      }
+    },
+    "schemas": {
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "PaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size",
+          "pages"
+        ]
+      },
+      "ChatStreamRequest": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "The user query or message"
+          },
+          "conversation_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Attach to an existing conversation (optional)"
+          },
+          "agent_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Bind to a specific agent (optional)"
+          },
+          "token": {
+            "type": "string",
+            "nullable": true,
+            "description": "API key (fim_xxx) or JWT token for SSE (optional, alternative to Authorization header)"
+          },
+          "image_ids": {
+            "type": "string",
+            "nullable": true,
+            "description": "Comma-separated image IDs to attach (optional)"
+          },
+          "user_metadata": {
+            "type": "string",
+            "nullable": true,
+            "description": "JSON string of custom metadata (optional)"
+          }
+        },
+        "required": [
+          "q"
+        ]
+      },
+      "InjectMessageRequest": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "description": "ID of the running conversation"
+          },
+          "content": {
+            "type": "string",
+            "description": "The message content to inject"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "content"
+        ]
+      },
+      "ConversationResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "react",
+              "dag",
+              "auto"
+            ]
+          },
+          "agent_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          },
+          "starred": {
+            "type": "boolean"
+          },
+          "model_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "total_tokens": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "ConversationCreate": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "default": ""
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "react",
+              "dag",
+              "auto"
+            ],
+            "default": "auto"
+          },
+          "agent_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_name": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ConversationUpdate": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "nullable": true
+          },
+          "starred": {
+            "type": "boolean",
+            "nullable": true
+          }
+        }
+      },
+      "MessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "nullable": true
+          },
+          "message_type": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ConversationDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ConversationResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "messages": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "KBResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "chunk_strategy": {
+            "type": "string"
+          },
+          "chunk_size": {
+            "type": "integer"
+          },
+          "chunk_overlap": {
+            "type": "integer"
+          },
+          "retrieval_mode": {
+            "type": "string",
+            "enum": [
+              "hybrid",
+              "dense",
+              "fts"
+            ]
+          },
+          "document_count": {
+            "type": "integer"
+          },
+          "total_chunks": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "KBRetrieveRequest": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query (min 1 character)"
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Number of results to return"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "KBRetrieveResponse": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "nullable": true
+          },
+          "score": {
+            "type": "number"
+          }
+        }
+      },
+      "AgentResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "instructions": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "kb_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "connector_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "UserApiKeyInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "key_prefix": {
+            "type": "string",
+            "description": "First 8 characters of the key (fim_****)"
+          },
+          "scopes": {
+            "type": "string",
+            "nullable": true,
+            "description": "Comma-separated scopes (chat, agents, kb, connectors, admin)"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "total_requests": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UserApiKeyCreateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Key name (1-100 characters)"
+          },
+          "scopes": {
+            "type": "string",
+            "nullable": true,
+            "description": "Comma-separated scopes (optional)"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Expiration date (optional)"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UserApiKeyCreateResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "Full API key — only returned at creation time"
+          },
+          "key_prefix": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "string",
+            "nullable": true
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UserApiKeyToggleRequest": {
+        "type": "object",
+        "properties": {
+          "is_active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_active"
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/api/react": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "ReAct Agent Streaming",
+        "description": "Stream a conversation through a ReAct agent. Returns Server-Sent Events with reasoning steps, tool calls, and final answer.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatStreamRequest"
+              },
+              "example": {
+                "q": "What is the capital of France?",
+                "conversation_id": "conv_123abc",
+                "agent_id": null,
+                "token": "fim_your_api_key_here"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "event: step\ndata: {\"type\": \"tool_call\", \"tool\": \"search\", \"input\": \"capital of France\"}\n\nevent: answer\ndata: {\"type\": \"delta\", \"text\": \"The capital of France is Paris.\"}\n\nevent: done\ndata: {\"answer\": \"The capital of France is Paris.\", \"tokens\": 42}\n\nevent: end\ndata: {}\n\n"
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized (invalid or missing token)"
+          },
+          "404": {
+            "description": "Conversation or agent not found"
+          }
+        }
+      }
+    },
+    "/api/dag": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "DAG Planner Streaming",
+        "description": "Stream a conversation through a DAG planner. Returns Server-Sent Events with planning phases, step execution, and analysis.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatStreamRequest"
+              },
+              "example": {
+                "q": "Analyze the top 3 trending stocks and summarize",
+                "conversation_id": "conv_123abc",
+                "agent_id": null,
+                "token": "fim_your_api_key_here"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream with DAG execution events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized (invalid or missing token)"
+          },
+          "404": {
+            "description": "Conversation or agent not found"
+          }
+        }
+      }
+    },
+    "/api/chat/inject": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Inject Message into Running Agent",
+        "description": "Inject a user message into an active agent execution mid-stream.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InjectMessageRequest"
+              },
+              "example": {
+                "conversation_id": "conv_123abc",
+                "content": "Actually, also search for Paris hotels"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message injected successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "inject_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or no active execution"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        }
+      }
+    },
+    "/api/conversations": {
+      "get": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "List Conversations",
+        "description": "List all conversations for the authenticated user.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Items per page"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "archived"
+              ],
+              "default": "active"
+            },
+            "description": "Filter by conversation status"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search by title or message content"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of conversations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ConversationResponse"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Create Conversation",
+        "description": "Create a new conversation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              },
+              "example": {
+                "title": "Paris Trip Planning",
+                "mode": "auto",
+                "agent_id": "agent_abc123",
+                "model_name": "gpt-4"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Get Conversation",
+        "description": "Retrieve a conversation with all its messages.",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conversation details with messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Update Conversation",
+        "description": "Update conversation title, status, or starred flag.",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationUpdate"
+              },
+              "example": {
+                "title": "Updated Title",
+                "status": "archived",
+                "starred": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversation updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Delete Conversation",
+        "description": "Permanently delete a conversation and all its messages.",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Conversation deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Conversation not found"
+          }
+        }
+      }
+    },
+    "/api/knowledge-bases": {
+      "get": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "List Knowledge Bases",
+        "description": "List all knowledge bases accessible to the user (personal, org-shared, or subscribed).",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of knowledge bases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/KBResponse"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/knowledge-bases/{kb_id}/retrieve": {
+      "post": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Retrieve from Knowledge Base",
+        "description": "Search and retrieve relevant content from a knowledge base using hybrid, dense, or full-text search.",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KBRetrieveRequest"
+              },
+              "example": {
+                "query": "How to setup OAuth",
+                "top_k": 5
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Retrieved content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/KBRetrieveResponse"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Knowledge base not found"
+          }
+        }
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "List Agents",
+        "description": "List all agents accessible to the user (personal, org-shared, or subscribed from Market).",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published"
+              ]
+            },
+            "description": "Filter by publication status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of agents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/AgentResponse"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/agents/{agent_id}": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Get Agent",
+        "description": "Retrieve details of a specific agent.",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      }
+    },
+    "/api/me/api-keys": {
+      "get": {
+        "tags": [
+          "API Keys"
+        ],
+        "summary": "List API Keys",
+        "description": "List all API keys created by the authenticated user.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of API keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UserApiKeyInfo"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "page": {
+                      "type": "integer"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "pages": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "API Keys"
+        ],
+        "summary": "Create API Key",
+        "description": "Create a new API key. The full key is returned only at creation time — store it securely.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserApiKeyCreateRequest"
+              },
+              "example": {
+                "name": "Production Integration",
+                "scopes": "chat,agents,kb",
+                "expires_at": "2025-12-31T23:59:59Z"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "API key created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserApiKeyCreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/me/api-keys/{key_id}/active": {
+      "patch": {
+        "tags": [
+          "API Keys"
+        ],
+        "summary": "Toggle API Key Active Status",
+        "description": "Enable or disable an API key. Disabled keys will be rejected for authentication.",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserApiKeyToggleRequest"
+              },
+              "example": {
+                "is_active": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Key status updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserApiKeyInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "API key not found"
+          }
+        }
+      }
+    },
+    "/api/me/api-keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "API Keys"
+        ],
+        "summary": "Delete API Key",
+        "description": "Permanently delete an API key. This action cannot be undone.",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "API key deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "API key not found"
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,6 +3,16 @@
   "theme": "maple",
   "name": "FIM One",
   "description": "AI-Powered Connector Hub — embed into one system as a Copilot, or connect them all as a Hub.",
+  "openapi": "openapi.json",
+  "api": {
+    "auth": {
+      "method": "bearer",
+      "name": "Authorization"
+    },
+    "playground": {
+      "mode": "simple"
+    }
+  },
   "colors": {
     "primary": "#D97706",
     "light": "#C8922A",
@@ -88,6 +98,97 @@
                 "pages": [
                   "strategy/competitive-landscape",
                   "strategy/orthogonality-strategy"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "Getting Started",
+                "icon": "key",
+                "pages": [
+                  "api/overview",
+                  "api/authentication"
+                ]
+              },
+              {
+                "group": "Chat",
+                "icon": "message-bot",
+                "pages": [
+                  {
+                    "openapi": "POST /api/react"
+                  },
+                  {
+                    "openapi": "POST /api/dag"
+                  },
+                  {
+                    "openapi": "POST /api/chat/inject"
+                  }
+                ]
+              },
+              {
+                "group": "Conversations",
+                "icon": "messages",
+                "pages": [
+                  {
+                    "openapi": "GET /api/conversations"
+                  },
+                  {
+                    "openapi": "GET /api/conversations/{conversation_id}"
+                  },
+                  {
+                    "openapi": "POST /api/conversations"
+                  },
+                  {
+                    "openapi": "PATCH /api/conversations/{conversation_id}"
+                  },
+                  {
+                    "openapi": "DELETE /api/conversations/{conversation_id}"
+                  }
+                ]
+              },
+              {
+                "group": "Knowledge Bases",
+                "icon": "book",
+                "pages": [
+                  {
+                    "openapi": "GET /api/knowledge-bases"
+                  },
+                  {
+                    "openapi": "POST /api/knowledge-bases/{kb_id}/retrieve"
+                  }
+                ]
+              },
+              {
+                "group": "Agents",
+                "icon": "robot",
+                "pages": [
+                  {
+                    "openapi": "GET /api/agents"
+                  },
+                  {
+                    "openapi": "GET /api/agents/{agent_id}"
+                  }
+                ]
+              },
+              {
+                "group": "API Keys",
+                "icon": "key",
+                "pages": [
+                  {
+                    "openapi": "GET /api/me/api-keys"
+                  },
+                  {
+                    "openapi": "POST /api/me/api-keys"
+                  },
+                  {
+                    "openapi": "PATCH /api/me/api-keys/{key_id}/active"
+                  },
+                  {
+                    "openapi": "DELETE /api/me/api-keys/{key_id}"
+                  }
                 ]
               }
             ]
@@ -203,14 +304,17 @@
                 "group": "路线图",
                 "icon": "map",
                 "pages": [
-                  "zh/roadmap"
+                  "zh/api/overview",
+                  "zh/api/authentication"
                 ]
               },
               {
                 "group": "变更日志",
                 "icon": "clock-rotate-left",
                 "pages": [
-                  "zh/changelog"
+                  "zh/{'openapi': 'POST /api/react'}",
+                  "zh/{'openapi': 'POST /api/dag'}",
+                  "zh/{'openapi': 'POST /api/chat/inject'}"
                 ]
               }
             ]
@@ -307,14 +411,17 @@
                 "group": "ロードマップ",
                 "icon": "map",
                 "pages": [
-                  "ja/roadmap"
+                  "ja/api/overview",
+                  "ja/api/authentication"
                 ]
               },
               {
                 "group": "変更履歴",
                 "icon": "clock-rotate-left",
                 "pages": [
-                  "ja/changelog"
+                  "ja/{'openapi': 'POST /api/react'}",
+                  "ja/{'openapi': 'POST /api/dag'}",
+                  "ja/{'openapi': 'POST /api/chat/inject'}"
                 ]
               }
             ]
@@ -411,14 +518,17 @@
                 "group": "로드맵",
                 "icon": "map",
                 "pages": [
-                  "ko/roadmap"
+                  "ko/api/overview",
+                  "ko/api/authentication"
                 ]
               },
               {
                 "group": "변경 이력",
                 "icon": "clock-rotate-left",
                 "pages": [
-                  "ko/changelog"
+                  "ko/{'openapi': 'POST /api/react'}",
+                  "ko/{'openapi': 'POST /api/dag'}",
+                  "ko/{'openapi': 'POST /api/chat/inject'}"
                 ]
               }
             ]
@@ -515,14 +625,17 @@
                 "group": "Roadmap",
                 "icon": "map",
                 "pages": [
-                  "de/roadmap"
+                  "de/api/overview",
+                  "de/api/authentication"
                 ]
               },
               {
                 "group": "Änderungsprotokoll",
                 "icon": "clock-rotate-left",
                 "pages": [
-                  "de/changelog"
+                  "de/{'openapi': 'POST /api/react'}",
+                  "de/{'openapi': 'POST /api/dag'}",
+                  "de/{'openapi': 'POST /api/chat/inject'}"
                 ]
               }
             ]
@@ -619,14 +732,17 @@
                 "group": "Feuille de route",
                 "icon": "map",
                 "pages": [
-                  "fr/roadmap"
+                  "fr/api/overview",
+                  "fr/api/authentication"
                 ]
               },
               {
                 "group": "Journal des modifications",
                 "icon": "clock-rotate-left",
                 "pages": [
-                  "fr/changelog"
+                  "fr/{'openapi': 'POST /api/react'}",
+                  "fr/{'openapi': 'POST /api/dag'}",
+                  "fr/{'openapi': 'POST /api/chat/inject'}"
                 ]
               }
             ]

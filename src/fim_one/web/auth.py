@@ -1,7 +1,8 @@
-"""JWT authentication and bcrypt password utilities."""
+"""JWT authentication, API key authentication, and bcrypt password utilities."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -13,11 +14,12 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
 
+from .models.api_key import ApiKey
 from .models.user import User
 
 logger = logging.getLogger(__name__)
@@ -206,6 +208,84 @@ def decode_token(token: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# API key authentication
+# ---------------------------------------------------------------------------
+
+
+async def _authenticate_api_key(raw_key: str, db: AsyncSession) -> User:
+    """Authenticate a request using an API key (``fim_``-prefixed Bearer token).
+
+    Validates the key, checks expiry and active status, updates usage stats,
+    and returns the associated :class:`User` with a transient
+    ``_api_key_scopes`` attribute attached.
+
+    Raises :class:`HTTPException` (401/403) on any failure.
+    """
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+
+    result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
+    api_key = result.scalar_one_or_none()
+
+    if api_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
+
+    if not api_key.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key is disabled",
+        )
+
+    if api_key.expires_at is not None:
+        expires = api_key.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        if expires <= datetime.now(UTC):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="API key has expired",
+            )
+
+    if api_key.user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="System API keys cannot be used for user authentication",
+        )
+
+    # Fetch the associated user
+    user_result = await db.execute(select(User).where(User.id == api_key.user_id))
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled",
+        )
+
+    # Update usage stats with a direct UPDATE (avoids ORM load overhead)
+    await db.execute(
+        sa_update(ApiKey)
+        .where(ApiKey.id == api_key.id)
+        .values(last_used_at=datetime.now(UTC), total_requests=ApiKey.total_requests + 1)
+    )
+    await db.flush()
+
+    # Attach scopes as a transient attribute (None = unrestricted)
+    user._api_key_scopes = (  # type: ignore[attr-defined]
+        set(api_key.scopes.split(",")) if api_key.scopes else None
+    )
+    return user
+
+
+# ---------------------------------------------------------------------------
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
@@ -214,7 +294,14 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> User:
-    payload = decode_token(credentials.credentials)
+    token = credentials.credentials
+
+    # API key authentication (fim_-prefixed tokens)
+    if token.startswith("fim_"):
+        return await _authenticate_api_key(token, db)
+
+    # JWT authentication
+    payload = decode_token(token)
     user_id: str | None = payload.get("sub")
     if user_id is None:
         raise HTTPException(
@@ -248,6 +335,8 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session invalidated",
             )
+    # JWT users are unrestricted (no scope limitations)
+    user._api_key_scopes = None  # type: ignore[attr-defined]
     return user
 
 
@@ -259,8 +348,19 @@ async def get_current_user_optional(
 ) -> User | None:
     if credentials is None:
         return None
+
+    token = credentials.credentials
+
+    # API key authentication (fim_-prefixed tokens)
+    if token.startswith("fim_"):
+        try:
+            return await _authenticate_api_key(token, db)
+        except HTTPException:
+            return None
+
+    # JWT authentication
     try:
-        payload = decode_token(credentials.credentials)
+        payload = decode_token(token)
     except HTTPException:
         return None
     user_id: str | None = payload.get("sub")
@@ -270,6 +370,16 @@ async def get_current_user_optional(
     user = result.scalar_one_or_none()
     if user is not None and not user.is_active:
         return None
+    # Check if this token was issued before a force-logout event
+    if user is not None and user.tokens_invalidated_at is not None:
+        iat = payload.get("iat")
+        if iat is None:
+            return None
+        token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
+        if token_issued <= user.tokens_invalidated_at.replace(tzinfo=UTC):
+            return None
+    if user is not None:
+        user._api_key_scopes = None  # type: ignore[attr-defined]
     return user
 
 
@@ -346,3 +456,23 @@ async def require_org_owner(
             detail="Organization owner access required",
         )
     return membership
+
+
+# ---------------------------------------------------------------------------
+# Scope-based authorization for API keys
+# ---------------------------------------------------------------------------
+
+
+def require_scope(scope: str):
+    """Dependency factory: rejects API key requests missing the given scope."""
+
+    async def _check(user: User = Depends(get_current_user)) -> User:  # noqa: B008
+        scopes = getattr(user, "_api_key_scopes", None)
+        if scopes is not None and scope not in scopes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API key missing required scope: {scope}",
+            )
+        return user
+
+    return _check
