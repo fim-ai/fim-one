@@ -166,23 +166,23 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `gpt-5.4` | Général | 1,050K | 128K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-| `gpt-5.4-mini` | Rapide | 400K | 128K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
+| `gpt-5.4` | Général | 1,050K | 128K | ON | ON | Appel de fonction + sortie structurée + raisonnement |
+| `gpt-5.4-mini` | Rapide | 400K | 128K | ON | ON | Appel de fonction + sortie structurée + raisonnement |
 | `o3-pro` | Raisonnement | 200K | 100K | ON | ON | Modèle de raisonnement ; FC fonctionne avec pensée auto-désactivée |
 
 **Anthropic (Claude)**
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `claude-sonnet-4-6` | Général | 1,000K | 64K | ON | ON | Appels de fonction + raisonnement ; pensée auto-désactivée pour FC |
-| `claude-haiku-4-5` | Rapide | 200K | 64K | ON | ON | Appels de fonction supportés |
-| `claude-opus-4-6` | Raisonnement | 1,000K | 128K | ON | ON | Appels de fonction + raisonnement ; pensée auto-désactivée pour FC |
+| `claude-sonnet-4-6` | Général | 1,000K | 64K | ON | ON | Appel de fonction + raisonnement ; pensée auto-désactivée pour FC |
+| `claude-haiku-4-5` | Rapide | 200K | 64K | ON | ON | Appel de fonction supporté |
+| `claude-opus-4-6` | Raisonnement | 1,000K | 128K | ON | ON | Appel de fonction + raisonnement ; pensée auto-désactivée pour FC |
 
 **Google Gemini**
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `gemini-3-pro-preview` | Général | 1,048K | 65K | ON | ON | Support complet (tags UniAPI incomplets -- Gemini supporte nativement FC) |
+| `gemini-3-pro-preview` | Général | 1,048K | 65K | ON | ON | Support complet (balises UniAPI incomplètes -- Gemini supporte nativement FC) |
 | `gemini-2.5-pro` | Rapide | 1,048K | 65K | ON | ON | Support complet |
 | `gemini-3.1-pro-preview` | Raisonnement | 1,048K | 65K | ON | ON | Support complet |
 
@@ -190,7 +190,7 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `deepseek-v3.2` | Général | 164K | 64K | ON | ON | FC supporté (tags UniAPI incomplets) |
+| `deepseek-v3.2` | Général | 164K | 64K | ON | ON | FC supporté (balises UniAPI incomplètes) |
 | `deepseek-chat` | Rapide | 64K | 8K | ON | ON | Modèle de chat basique ; FC supporté |
 | `deepseek-reasoner` | Raisonnement | 164K | 164K | **OFF** | ON | Pensée toujours activée ; tool_choice forcé peut être rejeté |
 
@@ -198,25 +198,25 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `grok-4-1-fast-non-reasoning` | Général | 2,000K | 2,000K | ON | ON | Appels de fonction + sortie structurée |
-| `grok-3-mini-fast` | Rapide | 131K | 131K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-| `grok-4-1-fast-reasoning` | Raisonnement | 2,000K | 2,000K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
+| `grok-4-1-fast-non-reasoning` | Général | 2,000K | 2,000K | ON | ON | Appel de fonction + sortie structurée |
+| `grok-3-mini-fast` | Rapide | 131K | 131K | ON | ON | Appel de fonction + sortie structurée + raisonnement |
+| `grok-4-1-fast-reasoning` | Raisonnement | 2,000K | 2,000K | ON | ON | Appel de fonction + sortie structurée + raisonnement |
 
 **Qwen (Alibaba Cloud)**
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `qwen3.5-plus` | Général | 1,000K | 64K | ON | ON | Appels de fonction + sortie structurée |
-| `qwen-turbo-latest` | Rapide | 1,000K | 16K | ON | ON | FC probablement supporté (tags UniAPI incomplets) |
-| `qwq-plus` | Raisonnement | 128K | 8K | ON | ON | Raisonnement + appels de fonction (pensée peut être basculable) |
+| `qwen3.5-plus` | Général | 1,000K | 64K | ON | ON | Appel de fonction + sortie structurée |
+| `qwen-turbo-latest` | Rapide | 1,000K | 16K | ON | ON | FC probablement supporté (balises UniAPI incomplètes) |
+| `qwq-plus` | Raisonnement | 128K | 8K | ON | ON | Raisonnement + appel de fonction (pensée peut être basculable) |
 
 **Zhipu (GLM)**
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `glm-4.7` | Général | 200K | -- | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-| `glm-4.7-flashx` | Rapide | 200K | -- | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-| `glm-5` | Raisonnement | 200K | -- | ON | ON | Appels de fonction + sortie structurée + raisonnement |
+| `glm-4.7` | Général | 200K | -- | ON | ON | Appel de fonction + sortie structurée + raisonnement |
+| `glm-4.7-flashx` | Rapide | 200K | -- | ON | ON | Appel de fonction + sortie structurée + raisonnement |
+| `glm-5` | Raisonnement | 200K | -- | ON | ON | Appel de fonction + sortie structurée + raisonnement |
 
 **Moonshot (Kimi)**
 
@@ -230,24 +230,16 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `MiniMax-M2.5` | Général | 205K | -- | ON | ON | Appels de fonction + sortie structurée (vérifié en production) |
-| `MiniMax-M2.5-highspeed` | Rapide | 205K | -- | ON | ON | Appels de fonction + sortie structurée (vérifié en production) |
-| `MiniMax-M1` | Raisonnement | -- | -- | ON | ON | Appels de fonction + sortie structurée |
+| `MiniMax-M2.5` | Général | 205K | -- | ON | ON | Appel de fonction + sortie structurée (vérifié en production) |
+| `MiniMax-M2.5-highspeed` | Rapide | 205K | -- | ON | ON | Appel de fonction + sortie structurée (vérifié en production) |
+| `MiniMax-M1` | Raisonnement | -- | -- | ON | ON | Appel de fonction + sortie structurée |
 
 **ByteDance (Doubao)**
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `doubao-seed-2-0-pro` | Général | 256K | 128K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-| `doubao-seed-1-6` | Rapide | 256K | 32K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-
-**iFlytek (Spark)**
-
-| Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
-|---|---|---|---|---|---|---|
-| `SparkDesk-v3.5` | Général | -- | -- | **OFF** | **OFF** | Chat basique uniquement ; pas de tags FC ou sortie structurée |
-| `SparkDesk-v3.1` | Rapide | -- | -- | **OFF** | **OFF** | Chat basique uniquement ; pas de tags FC ou sortie structurée |
-| `SparkDesk-v4.0` | Raisonnement | -- | -- | **OFF** | **OFF** | Chat basique uniquement ; pas de tags FC ou sortie structurée |
+| `doubao-seed-2-0-pro` | Général | 256K | 128K | ON | ON | Appel de fonction + sortie structurée + raisonnement |
+| `doubao-seed-1-6` | Rapide | 256K | 32K | ON | ON | Appel de fonction + sortie structurée + raisonnement |
 
 **Meta (Llama)**
 
@@ -256,15 +248,15 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 | `llama-3.3-70b` | Général | 131K | 131K | ON | ON | FC dépend du fournisseur d'hébergement ; essayez d'abord les paramètres par défaut |
 
 <Note>
-**"--" en Sortie Max** signifie que le fournisseur n'a pas signalé de limite. En pratique, ces modèles supportent généralement 4K-16K jetons de sortie. Définissez **Max Output Tokens** explicitement dans les paramètres Avancés du modèle si vous avez besoin d'une valeur spécifique.
+**« -- » en Sortie Max** signifie que le fournisseur n'a pas signalé de limite. En pratique, ces modèles supportent généralement 4K-16K jetons de sortie. Définissez explicitement **Max Output Tokens** dans les paramètres Avancés du modèle si vous avez besoin d'une valeur spécifique.
 </Note>
 
 <Tip>
-**Comment diagnostiquer :** Vérifiez les journaux de votre application pour les avertissements `structured_llm_call: native_fc call raised`. Si vous voyez ces avertissements suivis d'une extraction JSON Mode réussie, le modèle ne bénéficie pas des appels de fonction natifs. Désactivez **Native Function Calling** pour ce modèle afin d'éliminer l'appel API gaspillé et la pénalité de latence d'environ 10 secondes par demande de sortie structurée.
+**Comment diagnostiquer :** Vérifiez les journaux de votre application pour les avertissements `structured_llm_call: native_fc call raised`. Si vous voyez ces avertissements suivis d'une extraction réussie en Mode JSON, le modèle ne bénéficie pas de l'appel de fonction natif. Désactivez **Native Function Calling** pour ce modèle afin d'éliminer l'appel API gaspillé et la pénalité de latence d'environ 10 secondes par demande de sortie structurée.
 </Tip>
 
 <Warning>
-Les capacités des modèles changent fréquemment à mesure que les fournisseurs mettent à jour leurs API. Les recommandations ci-dessus sont basées sur les données du **2026-03-22** (tags de capacité UniAPI + vérification du runtime en production). Si un modèle qui fonctionnait précédemment commence à retourner des erreurs, consultez le journal des modifications du fournisseur pour les changements cassants.
+Les capacités des modèles changent fréquemment à mesure que les fournisseurs mettent à jour leurs API. Les recommandations ci-dessus sont basées sur les données du **2026-03-22** (balises de capacité UniAPI + vérification runtime en production). Si un modèle qui fonctionnait précédemment commence à retourner des erreurs, consultez le journal des modifications du fournisseur pour les changements de rupture.
 </Warning>
 
 ## Groupes de modèles

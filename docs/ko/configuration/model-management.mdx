@@ -166,107 +166,99 @@ Anthropic 모델에 대해 추론/확장 사고가 활성화되면 온도는 시
 
 **OpenAI**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `gpt-5.4` | General | 1,050K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `gpt-5.4-mini` | Fast | 400K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `o3-pro` | Reasoning | 200K | 100K | ON | ON | Reasoning model; FC works with auto-disabled thinking |
+| `gpt-5.4` | 일반 | 1,050K | 128K | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
+| `gpt-5.4-mini` | 빠름 | 400K | 128K | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
+| `o3-pro` | 추론 | 200K | 100K | ON | ON | 추론 모델; FC는 자동 비활성화된 사고와 함께 작동 |
 
 **Anthropic (Claude)**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `claude-sonnet-4-6` | General | 1,000K | 64K | ON | ON | Function calling + reasoning; thinking auto-disabled for FC |
-| `claude-haiku-4-5` | Fast | 200K | 64K | ON | ON | Function calling supported |
-| `claude-opus-4-6` | Reasoning | 1,000K | 128K | ON | ON | Function calling + reasoning; thinking auto-disabled for FC |
+| `claude-sonnet-4-6` | 일반 | 1,000K | 64K | ON | ON | 함수 호출 + 추론; FC를 위해 사고 자동 비활성화 |
+| `claude-haiku-4-5` | 빠름 | 200K | 64K | ON | ON | 함수 호출 지원 |
+| `claude-opus-4-6` | 추론 | 1,000K | 128K | ON | ON | 함수 호출 + 추론; FC를 위해 사고 자동 비활성화 |
 
 **Google Gemini**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `gemini-3-pro-preview` | General | 1,048K | 65K | ON | ON | Full support (UniAPI tags incomplete -- Gemini natively supports FC) |
-| `gemini-2.5-pro` | Fast | 1,048K | 65K | ON | ON | Full support |
-| `gemini-3.1-pro-preview` | Reasoning | 1,048K | 65K | ON | ON | Full support |
+| `gemini-3-pro-preview` | 일반 | 1,048K | 65K | ON | ON | 전체 지원 (UniAPI 태그 불완전 -- Gemini는 기본적으로 FC 지원) |
+| `gemini-2.5-pro` | 빠름 | 1,048K | 65K | ON | ON | 전체 지원 |
+| `gemini-3.1-pro-preview` | 추론 | 1,048K | 65K | ON | ON | 전체 지원 |
 
 **DeepSeek**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `deepseek-v3.2` | General | 164K | 64K | ON | ON | FC supported (UniAPI tags incomplete) |
-| `deepseek-chat` | Fast | 64K | 8K | ON | ON | Basic chat model; FC supported |
-| `deepseek-reasoner` | Reasoning | 164K | 164K | **OFF** | ON | Thinking always-on; forced tool_choice may be rejected |
+| `deepseek-v3.2` | 일반 | 164K | 64K | ON | ON | FC 지원 (UniAPI 태그 불완전) |
+| `deepseek-chat` | 빠름 | 64K | 8K | ON | ON | 기본 채팅 모델; FC 지원 |
+| `deepseek-reasoner` | 추론 | 164K | 164K | **OFF** | ON | 사고 항상 활성화; 강제된 tool_choice는 거부될 수 있음 |
 
 **xAI (Grok)**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `grok-4-1-fast-non-reasoning` | General | 2,000K | 2,000K | ON | ON | Function calling + structured output |
-| `grok-3-mini-fast` | Fast | 131K | 131K | ON | ON | Function calling + structured output + reasoning |
-| `grok-4-1-fast-reasoning` | Reasoning | 2,000K | 2,000K | ON | ON | Function calling + structured output + reasoning |
+| `grok-4-1-fast-non-reasoning` | 일반 | 2,000K | 2,000K | ON | ON | 함수 호출 + 구조화된 출력 |
+| `grok-3-mini-fast` | 빠름 | 131K | 131K | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
+| `grok-4-1-fast-reasoning` | 추론 | 2,000K | 2,000K | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
 
 **Qwen (Alibaba Cloud)**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `qwen3.5-plus` | General | 1,000K | 64K | ON | ON | Function calling + structured output |
-| `qwen-turbo-latest` | Fast | 1,000K | 16K | ON | ON | FC likely supported (UniAPI tags incomplete) |
-| `qwq-plus` | Reasoning | 128K | 8K | ON | ON | Reasoning + function calling (thinking may be toggleable) |
+| `qwen3.5-plus` | 일반 | 1,000K | 64K | ON | ON | 함수 호출 + 구조화된 출력 |
+| `qwen-turbo-latest` | 빠름 | 1,000K | 16K | ON | ON | FC 가능성 있음 (UniAPI 태그 불완전) |
+| `qwq-plus` | 추론 | 128K | 8K | ON | ON | 추론 + 함수 호출 (사고는 토글 가능할 수 있음) |
 
 **Zhipu (GLM)**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `glm-4.7` | General | 200K | -- | ON | ON | Function calling + structured output + reasoning |
-| `glm-4.7-flashx` | Fast | 200K | -- | ON | ON | Function calling + structured output + reasoning |
-| `glm-5` | Reasoning | 200K | -- | ON | ON | Function calling + structured output + reasoning |
+| `glm-4.7` | 일반 | 200K | -- | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
+| `glm-4.7-flashx` | 빠름 | 200K | -- | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
+| `glm-5` | 추론 | 200K | -- | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
 
 **Moonshot (Kimi)**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `kimi-k2.5` | General | 262K | -- | **OFF** | ON | Thinking always-on; forced tool_choice rejected (400 error) |
-| `kimi-k2` | Fast | 131K | -- | ON | ON | Non-thinking; native FC works (verified in production) |
-| `kimi-k2-thinking` | Reasoning | 63K | -- | **OFF** | ON | Thinking always-on; forced tool_choice rejected |
+| `kimi-k2.5` | 일반 | 262K | -- | **OFF** | ON | 사고 항상 활성화; 강제된 tool_choice 거부 (400 오류) |
+| `kimi-k2` | 빠름 | 131K | -- | ON | ON | 비사고 모드; 네이티브 FC 작동 (프로덕션에서 검증됨) |
+| `kimi-k2-thinking` | 추론 | 63K | -- | **OFF** | ON | 사고 항상 활성화; 강제된 tool_choice 거부 |
 
 **MiniMax**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `MiniMax-M2.5` | General | 205K | -- | ON | ON | Function calling + structured output (verified in production) |
-| `MiniMax-M2.5-highspeed` | Fast | 205K | -- | ON | ON | Function calling + structured output (verified in production) |
-| `MiniMax-M1` | Reasoning | -- | -- | ON | ON | Function calling + structured output |
+| `MiniMax-M2.5` | 일반 | 205K | -- | ON | ON | 함수 호출 + 구조화된 출력 (프로덕션에서 검증됨) |
+| `MiniMax-M2.5-highspeed` | 빠름 | 205K | -- | ON | ON | 함수 호출 + 구조화된 출력 (프로덕션에서 검증됨) |
+| `MiniMax-M1` | 추론 | -- | -- | ON | ON | 함수 호출 + 구조화된 출력 |
 
 **ByteDance (Doubao)**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `doubao-seed-2-0-pro` | General | 256K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `doubao-seed-1-6` | Fast | 256K | 32K | ON | ON | Function calling + structured output + reasoning |
-
-**iFlytek (Spark)**
-
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
-|---|---|---|---|---|---|---|
-| `SparkDesk-v3.5` | General | -- | -- | **OFF** | **OFF** | Basic chat only; no FC or structured output tags |
-| `SparkDesk-v3.1` | Fast | -- | -- | **OFF** | **OFF** | Basic chat only; no FC or structured output tags |
-| `SparkDesk-v4.0` | Reasoning | -- | -- | **OFF** | **OFF** | Basic chat only; no FC or structured output tags |
+| `doubao-seed-2-0-pro` | 일반 | 256K | 128K | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
+| `doubao-seed-1-6` | 빠름 | 256K | 32K | ON | ON | 함수 호출 + 구조화된 출력 + 추론 |
 
 **Meta (Llama)**
 
-| Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
+| 모델 | 역할 | 컨텍스트 | 최대 출력 | 네이티브 FC | JSON 모드 | 참고 |
 |---|---|---|---|---|---|---|
-| `llama-3.3-70b` | General | 131K | 131K | ON | ON | FC depends on hosting provider; try defaults first |
+| `llama-3.3-70b` | 일반 | 131K | 131K | ON | ON | FC는 호스팅 제공자에 따라 다름; 먼저 기본값 시도 |
 
 <Note>
-**Max Output의 "--"** 는 제공자가 제한을 보고하지 않았음을 의미합니다. 실제로 이러한 모델은 일반적으로 4K-16K 출력 토큰을 지원합니다. 특정 값이 필요한 경우 모델의 고급 설정에서 **Max Output Tokens**을 명시적으로 설정하세요.
+**최대 출력의 "--"** 는 제공자가 제한을 보고하지 않았음을 의미합니다. 실제로 이러한 모델은 일반적으로 4K-16K 출력 토큰을 지원합니다. 특정 값이 필요한 경우 모델의 고급 설정에서 **최대 출력 토큰**을 명시적으로 설정하세요.
 </Note>
 
 <Tip>
-**진단 방법:** 애플리케이션 로그에서 `structured_llm_call: native_fc call raised` 경고를 확인하세요. 이러한 경고 뒤에 JSON Mode 추출이 성공하면 해당 모델은 기본 함수 호출의 이점을 얻지 못합니다. 낭비되는 API 호출과 구조화된 출력 요청당 약 10초의 지연 페널티를 제거하려면 해당 모델에 대해 **Native Function Calling**을 비활성화하세요.
+**진단 방법:** 애플리케이션 로그에서 `structured_llm_call: native_fc call raised` 경고를 확인하세요. 이러한 경고 다음에 성공적인 JSON 모드 추출이 표시되면 해당 모델은 네이티브 함수 호출의 이점을 얻지 못합니다. 낭비된 API 호출과 구조화된 출력 요청당 약 10초의 지연 페널티를 제거하려면 해당 모델에 대해 **네이티브 함수 호출**을 비활성화하세요.
 </Tip>
 
 <Warning>
-모델 기능은 제공자가 API를 업데이트함에 따라 자주 변경됩니다. 위의 권장사항은 **2026-03-22** 데이터(UniAPI 기능 태그 + 프로덕션 런타임 검증)를 기반으로 합니다. 이전에 작동하던 모델이 오류를 반환하기 시작하면 제공자의 변경 로그에서 주요 변경사항을 확인하세요.
+모델 기능은 제공자가 API를 업데이트함에 따라 자주 변경됩니다. 위의 권장 사항은 **2026-03-22**의 데이터(UniAPI 기능 태그 + 프로덕션 런타임 검증)를 기반으로 합니다. 이전에 작동하던 모델이 오류를 반환하기 시작하면 제공자의 변경 로그에서 주요 변경 사항을 확인하세요.
 </Warning>
 
 ---
