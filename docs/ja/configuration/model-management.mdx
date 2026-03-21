@@ -3,7 +3,7 @@ title: "モデル管理"
 description: "管理パネルでLLMプロバイダー、モデル、およびモデルグループを設定します。"
 ---
 
-FIM One は、LLM プロバイダーとモデルを管理するための完全な機能を備えた管理 UI を提供します。このガイドでは、プロバイダーの追加、個別モデルの設定、高度な構造化出力設定の調整、およびワンクリック切り替え用のモデルグループへの整理方法について説明します。
+FIM One は、LLM プロバイダーとモデルを管理するための機能豊富な管理 UI を提供します。このガイドでは、プロバイダーの追加、個別モデルの設定、高度な構造化出力設定の調整、およびワンクリック切り替え用のモデルグループへの整理方法について説明します。
 
 ENV ベースの設定（管理 UI なし）については、[環境変数](/configuration/environment-variables)を参照してください。モデル選択の推奨事項については、[推奨モデル](/configuration/models)を参照してください。
 
@@ -11,11 +11,11 @@ ENV ベースの設定（管理 UI なし）については、[環境変数](/co
 
 FIM One は LLM 設定を 3 つのレベルで整理します:
 
-| レベル | 表現内容 | 例 |
+| レベル | 表すもの | 例 |
 |---|---|---|
 | **プロバイダー** | 共有認証情報のセット (API キー + ベース URL)。1 つのプロバイダーは多くのモデルをホストできます。 | "My OpenAI Account"、"Company Bedrock Relay" |
 | **モデル** | プロバイダー下の個別モデル。独自の表示名、API モデル識別子、および詳細設定があります。 | "GPT-4o"、"Claude Sonnet 4.6" |
-| **モデルグループ** | ロール (General / Fast / Reasoning) にモデルを割り当てる名前付きプリセット。グループを有効化するとすべてのロールが一度に切り替わります。 | "Production (OpenAI)"、"Budget (DeepSeek)" |
+| **モデルグループ** | モデルをロール (General / Fast / Reasoning) に割り当てる名前付きプリセット。グループをアクティブ化すると、すべてのロールが一度に切り替わります。 | "Production (OpenAI)"、"Budget (DeepSeek)" |
 
 ```
 Provider: "My OpenAI Account"
@@ -41,19 +41,19 @@ Group: "Production"
   <Step title="モデルページを開く">
     **Admin**（サイドバー）に移動し、**Models** タブを選択します。
   </Step>
-  <Step title="Add Provider をクリック">
-    Providers セクションの右上にある **Add Provider** ボタンをクリックします。
+  <Step title="プロバイダーを追加をクリック">
+    プロバイダーセクションの右上にある **Add Provider** ボタンをクリックします。
   </Step>
   <Step title="プリセットを選択するか、カスタムエンドポイントを使用する">
-    ダイアログには一般的なプロバイダーのプリセットボタンが表示されます：**OpenAI**、**Anthropic (Claude)**、**Google Gemini**、**DeepSeek**、**Mistral AI**、および **OpenAI Compatible**（カスタムエンドポイント）。プリセットをクリックすると、プロバイダー名とベース URL が自動入力されます。
+    ダイアログには、一般的なプロバイダーのプリセットボタンが表示されます：**OpenAI**、**Anthropic (Claude)**、**Google Gemini**、**DeepSeek**、**Mistral AI**、および **OpenAI Compatible**（カスタムエンドポイント）。プリセットをクリックすると、プロバイダー名とベース URL が自動入力されます。
 
-    リストにないプロバイダーの場合（例：サードパーティリレー、Ollama、その他の OpenAI 互換エンドポイント）は、**OpenAI Compatible** を選択してください。
+    リストにないプロバイダーの場合（例：サードパーティリレー、Ollama、またはその他の OpenAI 互換エンドポイント）は、**OpenAI Compatible** を選択してください。
   </Step>
   <Step title="認証情報を入力">
     必須フィールドに入力します：
     - **Provider Name** -- わかりやすいラベル（例：「My OpenAI Account」）。これは参照用です。
-    - **Base URL** -- API エンドポイント。プリセットは自動入力されます。カスタムエンドポイントの場合は、完全な URL を入力します（例：Ollama の場合は `http://localhost:11434/v1`）。
-    - **API Key** -- プロバイダーの API キー。ローカルモデル（Ollama）の場合は、空でない任意の文字列を入力します（例：`ollama`）。
+    - **Base URL** -- API エンドポイント。プリセットは自動入力されます。カスタムエンドポイントの場合は、完全な URL を入力してください（例：Ollama の場合は `http://localhost:11434/v1`）。
+    - **API Key** -- プロバイダーの API キー。ローカルモデル（Ollama）の場合は、空でない任意の文字列を入力してください（例：`ollama`）。
   </Step>
   <Step title="保存">
     **Create** をクリックします。プロバイダーがリストに表示され、その下にモデルを追加する準備ができます。
@@ -61,7 +61,7 @@ Group: "Production"
 </Steps>
 
 <Tip>
-同じサービスに対して複数のプロバイダーを作成できます。例えば、異なる請求アカウント用に異なる API キーを持つ 2 つの「OpenAI」プロバイダー、または異なるベース URL を持つ「Anthropic (Direct)」と「Anthropic (via Bedrock)」を作成できます。
+同じサービスに対して複数のプロバイダーを作成できます。例えば、異なる API キーを持つ 2 つの「OpenAI」プロバイダー（別々の請求アカウント用）、または異なるベース URL を持つ「Anthropic (Direct)」と「Anthropic (via Bedrock)」などです。
 </Tip>
 
 ---
@@ -77,14 +77,14 @@ Group: "Production"
   </Step>
   <Step title="モデルの詳細を入力">
     2つの必須フィールドに入力します:
-    - **表示名** -- UI に表示される人間が読める名前（例: "GPT-4o"、"Claude Sonnet"）。任意の名前を付けることができます。
-    - **モデル名 (API)** -- API に送信される正確なモデル識別子（例: `gpt-4o`、`claude-sonnet-4-6`、`deepseek-chat`）。プロバイダーが期待する内容と一致する必要があります。
+    - **表示名** -- UI に表示される人間が読める名前 (例: "GPT-4o"、"Claude Sonnet")。任意の名前を指定できます。
+    - **モデル名 (API)** -- API に送信される正確なモデル識別子 (例: `gpt-4o`、`claude-sonnet-4-6`、`deepseek-chat`)。プロバイダーが期待する内容と一致する必要があります。
   </Step>
-  <Step title="高度な設定を構成する（オプション）">
-    **詳細設定**トグルをクリックして、追加の設定を表示します: 最大出力トークン、コンテキストサイズ、温度、ネイティブ関数呼び出し、JSON モード。各設定の詳細については、下記の[高度な設定](#advanced-settings)セクションを参照してください。
+  <Step title="詳細設定を構成する (オプション)">
+    **詳細**トグルをクリックして、追加の設定を表示します: 最大出力トークン、コンテキストサイズ、温度、ネイティブ関数呼び出し、JSON モード。各設定の詳細については、以下の[詳細設定](#advanced-settings)セクションを参照してください。
   </Step>
   <Step title="保存">
-    **作成**をクリックします。モデルはプロバイダーの下に表示され、モデルグループへの割り当てが可能になります。
+    **作成**をクリックします。モデルはそのプロバイダーの下に表示され、モデルグループへの割り当てに利用可能になります。
   </Step>
 </Steps>
 
@@ -92,24 +92,24 @@ Group: "Production"
 
 ## 高度な設定
 
-各モデルには、FIM One が構造化出力抽出のためにプロバイダーの API とどのようにやり取りするかを制御する高度な設定があります。これらの設定は、モデル作成/編集ダイアログの **Advanced** トグルの下にあります。
+各モデルには、FIM One が構造化出力抽出のためにプロバイダーの API とどのように相互作用するかを制御する高度な設定があります。これらの設定は、モデル作成/編集ダイアログの **Advanced** トグルの下にあります。
 
 ### ネイティブ関数呼び出し
 
-**設定名:** ネイティブ関数呼び出し（`tool_choice_enabled` として保存）
+**設定名:** ネイティブ関数呼び出し (`tool_choice_enabled` として保存)
 
 **デフォルト:** ON
 
 FIM One が構造化出力抽出のために強制的な `tool_choice` を使用するかどうかを制御します。これは構造化出力の段階的な低下チェーンのレベル 1 です -- モデルがサポートしている場合の最も信頼性の高い方法です。
 
 **無効にする場合:**
-- モデルが `"tool_choice 'specified' is incompatible with thinking enabled"` のようなエラーを返す場合 -- 常時オンの思考モデル（DeepSeek R1、Kimi K2.5）で一般的です
-- 構造化出力リクエストが一貫して遅い場合、呼び出しごとに約 10 秒のペナルティが発生し、その後 JSON Mode にフォールバックします
+- モデルが `"tool_choice 'specified' is incompatible with thinking enabled"` のようなエラーを返す場合 -- 常時有効な思考モデル (DeepSeek R1、Kimi K2.5) で一般的
+- 構造化出力リクエストが一貫して遅い場合 (呼び出しあたり約 10 秒のペナルティがあり、その後 JSON Mode へのフォールバックが続く)
 
-**無効にした場合の効果:** FIM One はレベル 1（ネイティブ関数呼び出し）をスキップし、構造化出力のレベル 2（JSON Mode）から開始します。ReAct エージェントのツール呼び出しは完全に影響を受けません -- `tool_choice="auto"` を使用し、この設定に関係なくすべてのモデルで動作します。
+**無効にした場合の効果:** FIM One はレベル 1 (ネイティブ関数呼び出し) をスキップし、構造化出力のレベル 2 (JSON Mode) から開始します。ReAct エージェントのツール呼び出しは完全に影響を受けません -- この設定に関係なく、すべてのモデルで機能する `tool_choice="auto"` を使用します。
 
 <Note>
-この設定は、構造化出力抽出（DAG プランニング、スキーマ注釈）に使用される**強制的な**ツール選択にのみ影響します。ReAct エージェントには影響しません。ReAct エージェントは `tool_choice="auto"` を使用してツール呼び出しのタイミングを自由に決定します。
+この設定は、構造化出力抽出に使用される**強制的な**ツール選択 (DAG 計画、スキーマ注釈) にのみ影響します。ReAct エージェントには影響**しません**。ReAct エージェントは `tool_choice="auto"` を使用してツール呼び出しのタイミングを自由に決定します。
 </Note>
 
 技術的な詳細については、[LLM プロバイダー互換性 -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled) を参照してください。
@@ -133,29 +133,29 @@ For technical details, see [LLM Provider Compatibility -- json_mode_enabled](/ar
 
 **デフォルト:** 0.7 (未設定の場合、グローバル設定から継承)
 
-モデル出力のランダム性を制御します。範囲: 0 (決定論的) から 2 (高度に創造的)。
+モデル出力のランダム性を制御します。範囲: 0 (決定的) から 2 (高度に創造的)。
 
 <Note>
-Anthropic モデルで推論/拡張思考が有効になっている場合、温度は自動的にシステムによって 1.0 に強制されます。手動で設定する必要はありません。
+Anthropicモデルで推論/拡張思考が有効になっている場合、温度は自動的にシステムによって1.0に強制されます。手動で設定する必要はありません。
 </Note>
 
 ### 最大出力トークン
 
-モデルが単一の応答で生成できるトークンの最大数。システムのデフォルト（64,000）を使用する場合は空白のままにしてください。VRAMが限定されたローカルモデルの場合は、これを明示的に低い値（例：8192）に設定してください。
+モデルが単一の応答で生成できるトークンの最大数。ブランクのままにするとシステムデフォルト（64,000）を使用します。VRAMが限定されたローカルモデルの場合は、これを明示的に低い値（例：8192）に設定してください。
 
 ### コンテキストサイズ
 
-モデルのコンテキストウィンドウサイズ（トークン単位）。システムデフォルト（128,000）を使用する場合は空白のままにしてください。ローカルモデルの場合、モデルと利用可能なメモリに応じて、通常は4K～32Kの範囲でモデルの実際の機能に合わせて設定してください。
+モデルのコンテキストウィンドウサイズ（トークン単位）。システムデフォルト（128,000）を使用する場合は空白のままにしてください。ローカルモデルの場合、モデルと利用可能なメモリに応じて、これは通常4K～32Kです。実際のモデルの機能に合わせて設定してください。
 
 ## 推奨設定
 
-ほとんどのモデルはデフォルト設定（両方のトグルがON）で正しく動作します。エラーや不要なレイテンシーが発生した場合のみ調整してください。
+ほとんどのモデルはデフォルト設定（両方のトグルがON）で正しく動作します。エラーが発生したり、不要なレイテンシーが生じた場合にのみ調整してください。
 
-以下の表は一般的なプロバイダーとモデルをカバーしています。データはUniAPI機能タグから取得し、**2026-03-22**時点のランタイム動作に対して検証されています。モデル機能は頻繁に変更されます。エラーが発生した場合は、プロバイダーの最新ドキュメントを確認してください。
+以下の表は、一般的なプロバイダーとモデルをカバーしています。データはUniAPI機能タグから取得し、**2026-03-22**時点でのランタイム動作に対して検証されています。モデルの機能は頻繁に変わります。エラーが発生した場合は、プロバイダーの最新ドキュメントを確認してください。
 
 ### クイックルール
 
-- **ネイティブ FC ON** 関数呼び出しをサポートするモデル（ほとんどの最新モデル）
+- **ネイティブ FC ON** 関数呼び出しサポートを備えたモデル（ほとんどの最新モデル）
 - **ネイティブ FC OFF** 強制的な `tool_choice` を拒否する思考常時オンモデル
 - **JSON Mode ON** ほとんどのモデル（安全なデフォルト）
 - **JSON Mode OFF** AWS Bedrock リレーのみ（プリフィル拒否）
@@ -182,25 +182,25 @@ Anthropic モデルで推論/拡張思考が有効になっている場合、温
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `gemini-3.1-pro-preview` | General | 1,048K | 65K | ON | ON | Latest preview; successor to deprecated gemini-3-pro-preview |
-| `gemini-2.5-pro` | Fast | 1,048K | 65K | ON | ON | Stable GA; production-ready |
-| `gemini-3.1-pro-preview` | Reasoning | 1,048K | 65K | ON | ON | Thinking support with configurable thinking_level |
+| `gemini-3-pro-preview` | General | 1,048K | 65K | ON | ON | Full support (UniAPI tags incomplete -- Gemini natively supports FC) |
+| `gemini-2.5-pro` | Fast | 1,048K | 65K | ON | ON | Full support |
+| `gemini-3.1-pro-preview` | Reasoning | 1,048K | 65K | ON | ON | Full support |
 
 **DeepSeek**
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `deepseek-chat` | General | 128K | 8K | ON | ON | V3.2 non-thinking mode; FC + JSON mode supported |
-| `deepseek-chat` | Fast | 128K | 8K | ON | ON | Same model as General; only two official API model IDs exist |
-| `deepseek-reasoner` | Reasoning | 128K | 64K | **OFF** | ON | Thinking always-on; forced tool_choice rejected; 64K includes CoT |
+| `deepseek-v3.2` | General | 164K | 64K | ON | ON | FC supported (UniAPI tags incomplete) |
+| `deepseek-chat` | Fast | 64K | 8K | ON | ON | Basic chat model; FC supported |
+| `deepseek-reasoner` | Reasoning | 164K | 164K | **OFF** | ON | Thinking always-on; forced tool_choice may be rejected |
 
 **xAI (Grok)**
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `grok-4-1-fast-non-reasoning` | General | 2,000K | 30K | ON | ON | Function calling + structured output |
-| `grok-3-mini-fast` | Fast | 131K | 131K | ON | ON | Function calling + structured output + reasoning; 131K is shared context budget |
-| `grok-4-1-fast-reasoning` | Reasoning | 2,000K | 30K | ON | ON | Function calling + structured output + reasoning |
+| `grok-4-1-fast-non-reasoning` | General | 2,000K | 2,000K | ON | ON | Function calling + structured output |
+| `grok-3-mini-fast` | Fast | 131K | 131K | ON | ON | Function calling + structured output + reasoning |
+| `grok-4-1-fast-reasoning` | Reasoning | 2,000K | 2,000K | ON | ON | Function calling + structured output + reasoning |
 
 **Qwen (Alibaba Cloud)**
 
@@ -208,56 +208,56 @@ Anthropic モデルで推論/拡張思考が有効になっている場合、温
 |---|---|---|---|---|---|---|
 | `qwen3.5-plus` | General | 1,000K | 64K | ON | ON | Function calling + structured output |
 | `qwen-turbo-latest` | Fast | 1,000K | 16K | ON | ON | FC likely supported (UniAPI tags incomplete) |
-| `qwq-plus` | Reasoning | 131K | 16K | ON | ON | Reasoning + function calling; thinking toggleable via enable_thinking |
+| `qwq-plus` | Reasoning | 128K | 8K | ON | ON | Reasoning + function calling (thinking may be toggleable) |
 
 **Zhipu (GLM)**
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `glm-4.7` | General | 200K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `glm-4.7-flashx` | Fast | 200K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `glm-5` | Reasoning | 200K | 128K | ON | ON | Function calling + structured output + reasoning |
+| `glm-4.7` | General | 200K | -- | ON | ON | Function calling + structured output + reasoning |
+| `glm-4.7-flashx` | Fast | 200K | -- | ON | ON | Function calling + structured output + reasoning |
+| `glm-5` | Reasoning | 200K | -- | ON | ON | Function calling + structured output + reasoning |
 
 **Moonshot (Kimi)**
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `kimi-k2.5` | General | 262K | 65K | **OFF** | ON | FC works but forced tool_choice rejected when thinking is on (default) |
-| `kimi-k2` | Fast | 131K | 32K | ON | ON | Non-thinking; native FC works (verified in production) |
-| `kimi-k2-thinking` | Reasoning | 131K | -- | **OFF** | ON | Thinking always-on; forced tool_choice rejected |
+| `kimi-k2.5` | General | 262K | -- | **OFF** | ON | Thinking always-on; forced tool_choice rejected (400 error) |
+| `kimi-k2` | Fast | 131K | -- | ON | ON | Non-thinking; native FC works (verified in production) |
+| `kimi-k2-thinking` | Reasoning | 63K | -- | **OFF** | ON | Thinking always-on; forced tool_choice rejected |
 
 **MiniMax**
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `MiniMax-M2.5` | General | 205K | 65K | ON | ON | Function calling + structured output (verified in production) |
-| `MiniMax-M2.5-highspeed` | Fast | 205K | 65K | ON | ON | Function calling + structured output (verified in production) |
-| `MiniMax-M1` | Reasoning | 1,000K | 80K | ON | ON | Function calling + structured output; 456B params hybrid MoE |
+| `MiniMax-M2.5` | General | 205K | -- | ON | ON | Function calling + structured output (verified in production) |
+| `MiniMax-M2.5-highspeed` | Fast | 205K | -- | ON | ON | Function calling + structured output (verified in production) |
+| `MiniMax-M1` | Reasoning | -- | -- | ON | ON | Function calling + structured output |
 
 **ByteDance (Doubao)**
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
 | `doubao-seed-2-0-pro` | General | 256K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `doubao-seed-1-6` | Fast | 256K | 16K | ON | ON | Function calling + structured output + reasoning |
-| `doubao-seed-1-6` | Reasoning | 256K | 16K | ON | ON | Supports `reasoning_effort` (minimal/low/medium/high) |
+| `doubao-seed-1-6` | Fast | 256K | 32K | ON | ON | Function calling + structured output + reasoning |
+| `doubao-seed-1-6` | Reasoning | 256K | 32K | ON | ON | Supports `reasoning_effort` (minimal/low/medium/high) |
 
 **Meta (Llama)**
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `llama-3.3-70b` | General | 131K | 16K | ON | ON | FC + JSON mode depend on hosting provider; max output varies (2K–16K) |
+| `llama-3.3-70b` | General | 131K | 131K | ON | ON | FC depends on hosting provider; try defaults first |
 
 <Note>
-**Max Outputの「--」について**はプロバイダーが制限を報告しなかったことを意味します。実際には、これらのモデルは通常4K～16Kの出力トークンをサポートしています。特定の値が必要な場合は、モデルの詳細設定で**Max Output Tokens**を明示的に設定してください。
+**Max Output の "--"** はプロバイダーが制限を報告していないことを意味します。実際には、これらのモデルは通常 4K～16K の出力トークンをサポートしています。特定の値が必要な場合は、モデルの詳細設定で **Max Output Tokens** を明示的に設定してください。
 </Note>
 
 <Tip>
-**診断方法：** アプリケーションログで`structured_llm_call: native_fc call raised`警告を確認してください。これらの警告の後に成功したJSON Mode抽出が続く場合、そのモデルはネイティブ関数呼び出しの恩恵を受けていません。そのモデルの**Native Function Calling**を無効にして、無駄なAPI呼び出しと構造化出力リクエストあたり約10秒のレイテンシペナルティを排除してください。
+**診断方法:** アプリケーションログで `structured_llm_call: native_fc call raised` 警告を確認してください。これらの警告の後に JSON Mode の抽出が成功している場合、そのモデルはネイティブ関数呼び出しの恩恵を受けていません。そのモデルの **Native Function Calling** を無効にして、無駄な API 呼び出しと構造化出力リクエストあたり約 10 秒のレイテンシペナルティを排除してください。
 </Tip>
 
 <Warning>
-モデルの機能はプロバイダーがAPIを更新する際に頻繁に変わります。上記の推奨事項は**2026-03-22**のデータ（UniAPI機能タグ+本番環境ランタイム検証）に基づいています。以前に機能していたモデルがエラーを返し始めた場合は、プロバイダーの変更ログで破壊的な変更を確認してください。
+モデルの機能はプロバイダーが API を更新する際に頻繁に変わります。上記の推奨事項は **2026-03-22** のデータ (UniAPI 機能タグ + 本番環境実行時検証) に基づいています。以前に機能していたモデルがエラーを返し始めた場合は、プロバイダーの変更ログで破壊的な変更を確認してください。
 </Warning>
 
 ## モデルグループ
@@ -266,7 +266,7 @@ Anthropic モデルで推論/拡張思考が有効になっている場合、温
 
 ### ロール
 
-FIM One は 3 つのモデルロールを使用します。各ロールは実行パイプラインで異なる目的を果たします:
+FIM Oneは3つのモデルロールを使用します。各ロールは実行パイプラインで異なる目的を果たします:
 
 | ロール | 用途 | 推奨事項 |
 |---|---|---|
@@ -287,21 +287,21 @@ FIM One は 3 つのモデルロールを使用します。各ロールは実行
     わかりやすい名前を入力します（例：「Production (OpenAI)」、「Budget (DeepSeek)」、「Local Dev」）。
   </Step>
   <Step title="ロールにモデルを割り当てる">
-    各ロール（General、Fast、Reasoning）について、ドロップダウンからモデルを選択します。ドロップダウンには、アクティブなプロバイダーからのすべてのアクティブなモデルが表示され、プロバイダー名でグループ化されています。ロールを未割り当てのままにすることもできます。その場合、General モデルにフォールバックします（General も未割り当ての場合は、ENV で設定されたモデルにフォールバックします）。
+    各ロール（General、Fast、Reasoning）について、ドロップダウンからモデルを選択します。ドロップダウンには、アクティブなプロバイダーのすべてのアクティブなモデルが表示され、プロバイダー名でグループ化されています。ロールを未割り当てのままにすることもできます。その場合、General モデルにフォールバックします（General も未割り当ての場合は、ENV で設定されたモデルにフォールバックします）。
   </Step>
   <Step title="保存">
-    **Create** をクリックします。グループがアクティベーション用に利用可能になります。
+    **Create** をクリックします。グループはアクティベーション可能な状態になります。
   </Step>
 </Steps>
 
 ### グループの有効化
 
-モデルグループを有効化するには、モデルページのドロップダウンまたは有効化コントロールを使用します。一度に1つのグループのみをアクティブにできます。グループを有効化すると、そのモデル割り当てがすべての新しい会話に即座に適用されます。
+モデルグループを有効化するには、モデルページのドロップダウンまたは有効化コントロールを使用します。一度に1つのグループのみを有効化できます。グループを有効化すると、そのモデル割り当てがすべての新しい会話に直ちに適用されます。
 
-現在のグループを無効化する（ENV設定されたモデルにフォールバック）には、無効化オプションを選択します。
+現在のグループを無効化する（ENV設定されたモデルにフォールバックする）には、無効化オプションを選択します。
 
 <Warning>
-アクティブなモデルグループを切り替えると、システム全体の**すべての新しい会話**に影響します。進行中の既存の会話は、開始時にアクティブだったモデルを使用し続けます。
+アクティブなモデルグループを切り替えると、**すべての新しい会話**がシステム全体で影響を受けます。進行中の既存の会話は、開始時にアクティブだったモデルを使い続けます。
 </Warning>
 
 ---
@@ -326,8 +326,8 @@ FIM One は 3 つのモデルロールを使用します。各ロールは実行
 
 - 開発環境、ステージング環境、本番環境間での設定の移行
 - チームメンバーとの既知の良好なモデルセットアップの共有
-- 変更前の設定のバックアップ
+- 変更を加える前の設定のバックアップ
 
 <Warning>
-エクスポートされた設定には、APIキーは含まれ**ません**。インポート後、各プロバイダーを編集して適切なAPIキーを入力する必要があります。
+エクスポートされた設定には、APIキーは**含まれません**。インポート後、各プロバイダーを編集して適切なAPIキーを入力する必要があります。
 </Warning>
