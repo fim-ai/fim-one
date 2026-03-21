@@ -1,0 +1,42 @@
+---
+title: "Designphilosophie"
+description: "Architektonische Entscheidungen während der DAG-Ausführungsgestaltung — was wir bewusst NICHT gebaut haben und warum."
+---
+
+Das DAG-Ausführungsmodul von FIM One wurde mit bewusster Zurückhaltung konzipiert. Mehrere Muster, die in Multi-Agent-Frameworks häufig vorkommen, wurden evaluiert und absichtlich ausgeschlossen. Diese Seite dokumentiert diese Entscheidungen und die Gründe dahinter.
+
+## Handoff — Nicht erforderlich
+
+**Muster**: Explizite Aufgabenübergabe zwischen Agenten, bei der ein Agent seine Arbeit abschließt und die Kontrolle an den nächsten Agent übergibt.
+
+**Grund für Ausschluss**: DAG-lineare Ketten decken sequenzielle Aufgabenübergaben bereits auf natürliche Weise ab. Wenn Schritt B von Schritt A abhängt, wartet der Executor auf den Abschluss von A und übergibt dann das Ergebnis von A über den Abhängigkeitsmechanismus in den Kontext von B. Dies ist strukturell gleichwertig mit einer Übergabe – erfordert aber keine separate Abstraktionsebene.
+
+Das Hinzufügen eines expliziten Handoff-Protokolls würde duplizieren, was Schrittabhängigkeiten bereits bieten, ohne zusätzliche Ausdruckskraft zu bringen.
+
+## Rückfluss — Nicht erforderlich
+
+**Muster**: Nachgelagerte Schritte geben Ergebnisse an vorgelagerte Schritte zurück zur Neubewertung (auch Backpropagation von Ergebnissen genannt).
+
+**Warum ausgeschlossen**: Die PlanAnalyzer-Neuplanungsschleife deckt diesen Anwendungsfall bereits ab. Nach Abschluss aller Schritte bewertet der Analyzer, ob das ursprüngliche Ziel erreicht wurde. Falls nicht (und das Vertrauen unter dem Stoppwert liegt), wird eine vollständige Neuplanung mit Kontext aus den Ergebnissen der vorherigen Runde ausgelöst – einschließlich dessen, was schief gelaufen ist und was gelernt wurde.
+
+Dies ist ein grobkörnigerer, aber robusterer Ansatz als Rückfluss pro Schritt. Rückfluss pro Schritt erzeugt komplexe Rückkopplungsschleifen, die schwer zu debuggen sind und zu Endlosschleifen führen können. Die Neuplanungsschleife erreicht denselben Korrektureffekt mit einem saubereren Ausführungsmodell: Planen, Ausführen, Bewerten, bei Bedarf neu planen.
+
+## Teams (Agent-Kommunikation) — Nicht erforderlich
+
+**Muster**: Mehrere spezialisierte Agenten kommunizieren während der Ausführung miteinander, verhandeln über die Übernahme von Teilaufgaben oder arbeiten an gemeinsamen Zuständen zusammen.
+
+**Warum ausgeschlossen**: DAG-Abhängigketten sind für Aufgaben mit Datenabhängigkeiten ausreichend. Wenn Schritt C Ergebnisse sowohl von Schritt A als auch von Schritt B benötigt, drücken die Abhängigkanten dies direkt aus. Schritt C erhält die Ausgaben von A und B in seinem Kontext — kein Agent-zu-Agent-Messaging-Protokoll erforderlich.
+
+Das DAG-Modell ist einfacher und vorhersehbarer als die Agent-zu-Agent-Kommunikation. Agenten müssen nicht verhandeln; der Planer bestimmt die Ausführungsstruktur im Voraus, und der Executor erzwingt den Datenfluss durch Abhängigkeitsauflösung. Dies vermeidet den Koordinationsaufwand und die Nicht-Determinismus, die Multi-Agent-Messaging mit sich bringt.
+
+## agent_hint / role_hint — Nicht erforderlich
+
+**Muster**: Ein expliziter Hinweis, der dem Executor mitteilt, welcher Typ von Agent oder Persona jeden Schritt handhaben sollte (z. B. „verwende den Recherche-Agent" oder „verwende den Coding-Agent").
+
+**Warum ausgeschlossen**: Die Kombination von drei bereits vorhandenen Feldern bietet bereits ausreichende Orientierung:
+
+- **`task`** — Die natürlichsprachige Beschreibung dessen, was der Schritt erreichen soll. Eine gut geschriebene Aufgabe signalisiert implizit die erforderliche Expertise.
+- **`tool_hint`** — Schlägt vor, welche Werkzeuge der Schritt verwenden sollte (z. B. `web_search`, `python_exec`). Dies beschränkt den Ausführungsansatz präziser als ein vages Rollenlabel.
+- **`model_hint`** — Steuert, ob der Schritt das schnelle oder das Reasoning-Modell-Tier verwendet, was die wirkungsvollste Ausführungsentscheidung ist.
+
+Das Hinzufügen von `agent_hint` oder `role_hint` würde mit diesen drei Feldern redundant sein und würde eine weitere Konfigurationsachse einführen, die das Planer-LLM richtig verstehen muss. Eine kleine Hinweis-Oberfläche zu halten reduziert Planungsfehler.

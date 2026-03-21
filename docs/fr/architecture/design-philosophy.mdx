@@ -1,0 +1,42 @@
+---
+title: "Philosophie de conception"
+description: "Décisions architecturales prises lors de la conception de l'exécution du DAG — ce que nous avons choisi de NE PAS construire, et pourquoi."
+---
+
+Le moteur d'exécution DAG de FIM One a été conçu avec une retenue délibérée. Plusieurs modèles courants dans les frameworks multi-agents ont été évalués et intentionnellement exclus. Cette page documente ces décisions et le raisonnement qui les sous-tend.
+
+## Remise — Non nécessaire
+
+**Motif** : Remise explicite de tâche entre agents, où un agent termine son travail et cède le contrôle au suivant.
+
+**Raison de l'exclusion** : Les chaînes linéaires DAG couvrent déjà naturellement la remise de tâche séquentielle. Quand l'étape B dépend de l'étape A, l'exécuteur attend que A se termine, puis transmet le résultat d'A dans le contexte de B via le mécanisme de dépendance. C'est structurellement équivalent à une remise — mais sans nécessiter une couche d'abstraction séparée.
+
+Ajouter un protocole de remise explicite dupliquerait ce que les dépendances d'étapes fournissent déjà, sans expressivité supplémentaire.
+
+## Rétroaction — Non nécessaire
+
+**Motif** : Les étapes en aval renvoyant les résultats aux étapes en amont pour une réévaluation (également appelée rétropropagation des résultats).
+
+**Raison de l'exclusion** : La boucle de re-planification du PlanAnalyzer couvre déjà ce cas d'usage. Une fois que toutes les étapes sont terminées, l'analyseur évalue si l'objectif initial a été atteint. Si ce n'est pas le cas (et que la confiance est inférieure au seuil d'arrêt), il déclenche une re-planification complète avec le contexte des résultats de la ronde précédente — y compris ce qui s'est mal passé et ce qui a été appris.
+
+Il s'agit d'une approche plus grossière mais plus robuste que la rétroaction par étape. La rétroaction par étape crée des boucles de rétroaction complexes qui sont difficiles à déboguer et peuvent entraîner des cycles infinis. La boucle de re-planification réalise le même effet correctif avec un modèle d'exécution plus propre : planifier, exécuter, évaluer, re-planifier si nécessaire.
+
+## Équipes (Communication inter-agents) — Non nécessaire
+
+**Modèle** : Plusieurs agents spécialisés communiquant entre eux pendant l'exécution, négociant la propriété des sous-tâches ou collaborant sur un état partagé.
+
+**Pourquoi exclu** : Les chaînes de dépendances DAG sont suffisantes pour les tâches avec dépendances de données. Quand l'étape C a besoin des résultats à la fois de l'étape A et de l'étape B, les arêtes de dépendance expriment cela directement. L'étape C reçoit les sorties de A et B dans son contexte — aucun protocole de messagerie inter-agents requis.
+
+Le modèle DAG est plus simple et plus prévisible que la communication agent-à-agent. Les agents n'ont pas besoin de négocier ; le planificateur détermine la structure d'exécution à l'avance, et l'exécuteur applique le flux de données par la résolution des dépendances. Cela évite la surcharge de coordination et la non-déterminisme que la messagerie multi-agents introduit.
+
+## agent_hint / role_hint — Non nécessaire
+
+**Motif** : Un indice explicite indiquant à l'exécuteur quel type d'agent ou de persona devrait gérer chaque étape (par exemple, « utiliser l'agent chercheur » ou « utiliser l'agent codeur »).
+
+**Pourquoi exclu** : La combinaison de trois champs existants fournit déjà des conseils suffisants :
+
+- **`task`** — La description en langage naturel de ce que l'étape doit accomplir. Une tâche bien rédigée signale implicitement l'expertise requise.
+- **`tool_hint`** — Suggère quels outils l'étape devrait utiliser (par exemple, `web_search`, `python_exec`). Cela contraint l'approche d'exécution de manière plus précise qu'une étiquette de rôle vague.
+- **`model_hint`** — Contrôle si l'étape utilise le modèle rapide ou le niveau de raisonnement, ce qui est la décision d'exécution la plus impactante.
+
+Ajouter `agent_hint` ou `role_hint` serait redondant avec ces trois champs et introduirait un autre axe de configuration que le LLM planificateur doit bien comprendre. Maintenir la surface des indices réduite diminue les erreurs de planification.
