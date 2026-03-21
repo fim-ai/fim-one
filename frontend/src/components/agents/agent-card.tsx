@@ -76,6 +76,12 @@ export function AgentCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem asChild>
+                <Link href={`/new?agent=${agent.id}`}>
+                  <MessageSquare className="h-4 w-4" />
+                  {t("startChat")}
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href={`/agents/${agent.id}`}>
                   <Pencil className="h-4 w-4" />
                   {tc("edit")}
@@ -206,20 +212,6 @@ export function AgentCard({
         {agent.description || t("noDescription")}
       </p>
 
-      {/* Start Chat CTA — published owner agents or any non-owner shared agent */}
-      {(isOrgResource || !isOwner) && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3 w-full gap-1.5 text-xs h-7"
-          asChild
-        >
-          <Link href={`/new?agent=${agent.id}`}>
-            <MessageSquare className="h-3 w-3" />
-            {t("startChat")}
-          </Link>
-        </Button>
-      )}
     </div>
   )
 }

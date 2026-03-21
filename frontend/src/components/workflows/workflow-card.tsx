@@ -8,7 +8,6 @@ import {
   Clock,
   Copy,
   Download,
-  Eye,
   GitBranch,
   Globe,
   GlobeLock,
@@ -280,18 +279,6 @@ export function WorkflowCard({
         </div>
       )}
 
-      {/* CTA */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="mt-auto w-full gap-1.5 text-xs h-7"
-        asChild
-      >
-        <Link href={`/workflows/${workflow.id}`}>
-          {isOwner ? <Pencil className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-          {isOwner ? tc("edit") : tc("view")}
-        </Link>
-      </Button>
     </div>
   )
 }
