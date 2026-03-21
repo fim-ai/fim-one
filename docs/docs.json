@@ -105,10 +105,22 @@
           },
           {
             "tab": "API Reference",
-            "openapi": "openapi.json",
-            "pages": [
-              "api/overview",
-              "api/authentication"
+            "groups": [
+              {
+                "group": "Overview",
+                "icon": "book",
+                "pages": [
+                  "api/overview",
+                  "api/authentication"
+                ]
+              },
+              {
+                "group": "Endpoints",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
+              }
             ]
           },
           {
