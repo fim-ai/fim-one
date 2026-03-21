@@ -62,7 +62,7 @@
   "thinking": "Thinking",
   "reasoning": "Reasoning",
   "result": "Result",
-  "followUp": "Follow up",
+  "followUp": "Suggestions",
   "stepsCompleted": "{completed}/{total} step completed",
   "stepsCompletedPlural": "{completed}/{total} steps completed",
   "roundCount": "{count} rounds",

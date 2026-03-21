@@ -61,7 +61,7 @@
   "thinking": "Réflexion",
   "reasoning": "Raisonnement",
   "result": "Résultat",
-  "followUp": "Suivi",
+  "followUp": "Suggestions",
   "stepsCompleted": "{completed}/{total} étape complétée",
   "stepsCompletedPlural": "{completed}/{total} étapes complétées",
   "roundCount": "{count} tours",

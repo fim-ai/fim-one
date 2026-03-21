@@ -233,19 +233,18 @@ class DAGPlanner:
         return messages
 
     @staticmethod
-    def _dict_to_steps(data: dict[str, Any]) -> list[PlanStep]:
+    def _dict_to_steps(data: dict[str, Any]) -> list[PlanStep] | None:
         """Transform a raw dict into a list of ``PlanStep`` objects.
 
-        Used as ``parse_fn`` for :func:`structured_llm_call`.
+        Used as ``parse_fn`` for :func:`structured_llm_call`.  Returns
+        ``None`` when the data is unparseable so the degradation chain
+        in ``structured_llm_call`` can continue to the next level.
 
         Args:
             data: Parsed JSON dict from the LLM.
 
         Returns:
-            A list of plan steps.
-
-        Raises:
-            ValueError: If the dict does not contain a ``steps`` array.
+            A list of plan steps, or ``None`` if the data is malformed.
         """
         raw_steps = data.get("steps")
         if not isinstance(raw_steps, list):
@@ -261,24 +260,30 @@ class DAGPlanner:
                     raw_steps = parsed
                 elif isinstance(parsed, dict) and ("id" in parsed or "task" in parsed):
                     raw_steps = [parsed]
+                elif "id" in data and "task" in data:
+                    # Flattened step: LLM put step fields at top level alongside garbage 'steps'
+                    logger.warning(
+                        "Malformed 'steps' string (len=%d), but found flattened step fields — recovering",
+                        len(raw_steps),
+                    )
+                    raw_steps = [data]
                 else:
-                    logger.error(
-                        "Failed to parse 'steps' string (len=%d): %.500s",
+                    logger.warning(
+                        "Failed to parse 'steps' string (len=%d): %.500s — returning None for retry",
                         len(raw_steps),
                         raw_steps,
                     )
-                    raise ValueError(
-                        f"LLM 'steps' is a string that did not parse to a valid array "
-                        f"(len={len(raw_steps)}). Got: {raw_steps[:200]!r}"
-                    )
+                    return None
             elif "id" in data and "task" in data:
                 # Entire response is a single step (no "steps" wrapper)
                 raw_steps = [data]
             else:
-                raise ValueError(
-                    f"LLM 'steps' is not an array (type={type(raw_steps).__name__}). "
-                    f"Got keys: {list(data.keys())}"
+                logger.warning(
+                    "LLM 'steps' is not an array (type=%s, keys=%s) — returning None for retry",
+                    type(raw_steps).__name__,
+                    list(data.keys()),
                 )
+                return None
 
         _VALID_MODEL_HINTS = {"fast", "reasoning"}
 

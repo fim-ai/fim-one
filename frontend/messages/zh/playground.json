@@ -61,7 +61,7 @@
   "thinking": "思考中",
   "reasoning": "推理",
   "result": "结果",
-  "followUp": "后续",
+  "followUp": "建议",
   "stepsCompleted": "{completed}/{total} 步已完成",
   "stepsCompletedPlural": "{completed}/{total} 步已完成",
   "roundCount": "{count} 轮",

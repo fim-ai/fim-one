@@ -11,18 +11,21 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Ajouté
 
-- **Téléchargement de pièces jointes** — Les cartes de pièces jointes dans les messages de chat sont maintenant cliquables pour télécharger le fichier original via une récupération authentifiée. Un indicateur d'icône de téléchargement et un état de survol ont été ajoutés pour la découverte.
-- **Traitement intelligent des documents (Vision-Aware) - élément de feuille de route** — Ajout d'une fonctionnalité prévue pour la gestion adaptative des documents en fonction des capacités de vision du modèle (trois niveaux : vision-first, hybride, texte uniquement).
+- **Tableau de compatibilité de sortie structurée** dans la documentation des modèles — Affiche les fournisseurs qui prennent en charge l'appel de fonction natif, le mode JSON et les évaluations de fiabilité de la planification.
+- **Téléchargement de pièces jointes** — Les cartes de pièces jointes dans les messages de chat sont maintenant cliquables pour télécharger le fichier original via une récupération authentifiée. L'icône de téléchargement et l'état de survol ont été ajoutés pour la découverte.
+- **Élément de feuille de route Traitement intelligent des documents (Vision-Aware)** — Ajout d'une fonctionnalité prévue pour la gestion adaptative des documents en fonction des capacités de vision du modèle (trois niveaux : vision-first, hybride, texte uniquement).
 
 ### Modifié
 
 - **Pipeline d'ancrage RAG** — Pipeline en trois étapes : récupération, extraction de citations et notation de confiance. Le score de confiance est la moyenne des scores de récupération des 3 meilleures unités de preuve.
 
-### Corrigé
+### Corrections
 
-- **Disposition de la carte d'étape DAG** — Redessiné `StepProgressCard` pour que le texte de la tâche s'enroule sous le badge d'étape au lieu de se tronquer sur une seule ligne. Les badges d'outil dans les nœuds d'étape s'affichent désormais uniquement quand aucun `tools_used` n'existe mais que `tool_hint` est présent, évitant un affichage redondant.
-- **Contournement du propriétaire du serveur MCP pour allow_fallback** — Le propriétaire du serveur n'est plus bloqué par la restriction `allow_fallback=False`. Auparavant, même le créateur d'un serveur MCP pouvait être ignoré si `allow_fallback=False` était défini ; désormais, seuls les utilisateurs non-propriétaires sans identifiants sont exclus.
-- **Validation de la clé API du fournisseur de modèle** — La création d'un fournisseur non-openai-compatible nécessite désormais une clé API avec validation d'erreur en ligne, indicateur d'astérisque requis et attribut d'accessibilité `aria-invalid` approprié.
+- **Chaîne de dégradation de sortie structurée** — Le fallback à 3 niveaux (FC natif → mode JSON → extraction de texte brut) traverse maintenant correctement tous les niveaux quand un modèle produit du JSON malformé. Auparavant, il s'arrêtait au niveau 2 avec une `ValueError`.
+- **Message d'échec de planification DAG** — Les échecs de planification affichent maintenant un message bilingue convivial suggérant un changement de modèle au lieu d'une erreur de pipeline brute.
+- **Disposition de la carte d'étape DAG** — `StepProgressCard` a été repensée pour que le texte de la tâche s'enroule sous le badge d'étape au lieu de se tronquer sur une seule ligne. Les badges d'outil dans les nœuds d'étape s'affichent maintenant uniquement quand aucun `tools_used` n'existe mais que `tool_hint` est présent, évitant un affichage redondant.
+- **Contournement du propriétaire du serveur MCP pour allow_fallback** — Le propriétaire du serveur n'est plus bloqué par la restriction `allow_fallback=False`. Auparavant, même le créateur d'un serveur MCP pouvait être ignoré si `allow_fallback=False` était défini ; maintenant seuls les utilisateurs non-propriétaires sans identifiants sont exclus.
+- **Validation de la clé API du fournisseur de modèle** — La création d'un fournisseur non-compatible-openai nécessite maintenant une clé API avec validation d'erreur en ligne, indicateur d'astérisque obligatoire et attribut d'accessibilité `aria-invalid` approprié.
 
 ## [v0.8] - 2026-03-20
 

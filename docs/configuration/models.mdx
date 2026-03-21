@@ -34,6 +34,34 @@ If `FAST_LLM_MODEL` is not set, it falls back to `LLM_MODEL`. For production dep
 
 ---
 
+## Structured Output Compatibility
+
+FIM One's DAG planner needs the model to return valid structured JSON. Internally, it tries three extraction levels in order:
+
+1. **Native Function Calling** — forces the model to output JSON matching a schema via the tool-call API. Most reliable.
+2. **JSON Mode** — requests `response_format: json_object`. Guarantees valid JSON, but does not enforce schema compliance.
+3. **Plain Text Extraction** — parses JSON from free-form text as a last resort.
+
+Models that support Level 1 (native FC with forced `tool_choice`) give the best planning reliability. If a model only reaches Level 2, its output quality depends on how well it follows prompt instructions — weaker models may produce valid JSON that doesn't match the expected structure.
+
+| Provider | Forced Function Calling | JSON Mode | Planning Reliability |
+|---|---|---|---|
+| **OpenAI** (GPT-5.x, o3) | ✅ Full support | ✅ | ⭐⭐⭐ Excellent |
+| **Anthropic** (Claude 4.x) | ⚠️ Conflicts with thinking mode | ✅ | ⭐⭐⭐ Excellent (strong instruction following compensates) |
+| **Google Gemini** (2.5/3.x) | ✅ Full support | ✅ | ⭐⭐⭐ Excellent |
+| **Mistral** | ✅ Full support | ✅ | ⭐⭐ Good |
+| **DeepSeek** (V3.2) | ⚠️ Unstable | ✅ | ⭐⭐ Good |
+| **Qwen** (3.x) | ⚠️ Partial | ✅ | ⭐⭐ Good |
+| **Kimi** (K2.5) | ❌ Not supported | ✅ | ⭐ Fair — may produce malformed plans |
+| **ChatGLM** (GLM-5) | ⚠️ Partial | ✅ | ⭐ Fair |
+| **Local (Ollama)** | Varies by model | Varies | ⭐ Fair — 32B+ recommended |
+
+<Tip>
+If you see the error "failed to generate a valid task plan", the model's structured output capability is insufficient for DAG planning. Switch your **Main LLM** to a model rated ⭐⭐⭐ or ⭐⭐ above, or disable DAG mode and use the simpler ReAct agent instead.
+</Tip>
+
+---
+
 ## Provider Details
 
 ### OpenAI

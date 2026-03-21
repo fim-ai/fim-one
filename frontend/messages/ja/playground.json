@@ -61,7 +61,7 @@
   "thinking": "思考中",
   "reasoning": "推論",
   "result": "結果",
-  "followUp": "フォローアップ",
+  "followUp": "提案",
   "stepsCompleted": "{completed}/{total}ステップ完了",
   "stepsCompletedPlural": "{completed}/{total}ステップ完了",
   "roundCount": "{count}ラウンド",

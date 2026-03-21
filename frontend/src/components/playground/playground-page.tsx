@@ -1569,8 +1569,9 @@ function PlaygroundContent({
                   onStepClick={scrollToStep}
                 />
               ) : (
-                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                  {t("waitingForPlan")}
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground/60 select-none">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary/40" />
+                  <span className="text-[10px] font-medium tracking-widest uppercase">{t("waitingForPlan")}</span>
                 </div>
               )}
             </RightSidebar>

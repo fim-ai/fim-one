@@ -48,6 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.model import BaseLLM
+from fim_one.core.model.structured import StructuredOutputError
 from fim_one.core.model.types import ChatMessage
 from fim_one.core.model.usage import UsageSummary, UsageTracker
 from fim_one.core.planner import (
@@ -3184,6 +3185,25 @@ async def dag_endpoint(
                     except Exception:
                         logger.warning("Failed to persist fast LLM tokens", exc_info=True)
 
+            yield _sse("end", {})
+        except StructuredOutputError as exc:
+            logger.warning("Structured output failed for model %s: %s", getattr(llm, 'model_id', '?'), exc)
+            elapsed = round(time.time() - t0, 2)
+            yield _sse(
+                "done",
+                {
+                    "answer": (
+                        "The current planning model failed to generate a valid task plan after multiple attempts. "
+                        "This usually means the model's structured output capability is insufficient. "
+                        "Please try switching to a more capable planning model (e.g. GPT-4o, Claude).\n\n"
+                        "当前规划模型多次尝试后仍无法生成有效的任务计划。"
+                        "这通常意味着该模型的结构化输出能力不足，建议更换为更强的规划模型（如 GPT-4o、Claude）。"
+                    ),
+                    "achieved": False,
+                    "confidence": 0.0,
+                    "elapsed": elapsed,
+                },
+            )
             yield _sse("end", {})
         except Exception as exc:
             logger.exception("DAG pipeline failed")

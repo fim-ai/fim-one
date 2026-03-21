@@ -188,13 +188,18 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
       {/* Planning spinner */}
       {currentPhase === "planning" && !planSteps && (
         <Card className="border-border py-4">
-          <CardContent className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="text-sm shiny-text">
-              {currentRound > 1
-                ? t("replanningRound", { round: currentRound })
-                : t("planningSteps")}
-            </span>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-sm">
+                {currentRound > 1
+                  ? t("replanningRound", { round: currentRound })
+                  : t("planningSteps")}
+              </span>
+            </div>
+            <div className="w-full h-0.5 overflow-hidden rounded-full">
+              <div className="h-full bg-primary/40 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -202,11 +207,16 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
       {/* Re-planning spinner (between analyze and next planning:start) */}
       {currentPhase === "replanning" && (
         <Card className="border-border py-4">
-          <CardContent className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="text-sm shiny-text">
-              {t("replanning")}
-            </span>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-sm">
+                {t("replanning")}
+              </span>
+            </div>
+            <div className="w-full h-0.5 overflow-hidden rounded-full">
+              <div className="h-full bg-primary/40 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -234,9 +244,14 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
       {/* Analysis phase — spinner while waiting, then full card */}
       {currentPhase === "analyzing" && !analysisPhase && (
         <Card className="border-purple-500/20 py-4">
-          <CardContent className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
-            <span className="text-sm shiny-text">{t("analyzingResults")}</span>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+              <span className="text-sm">{t("analyzingResults")}</span>
+            </div>
+            <div className="w-full h-0.5 overflow-hidden rounded-full">
+              <div className="h-full bg-purple-500/40 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
+            </div>
           </CardContent>
         </Card>
       )}

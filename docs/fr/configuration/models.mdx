@@ -34,6 +34,32 @@ Si `FAST_LLM_MODEL` n'est pas défini, il revient à `LLM_MODEL`. Pour les dépl
 
 ---
 
+## Compatibilité de la sortie structurée
+
+Le planificateur DAG de FIM One nécessite que le modèle retourne un JSON structuré valide. En interne, il essaie trois niveaux d'extraction dans l'ordre :
+
+1. **Appel de fonction natif** — force le modèle à produire un JSON correspondant à un schéma via l'API d'appel d'outil. Le plus fiable.
+2. **Mode JSON** — demande `response_format: json_object`. Garantit un JSON valide, mais n'impose pas la conformité au schéma.
+3. **Extraction en texte brut** — analyse le JSON à partir de texte libre en dernier recours.
+
+Les modèles qui supportent le niveau 1 (appel de fonction natif avec `tool_choice` forcé) offrent la meilleure fiabilité de planification. Si un modèle n'atteint que le niveau 2, la qualité de sa sortie dépend de sa capacité à suivre les instructions du prompt — les modèles plus faibles peuvent produire un JSON valide qui ne correspond pas à la structure attendue.
+
+| Fournisseur | Appel de fonction forcé | Mode JSON | Fiabilité de planification |
+|---|---|---|---|
+| **OpenAI** (GPT-5.x, o3) | ✅ Support complet | ✅ | ⭐⭐⭐ Excellent |
+| **Anthropic** (Claude 4.x) | ⚠️ Conflits avec le mode réflexif | ✅ | ⭐⭐⭐ Excellent (le suivi d'instructions fort compense) |
+| **Google Gemini** (2.5/3.x) | ✅ Support complet | ✅ | ⭐⭐⭐ Excellent |
+| **Mistral** | ✅ Support complet | ✅ | ⭐⭐ Bon |
+| **DeepSeek** (V3.2) | ⚠️ Instable | ✅ | ⭐⭐ Bon |
+| **Qwen** (3.x) | ⚠️ Partiel | ✅ | ⭐⭐ Bon |
+| **Kimi** (K2.5) | ❌ Non supporté | ✅ | ⭐ Acceptable — peut produire des plans malformés |
+| **ChatGLM** (GLM-5) | ⚠️ Partiel | ✅ | ⭐ Acceptable |
+| **Local (Ollama)** | Varie selon le modèle | Varie | ⭐ Acceptable — 32B+ recommandé |
+
+<Tip>
+Si vous voyez l'erreur « failed to generate a valid task plan », la capacité de sortie structurée du modèle est insuffisante pour la planification DAG. Changez votre **LLM principal** vers un modèle noté ⭐⭐⭐ ou ⭐⭐ ou plus, ou désactivez le mode DAG et utilisez plutôt l'agent ReAct plus simple.
+</Tip>
+
 ## Détails du fournisseur
 
 ### OpenAI

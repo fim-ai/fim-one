@@ -61,7 +61,7 @@
   "thinking": "생각 중",
   "reasoning": "추론",
   "result": "결과",
-  "followUp": "후속",
+  "followUp": "제안",
   "stepsCompleted": "{completed}/{total}개 단계 완료됨",
   "stepsCompletedPlural": "{completed}/{total}개 단계 완료됨",
   "roundCount": "{count}라운드",

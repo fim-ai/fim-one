@@ -100,16 +100,19 @@ def _transform(
 ) -> T | None:
     """Apply *parse_fn* if provided.
 
-    ``ValueError`` from *parse_fn* propagates immediately (structural
-    validation error). Other exceptions are caught so the next extraction
-    level can be attempted.
+    All exceptions from *parse_fn* are caught so the degradation chain
+    in ``structured_llm_call`` can continue to the next level.  A
+    ``parse_fn`` that cannot handle the data should return ``None``
+    (preferred) or raise any exception — either way the next extraction
+    level will be attempted.
     """
     if parse_fn is None:
         return data  # type: ignore[return-value]
     try:
         return parse_fn(data)
     except ValueError:
-        raise
+        logger.warning("parse_fn raised ValueError on data: %.300s", data, exc_info=True)
+        return None
     except Exception:
         logger.warning("parse_fn raised on data: %.200s", data, exc_info=True)
         return None
@@ -172,7 +175,8 @@ async def _call_llm(
         return data, content, result.usage
 
     except Exception:
-        logger.debug(
+        log_fn = logger.warning if level == "native_fc" else logger.debug
+        log_fn(
             "structured_llm_call: %s call raised",
             level,
             exc_info=True,
@@ -210,7 +214,8 @@ async def structured_llm_call(
         function_name: Name for the virtual function (used in native FC).
         parse_fn: Optional transform from raw dict to domain object ``T``.
             If ``None``, the raw dict is returned as ``value``.
-            ``ValueError`` from *parse_fn* propagates immediately.
+            Failures in *parse_fn* (including ``ValueError``) are caught
+            so the degradation chain can continue.
         regex_fallback: Optional extractor invoked at the plain-text level
             when ``extract_json`` fails.
         default_value: Returned when **all** levels fail.  If not provided,
@@ -223,8 +228,6 @@ async def structured_llm_call(
 
     Raises:
         StructuredOutputError: When all levels fail and no *default_value*.
-        ValueError: When *parse_fn* raises ``ValueError`` (structural
-            validation error — propagated immediately).
     """
     abilities = llm.abilities
     usage: dict[str, int] = {}

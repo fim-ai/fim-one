@@ -22,9 +22,9 @@ export function SuggestedFollowups({ suggestions, onSelect, isLoading }: Suggest
       <div className="flex flex-wrap gap-2">
         {isLoading && !suggestions?.length ? (
           <>
-            <div className="h-8 w-[140px] rounded-full border border-border/60 bg-muted animate-pulse" />
-            <div className="h-8 w-[180px] rounded-full border border-border/60 bg-muted animate-pulse" style={{ animationDelay: "0.15s" }} />
-            <div className="h-8 w-[120px] rounded-full border border-border/60 bg-muted animate-pulse" style={{ animationDelay: "0.3s" }} />
+            <div className="h-8 w-[220px] rounded-full border border-border/60 bg-muted animate-pulse" />
+            <div className="h-8 w-[300px] rounded-full border border-border/60 bg-muted animate-pulse" style={{ animationDelay: "0.15s" }} />
+            <div className="h-8 w-[180px] rounded-full border border-border/60 bg-muted animate-pulse" style={{ animationDelay: "0.3s" }} />
           </>
         ) : (
           suggestions.map((suggestion, i) => (

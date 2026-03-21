@@ -11,8 +11,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **Dateianhang-Download** — Dateianhang-Karten in Chat-Nachrichten sind nun anklickbar, um die Originaldatei über authentifizierten Abruf herunterzuladen. Download-Symbol-Indikator und Hover-Status wurden für bessere Erkennbarkeit hinzugefügt.
-- **Intelligent Document Processing (Vision-Aware) Roadmap-Element** — Geplante Funktion für adaptive Dokumentverarbeitung basierend auf den Vision-Fähigkeiten des Modells hinzugefügt (drei Stufen: Vision-First, Hybrid, Nur-Text).
+- **Tabelle zur Kompatibilität strukturierter Ausgaben** in der Modelldokumentation — Zeigt, welche Anbieter natives Function Calling, JSON-Modus und Zuverlässigkeitsbewertungen für Planung unterstützen.
+- **Download von Dateianhängen** — Dateianhang-Karten in Chat-Nachrichten sind jetzt anklickbar, um die Originaldatei über authentifiziertes Abrufen herunterzuladen. Download-Symbol-Indikator und Hover-Status wurden für bessere Erkennbarkeit hinzugefügt.
+- **Intelligente Dokumentenverarbeitung (Vision-Aware) Roadmap-Element** — Geplante Funktion für adaptive Dokumentenbehandlung basierend auf Vision-Fähigkeiten des Modells hinzugefügt (drei Ebenen: Vision-First, Hybrid, Nur-Text).
 
 ### Geändert
 
@@ -20,9 +21,11 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **DAG-Schrittkartenleayout** — `StepProgressCard` wurde neu gestaltet, sodass der Aufgabentext unter dem Schrittabzeichen umgebrochen wird, anstatt auf einer einzelnen Zeile gekürzt zu werden. Werkzeugabzeichen in Schrittknoten werden jetzt nur angezeigt, wenn keine `tools_used` vorhanden sind, aber `tool_hint` vorhanden ist, um redundante Anzeige zu vermeiden.
-- **MCP-Server-Eigentümer-Umgehung für allow_fallback** — Der Server-Eigentümer wird nicht mehr durch die Einschränkung `allow_fallback=False` blockiert. Zuvor konnte sogar der Ersteller eines MCP-Servers übersprungen werden, wenn `allow_fallback=False` gesetzt war; jetzt werden nur Nicht-Eigentümer ohne Anmeldedaten ausgeschlossen.
-- **Validierung des API-Schlüssels des Modellanbieters** — Das Erstellen eines nicht-openai-kompatiblen Anbieters erfordert jetzt einen API-Schlüssel mit Inline-Validierungsfehlern, erforderlichem Sternchen-Indikator und dem richtigen `aria-invalid`-Barrierefreiheitsattribut.
+- **Strukturierte Ausgabe-Degradationskette** — Die 3-stufige Fallback-Logik (natives FC → JSON-Modus → Nur-Text-Extraktion) durchläuft nun alle Stufen ordnungsgemäß, wenn ein Modell malformed JSON erzeugt. Zuvor wurde auf Stufe 2 mit einem `ValueError` abgebrochen.
+- **DAG-Planungsfehler-Nachricht** — Planungsfehler zeigen nun eine benutzerfreundliche zweisprachige Nachricht, die einen Modellwechsel vorschlägt, anstelle eines rohen Pipeline-Fehlers.
+- **DAG-Schrittkartenformat** — `StepProgressCard` wurde überarbeitet, sodass der Aufgabentext unter dem Schritt-Badge umbrochen wird, anstatt auf einer einzelnen Zeile abgeschnitten zu werden. Tool-Badges in Schrittknoten werden nun nur angezeigt, wenn keine `tools_used` vorhanden sind, aber `tool_hint` vorhanden ist, um redundante Anzeige zu vermeiden.
+- **MCP-Server-Eigentümer-Umgehung für allow_fallback** — Der Server-Eigentümer wird nicht länger durch die `allow_fallback=False`-Einschränkung blockiert. Zuvor konnte selbst der Ersteller eines MCP-Servers übersprungen werden, wenn `allow_fallback=False` gesetzt war; nun werden nur Nicht-Eigentümer ohne Anmeldedaten ausgeschlossen.
+- **Validierung des API-Schlüssels des Modellanbieters** — Das Erstellen eines nicht-openai-kompatiblen Anbieters erfordert nun einen API-Schlüssel mit Inline-Validierungsfehler, erforderlichem Sternchen-Indikator und ordnungsgemäßem `aria-invalid`-Barrierefreiheitsattribut.
 
 ## [v0.8] - 2026-03-20
 

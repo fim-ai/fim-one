@@ -314,8 +314,13 @@ class TestParseFn:
         assert result.value.text == "42"
         assert result.raw_data == {"answer": "42"}
 
-    async def test_value_error_propagates(self) -> None:
-        """ValueError from parse_fn propagates immediately."""
+    async def test_value_error_triggers_degradation(self) -> None:
+        """ValueError from parse_fn triggers degradation, not immediate propagation.
+
+        When parse_fn raises ValueError, _transform catches it and returns None,
+        allowing the degradation chain to continue to the next level.  If all
+        levels fail, StructuredOutputError is raised.
+        """
 
         def bad_parse(d: dict) -> dict:
             raise ValueError("bad data")
@@ -330,7 +335,7 @@ class TestParseFn:
                 ),
             ],
         )
-        with pytest.raises(ValueError, match="bad data"):
+        with pytest.raises(StructuredOutputError):
             await structured_llm_call(
                 llm,
                 [ChatMessage(role="user", content="test")],

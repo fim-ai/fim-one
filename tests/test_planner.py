@@ -310,7 +310,7 @@ class TestDAGPlannerPlan:
             ]
         )
         planner = DAGPlanner(llm=llm)
-        with pytest.raises(ValueError, match="'steps' is not an array"):
+        with pytest.raises(ValueError, match="extraction levels failed"):
             await planner.plan("goal")
 
     async def test_plan_rejects_cyclic_plan(self) -> None:
