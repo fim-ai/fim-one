@@ -195,7 +195,7 @@ Controls the automatic context window management that prevents conversations fro
 | `EMBEDDING_DIMENSION` | No | `1024` | Embedding vector dimension |
 | `EMBEDDING_API_KEY` | No | *(uses `JINA_API_KEY`)* | Override API key for a different embedding provider |
 | `EMBEDDING_BASE_URL` | No | `https://api.jina.ai/v1` | Override base URL for a different embedding provider |
-| `RETRIEVAL_MODE` | No | `grounding` | `grounding` (full pipeline with citations/conflicts/confidence) or `simple` (basic RAG) |
+| `RETRIEVAL_MODE` | No | `grounding` | `grounding` (full pipeline with citations and confidence scoring) or `simple` (basic RAG) |
 | `RERANKER_MODEL` | No | `jina-reranker-v2-base-multilingual` | Reranker model identifier |
 | `RERANKER_PROVIDER` | No | `jina` | Reranker provider: `jina` / `cohere` / `openai` |
 | `COHERE_API_KEY` | No | — | Cohere API key (auto-selects Cohere reranker when set) |

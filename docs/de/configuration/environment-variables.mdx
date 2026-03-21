@@ -193,14 +193,14 @@ Steuert die automatische Verwaltung des Kontextfensters, die verhindert, dass Ge
 | `EMBEDDING_DIMENSION` | Nein | `1024` | Dimension des Embedding-Vektors |
 | `EMBEDDING_API_KEY` | Nein | *(verwendet `JINA_API_KEY`)* | API-Schlüssel für einen anderen Embedding-Anbieter überschreiben |
 | `EMBEDDING_BASE_URL` | Nein | `https://api.jina.ai/v1` | Basis-URL für einen anderen Embedding-Anbieter überschreiben |
-| `RETRIEVAL_MODE` | Nein | `grounding` | `grounding` (vollständige Pipeline mit Zitaten/Konflikten/Konfidenz) oder `simple` (einfaches RAG) |
+| `RETRIEVAL_MODE` | Nein | `grounding` | `grounding` (vollständige Pipeline mit Zitaten und Konfidenzscoring) oder `simple` (einfaches RAG) |
 | `RERANKER_MODEL` | Nein | `jina-reranker-v2-base-multilingual` | Reranker-Modellkennung |
 | `RERANKER_PROVIDER` | Nein | `jina` | Reranker-Anbieter: `jina` / `cohere` / `openai` |
-| `COHERE_API_KEY` | Nein | — | Cohere API-Schlüssel (wählt automatisch Cohere-Reranker aus, wenn gesetzt) |
-| `COHERE_RERANKER_MODEL` | Nein | `rerank-multilingual-v3.0` | Cohere-Reranker-Modell |
+| `COHERE_API_KEY` | Nein | — | Cohere API-Schlüssel (wählt automatisch Cohere Reranker aus, wenn gesetzt) |
+| `COHERE_RERANKER_MODEL` | Nein | `rerank-multilingual-v3.0` | Cohere Reranker-Modell |
 | `VECTOR_STORE_DIR` | Nein | `./data/vector_store` | Verzeichnis für LanceDB-Vektorspeicherdaten |
 
-> Embedding wird **empfohlen** für Wissensdatenbank-Funktionen. Reranker ist **optional** — die Suche funktioniert ohne ihn mit Fusion-Scoring.
+> Embedding wird **empfohlen** für Wissensdatenbank-Funktionen. Reranker ist **optional** — die Suche funktioniert auch ohne ihn mit Fusion-Scoring.
 
 ## Code-Ausführung
 

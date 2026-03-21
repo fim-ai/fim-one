@@ -191,7 +191,7 @@ Contrôle la gestion automatique de la fenêtre de contexte qui empêche les con
 | `EMBEDDING_DIMENSION` | Non | `1024` | Dimension du vecteur d'embedding |
 | `EMBEDDING_API_KEY` | Non | *(utilise `JINA_API_KEY`)* | Clé API de remplacement pour un fournisseur d'embedding différent |
 | `EMBEDDING_BASE_URL` | Non | `https://api.jina.ai/v1` | URL de base de remplacement pour un fournisseur d'embedding différent |
-| `RETRIEVAL_MODE` | Non | `grounding` | `grounding` (pipeline complet avec citations/conflits/confiance) ou `simple` (RAG basique) |
+| `RETRIEVAL_MODE` | Non | `grounding` | `grounding` (pipeline complet avec citations et scoring de confiance) ou `simple` (RAG basique) |
 | `RERANKER_MODEL` | Non | `jina-reranker-v2-base-multilingual` | Identifiant du modèle de reranking |
 | `RERANKER_PROVIDER` | Non | `jina` | Fournisseur de reranking : `jina` / `cohere` / `openai` |
 | `COHERE_API_KEY` | Non | — | Clé API Cohere (sélectionne automatiquement le reranker Cohere lorsqu'elle est définie) |
@@ -199,8 +199,6 @@ Contrôle la gestion automatique de la fenêtre de contexte qui empêche les con
 | `VECTOR_STORE_DIR` | Non | `./data/vector_store` | Répertoire pour les données du magasin vectoriel LanceDB |
 
 > L'embedding est **recommandé** pour les fonctionnalités de base de connaissances. Le reranking est **optionnel** — la recherche fonctionne sans lui en utilisant le scoring de fusion.
-
----
 
 ## Exécution de Code
 

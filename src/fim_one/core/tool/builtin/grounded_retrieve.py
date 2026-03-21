@@ -10,7 +10,7 @@ from fim_one.core.tool.base import BaseTool
 
 
 class GroundedRetrieveTool(BaseTool):
-    """Evidence-grounded retrieval with claim-level citations, conflict detection, and confidence scoring.
+    """Evidence-grounded retrieval with claim-level citations and confidence scoring.
 
     When bound to specific knowledge bases (via ``kb_ids``), the tool does not
     require the caller to specify them explicitly — this is how agent-level
@@ -47,8 +47,8 @@ class GroundedRetrieveTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Evidence-grounded retrieval with claim-level citations, "
-            "conflict detection, and confidence scoring."
+            "Evidence-grounded retrieval with claim-level citations "
+            "and confidence scoring."
         )
 
     @property
@@ -212,16 +212,6 @@ def _format_grounded_result(
             if len(unit.chunk.content) > 200:
                 preview += "..."
             lines.append(f'  > "{preview}"')
-        lines.append("")
-
-    if result.conflicts:
-        lines.append("**Conflicts detected:**")
-        for conflict in result.conflicts:
-            lines.append(
-                f"  - {conflict.claim_a.source_name} vs {conflict.claim_b.source_name}:"
-            )
-            lines.append(f'    A: "{conflict.claim_a.text}"')
-            lines.append(f'    B: "{conflict.claim_b.text}"')
         lines.append("")
 
     return "\n".join(lines)

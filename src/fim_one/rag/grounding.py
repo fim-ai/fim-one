@@ -54,20 +54,10 @@ class EvidenceUnit:
 
 
 @dataclass
-class Conflict:
-    """Two citations from different documents that may contradict each other."""
-
-    claim_a: Citation
-    claim_b: Citation
-    similarity: float = 0.0
-
-
-@dataclass
 class GroundedResult:
     """Final output of the grounding pipeline."""
 
     evidence: list[EvidenceUnit] = field(default_factory=list)
-    conflicts: list[Conflict] = field(default_factory=list)
     confidence: float = 0.0
     total_sources: int = 0
     kb_ids: list[str] = field(default_factory=list)
@@ -81,7 +71,6 @@ class GroundedResult:
 _DEFAULT_CONFIG: dict[str, Any] = {
     "top_k": 10,
     "min_score": 0.3,
-    "conflict_threshold": 0.85,
     "citation_mode": "grounding",
 }
 
@@ -98,8 +87,8 @@ class GroundingPipeline:
     """Evidence-anchored RAG pipeline.
 
     Retrieves chunks from multiple knowledge bases, extracts verbatim
-    citations via a single batched LLM call, optionally detects cross-source
-    conflicts (multi-KB only), and computes an overall confidence score.
+    citations via a single batched LLM call, and computes an overall
+    confidence score.
     """
 
     def __init__(
@@ -142,8 +131,7 @@ class GroundingPipeline:
         Stages:
           1. Multi-KB retrieval
           2. Citation extraction (single batched LLM call)
-          3. Cross-source conflict detection (multi-KB only)
-          4. Confidence scoring
+          3. Confidence scoring
         """
         # Stage 1 — multi-KB retrieval
         evidence = await self._multi_kb_retrieve(
@@ -153,17 +141,11 @@ class GroundingPipeline:
         # Stage 2 — citation extraction (batched)
         await self._extract_citations(query, evidence)
 
-        # Stage 3 — cross-source conflict detection (multi-KB only)
-        conflicts: list[Conflict] = []
-        if len(kb_ids) > 1:
-            conflicts = await self._detect_conflicts(evidence)
-
-        # Stage 4 — confidence scoring
+        # Stage 3 — confidence scoring
         confidence = self._compute_confidence(evidence)
 
         return GroundedResult(
             evidence=evidence,
-            conflicts=conflicts,
             confidence=confidence,
             total_sources=len(evidence),
             kb_ids=kb_ids,
@@ -377,64 +359,15 @@ class GroundingPipeline:
         return citations
 
     # ------------------------------------------------------------------
-    # Stage 3: Conflict Detection (multi-KB only)
-    # ------------------------------------------------------------------
-
-    async def _detect_conflicts(
-        self, evidence: list[EvidenceUnit]
-    ) -> list[Conflict]:
-        threshold = self._config["conflict_threshold"]
-
-        all_citations: list[Citation] = []
-        for unit in evidence:
-            all_citations.extend(unit.citations)
-
-        if len(all_citations) < 2:
-            return []
-
-        # Build pairs from different documents
-        pairs: list[tuple[Citation, Citation]] = []
-        for i in range(len(all_citations)):
-            for j in range(i + 1, len(all_citations)):
-                if all_citations[i].document_id != all_citations[j].document_id:
-                    pairs.append((all_citations[i], all_citations[j]))
-
-        if not pairs:
-            return []
-
-        # Embed all unique citation texts
-        unique_texts = list({c.text for c in all_citations})
-        text_to_vec: dict[str, list[float]] = {}
-        if unique_texts:
-            vecs = await self._embedding.embed_texts(unique_texts)
-            for t, v in zip(unique_texts, vecs):
-                text_to_vec[t] = v
-
-        conflicts: list[Conflict] = []
-        for a, b in pairs:
-            vec_a = text_to_vec.get(a.text)
-            vec_b = text_to_vec.get(b.text)
-            if vec_a is None or vec_b is None:
-                continue
-            sim = self._cosine_similarity(vec_a, vec_b)
-            if sim >= threshold and self._text_overlap(a.text, b.text) < 0.9:
-                conflicts.append(Conflict(claim_a=a, claim_b=b, similarity=sim))
-
-        return conflicts
-
-    # ------------------------------------------------------------------
-    # Stage 4: Confidence Scoring
+    # Stage 3: Confidence Scoring
     # ------------------------------------------------------------------
 
     def _compute_confidence(self, evidence: list[EvidenceUnit]) -> float:
+        """Average retrieval score of top-3 evidence units."""
         if not evidence:
             return 0.0
-
         top3 = evidence[:3]
-        avg_retrieval = sum(e.chunk.score or 0.0 for e in top3) / len(top3)
-        coverage = min(len(evidence) / self._config["top_k"], 1.0)
-
-        return (avg_retrieval * 0.75) + (coverage * 0.25)
+        return sum(e.chunk.score or 0.0 for e in top3) / len(top3)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -449,14 +382,3 @@ class GroundingPipeline:
             return 0.0
         return dot / (norm_a * norm_b)
 
-    @staticmethod
-    def _text_overlap(a: str, b: str) -> float:
-        """Jaccard similarity on word level."""
-        words_a = set(a.lower().split())
-        words_b = set(b.lower().split())
-        if not words_a and not words_b:
-            return 1.0
-        union = words_a | words_b
-        if not union:
-            return 0.0
-        return len(words_a & words_b) / len(union)

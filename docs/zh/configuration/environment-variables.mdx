@@ -193,14 +193,14 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 | `EMBEDDING_DIMENSION` | 否 | `1024` | 嵌入向量维度 |
 | `EMBEDDING_API_KEY` | 否 | *（使用 `JINA_API_KEY`）* | 覆盖不同嵌入提供商的 API 密钥 |
 | `EMBEDDING_BASE_URL` | 否 | `https://api.jina.ai/v1` | 覆盖不同嵌入提供商的基础 URL |
-| `RETRIEVAL_MODE` | 否 | `grounding` | `grounding`（包含引用/冲突/置信度的完整管道）或 `simple`（基础 RAG） |
+| `RETRIEVAL_MODE` | 否 | `grounding` | `grounding`（包含引用和置信度评分的完整管道）或 `simple`（基础 RAG） |
 | `RERANKER_MODEL` | 否 | `jina-reranker-v2-base-multilingual` | 重排序模型标识符 |
 | `RERANKER_PROVIDER` | 否 | `jina` | 重排序提供商：`jina` / `cohere` / `openai` |
 | `COHERE_API_KEY` | 否 | — | Cohere API 密钥（设置时自动选择 Cohere 重排序器） |
 | `COHERE_RERANKER_MODEL` | 否 | `rerank-multilingual-v3.0` | Cohere 重排序模型 |
 | `VECTOR_STORE_DIR` | 否 | `./data/vector_store` | LanceDB 向量存储数据的目录 |
 
-> 嵌入**推荐**用于知识库功能。重排序**可选** — 搜索可以在不使用它的情况下使用融合评分。
+> 嵌入**推荐**用于知识库功能。重排序是**可选的** — 搜索可以在不使用它的情况下通过融合评分工作。
 
 ---
 

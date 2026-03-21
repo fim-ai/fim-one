@@ -1426,8 +1426,7 @@ def _kb_system_hint(agent_cfg: dict[str, Any]) -> str:
     # Grounding-specific instructions
     if retrieval_mode != "simple":
         hint += (
-            "\nIf conflicts are detected between sources, mention them to the user. "
-            "The confidence score indicates evidence quality \u2014 mention it for important claims. "
+            "\nThe confidence score indicates evidence quality \u2014 mention it for important claims. "
             "Source numbers are cumulative across calls "
             "(e.g., first call [1]-[5], second call [6]-[10])."
         )

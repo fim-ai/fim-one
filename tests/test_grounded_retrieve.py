@@ -70,7 +70,6 @@ async def test_tool_output_format():
                 rank=0,
             ),
         ],
-        conflicts=[],
         confidence=0.75,
         total_sources=1,
         kb_ids=["kb1"],
@@ -159,7 +158,6 @@ def _make_mock_result(num_evidence: int, kb_id: str = "kb1"):
         )
     return GroundedResult(
         evidence=evidence,
-        conflicts=[],
         confidence=0.80,
         total_sources=num_evidence,
         kb_ids=[kb_id],

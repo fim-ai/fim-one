@@ -10,7 +10,6 @@ import pytest
 from fim_one.rag.base import Document
 from fim_one.rag.grounding import (
     Citation,
-    Conflict,
     EvidenceUnit,
     GroundedResult,
     GroundingPipeline,
@@ -65,7 +64,6 @@ def test_grounded_result_empty():
     result = GroundedResult()
     assert result.confidence == 0.0
     assert result.evidence == []
-    assert result.conflicts == []
     assert result.total_sources == 0
 
 
@@ -89,9 +87,7 @@ def test_confidence_computation():
 
     confidence = pipeline._compute_confidence(units)
 
-    avg_retrieval = (0.8 + 0.7 + 0.6) / 3
-    coverage = min(3 / 10, 1.0)
-    expected = (avg_retrieval * 0.75) + (coverage * 0.25)
+    expected = (0.8 + 0.7 + 0.6) / 3
 
     assert abs(confidence - expected) < 1e-9
 
@@ -104,8 +100,8 @@ def test_confidence_empty():
     assert pipeline._compute_confidence([]) == 0.0
 
 
-def test_confidence_coverage_capped_at_1():
-    """When evidence count exceeds top_k, coverage should be capped at 1.0."""
+def test_confidence_many_units_uses_top3():
+    """With 3+ units, confidence is the mean of the top 3 scores."""
     pipeline = GroundingPipeline(
         kb_manager=AsyncMock(),
         embedding=AsyncMock(),
@@ -118,8 +114,7 @@ def test_confidence_coverage_capped_at_1():
         EvidenceUnit(chunk=_make_doc("c", 1.0), rank=2),
     ]
 
-    # coverage = min(3/2, 1.0) = 1.0
-    # confidence = (1.0 * 0.75) + (1.0 * 0.25) = 1.0
+    # confidence = (1.0 + 1.0 + 1.0) / 3 = 1.0
     assert pipeline._compute_confidence(units) == pytest.approx(1.0, abs=1e-6)
 
 
@@ -135,9 +130,8 @@ def test_confidence_single_evidence():
         EvidenceUnit(chunk=_make_doc("a", 0.5), rank=0),
     ]
 
-    # avg top3 (only 1): retrieval=0.5
-    # coverage = 1/5 = 0.2
-    expected = (0.5 * 0.75) + (0.2 * 0.25)
+    # Only 1 unit: confidence = 0.5 / 1 = 0.5
+    expected = 0.5
     assert pipeline._compute_confidence(units) == pytest.approx(expected, abs=1e-6)
 
 
@@ -391,97 +385,6 @@ async def test_citation_extraction_fallback():
 
 
 # ---------------------------------------------------------------------------
-# Tests: Conflict detection
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_conflict_detection():
-    """Citations from different docs with high cosine similarity but low text overlap -> conflict."""
-    cit_a = Citation(
-        text="The project started in 2020",
-        document_id="d1",
-        kb_id="kb1",
-        chunk_id="c1",
-        source_name="report_a.pdf",
-    )
-    cit_b = Citation(
-        text="The initiative began in 2019",
-        document_id="d2",
-        kb_id="kb1",
-        chunk_id="c2",
-        source_name="report_b.pdf",
-    )
-
-    unit_a = EvidenceUnit(
-        chunk=_make_doc("text a", 0.9),
-        citations=[cit_a],
-        kb_id="kb1",
-    )
-    unit_b = EvidenceUnit(
-        chunk=_make_doc("text b", 0.8),
-        citations=[cit_b],
-        kb_id="kb1",
-    )
-
-    # Mock embedding to return nearly identical vectors for both citations
-    embedding = AsyncMock()
-
-    async def _embed_texts(texts):
-        return [[1.0, 0.0, 0.0] for _ in texts]
-
-    embedding.embed_texts = AsyncMock(side_effect=_embed_texts)
-
-    manager = AsyncMock()
-    pipeline = GroundingPipeline(
-        kb_manager=manager,
-        embedding=embedding,
-        config={"conflict_threshold": 0.85},
-    )
-
-    conflicts = await pipeline._detect_conflicts([unit_a, unit_b])
-    assert len(conflicts) == 1
-    assert conflicts[0].similarity >= 0.85
-
-
-@pytest.mark.asyncio
-async def test_no_conflict_same_doc():
-    """Citations from the same document_id should never be flagged as conflicts."""
-    cit_a = Citation(
-        text="Claim A",
-        document_id="d1",  # Same doc
-        kb_id="kb1",
-        chunk_id="c1",
-        source_name="doc.pdf",
-    )
-    cit_b = Citation(
-        text="Claim B",
-        document_id="d1",  # Same doc
-        kb_id="kb1",
-        chunk_id="c2",
-        source_name="doc.pdf",
-    )
-
-    unit = EvidenceUnit(
-        chunk=_make_doc("content", 0.9),
-        citations=[cit_a, cit_b],
-        kb_id="kb1",
-    )
-
-    embedding = AsyncMock()
-    embedding.embed_texts = AsyncMock(return_value=[[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-
-    pipeline = GroundingPipeline(
-        kb_manager=AsyncMock(),
-        embedding=embedding,
-        config={"conflict_threshold": 0.85},
-    )
-
-    conflicts = await pipeline._detect_conflicts([unit])
-    assert len(conflicts) == 0
-
-
-# ---------------------------------------------------------------------------
 # Tests: Cosine similarity helper
 # ---------------------------------------------------------------------------
 
@@ -500,27 +403,3 @@ def test_cosine_similarity():
 
     # Zero vector
     assert sim([0.0, 0.0], [1.0, 0.0]) == 0.0
-
-
-# ---------------------------------------------------------------------------
-# Tests: Text overlap helper
-# ---------------------------------------------------------------------------
-
-
-def test_text_overlap():
-    overlap = GroundingPipeline._text_overlap
-
-    # Identical text
-    assert overlap("hello world", "hello world") == pytest.approx(1.0)
-
-    # No overlap
-    assert overlap("alpha beta", "gamma delta") == pytest.approx(0.0)
-
-    # Partial overlap
-    assert overlap("hello world foo", "hello bar foo") == pytest.approx(2 / 4)
-
-    # Empty strings
-    assert overlap("", "") == pytest.approx(1.0)
-
-    # One empty
-    assert overlap("hello", "") == pytest.approx(0.0)
