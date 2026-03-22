@@ -29,6 +29,8 @@ export interface StepState {
     content_type?: string
     artifacts?: Array<{ name: string; url: string; mime_type: string; size: number }>
   }>
+  /** When set, the step is undergoing post-completion verification. */
+  verifying?: "step" | "citations" | null
 }
 
 export interface RoundSnapshot {
@@ -184,6 +186,7 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
             : "completed"
           if (sp.result) state.result = sp.result
           if (sp.duration) state.duration = sp.duration
+          state.verifying = null
           if (sp.started_at != null) state.started_at = sp.started_at
         } else if (sp.event === "iteration") {
           // Backend now skips thinking shims and __selecting_tools__ in executor,
@@ -245,6 +248,8 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
               })
             }
           }
+        } else if (sp.event === "verifying") {
+          state.verifying = (sp.type as StepState["verifying"]) ?? "step"
         }
       }
 

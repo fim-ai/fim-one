@@ -376,15 +376,17 @@ class DAGExecutor:
             return self._agent
 
         # Determine the role to look up.  When model_hint is None we use the
-        # registry's default (general) model so that steps get a capable LLM
-        # instead of the fast model that the executor was constructed with.
+        # registry's "general" role so that steps get a capable LLM instead of
+        # the fast model that the executor was constructed with.  If no
+        # "general" model is registered, fall back to the constructor agent
+        # rather than picking an arbitrary first-registered model.
         role = step.model_hint  # "fast", "reasoning", or None
 
         try:
             if role:
                 llm = self._model_registry.get_by_role(role)
             else:
-                llm = self._model_registry.get_default()
+                llm = self._model_registry.get_by_role("general")
         except KeyError:
             logger.debug(
                 "No model registered for role '%s', using constructor agent",
@@ -534,6 +536,7 @@ class DAGExecutor:
             if self._verify_llm and step.status == "completed" and step.result:
                 from fim_one.core.planner.step_verifier import verify_step
 
+                self._notify(step.id, "verifying", {"type": "step"})
                 verification = await verify_step(
                     task=step.task,
                     result_summary=step.result.summary,
@@ -617,6 +620,7 @@ class DAGExecutor:
                         except KeyError:
                             pass
 
+                    self._notify(step.id, "verifying", {"type": "citations"})
                     cv_result = await verify_citations(
                         result_text=step.result.summary,
                         llm=verify_llm,
