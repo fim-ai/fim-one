@@ -942,17 +942,6 @@
               }
             ],
             "title": "User Metadata"
-          },
-          "domain_hint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Domain Hint"
           }
         },
         "type": "object",

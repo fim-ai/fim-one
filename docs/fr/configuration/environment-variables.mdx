@@ -134,17 +134,26 @@ Pour OpenAI et Gemini, le fournisseur gère l'allocation de tokens en interne en
 | Variable | Requis | Par défaut | Description |
 |---|---|---|---|
 | `MAX_CONCURRENCY` | Non | `5` | Nombre maximum d'étapes parallèles dans l'exécuteur DAG |
-| `DAG_STEP_MAX_ITERATIONS` | Non | `15` | Nombre maximum d'itérations d'appels d'outils dans chaque étape DAG |
+| `DAG_STEP_MAX_ITERATIONS` | Non | `15` | Nombre maximum d'itérations d'appels d'outils au sein de chaque étape DAG |
 | `DAG_STEP_TIMEOUT` | Non | `600` | Délai d'expiration de l'exécution d'une étape en secondes. Les étapes dépassant ce délai sont marquées comme échouées et leurs dépendants sont ignorés en cascade |
-| `DAG_MAX_REPLAN_ROUNDS` | Non | `3` | Nombre maximum de tentatives de re-planification autonome lorsque l'objectif n'est pas atteint. Les interruptions utilisateur (injection) sont illimitées et ne comptent pas dans ce budget |
-| `DAG_REPLAN_STOP_CONFIDENCE` | Non | `0.8` | Arrêter les nouvelles tentatives lorsque la confiance de l'agent que l'objectif est inatteignable dépasse ce seuil (`0.0` = ne jamais arrêter tôt, `1.0` = arrêter en cas d'échec) |
+| `DAG_MAX_REPLAN_ROUNDS` | Non | `3` | Nombre maximum de tentatives de re-planification autonome lorsque l'objectif n'est pas atteint. Les interruptions utilisateur (injection) sont illimitées et ne sont pas comptabilisées dans ce budget |
+| `DAG_REPLAN_STOP_CONFIDENCE` | Non | `0.8` | Arrêter les tentatives lorsque la confiance de l'agent que l'objectif est inatteignable dépasse ce seuil (`0.0` = ne jamais arrêter tôt, `1.0` = arrêter en cas d'échec) |
 | `DAG_VERIFY_TRUNCATION` | Non | `2000` | Nombre maximum de caractères de la sortie d'étape envoyés au LLM vérificateur d'étape pour l'évaluation de la qualité |
 | `DAG_ANALYZER_TRUNCATION` | Non | `10000` | Nombre maximum de caractères par résultat d'étape lors du formatage pour l'analyseur post-exécution |
-| `DAG_REPLAN_RECENT_TRUNCATION` | Non | `500` | Nombre maximum de caractères par résultat d'étape du tour le plus récent lors de la construction du contexte de re-planification |
-| `DAG_REPLAN_OLDER_TRUNCATION` | Non | `200` | Nombre maximum de caractères par résultat d'étape des tours antérieurs lors de la construction du contexte de re-planification. Les tours antérieurs sont tronqués plus agressivement pour économiser le contexte |
+| `DAG_REPLAN_RECENT_TRUNCATION` | Non | `500` | Nombre maximum de caractères par résultat d'étape de la ronde la plus récente lors de la construction du contexte de re-planification |
+| `DAG_REPLAN_OLDER_TRUNCATION` | Non | `200` | Nombre maximum de caractères par résultat d'étape des rondes antérieures lors de la construction du contexte de re-planification. Les rondes antérieures sont tronquées plus agressivement pour économiser le contexte |
 | `DAG_TOOL_CACHE` | Non | `true` | Mettre en cache les appels d'outils identiques au sein d'une seule exécution DAG. Seuls les outils explicitement marqués comme `cacheable` (outils en lecture seule comme la recherche, la récupération de connaissances) sont mis en cache. Définir sur `false` pour désactiver complètement la mise en cache |
-| `DAG_STEP_VERIFICATION` | Non | `false` | Activer la vérification de qualité basée sur LLM après la fin de chaque étape DAG. En cas d'échec, l'étape est relancée une fois avec les commentaires de vérification. Ajoute de la latence mais améliore la précision des résultats |
-| `AUTO_ROUTING` | Non | `true` | Activer la classification automatique des requêtes. Un LLM rapide analyse chaque requête et l'achemine vers le mode d'exécution ReAct (une seule étape) ou DAG (multi-étapes). Le point de terminaison `/api/auto` utilise ceci. Définir sur `false` pour exiger une sélection de mode explicite |
+| `DAG_STEP_VERIFICATION` | Non | `false` | Vérification générique de la qualité basée sur LLM après chaque étape DAG. En cas d'échec, l'étape est relancée une fois avec des commentaires. **Désactivé par défaut** — ajoute de la latence à chaque étape et est rarement nécessaire ; la plupart des sorties d'étape sont acceptables sans revérification. À utiliser uniquement si vous observez des résultats d'étape de faible qualité fréquents |
+| `DAG_CITATION_VERIFICATION` | Non | `true` | Vérification de l'exactitude des citations pour les étapes de domaine spécialisé. **Condition préalable** : la requête doit d'abord être classée comme domaine spécialisé par le classificateur de domaine LLM (voir `ESCALATION_DOMAINS`). Lorsque le domaine est détecté ET cet indicateur est `true`, chaque étape complétée est analysée pour les citations juridiques/médicales/financières et vérifiée pour l'exactitude — détectant les numéros d'articles halluccinés, les références de cas fabriquées et les citations réglementaires incorrectes. Si la classification de domaine retourne `null` (requête générale), la vérification des citations ne s'exécute pas quel que soit ce paramètre |
+| `DAG_CITATION_VERIFY_TRUNCATION` | Non | `6000` | Nombre maximum de caractères du résultat d'étape envoyés à l'invite de vérification des citations |
+
+### Classification des domaines
+
+Contrôle la couche de détection de domaine indépendante basée sur LLM qui s'exécute **avant** l'exécution de ReAct et DAG. Lorsqu'une requête est classée comme appartenant à un domaine spécialisé, le système active les fonctionnalités sensibles au domaine : escalade du modèle vers le modèle de raisonnement, instructions SOP spécifiques au domaine et vérification des citations (DAG uniquement).
+
+| Variable | Requis | Par défaut | Description |
+|---|---|---|---|
+| `ESCALATION_DOMAINS` | Non | `legal,medical,financial,tax,compliance,patent` | Liste séparée par des virgules des domaines spécialisés. Un LLM rapide classe chaque requête par rapport à cette liste. En cas de correspondance, le système : (1) bascule vers le modèle de raisonnement pour une plus grande précision, (2) injecte des instructions SOP spécifiques au domaine (par exemple, vérifier les citations via la recherche avant d'écrire), (3) active la vérification des citations pour les étapes DAG. Ajoutez des domaines personnalisés selon les besoins (par exemple, `legal,education,construction`) |
 
 ### Context Guard
 

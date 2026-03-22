@@ -131,22 +131,31 @@ Für OpenAI und Gemini verwaltet der Anbieter die Token-Zuweisung intern basiere
 | `REACT_SELF_REFLECTION_INTERVAL` | Nein | `6` | Injizieren Sie alle N Werkzeugaufrufe eine Selbstreflexions-Eingabeaufforderung, um dem Agent zu helfen, den Kurs zu korrigieren und Schleifen zu vermeiden |
 | `REACT_TOOL_OBS_TRUNCATION` | Nein | `8000` | Max. Zeichen pro Werkzeugbeobachtung bei der Synthese der endgültigen Antwort. Höhere Werte bewahren mehr strukturierte Daten (JSON, Tabellen) auf Kosten von mehr Token |
 
-### DAG Planner
+### DAG-Planer
 
 | Variable | Erforderlich | Standard | Beschreibung |
 |---|---|---|---|
 | `MAX_CONCURRENCY` | Nein | `5` | Max parallele Schritte im DAG-Executor |
 | `DAG_STEP_MAX_ITERATIONS` | Nein | `15` | Max Tool-Call-Iterationen innerhalb jedes DAG-Schritts |
-| `DAG_STEP_TIMEOUT` | Nein | `600` | Timeout für Schrittausführung in Sekunden. Schritte, die diesen Wert überschreiten, werden als fehlgeschlagen markiert und ihre abhängigen Schritte werden kaskadenweise übersprungen |
-| `DAG_MAX_REPLAN_ROUNDS` | Nein | `3` | Max autonome Neuplanungsversuche, wenn das Ziel nicht erreicht wird. Benutzerunterbrechungen (Inject) sind unbegrenzt und werden nicht gegen dieses Budget angerechnet |
-| `DAG_REPLAN_STOP_CONFIDENCE` | Nein | `0.8` | Wiederholung stoppen, wenn die Konfidenz des Agenten, dass das Ziel nicht erreichbar ist, diesen Schwellenwert überschreitet (`0.0` = niemals früh stoppen, `1.0` = bei jedem Fehler stoppen) |
-| `DAG_VERIFY_TRUNCATION` | Nein | `2000` | Max Zeichen der Schrittausgabe, die an das Schrittverifikations-LLM zur Qualitätsbewertung gesendet werden |
+| `DAG_STEP_TIMEOUT` | Nein | `600` | Timeout für Schrittausführung in Sekunden. Schritte, die diesen Wert überschreiten, werden als fehlgeschlagen markiert und ihre abhängigen Schritte werden kaskadierend übersprungen |
+| `DAG_MAX_REPLAN_ROUNDS` | Nein | `3` | Max autonome Neuplanungsversuche, wenn das Ziel nicht erreicht wird. Benutzerunterbrechungen (Inject) sind unbegrenzt und zählen nicht gegen dieses Budget |
+| `DAG_REPLAN_STOP_CONFIDENCE` | Nein | `0.8` | Wiederholungen beenden, wenn die Konfidenz des Agenten, dass das Ziel nicht erreichbar ist, diesen Schwellenwert überschreitet (`0.0` = nie früh beenden, `1.0` = bei jedem Fehler beenden) |
+| `DAG_VERIFY_TRUNCATION` | Nein | `2000` | Max Zeichen der Schrittausgabe, die an die Schrittverifikations-LLM zur Qualitätsprüfung gesendet werden |
 | `DAG_ANALYZER_TRUNCATION` | Nein | `10000` | Max Zeichen pro Schrittergebnis bei der Formatierung für den Post-Execution-Analyzer |
 | `DAG_REPLAN_RECENT_TRUNCATION` | Nein | `500` | Max Zeichen pro Schrittergebnis aus der letzten Runde beim Aufbau des Neuplanungskontexts |
 | `DAG_REPLAN_OLDER_TRUNCATION` | Nein | `200` | Max Zeichen pro Schrittergebnis aus älteren Runden beim Aufbau des Neuplanungskontexts. Ältere Runden werden aggressiver gekürzt, um Kontext zu sparen |
-| `DAG_TOOL_CACHE` | Nein | `true` | Cache identische Tool-Aufrufe innerhalb einer einzelnen DAG-Ausführung. Nur Tools, die explizit als `cacheable` markiert sind (schreibgeschützte Tools wie Suche, Wissensbeschaffung), werden gecacht. Auf `false` setzen, um Caching vollständig zu deaktivieren |
-| `DAG_STEP_VERIFICATION` | Nein | `false` | Aktiviere LLM-basierte Qualitätsprüfung nach Abschluss jedes DAG-Schritts. Bei Fehler wird der Schritt einmal mit Verifikationsfeedback wiederholt. Erhöht die Latenz, verbessert aber die Ergebnisgenauigkeit |
-| `AUTO_ROUTING` | Nein | `true` | Aktiviere automatische Abfrageklassifizierung. Ein schnelles LLM analysiert jede Abfrage und leitet sie entweder zum ReAct (Single-Step) oder DAG (Multi-Step) Ausführungsmodus weiter. Der `/api/auto` Endpoint verwendet dies. Auf `false` setzen, um explizite Modusauswahl zu erfordern |
+| `DAG_TOOL_CACHE` | Nein | `true` | Cache identischer Tool-Aufrufe innerhalb einer einzelnen DAG-Ausführung. Nur Tools, die explizit als `cacheable` markiert sind (schreibgeschützte Tools wie Suche, Wissensbeschaffung), werden gecacht. Auf `false` setzen, um das Caching vollständig zu deaktivieren |
+| `DAG_STEP_VERIFICATION` | Nein | `false` | Generische LLM-basierte Qualitätsprüfung nach jedem DAG-Schritt. Bei Fehler wird der Schritt einmal mit Feedback wiederholt. **Standardmäßig aus** — fügt auf jedem Schritt Latenz hinzu und ist selten erforderlich; die meisten Schrittergebnisse sind ohne erneute Überprüfung akzeptabel. Verwenden Sie dies nur, wenn Sie häufig niedrige Qualität der Schrittergebnisse beobachten |
+| `DAG_CITATION_VERIFICATION` | Nein | `true` | Genauigkeitsprüfung von Zitaten für Schritte in Spezialdomänen. **Voraussetzung**: Die Abfrage muss zunächst vom LLM-Domänenklassifizierer als Spezialdomäne klassifiziert werden (siehe `ESCALATION_DOMAINS`). Wenn die Domäne erkannt wird UND dieses Flag `true` ist, wird jeder abgeschlossene Schritt auf rechtliche/medizinische/finanzielle Zitate gescannt und auf Genauigkeit überprüft — um halluzinierte Artikelnummern, erfundene Fallreferenzen und falsche behördliche Zitate zu erkennen. Wenn die Domänenklassifizierung `null` zurückgibt (allgemeine Abfrage), wird die Zitatverifikation unabhängig von dieser Einstellung nicht ausgeführt |
+| `DAG_CITATION_VERIFY_TRUNCATION` | Nein | `6000` | Max Zeichen des Schrittergebnisses, die an den Zitatverifikationsprompt gesendet werden |
+
+### Domain-Klassifizierung
+
+Steuert die unabhängige LLM-basierte Domain-Erkennungsschicht, die **vor** der ReAct- und DAG-Ausführung ausgeführt wird. Wenn eine Abfrage als spezialisierte Domain klassifiziert wird, aktiviert das System Domain-bewusste Funktionen: Modellsteigerung auf Reasoning-Modell, Domain-spezifische SOP-Anweisungen und Zitierverifikation (nur DAG).
+
+| Variable | Erforderlich | Standard | Beschreibung |
+|---|---|---|---|
+| `ESCALATION_DOMAINS` | Nein | `legal,medical,financial,tax,compliance,patent` | Kommagetrennte Liste spezialisierter Domains. Ein schnelles LLM klassifiziert jede Abfrage gegen diese Liste. Bei Übereinstimmung führt das System folgende Schritte durch: (1) Upgrade auf das Reasoning-Modell für höhere Genauigkeit, (2) Injektion von Domain-spezifischen SOP-Anweisungen (z. B. Zitate vor dem Schreiben per Suche verifizieren), (3) Aktivierung der Zitierverifikation für DAG-Schritte. Fügen Sie nach Bedarf benutzerdefinierte Domains hinzu (z. B. `legal,education,construction`) |
 
 ### Context Guard
 

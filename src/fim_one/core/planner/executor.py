@@ -63,6 +63,7 @@ class DAGExecutor:
         enable_tool_cache: bool = True,
         verify_llm: BaseLLM | None = None,
         enable_citation_verification: bool | None = None,
+        domain_hint: str | None = None,
     ) -> None:
         self._agent = agent
         self._max_concurrency = max_concurrency
@@ -80,6 +81,7 @@ class DAGExecutor:
             else os.getenv("DAG_CITATION_VERIFICATION", "true").lower()
             in ("1", "true", "yes")
         )
+        self._domain_hint = domain_hint
         self._usage_lock = asyncio.Lock()
 
     async def execute(
@@ -610,7 +612,7 @@ class DAGExecutor:
                     verify_citations,
                 )
 
-                if should_verify_citations(step.task, step.result.summary):
+                if should_verify_citations(step.task, step.result.summary, domain_hint=self._domain_hint):
                     # Use the registry's default (general) model for verification
                     # so we don't verify with the same weak model that wrote it.
                     verify_llm = self._verify_llm or self._agent._llm

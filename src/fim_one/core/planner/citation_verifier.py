@@ -48,6 +48,7 @@ _INTL_LAW_PATTERN = re.compile(
 )
 
 # Domain keywords that indicate high-accuracy requirements.
+# Used as a fallback when query-level domain_hint is not available.
 _DOMAIN_KEYWORDS = re.compile(
     r"法律|法规|法条|商标法|反不正当竞争|广告法|合同法|刑法|民法典|知识产权"
     r"|trademark|patent|copyright|statute|regulation|compliance|Lanham"
@@ -79,12 +80,21 @@ class CitationVerifyResult:
 # ---------------------------------------------------------------------------
 
 
-def should_verify_citations(task: str, result: str) -> bool:
+def should_verify_citations(
+    task: str,
+    result: str,
+    *,
+    domain_hint: str | None = None,
+) -> bool:
     """Heuristic check: does this step's content warrant citation verification?
 
-    Returns ``True`` when the task description or result text contains
-    domain-specific keywords indicating legal, medical, or financial content.
+    If *domain_hint* is set (from the query-level LLM classification),
+    verification is always triggered for that execution — no per-step
+    keyword scan needed.  When *domain_hint* is ``None``, falls back to
+    scanning the step's task + result text for domain keywords.
     """
+    if domain_hint is not None:
+        return True
     combined = (task + " " + result)[:4000]
     return bool(_DOMAIN_KEYWORDS.search(combined))
 

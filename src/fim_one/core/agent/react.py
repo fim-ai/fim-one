@@ -440,6 +440,10 @@ class ReActAgent:
             "- LANGUAGE: By default answer in the same language as the original "
             "question. If the Agent Directive specifies different language "
             "behaviour (e.g. translation), follow the Agent Directive.",
+            "- FILE DELIVERY: If the agent wrote results to a file (e.g. via file_operations "
+            "or python_exec writing to disk), do NOT repeat the full file content in your "
+            "response. Instead, briefly summarize the key findings/conclusions (2-4 sentences) "
+            "and mention the file name so the user knows where to find the details.",
         ])
         if language_directive:
             system_parts.append(f"- {language_directive}")

@@ -64,7 +64,6 @@ from fim_one.core.tool import ToolRegistry
 from fim_one.core.utils import extract_json_value, get_language_directive
 
 from ..deps import (
-    get_auto_routing_enabled,
     get_context_budget,
     get_dag_max_replan_rounds,
     get_dag_replan_stop_confidence,
@@ -1660,8 +1659,6 @@ class ChatStreamRequest(BaseModel):
     token: str | None = None
     image_ids: str | None = None
     user_metadata: str | None = None
-    # Set by auto-router; not from external input.
-    domain_hint: str | None = None
 
 
 class InjectMessageRequest(BaseModel):
@@ -1868,24 +1865,26 @@ async def react_endpoint(
         if _skill_block:
             extra_instructions = (extra_instructions or "") + _skill_block
 
-    # Domain-aware instructions from auto-router (P4).
-    # When the router detected a specialist domain, inject guidance that
-    # forces the agent to research before writing and to use read_skill
-    # for matching domain skills.
-    _react_domain_hint = getattr(body, "domain_hint", None)
+    # -- Domain detection middleware (independent of Auto routing) ----------
+    # Runs for ALL React executions, regardless of whether user picked
+    # React directly or was routed here by Auto.
+    from fim_one.core.planner.domain import classify_domain
+    _react_domain_hint = await classify_domain(q, fast_llm)
     if _react_domain_hint:
         _domain_instructions = (
             f"\n\n## Domain: {_react_domain_hint}\n"
             f"This is a {_react_domain_hint}-domain task requiring high accuracy.\n"
-            f"MANDATORY rules for {_react_domain_hint} tasks:\n"
-            f"1. You MUST use web_search to research current laws, regulations, "
-            f"and precedents BEFORE writing any analysis or report. Never rely "
-            f"solely on your training data for {_react_domain_hint} content.\n"
-            f"2. If a matching skill is available (e.g. a {_react_domain_hint}-"
-            f"advisor skill), call read_skill(name) FIRST to load the SOP.\n"
-            f"3. Cite specific article numbers and legal provisions only after "
-            f"verifying them via search. Do NOT guess article numbers.\n"
-            f"4. Conduct at least 3-5 targeted searches before synthesizing."
+            f"Guidelines for {_react_domain_hint} tasks:\n"
+            f"1. If the task requires citing laws, regulations, or precedents, "
+            f"use web_search to verify them BEFORE writing. Do NOT guess article "
+            f"numbers or fabricate case references from training data.\n"
+            f"2. If the user's query and provided context already contain all "
+            f"necessary information (e.g. a yes/no question, analysis of attached "
+            f"documents), answer directly — do not force unnecessary searches.\n"
+            f"3. If a matching skill is available (e.g. a {_react_domain_hint}-"
+            f"advisor skill), call read_skill(name) to load the SOP.\n"
+            f"4. When external research IS needed, conduct targeted searches "
+            f"and cite only verified sources."
         )
         extra_instructions = (extra_instructions or "") + _domain_instructions
 
@@ -2144,10 +2143,9 @@ async def react_endpoint(
                 if isinstance(tool, GroundedRetrieveTool):
                     tool.set_usage_tracker(fast_usage_tracker)
 
-            # Pin web_search for domain tasks so tool selection can't drop it.
-            _pinned: list[str] = []
-            if _react_domain_hint:
-                _pinned.append("web_search")
+            # Always pin web_search — it's a fundamental capability that
+            # tool selection should never drop, regardless of domain.
+            _pinned: list[str] = ["web_search"]
 
             agent = ReActAgent(
                 llm=llm,
@@ -2732,6 +2730,12 @@ async def dag_endpoint(
             # Accumulate (plan, analysis) from every completed round so
             # the re-planner can see the full execution history.
             round_history: list[tuple[ExecutionPlan, AnalysisResult]] = []
+
+            # -- Domain detection middleware — classify query domain for
+            # planner guidance.  Called once before the planning loop.
+            from fim_one.core.planner.domain import classify_domain
+            _domain_hint = await classify_domain(q, fast_llm)
+
             while True:
                 round_num += 1
                 inject_in_round = False
@@ -2768,9 +2772,6 @@ async def dag_endpoint(
                     {"name": t.name, "description": t.description}
                     for t in tools.list_tools()
                 ]
-                # Inject domain-aware guidance when the router detected a
-                # specialist domain (legal, medical, financial).
-                _domain_hint = getattr(body, "domain_hint", None)
                 _domain_context = replan_context
                 if _domain_hint:
                     _domain_guidance = (
@@ -2856,6 +2857,7 @@ async def dag_endpoint(
                     stop_event=exec_stop_event,
                     enable_tool_cache=get_dag_tool_cache_enabled(),
                     verify_llm=fast_llm if get_dag_step_verification() else None,
+                    domain_hint=_domain_hint,
                 )
 
                 # Capture plan in closure to avoid late-binding issues
@@ -3363,9 +3365,6 @@ async def auto_endpoint(
     Emits a ``routing`` SSE event with ``{"mode": "react"|"dag", "reasoning": ...}``
     before delegating to the corresponding generation logic.
 
-    When ``AUTO_ROUTING`` is disabled (env var), skips classification and
-    defaults to ReAct mode.
-
     Parameters
     ----------
     request : Request
@@ -3382,29 +3381,20 @@ async def auto_endpoint(
         raise AppError("authentication_required", status_code=401)
 
     # Determine execution mode
-    auto_routing_enabled = get_auto_routing_enabled()
+    from fim_one.core.planner.router import classify_execution_mode
 
-    if auto_routing_enabled:
-        from fim_one.core.planner.router import classify_execution_mode
+    from fim_one.db import create_session as _create_session
+    async with _create_session() as _llm_db:
+        fast_llm = await _resolve_fast_llm(
+            await _resolve_agent_config(body.agent_id, body.conversation_id, user_id=current_user_id),
+            _llm_db,
+        )
 
-        from fim_one.db import create_session as _create_session
-        async with _create_session() as _llm_db:
-            fast_llm = await _resolve_fast_llm(
-                await _resolve_agent_config(body.agent_id, body.conversation_id, user_id=current_user_id),
-                _llm_db,
-            )
+    decision = await classify_execution_mode(q, fast_llm)
+    mode = decision.mode
+    reasoning = decision.reasoning
 
-        decision = await classify_execution_mode(q, fast_llm)
-        mode = decision.mode
-        reasoning = decision.reasoning
-        domain_hint = decision.domain_hint
-    else:
-        mode = "react"
-        reasoning = "Auto-routing disabled, defaulting to react"
-        domain_hint = None
-
-    # Pass domain_hint through to the DAG endpoint for planner guidance.
-    body.domain_hint = domain_hint
+    # Domain detection is handled independently inside each endpoint.
 
     # Wrap the inner endpoint's StreamingResponse to prepend the routing event
     if mode == "dag":
@@ -3414,7 +3404,7 @@ async def auto_endpoint(
 
     async def auto_generate() -> AsyncGenerator[str, None]:
         # Emit routing decision first
-        yield _sse("routing", {"mode": mode, "domain_hint": domain_hint, "reasoning": reasoning})
+        yield _sse("routing", {"mode": mode, "reasoning": reasoning})
         # Then delegate to the inner endpoint's generator
         async for chunk in inner_response.body_iterator:
             yield chunk

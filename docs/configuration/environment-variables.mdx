@@ -147,8 +147,17 @@ For OpenAI and Gemini, the provider handles token allocation internally based on
 | `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | Max characters per step result from the most recent round when building re-plan context |
 | `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | Max characters per step result from older rounds when building re-plan context. Older rounds are more aggressively truncated to save context |
 | `DAG_TOOL_CACHE` | No | `true` | Cache identical tool calls within a single DAG execution. Only tools explicitly marked as `cacheable` (read-only tools like search, knowledge retrieval) are cached. Set to `false` to disable caching entirely |
-| `DAG_STEP_VERIFICATION` | No | `false` | Enable LLM-based quality check after each DAG step completes. On failure, the step retries once with verification feedback. Adds latency but improves result accuracy |
-| `AUTO_ROUTING` | No | `true` | Enable automatic query classification. A fast LLM analyzes each query and routes it to either ReAct (single-step) or DAG (multi-step) execution mode. The `/api/auto` endpoint uses this. Set to `false` to require explicit mode selection |
+| `DAG_STEP_VERIFICATION` | No | `false` | Generic LLM-based quality check after each DAG step. On failure, the step retries once with feedback. **Default off** — adds latency on every step and is rarely needed; most step outputs are acceptable without re-checking. Use only when you observe frequent low-quality step results |
+| `DAG_CITATION_VERIFICATION` | No | `true` | Citation-accuracy check for specialist-domain steps. **Prerequisite**: the query must first be classified as a specialist domain by the LLM domain classifier (see `ESCALATION_DOMAINS`). When the domain is detected AND this flag is `true`, each completed step is scanned for legal/medical/financial citations and verified for accuracy — catching hallucinated article numbers, fabricated case references, and incorrect regulatory citations. If domain classification returns `null` (general query), citation verification does not run regardless of this setting |
+| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | Max characters of step result sent to the citation verification prompt |
+
+### Domain Classification
+
+Controls the independent LLM-based domain detection layer that runs **before** both ReAct and DAG execution. When a query is classified as a specialist domain, the system activates domain-aware features: model escalation to reasoning model, domain-specific SOP instructions, and citation verification (DAG only).
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ESCALATION_DOMAINS` | No | `legal,medical,financial,tax,compliance,patent` | Comma-separated list of specialist domains. A fast LLM classifies each query against this list. When matched, the system: (1) upgrades to the reasoning model for higher accuracy, (2) injects domain-specific SOP instructions (e.g. verify citations via search before writing), (3) enables citation verification for DAG steps. Add custom domains as needed (e.g. `legal,education,construction`) |
 
 ### Context Guard
 

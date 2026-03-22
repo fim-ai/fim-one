@@ -221,14 +221,6 @@ def get_dag_step_verification() -> bool:
     )
 
 
-def get_auto_routing_enabled() -> bool:
-    """Whether auto-routing classification is enabled (env: AUTO_ROUTING).
-
-    When enabled, the ``/api/auto`` endpoint classifies queries as ReAct or
-    DAG before dispatching.  When disabled, it defaults to ReAct.
-    """
-    return os.getenv("AUTO_ROUTING", "true").lower() in ("true", "1", "yes")
-
 
 def get_react_max_iterations() -> int:
     """Max iterations for ReAct agent mode (env: REACT_MAX_ITERATIONS)."""
