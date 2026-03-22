@@ -1,5 +1,6 @@
 ---
 title: "Modes d'exécution"
+icon: "route"
 description: "Autonome, Copilot et Hub — trois façons de déployer FIM One."
 ---
 
@@ -109,14 +110,14 @@ FIM One fournit deux paradigmes complémentaires pour accomplir le travail :
 | Paradigme | Orchestration | Idéal pour |
 |----------|--------------|----------|
 | **Agent (Chat)** | L'LLM décide de l'étape suivante dynamiquement (ReAct ou DAG) | Tâches exploratoires, conversations, raisonnement flexible |
-| **Workflow** | DAG fixe défini au moment de la conception (éditeur visuel, 26 types de nœuds) | Chaînes d'approbation, ETL planifiés, automations multi-étapes |
+| **Workflow** | DAG fixe défini au moment de la conception (éditeur visuel, 26 types de nœuds) | Chaînes d'approbation, ETL planifiée, automations multi-étapes |
 
 Les **Agents** excellent quand la tâche est ouverte — « analyser les données de ce trimestre et recommander des actions ». L'LLM planifie et s'adapte à la volée.
 
-Les **Workflows** excellent quand le processus est connu et répétable — « chaque lundi, récupérer les factures de l'ERP, exécuter les vérifications de conformité, acheminer les exceptions à un examinateur ». L'éditeur visuel vous permet de connecter des nœuds (Agent, Connecteur, KB, LLM, HTTP, Code, Approbation Humaine, Sous-Workflow) dans un DAG fixe.
+Les **Workflows** excellent quand le processus est connu et reproductible — « chaque lundi, extraire les factures de l'ERP, exécuter les vérifications de conformité, acheminer les exceptions vers un examinateur ». L'éditeur visuel vous permet de connecter des nœuds (Agent, Connecteur, KB, LLM, HTTP, Code, Approbation Humaine, Sous-Workflow) dans un DAG fixe.
 
 Les deux paradigmes se composent naturellement : un Workflow peut invoquer un Agent à n'importe quelle étape qui nécessite un raisonnement flexible au sein d'un pipeline autrement fixe. Les Agents ne peuvent pas appeler directement les Workflows — la relation est unidirectionnelle.
 
 <Tip>
-**Quand choisir lequel :** Si vous vous trouvez à écrire des instructions très spécifiques, étape par étape, pour un Agent, ce processus appartient probablement à un Workflow. Si la tâche nécessite du jugement, de l'exploration ou l'adaptation à des données inattendues, gardez-la comme un Agent.
+**Quand choisir lequel :** Si vous vous trouvez à écrire des instructions très spécifiques, étape par étape, pour un Agent, ce processus appartient probablement à un Workflow. Si la tâche nécessite du jugement, de l'exploration ou une adaptation à des données inattendues, gardez-la comme un Agent.
 </Tip>

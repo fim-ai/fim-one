@@ -1,5 +1,6 @@
 ---
 title: "Ausführungsmodi"
+icon: "route"
 description: "Standalone, Copilot und Hub — drei Möglichkeiten zur Bereitstellung von FIM One."
 ---
 
@@ -111,12 +112,12 @@ FIM One bietet zwei komplementäre Paradigmen für die Erledigung von Aufgaben:
 | **Agent (Chat)** | LLM entscheidet nächsten Schritt dynamisch (ReAct oder DAG) | Explorative Aufgaben, Gespräche, flexible Argumentation |
 | **Workflow** | Festes DAG, das zur Entwurfszeit definiert wird (visueller Editor, 26 Knotentypen) | Genehmigungsketten, geplante ETL, mehrstufige Automatisierungen |
 
-**Agenten** sind hervorragend geeignet, wenn die Aufgabe offen ist — „analysiere die Daten dieses Quartals und empfehle Maßnahmen". Der LLM plant und passt sich spontan an.
+**Agenten** glänzen, wenn die Aufgabe offen ist — „analysiere die Daten dieses Quartals und empfehle Maßnahmen." Der LLM plant und passt sich spontan an.
 
-**Workflows** sind hervorragend geeignet, wenn der Prozess bekannt und wiederholbar ist — „jeden Montag Rechnungen aus dem ERP abrufen, Compliance-Checks durchführen, Ausnahmen an einen Prüfer weiterleiten". Der visuelle Editor ermöglicht es dir, Knoten (Agent, Connector, KB, LLM, HTTP, Code, Human Approval, Sub-Workflow) in ein festes DAG zu verbinden.
+**Workflows** glänzen, wenn der Prozess bekannt und wiederholbar ist — „jeden Montag Rechnungen aus dem ERP abrufen, Compliance-Prüfungen durchführen, Ausnahmen an einen Prüfer weiterleiten." Der visuelle Editor ermöglicht es dir, Knoten (Agent, Connector, KB, LLM, HTTP, Code, Human Approval, Sub-Workflow) in ein festes DAG zu verbinden.
 
-Die beiden Paradigmen lassen sich natürlich kombinieren: Ein Workflow kann einen Agent bei jedem Schritt aufrufen, der flexible Argumentation innerhalb einer ansonsten festen Pipeline benötigt. Agenten können Workflows nicht direkt aufrufen — die Beziehung ist unidirektional.
+Die beiden Paradigmen lassen sich natürlich kombinieren: Ein Workflow kann einen Agenten bei jedem Schritt aufrufen, der flexible Argumentation innerhalb einer ansonsten festen Pipeline benötigt. Agenten können Workflows nicht direkt aufrufen — die Beziehung ist unidirektional.
 
 <Tip>
-**Wann man welches wählt:** Wenn du sehr spezifische, Schritt-für-Schritt-Anweisungen für einen Agent schreibst, gehört dieser Prozess wahrscheinlich in einen Workflow. Wenn die Aufgabe Urteilsvermögen, Erkundung oder Anpassung an unerwartete Daten erfordert, behalte sie als Agent.
+**Wann man welches wählt:** Wenn du sehr spezifische, Schritt-für-Schritt-Anweisungen für einen Agenten schreibst, gehört dieser Prozess wahrscheinlich in einen Workflow. Wenn die Aufgabe Urteilsvermögen, Erkundung oder Anpassung an unerwartete Daten erfordert, behalte sie als Agenten.
 </Tip>
