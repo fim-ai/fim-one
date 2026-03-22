@@ -697,13 +697,56 @@ class DAGExecutor:
 
         return "\n\n".join(parts)
 
+    # Multiplier applied to the normal truncation limit when a step result
+    # contains structured content (legal citations, tables, code blocks) that
+    # would lose critical information if truncated aggressively.
+    _STRUCTURED_CONTENT_MULTIPLIER = float(
+        os.getenv("DAG_STRUCTURED_CONTEXT_MULTIPLIER", "3.0")
+    )
+
     @staticmethod
+    def _has_structured_content(text: str) -> bool:
+        """Detect whether *text* contains structured content that should
+        receive a higher truncation budget.
+
+        Checks for:
+        - Chinese law citations  (《xxx》第x条)
+        - Case references        ((20xx)xxx号)
+        - Markdown tables        (|---|)
+        - Code blocks            (```)
+        - International statutes (Section/Article N)
+        """
+        _quick_check_len = min(len(text), 4000)
+        sample = text[:_quick_check_len]
+        # Fast string checks before compiling regexes.
+        if "《" in sample and "条" in sample:
+            return True
+        if "|---" in sample or "| ---" in sample:
+            return True
+        if "```" in sample:
+            return True
+        if "Section " in sample or "Article " in sample:
+            return True
+        # Case reference pattern: （2025）xxx号
+        if "号" in sample and ("（" in sample or "(" in sample):
+            import re
+            if re.search(r"[（(]\d{4}[）)]", sample):
+                return True
+        return False
+
+    @classmethod
     def _build_step_context(
+        cls,
         step: PlanStep,
         step_index: dict[str, PlanStep],
         context_guard: ContextGuard | None = None,
     ) -> str:
         """Gather results from a step's completed dependencies.
+
+        When a dependency result contains structured content (legal citations,
+        tables, code blocks), the truncation limit is multiplied by
+        ``_STRUCTURED_CONTENT_MULTIPLIER`` to preserve critical details that
+        would be lost by aggressive truncation.
 
         Args:
             step: The step whose dependency context is needed.
@@ -718,6 +761,7 @@ class DAGExecutor:
             return ""
 
         context_parts: list[str] = []
+        has_structured = False
         for dep_id in step.dependencies:
             dep_step = step_index.get(dep_id)
             if dep_step is None:
@@ -725,6 +769,8 @@ class DAGExecutor:
 
             status_label = dep_step.status
             result_text = dep_step.result.summary if dep_step.result else "(no result)"
+            if not has_structured and cls._has_structured_content(result_text):
+                has_structured = True
             context_parts.append(
                 f"[{dep_id}] ({status_label}) {dep_step.task}\n"
                 f"Result: {result_text}"
@@ -732,11 +778,24 @@ class DAGExecutor:
 
         context_text = "\n\n".join(context_parts)
 
-        # Truncate oversized dependency context.
-        if context_guard and len(context_text) > context_guard.max_message_chars:
-            context_text = (
-                context_text[:context_guard.max_message_chars]
-                + "\n[Dependency context truncated]"
-            )
+        # Truncate oversized dependency context.  Structured content gets a
+        # higher budget to avoid losing legal citations, table data, etc.
+        if context_guard:
+            limit = context_guard.max_message_chars
+            if has_structured:
+                limit = int(limit * cls._STRUCTURED_CONTENT_MULTIPLIER)
+                logger.debug(
+                    "Structured content detected in deps of step '%s' — "
+                    "using extended context limit %d (base %d × %.1f)",
+                    step.id,
+                    limit,
+                    context_guard.max_message_chars,
+                    cls._STRUCTURED_CONTENT_MULTIPLIER,
+                )
+            if len(context_text) > limit:
+                context_text = (
+                    context_text[:limit]
+                    + "\n[Dependency context truncated]"
+                )
 
         return context_text
