@@ -183,7 +183,8 @@ Controls the automatic context window management that prevents conversations fro
 | `JINA_API_KEY` | No | — | Jina API key. Acts as a shared fallback for **search, fetch, embedding, and reranker** when no service-specific key is set. Get yours at [jina.ai](https://jina.ai/) |
 | `TAVILY_API_KEY` | No | — | Tavily Search API key (auto-selected if set and `WEB_SEARCH_PROVIDER` is unset) |
 | `BRAVE_API_KEY` | No | — | Brave Search API key (auto-selected if set and `WEB_SEARCH_PROVIDER` is unset) |
-| `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` / `tavily` / `brave` |
+| `EXA_API_KEY` | No | — | Exa Search API key (auto-selected if set and `WEB_SEARCH_PROVIDER` is unset). Get yours at [exa.ai](https://exa.ai/) |
+| `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` / `tavily` / `brave` / `exa` |
 | `WEB_FETCH_PROVIDER` | No | `jina` (if key set, else `httpx`) | Fetch provider: `jina` (uses Jina Reader API) / `httpx` (direct HTTP request, no API key needed) |
 
 > **Quick start tip**: Setting just `JINA_API_KEY` enables web search, web fetch, embedding, and reranking all at once — one key, four services. You can override each service individually with the variables below.

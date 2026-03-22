@@ -174,15 +174,16 @@ Contrôle la gestion automatique de la fenêtre de contexte qui empêche les con
 
 ## Outils Web (Optionnel)
 
-| Variable | Requis | Défaut | Description |
+| Variable | Requis | Par défaut | Description |
 |---|---|---|---|
 | `JINA_API_KEY` | Non | — | Clé API Jina. Agit comme un fallback partagé pour **search, fetch, embedding, et reranker** quand aucune clé spécifique au service n'est définie. Obtenez la vôtre sur [jina.ai](https://jina.ai/) |
 | `TAVILY_API_KEY` | Non | — | Clé API Tavily Search (sélectionnée automatiquement si définie et `WEB_SEARCH_PROVIDER` n'est pas défini) |
 | `BRAVE_API_KEY` | Non | — | Clé API Brave Search (sélectionnée automatiquement si définie et `WEB_SEARCH_PROVIDER` n'est pas défini) |
-| `WEB_SEARCH_PROVIDER` | Non | `jina` | Sélecteur de fournisseur de recherche : `jina` / `tavily` / `brave` |
-| `WEB_FETCH_PROVIDER` | Non | `jina` (si clé définie, sinon `httpx`) | Fournisseur de fetch : `jina` (utilise Jina Reader API) / `httpx` (requête HTTP directe, aucune clé API nécessaire) |
+| `EXA_API_KEY` | Non | — | Clé API Exa Search (sélectionnée automatiquement si définie et `WEB_SEARCH_PROVIDER` n'est pas défini). Obtenez la vôtre sur [exa.ai](https://exa.ai/) |
+| `WEB_SEARCH_PROVIDER` | Non | `jina` | Sélecteur de fournisseur de recherche : `jina` / `tavily` / `brave` / `exa` |
+| `WEB_FETCH_PROVIDER` | Non | `jina` (si clé définie, sinon `httpx`) | Fournisseur de fetch : `jina` (utilise l'API Jina Reader) / `httpx` (requête HTTP directe, aucune clé API nécessaire) |
 
-> **Conseil de démarrage rapide** : Définir simplement `JINA_API_KEY` active la recherche web, le fetch web, l'embedding et le reranking en une seule fois — une clé, quatre services. Vous pouvez remplacer chaque service individuellement avec les variables ci-dessous.
+> **Conseil de démarrage rapide** : Définir simplement `JINA_API_KEY` active la recherche web, le fetch web, l'embedding et le reranking en même temps — une clé, quatre services. Vous pouvez remplacer chaque service individuellement avec les variables ci-dessous.
 
 ---
 

@@ -25,7 +25,7 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useAuth } from "@/contexts/auth-context"
 import { useConversation } from "@/contexts/conversation-context"
-import { agentApi, fileApi, chatApi } from "@/lib/api"
+import { agentApi, fileApi, chatApi, ApiError } from "@/lib/api"
 import { getApiBaseUrl, getApiDirectUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { cn, formatFileSize, isImageFile } from "@/lib/utils"
 import {
@@ -306,6 +306,13 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
           setInjectedMessages(prev => prev.map(m => m.ts === ts ? { ...m, id: res.id } : m))
         } catch (err) {
           setInjectedMessages(prev => prev.filter(m => m.ts !== ts))
+          // 404 = interrupt queue already unregistered (agent entered post-processing).
+          // Queue the message for auto-send after the stream ends.
+          if (err instanceof ApiError && err.status === 404) {
+            pendingNextTurnRef.current = trimmed
+            setPendingQuery(trimmed)
+            return
+          }
           const msg = getErrorMessage(err, tError)
           toast.error(msg)
           failedInjectRef.current = trimmed

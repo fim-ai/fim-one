@@ -232,6 +232,7 @@ class ReActAgent:
         fast_llm: BaseLLM | None = None,
         user_timezone: str | None = None,
         agent_directive: str | None = None,
+        pinned_tools: list[str] | None = None,
     ) -> None:
         self._llm = llm
         self._fast_llm = fast_llm
@@ -240,6 +241,7 @@ class ReActAgent:
         self._user_timezone = user_timezone
         self._extra_instructions = extra_instructions
         self._agent_directive = agent_directive
+        self._pinned_tools = pinned_tools or []
         self._max_iterations = max_iterations
         self._use_native_tools = use_native_tools
         self._memory = memory
@@ -555,7 +557,10 @@ class ReActAgent:
             # Pin essential tools that must always be available when their
             # capabilities are needed.  read_skill is pinned when the agent
             # has skills configured (indicated by the tool being registered).
-            for pin_name in ("read_skill",):
+            # Caller-specified pinned_tools (e.g. web_search for domain
+            # tasks) are also added here.
+            pin_names = {"read_skill", *self._pinned_tools}
+            for pin_name in pin_names:
                 if pin_name not in [t.name for t in filtered.list_tools()]:
                     pin_tool = self._tools.get(pin_name)
                     if pin_tool is not None:

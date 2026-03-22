@@ -1332,6 +1332,7 @@ async def get_system_health(
         os.environ.get("JINA_API_KEY", "")
         or os.environ.get("TAVILY_API_KEY", "")
         or os.environ.get("BRAVE_API_KEY", "")
+        or os.environ.get("EXA_API_KEY", "")
     )
     checks.append(IntegrationHealth(
         key="web_search", label="Web Search",

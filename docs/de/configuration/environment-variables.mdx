@@ -181,8 +181,9 @@ Steuert die automatische Verwaltung des Kontextfensters, die verhindert, dass Ge
 | `JINA_API_KEY` | Nein | — | Jina API-Schlüssel. Fungiert als gemeinsamer Fallback für **Suche, Abruf, Einbettung und Reranking**, wenn kein servicespezifischer Schlüssel gesetzt ist. Erhalten Sie Ihren unter [jina.ai](https://jina.ai/) |
 | `TAVILY_API_KEY` | Nein | — | Tavily Search API-Schlüssel (automatisch ausgewählt, wenn gesetzt und `WEB_SEARCH_PROVIDER` nicht gesetzt ist) |
 | `BRAVE_API_KEY` | Nein | — | Brave Search API-Schlüssel (automatisch ausgewählt, wenn gesetzt und `WEB_SEARCH_PROVIDER` nicht gesetzt ist) |
-| `WEB_SEARCH_PROVIDER` | Nein | `jina` | Suchanbieterwähler: `jina` / `tavily` / `brave` |
-| `WEB_FETCH_PROVIDER` | Nein | `jina` (wenn Schlüssel gesetzt, sonst `httpx`) | Abrufanbieter: `jina` (verwendet Jina Reader API) / `httpx` (direkte HTTP-Anfrage, kein API-Schlüssel erforderlich) |
+| `EXA_API_KEY` | Nein | — | Exa Search API-Schlüssel (automatisch ausgewählt, wenn gesetzt und `WEB_SEARCH_PROVIDER` nicht gesetzt ist). Erhalten Sie Ihren unter [exa.ai](https://exa.ai/) |
+| `WEB_SEARCH_PROVIDER` | Nein | `jina` | Suchanbieterwähler: `jina` / `tavily` / `brave` / `exa` |
+| `WEB_FETCH_PROVIDER` | Nein | `jina` (wenn Schlüssel gesetzt, sonst `httpx`) | Abrufsanbieter: `jina` (verwendet Jina Reader API) / `httpx` (direkte HTTP-Anfrage, kein API-Schlüssel erforderlich) |
 
 > **Schnellstart-Tipp**: Das Setzen von nur `JINA_API_KEY` aktiviert Web-Suche, Web-Abruf, Einbettung und Reranking auf einmal – ein Schlüssel, vier Services. Sie können jeden Service einzeln mit den folgenden Variablen überschreiben.
 

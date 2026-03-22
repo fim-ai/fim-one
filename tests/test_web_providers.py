@@ -11,6 +11,7 @@ from fim_one.core.web.fetch.base import BaseWebFetch
 from fim_one.core.web.fetch.httpx_fetch import _strip_html
 from fim_one.core.web.search import (
     BraveSearch,
+    ExaSearch,
     JinaSearch,
     SearchResult,
     TavilySearch,
@@ -151,6 +152,7 @@ def test_get_web_searcher_default_is_jina(monkeypatch):
     monkeypatch.delenv("WEB_SEARCH_PROVIDER", raising=False)
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    monkeypatch.delenv("EXA_API_KEY", raising=False)
     searcher = get_web_searcher()
     assert isinstance(searcher, JinaSearch)
 
@@ -167,6 +169,22 @@ def test_get_web_searcher_brave_via_env_var(monkeypatch):
     monkeypatch.setenv("BRAVE_API_KEY", "test-key")
     searcher = get_web_searcher()
     assert isinstance(searcher, BraveSearch)
+
+
+def test_get_web_searcher_exa_via_env_var(monkeypatch):
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "exa")
+    monkeypatch.setenv("EXA_API_KEY", "test-key")
+    searcher = get_web_searcher()
+    assert isinstance(searcher, ExaSearch)
+
+
+def test_get_web_searcher_exa_auto_detect(monkeypatch):
+    monkeypatch.delenv("WEB_SEARCH_PROVIDER", raising=False)
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.delenv("BRAVE_API_KEY", raising=False)
+    monkeypatch.setenv("EXA_API_KEY", "auto-key")
+    searcher = get_web_searcher()
+    assert isinstance(searcher, ExaSearch)
 
 
 def test_get_web_searcher_tavily_auto_detect(monkeypatch):
@@ -200,6 +218,10 @@ def test_get_web_fetcher_httpx_explicit(monkeypatch):
 # ---------------------------------------------------------------------------
 # Protocol conformance
 # ---------------------------------------------------------------------------
+
+
+def test_exa_search_is_base_web_search():
+    assert isinstance(ExaSearch(api_key="fake"), BaseWebSearch)
 
 
 def test_jina_search_is_base_web_search():

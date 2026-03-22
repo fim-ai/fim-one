@@ -2144,6 +2144,11 @@ async def react_endpoint(
                 if isinstance(tool, GroundedRetrieveTool):
                     tool.set_usage_tracker(fast_usage_tracker)
 
+            # Pin web_search for domain tasks so tool selection can't drop it.
+            _pinned: list[str] = []
+            if _react_domain_hint:
+                _pinned.append("web_search")
+
             agent = ReActAgent(
                 llm=llm,
                 tools=tools,
@@ -2154,6 +2159,7 @@ async def react_endpoint(
                 fast_llm=fast_llm,
                 user_timezone=user_timezone,
                 agent_directive=agent_instructions,
+                pinned_tools=_pinned,
             )
 
             image_urls = [url for _, _, url in image_data] if image_data else None
