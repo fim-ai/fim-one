@@ -53,3 +53,22 @@ fi
 echo "i18n: translating changed files..."
 cd "$ROOT"
 GIT_HOOK=1 uv run scripts/translate.py
+
+# ---------------------------------------------------------------------------
+# Validate MDX files (catches JSX parse errors before Mintlify)
+# ---------------------------------------------------------------------------
+# Collect all staged .mdx files (including newly translated ones)
+ALL_STAGED_MDX=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '\.mdx$' || true)
+
+if [ -n "$ALL_STAGED_MDX" ]; then
+  VALIDATOR_DIR="$ROOT/scripts/validate-mdx"
+  if [ -f "$VALIDATOR_DIR/validate.mjs" ] && command -v node >/dev/null 2>&1; then
+    # Install deps on first run
+    [ -d "$VALIDATOR_DIR/node_modules" ] || (cd "$VALIDATOR_DIR" && pnpm install --silent 2>/dev/null)
+    echo "mdx: validating staged .mdx files..."
+    # Run from validator dir so Node resolves @mdx-js/mdx; convert to absolute paths
+    ABS_FILES=$(echo "$ALL_STAGED_MDX" | sed "s|^|$ROOT/|")
+    (cd "$VALIDATOR_DIR" && echo "$ABS_FILES" | xargs node validate.mjs)
+  fi
+fi
