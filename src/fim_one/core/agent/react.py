@@ -552,6 +552,19 @@ class ReActAgent:
                 )
                 return self._tools
 
+            # Pin essential tools that must always be available when their
+            # capabilities are needed.  read_skill is pinned when the agent
+            # has skills configured (indicated by the tool being registered).
+            for pin_name in ("read_skill",):
+                if pin_name not in [t.name for t in filtered.list_tools()]:
+                    pin_tool = self._tools.get(pin_name)
+                    if pin_tool is not None:
+                        filtered.register(pin_tool)
+                        logger.debug(
+                            "Tool selection: pinned '%s' (always required)",
+                            pin_name,
+                        )
+
             logger.info(
                 "Tool selection: %d/%d tools selected: %s",
                 len(filtered),

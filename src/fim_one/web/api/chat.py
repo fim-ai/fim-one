@@ -1868,6 +1868,27 @@ async def react_endpoint(
         if _skill_block:
             extra_instructions = (extra_instructions or "") + _skill_block
 
+    # Domain-aware instructions from auto-router (P4).
+    # When the router detected a specialist domain, inject guidance that
+    # forces the agent to research before writing and to use read_skill
+    # for matching domain skills.
+    _react_domain_hint = getattr(body, "domain_hint", None)
+    if _react_domain_hint:
+        _domain_instructions = (
+            f"\n\n## Domain: {_react_domain_hint}\n"
+            f"This is a {_react_domain_hint}-domain task requiring high accuracy.\n"
+            f"MANDATORY rules for {_react_domain_hint} tasks:\n"
+            f"1. You MUST use web_search to research current laws, regulations, "
+            f"and precedents BEFORE writing any analysis or report. Never rely "
+            f"solely on your training data for {_react_domain_hint} content.\n"
+            f"2. If a matching skill is available (e.g. a {_react_domain_hint}-"
+            f"advisor skill), call read_skill(name) FIRST to load the SOP.\n"
+            f"3. Cite specific article numbers and legal provisions only after "
+            f"verifying them via search. Do NOT guess article numbers.\n"
+            f"4. Conduct at least 3-5 targeted searches before synthesizing."
+        )
+        extra_instructions = (extra_instructions or "") + _domain_instructions
+
     # Load attached images (async to avoid blocking the event loop)
     image_data: list[tuple[str, str, str]] = []
     if image_ids:
