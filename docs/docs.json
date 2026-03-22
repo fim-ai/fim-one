@@ -363,6 +363,13 @@
                   "ja/api/overview",
                   "ja/api/authentication"
                 ]
+              },
+              {
+                "group": "Endpoints",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
@@ -481,6 +488,13 @@
                   "ko/api/overview",
                   "ko/api/authentication"
                 ]
+              },
+              {
+                "group": "Endpoints",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
@@ -599,6 +613,13 @@
                   "de/api/overview",
                   "de/api/authentication"
                 ]
+              },
+              {
+                "group": "Endpoints",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
@@ -717,6 +738,13 @@
                   "fr/api/overview",
                   "fr/api/authentication"
                 ]
+              },
+              {
+                "group": "Endpoints",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
