@@ -577,30 +577,32 @@ function StepProgressCard({ state }: { state: StepState }) {
         className={`rounded-md px-2 py-1 transition-colors ${hasContent ? "cursor-pointer hover:bg-muted/30" : ""}`}
         onClick={hasContent ? () => setExpanded(v => !v) : undefined}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <Badge
-            variant="outline"
-            className={`${badgeBorderClass} text-[10px] shrink-0`}
-          >
-            {state.step_id}
-          </Badge>
-          <p className="text-sm font-medium text-foreground flex-1 min-w-0">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <Badge
+              variant="outline"
+              className={`${badgeBorderClass} text-[10px] shrink-0`}
+            >
+              {state.step_id}
+            </Badge>
+            {state.status === "completed" && state.duration != null && (
+              <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                <Clock className="h-2.5 w-2.5" />
+                {fmtDuration(state.duration)}
+              </span>
+            )}
+            {state.status === "running" && state.started_at != null && (
+              <ElapsedTimer startedAt={state.started_at} />
+            )}
+            {hasContent && (
+              expanded
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            )}
+          </div>
+          <p className="text-sm font-medium text-foreground">
             {state.task}
           </p>
-          {state.status === "completed" && state.duration != null && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground shrink-0 tabular-nums">
-              <Clock className="h-2.5 w-2.5" />
-              {fmtDuration(state.duration)}
-            </span>
-          )}
-          {state.status === "running" && state.started_at != null && (
-            <ElapsedTimer startedAt={state.started_at} />
-          )}
-          {hasContent && (
-            expanded
-              ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          )}
         </div>
 
         {/* Collapsed: tool summary badges */}
