@@ -17,7 +17,7 @@ import os
 from typing import Any
 
 from fim_one.core.model.base import BaseLLM
-from fim_one.core.model.structured import structured_llm_call
+from fim_one.core.model.structured import StructuredCallResult, structured_llm_call
 from fim_one.core.model.types import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ async def classify_domain(
     prompt = _CLASSIFICATION_PROMPT.format(query=truncated)
 
     try:
-        call_result = await structured_llm_call(
+        call_result: StructuredCallResult[Any] = await structured_llm_call(
             llm=llm,
             messages=[ChatMessage(role="user", content=prompt)],
             schema=_CLASSIFICATION_SCHEMA,

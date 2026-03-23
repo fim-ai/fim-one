@@ -299,7 +299,7 @@ class OpenAICompatibleLLM(BaseLLM):
             stream_usage: dict[str, int] | None = None
             usage_yielded = False
 
-            async for chunk in stream:  # type: ignore[union-attr]
+            async for chunk in stream:
                 # Extract usage from any chunk that carries it (typically the
                 # final chunk, which may have empty choices).
                 if hasattr(chunk, "usage") and chunk.usage is not None:

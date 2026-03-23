@@ -71,7 +71,7 @@ class MCPToolAdapter(BaseTool):
 
     @property
     def description(self) -> str:
-        return self._description
+        return self._description or ""
 
     @property
     def parameters_schema(self) -> dict[str, Any]:

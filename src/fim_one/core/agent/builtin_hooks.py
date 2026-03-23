@@ -14,8 +14,9 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
+from typing import Any
 
-from .hooks import Hook, HookContext, HookPoint, HookResult
+from .hooks import Hook, HookContext, HookPoint, HookRegistry, HookResult
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +236,7 @@ def create_rate_limiter(
 # ---- Hook Factory ---------------------------------------------------------
 
 # Registry of all built-in hook factory functions.
-BUILTIN_HOOKS: dict[str, dict] = {
+BUILTIN_HOOKS: dict[str, dict[str, Any]] = {
     "connector_call_logger": {
         "factory": create_connector_call_logger,
         "description": "Logs every connector tool call with metadata for auditing.",
@@ -272,12 +273,14 @@ def create_builtin_hook(name: str) -> Hook | None:
     entry = BUILTIN_HOOKS.get(name)
     if entry is None:
         return None
-    return entry["factory"]()
+    factory = entry["factory"]
+    result: Hook = factory()
+    return result
 
 
 def build_hook_registry_from_config(
-    hook_config: dict | None,
-) -> "HookRegistry | None":
+    hook_config: dict[str, Any] | None,
+) -> HookRegistry | None:
     """Build a ``HookRegistry`` from an agent's hook configuration.
 
     The ``hook_config`` dict is expected to have the shape::

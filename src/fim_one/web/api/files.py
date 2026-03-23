@@ -98,7 +98,7 @@ def _extract_content(file_path: Path) -> str | None:
     # PDF — requires pdfplumber (optional)
     if suffix == ".pdf":
         try:
-            import pdfplumber  # type: ignore[import-untyped]
+            import pdfplumber
         except ImportError:
             return "[PDF content extraction requires pdfplumber]"
         pages_text: list[str] = []
@@ -112,7 +112,7 @@ def _extract_content(file_path: Path) -> str | None:
     # Office documents (DOCX, XLSX, XLS, PPTX) — requires markitdown
     if suffix in {".docx", ".xlsx", ".xls", ".pptx"}:
         try:
-            from markitdown import MarkItDown  # type: ignore[import-untyped]
+            from markitdown import MarkItDown
         except ImportError:
             return f"[{suffix.upper().lstrip('.')} content extraction requires markitdown]"
         converter = MarkItDown()
@@ -145,14 +145,15 @@ async def _file_lock(user_id: str) -> AsyncGenerator[None, None]:
         fd.close()
 
 
-def _load_index(user_id: str) -> dict[str, dict]:
+def _load_index(user_id: str) -> dict[str, dict[str, object]]:
     path = _index_path(user_id)
     if not path.exists():
         return {}
-    return json.loads(path.read_text())
+    result: dict[str, dict[str, object]] = json.loads(path.read_text())
+    return result
 
 
-def _save_index(user_id: str, index: dict[str, dict]) -> None:
+def _save_index(user_id: str, index: dict[str, dict[str, object]]) -> None:
     path = _index_path(user_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(index, ensure_ascii=False, indent=2))
@@ -303,7 +304,7 @@ async def download_file(
     if meta is None:
         raise AppError("file_not_found", status_code=404)
 
-    file_path = _user_dir(current_user.id) / meta["stored_name"]
+    file_path = _user_dir(current_user.id) / str(meta["stored_name"])
     if not file_path.resolve().is_relative_to(_user_dir(current_user.id).resolve()):
         raise AppError("file_not_found", status_code=404)
     if not file_path.exists():
@@ -311,7 +312,7 @@ async def download_file(
 
     return FileResponse(
         path=str(file_path),
-        filename=meta["filename"],
+        filename=str(meta["filename"]),
         media_type="application/octet-stream",
     )
 
@@ -328,7 +329,7 @@ async def delete_file(
             raise AppError("file_not_found", status_code=404)
 
         # Remove from disk
-        file_path = _user_dir(current_user.id) / meta["stored_name"]
+        file_path = _user_dir(current_user.id) / str(meta["stored_name"])
         if not file_path.resolve().is_relative_to(_user_dir(current_user.id).resolve()):
             raise AppError("file_not_found", status_code=404)
         file_path.unlink(missing_ok=True)

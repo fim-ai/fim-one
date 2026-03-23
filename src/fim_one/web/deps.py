@@ -61,7 +61,7 @@ import json
 import os
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from fim_one.core.embedding.openai_compatible import OpenAICompatibleEmbedding
 from fim_one.core.model import OpenAICompatibleLLM
@@ -394,7 +394,7 @@ _cached_registry_version: int = -1
 
 
 def _build_llm_from_group_model(
-    model: object,
+    model: Any,
 ) -> OpenAICompatibleLLM | None:
     """Build an OpenAICompatibleLLM from a ModelProviderModel ORM instance.
 
@@ -429,7 +429,7 @@ def _build_llm_from_group_model(
 
 async def _get_active_group_config(
     db: "AsyncSession",
-) -> dict | None:
+) -> dict[str, OpenAICompatibleLLM | None] | None:
     """Query the active model group and return resolved model configs.
 
     Returns a dict with keys 'general', 'fast', 'reasoning', each mapping to
@@ -454,7 +454,7 @@ async def _get_active_group_config(
     }
 
 
-def _build_registry_from_group(group_config: dict) -> ModelRegistry:
+def _build_registry_from_group(group_config: dict[str, Any]) -> ModelRegistry:
     """Build a ModelRegistry using group models with ENV fallback per slot."""
     registry = ModelRegistry()
 
@@ -524,7 +524,7 @@ async def get_model_registry_with_group(
 def get_tools(
     *,
     sandbox_root: Path | None = None,
-    sandbox_config: dict | None = None,
+    sandbox_config: dict[str, Any] | None = None,
     uploads_root: Path | None = None,
 ) -> ToolRegistry:
     """Create a :class:`ToolRegistry` pre-loaded with all discovered built-in tools.
@@ -555,7 +555,7 @@ def get_tools(
     return registry
 
 
-def get_llm_from_config(config: dict[str, object]) -> OpenAICompatibleLLM | None:
+def get_llm_from_config(config: dict[str, Any]) -> OpenAICompatibleLLM | None:
     """Build an LLM from an agent's ``model_config_json`` dict.
 
     Accepts either inline config (``model_name``, ``base_url``, ``api_key``)
@@ -716,7 +716,7 @@ async def get_effective_fast_llm(db: "AsyncSession") -> OpenAICompatibleLLM:
 async def _get_context_budget_for_role(
     db: "AsyncSession",
     role: str,
-    env_fallback_fn: "callable[[], int]",
+    env_fallback_fn: Callable[[], int],
 ) -> int:
     """Return input token budget for the given role from DB config or ENV."""
     from sqlalchemy import select
@@ -874,21 +874,22 @@ async def get_mcp_tools(registry: ToolRegistry) -> MCPClient | None:
         )
         return None
 
-    servers: list[dict[str, object]] = json.loads(servers_json)
+    servers: list[dict[str, Any]] = json.loads(servers_json)
     client = MCPClient()
 
     for server in servers:
         name = str(server["name"])
         command = str(server["command"])
-        args = [str(a) for a in server.get("args", [])]  # type: ignore[union-attr]
-        env = server.get("env")  # type: ignore[assignment]
+        raw_args = server.get("args", [])
+        args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
+        env: dict[str, str] | None = server.get("env")
 
         try:
             tools = await client.connect_stdio(
                 name=name,
                 command=command,
                 args=args,
-                env=env,  # type: ignore[arg-type]
+                env=env,
             )
             for tool in tools:
                 registry.register(tool)

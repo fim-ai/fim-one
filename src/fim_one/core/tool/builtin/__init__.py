@@ -12,7 +12,7 @@ import inspect
 import logging
 import pkgutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from fim_one.core.tool.base import BaseTool
 
@@ -195,7 +195,7 @@ _SANDBOX_EXEC_TOOLS: set[type] = {PythonExecTool, NodeExecTool, ShellExecTool}
 def discover_builtin_tools(
     *,
     sandbox_root: Path | None = None,
-    sandbox_config: dict | None = None,
+    sandbox_config: dict[str, Any] | None = None,
     uploads_root: Path | None = None,
 ) -> list[Tool]:
     """Auto-discover and instantiate all built-in tools.
@@ -240,7 +240,7 @@ def discover_builtin_tools(
         }
 
     tools: list[Tool] = []
-    package_path = __path__  # type: ignore[name-defined]
+    package_path = __path__
     package_name = __name__
 
     for finder, module_name, _is_pkg in pkgutil.iter_modules(package_path):
@@ -260,7 +260,7 @@ def discover_builtin_tools(
                 and obj not in _SKIP_AUTO_DISCOVER
             ):
                 try:
-                    kwargs: dict = {}
+                    kwargs: dict[str, Any] = {}
                     kwarg_name = _SANDBOX_KWARGS.get(obj)
                     if kwarg_name and kwarg_name in sandbox_paths:
                         kwargs[kwarg_name] = sandbox_paths[kwarg_name]

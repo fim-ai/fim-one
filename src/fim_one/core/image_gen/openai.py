@@ -11,6 +11,7 @@ import os
 import re
 import time
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -55,7 +56,7 @@ class OpenAIImageGen(BaseImageGen):
         # Map aspect ratio to size (OpenAI Images API uses WxH).
         size = _aspect_to_size(aspect_ratio)
 
-        payload: dict = {
+        payload: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
             "n": 1,

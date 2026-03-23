@@ -18,7 +18,7 @@ class MCPServerCreate(BaseModel):
     is_active: bool = True
 
     @model_validator(mode="after")
-    def validate_transport(self):
+    def validate_transport(self) -> MCPServerCreate:
         if self.transport == "stdio" and not self.command:
             raise ValueError("command is required for stdio transport")
         if self.transport in ("sse", "streamable_http") and not self.url:

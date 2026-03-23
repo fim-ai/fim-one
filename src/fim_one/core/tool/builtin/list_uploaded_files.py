@@ -89,7 +89,7 @@ class ListUploadedFilesTool(BaseTool):
                 lines.append(f"   {size_info} | {mime_type}")
 
                 if include_preview and content_length is not None:
-                    preview = meta.get("content_preview", "")
+                    preview: str = str(meta.get("content_preview", ""))
                     if preview:
                         truncated = preview[:200]
                         if len(preview) > 200:

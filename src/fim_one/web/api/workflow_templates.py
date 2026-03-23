@@ -78,11 +78,11 @@ def _builtin_to_response(t: dict[str, Any]) -> WorkflowTemplateResponse:
 
 
 def _extract_schemas_from_blueprint(
-    blueprint: dict,
-) -> tuple[dict | None, dict | None]:
+    blueprint: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Extract input/output schemas from Start and End nodes in the blueprint."""
-    input_schema: dict | None = None
-    output_schema: dict | None = None
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
 
     nodes = blueprint.get("nodes", [])
     for node in nodes:
@@ -173,7 +173,7 @@ async def create_workflow_from_template(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Create a new workflow by cloning a template's blueprint."""
-    blueprint: dict | None = None
+    blueprint: dict[str, Any] | None = None
     template_name: str = ""
     template_icon: str | None = None
     template_desc: str | None = None
@@ -219,13 +219,13 @@ async def create_workflow_from_template(
     await db.commit()
 
     # Re-fetch to get server-generated fields
-    result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
-    wf = result.scalar_one()
+    wf_result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
+    wf_reloaded = wf_result.scalar_one()
 
     # Use the response builder from workflows module
     from fim_one.web.api.workflows import _workflow_to_response
 
-    return ApiResponse(data=_workflow_to_response(wf).model_dump())
+    return ApiResponse(data=_workflow_to_response(wf_reloaded).model_dump())
 
 
 # ---------------------------------------------------------------------------

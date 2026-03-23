@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Any
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 
 from fim_one.core.tool.connector.database.base import (
     ColumnInfo,
@@ -188,9 +188,9 @@ def _serialize_rows(rows: list[list[Any]]) -> list[list[Any]]:
     from datetime import date, datetime, time, timedelta
     from uuid import UUID
 
-    result = []
+    result: list[list[Any]] = []
     for row in rows:
-        new_row = []
+        new_row: list[Any] = []
         for val in row:
             if val is None:
                 new_row.append(None)

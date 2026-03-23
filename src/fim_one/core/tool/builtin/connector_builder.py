@@ -34,7 +34,7 @@ class _ConnectorBuilderBase(BaseTool, ABC):
     def category(self) -> str:
         return "builder"
 
-    async def _get_connector(self, db):
+    async def _get_connector(self, db: Any) -> Any:
         """Fetch the connector and verify ownership."""
         from fim_one.web.models.connector import Connector
 
@@ -473,7 +473,7 @@ class ConnectorTestActionTool(_ConnectorBuilderBase):
                     ConnectorAction.connector_id == self.connector_id,
                 )
             )
-            action = result.scalar_one_or_none()
+            action: Any = result.scalar_one_or_none()
             if action is None:
                 return f"[Error] Action {action_id} not found."
 
@@ -487,7 +487,7 @@ class ConnectorTestActionTool(_ConnectorBuilderBase):
                 else:
                     query_params[key] = str(value)
 
-            base = connector.base_url.rstrip("/")
+            base = (connector.base_url or "").rstrip("/")
             url = f"{base}/{path.lstrip('/')}"
 
             # Build headers with auth
@@ -674,7 +674,7 @@ class ConnectorTestConnectionTool(_ConnectorBuilderBase):
             if connector is None:
                 return "[Error] Connector not found or access denied."
 
-        base = connector.base_url.rstrip("/")
+        base = (connector.base_url or "").rstrip("/")
         url = f"{base}/{probe_path}" if probe_path else base
 
         # SSRF guard — only http/https
@@ -728,7 +728,7 @@ class ConnectorTestConnectionTool(_ConnectorBuilderBase):
 _MAX_IMPORT_ACTIONS = 50
 
 
-def _extract_param_schema(parameters: list[dict]) -> dict[str, Any]:
+def _extract_param_schema(parameters: list[dict[str, Any]]) -> dict[str, Any]:
     """Convert OpenAPI parameter list to a simple flat schema dict."""
     props: dict[str, Any] = {}
     for p in parameters:
@@ -742,9 +742,9 @@ def _extract_param_schema(parameters: list[dict]) -> dict[str, Any]:
     return props
 
 
-def _parse_openapi_spec(spec: dict) -> list[dict]:
+def _parse_openapi_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """Parse an OpenAPI 2.x or 3.x spec into a list of action dicts."""
-    actions: list[dict] = []
+    actions: list[dict[str, Any]] = []
     paths = spec.get("paths") or {}
     is_v2 = "swagger" in spec  # Swagger 2.x has 'swagger' key; OpenAPI 3.x has 'openapi'
 
@@ -783,7 +783,7 @@ def _parse_openapi_spec(spec: dict) -> list[dict]:
             summary = summary[:200] if summary else None
 
             # Request body (v3: requestBody; v2: parameters[in=body])
-            body_template: dict | None = None
+            body_template: dict[str, Any] | None = None
             if is_v2:
                 body_param = next(
                     (p for p in all_params.values() if p.get("in") == "body"), None
@@ -865,7 +865,7 @@ class ConnectorImportOpenAPITool(_ConnectorBuilderBase):
         from fim_one.web.models.connector import ConnectorAction
 
         url: str | None = kwargs.get("url")
-        spec: dict | None = kwargs.get("spec")
+        spec: dict[str, Any] | None = kwargs.get("spec")
         dry_run: bool = kwargs.get("dry_run", False)
         method_filter: list[str] | None = kwargs.get("method_filter")
 

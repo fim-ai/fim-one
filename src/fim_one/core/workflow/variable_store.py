@@ -99,7 +99,7 @@ class VariableStore:
 
             return None
 
-        def _replace(match: re.Match) -> str:
+        def _replace(match: re.Match[str]) -> str:
             var_name = match.group(1)
             value = _resolve(var_name)
             if value is None:
@@ -110,7 +110,8 @@ class VariableStore:
             import json
 
             try:
-                return json.dumps(value, ensure_ascii=False)
+                result: str = json.dumps(value, ensure_ascii=False)
+                return result
             except (TypeError, ValueError):
                 return str(value)
 
@@ -179,7 +180,7 @@ class VariableStore:
         Returns the expression result, or raises ``ValueError`` on failure.
         """
         try:
-            from simpleeval import simple_eval, DEFAULT_OPERATORS
+            from simpleeval import simple_eval, DEFAULT_OPERATORS  # type: ignore[import-untyped]
         except ImportError:
             raise RuntimeError("simpleeval is required for expression evaluation")
 

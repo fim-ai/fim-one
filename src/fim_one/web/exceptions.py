@@ -17,6 +17,8 @@ Usage::
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import HTTPException
 
 
@@ -34,7 +36,7 @@ class AppError(HTTPException):
         *,
         status_code: int = 400,
         detail: str | None = None,
-        detail_args: dict | None = None,
+        detail_args: dict[str, Any] | None = None,
     ) -> None:
         if detail is None:
             detail = error_code.replace("_", " ").capitalize()

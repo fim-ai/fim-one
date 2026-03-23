@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -237,7 +237,7 @@ def _build_messages(
         )
     msgs = [ChatMessage(role="system", content=system)]
     for turn in (history or []):
-        msgs.append(ChatMessage(role=turn["role"], content=turn["content"]))
+        msgs.append(ChatMessage(role=cast(Any, turn["role"]), content=turn["content"]))
     msgs.append(ChatMessage(role="user", content=user))
     return msgs
 
@@ -256,7 +256,7 @@ async def ai_create_connector(
     """Create a new connector using AI from natural language or OpenAPI URL."""
     lang_directive = get_language_directive(current_user.preferred_language)
     llm = await get_effective_fast_llm(db)
-    sc = await structured_llm_call(
+    sc: Any = await structured_llm_call(
         llm,
         _build_messages(_CREATE_SYSTEM_PROMPT, body.instruction, lang_directive, history=body.history),
         schema=_CREATE_CONNECTOR_SCHEMA,
@@ -309,7 +309,7 @@ async def ai_create_connector(
         await db.commit()
         msg = f"Imported {len(action_dicts)} action(s) from OpenAPI spec."
         msg_key = "ai_connector_imported"
-        msg_args: dict = {"count": len(action_dicts)}
+        msg_args: dict[str, int] = {"count": len(action_dicts)}
 
     elif mode == "generate":
         conn_data = plan.get("connector", {})
@@ -397,7 +397,7 @@ async def ai_generate_actions(
         user_msg += f"\n\nAPI documentation context:\n{body.context}"
 
     llm = await get_effective_fast_llm(db)
-    sc = await structured_llm_call(
+    sc: Any = await structured_llm_call(
         llm,
         _build_messages(_GENERATE_SYSTEM_PROMPT, user_msg, lang_directive),
         schema=_GENERATE_ACTIONS_SCHEMA,
@@ -446,14 +446,14 @@ async def ai_generate_actions(
     if failed:
         parts.append(f"{len(failed)} action(s) failed validation.")
 
-    result = AIActionResult(
+    action_result = AIActionResult(
         created=created,
         failed=failed,
         message=" ".join(parts),
         message_key="ai_actions_generated",
         message_args={"created": len(created), "failed": len(failed)},
     )
-    return ApiResponse(data=result.model_dump())
+    return ApiResponse(data=action_result.model_dump())
 
 
 @router.post("/{connector_id}/ai/refine-action", response_model=ApiResponse)
@@ -482,7 +482,7 @@ async def ai_refine_action(
         )
 
     llm = await get_effective_fast_llm(db)
-    sc = await structured_llm_call(
+    sc: Any = await structured_llm_call(
         llm,
         _build_messages(_REFINE_SYSTEM_PROMPT, user_msg, lang_directive, history=body.history),
         schema=_REFINE_OPERATIONS_SCHEMA,
@@ -526,14 +526,14 @@ async def ai_refine_action(
 
             elif op == "update":
                 action_id = str(op_item["action_id"])
-                result = await db.execute(
+                update_result = await db.execute(
                     select(ConnectorAction).where(
                         ConnectorAction.id == action_id,
                         ConnectorAction.connector_id == connector_id,
                     )
                 )
-                action = result.scalar_one_or_none()
-                if action is None:
+                update_action = update_result.scalar_one_or_none()
+                if update_action is None:
                     failed.append(f"Op #{i}: action {action_id} not found for update")
                     continue
 
@@ -547,29 +547,29 @@ async def ai_refine_action(
                     if field in updatable:
                         if field == "method":
                             value = str(value).upper()
-                        setattr(action, field, value)
+                        setattr(update_action, field, value)
 
                 await db.flush()
                 # Re-query to get updated values
-                result = await db.execute(
-                    select(ConnectorAction).where(ConnectorAction.id == action.id)
+                upd_result = await db.execute(
+                    select(ConnectorAction).where(ConnectorAction.id == update_action.id)
                 )
-                action = result.scalar_one()
-                updated.append(_action_to_response(action))
+                refreshed_action = upd_result.scalar_one()
+                updated.append(_action_to_response(refreshed_action))
 
             elif op == "delete":
                 action_id = str(op_item["action_id"])
-                result = await db.execute(
+                del_result = await db.execute(
                     select(ConnectorAction).where(
                         ConnectorAction.id == action_id,
                         ConnectorAction.connector_id == connector_id,
                     )
                 )
-                action = result.scalar_one_or_none()
-                if action is None:
+                del_action = del_result.scalar_one_or_none()
+                if del_action is None:
                     failed.append(f"Op #{i}: action {action_id} not found for delete")
                     continue
-                await db.delete(action)
+                await db.delete(del_action)
                 deleted.append(action_id)
 
             elif op == "update_connector":
@@ -595,13 +595,13 @@ async def ai_refine_action(
     # Build connector_updated response if connector settings were changed
     connector_updated_resp = None
     if connector_changed:
-        result = await db.execute(
+        refreshed_conn_result = await db.execute(
             select(Connector)
             .options(selectinload(Connector.actions))
             .where(Connector.id == connector.id)
         )
-        connector = result.scalar_one()
-        connector_updated_resp = _connector_to_response(connector)
+        refreshed_conn = refreshed_conn_result.scalar_one()
+        connector_updated_resp = _connector_to_response(refreshed_conn)
 
     parts: list[str] = []
     if connector_changed:

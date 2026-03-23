@@ -57,7 +57,7 @@ class NotificationRegistry:
     # Send
     # ------------------------------------------------------------------
 
-    async def send(self, provider_name: str, message: NotificationMessage) -> dict:
+    async def send(self, provider_name: str, message: NotificationMessage) -> dict[str, Any]:
         """Send a message through the named provider.
 
         Returns:

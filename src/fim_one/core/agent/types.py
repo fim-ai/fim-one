@@ -49,7 +49,7 @@ class StepResult:
     observation: str | None = None
     error: str | None = None
     content_type: str | None = None
-    artifacts: list | None = None  # list[dict] serialised from Artifact
+    artifacts: list[dict[str, Any]] | None = None  # serialised from Artifact
 
 
 @dataclass
@@ -69,4 +69,4 @@ class AgentResult:
     steps: list[StepResult] = field(default_factory=list)
     iterations: int = 0
     usage: UsageSummary | None = None
-    messages: list = field(default_factory=list)
+    messages: list[Any] = field(default_factory=list)

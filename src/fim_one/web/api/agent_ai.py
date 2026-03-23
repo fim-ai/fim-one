@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.model.structured import StructuredCallResult
 from fim_one.core.model.types import ChatMessage
 from fim_one.core.utils import get_language_directive
 from fim_one.db import get_session
@@ -202,7 +203,7 @@ def _build_messages(
         )
     msgs = [ChatMessage(role="system", content=system)]
     for turn in (history or []):
-        msgs.append(ChatMessage(role=turn["role"], content=turn["content"]))
+        msgs.append(ChatMessage(role=cast(Any, turn["role"]), content=turn["content"]))
     msgs.append(ChatMessage(role="user", content=user))
     return msgs
 
@@ -225,7 +226,7 @@ async def ai_create_agent(
     user_msg = f"{resources_ctx}\n\nUser instruction: {body.instruction}"
 
     llm = await get_effective_fast_llm(db)
-    sc = await structured_llm_call(
+    sc: StructuredCallResult[Any] = await structured_llm_call(
         llm,
         _build_messages(_CREATE_SYSTEM_PROMPT, user_msg, lang_directive),
         schema=_CREATE_AGENT_SCHEMA,
@@ -301,7 +302,7 @@ async def ai_refine_agent(
     )
 
     llm = await get_effective_fast_llm(db)
-    sc = await structured_llm_call(
+    sc: StructuredCallResult[Any] = await structured_llm_call(
         llm,
         _build_messages(_REFINE_SYSTEM_PROMPT, user_msg, lang_directive, history=body.history),
         schema=_REFINE_AGENT_SCHEMA,

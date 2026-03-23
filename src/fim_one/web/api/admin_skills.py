@@ -244,7 +244,7 @@ async def admin_delete_skill(
     skill_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete any skill by ID. Requires admin privileges."""
     result = await db.execute(select(Skill).where(Skill.id == skill_id))
     skill = result.scalar_one_or_none()

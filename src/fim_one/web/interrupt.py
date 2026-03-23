@@ -165,7 +165,7 @@ class RedisInterruptBroker(InterruptBroker):
 
         self._redis = aioredis.from_url(redis_url, decode_responses=True)
         self._queues: dict[str, InterruptQueue] = {}
-        self._tasks: dict[str, asyncio.Task] = {}
+        self._tasks: dict[str, asyncio.Task[None]] = {}
 
     def _channel(self, conversation_id: str) -> str:
         return f"interrupt:{conversation_id}"
@@ -227,7 +227,7 @@ class RedisInterruptBroker(InterruptBroker):
         # Slow path: publish to Redis for the owning worker
         payload = json.dumps({"cmd": "inject", "id": msg.id, "content": msg.content})
         n = await self._redis.publish(self._channel(conversation_id), payload)
-        return n > 0  # n = number of subscribers that received the message
+        return bool(n > 0)  # n = number of subscribers that received the message
 
     async def recall(self, conversation_id: str, msg_id: str) -> bool:
         q = self._queues.get(conversation_id)
@@ -235,7 +235,7 @@ class RedisInterruptBroker(InterruptBroker):
             return await q.recall(msg_id)
         payload = json.dumps({"cmd": "recall", "id": msg_id})
         n = await self._redis.publish(self._channel(conversation_id), payload)
-        return n > 0
+        return bool(n > 0)
 
     async def close(self) -> None:
         for conv_id in list(self._tasks):

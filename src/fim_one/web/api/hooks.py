@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/hooks", tags=["hooks"])
 
 
 @router.get("/builtin")
-async def list_builtin_hooks() -> dict:
+async def list_builtin_hooks() -> dict[str, list[dict[str, str]]]:
     """Return metadata for all available built-in hooks.
 
     No authentication required — hook descriptions are not sensitive.

@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ..base import BaseTool
+from ..base import Artifact, BaseTool, ToolResult
 
 _MAX_READ_BYTES: int = 50 * 1024  # 50 KB
 
@@ -121,7 +121,7 @@ class FileOpsTool(BaseTool):
     # Execution
     # ------------------------------------------------------------------
 
-    async def run(self, **kwargs: Any) -> str:
+    async def run(self, **kwargs: Any) -> str | ToolResult:  # type: ignore[override]
         operation: str = kwargs.get("operation", "").strip()
         raw_path: str = kwargs.get("path", "").strip()
         content: str = kwargs.get("content", "")
@@ -180,7 +180,7 @@ class FileOpsTool(BaseTool):
     # Artifact registration
     # ------------------------------------------------------------------
 
-    def _maybe_register_artifact(self, result: str, file_path: Path) -> str:
+    def _maybe_register_artifact(self, result: str, file_path: Path) -> str | ToolResult:
         """If artifacts_dir is set and the file exists, register it as an artifact."""
         if (
             self._artifacts_dir is None
@@ -191,7 +191,6 @@ class FileOpsTool(BaseTool):
             return result
 
         from ..artifact_utils import save_content_artifact, MAX_ARTIFACT_SIZE, _guess_mime
-        from ..base import ToolResult, Artifact
 
         size = file_path.stat().st_size
         if size > MAX_ARTIFACT_SIZE:
@@ -427,8 +426,9 @@ class FileOpsTool(BaseTool):
 
 def _human_size(nbytes: int) -> str:
     """Format a byte count as a human-readable string."""
+    size: float = float(nbytes)
     for unit in ("B", "KB", "MB", "GB"):
-        if nbytes < 1024:
-            return f"{nbytes:.0f} {unit}" if unit == "B" else f"{nbytes:.1f} {unit}"
-        nbytes /= 1024
-    return f"{nbytes:.1f} TB"
+        if size < 1024:
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"

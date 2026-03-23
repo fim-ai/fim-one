@@ -127,7 +127,7 @@ async def download_artifact(
     raise AppError("artifact_not_found", status_code=404)
 
 
-def _scan_conv_artifacts(conv_id: str, conv_title: str) -> list[dict]:
+def _scan_conv_artifacts(conv_id: str, conv_title: str) -> list[dict[str, object]]:
     """Sync helper: scan one conversation's artifacts dir. Called via to_thread."""
     artifacts_dir = _artifacts_dir(conv_id)
     if not artifacts_dir.exists():
@@ -213,7 +213,7 @@ async def list_all_artifacts(
             )
             for row_conv_id, raw_meta in msg_result.all():
                 # metadata_ may already be a dict (JSON driver) or a string (SQLite).
-                meta: dict | None = None
+                meta: dict[str, object] | None = None
                 if isinstance(raw_meta, str):
                     try:
                         meta = json.loads(raw_meta)
@@ -233,7 +233,7 @@ async def list_all_artifacts(
                 # Mark this conversation as having deliverable info.
                 if row_conv_id not in conv_deliverable_urls:
                     conv_deliverable_urls[row_conv_id] = set()
-                for d in deliverables:
+                for d in deliverables if isinstance(deliverables, list) else []:
                     url = d.get("url")
                     if url:
                         conv_deliverable_urls[row_conv_id].add(url)
@@ -245,7 +245,7 @@ async def list_all_artifacts(
         asyncio.to_thread(_scan_conv_artifacts, conv_id, conv_title)
         for conv_id, conv_title in conversations
     ])
-    artifacts: list[dict] = [item for sublist in nested for item in sublist]
+    artifacts: list[dict[str, object]] = [item for sublist in nested for item in sublist]
 
     # ── Filter to deliverables only ──────────────────────────────────
     # Only keep artifacts explicitly marked as deliverables.
@@ -257,9 +257,9 @@ async def list_all_artifacts(
 
     artifacts = [a for a in artifacts if a["url"] in all_deliverable_urls]
 
-    artifacts.sort(key=lambda a: a["created_at"], reverse=True)
+    artifacts.sort(key=lambda a: str(a["created_at"]), reverse=True)
     if artifact_type:
-        artifacts = [a for a in artifacts if _matches_type(a["mime_type"], artifact_type)]
+        artifacts = [a for a in artifacts if _matches_type(str(a["mime_type"]), artifact_type)]
     total = len(artifacts)
     start = (page - 1) * size
     items = artifacts[start : start + size]

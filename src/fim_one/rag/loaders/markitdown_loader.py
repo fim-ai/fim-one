@@ -28,7 +28,7 @@ class MarkItDownLoader(BaseLoader):
 
     def _load_sync(self, path: Path) -> list[LoadedDocument]:
         try:
-            from markitdown import MarkItDown  # type: ignore[import-untyped]
+            from markitdown import MarkItDown
         except ImportError as exc:
             raise ImportError(
                 "markitdown is required for Office document loading. "

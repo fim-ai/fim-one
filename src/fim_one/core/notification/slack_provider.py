@@ -7,6 +7,8 @@ import os
 
 import httpx
 
+from typing import Any
+
 from .base import NotificationMessage, NotificationProvider
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ class SlackNotificationProvider(NotificationProvider):
         url = os.getenv("SLACK_WEBHOOK_URL", "").strip()
         return url.startswith("https://hooks.slack.com/")
 
-    async def send(self, message: NotificationMessage) -> dict:
+    async def send(self, message: NotificationMessage) -> dict[str, Any]:
         webhook_url = os.getenv("SLACK_WEBHOOK_URL", "").strip()
         if not webhook_url:
             return {"ok": False, "error": "SLACK_WEBHOOK_URL is not configured."}
@@ -59,7 +61,7 @@ class SlackNotificationProvider(NotificationProvider):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_payload(message: NotificationMessage) -> dict:
+    def _build_payload(message: NotificationMessage) -> dict[str, Any]:
         """Build a Slack Block Kit payload."""
         blocks = [
             {

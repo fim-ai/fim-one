@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -19,7 +20,7 @@ _MAX_CONCURRENT = 3
 _FILE_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".csv", ".txt", ".md", ".markdown"}
 
 
-async def fetch_url_as_markdown(url: str, jina_api_key: str) -> dict:
+async def fetch_url_as_markdown(url: str, jina_api_key: str) -> dict[str, Any]:
     """Fetch a URL via Jina Reader and return title + markdown content.
 
     Returns a dict with keys: ``url``, ``title``, ``content``.
@@ -42,7 +43,7 @@ async def fetch_url_as_markdown(url: str, jina_api_key: str) -> dict:
         }
 
 
-async def resolve_url(url: str, jina_api_key: str) -> dict:
+async def resolve_url(url: str, jina_api_key: str) -> dict[str, Any]:
     """Unified URL resolution entry point.
 
     Detects whether the URL points to a direct file download or a web page:

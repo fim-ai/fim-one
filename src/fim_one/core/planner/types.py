@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from fim_one.core.model.usage import UsageSummary
 from fim_one.core.tool.base import Artifact
@@ -14,7 +14,7 @@ class StepOutput:
     """Structured output from a completed DAG step."""
 
     summary: str
-    data: dict | None = None  # reserved for future structured data
+    data: dict[str, Any] | None = None  # reserved for future structured data
     artifacts: list[Artifact] = field(default_factory=list)
 
     def __str__(self) -> str:
@@ -47,7 +47,7 @@ class PlanStep:
     tool_hint: str | None = None
     model_hint: str | None = None
     result: StepOutput | None = None
-    status: Literal["pending", "running", "completed", "failed"] = "pending"
+    status: Literal["pending", "running", "completed", "failed", "skipped"] = "pending"
     started_at: float | None = None
     completed_at: float | None = None
     duration: float | None = None

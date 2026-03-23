@@ -22,7 +22,7 @@ from typing import Any
 from fim_one.core.memory.base import BaseMemory
 from fim_one.core.memory.context_guard import ContextGuard
 from fim_one.core.model import BaseLLM, ChatMessage, LLMResult
-from fim_one.core.model.structured import structured_llm_call
+from fim_one.core.model.structured import StructuredCallResult, structured_llm_call
 from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.model.usage import UsageTracker
 from fim_one.core.tool import ToolRegistry
@@ -541,7 +541,7 @@ class ReActAgent:
 
         try:
             selection_llm = self._fast_llm or self._llm
-            call_result = await structured_llm_call(
+            call_result: StructuredCallResult[Any] = await structured_llm_call(
                 selection_llm,
                 [
                     ChatMessage(role="system", content="You are a tool selection assistant. Respond only with JSON."),
@@ -703,7 +703,8 @@ class ReActAgent:
             )
             await usage_tracker.record(result.usage)
 
-            assistant_content = result.message.content or ""
+            raw_content = result.message.content
+            assistant_content = raw_content if isinstance(raw_content, str) else ""
             action = self._parse_action(assistant_content)
 
             # Use API-level reasoning_content as fallback when the JSON
@@ -1028,7 +1029,8 @@ class ReActAgent:
             if injected_msgs and iteration < self._max_iterations:
                 continue
 
-            answer = assistant_msg.content or ""
+            raw_answer = assistant_msg.content
+            answer = raw_answer if isinstance(raw_answer, str) else ""
             action = Action(
                 type="final_answer",
                 reasoning=assistant_msg.reasoning_content or "",
@@ -1133,7 +1135,7 @@ class ReActAgent:
                 return step, msg
 
             try:
-                raw_result = await tool.run(**tool_args)
+                raw_result: str | ToolResult = await tool.run(**tool_args)
 
                 # Determine observation for POST hooks.
                 if isinstance(raw_result, ToolResult):
@@ -1254,7 +1256,7 @@ class ReActAgent:
 
     @staticmethod
     def _emit_and_append_injections(
-        injected_msgs: list,
+        injected_msgs: list[Any],
         messages: list[ChatMessage],
         iteration: int,
         on_iteration: IterationCallback | None,
@@ -1537,7 +1539,7 @@ class ReActAgent:
             return StepResult(action=action, error=error_msg)
 
         try:
-            raw_result = await tool.run(**tool_args)
+            raw_result: str | ToolResult = await tool.run(**tool_args)
 
             # Determine the observation string for POST hooks.
             if isinstance(raw_result, ToolResult):

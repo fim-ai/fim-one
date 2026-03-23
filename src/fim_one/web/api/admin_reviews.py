@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 # Resource models that support publish_status
-REVIEWABLE_MODELS = {
+REVIEWABLE_MODELS: dict[str, Any] = {
     "agent": Agent,
     "connector": Connector,
     "knowledge_base": KnowledgeBase,
@@ -110,7 +111,7 @@ async def list_pending_reviews(
     org_cache: dict[str, str] = {}
     user_cache: dict[str, str | None] = {}
 
-    all_items: list[dict] = []
+    all_items: list[dict[str, object]] = []
 
     for rtype, model in models_to_query.items():
         query = select(model).where(model.publish_status == "pending_review")
@@ -164,7 +165,7 @@ async def list_pending_reviews(
             )
 
     # Sort by submitted_at descending
-    all_items.sort(key=lambda x: x.get("submitted_at") or "", reverse=True)
+    all_items.sort(key=lambda x: str(x.get("submitted_at") or ""), reverse=True)
 
     # Paginate
     total = len(all_items)

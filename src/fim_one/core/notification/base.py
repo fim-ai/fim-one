@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -22,7 +23,7 @@ class NotificationMessage:
     title: str
     body: str
     channel: str | None = None
-    metadata: dict | None = field(default_factory=dict)
+    metadata: dict[str, Any] | None = field(default_factory=dict)
 
 
 class NotificationProvider(ABC):
@@ -52,7 +53,7 @@ class NotificationProvider(ABC):
         return f"Send notifications via {self.display_name}."
 
     @abstractmethod
-    async def send(self, message: NotificationMessage) -> dict:
+    async def send(self, message: NotificationMessage) -> dict[str, Any]:
         """Send a notification.
 
         Returns:

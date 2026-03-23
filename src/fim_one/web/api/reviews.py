@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/api/orgs/{org_id}/reviews", tags=["reviews"])
 # Resource type registry
 # ---------------------------------------------------------------------------
 
-RESOURCE_MODELS = {
+RESOURCE_MODELS: dict[str, Any] = {
     "agent": Agent,
     "connector": Connector,
     "knowledge_base": KnowledgeBase,
@@ -64,7 +65,7 @@ class ReviewItem(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _get_model(resource_type: str):
+def _get_model(resource_type: str) -> Any:
     """Resolve resource type string to ORM model class."""
     model = RESOURCE_MODELS.get(resource_type)
     if model is None:
@@ -178,7 +179,7 @@ async def list_reviews(
         else RESOURCE_MODELS
     )
 
-    items: list[dict] = []
+    items: list[dict[str, object]] = []
     for rtype, model in models_to_query.items():
         query = select(model).where(model.org_id == org_id)
         if status:

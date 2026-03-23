@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ..base import BaseTool
+from ..base import BaseTool, ToolResult
 
 try:
     from jinja2 import Environment, StrictUndefined, TemplateError
@@ -77,10 +77,10 @@ class TemplateRenderTool(BaseTool):
             "required": ["template"],
         }
 
-    async def run(self, **kwargs: Any) -> str:
+    async def run(self, **kwargs: Any) -> str | ToolResult:  # type: ignore[override]
         return await asyncio.to_thread(self._run_sync, **kwargs)
 
-    def _run_sync(self, **kwargs: Any) -> str:
+    def _run_sync(self, **kwargs: Any) -> str | ToolResult:
         template_str: str = kwargs.get("template", "")
         raw_context: str = kwargs.get("context", "{}") or "{}"
 
@@ -101,8 +101,6 @@ class TemplateRenderTool(BaseTool):
 
         if result.startswith("[Error]"):
             return result
-
-        from ..base import ToolResult
 
         # HTML → artifact + iframe preview
         if self._artifacts_dir and self._looks_like_html(result):
@@ -142,7 +140,7 @@ class TemplateRenderTool(BaseTool):
             return True
         return False
 
-    def _render_jinja2(self, template_str: str, ctx: dict) -> str:
+    def _render_jinja2(self, template_str: str, ctx: dict[str, Any]) -> str:
         try:
             env = Environment(undefined=StrictUndefined, autoescape=False)
             return env.from_string(template_str).render(**ctx)
@@ -155,7 +153,7 @@ class TemplateRenderTool(BaseTool):
         except Exception as exc:
             return f"[Error] {type(exc).__name__}: {exc}"
 
-    def _render_stdlib(self, template_str: str, ctx: dict) -> str:
+    def _render_stdlib(self, template_str: str, ctx: dict[str, Any]) -> str:
         from string import Template
 
         try:

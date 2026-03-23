@@ -9,7 +9,7 @@ from typing import Any
 
 from fim_one.core.embedding.base import BaseEmbedding
 from fim_one.core.reranker.base import BaseReranker
-from fim_one.rag.base import Document
+from fim_one.rag.base import BaseRetriever, Document
 from fim_one.rag.chunking import MAX_CHUNK_SIZE, get_chunker
 from fim_one.rag.loaders import loader_for_extension
 from fim_one.rag.retriever.dense import DenseRetriever
@@ -141,6 +141,7 @@ class KnowledgeBaseManager:
         Returns:
             List of relevant Document objects.
         """
+        retriever: BaseRetriever
         if mode == "dense":
             retriever = DenseRetriever(
                 self._store, self._embedding, kb_id=kb_id, user_id=user_id

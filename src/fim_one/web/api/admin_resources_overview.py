@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
+from fim_one.db.base import Base
 from fim_one.web.auth import get_current_admin
 from fim_one.web.models import (
     Agent,
@@ -64,7 +65,7 @@ _ACTIVE_MODELS = {
 
 async def _count_resource_type(
     db: AsyncSession,
-    model,
+    model: type[Base],
     resource_type: str,
     stale_cutoff: datetime,
 ) -> ResourceTypeSummary:

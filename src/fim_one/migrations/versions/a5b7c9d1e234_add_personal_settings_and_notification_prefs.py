@@ -7,7 +7,7 @@ Create Date: 2026-03-15
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from typing import Any, Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
@@ -24,7 +24,7 @@ def upgrade() -> None:
     bind = op.get_bind()
 
     # -- Add new columns to users table ------------------------------------
-    new_user_columns = [
+    new_user_columns: list[tuple[str, sa.Column[Any]]] = [
         ("timezone", sa.Column("timezone", sa.String(50), nullable=True)),
         ("default_agent_id", sa.Column("default_agent_id", sa.String(36), nullable=True)),
         ("default_exec_mode", sa.Column("default_exec_mode", sa.String(10), nullable=True)),

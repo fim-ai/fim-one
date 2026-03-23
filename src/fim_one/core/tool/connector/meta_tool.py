@@ -413,7 +413,7 @@ def get_connector_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
         if isinstance(model_cfg, dict):
             agent_mode = model_cfg.get("connector_tool_mode")
             if agent_mode in ("progressive", "legacy"):
-                return agent_mode
+                return str(agent_mode)
 
     # Fall back to environment variable
     env_mode = os.environ.get("CONNECTOR_TOOL_MODE", "progressive").lower()

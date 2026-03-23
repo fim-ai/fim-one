@@ -247,7 +247,8 @@ class GroundingPipeline:
             ChatMessage(role="user", content=user_prompt),
         ])
 
-        raw = result.message.content or ""
+        raw_content = result.message.content
+        raw = raw_content if isinstance(raw_content, str) else ""
         if self._usage_tracker and result.usage:
             await self._usage_tracker.record(result.usage)
 

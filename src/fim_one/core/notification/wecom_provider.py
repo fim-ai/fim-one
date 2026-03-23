@@ -7,6 +7,8 @@ import os
 
 import httpx
 
+from typing import Any
+
 from .base import NotificationMessage, NotificationProvider
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ class WeComNotificationProvider(NotificationProvider):
         url = os.getenv("WECOM_WEBHOOK_URL", "").strip()
         return url.startswith("https://qyapi.weixin.qq.com/")
 
-    async def send(self, message: NotificationMessage) -> dict:
+    async def send(self, message: NotificationMessage) -> dict[str, Any]:
         webhook_url = os.getenv("WECOM_WEBHOOK_URL", "").strip()
         if not webhook_url:
             return {"ok": False, "error": "WECOM_WEBHOOK_URL is not configured."}
@@ -60,7 +62,7 @@ class WeComNotificationProvider(NotificationProvider):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_payload(message: NotificationMessage) -> dict:
+    def _build_payload(message: NotificationMessage) -> dict[str, Any]:
         """Build a WeCom markdown message payload."""
         # WeCom markdown supports: bold, links, quotes, colored text
         markdown_content = f"**{message.title}**\n\n{message.body}"

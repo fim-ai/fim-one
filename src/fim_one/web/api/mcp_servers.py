@@ -38,7 +38,7 @@ router = APIRouter(prefix="/api/mcp-servers", tags=["mcp-servers"])
 # ---------------------------------------------------------------------------
 
 
-def _mask_dict(d: dict | None) -> dict | None:
+def _mask_dict(d: dict[str, str] | None) -> dict[str, str] | None:
     if not d:
         return d
     return {k: "***" for k in d}
@@ -69,7 +69,7 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         publish_status=getattr(srv, "publish_status", None),
         reviewed_by=getattr(srv, "reviewed_by", None),
         reviewed_at=(
-            srv.reviewed_at.isoformat() if getattr(srv, "reviewed_at", None) else None
+            srv.reviewed_at.isoformat() if srv.reviewed_at else None
         ),
         review_note=getattr(srv, "review_note", None),
         created_at=srv.created_at.isoformat() if srv.created_at else "",
@@ -105,7 +105,7 @@ def _enforce_stdio_policy(transport: str) -> None:
 
 
 @router.get("/capabilities")
-async def get_capabilities():
+async def get_capabilities() -> dict[str, bool]:
     return {"allow_stdio": is_stdio_allowed()}
 
 
@@ -468,11 +468,12 @@ async def unpublish_mcp_server(
         raise AppError("unpublish_denied", status_code=403)
 
     # Log BEFORE clearing org_id
-    if getattr(server, "org_id", None):
+    _org_id = getattr(server, "org_id", None)
+    if _org_id:
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
             db=db,
-            org_id=server.org_id,
+            org_id=_org_id,
             resource_type="mcp_server",
             resource_id=server.id,
             resource_name=server.name,
@@ -530,7 +531,7 @@ async def get_my_mcp_credentials(
         return ApiResponse(
             data=MCPMyCredentialStatus(has_credentials=False, env_keys=server_env_keys).model_dump()
         )
-    env: dict[str, str] = row.env_blob or {}
+    env: dict[str, str] = dict(row.env_blob) if row.env_blob else {}
     return ApiResponse(
         data=MCPMyCredentialStatus(
             has_credentials=True,
@@ -552,8 +553,8 @@ async def upsert_my_mcp_credentials(
 
     await _get_accessible_server(server_id, current_user.id, db)
 
-    env_data: dict = body.env or {}
-    headers_data: dict = body.headers or {}
+    env_data: dict[str, str] = body.env or {}
+    headers_data: dict[str, str] = body.headers or {}
 
     existing = await db.execute(
         select(MCPServerCredential).where(
@@ -574,8 +575,8 @@ async def upsert_my_mcp_credentials(
     headers_blob = headers_data or None
 
     if row:
-        row.env_blob = env_blob
-        row.headers_blob = headers_blob
+        setattr(row, "env_blob", env_blob)
+        setattr(row, "headers_blob", headers_blob)
     else:
         row = MCPServerCredential(
             server_id=server_id,

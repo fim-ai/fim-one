@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -29,6 +31,7 @@ async def create_builder_session(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
+    target: Any = None
     if body.target_type == "connector":
         result = await db.execute(
             select(Connector).where(
@@ -148,7 +151,7 @@ async def create_builder_session(
     existing = result.scalar_one_or_none()
     if existing:
         # Refresh instructions so new tools and current state are reflected
-        existing.instructions = instructions
+        setattr(existing, "instructions", instructions)
         await db.commit()
         return ApiResponse(data={"builder_agent_id": existing.id})
 

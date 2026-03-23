@@ -840,7 +840,7 @@ async def _run_annotate_all_job(
 
 class _DbChatRequest(BaseModel):
     message: str
-    history: list[dict] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @router.post("/{connector_id}/ai/db-chat")
@@ -849,7 +849,7 @@ async def db_ai_chat(
     req: _DbChatRequest,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Natural language interface for DB schema management (annotate, visibility toggle)."""
     try:
         from fim_one.core.model.structured import structured_llm_call
@@ -891,7 +891,7 @@ async def db_ai_chat(
         for turn in (req.history or []):
             intent_messages.append(ChatMessage(role=turn["role"], content=turn["content"]))
         intent_messages.append(ChatMessage(role="user", content=intent_user_msg))
-        intent_result = await structured_llm_call(
+        intent_result: Any = await structured_llm_call(
             llm,
             intent_messages,
             schema=_DB_CHAT_INTENT_SCHEMA,
@@ -899,7 +899,7 @@ async def db_ai_chat(
             default_value={"intent": "annotate", "table_names": []},
             temperature=0.0,
         )
-        intent_data: dict = intent_result.value or {"intent": "annotate", "table_names": []}
+        intent_data: dict[str, Any] = intent_result.value or {"intent": "annotate", "table_names": []}
         intent = intent_data.get("intent", "annotate")
         targeted_names: list[str] = intent_data.get("table_names") or []
 
@@ -956,7 +956,7 @@ async def db_ai_chat(
             from sqlalchemy.orm.attributes import flag_modified
             from fim_one.web.api.connectors import _connector_to_response
 
-            updates: dict = intent_data.get("settings_updates") or {}
+            updates: dict[str, Any] = intent_data.get("settings_updates") or {}
             _SAFE_SETTINGS = {"read_only", "ssl", "max_rows", "query_timeout"}
             filtered = {k: v for k, v in updates.items() if k in _SAFE_SETTINGS and v is not None}
             if not filtered:
@@ -968,7 +968,7 @@ async def db_ai_chat(
             if "query_timeout" in filtered:
                 filtered["query_timeout"] = max(1, min(300, int(filtered["query_timeout"])))
 
-            current_cfg: dict = dict(connector.db_config or {})
+            current_cfg: dict[str, Any] = dict(connector.db_config or {})
             current_cfg.update(filtered)
             connector.db_config = current_cfg
             flag_modified(connector, "db_config")
@@ -1019,7 +1019,7 @@ async def db_ai_chat(
                 default_value=[],
                 temperature=0.0,
             )
-            classified: list[dict] = classify_result.value or []
+            classified: list[dict[str, Any]] = classify_result.value or []
             cat_map = {row["table_name"]: row["category"] for row in classified}
 
             business, hidden, unknown = 0, 0, 0
@@ -1132,7 +1132,7 @@ async def ai_annotate(
     # ------------------------------------------------------------------
     # Async path: full annotate — background job
     # ------------------------------------------------------------------
-    stmt = select(DatabaseSchema.id).where(DatabaseSchema.connector_id == connector_id)
+    stmt_count = select(DatabaseSchema.id).where(DatabaseSchema.connector_id == connector_id)
     if body.table_names:
         stmt = stmt.where(DatabaseSchema.table_name.in_(body.table_names))
     result = await db.execute(stmt)
@@ -1167,7 +1167,7 @@ async def ai_annotate_status(
     """Poll the status of a background annotation job."""
     job = _annotate_jobs.get(job_id)
     if not job:
-        raise AppError(404, "Job not found")
+        raise AppError("annotate_job_not_found", status_code=404, detail="Job not found")
     resp = AiAnnotateJobResponse(
         job_id=job.job_id,
         status=job.status,

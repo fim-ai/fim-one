@@ -42,7 +42,7 @@ class ConnectionDep:
     resource_type: str  # "connector" | "mcp_server"
     resource_id: str
     resource_name: str
-    credential_schema: dict  # field definitions for the onboarding form
+    credential_schema: dict[str, Any]  # field definitions for the onboarding form
     allow_fallback: bool = False  # if True, owner's credentials are shared as fallback
 
 
@@ -71,14 +71,14 @@ class DependencyManifest:
 
         seen_conn: set[str] = set()
         unique_conn: list[ConnectionDep] = []
-        for dep in self.connection_deps:
-            key = f"{dep.resource_type}:{dep.resource_id}"
+        for conn_dep in self.connection_deps:
+            key = f"{conn_dep.resource_type}:{conn_dep.resource_id}"
             if key not in seen_conn:
                 seen_conn.add(key)
-                unique_conn.append(dep)
+                unique_conn.append(conn_dep)
         self.connection_deps = unique_conn
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize for API response."""
         return {
             "content_deps": [
@@ -107,7 +107,7 @@ class DependencyManifest:
 # ---------------------------------------------------------------------------
 
 
-def extract_connector_credential_schema(connector: Any) -> dict:
+def extract_connector_credential_schema(connector: Any) -> dict[str, Any]:
     """Extract credential field definitions from a Connector's auth_type.
 
     Maps ``auth_type`` to the set of credential fields the subscriber must
@@ -117,9 +117,9 @@ def extract_connector_credential_schema(connector: Any) -> dict:
     """
     auth_type: str = getattr(connector, "auth_type", "none") or "none"
     base_url: str | None = getattr(connector, "base_url", None)
-    auth_config: dict | None = getattr(connector, "auth_config", None)
+    auth_config: dict[str, Any] | None = getattr(connector, "auth_config", None)
 
-    schema: dict[str, dict] = {}
+    schema: dict[str, dict[str, Any]] = {}
 
     if auth_type == "bearer":
         schema["api_key"] = {"type": "password", "label": "API Key", "required": True}
@@ -160,17 +160,17 @@ def extract_connector_credential_schema(connector: Any) -> dict:
     return schema
 
 
-def extract_mcp_credential_schema(server: Any) -> dict:
+def extract_mcp_credential_schema(server: Any) -> dict[str, Any]:
     """Extract credential field definitions from an MCP Server's env/headers config.
 
     Each key in ``env`` and ``headers`` becomes a credential field.  Keys
     whose names contain secret-like fragments (KEY, SECRET, TOKEN, PASSWORD)
     are rendered as password fields; all others are plain text.
     """
-    env: dict | None = getattr(server, "env", None)
-    headers: dict | None = getattr(server, "headers", None)
+    env: dict[str, Any] | None = getattr(server, "env", None)
+    headers: dict[str, Any] | None = getattr(server, "headers", None)
 
-    schema: dict[str, dict] = {}
+    schema: dict[str, dict[str, Any]] = {}
 
     if env and isinstance(env, dict):
         for key in env:
@@ -214,9 +214,9 @@ _WORKFLOW_NODE_REFS: dict[str, list[tuple[str, str]]] = {
 }
 
 
-async def _fetch_by_id(model_cls: type, resource_id: str, db: AsyncSession) -> Any | None:
+async def _fetch_by_id(model_cls: Any, resource_id: str, db: AsyncSession) -> Any | None:
     """Fetch a single ORM instance by primary key, returning None if missing."""
-    result = await db.execute(select(model_cls).where(model_cls.id == resource_id))
+    result: Any = await db.execute(select(model_cls).where(model_cls.id == resource_id))
     return result.scalar_one_or_none()
 
 
@@ -301,24 +301,6 @@ async def _resolve_agent(agent_id: str, db: AsyncSession) -> DependencyManifest:
                 )
             )
 
-    # Skills
-    skill_ids: list[str] = agent.skill_ids or []
-    for sid in skill_ids:
-        if not sid or not isinstance(sid, str):
-            continue
-        skill = await _fetch_by_id(Skill, sid, db)
-        if skill is not None:
-            manifest.content_deps.append(
-                ContentDep(
-                    resource_type="skill",
-                    resource_id=skill.id,
-                    resource_name=skill.name,
-                )
-            )
-            # Recursively resolve skill's own deps (resource_refs)
-            skill_manifest = await _resolve_skill(sid, db)
-            manifest.merge(skill_manifest)
-
     return manifest
 
 
@@ -344,7 +326,7 @@ async def _resolve_skill(skill_id: str, db: AsyncSession) -> DependencyManifest:
     if skill is None:
         return manifest
 
-    resource_refs: list[dict] = skill.resource_refs or []
+    resource_refs: list[dict[str, Any]] = skill.resource_refs or []
     for ref in resource_refs:
         if not isinstance(ref, dict):
             continue
@@ -436,16 +418,16 @@ async def _resolve_workflow(
     if workflow is None:
         return manifest
 
-    blueprint: dict | None = workflow.blueprint
+    blueprint: dict[str, Any] | None = workflow.blueprint
     if not blueprint or not isinstance(blueprint, dict):
         return manifest
 
-    nodes: list[dict] = blueprint.get("nodes", [])
+    nodes: list[dict[str, Any]] = blueprint.get("nodes", [])
     for node in nodes:
         if not isinstance(node, dict):
             continue
         node_type: str = node.get("type", "") or (node.get("data", {}).get("type", ""))
-        data: dict = node.get("data", {})
+        data: dict[str, Any] = node.get("data", {})
         if not isinstance(data, dict):
             continue
 

@@ -16,8 +16,10 @@ import logging
 import os
 import sys
 import time
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 # ── Configure root logger BEFORE any getLogger() calls ──────────────
 _log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -38,7 +40,8 @@ from fastapi.responses import JSONResponse
 from fim_one import __version__
 
 from .exceptions import AppError
-from .api.admin import SETTING_MAINTENANCE_MODE, get_setting, router as admin_router
+from .api.admin import SETTING_MAINTENANCE_MODE, router as admin_router
+from .api.admin_utils import get_setting
 from .api.admin_security import router as admin_security_router
 from .api.admin_api_keys import router as admin_api_keys_router
 from .api.admin_resources import router as admin_resources_router
@@ -99,7 +102,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     """Startup / shutdown lifecycle for the FastAPI application.
 
     On startup the async database engine is initialised and tables are created.
@@ -191,7 +194,7 @@ def create_app() -> FastAPI:
 
     # -- X-Powered-By header ------------------------------------------------
     @app.middleware("http")
-    async def add_powered_by_header(request: Request, call_next):
+    async def add_powered_by_header(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         response: Response = await call_next(request)
         response.headers["X-Powered-By"] = "FIM-One"
         return response
@@ -204,7 +207,7 @@ def create_app() -> FastAPI:
     _MAINTENANCE_TTL = 5.0
 
     @app.middleware("http")
-    async def maintenance_mode_gate(request: Request, call_next):
+    async def maintenance_mode_gate(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         path = request.url.path
         if (
             any(path.startswith(p) for p in _MAINTENANCE_PASS)
@@ -265,7 +268,7 @@ def create_app() -> FastAPI:
     async def validation_error_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:  # noqa: ARG001
-        def _safe_errors(errors: list) -> list:
+        def _safe_errors(errors: Sequence[Any]) -> list[dict[str, Any]]:
             """Stringify any non-serializable values (e.g. Pydantic v2 ctx exception objects)."""
             safe = []
             for err in errors:
@@ -400,7 +403,7 @@ def create_app() -> FastAPI:
     # ---------------------------------------------------------------------------
     # OpenAPI: custom schema with security scheme and server placeholder
     # ---------------------------------------------------------------------------
-    def custom_openapi():
+    def custom_openapi() -> dict[str, Any]:
         if app.openapi_schema:
             return app.openapi_schema
         schema = get_openapi(

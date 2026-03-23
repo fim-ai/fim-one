@@ -82,7 +82,8 @@ class BaseLLM(ABC):
         ...
         # Ensure the method signature is recognised as an async generator.
         # The explicit `yield` is never reached but satisfies the type checker.
-        yield  # pragma: no cover
+        if False:  # pragma: no cover
+            yield StreamChunk()  # pragma: no cover
 
     @property
     def model_id(self) -> str | None:

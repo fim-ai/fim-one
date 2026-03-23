@@ -65,7 +65,7 @@ async def create_dataset(
     body: EvalDatasetCreate,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     ds = EvalDataset(
         user_id=current_user.id,
         name=body.name,
@@ -92,7 +92,7 @@ async def list_datasets(
     size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> PaginatedResponse:
     offset = (page - 1) * size
 
     total_result = await db.execute(
@@ -120,7 +120,7 @@ async def list_datasets(
             .where(EvalCase.dataset_id.in_(ds_ids))
             .group_by(EvalCase.dataset_id)
         )
-        case_counts = dict(count_result.all())
+        case_counts = {row[0]: row[1] for row in count_result.all()}
 
     items = [
         EvalDatasetResponse(
@@ -147,7 +147,7 @@ async def get_dataset(
     dataset_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     ds = await _get_owned_dataset(dataset_id, current_user.id, db)
     count_result = await db.execute(
         select(func.count(EvalCase.id)).where(EvalCase.dataset_id == dataset_id)
@@ -171,7 +171,7 @@ async def update_dataset(
     body: EvalDatasetUpdate,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     ds = await _get_owned_dataset(dataset_id, current_user.id, db)
     if body.name is not None:
         ds.name = body.name
@@ -200,7 +200,7 @@ async def delete_dataset(
     dataset_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     ds = await _get_owned_dataset(dataset_id, current_user.id, db)
     await db.delete(ds)
     await db.commit()
@@ -219,7 +219,7 @@ async def list_cases(
     size: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> PaginatedResponse:
     await _get_owned_dataset(dataset_id, current_user.id, db)
     offset = (page - 1) * size
     total_result = await db.execute(
@@ -251,7 +251,7 @@ async def create_case(
     body: EvalCaseCreate,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     await _get_owned_dataset(dataset_id, current_user.id, db)
     case = EvalCase(
         dataset_id=dataset_id,
@@ -275,7 +275,7 @@ async def update_case(
     body: EvalCaseUpdate,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     await _get_owned_dataset(dataset_id, current_user.id, db)
     result = await db.execute(
         select(EvalCase).where(
@@ -303,7 +303,7 @@ async def delete_case(
     case_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     await _get_owned_dataset(dataset_id, current_user.id, db)
     result = await db.execute(
         select(EvalCase).where(

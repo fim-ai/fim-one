@@ -54,7 +54,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         publish_status=getattr(agent, "publish_status", None),
         reviewed_by=getattr(agent, "reviewed_by", None),
         reviewed_at=(
-            agent.reviewed_at.isoformat() if getattr(agent, "reviewed_at", None) else None
+            agent.reviewed_at.isoformat() if agent.reviewed_at else None
         ),
         review_note=getattr(agent, "review_note", None),
         created_at=agent.created_at.isoformat() if agent.created_at else "",
@@ -317,7 +317,7 @@ async def publish_agent(
         if not current_user.is_admin:
             raise AppError("admin_required_for_global", status_code=403)
         agent.visibility = "global"
-        agent.is_global = True  # backward compat
+        setattr(agent, "is_global", True)  # backward compat
         agent.org_id = None
     else:
         raise AppError("invalid_scope", status_code=400)

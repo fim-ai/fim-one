@@ -221,7 +221,7 @@ class JsonTransformTool(BaseTool):
                 return _MISSING
         return current
 
-    def _deep_merge(self, base: dict, override: dict) -> dict:
+    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         result = dict(base)
         for k, v in override.items():
             if k in result and isinstance(result[k], dict) and isinstance(v, dict):
@@ -230,8 +230,8 @@ class JsonTransformTool(BaseTool):
                 result[k] = v
         return result
 
-    def _flatten(self, data: dict, prefix: str = "", sep: str = ".") -> dict:
-        items: dict = {}
+    def _flatten(self, data: dict[str, Any], prefix: str = "", sep: str = ".") -> dict[str, Any]:
+        items: dict[str, Any] = {}
         for k, v in data.items():
             new_key = f"{prefix}{sep}{k}" if prefix else k
             if isinstance(v, dict):

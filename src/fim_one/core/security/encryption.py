@@ -39,7 +39,7 @@ def get_encryption_key() -> bytes:
     return base64.urlsafe_b64encode(digest)
 
 
-def _get_fernet():
+def _get_fernet() -> Any:
     """Return a cached Fernet instance."""
     global _fernet_instance
     if _fernet_instance is None:
@@ -63,7 +63,7 @@ def encrypt_field(plaintext: str) -> str:
         The encrypted ciphertext as a URL-safe base64 string.
     """
     fernet = _get_fernet()
-    return fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+    return str(fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8"))
 
 
 def decrypt_field(ciphertext: str) -> str:
@@ -80,7 +80,7 @@ def decrypt_field(ciphertext: str) -> str:
         The original plaintext.
     """
     fernet = _get_fernet()
-    return fernet.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    return str(fernet.decrypt(ciphertext.encode("utf-8")).decode("utf-8"))
 
 
 def encrypt_db_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -204,7 +204,7 @@ def get_credential_key() -> bytes:
     return base64.urlsafe_b64encode(hashlib.sha256(_CREDENTIAL_KEY_RAW.encode()).digest())
 
 
-def encrypt_credential(blob: dict) -> str:
+def encrypt_credential(blob: dict[str, Any]) -> str:
     """Encrypt a credential dict to a Fernet-encrypted string."""
     import json
     from cryptography.fernet import Fernet
@@ -212,7 +212,7 @@ def encrypt_credential(blob: dict) -> str:
     return f.encrypt(json.dumps(blob).encode("utf-8")).decode("utf-8")
 
 
-def decrypt_credential(ciphertext: str) -> dict:
+def decrypt_credential(ciphertext: str) -> dict[str, Any]:
     """Decrypt a credential string back to a dict.
 
     Handles legacy plaintext-JSON rows transparently: if the string starts
@@ -222,13 +222,15 @@ def decrypt_credential(ciphertext: str) -> dict:
     import json
     if ciphertext.startswith("{"):
         try:
-            return json.loads(ciphertext)
+            result: dict[str, Any] = json.loads(ciphertext)
+            return result
         except Exception:
             return {}
     try:
         from cryptography.fernet import Fernet
         f = Fernet(get_credential_key())
-        return json.loads(f.decrypt(ciphertext.encode("utf-8")).decode("utf-8"))
+        result = json.loads(f.decrypt(ciphertext.encode("utf-8")).decode("utf-8"))
+        return result
     except Exception:
         logger.warning("Failed to decrypt credential blob")
         return {}
@@ -239,7 +241,7 @@ def decrypt_credential(ciphertext: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-class EncryptedJSON(TypeDecorator):
+class EncryptedJSON(TypeDecorator[dict[str, Any]]):
     """Column type that stores a Python dict as Fernet-encrypted text.
 
     - On write: dict → json.dumps → Fernet encrypt → store ciphertext string
@@ -250,12 +252,12 @@ class EncryptedJSON(TypeDecorator):
     impl = Text
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: dict[str, Any] | None, dialect: Any) -> str | None:
         if value is None:
             return None
         return encrypt_credential(value)
 
-    def process_result_value(self, result, dialect):
+    def process_result_value(self, result: str | None, dialect: Any) -> dict[str, Any] | None:
         if result is None:
             return None
         return decrypt_credential(result)
@@ -283,7 +285,7 @@ def decrypt_string(ciphertext: str) -> str:
         return ""
 
 
-class EncryptedString(TypeDecorator):
+class EncryptedString(TypeDecorator[str]):
     """Column type that stores a Python string as Fernet-encrypted text.
 
     - On write: plaintext → Fernet encrypt → store ciphertext string
@@ -294,12 +296,12 @@ class EncryptedString(TypeDecorator):
     impl = Text
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
+    def process_bind_param(self, value: str | None, dialect: Any) -> str | None:
         if value is None:
             return None
         return encrypt_string(value)
 
-    def process_result_value(self, result, dialect):
+    def process_result_value(self, result: str | None, dialect: Any) -> str | None:
         if result is None:
             return None
         return decrypt_string(result)

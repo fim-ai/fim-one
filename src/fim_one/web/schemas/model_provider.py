@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -183,7 +185,7 @@ class EffectiveModelInfo(BaseModel):
 
 class ActiveConfigResponse(BaseModel):
     mode: str  # "env" or "group"
-    active_group: dict | None  # { id, name } or null
+    active_group: dict[str, Any] | None  # { id, name } or null
     effective: dict[str, EffectiveModelInfo]  # keys: general, fast, reasoning
     env_fallback: EnvFallbackInfoV2
 

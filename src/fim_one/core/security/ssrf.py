@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -59,7 +60,7 @@ def resolve_and_check(hostname: str) -> None:
         raise ValueError(f"DNS resolution returned no results for '{hostname}'")
 
     for _family, _type, _proto, _canonname, sockaddr in results:
-        ip = sockaddr[0]
+        ip = str(sockaddr[0])
         if is_private_ip(ip):
             raise ValueError(
                 "SSRF blocked: requests to private/internal addresses are not allowed"
@@ -103,7 +104,7 @@ def validate_url(url: str, *, allow_dns_failure: bool = False) -> None:
         raise ValueError(f"DNS resolution returned no results for '{hostname}'")
 
     for _family, _type, _proto, _canonname, sockaddr in results:
-        ip = sockaddr[0]
+        ip = str(sockaddr[0])
         if is_private_ip(ip):
             raise ValueError(
                 f"Blocked request to internal address '{ip}' "
@@ -143,7 +144,7 @@ def _resolve_and_pin(hostname: str) -> str:
 
     first_ip: str | None = None
     for _family, _type, _proto, _canonname, sockaddr in results:
-        ip = sockaddr[0]
+        ip = str(sockaddr[0])
         if is_private_ip(ip):
             raise ValueError(
                 f"SSRF blocked: resolved IP '{ip}' for '{hostname}' "
@@ -179,7 +180,7 @@ class SSRFSafeTransport(httpx.AsyncHTTPTransport):
         return await super().handle_async_request(request)
 
 
-def get_safe_async_client(**kwargs) -> httpx.AsyncClient:
+def get_safe_async_client(**kwargs: Any) -> httpx.AsyncClient:
     """Factory returning an httpx.AsyncClient with SSRF-safe DNS pinning.
 
     Usage::

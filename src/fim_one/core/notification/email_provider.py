@@ -18,6 +18,8 @@ import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from typing import Any
+
 from .base import NotificationMessage, NotificationProvider
 
 logger = logging.getLogger(__name__)
@@ -45,7 +47,7 @@ class EmailNotificationProvider(NotificationProvider):
             and os.getenv("SMTP_PASS")
         )
 
-    async def send(self, message: NotificationMessage) -> dict:
+    async def send(self, message: NotificationMessage) -> dict[str, Any]:
         recipient = message.channel
         if not recipient:
             return {"ok": False, "error": "Email provider requires 'channel' (recipient address)."}

@@ -218,7 +218,7 @@ async def admin_delete_agent(
     agent_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete any agent by ID. Requires admin privileges."""
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
@@ -360,7 +360,7 @@ async def admin_delete_knowledge_base(
     kb_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete any knowledge base by ID. Requires admin privileges."""
     result = await db.execute(
         select(KnowledgeBase)

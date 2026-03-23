@@ -106,7 +106,7 @@ class ReadUploadedFileTool(BaseTool):
                 return "No text content available for this file."
 
             text = content_path.read_text(encoding="utf-8")
-            filename = meta.get("filename", "unknown")
+            filename: str = str(meta.get("filename", "unknown"))
             query: str | None = kwargs.get("query")
 
             if query:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,7 +14,7 @@ class SkillCreate(BaseModel):
     script: str | None = None
     script_type: Literal["python", "shell"] | None = None
     is_active: bool = True
-    resource_refs: list[dict] | None = None
+    resource_refs: list[dict[str, Any]] | None = None
 
 
 class SkillUpdate(BaseModel):
@@ -24,7 +24,7 @@ class SkillUpdate(BaseModel):
     script: str | None = None
     script_type: Literal["python", "shell"] | None = None
     is_active: bool | None = None
-    resource_refs: list[dict] | None = None
+    resource_refs: list[dict[str, Any]] | None = None
 
 
 class SkillResponse(BaseModel):
@@ -45,6 +45,6 @@ class SkillResponse(BaseModel):
     reviewed_at: str | None = None
     review_note: str | None = None
     source: str | None = None
-    resource_refs: list[dict] | None = None
+    resource_refs: list[dict[str, Any]] | None = None
     created_at: str
     updated_at: str | None

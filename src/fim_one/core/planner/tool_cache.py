@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ def _is_cacheable(tool: Any) -> bool:
     return getattr(tool, "cacheable", False) is True
 
 
-def _cache_key(tool_name: str, kwargs: dict) -> str:
+def _cache_key(tool_name: str, kwargs: dict[str, Any]) -> str:
     """Deterministic cache key from tool name + arguments."""
     return f"{tool_name}::{json.dumps(kwargs, sort_keys=True, default=str)}"
 
@@ -49,7 +50,7 @@ class ToolCache:
                 self._locks[key] = asyncio.Lock()
             return self._locks[key]
 
-    async def get_or_run(self, key: str, coro_factory):
+    async def get_or_run(self, key: str, coro_factory: Callable[[], Coroutine[Any, Any, Any]]) -> Any:
         """Return cached result or run the coroutine and cache it."""
         lock = await self._get_lock(key)
         async with lock:
@@ -73,14 +74,14 @@ class _CachedTool:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._tool, name)
 
-    async def run(self, **kwargs) -> Any:
+    async def run(self, **kwargs: Any) -> Any:
         key = _cache_key(self._tool.name, kwargs)
         return await self._cache.get_or_run(
             key, lambda: self._tool.run(**kwargs)
         )
 
 
-def wrap_tools_with_cache(tools: list, cache: ToolCache) -> list:
+def wrap_tools_with_cache(tools: list[Any], cache: ToolCache) -> list[Any]:
     """Wrap cacheable tools, leave uncacheable ones as-is."""
     result = []
     for tool in tools:

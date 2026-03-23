@@ -7,6 +7,8 @@ to other members.
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,7 +52,7 @@ async def get_org_requires_review(
 
 
 async def apply_publish_status(
-    resource,
+    resource: Any,
     org_id: str,
     db: AsyncSession,
     resource_type: str,
@@ -91,7 +93,7 @@ async def apply_publish_status(
 
 
 async def check_edit_revert(
-    resource, db: AsyncSession, resource_type: str | None = None
+    resource: Any, db: AsyncSession, resource_type: str | None = None
 ) -> bool:
     """Auto-revert publish_status on edit if resource is in a review-required org
     and currently approved.
@@ -106,7 +108,7 @@ async def check_edit_revert(
 
     # Auto-detect resource_type from table name if not provided
     if resource_type is None:
-        table_name = getattr(resource.__class__, "__tablename__", None)
+        table_name: str = getattr(resource.__class__, "__tablename__", "") or ""
         resource_type = _TABLE_TO_RESOURCE_TYPE.get(table_name, "")
 
     if not await get_org_requires_review(resource.org_id, db, resource_type):

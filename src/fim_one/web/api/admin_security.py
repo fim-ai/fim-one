@@ -119,7 +119,7 @@ async def list_login_history(
     date_to: date | None = Query(None, description="Filter to date (YYYY-MM-DD)"),
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> LoginHistoryPaginatedResponse:
     """List login attempts with pagination and optional filters."""
     conditions = []
     if user_id is not None:
@@ -137,17 +137,19 @@ async def list_login_history(
             LoginHistory.created_at < datetime(next_day.year, next_day.month, next_day.day, tzinfo=timezone.utc)
         )
 
-    where_clause = and_(*conditions) if conditions else True  # type: ignore[arg-type]
-
     # Total count
-    count_q = select(func.count()).select_from(LoginHistory).where(where_clause)
+    count_q = select(func.count()).select_from(LoginHistory)
+    if conditions:
+        count_q = count_q.where(and_(*conditions))
     total = (await db.execute(count_q)).scalar_one()
 
     # Paginated items
     offset = (page - 1) * size
+    items_q = select(LoginHistory)
+    if conditions:
+        items_q = items_q.where(and_(*conditions))
     items_q = (
-        select(LoginHistory)
-        .where(where_clause)
+        items_q
         .order_by(LoginHistory.created_at.desc())
         .offset(offset)
         .limit(size)
@@ -168,7 +170,7 @@ async def list_login_history(
 async def login_stats(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> LoginStatsResponse:
     """Return aggregate login statistics."""
     total_q = select(func.count()).select_from(LoginHistory)
     total_attempts = (await db.execute(total_q)).scalar_one()
@@ -212,7 +214,7 @@ async def login_stats(
 async def list_ip_rules(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> list[IpRuleResponse]:
     """List all IP rules ordered by creation time."""
     result = await db.execute(
         select(IpRule).order_by(IpRule.created_at.desc())
@@ -226,7 +228,7 @@ async def create_ip_rule(
     body: IpRuleCreateRequest,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> IpRuleResponse:
     """Create a new IP allow/deny rule."""
     # Check for duplicate ip_address + rule_type
     dup_q = select(IpRule).where(
@@ -269,7 +271,7 @@ async def toggle_ip_rule(
     body: IpRuleToggleRequest,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> IpRuleResponse:
     """Enable or disable an IP rule."""
     result = await db.execute(select(IpRule).where(IpRule.id == rule_id))
     rule = result.scalar_one_or_none()
@@ -297,7 +299,7 @@ async def delete_ip_rule(
     rule_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete an IP rule permanently."""
     result = await db.execute(select(IpRule).where(IpRule.id == rule_id))
     rule = result.scalar_one_or_none()
@@ -327,7 +329,7 @@ async def delete_ip_rule(
 async def list_active_sessions(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> list[ActiveSessionItem]:
     """List users with active refresh tokens (i.e. active sessions)."""
     now = datetime.utcnow()
     q = (

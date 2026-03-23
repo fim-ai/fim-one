@@ -213,7 +213,7 @@ def _strip_emoji(text: str) -> str:
 def _extract_sse_events(msg: Message) -> list[dict[str, Any]]:
     """Return the sse_events list from an assistant message's metadata."""
     meta = msg.metadata_ or {}
-    return meta.get("sse_events", [])
+    return list(meta.get("sse_events", []))
 
 
 def _extract_react_steps(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -231,7 +231,7 @@ def _extract_done_event(events: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Extract the done event from SSE events."""
     for ev in events:
         if ev.get("event") == "done":
-            return ev.get("data", {})
+            return dict(ev.get("data", {}))
     return None
 
 
@@ -245,7 +245,7 @@ def _extract_dag_plan(events: list[dict[str, Any]], target_round: int = 1) -> li
                 and data.get("status") == "done"
                 and data.get("round", 1) == target_round
             ):
-                return data.get("steps", [])
+                return list(data.get("steps", []))
     return []
 
 
@@ -276,7 +276,7 @@ def _extract_dag_analysis(events: list[dict[str, Any]]) -> dict[str, Any] | None
         if ev.get("event") == "phase":
             data = ev.get("data", {})
             if data.get("name") == "analyzing" and data.get("status") == "done":
-                return data
+                return dict(data)
     return None
 
 
@@ -678,9 +678,9 @@ def _render_txt_dag_details(
 
 def _md_to_html(text: str) -> str:
     """Convert markdown to HTML using the markdown library."""
-    import markdown
+    import markdown  # type: ignore[import-untyped]
 
-    return markdown.markdown(text, extensions=["fenced_code", "tables", "nl2br"])
+    return str(markdown.markdown(text, extensions=["fenced_code", "tables", "nl2br"]))
 
 
 # ---------------------------------------------------------------------------
@@ -722,7 +722,7 @@ class _DocxMarkdownRenderer(HTMLParser):
         self._paragraph = None
 
     def _add_run(self, text: str) -> None:
-        from docx.shared import Pt, RGBColor  # type: ignore[import-untyped]
+        from docx.shared import Pt, RGBColor
 
         para = self._ensure_paragraph()
         run = para.add_run(text)
@@ -749,7 +749,7 @@ class _DocxMarkdownRenderer(HTMLParser):
                 style = self._list_stack[-1]
             self._paragraph = self._doc.add_paragraph(style=style)
             if self._in_blockquote:
-                from docx.shared import Inches  # type: ignore[import-untyped]
+                from docx.shared import Inches
 
                 self._paragraph.paragraph_format.left_indent = Inches(0.5)
                 self._italic = True
@@ -791,8 +791,8 @@ class _DocxMarkdownRenderer(HTMLParser):
             self._finish_paragraph()
             # Native DOCX horizontal rule via paragraph bottom border
             p = self._doc.add_paragraph()
-            from docx.oxml.ns import qn  # type: ignore[import-untyped]
-            from docx.oxml import OxmlElement  # type: ignore[import-untyped]
+            from docx.oxml.ns import qn
+            from docx.oxml import OxmlElement
 
             pPr = p._p.get_or_add_pPr()
             pBdr = OxmlElement("w:pBdr")
@@ -1111,8 +1111,8 @@ def _register_cjk_font() -> str:
     falls back to Helvetica if registration fails.
     """
     try:
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+        from reportlab.pdfbase import pdfmetrics  # type: ignore[import-untyped]
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont  # type: ignore[import-untyped]
 
         pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
         return "STSong-Light"
@@ -1123,9 +1123,9 @@ def _register_cjk_font() -> str:
 
 def _build_pdf_styles(font_name: str) -> dict[str, Any]:
     """Build a dict of ReportLab paragraph styles for the PDF export."""
-    from reportlab.lib.enums import TA_LEFT
-    from reportlab.lib.styles import ParagraphStyle
-    from reportlab.lib.units import inch
+    from reportlab.lib.enums import TA_LEFT  # type: ignore[import-untyped]
+    from reportlab.lib.styles import ParagraphStyle  # type: ignore[import-untyped]
+    from reportlab.lib.units import inch  # type: ignore[import-untyped]
 
     base = {
         "fontName": font_name,
@@ -1207,7 +1207,7 @@ class _PdfMarkdownRenderer(HTMLParser):
             self._text_buf = ""
             return
 
-        from reportlab.platypus import Paragraph
+        from reportlab.platypus import Paragraph  # type: ignore[import-untyped]
 
         style = self._styles["body"]
         if self._in_blockquote:
@@ -1369,7 +1369,7 @@ class _PdfMarkdownRenderer(HTMLParser):
             self._text_buf += self._wrap_inline(data)
 
     def _emit_table(self) -> None:
-        from reportlab.lib import colors
+        from reportlab.lib import colors  # type: ignore[import-untyped]
         from reportlab.lib.units import inch
         from reportlab.platypus import Paragraph, Table, TableStyle
 
@@ -1428,7 +1428,7 @@ def _md_to_pdf_flowables(text: str, styles: dict[str, Any], font_name: str) -> l
 def _render_pdf(conv: Conversation, messages: list[Message], detail: DetailLevel, locale: str = "en") -> bytes:
     """Render a conversation as a PDF file and return the raw bytes."""
     try:
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4  # type: ignore[import-untyped]
         from reportlab.lib.units import inch
         from reportlab.platypus import Paragraph, Preformatted, SimpleDocTemplate, Spacer
         from reportlab.platypus import HRFlowable

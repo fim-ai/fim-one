@@ -265,7 +265,7 @@ async def _generate_suggestions(
             ChatMessage(role="user", content=user_content),
         ])
 
-        raw = (result.message.content or "").strip()
+        raw = str(result.message.content or "").strip()
         if usage_tracker and result.usage:
             await usage_tracker.record(result.usage)
 
@@ -327,7 +327,7 @@ async def _generate_title(
             ChatMessage(role="user", content=user_content),
         ])
 
-        raw = (result.message.content or "").strip().strip("\"'")
+        raw = str(result.message.content or "").strip().strip("\"'")
         if usage_tracker and result.usage:
             await usage_tracker.record(result.usage)
 
@@ -394,7 +394,7 @@ async def _classify_deliverables(
             ChatMessage(role="user", content=user_content),
         ])
 
-        raw = (result.message.content or "").strip()
+        raw = str(result.message.content or "").strip()
         if usage_tracker and result.usage:
             await usage_tracker.record(result.usage)
 
@@ -474,9 +474,10 @@ async def _resolve_user(
             result = await session.execute(
                 sa_select(User).where(User.id == user_id)
             )
-            user = result.scalar_one_or_none()
-            if user is None:
+            user_maybe = result.scalar_one_or_none()
+            if user_maybe is None:
                 raise AppError("user_not_found", status_code=401)
+            user = user_maybe
 
             # Fix #11a: reject disabled accounts
             if not user.is_active:
@@ -527,7 +528,7 @@ async def _validate_conversation_ownership(
 async def _check_token_quota(user_id: str) -> None:
     """Raise 429 if the user has exceeded their monthly token quota."""
     from fim_one.db import create_session
-    from fim_one.web.api.admin import get_setting
+    from fim_one.web.api.admin_utils import get_setting
     from fim_one.web.models import Conversation, User
 
     async with create_session() as session:
@@ -578,12 +579,12 @@ async def _resolve_agent_config(
 
     if not resolved_id and conversation_id:
         async with create_session() as session:
-            result = await session.execute(
+            conv_result = await session.execute(
                 sa_select(Conversation.agent_id).where(
                     Conversation.id == conversation_id,
                 )
             )
-            row = result.scalar_one_or_none()
+            row = conv_result.scalar_one_or_none()
             if row:
                 resolved_id = row
 
@@ -596,8 +597,8 @@ async def _resolve_agent_config(
             from fim_one.web.visibility import resolve_visibility as _agent_vis
             _vis_filter, _, _ = await _agent_vis(Agent, user_id, "agent", session)
             stmt = stmt.where(_vis_filter)
-        result = await session.execute(stmt)
-        agent = result.scalar_one_or_none()
+        agent_result = await session.execute(stmt)
+        agent = agent_result.scalar_one_or_none()
         if agent is None:
             return None
         return {
@@ -634,14 +635,14 @@ async def _resolve_llm(
                 return llm
     # Model Group -> ENV fallback (Group-aware registry)
     registry = await get_model_registry_with_group(db)
-    llm = registry.get_default()
-    if not getattr(llm, "api_key", None):
+    default_llm = registry.get_default()
+    if not getattr(default_llm, "api_key", None):
         raise ValueError(
             "No LLM API key configured. "
             "Go to Admin → Models to add a model provider, "
             "or set LLM_API_KEY in your environment."
         )
-    return llm
+    return default_llm
 
 
 async def _resolve_fast_llm(
@@ -744,7 +745,7 @@ async def _resolve_tools(
         else:
             from fim_one.core.tool.builtin.grounded_retrieve import GroundedRetrieveTool
 
-            grounding_config = agent_cfg.get("grounding_config") or {}
+            grounding_config: dict[str, Any] = (agent_cfg or {}).get("grounding_config") or {}
             confidence_threshold = grounding_config.get("confidence_threshold")
             tools.register(GroundedRetrieveTool(
                 kb_ids=kb_ids,
@@ -841,7 +842,7 @@ async def _resolve_tools(
                 # Collect API connectors for potential progressive mode
                 api_connectors = []
                 # Collect DB connectors for potential progressive mode
-                db_connectors_collected: list[tuple[Any, dict, list]] = []
+                db_connectors_collected: list[tuple[Any, dict[str, Any], list[Any]]] = []
 
                 for conn in connectors:
                     if conn.type == "database" and conn.db_config:
@@ -902,7 +903,7 @@ async def _resolve_tools(
                         )
                         from fim_one.core.security.encryption import decrypt_credential
 
-                        resolved_creds: dict = {}
+                        resolved_creds: dict[str, Any] = {}
                         _calling_user_id = user_id
                         _allow_fallback = getattr(conn, "allow_fallback", True)
 
@@ -1059,7 +1060,7 @@ async def _resolve_tools(
                     )
 
                 # Database connectors — use progressive mode (single meta-tool)
-                _ad_db_collected: list[tuple[Any, dict, list]] = []
+                _ad_db_collected: list[tuple[Any, dict[str, Any], list[Any]]] = []
                 for _ad_db_conn in _ad_connectors:
                     if _ad_db_conn.type == "database" and _ad_db_conn.db_config:
                         try:
@@ -1158,7 +1159,7 @@ async def _resolve_tools(
                 ConnectorTestConnectionTool,
                 ConnectorImportOpenAPITool,
             ]:
-                tools.register(_BCls(connector_id=_builder_cid, user_id=user_id or ""))
+                tools.register(_BCls(connector_id=_builder_cid, user_id=user_id or ""))  # type: ignore[abstract]
             logger.info(
                 "Injected connector builder tools for connector_id=%s", _builder_cid
             )
@@ -1186,7 +1187,7 @@ async def _resolve_tools(
                 AgentRemoveConnectorTool,
                 AgentSetModelTool,
             ]:
-                tools.register(_BCls2(agent_id=_builder_aid, user_id=user_id or ""))
+                tools.register(_BCls2(agent_id=_builder_aid, user_id=user_id or ""))  # type: ignore[abstract]
             logger.info(
                 "Injected agent builder tools for agent_id=%s", _builder_aid
             )
@@ -1222,7 +1223,7 @@ async def _resolve_tools(
                 DbBatchSetVisibilityTool,
                 DbRunSampleQueryTool,
             ]:
-                tools.register(_BCls3(connector_id=_builder_dbid, user_id=user_id or ""))
+                tools.register(_BCls3(connector_id=_builder_dbid, user_id=user_id or ""))  # type: ignore[abstract]
             logger.info("Injected db builder tools for connector_id=%s", _builder_dbid)
 
     # Filter out globally disabled built-in tools (admin setting).
@@ -1329,8 +1330,8 @@ async def _resolve_tools(
                 ]
 
                 async def _sub_agent_tool_resolver(
-                    sub_cfg: dict, conv_id: str | None
-                ):
+                    sub_cfg: dict[str, Any], conv_id: str | None
+                ) -> Any:
                     return await _resolve_tools(
                         sub_cfg, conv_id, user_id=user_id
                     )
@@ -1381,7 +1382,7 @@ async def _connect_pending_mcp_servers(
 
     _mcp_tool_mode = get_mcp_tool_mode(agent_cfg)
     # Collect adapters per server for progressive mode
-    _servers_adapters: dict[str, list] = {}
+    _servers_adapters: dict[str, list[Any]] = {}
 
     for _srv in pending:
         try:
@@ -1619,7 +1620,7 @@ def get_skill_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
         if isinstance(model_cfg, dict):
             mode = model_cfg.get("skill_tool_mode")
             if mode in ("progressive", "inline"):
-                return mode
+                return str(mode)
     env_mode = os.environ.get("SKILL_TOOL_MODE", "progressive").lower()
     if env_mode in ("progressive", "inline"):
         return env_mode
@@ -1686,17 +1687,17 @@ async def _load_image_data_urls(
         meta = index.get(fid)
         if not meta:
             continue
-        suffix = Path(meta["filename"]).suffix.lower()
+        suffix = Path(str(meta["filename"])).suffix.lower()
         if not _is_image(suffix):
             continue
-        file_path = UPLOAD_ROOT / f"user_{user_id}" / meta["stored_name"]
+        file_path = UPLOAD_ROOT / f"user_{user_id}" / str(meta["stored_name"])
         if not file_path.exists():
             continue
         mime = meta.get("mime_type", "image/png")
         raw = await asyncio.to_thread(file_path.read_bytes)
         b64 = await asyncio.to_thread(base64.b64encode, raw)
         data_url = f"data:{mime};base64,{b64.decode('ascii')}"
-        results.append((fid, meta["filename"], data_url))
+        results.append((fid, str(meta["filename"]), data_url))
 
     return results
 
@@ -2747,8 +2748,9 @@ async def dag_endpoint(
                             ])
                             if summary_result.usage:
                                 await fast_usage_tracker.record(summary_result.usage)
+                            _content = summary_result.message.content
                             summary = (
-                                summary_result.message.content or ""
+                                _content if isinstance(_content, str) else str(_content or "")
                             ).strip()
                             enriched_query = (
                                 f"Previous conversation (summary):\n{summary}\n\n"
@@ -3482,7 +3484,7 @@ async def auto_endpoint(
         yield _sse("routing", {"mode": mode, "reasoning": reasoning})
         # Then delegate to the inner endpoint's generator
         async for chunk in inner_response.body_iterator:
-            yield chunk
+            yield str(chunk) if not isinstance(chunk, str) else chunk
 
     return StreamingResponse(
         auto_generate(),

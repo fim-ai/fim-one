@@ -7,6 +7,7 @@ import logging
 import math
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -74,11 +75,11 @@ def _run_to_response(
 
 
 async def _run_one_case(
-    case: dict,
+    case: dict[str, Any],
     agent_instructions: str | None,
-    tools,
-    llm,
-    grader_llm,
+    tools: Any,
+    llm: Any,
+    grader_llm: Any,
     run_id: str,
     db: AsyncSession,
     sem: asyncio.Semaphore,
@@ -124,7 +125,7 @@ async def _run_one_case(
                 ChatMessage(role="system", content=_GRADER_SYSTEM),
                 ChatMessage(role="user", content=grader_user),
             ]
-            sc = await structured_llm_call(
+            sc: Any = await structured_llm_call(
                 grader_llm,
                 grader_messages,
                 schema=_GRADER_SCHEMA,
@@ -161,9 +162,9 @@ async def _run_one_case(
 async def _execute_eval_run(
     run_id: str,
     agent_instructions: str | None,
-    cases: list[dict],
-    llm,
-    grader_llm,
+    cases: list[dict[str, Any]],
+    llm: Any,
+    grader_llm: Any,
 ) -> None:
     """Background task: run all cases, grade them, and update the EvalRun row."""
     async with create_session() as db:
@@ -237,7 +238,7 @@ async def create_run(
     body: EvalRunCreate,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     # Verify agent ownership
     agent_result = await db.execute(
         select(Agent).where(
@@ -317,7 +318,7 @@ async def list_runs(
     size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> PaginatedResponse:
     offset = (page - 1) * size
 
     total_result = await db.execute(
@@ -347,12 +348,12 @@ async def list_runs(
         a_result = await db.execute(
             select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids))
         )
-        agent_names = dict(a_result.all())
+        agent_names = {row[0]: row[1] for row in a_result.all()}
     if dataset_ids:
         d_result = await db.execute(
             select(EvalDataset.id, EvalDataset.name).where(EvalDataset.id.in_(dataset_ids))
         )
-        dataset_names = dict(d_result.all())
+        dataset_names = {row[0]: row[1] for row in d_result.all()}
 
     items = [
         _run_to_response(
@@ -376,7 +377,7 @@ async def get_run(
     run_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     run_result = await db.execute(
         select(EvalRun).where(
             EvalRun.id == run_id,
@@ -450,7 +451,7 @@ async def delete_run(
     run_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> ApiResponse:
     run_result = await db.execute(
         select(EvalRun).where(
             EvalRun.id == run_id,

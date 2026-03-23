@@ -23,11 +23,11 @@ if TYPE_CHECKING:
 
 
 def build_visibility_filter(
-    model,
+    model: Any,
     user_id: str,
     user_org_ids: list[str],  # kept for backward compat; unused after marketplace redesign
     subscribed_ids: list[str] | None = None,
-):
+) -> Any:
     """Build a SQLAlchemy WHERE clause for visibility filtering.
 
     Returns rows where:
@@ -86,7 +86,7 @@ async def resolve_visibility(
             ResourceSubscription.resource_type == resource_type,
         )
     )
-    subscribed_ids = sub_result.scalars().all()
+    subscribed_ids: list[str] = list(sub_result.scalars().all())
     clause = build_visibility_filter(
         model, user_id, user_org_ids, subscribed_ids=subscribed_ids,
     )

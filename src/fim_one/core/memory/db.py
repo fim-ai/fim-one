@@ -23,7 +23,7 @@ import base64
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fim_one.core.model.types import ChatMessage
 
@@ -65,7 +65,7 @@ def _rebuild_image_urls(
         meta = index.get(file_id)
         if not meta:
             continue
-        file_path = upload_dir / f"user_{user_id}" / meta["stored_name"]
+        file_path = upload_dir / f"user_{user_id}" / str(meta["stored_name"])
         if not file_path.exists():
             continue
         raw = file_path.read_bytes()
@@ -158,7 +158,11 @@ class DbMemory(BaseMemory):
                                 content = ChatMessage.build_vision_content(
                                     row.content or "", image_urls,
                                 )
-                    msg = ChatMessage(role=row.role, content=content)
+                    raw_role = row.role
+                    if raw_role not in ("system", "user", "assistant", "tool"):
+                        continue
+                    role = cast(Literal["system", "user", "assistant", "tool"], raw_role)
+                    msg = ChatMessage(role=role, content=content)
                     messages.append(msg)
                     id_for_msg[id(msg)] = str(row.id)
 
@@ -196,17 +200,17 @@ class DbMemory(BaseMemory):
             self._original_count = len(messages)
 
             if self._compact_llm is not None:
-                result = await CompactUtils.llm_compact(
+                compacted = await CompactUtils.llm_compact(
                     messages, self._compact_llm, self._max_tokens,
                     usage_tracker=self._usage_tracker,
                 )
             else:
-                result = CompactUtils.smart_truncate(messages, self._max_tokens)
+                compacted = CompactUtils.smart_truncate(messages, self._max_tokens)
 
             # Track which original messages survived compaction.
             surviving_ids = {
                 id_for_msg[id(m)]
-                for m in result
+                for m in compacted
                 if id(m) in id_for_msg
             }
             self.compacted_message_ids = sorted(all_ids - surviving_ids)
@@ -217,9 +221,9 @@ class DbMemory(BaseMemory):
                     self.compacted_message_ids[:10],
                 )
 
-            self._compacted_count = len(result)
+            self._compacted_count = len(compacted)
             self.was_compacted = self._compacted_count < self._original_count
-            return result
+            return compacted
 
         except Exception:
             logger.warning(

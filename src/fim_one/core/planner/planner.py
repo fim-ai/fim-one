@@ -174,7 +174,7 @@ class DAGPlanner:
             parse_fn=self._dict_to_steps,
         )
 
-        steps = call_result.value
+        steps: list[PlanStep] = call_result.value or []
         self._validate_dag(steps)
 
         total_usage: UsageSummary | None = None

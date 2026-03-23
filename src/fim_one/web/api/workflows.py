@@ -14,12 +14,12 @@ import uuid
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import CursorResult, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session, create_session
@@ -183,12 +183,12 @@ def _workflow_to_response(wf: Workflow) -> WorkflowResponse:
         change_summary=getattr(wf, "change_summary", None),
         publish_status=getattr(wf, "publish_status", None),
         published_at=(
-            wf.published_at.isoformat() if getattr(wf, "published_at", None) else None
+            pub_at.isoformat() if (pub_at := getattr(wf, "published_at", None)) else None
         ),
         reviewed_by=getattr(wf, "reviewed_by", None),
         reviewed_at=(
-            wf.reviewed_at.isoformat()
-            if getattr(wf, "reviewed_at", None)
+            rev_at.isoformat()
+            if (rev_at := getattr(wf, "reviewed_at", None))
             else None
         ),
         review_note=getattr(wf, "review_note", None),
@@ -268,8 +268,8 @@ async def _get_accessible_workflow(
 
 
 def _extract_schemas_from_blueprint(
-    blueprint: dict,
-) -> tuple[dict | None, dict | None]:
+    blueprint: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Extract input/output schemas from Start and End nodes in the blueprint.
 
     The frontend stores Start node inputs as ``data.variables``:
@@ -278,8 +278,8 @@ def _extract_schemas_from_blueprint(
 
     Returns (input_schema, output_schema).
     """
-    input_schema: dict | None = None
-    output_schema: dict | None = None
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
 
     nodes = blueprint.get("nodes", [])
     for node in nodes:
@@ -293,7 +293,7 @@ def _extract_schemas_from_blueprint(
             if not input_schema:
                 variables = node_data.get("variables", [])
                 if variables:
-                    properties: dict[str, dict] = {}
+                    properties: dict[str, dict[str, Any]] = {}
                     required: list[str] = []
                     for var in variables:
                         name = var.get("name", "")
@@ -400,7 +400,7 @@ async def list_workflows(
 
     # Batch-fetch run stats for all workflows on this page (single query)
     wf_ids = [w.id for w in workflows]
-    run_stats: dict[str, dict] = {}
+    run_stats: dict[str, dict[str, Any]] = {}
     if wf_ids:
         stats_q = await db.execute(
             select(
@@ -644,10 +644,10 @@ async def trigger_workflow(
     # Persist run results
     try:
         async with create_session() as persist_db:
-            result = await persist_db.execute(
+            run_result = await persist_db.execute(
                 select(WorkflowRun).where(WorkflowRun.id == run_id)
             )
-            db_run = result.scalar_one_or_none()
+            db_run = run_result.scalar_one_or_none()
             if db_run:
                 db_run.status = final_status
                 db_run.outputs = outputs or None
@@ -764,7 +764,7 @@ async def approve_approval(
 
     # Atomic status transition: WHERE status='pending' prevents race condition
     now = datetime.now(UTC)
-    update_result = await db.execute(
+    update_result = cast(CursorResult[Any], await db.execute(
         update(WorkflowApproval)
         .where(
             WorkflowApproval.id == approval_id,
@@ -776,7 +776,7 @@ async def approve_approval(
             decision_note=body.note,
             resolved_at=now,
         )
-    )
+    ))
     if update_result.rowcount == 0:
         raise AppError(
             "approval_already_resolved",
@@ -815,7 +815,7 @@ async def reject_approval(
 
     # Atomic status transition: WHERE status='pending' prevents race condition
     now = datetime.now(UTC)
-    update_result = await db.execute(
+    update_result = cast(CursorResult[Any], await db.execute(
         update(WorkflowApproval)
         .where(
             WorkflowApproval.id == approval_id,
@@ -827,7 +827,7 @@ async def reject_approval(
             decision_note=body.note,
             resolved_at=now,
         )
-    )
+    ))
     if update_result.rowcount == 0:
         raise AppError(
             "approval_already_resolved",
@@ -871,7 +871,7 @@ async def update_workflow(
         _validate_webhook_url(update_data["webhook_url"])
 
     # Capture old blueprint BEFORE applying updates (for diff computation)
-    old_blueprint: dict | None = None
+    old_blueprint: dict[str, Any] | None = None
     if "blueprint" in update_data and update_data["blueprint"] is not None:
         old_blueprint = wf.blueprint or {"nodes": [], "edges": [], "viewport": {}}
 
@@ -1115,7 +1115,7 @@ async def unpublish_workflow(
 
 @router.post("/validate", response_model=ApiResponse)
 async def validate_blueprint_endpoint(
-    body: dict,
+    body: dict[str, Any],
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> ApiResponse:
     """Validate a workflow blueprint without saving it.
@@ -1278,7 +1278,7 @@ async def run_workflow(
                 valid=False,
                 errors=["Blueprint is empty or has no nodes"],
             )
-            return ApiResponse(data=dry_result.model_dump())
+            return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
         try:
             parsed = parse_blueprint(blueprint)
@@ -1287,7 +1287,7 @@ async def run_workflow(
                 valid=False,
                 errors=[str(exc)],
             )
-            return ApiResponse(data=dry_result.model_dump())
+            return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
         bp_warnings = _validate(parsed)
         topo_order = topological_sort(parsed)
@@ -1325,7 +1325,7 @@ async def run_workflow(
             topology_order=topo_order,
             execution_plan=execution_plan,
         )
-        return ApiResponse(data=dry_result.model_dump())
+        return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
     # --- Normal execution mode (SSE streaming) ---
 
@@ -2267,8 +2267,8 @@ async def restore_workflow_version(
     db.add(restore_ver)
 
     await db.commit()
-    result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
-    wf = result.scalar_one()
+    wf_result = await db.execute(select(Workflow).where(Workflow.id == wf.id))
+    wf = wf_result.scalar_one()
     return ApiResponse(data=_workflow_to_response(wf).model_dump())
 
 
@@ -2420,7 +2420,7 @@ async def get_workflow_node_stats(
     rows = result.scalars().all()
 
     # Aggregate per-node stats
-    node_stats: dict[str, dict] = {}
+    node_stats: dict[str, dict[str, Any]] = {}
     for node_results_json in rows:
         if not isinstance(node_results_json, dict):
             continue
@@ -2855,14 +2855,14 @@ async def clear_workflow_runs(
     """
     await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    result = await db.execute(
+    del_result = cast(CursorResult[Any], await db.execute(
         delete(WorkflowRun).where(
             WorkflowRun.workflow_id == workflow_id,
             WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
         )
-    )
+    ))
     await db.commit()
-    return ApiResponse(data={"deleted_count": result.rowcount})
+    return ApiResponse(data={"deleted_count": del_result.rowcount})
 
 
 # ---------------------------------------------------------------------------

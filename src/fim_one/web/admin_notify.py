@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 SETTING_NOTIFICATION_CONFIG = "admin_notification_config"
 
 
-async def _load_notification_config() -> dict:
+async def _load_notification_config() -> dict[str, bool]:
     """Load notification config from DB, returning defaults if not set."""
     defaults = {
         "enabled": False,

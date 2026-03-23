@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..base import BaseTool
+from ..base import BaseTool, ToolResult
 from ..sandbox import get_sandbox_backend
 from ..truncation import truncate_bytes
 
@@ -94,7 +94,7 @@ class NodeExecTool(BaseTool):
             "required": ["code"],
         }
 
-    async def run(self, **kwargs: Any) -> str:
+    async def run(self, **kwargs: Any) -> str | ToolResult:  # type: ignore[override]
         code: str = kwargs.get("code", "")
         if not code.strip():
             return ""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -67,7 +67,7 @@ class KBRetrieveRequest(BaseModel):
 
 class KBRetrieveResponse(BaseModel):
     content: str
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
     score: float
 
 
@@ -75,7 +75,7 @@ class ChunkResponse(BaseModel):
     id: str
     text: str
     chunk_index: int
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
     content_hash: str
 
 

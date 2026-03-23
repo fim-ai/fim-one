@@ -16,9 +16,9 @@ class CallAgentTool(BaseTool):
 
     def __init__(
         self,
-        available_agents: list[dict],
+        available_agents: list[dict[str, Any]],
         calling_user_id: str,
-        tool_resolver: Callable[[dict, str | None], Awaitable] | None = None,
+        tool_resolver: Callable[[dict[str, Any], str | None], Awaitable[Any]] | None = None,
     ):
         """
         available_agents: list of {id, name, description, instructions, model_config_json, ...}
@@ -45,7 +45,7 @@ class CallAgentTool(BaseTool):
         return self._description
 
     @property
-    def parameters_schema(self) -> dict:
+    def parameters_schema(self) -> dict[str, Any]:
         agent_ids = list(self._agents.keys())
         return {
             "type": "object",
@@ -63,7 +63,7 @@ class CallAgentTool(BaseTool):
             "required": ["agent_id", "task"],
         }
 
-    async def run(self, **kwargs: Any) -> str:  # type: ignore[override]
+    async def run(self, **kwargs: Any) -> str:
         """Run the specified agent on the task and return its response."""
         agent_id: str = kwargs.get("agent_id", "")
         task: str = kwargs.get("task", "")
@@ -92,7 +92,7 @@ class CallAgentTool(BaseTool):
         model_name = model_cfg.get("model") if model_cfg else None
 
         try:
-            registry = ModelRegistry.get_instance()
+            registry = ModelRegistry()
             if model_name:
                 llm = registry.get(model_name)
             else:

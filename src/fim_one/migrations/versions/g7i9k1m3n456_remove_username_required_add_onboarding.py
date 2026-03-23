@@ -21,11 +21,11 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def _column_is_nullable(bind, table: str, column: str) -> bool:
+def _column_is_nullable(bind: sa.Connection | sa.Engine, table: str, column: str) -> bool:
     """Return True if *column* on *table* is already nullable."""
     for col in sa.inspect(bind).get_columns(table):
         if col["name"] == column:
-            return col.get("nullable", False)
+            return bool(col.get("nullable", False))
     return False
 
 

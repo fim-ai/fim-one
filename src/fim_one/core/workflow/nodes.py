@@ -13,10 +13,13 @@ import logging
 import re
 import tempfile
 import time
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowNodeDef
 from .variable_store import VariableStore
+
+if TYPE_CHECKING:
+    from fim_one.core.tool.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +300,7 @@ class ConditionBranchExecutor:
     ) -> NodeResult:
         t0 = time.time()
         try:
-            from simpleeval import simple_eval
+            from simpleeval import simple_eval  # type: ignore[import-untyped]
 
             conditions = node.data.get("conditions", [])
             default_handle = node.data.get("default_handle", "source-default")
@@ -495,7 +498,8 @@ class ConditionBranchExecutor:
             ChatMessage(role="user", content=user_content),
         ])
 
-        answer = (result.message.content or "").strip()
+        _raw_content = result.message.content
+        answer = (_raw_content if isinstance(_raw_content, str) else "").strip()
         logger.debug(
             "ConditionBranch LLM response for node %s: %r", node.id, answer,
         )
@@ -595,7 +599,8 @@ class QuestionClassifierExecutor:
                 ChatMessage(role="user", content=text),
             ])
 
-            classification = (result.message.content or "").strip()
+            _cls_content = result.message.content
+            classification = (_cls_content if isinstance(_cls_content, str) else "").strip()
 
             # Find the matching category handle
             # Frontend uses "class-{id}" format for sourceHandles
@@ -772,8 +777,8 @@ class KnowledgeRetrievalExecutor:
 
             for kb_id in kb_ids:
                 try:
-                    results = await kb_manager.search(
-                        kb_id=kb_id, query=query, top_k=top_k
+                    results = await kb_manager.retrieve(
+                        query, kb_id=kb_id, user_id=context.user_id, top_k=top_k
                     )
                     for r in results:
                         all_results.append({
@@ -1642,16 +1647,17 @@ class VariableAggregatorExecutor:
             # Resolve each variable reference
             resolved: list[Any] = []
             for var_ref in variables:
+                agg_value: Any
                 if isinstance(var_ref, str) and "{{" in var_ref:
-                    value = await store.interpolate(var_ref)
+                    agg_value = await store.interpolate(var_ref)
                     # interpolate returns the placeholder as-is if unresolved
-                    if value == var_ref:
-                        value = None
+                    if agg_value == var_ref:
+                        agg_value = None
                 elif isinstance(var_ref, str):
-                    value = await store.get(var_ref)
+                    agg_value = await store.get(var_ref)
                 else:
-                    value = var_ref
-                resolved.append(value)
+                    agg_value = var_ref
+                resolved.append(agg_value)
 
             # Aggregate based on mode
             output: Any
@@ -1743,7 +1749,7 @@ class ParameterExtractorExecutor:
             from fim_one.db import create_session
 
             input_text_template: str = node.data.get("input_text", "")
-            parameters: list[dict] = node.data.get("parameters", [])
+            parameters: list[dict[str, Any]] = node.data.get("parameters", [])
             extraction_prompt: str = node.data.get("extraction_prompt", "")
 
             # Validate required fields
@@ -1801,7 +1807,8 @@ class ParameterExtractorExecutor:
                 ChatMessage(role="user", content=input_text),
             ])
 
-            raw_response = (result.message.content or "").strip()
+            _pe_content = result.message.content
+            raw_response = (_pe_content if isinstance(_pe_content, str) else "").strip()
 
             # Parse JSON from response — handle markdown code blocks
             json_str = raw_response
@@ -2174,6 +2181,7 @@ class TransformExecutor:
                 )
 
             # Resolve the input variable
+            value: Any
             if "{{" in input_variable:
                 value = await store.interpolate(input_variable)
             else:
@@ -2588,17 +2596,19 @@ class QuestionUnderstandingExecutor:
                 )
 
             # Build system prompt
+            system_prompt: str
             if custom_system_prompt:
                 system_prompt = custom_system_prompt
             else:
-                system_prompt = self._DEFAULT_PROMPTS.get(mode)
-                if not system_prompt:
+                _maybe_prompt = self._DEFAULT_PROMPTS.get(mode)
+                if not _maybe_prompt:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
                         error=f"QuestionUnderstanding unknown mode: {mode}",
                         duration_ms=_ms_since(t0),
                     )
+                system_prompt = _maybe_prompt
 
             # Call the fast LLM
             async with create_session() as db:
@@ -2609,7 +2619,8 @@ class QuestionUnderstandingExecutor:
                 ChatMessage(role="user", content=question_text),
             ])
 
-            raw_response = (result.message.content or "").strip()
+            _qu_content = result.message.content
+            raw_response = (_qu_content if isinstance(_qu_content, str) else "").strip()
 
             # For classify/decompose modes, try to parse as JSON
             result_value: Any
@@ -2969,15 +2980,17 @@ class MCPExecutor:
                         )
                         cred = cred_result.scalar_one_or_none()
                         if cred:
-                            if cred.env_blob:
+                            env_dict: dict[str, str] = dict(cred.env_blob) if cred.env_blob else {}
+                            if env_dict:
                                 effective_env = {
                                     **(effective_env or {}),
-                                    **cred.env_blob,
+                                    **env_dict,
                                 }
-                            if cred.headers_blob:
+                            headers_dict: dict[str, str] = dict(cred.headers_blob) if cred.headers_blob else {}
+                            if headers_dict:
                                 effective_headers = {
                                     **(effective_headers or {}),
-                                    **cred.headers_blob,
+                                    **headers_dict,
                                 }
                     except Exception:
                         logger.warning(
@@ -3463,7 +3476,7 @@ class ENVExecutor:
 # Registry — map NodeType to executor class
 # ---------------------------------------------------------------------------
 
-EXECUTOR_REGISTRY: dict[NodeType, type] = {
+EXECUTOR_REGISTRY: dict[NodeType, type[NodeExecutor]] = {
     NodeType.START: StartExecutor,
     NodeType.END: EndExecutor,
     NodeType.LLM: LLMExecutor,

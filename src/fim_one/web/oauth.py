@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -36,7 +37,7 @@ class OAuthEmailRequiredError(Exception):
     """Raised when the OAuth provider does not return an email address."""
 
 
-_PROVIDERS: dict[str, dict] = {
+_PROVIDERS: dict[str, dict[str, Any]] = {
     "github": {
         "authorize_url": "https://github.com/login/oauth/authorize",
         "token_url": "https://github.com/login/oauth/access_token",
@@ -149,7 +150,7 @@ async def exchange_code(provider: OAuthProvider, code: str, redirect_uri: str) -
             token = body.get("data", {}).get("access_token")
             if not token:
                 raise ValueError(f"No access_token in Feishu response: {body}")
-            return token
+            return str(token)
 
         headers = {"Accept": "application/json"}
         data = {
@@ -166,7 +167,7 @@ async def exchange_code(provider: OAuthProvider, code: str, redirect_uri: str) -
         token = body.get("access_token")
         if not token:
             raise ValueError(f"No access_token in response: {body}")
-        return token
+        return str(token)
 
 
 async def fetch_user_info(provider: OAuthProvider, access_token: str) -> OAuthUserInfo:

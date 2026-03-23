@@ -24,7 +24,7 @@ import zoneinfo
 from datetime import UTC, datetime
 from typing import Any
 
-from croniter import croniter
+from croniter import croniter  # type: ignore[import-untyped]
 
 logger = logging.getLogger("fim_one.scheduler")
 
@@ -55,8 +55,8 @@ class WorkflowScheduler:
         self._poll_interval = poll_interval
         self._semaphore = asyncio.Semaphore(max_concurrent_runs)
         self._stop_event = asyncio.Event()
-        self._running_tasks: set[asyncio.Task] = set()
-        self._webhook_tasks: set[asyncio.Task] = set()
+        self._running_tasks: set[asyncio.Task[None]] = set()
+        self._webhook_tasks: set[asyncio.Task[None]] = set()
 
     async def run(self) -> None:
         """Main scheduler loop.  Runs until ``stop()`` is called or cancelled."""

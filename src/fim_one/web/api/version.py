@@ -31,7 +31,7 @@ _SERVER_START_TIME = datetime.now(UTC).isoformat()
 
 
 @router.get("/version")
-async def get_version() -> dict:
+async def get_version() -> dict[str, str]:
     """Return application version metadata.
 
     This is a public endpoint — no authentication required.
@@ -59,7 +59,7 @@ def _is_group_model_usable(model: ModelProviderModel | None) -> bool:
 async def get_active_models(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
-) -> dict:
+) -> dict[str, object]:
     """Return the 3 currently effective models (general, fast, reasoning).
 
     Resolution order:
@@ -112,33 +112,33 @@ async def get_active_models(
         group_name = group.name
 
         # General slot
-        if _is_group_model_usable(group.general_model):
-            m = group.general_model
+        gm = group.general_model
+        if gm is not None and _is_group_model_usable(gm):
             general = {
                 "role": "general",
-                "model_name": m.model_name,
-                "context_size": m.context_size or env_general_context,
-                "max_output_tokens": m.max_output_tokens or _main_max_output(),
+                "model_name": gm.model_name,
+                "context_size": gm.context_size or env_general_context,
+                "max_output_tokens": gm.max_output_tokens or _main_max_output(),
             }
 
         # Fast slot
-        if _is_group_model_usable(group.fast_model):
-            m = group.fast_model
+        fm = group.fast_model
+        if fm is not None and _is_group_model_usable(fm):
             fast = {
                 "role": "fast",
-                "model_name": m.model_name,
-                "context_size": m.context_size or env_fast_context,
-                "max_output_tokens": m.max_output_tokens or _fast_max_output(),
+                "model_name": fm.model_name,
+                "context_size": fm.context_size or env_fast_context,
+                "max_output_tokens": fm.max_output_tokens or _fast_max_output(),
             }
 
         # Reasoning slot
-        if _is_group_model_usable(group.reasoning_model):
-            m = group.reasoning_model
+        rm = group.reasoning_model
+        if rm is not None and _is_group_model_usable(rm):
             reasoning = {
                 "role": "reasoning",
-                "model_name": m.model_name,
-                "context_size": m.context_size or env_reasoning_context,
-                "max_output_tokens": m.max_output_tokens or _reasoning_max_output(),
+                "model_name": rm.model_name,
+                "context_size": rm.context_size or env_reasoning_context,
+                "max_output_tokens": rm.max_output_tokens or _reasoning_max_output(),
             }
 
     return {

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import asyncio
 import os
 import secrets
@@ -25,8 +27,8 @@ from fim_one.web.api.admin import (
     SETTING_ANNOUNCEMENT_ENABLED,
     SETTING_ANNOUNCEMENT_TEXT,
     SETTING_REGISTRATION_ENABLED,
-    get_setting,
 )
+from fim_one.web.api.admin_utils import get_setting
 from fim_one.web.models.audit_log import AuditLog
 from fim_one.web.models.email_verification import EmailVerification
 from fim_one.web.models.invite_code import InviteCode
@@ -165,7 +167,7 @@ async def _record_login(
 @router.get("/registration-status")
 async def registration_status(
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Public endpoint: returns registration mode and legacy enabled flag."""
     reg_mode = await get_setting(db, "registration_mode", "")
     if not reg_mode:
@@ -190,7 +192,7 @@ VERIFICATION_MAX_ATTEMPTS = 5
 async def send_verification_code(
     body: SendVerificationCodeRequest,
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Send a 6-digit verification code to the given email address."""
     if not _smtp_configured():
         raise AppError("smtp_not_configured", status_code=503)
@@ -420,7 +422,7 @@ async def login(
 async def send_login_code(
     body: SendLoginCodeRequest,
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Send a 6-digit OTP code for passwordless login."""
     if not _smtp_configured():
         raise AppError("smtp_not_configured", status_code=503)
@@ -1119,7 +1121,7 @@ async def send_reset_code(
     body: SendResetCodeRequest,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Send a 6-digit OTP code for password reset (authenticated users only)."""
     if not _smtp_configured():
         raise AppError("smtp_not_configured", status_code=503)
@@ -1213,7 +1215,7 @@ async def reset_password(
 async def send_forgot_code(
     body: SendForgotCodeRequest,
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Send a 6-digit OTP for password reset (unauthenticated — login page)."""
     if not _smtp_configured():
         raise AppError("smtp_not_configured", status_code=503)
@@ -1339,7 +1341,7 @@ async def forgot_password(
         raise AppError("verification_code_expired")
 
     # Check the verification is still recent (within 10 minutes of verification)
-    if verif.verified_at.replace(tzinfo=UTC) < datetime.now(UTC) - timedelta(minutes=10):
+    if verif.verified_at is None or verif.verified_at.replace(tzinfo=UTC) < datetime.now(UTC) - timedelta(minutes=10):
         raise AppError("verification_code_expired")
 
     # Set new password
@@ -1375,8 +1377,8 @@ async def unbind_oauth(
         )
 
     # Safety check: prevent unbinding if it's the user's only login method
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one()
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalar_one()
 
     binding_count_result = await db.execute(
         select(func.count())
@@ -1400,17 +1402,17 @@ async def unbind_oauth(
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
-    result = await db.execute(
+    reload_result = await db.execute(
         select(User).options(selectinload(User.oauth_bindings)).where(User.id == user.id)
     )
-    user = result.scalar_one()
+    user = reload_result.scalar_one()
     return ApiResponse(data=_build_user_info(user).model_dump())
 
 
 @router.get("/setup-status")
 async def setup_status(
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Check whether the system has been initialized (any users exist)."""
     result = await db.execute(select(func.count(User.id)))
     count = result.scalar_one()
@@ -1446,10 +1448,10 @@ async def setup(
     await db.commit()
 
     # Reload with oauth_bindings for response serialization
-    result = await db.execute(
+    user_reload = await db.execute(
         select(User).options(selectinload(User.oauth_bindings)).where(User.id == user.id)
     )
-    user = result.scalar_one()
+    user = user_reload.scalar_one()
 
     return _build_token_response(user, access, refresh)
 
@@ -1457,7 +1459,7 @@ async def setup(
 @router.get("/announcement")
 async def get_announcement(
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Public endpoint: returns the current system announcement if enabled."""
     enabled = await get_setting(db, SETTING_ANNOUNCEMENT_ENABLED, default="false")
     text = await get_setting(db, SETTING_ANNOUNCEMENT_TEXT, default="")
@@ -1481,7 +1483,7 @@ _UPLOADS_CONVERSATIONS_DIR = _UPLOADS_BASE / "conversations"
 async def delete_own_account(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Permanently delete the current user's own account and all associated data."""
     user_id = current_user.id
     label = current_user.username or current_user.email
@@ -1629,7 +1631,7 @@ def _decode_2fa_temp_token(token: str) -> str:
     user_id = payload.get("sub")
     if not user_id:
         raise AppError("2fa_token_invalid", status_code=401)
-    return user_id
+    return str(user_id)
 
 
 def _generate_backup_codes(count: int = 10) -> list[str]:

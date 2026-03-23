@@ -222,5 +222,5 @@ def _source_name(unit: Any) -> str:
     for key in ("source", "filename"):
         val = unit.chunk.metadata.get(key)
         if val:
-            return val
+            return str(val)
     return "unknown"

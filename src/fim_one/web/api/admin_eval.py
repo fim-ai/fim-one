@@ -247,7 +247,7 @@ async def admin_delete_eval_dataset(
     dataset_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete eval dataset and all its runs/cases. Requires admin privileges."""
     result = await db.execute(
         select(EvalDataset).where(EvalDataset.id == dataset_id)
@@ -286,7 +286,7 @@ async def admin_delete_eval_run(
     run_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete an individual eval run. Requires admin privileges."""
     result = await db.execute(
         select(EvalRun).where(EvalRun.id == run_id)
@@ -385,5 +385,5 @@ async def eval_stats(
         total_datasets=total_datasets,
         total_runs=total_runs,
         avg_pass_rate=avg_pass_rate,
-        total_tokens_consumed=total_tokens_consumed,
+        total_tokens_consumed=int(total_tokens_consumed or 0),
     )

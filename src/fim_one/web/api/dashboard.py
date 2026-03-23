@@ -434,7 +434,7 @@ async def get_dashboard_stats(
 
     today_date = date.today()
     # Build ordered map from oldest to newest (6 days ago → today)
-    date_map: dict[str, dict] = {
+    date_map: dict[str, dict[str, int]] = {
         str(today_date - timedelta(days=i)): {"count": 0, "tokens": 0}
         for i in range(6, -1, -1)
     }

@@ -236,7 +236,7 @@ async def list_my_sessions(
 async def revoke_all_sessions(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, str]:
     """Invalidate all refresh tokens by setting tokens_invalidated_at = now()."""
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
@@ -508,11 +508,13 @@ async def _resolve_resource_name(
     db: AsyncSession, resource_type: str, resource_id: str
 ) -> str | None:
     """Best-effort lookup of a subscription's resource name."""
+    from typing import Any
+
     from fim_one.web.models.connector import Connector
     from fim_one.web.models.knowledge_base import KnowledgeBase
     from fim_one.web.models.mcp_server import MCPServer
 
-    model_map: dict[str, type] = {
+    model_map: dict[str, Any] = {
         "agent": Agent,
         "connector": Connector,
         "knowledge_base": KnowledgeBase,
@@ -521,5 +523,5 @@ async def _resolve_resource_name(
     model = model_map.get(resource_type)
     if model is None:
         return None
-    result = await db.execute(select(model.name).where(model.id == resource_id))  # type: ignore[attr-defined]
+    result = await db.execute(select(model.name).where(model.id == resource_id))
     return result.scalar_one_or_none()

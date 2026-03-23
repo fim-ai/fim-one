@@ -6,6 +6,8 @@ this API and consumed through ResourceSubscription.
 """
 from __future__ import annotations
 
+from typing import Any
+
 import logging
 import math
 
@@ -48,7 +50,7 @@ class SubscribeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _agent_market_info(a: Agent) -> dict:
+def _agent_market_info(a: Agent) -> dict[str, Any]:
     """Black-box agent info for Market display."""
     return {
         "id": a.id,
@@ -64,7 +66,7 @@ def _agent_market_info(a: Agent) -> dict:
     }
 
 
-def _connector_market_info(c: Connector) -> dict:
+def _connector_market_info(c: Connector) -> dict[str, Any]:
     return {
         "id": c.id,
         "resource_type": "connector",
@@ -79,7 +81,7 @@ def _connector_market_info(c: Connector) -> dict:
     }
 
 
-def _kb_market_info(kb: KnowledgeBase) -> dict:
+def _kb_market_info(kb: KnowledgeBase) -> dict[str, Any]:
     return {
         "id": kb.id,
         "resource_type": "knowledge_base",
@@ -92,7 +94,7 @@ def _kb_market_info(kb: KnowledgeBase) -> dict:
     }
 
 
-def _mcp_market_info(srv: MCPServer) -> dict:
+def _mcp_market_info(srv: MCPServer) -> dict[str, Any]:
     return {
         "id": srv.id,
         "resource_type": "mcp_server",
@@ -106,7 +108,7 @@ def _mcp_market_info(srv: MCPServer) -> dict:
     }
 
 
-def _skill_market_info(s: Skill) -> dict:
+def _skill_market_info(s: Skill) -> dict[str, Any]:
     return {
         "id": s.id,
         "resource_type": "skill",
@@ -119,7 +121,7 @@ def _skill_market_info(s: Skill) -> dict:
     }
 
 
-def _workflow_market_info(w: Workflow) -> dict:
+def _workflow_market_info(w: Workflow) -> dict[str, Any]:
     return {
         "id": w.id,
         "resource_type": "workflow",
@@ -205,7 +207,7 @@ async def browse_market(
         # Org scope: include all types (KB stays visible in org scope)
         types_to_query = _ALL_RESOURCE_TYPES
 
-    model_map: dict[str, tuple] = {
+    model_map: dict[str, tuple[Any, ...]] = {
         "agent": (Agent, _agent_market_info, "published"),
         "connector": (Connector, _connector_market_info, "published"),
         "knowledge_base": (KnowledgeBase, _kb_market_info, "active"),
@@ -218,7 +220,7 @@ async def browse_market(
     user_ids_needed: set[str] = set()
     org_ids_needed: set[str] = set()
 
-    items: list[dict] = []
+    items: list[dict[str, Any]] = []
     for rtype in types_to_query:
         model_cls, info_fn, active_status = model_map[rtype]
         q = select(model_cls).where(
@@ -262,8 +264,8 @@ async def browse_market(
                 Organization.id.in_(list(org_ids_needed))
             )
         )
-        for row in o_result.all():
-            org_cache[row.id] = row.name or ""
+        for org_row in o_result.all():
+            org_cache[org_row.id] = org_row.name or ""
 
     # Enrich items with owner_username and org_name, then strip internal user_id
     for item in items:
@@ -313,7 +315,7 @@ async def get_resource_dependencies(
 # ---------------------------------------------------------------------------
 
 # Model lookup for resource validation
-_RESOURCE_MODELS: dict[str, type] = {
+_RESOURCE_MODELS: dict[str, Any] = {
     "agent": Agent,
     "connector": Connector,
     "knowledge_base": KnowledgeBase,
@@ -430,19 +432,19 @@ async def subscribe_resource(
         # Auto-subscribe connection dependencies (Connector, MCP Server).
         # This makes them appear in the subscriber's resource list so they
         # can configure credentials via the existing MyCredentials forms.
-        for dep in manifest.connection_deps:
+        for conn_dep in manifest.connection_deps:
             existing_dep = await db.execute(
                 select(ResourceSubscription).where(
                     ResourceSubscription.user_id == current_user.id,
-                    ResourceSubscription.resource_type == dep.resource_type,
-                    ResourceSubscription.resource_id == dep.resource_id,
+                    ResourceSubscription.resource_type == conn_dep.resource_type,
+                    ResourceSubscription.resource_id == conn_dep.resource_id,
                 )
             )
             if existing_dep.scalar_one_or_none() is None:
                 dep_sub = ResourceSubscription(
                     user_id=current_user.id,
-                    resource_type=dep.resource_type,
-                    resource_id=dep.resource_id,
+                    resource_type=conn_dep.resource_type,
+                    resource_id=conn_dep.resource_id,
                     org_id=body.org_id,
                 )
                 db.add(dep_sub)

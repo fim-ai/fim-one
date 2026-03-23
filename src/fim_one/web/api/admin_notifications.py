@@ -70,7 +70,7 @@ class SystemEvent(BaseModel):
     description: str
     severity: str = "info"  # info, warning, error
     created_at: str
-    details: dict | None = None
+    details: dict[str, object] | None = None
 
 
 class SystemEventsResponse(BaseModel):
@@ -98,11 +98,11 @@ async def get_notification_config(
     if raw:
         try:
             data = json.loads(raw)
-            config = NotificationConfig(**data)
+            config = NotificationConfig.model_validate(data)
         except (json.JSONDecodeError, TypeError):
-            config = NotificationConfig(**_DEFAULT_CONFIG)
+            config = NotificationConfig.model_validate(_DEFAULT_CONFIG)
     else:
-        config = NotificationConfig(**_DEFAULT_CONFIG)
+        config = NotificationConfig.model_validate(_DEFAULT_CONFIG)
 
     # Always compute SMTP status at runtime — never trust DB value
     from fim_one.web.email import _smtp_configured
@@ -221,16 +221,16 @@ async def list_system_events(
         .order_by(func.count(LoginHistory.id).desc())
         .limit(limit // 4)
     )
-    for row in login_failures.all():
+    for login_row in login_failures.all():
         events.append(
             SystemEvent(
                 event_type="login_anomaly",
-                description=f"IP {row.ip_address} had {row.failure_count} failed login attempts",
+                description=f"IP {login_row.ip_address} had {login_row.failure_count} failed login attempts",
                 severity="warning",
                 created_at=datetime.now(timezone.utc).isoformat(),
                 details={
-                    "ip_address": row.ip_address,
-                    "failure_count": row.failure_count,
+                    "ip_address": login_row.ip_address,
+                    "failure_count": login_row.failure_count,
                 },
             )
         )

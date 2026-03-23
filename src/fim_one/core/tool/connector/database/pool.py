@@ -27,6 +27,8 @@ class ConnectionPoolManager:
 
     _instance: ConnectionPoolManager | None = None
     _lock: asyncio.Lock | None = None
+    _drivers: OrderedDict[str, DatabaseDriver]
+    _max_pool_size: int
 
     def __new__(cls) -> ConnectionPoolManager:
         if cls._instance is None:

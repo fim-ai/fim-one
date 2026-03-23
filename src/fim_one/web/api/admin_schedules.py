@@ -143,7 +143,7 @@ async def toggle_schedule_active(
     body: ScheduleToggleRequest,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, object]:
     """Pause/resume a workflow schedule. Requires admin privileges."""
     result = await db.execute(
         select(Workflow).where(Workflow.id == workflow_id)
@@ -217,7 +217,7 @@ async def schedule_stats(
     upcoming: list[UpcomingRun] = []
     for wf in active_workflows:
         next_run = _compute_next_run(
-            wf.schedule_cron,
+            wf.schedule_cron or "",
             wf.schedule_timezone or "UTC",
         )
         if next_run:

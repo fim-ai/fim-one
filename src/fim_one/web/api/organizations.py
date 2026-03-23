@@ -52,7 +52,7 @@ class OrgUpdate(BaseModel):
     icon: str | None = None
     slug: str | None = Field(None, max_length=100)
     is_active: bool | None = None
-    settings: dict | None = None
+    settings: dict[str, object] | None = None
     review_agents: bool | None = None
     review_connectors: bool | None = None
     review_kbs: bool | None = None
@@ -79,7 +79,7 @@ class OrgResponse(BaseModel):
     icon: str | None = None
     owner_id: str
     parent_id: str | None = None
-    settings: dict | None = None
+    settings: dict[str, object] | None = None
     is_active: bool
     review_agents: bool = False
     review_connectors: bool = False

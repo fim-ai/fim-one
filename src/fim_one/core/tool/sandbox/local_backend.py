@@ -131,9 +131,9 @@ def _safe_import(
     return builtins.__import__(name, globals, locals, fromlist, level)
 
 
-def _make_safe_open(exec_dir: Path):
+def _make_safe_open(exec_dir: Path) -> Any:
     """Create a sandbox-restricted ``open()`` that only allows access within *exec_dir*."""
-    def _safe_open(file: str | Path, mode: str = "r", *args: Any, **kwargs: Any):
+    def _safe_open(file: str | Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         file_path = (exec_dir / str(file)).resolve()
         if not file_path.is_relative_to(exec_dir.resolve()):
             raise PermissionError(
@@ -340,7 +340,7 @@ class LocalBackend:
         """Synchronous in-process Python execution (called from thread pool)."""
         # Pre-configure matplotlib CJK fonts if available.
         try:
-            import matplotlib
+            import matplotlib  # type: ignore[import-not-found]
             matplotlib.rcParams["font.sans-serif"] = [
                 "PingFang SC", "STHeiti", "SimHei", "Helvetica",
             ]

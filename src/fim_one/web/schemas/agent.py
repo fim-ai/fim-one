@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,14 +12,14 @@ class AgentCreate(BaseModel):
     icon: str | None = None
     description: str | None = None
     instructions: str | None = None
-    model_config_json: dict | None = None
+    model_config_json: dict[str, Any] | None = None
     tool_categories: list[str] | None = None
     suggested_prompts: list[str] | None = None
     kb_ids: list[str] | None = None
     connector_ids: list[str] | None = None
     mcp_server_ids: list[str] | None = None
-    grounding_config: dict | None = None
-    sandbox_config: dict | None = None
+    grounding_config: dict[str, Any] | None = None
+    sandbox_config: dict[str, Any] | None = None
     execution_mode: Literal["react", "dag", "auto"] = "auto"
     compact_instructions: str | None = None
     is_active: bool = True
@@ -30,14 +30,14 @@ class AgentUpdate(BaseModel):
     icon: str | None = None
     description: str | None = None
     instructions: str | None = None
-    model_config_json: dict | None = None
+    model_config_json: dict[str, Any] | None = None
     tool_categories: list[str] | None = None
     suggested_prompts: list[str] | None = None
     kb_ids: list[str] | None = None
     connector_ids: list[str] | None = None
     mcp_server_ids: list[str] | None = None
-    grounding_config: dict | None = None
-    sandbox_config: dict | None = None
+    grounding_config: dict[str, Any] | None = None
+    sandbox_config: dict[str, Any] | None = None
     execution_mode: Literal["react", "dag", "auto"] | None = None
     compact_instructions: str | None = None
     is_active: bool | None = None
@@ -50,14 +50,14 @@ class AgentResponse(BaseModel):
     icon: str | None
     description: str | None
     instructions: str | None
-    model_config_json: dict | None
+    model_config_json: dict[str, Any] | None
     tool_categories: list[str] | None
     suggested_prompts: list[str] | None
     kb_ids: list[str] | None
     connector_ids: list[str] | None
     mcp_server_ids: list[str] | None
-    grounding_config: dict | None
-    sandbox_config: dict | None
+    grounding_config: dict[str, Any] | None
+    sandbox_config: dict[str, Any] | None
     execution_mode: str
     status: str
     published_at: str | None
@@ -81,14 +81,14 @@ class AICreateAgentRequest(BaseModel):
 
 class AIRefineAgentRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=2000)
-    history: list[dict] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AICreateAgentResult(BaseModel):
     agent: AgentResponse
     message: str = ""
     message_key: str = ""
-    message_args: dict = {}
+    message_args: dict[str, Any] = {}
 
 
 class AIRefineAgentResult(BaseModel):
@@ -96,4 +96,4 @@ class AIRefineAgentResult(BaseModel):
     modified_fields: list[str] = []
     message: str = ""
     message_key: str = ""
-    message_args: dict = {}
+    message_args: dict[str, Any] = {}

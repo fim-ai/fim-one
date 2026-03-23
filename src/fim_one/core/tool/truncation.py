@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 # Module-level defaults, overridable via environment variables.
 _DEFAULT_MAX_CHARS = int(os.environ.get("TOOL_OUTPUT_MAX_CHARS", "50000"))
@@ -92,7 +93,7 @@ def truncate_tool_output(
     return content[:max_chars] + f"\n\n[Truncated: {len(content)} chars total]"
 
 
-def _truncate_array(data: list, max_items: int) -> str:
+def _truncate_array(data: list[Any], max_items: int) -> str:
     sample = data[0] if data else {}
     keys = _item_keys(sample)
     truncated = json.dumps(data[:max_items], ensure_ascii=False, indent=2)

@@ -52,6 +52,6 @@ class Skill(UUIDPKMixin, TimestampMixin, Base):
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Resource references: [{"type": "connector", "id": "xxx", "name": "...", "alias": "@..."}]
-    resource_refs: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    resource_refs: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped[User | None] = relationship(back_populates="skills", lazy="raise")

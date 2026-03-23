@@ -9,7 +9,7 @@ heuristic mode (``smart_truncate``) and an LLM-powered mode
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fim_one.core.model.types import ChatMessage
 
@@ -33,7 +33,7 @@ class CompactUtils:
     """Stateless helpers for estimating and truncating conversation history."""
 
     @staticmethod
-    def content_as_text(content: str | list | None) -> str:
+    def content_as_text(content: str | list[dict[str, Any]] | None) -> str:
         """Extract plain text from message content (str or vision array).
 
         For vision content arrays, extracts all text parts and appends
@@ -58,7 +58,7 @@ class CompactUtils:
         return " ".join(parts)
 
     @staticmethod
-    def estimate_tokens(text: str | list) -> int:
+    def estimate_tokens(text: str | list[dict[str, Any]]) -> int:
         """Estimate token count for mixed-language text.
 
         Uses different heuristics depending on character type:
@@ -228,7 +228,8 @@ class CompactUtils:
                 ChatMessage(role="system", content=_COMPACT_PROMPT),
                 ChatMessage(role="user", content=history_text),
             ])
-            summary = (result.message.content or "").strip()
+            raw_content = result.message.content
+            summary = (raw_content if isinstance(raw_content, str) else "").strip()
             if usage_tracker and result.usage:
                 await usage_tracker.record(result.usage)
         except Exception:

@@ -13,7 +13,7 @@ Create Date: 2026-03-10 16:00:00.000000
 """
 from __future__ import annotations
 
-from typing import Sequence, Union
+from typing import Any, Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
@@ -32,7 +32,7 @@ def upgrade() -> None:
     bind = op.get_bind()
 
     # --- users table: add columns one by one (skip if already present) ---
-    user_cols = [
+    user_cols: list[tuple[str, sa.Column[Any]]] = [
         ("is_active", sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("TRUE"))),
         ("tokens_invalidated_at", sa.Column("tokens_invalidated_at", sa.DateTime(), nullable=True)),
         ("token_quota", sa.Column("token_quota", sa.Integer(), nullable=True)),

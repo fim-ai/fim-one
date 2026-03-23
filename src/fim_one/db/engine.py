@@ -21,6 +21,7 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -51,8 +52,8 @@ async def init_db() -> None:
     url = _get_database_url()
     logger.info("Initializing database: %s", url.split("@")[-1] if "@" in url else url)
 
-    connect_args: dict = {}
-    kwargs: dict = {}
+    connect_args: dict[str, object] = {}
+    kwargs: dict[str, object] = {}
     is_sqlite = url.startswith("sqlite")
 
     if is_sqlite:
@@ -76,7 +77,7 @@ async def init_db() -> None:
     if is_sqlite:
 
         @event.listens_for(_engine.sync_engine, "connect")
-        def _set_sqlite_pragmas(dbapi_conn, connection_record):  # noqa: ARG001
+        def _set_sqlite_pragmas(dbapi_conn: Any, connection_record: Any) -> None:  # noqa: ARG001
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA synchronous=NORMAL")

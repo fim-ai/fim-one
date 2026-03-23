@@ -44,13 +44,13 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         publish_status=getattr(skill, "publish_status", None),
         published_at=(
             skill.published_at.isoformat()
-            if getattr(skill, "published_at", None)
+            if skill.published_at
             else None
         ),
         reviewed_by=getattr(skill, "reviewed_by", None),
         reviewed_at=(
             skill.reviewed_at.isoformat()
-            if getattr(skill, "reviewed_at", None)
+            if skill.reviewed_at
             else None
         ),
         review_note=getattr(skill, "review_note", None),

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/tools", tags=["tools"])
 @router.get("/catalog")
 async def get_tool_catalog(
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, object]:
     """Return metadata for all built-in tools (no auth required)."""
     tools = discover_builtin_tools()
     registry = ToolRegistry()

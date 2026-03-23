@@ -113,7 +113,7 @@ def upgrade() -> None:
         if not isinstance(auth_config, dict):
             continue
 
-        cred_blob: dict = {}
+        cred_blob: dict[str, str] = {}
         if auth_type == "bearer":
             token = auth_config.get("default_token")
             if token:

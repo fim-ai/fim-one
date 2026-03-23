@@ -32,7 +32,7 @@ class _DbBuilderBase(BaseTool, ABC):
     def category(self) -> str:
         return "db_builder"
 
-    async def _get_connector(self, db):
+    async def _get_connector(self, db: Any) -> Any:
         from fim_one.web.models.connector import Connector
 
         result = await db.execute(
@@ -43,7 +43,7 @@ class _DbBuilderBase(BaseTool, ABC):
         )
         return result.scalar_one_or_none()
 
-    async def _get_schemas(self, db):
+    async def _get_schemas(self, db: Any) -> list[Any]:
         from fim_one.web.models.database_schema import DatabaseSchema
 
         result = await db.execute(

@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.web.models.workflow import Workflow, WorkflowRun
@@ -118,8 +119,8 @@ class WorkflowRunCleaner:
                     WorkflowRun.status.notin_(_ACTIVE_STATUSES),
                 )
             )
-            res = await db.execute(stmt)
-            deleted += res.rowcount  # type: ignore[operator]
+            res = cast(CursorResult[Any], await db.execute(stmt))
+            deleted += res.rowcount
 
         # 2. All other workflows: use global default
         custom_ids = [wf_id for wf_id, _ in custom_workflows]
@@ -133,8 +134,8 @@ class WorkflowRunCleaner:
             global_stmt = global_stmt.where(
                 WorkflowRun.workflow_id.notin_(custom_ids)
             )
-        res = await db.execute(global_stmt)
-        deleted += res.rowcount  # type: ignore[operator]
+        res = cast(CursorResult[Any], await db.execute(global_stmt))
+        deleted += res.rowcount
 
         await db.commit()
         return deleted
@@ -189,8 +190,8 @@ class WorkflowRunCleaner:
 
             if ids_to_delete:
                 stmt = delete(WorkflowRun).where(WorkflowRun.id.in_(ids_to_delete))
-                res = await db.execute(stmt)
-                deleted += res.rowcount  # type: ignore[operator]
+                del_res = cast(CursorResult[Any], await db.execute(stmt))
+                deleted += del_res.rowcount
 
         await db.commit()
         return deleted

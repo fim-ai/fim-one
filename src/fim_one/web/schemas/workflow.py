@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import datetime as _dt
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,7 +19,7 @@ class WorkflowCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     icon: str | None = None
     description: str | None = None
-    blueprint: dict = Field(
+    blueprint: dict[str, Any] = Field(
         default_factory=lambda: {"nodes": [], "edges": [], "viewport": {}}
     )
     status: str = "draft"
@@ -29,7 +30,7 @@ class WorkflowUpdate(BaseModel):
     name: str | None = None
     icon: str | None = None
     description: str | None = None
-    blueprint: dict | None = None
+    blueprint: dict[str, Any] | None = None
     status: str | None = None
     is_active: bool | None = None
     webhook_url: str | None = None
@@ -46,9 +47,9 @@ class WorkflowResponse(BaseModel):
     name: str
     icon: str | None
     description: str | None
-    blueprint: dict
-    input_schema: dict | None
-    output_schema: dict | None
+    blueprint: dict[str, Any]
+    input_schema: dict[str, Any] | None
+    output_schema: dict[str, Any] | None
     status: str
     is_active: bool = True
     visibility: str = "personal"
@@ -106,9 +107,9 @@ class WorkflowRunResponse(BaseModel):
     workflow_id: str
     user_id: str
     status: str
-    inputs: dict | None
-    outputs: dict | None
-    node_results: dict | None
+    inputs: dict[str, Any] | None
+    outputs: dict[str, Any] | None
+    node_results: dict[str, Any] | None
     started_at: str | None
     completed_at: str | None
     duration_ms: int | None
@@ -212,9 +213,9 @@ class WorkflowVersionResponse(BaseModel):
     id: str
     workflow_id: str
     version_number: int
-    blueprint: dict
-    input_schema: dict | None
-    output_schema: dict | None
+    blueprint: dict[str, Any]
+    input_schema: dict[str, Any] | None
+    output_schema: dict[str, Any] | None
     change_summary: str | None
     created_by: str | None
     created_at: str
@@ -231,9 +232,9 @@ class WorkflowExportData(BaseModel):
     name: str
     icon: str | None = None
     description: str | None = None
-    blueprint: dict
-    input_schema: dict | None = None
-    output_schema: dict | None = None
+    blueprint: dict[str, Any]
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
 
 
 class WorkflowExportFile(BaseModel):
@@ -314,7 +315,7 @@ class WorkflowTemplateResponse(BaseModel):
     description: str
     icon: str
     category: str
-    blueprint: dict
+    blueprint: dict[str, Any]
     created_at: str | None = None
 
 
@@ -325,7 +326,7 @@ class WorkflowTemplateCreate(BaseModel):
     description: str = Field(min_length=1)
     icon: str = "🔄"
     category: str = Field(min_length=1, max_length=100)
-    blueprint: dict
+    blueprint: dict[str, Any]
     is_active: bool = True
     sort_order: int = 0
 
@@ -337,7 +338,7 @@ class WorkflowTemplateUpdate(BaseModel):
     description: str | None = None
     icon: str | None = None
     category: str | None = None
-    blueprint: dict | None = None
+    blueprint: dict[str, Any] | None = None
     is_active: bool | None = None
     sort_order: int | None = None
 
@@ -428,14 +429,17 @@ def _compute_next_run(cron_expr: str, tz_name: str = "UTC") -> str | None:
     Uses ``croniter`` if available; otherwise returns ``None``.
     """
     try:
-        from croniter import croniter
-    except ImportError:
+        import importlib
+
+        _croniter_mod = importlib.import_module("croniter")
+        croniter = _croniter_mod.croniter
+    except (ImportError, AttributeError):
         return None
 
     try:
         import zoneinfo
 
-        tz = zoneinfo.ZoneInfo(tz_name)
+        tz: _dt.tzinfo = zoneinfo.ZoneInfo(tz_name)
     except Exception:
         tz = timezone.utc
 

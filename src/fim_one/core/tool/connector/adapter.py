@@ -304,7 +304,7 @@ class ConnectorToolAdapter(BaseTool):
                 headers["Authorization"] = f"Basic {encoded}"
 
     @staticmethod
-    def _render_template(template: dict, params: dict) -> dict:
+    def _render_template(template: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
         """Replace ``{{param}}`` placeholders in body template with actual values."""
         raw = json.dumps(template)
         for key, value in params.items():
@@ -317,4 +317,5 @@ class ConnectorToolAdapter(BaseTool):
                 raw = raw.replace(placeholder, escaped)
             else:
                 raw = raw.replace(f'"{placeholder}"', json.dumps(value))
-        return json.loads(raw)
+        result: dict[str, Any] = json.loads(raw)
+        return result

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fim_one.core.model.base import BaseLLM
-from fim_one.core.model.structured import structured_llm_call
+from fim_one.core.model.structured import StructuredCallResult, structured_llm_call
 from fim_one.core.model.types import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ async def verify_step(
     ]
 
     try:
-        call_result = await structured_llm_call(
+        call_result: StructuredCallResult[Any] = await structured_llm_call(
             llm,
             messages,
             schema=_VERIFICATION_SCHEMA,

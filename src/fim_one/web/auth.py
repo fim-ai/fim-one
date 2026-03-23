@@ -9,6 +9,10 @@ import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .models.organization import OrgMembership
 
 import asyncio
 
@@ -165,20 +169,20 @@ def verify_sse_ticket(token: str) -> str:
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     if payload.get("type") != "sse_ticket":
         raise jwt.InvalidTokenError("wrong token type")
-    return payload["sub"]
+    return str(payload["sub"])
 
 
 def create_oauth_state(action: str, user_id: str | None, ttl: int = 300) -> str:
     """Create a JWT-signed OAuth CSRF state token."""
     now = datetime.now(UTC)
-    payload: dict = {"type": "oauth_state", "action": action,
+    payload: dict[str, object] = {"type": "oauth_state", "action": action,
                      "exp": now + timedelta(seconds=ttl), "iat": now}
     if user_id is not None:
         payload["sub"] = user_id
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def verify_oauth_state(token: str) -> dict | None:
+def verify_oauth_state(token: str) -> dict[str, Any] | None:
     """Verify an OAuth state JWT. Returns payload dict or None on failure."""
     try:
         p = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -209,7 +213,7 @@ def verify_bind_ticket(token: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
@@ -480,7 +484,7 @@ async def require_org_owner(
 # ---------------------------------------------------------------------------
 
 
-def require_scope(scope: str):
+def require_scope(scope: str) -> Any:
     """Dependency factory: rejects API key requests missing the given scope."""
 
     async def _check(user: User = Depends(get_current_user)) -> User:  # noqa: B008

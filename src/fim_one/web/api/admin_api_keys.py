@@ -232,7 +232,7 @@ async def delete_api_key(
     key_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Revoke and permanently delete an API key. Requires admin privileges."""
     result = await db.execute(select(ApiKey).where(ApiKey.id == key_id))
     api_key = result.scalar_one_or_none()

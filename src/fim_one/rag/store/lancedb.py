@@ -10,8 +10,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import lancedb
-import pyarrow as pa
+import lancedb  # type: ignore[import-untyped]
+import pyarrow as pa  # type: ignore[import-untyped]
 
 from fim_one.rag.base import Document
 
@@ -451,7 +451,7 @@ class LanceDBVectorStore:
             before = table.count_rows()
             table.delete(f"document_id = '{document_id}'")
             after = table.count_rows()
-            return before - after
+            return int(before - after)
         except Exception:
             logger.warning("Delete by document failed", exc_info=True)
             return 0
@@ -484,7 +484,7 @@ class LanceDBVectorStore:
         if _TABLE_NAME not in _list_table_names(db):
             return 0
         table = db.open_table(_TABLE_NAME)
-        return table.count_rows()
+        return int(table.count_rows())
 
     # ------------------------------------------------------------------
     # Chunk CRUD
@@ -571,7 +571,7 @@ class LanceDBVectorStore:
 
         # Parse chunk_index for sorting, optionally filter by query text
         query_lower = query.lower() if query else ""
-        indexed: list[tuple[int, dict]] = []
+        indexed: list[tuple[int, dict[str, Any]]] = []
         for row in all_rows:
             # Filter by text content when query is provided
             if query_lower and query_lower not in row.get("text", "").lower():
@@ -767,7 +767,7 @@ class LanceDBVectorStore:
             before = table.count_rows()
             table.delete(f"id = '{chunk_id}'")
             after = table.count_rows()
-            return before > after
+            return bool(before > after)
         except Exception:
             logger.warning("delete_chunk failed for %s", chunk_id, exc_info=True)
             return False

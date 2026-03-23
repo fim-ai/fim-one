@@ -72,7 +72,7 @@ class _SafeEvaluator(ast.NodeVisitor):
 
     # Python < 3.8 compat (kept for safety; ast.Num is deprecated but
     # some parsers may still emit it).
-    visit_Num = visit_Constant  # type: ignore[assignment]
+    visit_Num = visit_Constant
 
     def visit_Name(self, node: ast.Name) -> Any:
         if node.id in _SAFE_CONSTANTS:

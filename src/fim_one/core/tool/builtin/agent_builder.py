@@ -30,7 +30,7 @@ class _AgentBuilderBase(BaseTool, ABC):
     def category(self) -> str:
         return "agent_builder"
 
-    async def _get_agent(self, db):
+    async def _get_agent(self, db: Any) -> Any:
         from fim_one.web.models.agent import Agent
 
         result = await db.execute(
@@ -422,7 +422,7 @@ class AgentSetModelTool(_AgentBuilderBase):
             if agent is None:
                 return "[Error] Agent not found or access denied."
 
-            current_cfg: dict = dict(agent.model_config_json or {})
+            current_cfg: dict[str, Any] = dict(agent.model_config_json or {})
             current_cfg.update(updates)
             agent.model_config_json = current_cfg
             await db.commit()

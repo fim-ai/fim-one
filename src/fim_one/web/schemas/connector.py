@@ -139,7 +139,7 @@ class AIGenerateActionsRequest(BaseModel):
 class AIRefineActionRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=2000)
     action_id: str | None = None
-    history: list[dict] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AIActionResult(BaseModel):
@@ -150,19 +150,19 @@ class AIActionResult(BaseModel):
     connector_updated: ConnectorResponse | None = None
     message: str = ""
     message_key: str = ""
-    message_args: dict = {}
+    message_args: dict[str, Any] = {}
 
 
 class AICreateConnectorRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=5000)
-    history: list[dict] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AICreateConnectorResult(BaseModel):
     connector: ConnectorResponse
     message: str = ""
     message_key: str = ""
-    message_args: dict = {}
+    message_args: dict[str, Any] = {}
 
 
 class ConnectorForkRequest(BaseModel):

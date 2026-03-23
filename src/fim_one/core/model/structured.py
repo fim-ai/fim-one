@@ -96,7 +96,7 @@ def _build_tool_def(name: str, schema: dict[str, Any]) -> dict[str, Any]:
 
 def _transform(
     data: dict[str, Any],
-    parse_fn: Callable[[dict], T] | None,
+    parse_fn: Callable[[dict[str, Any]], T] | None,
 ) -> T | None:
     """Apply *parse_fn* if provided.
 
@@ -125,7 +125,7 @@ async def _call_llm(
     fn_name: str,
     level: str,
     *,
-    regex_fallback: Callable[[str], dict | None] | None = None,
+    regex_fallback: Callable[[str], dict[str, Any] | None] | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> tuple[dict[str, Any] | None, str, dict[str, int] | None]:
@@ -156,7 +156,8 @@ async def _call_llm(
                 if isinstance(args, dict):
                     return args, json.dumps(args), result.usage
             # Fallback: some models put JSON in content even with tool_choice
-            content = result.message.content or ""
+            raw_content = result.message.content
+            content = raw_content if isinstance(raw_content, str) else ""
             return extract_json(content), content, result.usage
 
         # json_mode / plain_text share the same call pattern
@@ -168,7 +169,8 @@ async def _call_llm(
             kwargs["response_format"] = {"type": "json_object"}
 
         result = await llm.chat(messages, **kwargs)
-        content = result.message.content or ""
+        raw_content = result.message.content
+        content = raw_content if isinstance(raw_content, str) else ""
         data = extract_json(content)
         if data is None and regex_fallback:
             data = regex_fallback(content)
@@ -195,8 +197,8 @@ async def structured_llm_call(
     schema: dict[str, Any],
     function_name: str,
     *,
-    parse_fn: Callable[[dict], T] | None = None,
-    regex_fallback: Callable[[str], dict | None] | None = None,
+    parse_fn: Callable[[dict[str, Any]], T] | None = None,
+    regex_fallback: Callable[[str], dict[str, Any] | None] | None = None,
     default_value: T | Any = _SENTINEL,
     temperature: float | None = None,
     max_tokens: int | None = None,

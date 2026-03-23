@@ -8,7 +8,7 @@ import math
 import os
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -74,7 +74,7 @@ def _kb_to_response(kb: KnowledgeBase) -> KBResponse:
         publish_status=getattr(kb, "publish_status", None),
         reviewed_by=getattr(kb, "reviewed_by", None),
         reviewed_at=(
-            kb.reviewed_at.isoformat() if getattr(kb, "reviewed_at", None) else None
+            kb.reviewed_at.isoformat() if kb.reviewed_at else None
         ),
         review_note=getattr(kb, "review_note", None),
         created_at=kb.created_at.isoformat() if kb.created_at else "",
@@ -338,7 +338,7 @@ async def resubmit_kb(
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
             db=db,
-            org_id=kb.org_id,
+            org_id=kb.org_id or "",
             resource_type="knowledge_base",
             resource_id=kb.id,
             resource_name=kb.name,
@@ -385,7 +385,7 @@ async def unpublish_kb(
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
             db=db,
-            org_id=kb.org_id,
+            org_id=kb.org_id or "",
             resource_type="knowledge_base",
             resource_id=kb.id,
             resource_name=kb.name,
@@ -551,10 +551,10 @@ async def _ingest_document(
                 await db.commit()
 
             # Update KB counters
-            result = await db.execute(
+            kb_result = await db.execute(
                 select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
             )
-            kb = result.scalar_one_or_none()
+            kb = kb_result.scalar_one_or_none()
             if kb:
                 count_result = await db.execute(
                     select(func.count()).where(KBDocument.kb_id == kb_id)
@@ -1023,6 +1023,8 @@ async def update_chunk(
     chunk = await manager.get_chunk(
         kb_id=kb_id, user_id=current_user.id, chunk_id=chunk_id,
     )
+    if chunk is None:
+        raise AppError("chunk_not_found", status_code=404)
     resp = ChunkResponse(
         id=chunk["id"],
         text=chunk["text"],
@@ -1171,14 +1173,17 @@ def _build_kb_messages(
         )
     msgs: list[ChatMessage] = [ChatMessage(role="system", content=system)]
     for turn in (history or []):
-        msgs.append(ChatMessage(role=turn["role"], content=turn["content"]))
+        msgs.append(ChatMessage(
+            role=cast(Literal["system", "user", "assistant", "tool"], turn["role"]),
+            content=turn["content"],
+        ))
     msgs.append(ChatMessage(role="user", content=user))
     return msgs
 
 
 class _KBAIChatRequest(BaseModel):
     message: str
-    history: list[dict] = Field(default_factory=list)
+    history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @router.post("/{kb_id}/ai/chat")
@@ -1187,7 +1192,7 @@ async def kb_ai_chat(
     req: _KBAIChatRequest,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Natural language interface for KB management (retrieve, annotate, config)."""
     try:
         from fim_one.core.model.structured import structured_llm_call
@@ -1199,7 +1204,7 @@ async def kb_ai_chat(
         llm = await get_effective_fast_llm(db)
 
         # Step 1: detect intent
-        intent_result = await structured_llm_call(
+        intent_result: Any = await structured_llm_call(
             llm,
             _build_kb_messages(
                 _KB_INTENT_PROMPT,
@@ -1212,7 +1217,7 @@ async def kb_ai_chat(
             default_value={"intent": "general", "query": None},
             temperature=0.0,
         )
-        intent_data: dict = intent_result.value or {"intent": "general", "query": None}
+        intent_data: dict[str, Any] = intent_result.value or {"intent": "general", "query": None}
         intent = intent_data.get("intent", "general")
 
         # Step 2: execute intent

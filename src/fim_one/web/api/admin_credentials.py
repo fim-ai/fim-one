@@ -64,7 +64,7 @@ async def list_all_credentials(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
     """List all user credentials across the system. Requires admin privileges."""
-    items: list[dict] = []
+    items: list[dict[str, object]] = []
     total = 0
 
     # Fetch connector credentials
@@ -144,17 +144,17 @@ async def list_all_credentials(
             )
         ).all()
 
-        for row in mc_rows:
-            cred = row[0]
+        for mc_row in mc_rows:
+            cred = mc_row[0]
             items.append(
                 AdminCredentialInfo(
                     id=cred.id,
                     resource_type="mcp",
                     resource_id=cred.server_id,
-                    resource_name=row.resource_name,
+                    resource_name=mc_row.resource_name,
                     user_id=cred.user_id,
-                    username=row.username,
-                    email=row.email,
+                    username=mc_row.username,
+                    email=mc_row.email,
                     updated_at=cred.updated_at.isoformat() if cred.updated_at else None,
                     created_at=cred.created_at.isoformat() if cred.created_at else None,
                 ).model_dump()
@@ -162,7 +162,7 @@ async def list_all_credentials(
         total += mc_count
 
     # Sort combined by created_at descending, then paginate in-memory
-    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    items.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
     offset = (page - 1) * size
     paginated_items = items[offset : offset + size]
 
@@ -180,7 +180,7 @@ async def revoke_connector_credential(
     credential_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Revoke a connector credential (admin emergency revocation)."""
     result = await db.execute(
         select(ConnectorCredential).where(ConnectorCredential.id == credential_id)
@@ -209,7 +209,7 @@ async def revoke_mcp_credential(
     credential_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Revoke an MCP server credential (admin emergency revocation)."""
     result = await db.execute(
         select(MCPServerCredential).where(MCPServerCredential.id == credential_id)

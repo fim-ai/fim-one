@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fim_one.core.tool.base import BaseTool
+from fim_one.core.tool.base import BaseTool, ToolResult
 
 # Default directory when no per-conversation sandbox is provided.
 _DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[4] / "tmp" / "default" / "exec"
@@ -78,7 +78,10 @@ class GenerateImageTool(BaseTool):
             )
         return True, None
 
-    async def run(self, *, prompt: str, aspect_ratio: str = "1:1") -> str:
+    async def run(self, **kwargs: Any) -> str | ToolResult:  # type: ignore[override]
+        prompt: str = kwargs.get("prompt", "")
+        aspect_ratio: str = kwargs.get("aspect_ratio", "1:1")
+
         available, reason = self.availability()
         if not available:
             return f"Error: {reason}"
@@ -106,7 +109,6 @@ class GenerateImageTool(BaseTool):
         # Scan for new files after generation (same pattern as PythonExecTool).
         if self._artifacts_dir:
             from ..artifact_utils import scan_new_files
-            from ..base import ToolResult
 
             artifacts = scan_new_files(self._output_dir, before, self._artifacts_dir)
             if artifacts:

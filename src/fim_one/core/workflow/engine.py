@@ -26,6 +26,7 @@ from .types import (
     NodeType,
     WorkflowBlueprint,
     WorkflowEdgeDef,
+    WorkflowNodeDef,
 )
 from .variable_store import VariableStore
 
@@ -139,7 +140,7 @@ class WorkflowEngine:
 
         completed: set[str] = set()
         pending: set[str] = set(topo_order)
-        running_tasks: dict[asyncio.Task, str] = {}
+        running_tasks: dict[asyncio.Task[None], str] = {}
 
         # Event queue for streaming
         event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue()
@@ -235,7 +236,7 @@ class WorkflowEngine:
 
                 # M3: Cancel any already-running tasks that are in the
                 # downstream skip set so they don't continue executing.
-                tasks_to_cancel: list[asyncio.Task] = []
+                tasks_to_cancel: list[asyncio.Task[None]] = []
                 for task, task_nid in list(running_tasks.items()):
                     if task_nid in downstream:
                         tasks_to_cancel.append(task)
@@ -280,7 +281,7 @@ class WorkflowEngine:
                 )
 
         async def _execute_once(
-            node: "WorkflowNodeDef",
+            node: WorkflowNodeDef,
             executor: Any,
             ctx: ExecutionContext,
         ) -> NodeResult:
@@ -411,7 +412,7 @@ class WorkflowEngine:
                     except Exception:
                         trace["variable_snapshot"] = None
                     if hasattr(result, "_trace_details"):
-                        trace.update(result._trace_details)  # type: ignore[attr-defined]
+                        trace.update(result._trace_details)
                     result._trace = trace  # type: ignore[attr-defined]
 
                 if result.status == NodeStatus.COMPLETED:

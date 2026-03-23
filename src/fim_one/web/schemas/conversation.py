@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -42,7 +42,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str | None
     message_type: str
-    metadata: dict | None
+    metadata: dict[str, Any] | None
     created_at: str
 
 

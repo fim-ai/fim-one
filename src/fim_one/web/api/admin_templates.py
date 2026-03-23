@@ -177,7 +177,7 @@ async def delete_sensitive_word(
     word_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete a sensitive word."""
     result = await db.execute(
         select(SensitiveWord).where(SensitiveWord.id == word_id)

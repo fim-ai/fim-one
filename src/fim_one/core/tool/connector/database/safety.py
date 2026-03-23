@@ -15,7 +15,7 @@ class SqlSafetyError(Exception):
 
 
 # Patterns that are always blocked regardless of allow_write
-_DANGEROUS_PATTERNS: list[tuple[re.Pattern, str]] = [
+_DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bINTO\s+OUTFILE\b", re.IGNORECASE), "INTO OUTFILE is not allowed"),
     (re.compile(r"\bLOAD_FILE\s*\(", re.IGNORECASE), "LOAD_FILE() is not allowed"),
     (re.compile(r"\bBENCHMARK\s*\(", re.IGNORECASE), "BENCHMARK() is not allowed"),

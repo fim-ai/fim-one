@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 import logging
 import os
@@ -16,7 +18,8 @@ from sqlalchemy.orm import selectinload
 
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
-from fim_one.web.api.admin import SETTING_REGISTRATION_ENABLED, SETTING_REGISTRATION_MODE, get_setting
+from fim_one.web.api.admin import SETTING_REGISTRATION_ENABLED, SETTING_REGISTRATION_MODE
+from fim_one.web.api.admin_utils import get_setting
 from fim_one.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -27,6 +30,7 @@ from fim_one.web.auth import (
 )
 from fim_one.web.models import User, UserOAuthBinding
 from fim_one.web.oauth import (
+    OAuthUserInfo,
     build_authorize_url,
     exchange_code,
     fetch_user_info,
@@ -50,7 +54,7 @@ def _get_frontend_url() -> str:
 
 
 @router.get("/providers")
-async def list_providers():
+async def list_providers() -> dict[str, Any]:
     """Return which OAuth providers are configured."""
     return {"providers": get_configured_providers()}
 
@@ -61,7 +65,7 @@ async def authorize(
     action: str | None = None,
     token: str | None = None,
     ticket: str | None = None,
-):
+) -> RedirectResponse:
     """Redirect user to OAuth provider for authentication.
 
     Query params for bind flow:
@@ -126,7 +130,7 @@ async def callback(
     state: str | None = None,
     error: str | None = None,
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> RedirectResponse:
     """Handle OAuth callback from provider."""
     frontend_url = _get_frontend_url()
 
@@ -178,8 +182,8 @@ async def callback(
 
 async def _handle_bind(
     db: AsyncSession,
-    state_entry: dict,
-    user_info,
+    state_entry: dict[str, Any],
+    user_info: OAuthUserInfo,
     provider_name: str,
     frontend_url: str,
 ) -> RedirectResponse:
@@ -258,7 +262,7 @@ async def _handle_bind(
 
 async def _handle_login(
     db: AsyncSession,
-    user_info,
+    user_info: OAuthUserInfo,
     provider_name: str,
     frontend_url: str,
 ) -> RedirectResponse:
@@ -349,6 +353,7 @@ async def _handle_login(
         await db.flush()
 
     # Keep legacy columns in sync for backward compatibility
+    assert user is not None  # guaranteed by above branches
     if not user.oauth_provider:
         user.oauth_provider = user_info.provider
         user.oauth_id = user_info.id

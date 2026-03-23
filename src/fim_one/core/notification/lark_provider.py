@@ -7,6 +7,8 @@ import os
 
 import httpx
 
+from typing import Any
+
 from .base import NotificationMessage, NotificationProvider
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ class LarkNotificationProvider(NotificationProvider):
         url = os.getenv("LARK_WEBHOOK_URL", "").strip()
         return url.startswith("https://open.feishu.cn/") or url.startswith("https://open.larksuite.com/")
 
-    async def send(self, message: NotificationMessage) -> dict:
+    async def send(self, message: NotificationMessage) -> dict[str, Any]:
         webhook_url = os.getenv("LARK_WEBHOOK_URL", "").strip()
         if not webhook_url:
             return {"ok": False, "error": "LARK_WEBHOOK_URL is not configured."}
@@ -60,7 +62,7 @@ class LarkNotificationProvider(NotificationProvider):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_payload(message: NotificationMessage) -> dict:
+    def _build_payload(message: NotificationMessage) -> dict[str, Any]:
         """Build a Lark interactive card message."""
         return {
             "msg_type": "interactive",

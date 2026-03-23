@@ -8,7 +8,7 @@ import math
 from typing import Any
 
 import httpx
-import yaml
+import yaml  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,7 +73,7 @@ def _action_to_response(action: ConnectorAction) -> ActionResponse:
     )
 
 
-def _mask_db_config(db_config: dict | None) -> dict | None:
+def _mask_db_config(db_config: dict[str, Any] | None) -> dict[str, Any] | None:
     """Return a copy of db_config with sensitive fields masked."""
     if not db_config:
         return db_config
@@ -94,8 +94,8 @@ _AUTH_SENSITIVE_FIELDS: dict[str, list[str]] = {
 
 
 def _split_auth_config(
-    auth_type: str, auth_config: dict | None
-) -> tuple[dict, dict]:
+    auth_type: str, auth_config: dict[str, Any] | None
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Split auth_config into (clean_config, cred_blob).
 
     clean_config: non-sensitive fields only (token_prefix, header_name, etc.)
@@ -110,8 +110,8 @@ def _split_auth_config(
 
 
 def _strip_sensitive_auth_config(
-    auth_type: str, auth_config: dict | None
-) -> dict | None:
+    auth_type: str, auth_config: dict[str, Any] | None
+) -> dict[str, Any] | None:
     """Return auth_config with sensitive credential fields removed (for API responses)."""
     if not auth_config:
         return auth_config
@@ -120,7 +120,7 @@ def _strip_sensitive_auth_config(
 
 
 async def _upsert_default_credential(
-    connector_id: str, cred_blob: dict, db: AsyncSession
+    connector_id: str, cred_blob: dict[str, Any], db: AsyncSession
 ) -> None:
     """Create or update the connector-owner's default credential row (user_id=NULL)."""
     from fim_one.core.security.encryption import encrypt_credential
@@ -181,8 +181,8 @@ def _connector_to_response(
         publish_status=getattr(connector, "publish_status", None),
         reviewed_by=getattr(connector, "reviewed_by", None),
         reviewed_at=(
-            connector.reviewed_at.isoformat()
-            if getattr(connector, "reviewed_at", None)
+            rev_at.isoformat()
+            if (rev_at := getattr(connector, "reviewed_at", None))
             else None
         ),
         review_note=getattr(connector, "review_note", None),
@@ -638,7 +638,7 @@ async def upsert_my_credentials(
     connector = await _get_visible_connector(connector_id, current_user.id, db)
 
     # Build credential blob from request based on connector auth_type
-    cred_blob: dict = {}
+    cred_blob: dict[str, Any] = {}
     if connector.auth_type == "bearer" and body.token:
         cred_blob["default_token"] = body.token
     elif connector.auth_type == "api_key" and body.api_key:
@@ -791,7 +791,7 @@ async def unpublish_connector(
         from fim_one.web.api.reviews import log_review_event
         await log_review_event(
             db=db,
-            org_id=connector.org_id,
+            org_id=connector.org_id or "",
             resource_type="connector",
             resource_id=connector.id,
             resource_name=connector.name,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import csv
 import io
 import json
@@ -575,7 +577,7 @@ async def list_users(
         .where(Conversation.created_at >= first_of_month)
         .group_by(Conversation.user_id)
     )
-    monthly_tokens_map = dict(monthly_rows.all())
+    monthly_tokens_map: dict[str, int] = {row[0]: row[1] for row in monthly_rows.all()}
 
     now = datetime.now(timezone.utc)
     items = [
@@ -666,7 +668,7 @@ async def update_user(
             )
             if email_result.scalar_one_or_none() is not None:
                 raise AppError("email_already_registered", status_code=409)
-        target_user.email = body.email or None
+        target_user.email = body.email or None  # type: ignore[assignment]
 
     await db.commit()
     result = await db.execute(select(User).where(User.id == user_id))
@@ -967,7 +969,7 @@ async def delete_user(
 async def force_logout_all(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Invalidate all refresh tokens and mark a force-logout timestamp,
     causing active access tokens to also be rejected immediately."""
     now = datetime.now(timezone.utc)
@@ -1005,7 +1007,7 @@ def _build_audit_filters(
     admin_id: str | None,
     date_from: str | None,
     date_to: str | None,
-) -> list:
+) -> list[Any]:
     """Build SQLAlchemy filter clauses for audit log queries."""
     filters = []
     if action:
@@ -1107,7 +1109,7 @@ async def list_audit_log(
     items = [
         AuditLogEntry(
             id=r.id,
-            admin_id=r.admin_id,
+            admin_id=r.admin_id or "",
             admin_username=r.admin_username,
             action=r.action,
             target_type=r.target_type,
@@ -1138,7 +1140,7 @@ async def force_logout_user(
     user_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> dict[str, Any]:
     """Invalidate a single user's session. Requires admin privileges."""
     if user_id == current_user.id:
         raise AppError("cannot_force_logout_self")
@@ -1168,7 +1170,7 @@ async def set_user_quota(
     body: SetQuotaRequest,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> dict[str, Any]:
     """Set monthly token quota for a user. Requires admin privileges."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -1193,7 +1195,7 @@ async def set_user_quota(
 async def get_system_health(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> list[IntegrationHealth]:
     """Return configuration status for key integrations. Requires admin privileges."""
     from urllib.parse import urlparse
 
@@ -1265,6 +1267,7 @@ async def get_system_health(
     reasoning_effort = os.environ.get("LLM_REASONING_EFFORT", "").strip().lower()
     reasoning_label = f"Reasoning: {reasoning_effort}" if reasoning_effort in ("low", "medium", "high") else None
     llm_detail_parts = [p for p in [llm_model, _host(llm_base) if llm_base else None, reasoning_label] if p]
+    llm_detail: str | None
     if has_db_general and not (llm_model and llm_key):
         llm_detail = "Admin Models"
         if reasoning_label:
@@ -1282,6 +1285,7 @@ async def get_system_health(
     fast_model = os.environ.get("FAST_LLM_MODEL", "").strip('"')
     fast_configured = bool(fast_model) or has_db_fast
     fast_parts = [p for p in [fast_model, _host(llm_base) if llm_base else None] if p]
+    fast_detail: str | None
     if has_db_fast and not fast_model:
         fast_detail = "Admin Models"
     else:
@@ -1480,7 +1484,7 @@ async def list_all_conversations(
     q: str | None = Query(None),
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> PaginatedResponse:
     """List all conversations with optional user/search filter. Requires admin privileges."""
     stmt = (
         select(Conversation, User)
@@ -1510,7 +1514,7 @@ async def list_all_conversations(
             .where(Message.conversation_id.in_(conv_ids))
             .group_by(Message.conversation_id)
         )
-        msg_counts = dict(msg_count_rows.all())
+        msg_counts = {row[0]: row[1] for row in msg_count_rows.all()}
 
     items = [
         AdminConversationInfo(
@@ -1540,7 +1544,7 @@ async def admin_get_conversation_messages(
     conv_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> list[AdminMessageInfo]:
     """Fetch all messages of a conversation for admin inspection. Read-only."""
     # Verify conversation exists
     conv_result = await db.execute(
@@ -1581,7 +1585,7 @@ async def admin_delete_conversation(
     conv_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete any conversation by ID. Requires admin privileges."""
     result = await db.execute(
         select(Conversation).options(selectinload(Conversation.messages)).where(Conversation.id == conv_id)
@@ -1616,7 +1620,7 @@ async def admin_delete_conversation(
 async def list_invite_codes(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> list[InviteCodeInfo]:
     """List all invite codes. Requires admin privileges."""
     result = await db.execute(select(InviteCode).order_by(InviteCode.created_at.desc()))
     codes = result.scalars().all()
@@ -1637,7 +1641,7 @@ async def create_invite_code(
     body: CreateInviteCodeRequest,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> InviteCodeInfo:
     """Create a new invite code. Requires admin privileges."""
     code_str = "".join(
         secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8)
@@ -1670,7 +1674,7 @@ async def revoke_invite_code(
     code_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Revoke (deactivate) an invite code. Requires admin privileges."""
     result = await db.execute(select(InviteCode).where(InviteCode.id == code_id))
     code = result.scalar_one_or_none()
@@ -1693,12 +1697,12 @@ async def revoke_invite_code(
 async def get_storage_stats(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> StorageStatsResponse:
     """Return per-user file storage statistics. Requires admin privileges."""
     import os as _os
 
     uploads_dir = Path("uploads")
-    user_stats: dict[str, dict] = {}
+    user_stats: dict[str, dict[str, Any]] = {}
 
     if uploads_dir.exists():
         for item in uploads_dir.iterdir():
@@ -1743,7 +1747,7 @@ async def clear_user_storage(
     user_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete all uploaded files for a user. Requires admin privileges."""
     user_dir = Path("uploads") / f"user_{user_id}"
     if user_dir.exists():
@@ -1758,7 +1762,7 @@ async def clear_user_storage(
 async def clean_orphaned_storage(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Remove conversation upload directories for deleted conversations. Requires admin privileges."""
     conv_uploads = _UPLOADS_CONVERSATIONS_DIR
     if not conv_uploads.exists():
@@ -1791,10 +1795,10 @@ async def list_user_files(
     all_items = [
         AdminFileItem(
             file_id=fid,
-            filename=meta["filename"],
-            size=meta["size"],
-            mime_type=meta.get("mime_type", "application/octet-stream"),
-            stored_name=meta["stored_name"],
+            filename=str(meta["filename"]),
+            size=int(str(meta["size"])),
+            mime_type=str(meta.get("mime_type", "application/octet-stream")),
+            stored_name=str(meta["stored_name"]),
         )
         for fid, meta in index.items()
     ]
@@ -1821,12 +1825,12 @@ async def download_user_file(
     meta = index.get(file_id)
     if meta is None:
         raise AppError("file_not_found", status_code=404)
-    file_path = _user_dir(user_id) / meta["stored_name"]
+    file_path = _user_dir(user_id) / str(meta["stored_name"])
     if not file_path.exists():
         raise AppError("file_not_found", status_code=404)
     return FileResponse(
         path=str(file_path),
-        filename=meta["filename"],
+        filename=str(meta["filename"]),
         media_type="application/octet-stream",
     )
 
@@ -2093,7 +2097,7 @@ async def admin_toggle_model_active(
     body: AdminToggleActiveModelRequest,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Toggle the active status of a system-level model configuration."""
     result = await db.execute(
         select(ModelConfig).where(
@@ -2125,7 +2129,7 @@ async def admin_set_model_role(
     body: AdminSetModelRoleRequest,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Set or clear the role for a system-level model configuration."""
     result = await db.execute(
         select(ModelConfig).where(
@@ -2752,7 +2756,7 @@ async def admin_activate_model_group(
     group_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Activate a model group. Deactivates all other groups."""
     result = await db.execute(
         select(ModelGroup).where(ModelGroup.id == group_id)
@@ -2789,7 +2793,7 @@ async def admin_activate_model_group(
 async def admin_deactivate_all_groups(
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, Any]:
     """Deactivate all model groups (revert to ENV defaults)."""
     result = await db.execute(
         select(ModelGroup).where(ModelGroup.is_active == True)  # noqa: E712
@@ -2904,10 +2908,10 @@ async def admin_export_model_config(
     providers = result.scalars().unique().all()
 
     # Fetch groups (model relationships are selectin-loaded automatically)
-    result = await db.execute(
+    group_result = await db.execute(
         select(ModelGroup).order_by(ModelGroup.created_at.asc())
     )
-    groups = result.scalars().unique().all()
+    groups = group_result.scalars().unique().all()
 
     # Build provider export data
     providers_data: list[ProviderExportData] = []
@@ -3058,8 +3062,8 @@ async def admin_import_model_config(
     # -- Phase 2: Groups ------------------------------------------------------
 
     # Reload all models for FK resolution (need fresh data including newly created)
-    result = await db.execute(select(ModelProviderModel))
-    all_models = result.scalars().unique().all()
+    models_result = await db.execute(select(ModelProviderModel))
+    all_models = models_result.scalars().unique().all()
 
     # Build lookup: (provider_name, model_name) -> model.id
     model_lookup: dict[tuple[str, str], str] = {}
@@ -3075,8 +3079,8 @@ async def admin_import_model_config(
             model_lookup[(provider_name, m.model_name)] = m.id
 
     # Load existing groups keyed by name
-    result = await db.execute(select(ModelGroup))
-    existing_groups = {g.name: g for g in result.scalars().unique().all()}
+    groups_result = await db.execute(select(ModelGroup))
+    existing_groups = {g.name: g for g in groups_result.scalars().unique().all()}
 
     def _resolve_model_ref(
         ref: GroupModelRef | None, slot_name: str, group_name: str
@@ -3125,8 +3129,8 @@ async def admin_import_model_config(
 
     # Remind admin to configure API keys for newly created providers
     for name in newly_created_providers:
-        provider = existing_providers.get(name)
-        if provider and not provider.api_key:
+        new_prov = existing_providers.get(name)
+        if new_prov and not new_prov.api_key:
             warnings.append(
                 f"Provider '{name}' was imported without an API key. "
                 "Please configure it in Admin → Model Management."

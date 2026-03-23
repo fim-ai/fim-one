@@ -42,4 +42,4 @@ def get_chunker(strategy: str, **kwargs: object) -> BaseChunker:
         raise ValueError(
             f"Unknown chunking strategy: {strategy}. Available: {list(chunkers)}"
         )
-    return cls(**kwargs)  # type: ignore[arg-type]
+    return cls(**kwargs)

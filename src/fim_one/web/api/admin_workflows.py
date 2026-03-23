@@ -174,7 +174,7 @@ async def toggle_workflow_active(
     workflow_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict:
+) -> dict[str, object]:
     """Toggle workflow is_active state."""
     result = await db.execute(
         select(Workflow).where(Workflow.id == workflow_id)
@@ -204,7 +204,7 @@ async def admin_delete_workflow(
     workflow_id: str,
     current_user: User = Depends(get_current_admin),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
-):
+) -> None:
     """Delete any workflow by ID. Requires admin privileges."""
     result = await db.execute(
         select(Workflow).where(Workflow.id == workflow_id)

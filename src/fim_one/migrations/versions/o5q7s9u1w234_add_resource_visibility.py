@@ -6,7 +6,7 @@ Create Date: 2026-03-11 12:00:00.000000
 """
 from __future__ import annotations
 
-from typing import Sequence, Union
+from typing import Any, Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
@@ -41,7 +41,7 @@ def upgrade() -> None:
         # SQLite cannot add a column with FK constraint via ALTER TABLE,
         # so only include the FK on PostgreSQL.
         if not table_has_column(bind, table, "org_id"):
-            col_args: list = [sa.String(36)]
+            col_args: list[Any] = [sa.String(36)]
             if bind.dialect.name != "sqlite":
                 col_args.append(sa.ForeignKey("organizations.id"))
             op.add_column(

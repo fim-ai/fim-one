@@ -57,7 +57,7 @@ async def list_providers(
 async def test_notification(
     body: NotificationTestRequest,
     user: User = Depends(get_current_user),  # noqa: B008
-) -> dict:
+) -> dict[str, object]:
     """Send a test notification through the specified provider."""
     registry = get_notification_registry()
     provider = registry.get(body.provider)
@@ -88,7 +88,7 @@ async def test_notification(
 async def send_notification(
     body: NotificationSendRequest,
     _admin: User = Depends(get_current_admin),  # noqa: B008
-) -> dict:
+) -> dict[str, object]:
     """Send a notification (admin only)."""
     registry = get_notification_registry()
     message = NotificationMessage(

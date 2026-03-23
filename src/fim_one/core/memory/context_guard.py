@@ -231,11 +231,13 @@ class ContextGuard:
         history_text = "\n".join(lines)
 
         try:
+            assert self._compact_llm is not None
             result = await self._compact_llm.chat([
                 ChatMessage(role="system", content=prompt),
                 ChatMessage(role="user", content=history_text),
             ])
-            summary = (result.message.content or "").strip()
+            raw_content = result.message.content
+            summary = (raw_content if isinstance(raw_content, str) else "").strip()
             if self._usage_tracker and result.usage:
                 await self._usage_tracker.record(result.usage)
         except Exception:
