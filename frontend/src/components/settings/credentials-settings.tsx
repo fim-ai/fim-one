@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { Loader2, ShieldCheck, ExternalLink } from "lucide-react"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,7 @@ interface CredentialsResponse {
 
 export function CredentialsSettings() {
   const t = useTranslations("settings.credentials")
+  const { formatDate } = useDateFormatter()
   const [data, setData] = useState<CredentialsResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -37,15 +39,6 @@ export function CredentialsSettings() {
       .catch(() => toast.error(t("loadFailed")))
       .finally(() => setLoading(false))
   }, [t])
-
-  const formatDate = (dateStr: string | null): string => {
-    if (!dateStr) return "--"
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
 
   if (loading) {
     return (
@@ -96,7 +89,7 @@ export function CredentialsSettings() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at || cred.created_at)}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at || cred.created_at, "--")}</td>
                     <td className="px-4 py-3 text-right">
                       <Button variant="ghost" size="sm" asChild>
                         <Link href={`/connectors/${cred.resource_id}`}>
@@ -146,7 +139,7 @@ export function CredentialsSettings() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at || cred.created_at)}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(cred.updated_at || cred.created_at, "--")}</td>
                   </tr>
                 ))}
               </tbody>

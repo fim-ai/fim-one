@@ -1,11 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import Link from "next/link"
 import { toast } from "sonner"
-import { formatDistanceToNow } from "date-fns"
-import { zhCN, enUS } from "date-fns/locale"
 import {
   Loader2,
   Search,
@@ -49,16 +47,7 @@ import {
 } from "@/components/ui/tooltip"
 import { adminApi, type AdminWorkflowInfo } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
-
-function relativeTime(dateStr: string, locale: string): string {
-  try {
-    const date = new Date(dateStr)
-    const dateFnsLocale = locale.startsWith("zh") ? zhCN : enUS
-    return formatDistanceToNow(date, { addSuffix: true, locale: dateFnsLocale })
-  } catch {
-    return dateStr
-  }
-}
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 function successRateColor(rate: number | null): string {
   if (rate === null) return "text-muted-foreground"
@@ -71,7 +60,7 @@ export function AdminWorkflows() {
   const t = useTranslations("admin.workflows")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatRelativeTime } = useDateFormatter()
 
   // --- List state ---
   const [workflows, setWorkflows] = useState<AdminWorkflowInfo[]>([])
@@ -290,11 +279,11 @@ export function AdminWorkflows() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {wf.last_run_at
-                      ? relativeTime(wf.last_run_at, locale)
+                      ? formatRelativeTime(wf.last_run_at)
                       : t("noRuns")}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {relativeTime(wf.created_at, locale)}
+                    {formatRelativeTime(wf.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu>

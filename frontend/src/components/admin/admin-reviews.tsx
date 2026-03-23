@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import {
   Loader2,
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { adminApi, type AdminReview, type AdminReviewStats } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 const PAGE_SIZE = 20
 
@@ -40,7 +41,7 @@ export function AdminReviews() {
   const t = useTranslations("admin.reviews")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDate } = useDateFormatter()
 
   // --- State ---
   const [reviews, setReviews] = useState<AdminReview[]>([])
@@ -253,7 +254,7 @@ export function AdminReviews() {
                   <td className="px-4 py-3 text-muted-foreground">{review.org_name || "--"}</td>
                   <td className="px-4 py-3 text-muted-foreground">{review.submitter_name || "--"}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {new Date(review.submitted_at).toLocaleDateString(locale)}
+                    {formatDate(review.submitted_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu>

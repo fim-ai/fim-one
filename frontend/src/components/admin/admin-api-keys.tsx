@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useTranslations } from "next-intl"
 import { format } from "date-fns"
 import { Key, Plus, Loader2, Trash2, Copy, Check, MoreHorizontal, CalendarIcon, ShieldOff } from "lucide-react"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -76,6 +77,7 @@ export function AdminApiKeys() {
   const t = useTranslations("admin.apiKeys")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
+  const { formatDate, formatDateTime } = useDateFormatter()
 
   // --- List state ---
   const [keys, setKeys] = useState<ApiKeyInfo[]>([])
@@ -208,27 +210,6 @@ export function AdminApiKeys() {
     }
   }
 
-  // --- Format date ---
-  const formatDate = (dateStr: string | null): string => {
-    if (!dateStr) return t("never")
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
-
-  const formatDateTime = (dateStr: string | null): string => {
-    if (!dateStr) return t("never")
-    return new Date(dateStr).toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
   return (
     <div className="space-y-4">
       {/* Page header */}
@@ -337,7 +318,7 @@ export function AdminApiKeys() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {formatDateTime(k.last_used_at)}
+                    {formatDateTime(k.last_used_at, t("never"))}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {k.total_requests.toLocaleString()}

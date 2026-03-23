@@ -110,9 +110,7 @@ export function GeneralSettings() {
       setUsername(user.username || "")
       setDisplayName(user.display_name || "")
       setInstructions(user.system_instructions || "")
-      // Extended profile fields — use type assertion since these are new fields
-      const u = user as unknown as Record<string, unknown>
-      setTimezone((u.timezone as string) || "")
+      setTimezone(user.timezone || "")
     }
   }, [user])
 
@@ -129,7 +127,7 @@ export function GeneralSettings() {
   const isDisplayNameOverLimit = displayName.length > MAX_DISPLAY_NAME_LENGTH
 
   // Timezone validation
-  const userTimezone = (user as unknown as Record<string, unknown>)?.timezone as string || ""
+  const userTimezone = user?.timezone || ""
   const isTimezoneDirty = timezone !== userTimezone
 
   // Instructions validation

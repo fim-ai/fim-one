@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import {
   Loader2,
@@ -69,6 +69,7 @@ import {
 import { adminApi, orgApi, type ReviewItem } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { MARKET_ORG_ID } from "@/lib/constants"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
 import type { AdminOrganization, OrgMember } from "@/types/admin"
 
@@ -337,7 +338,7 @@ export function AdminOrganizations() {
   const t = useTranslations("organizations")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDate } = useDateFormatter()
 
   // --- List state ---
   const [orgs, setOrgs] = useState<AdminOrganization[]>([])
@@ -773,7 +774,7 @@ export function AdminOrganizations() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {new Date(org.created_at).toLocaleDateString(locale)}
+                    {formatDate(org.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu>

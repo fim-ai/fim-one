@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useTranslations, useLocale } from "next-intl"
-import { formatDistanceToNow } from "date-fns"
-import { zhCN, enUS } from "date-fns/locale"
+import { useTranslations } from "next-intl"
 import {
   CheckCircle2,
   XCircle,
@@ -24,6 +22,7 @@ import {
 } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { workflowApi } from "@/lib/api"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { fmtDuration } from "@/lib/utils"
 import type { WorkflowStats } from "@/types/workflow"
 
@@ -50,23 +49,13 @@ function formatDurationMs(ms: number): string {
     : `${hours}h`
 }
 
-function relativeTime(dateStr: string, locale: string): string {
-  try {
-    const date = new Date(dateStr)
-    const dateFnsLocale = locale.startsWith("zh") ? zhCN : enUS
-    return formatDistanceToNow(date, { addSuffix: true, locale: dateFnsLocale })
-  } catch {
-    return dateStr
-  }
-}
-
 export function WorkflowStatsPanel({
   workflowId,
   open,
   onOpenChange,
 }: WorkflowStatsPanelProps) {
   const t = useTranslations("workflows")
-  const locale = useLocale()
+  const { formatRelativeTime } = useDateFormatter()
 
   const [stats, setStats] = useState<WorkflowStats | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -180,7 +169,7 @@ export function WorkflowStatsPanel({
                 <StatCard
                   icon={<Clock className="h-4 w-4 text-muted-foreground" />}
                   label={t("statsLastRun")}
-                  value={relativeTime(stats.last_run_at, locale)}
+                  value={formatRelativeTime(stats.last_run_at)}
                 />
               )}
             </div>

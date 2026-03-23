@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { Loader2, MoreHorizontal, Search, Info, Trash2, FileText, Power } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,7 @@ import {
 import { adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { cn, formatFileSize } from "@/lib/utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,7 +75,7 @@ export function AdminKnowledgeBases() {
   const tb = useTranslations("admin.resourcesBatch")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDate } = useDateFormatter()
 
   // ---- KB state ----
   const [kbs, setKbs] = useState<AdminKBInfo[]>([])
@@ -289,7 +290,7 @@ export function AdminKnowledgeBases() {
                   <td className="px-4 py-3 text-right tabular-nums">{kb.total_chunks}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{kb.embedding_model ?? "--"}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {new Date(kb.created_at).toLocaleDateString(locale)}
+                    {formatDate(kb.created_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu>

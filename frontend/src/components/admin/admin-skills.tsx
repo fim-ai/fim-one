@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import {
   Loader2,
@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { adminApi, type AdminSkillInfo, type AdminSkillDetail } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 const PAGE_SIZE = 20
 
@@ -48,7 +49,7 @@ export function AdminSkills() {
   const t = useTranslations("admin.skills")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDate } = useDateFormatter()
 
   // --- List state ---
   const [skills, setSkills] = useState<AdminSkillInfo[]>([])
@@ -269,7 +270,7 @@ export function AdminSkills() {
                     {skill.agents_using}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {new Date(skill.created_at).toLocaleDateString(locale)}
+                    {formatDate(skill.created_at)}
                   </td>
                   <td className="px-4 py-3">
                     {skill.is_active ? (

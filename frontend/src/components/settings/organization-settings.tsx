@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import {
   Building2,
   Store,
@@ -896,20 +897,6 @@ function historyActionBadgeClass(action: string): string {
   return HISTORY_ACTION_BADGE[action as HistoryReviewAction] ?? "bg-muted text-muted-foreground border-border"
 }
 
-function formatHistoryTime(iso: string, locale: string): string {
-  try {
-    return new Date(iso).toLocaleString(locale, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  } catch {
-    return iso
-  }
-}
-
 interface ReviewHistorySheetProps {
   open: boolean
   onClose: () => void
@@ -920,7 +907,7 @@ interface ReviewHistorySheetProps {
 function ReviewHistorySheet({ open, onClose, orgs, initialOrgId }: ReviewHistorySheetProps) {
   const t = useTranslations("organizations")
   const tc = useTranslations("common")
-  const locale = useLocale()
+  const { formatDateTime } = useDateFormatter()
 
   const [selectedOrgId, setSelectedOrgId] = useState(initialOrgId)
   const [items, setItems] = useState<ReviewLogItem[]>([])
@@ -1085,7 +1072,7 @@ function ReviewHistorySheet({ open, onClose, orgs, initialOrgId }: ReviewHistory
                     {items.map((entry) => (
                       <tr key={entry.id} className="hover:bg-muted/20 transition-colors">
                         <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                          {formatHistoryTime(entry.created_at, locale)}
+                          {formatDateTime(entry.created_at)}
                         </td>
                         <td className="px-4 py-2.5 text-xs text-muted-foreground">
                           {resourceTypeLabel(entry.resource_type, (key) => t(key as Parameters<typeof t>[0]))}

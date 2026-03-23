@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations, useLocale } from "next-intl"
-import { formatDistanceToNow } from "date-fns"
-import { zhCN, enUS } from "date-fns/locale"
+import { useTranslations } from "next-intl"
 import {
   ArrowLeftRight,
   Clock,
@@ -33,6 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { workflowApi } from "@/lib/api"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { VersionDiffDialog } from "@/components/workflows/version-diff-dialog"
 import type { WorkflowVersionResponse } from "@/types/workflow"
 
@@ -43,16 +42,6 @@ interface VersionHistorySheetProps {
   onVersionRestored: () => void
 }
 
-function relativeTime(dateStr: string, locale: string): string {
-  try {
-    const date = new Date(dateStr)
-    const dateFnsLocale = locale.startsWith("zh") ? zhCN : enUS
-    return formatDistanceToNow(date, { addSuffix: true, locale: dateFnsLocale })
-  } catch {
-    return dateStr
-  }
-}
-
 export function VersionHistorySheet({
   workflowId,
   open,
@@ -61,7 +50,7 @@ export function VersionHistorySheet({
 }: VersionHistorySheetProps) {
   const t = useTranslations("workflows")
   const tc = useTranslations("common")
-  const locale = useLocale()
+  const { formatRelativeTime } = useDateFormatter()
 
   const [versions, setVersions] = useState<WorkflowVersionResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -174,7 +163,7 @@ export function VersionHistorySheet({
                             </Badge>
                           )}
                           <span className="text-[10px] text-muted-foreground">
-                            {relativeTime(version.created_at, locale)}
+                            {formatRelativeTime(version.created_at)}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1 truncate">

@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { format } from "date-fns"
 import { Loader2, RefreshCw, Download, CalendarIcon, MoreHorizontal, FileText } from "lucide-react"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -104,21 +105,6 @@ function actionColor(action: string): string {
   return ACTION_COLORS[action] ?? "bg-muted text-muted-foreground border-border"
 }
 
-function formatTime(iso: string, locale: string): string {
-  try {
-    return new Date(iso).toLocaleString(locale, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    })
-  } catch {
-    return iso
-  }
-}
-
 function formatDateParam(date: Date | undefined): string {
   return date ? format(date, "yyyy-MM-dd") : ""
 }
@@ -184,7 +170,7 @@ function ReviewLogPanel() {
   const t = useTranslations("admin.audit")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDateTimeFull } = useDateFormatter()
 
   const [data, setData] = useState<ReviewLogPage | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -326,7 +312,7 @@ function ReviewLogPanel() {
                 {data.items.map((entry) => (
                   <tr key={entry.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                      {formatTime(entry.created_at, locale)}
+                      {formatDateTimeFull(entry.created_at)}
                     </td>
                     <td className="px-4 py-2.5 font-medium text-foreground">
                       {entry.org_name ?? <span className="text-muted-foreground/50 font-mono text-xs">{entry.org_id.slice(0, 8)}</span>}
@@ -386,7 +372,7 @@ export function AdminAudit() {
   const t = useTranslations("admin.audit")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDateTimeFull } = useDateFormatter()
   const getActionLabel = useActionLabel()
   const [data, setData] = useState<AuditPage | null>(null)
   const [page, setPage] = useState(1)
@@ -626,7 +612,7 @@ export function AdminAudit() {
                 {data.items.map((entry) => (
                   <tr key={entry.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
-                      {formatTime(entry.created_at, locale)}
+                      {formatDateTimeFull(entry.created_at)}
                     </td>
                     <td className="px-4 py-2.5 font-medium text-foreground">
                       {entry.admin_username}
@@ -687,7 +673,7 @@ export function AdminAudit() {
           <DialogHeader>
             <DialogTitle>{t("detailDialogTitle")}</DialogTitle>
             <DialogDescription>
-              {selected && formatTime(selected.created_at, locale)}
+              {selected && formatDateTimeFull(selected.created_at)}
             </DialogDescription>
           </DialogHeader>
           {selected && (

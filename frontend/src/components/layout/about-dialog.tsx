@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { APP_NAME } from "@/lib/constants"
 import { apiFetch } from "@/lib/api"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 interface VersionInfo {
   version: string
@@ -51,6 +52,7 @@ function formatTokenCount(n: number): string {
 
 export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
   const t = useTranslations("common")
+  const { formatDateTime } = useDateFormatter()
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null)
   const [activeModels, setActiveModels] = useState<ActiveModelsResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -69,13 +71,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
       .finally(() => setLoading(false))
   }, [open])
 
-  const formatBuildTime = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleString()
-    } catch {
-      return iso
-    }
-  }
+  const formatBuildTime = (iso: string) => formatDateTime(iso, iso)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

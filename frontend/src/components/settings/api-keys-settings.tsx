@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations } from "next-intl"
 import { format } from "date-fns"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import {
   Key,
   Plus,
@@ -73,6 +74,7 @@ interface CreateApiKeyResponse {
 export function ApiKeysSettings() {
   const t = useTranslations("settings.apiKeys")
   const tc = useTranslations("common")
+  const { formatDate } = useDateFormatter()
 
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -180,15 +182,6 @@ export function ApiKeysSettings() {
     }
   }
 
-  const formatDate = (dateStr: string | null): string => {
-    if (!dateStr) return t("never")
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
-
   return (
     <div className="space-y-4">
       {/* API Keys Active Banner */}
@@ -259,7 +252,7 @@ export function ApiKeysSettings() {
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {k.expires_at ? formatDate(k.expires_at) : t("noExpiry")}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(k.last_used_at)}</td>
+                  <td className="px-4 py-3 text-muted-foreground text-xs">{formatDate(k.last_used_at, t("never"))}</td>
                   <td className="px-4 py-3">
                     {k.is_active ? (
                       <Badge variant="outline" className="border-green-500/30 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400">

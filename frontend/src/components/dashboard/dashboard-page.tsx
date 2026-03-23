@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations, useLocale } from "next-intl"
 import { MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, Activity, Library, Clock, ChevronRight, GitBranch } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
-import { zhCN, enUS } from "date-fns/locale"
 import {
   ResponsiveContainer,
   BarChart,
@@ -28,29 +26,9 @@ import { UserAvatar as SharedUserAvatar } from "@/components/shared/user-avatar"
 import { dashboardApi, workflowApi, type DashboardStats } from "@/lib/api"
 import type { WorkflowResponse } from "@/types/workflow"
 import { cn, formatTokens } from "@/lib/utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 const TICK_STYLE = { fill: "currentColor", fontSize: 11 } as const
-
-// ---- Helper: format date string "YYYY-MM-DD" → abbreviated label ----
-function formatDateLabel(dateStr: string, locale?: string): string {
-  try {
-    const d = new Date(dateStr)
-    return d.toLocaleDateString(locale, { month: "short", day: "numeric" })
-  } catch {
-    return dateStr
-  }
-}
-
-// ---- Helper: relative time ----
-function relativeTime(dateStr: string, locale: string): string {
-  try {
-    const date = new Date(dateStr)
-    const dateFnsLocale = locale.startsWith("zh") ? zhCN : enUS
-    return formatDistanceToNow(date, { addSuffix: true, locale: dateFnsLocale })
-  } catch {
-    return dateStr
-  }
-}
 
 // ---- Helper: today formatted string ----
 function formatToday(locale: string): string {
@@ -167,6 +145,7 @@ function AgentIcon({ icon, name }: { icon: string | null; name: string }) {
 export function DashboardPage() {
   const t = useTranslations("dashboard")
   const locale = useLocale()
+  const { formatRelativeTime, formatDateLabel } = useDateFormatter()
   const { user, isLoading: authLoading } = useAuth()
   const { conversations } = useConversation()
   const router = useRouter()
@@ -241,7 +220,7 @@ export function DashboardPage() {
   const activityData =
     stats?.activity_trend.map((d) => ({
       ...d,
-      label: formatDateLabel(d.date, locale),
+      label: formatDateLabel(d.date),
     })) ?? []
   const allZero = activityData.every((d) => d.count === 0)
   const allTokensZero = activityData.every((d) => d.tokens === 0)
@@ -686,7 +665,7 @@ export function DashboardPage() {
                               {conv.title || t("untitled")}
                             </p>
                             <span className="shrink-0 text-xs text-muted-foreground/70 tabular-nums">
-                              {relativeTime(conv.updated_at ?? conv.created_at, locale)}
+                              {formatRelativeTime(conv.updated_at ?? conv.created_at)}
                             </span>
                           </Link>
                         </li>
@@ -842,7 +821,7 @@ export function DashboardPage() {
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-foreground">{w.name}</p>
                               <span className="text-[11px] text-muted-foreground/70">
-                                {relativeTime(w.updated_at || w.created_at, locale)}
+                                {formatRelativeTime(w.updated_at || w.created_at)}
                               </span>
                             </div>
                             <Badge

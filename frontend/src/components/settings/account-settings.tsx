@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
 import { Copy, Check, Download, Loader2, Monitor, ShieldCheck, ShieldOff } from "lucide-react"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { QRCodeSVG } from "qrcode.react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -91,6 +92,7 @@ function formatProviderName(provider: string): string {
 function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; onUnbind: (provider: string) => void; onConnect: (provider: string) => void }) {
   const t = useTranslations("settings.account")
   const tc = useTranslations("common")
+  const { formatDate } = useDateFormatter()
   const bindings = user.oauth_bindings ?? []
   const bindingMap = new Map(bindings.map((b) => [b.provider, b]))
   const hasPassword = user.has_password ?? false
@@ -142,7 +144,7 @@ function OAuthBindingsSection({ user, onUnbind, onConnect }: { user: UserInfo; o
                 )}
                 {isBound && binding.bound_at && (
                   <p className="text-xs text-muted-foreground">
-                    {t("bound", { date: new Date(binding.bound_at).toLocaleDateString() })}
+                    {t("bound", { date: formatDate(binding.bound_at) })}
                   </p>
                 )}
               </div>
@@ -1301,6 +1303,7 @@ function parseUserAgent(ua: string): string {
 function SessionsSection() {
   const t = useTranslations("settings.account")
   const tc = useTranslations("common")
+  const { formatDateTime } = useDateFormatter()
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [loading, setLoading] = useState(true)
   const [revokeOpen, setRevokeOpen] = useState(false)
@@ -1366,7 +1369,7 @@ function SessionsSection() {
                   <td className="px-4 py-3 text-foreground">{parseUserAgent(s.user_agent)}</td>
                   <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{s.ip_address}</td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {new Date(s.created_at).toLocaleString()}
+                    {formatDateTime(s.created_at)}
                   </td>
                   <td className="px-4 py-3">
                     {s.success ? (

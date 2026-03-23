@@ -1,9 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { useTranslations, useLocale } from "next-intl"
-import { formatDistanceToNow } from "date-fns"
-import { zhCN, enUS } from "date-fns/locale"
+import { useTranslations } from "next-intl"
 import {
   CheckCircle2,
   XCircle,
@@ -28,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { fmtDuration } from "@/lib/utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import type {
   WorkflowRunResponse,
   NodeRunResult,
@@ -68,16 +67,6 @@ const statusBadgeClass: Record<WorkflowRunResponse["status"], string> = {
   cancelled: "bg-zinc-500/15 text-zinc-500 dark:text-zinc-400",
 }
 
-function relativeTime(dateStr: string, locale: string): string {
-  try {
-    const date = new Date(dateStr)
-    const dateFnsLocale = locale.startsWith("zh") ? zhCN : enUS
-    return formatDistanceToNow(date, { addSuffix: true, locale: dateFnsLocale })
-  } catch {
-    return dateStr
-  }
-}
-
 /** Format milliseconds into a readable duration string */
 function fmtMs(ms: number | null): string {
   if (ms == null) return "-"
@@ -107,7 +96,7 @@ export function RunComparisonDialog({
   nodeTypeMap,
 }: RunComparisonDialogProps) {
   const t = useTranslations("workflows")
-  const locale = useLocale()
+  const { formatRelativeTime } = useDateFormatter()
 
   // Build the union of all node IDs from both runs
   const nodeRows = useMemo<NodeComparisonRow[]>(() => {
@@ -185,13 +174,13 @@ export function RunComparisonDialog({
               <RunSummaryCard
                 label={t("compareRunA")}
                 run={runA}
-                locale={locale}
+                formatRelativeTime={formatRelativeTime}
                 t={t}
               />
               <RunSummaryCard
                 label={t("compareRunB")}
                 run={runB}
-                locale={locale}
+                formatRelativeTime={formatRelativeTime}
                 t={t}
               />
             </div>
@@ -373,12 +362,12 @@ export function RunComparisonDialog({
 function RunSummaryCard({
   label,
   run,
-  locale,
+  formatRelativeTime,
   t,
 }: {
   label: string
   run: WorkflowRunResponse
-  locale: string
+  formatRelativeTime: (dateStr: string | null | undefined, fallback?: string) => string
   t: ReturnType<typeof useTranslations<"workflows">>
 }) {
   return (
@@ -403,7 +392,7 @@ function RunSummaryCard({
           <Clock className="h-3 w-3" />
           {run.duration_ms != null ? fmtMs(run.duration_ms) : t("compareNoDuration")}
         </span>
-        <span>{relativeTime(run.created_at, locale)}</span>
+        <span>{formatRelativeTime(run.created_at)}</span>
       </div>
     </div>
   )

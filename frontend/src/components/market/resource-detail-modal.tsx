@@ -29,6 +29,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { api, type DependencyManifest, type MarketItem } from '@/lib/api'
+import { useDateFormatter } from '@/hooks/use-date-formatter'
 
 const RESOURCE_ROUTES: Record<string, string> = {
   agent: '/agents',
@@ -55,6 +56,7 @@ export function ResourceDetailModal({
   const t = useTranslations('market')
   const tc = useTranslations('common')
   const router = useRouter()
+  const { formatDate } = useDateFormatter()
   const [subscribing, setSubscribing] = useState(false)
   const [subscribeSuccess, setSubscribeSuccess] = useState(false)
   const [subscribeDeps, setSubscribeDeps] = useState<DependencyManifest | null>(null)
@@ -231,7 +233,7 @@ export function ResourceDetailModal({
               {item.created_at && (
                 <>
                   <dt className="text-muted-foreground">{t('detailCreated')}</dt>
-                  <dd>{new Date(item.created_at).toLocaleDateString()}</dd>
+                  <dd>{formatDate(item.created_at)}</dd>
                 </>
               )}
             </dl>

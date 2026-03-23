@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { useTranslations, useLocale } from "next-intl"
-import { formatDistanceToNow } from "date-fns"
-import { zhCN, enUS } from "date-fns/locale"
+import { useTranslations } from "next-intl"
 import {
   CheckCircle2,
   XCircle,
@@ -52,6 +50,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import { fmtDuration } from "@/lib/utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { workflowApi } from "@/lib/api"
 import { RunComparisonDialog } from "@/components/workflows/run-comparison-dialog"
 import type {
@@ -144,16 +143,6 @@ function NodeOutputCollapsible({ output }: { output: unknown }) {
   )
 }
 
-function relativeTime(dateStr: string, locale: string): string {
-  try {
-    const date = new Date(dateStr)
-    const dateFnsLocale = locale.startsWith("zh") ? zhCN : enUS
-    return formatDistanceToNow(date, { addSuffix: true, locale: dateFnsLocale })
-  } catch {
-    return dateStr
-  }
-}
-
 function inputSummary(inputs: Record<string, unknown> | null): string {
   if (!inputs) return ""
   const keys = Object.keys(inputs)
@@ -176,7 +165,7 @@ export function RunHistorySheet({
 }: RunHistorySheetProps) {
   const t = useTranslations("workflows")
   const tc = useTranslations("common")
-  const locale = useLocale()
+  const { formatRelativeTime } = useDateFormatter()
 
   const [runs, setRuns] = useState<WorkflowRunResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -363,7 +352,7 @@ export function RunHistorySheet({
               </Button>
               <div className="flex-1 min-w-0">
                 <SheetTitle className="text-sm">
-                  {relativeTime(selectedRun.created_at, locale)}
+                  {formatRelativeTime(selectedRun.created_at)}
                 </SheetTitle>
                 <SheetDescription className="text-xs">
                   {t(`runStatus_${selectedRun.status}` as Parameters<typeof t>[0])}
@@ -623,7 +612,7 @@ export function RunHistorySheet({
                             {t(`runStatus_${run.status}` as Parameters<typeof t>[0])}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">
-                            {relativeTime(run.created_at, locale)}
+                            {formatRelativeTime(run.created_at)}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 mt-1">

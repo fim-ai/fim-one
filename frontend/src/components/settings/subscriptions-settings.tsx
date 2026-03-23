@@ -10,6 +10,7 @@ import {
   Unlink,
   ExternalLink,
 } from "lucide-react"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -78,6 +79,7 @@ function getResourceUrl(type: string, id: string): string {
 export function SubscriptionsSettings() {
   const t = useTranslations("settings.subscriptions")
   const tc = useTranslations("common")
+  const { formatDate } = useDateFormatter()
 
   const [items, setItems] = useState<SubItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -119,14 +121,6 @@ export function SubscriptionsSettings() {
     } finally {
       setUnsubbing(false)
     }
-  }
-
-  const formatDate = (dateStr: string): string => {
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
   }
 
   return (

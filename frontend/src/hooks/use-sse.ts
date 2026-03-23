@@ -41,6 +41,9 @@ export function useSSE() {
           fetchInit.method = "POST"
           fetchInit.headers = {
             "Content-Type": "application/json",
+            // Uses browser timezone as fallback. Ideally this would use the user's
+            // saved timezone from useAuth(), but useSSE is a low-level fetch hook
+            // that may be invoked before auth context is available.
             "X-Timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
           }
           fetchInit.body = JSON.stringify(options.body)

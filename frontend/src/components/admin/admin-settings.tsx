@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { Loader2, ShieldOff, ShieldCheck, Megaphone, Wrench, LogOut, AlertTriangle, Zap, Plus, Ticket, Copy, X, Eye } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -38,6 +38,7 @@ import {
 import { apiFetch, adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { toast } from "sonner"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import type { InviteCode } from "@/types/admin"
 
 interface SystemSettings {
@@ -380,7 +381,7 @@ function InviteCodeManager() {
   const t = useTranslations("admin.settings")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDate } = useDateFormatter()
   const [codes, setCodes] = useState<InviteCode[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
@@ -501,7 +502,7 @@ function InviteCodeManager() {
                 </Badge>
                 {c.expires_at && (
                   <span className="text-xs text-muted-foreground">
-                    {t("expiresLabel", { date: new Date(c.expires_at).toLocaleDateString(locale) })}
+                    {t("expiresLabel", { date: formatDate(c.expires_at) })}
                   </span>
                 )}
                 {!c.is_active ? (

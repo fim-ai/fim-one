@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { adminApi, type AdminNotificationConfig, type AdminNotificationEvent } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 const PAGE_SIZE = 20
 
@@ -31,7 +32,7 @@ export function AdminNotifications() {
   const t = useTranslations("admin.notifications")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDateTimeFull } = useDateFormatter()
 
   const [view, setView] = useState<SubView>("events")
 
@@ -217,10 +218,7 @@ export function AdminNotifications() {
                       <td className="px-4 py-3 text-foreground">{ev.description}</td>
                       <td className="px-4 py-3 text-muted-foreground">{ev.user || "--"}</td>
                       <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap tabular-nums">
-                        {new Date(ev.created_at).toLocaleString(locale, {
-                          month: "short", day: "numeric",
-                          hour: "2-digit", minute: "2-digit", second: "2-digit",
-                        })}
+                        {formatDateTimeFull(ev.created_at)}
                       </td>
                     </tr>
                   ))}

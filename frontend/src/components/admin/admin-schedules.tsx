@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { adminApi, type AdminSchedule, type AdminScheduleStats } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 
 const PAGE_SIZE = 20
 
@@ -32,7 +33,7 @@ export function AdminSchedules() {
   const t = useTranslations("admin.schedules")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
-  const locale = useLocale()
+  const { formatDateTime } = useDateFormatter()
 
   // --- State ---
   const [schedules, setSchedules] = useState<AdminSchedule[]>([])
@@ -81,14 +82,6 @@ export function AdminSchedules() {
     }
   }
 
-  const formatDateTime = (dateStr: string | null): string => {
-    if (!dateStr) return "--"
-    return new Date(dateStr).toLocaleString(locale, {
-      month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    })
-  }
-
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -120,7 +113,7 @@ export function AdminSchedules() {
               <p className="text-xs font-medium">{t("nextRun")}</p>
             </div>
             <p className="text-sm font-semibold tabular-nums">
-              {stats.next_run_at ? formatDateTime(stats.next_run_at) : t("noNextRun")}
+              {stats.next_run_at ? formatDateTime(stats.next_run_at, "--") : t("noNextRun")}
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/30 p-4">
