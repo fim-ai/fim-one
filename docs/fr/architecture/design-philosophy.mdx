@@ -32,12 +32,42 @@ Le modèle DAG est plus simple et plus prévisible que la communication agent-à
 
 ## agent_hint / role_hint — Non nécessaire
 
-**Motif** : Un indice explicite indiquant à l'exécuteur quel type d'agent ou de persona devrait gérer chaque étape (par exemple, « utiliser l'agent chercheur » ou « utiliser l'agent codeur »).
+**Modèle** : Un indice explicite indiquant à l'exécuteur quel type d'agent ou de persona devrait gérer chaque étape (par exemple, « utiliser l'agent chercheur » ou « utiliser l'agent codeur »).
 
 **Pourquoi exclu** : La combinaison de trois champs existants fournit déjà des conseils suffisants :
 
 - **`task`** — La description en langage naturel de ce que l'étape doit accomplir. Une tâche bien rédigée signale implicitement l'expertise requise.
-- **`tool_hint`** — Suggère quels outils l'étape devrait utiliser (par exemple, `web_search`, `python_exec`). Cela contraint l'approche d'exécution de manière plus précise qu'une étiquette de rôle vague.
+- **`tool_hint`** — Suggère quels outils l'étape doit utiliser (par exemple, `web_search`, `python_exec`). Cela contraint l'approche d'exécution de manière plus précise qu'une étiquette de rôle vague.
 - **`model_hint`** — Contrôle si l'étape utilise le modèle rapide ou le niveau de raisonnement, ce qui est la décision d'exécution la plus impactante.
 
-Ajouter `agent_hint` ou `role_hint` serait redondant avec ces trois champs et introduirait un autre axe de configuration que le LLM planificateur doit bien comprendre. Maintenir la surface des indices réduite diminue les erreurs de planification.
+L'ajout de `agent_hint` ou `role_hint` serait redondant avec ces trois champs et introduirait un autre axe de configuration que le LLM planificateur doit maîtriser. Maintenir la surface des indices réduite diminue les erreurs de planification.
+
+## Orchestration Multi-Agent Profonde — Stratégiquement Différée
+
+L'exclusion « Teams » ci-dessus est un argument d'ingénierie : les arêtes du DAG expriment déjà les dépendances de données. Cette section ajoute un argument **stratégique** : la tendance de l'industrie selon laquelle les capacités du modèle absorbent la complexité d'orchestration.
+
+### Pourquoi les modèles absorbent la couche d'orchestration
+
+Les hiérarchies multi-agents ont émergé comme une solution de contournement aux limitations des modèles — si un modèle ne pouvait pas gérer une tâche complexe, vous la décomposiez entre des agents spécialisés. Chaque génération de modèles de pointe érode cette justification :
+
+| Capacité du modèle | Ce qu'il remplace |
+|---|---|
+| Fenêtres de contexte en expansion (200K → 1M tokens) | Division du contexte entre agents pour tenir dans les limites |
+| Réflexion étendue / chaîne de pensée | Pipelines explicites d'agents Planificateur → Exécuteur |
+| Boucles natives d'agents (Claude Code, Codex) | Exécution multi-étapes orchestrée par le framework |
+| Protocoles multi-agents natifs (Google A2A, OpenAI Swarm) | Coordination d'agents au niveau du framework |
+
+### Le coût de la profondeur
+
+Même lorsque les modèles manquent de capacité, les hiérarchies profondes d'agents entraînent des coûts composés :
+
+- **Multiplication des tokens** — chaque niveau d'imbrication réinjecte les invites système et le contexte. À trois niveaux de profondeur, la dépense totale en tokens peut être 5 à 10 fois celle d'une approche mono-agent.
+- **Accumulation de latence** — chaque niveau est un aller-retour LLM complet. Les utilisateurs attendent la chaîne la plus lente.
+- **Compression lossy de l'information** — les sous-agents retournent des résumés, pas des données brutes. Chaque niveau perd en fidélité.
+- **Opacité du débogage** — « quel niveau a mal compris la tâche ? » est pratiquement impossible à diagnostiquer à une profondeur > 2.
+
+### Position de FIM One
+
+La délégation à un niveau via `CallAgentTool` est le juste équilibre : « Je suis un généraliste, mais cette sous-tâche nécessite l'expert SQL. » Cela couvre la grande majorité des besoins réels de délégation sans les coûts croissants des hiérarchies plus profondes.
+
+L'orchestration multi-agent profonde est reportée indéfiniment — non pas parce qu'elle est difficile à construire, mais parce que la trajectoire des modèles de pointe suggère qu'elle deviendra inutile. La valeur de FIM One réside dans la **couche d'approvisionnement en outils** (Connecteurs, MCP, Gouvernance), et non dans la profondeur d'orchestration que les modèles internalisent rapidement.

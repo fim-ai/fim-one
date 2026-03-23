@@ -99,16 +99,41 @@ Die Grenze zwischen „Team-Zusammenarbeit" und „Pipeline-Planung" verschwimmt
 
 **Fazit:** Gleiche Agent-Essenz, konvergierende parallele Philosophien. Claude Code folgt einem **Team-Zusammenarbeit**-Modell — ein Leader delegiert an Worker, die sich über Nachrichten austauschen. FIM One folgt einem **Pipeline-Planungs**-Modell — ein DAG-Executor verteilt Schritte basierend auf Abhängigkeitsauflösung. In der Praxis implementieren beide abhängigkeitsgesteuerte parallele Ausführung; der Unterschied liegt im Koordinations-Overhead (Nachrichten vs. Kanten) und der Token-Ökonomie (isolierte Kontexte vs. gemeinsamer Speicher). Die optimale Architektur kombiniert wahrscheinlich beide: DAG-Planung für strukturierte Pipelines, Agent-Pools für Aufgaben, die autonome mehrstufige Reasoning benötigen.
 
-## Strukturierte Ausgabeverschlechterung
+## Strukturierte Ausgabe-Degradation
 
-Alle strukturierten LLM-Aufruforte in der DAG-Pipeline (Planner, Analyzer, Tool Selection) verwenden ein einheitliches `structured_llm_call()`-Dienstprogramm, das eine 3-stufige Verschlechterungskette implementiert:
+Alle strukturierten LLM-Aufrufe in der DAG-Pipeline (Planner, Analyzer, Tool Selection) verwenden ein einheitliches `structured_llm_call()`-Utility, das eine 3-stufige Degradationskette implementiert:
 
 | Stufe | Bedingung | Funktionsweise |
 |---|---|---|
 | **Native FC** | `llm.abilities["tool_call"]` | Erzwingt einen virtuellen Tool-Aufruf; extrahiert aus `tool_calls[0].arguments` |
-| **JSON Mode** | `llm.abilities["json_mode"]` | Setzt `response_format={"type":"json_object"}`; analysiert mit `extract_json()` |
-| **Klartext** | immer verfügbar | Analysiert Freiforminhalt mit `extract_json()`, dann optional `regex_fallback()` |
+| **JSON Mode** | `llm.abilities["json_mode"]` | Setzt `response_format={"type":"json_object"}`; parst mit `extract_json()` |
+| **Nur Text** | immer verfügbar | Parst freiformatigen Inhalt mit `extract_json()`, dann optional `regex_fallback()` |
 
-Jede textbasierte Stufe versucht einmal mit einer Umformatierungsaufforderung erneut, bevor sie zur nächsten Stufe übergeht. Das Ergebnis ist ein `StructuredCallResult`, das den analysierten Wert, die erfolgreiche Extraktionsstufe und die kumulierte Token-Nutzung enthält.
+Jede textbasierte Stufe wird einmal mit einem Umformatierungsprompt wiederholt, bevor zur nächsten Stufe übergegangen wird. Das Ergebnis ist ein `StructuredCallResult`, das den geparsten Wert, die erfolgreiche Extraktionsstufe und die kumulierte Token-Nutzung enthält.
 
-Dieses Design bedeutet, dass die gleiche Aufforderung zuverlässig über GPT-4 (native FC), Claude (JSON Mode) und lokale Modelle (Klartext) funktioniert, mit konsistenter Fehlerbehandlung und Wiederholungslogik an einer Stelle statt verstreut über vier Aufruforte.
+Dieses Design bedeutet, dass derselbe Prompt zuverlässig über GPT-4 (native FC), Claude (JSON Mode) und lokale Modelle (nur Text) funktioniert, mit konsistenter Fehlerbehandlung und Wiederholungslogik an einer Stelle statt verstreut über vier Aufruforte.
+
+## Drei Ausführungsebenen: Kontrollspektrum
+
+Die fünf Planungsansätze oben beschreiben die Landschaft. Innerhalb von FIM One selbst bieten drei Ausführungsebenen ein **Kontrollspektrum** — von vollständiger menschlicher Kontrolle bis zur vollständigen KI-Autonomie:
+
+| Ebene | Graph definiert durch | Graph existiert wenn? | Am besten für |
+|---|---|---|---|
+| **Workflow Engine** | Benutzer (visuelle Canvas / JSON-Blueprint) | Entwurfszeit | Deterministische Prozesse, Compliance/Audit-Trails, zeitgesteuerte Automatisierung, Nicht-KI-Orchestrierung |
+| **DAGPlanner** | LLM (zerlegt das Ziel automatisch) | Laufzeit | Zerlegbare mehrstufige Aufgaben mit klaren Untergrenzen |
+| **ReAct Agent** | Keine (iterative Schleife) | Nie — kein Graph | Explorative, konversationelle oder iterativ verfeinernde Aufgaben |
+
+Das Designprinzip: **Geben Sie Benutzern genau so viel Kontrolle, wie sie möchten**.
+
+- Müssen Sie nachweisen, dass jede Kreditgenehmigung fünf spezifische Schritte durchläuft? → Workflow.
+- Müssen Sie drei Themen parallel recherchieren und dann synthetisieren? → DAG.
+- Müssen Sie entwerfen und verfeinern, bis Sie zufrieden sind? → Agent.
+- Nicht sicher? → `execution_mode: "auto"` lässt das LLM die Abfrage klassifizieren und zur Laufzeit zu DAG oder ReAct weiterleiten.
+
+Diese Schichtung ist das, was FIM One von Single-Paradigma-Tools unterscheidet:
+
+- **Dify** bietet nur die Workflow-Ebene (statische visuelle DAGs).
+- **LangGraph** bietet nur eine Code-Level-Graph-DSL (von Entwicklern definierte Topologie, dynamisches Routing — strukturell äquivalent zu visuellen Workflows, aber Python erforderlich).
+- **Manus** bietet nur die Agent-Ebene (autonome Ausführung, keine benutzerdefinierte Struktur).
+
+FIM One deckt alle drei Ebenen ab, plus automatisches Routing zwischen ihnen. Die Abstraktionsprogression — benutzerdefinierter Graph → LLM-generierter Graph → kein Graph — spiegelt einen breiteren Industrietrend wider: Mit zunehmend fähigeren Modellen werden explizite Orchestrierungsstrukturen eher optional als obligatorisch.

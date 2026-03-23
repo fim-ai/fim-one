@@ -41,3 +41,33 @@ The DAG model is simpler and more predictable than agent-to-agent communication.
 - **`model_hint`** — Controls whether the step uses the fast or reasoning model tier, which is the most impactful execution decision.
 
 Adding `agent_hint` or `role_hint` would be redundant with these three fields and would introduce another axis of configuration that the planner LLM must get right. Keeping the hint surface small reduces planning errors.
+
+## Deep Multi-Agent Orchestration — Strategically Deferred
+
+The "Teams" exclusion above is an engineering argument: DAG edges already express data dependencies. This section adds a **strategic** argument: the industry trend of model capability absorbing orchestration complexity.
+
+### Why models are eating the orchestration layer
+
+Multi-agent hierarchies emerged as a workaround for model limitations — if one model couldn't handle a complex task, you decomposed it across specialized agents. Each generation of frontier models erodes this rationale:
+
+| Model capability | What it replaces |
+|---|---|
+| Expanding context windows (200K → 1M tokens) | Splitting context across agents to fit within limits |
+| Extended thinking / chain-of-thought | Explicit Planner → Executor agent pipelines |
+| Native agentic loops (Claude Code, Codex) | Framework-orchestrated multi-step execution |
+| Native multi-agent protocols (Google A2A, OpenAI Swarm) | Framework-level agent coordination |
+
+### The cost of depth
+
+Even when models lack capability, deep agent hierarchies carry compounding costs:
+
+- **Token multiplication** — each nesting level reinjects system prompts and context. Three levels deep, total token spend can be 5-10x a single-agent approach.
+- **Latency stacking** — each level is a full LLM round-trip. Users wait for the slowest chain.
+- **Information lossy compression** — sub-agents return summaries, not raw data. Each level loses fidelity.
+- **Debug opacity** — "which level misunderstood the task?" is nearly impossible to diagnose at depth > 2.
+
+### FIM One's position
+
+One-level delegation via `CallAgentTool` is the sweet spot: "I'm a generalist, but this sub-task needs the SQL expert." This covers the vast majority of real-world delegation needs without the compounding costs of deeper hierarchies.
+
+Deep multi-agent orchestration is deferred indefinitely — not because it's hard to build, but because frontier model trajectory suggests it will become unnecessary. FIM One's value lies in the **tool supply layer** (Connectors, MCP, Governance), not in orchestration depth that models are rapidly internalizing.

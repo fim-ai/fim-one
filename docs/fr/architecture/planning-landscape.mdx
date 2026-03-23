@@ -109,6 +109,31 @@ Tous les sites d'appel LLM structurés dans le pipeline DAG (Planificateur, Anal
 | **Mode JSON** | `llm.abilities["json_mode"]` | Définit `response_format={"type":"json_object"}`; analyse avec `extract_json()` |
 | **Texte brut** | toujours disponible | Analyse le contenu libre avec `extract_json()`, puis `regex_fallback()` optionnel |
 
-Chaque niveau basé sur du texte réessaie une fois avec une invite de reformatage avant de passer au suivant. Le résultat est un `StructuredCallResult` contenant la valeur analysée, le niveau d'extraction qui a réussi et l'utilisation accumulée des jetons.
+Chaque niveau basé sur le texte réessaie une fois avec une invite de reformatage avant de passer au suivant. Le résultat est un `StructuredCallResult` contenant la valeur analysée, le niveau d'extraction qui a réussi et l'utilisation accumulée des jetons.
 
-Cette conception signifie que le même invite fonctionne de manière fiable sur GPT-4 (FC natif), Claude (mode JSON) et les modèles locaux (texte brut), avec une gestion d'erreur cohérente et une logique de nouvelle tentative au même endroit au lieu d'être dispersées sur quatre sites d'appel.
+Cette conception signifie que la même invite fonctionne de manière fiable sur GPT-4 (FC natif), Claude (mode JSON) et les modèles locaux (texte brut), avec une gestion des erreurs cohérente et une logique de nouvelle tentative en un seul endroit au lieu d'être dispersées sur quatre sites d'appel.
+
+## Trois couches d'exécution : Spectre de contrôle
+
+Les cinq approches de planification ci-dessus décrivent le paysage. Au sein de FIM One lui-même, trois couches d'exécution offrent un **spectre de contrôle** — du contrôle humain total à l'autonomie complète de l'IA :
+
+| Couche | Graphe défini par | Graphe existe quand ? | Idéal pour |
+|---|---|---|---|
+| **Moteur de flux de travail** | Utilisateur (canevas visuel / blueprint JSON) | Temps de conception | Processus déterministes, pistes d'audit/conformité, automatisation planifiée par cron, orchestration non-IA |
+| **DAGPlanner** | LLM (décompose automatiquement l'objectif) | Temps d'exécution | Tâches multi-étapes décomposables avec des limites de sous-tâches claires |
+| **Agent ReAct** | Aucun (boucle itérative) | Jamais — pas de graphe | Tâches exploratoires, conversationnelles ou d'affinement itératif |
+
+Le principe de conception : **donner aux utilisateurs exactement autant de contrôle qu'ils le souhaitent**.
+
+- Besoin de prouver que chaque approbation de prêt passe par cinq étapes spécifiques ? → Flux de travail.
+- Besoin de rechercher trois sujets en parallèle puis synthétiser ? → DAG.
+- Besoin de rédiger et affiner jusqu'à satisfaction ? → Agent.
+- Pas sûr ? → `execution_mode: "auto"` permet au LLM de classifier la requête et de router vers DAG ou ReAct à l'exécution.
+
+Cette stratification est ce qui distingue FIM One des outils à paradigme unique :
+
+- **Dify** offre uniquement la couche Flux de travail (DAGs visuels statiques).
+- **LangGraph** offre uniquement un DSL de graphe au niveau du code (topologie définie par le développeur, routage dynamique — structurellement équivalent aux flux de travail visuels mais nécessitant Python).
+- **Manus** offre uniquement la couche Agent (exécution autonome, pas de structure définie par l'utilisateur).
+
+FIM One couvre les trois couches, plus le routage automatique entre elles. La progression d'abstraction — graphe défini par l'utilisateur → graphe généré par LLM → pas de graphe du tout — reflète une tendance plus large de l'industrie : à mesure que les modèles deviennent plus capables, les structures d'orchestration explicites deviennent optionnelles plutôt que obligatoires.

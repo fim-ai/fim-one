@@ -32,12 +32,42 @@ Das DAG-Modell ist einfacher und vorhersehbarer als die Agent-zu-Agent-Kommunika
 
 ## agent_hint / role_hint — Nicht erforderlich
 
-**Muster**: Ein expliziter Hinweis, der dem Executor mitteilt, welcher Typ von Agent oder Persona jeden Schritt handhaben sollte (z. B. „verwende den Recherche-Agent" oder „verwende den Coding-Agent").
+**Muster**: Ein expliziter Hinweis, der dem Executor mitteilt, welcher Typ von Agent oder Persona jeden Schritt handhaben sollte (z. B. „verwenden Sie den Recherche-Agent" oder „verwenden Sie den Coding-Agent").
 
 **Warum ausgeschlossen**: Die Kombination von drei bereits vorhandenen Feldern bietet bereits ausreichende Orientierung:
 
-- **`task`** — Die natürlichsprachige Beschreibung dessen, was der Schritt erreichen soll. Eine gut geschriebene Aufgabe signalisiert implizit die erforderliche Expertise.
-- **`tool_hint`** — Schlägt vor, welche Werkzeuge der Schritt verwenden sollte (z. B. `web_search`, `python_exec`). Dies beschränkt den Ausführungsansatz präziser als ein vages Rollenlabel.
+- **`task`** — Die natürlichsprachliche Beschreibung dessen, was der Schritt erreichen soll. Eine gut geschriebene Aufgabe signalisiert implizit die erforderliche Expertise.
+- **`tool_hint`** — Schlägt vor, welche Werkzeuge der Schritt verwenden sollte (z. B. `web_search`, `python_exec`). Dies beschränkt den Ausführungsansatz präziser als ein vages Rollen-Label.
 - **`model_hint`** — Steuert, ob der Schritt das schnelle oder das Reasoning-Modell-Tier verwendet, was die wirkungsvollste Ausführungsentscheidung ist.
 
-Das Hinzufügen von `agent_hint` oder `role_hint` würde mit diesen drei Feldern redundant sein und würde eine weitere Konfigurationsachse einführen, die das Planer-LLM richtig verstehen muss. Eine kleine Hinweis-Oberfläche zu halten reduziert Planungsfehler.
+Das Hinzufügen von `agent_hint` oder `role_hint` würde redundant mit diesen drei Feldern sein und würde eine weitere Konfigurationsachse einführen, die der Planer-LLM richtig verstehen muss. Eine kleine Hinweis-Oberfläche reduziert Planungsfehler.
+
+## Deep Multi-Agent Orchestration — Strategically Deferred
+
+The "Teams" exclusion above is an engineering argument: DAG edges already express data dependencies. This section adds a **strategic** argument: the industry trend of model capability absorbing orchestration complexity.
+
+### Warum Modelle die Orchestrierungsschicht aufzehren
+
+Multi-Agent-Hierarchien entstanden als Workaround für Modellbeschränkungen — wenn ein Modell eine komplexe Aufgabe nicht bewältigen konnte, wurde sie auf spezialisierte Agenten verteilt. Jede Generation von Frontier-Modellen untergräbt diese Begründung:
+
+| Modellkapazität | Was sie ersetzt |
+|---|---|
+| Erweiterte Kontextfenster (200K → 1M Token) | Aufteilung des Kontexts auf Agenten, um in Grenzen zu passen |
+| Erweitertes Denken / Chain-of-Thought | Explizite Planner → Executor Agent Pipelines |
+| Native agentengesteuerte Schleifen (Claude Code, Codex) | Framework-orchestrierte mehrstufige Ausführung |
+| Native Multi-Agent-Protokolle (Google A2A, OpenAI Swarm) | Framework-Level Agent Koordination |
+
+### Die Kosten der Tiefe
+
+Selbst wenn Modelle über begrenzte Fähigkeiten verfügen, tiefe Agenten-Hierarchien verursachen kumulative Kosten:
+
+- **Token-Multiplikation** — jede Verschachtelungsebene injiziert Systemaufforderungen und Kontext erneut. Drei Ebenen tief kann der Gesamttoken-Verbrauch 5-10x höher sein als bei einem Single-Agent-Ansatz.
+- **Latenz-Stapelung** — jede Ebene ist ein vollständiger LLM-Roundtrip. Benutzer warten auf die langsamste Kette.
+- **Informationsverlust durch Kompression** — Sub-Agenten geben Zusammenfassungen zurück, nicht Rohdaten. Jede Ebene verliert an Genauigkeit.
+- **Debug-Undurchsichtigkeit** — "welche Ebene hat die Aufgabe missverstanden?" ist bei einer Tiefe > 2 fast unmöglich zu diagnostizieren.
+
+### FIM One's Position
+
+One-level delegation via `CallAgentTool` is the sweet spot: "I'm a generalist, but this sub-task needs the SQL expert." This covers the vast majority of real-world delegation needs without the compounding costs of deeper hierarchies.
+
+Deep multi-agent orchestration is deferred indefinitely — not because it's hard to build, but because frontier model trajectory suggests it will become unnecessary. FIM One's value lies in the **tool supply layer** (Connectoren, MCP, Governance), not in orchestration depth that models are rapidly internalizing.

@@ -112,3 +112,28 @@ All structured LLM call sites in the DAG pipeline (Planner, Analyzer, Tool Selec
 Each text-based level retries once with a reformat prompt before falling to the next. The result is a `StructuredCallResult` containing the parsed value, which extraction level succeeded, and accumulated token usage.
 
 This design means the same prompt works reliably across GPT-4 (native FC), Claude (JSON mode), and local models (plain text), with consistent error handling and retry logic in one place instead of scattered across four call sites.
+
+## Three Execution Layers: Control Spectrum
+
+The five planning approaches above describe the landscape. Within FIM One itself, three execution layers offer a **control spectrum** — from full human control to full AI autonomy:
+
+| Layer | Graph defined by | Graph exists when? | Best for |
+|---|---|---|---|
+| **Workflow Engine** | User (visual canvas / JSON blueprint) | Design time | Deterministic processes, compliance/audit trails, cron-scheduled automation, non-AI orchestration |
+| **DAGPlanner** | LLM (auto-decomposes the goal) | Runtime | Decomposable multi-step tasks with clear sub-task boundaries |
+| **ReAct Agent** | None (iterative loop) | Never — no graph | Exploratory, conversational, or iterative-refinement tasks |
+
+The design principle: **give users exactly as much control as they want**.
+
+- Need to prove every loan approval passes five specific steps? → Workflow.
+- Need to research three topics in parallel then synthesize? → DAG.
+- Need to draft and refine until satisfied? → Agent.
+- Not sure? → `execution_mode: "auto"` lets the LLM classify the query and route to DAG or ReAct at runtime.
+
+This layering is what separates FIM One from single-paradigm tools:
+
+- **Dify** offers only the Workflow layer (static visual DAGs).
+- **LangGraph** offers only a code-level graph DSL (developer-defined topology, dynamic routing — structurally equivalent to visual workflows but requiring Python).
+- **Manus** offers only the Agent layer (autonomous execution, no user-defined structure).
+
+FIM One covers all three layers, plus automatic routing between them. The abstraction progression — user-defined graph → LLM-generated graph → no graph at all — mirrors a broader industry trend: as models grow more capable, explicit orchestration structures become optional rather than mandatory.
