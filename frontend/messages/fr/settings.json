@@ -352,14 +352,7 @@
   "usage": {
     "title": "Utilisation",
     "description": "Surveillez votre utilisation des jetons et votre quota.",
-    "period7d": "7 jours",
-    "period30d": "30 jours",
-    "period90d": "90 jours",
-    "totalTokens": "Total des jetons utilisés",
-    "monthlyQuota": "Quota mensuel",
-    "quotaUsed": "Quota utilisé",
     "unlimited": "Illimité",
-    "notApplicable": "N/A",
     "dailyUsageTitle": "Utilisation quotidienne",
     "dailyDate": "Date",
     "dailyTokens": "Jetons",
@@ -367,8 +360,12 @@
     "agentName": "Agent",
     "agentTokens": "Jetons",
     "agentPercent": "% du total",
-    "noUsageData": "Aucune donnée d'utilisation disponible pour cette période.",
-    "loadFailed": "Échec du chargement des données d'utilisation"
+    "noUsageData": "Aucune donnée d'utilisation disponible.",
+    "loadFailed": "Échec du chargement des données d'utilisation",
+    "monthlyUsage": "Utilisation mensuelle",
+    "currentUsage": "Utilisation actuelle",
+    "tokens": "jetons",
+    "noQuota": "Aucune limite de quota définie"
   },
   "notifications": {
     "title": "Notifications",

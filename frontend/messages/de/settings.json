@@ -352,14 +352,7 @@
   "usage": {
     "title": "Nutzung",
     "description": "Überwachen Sie Ihre Token-Nutzung und Ihr Kontingent.",
-    "period7d": "7 Tage",
-    "period30d": "30 Tage",
-    "period90d": "90 Tage",
-    "totalTokens": "Insgesamt verwendete Token",
-    "monthlyQuota": "Monatliches Kontingent",
-    "quotaUsed": "Kontingent verwendet",
     "unlimited": "Unbegrenzt",
-    "notApplicable": "K.A.",
     "dailyUsageTitle": "Tägliche Nutzung",
     "dailyDate": "Datum",
     "dailyTokens": "Token",
@@ -367,8 +360,12 @@
     "agentName": "Agent",
     "agentTokens": "Token",
     "agentPercent": "% der Gesamtmenge",
-    "noUsageData": "Für diesen Zeitraum sind keine Nutzungsdaten verfügbar.",
-    "loadFailed": "Fehler beim Laden der Nutzungsdaten"
+    "noUsageData": "Keine Nutzungsdaten verfügbar.",
+    "loadFailed": "Fehler beim Laden der Nutzungsdaten",
+    "monthlyUsage": "Monatliche Nutzung",
+    "currentUsage": "Aktuelle Nutzung",
+    "tokens": "Token",
+    "noQuota": "Kein Kontingentlimit festgelegt"
   },
   "notifications": {
     "title": "Benachrichtigungen",

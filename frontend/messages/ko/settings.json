@@ -352,14 +352,7 @@
   "usage": {
     "title": "사용량",
     "description": "토큰 사용량 및 할당량을 모니터링합니다.",
-    "period7d": "7일",
-    "period30d": "30일",
-    "period90d": "90일",
-    "totalTokens": "사용된 총 토큰",
-    "monthlyQuota": "월간 할당량",
-    "quotaUsed": "사용된 할당량",
     "unlimited": "무제한",
-    "notApplicable": "해당 없음",
     "dailyUsageTitle": "일일 사용량",
     "dailyDate": "날짜",
     "dailyTokens": "토큰",
@@ -367,8 +360,12 @@
     "agentName": "에이전트",
     "agentTokens": "토큰",
     "agentPercent": "전체의 %",
-    "noUsageData": "이 기간에 사용 가능한 사용량 데이터가 없습니다.",
-    "loadFailed": "사용량 데이터 로드에 실패했습니다"
+    "noUsageData": "사용 가능한 사용량 데이터가 없습니다.",
+    "loadFailed": "사용량 데이터 로드에 실패했습니다",
+    "monthlyUsage": "월간 사용량",
+    "currentUsage": "현재 사용량",
+    "tokens": "토큰",
+    "noQuota": "할당량 제한이 설정되지 않음"
   },
   "notifications": {
     "title": "알림",

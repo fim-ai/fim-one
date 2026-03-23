@@ -352,14 +352,7 @@
   "usage": {
     "title": "使用状況",
     "description": "トークン使用量とクォータを監視します。",
-    "period7d": "7日間",
-    "period30d": "30日間",
-    "period90d": "90日間",
-    "totalTokens": "使用トークン合計",
-    "monthlyQuota": "月間クォータ",
-    "quotaUsed": "使用クォータ",
     "unlimited": "無制限",
-    "notApplicable": "N/A",
     "dailyUsageTitle": "日別使用状況",
     "dailyDate": "日付",
     "dailyTokens": "トークン",
@@ -367,8 +360,12 @@
     "agentName": "エージェント",
     "agentTokens": "トークン",
     "agentPercent": "全体に占める割合",
-    "noUsageData": "この期間の使用データはありません。",
-    "loadFailed": "使用データの読み込みに失敗しました"
+    "noUsageData": "使用データがありません。",
+    "loadFailed": "使用データの読み込みに失敗しました",
+    "monthlyUsage": "月間使用量",
+    "currentUsage": "現在の使用量",
+    "tokens": "トークン",
+    "noQuota": "クォータ制限が設定されていません"
   },
   "notifications": {
     "title": "通知",

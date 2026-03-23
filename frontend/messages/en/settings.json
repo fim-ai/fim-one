@@ -381,14 +381,11 @@
   "usage": {
     "title": "Usage",
     "description": "Monitor your token usage and quota.",
-    "period7d": "7 Days",
-    "period30d": "30 Days",
-    "period90d": "90 Days",
-    "totalTokens": "Total Tokens Used",
-    "monthlyQuota": "Monthly Quota",
-    "quotaUsed": "Quota Used",
+    "monthlyUsage": "Monthly Usage",
+    "currentUsage": "Current Usage",
+    "tokens": "tokens",
     "unlimited": "Unlimited",
-    "notApplicable": "N/A",
+    "noQuota": "No quota limit set",
     "dailyUsageTitle": "Daily Usage",
     "dailyDate": "Date",
     "dailyTokens": "Tokens",
@@ -396,7 +393,7 @@
     "agentName": "Agent",
     "agentTokens": "Tokens",
     "agentPercent": "% of Total",
-    "noUsageData": "No usage data available for this period.",
+    "noUsageData": "No usage data available.",
     "loadFailed": "Failed to load usage data"
   },
 

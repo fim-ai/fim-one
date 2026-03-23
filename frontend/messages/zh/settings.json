@@ -352,14 +352,7 @@
   "usage": {
     "title": "使用情况",
     "description": "监控您的令牌使用情况和配额。",
-    "period7d": "7天",
-    "period30d": "30天",
-    "period90d": "90天",
-    "totalTokens": "已使用的总令牌数",
-    "monthlyQuota": "月度配额",
-    "quotaUsed": "已使用配额",
     "unlimited": "无限制",
-    "notApplicable": "N/A",
     "dailyUsageTitle": "每日使用情况",
     "dailyDate": "日期",
     "dailyTokens": "令牌",
@@ -367,8 +360,12 @@
     "agentName": "智能体",
     "agentTokens": "令牌",
     "agentPercent": "占总数的百分比",
-    "noUsageData": "此期间没有可用的使用数据。",
-    "loadFailed": "加载使用数据失败"
+    "noUsageData": "暂无使用数据。",
+    "loadFailed": "加载使用数据失败",
+    "monthlyUsage": "月度使用量",
+    "currentUsage": "当前使用量",
+    "tokens": "tokens",
+    "noQuota": "未设置配额限制"
   },
   "notifications": {
     "title": "通知",

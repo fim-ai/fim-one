@@ -309,13 +309,17 @@ def _parse_period(period: str) -> int:
 
 @router.get("/usage", response_model=UsageResponse)
 async def get_my_usage(
-    period: str = Query("7d", pattern=r"^(7d|30d|90d)$"),
+    period: str = Query("7d", pattern=r"^(7d|30d|90d|month)$"),
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> UsageResponse:
     """Get token usage statistics for the authenticated user."""
-    days = _parse_period(period)
-    since = datetime.now(UTC) - timedelta(days=days)
+    if period == "month":
+        now = datetime.now(UTC)
+        since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        days = _parse_period(period)
+        since = datetime.now(UTC) - timedelta(days=days)
 
     # Total tokens in period
     total_q = (
