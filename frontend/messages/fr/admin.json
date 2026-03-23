@@ -958,8 +958,8 @@
     "typeSystem": "Système",
     "noEvents": "Aucun événement système enregistré.",
     "autoRefresh": "Actualisation automatique toutes les 30 secondes",
-    "sendTest": "Envoyer une notification de test",
-    "testSent": "Notification de test envoyée",
+    "sendTest": "Envoyer un email de test",
+    "testSent": "Email de test envoyé",
     "configTitle": "Paramètres de notification",
     "configSubtitle": "Configurez les événements qui génèrent des notifications administrateur.",
     "quotaHitToggle": "Quota utilisateur dépassé",
@@ -970,14 +970,13 @@
     "totalItems": "{count} total",
     "previous": "Précédent",
     "pageOf": "Page {page} sur {pages}",
-    "comingSoonTitle": "Déclencheurs d'événements à venir",
-    "comingSoonBody": "Le système de livraison des notifications (Email, Slack, Lark, WeCom) est prêt. Les déclencheurs basés sur les événements — alertes automatiques pour les défaillances de flux de travail, les pannes de connecteur, les limites de quota et les anomalies de connexion — sont en cours de développement. En attendant, les notifications peuvent être envoyées manuellement via l'API ou utilisées comme outil intégré dans les flux de travail et les conversations d'agent.",
     "typeNewUserRegistration": "Nouvel utilisateur",
     "newUserToggle": "Inscription d'un nouvel utilisateur",
     "masterToggle": "Notifications par e-mail",
     "masterToggleDesc": "Envoyer des alertes par e-mail à tous les utilisateurs administrateurs lorsque des événements système se produisent.",
     "smtpNotConfigured": "SMTP non configuré",
-    "smtpNotConfiguredBody": "Les notifications par e-mail d'administrateur nécessitent la configuration de SMTP. Définissez SMTP_HOST, SMTP_USER et SMTP_PASS dans vos variables d'environnement, puis redémarrez le serveur pour activer cette fonctionnalité."
+    "smtpNotConfiguredBody": "Les notifications par e-mail d'administrateur nécessitent la configuration de SMTP. Définissez SMTP_HOST, SMTP_USER et SMTP_PASS dans vos variables d'environnement, puis redémarrez le serveur pour activer cette fonctionnalité.",
+    "moreChannelsNote": "Actuellement, les notifications déclenchées par événement sont envoyées uniquement par email. Les canaux Slack, Lark et WeCom sont disponibles en tant qu'outils d'agent et peuvent être utilisés dans les workflows, avec le support des événements déclenchés à venir dans une version future."
   },
   "placeholders": {
     "traces": {

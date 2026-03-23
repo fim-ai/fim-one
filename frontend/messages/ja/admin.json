@@ -958,8 +958,8 @@
     "typeSystem": "システム",
     "noEvents": "記録されたシステムイベントはありません。",
     "autoRefresh": "30秒ごとに自動更新",
-    "sendTest": "テスト通知を送信",
-    "testSent": "テスト通知が送信されました",
+    "sendTest": "テストメールを送信",
+    "testSent": "テストメールが送信されました",
     "configTitle": "通知設定",
     "configSubtitle": "どのイベントが管理者通知を生成するかを設定します。",
     "quotaHitToggle": "ユーザークォータ超過",
@@ -970,14 +970,13 @@
     "totalItems": "合計 {count}",
     "previous": "前へ",
     "pageOf": "ページ {page} / {pages}",
-    "comingSoonTitle": "イベントトリガー近日公開予定",
-    "comingSoonBody": "通知配信システム（Email、Slack、Lark、WeCom）は準備完了です。イベントベースのトリガー（ワークフロー失敗、コネクタ障害、クォータ制限、ログイン異常の自動アラート）は開発中です。その間、API経由で手動で通知を送信したり、ワークフローとエージェント会話の組み込みツールとして使用できます。",
     "typeNewUserRegistration": "新規ユーザー",
     "newUserToggle": "新規ユーザー登録",
     "masterToggle": "メール通知",
     "masterToggleDesc": "システムイベントが発生したときに、すべての管理者ユーザーにメールアラートを送信します。",
     "smtpNotConfigured": "SMTP が設定されていません",
-    "smtpNotConfiguredBody": "管理者メール通知には SMTP の設定が必要です。環境変数で SMTP_HOST、SMTP_USER、SMTP_PASS を設定してから、サーバーを再起動してこの機能を有効にしてください。"
+    "smtpNotConfiguredBody": "管理者メール通知には SMTP の設定が必要です。環境変数で SMTP_HOST、SMTP_USER、SMTP_PASS を設定してから、サーバーを再起動してこの機能を有効にしてください。",
+    "moreChannelsNote": "現在、イベントトリガー通知はメールのみで送信されます。Slack、Lark、WeCom チャネルはエージェントツールとして利用可能で、ワークフロー内で使用できます。イベントトリガーサポートは将来のリリースで提供予定です。"
   },
   "placeholders": {
     "traces": {

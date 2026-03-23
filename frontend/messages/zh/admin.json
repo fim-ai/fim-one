@@ -958,8 +958,8 @@
     "typeSystem": "系统",
     "noEvents": "未记录系统事件。",
     "autoRefresh": "每 30 秒自动刷新",
-    "sendTest": "发送测试通知",
-    "testSent": "测试通知已发送",
+    "sendTest": "发送测试邮件",
+    "testSent": "测试邮件已发送",
     "configTitle": "通知设置",
     "configSubtitle": "配置哪些事件生成管理员通知。",
     "quotaHitToggle": "用户配额已超出",
@@ -970,14 +970,13 @@
     "totalItems": "共 {count} 项",
     "previous": "上一页",
     "pageOf": "第 {page} 页，共 {pages} 页",
-    "comingSoonTitle": "事件触发器即将推出",
-    "comingSoonBody": "通知投递系统（电子邮件、Slack、Lark、WeCom）已准备就绪。基于事件的触发器——用于工作流失败、连接器中断、配额限制和登录异常的自动警报——正在开发中。同时，可以通过 API 手动发送通知，或在工作流和智能体对话中用作内置工具。",
     "typeNewUserRegistration": "新用户",
     "newUserToggle": "新用户注册",
     "masterToggle": "电子邮件通知",
     "masterToggleDesc": "当系统事件发生时，向所有管理员用户发送电子邮件警报。",
     "smtpNotConfigured": "SMTP 未配置",
-    "smtpNotConfiguredBody": "管理员电子邮件通知需要配置 SMTP。在环境变量中设置 SMTP_HOST、SMTP_USER 和 SMTP_PASS，然后重启服务器以启用此功能。"
+    "smtpNotConfiguredBody": "管理员电子邮件通知需要配置 SMTP。在环境变量中设置 SMTP_HOST、SMTP_USER 和 SMTP_PASS，然后重启服务器以启用此功能。",
+    "moreChannelsNote": "目前事件触发的通知仅通过电子邮件发送。Slack、Lark 和 WeCom 频道可作为智能体工具使用，并可在工作流中使用，事件触发支持将在未来版本中推出。"
   },
   "placeholders": {
     "traces": {

@@ -141,21 +141,9 @@ export function AdminNotifications() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-base font-semibold">{t("title")}</h2>
-          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={handleSendTest}
-          disabled={isMutating || !config?.smtp_configured}
-        >
-          {isMutating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {t("sendTest")}
-        </Button>
+      <div>
+        <h2 className="text-base font-semibold">{t("title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       {/* Sub-tab toggle */}
@@ -260,7 +248,7 @@ export function AdminNotifications() {
               )}
 
               {/* Master switch */}
-              <div className="rounded-md border border-border p-4">
+              <div className="rounded-md border border-border p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     {config.enabled && config.smtp_configured ? (
@@ -279,6 +267,16 @@ export function AdminNotifications() {
                     onCheckedChange={() => handleConfigToggle("enabled")}
                   />
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleSendTest}
+                  disabled={isMutating || !config.smtp_configured}
+                >
+                  {isMutating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {t("sendTest")}
+                </Button>
               </div>
 
               {/* Sub-toggles */}
@@ -344,6 +342,12 @@ export function AdminNotifications() {
                       onCheckedChange={() => handleConfigToggle("login_anomaly")}
                     />
                   </div>
+                </div>
+
+                {/* More channels note */}
+                <div className="mt-2 rounded-md bg-muted/40 px-3 py-2.5 flex items-start gap-2.5">
+                  <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                  <p className="text-xs text-muted-foreground leading-relaxed">{t("moreChannelsNote")}</p>
                 </div>
               </div>
             </div>

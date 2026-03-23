@@ -958,8 +958,8 @@
     "typeSystem": "System",
     "noEvents": "Keine Systemereignisse aufgezeichnet.",
     "autoRefresh": "Aktualisiert sich automatisch alle 30 Sekunden",
-    "sendTest": "Testbenachrichtigung senden",
-    "testSent": "Testbenachrichtigung gesendet",
+    "sendTest": "Test-E-Mail senden",
+    "testSent": "Test-E-Mail gesendet",
     "configTitle": "Benachrichtigungseinstellungen",
     "configSubtitle": "Konfigurieren Sie, welche Ereignisse Admin-Benachrichtigungen generieren.",
     "quotaHitToggle": "Benutzer-Kontingent überschritten",
@@ -970,14 +970,13 @@
     "totalItems": "{count} insgesamt",
     "previous": "Zurück",
     "pageOf": "Seite {page} von {pages}",
-    "comingSoonTitle": "Event-Trigger kommen bald",
-    "comingSoonBody": "Das Benachrichtigungsversandsystem (Email, Slack, Lark, WeCom) ist einsatzbereit. Ereignisbasierte Trigger – automatische Benachrichtigungen für Workflow-Fehler, Connector-Ausfälle, Kontingentlimits und Anmeldeanomalieen – sind in Entwicklung. In der Zwischenzeit können Benachrichtigungen manuell über die API versendet oder als integriertes Tool in Workflows und Agent-Gesprächen verwendet werden.",
     "typeNewUserRegistration": "Neuer Benutzer",
     "newUserToggle": "Neue Benutzerregistrierung",
     "masterToggle": "E-Mail-Benachrichtigungen",
     "masterToggleDesc": "Senden Sie E-Mail-Warnungen an alle Admin-Benutzer, wenn Systemereignisse auftreten.",
     "smtpNotConfigured": "SMTP nicht konfiguriert",
-    "smtpNotConfiguredBody": "Admin-E-Mail-Benachrichtigungen erfordern eine SMTP-Konfiguration. Legen Sie SMTP_HOST, SMTP_USER und SMTP_PASS in Ihren Umgebungsvariablen fest und starten Sie den Server neu, um diese Funktion zu aktivieren."
+    "smtpNotConfiguredBody": "Admin-E-Mail-Benachrichtigungen erfordern eine SMTP-Konfiguration. Legen Sie SMTP_HOST, SMTP_USER und SMTP_PASS in Ihren Umgebungsvariablen fest und starten Sie den Server neu, um diese Funktion zu aktivieren.",
+    "moreChannelsNote": "Derzeit werden ereignisgesteuerte Benachrichtigungen nur per E-Mail versendet. Slack-, Lark- und WeCom-Kanäle sind als Agentenwerkzeuge verfügbar und können in Workflows verwendet werden. Unterstützung für ereignisgesteuerte Benachrichtigungen wird in einer zukünftigen Version verfügbar sein."
   },
   "placeholders": {
     "traces": {

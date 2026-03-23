@@ -958,8 +958,8 @@
     "typeSystem": "시스템",
     "noEvents": "기록된 시스템 이벤트가 없습니다.",
     "autoRefresh": "30초마다 자동 새로고침",
-    "sendTest": "테스트 알림 전송",
-    "testSent": "테스트 알림이 전송되었습니다",
+    "sendTest": "테스트 이메일 전송",
+    "testSent": "테스트 이메일이 전송되었습니다",
     "configTitle": "알림 설정",
     "configSubtitle": "어떤 이벤트가 관리자 알림을 생성할지 설정합니다.",
     "quotaHitToggle": "사용자 할당량 초과",
@@ -970,14 +970,13 @@
     "totalItems": "총 {count}개",
     "previous": "이전",
     "pageOf": "{pages}페 중 {page}페",
-    "comingSoonTitle": "이벤트 트리거 곧 출시 예정",
-    "comingSoonBody": "알림 전달 시스템(이메일, Slack, Lark, WeCom)이 준비되었습니다. 워크플로우 실패, 커넥터 중단, 할당량 제한, 로그인 이상에 대한 자동 알림을 제공하는 이벤트 기반 트리거는 개발 중입니다. 그동안 API를 통해 수동으로 알림을 보내거나 워크플로우 및 에이전트 대화에서 기본 제공 도구로 사용할 수 있습니다.",
     "typeNewUserRegistration": "새 사용자",
     "newUserToggle": "새 사용자 등록",
     "masterToggle": "이메일 알림",
     "masterToggleDesc": "시스템 이벤트가 발생할 때 모든 관리자 사용자에게 이메일 알림을 보냅니다.",
     "smtpNotConfigured": "SMTP 구성되지 않음",
-    "smtpNotConfiguredBody": "관리자 이메일 알림을 사용하려면 SMTP를 구성해야 합니다. 환경 변수에서 SMTP_HOST, SMTP_USER 및 SMTP_PASS를 설정한 후 서버를 다시 시작하여 이 기능을 활성화하세요."
+    "smtpNotConfiguredBody": "관리자 이메일 알림을 사용하려면 SMTP를 구성해야 합니다. 환경 변수에서 SMTP_HOST, SMTP_USER 및 SMTP_PASS를 설정한 후 서버를 다시 시작하여 이 기능을 활성화하세요.",
+    "moreChannelsNote": "현재 이벤트 트리거 알림은 이메일을 통해서만 전송됩니다. Slack, Lark, WeCom 채널은 에이전트 도구로 사용 가능하며 워크플로우에서 사용할 수 있으며, 이벤트 트리거 지원은 향후 릴리스에서 제공될 예정입니다."
   },
   "placeholders": {
     "traces": {
