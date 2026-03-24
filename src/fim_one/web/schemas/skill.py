@@ -27,6 +27,12 @@ class SkillUpdate(BaseModel):
     resource_refs: list[dict[str, Any]] | None = None
 
 
+class SkillForkRequest(BaseModel):
+    """Optional overrides when forking (cloning) a skill."""
+
+    name: str | None = None  # Custom name; defaults to "{original} (Fork)"
+
+
 class SkillResponse(BaseModel):
     id: str
     user_id: str | None
@@ -35,6 +41,7 @@ class SkillResponse(BaseModel):
     content: str
     script: str | None
     script_type: str | None
+    forked_from: str | None = None
     visibility: str = "personal"
     org_id: str | None = None
     is_active: bool = True

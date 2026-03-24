@@ -17,7 +17,7 @@ from fim_one.web.models import User
 from fim_one.web.models.skill import Skill
 from fim_one.web.models.resource_subscription import ResourceSubscription
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
-from fim_one.web.schemas.skill import SkillCreate, SkillResponse, SkillUpdate
+from fim_one.web.schemas.skill import SkillCreate, SkillForkRequest, SkillResponse, SkillUpdate
 from fim_one.web.visibility import build_visibility_filter
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
@@ -37,6 +37,7 @@ def _skill_to_response(skill: Skill) -> SkillResponse:
         content=skill.content,
         script=skill.script,
         script_type=skill.script_type,
+        forked_from=getattr(skill, "forked_from", None),
         visibility=getattr(skill, "visibility", "personal"),
         org_id=getattr(skill, "org_id", None),
         is_active=skill.is_active,
@@ -231,6 +232,53 @@ async def delete_skill(
     await db.delete(skill)
     await db.commit()
     return ApiResponse(data={"deleted": skill_id})
+
+
+# ---------------------------------------------------------------------------
+# Fork (clone)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{skill_id}/fork", response_model=ApiResponse)
+async def fork_skill(
+    skill_id: str,
+    body: SkillForkRequest | None = None,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Clone an existing skill for the current user.
+
+    Copies all content fields but NOT org_id or publish_status.
+    The forked skill is set to personal/draft ownership.
+    """
+    # Fetch the source skill — must be visible to the user (own / org / global)
+    source = await _get_accessible_skill(skill_id, current_user.id, db)
+
+    fork_name = (body.name if body and body.name else f"{source.name} (Fork)")[:200]
+
+    forked = Skill(
+        user_id=current_user.id,
+        name=fork_name,
+        description=source.description,
+        content=source.content,
+        script=source.script,
+        script_type=source.script_type,
+        resource_refs=source.resource_refs,
+        is_active=True,
+        status="draft",
+        forked_from=source.id,
+        visibility="personal",
+        org_id=None,
+        publish_status=None,
+    )
+    db.add(forked)
+    await db.commit()
+
+    result = await db.execute(
+        select(Skill).where(Skill.id == forked.id)
+    )
+    forked = result.scalar_one()
+    return ApiResponse(data=_skill_to_response(forked).model_dump())
 
 
 # ---------------------------------------------------------------------------

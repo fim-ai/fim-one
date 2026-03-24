@@ -45,6 +45,8 @@ class MCPServer(UUIDPKMixin, TimestampMixin, Base):
         Boolean, default=True, nullable=False, server_default=sa.text("TRUE")
     )
 
+    forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
     # Publish review fields
     publish_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)

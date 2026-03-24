@@ -55,6 +55,7 @@ class MCPServerResponse(BaseModel):
     is_active: bool
     tool_count: int
     allow_fallback: bool = True
+    forked_from: str | None = None
     my_has_credentials: bool = False
     visibility: str = "personal"
     org_id: str | None = None
@@ -65,6 +66,12 @@ class MCPServerResponse(BaseModel):
     source: str | None = None
     created_at: str
     updated_at: str | None
+
+
+class MCPServerForkRequest(BaseModel):
+    """Optional overrides when forking (cloning) an MCP server."""
+
+    name: str | None = None  # Custom name; defaults to "{original} (Fork)"
 
 
 class MCPMyCredentialStatus(BaseModel):

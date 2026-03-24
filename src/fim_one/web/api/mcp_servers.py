@@ -24,6 +24,7 @@ from fim_one.web.schemas.mcp_server import (
     MCPMyCredentialStatus,
     MCPMyCredentialUpsert,
     MCPServerCreate,
+    MCPServerForkRequest,
     MCPServerResponse,
     MCPServerUpdate,
 )
@@ -63,6 +64,7 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         is_active=srv.is_active,
         tool_count=srv.tool_count,
         allow_fallback=getattr(srv, "allow_fallback", True),
+        forked_from=getattr(srv, "forked_from", None),
         my_has_credentials=my_has_credentials,
         visibility=getattr(srv, "visibility", "personal"),
         org_id=getattr(srv, "org_id", None),
@@ -501,6 +503,57 @@ async def delete_mcp_server(
     await db.delete(server)
     await db.commit()
     return ApiResponse(data={"deleted": server_id})
+
+
+# ---------------------------------------------------------------------------
+# Fork (clone)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{server_id}/fork", response_model=ApiResponse)
+async def fork_mcp_server(
+    server_id: str,
+    body: MCPServerForkRequest | None = None,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Clone an existing MCP server for the current user.
+
+    Copies all configuration fields but NOT encrypted env/headers, org_id, or
+    publish_status.  The forked server is set to personal/active ownership.
+    """
+    # Fetch the source server — must be visible to the user (own / org / global)
+    source = await _get_accessible_server(server_id, current_user.id, db)
+
+    fork_name = (body.name if body and body.name else f"{source.name} (Fork)")[:200]
+
+    forked = MCPServer(
+        user_id=current_user.id,
+        name=fork_name,
+        description=source.description,
+        transport=source.transport,
+        command=source.command,
+        args=source.args,
+        env=None,  # encrypted credentials — do NOT copy
+        url=source.url,
+        working_dir=source.working_dir,
+        headers=None,  # encrypted credentials — do NOT copy
+        is_active=True,
+        tool_count=source.tool_count,
+        forked_from=source.id,
+        visibility="personal",
+        org_id=None,
+        publish_status=None,
+        allow_fallback=source.allow_fallback,
+    )
+    db.add(forked)
+    await db.commit()
+
+    result = await db.execute(
+        select(MCPServer).where(MCPServer.id == forked.id)
+    )
+    forked = result.scalar_one()
+    return ApiResponse(data=_to_response(forked).model_dump())
 
 
 # ---------------------------------------------------------------------------

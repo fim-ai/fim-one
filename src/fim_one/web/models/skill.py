@@ -40,6 +40,8 @@ class Skill(UUIDPKMixin, TimestampMixin, Base):
     )
     status: Mapped[str] = mapped_column(String(20), default="draft")
 
+    forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
     # Publish review fields (same as Workflow/Agent)
     publish_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(
