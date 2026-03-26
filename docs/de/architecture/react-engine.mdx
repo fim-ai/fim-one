@@ -164,15 +164,17 @@ Da DAG-Schritte über ReActAgent ausgeführt werden, schützt die Zyklenerkennun
 
 ## Abschluss-Checkliste
 
-Wenn der Agent mindestens ein Tool verwendet hat und sich entschließt, eine endgültige Antwort zu geben, wird vor der Annahme der Antwort eine einmalige Verifizierungsaufforderung eingefügt:
+Wenn der Agent mindestens `_COMPLETION_CHECK_MIN_TOOLS` Tools verwendet hat (Standard: **3**, konfigurierbar über `REACT_COMPLETION_CHECK_MIN_TOOLS`) und sich entscheidet, eine endgültige Antwort zu geben, wird vor der Annahme der Antwort eine einmalige Verifizierungsaufforderung eingefügt:
 
 1. Beantwortet die Antwort die ursprüngliche Frage vollständig?
-2. Wurden wichtige Fakten aus den Tool-Ergebnissen überprüft?
+2. Wurden Schlüsselfakten aus Tool-Ergebnissen überprüft?
 3. Gibt es Widersprüche in den gesammelten Informationen?
 
-Wenn der Agent bestätigt, wird die endgültige Antwort gegeben. Wenn er entscheidet, dass etwas fehlt, wird die Tool-Call-Schleife fortgesetzt. Die Checkliste wird höchstens einmal pro Ausführung ausgelöst und wird nicht für einfache Gesprächsantworten ausgelöst (keine Tools verwendet).
+Wenn der Agent bestätigt, wird die endgültige Antwort gegeben. Wenn er entscheidet, dass etwas fehlt, wird die Tool-Call-Schleife fortgesetzt. Die Checkliste wird höchstens einmal pro Durchlauf ausgelöst und wird nicht für einfache Konversationsantworten aktiviert (keine Tools verwendet).
 
-Die Funktion ist standardmäßig aktiviert (`completion_check=True` auf `ReActAgent`) und kann pro Agent-Instanz deaktiviert werden. DAG-Schritte erben den Standard — jeder Schritt erhält seine eigene einmalige Checkliste.
+Der Schwellenwert verhindert unnötige Latenz bei einfachen Aufgaben – ein einzelner Tool-Aufruf (z. B. eine schnelle Berechnung) rechtfertigt keine Verifizierung, während eine Multi-Tool-Untersuchung von einer abschließenden Plausibilitätsprüfung profitiert. Setzen Sie `REACT_COMPLETION_CHECK_MIN_TOOLS=1` für immer aktivierte Verifizierung.
+
+Die Funktion ist standardmäßig aktiviert (`completion_check=True` auf `ReActAgent`) und kann pro Agent-Instanz deaktiviert werden. DAG-Schritte erben den Standard – jeder Schritt erhält seine eigene einmalige Checkliste.
 
 ## Antwortsynthese (stream_answer)
 

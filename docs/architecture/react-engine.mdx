@@ -164,13 +164,15 @@ Because DAG steps execute via ReActAgent, cycle detection also protects individu
 
 ## Completion checklist
 
-When the agent has used at least one tool and decides to produce a final answer, a one-time verification prompt is injected before the answer is accepted:
+When the agent has used at least `_COMPLETION_CHECK_MIN_TOOLS` tools (default: **3**, configurable via `REACT_COMPLETION_CHECK_MIN_TOOLS`) and decides to produce a final answer, a one-time verification prompt is injected before the answer is accepted:
 
 1. Does the answer fully address the original question?
 2. Were key facts verified from tool results?
 3. Are there contradictions in the gathered information?
 
 If the agent confirms, it proceeds to final answer. If it decides something is missing, it resumes the tool-call loop. The checklist fires at most once per run and does not trigger for simple conversational responses (no tools used).
+
+The threshold prevents unnecessary latency on simple tasks — a single tool call (e.g., running a quick calculation) does not warrant verification, while a multi-tool investigation benefits from a final sanity check. Set `REACT_COMPLETION_CHECK_MIN_TOOLS=1` for always-on verification.
 
 The feature is enabled by default (`completion_check=True` on `ReActAgent`) and can be disabled per agent instance. DAG steps inherit the default — each step gets its own one-shot checklist.
 

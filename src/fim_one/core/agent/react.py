@@ -66,7 +66,11 @@ _CYCLE_WARNING_TEMPLATE = (
 )
 
 # Completion checklist: one-time verification prompt injected before accepting
-# a final answer when the agent has used at least one tool.
+# a final answer when the agent has used enough tools to warrant verification.
+_COMPLETION_CHECK_MIN_TOOLS = int(
+    os.getenv("REACT_COMPLETION_CHECK_MIN_TOOLS", "3"),
+)
+
 _COMPLETION_CHECK_PROMPT = (
     "Before finalizing your answer, verify:\n"
     "1. Does your answer fully address the original question?\n"
@@ -854,7 +858,7 @@ class ReActAgent:
                 # re-evaluate before accepting the final answer.
                 if (
                     self._completion_check
-                    and tool_call_count > 0
+                    and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                     and not completion_check_done
                     and iteration < self._max_iterations
                 ):
@@ -1152,7 +1156,7 @@ class ReActAgent:
             # re-evaluate before accepting the final answer.
             if (
                 self._completion_check
-                and tool_call_count > 0
+                and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                 and not completion_check_done
                 and iteration < self._max_iterations
             ):

@@ -424,11 +424,13 @@ class TestCompletionChecklistJsonMode:
     """Completion checklist in JSON mode."""
 
     async def test_checklist_triggers_when_tools_used(self) -> None:
-        """Completion checklist should trigger when tools were used."""
-        # 1 tool call, then final answer (which triggers checklist),
-        # then another final answer (which is accepted).
+        """Completion checklist should trigger when tool_call_count >= threshold."""
+        # 3 tool calls (meets default threshold), then final answer
+        # (which triggers checklist), then another final answer (accepted).
         responses: list[LLMResult] = [
-            _json_tool_call("echo", {"text": "data"}),
+            _json_tool_call("echo", {"text": "a"}),
+            _json_tool_call("echo", {"text": "b"}),
+            _json_tool_call("echo", {"text": "c"}),
             _json_final_answer("first attempt"),
             _json_final_answer("verified answer"),
         ]
@@ -443,15 +445,38 @@ class TestCompletionChecklistJsonMode:
 
         result = await agent.run("test completion check")
 
-        # The final answer should be the one after the checklist.
         assert result.answer == "verified answer"
 
-        # The LLM call after the checklist should see the verification prompt.
-        # The 3rd call (index 2) should have the completion check in its history.
-        assert llm.call_count == 3
-        third_call_messages = llm.all_messages[2]
-        checks = _find_completion_checks(third_call_messages)
+        # 3 tool calls + final answer + checklist re-eval = 5 LLM calls.
+        assert llm.call_count == 5
+        fifth_call_messages = llm.all_messages[4]
+        checks = _find_completion_checks(fifth_call_messages)
         assert len(checks) == 1
+
+    async def test_checklist_not_triggered_below_threshold(self) -> None:
+        """No checklist when tool_call_count is below the min threshold."""
+        # Only 1 tool call (below default threshold of 3).
+        responses: list[LLMResult] = [
+            _json_tool_call("echo", {"text": "data"}),
+            _json_final_answer("quick answer"),
+        ]
+
+        llm = CapturingFakeLLM(responses)
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=llm, tools=registry, max_iterations=20,
+            completion_check=True,
+        )
+
+        result = await agent.run("simple question")
+
+        assert result.answer == "quick answer"
+        assert llm.call_count == 2
+
+        for call_messages in llm.all_messages:
+            checks = _find_completion_checks(call_messages)
+            assert len(checks) == 0
 
     async def test_checklist_not_triggered_for_simple_conversation(self) -> None:
         """No checklist when no tools were used (simple conversational response)."""
@@ -479,10 +504,12 @@ class TestCompletionChecklistJsonMode:
 
     async def test_checklist_only_triggers_once(self) -> None:
         """Completion checklist should only trigger once per run."""
-        # 1 tool call, final answer (triggers checklist), tool call
+        # 3 tool calls, final answer (triggers checklist), tool call
         # (agent decided to continue after checklist), final answer (accepted).
         responses: list[LLMResult] = [
-            _json_tool_call("echo", {"text": "data"}),
+            _json_tool_call("echo", {"text": "a"}),
+            _json_tool_call("echo", {"text": "b"}),
+            _json_tool_call("echo", {"text": "c"}),
             _json_final_answer("first attempt"),
             # After checklist, LLM continues investigating
             _json_tool_call("echo", {"text": "more data"}),
@@ -499,32 +526,24 @@ class TestCompletionChecklistJsonMode:
 
         result = await agent.run("test checklist once")
 
-        # After the checklist, the LLM decided to continue (tool call),
-        # then gave a final answer which is accepted without another checklist.
         assert result.answer == "final answer after investigation"
 
-        # Count total checklist injections across all LLM calls.
-        total_checks = 0
-        for call_messages in llm.all_messages:
-            total_checks += len(_find_completion_checks(call_messages))
-        # The checklist should appear exactly once in the conversation history
-        # (it persists in later messages because it's appended to messages list).
-        # But it was only *injected* once (at the time of the first final answer).
-        # Verify by checking that only one unique injection point exists.
-        # The simplest check: the 3rd call should have 1 check, and the 4th
-        # call should still have that same 1 check (not 2).
-        if llm.call_count >= 3:
-            checks_in_third = _find_completion_checks(llm.all_messages[2])
-            assert len(checks_in_third) == 1
-        if llm.call_count >= 4:
-            checks_in_fourth = _find_completion_checks(llm.all_messages[3])
-            # Still only the same 1 check message from earlier, not a new one.
-            assert len(checks_in_fourth) == 1
+        # The checklist prompt should appear exactly once across all calls.
+        # It persists in history after injection, so later calls see it too,
+        # but no *new* injection occurs.
+        if llm.call_count >= 5:
+            checks_in_fifth = _find_completion_checks(llm.all_messages[4])
+            assert len(checks_in_fifth) == 1
+        if llm.call_count >= 6:
+            checks_in_sixth = _find_completion_checks(llm.all_messages[5])
+            assert len(checks_in_sixth) == 1
 
     async def test_checklist_disabled(self) -> None:
-        """When completion_check=False, no checklist should be injected."""
+        """When completion_check=False, no checklist even above threshold."""
         responses: list[LLMResult] = [
-            _json_tool_call("echo", {"text": "data"}),
+            _json_tool_call("echo", {"text": "a"}),
+            _json_tool_call("echo", {"text": "b"}),
+            _json_tool_call("echo", {"text": "c"}),
             _json_final_answer("immediate answer"),
         ]
 
@@ -538,9 +557,8 @@ class TestCompletionChecklistJsonMode:
 
         result = await agent.run("test disabled checklist")
 
-        # Should accept the final answer immediately without checklist.
         assert result.answer == "immediate answer"
-        assert llm.call_count == 2
+        assert llm.call_count == 4
 
         for call_messages in llm.all_messages:
             checks = _find_completion_checks(call_messages)
@@ -556,9 +574,11 @@ class TestCompletionChecklistNativeMode:
     """Completion checklist in native function-calling mode."""
 
     async def test_checklist_triggers_when_tools_used_native(self) -> None:
-        """Completion checklist should trigger in native mode when tools were used."""
+        """Completion checklist triggers in native mode at threshold."""
         responses: list[LLMResult] = [
-            _native_tool_call([("c1", "echo", {"text": "data"})]),
+            _native_tool_call([("c1", "echo", {"text": "a"})]),
+            _native_tool_call([("c2", "echo", {"text": "b"})]),
+            _native_tool_call([("c3", "echo", {"text": "c"})]),
             _native_final_answer("first attempt"),
             _native_final_answer("verified answer"),
         ]
@@ -574,10 +594,10 @@ class TestCompletionChecklistNativeMode:
         result = await agent.run("test native completion check")
 
         assert result.answer == "verified answer"
-        assert llm.call_count == 3
+        assert llm.call_count == 5
 
-        third_call_messages = llm.all_messages[2]
-        checks = _find_completion_checks(third_call_messages)
+        fifth_call_messages = llm.all_messages[4]
+        checks = _find_completion_checks(fifth_call_messages)
         assert len(checks) == 1
 
     async def test_checklist_not_triggered_no_tools_native(self) -> None:
@@ -605,10 +625,12 @@ class TestCompletionChecklistNativeMode:
     async def test_checklist_only_triggers_once_native(self) -> None:
         """Completion checklist fires only once in native mode."""
         responses: list[LLMResult] = [
-            _native_tool_call([("c1", "echo", {"text": "data"})]),
+            _native_tool_call([("c1", "echo", {"text": "a"})]),
+            _native_tool_call([("c2", "echo", {"text": "b"})]),
+            _native_tool_call([("c3", "echo", {"text": "c"})]),
             _native_final_answer("first attempt"),
             # After checklist, agent continues investigating
-            _native_tool_call([("c2", "echo", {"text": "more"})]),
+            _native_tool_call([("c4", "echo", {"text": "more"})]),
             _native_final_answer("final"),
         ]
 
@@ -624,13 +646,12 @@ class TestCompletionChecklistNativeMode:
 
         assert result.answer == "final"
 
-        # Verify the checklist was injected exactly once.
-        if llm.call_count >= 3:
-            checks_in_third = _find_completion_checks(llm.all_messages[2])
-            assert len(checks_in_third) == 1
-        if llm.call_count >= 4:
-            checks_in_fourth = _find_completion_checks(llm.all_messages[3])
-            assert len(checks_in_fourth) == 1
+        if llm.call_count >= 5:
+            checks_in_fifth = _find_completion_checks(llm.all_messages[4])
+            assert len(checks_in_fifth) == 1
+        if llm.call_count >= 6:
+            checks_in_sixth = _find_completion_checks(llm.all_messages[5])
+            assert len(checks_in_sixth) == 1
 
 
 # ======================================================================

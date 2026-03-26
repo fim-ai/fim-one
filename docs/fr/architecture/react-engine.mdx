@@ -162,17 +162,19 @@ L'avertissement est un message utilisateur régulier dans l'historique interne d
 
 Parce que les étapes DAG s'exécutent via ReActAgent, la détection de cycles protège également les étapes DAG individuelles des boucles d'appels d'outils.
 
-## Liste de vérification d'achèvement
+## Liste de contrôle d'achèvement
 
-Lorsque l'agent a utilisé au moins un outil et décide de produire une réponse finale, une invite de vérification unique est injectée avant que la réponse soit acceptée :
+Lorsque l'agent a utilisé au moins `_COMPLETION_CHECK_MIN_TOOLS` outils (par défaut : **3**, configurable via `REACT_COMPLETION_CHECK_MIN_TOOLS`) et décide de produire une réponse finale, une invite de vérification ponctuelle est injectée avant que la réponse soit acceptée :
 
 1. La réponse aborde-t-elle pleinement la question originale ?
 2. Les faits clés ont-ils été vérifiés à partir des résultats des outils ?
 3. Y a-t-il des contradictions dans les informations recueillies ?
 
-Si l'agent confirme, il procède à la réponse finale. S'il décide que quelque chose manque, il reprend la boucle d'appel d'outils. La liste de vérification s'exécute au maximum une fois par exécution et ne se déclenche pas pour les réponses conversationnelles simples (aucun outil utilisé).
+Si l'agent confirme, il procède à la réponse finale. S'il décide que quelque chose manque, il reprend la boucle d'appel d'outils. La liste de contrôle s'exécute au maximum une fois par exécution et ne se déclenche pas pour les réponses conversationnelles simples (aucun outil utilisé).
 
-La fonctionnalité est activée par défaut (`completion_check=True` sur `ReActAgent`) et peut être désactivée par instance d'agent. Les étapes DAG héritent de la valeur par défaut — chaque étape obtient sa propre liste de vérification unique.
+Le seuil prévient la latence inutile sur les tâches simples — un seul appel d'outil (par exemple, effectuer un calcul rapide) ne justifie pas de vérification, tandis qu'une investigation multi-outils bénéficie d'une vérification de cohérence finale. Définissez `REACT_COMPLETION_CHECK_MIN_TOOLS=1` pour une vérification toujours active.
+
+La fonctionnalité est activée par défaut (`completion_check=True` sur `ReActAgent`) et peut être désactivée par instance d'agent. Les étapes DAG héritent de la valeur par défaut — chaque étape obtient sa propre liste de contrôle ponctuelle.
 
 ## Synthèse des réponses (stream_answer)
 
