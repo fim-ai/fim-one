@@ -375,7 +375,10 @@
     "addProviderHint": "不确定您的提供商设置？查看<link>LLM 提供商兼容性指南</link>了解已知问题。",
     "toolChoiceEnabled": "原生函数调用",
     "toolChoiceEnabledDesc": "启用强制工具选择（tool_choice）以获得结构化输出。最适用于 OpenAI GPT 系列、Google Gemini 和 Anthropic Claude。如果您的模型返回与 tool_choice 相关的错误或结构化输出速度缓慢，请禁用此选项。",
-    "temperatureReasoningHint": "启用推理时，某些提供商（例如 Anthropic）要求温度 = 1.0 — 自动应用。"
+    "temperatureReasoningHint": "启用推理时，某些提供商（例如 Anthropic）要求温度 = 1.0 — 自动应用。",
+    "importClearExisting": "导入前清除所有现有数据",
+    "importClearExistingDesc": "删除所有现有的提供商、模型和组，然后从文件导入。此操作无法撤销。",
+    "importDeleted": "已删除：{providers} 个提供商、{models} 个模型、{groups} 个组"
   },
   "tools": {
     "title": "内置工具",

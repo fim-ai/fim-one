@@ -3001,6 +3001,27 @@ async def admin_import_model_config(
     created = {"providers": 0, "models": 0, "groups": 0}
     skipped = {"providers": 0, "models": 0, "groups": 0}
     warnings: list[str] = []
+    deleted = {"providers": 0, "models": 0, "groups": 0}
+
+    # -- Phase 0: Clear existing (optional) ------------------------------------
+    if body.clear_existing:
+        # Delete all groups first (no FK deps on other tables)
+        groups_to_del = await db.execute(select(ModelGroup))
+        for g in groups_to_del.scalars().all():
+            deleted["groups"] += 1
+            await db.delete(g)
+
+        # Delete all providers (cascade deletes their models)
+        provs_to_del = await db.execute(
+            select(ModelProvider).options(selectinload(ModelProvider.models))
+        )
+        for p in provs_to_del.scalars().unique().all():
+            deleted["models"] += len(p.models or [])
+            deleted["providers"] += 1
+            await db.delete(p)
+
+        await db.flush()
+
     newly_created_providers: set[str] = set()
 
     # -- Phase 1: Providers & Models ------------------------------------------
@@ -3136,20 +3157,25 @@ async def admin_import_model_config(
                 "Please configure it in Admin → Model Management."
             )
 
+    detail_parts = [
+        f"created: {created['providers']}p/{created['models']}m/{created['groups']}g",
+        f"skipped: {skipped['providers']}p/{skipped['models']}m/{skipped['groups']}g",
+    ]
+    if body.clear_existing:
+        detail_parts.insert(0, f"cleared: {deleted['providers']}p/{deleted['models']}m/{deleted['groups']}g")
+
     await write_audit(
         db,
         current_user,
         "model_config.import",
         target_type="model_config",
-        detail=(
-            f"created: {created['providers']}p/{created['models']}m/{created['groups']}g, "
-            f"skipped: {skipped['providers']}p/{skipped['models']}m/{skipped['groups']}g"
-        ),
+        detail=", ".join(detail_parts),
     )
 
     summary = ModelConfigImportSummary(
         created=created,
         skipped=skipped,
+        deleted=deleted,
         warnings=warnings,
     )
     return ApiResponse(data=summary.model_dump())

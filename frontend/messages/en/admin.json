@@ -384,6 +384,9 @@
     "importSuccess": "Import completed",
     "importCreated": "Created: {providers} providers, {models} models, {groups} groups",
     "importSkipped": "Skipped: {providers} providers, {models} models, {groups} groups",
+    "importClearExisting": "Clear all existing data before import",
+    "importClearExistingDesc": "Delete all existing providers, models, and groups, then import from file. This cannot be undone.",
+    "importDeleted": "Deleted: {providers} providers, {models} models, {groups} groups",
     "exportSuccess": "Model configuration exported",
     "noFileSelected": "Please select a JSON file"
   },

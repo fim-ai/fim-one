@@ -375,7 +375,10 @@
     "addProviderHint": "제공자의 설정이 확실하지 않으신가요? <link>LLM 제공자 호환성 가이드</link>에서 알려진 문제들을 확인하세요.",
     "toolChoiceEnabled": "네이티브 함수 호출",
     "toolChoiceEnabledDesc": "구조화된 출력을 위해 강제 도구 선택(tool_choice)을 활성화합니다. OpenAI GPT 시리즈, Google Gemini 및 Anthropic Claude와 함께 가장 잘 작동합니다. 모델이 tool_choice 관련 오류를 반환하거나 구조화된 출력이 느린 경우 이를 비활성화하세요.",
-    "temperatureReasoningHint": "추론이 활성화되면 일부 제공자(예: Anthropic)에서 temperature = 1.0이 필요합니다 — 자동으로 적용됩니다."
+    "temperatureReasoningHint": "추론이 활성화되면 일부 제공자(예: Anthropic)에서 temperature = 1.0이 필요합니다 — 자동으로 적용됩니다.",
+    "importClearExisting": "가져오기 전에 기존 데이터 모두 삭제",
+    "importClearExistingDesc": "기존의 모든 공급자, 모델 및 그룹을 삭제한 후 파일에서 가져옵니다. 이 작업은 취소할 수 없습니다.",
+    "importDeleted": "삭제됨: {providers}개 공급자, {models}개 모델, {groups}개 그룹"
   },
   "tools": {
     "title": "기본 제공 도구",

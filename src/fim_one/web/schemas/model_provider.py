@@ -258,6 +258,10 @@ class ModelConfigImportRequest(BaseModel):
         default_factory=dict,
         description="Optional mapping of provider name -> API key",
     )
+    clear_existing: bool = Field(
+        default=False,
+        description="If true, delete ALL existing providers, models, and groups before importing",
+    )
 
 
 class ModelConfigImportSummary(BaseModel):
@@ -265,4 +269,7 @@ class ModelConfigImportSummary(BaseModel):
 
     created: dict[str, int]  # { providers, models, groups }
     skipped: dict[str, int]  # { providers, models, groups }
+    deleted: dict[str, int] = Field(
+        default_factory=lambda: {"providers": 0, "models": 0, "groups": 0}
+    )
     warnings: list[str] = []

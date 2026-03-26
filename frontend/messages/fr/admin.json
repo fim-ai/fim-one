@@ -375,7 +375,10 @@
     "addProviderHint": "Vous ne savez pas comment configurer votre fournisseur ? Consultez le <link>Guide de compatibilité des fournisseurs LLM</link> pour connaître les pièges courants.",
     "toolChoiceEnabled": "Appel de fonction natif",
     "toolChoiceEnabledDesc": "Active la sélection forcée d'outils (tool_choice) pour les sorties structurées. Fonctionne mieux avec les séries OpenAI GPT, Google Gemini et Anthropic Claude. Désactivez cette option si votre modèle retourne des erreurs liées à tool_choice ou si les sorties structurées sont lentes.",
-    "temperatureReasoningHint": "Lorsque le raisonnement est activé, certains fournisseurs (par exemple Anthropic) exigent temperature = 1.0 — appliqué automatiquement."
+    "temperatureReasoningHint": "Lorsque le raisonnement est activé, certains fournisseurs (par exemple Anthropic) exigent temperature = 1.0 — appliqué automatiquement.",
+    "importClearExisting": "Effacer toutes les données existantes avant l'importation",
+    "importClearExistingDesc": "Supprimer tous les fournisseurs, modèles et groupes existants, puis importer à partir du fichier. Cette action ne peut pas être annulée.",
+    "importDeleted": "Supprimés : {providers} fournisseurs, {models} modèles, {groups} groupes"
   },
   "tools": {
     "title": "Outils intégrés",

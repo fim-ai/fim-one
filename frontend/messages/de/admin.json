@@ -375,7 +375,10 @@
     "addProviderHint": "Unsicher über die Einstellungen Ihres Anbieters? Lesen Sie den <link>LLM-Anbieter-Kompatibilitätsleitfaden</link> für bekannte Probleme.",
     "toolChoiceEnabled": "Native Function Calling",
     "toolChoiceEnabledDesc": "Aktiviert die erzwungene Werkzeugauswahl (tool_choice) für strukturierte Ausgaben. Funktioniert am besten mit OpenAI GPT-Serie, Google Gemini und Anthropic Claude. Deaktivieren Sie dies, wenn Ihr Modell Fehler im Zusammenhang mit tool_choice zurückgibt oder wenn strukturierte Ausgaben langsam sind.",
-    "temperatureReasoningHint": "Wenn Reasoning aktiviert ist, erfordern einige Anbieter (z. B. Anthropic) temperature = 1.0 — wird automatisch angewendet."
+    "temperatureReasoningHint": "Wenn Reasoning aktiviert ist, erfordern einige Anbieter (z. B. Anthropic) temperature = 1.0 — wird automatisch angewendet.",
+    "importClearExisting": "Alle vorhandenen Daten vor dem Import löschen",
+    "importClearExistingDesc": "Löschen Sie alle vorhandenen Anbieter, Modelle und Gruppen und importieren Sie dann aus der Datei. Dies kann nicht rückgängig gemacht werden.",
+    "importDeleted": "Gelöscht: {providers} Anbieter, {models} Modelle, {groups} Gruppen"
   },
   "tools": {
     "title": "Integrierte Tools",

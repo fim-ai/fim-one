@@ -375,7 +375,10 @@
     "addProviderHint": "プロバイダーの設定がわかりませんか？<link>LLM プロバイダー互換性ガイド</link>で既知の問題を確認してください。",
     "toolChoiceEnabled": "ネイティブ関数呼び出し",
     "toolChoiceEnabledDesc": "構造化出力のための強制ツール選択（tool_choice）を有効にします。OpenAI GPTシリーズ、Google Gemini、Anthropic Claudeで最適に動作します。モデルがtool_choiceに関連するエラーを返す場合、または構造化出力が遅い場合は、これを無効にしてください。",
-    "temperatureReasoningHint": "推論が有効な場合、一部のプロバイダー（例：Anthropic）は temperature = 1.0 を要求します — 自動的に適用されます。"
+    "temperatureReasoningHint": "推論が有効な場合、一部のプロバイダー（例：Anthropic）は temperature = 1.0 を要求します — 自動的に適用されます。",
+    "importClearExisting": "インポート前に既存のデータをすべてクリア",
+    "importClearExistingDesc": "既存のすべてのプロバイダー、モデル、グループを削除してからファイルからインポートします。この操作は取り消せません。",
+    "importDeleted": "削除済み: {providers} プロバイダー、{models} モデル、{groups} グループ"
   },
   "tools": {
     "title": "組み込みツール",
