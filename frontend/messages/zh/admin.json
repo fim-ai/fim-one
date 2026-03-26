@@ -27,7 +27,8 @@
     "hooks": "钩子",
     "packages": "包",
     "agents": "智能体",
-    "knowledgeBases": "知识库"
+    "knowledgeBases": "知识库",
+    "market": "市场"
   },
   "overview": {
     "title": "概览",
@@ -1096,5 +1097,31 @@
     "colStatus": "状态",
     "adminNoticeTitle": "管理员概览",
     "adminNoticeDesc": "所有用户知识库的只读视图。详细编辑应在每个用户的管理页面中进行。"
+  },
+  "market": {
+    "title": "市场模板",
+    "description": "管理在市场上列出的资源。",
+    "importButton": "导入预构建模板",
+    "importing": "导入中...",
+    "importSuccess": "导入完成：{created} 个已创建，{updated} 个已更新",
+    "importError": "导入模板失败",
+    "importConfirmTitle": "导入模板",
+    "importConfirmDescription": "这将导入 8 个解决方案包（8 个智能体 + 8 个技能，共 16 项）到市场中。每个包配对一个智能体和一个技能（SOP）。同名的现有项目将被更新。",
+    "emptyTitle": "没有列出的资源",
+    "emptyDescription": "市场中没有已发布的资源。导入预构建模板或从各自的管理页面发布资源。",
+    "templateCount": "{count} 项",
+    "colName": "名称",
+    "colType": "类型",
+    "colOwner": "所有者",
+    "colCreated": "创建时间",
+    "filterAll": "全部",
+    "typeAgent": "智能体",
+    "typeSkill": "技能",
+    "typeConnector": "连接器",
+    "typeMcpServer": "MCP Server",
+    "typeWorkflow": "工作流",
+    "typeKnowledgeBase": "知识库",
+    "takeDown": "下架",
+    "takeDownSuccess": "资源已从市场下架"
   }
 }

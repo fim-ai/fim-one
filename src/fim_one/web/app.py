@@ -57,6 +57,7 @@ from .api.admin_analytics import router as admin_analytics_router
 from .api.admin_resources_overview import router as admin_resources_overview_router
 from .api.admin_notifications import router as admin_notifications_router
 from .api.admin_batch import router as admin_batch_router
+from .api.admin_market import router as admin_market_router
 from .api.agents import router as agents_router
 from .api.auth import router as auth_router
 from .api.chat import router as chat_router
@@ -118,39 +119,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     from fim_one.core.workflow.run_cleanup import WorkflowRunCleaner
 
     await init_db()
-
-    # Bootstrap: ensure prebuilt solution templates exist in the Market org.
-    # On first-ever startup (no users yet), the Market org won't exist and we
-    # skip — templates will be created during first-admin registration instead.
-    # On subsequent startups (existing DB), this ensures any newly added
-    # templates are seeded without requiring a fresh registration.
-    try:
-        from sqlalchemy import select
-
-        from fim_one.db import create_session
-        from fim_one.web.models.organization import Organization
-        from fim_one.web.platform import MARKET_ORG_ID
-        from fim_one.web.solution_seeds import ensure_solution_templates
-
-        async with create_session() as session:
-            result = await session.execute(
-                select(Organization).where(Organization.id == MARKET_ORG_ID)
-            )
-            market_org = result.scalar_one_or_none()
-            if market_org is not None:
-                await ensure_solution_templates(
-                    session,
-                    market_org_id=MARKET_ORG_ID,
-                    owner_id=market_org.owner_id,
-                )
-                await session.commit()
-                logger.info("Solution templates bootstrap complete")
-            else:
-                logger.info(
-                    "Market org not found — skipping solution template bootstrap"
-                )
-    except Exception:
-        logger.warning("Solution template bootstrap failed", exc_info=True)
 
     # Start the workflow scheduler daemon
     scheduler = WorkflowScheduler()
@@ -363,6 +331,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_resources_overview_router)
     app.include_router(admin_notifications_router)
     app.include_router(admin_batch_router)
+    app.include_router(admin_market_router)
     app.include_router(chat_router)
     app.include_router(auth_router)
     app.include_router(oauth_router)

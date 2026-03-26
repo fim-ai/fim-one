@@ -27,7 +27,8 @@
     "hooks": "フック",
     "packages": "パッケージ",
     "agents": "エージェント",
-    "knowledgeBases": "ナレッジベース"
+    "knowledgeBases": "ナレッジベース",
+    "market": "マーケット"
   },
   "overview": {
     "title": "概要",
@@ -1096,5 +1097,31 @@
     "colStatus": "ステータス",
     "adminNoticeTitle": "管理者概要",
     "adminNoticeDesc": "すべてのユーザーのナレッジベースの読み取り専用ビュー。詳細な編集は各ユーザーの管理ページから行ってください。"
+  },
+  "market": {
+    "title": "マーケットテンプレート",
+    "description": "マーケットプレイスにリストされているリソースを管理します。",
+    "importButton": "事前構築済みテンプレートをインポート",
+    "importing": "インポート中...",
+    "importSuccess": "インポート完了: {created}個作成、{updated}個更新",
+    "importError": "テンプレートのインポートに失敗しました",
+    "importConfirmTitle": "テンプレートをインポート",
+    "importConfirmDescription": "これにより、8つのソリューションバンドル(8つのエージェント + 8つのスキル、合計16項目)がマーケットプレイスにインポートされます。各バンドルは1つのエージェントと1つのスキル(SOP)をペアにしています。同じ名前の既存項目は更新されます。",
+    "emptyTitle": "リストされているリソースがありません",
+    "emptyDescription": "マーケットプレイスに公開されているリソースがありません。事前構築済みテンプレートをインポートするか、各管理ページからリソースを公開してください。",
+    "templateCount": "{count}項目",
+    "colName": "名前",
+    "colType": "タイプ",
+    "colOwner": "所有者",
+    "colCreated": "作成日",
+    "filterAll": "すべて",
+    "typeAgent": "エージェント",
+    "typeSkill": "スキル",
+    "typeConnector": "コネクタ",
+    "typeMcpServer": "MCP Server",
+    "typeWorkflow": "ワークフロー",
+    "typeKnowledgeBase": "ナレッジベース",
+    "takeDown": "削除",
+    "takeDownSuccess": "リソースがマーケットプレイスから削除されました"
   }
 }

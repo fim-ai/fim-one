@@ -36,7 +36,8 @@
     "notifications": "Notifications",
     "traces": "Traces",
     "hooks": "Hooks",
-    "packages": "Packages"
+    "packages": "Packages",
+    "market": "Market"
   },
   "overview": {
     "title": "Overview",
@@ -1097,5 +1098,31 @@
     "batchToggled": "{count} items toggled",
     "batchDeleted": "{count} items deleted",
     "selected": "{count} selected"
+  },
+  "market": {
+    "title": "Market Templates",
+    "description": "Manage resources listed on the marketplace.",
+    "importButton": "Import Pre-built Templates",
+    "importing": "Importing...",
+    "importSuccess": "Import completed: {created} created, {updated} updated",
+    "importError": "Failed to import templates",
+    "importConfirmTitle": "Import Templates",
+    "importConfirmDescription": "This will import 8 solution bundles (8 Agents + 8 Skills, 16 items total) into the marketplace. Each bundle pairs one Agent with one Skill (SOP). Existing items with the same name will be updated.",
+    "emptyTitle": "No resources listed",
+    "emptyDescription": "No published resources in the marketplace. Import pre-built templates or publish resources from their respective admin pages.",
+    "templateCount": "{count} items",
+    "colName": "Name",
+    "colType": "Type",
+    "colOwner": "Owner",
+    "colCreated": "Created",
+    "filterAll": "All",
+    "typeAgent": "Agent",
+    "typeSkill": "Skill",
+    "typeConnector": "Connector",
+    "typeMcpServer": "MCP Server",
+    "typeWorkflow": "Workflow",
+    "typeKnowledgeBase": "Knowledge Base",
+    "takeDown": "Take Down",
+    "takeDownSuccess": "Resource taken down from marketplace"
   }
 }

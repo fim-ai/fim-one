@@ -27,7 +27,8 @@
     "hooks": "Hooks",
     "packages": "Packages",
     "agents": "Agents",
-    "knowledgeBases": "Bases de connaissances"
+    "knowledgeBases": "Bases de connaissances",
+    "market": "Marché"
   },
   "overview": {
     "title": "Aperçu",
@@ -1096,5 +1097,31 @@
     "colStatus": "Statut",
     "adminNoticeTitle": "Aperçu administrateur",
     "adminNoticeDesc": "Vue en lecture seule de toutes les bases de connaissances des utilisateurs. L'édition détaillée doit être effectuée à partir de la page de gestion de chaque utilisateur."
+  },
+  "market": {
+    "title": "Modèles du Marché",
+    "description": "Gérez les ressources listées sur la marketplace.",
+    "importButton": "Importer des Modèles Prédéfinis",
+    "importing": "Importation en cours...",
+    "importSuccess": "Importation terminée : {created} créé(s), {updated} mis à jour",
+    "importError": "Échec de l'importation des modèles",
+    "importConfirmTitle": "Importer des Modèles",
+    "importConfirmDescription": "Cela importera 8 bundles de solutions (8 Agents + 8 Compétences, 16 éléments au total) dans la marketplace. Chaque bundle associe un Agent à une Compétence (SOP). Les éléments existants portant le même nom seront mis à jour.",
+    "emptyTitle": "Aucune ressource listée",
+    "emptyDescription": "Aucune ressource publiée dans la marketplace. Importez des modèles prédéfinis ou publiez des ressources à partir de leurs pages d'administration respectives.",
+    "templateCount": "{count} éléments",
+    "colName": "Nom",
+    "colType": "Type",
+    "colOwner": "Propriétaire",
+    "colCreated": "Créé",
+    "filterAll": "Tous",
+    "typeAgent": "Agent",
+    "typeSkill": "Compétence",
+    "typeConnector": "Connecteur",
+    "typeMcpServer": "Serveur MCP",
+    "typeWorkflow": "Flux de Travail",
+    "typeKnowledgeBase": "Base de Connaissances",
+    "takeDown": "Retirer",
+    "takeDownSuccess": "Ressource retirée de la marketplace"
   }
 }

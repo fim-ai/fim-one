@@ -1448,6 +1448,17 @@ export interface AdminCostProjection {
   projected_tokens: number; daily_avg: number; trailing_total: number
 }
 
+export interface MarketResourceItem {
+  id: string
+  resource_type: string
+  name: string
+  description: string | null
+  status: string
+  publish_status: string | null
+  owner_username: string | null
+  created_at: string | null
+}
+
 // --- Admin API ---
 export const adminApi = {
   listUsers: (page = 1, size = 20, q?: string) => {
@@ -1965,6 +1976,25 @@ export const adminApi = {
     apiFetch<{ toggled: number }>('/api/admin/connectors/batch-toggle', { method: 'POST', body: JSON.stringify({ ids, is_active: isActive }) }),
   batchDeleteConnectors: (ids: string[]) =>
     apiFetch<{ deleted: number }>('/api/admin/connectors/batch-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+
+  // --- Market Templates ---
+  importMarketTemplates: () =>
+    apiFetch<{ ok: boolean; created: number; updated: number }>('/api/admin/market/import-templates', {
+      method: 'POST',
+    }),
+
+  listMarketResources: () =>
+    apiFetch<{ items: MarketResourceItem[]; total: number }>('/api/admin/market/resources'),
+
+  deleteMarketResource: (resourceType: string, resourceId: string) =>
+    apiFetch(`/api/admin/market/resources/${resourceType}/${resourceId}`, {
+      method: 'DELETE',
+    }),
+
+  unpublishMarketResource: (resourceType: string, resourceId: string) =>
+    apiFetch(`/api/admin/market/resources/${resourceType}/${resourceId}/unpublish`, {
+      method: 'PATCH',
+    }),
 }
 
 // --- MCP Server API ---

@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Activity, Plug, Settings, Shield, Users, MessageSquare,
   HardDrive, Cpu, Lock, Key, Bot, BookOpen, FileText, BarChart3, Wrench,
   Building2, GitBranch, Sparkles, FlaskConical, KeyRound, ClipboardCheck,
-  Calendar, Bell, Scan, Webhook, Package,
+  Calendar, Bell, Scan, Webhook, Package, Store,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
@@ -39,6 +39,7 @@ import { AdminNotifications } from "@/components/admin/admin-notifications"
 import { AdminTraces } from "@/components/admin/admin-traces"
 import { AdminHooks } from "@/components/admin/admin-hooks"
 import { AdminPackages } from "@/components/admin/admin-packages"
+import { AdminMarket } from "@/components/admin/admin-market"
 
 // ---------------------------------------------------------------------------
 // Tab definitions grouped logically
@@ -81,6 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "connectors", icon: Plug },
       { key: "skills", icon: Sparkles },
       { key: "workflows", icon: GitBranch },
+      { key: "market", icon: Store },
       { key: "schedules", icon: Calendar },
       { key: "evaluations", icon: FlaskConical },
       { key: "tools", icon: Wrench },
@@ -222,6 +224,7 @@ function AdminPanelContent() {
           {activeTab === "traces" && <AdminTraces />}
           {activeTab === "hooks" && <AdminHooks />}
           {activeTab === "packages" && <AdminPackages />}
+          {activeTab === "market" && <AdminMarket />}
         </div>
       </div>
     </div>

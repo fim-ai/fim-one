@@ -27,7 +27,8 @@
     "hooks": "Hooks",
     "packages": "Pakete",
     "agents": "Agenten",
-    "knowledgeBases": "Wissensdatenbanken"
+    "knowledgeBases": "Wissensdatenbanken",
+    "market": "Marktplatz"
   },
   "overview": {
     "title": "Übersicht",
@@ -1096,5 +1097,31 @@
     "colStatus": "Status",
     "adminNoticeTitle": "Admin-Übersicht",
     "adminNoticeDesc": "Schreibgeschützte Ansicht aller Wissensdatenbanken über alle Benutzer hinweg. Detaillierte Bearbeitung sollte auf der Verwaltungsseite jedes Benutzers durchgeführt werden."
+  },
+  "market": {
+    "title": "Marktplatz-Vorlagen",
+    "description": "Verwalten Sie Ressourcen, die auf dem Marktplatz aufgelistet sind.",
+    "importButton": "Vorgefertigte Vorlagen importieren",
+    "importing": "Wird importiert...",
+    "importSuccess": "Import abgeschlossen: {created} erstellt, {updated} aktualisiert",
+    "importError": "Fehler beim Importieren von Vorlagen",
+    "importConfirmTitle": "Vorlagen importieren",
+    "importConfirmDescription": "Dies importiert 8 Lösungspakete (8 Agenten + 8 Fähigkeiten, 16 Elemente insgesamt) in den Marktplatz. Jedes Paket verbindet einen Agenten mit einer Fähigkeit (SOP). Vorhandene Elemente mit demselben Namen werden aktualisiert.",
+    "emptyTitle": "Keine Ressourcen aufgelistet",
+    "emptyDescription": "Keine veröffentlichten Ressourcen im Marktplatz. Importieren Sie vorgefertigte Vorlagen oder veröffentlichen Sie Ressourcen von ihren jeweiligen Admin-Seiten.",
+    "templateCount": "{count} Elemente",
+    "colName": "Name",
+    "colType": "Typ",
+    "colOwner": "Eigentümer",
+    "colCreated": "Erstellt",
+    "filterAll": "Alle",
+    "typeAgent": "Agent",
+    "typeSkill": "Fähigkeit",
+    "typeConnector": "Konnektor",
+    "typeMcpServer": "MCP Server",
+    "typeWorkflow": "Workflow",
+    "typeKnowledgeBase": "Wissensdatenbank",
+    "takeDown": "Entfernen",
+    "takeDownSuccess": "Ressource aus dem Marktplatz entfernt"
   }
 }

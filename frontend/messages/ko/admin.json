@@ -27,7 +27,8 @@
     "hooks": "훅",
     "packages": "패키지",
     "agents": "에이전트",
-    "knowledgeBases": "지식 베이스"
+    "knowledgeBases": "지식 베이스",
+    "market": "마켓"
   },
   "overview": {
     "title": "개요",
@@ -1096,5 +1097,31 @@
     "colStatus": "상태",
     "adminNoticeTitle": "관리자 개요",
     "adminNoticeDesc": "모든 사용자의 지식 기반에 대한 읽기 전용 보기입니다. 자세한 편집은 각 사용자의 관리 페이지에서 수행해야 합니다."
+  },
+  "market": {
+    "title": "마켓 템플릿",
+    "description": "마켓플레이스에 나열된 리소스를 관리합니다.",
+    "importButton": "사전 구축된 템플릿 가져오기",
+    "importing": "가져오는 중...",
+    "importSuccess": "가져오기 완료: {created}개 생성됨, {updated}개 업데이트됨",
+    "importError": "템플릿 가져오기 실패",
+    "importConfirmTitle": "템플릿 가져오기",
+    "importConfirmDescription": "이 작업은 8개의 솔루션 번들(8개 에이전트 + 8개 스킬, 총 16개 항목)을 마켓플레이스로 가져옵니다. 각 번들은 하나의 에이전트와 하나의 스킬(SOP)을 쌍으로 제공합니다. 같은 이름의 기존 항목은 업데이트됩니다.",
+    "emptyTitle": "나열된 리소스 없음",
+    "emptyDescription": "마켓플레이스에 게시된 리소스가 없습니다. 사전 구축된 템플릿을 가져오거나 각 관리 페이지에서 리소스를 게시하세요.",
+    "templateCount": "{count}개 항목",
+    "colName": "이름",
+    "colType": "유형",
+    "colOwner": "소유자",
+    "colCreated": "생성됨",
+    "filterAll": "모두",
+    "typeAgent": "에이전트",
+    "typeSkill": "스킬",
+    "typeConnector": "커넥터",
+    "typeMcpServer": "MCP Server",
+    "typeWorkflow": "워크플로우",
+    "typeKnowledgeBase": "지식 베이스",
+    "takeDown": "내리기",
+    "takeDownSuccess": "리소스가 마켓플레이스에서 내려졌습니다"
   }
 }

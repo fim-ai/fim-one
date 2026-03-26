@@ -81,7 +81,6 @@ from fim_one.web.schemas.auth import (
 )
 from fim_one.web.schemas.common import ApiResponse
 from fim_one.web.platform import ensure_market_org
-from fim_one.web.solution_seeds import ensure_solution_templates
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -339,8 +338,7 @@ async def register(
 
     # Create Market org on first user registration (admin becomes owner)
     if is_first_user_check:
-        market_org_id = await ensure_market_org(db, owner_id=user.id)
-        await ensure_solution_templates(db, market_org_id=market_org_id, owner_id=user.id)
+        await ensure_market_org(db, owner_id=user.id)
 
     access = create_access_token(user.id, user.email)
     refresh = create_refresh_token(user.id, user.email)
