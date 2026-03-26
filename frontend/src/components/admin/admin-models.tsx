@@ -151,6 +151,17 @@ const PROVIDER_PRESETS = [
   { id: "gemini", name: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
   { id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1" },
   { id: "mistral", name: "Mistral AI", baseUrl: "https://api.mistral.ai/v1" },
+  { id: "xai", name: "xAI (Grok)", baseUrl: "https://api.x.ai/v1" },
+  { id: "openrouter", name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
+  { id: "ollama", name: "Ollama", baseUrl: "http://localhost:11434/v1" },
+  { id: "qwen", name: "Qwen China", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  { id: "qwen-intl", name: "Qwen Global", baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" },
+  { id: "glm", name: "GLM China", baseUrl: "https://open.bigmodel.cn/api/paas/v4" },
+  { id: "glm-intl", name: "GLM Global", baseUrl: "https://api.z.ai/api/paas/v4" },
+  { id: "moonshot", name: "Moonshot China", baseUrl: "https://api.moonshot.cn/v1" },
+  { id: "moonshot-intl", name: "Moonshot Global", baseUrl: "https://api.moonshot.ai/v1" },
+  { id: "minimax", name: "MiniMax Global", baseUrl: "https://api.minimax.io/v1" },
+  { id: "minimax-cn", name: "MiniMax China", baseUrl: "https://api.minimaxi.com/v1" },
   { id: "openai-compatible", name: null, baseUrl: null },
 ] as const
 
@@ -207,7 +218,7 @@ function ProviderFormDialog({ open, onOpenChange, provider, onSuccess }: Provide
     onOpenChange(nextOpen)
   }
 
-  const apiKeyRequired = !isEdit && preset !== "openai-compatible"
+  const apiKeyRequired = !isEdit && preset !== "ollama"
 
   const handleSubmit = async () => {
     const errors: { name?: string; baseUrl?: string; apiKey?: string } = {}
@@ -863,7 +874,7 @@ function GroupFormDialog({ open, onOpenChange, group, providers, onSuccess }: Gr
   ) => (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Popover open={openCombobox === id} onOpenChange={(open) => setOpenCombobox(open ? id : null)}>
+      <Popover modal open={openCombobox === id} onOpenChange={(open) => setOpenCombobox(open ? id : null)}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
@@ -1288,6 +1299,7 @@ function ImportModelConfigDialog({ open, onOpenChange, onSuccess }: {
   const [providerNames, setProviderNames] = useState<string[]>([])
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({})
   const [isImporting, setIsImporting] = useState(false)
+  const [clearExisting, setClearExisting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1326,15 +1338,20 @@ function ImportModelConfigDialog({ open, onOpenChange, onSuccess }: {
       for (const [k, v] of Object.entries(apiKeys)) {
         if (v.trim()) filteredKeys[k] = v.trim()
       }
-      const payload = { ...fileData, api_keys: filteredKeys }
+      const payload = { ...fileData, api_keys: filteredKeys, clear_existing: clearExisting }
       const result = await adminApi.importModelConfig(payload)
       const data = result.data
 
+      const descParts = [
+        t("importCreated", { providers: data.created.providers, models: data.created.models, groups: data.created.groups }),
+        t("importSkipped", { providers: data.skipped.providers, models: data.skipped.models, groups: data.skipped.groups }),
+      ]
+      if (data.deleted && (data.deleted.providers > 0 || data.deleted.models > 0 || data.deleted.groups > 0)) {
+        descParts.unshift(t("importDeleted", { providers: data.deleted.providers, models: data.deleted.models, groups: data.deleted.groups }))
+      }
+
       toast.success(t("importSuccess"), {
-        description: [
-          t("importCreated", { providers: data.created.providers, models: data.created.models, groups: data.created.groups }),
-          t("importSkipped", { providers: data.skipped.providers, models: data.skipped.models, groups: data.skipped.groups }),
-        ].join(" | "),
+        description: descParts.join(" | "),
       })
 
       if (data.warnings?.length > 0) {
@@ -1357,6 +1374,7 @@ function ImportModelConfigDialog({ open, onOpenChange, onSuccess }: {
       setFileName("")
       setProviderNames([])
       setApiKeys({})
+      setClearExisting(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }, [open])
@@ -1379,6 +1397,15 @@ function ImportModelConfigDialog({ open, onOpenChange, onSuccess }: {
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {/* Clear existing toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">{t("importClearExisting")}</Label>
+              <p className="text-xs text-muted-foreground">{t("importClearExistingDesc")}</p>
+            </div>
+            <Switch checked={clearExisting} onCheckedChange={setClearExisting} />
+          </div>
+
           {/* File input */}
           <div>
             <input
