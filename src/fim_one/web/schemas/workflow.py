@@ -304,7 +304,7 @@ class WorkflowEnvVarsUpdate(BaseModel):
 class WorkflowForkRequest(BaseModel):
     """Optional overrides when forking (cloning) a workflow."""
 
-    name: str | None = None  # Custom name; defaults to "{original} (Fork)"
+    name: str | None = None  # Custom name; defaults to "{original} (Copy)"
 
 
 class WorkflowFromTemplateRequest(BaseModel):

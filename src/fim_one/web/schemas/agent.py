@@ -79,7 +79,7 @@ class AgentResponse(BaseModel):
 class AgentForkRequest(BaseModel):
     """Optional overrides when forking (cloning) an agent."""
 
-    name: str | None = None  # Custom name; defaults to "{original} (Fork)"
+    name: str | None = None  # Custom name; defaults to "{original} (Copy)"
 
 
 class AICreateAgentRequest(BaseModel):

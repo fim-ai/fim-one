@@ -30,7 +30,7 @@ class SkillUpdate(BaseModel):
 class SkillForkRequest(BaseModel):
     """Optional overrides when forking (cloning) a skill."""
 
-    name: str | None = None  # Custom name; defaults to "{original} (Fork)"
+    name: str | None = None  # Custom name; defaults to "{original} (Copy)"
 
 
 class SkillResponse(BaseModel):

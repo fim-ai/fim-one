@@ -71,7 +71,7 @@ class MCPServerResponse(BaseModel):
 class MCPServerForkRequest(BaseModel):
     """Optional overrides when forking (cloning) an MCP server."""
 
-    name: str | None = None  # Custom name; defaults to "{original} (Fork)"
+    name: str | None = None  # Custom name; defaults to "{original} (Copy)"
 
 
 class MCPMyCredentialStatus(BaseModel):

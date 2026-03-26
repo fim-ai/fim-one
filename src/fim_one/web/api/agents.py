@@ -487,7 +487,7 @@ async def fork_agent(
     if source.user_id != current_user.id:
         raise AppError("fork_denied", status_code=403, detail="Only the owner can fork this resource")
 
-    fork_name = (body.name if body and body.name else f"{source.name} (Fork)")[:200]
+    fork_name = (body.name if body and body.name else f"{source.name} (Copy)")[:200]
 
     forked = Agent(
         user_id=current_user.id,
