@@ -1336,6 +1336,14 @@ async def _resolve_tools(
                         sub_cfg, conv_id, user_id=user_id
                     )
 
+                async def _sub_agent_llm_resolver(
+                    sub_cfg: dict[str, Any],
+                ) -> Any:
+                    """Resolve LLM for a sub-agent with full DB-backed 3-tier fallback."""
+                    from fim_one.db import create_session as _cs_llm
+                    async with _cs_llm() as _llm_db:
+                        return await _resolve_llm(sub_cfg, _llm_db)
+
                 from fim_one.core.tool.builtin.call_agent import CallAgentTool
 
                 tools.register(
@@ -1343,6 +1351,7 @@ async def _resolve_tools(
                         available_agents=_agent_catalog,
                         calling_user_id=user_id,
                         tool_resolver=_sub_agent_tool_resolver,
+                        llm_resolver=_sub_agent_llm_resolver,
                     )
                 )
         except Exception:
