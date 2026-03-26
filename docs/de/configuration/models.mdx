@@ -24,15 +24,15 @@ Diese Rollen können über Umgebungsvariablen oder über die Funktion **Model Gr
 
 | Anbieter | Haupt-LLM | Schnelles LLM | Reasoning | Hinweise |
 |---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` / `o3` | `gpt-5-mini` / `gpt-5-nano` | ✅ `reasoning_effort` | Beste native Tool-Aufrufe; GPT-5.4 ist das neueste Flaggschiff |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | Native API-Weiterleitung; vollständige `reasoning_content`-Unterstützung |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | 2.5 ist stabiles GA; 3.x ist Vorschau |
-| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | Bestes Preis-Leistungs-Verhältnis; V4 steht bevor |
-| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen-turbo` | ✅ `qwen3-max-thinking` | Stärkste Unterstützung für chinesische Sprache |
-| **ChatGLM (Zhipu)** | `glm-5` | `glm-4-flash` | ❌ | GLM-5 ist 744B MoE; kostenlos auf glm-4-flash |
-| **MiniMax** | `MiniMax-M2.5` | `MiniMax-M2.5-Lightning` | ❌ | Open-Weight, starke Codierung (80,2% SWE-Bench) |
-| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2.5` | ❌ | 256K Kontext, starke Codierung |
-| **Ollama (lokal)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Vollständig offline, kein API-Schlüssel erforderlich |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | Beste native Tool-Aufrufe; GPT-5.4 ist neuestes Flaggschiff (März 2026) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | Native API-Weiterleitung; vollständige `reasoning_content`-Unterstützung; 1M-Kontext GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | 2.5 ist stabiles GA; 3.x ist Vorschau; `gemini-3-pro-preview` abgeschaltet 9. März |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | Bestes Kosten-/Leistungsverhältnis; V4 erwartet April 2026 |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` auf `qwen3-max` | Stärkste chinesische Sprache; günstigste Frontier-Klasse (~$0,11/MTok Eingabe) |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | Erzwungene FC nicht unterstützt; kostenlos auf glm-4.7-flash |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | Open-Weight; M2.7 neueste (März 2026); 80,2% SWE-Bench |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | 256K-Kontext; erzwungene FC nicht unterstützt mit Thinking-Modus |
+| **Ollama (lokal)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Vollständig offline, kein API-Schlüssel |
 
 ---
 
@@ -44,25 +44,62 @@ Der DAG-Planer von FIM One benötigt, dass das Modell gültiges strukturiertes J
 2. **JSON Mode** — fordert `response_format: json_object` an. Garantiert gültiges JSON, erzwingt aber keine Schemakonformität.
 3. **Plain Text Extraction** — analysiert JSON aus Freitext als letzter Ausweg.
 
-Modelle, die Ebene 1 unterstützen (natives FC mit erzwungenem `tool_choice`), bieten die beste Planungszuverlässigkeit. Wenn ein Modell nur Ebene 2 erreicht, hängt die Ausgabequalität davon ab, wie gut es den Anweisungen folgt — schwächere Modelle können gültiges JSON produzieren, das nicht der erwarteten Struktur entspricht.
+Modelle, die Level 1 (native FC mit erzwungenem `tool_choice`) unterstützen, bieten die beste Planungszuverlässigkeit. Wenn ein Modell nur Level 2 erreicht, hängt die Ausgabequalität davon ab, wie gut es Anweisungen befolgt — schwächere Modelle können gültiges JSON produzieren, das nicht der erwarteten Struktur entspricht.
 
-| Anbieter | Erzwungenes Function Calling | JSON Mode | Planungszuverlässigkeit |
+| Anbieter | Erzwungene Function Calling | JSON Mode | Planungszuverlässigkeit |
 |---|---|---|---|
-| **OpenAI** (GPT-5.x, o3) | ✅ Vollständig unterstützt | ✅ | ⭐⭐⭐ Ausgezeichnet |
+| **OpenAI** (GPT-5.x, o3) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐⭐ Ausgezeichnet |
 | **Anthropic** (Claude 4.x) | ⚠️ Konflikte mit Thinking-Modus | ✅ | ⭐⭐⭐ Ausgezeichnet (starke Anweisungsbefolgung kompensiert) |
-| **Google Gemini** (2.5/3.x) | ✅ Vollständig unterstützt | ✅ | ⭐⭐⭐ Ausgezeichnet |
-| **Mistral** | ✅ Vollständig unterstützt | ✅ | ⭐⭐ Gut |
-| **DeepSeek** (V3.2) | ⚠️ Instabil | ✅ | ⭐⭐ Gut |
+| **Google Gemini** (2.5/3.x) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐⭐ Ausgezeichnet |
+| **Mistral** | ✅ Vollständige Unterstützung | ✅ | ⭐⭐ Gut |
+| **DeepSeek** (V3.2) | ⚠️ Instabil (`tool_choice="required"` funktioniert, `"auto"` unzuverlässig) | ✅ | ⭐⭐ Gut |
 | **Qwen** (3.x) | ⚠️ Teilweise | ✅ | ⭐⭐ Gut |
-| **Kimi** (K2.5) | ❌ Nicht unterstützt | ✅ | ⭐ Befriedigend — kann fehlerhafte Pläne produzieren |
-| **ChatGLM** (GLM-5) | ⚠️ Teilweise | ✅ | ⭐ Befriedigend |
+| **Kimi** (K2.5) | ⚠️ Teilweise — `auto` nur wenn Thinking aktiviert | ✅ | ⭐ Befriedigend — kann fehlerhafte Pläne produzieren |
+| **ChatGLM** (GLM-4.7/5) | ❌ Nicht unterstützt (`auto` nur) | ✅ | ⭐ Befriedigend |
+| **MiniMax** (M2.5/M2.7) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐ Gut |
 | **Lokal (Ollama)** | Variiert je nach Modell | Variiert | ⭐ Befriedigend — 32B+ empfohlen |
 
 <Tip>
 Wenn Sie die Fehlermeldung „failed to generate a valid task plan" sehen, ist die strukturierte Ausgabefähigkeit des Modells für DAG-Planung unzureichend. Wechseln Sie Ihr **Main LLM** zu einem Modell mit einer Bewertung von ⭐⭐⭐ oder ⭐⭐ oder höher, oder deaktivieren Sie den DAG-Modus und verwenden Sie stattdessen den einfacheren ReAct-Agenten.
 </Tip>
 
----
+## Thinking / Reasoning Kompatibilität
+
+Verschiedene Anbieter implementieren "Thinking" (Chain-of-Thought-Reasoning) auf grundlegend unterschiedliche Weise. Dies ist wichtig, da der Thinking-Modus mit Tool-Aufrufen in Konflikt geraten kann und die Ausgabe je nach Anbieter an verschiedenen Stellen erscheint. FIM One handhabt all dies transparent — diese Tabelle hilft dir zu verstehen, was unter der Haube passiert.
+
+### Schlüsselkonzepte
+
+- **Opt-in** — Denken ist standardmäßig deaktiviert; Sie aktivieren es über einen API-Parameter (z. B. `reasoning_effort`). Kann selektiv pro Aufruf deaktiviert werden.
+- **Always-on** — das Modell denkt immer; es gibt keinen API-Parameter, um es auszuschalten. Sie müssten zu einer Modellvariante ohne Denken wechseln, um es zu vermeiden.
+- **Modell-Ebene** — Denken wird durch die Modell-ID bestimmt, die Sie wählen (z. B. `deepseek-reasoner` vs `deepseek-chat`), nicht durch einen Parameter.
+
+### Kompatibilitätsmatrix
+
+| Anbieter | Aktivierungsmethode | Deaktivierbar? | Thinking-Ausgabe | Erzwungener FC-Konflikt? |
+|---|---|---|---|---|
+| **OpenAI** (GPT-5.x) | `reasoning_effort` Parameter | ✅ Opt-in | Intern (für Benutzer nicht sichtbar) | ⚠️ API verwirft `reasoning_effort` bei vorhandenen Tools |
+| **OpenAI** (o-series) | Immer aktiviert | ❌ | Intern (Tokens gezählt, nicht zurückgegeben) | ✅ Kein Konflikt |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ Opt-in | API `reasoning_content` Feld → Reasoning-Panel | ❌ Erzwungener FC + Thinking = **400 Fehler** |
+| **Google Gemini** (2.5/3.x) | `reasoning_effort` Parameter | ✅ Opt-in | Intern | ✅ Kein Konflikt |
+| **DeepSeek** | Modellvariante (`deepseek-reasoner`) | Modell-Ebene | API `reasoning_content` Feld → Reasoning-Panel | ⚠️ Erzwungener FC unzuverlässig |
+| **Qwen** (3.x) | `enable_thinking` Parameter | ✅ Opt-in | `<think>` Tags im Inhalt | ⚠️ Teilweise FC-Unterstützung |
+| **MiniMax** (M2.7) | Immer aktiviert | ❌ | `<think>` Tags im Inhalt | ✅ Kein Konflikt |
+| **ChatGLM** (GLM-5) | Modellvariante | Modell-Ebene | Nicht externalisiert | N/A — erzwungener FC nicht unterstützt |
+| **Kimi** (K2-thinking) | Modellvariante | Modell-Ebene | API-Feld | ❌ Erzwungener FC + Thinking = Konflikt |
+
+### Wie FIM One jeden Fall handhabt
+
+**API-Level `reasoning_content`** (Claude, DeepSeek): Das Reasoning-Feld wird direkt aus der API-Antwort gelesen und im UI-Reasoning-Panel angezeigt. Keine Nachbearbeitung erforderlich.
+
+**`<think>` Tags im Inhalt** (MiniMax, Qwen, QwQ und andere Open-Source-Derivate): FIM One entfernt automatisch `<think>...</think>` Tags aus dem Inhaltsfeld und leitet den Thinking-Text zum Reasoning-Panel um. Dies funktioniert sowohl für Streaming- als auch für Non-Streaming-Antworten.
+
+**Erzwungene FC + Thinking-Konflikte** (Claude, Kimi): Wenn FIM One erzwungenes Function Calling benötigt (z. B. während der strukturierten Ausgabeextraktion der DAG-Planung), deaktiviert es vorübergehend das Thinking für diesen spezifischen Aufruf, indem es `reasoning_effort=None` übergibt. Dies funktioniert, weil Claudes Thinking opt-in ist — das Nichtversenden des Parameters bedeutet kein Thinking, was den 400-Fehler vermeidet. Für Anbieter, bei denen Thinking nicht deaktiviert werden kann (MiniMax), funktioniert erzwungenes FC einwandfrei, da diese Anbieter die Kombination nicht ablehnen.
+
+**Fallback-Kette**: Wenn erzwungenes Function Calling aus irgendeinem Grund fehlschlägt, führt FIM One automatisch einen Fallback durch: natives FC → JSON-Modus → Klartext-Extraktion. Dieser dreistufige Ansatz stellt sicher, dass die Planung auch bei Anbietern mit teilweiser Tool-Calling-Unterstützung funktioniert.
+
+<Note>
+Wenn Sie ein Modell verwenden, das immer denkt (MiniMax M2.7, DeepSeek R1) als Ihr Haupt-LLM, wird die Thinking-Ausgabe im Reasoning-Panel jeder Agent-Iteration angezeigt. Dies ist normal — es beeinträchtigt die Funktionalität nicht, und Sie können den Reasoning-Prozess des Modells sehen.
+</Note>
 
 ## Anbieterdetails
 
@@ -71,26 +108,29 @@ Wenn Sie die Fehlermeldung „failed to generate a valid task plan" sehen, ist d
 Die am meisten bewährte Option. OpenAI-Modelle haben die beste native Unterstützung für Funktionsaufrufe (Tool-Calling), was sich direkt auf die Zuverlässigkeit von Agenten auswirkt. Die GPT-5-Familie (August 2025+) stellt einen großen generationalen Sprung gegenüber GPT-4 dar.
 
 **Empfohlene Modelle:**
-- Main: `gpt-5.4` (neuestes Flaggschiff, März 2026 — integrierte Computer-Nutzung) oder `o3` (beste Reasoning-Genauigkeit)
-- Fast: `gpt-5-mini` ($0,25/$2,00 pro MTok) oder `gpt-5-nano` (günstigste bei $0,05/$0,40 pro MTok)
-- Legacy: `gpt-4.1` (noch in API, 1M Kontext, gut für Coding) — aus ChatGPT Februar 2026 eingestellt
+- Main: `gpt-5.4` (neuestes Flaggschiff, März 2026 — 1M+ Kontext, Computer-Nutzung) oder `o3` (beste Reasoning-Genauigkeit)
+- Fast: `gpt-5.4-mini` ($0,75/$4,50 pro MTok) oder `gpt-5.4-nano` (günstigste bei $0,20/$1,25 pro MTok)
+- Budget Fast: `gpt-5-mini` ($0,25/$2,00) und `gpt-5-nano` ($0,05/$0,40) bleiben zu niedrigeren Preisen verfügbar
+- Legacy: `gpt-4.1` (noch in API, 1M Kontext, gut für Coding)
 
-**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — funktioniert nativ mit o-Series und GPT-5.x Modellen. Die o-Series erfordert `max_completion_tokens` statt `max_tokens`, was LiteLLM automatisch handhabt. Hinweis: GPT-5.x unterstützt `reasoning_effort` nicht in Kombination mit Tool-Calling in `/v1/chat/completions` — FIM One entfernt es während der Agent-Tool-Use-Schritte stillschweigend, damit Workflows unterbrechungsfrei ablaufen. GPT-5.x unterstützt auch nur `temperature=1` — FIM One handhabt dies automatisch über LiteLLMs Parameterfilterung (`drop_params`).
+**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — funktioniert nativ mit o-Series und GPT-5.x Modellen. GPT-5.4 unterstützt `reasoning_effort` mit Stufen `none`, `low`, `medium`, `high`, `xhigh`. Die o-Series erfordert `max_completion_tokens` statt `max_tokens`, was LiteLLM automatisch handhabt. Hinweis: GPT-5.x lässt `reasoning_effort` immer noch fallen, wenn Tools in `/v1/chat/completions` vorhanden sind — FIM One lässt es während Agent-Tool-Use-Schritte stillschweigend fallen, damit Workflows ungestört ablaufen. GPT-5.4 erfordert `temperature=1` — FIM One handhabt dies automatisch über LiteLLMs Parameterfilterung (`drop_params`).
 
 | Modell | Input $/MTok | Output $/MTok | Kontext |
 |---|---|---|---|
-| `gpt-5.4` | $2,50 | $15,00 | 272K |
+| `gpt-5.4` | $2,50 | $15,00 | 1.050K (Aufschlag >272K) |
+| `gpt-5.4-mini` | $0,75 | $4,50 | 400K |
+| `gpt-5.4-nano` | $0,20 | $1,25 | 400K |
 | `o3` | $2,00 | $8,00 | 200K |
 | `o4-mini` | $1,10 | $4,40 | 200K |
-| `gpt-5-mini` | $0,25 | $2,00 | — |
-| `gpt-5-nano` | $0,05 | $0,40 | — |
+| `gpt-5-mini` | $0,25 | $2,00 | 400K |
+| `gpt-5-nano` | $0,05 | $0,40 | 400K |
 
 ```bash
 # .env — OpenAI (production with reasoning)
 LLM_API_KEY=sk-...
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-5.4
-FAST_LLM_MODEL=gpt-5-nano
+FAST_LLM_MODEL=gpt-5.4-nano
 LLM_REASONING_EFFORT=medium
 ```
 
@@ -99,7 +139,7 @@ LLM_REASONING_EFFORT=medium
 LLM_API_KEY=sk-...
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=o3
-FAST_LLM_MODEL=gpt-5-nano
+FAST_LLM_MODEL=gpt-5.4-nano
 LLM_REASONING_EFFORT=medium
 ```
 
@@ -116,9 +156,9 @@ Claude zeichnet sich durch differenziertes Denken und komplexe mehrstufige Aufga
 
 **Basis-URL:** `https://api.anthropic.com/v1/`
 
-Alle aktuellen Claude-Modelle unterstützen erweitertes Denken und haben ein 200K-Kontextfenster (1M in Beta).
+Opus 4.6 und Sonnet 4.6 haben ein Kontextfenster von 1M (GA seit 13. März 2026 — kein Beta-Header erforderlich). Haiku 4.5 hat ein Kontextfenster von 200K.
 
-**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — LiteLLM leitet Anthropic-Modelle über die native API, daher wird `reasoning_content` (erweitertes Denken) vollständig zurückgegeben und ist im UI-Schritt „thinking" sichtbar. Wenn erweitertes Denken aktiviert ist, erfordert Anthropic `temperature=1` — setzen Sie `LLM_TEMPERATURE=1` in Ihrer `.env` oder Modellkonfiguration. Siehe [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) für Details.
+**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — LiteLLM leitet Anthropic-Modelle über die native API, daher wird `reasoning_content` (erweitertes Denken) vollständig zurückgegeben und ist im UI-Schritt „thinking" sichtbar. Claude 4.6-Modelle unterstützen Adaptive Thinking (`thinking: {type: "adaptive"}`), das manuelles `budget_tokens` ersetzt — LiteLLM handhabt die Übersetzung automatisch. Wenn erweitertes Denken aktiviert ist, erfordert Anthropic `temperature=1` — setzen Sie `LLM_TEMPERATURE=1` in Ihrer `.env` oder Modellkonfiguration. Siehe [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) für Details.
 
 ```bash
 # .env — Anthropic Claude
@@ -133,11 +173,11 @@ LLM_REASONING_EFFORT=medium
 
 ### Google Gemini
 
-Gemini-Modelle bieten starke Leistung zu wettbewerbsfähigen Preisen über Googles OpenAI-kompatiblen Endpunkt. Die 3.x-Generation (Ende 2025+) ist ein großer Sprung — Gemini 3 Flash übertrifft 2.5 Pro und ist dabei 3x schneller.
+Gemini-Modelle bieten starke Leistung zu wettbewerbsfähigen Preisen über Googles OpenAI-kompatiblen Endpunkt. Die 3.x-Generation (Ende 2025+) ist ein großer Sprung — Gemini 3 Flash übertrifft 2.5 Pro und ist dabei 3x schneller. Hinweis: `gemini-3-pro-preview` wurde am 9. März 2026 abgeschaltet — verwenden Sie stattdessen `gemini-3.1-pro-preview`.
 
 **Empfohlene Modelle:**
-- Stabil (GA): `gemini-2.5-pro` (Haupt) + `gemini-2.5-flash` (schnell) — produktionsreif
-- Neueste (Vorschau): `gemini-3.1-pro-preview` (Haupt) + `gemini-3-flash-preview` (schnell) — beste Leistung, aber Vorschau-Status
+- Stabil (GA): `gemini-2.5-pro` (Hauptmodell) + `gemini-2.5-flash` (schnell) — produktionsreif
+- Neueste (Vorschau): `gemini-3.1-pro-preview` (Hauptmodell) + `gemini-3-flash-preview` (schnell) + `gemini-3.1-flash-lite-preview` (Budget schnell) — beste Leistung, aber Vorschaustatus
 
 **Basis-URL:** `https://generativelanguage.googleapis.com/v1beta/openai/`
 
@@ -147,6 +187,7 @@ Gemini-Modelle bieten starke Leistung zu wettbewerbsfähigen Preisen über Googl
 |---|---|---|---|
 | `gemini-3.1-pro-preview` | $2.00 | $12.00 | Vorschau |
 | `gemini-3-flash-preview` | $0.50 | $3.00 | Vorschau |
+| `gemini-3.1-flash-lite-preview` | $0.25 | $1.50 | Vorschau (März 2026) |
 | `gemini-2.5-pro` | $1.25 | $10.00 | Stabil GA |
 | `gemini-2.5-flash` | $0.30 | $2.50 | Stabil GA |
 | `gemini-2.5-flash-lite` | $0.10 | $0.40 | Stabil GA |
@@ -183,7 +224,9 @@ DeepSeek bietet das beste Kosten-Leistungs-Verhältnis auf dem Markt. V3.2 (Deze
 
 **Preise:** $0,28/$0,42 pro MTok (Cache-Hit: $0,028) — bei weitem die günstigste Frontier-Klasse-API.
 
-> **V4 steht unmittelbar bevor** (März 2026): Billionen-Parameter-Multimodal-Modell mit 1M-Kontextfenster. Erwarten Sie neue Modell-IDs bei der Veröffentlichung.
+**Ausgabelimits:** `deepseek-chat` maximale Ausgabe beträgt 8K Token (muss explizit über `max_tokens` gesetzt werden). `deepseek-reasoner` maximale Ausgabe beträgt 64K Token (einschließlich Chain-of-Thought).
+
+> **V4 erwartet April 2026**: Billionen-Parameter-Multimodal-Modell mit 1M-Kontextfenster. Erwarten Sie neue Modell-IDs bei der Veröffentlichung.
 
 ```bash
 # .env — DeepSeek (budget-friendly)
@@ -209,72 +252,123 @@ Alle großen chinesischen Modellanbieter stellen OpenAI-kompatible Endpunkte ber
 
 #### Qwen / 通义千问 (Alibaba Cloud)
 
-Qwen 3.5 (Februar 2026) ist die neueste Generation – das 397B MoE Flaggschiff übertrifft GPT-5.2 bei MMLU-Pro.
+Qwen 3.5 (Februar 2026) ist die neueste Generation — das 397B MoE Flaggschiff übertrifft GPT-5.2 bei MMLU-Pro. Stärkste Unterstützung für chinesische Sprache und günstigste Frontier-Class-Preisgestaltung (~$0,11/MTok Input).
 
-- **Base URL:** `https://dashscope.aliyuncs.com/compatible-mode/v1`
-- **International:** `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`
-- **Main:** `qwen3.5-plus` (Flaggschiff, 1M Kontext) oder `qwen3-max` (Billionen-Parameter)
-- **Fast:** `qwen-turbo` (schnell und günstig)
-- **Reasoning:** `qwen3-max-thinking` (vergleichbar mit GPT-5.2-Thinking)
+- **Base URL (China):** `https://dashscope.aliyuncs.com/compatible-mode/v1`
+- **Base URL (Global):** `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`
+- **Main:** `qwen3.5-plus` (Flaggschiff, 1M Kontext, $0,11/$0,66 pro MTok) oder `qwen3-max` (256K, stärkste)
+- **Fast:** `qwen3.5-flash` ($0,055/$0,22 pro MTok) oder `qwen-turbo` ($0,04/$0,08 pro MTok)
+- **Reasoning:** `qwen3-max` mit `enable_thinking: true` Parameter (es gibt keine separate `qwen3-max-thinking` Modell-ID)
 
 ```bash
-# .env — Qwen
+# .env — Qwen (China)
 LLM_API_KEY=sk-...
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=qwen3.5-plus
-FAST_LLM_MODEL=qwen-turbo
+FAST_LLM_MODEL=qwen3.5-flash
+```
+
+```bash
+# .env — Qwen (Global)
+LLM_API_KEY=sk-...
+LLM_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=qwen3.5-plus
+FAST_LLM_MODEL=qwen3.5-flash
 ```
 
 #### ChatGLM / 智谱
 
-GLM-5 (2026) ist das neueste Flaggschiff — 744B Gesamtparameter (40B aktiv), nähert sich Claude Opus-Niveau bei Coding/Agent-Aufgaben.
+GLM-4.7 und GLM-5 (2026) sind die neuesten Modelle. GLM-5 ist das 745B MoE Flaggschiff, das sich Claude Opus-Niveau bei Coding-/Agent-Aufgaben nähert.
 
-- **Base URL:** `https://open.bigmodel.cn/api/paas/v4`
-- **Main:** `glm-5` (Flaggschiff)
-- **Fast:** `glm-4-flash` (kostenlos verfügbar!)
+- **Basis-URL (Inland):** `https://open.bigmodel.cn/api/paas/v4`
+- **Basis-URL (Z.AI International):** `https://api.z.ai/api/paas/v4`
+- **Hauptmodell:** `glm-4.7` (starkes Coding, $0.60/$2.20 auf Z.AI)
+- **Schnell:** `glm-4.7-flash` (kostenlos!) oder `glm-4.7-flashx` ($0.07/$0.40, höherer Durchsatz)
+- **Reasoning:** `glm-5` (745B MoE Flaggschiff, $1.00/$3.20)
+
+Erzwungenes `tool_choice` wird nicht unterstützt — nur `"auto"` funktioniert.
 
 <Warning>
-Einige HTTP-Clients hängen automatisch `/v1` an Base URLs an. Zhipu verwendet `/v4` — stellen Sie sicher, dass Ihr Client keinen OpenAI-ähnlichen Pfad-Suffix erzwingt, sonst erhalten Sie 404-Fehler.
+Einige HTTP-Clients hängen automatisch `/v1` an Basis-URLs an. Zhipu verwendet `/v4` — stellen Sie sicher, dass Ihr Client keinen OpenAI-ähnlichen Pfad-Suffix erzwingt, sonst erhalten Sie 404-Fehler.
 </Warning>
 
 ```bash
-# .env — ChatGLM
+# .env — ChatGLM (domestic)
 LLM_API_KEY=...
 LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-LLM_MODEL=glm-5
-FAST_LLM_MODEL=glm-4-flash
+LLM_MODEL=glm-4.7
+FAST_LLM_MODEL=glm-4.7-flash
+```
+
+```bash
+# .env — ChatGLM (Z.AI international)
+LLM_API_KEY=...
+LLM_BASE_URL=https://api.z.ai/api/paas/v4
+LLM_MODEL=glm-4.7
+FAST_LLM_MODEL=glm-4.7-flash
 ```
 
 #### MiniMax
 
-MiniMax M2.5 (Februar 2026) ist Open-Weight und erreicht 80,2% auf SWE-Bench.
+MiniMax M2.7 (18. März 2026) ist das neueste Modell mit offenen Gewichten und erreicht 80,2% auf SWE-Bench. M2.5 bleibt als schnelle/Budget-Option verfügbar.
 
-- **Basis-URL (China):** `https://api.minimaxi.com/v1`
-- **Basis-URL (Global):** `https://api.minimax.io`
-- **Main:** `MiniMax-M2.5`
-- **Fast:** `MiniMax-M2.5-Lightning`
+MiniMax bietet zwei separate API-Endpunkte für verschiedene Regionen:
+
+- **Basis-URL (Global/海外版):** `https://api.minimax.io/v1` -- für Benutzer außerhalb des chinesischen Festlands
+- **Basis-URL (China/国内版):** `https://api.minimaxi.com/v1` -- für Benutzer im chinesischen Festland (beachten Sie das zusätzliche `i` in `minimaxi`)
+- **Main:** `MiniMax-M2.7`
+- **Fast:** `MiniMax-M2.5`
+- **Speed:** `MiniMax-M2.7-highspeed` (2x Kosten, niedrigere Latenz)
+
+| Modell | Input $/MTok | Output $/MTok |
+|---|---|---|
+| `MiniMax-M2.7` | $0.30 | $1.20 |
+| `MiniMax-M2.7-highspeed` | $0.60 | $2.40 |
+| `MiniMax-M2.5` | $0.30 | $1.20 |
+| `MiniMax-M2.5-highspeed` | $0.60 | $2.40 |
 
 ```bash
-# .env — MiniMax
+# .env — MiniMax (global endpoint)
+LLM_API_KEY=...
+LLM_BASE_URL=https://api.minimax.io/v1
+LLM_MODEL=MiniMax-M2.7
+FAST_LLM_MODEL=MiniMax-M2.5
+```
+
+```bash
+# .env — MiniMax (China mainland endpoint)
 LLM_API_KEY=...
 LLM_BASE_URL=https://api.minimaxi.com/v1
-LLM_MODEL=MiniMax-M2.5
-FAST_LLM_MODEL=MiniMax-M2.5-Lightning
+LLM_MODEL=MiniMax-M2.7
+FAST_LLM_MODEL=MiniMax-M2.5
 ```
 
 #### Kimi / 月之暗面 (Moonshot)
 
 Kimi K2.5 (Januar 2026) hat 256K Kontext und starke Codierungsleistung (76,8% SWE-Bench unter Open-Source-Modellen).
 
-- **Basis-URL:** `https://api.moonshot.ai/v1`
-- **Modell:** `kimi-k2.5`
+- **Basis-URL (Global):** `https://api.moonshot.ai/v1`
+- **Basis-URL (China):** `https://api.moonshot.cn/v1`
+- **Hauptmodell:** `kimi-k2.5`
+- **Schnell:** `kimi-k2` (kein Denken, Funktionsaufrufe funktionieren)
+- **Reasoning:** `kimi-k2-thinking` ($0,47/$2,00 pro MTok)
+
+Erzwungene `tool_choice` funktioniert nur, wenn der Thinking-Modus ausgeschaltet ist. Wenn Thinking aktiviert ist, wird nur `"auto"` unterstützt.
 
 ```bash
-# .env — Kimi
+# .env — Kimi (Global)
 LLM_API_KEY=...
 LLM_BASE_URL=https://api.moonshot.ai/v1
 LLM_MODEL=kimi-k2.5
-FAST_LLM_MODEL=kimi-k2.5
+FAST_LLM_MODEL=kimi-k2
+```
+
+```bash
+# .env — Kimi (China)
+LLM_API_KEY=...
+LLM_BASE_URL=https://api.moonshot.cn/v1
+LLM_MODEL=kimi-k2.5
+FAST_LLM_MODEL=kimi-k2
 ```
 
 ---
@@ -402,8 +496,8 @@ Wenn deine Relay-Plattform nicht standardisierte Pfadkonventionen verwendet (z. 
 
 ### Main vs Fast: Wann sollte man aufteilen
 
-- **Aufteilen** wenn dein Hauptmodell teuer oder langsam ist (z.B. `gpt-5.4` + `gpt-5-nano`). Der DAG-Modus führt viele parallele Schritte aus — die Verwendung eines günstigeren schnellen Modells spart erhebliche Kosten.
-- **Gleiches Modell** wenn dein Modell bereits günstig ist (z.B. `deepseek-chat` für beide). Der Aufwand für die Verwaltung von zwei Modellen lohnt sich nicht.
+- **Aufteilen** wenn dein Hauptmodell teuer oder langsam ist (z. B. `gpt-5.4` + `gpt-5.4-nano`). DAG-Modus führt viele parallele Schritte aus — die Verwendung eines günstigeren schnellen Modells spart erhebliche Kosten.
+- **Gleiches Modell** wenn dein Modell bereits günstig ist (z. B. `deepseek-chat` für beide). Der Overhead der Verwaltung von zwei Modellen lohnt sich nicht.
 
 ### Wann sollte man Reasoning aktivieren
 
@@ -411,19 +505,21 @@ Wenn deine Relay-Plattform nicht standardisierte Pfadkonventionen verwendet (z. 
 - **Deaktivieren** (Standard) für Routineaufgaben, einfache Fragen und Antworten sowie kostensensitive Bereitstellungen
 - Reasoning erhöht typischerweise die Kosten um das 2-5-fache pro Anfrage — `medium` Aufwand ist ein guter Ausgangspunkt
 
-### Kontextfenster-Größe
+### Context-Fenster-Größe
 
-Setzen Sie `LLM_CONTEXT_SIZE` auf die tatsächliche Größe des Kontextfensters Ihres Modells:
+Setzen Sie `LLM_CONTEXT_SIZE` auf die tatsächliche Fenster-Größe Ihres Modells:
 
-| Modell | Kontextfenster |
+| Modell | Context Window |
 |---|---|
-| GPT-5.4 | 272K |
+| GPT-5.4 | 1.050K (Aufschlag >272K) |
 | o3 / o4-mini | 200K |
-| Claude Sonnet 4.6 | 200K (1M Beta) |
+| Claude Opus 4.6 | 1M |
+| Claude Sonnet 4.6 | 1M |
+| Claude Haiku 4.5 | 200K |
 | Gemini 2.5 Pro | 1M |
 | Gemini 3.1 Pro | 1M |
 | DeepSeek V3.2 | 128K |
 | Qwen 3.5 Plus | 1M |
 | Local (Ollama) | 4K–128K (variiert) |
 
-Für lokale Modelle setzen Sie sowohl `LLM_CONTEXT_SIZE` als auch `LLM_MAX_OUTPUT_TOKENS` explizit — die Standardwerte gehen von Cloud-Kontextfenstern aus, die lokale Modelle nicht unterstützen können.
+Für lokale Modelle setzen Sie sowohl `LLM_CONTEXT_SIZE` als auch `LLM_MAX_OUTPUT_TOKENS` explizit — die Standardwerte gehen von Cloud-Scale-Context-Fenstern aus, die lokale Modelle nicht unterstützen können.

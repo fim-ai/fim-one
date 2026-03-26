@@ -211,9 +211,9 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `glm-4.7` | Général | 200K | 128K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-| `glm-4.7-flashx` | Rapide | 200K | 128K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
-| `glm-5` | Raisonnement | 200K | 128K | ON | ON | Appels de fonction + sortie structurée + raisonnement |
+| `glm-4.7` | Général | 200K | 65K | **OFF** | ON | tool_choice forcé non supporté (`auto` uniquement) ; codage fort |
+| `glm-4.7-flashx` | Rapide | 200K | 65K | **OFF** | ON | Variante débit supérieur ; `glm-4.7-flash` gratuit également disponible |
+| `glm-5` | Raisonnement | 200K | 65K | **OFF** | ON | Flagship MoE 745B ; raisonnement intégré (pas de basculement API) |
 
 **Moonshot (Kimi)**
 
@@ -227,9 +227,10 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 
 | Modèle | Rôle | Contexte | Sortie Max | FC Natif | Mode JSON | Notes |
 |---|---|---|---|---|---|---|
-| `MiniMax-M2.5` | Général | 205K | 65K | ON | ON | Appels de fonction + sortie structurée (vérifié en production) |
-| `MiniMax-M2.5-highspeed` | Rapide | 205K | 65K | ON | ON | Appels de fonction + sortie structurée (vérifié en production) |
-| `MiniMax-M1` | Raisonnement | 1,000K | 80K | ON | ON | Appels de fonction + sortie structurée ; MoE hybride 456B params |
+| `MiniMax-M2.7` | Général | 205K | 131K | ON | ON | Dernier (Mar 2026) ; appels de fonction + sortie structurée |
+| `MiniMax-M2.5` | Rapide | 197K | 65K | ON | ON | Appels de fonction + sortie structurée ; lecture de cache moins chère ($0.03/MTok) |
+| `MiniMax-M2.7-highspeed` | Rapide (vitesse) | 205K | 131K | ON | ON | Débit 2x (~100 tok/s), coût 2x |
+| `MiniMax-M2.5-highspeed` | Rapide (vitesse) | 197K | 65K | ON | ON | Débit 2x (~100 tok/s), coût 2x |
 
 **ByteDance (Doubao)**
 
@@ -246,16 +247,18 @@ Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données
 | `llama-3.3-70b` | Général | 131K | 16K | ON | ON | FC + mode JSON dépendent du fournisseur d'hébergement ; sortie max varie (2K–16K) |
 
 <Note>
-**« -- » en Sortie Max** signifie que le fournisseur n'a pas signalé de limite. En pratique, ces modèles supportent généralement 4K-16K tokens de sortie. Définissez **Max Output Tokens** explicitement dans les paramètres Avancés du modèle si vous avez besoin d'une valeur spécifique.
+**"--" en Sortie Max** signifie que le fournisseur n'a pas signalé de limite. En pratique, ces modèles supportent généralement 4K-16K jetons de sortie. Définissez **Max Output Tokens** explicitement dans les paramètres Avancés du modèle si vous avez besoin d'une valeur spécifique.
 </Note>
 
 <Tip>
-**Comment diagnostiquer :** Vérifiez vos journaux d'application pour les avertissements `structured_llm_call: native_fc call raised`. Si vous voyez ces avertissements suivis d'une extraction JSON Mode réussie, le modèle ne bénéficie pas des appels de fonction natifs. Désactivez **Native Function Calling** pour ce modèle pour éliminer l'appel API gaspillé et la pénalité de latence d'environ 10 secondes par demande de sortie structurée.
+**Comment diagnostiquer :** Vérifiez les journaux de votre application pour les avertissements `structured_llm_call: native_fc call raised`. Si vous voyez ces avertissements suivis d'une extraction Mode JSON réussie, le modèle ne bénéficie pas des appels de fonction natifs. Désactivez **Native Function Calling** pour ce modèle pour éliminer l'appel API gaspillé et la pénalité de latence d'environ 10 secondes par demande de sortie structurée.
 </Tip>
 
 <Warning>
-Les capacités des modèles changent fréquemment à mesure que les fournisseurs mettent à jour leurs API. Les recommandations ci-dessus sont basées sur les données du **2026-03-22** (tags de capacité UniAPI + vérification runtime en production). Si un modèle qui fonctionnait précédemment commence à retourner des erreurs, consultez le journal des modifications du fournisseur pour les changements cassants.
+Les capacités des modèles changent fréquemment à mesure que les fournisseurs mettent à jour leurs API. Les recommandations ci-dessus sont basées sur les données du **2026-03-26** (tags de capacité UniAPI + vérification d'exécution en production). Si un modèle qui fonctionnait précédemment commence à retourner des erreurs, vérifiez le journal des modifications du fournisseur pour les changements cassants.
 </Warning>
+
+---
 
 ## Groupes de modèles
 

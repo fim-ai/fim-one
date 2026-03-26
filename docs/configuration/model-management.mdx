@@ -217,9 +217,9 @@ The table below covers common providers and models. Data sourced from UniAPI cap
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `glm-4.7` | General | 200K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `glm-4.7-flashx` | Fast | 200K | 128K | ON | ON | Function calling + structured output + reasoning |
-| `glm-5` | Reasoning | 200K | 128K | ON | ON | Function calling + structured output + reasoning |
+| `glm-4.7` | General | 200K | 65K | **OFF** | ON | Forced tool_choice not supported (`auto` only); strong coding |
+| `glm-4.7-flashx` | Fast | 200K | 65K | **OFF** | ON | Higher throughput variant; free `glm-4.7-flash` also available |
+| `glm-5` | Reasoning | 200K | 65K | **OFF** | ON | 745B MoE flagship; built-in reasoning (no API toggle) |
 
 **Moonshot (Kimi)**
 
@@ -233,9 +233,10 @@ The table below covers common providers and models. Data sourced from UniAPI cap
 
 | Model | Role | Context | Max Output | Native FC | JSON Mode | Notes |
 |---|---|---|---|---|---|---|
-| `MiniMax-M2.5` | General | 205K | 65K | ON | ON | Function calling + structured output (verified in production) |
-| `MiniMax-M2.5-highspeed` | Fast | 205K | 65K | ON | ON | Function calling + structured output (verified in production) |
-| `MiniMax-M1` | Reasoning | 1,000K | 80K | ON | ON | Function calling + structured output; 456B params hybrid MoE |
+| `MiniMax-M2.7` | General | 205K | 131K | ON | ON | Latest (Mar 2026); function calling + structured output |
+| `MiniMax-M2.5` | Fast | 197K | 65K | ON | ON | Function calling + structured output; cheaper cache read ($0.03/MTok) |
+| `MiniMax-M2.7-highspeed` | Fast (speed) | 205K | 131K | ON | ON | 2x throughput (~100 tok/s), 2x cost |
+| `MiniMax-M2.5-highspeed` | Fast (speed) | 197K | 65K | ON | ON | 2x throughput (~100 tok/s), 2x cost |
 
 **ByteDance (Doubao)**
 
@@ -260,7 +261,7 @@ The table below covers common providers and models. Data sourced from UniAPI cap
 </Tip>
 
 <Warning>
-Model capabilities change frequently as providers update their APIs. The recommendations above are based on data from **2026-03-22** (UniAPI capability tags + production runtime verification). If a model that previously worked starts returning errors, check the provider's changelog for breaking changes.
+Model capabilities change frequently as providers update their APIs. The recommendations above are based on data from **2026-03-26** (UniAPI capability tags + production runtime verification). If a model that previously worked starts returning errors, check the provider's changelog for breaking changes.
 </Warning>
 
 ---
