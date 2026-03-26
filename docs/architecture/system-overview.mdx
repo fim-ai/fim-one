@@ -78,7 +78,7 @@ The eight steps:
 4. **Connector loading.** In agent-constrained mode, only the agent's bound connectors are loaded. In auto-discovery mode (no agent selected), all connectors visible to the user are loaded. Both API connectors (`ConnectorMetaTool`) and database connectors (`DatabaseMetaTool`) use [progressive disclosure](/architecture/progressive-disclosure) by default -- lightweight stubs in the system prompt, full schemas loaded on demand.
 5. **MCP loading.** The user's personal MCP servers plus admin-provisioned global MCP servers are loaded and connected. In progressive mode (default), a single `MCPServerMetaTool` consolidates all servers; the LLM calls `discover` and `call` subcommands on demand. See [Progressive Disclosure](/architecture/progressive-disclosure).
 6. **Skills injection.** All active Skills visible to the user are loaded -- regardless of agent selection. In progressive mode, `ReadSkillTool` is registered with compact stubs in the system prompt. In inline mode, full Skill content is embedded directly.
-7. **CallAgent registration.** All active, visible Agents are assembled into a catalog and exposed via `CallAgentTool`, enabling the LLM to delegate tasks to specialist sub-agents. Sub-agents receive a full `ToolRegistry` built from their own configuration but exclude `call_agent` to prevent infinite recursion.
+7. **CallAgent registration (Auto mode only).** When no specific Agent is selected, all active, visible Agents are assembled into a catalog and exposed via `CallAgentTool`, enabling the LLM to delegate tasks to specialist agents. Delegated agents receive a full `ToolRegistry` built from their own configuration but exclude `call_agent` to prevent infinite recursion. When a specific Agent is selected, `CallAgentTool` is not registered — agents are specialized and do not delegate to other agents. This prevents marketplace agents from accessing other agents' private prompts.
 8. **Runtime selection.** If the total tool count exceeds 12, a lightweight LLM call picks the most relevant subset (up to 6) for this specific query. A `request_tools` meta-tool is automatically registered, allowing the LLM to dynamically load additional tools mid-conversation if the initial selection missed a needed tool. Selection failure is non-fatal -- the agent falls back to the full set. See [Progressive Disclosure](/architecture/progressive-disclosure).
 
 The result: the agent sees exactly the tools it needs, no more. A simple agent with no connectors and no KB might see 5 tools. A Hub agent connected to 3 enterprise systems with a grounded knowledge base and 2 MCP servers might see 30 -- but after selection, only the 6 most relevant make it into the context.
@@ -96,7 +96,7 @@ The result: the agent sees exactly the tools it needs, no more. A simple agent w
 | Direct database access | Database Connector | Schema-aware SQL, optional read-only enforcement |
 | Custom internal tooling | MCP or Built-in | MCP for process isolation; built-in for tight integration |
 
-The categories are not mutually exclusive. A single agent can use all five capability sources in one conversation -- loading a Skill for the complaint handling SOP, querying a knowledge base for policy documents, calling a connector to check the ERP, delegating analysis to a specialist sub-agent, and using a built-in tool to format the results.
+The categories are not mutually exclusive. A single agent can use all five capability sources in one conversation -- loading a Skill for the complaint handling SOP, querying a knowledge base for policy documents, calling a connector to check the ERP, delegating analysis to a specialist agent (in Auto mode), and using a built-in tool to format the results.
 
 ## Execution engines are orthogonal
 
@@ -108,7 +108,7 @@ The tool system and execution engines are independent concerns. The LLM-driven e
 
 The two engines share infrastructure: `structured_llm_call` for reliable structured output, `ContextGuard` for token budget enforcement, and the `ToolRegistry` for tool resolution. Adding a new tool requires zero changes to either engine. Adding a new engine (should one ever be needed) requires zero changes to the tool system.
 
-Both engines also support **multi-agent delegation** via `CallAgentTool`. In native function-calling mode, the LLM can invoke multiple `call_agent` calls in a single turn, which execute concurrently via `asyncio.gather`. Each sub-agent receives its own `ToolRegistry` and runs as a full execution unit. For the detailed design of agent discovery, Skills as global SOPs, and multi-agent orchestration, see [Agent & Resource Discovery](/architecture/agent-discovery).
+Both engines also support **agent delegation** via `CallAgentTool` when in Auto mode (no agent selected). In native function-calling mode, the LLM can invoke multiple `call_agent` calls in a single turn, which execute concurrently via `asyncio.gather`. Each delegated agent receives its own `ToolRegistry` and runs as a full execution unit. For the detailed design of agent discovery, Skills as global SOPs, and agent delegation, see [Agent & Resource Discovery](/architecture/agent-discovery).
 
 ### Workflow Engine — the third paradigm
 

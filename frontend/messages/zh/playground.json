@@ -17,7 +17,6 @@
   "modeStandardTooltip": "标准 (ReAct) — 快速响应，灵活使用工具",
   "modePlannerTooltip": "规划器 (DAG) — 将任务分解为结构化计划",
   "modeAutoTooltip": "自动 — 根据查询复杂度自动选择标准 (ReAct) 或规划器 (DAG)",
-  "noAgent": "无 Agent",
   "searchAgents": "搜索 agent...",
   "noAgentFound": "未找到 agent。",
   "uploadFiles": "上传文件",
@@ -147,5 +146,7 @@
   "tryRephrase": "尝试重新表述您的问题",
   "citationRelevance": "相关性：{value}%",
   "retryUpload": "重试上传",
-  "newChat": "新对话"
+  "newChat": "新对话",
+  "autoAgent": "自动",
+  "autoAgentDescription": "自动委派给最佳智能体"
 }

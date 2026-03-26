@@ -1288,10 +1288,12 @@ async def _resolve_tools(
 
     # ------------------------------------------------------------------
     # Register CallAgentTool with all visible agents for multi-agent
-    # delegation.  The tool_resolver callback allows sub-agents to
+    # delegation.  The tool_resolver callback allows delegated agents to
     # inherit the full tool set (minus call_agent itself).
+    # Only available when no specific agent is selected — prevents
+    # marketplace agents from accessing other agents' private prompts.
     # ------------------------------------------------------------------
-    if user_id:
+    if user_id and not agent_cfg:
         try:
             from fim_one.db import create_session as _cs_agents
             from fim_one.web.models.agent import Agent as AgentModel

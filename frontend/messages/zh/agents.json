@@ -150,5 +150,6 @@
   "mcpServersDescription": "选择此智能体可以访问的 MCP 服务器。",
   "forkAgent": "复制",
   "forkSuccess": "已复制为 \"{name}\"",
-  "forkFailed": "复制智能体失败"
+  "forkFailed": "复制智能体失败",
+  "specializationHint": "Each agent is specialized and focuses exclusively on its configured tools and resources. Agents do not call other agents during execution. For multi-agent orchestration, use \"Auto\" mode in the chat playground."
 }

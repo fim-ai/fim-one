@@ -1,4 +1,4 @@
-"""CallAgent builtin tool — delegate a task to a specialist agent."""
+"""CallAgent builtin tool -- delegate a task to another agent."""
 from __future__ import annotations
 
 import logging
@@ -41,7 +41,7 @@ class CallAgentTool(BaseTool):
             optional async callback ``(agent_cfg, conv_id) -> ToolRegistry``
         llm_resolver:
             optional async callback ``(agent_cfg) -> BaseLLM`` that resolves
-            the LLM for a sub-agent using the full 3-tier fallback
+            the LLM for a delegated agent using the full 3-tier fallback
             (config_id -> inline config -> system default).
         """
         self._agents = {a["id"]: a for a in available_agents}
@@ -85,7 +85,7 @@ class CallAgentTool(BaseTool):
         }
 
     async def _resolve_llm(self, agent_cfg: dict[str, Any]) -> BaseLLM:
-        """Resolve an LLM for the sub-agent using the injected callback or ENV fallback.
+        """Resolve an LLM for the delegated agent using the injected callback or ENV fallback.
 
         Resolution order:
         1. Injected ``llm_resolver`` callback (has full DB access for 3-tier resolution)
@@ -121,48 +121,48 @@ class CallAgentTool(BaseTool):
         if not agent_cfg:
             return f"Error: agent {agent_id} not found"
 
-        # Resolve full tools for the sub-agent via callback
+        # Resolve full tools for the delegated agent via callback
         if self._tool_resolver:
             try:
-                sub_tools = await self._tool_resolver(agent_cfg, None)
-                # Exclude call_agent from sub-tools to prevent infinite recursion
-                sub_tools = sub_tools.exclude_by_name("call_agent")
+                delegate_tools = await self._tool_resolver(agent_cfg, None)
+                # Exclude call_agent to prevent infinite recursion
+                delegate_tools = delegate_tools.exclude_by_name("call_agent")
             except Exception:
                 logger.warning(
-                    "Failed to resolve tools for sub-agent %s", agent_id,
+                    "Failed to resolve tools for agent %s", agent_id,
                     exc_info=True,
                 )
                 from fim_one.core.tool.registry import ToolRegistry
-                sub_tools = ToolRegistry()
+                delegate_tools = ToolRegistry()
         else:
             from fim_one.core.tool.registry import ToolRegistry
-            sub_tools = ToolRegistry()
+            delegate_tools = ToolRegistry()
 
         # Resolve model using the 3-tier fallback
         try:
             llm = await self._resolve_llm(agent_cfg)
         except Exception:
             logger.error(
-                "Failed to resolve LLM for sub-agent %s", agent_id,
+                "Failed to resolve LLM for agent %s", agent_id,
                 exc_info=True,
             )
             return f"Error: could not load model for agent {agent_id}"
 
         instructions = agent_cfg.get("instructions") or ""
 
-        sub_agent = ReActAgent(
+        delegate = ReActAgent(
             llm=llm,
-            tools=sub_tools,
+            tools=delegate_tools,
             extra_instructions=instructions,
             max_iterations=5,
         )
 
         try:
-            result = await sub_agent.run(task)
+            result = await delegate.run(task)
             return str(result)
         except Exception as e:
             logger.error(
-                "Sub-agent %s failed: %s", agent_id, e,
+                "Delegated agent %s failed: %s", agent_id, e,
                 exc_info=True,
             )
-            return f"Sub-agent error: {e}"
+            return f"Agent delegation error: {e}"

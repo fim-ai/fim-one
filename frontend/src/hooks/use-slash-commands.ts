@@ -82,7 +82,7 @@ export function useSlashCommands({
     if (!subMenuCommand) return []
     if (subMenuCommand === "agent") {
       const items: SlashSubItem[] = [
-        { id: "__none__", label: t("noAgent") },
+        { id: "__none__", label: t("autoAgent") },
         ...agents.map((a) => ({
           id: a.id,
           label: a.name,

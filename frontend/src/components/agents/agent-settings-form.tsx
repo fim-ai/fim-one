@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { Bot, Check, Loader2, Zap, GitBranch, Sparkles } from "lucide-react"
+import { Bot, Check, Info, Loader2, Zap, GitBranch, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -558,6 +558,14 @@ export function AgentSettingsForm({
                 })}
               </div>
             </TooltipProvider>
+          </div>
+
+          {/* Agent specialization hint */}
+          <div className="rounded-md border border-blue-500/30 bg-blue-50 dark:bg-blue-950/20 px-4 py-3 flex items-start gap-3">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+            <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+              {t("specializationHint")}
+            </p>
           </div>
 
           {/* Knowledge Bases */}

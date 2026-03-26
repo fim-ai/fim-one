@@ -63,7 +63,7 @@ Even when models lack capability, deep agent hierarchies carry compounding costs
 
 - **Token multiplication** — each nesting level reinjects system prompts and context. Three levels deep, total token spend can be 5-10x a single-agent approach.
 - **Latency stacking** — each level is a full LLM round-trip. Users wait for the slowest chain.
-- **Information lossy compression** — sub-agents return summaries, not raw data. Each level loses fidelity.
+- **Information lossy compression** — delegated agents return summaries, not raw data. Each level loses fidelity.
 - **Debug opacity** — "which level misunderstood the task?" is nearly impossible to diagnose at depth > 2.
 
 ### FIM One's position

@@ -17,7 +17,6 @@
   "modeStandardTooltip": "Standard (ReAct) — Schnelle Antwort mit flexibler Werkzeugnutzung",
   "modePlannerTooltip": "Planner (DAG) — Zerlegt Aufgaben in einen strukturierten Plan",
   "modeAutoTooltip": "Auto — Wählt automatisch Standard (ReAct) oder Planner (DAG) basierend auf Abfragekomplexität",
-  "noAgent": "Kein Agent",
   "searchAgents": "Agenten durchsuchen...",
   "noAgentFound": "Kein Agent gefunden.",
   "uploadFiles": "Dateien hochladen",
@@ -147,5 +146,7 @@
   "tryRephrase": "Versuchen Sie, Ihre Frage umzuformulieren",
   "citationRelevance": "Relevanz: {value}%",
   "retryUpload": "Upload erneut versuchen",
-  "newChat": "Neuer Chat"
+  "newChat": "Neuer Chat",
+  "autoAgent": "Automatisch",
+  "autoAgentDescription": "Delegiert automatisch an den besten Agent"
 }

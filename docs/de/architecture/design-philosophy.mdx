@@ -59,11 +59,11 @@ Multi-Agent-Hierarchien entstanden als Workaround für Modellbeschränkungen —
 
 ### Die Kosten der Tiefe
 
-Selbst wenn Modelle über begrenzte Fähigkeiten verfügen, tiefe Agenten-Hierarchien verursachen kumulative Kosten:
+Auch wenn Modelle über begrenzte Fähigkeiten verfügen, tragen tiefe Agent-Hierarchien kumulative Kosten mit sich:
 
-- **Token-Multiplikation** — jede Verschachtelungsebene injiziert Systemaufforderungen und Kontext erneut. Drei Ebenen tief kann der Gesamttoken-Verbrauch 5-10x höher sein als bei einem Single-Agent-Ansatz.
+- **Token-Vervielfachung** — jede Verschachtelungsebene injiziert Systemprompts und Kontext erneut. Drei Ebenen tief kann der Gesamttoken-Verbrauch 5-10x höher sein als bei einem Single-Agent-Ansatz.
 - **Latenz-Stapelung** — jede Ebene ist ein vollständiger LLM-Roundtrip. Benutzer warten auf die langsamste Kette.
-- **Informationsverlust durch Kompression** — Sub-Agenten geben Zusammenfassungen zurück, nicht Rohdaten. Jede Ebene verliert an Genauigkeit.
+- **Informationsverlust durch Kompression** — delegierte Agenten geben Zusammenfassungen zurück, keine Rohdaten. Jede Ebene verliert an Genauigkeit.
 - **Debug-Undurchsichtigkeit** — "welche Ebene hat die Aufgabe missverstanden?" ist bei einer Tiefe > 2 fast unmöglich zu diagnostizieren.
 
 ### FIM One's Position

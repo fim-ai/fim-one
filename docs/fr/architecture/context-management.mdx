@@ -82,28 +82,28 @@ Après compaction, `DbMemory` définit les drapeaux de suivi (`was_compacted`, `
 
 ### Couche 3 — ContextGuard
 
-`ContextGuard` est l'applicateur de budget par itération. Il est appelé au début de chaque itération ReAct — à la fois en mode ReAct autonome et à l'intérieur du sous-agent de chaque étape du DAG. C'est la dernière ligne de défense avant que les messages ne frappent l'API LLM.
+`ContextGuard` est l'applicateur de budget par itération. Il est appelé au début de chaque itération ReAct — à la fois en mode ReAct autonome et à l'intérieur de l'agent de chaque étape DAG. C'est la dernière ligne de défense avant que les messages ne frappent l'API LLM.
 
 L'application suit un processus en trois étapes :
 
-1. **Tronquer les messages de taille excessive.** Tout message unique dépassant 50 000 caractères est tronqué brutalement avec un suffixe `[Truncated]`. Cela capture les sorties d'outils qui s'échappent — un web scrape qui retourne une page entière, une lecture de fichier qui déverse un grand ensemble de données.
+1. **Tronquer les messages surdimensionnés.** Tout message unique dépassant 50 000 caractères est tronqué brutalement avec un suffixe `[Truncated]`. Cela capture les sorties d'outils qui s'échappent — un scraping web qui retourne une page entière, une lecture de fichier qui déverse un grand ensemble de données.
 
-2. **Estimer le total des tokens.** Si le total s'inscrit dans le budget, retourner immédiatement. La plupart des itérations passent ici — la compaction est l'exception, pas la norme.
+2. **Estimer les jetons totaux.** Si le total s'inscrit dans le budget, retourner immédiatement. La plupart des itérations passent ici — la compaction est l'exception, pas la norme.
 
 3. **Compacter si dépassement du budget.** Si un `compact_llm` est disponible, utiliser la compaction alimentée par LLM avec un prompt spécifique à l'indice. Sinon, revenir à `smart_truncate`.
 
-Le **système d'indices** est ce qui rend ContextGuard conscient du contexte plutôt que générique. Différentes situations nécessitent différentes stratégies de compaction :
+Le **système d'indice** est ce qui rend ContextGuard conscient du contexte plutôt que générique. Différentes situations nécessitent différentes stratégies de compaction :
 
 | Indice | Utilisé par | Préserve | Supprime |
 |--------|-------------|----------|----------|
-| `react_iteration` | Boucle d'agent ReAct | Chaîne de raisonnement récente, objectif actuel, données critiques | Anciennes étapes redondantes, tentatives échouées, sorties d'outils verbeux |
-| `planner_input` | Requête enrichie du DAG | Évolution de l'intention utilisateur, décisions clés, contraintes | Détails du dialogue, salutations, mécaniques d'appel d'outils |
-| `step_dependency` | Contexte d'étape du DAG | Données clés, nombres, conclusions | Processus de raisonnement, tentatives échouées, formatage verbeux |
-| `general` | Secours par défaut | Faits clés, décisions, résultats d'outils | Salutations, remplissage, allers-retours redondants |
+| `react_iteration` | Boucle d'agent ReAct | Chaîne de raisonnement récente, objectif actuel, données critiques | Étapes anciennes redondantes, tentatives échouées, sorties d'outils verbeux |
+| `planner_input` | Requête enrichie DAG | Évolution de l'intention utilisateur, décisions clés, contraintes | Détails de dialogue, salutations, mécaniques d'appel d'outils |
+| `step_dependency` | Contexte d'étape DAG | Données clés, nombres, conclusions | Processus de raisonnement, tentatives échouées, formatage verbeux |
+| `general` | Repli par défaut | Faits clés, décisions, résultats d'outils | Salutations, remplissage, allers-retours redondants |
 
-Chaque indice correspond à un prompt système soigneusement formulé qui indique au LLM de compaction ce qu'il faut conserver et ce qu'il faut rejeter. Les prompts se terminent par « Écrivez dans la même langue que la conversation » — un détail qui compte pour les utilisateurs CJK dont les résumés seraient autrement par défaut en anglais.
+Chaque indice correspond à un prompt système soigneusement formulé qui indique au LLM de compaction ce qu'il faut conserver et ce qu'il faut supprimer. Les prompts se terminent par « Écrivez dans la même langue que la conversation » — un détail qui importe pour les utilisateurs CJK dont les résumés seraient autrement par défaut en anglais.
 
-Si la compaction LLM échoue (erreur réseau, réponse vide, toute exception), ContextGuard revient silencieusement à `smart_truncate`. L'agent ne voit jamais l'échec. C'est un choix de fiabilité délibéré : il est préférable de perdre un peu de contexte via une troncature heuristique que de faire planter l'itération.
+Si la compaction LLM échoue (erreur réseau, réponse vide, toute exception), ContextGuard revient silencieusement à `smart_truncate`. L'agent ne voit jamais l'échec. C'est un choix de fiabilité délibéré : il est préférable de perdre un peu de contexte via une troncature heuristique que de faire échouer l'itération.
 
 ### Couche 2 — CompactUtils
 
@@ -209,19 +209,19 @@ flowchart TD
     L -->|Yes| N["stream_synthesize → Final answer"]
 ```
 
-**Phase 1 — Chargement de l'historique.** DbMemory charge et compacte l'historique de conversation, comme dans ReAct. L'historique compacté est formaté en bloc de texte préfixé par `"Previous conversation:"`.
+**Phase 1 — Chargement de l'historique.** DbMemory charge et compacte l'historique de conversation, comme dans ReAct. L'historique compacté est formaté dans un bloc de texte préfixé par `"Previous conversation:"`.
 
-**Phase 2 — Construction de la requête enrichie.** Le texte d'historique et la requête actuelle sont combinés dans une `enriched_query`. Si cela dépasse 16K tokens, il est résumé par LLM en utilisant le hint prompt `planner_input`. Le seuil de 16K est choisi parce que le planificateur doit lire l'intégralité de la requête en une seule passe — contrairement à ReAct, il n'y a pas de compaction itérative pendant la planification.
+**Phase 2 — Construction de requête enrichie.** L'historique et la requête actuelle sont combinés dans une `enriched_query`. Si cela dépasse 16K tokens, il est résumé par LLM en utilisant l'invite `planner_input`. Le seuil de 16K est choisi parce que le planificateur doit lire l'intégralité de la requête en une seule passe — contrairement à ReAct, il n'y a pas de compaction itérative pendant la planification.
 
-**Phase 3 — Planification.** Le planificateur reçoit un prompt de 2 messages : prompt système plus requête enrichie. Pas de ContextGuard ici — la requête enrichie est déjà contrôlée en taille par la vérification des 16K.
+**Phase 3 — Planification.** Le planificateur reçoit une invite à 2 messages : invite système plus requête enrichie. Pas de ContextGuard ici — la requête enrichie est déjà contrôlée en taille par la vérification de 16K.
 
-**Phase 4 — Exécution des étapes.** Chaque étape DAG s'exécute comme un agent ReAct indépendant avec son propre ContextGuard. De manière critique, ces sous-agents n'ont **pas de mémoire** — ils commencent à zéro avec seulement leur description de tâche et le contexte de dépendance. C'est intentionnel : les étapes DAG doivent être des unités de travail autonomes. Les résultats de dépendance sont injectés via `_build_step_context`, qui tronque les caractères à 50K (la limite `max_message_chars` du ContextGuard).
+**Phase 4 — Exécution des étapes.** Chaque étape DAG s'exécute comme un agent ReAct indépendant avec son propre ContextGuard. De manière critique, ces agents d'étape n'ont **pas de mémoire** — ils commencent à zéro avec seulement leur description de tâche et le contexte de dépendance. C'est intentionnel : les étapes DAG doivent être des unités de travail autonomes. Les résultats de dépendance sont injectés via `_build_step_context`, qui tronque les caractères à 50K (la limite `max_message_chars` du ContextGuard).
 
 **Phase 5 — Analyse.** Les résultats des étapes sont formatés pour l'LLM analyseur avec troncature par étape à 10K caractères. Cela empêche la sortie détaillée d'une seule étape de dominer le contexte d'analyse.
 
-**Phase 6 — Replanification.** Quand l'analyseur détermine que l'objectif n'a pas été atteint et que la confiance est en dessous du seuil, les résultats des étapes sont tronqués à seulement 500 caractères chacun pour le contexte de replanification. La replanification doit savoir *ce qui s'est passé* et *ce qui s'est mal passé*, pas le détail complet de la sortie de chaque étape. Cette troncature agressive garde le prompt de replan suffisamment compact pour que le planificateur le traite efficacement.
+**Phase 6 — Replanification.** Quand l'analyseur détermine que l'objectif n'a pas été atteint et que la confiance est en dessous du seuil, les résultats des étapes sont tronqués à seulement 500 caractères chacun pour le contexte de replanification. La replanification doit savoir *ce qui s'est passé* et *ce qui a mal tourné*, pas le détail complet de la sortie de chaque étape. Cette troncature agressive garde l'invite de replan suffisamment compacte pour que le planificateur la traite efficacement.
 
-Pour l'architecture complète du pipeline DAG incluant la LLM Call Map et la logique de replanification, voir [DAG Engine](/architecture/dag-engine).
+Pour l'architecture complète du pipeline DAG incluant la Carte des Appels LLM et la logique de replanification, voir [Moteur DAG](/architecture/dag-engine).
 
 ## Messages épinglées
 

@@ -55,7 +55,7 @@ The two modes differ in **scope**, not in kind. Both produce a `ToolRegistry` �
 | Knowledge Bases | All accessible KBs | `kb_retrieve` |
 | Skills | `resolve_visibility()` — all active | `read_skill` (progressive stubs) |
 | MCP Servers | `resolve_visibility()` — all user-visible | `MCPServerMetaTool` (progressive) |
-| Agents | `resolve_visibility()` — all active, non-builder | `call_agent` (catalog) |
+| Agents | `resolve_visibility()` — all active, non-builder | `call_agent` (delegation catalog) |
 | Built-in Tools | `discover_builtin_tools()` — full set | No category filter applied |
 
 **Agent-Constrained Mode (Agent selected):**
@@ -66,10 +66,10 @@ The two modes differ in **scope**, not in kind. Both produce a `ToolRegistry` �
 | Knowledge Bases | Only `agent.kb_ids` | `GroundedRetrieveTool` / `KBRetrieveTool` |
 | Skills | Global — **not constrained by Agent** | `read_skill` |
 | MCP Servers | User-scoped — **not constrained by Agent** | `MCPServerMetaTool` (progressive) |
-| Agents | Global — `call_agent` always available | `call_agent` |
+| Agent Delegation | Not available — agents are specialized | _(disabled)_ |
 | Built-in Tools | `agent.tool_categories` filter | Subset by category |
 
-The key asymmetry: Connectors and Knowledge Bases are scoped by the Agent, but Skills, MCP Servers, and CallAgent are always global. This reflects the design intent — Skills are organizational rules (everyone follows the same SOPs), while Connectors and KBs are capability bindings (different agents connect to different systems).
+The key asymmetry: Connectors and Knowledge Bases are scoped by the Agent, but Skills and MCP Servers remain global in both modes. `CallAgentTool` (agent delegation) is only available in Auto-Discovery mode — it is **not** registered when a specific Agent is selected. This is a security measure: a marketplace agent could otherwise use `call_agent` to invoke other agents and access their private prompts. Skills are organizational rules (everyone follows the same SOPs), while Connectors and KBs are capability bindings (different agents connect to different systems).
 
 ## Everything is a tool
 
@@ -139,11 +139,26 @@ This means:
 - **Users can start chatting immediately** without configuring an Agent.
 - **The system auto-discovers available resources** and exposes them as tools.
 - **Agents become lightweight personas** that can be created quickly — just write instructions and optionally bind specific Connectors and KBs.
-- **Resource management is decoupled** from Agent management. Publishing a Connector to an organization makes it available everywhere — in auto-discovery mode, in Agent binding dropdowns, and in sub-agent tool resolution.
+- **Resource management is decoupled** from Agent management. Publishing a Connector to an organization makes it available everywhere — in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution.
 
-## Multi-agent orchestration
+## Agent Delegation
 
-FIM One supports delegating tasks to specialist agents via `CallAgentTool`. This enables a parent agent (or auto-discovery mode) to invoke sub-agents for focused tasks.
+FIM One supports delegating tasks to specialist agents via `CallAgentTool` — but only in **Auto mode** (no agent selected). When a user selects a specific Agent, delegation is disabled and the Agent focuses exclusively on its own tools.
+
+### Two modes: Auto vs Agent-selected
+
+| Aspect | Auto Mode (no agent selected) | Agent-Selected Mode |
+|---|---|---|
+| `call_agent` | Enabled — delegates to any visible agent | **Disabled** — not registered |
+| Tool scope | All visible Connectors, KB, Skills, MCP | Only the Agent's bound resources + global Skills/MCP |
+| Orchestration | System LLM dynamically picks the best agent per iteration | Agent uses its own tools directly |
+| Use case | General queries, cross-domain tasks | Focused specialist tasks |
+
+**Why delegation is disabled in Agent-selected mode:** Security. A marketplace agent could use `call_agent` to invoke other agents and read their private system prompts. By restricting delegation to Auto mode — where the system LLM (not any individual agent's prompt) controls the flow — private agent prompts are never exposed to untrusted agent configurations.
+
+### Auto mode as the orchestration layer
+
+Auto mode is a first-class concept in the UI. The agent selector shows "Auto" as the default option. When Auto is active, the system LLM acts as an orchestrator: it sees the full catalog of visible agents and can delegate tasks to the best-fit specialist on each iteration. This replaces the need for a dedicated "parent agent" — the system itself is the orchestrator.
 
 ### Agent catalog
 
@@ -151,11 +166,11 @@ At runtime, all active, non-builder Agents visible to the user are assembled int
 
 ### Full tool inheritance
 
-When a sub-agent is invoked via `call_agent(agent_id, task)`, it receives a complete `ToolRegistry` built from its own configuration — including its bound Connectors, KB, and built-in tools. Sub-agents are full execution units, not text-only advisors.
+When a delegated agent is invoked via `call_agent(agent_id, task)`, it receives a complete `ToolRegistry` built from its own configuration — including its bound Connectors, KB, and built-in tools. Delegated agents are full execution units, not text-only advisors.
 
 ### One-level delegation
 
-To prevent infinite recursion, sub-agents do not receive the `call_agent` tool. Delegation is always one level deep: parent calls child, child executes and returns a result. The parent synthesizes results from multiple sub-agents.
+To prevent infinite recursion, delegated agents do not receive the `call_agent` tool. Delegation is always one level deep: Auto mode calls a specialist, the specialist executes and returns a result. The system synthesizes results from multiple delegated agents.
 
 ### Parallel execution
 
@@ -163,17 +178,17 @@ In native function-calling mode, the LLM can invoke multiple `call_agent` calls 
 
 ```mermaid
 flowchart TD
-    U["User Query"] --> MA["Main Agent<br/>(or auto-discovery)"]
-    MA -->|"call_agent('Contract Expert',<br/>'find this week's contracts')"| SA1["Sub-Agent:<br/>Contract Expert"]
-    MA -->|"call_agent('Data Analyst',<br/>'analyze refund trends')"| SA2["Sub-Agent:<br/>Data Analyst"]
+    U["User Query"] --> AM["Auto Mode<br/>(system orchestrator)"]
+    AM -->|"call_agent('Contract Expert',<br/>'find this week's contracts')"| DA1["Delegate:<br/>Contract Expert"]
+    AM -->|"call_agent('Data Analyst',<br/>'analyze refund trends')"| DA2["Delegate:<br/>Data Analyst"]
 
-    SA1 --> T1["Contract Connector<br/>tools"]
+    DA1 --> T1["Contract Connector<br/>tools"]
     T1 --> R1["Result"]
 
-    SA2 --> T2["Analytics KB +<br/>Python tools"]
+    DA2 --> T2["Analytics KB +<br/>Python tools"]
     T2 --> R2["Result"]
 
-    R1 --> SYN["Main Agent<br/>synthesizes both results"]
+    R1 --> SYN["Auto Mode<br/>synthesizes both results"]
     R2 --> SYN
 
     SYN --> ANS["Final Answer"]
@@ -210,7 +225,7 @@ This same filter is used everywhere:
 - MCP server resolution
 - Agent configuration lookup (ensuring a user can only select Agents visible to them)
 
-The uniformity means that **publishing a Connector to an organization automatically makes it available** in auto-discovery mode, in Agent binding dropdowns, and in sub-agent tool resolution — no special wiring required. The visibility model is the single source of truth for "what can this user access."
+The uniformity means that **publishing a Connector to an organization automatically makes it available** in auto-discovery mode, in Agent binding dropdowns, and in agent delegation resolution — no special wiring required. The visibility model is the single source of truth for "what can this user access."
 
 ## Relationship map
 
@@ -225,7 +240,7 @@ flowchart TD
         TR --> KB["Knowledge Bases"]
         TR --> MCP_T["MCP Servers"]
         TR --> BUILT["Built-in Tools"]
-        TR --> CALL["call_agent<br/>→ Sub-Agent"]
+        TR --> CALL["call_agent<br/>→ Delegate Agent"]
         TR --> READ["read_skill<br/>→ SOP text"]
     end
 
@@ -261,9 +276,9 @@ While this document focuses on Agent-driven chat execution, FIM One includes a f
 |---|---|---|
 | Orchestration | LLM decides next step dynamically | Fixed DAG defined at design time |
 | Best for | Exploratory tasks, conversations, flexible reasoning | Approval chains, scheduled ETL, multi-step automations |
-| Can call | Connectors, KB, MCP, Built-in Tools, Sub-Agents, Skills | Agents, Connectors, KB, MCP, LLM, HTTP, Code, Human approval, Sub-Workflows |
+| Can call | Connectors, KB, MCP, Built-in Tools, Delegated Agents, Skills | Agents, Connectors, KB, MCP, LLM, HTTP, Code, Human approval, Sub-Workflows |
 | Trigger | User message in chat | Manual, cron schedule, or API/webhook |
-| Nesting | One-level delegation (parent → child Agent) | Arbitrary DAG depth via SUB_WORKFLOW nodes |
+| Nesting | One-level delegation (Auto mode → delegated Agent) | Arbitrary DAG depth via SUB_WORKFLOW nodes |
 
 The two paradigms are complementary. Use Agents when the task is open-ended ("analyze this quarter's sales data and recommend actions"). Use Workflows when the process is known ("every Monday, pull new invoices from ERP, run compliance checks, and route exceptions to a human reviewer"). A Workflow can invoke an Agent for any step that needs flexible reasoning within an otherwise fixed pipeline.
 

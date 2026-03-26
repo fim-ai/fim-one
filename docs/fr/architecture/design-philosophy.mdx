@@ -59,12 +59,12 @@ Les hiérarchies multi-agents ont émergé comme une solution de contournement a
 
 ### Le coût de la profondeur
 
-Même lorsque les modèles manquent de capacité, les hiérarchies profondes d'agents entraînent des coûts composés :
+Même lorsque les modèles manquent de capacités, les hiérarchies profondes d'agents entraînent des coûts composés :
 
-- **Multiplication des tokens** — chaque niveau d'imbrication réinjecte les invites système et le contexte. À trois niveaux de profondeur, la dépense totale en tokens peut être 5 à 10 fois celle d'une approche mono-agent.
+- **Multiplication des tokens** — chaque niveau d'imbrication réinjecte les invites système et le contexte. À trois niveaux de profondeur, la dépense totale en tokens peut être 5 à 10 fois celle d'une approche à agent unique.
 - **Accumulation de latence** — chaque niveau est un aller-retour LLM complet. Les utilisateurs attendent la chaîne la plus lente.
-- **Compression lossy de l'information** — les sous-agents retournent des résumés, pas des données brutes. Chaque niveau perd en fidélité.
-- **Opacité du débogage** — « quel niveau a mal compris la tâche ? » est pratiquement impossible à diagnostiquer à une profondeur > 2.
+- **Compression lossy de l'information** — les agents délégués retournent des résumés, pas des données brutes. Chaque niveau perd en fidélité.
+- **Opacité du débogage** — « quel niveau a mal compris la tâche ? » est presque impossible à diagnostiquer à une profondeur > 2.
 
 ### Position de FIM One
 

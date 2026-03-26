@@ -44,32 +44,32 @@ L'effet pratique : les utilisateurs peuvent commencer à discuter immédiatement
 
 ### Ce que chaque mode découvre
 
-Les deux modes diffèrent par leur **portée**, pas par leur nature. Les deux produisent un `ToolRegistry` — ils le remplissent simplement différemment.
+Les deux modes diffèrent par leur **portée**, non par leur nature. Les deux produisent un `ToolRegistry` — ils le remplissent simplement différemment.
 
 **Mode de découverte automatique (aucun agent sélectionné) :**
 
 | Ressource | Découverte | Forme d'outil |
 |---|---|---|
-| Connecteurs (API) | `resolve_visibility()` — tous visibles pour l'utilisateur | `ConnectorMetaTool` (progressive) |
-| Connecteurs (BD) | `resolve_visibility()` — tous visibles pour l'utilisateur | `DatabaseMetaTool` (progressive) |
+| Connecteurs (API) | `resolve_visibility()` — tous visibles pour l'utilisateur | `ConnectorMetaTool` (progressif) |
+| Connecteurs (BD) | `resolve_visibility()` — tous visibles pour l'utilisateur | `DatabaseMetaTool` (progressif) |
 | Bases de connaissances | Toutes les KB accessibles | `kb_retrieve` |
-| Compétences | `resolve_visibility()` — toutes actives | `read_skill` (progressive stubs) |
-| Serveurs MCP | `resolve_visibility()` — tous visibles par l'utilisateur | `MCPServerMetaTool` (progressive) |
-| Agents | `resolve_visibility()` — tous actifs, non-constructeur | `call_agent` (catalog) |
+| Compétences | `resolve_visibility()` — toutes actives | `read_skill` (stubs progressifs) |
+| Serveurs MCP | `resolve_visibility()` — tous visibles par l'utilisateur | `MCPServerMetaTool` (progressif) |
+| Agents | `resolve_visibility()` — tous actifs, non-constructeur | `call_agent` (catalogue de délégation) |
 | Outils intégrés | `discover_builtin_tools()` — ensemble complet | Aucun filtre de catégorie appliqué |
 
 **Mode contraint par agent (agent sélectionné) :**
 
 | Ressource | Découverte | Forme d'outil |
 |---|---|---|
-| Connecteurs | Uniquement `agent.connector_ids` | `ConnectorMetaTool` ou hérité par action |
-| Bases de connaissances | Uniquement `agent.kb_ids` | `GroundedRetrieveTool` / `KBRetrieveTool` |
+| Connecteurs | Seulement `agent.connector_ids` | `ConnectorMetaTool` ou hérité par action |
+| Bases de connaissances | Seulement `agent.kb_ids` | `GroundedRetrieveTool` / `KBRetrieveTool` |
 | Compétences | Global — **non contraint par l'agent** | `read_skill` |
-| Serveurs MCP | Scoped utilisateur — **non contraint par l'agent** | `MCPServerMetaTool` (progressive) |
-| Agents | Global — `call_agent` toujours disponible | `call_agent` |
+| Serveurs MCP | Portée utilisateur — **non contraint par l'agent** | `MCPServerMetaTool` (progressif) |
+| Délégation d'agent | Non disponible — les agents sont spécialisés | _(désactivé)_ |
 | Outils intégrés | Filtre `agent.tool_categories` | Sous-ensemble par catégorie |
 
-L'asymétrie clé : les connecteurs et les bases de connaissances sont scoped par l'agent, mais les compétences, les serveurs MCP et CallAgent sont toujours globaux. Cela reflète l'intention de conception — les compétences sont des règles organisationnelles (tout le monde suit les mêmes procédures), tandis que les connecteurs et les KB sont des liaisons de capacité (différents agents se connectent à différents systèmes).
+L'asymétrie clé : les connecteurs et les bases de connaissances sont limités par l'agent, mais les compétences et les serveurs MCP restent globaux dans les deux modes. `CallAgentTool` (délégation d'agent) n'est disponible qu'en mode de découverte automatique — il n'est **pas** enregistré quand un agent spécifique est sélectionné. C'est une mesure de sécurité : un agent de marketplace pourrait autrement utiliser `call_agent` pour invoquer d'autres agents et accéder à leurs invites privées. Les compétences sont des règles organisationnelles (tout le monde suit les mêmes procédures), tandis que les connecteurs et les KB sont des liaisons de capacités (différents agents se connectent à différents systèmes).
 
 ## Tout est un outil
 
@@ -110,7 +110,7 @@ Les compétences supportent deux modes d'injection -- **progressif** (par défau
 
 L'architecture de FIM One reflète un changement délibéré d'un modèle centré sur l'Agent à un modèle centré sur les Ressources.
 
-**Modèle précédent :** l'Agent était un conteneur qui contrôlait l'accès à toutes les ressources. Aucun Agent sélectionné signifiait aucun Connecteur, aucune Compétence, aucune KB spécialisée. L'Agent était le point d'entrée obligatoire pour toute capacité.
+**Modèle précédent :** l'Agent était un conteneur qui contrôlait l'accès à toutes les ressources. Aucun Agent sélectionné signifiait pas de Connecteurs, pas de Compétences, pas de KB spécialisée. L'Agent était le point d'entrée obligatoire pour toute capacité.
 
 **Modèle actuel :** l'Agent est une persona — un ensemble d'instructions et de directives comportementales — combiné avec une contrainte de ressource optionnelle. Les Ressources existent indépendamment des Agents. Sélectionner un Agent réduit la portée ; ne pas en sélectionner l'ouvre complètement.
 
@@ -139,11 +139,26 @@ Cela signifie :
 - **Les utilisateurs peuvent commencer à discuter immédiatement** sans configurer un Agent.
 - **Le système découvre automatiquement les ressources disponibles** et les expose en tant qu'outils.
 - **Les Agents deviennent des personas légers** qui peuvent être créés rapidement — il suffit d'écrire des instructions et de lier optionnellement des Connecteurs et des KBs spécifiques.
-- **La gestion des ressources est découplée** de la gestion des Agents. Publier un Connecteur dans une organisation le rend disponible partout — en mode découverte automatique, dans les listes déroulantes de liaison d'Agent, et dans la résolution d'outils des sous-agents.
+- **La gestion des ressources est découplée** de la gestion des Agents. Publier un Connecteur dans une organisation le rend disponible partout — en mode découverte automatique, dans les listes déroulantes de liaison d'Agent et dans la résolution de délégation d'agent.
 
-## Orchestration multi-agent
+## Délégation d'agent
 
-FIM One prend en charge la délégation de tâches à des agents spécialisés via `CallAgentTool`. Cela permet à un agent parent (ou au mode de découverte automatique) d'invoquer des sous-agents pour des tâches ciblées.
+FIM One prend en charge la délégation de tâches à des agents spécialisés via `CallAgentTool` — mais uniquement en mode **Auto** (aucun agent sélectionné). Lorsqu'un utilisateur sélectionne un agent spécifique, la délégation est désactivée et l'agent se concentre exclusivement sur ses propres outils.
+
+### Deux modes : Auto vs Agent sélectionné
+
+| Aspect | Mode Auto (aucun agent sélectionné) | Mode Agent sélectionné |
+|---|---|---|
+| `call_agent` | Activé — délègue à n'importe quel agent visible | **Désactivé** — non enregistré |
+| Portée des outils | Tous les Connecteurs visibles, KB, Skills, MCP | Uniquement les ressources liées de l'Agent + Skills/MCP globaux |
+| Orchestration | Le système LLM choisit dynamiquement le meilleur agent par itération | L'Agent utilise directement ses propres outils |
+| Cas d'usage | Requêtes générales, tâches multi-domaines | Tâches spécialisées ciblées |
+
+**Pourquoi la délégation est désactivée en mode Agent sélectionné :** Sécurité. Un agent de marketplace pourrait utiliser `call_agent` pour invoquer d'autres agents et lire leurs invites système privées. En restreignant la délégation au mode Auto — où le système LLM (et non l'invite d'un agent individuel) contrôle le flux — les invites d'agent privées ne sont jamais exposées aux configurations d'agent non fiables.
+
+### Mode Auto comme couche d'orchestration
+
+Le mode Auto est un concept de première classe dans l'interface utilisateur. Le sélecteur d'agent affiche « Auto » comme option par défaut. Lorsque le mode Auto est actif, le LLM système agit comme un orchestrateur : il voit le catalogue complet des agents visibles et peut déléguer les tâches au spécialiste le mieux adapté à chaque itération. Cela élimine le besoin d'un « agent parent » dédié — le système lui-même est l'orchestrateur.
 
 ### Catalogue d'agents
 
@@ -151,11 +166,11 @@ FIM One prend en charge la délégation de tâches à des agents spécialisés v
 
 ### Héritage complet des outils
 
-Lorsqu'un sous-agent est invoqué via `call_agent(agent_id, task)`, il reçoit un `ToolRegistry` complet construit à partir de sa propre configuration — incluant ses Connecteurs liés, sa KB et ses outils intégrés. Les sous-agents sont des unités d'exécution complètes, pas seulement des conseillers textuels.
+Quand un agent délégué est invoqué via `call_agent(agent_id, task)`, il reçoit un `ToolRegistry` complet construit à partir de sa propre configuration — incluant ses Connecteurs liés, sa KB, et ses outils intégrés. Les agents délégués sont des unités d'exécution complètes, pas seulement des conseillers basés sur du texte.
 
 ### Délégation à un seul niveau
 
-Pour éviter la récursion infinie, les sous-agents ne reçoivent pas l'outil `call_agent`. La délégation est toujours à un seul niveau : le parent appelle l'enfant, l'enfant s'exécute et retourne un résultat. Le parent synthétise les résultats de plusieurs sous-agents.
+Pour éviter la récursion infinie, les agents délégués ne reçoivent pas l'outil `call_agent`. La délégation est toujours à un seul niveau : le mode Auto appelle un spécialiste, le spécialiste exécute et retourne un résultat. Le système synthétise les résultats de plusieurs agents délégués.
 
 ### Exécution parallèle
 
@@ -163,17 +178,17 @@ En mode d'appel de fonction natif, le LLM peut invoquer plusieurs appels `call_a
 
 ```mermaid
 flowchart TD
-    U["User Query"] --> MA["Main Agent<br/>(or auto-discovery)"]
-    MA -->|"call_agent('Contract Expert',<br/>'find this week's contracts')"| SA1["Sub-Agent:<br/>Contract Expert"]
-    MA -->|"call_agent('Data Analyst',<br/>'analyze refund trends')"| SA2["Sub-Agent:<br/>Data Analyst"]
+    U["User Query"] --> AM["Auto Mode<br/>(system orchestrator)"]
+    AM -->|"call_agent('Contract Expert',<br/>'find this week's contracts')"| DA1["Delegate:<br/>Contract Expert"]
+    AM -->|"call_agent('Data Analyst',<br/>'analyze refund trends')"| DA2["Delegate:<br/>Data Analyst"]
 
-    SA1 --> T1["Contract Connector<br/>tools"]
+    DA1 --> T1["Contract Connector<br/>tools"]
     T1 --> R1["Result"]
 
-    SA2 --> T2["Analytics KB +<br/>Python tools"]
+    DA2 --> T2["Analytics KB +<br/>Python tools"]
     T2 --> R2["Result"]
 
-    R1 --> SYN["Main Agent<br/>synthesizes both results"]
+    R1 --> SYN["Auto Mode<br/>synthesizes both results"]
     R2 --> SYN
 
     SYN --> ANS["Final Answer"]
@@ -186,7 +201,7 @@ Toute découverte de ressources — dans les deux modes — est régie par un mo
 | Niveau | Description | Exemple |
 |---|---|---|
 | **Propre** | Créé par l'utilisateur. Toujours visible. | Un connecteur que vous avez créé pour l'API de votre équipe |
-| **Partagé au niveau de l'organisation** | Ressources avec `visibility: "org"` de la ou des organisations de l'utilisateur. Visible pour tous les membres approuvés de l'organisation. | Un connecteur ERP à l'échelle de l'entreprise publié par l'informatique |
+| **Partagé au niveau de l'organisation** | Ressources avec `visibility: "org"` de la ou des organisations de l'utilisateur. Visible pour tous les membres approuvés de l'organisation. | Un connecteur ERP à l'échelle de l'entreprise publié par le service informatique |
 | **Abonné au marché** | Ressources installées depuis le marché FIM One. Visible pour l'abonné. | Un connecteur Slack créé par la communauté que vous avez installé |
 
 La fonction `resolve_visibility()` dans `web/visibility.py` crée un filtre SQL qui inclut les trois niveaux dans une seule requête :
@@ -204,13 +219,13 @@ conditions = [
 
 Ce même filtre est utilisé partout :
 
-- Découverte automatique de connecteurs en mode sans agent
+- Découverte automatique des connecteurs en mode sans agent
 - Construction du catalogue d'agents pour `CallAgentTool`
-- Chargement des compétences visibles pour l'injection d'invite système
+- Chargement des compétences visibles pour l'injection de l'invite système
 - Résolution du serveur MCP
 - Recherche de configuration d'agent (garantissant qu'un utilisateur ne peut sélectionner que les agents qui lui sont visibles)
 
-L'uniformité signifie que **publier un connecteur à une organisation le rend automatiquement disponible** en mode découverte automatique, dans les listes déroulantes de liaison d'agent et dans la résolution d'outils de sous-agent — aucun câblage spécial requis. Le modèle de visibilité est la source unique de vérité pour « ce que cet utilisateur peut accéder ».
+L'uniformité signifie que **publier un connecteur à une organisation le rend automatiquement disponible** en mode découverte automatique, dans les listes déroulantes de liaison d'agents et dans la résolution de délégation d'agents — aucun câblage spécial requis. Le modèle de visibilité est la source unique de vérité pour « à quoi cet utilisateur peut-il accéder ».
 
 ## Carte des relations
 
@@ -225,7 +240,7 @@ flowchart TD
         TR --> KB["Knowledge Bases"]
         TR --> MCP_T["MCP Servers"]
         TR --> BUILT["Built-in Tools"]
-        TR --> CALL["call_agent<br/>→ Sub-Agent"]
+        TR --> CALL["call_agent<br/>→ Delegate Agent"]
         TR --> READ["read_skill<br/>→ SOP text"]
     end
 
@@ -249,8 +264,8 @@ flowchart TD
 Points clés du diagramme :
 
 - **Agent et Workflow sont des paradigmes parallèles.** Les deux peuvent utiliser des connecteurs, des bases de connaissances et des serveurs MCP — mais selon des mécanismes différents. Les agents les utilisent comme outils dans un `ToolRegistry` ; les Workflows les utilisent comme nœuds DAG typés.
-- **Workflow peut orchestrer des Agents** via le nœud `AGENT` — une étape de Workflow peut invoquer un Agent complet avec sa propre boucle ReAct/DAG. L'inverse n'est pas vrai : les Agents ne peuvent pas invoquer directement les Workflows (seulement indirectement via des déclencheurs API/webhook).
-- **Les Skills sont injectés uniquement dans les Agents.** Les Skills sont du texte d'invite système — ils guident le comportement de l'Agent. Les Workflows ne consomment pas de Skills car les nœuds de Workflow exécutent une logique déterministe, pas un raisonnement guidé par LLM.
+- **Workflow peut orchestrer des Agents** via le nœud `AGENT` — une étape Workflow peut invoquer un Agent complet avec sa propre boucle ReAct/DAG. L'inverse n'est pas vrai : les Agents ne peuvent pas invoquer directement les Workflows (uniquement indirectement via des déclencheurs API/webhook).
+- **Les compétences sont injectées uniquement dans les Agents.** Les compétences sont du texte d'invite système — elles guident le comportement de l'agent. Les Workflows ne consomment pas de compétences car les nœuds Workflow exécutent une logique déterministe, non un raisonnement guidé par LLM.
 - **Ressources partagées, modèles d'accès différents.** Un connecteur peut être appelé par un Agent (via `ConnectorToolAdapter`), par un Workflow (via le nœud `CONNECTOR`), ou par les deux dans le même processus métier — par exemple, un Workflow déclenche un Agent qui interroge le même connecteur que celui utilisé par le Workflow dans une étape ultérieure.
 
 ## Moteur de flux de travail — l'autre paradigme d'exécution
@@ -259,12 +274,12 @@ Bien que ce document se concentre sur l'exécution de chat pilotée par agent, F
 
 | Aspect | Agent (Chat) | Flux de travail |
 |---|---|---|
-| Orchestration | L'LLM décide de l'étape suivante de manière dynamique | DAG fixe défini au moment de la conception |
+| Orchestration | Le LLM décide de l'étape suivante dynamiquement | DAG fixe défini au moment de la conception |
 | Idéal pour | Tâches exploratoires, conversations, raisonnement flexible | Chaînes d'approbation, ETL planifiée, automatisations multi-étapes |
-| Peut appeler | Connecteurs, KB, MCP, Outils intégrés, Sous-agents, Compétences | Agents, Connecteurs, KB, MCP, LLM, HTTP, Code, Approbation humaine, Sous-flux de travail |
-| Déclencheur | Message utilisateur dans le chat | Manuel, planification cron ou API/webhook |
-| Imbrication | Délégation à un niveau (agent parent → agent enfant) | Profondeur DAG arbitraire via nœuds SUB_WORKFLOW |
+| Peut appeler | Connecteurs, KB, MCP, Outils intégrés, Agents délégués, Compétences | Agents, Connecteurs, KB, MCP, LLM, HTTP, Code, Approbation humaine, Sous-flux de travail |
+| Déclencheur | Message utilisateur dans le chat | Manuel, planification cron, ou API/webhook |
+| Imbrication | Délégation à un niveau (Mode Auto → Agent délégué) | Profondeur DAG arbitraire via nœuds SUB_WORKFLOW |
 
-Les deux paradigmes sont complémentaires. Utilisez les Agents quand la tâche est ouverte (« analyser les données de ventes de ce trimestre et recommander des actions »). Utilisez les Flux de travail quand le processus est connu (« chaque lundi, extraire les nouvelles factures de l'ERP, exécuter les vérifications de conformité et acheminer les exceptions vers un examinateur humain »). Un Flux de travail peut invoquer un Agent pour toute étape qui nécessite un raisonnement flexible au sein d'un pipeline autrement fixe.
+Les deux paradigmes sont complémentaires. Utilisez les Agents quand la tâche est ouverte (« analyser les données de ventes de ce trimestre et recommander des actions »). Utilisez les Flux de travail quand le processus est connu (« chaque lundi, récupérer les nouvelles factures de l'ERP, exécuter les vérifications de conformité et router les exceptions vers un examinateur humain »). Un Flux de travail peut invoquer un Agent pour toute étape qui nécessite un raisonnement flexible dans un pipeline autrement fixe.
 
 Pour plus de détails sur les modes d'exécution des Agents et les types de nœuds du Flux de travail, consultez [Modes d'exécution](/concepts/execution-modes).

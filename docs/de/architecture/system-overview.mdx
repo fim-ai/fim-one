@@ -51,7 +51,7 @@ Fähigkeiten unterstützen zwei Injektionsmodi – **progressiv** (Standard) und
 
 Für einen tieferen Einblick, warum Fähigkeiten global sind (nicht an Agenten gebunden) und wie sie mit der dualen Ressourcenermittlung interagieren, siehe [Agent & Ressourcenermittlung](/architecture/agent-discovery).
 
-## Werkzeugzusammensetzung pro Anfrage
+## Werkzeugsatz pro Anfrage
 
 Jede Chat-Anfrage stellt einen frischen Werkzeugsatz durch eine Filterpipeline in `_resolve_tools()` zusammen. Dies ist keine statische Konfiguration -- sie wird pro Anfrage basierend auf den Einstellungen des Agenten, der Identität des Benutzers und den verfügbaren Konnektoren und MCP-Servern berechnet.
 
@@ -73,42 +73,42 @@ flowchart LR
 Die acht Schritte:
 
 1. **Basis-Erkennung.** `discover_builtin_tools()` lädt alle integrierten Werkzeuge, begrenzt auf die Sandbox des Gesprächs.
-2. **Agent-Kategorie-Filter.** `filter_by_category(*agent.tool_categories)` beschränkt auf nur die Kategorien, die der Agent verwenden darf.
+2. **Agent-Kategorie-Filter.** `filter_by_category(*agent.tool_categories)` beschränkt sich nur auf die Kategorien, die der Agent verwenden darf.
 3. **KB-Injektion.** Wenn der Agent `kb_ids` hat, wird das generische Abrufwerkzeug durch `KBRetrieveTool` oder `GroundedRetrieveTool` basierend auf dem Abrufmodus ersetzt.
 4. **Konnektor-Laden.** Im Agent-beschränkten Modus werden nur die an den Agent gebundenen Konnektoren geladen. Im Auto-Discovery-Modus (kein Agent ausgewählt) werden alle für den Benutzer sichtbaren Konnektoren geladen. Sowohl API-Konnektoren (`ConnectorMetaTool`) als auch Datenbank-Konnektoren (`DatabaseMetaTool`) verwenden standardmäßig [Progressive Disclosure](/architecture/progressive-disclosure) -- leichte Stubs im System-Prompt, vollständige Schemas werden bei Bedarf geladen.
-5. **MCP-Laden.** Die persönlichen MCP-Server des Benutzers plus von Administratoren bereitgestellte globale MCP-Server werden geladen und verbunden. Im Progressive-Modus (Standard) konsolidiert ein einzelnes `MCPServerMetaTool` alle Server; das LLM ruft `discover`- und `call`-Unterbefehle bei Bedarf auf. Siehe [Progressive Disclosure](/architecture/progressive-disclosure).
+5. **MCP-Laden.** Die persönlichen MCP-Server des Benutzers sowie von Administratoren bereitgestellte globale MCP-Server werden geladen und verbunden. Im Progressive-Modus (Standard) konsolidiert ein einzelnes `MCPServerMetaTool` alle Server; das LLM ruft `discover` und `call` Unterbefehle bei Bedarf auf. Siehe [Progressive Disclosure](/architecture/progressive-disclosure).
 6. **Skills-Injektion.** Alle aktiven Skills, die für den Benutzer sichtbar sind, werden geladen -- unabhängig von der Agent-Auswahl. Im Progressive-Modus wird `ReadSkillTool` mit kompakten Stubs im System-Prompt registriert. Im Inline-Modus wird der vollständige Skill-Inhalt direkt eingebettet.
-7. **CallAgent-Registrierung.** Alle aktiven, sichtbaren Agenten werden in einem Katalog zusammengefasst und über `CallAgentTool` verfügbar gemacht, was dem LLM ermöglicht, Aufgaben an spezialisierte Sub-Agenten zu delegieren. Sub-Agenten erhalten eine vollständige `ToolRegistry`, die aus ihrer eigenen Konfiguration erstellt wird, schließt aber `call_agent` aus, um unendliche Rekursion zu verhindern.
-8. **Laufzeit-Auswahl.** Wenn die Gesamtwerkzeuganzahl 12 überschreitet, wählt ein leichter LLM-Aufruf die relevanteste Teilmenge (bis zu 6) für diese spezifische Anfrage aus. Ein `request_tools` Meta-Werkzeug wird automatisch registriert, das dem LLM ermöglicht, während des Gesprächs dynamisch zusätzliche Werkzeuge zu laden, wenn die anfängliche Auswahl ein benötigtes Werkzeug übersehen hat. Auswahlfehlschlag ist nicht fatal -- der Agent fällt auf den vollständigen Satz zurück. Siehe [Progressive Disclosure](/architecture/progressive-disclosure).
+7. **CallAgent-Registrierung (Nur Auto-Modus).** Wenn kein spezifischer Agent ausgewählt ist, werden alle aktiven, sichtbaren Agenten in einen Katalog zusammengefasst und über `CallAgentTool` verfügbar gemacht, sodass das LLM Aufgaben an spezialisierte Agenten delegieren kann. Delegierte Agenten erhalten eine vollständige `ToolRegistry`, die aus ihrer eigenen Konfiguration erstellt wird, schließt aber `call_agent` aus, um unendliche Rekursion zu verhindern. Wenn ein spezifischer Agent ausgewählt ist, wird `CallAgentTool` nicht registriert -- Agenten sind spezialisiert und delegieren nicht an andere Agenten. Dies verhindert, dass Marketplace-Agenten auf die privaten Prompts anderer Agenten zugreifen.
+8. **Laufzeit-Auswahl.** Wenn die Gesamtzahl der Werkzeuge 12 überschreitet, wählt ein leichter LLM-Aufruf die relevanteste Teilmenge (bis zu 6) für diese spezifische Anfrage aus. Ein `request_tools` Meta-Werkzeug wird automatisch registriert, sodass das LLM während des Gesprächs dynamisch zusätzliche Werkzeuge laden kann, wenn die anfängliche Auswahl ein benötigtes Werkzeug verpasst hat. Auswahlfehlschlag ist nicht fatal -- der Agent fällt auf den vollständigen Satz zurück. Siehe [Progressive Disclosure](/architecture/progressive-disclosure).
 
-Das Ergebnis: Der Agent sieht genau die Werkzeuge, die er braucht, nicht mehr. Ein einfacher Agent ohne Konnektoren und ohne KB könnte 5 Werkzeuge sehen. Ein Hub-Agent, der mit 3 Enterprise-Systemen verbunden ist, mit einer fundierten Wissensdatenbank und 2 MCP-Servern, könnte 30 sehen -- aber nach der Auswahl schaffen es nur die 6 relevantesten in den Kontext.
+Das Ergebnis: Der Agent sieht genau die Werkzeuge, die er braucht, nicht mehr. Ein einfacher Agent ohne Konnektoren und ohne KB könnte 5 Werkzeuge sehen. Ein Hub-Agent, der mit 3 Unternehmenssystemen verbunden ist, mit einer fundierten Wissensdatenbank und 2 MCP-Servern könnte 30 sehen -- aber nach der Auswahl schaffen es nur die 6 relevantesten in den Kontext.
 
 ## Wann man was verwendet
 
-| Anforderung | Verwendung | Grund |
+| Anforderung | Verwenden Sie | Warum |
 |------|-----|-----|
-| Allgemeine Berechnung, Code-Ausführung, Texttransformationen | Integriertes Tool | Immer verfügbar, keine Konfiguration erforderlich |
-| Enterprise-Systemintegration (ERP, CRM, OA) | Konnektor | Auth-Governance, Audit-Trail, Zugriffskontrolle auf Operationsebene |
-| Wissensabruf mit Zitaten und Belegen | Wissensdatenbank | RAG-Pipeline, fundierte Generierung, Konfidenzscoring |
-| Ökosystem von Drittanbieter-Tools | MCP | Standardprotokoll, Prozessisolation, Community-Server |
-| Organisationsrichtlinien, SOPs, Handlungsverfahren | Fähigkeit | Standardmäßig global, progressives Laden, Sichtbarkeitsbereich |
-| Aufgaben an spezialisierte Agenten delegieren | Agent aufrufen | Semantisches Agent-Routing, vollständige Tool-Vererbung, parallele Ausführung |
-| Direkter Datenbankzugriff | Datenbank-Konnektor | Schema-bewusstes SQL, optionale Nur-Lese-Erzwingung |
-| Benutzerdefinierte interne Tools | MCP oder Integriert | MCP für Prozessisolation; integriert für enge Integration |
+| Allgemeine Berechnungen, Code-Ausführung, Texttransformationen | Built-in Tool | Immer verfügbar, keine Konfiguration erforderlich |
+| Enterprise-Systemintegration (ERP, CRM, OA) | Connector | Auth-Governance, Audit-Trail, Zugriffskontrolle auf Operationsebene |
+| Wissensabruf mit Zitaten und Nachweisen | Knowledge Base | RAG-Pipeline, fundierte Generierung, Konfidenzscoring |
+| Third-Party-Tool-Ökosystem | MCP | Standardprotokoll, Prozessisolation, Community-Server |
+| Organisationsrichtlinien, SOPs, Handlungsverfahren | Skill | Standardmäßig global, progressive Ladevorgänge, Sichtbarkeitsbereich |
+| Aufgaben an spezialisierte Agenten delegieren | CallAgent | Semantisches Agent-Routing, vollständige Tool-Vererbung, parallele Ausführung |
+| Direkter Datenbankzugriff | Database Connector | Schema-bewusstes SQL, optionale Read-Only-Erzwingung |
+| Benutzerdefinierte interne Tools | MCP oder Built-in | MCP für Prozessisolation; Built-in für enge Integration |
 
-Die Kategorien schließen sich nicht gegenseitig aus. Ein einzelner Agent kann alle fünf Funktionsquellen in einem Gespräch verwenden – eine Fähigkeit für das SOP zur Beschwerdeverarbeitung laden, eine Wissensdatenbank nach Richtliniendokumenten abfragen, einen Konnektor aufrufen, um das ERP zu überprüfen, die Analyse an einen spezialisierten Sub-Agenten delegieren und ein integriertes Tool verwenden, um die Ergebnisse zu formatieren.
+Die Kategorien schließen sich nicht gegenseitig aus. Ein einzelner Agent kann alle fünf Funktionsquellen in einem Gespräch nutzen – ein Skill für das SOP zur Beschwerdeverarbeitung laden, eine Knowledge Base nach Richtliniendokumenten abfragen, einen Connector aufrufen, um das ERP zu überprüfen, die Analyse an einen spezialisierten Agent delegieren (im Auto-Modus) und ein Built-in Tool verwenden, um die Ergebnisse zu formatieren.
 
 ## Ausführungs-Engines sind orthogonal
 
-Das Tool-System und die Ausführungs-Engines sind unabhängige Aspekte. Die LLM-gesteuerten Engines (ReAct und DAG) nutzen Tools aus derselben `ToolRegistry`. Die Wahl der Engine beeinflusst, wie Tools orchestriert werden, nicht welche Tools verfügbar sind.
+Das Tool-System und die Ausführungs-Engines sind unabhängige Belange. Die LLM-gesteuerten Engines (ReAct und DAG) verbrauchen Tools aus derselben `ToolRegistry`. Die Wahl der Engine beeinflusst, wie Tools orchestriert werden, nicht welche Tools verfügbar sind.
 
-**ReAct** ist eine iterative Tool-Schleife. Der Agent argumentiert, wählt ein Tool, beobachtet das Ergebnis und wiederholt dies, bis er fertig ist. Es eignet sich hervorragend für explorative, konversationelle Aufgaben, bei denen der nächste Schritt vom vorherigen Ergebnis abhängt. Die Schleife läuft bis zu 50 Iterationen mit Kontextverwaltung pro Iteration über ContextGuard. Siehe [ReAct Engine](/architecture/react-engine) für Implementierungsdetails.
+**ReAct** ist eine iterative Tool-Schleife. Der Agent argumentiert, wählt ein Tool, beobachtet das Ergebnis und wiederholt dies, bis er fertig ist. Es zeichnet sich bei explorativen, konversationalen Aufgaben aus, bei denen der nächste Schritt vom vorherigen Ergebnis abhängt. Die Schleife läuft bis zu 50 Iterationen mit Kontextverwaltung pro Iteration über ContextGuard. Siehe [ReAct Engine](/architecture/react-engine) für Implementierungsdetails.
 
-**DAG** zerlegt ein Ziel in 2-6 parallele Schritte. Jeder Schritt führt einen unabhängigen ReAct-Agent aus. Ein PlanAnalyzer bewertet, ob das Ziel erreicht wurde; falls nicht, plant die Pipeline autonom neu (bis zu 3 Runden). DAG eignet sich hervorragend für Aufgaben mit klaren Teilaufgaben, die gleichzeitig ausgeführt werden können – „drei Quellen durchsuchen und Ergebnisse vergleichen" wird in der Zeit einer Suche abgeschlossen, nicht drei. Siehe [DAG Engine](/architecture/dag-engine) für die vollständige Pipeline.
+**DAG** zerlegt ein Ziel in 2-6 parallele Schritte. Jeder Schritt führt einen unabhängigen ReAct-Agent aus. Ein PlanAnalyzer bewertet, ob das Ziel erreicht wurde; wenn nicht, plant die Pipeline autonom neu (bis zu 3 Runden). DAG zeichnet sich bei Aufgaben mit klaren Teilaufgaben aus, die gleichzeitig ausgeführt werden können – „drei Quellen durchsuchen und Ergebnisse vergleichen" wird in der Zeit einer Suche abgeschlossen, nicht drei. Siehe [DAG Engine](/architecture/dag-engine) für die vollständige Pipeline.
 
-Die beiden Engines nutzen gemeinsame Infrastruktur: `structured_llm_call` für zuverlässige strukturierte Ausgaben, `ContextGuard` für die Durchsetzung des Token-Budgets und die `ToolRegistry` für Tool-Auflösung. Das Hinzufügen eines neuen Tools erfordert keine Änderungen an einer der Engines. Das Hinzufügen einer neuen Engine (falls jemals nötig) erfordert keine Änderungen am Tool-System.
+Die beiden Engines teilen sich Infrastruktur: `structured_llm_call` für zuverlässige strukturierte Ausgaben, `ContextGuard` für Durchsetzung des Token-Budgets und die `ToolRegistry` für Tool-Auflösung. Das Hinzufügen eines neuen Tools erfordert keine Änderungen an einer der Engines. Das Hinzufügen einer neuen Engine (falls jemals nötig) erfordert keine Änderungen am Tool-System.
 
-Beide Engines unterstützen auch **Multi-Agent-Delegation** über `CallAgentTool`. Im nativen Function-Calling-Modus kann das LLM mehrere `call_agent`-Aufrufe in einer einzigen Runde aufrufen, die gleichzeitig über `asyncio.gather` ausgeführt werden. Jeder Sub-Agent erhält seine eigene `ToolRegistry` und läuft als vollständige Ausführungseinheit. Für das detaillierte Design der Agent-Erkennung, Skills als globale SOPs und Multi-Agent-Orchestrierung siehe [Agent & Resource Discovery](/architecture/agent-discovery).
+Beide Engines unterstützen auch **Agent-Delegation** über `CallAgentTool` im Auto-Modus (kein Agent ausgewählt). Im nativen Function-Calling-Modus kann das LLM mehrere `call_agent`-Aufrufe in einer einzigen Runde aufrufen, die gleichzeitig über `asyncio.gather` ausgeführt werden. Jeder delegierte Agent erhält seine eigene `ToolRegistry` und läuft als vollständige Ausführungseinheit. Für das detaillierte Design der Agent-Erkennung, Skills als globale SOPs und Agent-Delegation siehe [Agent & Resource Discovery](/architecture/agent-discovery).
 
 ### Workflow Engine — das dritte Paradigma
 

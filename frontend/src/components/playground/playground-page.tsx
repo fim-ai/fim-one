@@ -661,6 +661,7 @@ function PlaygroundContent({
   isPostProcessing,
 }: PlaygroundContentProps) {
   const t = useTranslations("playground")
+  const tc = useTranslations("common")
   const tError = useTranslations("errors")
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
@@ -1852,7 +1853,7 @@ function PlaygroundContent({
             </DropdownMenuContent>
           </DropdownMenu>
           {/* Agent selector — hidden in embedded/builder mode */}
-          {!embedded && agents.length > 0 && (
+          {!embedded && (
             <Popover open={agentSelectorOpen} onOpenChange={setAgentSelectorOpen}>
               <PopoverTrigger asChild>
                 <button
@@ -1863,7 +1864,7 @@ function PlaygroundContent({
                     "border select-none",
                     selectedAgent
                       ? "border-primary/40 text-primary"
-                      : "border-border/60 text-muted-foreground",
+                      : "border-primary/30 bg-primary/5 text-primary",
                     isRunning
                       ? "opacity-50 cursor-not-allowed"
                       : "hover:bg-muted/70 hover:text-foreground"
@@ -1871,32 +1872,45 @@ function PlaygroundContent({
                 >
                   {selectedAgent?.icon
                     ? <span className="text-sm leading-none">{selectedAgent.icon}</span>
-                    : <Bot className="h-3 w-3" />
+                    : <Sparkles className="h-3 w-3" />
                   }
-                  {selectedAgent ? selectedAgent.name : t("noAgent")}
+                  {selectedAgent ? selectedAgent.name : t("autoAgent")}
                   <ChevronsUpDown className="h-3 w-3 opacity-50" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-[200px] p-0" side="top" align="start">
+              <PopoverContent className="w-[260px] p-0" side="top" align="start">
                 <Command>
                   <CommandInput placeholder={t("searchAgents")} />
                   <CommandList>
                     <CommandEmpty>{t("noAgentFound")}</CommandEmpty>
                     <CommandGroup>
                       <CommandItem
-                        value="__no_agent__"
+                        value="__auto_agent__"
+                        keywords={["auto"]}
                         onSelect={() => {
                           onAgentChange(null)
                           setAgentSelectorOpen(false)
                         }}
+                        className="flex items-start gap-2"
                       >
                         <Check
                           className={cn(
-                            "h-3.5 w-3.5",
+                            "h-3.5 w-3.5 mt-0.5 shrink-0",
                             !selectedAgent ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        {t("noAgent")}
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <Sparkles className="h-3 w-3 text-primary" />
+                            <span className="font-medium">{t("autoAgent")}</span>
+                            <span className="text-[10px] text-primary/70 bg-primary/10 px-1.5 py-0 rounded-full leading-relaxed">
+                              {tc("default")}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground leading-tight">
+                            {t("autoAgentDescription")}
+                          </span>
+                        </div>
                       </CommandItem>
                       {agents.map((a) => (
                         <CommandItem
@@ -1914,6 +1928,7 @@ function PlaygroundContent({
                               selectedAgent?.id === a.id ? "opacity-100" : "opacity-0"
                             )}
                           />
+                          {a.icon && <span className="text-sm leading-none">{a.icon}</span>}
                           {a.name}
                         </CommandItem>
                       ))}

@@ -98,6 +98,8 @@
   "toolCategoryGeneralDesc": "Miscellaneous and uncategorized built-in tools",
   "toolCategoryGeneralTools": "Utility tools without a specific category",
 
+  "specializationHint": "Each agent is specialized and focuses exclusively on its configured tools and resources. Agents do not call other agents during execution. For multi-agent orchestration, use \"Auto\" mode in the chat playground.",
+
   "knowledgeBases": "Knowledge Bases",
   "knowledgeBasesDescription": "Bind KBs to enable evidence-grounded retrieval with citations",
   "kbDocCount": "{count} docs",

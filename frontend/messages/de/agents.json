@@ -150,5 +150,6 @@
   "mcpServersDescription": "Wählen Sie, auf welche MCP Server dieser Agent zugreifen kann.",
   "forkAgent": "Duplizieren",
   "forkSuccess": "Dupliziert als \"{name}\"",
-  "forkFailed": "Agent konnte nicht dupliziert werden"
+  "forkFailed": "Agent konnte nicht dupliziert werden",
+  "specializationHint": "Jeder Agent ist spezialisiert und konzentriert sich ausschließlich auf seine konfigurierten Tools und Ressourcen. Agenten rufen während der Ausführung keine anderen Agenten auf. Für die Orchestrierung mehrerer Agenten verwenden Sie den \"Auto\"-Modus im Chat-Playground."
 }

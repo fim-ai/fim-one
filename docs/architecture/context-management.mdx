@@ -82,7 +82,7 @@ After compaction, `DbMemory` sets tracking flags (`was_compacted`, `_original_co
 
 ### Layer 3 — ContextGuard
 
-`ContextGuard` is the per-iteration budget enforcer. It is called at the top of every ReAct iteration — both in standalone ReAct mode and inside each DAG step's sub-agent. This is the last line of defense before the messages hit the LLM API.
+`ContextGuard` is the per-iteration budget enforcer. It is called at the top of every ReAct iteration — both in standalone ReAct mode and inside each DAG step's agent. This is the last line of defense before the messages hit the LLM API.
 
 The enforcement follows a three-step process:
 
@@ -215,7 +215,7 @@ flowchart TD
 
 **Phase 3 — Planning.** The planner receives a 2-message prompt: system prompt plus enriched query. No ContextGuard here — the enriched query is already size-controlled by the 16K check.
 
-**Phase 4 — Step execution.** Each DAG step runs as an independent ReAct agent with its own ContextGuard. Critically, these sub-agents have **no memory** — they start fresh with only their task description and dependency context. This is by design: DAG steps should be self-contained units of work. Dependency results are injected via `_build_step_context`, which character-truncates at 50K (the ContextGuard's `max_message_chars` limit).
+**Phase 4 — Step execution.** Each DAG step runs as an independent ReAct agent with its own ContextGuard. Critically, these step agents have **no memory** — they start fresh with only their task description and dependency context. This is by design: DAG steps should be self-contained units of work. Dependency results are injected via `_build_step_context`, which character-truncates at 50K (the ContextGuard's `max_message_chars` limit).
 
 **Phase 5 — Analysis.** Step results are formatted for the analyzer LLM with per-step truncation at 10K characters. This prevents a single step's verbose output from dominating the analysis context.
 

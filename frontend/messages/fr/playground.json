@@ -17,7 +17,6 @@
   "modeStandardTooltip": "Standard (ReAct) — Réponse rapide avec utilisation flexible des outils",
   "modePlannerTooltip": "Planificateur (DAG) — Décompose les tâches en un plan structuré",
   "modeAutoTooltip": "Auto — Choisit automatiquement Standard (ReAct) ou Planificateur (DAG) en fonction de la complexité de la requête",
-  "noAgent": "Aucun agent",
   "searchAgents": "Rechercher des agents...",
   "noAgentFound": "Aucun agent trouvé.",
   "uploadFiles": "Télécharger des fichiers",
@@ -147,5 +146,7 @@
   "tryRephrase": "Essayez de reformuler votre question",
   "citationRelevance": "Pertinence : {value}%",
   "retryUpload": "Réessayer le téléchargement",
-  "newChat": "Nouveau Chat"
+  "newChat": "Nouveau Chat",
+  "autoAgent": "Auto",
+  "autoAgentDescription": "Délègue automatiquement au meilleur agent"
 }

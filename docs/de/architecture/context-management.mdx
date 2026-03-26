@@ -82,26 +82,26 @@ Nach der Komprimierung setzt `DbMemory` Verfolgungsflags (`was_compacted`, `_ori
 
 ### Layer 3 — ContextGuard
 
-`ContextGuard` ist der Pro-Iteration-Budget-Erzwinger. Er wird am Anfang jeder ReAct-Iteration aufgerufen — sowohl im eigenständigen ReAct-Modus als auch innerhalb des Sub-Agenten jedes DAG-Schritts. Dies ist die letzte Verteidigungslinie, bevor die Nachrichten die LLM-API erreichen.
+`ContextGuard` ist der Pro-Iteration-Budget-Erzwinger. Er wird am Anfang jeder ReAct-Iteration aufgerufen — sowohl im eigenständigen ReAct-Modus als auch in jedem DAG-Schritt-Agent. Dies ist die letzte Verteidigungslinie, bevor die Nachrichten die LLM-API erreichen.
 
 Die Durchsetzung folgt einem dreistufigen Prozess:
 
-1. **Überdimensionierte einzelne Nachrichten kürzen.** Jede einzelne Nachricht, die 50K Zeichen überschreitet, wird hart gekürzt mit einem `[Truncated]`-Suffix. Dies erfasst unkontrollierte Tool-Ausgaben — ein Web-Scraping, das eine ganze Webseite zurückgibt, ein Datei-Lesen, das einen großen Datensatz ausgibt.
+1. **Überdimensionierte einzelne Nachrichten kürzen.** Jede einzelne Nachricht, die 50K Zeichen überschreitet, wird hart gekürzt mit einem `[Truncated]`-Suffix. Dies erfasst unkontrollierte Tool-Ausgaben — ein Web-Scrape, das eine ganze Webseite zurückgibt, ein Datei-Lesen, das einen großen Datensatz ausgibt.
 
-2. **Gesamttoken schätzen.** Wenn die Gesamtmenge innerhalb des Budgets passt, sofort zurückgeben. Die meisten Iterationen bestehen hier — Komprimierung ist die Ausnahme, nicht die Regel.
+2. **Gesamttoken schätzen.** Wenn die Gesamtmenge in das Budget passt, sofort zurückgeben. Die meisten Iterationen bestehen hier — Komprimierung ist die Ausnahme, nicht die Regel.
 
 3. **Komprimieren, wenn über Budget.** Wenn ein `compact_llm` verfügbar ist, verwenden Sie LLM-gestützte Komprimierung mit einem hinweisspezifischen Prompt. Andernfalls greifen Sie auf `smart_truncate` zurück.
 
 Das **Hinweissystem** ist das, was ContextGuard kontextbewusst macht, anstatt eine Einheitslösung zu sein. Verschiedene Situationen erfordern unterschiedliche Komprimierungsstrategien:
 
-| Hinweis | Verwendet von | Erhält | Löscht |
+| Hinweis | Verwendet von | Behält | Löscht |
 |---------|---------------|--------|--------|
 | `react_iteration` | ReAct-Agent-Schleife | Aktuelle Reasoning-Kette, aktuelles Ziel, kritische Daten | Alte redundante Schritte, fehlgeschlagene Wiederholungen, ausführliche Tool-Ausgaben |
-| `planner_input` | DAG angereicherte Abfrage | Entwicklung der Benutzerabsicht, wichtige Entscheidungen, Einschränkungen | Dialogdetails, Grüße, Tool-Call-Mechanik |
-| `step_dependency` | DAG-Schrittkontext | Wichtige Daten, Zahlen, Schlussfolgerungen | Reasoning-Prozess, fehlgeschlagene Versuche, ausführliche Formatierung |
-| `general` | Standard-Fallback | Wichtige Fakten, Entscheidungen, Tool-Ergebnisse | Grüße, Füllmaterial, redundante Hin- und Hergespräche |
+| `planner_input` | DAG angereicherte Abfrage | Benutzerintention-Entwicklung, Schlüsselbeschlüsse, Einschränkungen | Dialogdetails, Grüße, Tool-Call-Mechanik |
+| `step_dependency` | DAG-Schritt-Kontext | Schlüsseldaten, Zahlen, Schlussfolgerungen | Reasoning-Prozess, fehlgeschlagene Versuche, ausführliche Formatierung |
+| `general` | Standard-Fallback | Schlüsselfakten, Beschlüsse, Tool-Ergebnisse | Grüße, Füllstoff, redundante Hin- und Herbewegungen |
 
-Jeder Hinweis ist einem sorgfältig formulierten System-Prompt zugeordnet, der dem Komprimierungs-LLM mitteilt, was zu behalten und was zu verwerfen ist. Die Prompts enden mit „Schreiben Sie in der gleichen Sprache wie das Gespräch" — ein Detail, das für CJK-Benutzer wichtig ist, deren Zusammenfassungen sonst standardmäßig auf Englisch erfolgen würden.
+Jeder Hinweis ist einem sorgfältig formulierten System-Prompt zugeordnet, der dem Komprimierungs-LLM sagt, was zu behalten und was zu verwerfen ist. Die Prompts enden mit „Schreiben Sie in der gleichen Sprache wie das Gespräch" — ein Detail, das für CJK-Benutzer wichtig ist, deren Zusammenfassungen sonst standardmäßig auf Englisch erfolgen würden.
 
 Wenn die LLM-Komprimierung fehlschlägt (Netzwerkfehler, leere Antwort, eine beliebige Ausnahme), greift ContextGuard stillschweigend auf `smart_truncate` zurück. Der Agent sieht den Fehler nie. Dies ist eine bewusste Zuverlässigkeitsentscheidung: Es ist besser, etwas Kontext durch heuristische Kürzung zu verlieren, als die Iteration zum Absturz zu bringen.
 
@@ -211,15 +211,15 @@ flowchart TD
 
 **Phase 1 — Verlauf laden.** DbMemory lädt und komprimiert den Gesprächsverlauf, genau wie ReAct. Der komprimierte Verlauf wird in einen Textblock formatiert, dem `"Previous conversation:"` vorangestellt ist.
 
-**Phase 2 — Konstruktion der erweiterten Abfrage.** Der Verlauftext und die aktuelle Abfrage werden in eine `enriched_query` kombiniert. Wenn diese 16K Token überschreitet, wird sie mit dem `planner_input` Hinweis-Prompt vom LLM zusammengefasst. Die 16K-Schwelle wird gewählt, weil der Planer die gesamte Abfrage in einem Durchgang lesen muss — anders als ReAct gibt es während der Planung keine iterative Komprimierung.
+**Phase 2 — Konstruktion der erweiterten Abfrage.** Der Verlauftext und die aktuelle Abfrage werden zu einer `enriched_query` kombiniert. Wenn diese 16K Token überschreitet, wird sie mit dem `planner_input`-Hinweis-Prompt LLM-zusammengefasst. Die 16K-Schwelle wird gewählt, weil der Planer die gesamte Abfrage in einem Durchgang lesen muss — anders als ReAct gibt es während der Planung keine iterative Komprimierung.
 
-**Phase 3 — Planung.** Der Planer erhält einen 2-Nachrichten-Prompt: System-Prompt plus erweiterte Abfrage. Kein ContextGuard hier — die erweiterte Abfrage ist bereits durch die 16K-Prüfung größenkontrolliert.
+**Phase 3 — Planung.** Der Planer erhält einen 2-Nachrichten-Prompt: Systemprompt plus erweiterte Abfrage. Kein ContextGuard hier — die erweiterte Abfrage ist bereits durch die 16K-Prüfung größenkontrolliert.
 
-**Phase 4 — Schrittausführung.** Jeder DAG-Schritt wird als unabhängiger Agentursystem mit eigenem ContextGuard ausgeführt. Entscheidend ist, dass diese Sub-Agenturen **kein Gedächtnis** haben — sie starten neu mit nur ihrer Aufgabenbeschreibung und dem Abhängigkeitskontext. Dies ist beabsichtigt: DAG-Schritte sollten eigenständige Arbeitseinheiten sein. Abhängigkeitsergebnisse werden über `_build_step_context` eingespritzt, das bei 50K Zeichen gekürzt wird (das `max_message_chars`-Limit des ContextGuard).
+**Phase 4 — Schrittausführung.** Jeder DAG-Schritt läuft als unabhängiger ReAct-Agent mit seinem eigenen ContextGuard. Kritisch ist: Diese Schritt-Agenten haben **keinen Speicher** — sie starten neu mit nur ihrer Aufgabenbeschreibung und Abhängigkeitskontext. Dies ist beabsichtigt: DAG-Schritte sollten eigenständige Arbeitseinheiten sein. Abhängigkeitsergebnisse werden über `_build_step_context` eingespritzt, das bei 50K Zeichen abgeschnitten wird (das `max_message_chars`-Limit des ContextGuard).
 
-**Phase 5 — Analyse.** Schrittergebnisse werden für das Analyzer-LLM mit Pro-Schritt-Kürzung bei 10K Zeichen formatiert. Dies verhindert, dass die ausführliche Ausgabe eines einzelnen Schritts den Analyskontext dominiert.
+**Phase 5 — Analyse.** Schrittergebnisse werden für das Analyzer-LLM mit Pro-Schritt-Abschneidung bei 10K Zeichen formatiert. Dies verhindert, dass die ausführliche Ausgabe eines einzelnen Schritts den Analysekontext dominiert.
 
-**Phase 6 — Neuplanung.** Wenn der Analyzer feststellt, dass das Ziel nicht erreicht wurde und das Vertrauen unter der Schwelle liegt, werden Schrittergebnisse für den Neuplanungskontext auf nur 500 Zeichen pro Schritt gekürzt. Die Neuplanung muss wissen, *was passiert ist* und *was schief gelaufen ist*, nicht die vollständigen Details der Ausgabe jedes Schritts. Diese aggressive Kürzung hält den Neuplan-Prompt kompakt genug, damit der Planer ihn effizient verarbeiten kann.
+**Phase 6 — Neuplanung.** Wenn der Analyzer feststellt, dass das Ziel nicht erreicht wurde und das Vertrauen unter der Schwelle liegt, werden Schrittergebnisse auf nur 500 Zeichen pro Schritt für den Neuplanungskontext gekürzt. Die Neuplanung muss wissen, *was passiert ist* und *was schief gelaufen ist*, nicht die vollständigen Details der Ausgabe jedes Schritts. Diese aggressive Kürzung hält den Neuplan-Prompt kompakt genug, damit der Planer ihn effizient verarbeiten kann.
 
 Für die vollständige DAG-Pipeline-Architektur einschließlich der LLM Call Map und Neuplanungslogik siehe [DAG Engine](/architecture/dag-engine).
 

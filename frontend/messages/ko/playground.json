@@ -17,7 +17,6 @@
   "modeStandardTooltip": "표준 (ReAct) — 유연한 도구 사용으로 빠른 응답",
   "modePlannerTooltip": "플래너 (DAG) — 작업을 구조화된 계획으로 분해",
   "modeAutoTooltip": "자동 — 쿼리 복잡도에 따라 표준 (ReAct) 또는 플래너 (DAG)를 자동으로 선택",
-  "noAgent": "에이전트 없음",
   "searchAgents": "에이전트 검색...",
   "noAgentFound": "에이전트를 찾을 수 없습니다.",
   "uploadFiles": "파일 업로드",
@@ -147,5 +146,7 @@
   "tryRephrase": "질문을 다시 표현해 보세요",
   "citationRelevance": "관련성: {value}%",
   "retryUpload": "업로드 다시 시도",
-  "newChat": "새 채팅"
+  "newChat": "새 채팅",
+  "autoAgent": "자동",
+  "autoAgentDescription": "최적의 에이전트에 자동으로 위임합니다"
 }

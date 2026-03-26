@@ -17,7 +17,6 @@
   "modeStandardTooltip": "標準 (ReAct) — 柔軟なツール使用による迅速な応答",
   "modePlannerTooltip": "プランナー (DAG) — タスクを構造化された計画に分解",
   "modeAutoTooltip": "自動 — クエリの複雑さに基づいて標準 (ReAct) またはプランナー (DAG) を自動選択",
-  "noAgent": "エージェントなし",
   "searchAgents": "エージェントを検索...",
   "noAgentFound": "エージェントが見つかりません。",
   "uploadFiles": "ファイルをアップロード",
@@ -147,5 +146,7 @@
   "tryRephrase": "質問を言い換えてみてください",
   "citationRelevance": "関連性: {value}%",
   "retryUpload": "アップロードを再試行",
-  "newChat": "新しいチャット"
+  "newChat": "新しいチャット",
+  "autoAgent": "自動",
+  "autoAgentDescription": "最適なエージェントに自動的に委譲します"
 }

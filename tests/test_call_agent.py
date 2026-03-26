@@ -253,8 +253,8 @@ class TestCallAgentRun:
         assert "Error: could not load model for agent agent-1" in result
 
     @pytest.mark.asyncio
-    async def test_run_excludes_call_agent_from_sub_tools(self) -> None:
-        """Sub-agent tools must not include call_agent (recursion prevention)."""
+    async def test_run_excludes_call_agent_from_delegate_tools(self) -> None:
+        """Delegated agent tools must not include call_agent (recursion prevention)."""
         fake_llm = _make_fake_llm("done")
         resolver = AsyncMock(return_value=fake_llm)
 
@@ -276,12 +276,12 @@ class TestCallAgentRun:
         )
 
         result = await tool.run(agent_id="agent-1", task="test")
-        # Should succeed (not crash) and the sub-agent should not have call_agent
+        # Should succeed (not crash) and the delegated agent should not have call_agent
         assert "done" in result
 
     @pytest.mark.asyncio
     async def test_run_tool_resolver_failure_uses_empty_registry(self) -> None:
-        """When tool_resolver raises, sub-agent still runs with empty tools."""
+        """When tool_resolver raises, delegated agent still runs with empty tools."""
         fake_llm = _make_fake_llm("ok")
         llm_resolver = AsyncMock(return_value=fake_llm)
         tool_resolver = AsyncMock(side_effect=RuntimeError("MCP down"))
