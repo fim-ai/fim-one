@@ -474,8 +474,8 @@ function ModelFormDialog({ open, onOpenChange, providerId, model, onSuccess }: M
         setDisplayName(model.name)
         setModelName(model.model_name)
         setTemperature(model.temperature)
-        setMaxOutputTokens(model.max_output_tokens?.toString() ?? "")
-        setContextSize(model.context_size?.toString() ?? "")
+        setMaxOutputTokens(model.max_output_tokens ? (model.max_output_tokens / 1000).toString() : "")
+        setContextSize(model.context_size ? (model.context_size / 1000).toString() : "")
         setJsonModeEnabled(model.json_mode_enabled)
         setToolChoiceEnabled(model.tool_choice_enabled)
       } else {
@@ -519,8 +519,8 @@ function ModelFormDialog({ open, onOpenChange, providerId, model, onSuccess }: M
         name: displayName.trim(),
         model_name: modelName.trim(),
         temperature: temperature ?? undefined,
-        max_output_tokens: maxOutputTokens ? parseInt(maxOutputTokens) : undefined,
-        context_size: contextSize ? parseInt(contextSize) : undefined,
+        max_output_tokens: maxOutputTokens ? parseInt(maxOutputTokens) * 1000 : undefined,
+        context_size: contextSize ? parseInt(contextSize) * 1000 : undefined,
         json_mode_enabled: jsonModeEnabled,
         tool_choice_enabled: toolChoiceEnabled,
       }
@@ -613,24 +613,32 @@ function ModelFormDialog({ open, onOpenChange, providerId, model, onSuccess }: M
                   <div className="mt-3 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label htmlFor="mf-max-output">{t("maxOutputTokens")}</Label>
-                        <Input
-                          id="mf-max-output"
-                          type="number"
-                          placeholder="64000"
-                          value={maxOutputTokens}
-                          onChange={(e) => setMaxOutputTokens(e.target.value)}
-                        />
+                        <Label htmlFor="mf-context">{t("contextSize")}</Label>
+                        <div className="relative">
+                          <Input
+                            id="mf-context"
+                            type="number"
+                            placeholder="128"
+                            className="pr-8"
+                            value={contextSize}
+                            onChange={(e) => setContextSize(e.target.value)}
+                          />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">K</span>
+                        </div>
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="mf-context">{t("contextSize")}</Label>
-                        <Input
-                          id="mf-context"
-                          type="number"
-                          placeholder="128000"
-                          value={contextSize}
-                          onChange={(e) => setContextSize(e.target.value)}
-                        />
+                        <Label htmlFor="mf-max-output">{t("maxOutputTokens")}</Label>
+                        <div className="relative">
+                          <Input
+                            id="mf-max-output"
+                            type="number"
+                            placeholder="64"
+                            className="pr-8"
+                            value={maxOutputTokens}
+                            onChange={(e) => setMaxOutputTokens(e.target.value)}
+                          />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">K</span>
+                        </div>
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -1133,6 +1141,8 @@ function ProviderCard({
                   <tr className="border-b border-border/50 bg-muted/10">
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">{t("name")}</th>
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">{t("modelName")}</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">{t("contextSize")}</th>
+                    <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">{t("maxOutputTokens")}</th>
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">{tc("status")}</th>
                     <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">{tc("actions")}</th>
                   </tr>
@@ -1142,6 +1152,8 @@ function ProviderCard({
                     <tr key={m.id} className="hover:bg-muted/10 transition-colors">
                       <td className="px-4 py-2.5 font-medium">{m.name}</td>
                       <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{m.model_name}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{m.context_size ? `${m.context_size / 1000}K` : "—"}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{m.max_output_tokens ? `${m.max_output_tokens / 1000}K` : "—"}</td>
                       <td className="px-4 py-2.5">
                         <Badge variant="outline" className={`text-[10px] ${m.is_active ? "border-green-500/40 text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
                           {m.is_active ? t("active") : t("inactive")}
