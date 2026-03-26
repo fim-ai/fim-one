@@ -617,7 +617,7 @@ export function DashboardPage() {
                         <Link
                           key={agent.id}
                           href={`/agents/${agent.id}`}
-                          className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-3 transition-all hover:border-border/80 hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                          className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 p-3 transition-all hover:border-border hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           <AgentIcon icon={agent.icon} name={agent.name} />
                           <div className="min-w-0 flex-1">
