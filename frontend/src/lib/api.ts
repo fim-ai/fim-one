@@ -1689,7 +1689,7 @@ export const adminApi = {
   },
 
   importModelConfig: (data: object) =>
-    apiFetch<{ data: { created: { providers: number; models: number; groups: number }; skipped: { providers: number; models: number; groups: number }; warnings: string[] } }>('/api/admin/model-config/import', {
+    apiFetch<{ data: { created: { providers: number; models: number; groups: number }; skipped: { providers: number; models: number; groups: number }; deleted?: { providers: number; models: number; groups: number }; warnings: string[] } }>('/api/admin/model-config/import', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
