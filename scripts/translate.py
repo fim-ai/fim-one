@@ -438,13 +438,26 @@ def get_staged_en_files() -> list[Path]:
 # ---------------------------------------------------------------------------
 
 _JSON_SYSTEM_PROMPT = """\
-You are a professional software localisation expert. \
+You are a professional software localisation expert for an AI platform. \
 Your task is to translate UI string values from English to {locale}. \
 Rules:
 - Translate ONLY the values, never the keys.
 - Preserve all placeholder tokens literally, e.g. {{name}}, {{count}}, {{0}}.
 - Keep HTML tags intact.
 - Keep these terms in English: API, MCP, DAG, FIM One, OAuth, SSO, JWT, SSE, LLM, RAG.
+- AI domain glossary (use these translations for {locale} when applicable): \
+  "temperature"/"temp" → 温度 (zh) / 温度 (ja) / 온도 (ko), \
+  "token" → token (keep in English), \
+  "prompt" → 提示词 (zh), \
+  "reasoning" → 推理 (zh), \
+  "embedding" → 嵌入 (zh), \
+  "fine-tuning" → 微调 (zh), \
+  "context window" → 上下文窗口 (zh), \
+  "hallucination" → 幻觉 (zh), \
+  "inference" → 推理 (zh), \
+  "model" → 模型 (zh), \
+  "provider" → 提供商 (zh). \
+  For non-zh locales, use the standard AI industry translation for each term.
 - Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
   "connector" → localised equivalent (e.g. 连接器 in zh). Do NOT keep them in English.
 - Return ONLY a valid JSON object mapping the same keys to their translated values. \
@@ -779,7 +792,7 @@ def _translate_sections(
 # ---------------------------------------------------------------------------
 
 _MDX_SYSTEM_PROMPT = """\
-You are a professional technical documentation translator. \
+You are a professional technical documentation translator for an AI platform. \
 Translate the following MDX documentation section from English to {locale}.
 
 STRICT rules — violating any of these will break the documentation site:
@@ -790,12 +803,19 @@ STRICT rules — violating any of these will break the documentation site:
 5. NEVER translate these technical terms: API, MCP, DAG, FIM One, OAuth, SSO, JWT, SSE, \
    FastAPI, SQLAlchemy, Pydantic, Alembic, LLM, RAG, ReAct, JSON, HTTP, HTTPS, URL, UUID, \
    Python, TypeScript, JavaScript, Node.js, npm, pnpm, uv, Docker, PostgreSQL, SQLite.
-6. Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
+6. AI domain glossary — always use AI-industry translations, NOT general-purpose meanings: \
+   "temperature"/"temp" = LLM sampling temperature (温度 in zh, NOT 临时); \
+   "token" = keep in English; "prompt" = 提示词 (zh); "reasoning" = 推理 (zh); \
+   "embedding" = 嵌入 (zh); "inference" = 推理 (zh); "model" = 模型 (zh); \
+   "provider" = 提供商 (zh); "context window" = 上下文窗口 (zh); \
+   "hallucination" = 幻觉 (zh); "fine-tuning" = 微调 (zh). \
+   For non-zh locales, use the standard AI industry translation for each term.
+7. Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
    "connector" → localised equivalent (e.g. 连接器 in zh). Do NOT keep them in English.
-7. For frontmatter (--- ... ---): translate ONLY the VALUES of title, description, \
+8. For frontmatter (--- ... ---): translate ONLY the VALUES of title, description, \
    and sidebarTitle. Leave all other frontmatter keys and values untouched.
-8. Preserve ALL blank lines, heading levels, list markers, and MDX structure exactly.
-9. Return ONLY the translated content — no extra commentary, no markdown fences wrapping the output.
+9. Preserve ALL blank lines, heading levels, list markers, and MDX structure exactly.
+10. Return ONLY the translated content — no extra commentary, no markdown fences wrapping the output.
 """
 
 
@@ -842,7 +862,7 @@ def translate_mdx_file(src_path: Path, locale: str, config: dict[str, str], forc
 # ---------------------------------------------------------------------------
 
 _README_SYSTEM_PROMPT = """\
-You are a professional technical writer and translator. \
+You are a professional technical writer and translator for an AI platform. \
 Translate the following GitHub README section from English to {locale}.
 
 STRICT rules:
@@ -851,13 +871,20 @@ STRICT rules:
 3. NEVER translate these technical terms: API, MCP, DAG, FIM One, OAuth, SSO, JWT, SSE, \
    FastAPI, SQLAlchemy, Pydantic, Alembic, LLM, RAG, ReAct, JSON, HTTP, HTTPS, URL, UUID, \
    Python, TypeScript, JavaScript, Node.js, npm, pnpm, uv, Docker, PostgreSQL, SQLite.
-4. Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
+4. AI domain glossary — always use AI-industry translations, NOT general-purpose meanings: \
+   "temperature"/"temp" = LLM sampling temperature (温度 in zh, NOT 临时); \
+   "token" = keep in English; "prompt" = 提示词 (zh); "reasoning" = 推理 (zh); \
+   "embedding" = 嵌入 (zh); "inference" = 推理 (zh); "model" = 模型 (zh); \
+   "provider" = 提供商 (zh); "context window" = 上下文窗口 (zh); \
+   "hallucination" = 幻觉 (zh); "fine-tuning" = 微调 (zh). \
+   For non-zh locales, use the standard AI industry translation for each term.
+5. Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
    "connector" → localised equivalent (e.g. 连接器 in zh). Do NOT keep them in English.
-5. NEVER translate badge markdown ([![...](...)]) or any markdown image/link URLs.
-6. NEVER translate HTML tags or attributes.
-7. Preserve ALL markdown structure: headings, lists, tables, bold, italic, links.
-8. Translate heading text, paragraph text, table cell text, and list item text.
-9. Return ONLY the translated content — no extra commentary.
+6. NEVER translate badge markdown ([![...](...)]) or any markdown image/link URLs.
+7. NEVER translate HTML tags or attributes.
+8. Preserve ALL markdown structure: headings, lists, tables, bold, italic, links.
+9. Translate heading text, paragraph text, table cell text, and list item text.
+10. Return ONLY the translated content — no extra commentary.
 """
 
 
