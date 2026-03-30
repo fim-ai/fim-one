@@ -197,6 +197,22 @@ class DocumentProcessor:
         )
 
     @staticmethod
+    async def extract_with_images(file_path: Path) -> tuple[str | None, list[bytes]]:
+        """Extract text with embedded images from a document.
+
+        For DOCX/PPTX files, returns text with ``[Figure N]`` markers and
+        the corresponding image bytes.  For all other formats, delegates to
+        :func:`_extract_text_sync` and returns an empty image list.
+
+        Args:
+            file_path: Path to the document file.
+
+        Returns:
+            A tuple of ``(text_with_figure_markers, list_of_image_bytes)``.
+        """
+        return await asyncio.to_thread(_extract_with_images_sync, file_path)
+
+    @staticmethod
     async def get_or_create_cached_pages(
         file_path: Path,
         dpi: int | None = None,
@@ -305,8 +321,8 @@ def _extract_text_sync(file_path: Path) -> str | None:
                     pages_text.append(text)
         return "\n".join(pages_text) if pages_text else None
 
-    # Office documents (DOCX, XLSX, XLS, PPTX) -- requires markitdown
-    if suffix in {".docx", ".xlsx", ".xls", ".pptx"}:
+    # Office documents (DOCX, DOC, XLSX, XLS, PPTX, PPT) -- requires markitdown
+    if suffix in {".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"}:
         try:
             from markitdown import MarkItDown
         except ImportError:
@@ -320,3 +336,160 @@ def _extract_text_sync(file_path: Path) -> str | None:
         return content if content.strip() else None
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# DOCX/PPTX embedded image extraction with positional references
+# ---------------------------------------------------------------------------
+
+
+def _extract_docx_with_images(file_path: Path) -> tuple[str, list[bytes]]:
+    """Extract text with positional image markers from DOCX.
+
+    Iterates paragraphs and tables in document order.  When a paragraph
+    contains embedded images (``<a:blip>`` elements), a ``[Figure N]``
+    marker is inserted at the image's position and the raw image bytes
+    are collected.
+
+    Returns:
+        A tuple of ``(text_with_markers, list_of_image_bytes)``.
+    """
+    from docx import Document
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    doc = Document(str(file_path))
+    parts: list[str] = []
+    images: list[bytes] = []
+    fig_num = 0
+
+    for element in doc.element.body:
+        tag = element.tag.split("}")[-1]  # strip namespace
+
+        if tag == "p":  # paragraph
+            para = Paragraph(element, doc)
+
+            # Detect embedded images via <a:blip> elements
+            blips = element.findall(
+                ".//"
+                "{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
+            )
+
+            para_text = para.text.strip()
+
+            if blips:
+                for blip in blips:
+                    embed = blip.get(
+                        "{http://schemas.openxmlformats.org/officeDocument/"
+                        "2006/relationships}embed"
+                    )
+                    if embed:
+                        try:
+                            rel = doc.part.rels[embed]
+                            image_bytes = rel.target_part.blob
+                            fig_num += 1
+                            images.append(image_bytes)
+                            parts.append(f"\n[Figure {fig_num}]\n")
+                        except (KeyError, Exception):
+                            pass
+
+            if para_text:
+                parts.append(para_text)
+
+        elif tag == "tbl":  # table
+            table = Table(element, doc)
+            rows: list[str] = []
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                rows.append(" | ".join(cells))
+            if rows:
+                parts.append("\n".join(rows))
+
+    return "\n\n".join(parts), images
+
+
+def _extract_pptx_with_images(file_path: Path) -> tuple[str, list[bytes]]:
+    """Extract text with positional image markers from PPTX.
+
+    Iterates slides in order.  Picture shapes produce ``[Figure N]``
+    markers; grouped shapes are also inspected for nested images.
+
+    Returns:
+        A tuple of ``(text_with_markers, list_of_image_bytes)``.
+    """
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    prs = Presentation(str(file_path))
+    parts: list[str] = []
+    images: list[bytes] = []
+    fig_num = 0
+
+    for slide_idx, slide in enumerate(prs.slides, 1):
+        slide_texts: list[str] = [f"--- Slide {slide_idx} ---"]
+
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                text = shape.text_frame.text.strip()
+                if text:
+                    slide_texts.append(text)
+
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                try:
+                    image_bytes = shape.image.blob
+                    fig_num += 1
+                    images.append(image_bytes)
+                    slide_texts.append(f"[Figure {fig_num}]")
+                except Exception:
+                    pass
+
+            # Inspect grouped shapes for nested images
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                for child in shape.shapes:
+                    if hasattr(child, "image"):
+                        try:
+                            fig_num += 1
+                            images.append(child.image.blob)
+                            slide_texts.append(f"[Figure {fig_num}]")
+                        except Exception:
+                            pass
+
+        parts.append("\n".join(slide_texts))
+
+    return "\n\n".join(parts), images
+
+
+def _extract_with_images_sync(file_path: Path) -> tuple[str | None, list[bytes]]:
+    """Extract text with embedded images from documents.
+
+    For DOCX/PPTX files, returns text with ``[Figure N]`` markers and
+    the corresponding image bytes.  For all other formats, delegates to
+    :func:`_extract_text_sync` and returns an empty image list.
+
+    Returns:
+        A tuple of ``(text_with_figure_markers, list_of_image_bytes)``.
+    """
+    suffix = file_path.suffix.lower()
+
+    if suffix in (".docx", ".doc"):
+        try:
+            return _extract_docx_with_images(file_path)
+        except Exception:
+            logger.warning(
+                "DOCX image extraction failed, falling back to text-only",
+                exc_info=True,
+            )
+            return _extract_text_sync(file_path), []
+
+    if suffix in (".pptx", ".ppt"):
+        try:
+            return _extract_pptx_with_images(file_path)
+        except Exception:
+            logger.warning(
+                "PPTX image extraction failed, falling back to text-only",
+                exc_info=True,
+            )
+            return _extract_text_sync(file_path), []
+
+    # All other formats: text only, no embedded images
+    return _extract_text_sync(file_path), []

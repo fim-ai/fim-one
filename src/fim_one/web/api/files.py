@@ -29,8 +29,8 @@ MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50"))
 MAX_FILE_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = {
     ".txt", ".md", ".py", ".js", ".json", ".csv",
-    ".pdf", ".docx", ".html", ".htm",
-    ".xlsx", ".xls", ".pptx",
+    ".pdf", ".docx", ".doc", ".html", ".htm",
+    ".xlsx", ".xls", ".pptx", ".ppt",
     # Images (vision model support)
     ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
 }

@@ -665,6 +665,65 @@ async def _resolve_fast_llm(
         return registry.get_default()
 
 
+async def _resolve_model_supports_vision(
+    agent_cfg: dict[str, Any] | None,
+    db: AsyncSession,
+) -> bool:
+    """Check whether the resolved model config has vision support enabled.
+
+    Mirrors :func:`_resolve_llm` resolution priority: agent config id >
+    DB default model group > ``False`` fallback.
+    """
+    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM
+
+    if agent_cfg:
+        cfg = agent_cfg.get("model_config_json") or {}
+        model_config_id = cfg.get("model_config_id") if isinstance(cfg, dict) else None
+        if model_config_id:
+            stmt = sa_select(ModelConfigORM.supports_vision).where(
+                ModelConfigORM.id == model_config_id,
+                ModelConfigORM.is_active == True,  # noqa: E712
+            )
+            result = await db.execute(stmt)
+            val = result.scalar_one_or_none()
+            if val is not None:
+                return bool(val)
+
+    # Model Group fallback: check the active group's general model
+    from fim_one.web.models.model_provider import ModelGroup
+
+    group_stmt = sa_select(ModelGroup).where(
+        ModelGroup.is_active == True  # noqa: E712
+    ).limit(1)
+    group_result = await db.execute(group_stmt)
+    group = group_result.scalar_one_or_none()
+    if group is not None and group.general_model:
+        general_cfg_id = group.general_model.get("model_config_id") if isinstance(group.general_model, dict) else None
+        if general_cfg_id:
+            stmt = sa_select(ModelConfigORM.supports_vision).where(
+                ModelConfigORM.id == general_cfg_id,
+                ModelConfigORM.is_active == True,  # noqa: E712
+            )
+            result = await db.execute(stmt)
+            val = result.scalar_one_or_none()
+            if val is not None:
+                return bool(val)
+
+    # System default model: check is_default=True system config
+    default_stmt = sa_select(ModelConfigORM.supports_vision).where(
+        ModelConfigORM.user_id == None,  # noqa: E711
+        ModelConfigORM.category == "llm",
+        ModelConfigORM.is_default == True,  # noqa: E712
+        ModelConfigORM.is_active == True,  # noqa: E712
+    ).limit(1)
+    default_result = await db.execute(default_stmt)
+    val = default_result.scalar_one_or_none()
+    if val is not None:
+        return bool(val)
+
+    return False
+
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -1745,13 +1804,15 @@ async def _load_document_vision_urls(
         model_supports_vision: Whether the DB model config has vision enabled.
 
     Returns:
-        List of base64 PNG data URLs for rendered PDF pages.
+        List of base64 data URLs for rendered document pages / embedded images.
     """
     if not user_id or not image_ids:
         return []
 
     from fim_one.core.document.processor import _get_doc_processing_mode
     from fim_one.web.api.files import UPLOAD_ROOT, _load_index
+
+    VISION_DOC_EXTENSIONS = {".pdf", ".docx", ".doc", ".pptx", ".ppt"}
 
     # Determine effective mode
     effective_mode = doc_mode or _get_doc_processing_mode()
@@ -1773,7 +1834,7 @@ async def _load_document_vision_urls(
         if not meta:
             continue
         suffix = Path(str(meta["filename"])).suffix.lower()
-        if suffix != ".pdf":
+        if suffix not in VISION_DOC_EXTENSIONS:
             continue
         file_path = UPLOAD_ROOT / f"user_{user_id}" / str(meta["stored_name"])
         if not file_path.exists():
@@ -1781,8 +1842,23 @@ async def _load_document_vision_urls(
 
         from fim_one.core.document import DocumentProcessor
 
-        page_urls = await DocumentProcessor.get_or_create_cached_pages(file_path)
-        all_page_urls.extend(page_urls)
+        if suffix == ".pdf":
+            # Existing PyMuPDF page rendering
+            page_urls = await DocumentProcessor.get_or_create_cached_pages(file_path)
+            all_page_urls.extend(page_urls)
+        else:
+            # DOCX/PPTX: extract embedded images
+            _, image_bytes_list = await DocumentProcessor.extract_with_images(file_path)
+            for img_bytes in image_bytes_list:
+                # Detect MIME type from magic bytes
+                if img_bytes[:2] == b"\xff\xd8":
+                    mime = "image/jpeg"
+                elif img_bytes[:4] == b"\x89PNG":
+                    mime = "image/png"
+                else:
+                    mime = "image/png"
+                b64 = base64.b64encode(img_bytes).decode("ascii")
+                all_page_urls.append(f"data:{mime};base64,{b64}")
 
     return all_page_urls
 
@@ -1984,6 +2060,7 @@ async def react_endpoint(
             llm = await _resolve_llm(agent_cfg, _llm_db)
             fast_llm = await _resolve_fast_llm(agent_cfg, _llm_db)
             _context_budget = await get_effective_context_budget(_llm_db)
+            model_supports_vision = await _resolve_model_supports_vision(agent_cfg, _llm_db)
     except ValueError as exc:
         raise AppError(
             "agent_config_error",
@@ -2080,13 +2157,20 @@ async def react_endpoint(
     if image_ids:
         image_data = await _load_image_data_urls(image_ids, current_user_id)
 
-    # Load document vision pages (PDF rendered as images for vision models)
+    # Gate user-uploaded images: only send as vision content when model supports it
+    if image_data and not model_supports_vision:
+        # Model doesn't support vision -- annotate query with filenames instead
+        img_names = ", ".join(fname for _, fname, _ in image_data)
+        q = f"{q}\n\n[Attached images (text-only model, not displayed): {img_names}]"
+
+    # Load document vision pages (PDF/DOCX/PPTX rendered as images for vision models)
     doc_vision_urls: list[str] = []
     if image_ids:
         doc_vision_urls = await _load_document_vision_urls(
             image_ids=image_ids,
             user_id=current_user_id,
             doc_mode=doc_mode,
+            model_supports_vision=model_supports_vision,
         )
 
     async def generate() -> AsyncGenerator[str, None]:  # noqa: C901
@@ -2332,8 +2416,12 @@ async def react_endpoint(
                 max_turn_tokens=get_react_max_turn_tokens(),
             )
 
-            image_urls = [url for _, _, url in image_data] if image_data else None
-            # Append document vision page images (rendered PDF pages)
+            # Only send images as vision content when model supports it
+            if image_data and model_supports_vision:
+                image_urls: list[str] | None = [url for _, _, url in image_data]
+            else:
+                image_urls = None
+            # Append document vision page images (rendered PDF/DOCX/PPTX pages)
             if doc_vision_urls:
                 image_urls = (image_urls or []) + doc_vision_urls
 
@@ -2353,7 +2441,10 @@ async def react_endpoint(
                             "document page images: %s", exc,
                         )
                         # Keep user-uploaded images, only remove doc pages
-                        image_urls = [url for _, _, url in image_data] if image_data else None
+                        if image_data and model_supports_vision:
+                            image_urls = [url for _, _, url in image_data]
+                        else:
+                            image_urls = None
                         return await agent.run(
                             q, on_iteration=on_iteration, image_urls=image_urls,
                             interrupt_queue=interrupt_queue,
@@ -2695,6 +2786,7 @@ async def dag_endpoint(
             llm = await _resolve_llm(agent_cfg, _llm_db)
             _fast_context_budget = await get_effective_fast_context_budget(_llm_db)
             _context_budget = await get_effective_context_budget(_llm_db)
+            dag_model_supports_vision = await _resolve_model_supports_vision(agent_cfg, _llm_db)
     except ValueError as exc:
         raise AppError(
             "agent_config_error",
@@ -2746,13 +2838,19 @@ async def dag_endpoint(
     if image_ids:
         dag_image_data = await _load_image_data_urls(image_ids, current_user_id)
 
-    # Load document vision pages (PDF rendered as images for vision models)
+    # Gate user-uploaded images: only send as vision content when model supports it
+    if dag_image_data and not dag_model_supports_vision:
+        img_names = ", ".join(fname for _, fname, _ in dag_image_data)
+        q = f"{q}\n\n[Attached images (text-only model, not displayed): {img_names}]"
+
+    # Load document vision pages (PDF/DOCX/PPTX rendered as images for vision models)
     dag_doc_vision_urls: list[str] = []
     if image_ids:
         dag_doc_vision_urls = await _load_document_vision_urls(
             image_ids=image_ids,
             user_id=current_user_id,
             doc_mode=dag_doc_mode,
+            model_supports_vision=dag_model_supports_vision,
         )
 
     async def generate() -> AsyncGenerator[str, None]:  # noqa: C901

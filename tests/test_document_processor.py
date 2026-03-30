@@ -14,7 +14,10 @@ import pytest
 from fim_one.core.document.processor import (
     DocumentProcessor,
     DocumentResult,
+    _extract_docx_with_images,
+    _extract_pptx_with_images,
     _extract_text_sync,
+    _extract_with_images_sync,
     _get_doc_processing_mode,
     _get_doc_vision_dpi,
     _get_doc_vision_max_pages,
@@ -560,3 +563,443 @@ class TestFilesExtractContent:
 
         result = _extract_content(f)
         assert result == "delegated"
+
+
+# ---------------------------------------------------------------------------
+# _extract_docx_with_images
+# ---------------------------------------------------------------------------
+
+
+class TestExtractDocxWithImages:
+    """Tests for DOCX image extraction with positional markers."""
+
+    def _make_docx_mocks(self) -> tuple[MagicMock, MagicMock, MagicMock]:
+        """Build mock docx module, Document class, Paragraph class, Table class."""
+        mock_docx_mod = MagicMock()
+        return mock_docx_mod, mock_docx_mod.Document, mock_docx_mod.text.paragraph.Paragraph
+
+    def test_extracts_text_and_images(self) -> None:
+        """Paragraphs with embedded images produce [Figure N] markers."""
+        fake_image_bytes = b"\x89PNGfake_docx_image"
+
+        # Build a mock python-docx Document
+        mock_blip = MagicMock()
+        mock_blip.get.return_value = "rId1"
+
+        mock_target_part = MagicMock()
+        mock_target_part.blob = fake_image_bytes
+        mock_rel = MagicMock()
+        mock_rel.target_part = mock_target_part
+
+        # Paragraph element with blip
+        mock_para_element = MagicMock()
+        mock_para_element.tag = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"
+        mock_para_element.findall.return_value = [mock_blip]
+
+        # Plain paragraph element (no images)
+        mock_plain_element = MagicMock()
+        mock_plain_element.tag = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"
+        mock_plain_element.findall.return_value = []
+
+        mock_doc = MagicMock()
+        mock_doc.element.body = [mock_para_element, mock_plain_element]
+        mock_doc.part.rels = {"rId1": mock_rel}
+
+        # Mock Paragraph to return controlled text
+        call_count = [0]
+        def make_para(el: Any, doc: Any) -> MagicMock:
+            call_count[0] += 1
+            p = MagicMock()
+            p.text = MagicMock()
+            p.text.strip = MagicMock(return_value=f"Paragraph {call_count[0]}" if call_count[0] > 1 else "")
+            return p
+
+        mock_docx_mod = MagicMock()
+        mock_docx_mod.Document.return_value = mock_doc
+        mock_para_mod = MagicMock()
+        mock_para_mod.Paragraph.side_effect = make_para
+        mock_table_mod = MagicMock()
+
+        with patch.dict("sys.modules", {
+            "docx": mock_docx_mod,
+            "docx.table": mock_table_mod,
+            "docx.text": MagicMock(),
+            "docx.text.paragraph": mock_para_mod,
+        }):
+            text, images = _extract_docx_with_images(Path("/fake/doc.docx"))
+
+        assert len(images) == 1
+        assert images[0] == fake_image_bytes
+        assert "[Figure 1]" in text
+
+    def test_no_images_returns_text_only(self) -> None:
+        """DOCX without images returns text with empty image list."""
+        mock_element = MagicMock()
+        mock_element.tag = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p"
+        mock_element.findall.return_value = []
+
+        mock_doc = MagicMock()
+        mock_doc.element.body = [mock_element]
+        mock_doc.part.rels = {}
+
+        para = MagicMock()
+        para.text = MagicMock()
+        para.text.strip = MagicMock(return_value="Hello world")
+
+        mock_docx_mod = MagicMock()
+        mock_docx_mod.Document.return_value = mock_doc
+        mock_para_mod = MagicMock()
+        mock_para_mod.Paragraph.return_value = para
+        mock_table_mod = MagicMock()
+
+        with patch.dict("sys.modules", {
+            "docx": mock_docx_mod,
+            "docx.table": mock_table_mod,
+            "docx.text": MagicMock(),
+            "docx.text.paragraph": mock_para_mod,
+        }):
+            text, images = _extract_docx_with_images(Path("/fake/doc.docx"))
+
+        assert images == []
+        assert "Hello world" in text
+
+    def test_table_extraction(self) -> None:
+        """Tables are extracted as pipe-delimited rows."""
+        mock_tbl_element = MagicMock()
+        mock_tbl_element.tag = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl"
+
+        mock_cell1 = MagicMock()
+        mock_cell1.text = MagicMock()
+        mock_cell1.text.strip = MagicMock(return_value="A")
+        mock_cell2 = MagicMock()
+        mock_cell2.text = MagicMock()
+        mock_cell2.text.strip = MagicMock(return_value="B")
+        mock_row = MagicMock()
+        mock_row.cells = [mock_cell1, mock_cell2]
+
+        tbl = MagicMock()
+        tbl.rows = [mock_row]
+
+        mock_doc = MagicMock()
+        mock_doc.element.body = [mock_tbl_element]
+
+        mock_docx_mod = MagicMock()
+        mock_docx_mod.Document.return_value = mock_doc
+        mock_para_mod = MagicMock()
+        mock_table_mod = MagicMock()
+        mock_table_mod.Table.return_value = tbl
+
+        with patch.dict("sys.modules", {
+            "docx": mock_docx_mod,
+            "docx.table": mock_table_mod,
+            "docx.text": MagicMock(),
+            "docx.text.paragraph": mock_para_mod,
+        }):
+            text, images = _extract_docx_with_images(Path("/fake/doc.docx"))
+
+        assert images == []
+        assert "A | B" in text
+
+
+# ---------------------------------------------------------------------------
+# _extract_pptx_with_images
+# ---------------------------------------------------------------------------
+
+
+class TestExtractPptxWithImages:
+    """Tests for PPTX image extraction with positional markers."""
+
+    def test_extracts_slides_with_images(self) -> None:
+        """Slides with picture shapes produce [Figure N] markers."""
+        # Use integer sentinel for PICTURE type — the real enum is
+        # MSO_SHAPE_TYPE.PICTURE (13).
+        PICTURE = 13
+        TEXT_BOX = 17
+
+        fake_image_bytes = b"\xff\xd8\xff\xe0fake_pptx_image"
+
+        mock_text_frame = MagicMock()
+        mock_text_frame.text = MagicMock()
+        mock_text_frame.text.strip = MagicMock(return_value="Slide title")
+
+        # Text shape
+        text_shape = MagicMock()
+        text_shape.has_text_frame = True
+        text_shape.text_frame = mock_text_frame
+        text_shape.shape_type = TEXT_BOX
+
+        # Picture shape
+        pic_shape = MagicMock()
+        pic_shape.has_text_frame = False
+        pic_shape.shape_type = PICTURE
+        pic_shape.image.blob = fake_image_bytes
+
+        mock_slide = MagicMock()
+        mock_slide.shapes = [text_shape, pic_shape]
+
+        mock_prs = MagicMock()
+        mock_prs.slides = [mock_slide]
+
+        # Build mock pptx modules
+        mock_pptx_mod = MagicMock()
+        mock_pptx_mod.Presentation.return_value = mock_prs
+        mock_enum_mod = MagicMock()
+        mock_enum_mod.MSO_SHAPE_TYPE.PICTURE = PICTURE
+        mock_enum_mod.MSO_SHAPE_TYPE.GROUP = 6
+
+        with patch.dict("sys.modules", {
+            "pptx": mock_pptx_mod,
+            "pptx.enum": MagicMock(),
+            "pptx.enum.shapes": mock_enum_mod,
+        }):
+            text, images = _extract_pptx_with_images(Path("/fake/slides.pptx"))
+
+        assert len(images) == 1
+        assert images[0] == fake_image_bytes
+        assert "--- Slide 1 ---" in text
+        assert "[Figure 1]" in text
+        assert "Slide title" in text
+
+    def test_no_images(self) -> None:
+        """PPTX without images returns text with empty image list."""
+        mock_text_frame = MagicMock()
+        mock_text_frame.text = MagicMock()
+        mock_text_frame.text.strip = MagicMock(return_value="Just text")
+
+        text_shape = MagicMock()
+        text_shape.has_text_frame = True
+        text_shape.text_frame = mock_text_frame
+        text_shape.shape_type = 1  # Not PICTURE or GROUP
+
+        mock_slide = MagicMock()
+        mock_slide.shapes = [text_shape]
+
+        mock_prs = MagicMock()
+        mock_prs.slides = [mock_slide]
+
+        mock_pptx_mod = MagicMock()
+        mock_pptx_mod.Presentation.return_value = mock_prs
+        mock_enum_mod = MagicMock()
+        mock_enum_mod.MSO_SHAPE_TYPE.PICTURE = 13
+        mock_enum_mod.MSO_SHAPE_TYPE.GROUP = 6
+
+        with patch.dict("sys.modules", {
+            "pptx": mock_pptx_mod,
+            "pptx.enum": MagicMock(),
+            "pptx.enum.shapes": mock_enum_mod,
+        }):
+            text, images = _extract_pptx_with_images(Path("/fake/slides.pptx"))
+
+        assert images == []
+        assert "Just text" in text
+
+    def test_grouped_shapes_with_images(self) -> None:
+        """Grouped shapes with nested images are extracted."""
+        GROUP = 6
+        fake_image = b"\x89PNGgrouped_image"
+
+        child = MagicMock()
+        child.image.blob = fake_image
+
+        group_shape = MagicMock()
+        group_shape.has_text_frame = False
+        group_shape.shape_type = GROUP
+        group_shape.shapes = [child]
+
+        mock_slide = MagicMock()
+        mock_slide.shapes = [group_shape]
+
+        mock_prs = MagicMock()
+        mock_prs.slides = [mock_slide]
+
+        mock_pptx_mod = MagicMock()
+        mock_pptx_mod.Presentation.return_value = mock_prs
+        mock_enum_mod = MagicMock()
+        mock_enum_mod.MSO_SHAPE_TYPE.PICTURE = 13
+        mock_enum_mod.MSO_SHAPE_TYPE.GROUP = GROUP
+
+        with patch.dict("sys.modules", {
+            "pptx": mock_pptx_mod,
+            "pptx.enum": MagicMock(),
+            "pptx.enum.shapes": mock_enum_mod,
+        }):
+            text, images = _extract_pptx_with_images(Path("/fake/slides.pptx"))
+
+        assert len(images) == 1
+        assert "[Figure 1]" in text
+
+
+# ---------------------------------------------------------------------------
+# _extract_with_images_sync
+# ---------------------------------------------------------------------------
+
+
+class TestExtractWithImagesSync:
+    """Tests for the unified image extraction dispatcher."""
+
+    def test_docx_dispatches_to_docx_extractor(self) -> None:
+        """DOCX files dispatch to _extract_docx_with_images."""
+        with patch(
+            "fim_one.core.document.processor._extract_docx_with_images",
+            return_value=("docx text [Figure 1]", [b"img"]),
+        ) as mock_docx:
+            text, images = _extract_with_images_sync(Path("/fake/doc.docx"))
+            mock_docx.assert_called_once()
+            assert text == "docx text [Figure 1]"
+            assert images == [b"img"]
+
+    def test_pptx_dispatches_to_pptx_extractor(self) -> None:
+        """PPTX files dispatch to _extract_pptx_with_images."""
+        with patch(
+            "fim_one.core.document.processor._extract_pptx_with_images",
+            return_value=("slide text [Figure 1]", [b"img"]),
+        ) as mock_pptx:
+            text, images = _extract_with_images_sync(Path("/fake/slides.pptx"))
+            mock_pptx.assert_called_once()
+            assert text == "slide text [Figure 1]"
+            assert images == [b"img"]
+
+    def test_doc_dispatches_to_docx_extractor(self) -> None:
+        """Legacy .doc files also route to DOCX extractor."""
+        with patch(
+            "fim_one.core.document.processor._extract_docx_with_images",
+            return_value=("doc text", []),
+        ) as mock_docx:
+            text, images = _extract_with_images_sync(Path("/fake/legacy.doc"))
+            mock_docx.assert_called_once()
+            assert text == "doc text"
+
+    def test_ppt_dispatches_to_pptx_extractor(self) -> None:
+        """Legacy .ppt files also route to PPTX extractor."""
+        with patch(
+            "fim_one.core.document.processor._extract_pptx_with_images",
+            return_value=("ppt text", []),
+        ) as mock_pptx:
+            text, images = _extract_with_images_sync(Path("/fake/legacy.ppt"))
+            mock_pptx.assert_called_once()
+            assert text == "ppt text"
+
+    def test_docx_fallback_on_error(self) -> None:
+        """DOCX extraction failure falls back to text-only."""
+        with (
+            patch(
+                "fim_one.core.document.processor._extract_docx_with_images",
+                side_effect=RuntimeError("docx parse error"),
+            ),
+            patch(
+                "fim_one.core.document.processor._extract_text_sync",
+                return_value="fallback text",
+            ) as mock_text,
+        ):
+            text, images = _extract_with_images_sync(Path("/fake/doc.docx"))
+            mock_text.assert_called_once()
+            assert text == "fallback text"
+            assert images == []
+
+    def test_pptx_fallback_on_error(self) -> None:
+        """PPTX extraction failure falls back to text-only."""
+        with (
+            patch(
+                "fim_one.core.document.processor._extract_pptx_with_images",
+                side_effect=RuntimeError("pptx parse error"),
+            ),
+            patch(
+                "fim_one.core.document.processor._extract_text_sync",
+                return_value="fallback text",
+            ) as mock_text,
+        ):
+            text, images = _extract_with_images_sync(Path("/fake/slides.pptx"))
+            mock_text.assert_called_once()
+            assert text == "fallback text"
+            assert images == []
+
+    def test_other_formats_return_text_only(self, tmp_path: Path) -> None:
+        """Non-DOCX/PPTX files return text with empty image list."""
+        f = tmp_path / "test.txt"
+        f.write_text("plain text", encoding="utf-8")
+        text, images = _extract_with_images_sync(f)
+        assert text == "plain text"
+        assert images == []
+
+    def test_pdf_returns_text_only(self, tmp_path: Path) -> None:
+        """PDF files use text-only extraction (vision handled separately)."""
+        f = tmp_path / "doc.pdf"
+        f.write_bytes(b"%PDF-1.4")
+
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "PDF text"
+        mock_pdf = MagicMock()
+        mock_pdf.pages = [mock_page]
+        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
+        mock_pdf.__exit__ = MagicMock(return_value=False)
+
+        with patch.dict("sys.modules", {"pdfplumber": MagicMock()}):
+            import sys
+            sys.modules["pdfplumber"].open.return_value = mock_pdf
+            text, images = _extract_with_images_sync(f)
+            assert text == "PDF text"
+            assert images == []
+
+
+# ---------------------------------------------------------------------------
+# DocumentProcessor.extract_with_images (async wrapper)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractWithImagesAsync:
+    """Tests for the async extract_with_images method."""
+
+    @pytest.mark.asyncio
+    async def test_delegates_to_sync(self) -> None:
+        with patch(
+            "fim_one.core.document.processor._extract_with_images_sync",
+            return_value=("async text", [b"img"]),
+        ):
+            text, images = await DocumentProcessor.extract_with_images(Path("/fake/doc.docx"))
+            assert text == "async text"
+            assert images == [b"img"]
+
+
+# ---------------------------------------------------------------------------
+# Allowed extensions (.doc, .ppt additions)
+# ---------------------------------------------------------------------------
+
+
+class TestAllowedExtensions:
+    """Test that .doc and .ppt are in the upload whitelist."""
+
+    def test_doc_in_allowed(self) -> None:
+        from fim_one.web.api.files import ALLOWED_EXTENSIONS
+        assert ".doc" in ALLOWED_EXTENSIONS
+
+    def test_ppt_in_allowed(self) -> None:
+        from fim_one.web.api.files import ALLOWED_EXTENSIONS
+        assert ".ppt" in ALLOWED_EXTENSIONS
+
+    def test_doc_in_text_extraction(self) -> None:
+        """The .doc suffix is handled by markitdown path."""
+        f = Path("/fake/legacy.doc")
+        mock_result = MagicMock()
+        mock_result.text_content = "Legacy doc"
+        mock_converter = MagicMock()
+        mock_converter.convert.return_value = mock_result
+        mock_module = MagicMock()
+        mock_module.MarkItDown.return_value = mock_converter
+
+        with patch.dict("sys.modules", {"markitdown": mock_module}):
+            result = _extract_text_sync(f)
+            assert result == "Legacy doc"
+
+    def test_ppt_in_text_extraction(self) -> None:
+        """The .ppt suffix is handled by markitdown path."""
+        f = Path("/fake/legacy.ppt")
+        mock_result = MagicMock()
+        mock_result.text_content = "Legacy ppt"
+        mock_converter = MagicMock()
+        mock_converter.convert.return_value = mock_result
+        mock_module = MagicMock()
+        mock_module.MarkItDown.return_value = mock_converter
+
+        with patch.dict("sys.modules", {"markitdown": mock_module}):
+            result = _extract_text_sync(f)
+            assert result == "Legacy ppt"
