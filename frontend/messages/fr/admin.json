@@ -381,7 +381,8 @@
     "importClearExistingDesc": "Supprimer tous les fournisseurs, modèles et groupes existants, puis importer à partir du fichier. Cette action ne peut pas être annulée.",
     "importDeleted": "Supprimés : {providers} fournisseurs, {models} modèles, {groups} groupes",
     "supportsVision": "Support de la vision",
-    "supportsVisionDesc": "Activez cette option si ce modèle prend en charge les entrées image/vision (par exemple GPT-4o, Claude 3/4, Gemini). Lorsqu'elle est activée, les pages PDF téléchargées sont rendues sous forme d'images pour une meilleure compréhension des documents."
+    "supportsVisionDesc": "Activez cette option si ce modèle prend en charge les entrées image/vision (par exemple GPT-4o, Claude 3/4, Gemini). Lorsqu'elle est activée, les pages PDF téléchargées sont rendues sous forme d'images pour une meilleure compréhension des documents.",
+    "visionColumn": "Vision"
   },
   "tools": {
     "title": "Outils intégrés",

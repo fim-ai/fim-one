@@ -1086,7 +1086,7 @@ function ProviderCard({
 }: ProviderCardProps) {
   const t = useTranslations("admin.models")
   const tc = useTranslations("common")
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(true)
 
   return (
     <div className="rounded-lg border bg-card">
@@ -1171,6 +1171,7 @@ function ProviderCard({
                     <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">{t("contextSize")}</th>
                     <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">{t("maxOutputTokens")}</th>
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">{tc("status")}</th>
+                    <th className="px-4 py-2 text-center font-medium text-muted-foreground text-xs">{t("visionColumn")}</th>
                     <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">{tc("actions")}</th>
                   </tr>
                 </thead>
@@ -1185,6 +1186,13 @@ function ProviderCard({
                         <Badge variant="outline" className={`text-[10px] ${m.is_active ? "border-green-500/40 text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
                           {m.is_active ? t("active") : t("inactive")}
                         </Badge>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {m.supports_vision ? (
+                          <Check className="h-4 w-4 text-green-600 dark:text-green-400 inline-block" />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <DropdownMenu>

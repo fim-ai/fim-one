@@ -299,6 +299,7 @@
     "jsonModeEnabledDesc": "When disabled, the model will not use response_format=json_object. Turn off for Bedrock-backed relay endpoints that reject assistant prefill.",
     "toolChoiceEnabled": "Native Function Calling",
     "toolChoiceEnabledDesc": "Enables forced tool selection (tool_choice) for structured output. Works best with OpenAI GPT series, Google Gemini, and Anthropic Claude. Disable this if your model returns errors related to tool_choice or if structured outputs are slow.",
+    "visionColumn": "Vision",
     "supportsVision": "Vision Support",
     "supportsVisionDesc": "Enable if this model supports image/vision inputs (e.g. GPT-4o, Claude 3/4, Gemini). When enabled, uploaded PDF pages are rendered as images for higher-fidelity document understanding.",
     "activeConfig": "Active Configuration",

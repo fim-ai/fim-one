@@ -381,7 +381,8 @@
     "importClearExistingDesc": "Löschen Sie alle vorhandenen Anbieter, Modelle und Gruppen und importieren Sie dann aus der Datei. Dies kann nicht rückgängig gemacht werden.",
     "importDeleted": "Gelöscht: {providers} Anbieter, {models} Modelle, {groups} Gruppen",
     "supportsVision": "Vision-Unterstützung",
-    "supportsVisionDesc": "Aktivieren Sie diese Option, wenn das Modell Bild-/Vision-Eingaben unterstützt (z. B. GPT-4o, Claude 3/4, Gemini). Wenn aktiviert, werden hochgeladene PDF-Seiten als Bilder dargestellt, um ein besseres Dokumentverständnis zu ermöglichen."
+    "supportsVisionDesc": "Aktivieren Sie diese Option, wenn das Modell Bild-/Vision-Eingaben unterstützt (z. B. GPT-4o, Claude 3/4, Gemini). Wenn aktiviert, werden hochgeladene PDF-Seiten als Bilder dargestellt, um ein besseres Dokumentverständnis zu ermöglichen.",
+    "visionColumn": "Vision"
   },
   "tools": {
     "title": "Integrierte Tools",

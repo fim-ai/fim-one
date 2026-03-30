@@ -381,7 +381,8 @@
     "importClearExistingDesc": "删除所有现有的提供商、模型和组，然后从文件导入。此操作无法撤销。",
     "importDeleted": "已删除：{providers} 个提供商、{models} 个模型、{groups} 个组",
     "supportsVision": "视觉支持",
-    "supportsVisionDesc": "如果此模型支持图像/视觉输入（例如 GPT-4o、Claude 3/4、Gemini），请启用此选项。启用后，上传的 PDF 页面将呈现为图像，以实现更高保真度的文档理解。"
+    "supportsVisionDesc": "如果此模型支持图像/视觉输入（例如 GPT-4o、Claude 3/4、Gemini），请启用此选项。启用后，上传的 PDF 页面将呈现为图像，以实现更高保真度的文档理解。",
+    "visionColumn": "视觉"
   },
   "tools": {
     "title": "内置工具",

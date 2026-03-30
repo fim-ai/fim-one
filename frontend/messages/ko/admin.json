@@ -381,7 +381,8 @@
     "importClearExistingDesc": "기존의 모든 공급자, 모델 및 그룹을 삭제한 후 파일에서 가져옵니다. 이 작업은 취소할 수 없습니다.",
     "importDeleted": "삭제됨: {providers}개 공급자, {models}개 모델, {groups}개 그룹",
     "supportsVision": "비전 지원",
-    "supportsVisionDesc": "이 모델이 이미지/비전 입력을 지원하는 경우 활성화하세요(예: GPT-4o, Claude 3/4, Gemini). 활성화되면 업로드된 PDF 페이지가 이미지로 렌더링되어 더 높은 충실도의 문서 이해가 가능합니다."
+    "supportsVisionDesc": "이 모델이 이미지/비전 입력을 지원하는 경우 활성화하세요(예: GPT-4o, Claude 3/4, Gemini). 활성화되면 업로드된 PDF 페이지가 이미지로 렌더링되어 더 높은 충실도의 문서 이해가 가능합니다.",
+    "visionColumn": "비전"
   },
   "tools": {
     "title": "기본 제공 도구",
