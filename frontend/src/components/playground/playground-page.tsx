@@ -567,7 +567,7 @@ function HistoryTurn({ userContent, userMetadata, assistantMetadata, sseMessages
             {Array.isArray(userMetadata?.images) && userMetadata.images.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {(userMetadata.images as Array<{ file_id: string; filename: string; source?: string }>)
-                  .filter((img) => img.source !== "document")
+                  .filter((img) => img.source === "upload")
                   .map((img) => (
                   <ImageThumbnail key={img.file_id} fileId={img.file_id} filename={img.filename} />
                 ))}
