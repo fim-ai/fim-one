@@ -51,7 +51,26 @@ The strategy is straightforward: build the orchestration framework now, and let 
 
 The AI execution landscape can be mapped on two axes -- how plans are created (static vs dynamic) and how they are executed (rigid vs adaptive):
 
-<img src="/images/quadrant-planning-execution.png" alt="Planning × Execution Spectrum — FIM One sits in the Dynamic Planning + Dynamic Execution quadrant, bounded between Manus/AutoGPT and static workflow tools like Dify/n8n" style={{ maxWidth: '600px', width: '100%' }} />
+```mermaid
+quadrantChart
+    title Planning x Execution Spectrum
+    x-axis "Static Execution" --> "Dynamic Execution"
+    y-axis "Static Planning" --> "Dynamic Planning"
+    quadrant-1 "Autonomous Agent"
+    quadrant-2 "Transitional (unstable)"
+    quadrant-3 "BPM / Workflow"
+    quadrant-4 "ACM"
+    Camunda: [0.20, 0.25]
+    Activiti: [0.25, 0.20]
+    Dify: [0.30, 0.30]
+    n8n: [0.35, 0.25]
+    Coze: [0.25, 0.35]
+    Salesforce Case: [0.75, 0.30]
+    AutoGPT: [0.85, 0.85]
+    Manus: [0.80, 0.80]
+    Claude Code Teams: [0.75, 0.75]
+    FIM One: [0.70, 0.65]
+```
 
 **Why Dify/n8n are Static Planning + Static Execution**: The DAG is drawn by a human on a visual canvas at design time. Each node executes a fixed operation (an LLM call with a fixed prompt, an HTTP request, a code block). There is no runtime replanning -- if a step fails, the workflow fails or follows a pre-wired error branch. This is structurally the same as BPM, just with AI nodes in the graph.
 
@@ -124,7 +143,26 @@ These moves signal that the world's largest enterprise platforms now consider un
 
 ### Data ownership × Context depth spectrum
 
-<img src="/images/quadrant-data-context.png" alt="Data Ownership × Context Depth — FIM One sits in the Lightweight Connector quadrant (federated, API-level), while SAP/Reltio and Palantir occupy the Deep Ontology Platform quadrant (centralized, entity intelligence)" style={{ maxWidth: '600px', width: '100%' }} />
+```mermaid
+quadrantChart
+    title Data Ownership x Context Depth
+    x-axis "Federated / Pass-through" --> "Centralized / Copy-in"
+    y-axis "Raw Connectivity" --> "Entity Intelligence"
+    quadrant-1 "Deep Ontology Platform"
+    quadrant-2 "Context-Aware Hub"
+    quadrant-3 "Lightweight Connector"
+    quadrant-4 "Data Warehouse / Lake"
+    Dify: [0.15, 0.20]
+    n8n: [0.20, 0.15]
+    CData: [0.25, 0.25]
+    MCP Ecosystem: [0.30, 0.20]
+    FIM One: [0.25, 0.35]
+    Tamr: [0.55, 0.65]
+    DataHub: [0.35, 0.45]
+    Salesforce Data Cloud: [0.40, 0.70]
+    SAP BDC Reltio: [0.70, 0.80]
+    Palantir Foundry: [0.90, 0.90]
+```
 
 **Reading the chart:**
 

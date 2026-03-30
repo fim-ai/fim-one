@@ -47,20 +47,39 @@ FIM One n'est pas un "planificateur de tâches AGI" et pas un moteur de flux de 
 
 La stratégie est simple : construire le cadre d'orchestration maintenant, et laisser les modèles en amélioration le remplir de capacités au fil du temps.
 
-## Où FIM One se situe : Spectre Planification × Exécution
+## Où FIM One se situe : Spectre Planification x Exécution
 
 Le paysage de l'exécution IA peut être cartographié sur deux axes -- comment les plans sont créés (statique vs dynamique) et comment ils sont exécutés (rigide vs adaptatif) :
 
-<img src="/images/quadrant-planning-execution.png" alt="Spectre Planification × Exécution — FIM One se situe dans le quadrant Planification Dynamique + Exécution Dynamique, délimité entre Manus/AutoGPT et les outils de workflow statiques comme Dify/n8n" style={{ maxWidth: '600px', width: '100%' }} />
+```mermaid
+quadrantChart
+    title Planning x Execution Spectrum
+    x-axis "Static Execution" --> "Dynamic Execution"
+    y-axis "Static Planning" --> "Dynamic Planning"
+    quadrant-1 "Autonomous Agent"
+    quadrant-2 "Transitional (unstable)"
+    quadrant-3 "BPM / Workflow"
+    quadrant-4 "ACM"
+    Camunda: [0.20, 0.25]
+    Activiti: [0.25, 0.20]
+    Dify: [0.30, 0.30]
+    n8n: [0.35, 0.25]
+    Coze: [0.25, 0.35]
+    Salesforce Case: [0.75, 0.30]
+    AutoGPT: [0.85, 0.85]
+    Manus: [0.80, 0.80]
+    Claude Code Teams: [0.75, 0.75]
+    FIM One: [0.70, 0.65]
+```
 
-**Pourquoi Dify/n8n sont Planification Statique + Exécution Statique** : Le DAG est dessiné par un humain sur un canevas visuel au moment de la conception. Chaque nœud exécute une opération fixe (un appel LLM avec un prompt fixe, une requête HTTP, un bloc de code). Il n'y a pas de replanification à l'exécution -- si une étape échoue, le workflow échoue ou suit une branche d'erreur pré-câblée. C'est structurellement identique à BPM, simplement avec des nœuds IA dans le graphe.
+**Pourquoi Dify/n8n sont Planification Statique + Exécution Statique** : Le DAG est dessiné par un humain sur un canevas visuel au moment de la conception. Chaque nœud exécute une opération fixe (un appel LLM avec une invite fixe, une requête HTTP, un bloc de code). Il n'y a pas de replanification à l'exécution -- si une étape échoue, le flux de travail échoue ou suit une branche d'erreur pré-câblée. C'est structurellement identique à BPM, juste avec des nœuds IA dans le graphe.
 
 **Position de FIM One : Planification Dynamique + Exécution Dynamique**
 
-- **La topologie du DAG est générée par l'LLM à l'exécution** (planification dynamique) -- aucun humain ne conçoit le graphe
+- **La topologie du DAG est générée par LLM à l'exécution** (planification dynamique) -- aucun humain ne conçoit le graphe
 - **Chaque nœud du DAG exécute une boucle ReAct complète** (exécution dynamique) -- les nœuds raisonnent, utilisent des outils et s'adaptent
 - **Mécanisme de replanification** (exécuter → analyser → replanifier si insatisfait)
-- Mais délimité : maximum 3 rounds de replanification, budgets de tokens, portes de confirmation humaine
+- Mais limité : maximum 3 rounds de replanification, budgets de tokens, portes de confirmation humaine
 
 Cela place FIM One dans le même quadrant qu'AutoGPT, mais avec des contraintes d'ingénierie qui préviennent les comportements incontrôlés. Plus flexible que BPM/Dify, plus contrôlé qu'AutoGPT.
 
@@ -124,14 +143,33 @@ Ces mouvements signalent que les plus grandes plates-formes d'entreprise du mond
 
 ### Spectre propriété des données × profondeur du contexte
 
-<img src="/images/quadrant-data-context.png" alt="Propriété des données × Profondeur du contexte — FIM One se situe dans le quadrant Connecteur léger (fédéré, au niveau API), tandis que SAP/Reltio et Palantir occupent le quadrant Plateforme d'ontologie profonde (centralisée, intelligence d'entité)" style={{ maxWidth: '600px', width: '100%' }} />
+```mermaid
+quadrantChart
+    title Data Ownership x Context Depth
+    x-axis "Federated / Pass-through" --> "Centralized / Copy-in"
+    y-axis "Raw Connectivity" --> "Entity Intelligence"
+    quadrant-1 "Deep Ontology Platform"
+    quadrant-2 "Context-Aware Hub"
+    quadrant-3 "Lightweight Connector"
+    quadrant-4 "Data Warehouse / Lake"
+    Dify: [0.15, 0.20]
+    n8n: [0.20, 0.15]
+    CData: [0.25, 0.25]
+    MCP Ecosystem: [0.30, 0.20]
+    FIM One: [0.25, 0.35]
+    Tamr: [0.55, 0.65]
+    DataHub: [0.35, 0.45]
+    Salesforce Data Cloud: [0.40, 0.70]
+    SAP BDC Reltio: [0.70, 0.80]
+    Palantir Foundry: [0.90, 0.90]
+```
 
 **Lecture du graphique :**
 
-- **En bas à gauche (Connecteur léger)** : propriété minimale des données, connectivité API brute. Dify, n8n et les serveurs MCP basiques se situent ici -- ils se connectent aux systèmes mais ne comprennent pas les entités. FIM One est dans ce quadrant mais plus haut sur l'axe des y grâce aux outils de divulgation progressive, l'agrégation de contexte basée sur les compétences et l'escalade consciente du domaine.
-- **En haut à gauche (Hub conscient du contexte)** : accès fédéré avec compréhension au niveau des entités. Salesforce Data Cloud en est un exemple -- fédération sans copie avec résolution d'entité à la demande. DataHub fournit un contexte au niveau des métadonnées (schéma, lignage, propriété) sans posséder les données métier.
-- **En haut à droite (Plateforme d'ontologie profonde)** : ingestion complète des données avec intelligence d'entité profonde. SAP BDC + Reltio construit des enregistrements maîtres multi-domaines persistants avec des graphiques de relations. Palantir va le plus loin -- ontologie à trois couches avec lignage décisionnel.
-- **En bas à droite (Entrepôt de données / Lac)** : stockage centralisé des données sans sémantique d'entité. Les plateformes de données traditionnelles qui ingèrent tout mais manquent de résolution d'entité ou de modélisation des relations.
+- **Bas-gauche (Connecteur léger)** : propriété minimale des données, connectivité API brute. Dify, n8n et les serveurs MCP basiques se situent ici -- ils se connectent aux systèmes mais ne comprennent pas les entités. FIM One est dans ce quadrant mais plus haut sur l'axe des y en raison des méta-outils à divulgation progressive, de l'agrégation de contexte basée sur les compétences et de l'escalade consciente du domaine.
+- **Haut-gauche (Hub conscient du contexte)** : accès fédéré avec compréhension au niveau des entités. Salesforce Data Cloud en est l'exemple -- fédération sans copie avec résolution d'entité à la demande. DataHub fournit un contexte au niveau des métadonnées (schéma, lignage, propriété) sans posséder les données métier.
+- **Haut-droite (Plateforme ontologie profonde)** : ingestion complète des données avec intelligence d'entité profonde. SAP BDC + Reltio construit des enregistrements maîtres dorés multi-domaines persistants avec des graphiques de relations. Palantir va le plus loin -- ontologie à trois couches avec lignage décisionnel.
+- **Bas-droite (Entrepôt de données / Lac)** : stockage centralisé des données sans sémantique d'entité. Les plateformes de données traditionnelles qui ingèrent tout mais manquent de résolution d'entité ou de modélisation des relations.
 
 La position de FIM One reflète un choix délibéré : rester fédéré et léger, mais investir dans l'accessibilité du contexte d'entité en amont (de tout MDM) aux agents.
 
