@@ -1713,6 +1713,18 @@ async def _load_image_data_urls(
     return results
 
 
+_VISION_ERROR_KEYWORDS = (
+    "image", "vision", "image_url", "content_type",
+    "multimodal", "not supported", "invalid content",
+)
+
+
+def _is_vision_error(exc: Exception) -> bool:
+    """Check if an exception is likely caused by unsupported vision content."""
+    msg = str(exc).lower()
+    return any(kw in msg for kw in _VISION_ERROR_KEYWORDS)
+
+
 async def _load_document_vision_urls(
     image_ids: str,
     user_id: str | None,
@@ -2326,11 +2338,27 @@ async def react_endpoint(
                 image_urls = (image_urls or []) + doc_vision_urls
 
             async def _run() -> Any:
+                nonlocal image_urls
                 try:
                     return await agent.run(
                         q, on_iteration=on_iteration, image_urls=image_urls,
                         interrupt_queue=interrupt_queue,
                     )
+                except Exception as exc:
+                    # Vision fallback: if document pages caused the error,
+                    # strip them and retry with text-only mode.
+                    if doc_vision_urls and _is_vision_error(exc):
+                        logger.warning(
+                            "Vision content rejected by model, retrying without "
+                            "document page images: %s", exc,
+                        )
+                        # Keep user-uploaded images, only remove doc pages
+                        image_urls = [url for _, _, url in image_data] if image_data else None
+                        return await agent.run(
+                            q, on_iteration=on_iteration, image_urls=image_urls,
+                            interrupt_queue=interrupt_queue,
+                        )
+                    raise
                 finally:
                     done_event.set()
 
