@@ -95,7 +95,7 @@ docker compose logs -f        # view logs
 ```bash
 git clone https://github.com/fim-ai/fim-one.git && cd fim-one
 
-cp example.env .env           # 편집: LLM_API_KEY 설정
+cp example.env .env           # Edit: set LLM_API_KEY
 
 uv sync --all-extras
 cd frontend && pnpm install && cd ..
@@ -103,11 +103,13 @@ cd frontend && pnpm install && cd ..
 ./start.sh dev                # hot reload: Python --reload + Next.js HMR
 ```
 
-| 명령어           | 시작되는 항목                     | URL                            |
+| 명령어          | 시작되는 항목                       | URL                            |
 | ---------------- | --------------------------------- | ------------------------------ |
-| `./start.sh`     | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
-| `./start.sh dev` | 동일, hot reload 포함             | 동일                           |
-| `./start.sh api` | FastAPI만 (헤드리스)              | localhost:8000/api             |
+| `./start.sh`         | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
+| `./start.sh dev`     | 동일, 핫 리로드 포함             | 동일                           |
+| `./start.sh dev:api` | API만, 개발 모드 (핫 리로드)   | localhost:8000                 |
+| `./start.sh dev:ui`  | 프론트엔드만, 개발 모드 (HMR)    | localhost:3000                 |
+| `./start.sh api`     | FastAPI만 (헤드리스)           | localhost:8000/api             |
 
 > 프로덕션 배포(Docker, 리버스 프록시, 무중단 업데이트)의 경우 [배포 가이드](https://docs.fim.ai/quickstart#production-deployment)를 참조하세요.
 

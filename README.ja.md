@@ -103,13 +103,15 @@ cd frontend && pnpm install && cd ..
 ./start.sh dev                # hot reload: Python --reload + Next.js HMR
 ```
 
-| コマンド         | 起動内容                          | URL                            |
+| コマンド          | 起動内容                       | URL                            |
 | ---------------- | --------------------------------- | ------------------------------ |
-| `./start.sh`     | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
-| `./start.sh dev` | 同じ、ホットリロード付き          | 同じ                           |
-| `./start.sh api` | FastAPI のみ（ヘッドレス）        | localhost:8000/api             |
+| `./start.sh`         | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
+| `./start.sh dev`     | 同上、ホットリロード付き             | 同上                           |
+| `./start.sh dev:api` | API のみ、開発モード (ホットリロード)   | localhost:8000                 |
+| `./start.sh dev:ui`  | フロントエンドのみ、開発モード (HMR)    | localhost:3000                 |
+| `./start.sh api`     | FastAPI のみ (ヘッドレス)           | localhost:8000/api             |
 
-> 本番環境へのデプロイ（Docker、リバースプロキシ、ゼロダウンタイムアップデート）については、[デプロイメントガイド](https://docs.fim.ai/quickstart#production-deployment)を参照してください。
+> 本番環境へのデプロイ (Docker、リバースプロキシ、ゼロダウンタイム更新) については、[デプロイメントガイド](https://docs.fim.ai/quickstart#production-deployment)を参照してください。
 
 ## 主な機能
 

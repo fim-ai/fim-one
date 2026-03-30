@@ -39,7 +39,7 @@ Les données sont conservées dans les volumes nommés Docker (`fim-data`, `fim-
 
 **Remarque :** Le mode Docker ne supporte pas le rechargement à chaud. Les modifications du code nécessitent de reconstruire l'image (`docker compose up --build -d`). Pour un développement actif avec rechargement en direct, utilisez **Option B** ci-dessous.
 
-## Option B: Développement local
+## Option B : Développement local
 
 Prérequis : Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
 
@@ -60,9 +60,11 @@ cd frontend && pnpm install && cd ..
 
 | Commande         | Ce qui démarre                                          | URL                                      |
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
-| `./start.sh`     | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
-| `./start.sh dev` | Identique, avec rechargement à chaud (Python `--reload` + Next.js HMR) | Identique                                     |
-| `./start.sh api` | FastAPI uniquement (sans interface, pour intégration ou test)     | http://localhost:8000/api                |
+| `./start.sh`         | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
+| `./start.sh dev`     | Identique, avec rechargement à chaud (Python `--reload` + Next.js HMR) | Identique                                     |
+| `./start.sh dev:api` | API uniquement, mode développement (`--reload`)         | http://localhost:8000/api                |
+| `./start.sh dev:ui`  | Next.js uniquement, mode développement (HMR)           | http://localhost:3000                    |
+| `./start.sh api`     | FastAPI uniquement (sans interface, pour intégration ou tests)     | http://localhost:8000/api                |
 
 ## Configuration
 

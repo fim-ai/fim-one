@@ -138,6 +138,8 @@ FIM One 支持 6 种语言环境（EN、ZH、JA、KO、DE、FR）。翻译完全
 ```bash
 # Development
 ./start.sh dev                            # hot reload (Python + Next.js HMR)
+./start.sh dev:api                        # API only, dev mode (hot reload)
+./start.sh dev:ui                         # Frontend only, dev mode (HMR)
 ./start.sh api                            # FastAPI only (headless)
 
 # Quality checks

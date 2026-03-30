@@ -136,6 +136,8 @@ Dev utilise SQLite, la production utilise PostgreSQL. Un ensemble de fichiers de
 ```bash
 # Development
 ./start.sh dev                            # hot reload (Python + Next.js HMR)
+./start.sh dev:api                        # API only, dev mode (hot reload)
+./start.sh dev:ui                         # Frontend only, dev mode (HMR)
 ./start.sh api                            # FastAPI only (headless)
 
 # Quality checks

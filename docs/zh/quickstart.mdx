@@ -58,11 +58,13 @@ cd frontend && pnpm install && cd ..
 ./start.sh
 ```
 
-| 命令             | 启动内容                                                | URL                                      |
+| 命令          | 启动内容                                             | URL                                      |
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
-| `./start.sh`     | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
-| `./start.sh dev` | 相同，带热重载（Python `--reload` + Next.js HMR）      | 相同                                     |
-| `./start.sh api` | 仅 FastAPI（无头模式，用于集成或测试）                 | http://localhost:8000/api                |
+| `./start.sh`         | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
+| `./start.sh dev`     | 相同，带热重载（Python `--reload` + Next.js HMR） | 相同                                     |
+| `./start.sh dev:api` | 仅 API，开发模式（`--reload`）                         | http://localhost:8000/api                |
+| `./start.sh dev:ui`  | 仅 Next.js，开发模式（HMR）                           | http://localhost:3000                    |
+| `./start.sh api`     | 仅 FastAPI（无界面，用于集成或测试）     | http://localhost:8000/api                |
 
 ## 配置
 

@@ -103,11 +103,13 @@ cd frontend && pnpm install && cd ..
 ./start.sh dev                # hot reload: Python --reload + Next.js HMR
 ```
 
-| Befehl           | Was wird gestartet                | URL                            |
+| Befehl          | Was wird gestartet                       | URL                            |
 | ---------------- | --------------------------------- | ------------------------------ |
-| `./start.sh`     | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
-| `./start.sh dev` | Dasselbe, mit Hot Reload          | Dasselbe                       |
-| `./start.sh api` | Nur FastAPI (headless)            | localhost:8000/api             |
+| `./start.sh`         | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
+| `./start.sh dev`     | Dasselbe, mit Hot Reload             | Dasselbe                           |
+| `./start.sh dev:api` | Nur API, Entwicklungsmodus (Hot Reload)   | localhost:8000                 |
+| `./start.sh dev:ui`  | Nur Frontend, Entwicklungsmodus (HMR)    | localhost:3000                 |
+| `./start.sh api`     | FastAPI nur (headless)           | localhost:8000/api             |
 
 > Für die Produktionsbereitstellung (Docker, Reverse Proxy, unterbrechungsfreie Updates) siehe das [Deployment-Handbuch](https://docs.fim.ai/quickstart#production-deployment).
 

@@ -60,9 +60,11 @@ cd frontend && pnpm install && cd ..
 
 | Command          | What starts                                             | URL                                      |
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
-| `./start.sh`     | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
-| `./start.sh dev` | Same, with hot reload (Python `--reload` + Next.js HMR) | Same                                     |
-| `./start.sh api` | FastAPI only (headless, for integration or testing)     | http://localhost:8000/api                |
+| `./start.sh`         | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
+| `./start.sh dev`     | Same, with hot reload (Python `--reload` + Next.js HMR) | Same                                     |
+| `./start.sh dev:api` | API only, dev mode (`--reload`)                         | http://localhost:8000/api                |
+| `./start.sh dev:ui`  | Next.js only, dev mode (HMR)                           | http://localhost:3000                    |
+| `./start.sh api`     | FastAPI only (headless, for integration or testing)     | http://localhost:8000/api                |
 
 ## Configuration
 

@@ -88,7 +88,7 @@ docker compose down           # stop
 docker compose logs -f        # view logs
 ```
 
-### Développement Local
+### Développement local
 
 Prérequis : Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
 
@@ -105,11 +105,13 @@ cd frontend && pnpm install && cd ..
 
 | Commande         | Ce qui démarre                    | URL                            |
 | ---------------- | --------------------------------- | ------------------------------ |
-| `./start.sh`     | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
-| `./start.sh dev` | Identique, avec rechargement à chaud | Identique                      |
-| `./start.sh api` | FastAPI uniquement (sans interface) | localhost:8000/api             |
+| `./start.sh`         | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
+| `./start.sh dev`     | Identique, avec rechargement à chaud | Identique                      |
+| `./start.sh dev:api` | API uniquement, mode dev (rechargement à chaud) | localhost:8000                 |
+| `./start.sh dev:ui`  | Frontend uniquement, mode dev (HMR) | localhost:3000                 |
+| `./start.sh api`     | FastAPI uniquement (sans interface) | localhost:8000/api             |
 
-> Pour le déploiement en production (Docker, reverse proxy, mises à jour sans interruption), consultez le [Guide de Déploiement](https://docs.fim.ai/quickstart#production-deployment).
+> Pour le déploiement en production (Docker, proxy inverse, mises à jour sans interruption), consultez le [Guide de déploiement](https://docs.fim.ai/quickstart#production-deployment).
 
 ## Fonctionnalités principales
 

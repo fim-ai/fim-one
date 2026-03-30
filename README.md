@@ -105,9 +105,11 @@ cd frontend && pnpm install && cd ..
 
 | Command          | What starts                       | URL                            |
 | ---------------- | --------------------------------- | ------------------------------ |
-| `./start.sh`     | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
-| `./start.sh dev` | Same, with hot reload             | Same                           |
-| `./start.sh api` | FastAPI only (headless)           | localhost:8000/api             |
+| `./start.sh`         | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
+| `./start.sh dev`     | Same, with hot reload             | Same                           |
+| `./start.sh dev:api` | API only, dev mode (hot reload)   | localhost:8000                 |
+| `./start.sh dev:ui`  | Frontend only, dev mode (HMR)    | localhost:3000                 |
+| `./start.sh api`     | FastAPI only (headless)           | localhost:8000/api             |
 
 > For production deployment (Docker, reverse proxy, zero-downtime updates), see the [Deployment Guide](https://docs.fim.ai/quickstart#production-deployment).
 

@@ -58,11 +58,13 @@ cd frontend && pnpm install && cd ..
 ./start.sh
 ```
 
-| コマンド      | 起動内容                                             | URL                                      |
+| コマンド          | 起動内容                                             | URL                                      |
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
-| `./start.sh`     | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
-| `./start.sh dev` | 同じ、ホットリロード付き (Python `--reload` + Next.js HMR) | 同じ                                     |
-| `./start.sh api` | FastAPI のみ (ヘッドレス、統合またはテスト用)     | http://localhost:8000/api                |
+| `./start.sh`         | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
+| `./start.sh dev`     | 同じ、ホットリロード付き (Python `--reload` + Next.js HMR) | 同じ                                     |
+| `./start.sh dev:api` | API のみ、開発モード (`--reload`)                         | http://localhost:8000/api                |
+| `./start.sh dev:ui`  | Next.js のみ、開発モード (HMR)                           | http://localhost:3000                    |
+| `./start.sh api`     | FastAPI のみ (ヘッドレス、統合またはテスト用)     | http://localhost:8000/api                |
 
 ## 設定
 

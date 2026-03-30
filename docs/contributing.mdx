@@ -142,6 +142,8 @@ Dev uses SQLite, production uses PostgreSQL. One set of Alembic migration files 
 ```bash
 # Development
 ./start.sh dev                            # hot reload (Python + Next.js HMR)
+./start.sh dev:api                        # API only, dev mode (hot reload)
+./start.sh dev:ui                         # Frontend only, dev mode (HMR)
 ./start.sh api                            # FastAPI only (headless)
 
 # Quality checks

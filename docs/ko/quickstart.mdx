@@ -39,7 +39,7 @@ docker compose logs -f        # view logs
 
 **참고:** Docker 모드는 핫 리로드를 지원하지 않습니다. 코드 변경 시 이미지를 다시 빌드해야 합니다(`docker compose up --build -d`). 라이브 리로드를 사용한 활성 개발의 경우 아래의 **옵션 B**를 사용하세요.
 
-## Option B: 로컬 개발
+## 옵션 B: 로컬 개발
 
 필수 요구사항: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 18+, pnpm.
 
@@ -58,11 +58,13 @@ cd frontend && pnpm install && cd ..
 ./start.sh
 ```
 
-| 명령어           | 시작되는 항목                                           | URL                                      |
+| 명령어          | 시작되는 항목                                             | URL                                      |
 | ---------------- | ------------------------------------------------------- | ---------------------------------------- |
-| `./start.sh`     | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
-| `./start.sh dev` | 동일, 핫 리로드 포함 (Python `--reload` + Next.js HMR) | 동일                                     |
-| `./start.sh api` | FastAPI만 (헤드리스, 통합 또는 테스트용)                | http://localhost:8000/api                |
+| `./start.sh`         | Next.js + FastAPI                                       | http://localhost:3000 (UI) + :8000 (API) |
+| `./start.sh dev`     | 동일, 핫 리로드 포함 (Python `--reload` + Next.js HMR) | 동일                                     |
+| `./start.sh dev:api` | API만, 개발 모드 (`--reload`)                         | http://localhost:8000/api                |
+| `./start.sh dev:ui`  | Next.js만, 개발 모드 (HMR)                           | http://localhost:3000                    |
+| `./start.sh api`     | FastAPI만 (헤드리스, 통합 또는 테스트용)     | http://localhost:8000/api                |
 
 ## 구성
 

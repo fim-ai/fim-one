@@ -103,11 +103,13 @@ cd frontend && pnpm install && cd ..
 ./start.sh dev                # hot reload: Python --reload + Next.js HMR
 ```
 
-| 命令             | 启动内容                          | URL                            |
+| 命令          | 启动内容                       | URL                            |
 | ---------------- | --------------------------------- | ------------------------------ |
-| `./start.sh`     | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
-| `./start.sh dev` | 相同，带热重载                    | 相同                           |
-| `./start.sh api` | 仅 FastAPI（无头模式）            | localhost:8000/api             |
+| `./start.sh`         | Next.js + FastAPI                 | localhost:3000 (UI) + :8000    |
+| `./start.sh dev`     | 相同，带热重载             | 相同                           |
+| `./start.sh dev:api` | 仅 API，开发模式（热重载）   | localhost:8000                 |
+| `./start.sh dev:ui`  | 仅前端，开发模式（HMR）    | localhost:3000                 |
+| `./start.sh api`     | FastAPI 仅（无界面）           | localhost:8000/api             |
 
 > 关于生产部署（Docker、反向代理、零停机更新），请参阅[部署指南](https://docs.fim.ai/quickstart#production-deployment)。
 
