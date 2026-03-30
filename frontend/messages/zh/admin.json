@@ -382,7 +382,7 @@
     "supportsVision": "视觉支持",
     "supportsVisionDesc": "如果此模型支持图像/视觉输入（例如 GPT-4o、Claude 3/4、Gemini），请启用此选项。启用后，上传的 PDF 页面将呈现为图像，以实现更高保真度的文档理解。",
     "visionColumn": "视觉",
-    "tempColumn": "临时",
+    "tempColumn": "温度",
     "fcColumn": "FC",
     "jsonColumn": "JSON",
     "importApiKeysHintMerge": "现有提供商将保留其当前 API 密钥。仅新提供商需要密钥：",

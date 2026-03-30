@@ -382,7 +382,7 @@
     "supportsVision": "ビジョンサポート",
     "supportsVisionDesc": "このモデルが画像/ビジョン入力をサポートしている場合は有効にしてください（例：GPT-4o、Claude 3/4、Gemini）。有効にすると、アップロードされたPDFページは、より高忠実度のドキュメント理解のために画像としてレンダリングされます。",
     "visionColumn": "ビジョン",
-    "tempColumn": "一時",
+    "tempColumn": "温度",
     "fcColumn": "FC",
     "jsonColumn": "JSON",
     "importApiKeysHintMerge": "既存のプロバイダーは現在のAPIキーを保持します。新しいプロバイダーのみキーが必要です:",

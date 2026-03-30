@@ -382,7 +382,7 @@
     "supportsVision": "Vision-Unterstützung",
     "supportsVisionDesc": "Aktivieren Sie diese Option, wenn das Modell Bild-/Vision-Eingaben unterstützt (z. B. GPT-4o, Claude 3/4, Gemini). Wenn aktiviert, werden hochgeladene PDF-Seiten als Bilder dargestellt, um ein besseres Dokumentverständnis zu ermöglichen.",
     "visionColumn": "Vision",
-    "tempColumn": "Temp",
+    "tempColumn": "Temp.",
     "fcColumn": "FC",
     "jsonColumn": "JSON",
     "importApiKeysHintMerge": "Vorhandene Anbieter behalten ihre aktuellen API-Schlüssel. Nur neue Anbieter benötigen Schlüssel:",
