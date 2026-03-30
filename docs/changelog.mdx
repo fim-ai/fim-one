@@ -12,6 +12,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Intelligent Document Processing (Vision-Aware)** — Adaptive document handling based on model capabilities. When the target LLM supports vision (GPT-4o, Claude 3/4, Gemini), PDF pages are rendered as images and sent via vision content blocks for full visual fidelity. Text-only models fall back to pdfplumber text extraction. Three modes: Vision (highest fidelity), Hybrid, Text-only. Configurable via `DOCUMENT_PROCESSING_MODE`, `DOCUMENT_VISION_DPI`, `DOCUMENT_VISION_MAX_PAGES` env vars. Per-model `supports_vision` toggle in Admin with auto-detection fallback.
+- **Resource Fork completion** — All five resource types now support fork: Agent, Connector, Workflow, MCP Server, and Skill. KB fork removed (inherently user-local).
+
+## [v0.8.1] - 2026-03-29
+
+### Added
+
 - **Timezone-aware admin notifications** — Admin notification emails now display event times in each recipient's configured timezone instead of always showing UTC.
 - **Progressive database tool disclosure** — Single `database` meta-tool with `list_tables`/`discover`/`query` subcommands replaces individual per-table tools. Configurable via `DATABASE_TOOL_MODE` env var (`progressive` default, `legacy` fallback).
 - **On-demand tool loading** — When more than 12 tools are available, a `request_tools` meta-tool lets the agent dynamically load additional tools mid-conversation instead of being stuck with the initial selection.

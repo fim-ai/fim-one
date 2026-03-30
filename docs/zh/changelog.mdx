@@ -10,6 +10,13 @@ description: "FIM One 的所有重要更改。"
 
 ## [未发布]
 
+### 已添加
+
+- **智能文档处理（视觉感知）** — 基于模型能力的自适应文档处理。当目标 LLM 支持视觉功能（GPT-4o、Claude 3/4、Gemini）时，PDF 页面被渲染为图像并通过视觉内容块发送以获得完整的视觉保真度。仅文本模型回退到 pdfplumber 文本提取。三种模式：Vision（最高保真度）、Hybrid、Text-only。可通过 `DOCUMENT_PROCESSING_MODE`、`DOCUMENT_VISION_DPI`、`DOCUMENT_VISION_MAX_PAGES` 环境变量配置。Admin 中的每个模型 `supports_vision` 切换具有自动检测回退。
+- **资源 Fork 完成** — 所有五种资源类型现在都支持 fork：智能体、连接器、工作流、MCP Server 和 Skill。KB fork 已移除（本质上是用户本地的）。
+
+## [v0.8.1] - 2026-03-29
+
 ### 新增
 
 - **时区感知的管理员通知** — 管理员通知邮件现在以每个收件人配置的时区显示事件时间，而不是始终显示 UTC。

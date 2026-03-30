@@ -12,6 +12,13 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
+- **Intelligente Dokumentverarbeitung (Vision-Aware)** — Adaptive Dokumentbehandlung basierend auf Modellkapazitäten. Wenn das Ziel-LLM Vision unterstützt (GPT-4o, Claude 3/4, Gemini), werden PDF-Seiten als Bilder gerendert und über Vision-Content-Blöcke für vollständige visuelle Treue gesendet. Nur-Text-Modelle fallen auf pdfplumber-Textextraktion zurück. Drei Modi: Vision (höchste Treue), Hybrid, Nur-Text. Konfigurierbar über `DOCUMENT_PROCESSING_MODE`, `DOCUMENT_VISION_DPI`, `DOCUMENT_VISION_MAX_PAGES` Umgebungsvariablen. Pro-Modell `supports_vision`-Schalter in Admin mit automatischer Erkennungsfallback.
+- **Resource Fork-Vervollständigung** — Alle fünf Ressourcentypen unterstützen jetzt Fork: Agent, Connector, Workflow, MCP Server und Skill. KB Fork entfernt (inhärent benutzerlokal).
+
+## [v0.8.1] - 2026-03-29
+
+### Hinzugefügt
+
 - **Zeitzonenbewusste Admin-Benachrichtigungen** — Admin-Benachrichtigungs-E-Mails zeigen jetzt Ereigniszeiten in der konfigurierten Zeitzone jedes Empfängers an, anstatt immer UTC anzuzeigen.
 - **Progressive Datenbankwerkzeug-Offenlegung** — Ein einzelnes `database` Meta-Werkzeug mit `list_tables`/`discover`/`query` Unterbefehlen ersetzt einzelne Pro-Tabellen-Werkzeuge. Konfigurierbar über `DATABASE_TOOL_MODE` Umgebungsvariable (`progressive` Standard, `legacy` Fallback).
 - **On-Demand-Werkzeugladen** — Wenn mehr als 12 Werkzeuge verfügbar sind, ermöglicht ein `request_tools` Meta-Werkzeug dem Agenten, zusätzliche Werkzeuge dynamisch während des Gesprächs zu laden, anstatt auf die anfängliche Auswahl beschränkt zu sein.

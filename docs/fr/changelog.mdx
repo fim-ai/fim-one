@@ -10,6 +10,13 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Non publié]
 
+### Ajouté
+
+- **Traitement Intelligent des Documents (Sensible à la Vision)** — Gestion adaptative des documents basée sur les capacités du modèle. Lorsque le LLM cible supporte la vision (GPT-4o, Claude 3/4, Gemini), les pages PDF sont rendues en images et envoyées via des blocs de contenu de vision pour une fidélité visuelle complète. Les modèles texte uniquement reviennent à l'extraction de texte pdfplumber. Trois modes : Vision (fidélité maximale), Hybride, Texte uniquement. Configurable via les variables d'environnement `DOCUMENT_PROCESSING_MODE`, `DOCUMENT_VISION_DPI`, `DOCUMENT_VISION_MAX_PAGES`. Basculement `supports_vision` par modèle dans Admin avec détection automatique en secours.
+- **Complétude de la fourche de ressources** — Les cinq types de ressources supportent maintenant la fourche : Agent, Connecteur, Workflow, Serveur MCP et Compétence. Fourche KB supprimée (intrinsèquement locale à l'utilisateur).
+
+## [v0.8.1] - 2026-03-29
+
 ### Ajouts
 
 - **Notifications d'administrateur sensibles au fuseau horaire** — Les e-mails de notification d'administrateur affichent désormais les heures des événements dans le fuseau horaire configuré de chaque destinataire au lieu d'afficher toujours l'UTC.

@@ -12,6 +12,13 @@ description: "FIM One의 모든 주요 변경 사항."
 
 ### 추가됨
 
+- **지능형 문서 처리 (Vision-Aware)** — 모델 기능에 따른 적응형 문서 처리. 대상 LLM이 vision을 지원하는 경우(GPT-4o, Claude 3/4, Gemini), PDF 페이지가 이미지로 렌더링되어 vision 콘텐츠 블록을 통해 전송되어 완전한 시각적 충실도를 제공합니다. 텍스트 전용 모델은 pdfplumber 텍스트 추출로 폴백됩니다. 세 가지 모드: Vision (최고 충실도), Hybrid, Text-only. `DOCUMENT_PROCESSING_MODE`, `DOCUMENT_VISION_DPI`, `DOCUMENT_VISION_MAX_PAGES` 환경 변수를 통해 구성 가능합니다. Admin의 모델별 `supports_vision` 토글과 자동 감지 폴백.
+- **리소스 포크 완성** — 5가지 리소스 유형 모두 포크 지원: 에이전트, 커넥터, 워크플로우, MCP 서버, 스킬. KB 포크 제거 (기본적으로 사용자 로컬).
+
+## [v0.8.1] - 2026-03-29
+
+### 추가됨
+
 - **타임존 인식 관리자 알림** — 관리자 알림 이메일이 항상 UTC를 표시하는 대신 각 수신자의 구성된 타임존에 이벤트 시간을 표시합니다.
 - **점진적 데이터베이스 도구 공개** — 개별 테이블별 도구를 대체하는 `list_tables`/`discover`/`query` 하위 명령이 있는 단일 `database` 메타 도구입니다. `DATABASE_TOOL_MODE` 환경 변수(`progressive` 기본값, `legacy` 폴백)를 통해 구성 가능합니다.
 - **온디맨드 도구 로딩** — 12개 이상의 도구를 사용할 수 있을 때, `request_tools` 메타 도구를 통해 에이전트가 초기 선택에 갇히지 않고 대화 중에 동적으로 추가 도구를 로드할 수 있습니다.
