@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import TYPE_CHECKING
 
 from fim_one.core.model.types import ChatMessage
@@ -36,31 +37,86 @@ _COMPACT_PROMPTS: dict[str, str] = {
         "Write in the same language as the conversation."
     ),
     "react_iteration": (
-        "Summarise the following conversation history for an ongoing ReAct agent loop.\n"
-        "PRESERVE: the most recent reasoning chain, key tool results that are still "
-        "relevant, the current goal/sub-goal, any critical data or numbers, and "
-        "descriptions of any images the user shared (what was depicted, key visual details).\n"
-        "DROP: old redundant reasoning steps, failed tool attempts that were already "
-        "retried successfully, verbose tool outputs whose conclusions have been noted.\n"
-        "Reply with ONLY the summary text — no JSON, no markdown headers.\n"
-        "Write in the same language as the conversation."
+        "You are compacting a ReAct agent's conversation history to fit within a "
+        "token budget while preserving all information needed to continue the task.\n\n"
+        "First, think through the compaction inside <analysis> tags — identify what "
+        "is critical to keep, what can be dropped, and how to compress verbose "
+        "outputs while retaining their conclusions. Then output the structured "
+        "summary OUTSIDE the <analysis> tags.\n\n"
+        "Output the summary using these 9 sections. Omit any section that has "
+        "no relevant content. Use concise bullet points within each section.\n\n"
+        "## 1. Primary Request\n"
+        "What the user originally asked for — the root goal driving this session.\n\n"
+        "## 2. Key Concepts\n"
+        "Domain concepts, terminology, constraints, and configuration values "
+        "mentioned. Include descriptions of any images the user shared.\n\n"
+        "## 3. Files and Code\n"
+        "Files read or modified, code snippets still relevant, function signatures, "
+        "schema definitions. Drop code that has been superseded.\n\n"
+        "## 4. Errors\n"
+        "Error messages, stack traces, and failed approaches that are still "
+        "informative. Drop errors from attempts that were successfully retried.\n\n"
+        "## 5. Problem Solving\n"
+        "Insights gained, hypotheses tested, conclusions reached, and important "
+        "tool results. Compress verbose outputs to their key findings.\n\n"
+        "## 6. User Messages\n"
+        "Important user clarifications, corrections, or preference changes that "
+        "affect ongoing work.\n\n"
+        "## 7. Pending Tasks\n"
+        "Incomplete work, deferred items, and planned next steps not yet started.\n\n"
+        "## 8. Current Work\n"
+        "What the agent is currently doing — the active sub-goal and progress so far.\n\n"
+        "## 9. Next Step\n"
+        "The single most important next action the agent should take.\n\n"
+        "RULES:\n"
+        "- Write in the same language as the conversation.\n"
+        "- Be concise — this summary replaces the full history.\n"
+        "- Preserve exact numbers, IDs, file paths, and error codes.\n"
+        "- Drop greetings, filler, and redundant back-and-forth."
     ),
     "planner_input": (
-        "Summarise the following conversation history as context for a task planner.\n"
-        "PRESERVE: the evolution of user intent, key decisions made, final conclusions "
-        "or data from previous turns, and any constraints the user specified.\n"
-        "DROP: intermediate dialogue details, greetings, filler, tool call mechanics, "
-        "and verbose reasoning that doesn't affect the planning outcome.\n"
-        "Reply with ONLY the summary text — no JSON, no markdown headers.\n"
-        "Write in the same language as the conversation."
+        "You are compacting conversation history into context for a task planner.\n\n"
+        "First, think through the compaction inside <analysis> tags — identify the "
+        "user's intent evolution, key decisions, and constraints that affect "
+        "planning. Then output the structured summary OUTSIDE the <analysis> tags.\n\n"
+        "Output the summary using these sections. Omit any section with no "
+        "relevant content. Use concise bullet points.\n\n"
+        "## 1. User Intent\n"
+        "The user's original request and how it evolved through clarifications.\n\n"
+        "## 2. Decisions and Constraints\n"
+        "Key decisions made, constraints specified, preferences expressed, and "
+        "any trade-offs agreed upon.\n\n"
+        "## 3. Gathered Data\n"
+        "Final conclusions, data, or results from previous turns that the planner "
+        "needs. Include image descriptions if relevant.\n\n"
+        "## 4. Open Questions\n"
+        "Unresolved ambiguities or decisions that still need to be made.\n\n"
+        "## 5. Planning Goal\n"
+        "What the planner should produce — the concrete deliverable or action plan.\n\n"
+        "RULES:\n"
+        "- Write in the same language as the conversation.\n"
+        "- Be concise — this summary replaces the full history.\n"
+        "- Preserve exact numbers, IDs, file paths, and constraints.\n"
+        "- Drop greetings, filler, tool call mechanics, and verbose reasoning."
     ),
     "step_dependency": (
-        "Summarise the following dependency results for a downstream task step.\n"
-        "PRESERVE: key data, numbers, conclusions, and actionable outputs.\n"
-        "DROP: reasoning process, failed attempts, redundant descriptions, and "
-        "verbose formatting.\n"
-        "Reply with ONLY the summary text — no JSON, no markdown headers.\n"
-        "Write in the same language as the content."
+        "You are compacting dependency results for a downstream task step.\n\n"
+        "First, think through the compaction inside <analysis> tags — identify "
+        "which outputs are actionable for the next step and which are noise. "
+        "Then output the structured summary OUTSIDE the <analysis> tags.\n\n"
+        "Output the summary using these sections. Omit any section with no "
+        "relevant content. Use concise bullet points.\n\n"
+        "## 1. Key Outputs\n"
+        "Data, numbers, conclusions, and actionable results from upstream steps.\n\n"
+        "## 2. Artifacts\n"
+        "Files created, schemas defined, IDs generated, or resources provisioned.\n\n"
+        "## 3. Constraints for Next Step\n"
+        "Conditions, limits, or dependencies the downstream step must respect.\n\n"
+        "RULES:\n"
+        "- Write in the same language as the content.\n"
+        "- Be concise — this summary feeds directly into the next step.\n"
+        "- Preserve exact numbers, IDs, file paths, and data values.\n"
+        "- Drop reasoning process, failed attempts, and verbose formatting."
     ),
 }
 
@@ -238,6 +294,10 @@ class ContextGuard:
             ])
             raw_content = result.message.content
             summary = (raw_content if isinstance(raw_content, str) else "").strip()
+            # Strip <analysis> scratchpad blocks used by structured prompts.
+            summary = re.sub(
+                r"<analysis>.*?</analysis>", "", summary, flags=re.DOTALL,
+            ).strip()
             if self._usage_tracker and result.usage:
                 await self._usage_tracker.record(result.usage)
         except Exception:

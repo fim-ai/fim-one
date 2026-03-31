@@ -664,8 +664,8 @@ class TestHarnessConstants:
     """Verify the harness constants and helper methods."""
 
     def test_cycle_detection_threshold_default(self) -> None:
-        """The default cycle detection threshold should be 3."""
-        assert _CYCLE_DETECTION_THRESHOLD == 3
+        """The default cycle detection threshold should be 2."""
+        assert _CYCLE_DETECTION_THRESHOLD == 2
 
     def test_cycle_warning_template_has_placeholders(self) -> None:
         """The cycle warning template must have tool_name and count placeholders."""

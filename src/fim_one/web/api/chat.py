@@ -8,12 +8,9 @@ Both endpoints stream Server-Sent Events with the following event names:
 - ``compact``        – Context compaction occurred (original_messages, kept_messages).
 - ``answer``         – Streamed answer text (start / delta / done) emitted before ``done``.
 - ``done``           – Final result payload (answer complete, emitted immediately).
-- ``post_processing`` – Emitted after ``done`` to signal that auxiliary metadata
-  (suggestions, title) is being generated. The agent execution is complete and
-  the interrupt queue has been unregistered.
-- ``suggestions``    – Suggested follow-up questions (emitted after ``done``).
-- ``title``          – Auto-generated conversation title (emitted after ``done``).
-- ``end``            – Stream terminator (always the last event, NOT persisted).
+- ``end``            – Stream terminator (emitted right after ``done``, NOT persisted).
+  Suggestions and title generation run as background tasks and are persisted
+  directly to the database (message metadata and conversation title).
 
 A keepalive comment (``": keepalive\\n\\n"``) is emitted every 15 seconds of
 inactivity to prevent proxy/browser timeouts during long LLM calls.
@@ -2066,10 +2063,12 @@ async def react_endpoint(
     from fim_one.db import create_session as _create_session
     try:
         async with _create_session() as _llm_db:
-            llm = await _resolve_llm(agent_cfg, _llm_db)
-            fast_llm = await _resolve_fast_llm(agent_cfg, _llm_db)
-            _context_budget = await get_effective_context_budget(_llm_db)
-            model_supports_vision = await _resolve_model_supports_vision(agent_cfg, _llm_db)
+            llm, fast_llm, _context_budget, model_supports_vision = await asyncio.gather(
+                _resolve_llm(agent_cfg, _llm_db),
+                _resolve_fast_llm(agent_cfg, _llm_db),
+                get_effective_context_budget(_llm_db),
+                _resolve_model_supports_vision(agent_cfg, _llm_db),
+            )
     except ValueError as exc:
         raise AppError(
             "agent_config_error",
@@ -2077,7 +2076,16 @@ async def react_endpoint(
             detail=str(exc),
             detail_args={"reason": str(exc)},
         ) from exc
-    tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
+
+    # -- Run tool resolution and domain classification in parallel ----------
+    # Both are independent: _resolve_tools hits DB/registry, classify_domain
+    # calls the fast LLM.  Running concurrently saves ~1 RTT.
+    from fim_one.core.planner.domain import classify_domain
+    tools, _react_domain_hint = await asyncio.gather(
+        _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id),
+        classify_domain(q, fast_llm),
+    )
+
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
     lang_directive = get_language_directive(preferred_language)
 
@@ -2112,12 +2120,6 @@ async def react_endpoint(
             _skill_block = await _resolve_skill_stubs(_react_skill_ids)
         if _skill_block:
             extra_instructions = (extra_instructions or "") + _skill_block
-
-    # -- Domain detection middleware (independent of Auto routing) ----------
-    # Runs for ALL React executions, regardless of whether user picked
-    # React directly or was routed here by Auto.
-    from fim_one.core.planner.domain import classify_domain
-    _react_domain_hint = await classify_domain(q, fast_llm)
     if _react_domain_hint:
         _domain_instructions = (
             f"\n\n## Domain: {_react_domain_hint}\n"
@@ -2685,83 +2687,126 @@ async def react_endpoint(
                 await get_broker().unregister(conversation_id)
                 interrupt_queue = None  # prevent double-unregister in finally
 
-            yield _sse("post_processing", {})
-
-            # -- Async post-answer metadata (after done, before end) ----
-            async def _maybe_generate_title() -> str | None:
-                """Generate title if this is the first message."""
-                if not (db_session and conversation_id):
-                    return None
-                try:
-                    from sqlalchemy import func as _sa_func
-                    from fim_one.web.models import (
-                        Conversation,
-                        Message as _MsgModel,
-                    )
-                    msg_count = (
-                        await db_session.execute(
-                            sa_select(_sa_func.count())
-                            .select_from(_MsgModel)
-                            .where(_MsgModel.conversation_id == conversation_id)
-                        )
-                    ).scalar() or 0
-                    if msg_count <= 2:
-                        return await _generate_title(
-                            fast_llm, q, result.answer,
-                            preferred_language=preferred_language,
-                            usage_tracker=fast_usage_tracker,
-                        )
-                except Exception:
-                    logger.debug("Auto-title generation failed", exc_info=True)
-                return None
-
-            suggestions, gen_title = await asyncio.gather(
-                _generate_suggestions(
-                    fast_llm, q, result.answer,
-                    preferred_language=preferred_language,
-                    usage_tracker=fast_usage_tracker,
-                ),
-                _maybe_generate_title(),
-            )
-            if suggestions:
-                yield _sse("suggestions", {"items": suggestions})
-            if gen_title:
-                yield _sse("title", {"title": gen_title})
-                if db_session and conversation_id:
-                    try:
-                        from sqlalchemy import update as _sa_update
-                        from fim_one.web.models import Conversation
-                        await db_session.execute(
-                            _sa_update(Conversation)
-                            .where(Conversation.id == conversation_id)
-                            .values(title=gen_title)
-                        )
-                        await db_session.commit()
-                    except Exception:
-                        logger.debug("Failed to persist title", exc_info=True)
-
-            # Capture fast LLM token usage (after all fast calls including suggestions)
-            fast_summary = fast_usage_tracker.get_summary()
-            if fast_summary.total_tokens > 0:
-                if "usage" in done_payload:
-                    done_payload["usage"]["fast_llm_tokens"] = fast_summary.total_tokens
-                if db_session and conversation_id:
-                    try:
-                        from sqlalchemy import update as _sa_update, func as _sa_func
-                        from fim_one.web.models import Conversation
-                        await db_session.execute(
-                            _sa_update(Conversation)
-                            .where(Conversation.id == conversation_id)
-                            .values(
-                                total_tokens=_sa_func.coalesce(Conversation.total_tokens, 0) + fast_summary.total_tokens,
-                                fast_llm_tokens=_sa_func.coalesce(Conversation.fast_llm_tokens, 0) + fast_summary.total_tokens,
-                            )
-                        )
-                        await db_session.commit()
-                    except Exception:
-                        logger.warning("Failed to persist fast LLM tokens", exc_info=True)
-
+            # -- Send end immediately — post-processing runs in background --
             yield _sse("end", {})
+
+            # -- Background post-processing: suggestions, title, fast token accounting --
+            # Fire-and-forget: the SSE stream closes right after end, so the
+            # client won't receive these as SSE events.  Instead the background
+            # task writes results directly to DB for the frontend to fetch via
+            # the conversation API.
+            _bg_conversation_id = conversation_id
+            _bg_fast_llm = fast_llm
+            _bg_query = q
+            _bg_answer = result.answer
+            _bg_preferred_language = preferred_language
+            _bg_done_payload = done_payload
+
+            async def _react_post_processing() -> None:
+                """Background task for suggestions, title, and fast-LLM token tracking."""
+                from fim_one.db import create_session as _bg_create_session
+                _bg_db: AsyncSession | None = None
+                try:
+                    _bg_usage_tracker = UsageTracker()
+
+                    async def _bg_maybe_generate_title() -> str | None:
+                        if not _bg_conversation_id:
+                            return None
+                        try:
+                            from sqlalchemy import func as _sa_func
+                            from fim_one.web.models import (
+                                Conversation,
+                                Message as _MsgModel,
+                            )
+                            async with _bg_create_session() as _cnt_db:
+                                msg_count = (
+                                    await _cnt_db.execute(
+                                        sa_select(_sa_func.count())
+                                        .select_from(_MsgModel)
+                                        .where(_MsgModel.conversation_id == _bg_conversation_id)
+                                    )
+                                ).scalar() or 0
+                            if msg_count <= 2:
+                                return await _generate_title(
+                                    _bg_fast_llm, _bg_query, _bg_answer,
+                                    preferred_language=_bg_preferred_language,
+                                    usage_tracker=_bg_usage_tracker,
+                                )
+                        except Exception:
+                            logger.debug("Auto-title generation failed", exc_info=True)
+                        return None
+
+                    suggestions, gen_title = await asyncio.gather(
+                        _generate_suggestions(
+                            _bg_fast_llm, _bg_query, _bg_answer,
+                            preferred_language=_bg_preferred_language,
+                            usage_tracker=_bg_usage_tracker,
+                        ),
+                        _bg_maybe_generate_title(),
+                    )
+
+                    if not _bg_conversation_id:
+                        return
+
+                    _bg_db = _bg_create_session()
+                    if suggestions:
+                        try:
+                            from fim_one.web.models import Message as _MsgModel
+                            # Store suggestions in the most recent assistant message's metadata
+                            _last_msg_stmt = (
+                                sa_select(_MsgModel)
+                                .where(
+                                    _MsgModel.conversation_id == _bg_conversation_id,
+                                    _MsgModel.role == "assistant",
+                                )
+                                .order_by(_MsgModel.created_at.desc())
+                                .limit(1)
+                            )
+                            _last_msg = (await _bg_db.execute(_last_msg_stmt)).scalar_one_or_none()
+                            if _last_msg and _last_msg.metadata_:
+                                _last_msg.metadata_["suggestions"] = suggestions
+                            elif _last_msg:
+                                _last_msg.metadata_ = {"suggestions": suggestions}
+                            await _bg_db.commit()
+                        except Exception:
+                            logger.debug("Failed to persist suggestions", exc_info=True)
+                    if gen_title:
+                        try:
+                            from sqlalchemy import update as _sa_update
+                            from fim_one.web.models import Conversation
+                            await _bg_db.execute(
+                                _sa_update(Conversation)
+                                .where(Conversation.id == _bg_conversation_id)
+                                .values(title=gen_title)
+                            )
+                            await _bg_db.commit()
+                        except Exception:
+                            logger.debug("Failed to persist title", exc_info=True)
+
+                    # Capture fast LLM token usage
+                    bg_fast_summary = _bg_usage_tracker.get_summary()
+                    if bg_fast_summary.total_tokens > 0:
+                        try:
+                            from sqlalchemy import update as _sa_update, func as _sa_func
+                            from fim_one.web.models import Conversation
+                            await _bg_db.execute(
+                                _sa_update(Conversation)
+                                .where(Conversation.id == _bg_conversation_id)
+                                .values(
+                                    total_tokens=_sa_func.coalesce(Conversation.total_tokens, 0) + bg_fast_summary.total_tokens,
+                                    fast_llm_tokens=_sa_func.coalesce(Conversation.fast_llm_tokens, 0) + bg_fast_summary.total_tokens,
+                                )
+                            )
+                            await _bg_db.commit()
+                        except Exception:
+                            logger.warning("Failed to persist fast LLM tokens", exc_info=True)
+                except Exception:
+                    logger.warning("ReAct post-processing background task failed", exc_info=True)
+                finally:
+                    if _bg_db:
+                        await _bg_db.close()
+
+            asyncio.create_task(_react_post_processing())
         except Exception as exc:
             logger.exception("ReAct agent failed")
             elapsed = round(time.time() - t0, 2)
@@ -2840,10 +2885,15 @@ async def dag_endpoint(
     from fim_one.db import create_session as _create_session
     try:
         async with _create_session() as _llm_db:
-            llm = await _resolve_llm(agent_cfg, _llm_db)
-            _fast_context_budget = await get_effective_fast_context_budget(_llm_db)
-            _context_budget = await get_effective_context_budget(_llm_db)
-            dag_model_supports_vision = await _resolve_model_supports_vision(agent_cfg, _llm_db)
+            llm, fast_llm, _fast_context_budget, _context_budget, dag_model_supports_vision = (
+                await asyncio.gather(
+                    _resolve_llm(agent_cfg, _llm_db),
+                    _resolve_fast_llm(agent_cfg, _llm_db),
+                    get_effective_fast_context_budget(_llm_db),
+                    get_effective_context_budget(_llm_db),
+                    _resolve_model_supports_vision(agent_cfg, _llm_db),
+                )
+            )
     except ValueError as exc:
         raise AppError(
             "agent_config_error",
@@ -2885,10 +2935,6 @@ async def dag_endpoint(
             extra_instructions = (extra_instructions or "") + _skill_block
         # Also resolve compact descriptors for planner skill discovery.
         _dag_skill_descs = await _resolve_skill_descriptors(_dag_skill_ids)
-
-    # DAG uses a fast LLM for step execution; role='fast' -> role='general' -> ENV fallback.
-    async with _create_session() as _fast_llm_db:
-        fast_llm = await _resolve_fast_llm(agent_cfg, _fast_llm_db)
 
     # Load attached images (async to avoid blocking the event loop)
     dag_image_data: list[tuple[str, str, str]] = []
@@ -3606,83 +3652,121 @@ async def dag_endpoint(
                 await get_broker().unregister(conversation_id)
                 dag_interrupt_queue = None  # prevent double-unregister in finally
 
-            yield _sse("post_processing", {})
-
-            # -- Async post-answer metadata (after done, before end) ----
-            async def _dag_maybe_generate_title() -> str | None:
-                """Generate title if this is the first message."""
-                if not (db_session and conversation_id):
-                    return None
-                try:
-                    from sqlalchemy import func as _sa_func
-                    from fim_one.web.models import (
-                        Conversation as ConvModel,
-                        Message as _MsgModel,
-                    )
-                    msg_count = (
-                        await db_session.execute(
-                            sa_select(_sa_func.count())
-                            .select_from(_MsgModel)
-                            .where(_MsgModel.conversation_id == conversation_id)
-                        )
-                    ).scalar() or 0
-                    if msg_count <= 2:
-                        return await _generate_title(
-                            fast_llm, q, answer,
-                            preferred_language=preferred_language,
-                            usage_tracker=fast_usage_tracker,
-                        )
-                except Exception:
-                    logger.debug("Auto-title generation failed", exc_info=True)
-                return None
-
-            dag_suggestions, dag_gen_title = await asyncio.gather(
-                _generate_suggestions(
-                    fast_llm, q, answer,
-                    preferred_language=preferred_language,
-                    usage_tracker=fast_usage_tracker,
-                ),
-                _dag_maybe_generate_title(),
-            )
-            if dag_suggestions:
-                yield _sse("suggestions", {"items": dag_suggestions})
-            if dag_gen_title:
-                yield _sse("title", {"title": dag_gen_title})
-                if db_session and conversation_id:
-                    try:
-                        from sqlalchemy import update as _sa_update
-                        from fim_one.web.models import Conversation as ConvModel
-                        await db_session.execute(
-                            _sa_update(ConvModel)
-                            .where(ConvModel.id == conversation_id)
-                            .values(title=dag_gen_title)
-                        )
-                        await db_session.commit()
-                    except Exception:
-                        logger.debug("Failed to persist title", exc_info=True)
-
-            # Capture fast LLM token usage (after all fast calls including suggestions)
-            fast_summary = fast_usage_tracker.get_summary()
-            if fast_summary.total_tokens > 0:
-                if "usage" in dag_done_payload:
-                    dag_done_payload["usage"]["fast_llm_tokens"] = fast_summary.total_tokens
-                if db_session and conversation_id:
-                    try:
-                        from sqlalchemy import update as _sa_update, func as _sa_func
-                        from fim_one.web.models import Conversation as ConvModel
-                        await db_session.execute(
-                            _sa_update(ConvModel)
-                            .where(ConvModel.id == conversation_id)
-                            .values(
-                                total_tokens=_sa_func.coalesce(ConvModel.total_tokens, 0) + fast_summary.total_tokens,
-                                fast_llm_tokens=_sa_func.coalesce(ConvModel.fast_llm_tokens, 0) + fast_summary.total_tokens,
-                            )
-                        )
-                        await db_session.commit()
-                    except Exception:
-                        logger.warning("Failed to persist fast LLM tokens", exc_info=True)
-
+            # -- Send end immediately — post-processing runs in background --
             yield _sse("end", {})
+
+            # -- Background post-processing: suggestions, title, fast token accounting --
+            _dag_bg_conversation_id = conversation_id
+            _dag_bg_fast_llm = fast_llm
+            _dag_bg_query = q
+            _dag_bg_answer = answer
+            _dag_bg_preferred_language = preferred_language
+
+            async def _dag_post_processing() -> None:
+                """Background task for DAG suggestions, title, and fast-LLM token tracking."""
+                from fim_one.db import create_session as _bg_create_session
+                _bg_db: AsyncSession | None = None
+                try:
+                    _bg_usage_tracker = UsageTracker()
+
+                    async def _bg_dag_maybe_generate_title() -> str | None:
+                        if not _dag_bg_conversation_id:
+                            return None
+                        try:
+                            from sqlalchemy import func as _sa_func
+                            from fim_one.web.models import (
+                                Conversation as ConvModel,
+                                Message as _MsgModel,
+                            )
+                            async with _bg_create_session() as _cnt_db:
+                                msg_count = (
+                                    await _cnt_db.execute(
+                                        sa_select(_sa_func.count())
+                                        .select_from(_MsgModel)
+                                        .where(_MsgModel.conversation_id == _dag_bg_conversation_id)
+                                    )
+                                ).scalar() or 0
+                            if msg_count <= 2:
+                                return await _generate_title(
+                                    _dag_bg_fast_llm, _dag_bg_query, _dag_bg_answer,
+                                    preferred_language=_dag_bg_preferred_language,
+                                    usage_tracker=_bg_usage_tracker,
+                                )
+                        except Exception:
+                            logger.debug("Auto-title generation failed", exc_info=True)
+                        return None
+
+                    dag_suggestions, dag_gen_title = await asyncio.gather(
+                        _generate_suggestions(
+                            _dag_bg_fast_llm, _dag_bg_query, _dag_bg_answer,
+                            preferred_language=_dag_bg_preferred_language,
+                            usage_tracker=_bg_usage_tracker,
+                        ),
+                        _bg_dag_maybe_generate_title(),
+                    )
+
+                    if not _dag_bg_conversation_id:
+                        return
+
+                    _bg_db = _bg_create_session()
+                    if dag_suggestions:
+                        try:
+                            from fim_one.web.models import Message as _MsgModel
+                            # Store suggestions in the most recent assistant message's metadata
+                            _last_msg_stmt = (
+                                sa_select(_MsgModel)
+                                .where(
+                                    _MsgModel.conversation_id == _dag_bg_conversation_id,
+                                    _MsgModel.role == "assistant",
+                                )
+                                .order_by(_MsgModel.created_at.desc())
+                                .limit(1)
+                            )
+                            _last_msg = (await _bg_db.execute(_last_msg_stmt)).scalar_one_or_none()
+                            if _last_msg and _last_msg.metadata_:
+                                _last_msg.metadata_["suggestions"] = dag_suggestions
+                            elif _last_msg:
+                                _last_msg.metadata_ = {"suggestions": dag_suggestions}
+                            await _bg_db.commit()
+                        except Exception:
+                            logger.debug("Failed to persist suggestions", exc_info=True)
+                    if dag_gen_title:
+                        try:
+                            from sqlalchemy import update as _sa_update
+                            from fim_one.web.models import Conversation as ConvModel
+                            await _bg_db.execute(
+                                _sa_update(ConvModel)
+                                .where(ConvModel.id == _dag_bg_conversation_id)
+                                .values(title=dag_gen_title)
+                            )
+                            await _bg_db.commit()
+                        except Exception:
+                            logger.debug("Failed to persist title", exc_info=True)
+
+                    # Capture fast LLM token usage
+                    bg_fast_summary = _bg_usage_tracker.get_summary()
+                    if bg_fast_summary.total_tokens > 0:
+                        try:
+                            from sqlalchemy import update as _sa_update, func as _sa_func
+                            from fim_one.web.models import Conversation as ConvModel
+                            await _bg_db.execute(
+                                _sa_update(ConvModel)
+                                .where(ConvModel.id == _dag_bg_conversation_id)
+                                .values(
+                                    total_tokens=_sa_func.coalesce(ConvModel.total_tokens, 0) + bg_fast_summary.total_tokens,
+                                    fast_llm_tokens=_sa_func.coalesce(ConvModel.fast_llm_tokens, 0) + bg_fast_summary.total_tokens,
+                                )
+                            )
+                            await _bg_db.commit()
+                        except Exception:
+                            logger.warning("Failed to persist fast LLM tokens", exc_info=True)
+                except Exception:
+                    logger.warning("DAG post-processing background task failed", exc_info=True)
+                finally:
+                    if _bg_db:
+                        await _bg_db.close()
+
+            asyncio.create_task(_dag_post_processing())
         except StructuredOutputError as exc:
             logger.warning("Structured output failed for model %s: %s", getattr(llm, 'model_id', '?'), exc)
             elapsed = round(time.time() - t0, 2)

@@ -57,7 +57,7 @@ _TOOL_OBS_TRUNCATION = int(os.getenv("REACT_TOOL_OBS_TRUNCATION", "8000"))
 
 # Cycle detection: when the same (tool_name, args_hash) pair appears this many
 # times, inject a deterministic warning message.
-_CYCLE_DETECTION_THRESHOLD = int(os.getenv("REACT_CYCLE_DETECTION_THRESHOLD", "3"))
+_CYCLE_DETECTION_THRESHOLD = int(os.getenv("REACT_CYCLE_DETECTION_THRESHOLD", "2"))
 
 _CYCLE_WARNING_TEMPLATE = (
     "\u26a0 You have called `{tool_name}` with identical arguments "
@@ -176,6 +176,9 @@ the target file, inform the user clearly — NEVER read other files and present 
 their content as if it belongs to the target file. This is a critical safety \
 rule: using content from unrelated files to answer questions about a specific \
 file constitutes hallucination and is strictly forbidden.
+- If an approach fails, diagnose WHY before switching tactics. Don't retry identical actions.
+- If you called the same tool with identical arguments twice and got the same result, change approach or finalize.
+- When a tool returns exit code 1 for grep/diff/test, this means "no match/difference/false" — NOT an error.
 """
 
 _VISION_CONTEXT_HINT = """\
@@ -218,6 +221,9 @@ the target file, inform the user clearly — NEVER read other files and present 
 their content as if it belongs to the target file. This is a critical safety \
 rule: using content from unrelated files to answer questions about a specific \
 file constitutes hallucination and is strictly forbidden.
+- If an approach fails, diagnose WHY before switching tactics. Don't retry identical actions.
+- If you called the same tool with identical arguments twice and got the same result, change approach or finalize.
+- When a tool returns exit code 1 for grep/diff/test, this means "no match/difference/false" — NOT an error.
 """
 
 
@@ -922,7 +928,10 @@ class ReActAgent:
 
             # Feed the tool result/error back into the conversation so the LLM
             # can observe and adapt on the next iteration (Observe step of ReAct).
-            observation = step.observation or "(no output)"
+            observation = step.observation or (
+                f"Tool '{action.tool_name or 'unknown'}' completed successfully "
+                f"with no output. Do not retry with same arguments."
+            )
             # Offload large outputs to workspace when available.
             if self._workspace is not None and step.observation and not step.error:
                 observation = self._workspace.maybe_offload(
@@ -1345,7 +1354,10 @@ class ReActAgent:
                     # instead of the full content (which the frontend renders
                     # via iframe / markdown).  This prevents the LLM from
                     # echoing large HTML blobs in its final answer.
-                    llm_content = raw_result.content
+                    llm_content = raw_result.content or (
+                        f"Tool '{tc.name}' completed successfully "
+                        f"with no output. Do not retry with same arguments."
+                    )
                     if raw_result.content_type in ("html", "markdown") and raw_result.artifacts:
                         names = ", ".join(a.name for a in raw_result.artifacts)
                         llm_content = (
@@ -1366,7 +1378,10 @@ class ReActAgent:
                     )
                     return step, msg
                 # Offload large plain-string results to workspace.
-                llm_result = raw_result
+                llm_result = raw_result or (
+                    f"Tool '{tc.name}' completed successfully "
+                    f"with no output. Do not retry with same arguments."
+                )
                 if self._workspace is not None:
                     llm_result = self._workspace.maybe_offload(
                         tc.name, raw_result,
