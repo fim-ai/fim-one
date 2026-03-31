@@ -22,7 +22,9 @@ from typing import Any
 
 from fim_one.core.memory.base import BaseMemory
 from fim_one.core.memory.context_guard import ContextGuard
+from fim_one.core.memory.microcompact import micro_compact
 from fim_one.core.model import BaseLLM, ChatMessage, LLMResult
+from fim_one.core.model.retry import is_context_overflow
 from fim_one.core.model.structured import StructuredCallResult, structured_llm_call
 from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.model.usage import UsageTracker
@@ -54,6 +56,10 @@ _SELF_REFLECTION_INTERVAL = int(os.getenv("REACT_SELF_REFLECTION_INTERVAL", "6")
 
 # Max chars per tool observation in synthesis prompt to prevent context overflow.
 _TOOL_OBS_TRUNCATION = int(os.getenv("REACT_TOOL_OBS_TRUNCATION", "8000"))
+
+# Approximate token budget for all tool results combined across a single run.
+# Tool results exceeding this cumulative budget are truncated.
+_TOOL_RESULT_BUDGET = int(os.getenv("REACT_TOOL_RESULT_BUDGET", "40000"))
 
 # Cycle detection: when the same (tool_name, args_hash) pair appears this many
 # times, inject a deterministic warning message.
@@ -765,6 +771,8 @@ class ReActAgent:
         tool_call_count = 0  # Track actual tool-call iterations for self-reflection
         cycle_tracker: dict[tuple[str, str], int] = {}  # (tool_name, args_hash) -> count
         completion_check_done = False  # One-shot flag for completion checklist
+        tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
+        context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
 
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("ReAct iteration %d", iteration)
@@ -799,6 +807,7 @@ class ReActAgent:
                     None, None, None,
                 )
 
+            messages = micro_compact(messages)
             if self._context_guard is not None:
                 messages = await self._context_guard.check_and_compact(
                     messages, hint="react_iteration",
@@ -806,11 +815,30 @@ class ReActAgent:
 
             # Tool-decision iterations use the fast model (when available)
             # since choosing a tool + params doesn't need primary-tier reasoning.
-            result: LLMResult = await self._tool_llm.chat(
-                messages,
-                response_format=response_format,
-                reasoning_effort=None,
-            )
+            try:
+                result: LLMResult = await self._tool_llm.chat(
+                    messages,
+                    response_format=response_format,
+                    reasoning_effort=None,
+                )
+            except Exception as exc:
+                if is_context_overflow(exc) and not context_overflow_recovered:
+                    context_overflow_recovered = True
+                    logger.warning(
+                        "Context overflow detected in JSON mode "
+                        "(iteration %d), forcing compact to 50%%",
+                        iteration,
+                    )
+                    messages = await self._force_compact(
+                        messages, target_ratio=0.5, hint="react_iteration",
+                    )
+                    result = await self._tool_llm.chat(
+                        messages,
+                        response_format=response_format,
+                        reasoning_effort=None,
+                    )
+                else:
+                    raise
             await usage_tracker.record(result.usage)
 
             raw_content = result.message.content
@@ -942,6 +970,23 @@ class ReActAgent:
                 if step.error
                 else f"Observation: {observation}"
             )
+
+            # --- Tool result aggregate budget (I.8) ---
+            estimated_tokens = len(obs_content) // 4
+            if tool_result_tokens + estimated_tokens > _TOOL_RESULT_BUDGET:
+                max_chars = max(0, (_TOOL_RESULT_BUDGET - tool_result_tokens) * 4)
+                obs_content = (
+                    obs_content[:max_chars]
+                    + f"\n\n[Truncated: tool result exceeded aggregate budget "
+                    f"({tool_result_tokens}/{_TOOL_RESULT_BUDGET} tokens used)]"
+                )
+                estimated_tokens = len(obs_content) // 4
+                logger.warning(
+                    "Tool result budget exceeded: %d/%d tokens after truncation",
+                    tool_result_tokens + estimated_tokens, _TOOL_RESULT_BUDGET,
+                )
+            tool_result_tokens += estimated_tokens
+
             messages.append(ChatMessage(role="user", content=obs_content))
 
             # --- Cycle detection ---
@@ -1055,6 +1100,8 @@ class ReActAgent:
         tool_call_count = 0  # Track actual tool-call iterations for self-reflection
         cycle_tracker: dict[tuple[str, str], int] = {}  # (tool_name, args_hash) -> count
         completion_check_done = False  # One-shot flag for completion checklist
+        tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
+        context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
 
         # Build OpenAI-format tool definitions using the effective (possibly
         # filtered) tool set for context efficiency.
@@ -1094,6 +1141,7 @@ class ReActAgent:
                     None, None, None,
                 )
 
+            messages = micro_compact(messages)
             if self._context_guard is not None:
                 messages = await self._context_guard.check_and_compact(
                     messages, hint="react_iteration",
@@ -1102,12 +1150,32 @@ class ReActAgent:
             # Tool-decision iterations use the fast model (when available).
             # The final answer is streamed separately via stream_answer()
             # using the primary model.
-            result: LLMResult = await self._tool_llm.chat(
-                messages,
-                tools=tools_payload,
-                tool_choice=tool_choice,
-                reasoning_effort=None,
-            )
+            try:
+                result: LLMResult = await self._tool_llm.chat(
+                    messages,
+                    tools=tools_payload,
+                    tool_choice=tool_choice,
+                    reasoning_effort=None,
+                )
+            except Exception as exc:
+                if is_context_overflow(exc) and not context_overflow_recovered:
+                    context_overflow_recovered = True
+                    logger.warning(
+                        "Context overflow detected in native mode "
+                        "(iteration %d), forcing compact to 50%%",
+                        iteration,
+                    )
+                    messages = await self._force_compact(
+                        messages, target_ratio=0.5, hint="react_iteration",
+                    )
+                    result = await self._tool_llm.chat(
+                        messages,
+                        tools=tools_payload,
+                        tool_choice=tool_choice,
+                        reasoning_effort=None,
+                    )
+                else:
+                    raise
             await usage_tracker.record(result.usage)
 
             assistant_msg = result.message
@@ -1127,6 +1195,35 @@ class ReActAgent:
                     on_iteration,
                     reasoning=assistant_msg.reasoning_content or "",
                 )
+
+                # --- Tool result aggregate budget (I.8) ---
+                for tr_msg in tool_results:
+                    raw_content = tr_msg.content
+                    # Tool results are always strings; skip vision arrays.
+                    if not isinstance(raw_content, str):
+                        continue
+                    content_str: str = raw_content or ""
+                    estimated_tokens = len(content_str) // 4
+                    if tool_result_tokens + estimated_tokens > _TOOL_RESULT_BUDGET:
+                        max_chars = max(
+                            0, (_TOOL_RESULT_BUDGET - tool_result_tokens) * 4,
+                        )
+                        truncated = (
+                            content_str[:max_chars]
+                            + f"\n\n[Truncated: tool result exceeded aggregate "
+                            f"budget ({tool_result_tokens}/"
+                            f"{_TOOL_RESULT_BUDGET} tokens used)]"
+                        )
+                        tr_msg.content = truncated
+                        estimated_tokens = len(truncated) // 4
+                        logger.warning(
+                            "Tool result budget exceeded: %d/%d tokens "
+                            "after truncation",
+                            tool_result_tokens + estimated_tokens,
+                            _TOOL_RESULT_BUDGET,
+                        )
+                    tool_result_tokens += estimated_tokens
+
                 messages.extend(tool_results)
                 tool_call_count += 1
 
@@ -1781,6 +1878,40 @@ class ReActAgent:
         await self._memory.add_message(
             ChatMessage(role="assistant", content=answer),
         )
+
+    async def _force_compact(
+        self,
+        messages: list[ChatMessage],
+        target_ratio: float = 0.5,
+        hint: str = "react_iteration",
+    ) -> list[ChatMessage]:
+        """Force-compact messages to a fraction of the context budget.
+
+        Used by reactive compact (I.9) when a context overflow exception is
+        caught.  If no ``ContextGuard`` is configured, falls back to
+        heuristic truncation via ``CompactUtils.smart_truncate``.
+
+        Args:
+            messages: The current message list.
+            target_ratio: Target budget as a fraction of the default budget
+                (e.g. 0.5 means 50%).
+            hint: Compact prompt variant.
+
+        Returns:
+            A compacted message list.
+        """
+        from fim_one.core.memory.compact import CompactUtils
+
+        if self._context_guard is not None:
+            target_budget = int(self._context_guard._default_budget * target_ratio)
+            return await self._context_guard.check_and_compact(
+                messages, budget=target_budget, hint=hint,
+            )
+
+        # No context guard — use heuristic truncation with a conservative
+        # estimate (assume 32k default budget).
+        target_budget = int(32000 * target_ratio)
+        return CompactUtils.smart_truncate(messages, target_budget)
 
     @staticmethod
     def _summarise_steps(steps: list[StepResult]) -> str:

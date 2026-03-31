@@ -51,6 +51,58 @@ class RetryConfig:
     )
 
 
+def is_context_overflow(exc: Exception) -> bool:
+    """Check if an exception indicates context length overflow.
+
+    Detects common patterns from OpenAI-compatible APIs:
+    - HTTP 400 with "context_length" or "maximum context length" in message
+    - HTTP 400 with "token" and ("limit" or "exceed") in message
+    - HTTP 400 with "too many tokens" or "max_tokens" in message
+    - HTTP 413 (payload too large) from some providers
+
+    Args:
+        exc: The exception to check.
+
+    Returns:
+        ``True`` if the error indicates context length overflow.
+    """
+    status_code: int | None = getattr(exc, "status_code", None)
+    # Some providers return 413 for oversized payloads.
+    if status_code not in (400, 413, None):
+        return False
+
+    # Build a lowercase representation of the error message.
+    msg = str(exc).lower()
+    # Also check the body/message attribute used by openai SDK.
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        body_msg = body.get("message", "")
+        if isinstance(body_msg, str):
+            msg = f"{msg} {body_msg.lower()}"
+
+    # Pattern 1: explicit "context_length" or "maximum context length"
+    if "context_length" in msg or "maximum context length" in msg:
+        return True
+
+    # Pattern 2: "token" combined with "limit" or "exceed"
+    if "token" in msg and ("limit" in msg or "exceed" in msg):
+        return True
+
+    # Pattern 3: "too many tokens" or "max_tokens"
+    if "too many tokens" in msg:
+        return True
+
+    # Pattern 4: "context window" (Anthropic-style)
+    if "context window" in msg:
+        return True
+
+    # Pattern 5: "request too large" (some providers)
+    if "request too large" in msg:
+        return True
+
+    return False
+
+
 def is_retryable_error(error: BaseException) -> bool:
     """Determine whether an error is transient and worth retrying.
 
