@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -75,6 +76,13 @@ _CYCLE_WARNING_TEMPLATE = (
 # a final answer when the agent has used enough tools to warrant verification.
 _COMPLETION_CHECK_MIN_TOOLS = int(
     os.getenv("REACT_COMPLETION_CHECK_MIN_TOOLS", "3"),
+)
+
+# Character threshold for skipping the completion check.  Answers longer
+# than this (~200 tokens) are almost always substantive enough that the
+# extra verification round-trip adds latency without value.
+_COMPLETION_CHECK_SKIP_CHARS = int(
+    os.getenv("REACT_COMPLETION_CHECK_SKIP_CHARS", "800"),
 )
 
 _COMPLETION_CHECK_PROMPT = (
@@ -605,6 +613,118 @@ class ReActAgent:
     # Tool selection phase
     # ------------------------------------------------------------------
 
+    # Common English stop-words excluded from keyword matching to reduce
+    # false positives.  Keep this set small and focused on function words
+    # that carry no domain meaning.
+    _KEYWORD_STOP_WORDS: set[str] = frozenset({  # type: ignore[assignment]
+        "a", "an", "the", "is", "are", "was", "were", "be", "been",
+        "being", "have", "has", "had", "do", "does", "did", "will",
+        "would", "could", "should", "may", "might", "shall", "can",
+        "to", "of", "in", "for", "on", "with", "at", "by", "from",
+        "as", "into", "about", "between", "through", "during", "before",
+        "after", "above", "below", "up", "down", "out", "off", "over",
+        "under", "and", "but", "or", "nor", "not", "so", "yet", "both",
+        "either", "neither", "each", "every", "all", "any", "few",
+        "more", "most", "other", "some", "such", "no", "only", "own",
+        "same", "than", "too", "very", "just", "because", "if", "when",
+        "while", "how", "what", "which", "who", "whom", "this", "that",
+        "these", "those", "i", "me", "my", "we", "our", "you", "your",
+        "he", "him", "his", "she", "her", "it", "its", "they", "them",
+        "their", "use", "using", "used", "get", "set", "make",
+    })
+
+    @staticmethod
+    def _tokenize_for_keywords(text: str) -> set[str]:
+        """Split *text* into a set of lowercase alphanumeric tokens.
+
+        Underscores and hyphens are treated as word boundaries so that
+        tool names like ``web_search`` yield ``{"web", "search"}``.
+        Single-character tokens are discarded.
+        """
+        return {
+            tok for tok in re.split(r"[^a-z0-9]+", text.lower())
+            if len(tok) > 1
+        }
+
+    def _select_by_keywords(
+        self,
+        query: str,
+        max_tools: int = _TOOL_SELECTION_MAX,
+    ) -> list[str] | None:
+        """Attempt to select tools via keyword overlap with the query.
+
+        Tokenises the *query* and each tool's ``name`` + ``description``,
+        then scores tools by the number of overlapping content words
+        (stop-words excluded).
+
+        Returns a list of tool names when the match is **unambiguous**:
+        - The top-scoring tool has score >= 2, **and**
+        - The top score is more than twice the second-highest score.
+
+        When these conditions are not met, returns ``None`` to signal
+        that the caller should fall back to LLM-based selection.
+
+        Args:
+            query: The user's current query.
+            max_tools: Maximum number of tools to return.
+
+        Returns:
+            A list of tool names, or ``None`` if matching is ambiguous.
+        """
+        query_tokens = self._tokenize_for_keywords(query) - self._KEYWORD_STOP_WORDS
+        if not query_tokens:
+            return None
+
+        scores: list[tuple[str, int]] = []
+        for tool in self._tools.list_tools():
+            tool_tokens = (
+                self._tokenize_for_keywords(tool.name)
+                | self._tokenize_for_keywords(tool.description)
+            ) - self._KEYWORD_STOP_WORDS
+            overlap = len(query_tokens & tool_tokens)
+            if overlap > 0:
+                scores.append((tool.name, overlap))
+
+        if not scores:
+            return None
+
+        # Sort descending by score.
+        scores.sort(key=lambda x: x[1], reverse=True)
+
+        top_score = scores[0][1]
+        second_score = scores[1][1] if len(scores) > 1 else 0
+
+        # Confidence gate: need a meaningful match that clearly
+        # dominates alternatives.
+        if top_score < 2:
+            logger.debug(
+                "Keyword tool selection: top score %d < 2; skipping",
+                top_score,
+            )
+            return None
+
+        if second_score > 0 and top_score <= 2 * second_score:
+            logger.debug(
+                "Keyword tool selection: top=%d, second=%d — ambiguous; "
+                "falling back to LLM",
+                top_score,
+                second_score,
+            )
+            return None
+
+        # Collect all tools sharing the top score (there may be ties).
+        selected = [name for name, sc in scores if sc == top_score]
+        selected = selected[:max_tools]
+
+        logger.debug(
+            "Keyword tool selection: confident match — %s (score=%d, "
+            "runner-up=%d)",
+            selected,
+            top_score,
+            second_score,
+        )
+        return selected
+
     async def _select_relevant_tools(
         self,
         query: str,
@@ -628,6 +748,32 @@ class ReActAgent:
         Returns:
             A filtered ``ToolRegistry`` with only the selected tools.
         """
+        # --- Fast path: keyword-based selection (no LLM call) ---
+        keyword_result = self._select_by_keywords(query)
+        if keyword_result is not None:
+            filtered = self._tools.filter_by_names(keyword_result)
+            if len(filtered) > 0:
+                # Apply the same pinning logic as the LLM path.
+                pin_names = {"read_skill", *self._pinned_tools}
+                for pin_name in pin_names:
+                    if pin_name not in [t.name for t in filtered.list_tools()]:
+                        pin_tool = self._tools.get(pin_name)
+                        if pin_tool is not None:
+                            filtered.register(pin_tool)
+                            logger.debug(
+                                "Keyword tool selection: pinned '%s'",
+                                pin_name,
+                            )
+                logger.info(
+                    "Tool selection (keyword shortcut): %d/%d tools "
+                    "selected: %s — LLM call skipped",
+                    len(filtered),
+                    len(self._tools),
+                    [t.name for t in filtered.list_tools()],
+                )
+                return filtered
+
+        # --- Slow path: LLM-based selection ---
         catalog = self._tools.to_compact_catalog()
         prompt = _TOOL_SELECTION_PROMPT.format(
             query=query,
@@ -912,15 +1058,19 @@ class ReActAgent:
                     )
                     continue
 
-                # --- Completion checklist ---
+                # --- Completion checklist (I.12 lightweighted) ---
                 # When the agent used tools and hasn't been verified yet,
                 # inject a one-time verification prompt and let the LLM
                 # re-evaluate before accepting the final answer.
+                # Long answers (> ~200 tokens) are almost always substantive
+                # enough to skip this extra round-trip.
+                final_answer_text = action.answer or ""
                 if (
                     self._completion_check
                     and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                     and not completion_check_done
                     and iteration < self._max_iterations
+                    and len(final_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
                 ):
                     completion_check_done = True
                     messages.append(
@@ -928,15 +1078,27 @@ class ReActAgent:
                     )
                     logger.info(
                         "Injected completion checklist at iteration %d "
-                        "(tool_call_count=%d)",
-                        iteration, tool_call_count,
+                        "(tool_call_count=%d, answer_len=%d)",
+                        iteration, tool_call_count, len(final_answer_text),
                     )
                     continue
+
+                if (
+                    self._completion_check
+                    and not completion_check_done
+                    and len(final_answer_text) > _COMPLETION_CHECK_SKIP_CHARS
+                ):
+                    completion_check_done = True
+                    logger.info(
+                        "Skipped completion check — answer length %d "
+                        "exceeds threshold %d",
+                        len(final_answer_text), _COMPLETION_CHECK_SKIP_CHARS,
+                    )
 
                 steps.append(StepResult(action=action))
                 if on_iteration is not None:
                     on_iteration(iteration, action, None, None, None)
-                answer = action.answer or ""
+                answer = final_answer_text
                 await self._save_to_memory(query, answer)
                 return AgentResult(
                     answer=answer,
@@ -1282,15 +1444,20 @@ class ReActAgent:
             if injected_msgs and iteration < self._max_iterations:
                 continue
 
-            # --- Completion checklist ---
+            # --- Completion checklist (I.12 lightweighted) ---
             # When the agent used tools and hasn't been verified yet,
             # inject a one-time verification prompt and let the LLM
             # re-evaluate before accepting the final answer.
+            # Long answers (> ~200 tokens) are almost always substantive
+            # enough to skip this extra round-trip.
+            raw_answer = assistant_msg.content
+            native_answer_text = raw_answer if isinstance(raw_answer, str) else ""
             if (
                 self._completion_check
                 and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                 and not completion_check_done
                 and iteration < self._max_iterations
+                and len(native_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
             ):
                 completion_check_done = True
                 messages.append(
@@ -1298,13 +1465,24 @@ class ReActAgent:
                 )
                 logger.info(
                     "Injected completion checklist at iteration %d "
-                    "(tool_call_count=%d)",
-                    iteration, tool_call_count,
+                    "(tool_call_count=%d, answer_len=%d)",
+                    iteration, tool_call_count, len(native_answer_text),
                 )
                 continue
 
-            raw_answer = assistant_msg.content
-            answer = raw_answer if isinstance(raw_answer, str) else ""
+            if (
+                self._completion_check
+                and not completion_check_done
+                and len(native_answer_text) > _COMPLETION_CHECK_SKIP_CHARS
+            ):
+                completion_check_done = True
+                logger.info(
+                    "Skipped completion check — answer length %d "
+                    "exceeds threshold %d",
+                    len(native_answer_text), _COMPLETION_CHECK_SKIP_CHARS,
+                )
+
+            answer = native_answer_text
             action = Action(
                 type="final_answer",
                 reasoning=assistant_msg.reasoning_content or "",

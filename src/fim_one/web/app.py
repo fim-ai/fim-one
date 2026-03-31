@@ -115,6 +115,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     import asyncio
 
     from fim_one.db import init_db, shutdown_db
+    from fim_one.core.model import close_shared_http_client
     from fim_one.core.workflow.scheduler import WorkflowScheduler
     from fim_one.core.workflow.run_cleanup import WorkflowRunCleaner
 
@@ -155,6 +156,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
             pass
     except asyncio.CancelledError:
         pass
+    await close_shared_http_client()
     await shutdown_db()
 
 

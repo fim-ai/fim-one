@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.model import BaseLLM
+from fim_one.core.model.fallback import FallbackLLM
 from fim_one.core.model.structured import StructuredOutputError
 from fim_one.core.model.types import ChatMessage
 from fim_one.core.model.usage import UsageSummary, UsageTracker
@@ -2077,6 +2078,10 @@ async def react_endpoint(
             detail_args={"reason": str(exc)},
         ) from exc
 
+    # -- Wrap primary LLM with fallback for availability resilience ----------
+    if fast_llm and fast_llm is not llm:
+        llm = FallbackLLM(primary=llm, fallback=fast_llm)
+
     # -- Run tool resolution and domain classification in parallel ----------
     # Both are independent: _resolve_tools hits DB/registry, classify_domain
     # calls the fast LLM.  Running concurrently saves ~1 RTT.
@@ -2901,6 +2906,11 @@ async def dag_endpoint(
             detail=str(exc),
             detail_args={"reason": str(exc)},
         ) from exc
+
+    # -- Wrap primary LLM with fallback for availability resilience ----------
+    if fast_llm and fast_llm is not llm:
+        llm = FallbackLLM(primary=llm, fallback=fast_llm)
+
     tools = await _resolve_tools(agent_cfg, conversation_id, user_id=current_user_id)
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
     lang_directive = get_language_directive(preferred_language)

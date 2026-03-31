@@ -594,3 +594,82 @@ class TestBuildRequestKwargs:
         )
         assert "max_tokens" in kwargs
         assert "max_completion_tokens" not in kwargs
+
+
+# ======================================================================
+# Connection pooling — shared httpx.AsyncClient
+# ======================================================================
+
+
+class TestSharedHttpClient:
+    """Verify shared HTTP connection pool lifecycle and configuration."""
+
+    def test_get_returns_open_client(self) -> None:
+        from fim_one.core.model.openai_compatible import _get_shared_http_client
+
+        client = _get_shared_http_client()
+        assert not client.is_closed
+
+    def test_get_returns_same_instance(self) -> None:
+        from fim_one.core.model.openai_compatible import _get_shared_http_client
+
+        a = _get_shared_http_client()
+        b = _get_shared_http_client()
+        assert a is b
+
+    def test_litellm_aclient_session_is_set(self) -> None:
+        import litellm as _litellm
+        from fim_one.core.model.openai_compatible import _get_shared_http_client
+
+        client = _get_shared_http_client()
+        assert _litellm.aclient_session is client
+
+    def test_pool_limits_configured(self) -> None:
+        from fim_one.core.model.openai_compatible import _get_shared_http_client
+
+        client = _get_shared_http_client()
+        pool = client._transport._pool  # type: ignore[attr-defined]
+        assert pool._max_connections == 100
+        assert pool._max_keepalive_connections == 20
+        assert pool._keepalive_expiry == 30
+
+    def test_timeout_configured(self) -> None:
+        import httpx
+
+        from fim_one.core.model.openai_compatible import _get_shared_http_client
+
+        client = _get_shared_http_client()
+        assert client.timeout == httpx.Timeout(300.0, connect=10.0)
+
+    @pytest.mark.asyncio
+    async def test_close_and_recreate(self) -> None:
+        import litellm as _litellm
+        from fim_one.core.model.openai_compatible import (
+            _get_shared_http_client,
+            close_shared_http_client,
+        )
+
+        original = _get_shared_http_client()
+        await close_shared_http_client()
+
+        # After close, litellm session is cleared and client is closed
+        assert _litellm.aclient_session is None
+        assert original.is_closed
+
+        # Re-acquire creates a fresh client
+        fresh = _get_shared_http_client()
+        assert fresh is not original
+        assert not fresh.is_closed
+        assert _litellm.aclient_session is fresh
+
+    @pytest.mark.asyncio
+    async def test_close_idempotent(self) -> None:
+        from fim_one.core.model.openai_compatible import close_shared_http_client
+
+        # Closing multiple times should not raise
+        await close_shared_http_client()
+        await close_shared_http_client()
+
+        # Ensure state is clean after double-close
+        from fim_one.core.model.openai_compatible import _SHARED_HTTP_CLIENT
+        assert _SHARED_HTTP_CLIENT is None

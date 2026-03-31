@@ -12,6 +12,7 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
+import httpx
 import litellm
 
 from .base import REASONING_INHERIT, BaseLLM
@@ -35,6 +36,74 @@ _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 litellm.num_retries = 0  # We use our own retry.py
 litellm.drop_params = True  # Silently drop unsupported params per model
 litellm.suppress_debug_info = True
+
+# ---------------------------------------------------------------------------
+# Connection pooling — shared httpx.AsyncClient for all LLM calls
+# ---------------------------------------------------------------------------
+# LiteLLM internally caches OpenAI SDK clients (AsyncOpenAI) keyed by
+# (api_key, api_base, timeout, …) in ``litellm.in_memory_llm_clients_cache``
+# (up to 200 entries, 600 s TTL).  Each cached client normally creates its
+# own httpx.AsyncClient with *default* pool settings (unlimited connections,
+# 5 s keepalive expiry).  The short keepalive means connections are dropped
+# after just 5 seconds of idle time — wasteful for bursty LLM workloads.
+#
+# By setting ``litellm.aclient_session`` to a long-lived client with tuned
+# pool limits, *all* OpenAI-compatible providers share the same connection
+# pool with better keepalive behaviour.  This is transparent to callers —
+# the litellm.acompletion() API is unchanged.
+#
+# Pool sizing rationale:
+#   - max_connections=100: enough for concurrent agent/DAG/streaming calls
+#   - max_keepalive_connections=20: keep warm connections to frequent providers
+#   - keepalive_expiry=30: much longer than the default 5 s; avoids needless
+#     reconnects between successive LLM calls in a single agent turn
+#   - connect timeout 10 s, overall timeout 300 s (LLM responses can be slow)
+
+_SHARED_HTTP_CLIENT: httpx.AsyncClient | None = None
+
+
+def _get_shared_http_client() -> httpx.AsyncClient:
+    """Return (and lazily create) the module-level shared httpx.AsyncClient.
+
+    The client is also installed as ``litellm.aclient_session`` so that
+    LiteLLM's internal OpenAI SDK client factory uses it automatically.
+    """
+    global _SHARED_HTTP_CLIENT
+    if _SHARED_HTTP_CLIENT is None or _SHARED_HTTP_CLIENT.is_closed:
+        _SHARED_HTTP_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(300.0, connect=10.0),
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+                keepalive_expiry=30,
+            ),
+            follow_redirects=True,
+        )
+        # Tell LiteLLM to use this client for all OpenAI-compatible providers.
+        litellm.aclient_session = _SHARED_HTTP_CLIENT
+        logger.info(
+            "Shared HTTP connection pool initialised "
+            "(max_conn=100, keepalive=20, keepalive_expiry=30s)"
+        )
+    return _SHARED_HTTP_CLIENT
+
+
+async def close_shared_http_client() -> None:
+    """Close the shared httpx.AsyncClient and reset litellm's session reference.
+
+    Call this during application shutdown (e.g. in the FastAPI lifespan)
+    to release connections cleanly.
+    """
+    global _SHARED_HTTP_CLIENT
+    litellm.aclient_session = None
+    if _SHARED_HTTP_CLIENT is not None and not _SHARED_HTTP_CLIENT.is_closed:
+        await _SHARED_HTTP_CLIENT.aclose()
+        logger.info("Shared HTTP connection pool closed")
+    _SHARED_HTTP_CLIENT = None
+
+
+# Eagerly initialise the shared client so it is ready for the first LLM call.
+_get_shared_http_client()
 
 # ---------------------------------------------------------------------------
 # Provider resolution
