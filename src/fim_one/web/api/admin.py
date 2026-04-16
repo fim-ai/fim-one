@@ -932,6 +932,11 @@ async def delete_user(
     label = target_user.username or target_user.email
 
     # --- Clean up file-system resources before DB delete ---
+    # NOTE: Every user-owned entity that stores files on disk MUST be cleaned
+    # here.  When adding a new module with disk storage, add its cleanup below
+    # and update the "User Deletion File Cleanup" section in CLAUDE.md.
+
+    # 1. Conversations — sandbox workspaces + published artifacts
     conv_result = await db.execute(
         select(Conversation.id).where(Conversation.user_id == user_id)
     )
@@ -945,9 +950,35 @@ async def delete_user(
         if uploads_dir.exists():
             shutil.rmtree(uploads_dir, ignore_errors=True)
 
+    # 2. Knowledge bases — uploaded documents + vector embeddings
+    kb_result = await db.execute(
+        select(KnowledgeBase.id).where(KnowledgeBase.user_id == user_id)
+    )
+    kb_ids = [row[0] for row in kb_result.fetchall()]
+
+    kb_uploads_dir = _UPLOADS_BASE / "kb"
+    for kb_id in kb_ids:
+        kb_dir = kb_uploads_dir / kb_id
+        if kb_dir.exists():
+            shutil.rmtree(kb_dir, ignore_errors=True)
+
+    vector_store_base = Path(os.environ.get("VECTOR_STORE_DIR", "./data/vector_store"))
+    vector_user_dir = vector_store_base / f"user_{user_id}"
+    if vector_user_dir.exists():
+        shutil.rmtree(vector_user_dir, ignore_errors=True)
+
+    # 3. User uploads (general file uploads)
     user_uploads = _UPLOADS_BASE / f"user_{user_id}"
     if user_uploads.exists():
         shutil.rmtree(user_uploads, ignore_errors=True)
+
+    # 4. Avatar
+    avatar_dir = _UPLOADS_BASE / "avatars"
+    if avatar_dir.exists():
+        for avatar_file in avatar_dir.glob(f"{user_id}_*"):
+            avatar_file.unlink(missing_ok=True)
+        for avatar_file in avatar_dir.glob(f"{user_id}.*"):
+            avatar_file.unlink(missing_ok=True)
 
     # --- DB delete & audit ---
     await db.delete(target_user)

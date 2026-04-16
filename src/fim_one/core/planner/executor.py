@@ -700,7 +700,11 @@ class DAGExecutor:
             parts.append(f"Suggested tool: {step.tool_hint}")
 
         if context:
-            parts.append(f"Context from previous steps:\n{context}")
+            parts.append(
+                "Context from previous steps (use this data directly — "
+                "do NOT re-run tools that produced these results):\n"
+                f"{context}"
+            )
 
         return "\n\n".join(parts)
 

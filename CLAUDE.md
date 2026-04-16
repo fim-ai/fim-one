@@ -107,6 +107,21 @@ Dev uses SQLite, production uses PostgreSQL. One set of migration files must wor
 - **SQLite ALTER COLUMN**: SQLite cannot `ALTER COLUMN` — use `op.batch_alter_table()` to modify column constraints (e.g., nullable). Always test both dialects.
 - **Auto-apply after creation**: After writing a migration file (in the main worktree, NOT in agent worktrees), **immediately run `uv run alembic upgrade head`** to apply it. Never leave migrations unapplied — it causes runtime errors that look unrelated.
 
+## User Deletion File Cleanup (MANDATORY)
+
+When adding a new user-owned module that writes files to disk, you **MUST** also update `delete_user()` in `src/fim_one/web/api/admin.py` to clean up those files. ORM cascade only deletes DB rows — files on disk are orphaned unless explicitly removed.
+
+Current cleanup registry (search `Clean up file-system resources` in `admin.py`):
+
+| # | Module | Disk path | Cleanup method |
+|---|--------|-----------|----------------|
+| 1 | conversations | `data/sandbox/{conv_id}/`, `uploads/conversations/{conv_id}/` | `shutil.rmtree` per conv |
+| 2 | knowledge_bases | `uploads/kb/{kb_id}/`, `data/vector_store/user_{user_id}/` | `shutil.rmtree` per KB + user vector dir |
+| 3 | user uploads | `uploads/user_{user_id}/` | `shutil.rmtree` |
+| 4 | avatar | `uploads/avatars/{user_id}_*` | `glob` + `unlink` |
+
+**Checklist for new modules**: if your module calls `mkdir`, `write_bytes`, `write_text`, `shutil.copy`, or `open(..., "w")` with a path under `uploads/` or `data/`, add corresponding cleanup to `delete_user()`.
+
 ## Code Conventions
 
 - Type hints on all public functions
