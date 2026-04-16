@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -355,3 +356,83 @@ class TestAgentTypes:
         result = AgentResult(answer="ok")
         assert result.steps == []
         assert result.iterations == 0
+
+
+# ======================================================================
+# Turn profiler integration (I.16)
+# ======================================================================
+
+
+class TestReActTurnProfiler:
+    """Verify that the per-turn profiler is wired into both ReAct paths."""
+
+    async def test_profiler_records_expected_phases_for_tool_turn(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A tool-call turn should log ``llm_total``, ``llm_first_token``,
+        ``tool_exec`` and ``compact`` via the profiler emit line."""
+        monkeypatch.setenv("REACT_TURN_PROFILE_ENABLED", "true")
+
+        llm = FakeLLM(
+            responses=[
+                _tool_call_response("echo", {"text": "probe"}),
+                _final_answer_response("done"),
+            ]
+        )
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(llm=llm, tools=registry, completion_check=False)
+
+        with caplog.at_level(
+            logging.INFO, logger="fim_one.core.agent.turn_profiler"
+        ):
+            result = await agent.run("profile me")
+
+        assert result.answer == "done"
+
+        profile_lines = [
+            r.getMessage()
+            for r in caplog.records
+            if "turn_profile" in r.getMessage()
+        ]
+        # Two iterations → two emit lines.
+        assert len(profile_lines) == 2
+
+        turn1 = profile_lines[0]
+        # Turn 1 must include the tool-call latency and LLM timings.
+        assert "turn=1" in turn1
+        assert "llm_total=" in turn1
+        assert "llm_first_token=" in turn1
+        assert "tool_exec=" in turn1
+        # memory_load + tool_schema_build are attributed to turn 1.
+        assert "memory_load=" in turn1
+        assert "tool_schema_build=" in turn1
+        assert "compact=" in turn1
+
+        turn2 = profile_lines[1]
+        assert "turn=2" in turn2
+        # Turn 2 is a final-answer turn with no tool_exec.
+        assert "llm_total=" in turn2
+
+    async def test_profiler_disabled_emits_no_turn_profile_log(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When REACT_TURN_PROFILE_ENABLED=false, no emit lines appear."""
+        monkeypatch.setenv("REACT_TURN_PROFILE_ENABLED", "false")
+
+        llm = FakeLLM(responses=[_final_answer_response("quick")])
+        registry = ToolRegistry()
+        agent = ReActAgent(llm=llm, tools=registry)
+
+        with caplog.at_level(
+            logging.INFO, logger="fim_one.core.agent.turn_profiler"
+        ):
+            await agent.run("no profile please")
+
+        assert not [
+            r for r in caplog.records if "turn_profile" in r.getMessage()
+        ]

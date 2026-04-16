@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import time
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -33,6 +34,7 @@ from fim_one.core.tool import ToolRegistry
 from fim_one.core.utils import extract_json
 
 from .hooks import HookContext, HookPoint, HookRegistry
+from .turn_profiler import TurnProfiler, make_profiler
 from .types import Action, AgentResult, StepResult
 from .workspace import AgentWorkspace
 
@@ -588,6 +590,12 @@ class ReActAgent:
             "or python_exec writing to disk), do NOT repeat the full file content in your "
             "response. Instead, briefly summarize the key findings/conclusions (2-4 sentences) "
             "and mention the file name so the user knows where to find the details.",
+            "- MARKDOWN SOURCE: When a tool returns converted or extracted markdown content "
+            "(e.g. from convert_to_markdown), you MUST present the markdown inside a PLAIN "
+            "code fence with NO language tag (use four backticks: ```` followed by a newline, "
+            "then the content, then ```` on its own line). Do NOT add a language identifier "
+            "like 'markdown' after the backticks. NEVER paste raw markdown outside a code "
+            "fence — it will be rendered by the UI and the user cannot copy the source.",
         ])
         if language_directive:
             system_parts.append(f"- {language_directive}")
@@ -892,16 +900,24 @@ class ReActAgent:
         tools = effective_tools if effective_tools is not None else self._tools
         usage_tracker = UsageTracker()
 
+        # Measure the one-time pre-loop setup costs so they can be
+        # attributed to the first turn's profiler (I.16).
+        _schema_start = time.perf_counter()
         system_prompt = self._build_system_prompt(tools=tools)
         if image_urls:
             system_prompt += "\n" + _VISION_CONTEXT_HINT
+        _initial_schema_build = time.perf_counter() - _schema_start
+
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=system_prompt),
         ]
 
         # Load history from memory.
+        _initial_memory_load = 0.0
         if self._memory is not None:
+            _mem_start = time.perf_counter()
             history = await self._memory.get_messages()
+            _initial_memory_load = time.perf_counter() - _mem_start
             for msg in history:
                 if msg.role != "system":
                     messages.append(msg)
@@ -922,6 +938,14 @@ class ReActAgent:
 
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("ReAct iteration %d", iteration)
+
+            # Per-turn phase profiler (I.16).  On turn 1, absorb the
+            # one-time pre-loop setup costs (memory load + tool schema
+            # build) so all wall time is attributed to *some* turn.
+            profiler: TurnProfiler = make_profiler(turn_id=iteration)
+            if iteration == 1:
+                profiler.add("memory_load", _initial_memory_load)
+                profiler.add("tool_schema_build", _initial_schema_build)
 
             # --- Per-turn token budget check ---
             if self._max_turn_tokens > 0:
@@ -953,38 +977,42 @@ class ReActAgent:
                     None, None, None,
                 )
 
-            messages = micro_compact(messages)
-            if self._context_guard is not None:
-                messages = await self._context_guard.check_and_compact(
-                    messages, hint="react_iteration",
-                )
+            with profiler.phase("compact"):
+                messages = micro_compact(messages)
+                if self._context_guard is not None:
+                    messages = await self._context_guard.check_and_compact(
+                        messages, hint="react_iteration",
+                    )
 
             # Tool-decision iterations use the fast model (when available)
             # since choosing a tool + params doesn't need primary-tier reasoning.
-            try:
-                result: LLMResult = await self._tool_llm.chat(
-                    messages,
-                    response_format=response_format,
-                    reasoning_effort=None,
-                )
-            except Exception as exc:
-                if is_context_overflow(exc) and not context_overflow_recovered:
-                    context_overflow_recovered = True
-                    logger.warning(
-                        "Context overflow detected in JSON mode "
-                        "(iteration %d), forcing compact to 50%%",
-                        iteration,
-                    )
-                    messages = await self._force_compact(
-                        messages, target_ratio=0.5, hint="react_iteration",
-                    )
-                    result = await self._tool_llm.chat(
+            with profiler.phase("llm_total"):
+                try:
+                    result: LLMResult = await self._tool_llm.chat(
                         messages,
                         response_format=response_format,
                         reasoning_effort=None,
                     )
-                else:
-                    raise
+                except Exception as exc:
+                    if is_context_overflow(exc) and not context_overflow_recovered:
+                        context_overflow_recovered = True
+                        logger.warning(
+                            "Context overflow detected in JSON mode "
+                            "(iteration %d), forcing compact to 50%%",
+                            iteration,
+                        )
+                        messages = await self._force_compact(
+                            messages, target_ratio=0.5, hint="react_iteration",
+                        )
+                        result = await self._tool_llm.chat(
+                            messages,
+                            response_format=response_format,
+                            reasoning_effort=None,
+                        )
+                    else:
+                        raise
+            # Non-streaming chat: first-token latency equals full call time.
+            profiler.add("llm_first_token", profiler.phases.get("llm_total", 0.0))
             await usage_tracker.record(result.usage)
 
             raw_content = result.message.content
@@ -1029,6 +1057,7 @@ class ReActAgent:
                         ),
                     ),
                 )
+                profiler.emit(self._profiler_conversation_id())
                 continue  # Skip to next iteration, which will call LLM again
 
             # Append the raw assistant reply to the conversation.
@@ -1056,6 +1085,7 @@ class ReActAgent:
                         len(injected_msgs),
                         iteration,
                     )
+                    profiler.emit(self._profiler_conversation_id())
                     continue
 
                 # --- Completion checklist (I.12 lightweighted) ---
@@ -1081,6 +1111,7 @@ class ReActAgent:
                         "(tool_call_count=%d, answer_len=%d)",
                         iteration, tool_call_count, len(final_answer_text),
                     )
+                    profiler.emit(self._profiler_conversation_id())
                     continue
 
                 if (
@@ -1100,6 +1131,7 @@ class ReActAgent:
                     on_iteration(iteration, action, None, None, None)
                 answer = final_answer_text
                 await self._save_to_memory(query, answer)
+                profiler.emit(self._profiler_conversation_id())
                 return AgentResult(
                     answer=answer,
                     steps=steps,
@@ -1112,7 +1144,9 @@ class ReActAgent:
             if on_iteration is not None:
                 on_iteration(iteration, action, None, None, None)
 
+            _tool_start = time.perf_counter()
             step = await self._execute_tool_call(action)
+            profiler.add("tool_exec", time.perf_counter() - _tool_start)
             steps.append(step)
             tool_call_count += 1
 
@@ -1168,10 +1202,11 @@ class ReActAgent:
                 action.tool_name == "request_tools"
                 and not step.error
             ):
-                messages[0] = ChatMessage(
-                    role="system",
-                    content=self._build_system_prompt(tools=tools),
-                )
+                with profiler.phase("tool_schema_build"):
+                    messages[0] = ChatMessage(
+                        role="system",
+                        content=self._build_system_prompt(tools=tools),
+                    )
                 logger.info(
                     "Rebuilt system prompt after request_tools "
                     "(now %d tools)", len(tools),
@@ -1196,6 +1231,8 @@ class ReActAgent:
 
             if on_iteration is not None:
                 on_iteration(iteration, action, step.observation, step.error, step)
+
+            profiler.emit(self._profiler_conversation_id())
 
         # Max iterations exceeded -- synthesise a timeout answer.
         logger.warning(
@@ -1238,6 +1275,8 @@ class ReActAgent:
         """
         usage_tracker = UsageTracker()
 
+        # Measure the one-time pre-loop setup costs (I.16).
+        _schema_start = time.perf_counter()
         system_prompt = self._build_system_prompt_native()
         if image_urls:
             system_prompt += "\n" + _VISION_CONTEXT_HINT
@@ -1246,8 +1285,11 @@ class ReActAgent:
         ]
 
         # Load history from memory.
+        _initial_memory_load = 0.0
         if self._memory is not None:
+            _mem_start = time.perf_counter()
             history = await self._memory.get_messages()
+            _initial_memory_load = time.perf_counter() - _mem_start
             for msg in history:
                 if msg.role != "system":
                     messages.append(msg)
@@ -1269,9 +1311,17 @@ class ReActAgent:
         # filtered) tool set for context efficiency.
         tools_payload = self._build_tools_payload(tools=effective_tools)
         tool_choice: str | None = "auto" if tools_payload else None
+        _initial_schema_build = time.perf_counter() - _schema_start
 
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("Native ReAct iteration %d", iteration)
+
+            # Per-turn phase profiler (I.16).  Attribute the one-time
+            # pre-loop setup costs to turn 1.
+            profiler: TurnProfiler = make_profiler(turn_id=iteration)
+            if iteration == 1:
+                profiler.add("memory_load", _initial_memory_load)
+                profiler.add("tool_schema_build", _initial_schema_build)
 
             # --- Per-turn token budget check ---
             if self._max_turn_tokens > 0:
@@ -1303,41 +1353,45 @@ class ReActAgent:
                     None, None, None,
                 )
 
-            messages = micro_compact(messages)
-            if self._context_guard is not None:
-                messages = await self._context_guard.check_and_compact(
-                    messages, hint="react_iteration",
-                )
+            with profiler.phase("compact"):
+                messages = micro_compact(messages)
+                if self._context_guard is not None:
+                    messages = await self._context_guard.check_and_compact(
+                        messages, hint="react_iteration",
+                    )
 
             # Tool-decision iterations use the fast model (when available).
             # The final answer is streamed separately via stream_answer()
             # using the primary model.
-            try:
-                result: LLMResult = await self._tool_llm.chat(
-                    messages,
-                    tools=tools_payload,
-                    tool_choice=tool_choice,
-                    reasoning_effort=None,
-                )
-            except Exception as exc:
-                if is_context_overflow(exc) and not context_overflow_recovered:
-                    context_overflow_recovered = True
-                    logger.warning(
-                        "Context overflow detected in native mode "
-                        "(iteration %d), forcing compact to 50%%",
-                        iteration,
-                    )
-                    messages = await self._force_compact(
-                        messages, target_ratio=0.5, hint="react_iteration",
-                    )
-                    result = await self._tool_llm.chat(
+            with profiler.phase("llm_total"):
+                try:
+                    result: LLMResult = await self._tool_llm.chat(
                         messages,
                         tools=tools_payload,
                         tool_choice=tool_choice,
                         reasoning_effort=None,
                     )
-                else:
-                    raise
+                except Exception as exc:
+                    if is_context_overflow(exc) and not context_overflow_recovered:
+                        context_overflow_recovered = True
+                        logger.warning(
+                            "Context overflow detected in native mode "
+                            "(iteration %d), forcing compact to 50%%",
+                            iteration,
+                        )
+                        messages = await self._force_compact(
+                            messages, target_ratio=0.5, hint="react_iteration",
+                        )
+                        result = await self._tool_llm.chat(
+                            messages,
+                            tools=tools_payload,
+                            tool_choice=tool_choice,
+                            reasoning_effort=None,
+                        )
+                    else:
+                        raise
+            # Non-streaming chat: first-token latency equals full call time.
+            profiler.add("llm_first_token", profiler.phases.get("llm_total", 0.0))
             await usage_tracker.record(result.usage)
 
             assistant_msg = result.message
@@ -1350,6 +1404,7 @@ class ReActAgent:
             # assistant's tool_use blocks.  Drain the interrupt queue only
             # AFTER tool results are appended to preserve this ordering.
             if assistant_msg.tool_calls:
+                _tool_start = time.perf_counter()
                 tool_results = await self._execute_native_tool_calls(
                     assistant_msg.tool_calls,
                     iteration,
@@ -1357,6 +1412,7 @@ class ReActAgent:
                     on_iteration,
                     reasoning=assistant_msg.reasoning_content or "",
                 )
+                profiler.add("tool_exec", time.perf_counter() - _tool_start)
 
                 # --- Tool result aggregate budget (I.8) ---
                 for tr_msg in tool_results:
@@ -1405,8 +1461,9 @@ class ReActAgent:
                 # rebuild the tools payload so the LLM can see the newly
                 # loaded tools on the next iteration.
                 if any(tc.name == "request_tools" for tc in assistant_msg.tool_calls):
-                    tools_payload = self._build_tools_payload(tools=effective_tools)
-                    tool_choice = "auto" if tools_payload else None
+                    with profiler.phase("tool_schema_build"):
+                        tools_payload = self._build_tools_payload(tools=effective_tools)
+                        tool_choice = "auto" if tools_payload else None
                     logger.info(
                         "Rebuilt tools payload after request_tools "
                         "(now %d tools)",
@@ -1433,6 +1490,7 @@ class ReActAgent:
                         "Injected self-reflection at tool-call #%d (iteration %d)",
                         tool_call_count, iteration,
                     )
+                profiler.emit(self._profiler_conversation_id())
                 continue
 
             # -- Final answer path (no tool calls) --
@@ -1442,6 +1500,7 @@ class ReActAgent:
                 injected_msgs, messages, iteration, on_iteration,
             )
             if injected_msgs and iteration < self._max_iterations:
+                profiler.emit(self._profiler_conversation_id())
                 continue
 
             # --- Completion checklist (I.12 lightweighted) ---
@@ -1468,6 +1527,7 @@ class ReActAgent:
                     "(tool_call_count=%d, answer_len=%d)",
                     iteration, tool_call_count, len(native_answer_text),
                 )
+                profiler.emit(self._profiler_conversation_id())
                 continue
 
             if (
@@ -1492,6 +1552,7 @@ class ReActAgent:
             if on_iteration is not None:
                 on_iteration(iteration, action, None, None, None)
             await self._save_to_memory(query, answer)
+            profiler.emit(self._profiler_conversation_id())
             return AgentResult(
                 answer=answer,
                 steps=steps,
@@ -2056,6 +2117,20 @@ class ReActAgent:
         await self._memory.add_message(
             ChatMessage(role="assistant", content=answer),
         )
+
+    def _profiler_conversation_id(self) -> str | None:
+        """Best-effort extraction of a conversation id for turn-profile logs.
+
+        Falls back to ``None`` when the configured memory backend does
+        not carry a conversation identifier.  Used only for diagnostic
+        logging — never affects agent behaviour.
+        """
+        if self._memory is None:
+            return None
+        conv_id = getattr(self._memory, "_conversation_id", None)
+        if isinstance(conv_id, str) and conv_id:
+            return conv_id
+        return None
 
     async def _force_compact(
         self,
