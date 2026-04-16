@@ -10,6 +10,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Non publié]
 
+## [v0.8.3] - 2026-04-16
+
 ### Ajouté
 
 - **Outil intégré `convert_to_markdown`** — Nouvel outil Agent polyvalent qui convertit n'importe quel fichier, URL, lien YouTube ou URI de données en Markdown propre en utilisant MarkItDown de Microsoft. Supporte PDF, Word (.docx), Excel (.xlsx/.xls), PowerPoint (.pptx), HTML, JSON, CSV, XML, ZIP, EPUB, Outlook .msg, images, audio (parole → texte) et transcriptions YouTube. Disponible pour chaque agent par défaut — même niveau que `web_fetch`. Lorsqu'un LLM capable de vision est configuré, les images intégrées et les pages PDF numérisées sont automatiquement OCRisées via le plugin officiel `markitdown-ocr`. Auparavant, cette capacité était cachée dans le pipeline d'ingestion RAG en arrière-plan ; les agents y ont maintenant accès sur le chemin de conversation interactif.

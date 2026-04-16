@@ -10,6 +10,8 @@ description: "FIM One의 모든 주요 변경 사항."
 
 ## [미출시]
 
+## [v0.8.3] - 2026-04-16
+
 ### 추가됨
 
 - **`convert_to_markdown` 내장 도구** — Microsoft의 MarkItDown을 사용하여 모든 파일, URL, YouTube 링크 또는 데이터 URI를 깔끔한 Markdown으로 변환하는 새로운 범용 Agent 도구입니다. PDF, Word (.docx), Excel (.xlsx/.xls), PowerPoint (.pptx), HTML, JSON, CSV, XML, ZIP, EPUB, Outlook .msg, 이미지, 오디오(음성 → 텍스트) 및 YouTube 자막을 지원합니다. 모든 agent에서 기본적으로 사용 가능하며 `web_fetch`와 동일한 계층입니다. 비전 기능이 있는 LLM이 구성되면, 공식 `markitdown-ocr` 플러그인을 통해 포함된 이미지와 스캔된 PDF 페이지가 자동으로 OCR됩니다. 이전에는 이 기능이 백그라운드 RAG 수집 파이프라인 내에 숨겨져 있었으며, 이제 agent는 대화형 경로에서 이를 사용할 수 있습니다.

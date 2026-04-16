@@ -10,6 +10,8 @@ description: "FIM Oneへの全ての注目すべき変更。"
 
 ## [未リリース]
 
+## [v0.8.3] - 2026-04-16
+
 ### 追加
 
 - **`convert_to_markdown` ビルトインツール** — Microsoft の MarkItDown を使用して、任意のファイル、URL、YouTube リンク、またはデータ URI をクリーンな Markdown に変換する新しい汎用エージェントツール。PDF、Word (.docx)、Excel (.xlsx/.xls)、PowerPoint (.pptx)、HTML、JSON、CSV、XML、ZIP、EPUB、Outlook .msg、画像、オーディオ（音声 → テキスト）、YouTube トランスクリプトに対応。すべてのエージェントでデフォルトで利用可能 — `web_fetch` と同じティア。ビジョン対応 LLM が設定されている場合、埋め込み画像とスキャン済み PDF ページは公式 `markitdown-ocr` プラグイン経由で自動的に OCR されます。以前はこの機能は背景の RAG 取り込みパイプライン内に隠されていました。エージェントはインタラクティブな会話パスでこれを利用できるようになりました。

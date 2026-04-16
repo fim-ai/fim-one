@@ -10,6 +10,8 @@ description: "FIM One 的所有重要更改。"
 
 ## [未发布]
 
+## [v0.8.3] - 2026-04-16
+
 ### 新增
 
 - **`convert_to_markdown` 内置工具** — 新的通用智能体工具，使用 Microsoft 的 MarkItDown 将任何文件、URL、YouTube 链接或数据 URI 转换为干净的 Markdown。支持 PDF、Word (.docx)、Excel (.xlsx/.xls)、PowerPoint (.pptx)、HTML、JSON、CSV、XML、ZIP、EPUB、Outlook .msg、图像、音频（语音转文本）和 YouTube 转录。默认对所有智能体可用 — 与 `web_fetch` 同级。配置了视觉能力的 LLM 时，嵌入的图像和扫描的 PDF 页面通过官方 `markitdown-ocr` 插件自动进行 OCR。此前此功能隐藏在后台 RAG 摄取管道中；现在智能体可在交互式对话路径上使用。

@@ -148,14 +148,16 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 |---|---|---|---|
 | `REACT_MAX_ITERATIONS` | 否 | `20` | 每个 ReAct 请求的最大工具调用迭代次数。更高的值 = 更彻底但更慢且成本更高 |
 | `REACT_MAX_TURN_TOKENS` | 否 | `0` | 紧急断路器：单个 ReAct 轮次的最大累积 token 数（所有迭代的提示词 + 完成）。默认 `0` = 无限制。**这不是用于日常 token 控制的** — 请使用按用户的 `token_quota`。这是针对极端场景（如智能体陷入无限工具调用循环）的最后手段安全阀。达到此限制会中止任务执行，浪费所有已消耗的 token，并返回不完整的结果。除非您有特定的失控智能体问题需要控制，否则保持为 `0` |
-| `REACT_TOOL_SELECTION_THRESHOLD` | 否 | `12` | 当注册工具总数超过此阈值时，轻量级 LLM 调用会在每个请求前选择最相关的子集 |
+| `REACT_TOOL_SELECTION_THRESHOLD` | 否 | `12` | 当注册的工具总数超过此阈值时，轻量级 LLM 调用会在每个请求前选择最相关的子集 |
 | `REACT_TOOL_SELECTION_MAX` | 否 | `6` | 智能选择后保留的最大工具数（仅在工具数超过 `REACT_TOOL_SELECTION_THRESHOLD` 时有效） |
-| `REACT_SELF_REFLECTION_INTERVAL` | 否 | `6` | 每 N 次工具调用后注入一个自反思提示词，帮助智能体纠正方向并避免循环 |
-| `REACT_TOOL_OBS_TRUNCATION` | 否 | `8000` | 合成最终答案时每个工具观察的最大字符数。更高的值会保留更多结构化数据（JSON、表格），但会消耗更多 token |
-| `REACT_CYCLE_DETECTION_THRESHOLD` | 否 | `3` | 当相同工具以相同参数被调用此次数时，会注入一个确定性警告，告诉智能体尝试不同的方法。与自反思（依赖 LLM 注意到循环）不同，这是一个基于哈希的检查，无法被绕过。也适用于 DAG 步骤 |
-| `REACT_COMPLETION_CHECK_MIN_TOOLS` | 否 | `3` | 完成检查清单启动前的最少工具调用次数。简单任务（1-2 次工具调用）会跳过验证以避免不必要的延迟。设置为 `1` 以启用始终开启的验证。也适用于 DAG 步骤 |
+| `REACT_SELF_REFLECTION_INTERVAL` | 否 | `6` | 每 N 次工具调用后注入一个自我反思提示词，帮助智能体纠正方向并避免循环 |
+| `REACT_TOOL_OBS_TRUNCATION` | 否 | `8000` | 合成最终答案时每个工具观察的最大字符数。更高的值以更多 token 为代价保留更多结构化数据（JSON、表格） |
+| `REACT_TOOL_RESULT_BUDGET` | 否 | `40000` | 单个会话中所有工具结果的聚合 token 预算。当工具结果 token 总数超过此上限时，新结果会被截断并显示通知。防止来自大型 API 响应的上下文膨胀（例如，5 个连接器调用各返回 8K）。设置为 `0` 以禁用上限 |
+| `REACT_COMPLETION_CHECK_SKIP_CHARS` | 否 | `800` | 当智能体的最终答案超过此字符数时，跳过答案后完成检查 LLM 调用。长详细答案不需要"我是否遗漏了什么？"验证往返。设置较低值以更积极地跳过；设置为非常大的值以始终运行检查 |
+| `REACT_CYCLE_DETECTION_THRESHOLD` | 否 | `2` | 当相同工具连续使用相同参数调用此次数时，会注入一个确定性警告，告诉智能体尝试不同的方法。与依赖 LLM 注意循环的自我反思不同，这是一个基于哈希的检查，无法绕过。也适用于 DAG 步骤 |
+| `REACT_COMPLETION_CHECK_MIN_TOOLS` | 否 | `3` | 完成检查清单触发前的最少工具调用数。简单任务（1-2 次工具调用）跳过验证以避免不必要的延迟。设置为 `1` 以始终进行验证。也适用于 DAG 步骤 |
 | `REACT_TURN_PROFILE_ENABLED` | 否 | `true` | 发出每轮阶段级别的计时日志（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）。每轮一行结构化日志。设置为 `false` 以完全禁用分析（零开销） |
-| `LLM_RATE_LIMIT_PER_USER` | 否 | `true` | 使用按用户键控的速率限制桶，而不是单个进程全局桶。防止一个嘈杂的用户耗尽同一工作进程上的所有其他用户。设置为 `false` 以恢复到旧版全局桶（不推荐） |
+| `LLM_RATE_LIMIT_PER_USER` | 否 | `true` | 使用按用户键控的速率限制桶而不是单个进程全局桶。防止一个嘈杂的用户耗尽同一工作进程上的所有其他用户。底层速率硬编码为每个桶 60 请求/分钟和 100K token/分钟 — 此设置仅控制桶是共享（全局）还是分区（按用户）。设置为 `false` 以恢复到旧版全局桶（不推荐） |
 
 ### DAG 规划器
 

@@ -216,6 +216,10 @@ flowchart LR
 - **资源分支完成** — 智能体/连接器/工作流分支端点已添加，完成五类系统血缘追踪（KB分支已移除——本质上是用户本地的）
 - **文件完整性护栏** — 系统提示词规则防止智能体在目标文件不可读时替换无关文件内容；上传的文件现在在消息上下文中包含 `file_id`，用于直接 `read_uploaded_file` 访问
 
+### v0.8.3 (2026-04-16) — 通用文档转换 + 智能体核心第 3 阶段
+- **通用文档转换（`convert_to_markdown` + OCR）** — 内置智能体工具，封装 Microsoft MarkItDown；将 PDF、Word、Excel、PowerPoint、HTML、JSON、CSV、XML、ZIP、EPUB、Outlook .msg、图像、音频、YouTube URL 转换为 Markdown。`LiteLLMOpenAIShim` 通过任何支持视觉的 LLM（Claude、Gemini、Bedrock、Azure）启用 OCR。支持视觉的 RAG 摄取，具有零回归纯文本降级方案。`LLM_SUPPORTS_VISION` 环境变量用于选择退出
+- **智能体核心第 3 阶段（运行时不变量强化）** — 对话恢复（悬空 `tool_use` 自动修复）；结构化紧凑工作卡（`WorkCard` 跨压缩轮的类型化合并）；轮级分析器（`REACT_TURN_PROFILE_ENABLED`）；每用户速率限制（`LLM_RATE_LIMIT_PER_USER`）；包含 `tool_calls` 的空内容助手消息不再被丢弃
+
 ## 计划版本
 
 ### v0.9 — 可观测性 + 生产环境加固
@@ -244,34 +248,34 @@ flowchart LR
 
 #### 可观测性与智能体运行时
 
-- [ ] **智能体追踪层（可观测性++）**：应用级运行/追踪/线程层级，用于智能体调试——每个对话 → `Trace`，每个 LLM 调用/工具调用/DAG 步骤 → `Span`，包含输入/输出/token/时序。前端追踪查看器，具有时间线和可展开的 LLM 调用负载。这超越了 OTel（基础设施级）的范围，为开发者和企业客户提供可操作的智能体循环调试。OpenTelemetry 导出作为数据汇选项。参照 LangSmith 的运行/追踪/线程概念建模——业界验证的智能体可观测性模式。
-- [ ] **指标仪表板**：延迟、成功率、token 使用、连接器调用分析——按智能体、按用户、按组织细分
-- [x] ~~**断路器**：三态机（关闭/打开/半开），包含按连接器故障追踪、5xx 检测和监控端点~~ *（v0.8 提前发布）*
-- [x] ~~**工作流运行保留清理**：后台清理任务，可配置最大年龄和每个工作流的最大计数；按工作流覆盖；管理员手动触发端点~~ *（v0.8.1 发布）*
-- [x] ~~**工作流版本变更摘要**：`compute_blueprint_diff()` 在版本保存时从蓝图差异自动生成人类可读的摘要~~ *（v0.8.1 发布）*
-- [x] ~~**DAG 质量大修**：非快速步骤的默认模型升级；规划中的技能自动发现；法律/医疗/金融领域的引文验证器；结构化内容上下文保留；路由器中的领域分类，具有领域感知的模型选择~~ *（v0.8.1 发布）*
-- [x] ~~**ReAct 中的领域模型升级**：专业领域自动升级到推理模型，强制进行网络搜索和引文验证~~ *（v0.8.1 发布）*
-- [x] ~~**按模型原生函数调用切换**：`tool_choice_enabled` 设置让模型跳过强制工具选择，直接进入 JSON 模式~~ *（v0.8.1 发布）*
-- [x] ~~**DatabaseMetaTool（数据库连接器的渐进式披露）**：单个 `database` 元工具，具有 `list_tables`/`discover`/`query` 子命令，替代每个数据库连接器的 3N 个单独工具；通过 `DATABASE_TOOL_MODE` 环境变量配置（`progressive` 默认，`legacy` 回退）~~ *（v0.8.1 发布）*
-- [x] ~~**通过 `request_tools` 元工具按需加载工具**：当智能选择后有 >12 个工具可用时，LLM 可以在对话中动态加载其他工具；在 JSON 和原生函数调用模式中都有效~~ *（v0.8.1 发布）*
-- [x] ~~**MCPServerMetaTool（MCP 的渐进式披露）**：单个 `mcp` 元工具，具有 `discover`/`call` 子命令，替代 N*M 个单独的 MCP 工具；通过 `MCP_TOOL_MODE` 环境变量配置（`progressive` 默认，`legacy` 回退）~~ *（v0.8.1 发布）*
-- [x] ~~**工作流连接依赖自动订阅**：将市场订阅级联扩展到自动订阅工作流的连接依赖（API 连接器、MCP 服务器）。工作流节点可以引用连接器、MCP 服务器、智能体（递归引用更多依赖）和子工作流——完整树中的所有连接依赖必须在订阅时自动订阅，在取消订阅时级联清理。由于递归子工作流解析和循环检测，比技能/智能体更复杂。与解决方案（技能/智能体）连接依赖自动订阅的对应物~~ *（v0.8.1 发布）*
-- [x] ~~**工作流真实执行器**：用完整实现替换 MCP 和 BuiltinTool 节点执行器存根（MCP 服务器发现 + 工具调用；ToolRegistry 集成）~~ *（v0.8.1 发布）*
-- [ ] **智能体钩子系统**：在 **LLM 循环外** 运行的确定性强制执行层——钩子在工具事件上自动执行，无法被智能体指令绕过。三个钩子点：`PreToolUse`（执行前验证/阻止）、`PostToolUse`（执行后副作用）、`SessionStart`（注入动态上下文）。内置钩子：在每个连接器调用上自动写入 `ConnectorCallLog`（目前手动）；当组织处于只读模式时阻止写操作；在代理接收前自动截断超大 DB 查询结果；按连接器调用频率进行速率限制。用户定义的钩子：按智能体 YAML 配置（`hooks:` 字段），声明在匹配工具事件上触发的 shell 命令或 Python 可调用对象——与 Claude Code 钩子相同的模式。关键设计原则：**钩子用于"必须始终发生"的逻辑，不应依赖 LLM 记住执行**。指令说"记录所有调用"；钩子实际记录它们。指令说"不在只读模式下写入"；钩子实际阻止它。
-- [ ] **智能体工作区（持久智能体桌面）**：三层：（1）**工具输出卸载**——自动保存超大工具响应（>8K 字符）到 `workspace://` 文件，返回截断预览 + URI；内置工具 `read_workspace_file`、`list_workspace_files`、`write_workspace_file` 用于选择性访问和智能体生成的工件。（2）**交接笔记**——`write_handoff(summary)` 用于跨压缩/会话切换的上下文转换。（3）**工作区 UI**——前端文件浏览器面板，每个对话一个（预览文本/JSON/CSV、下载、删除/重命名）；跨会话文件保留；按用户存储配额集成。扩展适配器中的 `truncate_tool_output()` + `GET /api/conversations/{id}/workspace` 端点
-- [x] **智能文件内容注入 + `read_uploaded_file` 工具**：小上传文件（`<32K` 字符）自动内联到 LLM 上下文；大文件获取元数据 + 工具提示。双模式 `read_uploaded_file` 工具（分页读取 + 正则表达式搜索）。`GET /api/files/{file_id}/content` 端点、`.content` 旁车存储、文件 API 响应中的 `content_length`
-- [x] ~~**智能文档处理（视觉感知）**：自适应文档处理——PDF 页面通过 PyMuPDF 为视觉能力模型（GPT-4o、Claude 3/4、Gemini）渲染为图像；通过 pdfplumber 进行纯文本回退。管理员中按模型的 `supports_vision` 标志。两种模式（视觉/文本）通过 `DOCUMENT_PROCESSING_MODE` 环境变量配置。智能 PDF 处理：富文本页面提取文本 + 嵌入图像（token 高效），扫描页面渲染为全页 PNG。DOCX/PPTX 嵌入图像提取。多轮视觉持久化。预构建沙箱镜像（`Dockerfile.sandbox`）。缓存页面渲染，带 `.pages/` 旁车。~~ *（v0.8.2 发布）*
-- [x] **通用文档转换（`convert_to_markdown` + OCR）**——内置智能体工具，包装 Microsoft MarkItDown，默认对每个智能体可用。将 PDF、Word、Excel、PowerPoint、HTML、JSON、CSV、XML、ZIP、EPUB、Outlook .msg、图像、音频、YouTube URL 和数据 URI 转换为对话中的干净 Markdown。Office 文件和扫描 PDF 页面中的嵌入图像通过官方 `markitdown-ocr` 插件使用工作区的视觉能力 LLM（DB 优先，ENV 回退）自动进行 OCR。相同的转换内核由 RAG 摄取管道共享，因此聊天时转换和知识库摄取生成字节相同的 Markdown。非 OpenAI 提供商（Claude、Gemini、Bedrock、Azure）通过 `LiteLLMOpenAIShim` 透明支持，该 shim 将任何 FIM One LLM 呈现为 openai-SDK 形状的客户端，然后通过 LiteLLM 路由。零回归回退：当没有视觉模型可用时，纯文本提取继续完全如前。
-- [ ] **跨会话文件管理**：文件浏览器 UI、存储配额、自动过期清理
-- [ ] **会话级文件关联**：追踪哪些文件在哪些对话中使用
-- [ ] **跨会话对话回忆**：智能体工具列出、搜索和读取过去的对话历史——`list_conversations`、`search_conversations`（跨历史的关键字/正则表达式）、`read_conversation`（检索完整线程）。启用"我们上次讨论了什么"和"找到我上周询问的 API 变更"工作流。与跨会话文件管理配对，形成完整的长期智能体记忆层
-- [ ] **沙箱加固**：v2 改进代码执行隔离
-- [ ] **性能测试**：并发负载基准
-- [ ] **MCP 连接池**：按请求 STDIO 子进程生成不可扩展——100 个并发用户 = 每个 MCP 服务器 100 个子进程。使用按用户环境隔离（由 `(server_id, env_hash)` 键入）池 STDIO 连接；SSE/HTTP 传输共享 `httpx.AsyncClient` 会话。目标：池 STDIO 的 `≤100 ms` 热启动，无论用户计数如何，每个 MCP 服务器 O(1) HTTP 连接
-- [ ] **内部工具基准**——用于使用 EVAL CENTER 基础设施量化工具参数变更（系统提示词、自反思频率、工具选择阈值）的内置测试套件
-- [x] ~~**ReAct 循环检测**——确定性重复工具调用检测，可配置阈值；防止智能体循环，无需依赖 LLM 自我意识~~ *（v0.8.1 发布）*
-- [x] ~~**ReAct 完成清单**——使用工具时的一次性答案前验证提示词；减少过早结论~~ *（v0.8.1 发布）*
-- [x] ~~**智能体核心第 3 阶段——运行时不变量加固**：四个错误修复/可观测性升级，解决 CC 的运行时不变量——（I.14）对话恢复：在 `DbMemory.get_messages()` 中检测和修复来自中断轮次的悬空 `tool_use` 块，以防止 HTTP 400 轨迹错误；（I.15）结构化紧凑工作卡：将 9 部分紧凑输出解析为类型化 `WorkCard` 并跨连续压缩合并，以便错误/待处理任务在多轮中存活；（I.16）轮分析器：按轮阶段级时序日志（`memory_load`/`compact`/`tool_schema_build`/`llm_first_token`/`llm_total`/`tool_exec`），由 `REACT_TURN_PROFILE_ENABLED` 门控；（I.17）按用户速率限制：通过 `ContextVar` 管道修复进程全局速率限制器为按用户键入的桶，由 `LLM_RATE_LIMIT_PER_USER` 门控。智能体追踪层的先决条件基础。~~ *（第 3 阶段完成 2026-04-10）*
+- [ ] **智能体追踪层（可观测性++）**: 应用级运行/追踪/线程层级，用于智能体调试 — 每个对话 → `Trace`，每个 LLM 调用 / 工具调用 / DAG 步骤 → `Span`，包含输入/输出/token/时序。前端追踪查看器，具有时间线和可展开的 LLM 调用负载。这超越了 OTel（基础设施级）的范围，为开发者和企业客户提供可操作的智能体循环调试。OpenTelemetry 导出作为数据接收选项。参考 LangSmith 的运行/追踪/线程概念建模 — 智能体可观测性的行业验证模式。
+- [ ] **指标仪表板**: 延迟、成功率、token 使用量、连接器调用分析 — 按智能体、按用户、按组织细分
+- [x] ~~**断路器**: 三态机（关闭/开启/半开），具有按连接器故障跟踪、5xx 检测和监控端点~~ *（v0.8 提前发布）*
+- [x] ~~**工作流运行保留清理**: 后台清理任务，具有可配置的最大年龄和每个工作流的最大计数；每个工作流覆盖；管理员手动触发端点~~ *（v0.8.1 发布）*
+- [x] ~~**工作流版本变更摘要**: `compute_blueprint_diff()` 在版本保存时从蓝图差异自动生成人类可读的摘要~~ *（v0.8.1 发布）*
+- [x] ~~**DAG 质量大修**: 非快速步骤的默认模型升级；规划中的技能自动发现；法律/医疗/金融领域的引用验证器；结构化内容上下文保留；路由器中的领域分类和领域感知模型选择~~ *（v0.8.1 发布）*
+- [x] ~~**ReAct 中的领域模型升级**: 专业领域自动升级到推理模型，强制进行网络搜索和引用验证~~ *（v0.8.1 发布）*
+- [x] ~~**按模型原生函数调用切换**: `tool_choice_enabled` 设置让模型跳过强制工具选择，直接进入 JSON 模式~~ *（v0.8.1 发布）*
+- [x] ~~**DatabaseMetaTool（数据库连接器的渐进式披露）**: 单个 `database` 元工具，具有 `list_tables`/`discover`/`query` 子命令，替换每个数据库连接器的 3N 个单独工具；通过 `DATABASE_TOOL_MODE` 环境变量配置（`progressive` 默认，`legacy` 回退）~~ *（v0.8.1 发布）*
+- [x] ~~**通过 `request_tools` 元工具按需加载工具**: 当智能选择后有 >12 个工具可用时，LLM 可以在对话中动态加载其他工具；在 JSON 和原生函数调用模式中都有效~~ *（v0.8.1 发布）*
+- [x] ~~**MCPServerMetaTool（MCP 的渐进式披露）**: 单个 `mcp` 元工具，具有 `discover`/`call` 子命令，替换 N*M 个单独的 MCP 工具；通过 `MCP_TOOL_MODE` 环境变量配置（`progressive` 默认，`legacy` 回退）~~ *（v0.8.1 发布）*
+- [x] ~~**工作流连接依赖自动订阅**: 扩展 Market 订阅级联以自动订阅工作流的连接依赖（API 连接器、MCP 服务器）。工作流节点可以引用连接器、MCP 服务器、智能体（递归引用更多依赖）和子工作流 — 完整树中的所有连接依赖必须在订阅时自动订阅，并在取消订阅时级联清理。由于递归子工作流解析和循环检测，比技能/智能体更复杂。解决方案（技能/智能体）连接依赖自动订阅的对应物~~ *（v0.8.1 发布）*
+- [x] ~~**工作流真实执行器**: 用完整实现替换了 MCP 和 BuiltinTool 节点执行器存根（MCP 服务器发现 + 工具调用；ToolRegistry 集成）~~ *（v0.8.1 发布）*
+- [ ] **智能体钩子系统**: 在 **LLM 循环外** 运行的确定性强制层 — 钩子在工具事件上自动执行，无法被智能体指令绕过。三个钩子点：`PreToolUse`（执行前验证/阻止）、`PostToolUse`（执行后的副作用）、`SessionStart`（注入动态上下文）。内置钩子：在每个连接器调用时自动写入 `ConnectorCallLog`（目前手动）；当组织处于只读模式时阻止写操作；在代理接收前自动截断超大 DB 查询结果；按连接器调用频率限流。用户定义的钩子：按智能体 YAML 配置（`hooks:` 字段）声明在匹配工具事件上触发的 shell 命令或 Python 可调用对象 — 与 Claude Code 钩子相同的模式。关键设计原则：**钩子用于"必须始终发生"的逻辑，不应依赖 LLM 记住执行**。指令说"记录所有调用"；钩子实际记录它们。指令说"在只读模式下不写入"；钩子实际阻止它。
+- [ ] **智能体工作区（持久智能体桌面）**: 三层：(1) **工具输出卸载** — 自动保存超大工具响应（>8K 字符）到 `workspace://` 文件，返回截断预览 + URI；内置工具 `read_workspace_file`、`list_workspace_files`、`write_workspace_file` 用于选择性访问和智能体生成的工件。(2) **交接笔记** — `write_handoff(summary)` 用于压缩/会话切换时的上下文转换。(3) **工作区 UI** — 每个对话的前端文件浏览器面板（预览文本/JSON/CSV、下载、删除/重命名）；跨会话文件保留；按用户存储配额集成。扩展适配器中的 `truncate_tool_output()` + `GET /api/conversations/{id}/workspace` 端点
+- [x] **智能文件内容注入 + `read_uploaded_file` 工具**: 小上传文件（`<32K` 字符）自动内联到 LLM 上下文；大文件获取元数据 + 工具提示。双模式 `read_uploaded_file` 工具（分页读取 + 正则搜索）。`GET /api/files/{file_id}/content` 端点、`.content` 边车存储、文件 API 响应中的 `content_length`
+- [x] ~~**智能文档处理（视觉感知）**: 自适应文档处理 — PDF 页面通过 PyMuPDF 为支持视觉的模型（GPT-4o、Claude 3/4、Gemini）渲染为图像；通过 pdfplumber 的纯文本回退。管理员中按模型的 `supports_vision` 标志。两种模式（视觉/文本）通过 `DOCUMENT_PROCESSING_MODE` 环境变量配置。智能 PDF 处理：文本丰富的页面提取文本 + 嵌入图像（token 高效），扫描页面渲染为全页 PNG。DOCX/PPTX 嵌入图像提取。多轮视觉持久性。预构建沙箱镜像（`Dockerfile.sandbox`）。缓存页面渲染与 `.pages/` 边车。~~ *（v0.8.2 发布）*
+- [x] ~~**通用文档转换（`convert_to_markdown` + OCR）** — 内置智能体工具，包装 Microsoft MarkItDown，默认对每个智能体可用。将 PDF、Word、Excel、PowerPoint、HTML、JSON、CSV、XML、ZIP、EPUB、Outlook .msg、图像、音频、YouTube URL 和数据 URI 转换为对话中的干净 Markdown。Office 文件和扫描 PDF 页面中的嵌入图像通过官方 `markitdown-ocr` 插件使用工作区的支持视觉的 LLM（DB 优先，ENV 回退）自动进行 OCR。相同的转换内核由 RAG 摄取管道共享，因此聊天时转换和知识库摄取生成字节相同的 Markdown。非 OpenAI 提供商（Claude、Gemini、Bedrock、Azure）通过 `LiteLLMOpenAIShim` 透明支持，该 shim 将任何 FIM One LLM 呈现为 openai-SDK 形状的客户端，然后通过 LiteLLM 路由。零回归回退：当没有可用的视觉模型时，纯文本提取继续完全如前。~~ *（v0.8.3 发布）*
+- [ ] **跨会话文件管理**: 文件浏览器 UI、存储配额、自动过期清理
+- [ ] **会话级文件关联**: 跟踪哪些文件在哪些对话中使用
+- [ ] **跨会话对话回忆**: 智能体工具列出、搜索和读取过去的对话历史 — `list_conversations`、`search_conversations`（跨历史的关键字/正则表达式）、`read_conversation`（检索完整线程）。启用"我们上次讨论了什么"和"找到我上周要求的 API 更改"工作流。与跨会话文件管理配对，形成完整的长期智能体记忆层
+- [ ] **沙箱加固**: v2 对代码执行隔离的改进
+- [ ] **性能测试**: 并发负载基准
+- [ ] **MCP 连接池**: 按请求 STDIO 子进程生成无法扩展 — 100 个并发用户 = 每个 MCP 服务器 100 个子进程。使用按用户环境隔离的池 STDIO 连接（由 `(server_id, env_hash)` 键控）；SSE/HTTP 传输共享 `httpx.AsyncClient` 会话。目标：池 STDIO 的 `≤100 ms` 热启动，O(1) HTTP 连接每个 MCP 服务器，无论用户计数
+- [ ] **内部工具基准** — 使用 EVAL CENTER 基础设施量化工具参数变化（系统提示词、自反思频率、工具选择阈值）的内置测试套件
+- [x] ~~**ReAct 循环检测** — 具有可配置阈值的确定性重复工具调用检测；防止智能体循环，无需依赖 LLM 自我意识~~ *（v0.8.1 发布）*
+- [x] ~~**ReAct 完成清单** — 使用工具时的一次性答前验证提示词；减少过早结论~~ *（v0.8.1 发布）*
+- [x] ~~**智能体核心第 3 阶段 — 运行时不变量加固**: 四个错误修复/可观测性升级，解决 CC 的运行时不变量 — (I.14) 对话恢复：在 `DbMemory.get_messages()` 中检测和修复来自中断轮次的悬空 `tool_use` 块，防止 HTTP 400 轨迹错误；(I.15) 结构化紧凑工作卡：将 9 部分紧凑输出解析为类型化 `WorkCard` 并跨连续压缩合并，以便错误/待处理任务在多轮中存活；(I.16) 轮分析器：按轮阶段级时序日志（`memory_load`/`compact`/`tool_schema_build`/`llm_first_token`/`llm_total`/`tool_exec`），由 `REACT_TURN_PROFILE_ENABLED` 门控；(I.17) 按用户限流：通过 `ContextVar` 管道将进程全局限流器修复为按用户键控桶，由 `LLM_RATE_LIMIT_PER_USER` 门控。智能体追踪层的先决条件基础。~~ *（v0.8.3 发布）*
 #### 生态系统与扩展
 
 - [ ] **定时任务 + 事件触发的智能体（Loop）**：类似 cron 的后台任务触发；`scheduled_jobs` + `job_runs` 数据库表；APScheduler 集成；任务 CRUD API + 任务历史 UI；通过消息推送连接器进行结果通知。范围涵盖时间触发（cron）和事件触发（webhook 入站）两种模式——在后台异步运行的智能体就是 Hub 模式下的异步子智能体用例。
