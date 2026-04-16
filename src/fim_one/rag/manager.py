@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fim_one.core.embedding.base import BaseEmbedding
 from fim_one.core.reranker.base import BaseReranker
@@ -16,6 +16,9 @@ from fim_one.rag.retriever.dense import DenseRetriever
 from fim_one.rag.retriever.hybrid import HybridRetriever
 from fim_one.rag.retriever.sparse import FTSRetriever
 from fim_one.rag.store.lancedb import LanceDBVectorStore
+
+if TYPE_CHECKING:
+    from fim_one.core.model.openai_compatible import OpenAICompatibleLLM
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +52,7 @@ class KnowledgeBaseManager:
         chunk_strategy: str = "recursive",
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
+        vision_llm: "OpenAICompatibleLLM | None" = None,
     ) -> tuple[int, str]:
         """Load, chunk, embed, and store a file.
 
@@ -60,6 +64,12 @@ class KnowledgeBaseManager:
             chunk_strategy: Chunking strategy name.
             chunk_size: Chunk size in characters.
             chunk_overlap: Overlap between chunks.
+            vision_llm: Optional vision-capable LLM used by
+                :class:`MarkItDownLoader` for OCR on embedded images
+                and scanned PDF pages. Passed through unchanged to
+                :func:`loader_for_extension`. When ``None``, loaders
+                skip OCR and behave identically to the pre-kernel
+                pipeline (text-only extraction).
 
         Returns:
             Tuple of (chunk_count, content_hash).
@@ -75,7 +85,7 @@ class KnowledgeBaseManager:
 
         # 1. Load
         ext = file_path.suffix.lower()
-        loader = loader_for_extension(ext)
+        loader = loader_for_extension(ext, vision_llm=vision_llm)
         loaded_docs = await loader.load(file_path)
         if not loaded_docs:
             return 0, ""

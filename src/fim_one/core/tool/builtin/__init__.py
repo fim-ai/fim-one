@@ -33,6 +33,7 @@ from .http_request import HttpRequestTool
 from .json_transform import JsonTransformTool
 from .kb_retrieve import KBRetrieveTool
 from .kb_list import KBListTool
+from .markitdown_tool import MarkItDownTool
 from .read_skill import ReadSkillTool
 from .request_tools import RequestToolsTool
 from .list_uploaded_files import ListUploadedFilesTool
@@ -88,6 +89,7 @@ __all__ = [
     "JsonTransformTool",
     "KBRetrieveTool",
     "KBListTool",
+    "MarkItDownTool",
     "ReadSkillTool",
     "ListUploadedFilesTool",
     "ReadUploadedFileTool",
@@ -162,6 +164,7 @@ _SKIP_AUTO_DISCOVER: set[type] = {
     ListUploadedFilesTool,  # requires user_id
     ReadUploadedFileTool,  # requires user_id
     GroundedRetrieveTool,  # requires kb_ids — registered by _resolve_tools()
+    MarkItDownTool,  # requires vision_llm injection — registered by _resolve_tools()
     EmailSendTool,  # requires SMTP_HOST/SMTP_USER/SMTP_PASS — registered below
     ConnectorListActionsTool,  # builder tools — injected by chat.py for builder agents
     ConnectorCreateActionTool,

@@ -523,8 +523,34 @@ async def _ingest_document(
     chunk_size: int,
     chunk_overlap: int,
 ) -> None:
-    """Background task: load → chunk → embed → store, then update DB."""
+    """Background task: load → chunk → embed → store, then update DB.
+
+    Resolves a vision-capable LLM from the workspace default (no agent
+    context here — we pass ``agent_cfg=None`` so the resolver walks the
+    active ModelGroup / ENV chain) and threads it through to
+    :meth:`KnowledgeBaseManager.ingest_file`. MarkItDown-backed loaders
+    use the LLM for OCR on embedded images and scanned PDF pages via the
+    ``markitdown-ocr`` plugin. If no vision-capable model is available
+    the loaders gracefully fall back to text-only extraction — zero
+    regression vs. the pre-OCR behavior.
+    """
     from fim_one.db import create_session
+
+    # Resolve vision LLM for OCR injection — best-effort. A failure
+    # here must not block ingestion; the loaders degrade to text-only.
+    vision_llm = None
+    try:
+        from fim_one.web.api.chat import _build_markitdown_vision_deps
+
+        async with create_session() as _vision_db:
+            vision_llm = await _build_markitdown_vision_deps(None, _vision_db)
+    except Exception:
+        logger.warning(
+            "Failed to resolve vision LLM for KB ingest of %s; "
+            "continuing in text-only mode",
+            file_path,
+            exc_info=True,
+        )
 
     try:
         manager = get_kb_manager()
@@ -536,6 +562,7 @@ async def _ingest_document(
             chunk_strategy=chunk_strategy,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+            vision_llm=vision_llm,
         )
 
         db = create_session()

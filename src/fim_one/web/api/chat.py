@@ -33,9 +33,12 @@ from collections.abc import AsyncGenerator
 from contextlib import suppress
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+if TYPE_CHECKING:
+    from fim_one.core.model.openai_compatible import OpenAICompatibleLLM
 
 from fim_one.web.exceptions import AppError
 from fastapi.responses import StreamingResponse
@@ -46,6 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.core.agent import ReActAgent
 from fim_one.core.model import BaseLLM
 from fim_one.core.model.fallback import FallbackLLM
+from fim_one.core.model.rate_limit import set_current_user_id as _rl_set_user
 from fim_one.core.model.structured import StructuredOutputError
 from fim_one.core.model.types import ChatMessage
 from fim_one.core.model.usage import UsageSummary, UsageTracker
@@ -713,6 +717,161 @@ async def _resolve_model_supports_vision(
     return False
 
 
+async def _resolve_vision_llm(
+    agent_cfg: dict[str, Any] | None,
+    db: AsyncSession,
+) -> BaseLLM | None:
+    """Find the best vision-capable LLM for OCR / image description.
+
+    Used by :class:`MarkItDownTool` and the RAG ingestion pipeline
+    (:mod:`fim_one.web.api.knowledge_bases._ingest_document`) to power
+    ``markitdown-ocr``. Returns ``None`` when no vision-capable model
+    is available — callers MUST gracefully fall back to text-only
+    extraction in that case (no regression vs. the pre-OCR behavior).
+
+    Resolution order (first hit wins):
+
+    1. **Primary LLM (consistency)** — if the agent's configured model
+       (via ``model_config_id`` or the active ModelGroup's general
+       model) has ``supports_vision=True``, reuse it. Same API key,
+       same billing, same rate-limit bucket as the agent's main
+       conversation. This is the happy path for the common
+       ``gpt-4o / claude-3-5-sonnet / gemini-1.5-pro`` deployments.
+    2. **Active ModelGroup's fast model** — if the primary cannot do
+       vision, prefer the group's fast model next. Fast models
+       (``gpt-4o-mini``, ``claude-haiku``, ``gemini-1.5-flash``) are
+       the ideal OCR workhorse: cheap, low-latency, and usually
+       multimodal.
+    3. **Active ModelGroup's general model** — quality fallback.
+       Usually redundant with step 1 but caught as a separate step
+       for tenants whose ``agent_cfg`` points to a non-group model.
+    4. **ENV fallback (optimistic)** — when NO active ModelGroup is
+       configured (pure ENV mode), return the primary ENV LLM on the
+       assumption that the user's ``LLM_MODEL`` supports vision.
+       Bypassed when ``LLM_SUPPORTS_VISION=false`` is set — use that
+       flag to opt out when the ENV-configured model does not support
+       vision (e.g. DeepSeek-V3, Qwen-chat) to avoid a failing
+       ``chat.completions.create`` call on every document upload.
+
+    Reasoning models are intentionally **never** preferred. Reasoning
+    tiers (o1, o3-mini, DeepSeek-R1) historically lack vision support
+    and are the wrong tool for OCR (perception ≠ deliberation). If a
+    workspace has only a reasoning model with ``supports_vision=True``
+    it will still be picked up via the primary-LLM path, but this
+    resolver does not actively rank it above fast/general.
+    """
+    from fim_one.web.deps import _build_llm_from_group_model
+    from fim_one.web.models.model_provider import ModelGroup
+
+    # Step 1 — Primary LLM if it advertises vision support.
+    if await _resolve_model_supports_vision(agent_cfg, db):
+        try:
+            return await _resolve_llm(agent_cfg, db)
+        except Exception:
+            logger.warning(
+                "Primary LLM marked supports_vision=True but resolution failed",
+                exc_info=True,
+            )
+
+    # Step 2/3 — Walk the active ModelGroup. When a group is active,
+    # it is the single source of truth — do NOT fall through to ENV
+    # below, because the admin has explicitly curated the pool.
+    group_stmt = sa_select(ModelGroup).where(
+        ModelGroup.is_active == True  # noqa: E712
+    ).limit(1)
+    group_result = await db.execute(group_stmt)
+    group = group_result.scalar_one_or_none()
+
+    if group is not None:
+        # Priority order: fast (cost-optimal for OCR batching) →
+        # general (quality fallback). Reasoning intentionally omitted.
+        for candidate in (group.fast_model, group.general_model):
+            if candidate is None or not candidate.supports_vision:
+                continue
+            built = _build_llm_from_group_model(candidate)
+            if built is not None:
+                return built
+        # No model explicitly flagged as vision-capable. Rather than
+        # disabling OCR entirely, try the general model as best-effort —
+        # markitdown_core's try/except will fall back to text-only if
+        # the model truly cannot handle vision at the wire level.
+        if group.general_model is not None:
+            logger.info(
+                "No model in active ModelGroup has supports_vision=True; "
+                "trying general model '%s' as best-effort OCR backend. "
+                "To guarantee OCR: set supports_vision=True on a "
+                "vision-capable model in Admin → Models.",
+                group.general_model.name,
+            )
+            built = _build_llm_from_group_model(group.general_model)
+            if built is not None:
+                return built
+        return None
+
+    # Step 4 — ENV mode fallback (no active ModelGroup curated by admin).
+    # Default is optimistic: assume LLM_MODEL supports vision (covers
+    # gpt-4o, claude-3-5-sonnet, gemini-1.5-pro — the usual suspects).
+    # Users whose ENV model can't do vision set LLM_SUPPORTS_VISION=false
+    # to skip the optimistic attempt and avoid per-upload failure noise.
+    if (os.getenv("LLM_SUPPORTS_VISION") or "").strip().lower() == "false":
+        return None
+    try:
+        return await _resolve_llm(agent_cfg, db)
+    except Exception:
+        logger.warning("ENV vision fallback resolution failed", exc_info=True)
+        return None
+
+
+async def _build_markitdown_vision_deps(
+    agent_cfg: dict[str, Any] | None,
+    db: AsyncSession,
+) -> "OpenAICompatibleLLM | None":
+    """Narrow the resolver's return to ``OpenAICompatibleLLM | None``.
+
+    :class:`MarkItDownTool` and the RAG pipeline both need an
+    ``OpenAICompatibleLLM`` (the concrete type that can be adapted by
+    :class:`LiteLLMOpenAIShim`). :func:`_resolve_vision_llm` returns the
+    wider ``BaseLLM`` type for orthogonality with the rest of the chat
+    resolvers. This helper is the one place both callers reach for when
+    they want MarkItDown-ready vision deps, so a future priority-rule
+    change only happens here.
+    """
+    from fim_one.core.model.openai_compatible import OpenAICompatibleLLM
+
+    llm = await _resolve_vision_llm(agent_cfg, db)
+    if llm is None:
+        logger.debug("Vision LLM resolver returned None — OCR disabled")
+        return None
+
+    if isinstance(llm, OpenAICompatibleLLM):
+        logger.debug(
+            "Vision LLM resolved: %s (model_id=%s)",
+            type(llm).__name__,
+            getattr(llm, "model_id", "unknown"),
+        )
+        return llm
+
+    # Handle FallbackLLM: unwrap to primary if it's OpenAI-compatible
+    from fim_one.core.model.fallback import FallbackLLM
+
+    if isinstance(llm, FallbackLLM) and isinstance(
+        llm.primary, OpenAICompatibleLLM
+    ):
+        logger.debug(
+            "Unwrapping FallbackLLM → primary %s for OCR",
+            type(llm.primary).__name__,
+        )
+        return llm.primary
+
+    logger.warning(
+        "Vision LLM resolver returned %s (not OpenAICompatibleLLM) — "
+        "OCR disabled for this conversation. Model: %s",
+        type(llm).__name__,
+        getattr(llm, "model_id", "unknown"),
+    )
+    return None
+
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -757,6 +916,30 @@ async def _resolve_tools(
     if agent_cfg:
         cats = agent_cfg.get("tool_categories") or []
         tools = tools.filter_by_category(*cats)
+
+    # Register the MarkItDown built-in tool with an injected vision LLM
+    # resolved from the active workspace. Always registered (not gated by
+    # category filter) because `convert_to_markdown` is a general-purpose
+    # "read any file / URL" capability — the same tier as web_fetch.
+    #
+    # Resolved inside a local DB session (matches the GroundedRetrieveTool
+    # pattern below). When no vision-capable model is available the tool
+    # is still registered but runs in text-only mode, so agents never
+    # lose the conversion capability on vision-less deployments.
+    try:
+        from fim_one.core.tool.builtin.markitdown_tool import MarkItDownTool
+        from fim_one.db import create_session as _md_cs
+
+        async with _md_cs() as _md_db:
+            _md_vision_llm = await _build_markitdown_vision_deps(agent_cfg, _md_db)
+        tools = tools.exclude_by_name("convert_to_markdown")
+        tools.register(MarkItDownTool(vision_llm=_md_vision_llm, user_id=user_id))  # type: ignore[arg-type]
+    except Exception:
+        logger.warning(
+            "Failed to register MarkItDownTool — Agent will not be able to "
+            "call convert_to_markdown in this conversation",
+            exc_info=True,
+        )
 
     # When the agent is bound to knowledge bases, choose retrieval tool based on
     # RETRIEVAL_MODE: "grounding" → full pipeline, "simple" → basic RAG.
@@ -2048,6 +2231,13 @@ async def react_endpoint(
     if current_user_id is None:
         raise AppError("authentication_required", status_code=401)
 
+    # Bind the user id to the rate-limiter contextvar so per-user token
+    # buckets can partition state without threading user_id through every
+    # BaseLLM wrapper.  Scoped to this task; released automatically when
+    # the handler returns because StreamingResponse runs us in a fresh
+    # asyncio task copy of the context.
+    _rl_set_user(str(current_user_id))
+
     # Timezone: user profile → X-Timezone header → UTC fallback
     if not user_timezone:
         user_timezone = request.headers.get("X-Timezone") or None
@@ -2873,6 +3063,10 @@ async def dag_endpoint(
     current_user_id, user_system_instructions, preferred_language, user_timezone = await _resolve_user(token)
     if current_user_id is None:
         raise AppError("authentication_required", status_code=401)
+
+    # Bind the user id to the rate-limiter contextvar (see ReAct handler
+    # above for the rationale).
+    _rl_set_user(str(current_user_id))
 
     # Timezone: user profile → X-Timezone header → UTC fallback
     if not user_timezone:

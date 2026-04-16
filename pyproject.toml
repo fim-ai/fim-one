@@ -60,7 +60,17 @@ mcp = [
 files = [
     "pdfplumber>=0.10",
     "python-docx>=1.0",
-    "markitdown[docx,xlsx,pptx]>=0.1",
+    # MarkItDown extras: docx/xlsx/pptx are the baseline Office formats;
+    # pdf/xls/outlook/audio-transcription/youtube-transcription add mp3/wav,
+    # legacy .xls, .msg emails, and YouTube URL → transcript. See
+    # `docs/configuration/environment-variables.mdx` for runtime knobs.
+    "markitdown[docx,xlsx,pptx,pdf,xls,outlook,audio-transcription,youtube-transcription]>=0.1.5",
+    # Official OCR plugin — auto-discovered by MarkItDown when
+    # `enable_plugins=True` is passed. Uses the same llm_client/llm_model
+    # pattern MarkItDown already uses for image descriptions, so it adds
+    # OCR to embedded images inside DOCX/PPTX/XLSX and full-page OCR for
+    # scanned PDFs without pulling in Tesseract or any ML binary.
+    "markitdown-ocr>=0.0.1",
     "Markdown>=3.4",
     "reportlab>=4.0",
     "PyMuPDF>=1.25",

@@ -412,18 +412,29 @@ def _extract_text_sync(file_path: Path) -> str | None:
                     pages_text.append(text)
         return "\n".join(pages_text) if pages_text else None
 
-    # Office documents (DOCX, DOC, XLSX, XLS, PPTX, PPT) -- requires markitdown
+    # Office documents (DOCX, DOC, XLSX, XLS, PPTX, PPT) -- delegated to
+    # the shared MarkItDown kernel. The kernel handles plugin activation
+    # (``enable_plugins=True``), the optional vision pipeline, and the
+    # "vision failed → text-only retry" fallback in one place so that
+    # file upload previews, RAG ingestion, and the built-in Agent tool
+    # all produce byte-identical Markdown for the same input. The
+    # synchronous preview path does not have access to a vision LLM
+    # (no agent context, no workspace lookup) so vision OCR is disabled
+    # here by design — the Agent tool and the RAG pipeline take care of
+    # OCR on their respective paths.
     if suffix in {".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt"}:
+        from fim_one.core.document.markitdown_core import (
+            MarkItDownNotInstalledError,
+            convert_with_markitdown,
+        )
+
         try:
-            from markitdown import MarkItDown
-        except ImportError:
+            content = convert_with_markitdown(str(file_path), vision_llm=None)
+        except MarkItDownNotInstalledError:
             return (
                 f"[{suffix.upper().lstrip('.')} content extraction "
                 f"requires markitdown]"
             )
-        converter = MarkItDown()
-        result = converter.convert(str(file_path))
-        content = result.text_content or ""
         return content if content.strip() else None
 
     return None

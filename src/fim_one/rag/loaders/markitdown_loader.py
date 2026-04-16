@@ -1,43 +1,77 @@
-"""Document loader for DOCX, XLSX, and PPTX using MarkItDown.
+"""Document loader for Office / PDF / media files using MarkItDown.
 
-MarkItDown converts Office documents to Markdown, preserving headings,
-tables, and structure better than plain text extraction.
+Thin shell over :func:`fim_one.core.document.markitdown_core.convert_with_markitdown`.
+The kernel owns the conversion logic (plugins, vision OCR, fallback
+retries); this loader owns RAG-specific concerns (async dispatch,
+``LoadedDocument`` wrapping, metadata).
 """
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from fim_one.core.document.markitdown_core import (
+    MarkItDownNotInstalledError,
+    convert_with_markitdown,
+)
 
 from .base import BaseLoader, LoadedDocument
 
-# File extensions handled by this loader.
-SUPPORTED_EXTENSIONS = {".docx", ".xlsx", ".xls", ".pptx"}
+if TYPE_CHECKING:
+    from fim_one.core.model.openai_compatible import OpenAICompatibleLLM
+
+# File extensions handled by this loader. Expanded to match the upstream
+# MarkItDown 0.1.5 format coverage so RAG ingestion does not have to
+# route through a second fallback pipeline for these types.
+SUPPORTED_EXTENSIONS = {
+    ".docx",
+    ".xlsx",
+    ".xls",
+    ".pptx",
+    ".pdf",
+    ".msg",
+    ".epub",
+    ".mp3",
+    ".wav",
+    ".m4a",
+}
 
 
 class MarkItDownLoader(BaseLoader):
-    """Load DOCX / XLSX / PPTX files via markitdown.
+    """Load Office / PDF / media files via markitdown.
 
     The entire document is returned as a single ``LoadedDocument`` whose
-    content is Markdown text.  Because ``markitdown`` is synchronous, the
+    content is Markdown text. Because ``markitdown`` is synchronous, the
     heavy work is dispatched to a thread via ``asyncio.to_thread``.
+
+    Args:
+        vision_llm: Optional FIM One LLM instance with vision support.
+            When provided, MarkItDown's built-in image description and
+            the ``markitdown-ocr`` plugin automatically OCR embedded
+            images. Injected by the RAG manager when the workspace has
+            a vision-capable default model configured.
     """
+
+    def __init__(
+        self,
+        *,
+        vision_llm: "OpenAICompatibleLLM | None" = None,
+    ) -> None:
+        self._vision_llm = vision_llm
 
     async def load(self, path: Path) -> list[LoadedDocument]:
         return await asyncio.to_thread(self._load_sync, path)
 
     def _load_sync(self, path: Path) -> list[LoadedDocument]:
         try:
-            from markitdown import MarkItDown
-        except ImportError as exc:
-            raise ImportError(
-                "markitdown is required for Office document loading. "
-                "Install it with: uv pip install 'markitdown[docx,xlsx,pptx]'"
-            ) from exc
-
-        converter = MarkItDown()
-        result = converter.convert(str(path))
-        content: str = result.text_content or ""
+            content = convert_with_markitdown(
+                str(path),
+                vision_llm=self._vision_llm,
+            )
+        except MarkItDownNotInstalledError as exc:
+            raise ImportError(str(exc)) from exc
 
         if not content.strip():
             return []
