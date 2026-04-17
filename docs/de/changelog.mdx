@@ -12,9 +12,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- Der Gesprächsexport zeigt jetzt das korrekte Moduskennzeichen ("Planner" / "规划") für automatisch weitergeleitet DAG-Gespräche an, anstatt immer "Standard" anzuzeigen.
-- Exportzeitstempel berücksichtigen jetzt die konfigurierte Zeitzone des Benutzers, anstatt rohe UTC anzuzeigen.
-- Hochgeladener Dateiinhalt wird nicht mehr in exportierte Gespräche durchgesickert; nur der Nachrichtentext des Benutzers ist enthalten.
+- Der Gesprächsexport zeigt nun das korrekte Moduskennzeichen ("Planner" / "规划") für automatisch geroutete DAG-Gespräche an, anstatt immer "Standard" anzuzeigen.
+- Exportzeitstempel berücksichtigen nun die konfigurierte Zeitzone des Benutzers, anstatt rohe UTC anzuzeigen.
+- Hochgeladener Dateiinhalt wird nicht mehr in exportierte Gespräche durchgelassen; nur der Nachrichtentext des Benutzers ist enthalten.
+- Parallele Tool-Aufrufe kollidieren nicht mehr, wenn ein Provider `index=0` für jeden gestreamten Tool-Call-Delta wiederverwendet; der Aggregator erkennt nun Grenzen über ID- oder Namensänderungen und ordnet nachfolgende Deltas dem korrekten Slot zu.
 
 ## [v0.8.4] - 2026-04-17
 
