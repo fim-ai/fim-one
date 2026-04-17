@@ -91,6 +91,17 @@ database = [
     "cryptography>=44.0",
     "aiomysql>=0.2",
 ]
+# KingbaseES (人大金仓) is PG protocol compatible; reuses asyncpg from [postgres].
+# Kept as an alias extra so operators can opt in explicitly from deploy manifests.
+kingbase = [
+    "asyncpg>=0.30",
+]
+# DM8 (达梦) driver. ``dmPython`` is not on PyPI — operators must download
+# the wheel from https://eco.dameng.com/ and install it manually, e.g.
+# ``uv pip install path/to/dmPython-<ver>-cp<py>-*.whl``. Leaving this
+# extra empty ensures ``uv sync --extra dm8`` succeeds so we can wire
+# CI/docs around the name without forcing a broken install.
+dm8 = []
 
 [project.urls]
 Homepage = "https://github.com/fim-ai/fim-one"

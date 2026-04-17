@@ -3,7 +3,7 @@
   "info": {
     "title": "FIM One API",
     "description": "AI-Powered Connector Hub — programmatic access to agents, conversations, knowledge bases, and more.",
-    "version": "0.1.0"
+    "version": "0.8.4"
   },
   "paths": {
     "/api/chat/inject": {

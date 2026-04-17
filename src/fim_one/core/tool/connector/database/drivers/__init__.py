@@ -49,5 +49,16 @@ def _register_drivers() -> None:
     except ImportError:
         pass
 
+    # DM8 driver module imports cleanly even without ``dmPython`` because
+    # it loads the vendor package lazily. We register it unconditionally so
+    # the registry exposes a friendly error the first time a user tries
+    # to connect without the wheel installed.
+    try:
+        from .dm8 import DM8Driver
+
+        DRIVER_REGISTRY["dm8"] = DM8Driver
+    except ImportError:  # pragma: no cover - defensive
+        pass
+
 
 _register_drivers()

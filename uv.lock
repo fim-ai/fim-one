@@ -932,6 +932,9 @@ files = [
     { name = "python-docx" },
     { name = "reportlab" },
 ]
+kingbase = [
+    { name = "asyncpg" },
+]
 mcp = [
     { name = "mcp" },
 ]
@@ -967,6 +970,7 @@ requires-dist = [
     { name = "aiomysql", marker = "extra == 'database'", specifier = ">=0.2" },
     { name = "aiosqlite", marker = "extra == 'web'", specifier = ">=0.20" },
     { name = "alembic", marker = "extra == 'web'", specifier = ">=1.14" },
+    { name = "asyncpg", marker = "extra == 'kingbase'", specifier = ">=0.30" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.30" },
     { name = "bcrypt", marker = "extra == 'web'", specifier = ">=4.0" },
     { name = "croniter", specifier = ">=6.0.0" },
@@ -1004,7 +1008,7 @@ requires-dist = [
     { name = "sqlparse", marker = "extra == 'database'", specifier = ">=0.5" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = ">=0.34" },
 ]
-provides-extras = ["dev", "web", "mcp", "files", "rag", "redis", "postgres", "database"]
+provides-extras = ["dev", "web", "mcp", "files", "rag", "redis", "postgres", "database", "kingbase", "dm8"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest-timeout", specifier = ">=2.4.0" }]
