@@ -133,9 +133,35 @@ def _sse(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _next_cursor(sse_events: list[dict[str, Any]]) -> int:
+    """Return the next monotonic cursor for the given sse_events list.
+
+    Every persisted event carries a ``"cursor": int`` field so the
+    ``/chat/resume`` endpoint can replay everything after a given
+    position.  Cursors are assigned in append order, starting at ``0``.
+    """
+    return len(sse_events)
+
+
+def _append_event(
+    sse_events: list[dict[str, Any]],
+    event: str,
+    data: Any,
+) -> dict[str, Any]:
+    """Append an event frame to the persistence list with a cursor.
+
+    Returns the stored dict so callers can still inspect or mutate it.
+    Kept as a single entry point so cursor semantics stay monotonic even
+    if multiple code paths in the same generator append directly.
+    """
+    entry = {"event": event, "data": data, "cursor": _next_cursor(sse_events)}
+    sse_events.append(entry)
+    return entry
+
+
 def _emit(sse_events: list[dict[str, Any]], event: str, data: Any) -> str:
     """Accumulate event for persistence and return SSE frame for streaming."""
-    sse_events.append({"event": event, "data": data})
+    _append_event(sse_events, event, data)
     return _sse(event, data)
 
 
@@ -2231,6 +2257,113 @@ async def recall_inject(
 
 
 # ---------------------------------------------------------------------------
+# Resume endpoint (Conversation Recovery MVP)
+# ---------------------------------------------------------------------------
+
+
+class ResumeStreamRequest(BaseModel):
+    """Request body for ``POST /chat/resume``.
+
+    Clients pass the last-seen monotonic cursor; the server replays every
+    persisted SSE event with ``cursor > request.cursor`` from the most
+    recent assistant message on the conversation, followed by a final
+    ``resume_done`` frame.
+    """
+
+    conversation_id: str
+    cursor: int = -1  # -1 replays the full event log
+
+
+@router.post("/chat/resume")
+async def resume_stream(
+    body: ResumeStreamRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> StreamingResponse:
+    """Replay cached SSE events for a disconnected stream.
+
+    The ReAct / DAG endpoints persist every SSE frame to the assistant
+    message's ``metadata_["sse_events"]`` with a monotonic ``cursor``.
+    When a client's EventSource drops mid-turn, it can call this endpoint
+    with the last cursor it successfully consumed and receive every event
+    that landed afterwards — no agent work is re-run.
+
+    Errors:
+        - 404 ``conversation_not_found`` — conversation does not exist or
+          is owned by a different user.
+        - 404 ``no_recent_assistant_message`` — conversation has no
+          assistant reply to resume from (e.g. the turn never completed).
+    """
+    from fim_one.web.models import (
+        Conversation as _ConvModel,
+        Message as MessageModel,
+    )
+
+    # -- Ownership check (never trust user_id from request body) -----------
+    _owner = (
+        await db.execute(sa_select(_ConvModel.user_id).where(_ConvModel.id == body.conversation_id))
+    ).scalar_one_or_none()
+    if _owner is None or str(_owner) != str(current_user.id):
+        raise AppError("conversation_not_found", status_code=404)
+
+    # -- Load the most recent assistant message with persisted events ------
+    stmt = (
+        sa_select(MessageModel)
+        .where(
+            MessageModel.conversation_id == body.conversation_id,
+            MessageModel.role == "assistant",
+        )
+        .order_by(MessageModel.created_at.desc())
+        .limit(1)
+    )
+    last_assistant = (await db.execute(stmt)).scalar_one_or_none()
+    if last_assistant is None:
+        raise AppError("no_recent_assistant_message", status_code=404)
+
+    meta = last_assistant.metadata_ if isinstance(last_assistant.metadata_, dict) else {}
+    cached_events: list[dict[str, Any]] = meta.get("sse_events", []) if meta else []
+    if not isinstance(cached_events, list):
+        cached_events = []
+
+    # Filter by cursor.  Legacy events (persisted before this feature
+    # shipped) may lack a cursor field — fall back to positional index so
+    # resume still works on historical conversations.
+    filtered: list[dict[str, Any]] = []
+    for idx, evt in enumerate(cached_events):
+        if not isinstance(evt, dict):
+            continue
+        raw_cursor = evt.get("cursor")
+        cursor_val = raw_cursor if isinstance(raw_cursor, int) else idx
+        if cursor_val > body.cursor:
+            filtered.append({**evt, "cursor": cursor_val})
+
+    async def _replay() -> AsyncGenerator[str, None]:
+        for evt in filtered:
+            event_name = str(evt.get("event", "message"))
+            payload = {
+                "cursor": evt.get("cursor"),
+                "data": evt.get("data"),
+            }
+            yield _sse(event_name, payload)
+        yield _sse(
+            "resume_done",
+            {
+                "replayed": len(filtered),
+                "last_cursor": filtered[-1]["cursor"] if filtered else body.cursor,
+            },
+        )
+
+    return StreamingResponse(
+        _replay(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache, no-store",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # ReAct endpoint
 # ---------------------------------------------------------------------------
 
@@ -2552,7 +2685,7 @@ async def react_endpoint(
 
         def _emit_step(payload: dict[str, Any]) -> None:
             """Emit a step SSE event to both persistence list and queue."""
-            sse_events.append({"event": "step", "data": payload})
+            _append_event(sse_events, "step", payload)
             try:
                 progress_queue.put_nowait(_sse("step", payload))
             except asyncio.QueueFull:
@@ -2575,7 +2708,7 @@ async def react_endpoint(
                 }
                 if action.tool_args.get("id"):
                     inject_payload["id"] = action.tool_args["id"]
-                sse_events.append({"event": "inject", "data": inject_payload})
+                _append_event(sse_events, "inject", inject_payload)
                 try:
                     progress_queue.put_nowait(_sse("inject", inject_payload))
                 except asyncio.QueueFull:
@@ -2588,7 +2721,7 @@ async def react_endpoint(
                     "phase": "selecting_tools",
                     "total_tools": action.tool_args.get("total", 0),
                 }
-                sse_events.append({"event": "phase", "data": phase_payload})
+                _append_event(sse_events, "phase", phase_payload)
                 try:
                     progress_queue.put_nowait(_sse("phase", phase_payload))
                 except asyncio.QueueFull:
@@ -2907,7 +3040,7 @@ async def react_endpoint(
                 if remaining:
                     done_payload["pending_injections"] = [m.content for m in remaining]
 
-            sse_events.append({"event": "done", "data": done_payload})
+            _append_event(sse_events, "done", done_payload)
 
             # -- Re-open a fresh DB session for persistence ----------------
             # The original session was closed right after saving the user
@@ -3461,7 +3594,7 @@ async def dag_endpoint(
                     for a in data["artifacts"]
                 ]
             step_payload = {"step_id": step_id, "event": event, **data}
-            sse_events.append({"event": "step_progress", "data": step_payload})
+            _append_event(sse_events, "step_progress", step_payload)
             try:
                 progress_queue.put_nowait(_sse("step_progress", step_payload))
             except asyncio.QueueFull:
@@ -3519,7 +3652,7 @@ async def dag_endpoint(
                             "content": injected.content,
                             "phase": current_phase,
                         }
-                        sse_events.append({"event": "inject", "data": inject_payload})
+                        _append_event(sse_events, "inject", inject_payload)
                         yield _sse("inject", inject_payload)
                         enriched_query += f"\n\n[User follow-up]: {injected.content}"
                         inject_in_round = True
@@ -3663,7 +3796,7 @@ async def dag_endpoint(
                                     "content": injected.content,
                                     "phase": "executing",
                                 }
-                                sse_events.append({"event": "inject", "data": inject_payload})
+                                _append_event(sse_events, "inject", inject_payload)
                                 yield _sse("inject", inject_payload)
                                 enriched_query += f"\n\n[User follow-up]: {injected.content}"
                                 inject_in_round = True
@@ -3718,7 +3851,7 @@ async def dag_endpoint(
                             "content": injected.content,
                             "phase": "analyzing",
                         }
-                        sse_events.append({"event": "inject", "data": inject_payload})
+                        _append_event(sse_events, "inject", inject_payload)
                         yield _sse("inject", inject_payload)
                         enriched_query += f"\n\n[User follow-up]: {injected.content}"
                         inject_in_round = True
@@ -3928,12 +4061,12 @@ async def dag_endpoint(
                         "content": injected.content,
                         "phase": "done",
                     }
-                    sse_events.append({"event": "inject", "data": inject_payload})
+                    _append_event(sse_events, "inject", inject_payload)
                     yield _sse("inject", inject_payload)
                 if remaining:
                     dag_done_payload["pending_injections"] = [m.content for m in remaining]
 
-            sse_events.append({"event": "done", "data": dag_done_payload})
+            _append_event(sse_events, "done", dag_done_payload)
 
             # -- Re-open a fresh DB session for persistence ----------------
             # The original session was closed right after saving the user

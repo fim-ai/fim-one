@@ -15,6 +15,20 @@ User messages that were sent with image attachments store image metadata
 (file_id, filename, mime_type) in ``MessageModel.metadata_["images"]``.
 When loading history, the original base64 data-URLs are rebuilt from disk
 so that subsequent LLM calls can "see" the images again.
+
+Conversation Recovery (MVP)
+---------------------------
+When a turn is interrupted mid-flight (Stop button, SSE disconnect, crash)
+the DB can be left with an ``assistant`` row carrying ``tool_calls`` that
+never received matching ``role="tool"`` results.  :func:`_repair_dangling_tool_calls`
+heals this on the read path by injecting placeholder tool_results into
+the returned ``ChatMessage`` list.
+
+To prevent repeated synthesis on every subsequent turn, the repaired
+synthetic results are also **persisted** to the DB as new ``role="tool"``
+messages (tagged via ``metadata_["synthetic"]`` / ``metadata_["tool_call_id"]``).
+The write is best-effort: if it fails, the in-memory repair still runs
+so the read always returns a well-formed trajectory.
 """
 
 from __future__ import annotations
@@ -50,6 +64,8 @@ _INTERRUPTED_TOOL_RESULT = "[interrupted: tool execution did not complete]"
 def _repair_dangling_tool_calls(
     messages: list[ChatMessage],
     conversation_id: str,
+    *,
+    synthesized_sink: list[ChatMessage] | None = None,
 ) -> list[ChatMessage]:
     """Insert synthetic ``tool`` results for any dangling assistant tool_calls.
 
@@ -65,13 +81,18 @@ def _repair_dangling_tool_calls(
     with a short placeholder and inserted immediately after the assistant
     message so downstream consumers see a well-formed trajectory.
 
-    The DB is never mutated — the repair is a view applied on the
-    read path.  Callers should keep passing the untouched raw log to
-    persistence layers.
+    The DB is never mutated by this function — the repair is a view
+    applied on the read path.  Callers wishing to **persist** the
+    synthetic rows may pass a list as ``synthesized_sink``; the helper
+    will append every newly-synthesized ``ChatMessage`` to that list so
+    the caller can write them back to the DB (see
+    :func:`_persist_synthetic_tool_results`).
 
     Args:
         messages: The loaded message list in chronological order.
         conversation_id: Conversation identifier (for diagnostic logging).
+        synthesized_sink: Optional list that will be populated with the
+            synthetic ``ChatMessage`` objects created during repair.
 
     Returns:
         A new list with synthetic tool results inserted where needed.
@@ -116,13 +137,14 @@ def _repair_dangling_tool_calls(
             # Append synthetic results AFTER any real results so the
             # original trajectory ordering is preserved.
             for tc_id in missing:
-                repaired.append(
-                    ChatMessage(
-                        role="tool",
-                        content=_INTERRUPTED_TOOL_RESULT,
-                        tool_call_id=tc_id,
-                    )
+                synth = ChatMessage(
+                    role="tool",
+                    content=_INTERRUPTED_TOOL_RESULT,
+                    tool_call_id=tc_id,
                 )
+                repaired.append(synth)
+                if synthesized_sink is not None:
+                    synthesized_sink.append(synth)
 
         # Skip over the already-consumed tool block.
         idx = look
@@ -136,6 +158,106 @@ def _repair_dangling_tool_calls(
         )
 
     return repaired
+
+
+async def _persist_synthetic_tool_results(
+    conversation_id: str,
+    synthesized: list[ChatMessage],
+) -> int:
+    """Write synthetic ``role="tool"`` rows to the DB idempotently.
+
+    Each synthetic ``ChatMessage`` is stored as a new ``Message`` row with:
+
+    - ``role = "tool"``
+    - ``content = _INTERRUPTED_TOOL_RESULT``
+    - ``metadata_ = {"synthetic": True, "reason": "interrupted",
+      "tool_call_id": <id>}``
+
+    A per-``tool_call_id`` existence check runs first so repeated calls on
+    the same conversation never duplicate rows.  JSON path syntax differs
+    between engines, so the query is dialect-aware (SQLite uses
+    ``json_extract``; PostgreSQL uses the ``::json->>`` operator).
+
+    Any DB error is swallowed — the in-memory repair still renders a
+    valid trajectory for the current turn.
+
+    Args:
+        conversation_id: Conversation the synthetic messages belong to.
+        synthesized: The ``ChatMessage`` objects produced by
+            :func:`_repair_dangling_tool_calls`.
+
+    Returns:
+        The number of rows actually inserted.  ``0`` when every
+        ``tool_call_id`` already had a synthetic row or when the write
+        failed.
+    """
+    if not synthesized:
+        return 0
+
+    tool_call_ids = [m.tool_call_id for m in synthesized if m.tool_call_id]
+    if not tool_call_ids:
+        return 0
+
+    try:
+        from fim_one.db import create_session
+        from fim_one.web.models import Message as MessageModel
+        from sqlalchemy import select as sa_select, text as sa_text
+
+        async with create_session() as session:
+            bind = session.get_bind()
+            dialect = bind.dialect.name if bind is not None else "sqlite"
+
+            # Dialect-aware JSON path extraction.  SQLite is the dev default;
+            # PostgreSQL is production.  Both return the stored tool_call_id
+            # (or NULL) without needing a new column.
+            if dialect == "postgresql":
+                expr = sa_text("metadata::json->>'tool_call_id'")
+            else:
+                expr = sa_text("json_extract(metadata, '$.tool_call_id')")
+
+            stmt = sa_select(expr).where(
+                MessageModel.conversation_id == conversation_id,
+                MessageModel.role == "tool",
+            )
+            result = await session.execute(stmt)
+            existing: set[str] = {str(row[0]) for row in result.all() if row[0] is not None}
+
+            inserted = 0
+            for synth in synthesized:
+                tc_id = synth.tool_call_id
+                if not tc_id or tc_id in existing:
+                    continue
+                row = MessageModel(
+                    conversation_id=conversation_id,
+                    role="tool",
+                    content=_INTERRUPTED_TOOL_RESULT,
+                    message_type="tool_result",
+                    metadata_={
+                        "synthetic": True,
+                        "reason": "interrupted",
+                        "tool_call_id": tc_id,
+                    },
+                )
+                session.add(row)
+                existing.add(tc_id)
+                inserted += 1
+
+            if inserted:
+                await session.commit()
+                logger.info(
+                    "DbMemory: persisted %d synthetic tool_result row(s) for conversation %s",
+                    inserted,
+                    conversation_id,
+                )
+            return inserted
+    except Exception:
+        logger.warning(
+            "DbMemory: failed to persist synthetic tool_result rows for "
+            "conversation %s — in-memory repair still applied",
+            conversation_id,
+            exc_info=True,
+        )
+        return 0
 
 
 async def _rebuild_vision_urls(
@@ -268,11 +390,16 @@ class DbMemory(BaseMemory):
             from sqlalchemy import select as sa_select
 
             async with create_session() as session:
+                # Include ``role="tool"`` so previously-persisted
+                # synthetic tool_result rows are visible to the repair
+                # pass — without them every turn would re-synthesize
+                # and the persist helper would deduplicate on write but
+                # the log would stay noisy.
                 stmt = (
                     sa_select(MessageModel)
                     .where(
                         MessageModel.conversation_id == self._conversation_id,
-                        MessageModel.role.in_(["user", "assistant"]),
+                        MessageModel.role.in_(["user", "assistant", "tool"]),
                     )
                     .order_by(MessageModel.created_at)
                 )
@@ -314,6 +441,15 @@ class DbMemory(BaseMemory):
                                 msg.reasoning_content = reasoning
                             if isinstance(signature, str) and signature:
                                 msg.signature = signature
+                    # Restore tool_call_id for persisted ``role="tool"``
+                    # rows so the repair pass can match them against the
+                    # assistant's tool_calls.  Synthetic recovery rows
+                    # (see ``_persist_synthetic_tool_results``) store the
+                    # id under ``metadata_["tool_call_id"]``.
+                    if role == "tool":
+                        tc_id = meta.get("tool_call_id") if meta else None
+                        if isinstance(tc_id, str) and tc_id:
+                            msg.tool_call_id = tc_id
                     messages.append(msg)
                     id_for_msg[id(msg)] = str(row.id)
 
@@ -349,12 +485,23 @@ class DbMemory(BaseMemory):
                 )
 
             # Repair dangling tool_calls left behind by interrupted turns
-            # (Stop button, SSE disconnect, crash).  Applied on the read
-            # path only — DB rows are never mutated.
+            # (Stop button, SSE disconnect, crash).  The repair both:
+            #   (a) returns a well-formed trajectory for this turn, and
+            #   (b) collects any newly-synthesized tool_result messages
+            #       so we can persist them — so the next turn doesn't
+            #       re-synthesize the same rows and interrupted artefacts
+            #       are durably captured in conversation history.
+            synthesized: list[ChatMessage] = []
             messages = _repair_dangling_tool_calls(
                 messages,
                 self._conversation_id,
+                synthesized_sink=synthesized,
             )
+            if synthesized:
+                await _persist_synthetic_tool_results(
+                    self._conversation_id,
+                    synthesized,
+                )
 
             self._original_count = len(messages)
 
