@@ -55,7 +55,7 @@ export function IterationCard({
         {isLoading && (
           <div className="flex items-center gap-1.5 shrink-0">
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-            <span className="shiny-text text-[10px] text-muted-foreground">{t("executing")}</span>
+            <span className="text-shimmer text-shimmer-warm text-[10px]">{t("executing")}</span>
           </div>
         )}
         {hasDetail && (

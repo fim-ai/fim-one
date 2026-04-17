@@ -1414,7 +1414,7 @@ function PlaygroundContent({
               {statusText && (
                 <span className="flex items-center gap-1.5 ml-3 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  <span className="shiny-text">{statusText}</span>
+                  <span className="text-shimmer text-shimmer-warm">{statusText}</span>
                 </span>
               )}
               {resumeState === "reconnecting" && (

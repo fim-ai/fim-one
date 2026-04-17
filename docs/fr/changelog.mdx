@@ -10,6 +10,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Non publié]
 
+### Modifié
+
+- Les indicateurs de chargement du Playground utilisent désormais un scintillement de texte subtil au lieu de la barre de progression d'apparence artificielle qui se figeait à une largeur pseudo-complète après 8 secondes. Les deux implémentations de scintillement existantes (`.shiny-text` et `.text-shimmer`) ont été unifiées en une primitive unique sensible au thème avec un préréglage chaleureux optionnel.
+
 ### Corrigé
 
 - L'export de conversation affiche désormais le libellé de mode correct (« Planner » / « 规划 ») pour les conversations DAG acheminées automatiquement au lieu d'afficher toujours « Standard ».

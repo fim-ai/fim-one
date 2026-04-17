@@ -191,14 +191,11 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-sm">
+              <span className="text-sm text-shimmer">
                 {currentRound > 1
                   ? t("replanningRound", { round: currentRound })
                   : t("planningSteps")}
               </span>
-            </div>
-            <div className="w-full h-0.5 overflow-hidden rounded-full">
-              <div className="h-full bg-primary/40 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
             </div>
           </CardContent>
         </Card>
@@ -210,12 +207,9 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-sm">
+              <span className="text-sm text-shimmer">
                 {t("replanning")}
               </span>
-            </div>
-            <div className="w-full h-0.5 overflow-hidden rounded-full">
-              <div className="h-full bg-primary/40 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
             </div>
           </CardContent>
         </Card>
@@ -247,10 +241,7 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
               <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
-              <span className="text-sm">{t("analyzingResults")}</span>
-            </div>
-            <div className="w-full h-0.5 overflow-hidden rounded-full">
-              <div className="h-full bg-purple-500/40 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
+              <span className="text-sm text-shimmer">{t("analyzingResults")}</span>
             </div>
           </CardContent>
         </Card>
@@ -381,6 +372,7 @@ function groupConsecutiveIterations(
       duration: iter.duration,
       content_type: iter.content_type,
       artifacts: iter.artifacts,
+      thinkingText: iter.thinkingText,
     }
 
     if (last && last.toolName === name) {
@@ -399,7 +391,7 @@ function groupConsecutiveIterations(
   return groups
 }
 
-/** Count iterations by tool type for collapsed step summary */
+/** Count iterations by tool type for collapsed step summary (excludes thinking) */
 function countIterationsByTool(
   iterations: StepState["iterations"],
   tools?: ToolMeta[],
@@ -407,13 +399,14 @@ function countIterationsByTool(
   const counts = new Map<string, { displayName: string; Icon: LucideIcon; count: number }>()
   for (const iter of iterations) {
     const name = iter.tool_name || "__thinking__"
+    if (name === "__thinking__") continue
     const existing = counts.get(name)
     if (existing) {
       existing.count++
     } else {
       counts.set(name, {
-        displayName: name === "__thinking__" ? "Thinking" : getToolDisplayName(name, tools),
-        Icon: name === "__thinking__" ? Brain : getToolIcon(name, tools),
+        displayName: getToolDisplayName(name, tools),
+        Icon: getToolIcon(name, tools),
         count: 1,
       })
     }
@@ -562,7 +555,7 @@ function StepProgressCard({ state }: { state: StepState }) {
     [state.iterations, catalog?.tools]
   )
 
-  const hasContent = state.iterations.length > 0 || !!state.result || !!state.thinkingText
+  const hasContent = state.iterations.length > 0 || !!state.result
 
   return (
     <div className={`pl-8 pb-3 relative${state.status === "skipped" ? " opacity-50" : ""}`}>
@@ -633,27 +626,31 @@ function StepProgressCard({ state }: { state: StepState }) {
         )}
       </div>
 
-      {/* Expanded: thinking text + grouped iterations + result */}
+      {/* Expanded: interleaved thinking + tool iterations + result */}
       {expanded && hasContent && (
         <div className="mt-1.5 space-y-1.5 pl-2">
-          {state.thinkingText && (
-            <div className="rounded-md border border-border/30 bg-muted/10 px-2.5 py-2">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Brain className="h-3 w-3 text-muted-foreground" />
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                  {tDag("thinking")}
-                </span>
-              </div>
-              <div className="text-xs italic text-muted-foreground leading-relaxed">
-                <MarkdownContent
-                  content={state.thinkingText}
-                  className={`prose-xs text-xs text-muted-foreground${state.status === "running" ? " streaming-cursor" : ""}`}
-                />
-              </div>
-            </div>
-          )}
           {iterGroups.map((group, gIdx) =>
-            group.items.length >= 3 ? (
+            group.toolName === "__thinking__" ? (
+              group.items.map(({ data, index }) => {
+                const isStreaming = !!data.loading
+                return (
+                  <div key={index} className="rounded-md border border-border/30 bg-muted/10 px-2.5 py-2">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Brain className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        {tDag("thinking")}
+                      </span>
+                    </div>
+                    <div className="text-xs italic text-muted-foreground leading-relaxed">
+                      <MarkdownContent
+                        content={data.thinkingText ?? ""}
+                        className={`prose-xs text-xs text-muted-foreground${isStreaming ? " streaming-cursor" : ""}`}
+                      />
+                    </div>
+                  </div>
+                )
+              })
+            ) : group.items.length >= 3 ? (
               <CollapsedIterationGroup key={gIdx} group={group} />
             ) : (
               group.items.map(({ data, index }) => (

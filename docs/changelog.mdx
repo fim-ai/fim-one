@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Changed
+
+- Playground loading indicators now use a subtle text shimmer instead of the fake-looking progress bar that froze at a pseudo-full width after 8 seconds. Unified the two existing shimmer implementations (`.shiny-text` and `.text-shimmer`) into a single theme-aware primitive with an optional warm preset.
+
 ### Fixed
 
 - Conversation export now shows the correct mode label ("Planner" / "规划") for auto-routed DAG conversations instead of always displaying "Standard".

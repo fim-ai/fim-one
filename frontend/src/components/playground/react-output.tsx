@@ -347,10 +347,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
         <div className="flex flex-col gap-3 px-1 py-2">
           <div className="flex items-center gap-3">
             <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-            <span className="text-sm text-muted-foreground">{t("statusProcessing")}</span>
-          </div>
-          <div className="w-48 h-0.5 overflow-hidden rounded-full">
-            <div className="h-full bg-amber-500/40 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
+            <span className="text-sm text-shimmer">{t("statusProcessing")}</span>
           </div>
         </div>
       )}
@@ -449,11 +446,8 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground leading-relaxed">
               <Loader2 className="inline h-3 w-3 animate-spin mr-1.5 align-text-bottom" />
-              <span>{t("statusProcessing")}</span>
+              <span className="text-shimmer">{t("statusProcessing")}</span>
             </p>
-            <div className="w-full h-0.5 overflow-hidden rounded-full">
-              <div className="h-full bg-primary/30 animate-[nav-bar-grow_8s_cubic-bezier(0.1,0.9,0.3,1)_forwards]" />
-            </div>
           </div>
         )}
         {reasoning && (

@@ -434,18 +434,36 @@ input:-webkit-autofill:focus {
   animation: inject-breathe 2.4s ease-in-out infinite;
 }
 
-.shiny-text {
+/* Text shimmer — unified primitive. Default preset = theme-aware muted sweep;
+ * compose with .text-shimmer-warm for the warm-highlight preset.
+ * Per-instance overrides via inline style: --shimmer-duration, --shimmer-angle, etc. */
+.text-shimmer {
+  --shimmer-base: var(--muted-foreground);
+  --shimmer-highlight: var(--foreground);
+  --shimmer-angle: 90deg;
+  --shimmer-duration: 2.4s;
+  --shimmer-timing: linear;
+
   background: linear-gradient(
-    120deg,
-    rgba(170, 160, 145, 1) 40%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(170, 160, 145, 1) 60%
+    var(--shimmer-angle),
+    var(--shimmer-base) 40%,
+    var(--shimmer-highlight) 50%,
+    var(--shimmer-base) 60%
   );
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: shimmer 2s ease-in-out infinite;
+  color: transparent;
+  animation: shimmer var(--shimmer-duration) var(--shimmer-timing) infinite;
+}
+
+.text-shimmer-warm {
+  --shimmer-base: rgb(170, 160, 145);
+  --shimmer-highlight: rgba(255, 255, 255, 0.9);
+  --shimmer-angle: 120deg;
+  --shimmer-duration: 2s;
+  --shimmer-timing: ease-in-out;
 }
 
 /* Light mode highlight.js background override — match theme */

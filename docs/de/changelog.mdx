@@ -10,6 +10,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Geändert
+
+- Playground-Ladeindikatoren verwenden jetzt einen subtilen Text-Shimmer anstelle der unrealistisch aussehenden Fortschrittsleiste, die nach 8 Sekunden bei einer Pseudo-Vollbreite eingefroren ist. Die beiden vorhandenen Shimmer-Implementierungen (`.shiny-text` und `.text-shimmer`) wurden in ein einzelnes Design-bewusstes Primitiv mit einem optionalen Warm-Preset vereinheitlicht.
+
 ### Behoben
 
 - Der Gesprächsexport zeigt nun das korrekte Moduskennzeichen ("Planner" / "规划") für automatisch geroutete DAG-Gespräche an, anstatt immer "Standard" anzuzeigen.
