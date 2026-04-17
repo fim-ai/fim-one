@@ -231,12 +231,12 @@ flowchart LR
 
 ### v0.9 — Observabilité + Durcissement de la production
 
-**Objectif** : Opérations de qualité production, débogage et surveillance. Introduit le **Système de crochets** — une couche d'application déterministe qui se situe sous les instructions de l'agent et ne peut pas être remplacée par le LLM.
+**Objectif** : Opérations de qualité production, débogage et surveillance. Introduit le **Système de Hook** — une couche d'application déterministe qui se situe sous les instructions de l'agent et ne peut pas être contournée par le LLM.
 
 - [ ] **Divulgation progressive des connecteurs (Phase 3-4)** : interface `ConnectorExecutor` unifiée (API/DB/MCP derrière une abstraction unique) ; validation des paramètres d'action avec `jsonschema` ; découverte/exécution agnostique du protocole
-- [ ] **Configuration des connecteurs YAML/JSON** : la plateforme génère automatiquement le serveur MCP
-- [ ] **Connecteurs de base de données Phase 4** : pilotes d'entreprise — Oracle (`oracledb`), SQL Server (`aioodbc`), 达梦 DM8 (`aioodbc` + DM ODBC), 南大通用 GBase (`aioodbc` + GBase ODBC)
-- [ ] **Intégration des canaux IM (bidirectionnelle)** : **Phase 1 — Push sortant** : actions de notification Lark, WeCom, Slack, Email, Teams à partir des résultats de l'agent/flux de travail. **Phase 2 — Déclenchement entrant** : les utilisateurs @mentionnent l'agent dans les chats de groupe IM pour déclencher des tâches sans ouvrir le portail ; récepteur webhook par canal ; chaque canal IM modélisé comme un connecteur avec des actions bidirectionnelles (envoi + réception). Fonctionnalité killer du mode Hub
+- [ ] **Configuration des connecteurs YAML/JSON** : génération automatique du serveur MCP par la plateforme
+- [ ] **Connecteurs de base de données Phase 4** : pilotes d'entreprise — Oracle (`oracledb`), SQL Server (`aioodbc`), [x] 达梦 DM8 (native `dmPython`), [x] 人大金仓 KingbaseES + 瀚高 HighGo (compatible PG, réutiliser `asyncpg`), 南大通用 GBase (`aioodbc` + GBase ODBC)
+- [ ] **Intégration des canaux IM (bidirectionnelle)** : **Phase 1 — Push sortant** : actions de notification Lark, WeCom, Slack, Email, Teams à partir des résultats de l'Agent/Workflow. **Phase 2 — Déclenchement entrant** : les utilisateurs @mentionnent l'Agent dans les chats de groupe IM pour déclencher des tâches sans ouvrir le Portal ; récepteur webhook par canal ; chaque canal IM modélisé comme un connecteur avec actions bidirectionnelles (envoi + réception). Fonctionnalité phare du mode Hub
 
 #### API Public (Phase 2)
 

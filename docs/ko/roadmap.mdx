@@ -228,14 +228,14 @@ flowchart LR
 
 ## 계획된 버전
 
-### v0.9 — 관찰성 + 프로덕션 강화
+### v0.9 — 可观测性 + 生产强化
 
-**목표**: 프로덕션 등급 운영, 디버깅 및 모니터링. **Hook System**을 도입합니다 — 에이전트 지시사항 아래에 위치하며 LLM에 의해 재정의될 수 없는 결정론적 강제 계층입니다.
+**目标**: 生产级运维、调试和监控。引入**Hook System** — 一个确定性执行层，位于智能体指令下方，无法被LLM覆盖。
 
-- [ ] **커넥터 점진적 공개 (Phase 3-4)**: 통합 `ConnectorExecutor` 인터페이스 (API/DB/MCP를 하나의 추상화 뒤에); `jsonschema`를 사용한 작업 매개변수 검증; 프로토콜 불가지론적 discover/execute
-- [ ] **YAML/JSON 커넥터 설정**: 플랫폼 자동 생성 MCP 서버
-- [ ] **데이터베이스 커넥터 Phase 4**: 엔터프라이즈 드라이버 — Oracle (`oracledb`), SQL Server (`aioodbc`), 达梦 DM8 (`aioodbc` + DM ODBC), 南大通用 GBase (`aioodbc` + GBase ODBC)
-- [ ] **IM 채널 통합 (양방향)**: **Phase 1 — 아웃바운드 푸시**: Lark, WeCom, Slack, Email, Teams 알림 작업 (에이전트/워크플로우 결과로부터). **Phase 2 — 인바운드 트리거**: 사용자가 IM 그룹 채팅에서 에이전트를 @mention하여 Portal을 열지 않고 작업 트리거; 채널당 webhook 수신기; 각 IM 채널을 양방향 작업(송수신)이 있는 커넥터로 모델링. Hub 모드 킬러 기능
+- [ ] **连接器渐进式披露 (第3-4阶段)**: 统一的`ConnectorExecutor`接口 (API/DB/MCP在一个抽象后面); 使用`jsonschema`进行操作参数验证; 协议无关的发现/执行
+- [ ] **YAML/JSON连接器配置**: 平台自动生成MCP服务器
+- [ ] **数据库连接器第4阶段**: 企业驱动 — Oracle (`oracledb`), SQL Server (`aioodbc`), [x] 达梦 DM8 (native `dmPython`), [x] 人大金仓 KingbaseES + 瀚高 HighGo (PG-compatible, reuse `asyncpg`), 南大通用 GBase (`aioodbc` + GBase ODBC)
+- [ ] **IM频道集成 (双向)**: **第1阶段 — 出站推送**: Lark、WeCom、Slack、Email、Teams通知操作来自智能体/工作流结果。**第2阶段 — 入站触发**: 用户在IM群聊中@提及智能体以触发任务，无需打开Portal; 每个频道的webhook接收器; 每个IM频道建模为具有双向操作的连接器 (发送 + 接收)。Hub模式杀手级功能
 
 #### 공개 API (Phase 2)
 

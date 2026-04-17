@@ -1,0 +1,155 @@
+---
+title: "信创データベース"
+icon: "database"
+description: "FIM OneをKingbaseES、DM8、HighGoなどの国内中国データベースに接続します。"
+---
+
+FIM Oneのデータベースコネクタは、PostgreSQL、MySQL、およびOracleのワイヤプロトコルをそのままサポートしています。つまり、4つの最も一般的な信創（信创 — 国産ソフトウェア）データベースのうち3つは追加の接着剤なしで動作します。DM8（达梦）のみがベンダードライバを必要とします。
+
+このガイドでは、それぞれの接続方法を説明します。
+
+<Info>
+  ドライバアーキテクチャをお探しですか？
+  [`src/fim_one/core/tool/connector/database/drivers/`](https://github.com/fim-ai/fim-one/tree/master/src/fim_one/core/tool/connector/database/drivers)を参照してください。
+  ワイヤプロトコルがPostgres互換の場合、5番目のドライバを追加するのは約60行です。
+</Info>
+
+## サポートマトリックス
+
+| Database       | Vendor                 | Protocol                 | Driver package                 | Status    |
+|----------------|------------------------|--------------------------|--------------------------------|-----------|
+| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
+| HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
+| DM8            | 達夢 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
+| GBase          | 南大通用 / GBase        | ODBC / Native            | `aioodbc` (planned)            | Planned (v0.9) |
+
+## 1. KingbaseES (人大金仓)
+
+KingbaseES は PostgreSQL 互換のフォークです。アップストリーム PostgreSQL と同じワイヤプロトコル、同じ SQL、同じカタログビューを受け入れるため、FIM One は既存の `PostgreSQLDriver`（`asyncpg` によってサポート）を変更なしで使用します。
+
+### インストール
+
+追加の依存関係は不要です — `asyncpg` は既に
+`postgres` / `database` extras によってプルインされています：
+
+```bash
+uv sync --extra postgres --extra database
+```
+
+### 設定
+
+ポータルで、**コネクタ → 作成 → データベース**を開き、
+ドロップダウンから**KingbaseES (PG compatible)**を選択します。
+
+| フィールド | デフォルト | 例                      |
+|----------|---------|-------------------------|
+| Host     | —       | `10.0.0.10`             |
+| Port     | `54321` | `54321` (Kingbaseデフォルト) |
+| Database | —       | `test`                  |
+| Schema   | `public` | `public`                |
+| Username | —       | `system`                |
+| Password | —       | `system`                |
+
+FIM Oneが内部的に構築する接続文字列は以下の通りです：
+
+```
+postgresql://system:***@10.0.0.10:54321/test
+```
+
+### CLI スモークテスト
+
+```bash
+uv run python scripts/test_xinchuang_dbs.py \
+    --type kingbase --host 10.0.0.10 --port 54321 \
+    --user system --password system --database test
+```
+
+期待される出力:
+
+```
+[*] Connecting to kingbasees://10.0.0.10:54321/test
+[+] Server version: KingbaseES V9.0.0 ...
+[+] Tables visible: 12
+    - SYS_USER (7 cols)
+    - SYS_ROLE (4 cols)
+    ...
+```
+
+## 2. HighGo (瀚高)
+
+HighGoはPostgreSQL互換のもう1つのディストリビューションです。FIM OneはKingbaseESと同じように扱います。デフォルトポート（`5866`）とドロップダウンのブランド名のみが異なります。
+
+```bash
+uv run python scripts/test_xinchuang_dbs.py \
+    --type highgo --host 10.0.0.12 --port 5866 \
+    --user highgo --password highgo --database test
+```
+
+## 3. DM8 (达梦)
+
+DM8 is **not** PostgreSQL-compatible — it has its own wire protocol
+and catalog views (`ALL_TABLES`, `ALL_TAB_COLUMNS`, ...) that are
+Oracle-style. FIM One ships a dedicated `DM8Driver` that wraps the
+official Python client.
+
+### 前提条件: `dmPython` をインストール
+
+`dmPython` は **PyPI に公開されていません**。オペレーターはベンダーからホイールをダウンロードしてローカルにインストールする必要があります。
+
+1. [eco.dameng.com](https://eco.dameng.com/) にアクセスします（または、DM8 がローカルにインストール済みの場合は DM8 インストーラーの `drivers/python/` ディレクトリ）。
+2. Python バージョンに一致するホイールをダウンロードします（例: `dmPython-2.5.x-cp311-cp311-linux_x86_64.whl`）。
+3. FIM One を実行する同じ環境にインストールします:
+   ```bash
+   uv pip install path/to/dmPython-2.5.x-cp311-cp311-linux_x86_64.whl
+   ```
+
+<Warning>
+  FIM One コンテナには `dmPython` が付属していません。Docker デプロイメントの場合、最初の DM8 接続が試行される前に、ホイールをイメージにコピーしてください（例: `vendor/` マウントまたは Dockerfile の `COPY` + `pip install` レイヤー経由）。
+</Warning>
+
+### 設定
+
+ドロップダウンから **DM8 (DaMeng)** を選択します。
+
+| フィールド | デフォルト | 例                    |
+|----------|---------|-----------------------|
+| Host     | —       | `10.0.0.11`           |
+| Port     | `5236`  | `5236` (DM8 default)  |
+| Database | —       | `DAMENG` (informational only) |
+| Username | —       | `SYSDBA`              |
+| Password | —       | `SYSDBA`              |
+
+DM8 は PostgreSQL のような接続ごとの「database」という概念を持たず、ポートごとに単一のインスタンスです。ただし FIM One は UI の一貫性のためにデータベース名を収集します。`Schema` フィールドを空白のままにすると、大文字に変換されたユーザー名がデフォルトになります（`SYSDBA` → `SYSDBA`）。
+
+### CLIスモークテスト
+
+```bash
+uv run python scripts/test_xinchuang_dbs.py \
+    --type dm8 --host 10.0.0.11 --port 5236 \
+    --user SYSDBA --password SYSDBA
+```
+
+### トラブルシューティング
+
+| 症状                                                              | 修正方法                                                                                          |
+|----------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `RuntimeError: The 'dmPython' package is not installed.`            | ベンダーホイールをインストールしてください（上記を参照）。                                                        |
+| `DM-000001: Login failed`                                            | ユーザー名またはパスワードが間違っているか、DM8インスタンスが異なる`CASE_SENSITIVE`で設定されています。ユーザー名の大文字形式を試してください。 |
+| `DM-022000: Table or view does not exist`                            | DM8は引用符なしの識別子を大文字に変換します。SQLのテーブル名がカタログと正確に一致することを確認してください。 |
+| List Tablesが`[]`を返す                                             | `Schema` / `Owner`が間違っています。FIM Oneはデフォルトで大文字のユーザー名を使用します — フォームからオーバーライドしてください。 |
+
+## LLMが見るもの
+
+基盤となるドライバーに関わらず、各データベースコネクタは智能体に同じ3つのツールを公開します:
+
+1. `{connector}__list_tables` — 表示可能なテーブルを列挙
+2. `{connector}__describe_table` — カラム型と主キー
+3. `{connector}__query` — 検証済みのSQL文を実行
+
+Progressive Disclosureが有効な場合（`DATABASE_TOOL_MODE=progressive`、v0.8.1以降のデフォルト）、これらは`list_tables` / `discover` / `query`サブコマンドを持つ単一の`database`メタツールに統合されます。
+
+## 関連
+
+- [データベース設定](/configuration/database) — FIM One自体のバックエンド ストレージ
+- [環境変数](/configuration/environment-variables) — `DATABASE_TOOL_MODE`、`CREDENTIAL_ENCRYPTION_KEY`
+- [ロードマップ](/roadmap) — GBase (v0.9) およびその他のエンタープライズ ドライバ

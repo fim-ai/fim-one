@@ -229,14 +229,14 @@ flowchart LR
 
 ## 计划版本
 
-### v0.9 — 可观测性 + 生产环境加固
+### v0.9 — 可观测性 + 生产级强化
 
-**目标**: 生产级别的运维、调试和监控。引入**钩子系统** — 一个确定性的执行层，位于智能体指令下方，无法被 LLM 覆盖。
+**目标**: 生产级运维、调试和监控。引入**Hook 系统** — 一个确定性执行层，位于智能体指令下方，无法被 LLM 覆盖。
 
-- [ ] **连接器渐进式信息展示（第 3-4 阶段）**: 统一的 `ConnectorExecutor` 接口（API/DB/MCP 在一个抽象层后）；使用 `jsonschema` 进行操作参数验证；协议无关的发现/执行
+- [ ] **连接器渐进式披露（第 3-4 阶段）**: 统一的 `ConnectorExecutor` 接口（API/DB/MCP 在一个抽象后）；使用 `jsonschema` 进行操作参数验证；协议无关的发现/执行
 - [ ] **YAML/JSON 连接器配置**: 平台自动生成 MCP 服务器
-- [ ] **数据库连接器第 4 阶段**: 企业级驱动 — Oracle (`oracledb`)、SQL Server (`aioodbc`)、达梦 DM8 (`aioodbc` + DM ODBC)、南大通用 GBase (`aioodbc` + GBase ODBC)
-- [ ] **IM 频道集成（双向）**: **第 1 阶段 — 出站推送**: Lark、WeCom、Slack、Email、Teams 通知操作来自智能体/工作流结果。**第 2 阶段 — 入站触发**: 用户在 IM 群组中 @提及智能体以触发任务，无需打开门户；每个频道的 webhook 接收器；每个 IM 频道建模为具有双向操作的连接器（发送 + 接收）。Hub 模式杀手级功能
+- [ ] **数据库连接器第 4 阶段**: 企业级驱动 — Oracle (`oracledb`)、SQL Server (`aioodbc`)、[x] 达梦 DM8（原生 `dmPython`）、[x] 人大金仓 KingbaseES + 瀚高 HighGo（PG 兼容，复用 `asyncpg`）、南大通用 GBase（`aioodbc` + GBase ODBC）
+- [ ] **IM 频道集成（双向）**: **第 1 阶段 — 出站推送**: Lark、WeCom、Slack、Email、Teams 通知操作来自智能体/工作流结果。**第 2 阶段 — 入站触发**: 用户在 IM 群聊中 @mention 智能体以触发任务，无需打开 Portal；每个频道的 webhook 接收器；每个 IM 频道建模为具有双向操作的连接器（发送 + 接收）。Hub 模式杀手级功能
 
 #### 公开 API（第 2 阶段）
 

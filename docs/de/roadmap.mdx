@@ -231,12 +231,12 @@ flowchart LR
 
 ### v0.9 — Observability + Production Hardening
 
-**Ziel**: Produktionsreife Operationen, Debugging und Monitoring. Führt das **Hook System** ein — eine deterministische Durchsetzungsebene, die unter Agent-Anweisungen liegt und vom LLM nicht überschrieben werden kann.
+**Ziel**: Produktionsreife Operationen, Debugging und Monitoring. Führt das **Hook System** ein — eine deterministische Durchsetzungsschicht, die unter Agent-Anweisungen liegt und vom LLM nicht überschrieben werden kann.
 
 - [ ] **Connector Progressive Disclosure (Phase 3-4)**: einheitliche `ConnectorExecutor`-Schnittstelle (API/DB/MCP hinter einer Abstraktion); Validierung von Aktionsparametern mit `jsonschema`; protokollagnostisches Discover/Execute
 - [ ] **YAML/JSON Connector-Konfiguration**: Plattform generiert MCP-Server automatisch
-- [ ] **Datenbank-Connectoren Phase 4**: Enterprise-Treiber — Oracle (`oracledb`), SQL Server (`aioodbc`), 达梦 DM8 (`aioodbc` + DM ODBC), 南大通用 GBase (`aioodbc` + GBase ODBC)
-- [ ] **IM-Kanal-Integration (bidirektional)**: **Phase 1 — Ausgehender Push**: Lark, WeCom, Slack, Email, Teams Benachrichtigungsaktionen aus Agent/Workflow-Ergebnissen. **Phase 2 — Eingehender Trigger**: Benutzer erwähnen Agent in IM-Gruppenchats, um Aufgaben ohne Öffnen des Portals auszulösen; Webhook-Empfänger pro Kanal; jeder IM-Kanal modelliert als Connector mit bidirektionalen Aktionen (Senden + Empfangen). Hub-Modus Killer-Feature
+- [ ] **Database Connectors Phase 4**: Enterprise-Treiber — Oracle (`oracledb`), SQL Server (`aioodbc`), [x] 达梦 DM8 (native `dmPython`), [x] 人大金仓 KingbaseES + 瀚高 HighGo (PG-compatible, reuse `asyncpg`), 南大通用 GBase (`aioodbc` + GBase ODBC)
+- [ ] **IM Channel Integration (Bidirektional)**: **Phase 1 — Outbound Push**: Lark, WeCom, Slack, Email, Teams Benachrichtigungsaktionen aus Agent/Workflow-Ergebnissen. **Phase 2 — Inbound Trigger**: Benutzer @erwähnen Agent in IM-Gruppenchats, um Aufgaben auszulösen, ohne Portal zu öffnen; Webhook-Empfänger pro Kanal; jeder IM-Kanal modelliert als Connector mit bidirektionalen Aktionen (senden + empfangen). Hub-Modus-Killer-Feature
 
 #### Öffentliche API (Phase 2)
 

@@ -10,6 +10,10 @@ description: "FIM One 的所有重要更改。"
 
 ## [未发布]
 
+### Added
+
+- **信创数据库支持**：Database Connector 现在列出了 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦），与 PostgreSQL/MySQL 并列。KingbaseES 和 HighGo 与 PG 兼容，复用 `asyncpg` 无需额外依赖；DM8 使用官方 `dmPython` 供应商 wheel。独立的 `scripts/test_xinchuang_dbs.py` 脚本让运维人员可以从 CLI 验证实时连接。
+
 ### 已更改
 
 - Playground 加载指示器现在使用微妙的文本闪烁效果，而不是在 8 秒后卡在伪满宽度的虚假进度条。将两个现有的闪烁实现（`.shiny-text` 和 `.text-shimmer`）统一为单个主题感知的原始组件，具有可选的预热预设。

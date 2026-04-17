@@ -10,6 +10,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Non publié]
 
+### Ajouté
+
+- **Support des bases de données Xinchuang (信创)** : le Database Connector répertorie désormais KingbaseES (人大金仓), HighGo (瀚高) et DM8 (达梦) aux côtés de PostgreSQL/MySQL. KingbaseES et HighGo sont compatibles avec PG et réutilisent `asyncpg` sans dépendances supplémentaires ; DM8 utilise la roue du fournisseur officiel `dmPython`. Un script autonome `scripts/test_xinchuang_dbs.py` permet aux opérateurs de vérifier la connectivité en direct depuis la CLI.
+
 ### Modifié
 
 - Les indicateurs de chargement du Playground utilisent désormais un scintillement de texte subtil au lieu de la barre de progression d'apparence artificielle qui se figeait à une largeur pseudo-complète après 8 secondes. Les deux implémentations de scintillement existantes (`.shiny-text` et `.text-shimmer`) ont été unifiées en une primitive unique sensible au thème avec un préréglage chaleureux optionnel.

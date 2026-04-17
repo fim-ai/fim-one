@@ -6,7 +6,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 # -- Connection config --
 
 
@@ -19,7 +18,10 @@ class DbConnectionConfig(BaseModel):
     schema_name: str | None = Field(default=None, max_length=200, alias="schema")
     username: str = Field(min_length=1, max_length=200)
     password: str = Field(default="", max_length=1000)
-    driver: str = Field(default="postgresql", pattern=r"^(postgresql|mysql|kingbasees|highgo)$")
+    driver: str = Field(
+        default="postgresql",
+        pattern=r"^(postgresql|mysql|kingbasees|highgo|dm8)$",
+    )
     ssl: bool = False
     ca_cert: str | None = None
     read_only: bool = True

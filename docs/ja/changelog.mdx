@@ -10,6 +10,10 @@ description: "FIM Oneへの全ての注目すべき変更。"
 
 ## [未リリース]
 
+### Added
+
+- **信创データベースサポート**: Database Connectorは、PostgreSQL/MySQLと並んでKingbaseES（人大金仓）、HighGo（瀚高）、DM8（达梦）をリストアップするようになりました。KingbaseESとHighGoはPG互換であり、追加の依存関係なしで`asyncpg`を再利用します。DM8は公式の`dmPython`ベンダーホイールを使用します。スタンドアロンの`scripts/test_xinchuang_dbs.py`により、オペレーターはCLIからライブ接続を検証できます。
+
 ### 変更
 
 - Playground のローディングインジケーターが、8秒後に疑似的な最大幅で固まっていた見た目の悪いプログレスバーの代わりに、微妙なテキストシマーを使用するようになりました。既存の2つのシマー実装（`.shiny-text` と `.text-shimmer`）を、オプションのウォームプリセット付きの単一のテーマ対応プリミティブに統合しました。

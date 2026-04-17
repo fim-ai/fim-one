@@ -229,14 +229,14 @@ flowchart LR
 
 ## 計画されているバージョン
 
-### v0.9 — 可観測性 + 本番環境対応
+### v0.9 — 可観測性 + 本番環境対応強化
 
-**目標**: 本番環境グレードの運用、デバッグ、監視。**フックシステム**を導入 — エージェント命令の下に位置する決定論的な強制レイヤーで、LLMによってオーバーライドできません。
+**目標**: 本番環境グレードの運用、デバッグ、監視。**Hook System** を導入 — LLM が上書きできない、エージェント命令の下に位置する決定論的な強制レイヤー。
 
-- [ ] **コネクタ段階的開示（フェーズ3-4）**: 統一された`ConnectorExecutor`インターフェース（API/DB/MCPを1つの抽象化の背後に）; `jsonschema`によるアクションパラメータ検証; プロトコル非依存の検出/実行
-- [ ] **YAML/JSONコネクタ設定**: プラットフォームが自動生成するMCPサーバー
-- [ ] **データベースコネクタ フェーズ4**: エンタープライズドライバー — Oracle (`oracledb`)、SQL Server (`aioodbc`)、達梦 DM8 (`aioodbc` + DM ODBC)、南大通用 GBase (`aioodbc` + GBase ODBC)
-- [ ] **IMチャネル統合（双方向）**: **フェーズ1 — アウトバウンドプッシュ**: Lark、WeCom、Slack、Email、Teamsの通知アクション（エージェント/ワークフロー結果から）。**フェーズ2 — インバウンドトリガー**: ユーザーがIMグループチャットでエージェントに@メンションしてPortalを開かずにタスクをトリガー; チャネルごとのwebhookレシーバー; 各IMチャネルを双方向アクション（送信+受信）を持つコネクタとしてモデル化。ハブモードのキラーフィーチャー
+- [ ] **Connector Progressive Disclosure (Phase 3-4)**: 統一された `ConnectorExecutor` インターフェース (API/DB/MCP を 1 つの抽象化の背後に); `jsonschema` によるアクション パラメータ検証; プロトコル非依存の discover/execute
+- [ ] **YAML/JSON connector config**: プラットフォームが MCP サーバーを自動生成
+- [ ] **Database connectors Phase 4**: エンタープライズ ドライバー — Oracle (`oracledb`)、SQL Server (`aioodbc`)、[x] 達梦 DM8 (ネイティブ `dmPython`)、[x] 人大金仓 KingbaseES + 瀚高 HighGo (PG 互換、`asyncpg` を再利用)、南大通用 GBase (`aioodbc` + GBase ODBC)
+- [ ] **IM Channel Integration (双方向)**: **Phase 1 — アウトバウンド プッシュ**: Lark、WeCom、Slack、Email、Teams 通知アクション (エージェント/ワークフロー結果から)。**Phase 2 — インバウンド トリガー**: ユーザーが IM グループ チャットでエージェントに @mention してポータルを開かずにタスクをトリガー; チャネルごとの webhook レシーバー; 各 IM チャネルは双方向アクション (送信 + 受信) を持つ Connector としてモデル化。Hub モード キラー機能
 
 #### パブリックAPI（フェーズ2）
 

@@ -10,6 +10,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Xinchuang (信创) Datenbankunterstützung**: Der Database Connector listet jetzt KingbaseES (人大金仓), HighGo (瀚高) und DM8 (达梦) neben PostgreSQL/MySQL auf. KingbaseES und HighGo sind PG-kompatibel und verwenden `asyncpg` ohne zusätzliche Abhängigkeiten; DM8 verwendet das offizielle `dmPython` Vendor-Wheel. Ein eigenständiges `scripts/test_xinchuang_dbs.py` ermöglicht es Operatoren, die Live-Konnektivität über die CLI zu überprüfen.
+
 ### Geändert
 
 - Playground-Ladeindikatoren verwenden jetzt einen subtilen Text-Shimmer anstelle der unrealistisch aussehenden Fortschrittsleiste, die nach 8 Sekunden bei einer Pseudo-Vollbreite eingefroren ist. Die beiden vorhandenen Shimmer-Implementierungen (`.shiny-text` und `.text-shimmer`) wurden in ein einzelnes Design-bewusstes Primitiv mit einem optionalen Warm-Preset vereinheitlicht.

@@ -23,7 +23,7 @@ const DB_DRIVERS = [
   { value: "mysql", labelKey: "dbTypeMysql", port: 3306 },
   { value: "oracle", labelKey: "dbTypeOracle", port: 1521, disabled: true },
   { value: "sqlserver", labelKey: "dbTypeSqlserver", port: 1433, disabled: true },
-  { value: "dm8", labelKey: "dbTypeDm8", port: 5236, disabled: true },
+  { value: "dm8", labelKey: "dbTypeDm8", port: 5236 },
   { value: "kingbasees", labelKey: "dbTypeKingbasees", port: 54321 },
   { value: "gbase", labelKey: "dbTypeGbase", port: 5258, disabled: true },
   { value: "highgo", labelKey: "dbTypeHighgo", port: 5866 },
