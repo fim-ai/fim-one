@@ -4,7 +4,11 @@ icon: "book-open"
 description: "FIM One REST APIの開始"
 ---
 
-FIM Oneは、AIエージェント、会話、ナレッジベースなどへのプログラマティックアクセスのためのREST APIを提供します。
+<Info>
+API リファレンスドキュメントは現在**英語のみ**で利用可能です。このページを別の言語で表示している場合は、英語版に切り替えてください。左側のサイドバーに完全なAPIエンドポイントリストが表示されます。
+</Info>
+
+FIM One は、AI 智能体、会話、ナレッジベースなどへのプログラマティックアクセスのための REST API を提供します。
 
 ## ベースURL
 
@@ -121,6 +125,34 @@ data: ["What about tomorrow's forecast?", "Compare with other European cities"]
 event: end
 data: {}
 ```
+
+### カーソルベースの再開
+
+すべてのSSEイベントには、会話にスコープされた単調な`cursor`整数が含まれます。クライアントは最も高いカーソルを追跡する必要があります。接続がターン中に切断された場合（ネットワークエラー、プロキシタイムアウト、サーバー再起動）、クライアントはエージェントを再実行せずに再度サブスクライブできます：
+
+```http
+POST /api/chat/resume
+Content-Type: application/json
+Authorization: Bearer <jwt>
+
+{
+  "conversation_id": "<uuid>",
+  "cursor": 42
+}
+```
+
+レスポンスはSSEストリームで、`cursor > 42`のキャッシュされたイベントを再生し、ターミナル`event: resume_done`フレームで終了します。`cursor: -1`を渡して、最初からの完全な再生をリクエストします。
+
+エラーレスポンス：
+- `404 conversation_not_found` — 会話IDが無効であるか、認証されたユーザーが所有していない
+- `404 no_recent_assistant_message` — 会話に再開するための永続化されたアシスタントターンがない（例：ユーザーメッセージがない新しい会話）
+- `400 invalid_cursor` — カーソルが非負の整数または`-1`ではない
+
+リファレンスフロントエンド実装（プレイグラウンドの`useSseResume`フック）は、ネットワーク切断を指数バックオフ（300ms → 1s → 3s、最大3回の試行）で自動再試行し、ユーザーが開始した中止とネットワークエラーを区別して、意図しない再接続を回避します。完全なパターンについては、`playground-page.tsx`統合を参照してください。
+
+<Note>
+再開はステートレスです — アシスタントメッセージの保存された`sse_events`配列から再生します。エージェントのターンがアシスタントメッセージが永続化される前に中断された場合（例：`done`の前のクラッシュ）、ぶら下がった`tool_use`ブロックは次のターンで`DbMemory._repair_dangling_tool_calls`によって自動修復されます。合成`tool_result`行は`metadata_.synthetic=true`および`metadata_.reason="interrupted"`で永続化され、監査用に使用されます。
+</Note>
 
 ## レート制限
 

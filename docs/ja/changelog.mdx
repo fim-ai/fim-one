@@ -12,8 +12,9 @@ description: "FIM Oneへの全ての注目すべき変更。"
 
 ### 追加
 
-- 会話復旧: 合成 tool_result 行は中断されたターン後も永続化され、クライアントは最後に見たカーソルを使用して `POST /chat/resume` で切断された SSE ストリームを再開できます。
-- Playground は `/chat/resume` エンドポイントを使用して切断された SSE ストリームを自動的に再接続し、指数バックオフ (最大 3 回の試行) を使用します。復旧中に「再接続中…」インジケーターを表示します。
+- 会話復旧: 合成 tool_result 行は中断されたターン後も永続化され、クライアントは `POST /chat/resume` で最後に見たカーソルを使用して切断された SSE ストリームを再開できます。
+- Playground は `/chat/resume` エンドポイントを使用して切断された SSE ストリームを指数バックオフで自動再接続し（最大 3 回の試行）、復旧中に「再接続中…」インジケーターを表示します。
+- Prompt cache 可視化: `cache_read_input_tokens` と `cache_creation_input_tokens` は LLM レスポンスからキャプチャされ、`TurnProfiler` でターンごとに集約され、`turn_cache` サマリー行（読み取り/作成 token + 推定節約量）としてログされ、チャット `done_payload` の新しい `cache` フィールドに表示されます。Anthropic prompt caching が実際にヒットすることを検証でき、API リレーステーションがキャッシュ割引を尊重するかどうかの検出器としても機能します。
 
 ### 変更
 
@@ -21,7 +22,8 @@ description: "FIM Oneへの全ての注目すべき変更。"
 
 ### 修正
 
-- 推理 token 现在在多轮对话中保持持久化 — Anthropic `signature` 字段按照 API 要求被捕获并重放。
+- 思考/推理トークンがマルチターン会話全体で保持されるようになりました — Anthropic の `signature` フィールドが API 要件に従ってキャプチャおよび再生されます。
+- プロバイダー対応の推理再生ポリシー: `reasoning_content`（DeepSeek-R1、Qwen QwQ、Gemini thinking、OpenAI o-series から）は、後続のターンで非 Anthropic プロバイダーに再生されなくなりました。以前は、このフィールドが `ChatMessage.to_openai_dict()` で無条件にシリアル化されていたため、プロバイダーのドキュメント（DeepSeek と Qwen の両方が「メッセージ履歴で `reasoning_content` を送信しないでください」と明示的に記載）に違反し、マルチターン交換のたびに自動プレフィックス / KV キャッシュを暗黙的に無効化していました。ポリシーは `core/prompt/reasoning.py` に一元化されています — Claude ファミリー（Bedrock および Vertex プロキシを含む）は、必要に応じてシグネチャ付きの思考ブロックを引き続き再生します。
 
 ## [v0.8.3] - 2026-04-16
 

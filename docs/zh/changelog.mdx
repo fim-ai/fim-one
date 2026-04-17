@@ -10,10 +10,11 @@ description: "FIM One 的所有重要更改。"
 
 ## [未发布]
 
-### 已添加
+### 新增
 
-- 对话恢复：合成 tool_result 行现在在中断的轮次后持久化；客户端可以通过 `POST /chat/resume` 使用最后看到的游标恢复断开的 SSE 流。
-- Playground 现在使用 `/chat/resume` 端点自动重新连接断开的 SSE 流，采用指数退避策略（最多 3 次尝试）；在恢复期间显示"重新连接中…"指示器。
+- 对话恢复：合成的 tool_result 行现在在中断的轮次后持久化；客户端可以通过 `POST /chat/resume` 使用最后看到的游标恢复断开的 SSE 流。
+- Playground 现在使用 `/chat/resume` 端点自动重新连接断开的 SSE 流，采用指数退避策略（最多 3 次尝试）；在恢复期间显示"正在重新连接…"指示器。
+- 提示词缓存可观测性：`cache_read_input_tokens` 和 `cache_creation_input_tokens` 从 LLM 响应中捕获，按轮次在 `TurnProfiler` 中聚合，记录为 `turn_cache` 摘要行（`read/create tokens + 估计节省`），并在聊天 `done_payload` 中的新 `cache` 字段中显示。支持验证 Anthropic 提示词缓存是否真正命中，同时可用于检测 API 中继站是否遵守缓存折扣。
 
 ### 已更改
 
@@ -21,7 +22,8 @@ description: "FIM One 的所有重要更改。"
 
 ### 已修复
 
-- 思考/推理 token 现在在多轮对话中持久化 — Anthropic `signature` 字段已捕获并根据 API 要求重放。
+- 思维/推理 token 现在在多轮对话中持久化 — Anthropic `signature` 字段根据 API 要求被捕获并重放。
+- 提供商感知推理重放策略：`reasoning_content`（来自 DeepSeek-R1、Qwen QwQ、Gemini thinking、OpenAI o-series）不再在后续轮次中重放给非 Anthropic 提供商。之前该字段在 `ChatMessage.to_openai_dict()` 中被无条件序列化，这违反了提供商文档（DeepSeek 和 Qwen 都明确记录"不要在消息历史中发送 `reasoning_content` 回去"），并在每次多轮交换中无声地使其自动前缀 / KV 缓存失效。策略集中在 `core/prompt/reasoning.py` 中 — Claude 系列（包括 Bedrock 和 Vertex 代理）仍按要求使用签名重放思维块。
 
 ## [v0.8.3] - 2026-04-16
 

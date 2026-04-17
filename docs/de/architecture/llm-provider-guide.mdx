@@ -238,6 +238,96 @@ Der `_dict_to_steps`-Parser des DAG-Planers behandelt drei häufige Grenzfälle:
 Unter normalen Bedingungen gibt native_fc korrekt strukturierte Tool-Call-Argumente zurück und diese Grenzfälle treten nicht auf. Die defensiven Parser existieren als Sicherheitsnetz für benutzerdefinierte `BaseLLM`-Unterklassen, ungewöhnliche Anbieterverhalten oder Fallback-Szenarien, in denen strukturierte Ausgabe zu json_mode oder plain_text degradiert.
 </Note>
 
+## Prompt-Caching (anbieterübergreifend)
+
+FIM One implementiert Anthropics explizites Prompt-Caching über `cache_control`-Breakpoints und profitiert gleichzeitig vom automatischen Prefix-Caching aller anderen Anbieter durch die **Prompt Section Registry**. Das Ziel ist ein einziger Prompt-Assembly-Pfad, der über alle Anbieter hinweg funktioniert, ohne dass sich die Prompt-Form bei jedem Aufruf unterscheidet.
+
+### Architektur
+
+Das Modul `fim_one.core.prompt` stellt drei Primitive bereit:
+
+- **`PromptSection`** — ein benanntes Fragment mit entweder statischem `content: str` oder dynamischem `content: Callable`
+- **`PromptRegistry`** — ein memoized Store (statische Abschnitte werden einmal gerendert, dynamische Abschnitte werden pro Aufruf neu gerendert)
+- **`DYNAMIC_BOUNDARY`** — ein Sentinel-Marker, den die Registry zwischen dem letzten statischen Abschnitt und dem ersten dynamischen einfügt, damit Aufrufer den gerenderten Prompt am Cache-Breakpoint aufteilen können
+
+System-Prompts für ReAct (JSON-Modus, nativer Function-Calling-Modus, Synthese) werden aufgeteilt in:
+
+- **Statisches Präfix** (~95% des Prompts) — Identität, Kernrichtlinien, Tool-Beschreibungen
+- **Dynamisches Suffix** — aktuelles Datum/Uhrzeit, sprachspezifische Direktive pro Anfrage, Handoff-Kontext
+
+### Funktionserkennung
+
+`fim_one.core.prompt.caching.is_cache_capable(model_id)` gibt `True` zurück, wenn die Modell-ID eines der folgenden Elemente enthält: `claude`, `anthropic`, `bedrock/anthropic`, `vertex_ai/claude`. Diese Provider erhalten **zwei** `role="system"`-Nachrichten mit `cache_control: {"type": "ephemeral"}` in der ersten (statischen) Nachricht.
+
+Alle anderen Provider erhalten eine **einzelne** verkettete Systemnachricht ohne `cache_control`-Feld — notwendig, da Nicht-Anthropic-Endpunkte das Feld entweder ablehnen oder stillschweigend ignorieren, und das Senden über einige Relays führt zu `400 unknown parameter`-Fehlern.
+
+### Cross-Provider-Abdeckung
+
+| Provider | Mechanismus | Read-Rabatt | Unsere Handhabung |
+|---|---|---|---|
+| **Anthropic Claude** (3, 3.5, 4) | Explizit `cache_control` | 0.10× | Zwei Systemmeldungen mit ephemerem Breakpoint |
+| **AWS Bedrock Anthropic** | Leitet Anthropic-Cache durch | 0.10× | Gleich wie Anthropic |
+| **GCP Vertex AI Claude** | Leitet Anthropic-Cache durch | 0.10× | Gleich wie Anthropic |
+| **OpenAI GPT / o-series** | Auto-Präfix-Hash (≥1024 tokens) | 0.50× | Byte-stabiles Präfix über Section Registry → automatischer Hit |
+| **DeepSeek (v3 / R1)** | Auto disk-gestützter Präfix-Cache | 0.10× | Gleich wie OpenAI |
+| **Moonshot Kimi (K1/K2)** | Auto-Präfix-Cache | 0.10×/0.50× | Gleich |
+| **ZhipuAI GLM-4.5+** | Auto Long-Context-Cache | 0.20× | Gleich |
+| **Grok (xAI)** | Auto-Präfix-Cache | 0.25× | Gleich |
+| **Google Gemini** | Separate `createCachedContent` API | 0.25× | **Noch nicht implementiert** — auf v0.9-Roadmap als `GeminiCacheAdapter` verfolgt |
+| **Mistral / Cohere** | Kein nativer Cache | N/A | N/A |
+
+Die `PromptRegistry` bietet jedem Provider automatisches Präfix-Caching „kostenlos" — durch Beibehaltung des statischen Teils byte-identisch über Aufrufe hinweg (aktuelle Uhrzeit befindet sich im dynamischen Suffix, nicht im Präfix), stimmt der Hash jedes Auto-Caching-Providers überein und erzielt einen Cache-Hit. Dies ist der Grund, warum die Registry bereits vor Berücksichtigung des Anthropic-spezifischen `cache_control` ein grundlegender modellloser Gewinn ist.
+
+### Observability
+
+Every `chat/*` response's `done_payload` now includes:
+
+```json
+"cache": {
+  "read_tokens": 1067,
+  "creation_tokens": 0
+}
+```
+
+`TurnProfiler` emits a structured log line per turn: `turn_cache summary | model=claude-sonnet-4-6 | read_tokens=1067 | create_tokens=0 | saved_input_tokens=961 (~90%)`. This also functions as a **relay honesty probe** — if you route through an API relay, compare actual billed input vs `read_tokens` to detect whether the relay strips `cache_control` or keeps the 0.10× discount.
+
+No dollar estimate is returned at the LLM layer — pricing and relay markup are applied above, so the LLM layer only returns objective token counts.
+
+### Multi-turn Cache ROI
+
+Gemessen auf Claude 4 ReAct Turns mit dem Standard-Agent-Prompt:
+
+| Mode | Static prefix tokens | Dynamic suffix tokens | Cache ratio |
+|---|---|---|---|
+| JSON mode, no tools | ~753 | ~46 | 94.2% |
+| JSON mode with ~10 tools | ~1067 | ~46 | 95.9% |
+| Native function-calling | ~523 | ~46 | 91.9% |
+
+Ein 10-Iterations-ReAct-Lauf mit 10 Tools spart ~8.640 Input-Tokens pro Turn nach dem ersten (9 Cache-Treffer × 1067 Tokens × 90%). Anthropic berechnet 1,25× für Cache-Schreibvorgänge beim ersten Aufruf, daher ist die Gewinnschwelle beim **zweiten** Aufruf — Single-Shot-Abfragen profitieren nicht davon.
+
+## Reasoning-Replay-Richtlinie (modelllose Korrektheit)
+
+Extended Thinking / Reasoning Blöcke verhalten sich über verschiedene Provider hinweg unterschiedlich. Eine einheitliche Serialisierungsrichtlinie verstößt gegen Protokollverträge und automatische Prefix-Caches. `fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` gibt einen von drei Werten zurück und steuert `ChatMessage.to_openai_dict(replay_policy=...)` in `OpenAICompatibleLLM._build_request_kwargs()`.
+
+### Drei Richtlinien
+
+- **`anthropic_thinking`** — Claude-Familie (einschließlich `anthropic/`, `bedrock/anthropic`, `vertex_ai/claude`). Thinking-Blöcke MÜSSEN mit `signature` replayed werden; Anthropic lehnt nachfolgende Turns ab, wenn die Signatur fehlt oder geändert wird.
+- **`informational_only`** — Modelle, die CoT ausgeben, aber KEINE Replay erwarten: DeepSeek R1 / R1-Distill, Qwen QwQ, Gemini 2.x thinking, OpenAI o1 / o3 / o4. Ihre Dokumentation besagt explizit „senden Sie `reasoning_content` nicht in der Nachrichtenhistorie zurück". Es trotzdem zu senden:
+  - Verstößt gegen den Provider-Vertrag (kann in zukünftigen Versionen Ablehnungen verursachen)
+  - **Invalidiert automatisch ihren Prefix-Cache stillschweigend** — Nachrichtenbytes mutieren bei jedem Turn und brechen den Hash
+- **`unsupported`** — Modelle ohne Reasoning-Fähigkeit (GPT-4o, GPT-4 Turbo, Gemini 1.5, Mistral, Llama). Kein CoT zum Replay; Feld sollte niemals erscheinen. Diese Richtlinie ist auch die sichere Standardeinstellung für unbekannte Modell-IDs.
+
+### Durchsetzung
+
+Die gesamte Richtlinienbewertung erfolgt an einer Stelle (`_build_request_kwargs`). `ChatMessage.to_openai_dict(replay_policy=None)` behält die A3-permissive Standardeinstellung bei, damit unkoordinierte Aufrufer nicht zurückgehen. Die Cross-Provider-Testmatrix befindet sich in `tests/test_reasoning_replay_policy.py` mit **umgekehrten Assertions**, die beweisen, dass Nicht-Anthropic-Anfragen `reasoning_content` NICHT durchsickern lassen.
+
+### Für Benutzer
+
+Sowohl Feature- als auch Bug-Verhalten ist automatisch — Sie müssen nichts konfigurieren. Workflow-Implikationen:
+
+- **Wenn Sie Agenten zwischen Claude und DeepSeek in derselben Konversation wechseln**, wird der Verlauf mit Thinking Blocks intakt gespeichert; beim nächsten Turn passt sich die ausgehende Nachrichtenform an das aktuelle Modell an.
+- **Wenn Sie einen Proxy / eine benutzerdefinierte `BaseLLM`-Unterklasse verwenden**, stellen Sie sicher, dass seine Modell-ID erkennbar ist (enthält eines der Fragmente) oder die Standard-`unsupported`-Richtlinie wird angewendet — was sicher ist, aber bedeutet, dass Claude hinter einem ungewöhnlichen Proxy möglicherweise die Thinking-Wiedergabe verliert. Fügen Sie das Modell-ID-Fragment zu `_CACHE_CAPABLE_MODEL_FRAGMENTS` (in `core/prompt/caching.py`) und/oder zur Reasoning-Richtlinien-Suche hinzu.
+
 ## Fehlerbehebung
 
 **"This model does not support assistant message prefill"**

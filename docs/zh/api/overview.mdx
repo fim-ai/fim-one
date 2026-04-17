@@ -1,8 +1,12 @@
 ---
 title: "API 概览"
 icon: "book-open"
-description: "开始使用 FIM One REST API"
+description: "FIM One REST API 入门指南"
 ---
+
+<Info>
+API 参考文档目前仅提供**英文版本**。如果您正在查看其他语言版本的此页面，请切换到英文版本 — 完整的 API 端点列表将显示在左侧边栏中。
+</Info>
 
 FIM One 提供 REST API，用于以编程方式访问 AI 智能体、对话、知识库等。
 
@@ -121,6 +125,34 @@ data: ["What about tomorrow's forecast?", "Compare with other European cities"]
 event: end
 data: {}
 ```
+
+### 基于游标的恢复
+
+每个 SSE 事件都携带一个限定于对话的单调递增 `cursor` 整数。客户端应跟踪看到的最高游标。当连接在转向中断时（网络错误、代理超时、服务器重启），客户端可以重新订阅而无需重新运行智能体：
+
+```http
+POST /api/chat/resume
+Content-Type: application/json
+Authorization: Bearer <jwt>
+
+{
+  "conversation_id": "<uuid>",
+  "cursor": 42
+}
+```
+
+响应是一个 SSE 流，重放 `cursor > 42` 的缓存事件，并以终端 `event: resume_done` 帧结束。传递 `cursor: -1` 以请求从头开始的完整重放。
+
+错误响应：
+- `404 conversation_not_found` — 对话 id 无效或不由已认证用户拥有
+- `404 no_recent_assistant_message` — 对话没有可恢复的持久化助手转向（例如，没有用户消息的全新对话）
+- `400 invalid_cursor` — 游标不是非负整数或 `-1`
+
+参考前端实现（playground 中的 `useSseResume` hook）使用指数退避（300ms → 1s → 3s，最多 3 次尝试）自动重试网络断开连接，并区分用户主动中止和网络错误以避免意外重连。有关完整模式，请参阅 `playground-page.tsx` 集成。
+
+<Note>
+恢复是无状态的 — 它从助手消息的存储 `sse_events` 数组重放。如果智能体的转向在任何助手消息被持久化之前被中断（例如，在 `done` 之前崩溃），悬空的 `tool_use` 块会在下一个转向由 `DbMemory._repair_dangling_tool_calls` 自动修复。合成 `tool_result` 行使用 `metadata_.synthetic=true` 和 `metadata_.reason="interrupted"` 持久化以供审计。
+</Note>
 
 ## 速率限制
 

@@ -4,6 +4,10 @@ icon: "book-open"
 description: "Getting started with the FIM One REST API"
 ---
 
+<Info>
+API reference documentation is currently available in **English only**. If you are viewing this page in another language, please switch to the English version — the full API endpoint list will appear in the left sidebar.
+</Info>
+
 FIM One provides a REST API for programmatic access to AI agents, conversations, knowledge bases, and more.
 
 ## Base URL
@@ -121,6 +125,34 @@ data: ["What about tomorrow's forecast?", "Compare with other European cities"]
 event: end
 data: {}
 ```
+
+### Cursor-based resume
+
+Every SSE event carries a monotonic `cursor` integer scoped to the conversation. Clients should track the highest cursor seen. When the connection drops mid-turn (network error, proxy timeout, server restart), the client can re-subscribe without re-running the agent:
+
+```http
+POST /api/chat/resume
+Content-Type: application/json
+Authorization: Bearer <jwt>
+
+{
+  "conversation_id": "<uuid>",
+  "cursor": 42
+}
+```
+
+The response is an SSE stream that replays cached events with `cursor > 42` and ends with a terminal `event: resume_done` frame. Pass `cursor: -1` to request a full replay from the beginning.
+
+Error responses:
+- `404 conversation_not_found` — conversation id is invalid or not owned by the authenticated user
+- `404 no_recent_assistant_message` — conversation has no persisted assistant turn to resume from (e.g., a brand-new conversation with no user messages yet)
+- `400 invalid_cursor` — cursor is not a non-negative integer or `-1`
+
+The reference frontend implementation (`useSseResume` hook in the playground) auto-retries network disconnects with exponential backoff (300ms → 1s → 3s, max 3 attempts) and distinguishes user-initiated abort from network error to avoid unintended reconnects. See the `playground-page.tsx` integration for the full pattern.
+
+<Note>
+Resume is stateless — it replays from the assistant message's stored `sse_events` array. If the agent's turn was interrupted before any assistant message was persisted (e.g., a crash before `done`), the dangling `tool_use` block is auto-repaired by `DbMemory._repair_dangling_tool_calls` on the next turn. Synthetic `tool_result` rows are persisted with `metadata_.synthetic=true` and `metadata_.reason="interrupted"` for audit.
+</Note>
 
 ## Rate Limiting
 

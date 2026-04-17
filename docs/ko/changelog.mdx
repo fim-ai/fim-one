@@ -13,7 +13,8 @@ description: "FIM One의 모든 주요 변경 사항."
 ### 추가됨
 
 - 대화 복구: 합성 tool_result 행이 이제 중단된 턴 이후에도 유지되며, 클라이언트는 마지막으로 본 커서와 함께 `POST /chat/resume`을 통해 연결이 끊긴 SSE 스트림을 재개할 수 있습니다.
-- Playground는 이제 `/chat/resume` 엔드포인트를 사용하여 끊긴 SSE 스트림을 자동으로 재연결하며 지수 백오프(최대 3회 시도)를 적용합니다. 복구 중에 "재연결 중…" 표시기를 표시합니다.
+- Playground는 이제 `/chat/resume` 엔드포인트를 사용하여 끊긴 SSE 스트림을 지수 백오프(최대 3회 시도)로 자동 재연결하며, 복구 중에 "재연결 중…" 표시기를 표시합니다.
+- 프롬프트 캐시 관찰성: `cache_read_input_tokens`과 `cache_creation_input_tokens`이 LLM 응답에서 캡처되고, `TurnProfiler`에서 턴별로 집계되며, `turn_cache` 요약 줄(`read/create tokens + estimated savings`)로 기록되고, 채팅 `done_payload`의 새로운 `cache` 필드에 표시됩니다. Anthropic 프롬프트 캐싱이 실제로 작동하는지 확인할 수 있으며, API 릴레이 스테이션이 캐시 할인을 준수하는지 여부를 감지하는 역할도 합니다.
 
 ### 변경됨
 
@@ -21,7 +22,8 @@ description: "FIM One의 모든 주요 변경 사항."
 
 ### 수정됨
 
-- 사고/추론 토큰이 이제 다중 턴 대화에서 지속됩니다 — Anthropic `signature` 필드가 캡처되고 API 요구사항에 따라 재생됩니다.
+- Thinking/reasoning tokens가 이제 다중 턴 대화에서 유지됩니다 — Anthropic `signature` 필드가 캡처되고 API 요구사항에 따라 재생됩니다.
+- 제공자 인식 reasoning 재생 정책: `reasoning_content` (DeepSeek-R1, Qwen QwQ, Gemini thinking, OpenAI o-series에서)는 더 이상 후속 턴에서 비-Anthropic 제공자에게 재생되지 않습니다. 이전에는 이 필드가 `ChatMessage.to_openai_dict()`에서 무조건 직렬화되었으며, 이는 제공자 문서를 위반했습니다 (DeepSeek와 Qwen 모두 "메시지 히스토리에서 `reasoning_content`를 다시 보내지 마세요"를 명시적으로 문서화함). 모든 다중 턴 교환에서 자동 접두사 / KV 캐시를 자동으로 무효화했습니다. 정책은 `core/prompt/reasoning.py`에 중앙화되어 있습니다 — Claude 계열 (Bedrock 및 Vertex 프록시 포함)은 필요에 따라 signature와 함께 thinking 블록을 계속 재생합니다.
 
 ## [v0.8.3] - 2026-04-16
 

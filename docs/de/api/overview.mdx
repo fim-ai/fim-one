@@ -4,7 +4,11 @@ icon: "book-open"
 description: "Erste Schritte mit der FIM One REST API"
 ---
 
-FIM One bietet eine REST API für den programmatischen Zugriff auf KI-Agenten, Gespräche, Wissensdatenbanken und mehr.
+<Info>
+Die API-Referenzdokumentation ist derzeit nur in **Englisch** verfügbar. Wenn Sie diese Seite in einer anderen Sprache anzeigen, wechseln Sie bitte zur englischen Version — die vollständige Liste der API-Endpunkte wird in der linken Seitenleiste angezeigt.
+</Info>
+
+FIM One bietet eine REST API für programmgesteuerten Zugriff auf KI-Agenten, Gespräche, Wissensdatenbanken und mehr.
 
 ## Basis-URL
 
@@ -121,6 +125,34 @@ data: ["What about tomorrow's forecast?", "Compare with other European cities"]
 event: end
 data: {}
 ```
+
+### Cursor-basierte Wiederaufnahme
+
+Jedes SSE-Event trägt eine monotone `cursor`-Ganzzahl, die auf das Gespräch beschränkt ist. Clients sollten den höchsten angetroffenen Cursor verfolgen. Wenn die Verbindung während eines Durchlaufs abbricht (Netzwerkfehler, Proxy-Timeout, Server-Neustart), kann der Client sich erneut abonnieren, ohne den Agenten erneut auszuführen:
+
+```http
+POST /api/chat/resume
+Content-Type: application/json
+Authorization: Bearer <jwt>
+
+{
+  "conversation_id": "<uuid>",
+  "cursor": 42
+}
+```
+
+Die Antwort ist ein SSE-Stream, der zwischengespeicherte Events mit `cursor > 42` erneut abspielt und mit einem Terminal-`event: resume_done`-Frame endet. Übergeben Sie `cursor: -1`, um eine vollständige Wiederaufnahme von Anfang an anzufordern.
+
+Fehlerantworten:
+- `404 conversation_not_found` — Gesprächs-ID ist ungültig oder gehört nicht dem authentifizierten Benutzer
+- `404 no_recent_assistant_message` — Gespräch hat keine persistierte Assistent-Runde zum Fortsetzen (z. B. ein brandneues Gespräch ohne Benutzernachrichten)
+- `400 invalid_cursor` — Cursor ist keine nicht-negative Ganzzahl oder `-1`
+
+Die Referenz-Frontend-Implementierung (`useSseResume` Hook im Playground) versucht Netzwerktrennungen automatisch mit exponentiellem Backoff erneut (300ms → 1s → 3s, max. 3 Versuche) und unterscheidet benutzerinitiierte Abbrüche von Netzwerkfehlern, um unbeabsichtigte Wiederverbindungen zu vermeiden. Siehe die `playground-page.tsx`-Integration für das vollständige Muster.
+
+<Note>
+Die Wiederaufnahme ist zustandslos — sie spielt Events aus dem gespeicherten `sse_events`-Array der Assistent-Nachricht erneut ab. Wenn der Durchlauf des Agenten unterbrochen wurde, bevor eine Assistent-Nachricht persistiert wurde (z. B. ein Absturz vor `done`), wird der verwaiste `tool_use`-Block automatisch durch `DbMemory._repair_dangling_tool_calls` im nächsten Durchlauf repariert. Synthetische `tool_result`-Zeilen werden mit `metadata_.synthetic=true` und `metadata_.reason="interrupted"` für Audit persistiert.
+</Note>
 
 ## Ratenbegrenzung
 

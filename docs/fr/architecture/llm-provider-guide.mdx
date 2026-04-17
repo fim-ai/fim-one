@@ -238,6 +238,96 @@ L'analyseur `_dict_to_steps` du planificateur DAG gère trois cas limites couran
 En fonctionnement normal, native_fc retourne des arguments d'appel d'outil correctement structurés et ces cas limites ne se produisent pas. Les analyseurs défensifs existent comme filet de sécurité pour les sous-classes `BaseLLM` personnalisées, les comportements inhabituels des fournisseurs, ou les scénarios de secours où la sortie structurée se dégrade en json_mode ou plain_text.
 </Note>
 
+## Mise en cache des prompts (multi-fournisseur)
+
+FIM One implémente la mise en cache explicite des prompts d'Anthropic via des points de rupture `cache_control` et bénéficie simultanément de la mise en cache automatique des préfixes de tous les autres fournisseurs grâce au **Registre des sections de prompts**. L'objectif est un chemin unique d'assemblage des prompts qui fonctionne sur tous les fournisseurs sans divergence de forme de prompt par appel.
+
+### Architecture
+
+Le module `fim_one.core.prompt` expose trois primitives :
+
+- **`PromptSection`** — un fragment nommé avec soit un `content: str` statique, soit un `content: Callable` dynamique
+- **`PromptRegistry`** — un magasin mémoïsé (les sections statiques se rendent une fois, les sections dynamiques se re-rendent par appel)
+- **`DYNAMIC_BOUNDARY`** — un marqueur sentinel que le registre insère entre la dernière section statique et la première dynamique, afin que les appelants puissent diviser le prompt rendu au point de rupture du cache
+
+Les prompts système pour ReAct (mode JSON, mode d'appel de fonction natif, synthèse) sont divisés en :
+
+- **Préfixe statique** (~95% du prompt) — identité, directives principales, descriptions d'outils
+- **Suffixe dynamique** — date/heure actuelle, directive de langue par requête, contexte de transfert
+
+### Détection des capacités
+
+`fim_one.core.prompt.caching.is_cache_capable(model_id)` retourne `True` quand l'ID du modèle contient l'un des éléments suivants : `claude`, `anthropic`, `bedrock/anthropic`, `vertex_ai/claude`. Ces fournisseurs reçoivent **deux** messages avec `role="system"` et `cache_control: {"type": "ephemeral"}` sur le premier message (statique).
+
+Tous les autres fournisseurs reçoivent un **seul** message système concaténé sans champ `cache_control` — cela est nécessaire car les points de terminaison non-Anthropic rejettent soit le champ, soit le suppriment silencieusement, et l'envoyer via certains relais provoque des erreurs `400 unknown parameter`.
+
+### Couverture multi-fournisseurs
+
+| Fournisseur | Mécanisme | Réduction de lecture | Notre gestion |
+|---|---|---|---|
+| **Anthropic Claude** (3, 3.5, 4) | `cache_control` explicite | 0.10× | Deux messages système avec point d'arrêt éphémère |
+| **AWS Bedrock Anthropic** | Transmission du cache Anthropic | 0.10× | Identique à Anthropic |
+| **GCP Vertex AI Claude** | Transmission du cache Anthropic | 0.10× | Identique à Anthropic |
+| **OpenAI GPT / o-series** | Hash de préfixe automatique (≥1024 tokens) | 0.50× | Préfixe stable en octets via Section Registry → hit automatique |
+| **DeepSeek (v3 / R1)** | Cache de préfixe automatique sauvegardé sur disque | 0.10× | Identique à OpenAI |
+| **Moonshot Kimi (K1/K2)** | Cache de préfixe automatique | 0.10×/0.50× | Identique |
+| **ZhipuAI GLM-4.5+** | Cache de long contexte automatique | 0.20× | Identique |
+| **Grok (xAI)** | Cache de préfixe automatique | 0.25× | Identique |
+| **Google Gemini** | API `createCachedContent` séparée | 0.25× | **Pas encore implémenté** — suivi sur la feuille de route v0.9 en tant que `GeminiCacheAdapter` |
+| **Mistral / Cohere** | Pas de cache natif | N/A | N/A |
+
+Le `PromptRegistry` bénéficie à chaque fournisseur avec mise en cache de préfixe automatique « gratuitement » — en gardant la portion statique identique en octets entre les appels (la date/heure actuelle se trouve dans le suffixe dynamique, pas le préfixe), le hash de chaque fournisseur avec mise en cache automatique correspond et atteint son cache. C'est pourquoi le Registry est une victoire fondamentale indépendante du modèle, même avant de considérer le `cache_control` spécifique à Anthropic.
+
+### Observabilité
+
+Chaque réponse `chat/*` inclut maintenant dans sa `done_payload` :
+
+```json
+"cache": {
+  "read_tokens": 1067,
+  "creation_tokens": 0
+}
+```
+
+`TurnProfiler` émet une ligne de journal structurée par tour : `turn_cache summary | model=claude-sonnet-4-6 | read_tokens=1067 | create_tokens=0 | saved_input_tokens=961 (~90%)`. Cela fonctionne également comme une **sonde d'honnêteté de relais** — si vous routez via un relais API, comparez les entrées réellement facturées par rapport à `read_tokens` pour détecter si le relais supprime `cache_control` ou conserve la réduction de 0,10×.
+
+Aucune estimation en dollars n'est retournée au niveau du LLM — la tarification et la majoration du relais sont appliquées au-dessus, donc la couche LLM retourne uniquement les comptages de tokens objectifs.
+
+### ROI du cache multi-tour
+
+Mesuré sur les tours Claude 4 ReAct avec l'invite d'agent par défaut :
+
+| Mode | Tokens de préfixe statique | Tokens de suffixe dynamique | Ratio de cache |
+|---|---|---|---|
+| Mode JSON, sans outils | ~753 | ~46 | 94,2 % |
+| Mode JSON avec ~10 outils | ~1067 | ~46 | 95,9 % |
+| Appel de fonction natif | ~523 | ~46 | 91,9 % |
+
+Une exécution ReAct de 10 itérations avec 10 outils économise ~8 640 tokens d'entrée par tour après le premier (9 accès au cache × 1067 tokens × 90 %). Anthropic facture 1,25× pour l'écriture du cache au premier appel, donc le seuil de rentabilité se situe au **deuxième** appel — les requêtes à un seul tour n'en bénéficient pas.
+
+## Politique de relecture du raisonnement (exactitude sans modèle)
+
+Les blocs de réflexion étendue / raisonnement se comportent différemment selon les fournisseurs. Une politique de sérialisation uniforme rompt à la fois les contrats de protocole et les caches de préfixe automatiques. `fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` retourne l'une des trois valeurs et contrôle `ChatMessage.to_openai_dict(replay_policy=...)` dans `OpenAICompatibleLLM._build_request_kwargs()`.
+
+### Trois politiques
+
+- **`anthropic_thinking`** — Famille Claude (y compris `anthropic/`, `bedrock/anthropic`, `vertex_ai/claude`). Les blocs de réflexion DOIVENT être rejoués avec `signature` attachée ; Anthropic rejette les tours suivants si la signature est manquante ou modifiée.
+- **`informational_only`** — modèles qui émettent CoT mais n'attendent PAS de rejouer : DeepSeek R1 / R1-Distill, Qwen QwQ, Gemini 2.x thinking, OpenAI o1 / o3 / o4. Leur documentation dit explicitement « n'envoyez pas `reasoning_content` dans l'historique des messages ». L'envoyer quand même :
+  - Viole le contrat du fournisseur (peut commencer à rejeter dans les versions futures)
+  - **Invalide silencieusement leur cache de préfixe automatique** — les octets du message mutent à chaque tour, cassant le hash
+- **`unsupported`** — modèles sans capacité de réflexion (GPT-4o, GPT-4 Turbo, Gemini 1.5, Mistral, Llama). Pas de CoT à rejouer ; le champ ne devrait jamais apparaître. Cette politique est aussi le défaut sûr pour les identifiants de modèle inconnus.
+
+### Application
+
+Toute l'évaluation des politiques se fait en un seul endroit (`_build_request_kwargs`). `ChatMessage.to_openai_dict(replay_policy=None)` préserve la valeur par défaut permissive A3 afin que les appelants non coordonnés ne régressent pas. La matrice de test multi-fournisseurs se trouve dans `tests/test_reasoning_replay_policy.py` avec des **assertions inverses** prouvant que les requêtes non-Anthropic ne divulguent PAS `reasoning_content`.
+
+### Pour les utilisateurs
+
+Le comportement des fonctionnalités et des bugs est automatique — vous n'avez besoin de configurer quoi que ce soit. Implications du flux de travail :
+
+- **Si vous basculez entre les agents Claude et DeepSeek dans la même conversation**, l'historique est stocké avec les blocs de réflexion intacts ; au tour suivant, la forme du message sortant s'adapte selon le modèle actuel.
+- **Si vous utilisez un proxy / une sous-classe `BaseLLM` personnalisée**, assurez-vous que son identifiant de modèle est reconnaissable (contient l'un des fragments) ou la politique `unsupported` par défaut s'appliquera — ce qui est sûr mais signifie que Claude derrière un proxy inhabituel pourrait perdre la relecture de la réflexion. Ajoutez le fragment d'identifiant de modèle à `_CACHE_CAPABLE_MODEL_FRAGMENTS` (dans `core/prompt/caching.py`) et/ou à la recherche de politique de réflexion.
+
 ## Dépannage
 
 **« Ce modèle ne supporte pas le préfixage des messages d'assistant »**

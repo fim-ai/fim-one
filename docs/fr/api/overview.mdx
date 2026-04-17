@@ -4,6 +4,10 @@ icon: "book-open"
 description: "Premiers pas avec l'API REST FIM One"
 ---
 
+<Info>
+La documentation de référence de l'API est actuellement disponible en **anglais uniquement**. Si vous consultez cette page dans une autre langue, veuillez basculer vers la version anglaise — la liste complète des points de terminaison de l'API apparaîtra dans la barre latérale gauche.
+</Info>
+
 FIM One fournit une API REST pour un accès programmatique aux agents IA, conversations, bases de connaissances, et bien plus encore.
 
 ## URL de base
@@ -121,6 +125,34 @@ data: ["What about tomorrow's forecast?", "Compare with other European cities"]
 event: end
 data: {}
 ```
+
+### Reprise basée sur le curseur
+
+Chaque événement SSE porte un entier `cursor` monotone limité à la conversation. Les clients doivent suivre le curseur le plus élevé observé. Lorsque la connexion s'interrompt en cours de tour (erreur réseau, délai d'attente du proxy, redémarrage du serveur), le client peut se réabonner sans relancer l'agent :
+
+```http
+POST /api/chat/resume
+Content-Type: application/json
+Authorization: Bearer <jwt>
+
+{
+  "conversation_id": "<uuid>",
+  "cursor": 42
+}
+```
+
+La réponse est un flux SSE qui rejoue les événements en cache avec `cursor > 42` et se termine par une trame terminale `event: resume_done`. Passez `cursor: -1` pour demander une relecture complète depuis le début.
+
+Réponses d'erreur :
+- `404 conversation_not_found` — l'id de conversation est invalide ou n'appartient pas à l'utilisateur authentifié
+- `404 no_recent_assistant_message` — la conversation n'a pas de tour assistant persisté à partir duquel reprendre (par exemple, une conversation toute nouvelle sans messages utilisateur)
+- `400 invalid_cursor` — le curseur n'est pas un entier non-négatif ou `-1`
+
+L'implémentation frontend de référence (hook `useSseResume` dans le playground) réessaie automatiquement les déconnexions réseau avec backoff exponentiel (300ms → 1s → 3s, max 3 tentatives) et distingue l'abandon initié par l'utilisateur de l'erreur réseau pour éviter les reconnexions involontaires. Consultez l'intégration `playground-page.tsx` pour le modèle complet.
+
+<Note>
+La reprise est sans état — elle rejoue à partir du tableau `sse_events` stocké du message assistant. Si le tour de l'agent a été interrompu avant qu'un message assistant ne soit persisté (par exemple, un crash avant `done`), le bloc `tool_use` en suspens est automatiquement réparé par `DbMemory._repair_dangling_tool_calls` au tour suivant. Les lignes `tool_result` synthétiques sont persistées avec `metadata_.synthetic=true` et `metadata_.reason="interrupted"` à titre d'audit.
+</Note>
 
 ## Limitation de débit
 

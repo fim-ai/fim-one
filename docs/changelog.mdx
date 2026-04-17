@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - Conversation recovery: synthetic tool_result rows now persist after an interrupted turn; clients can resume a disconnected SSE stream via `POST /chat/resume` with the last-seen cursor.
 - Playground now auto-reconnects dropped SSE streams using the `/chat/resume` endpoint with exponential backoff (max 3 attempts); shows a "Reconnecting…" indicator during recovery.
+- Prompt cache observability: `cache_read_input_tokens` and `cache_creation_input_tokens` are captured from LLM responses, aggregated per turn in `TurnProfiler`, logged as a `turn_cache` summary line (`read/create tokens + estimated savings`), and surfaced in the chat `done_payload` under a new `cache` field. Enables verification that Anthropic prompt caching actually hits, and doubles as a detector for whether API relay stations honor the cache discount.
 
 ### Changed
 
@@ -22,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 
 - Thinking/reasoning tokens now persist across multi-turn conversations — Anthropic `signature` field is captured and replayed per API requirements.
+- Provider-aware reasoning replay policy: `reasoning_content` (from DeepSeek-R1, Qwen QwQ, Gemini thinking, OpenAI o-series) is no longer replayed back to non-Anthropic providers on subsequent turns. Previously the field was serialized unconditionally in `ChatMessage.to_openai_dict()`, which violated provider documentation (DeepSeek and Qwen both explicitly document "do not send `reasoning_content` back in message history") and silently invalidated their automatic prefix / KV caches on every multi-turn exchange. Policy is centralized in `core/prompt/reasoning.py` — Claude family (including Bedrock and Vertex proxies) still replays thinking blocks with signature as required.
 
 ## [v0.8.3] - 2026-04-16
 

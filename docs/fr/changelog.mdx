@@ -12,8 +12,9 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Ajouté
 
-- Récupération de conversation : les lignes tool_result synthétiques persistent désormais après un tour interrompu ; les clients peuvent reprendre un flux SSE déconnecté via `POST /chat/resume` avec le curseur dernier vu.
-- Le Playground se reconnecte automatiquement aux flux SSE abandonnés en utilisant le point de terminaison `/chat/resume` avec un backoff exponentiel (3 tentatives maximum) ; affiche un indicateur « Reconnexion en cours… » pendant la récupération.
+- Récupération de conversation : les lignes tool_result synthétiques persistent désormais après un tour interrompu ; les clients peuvent reprendre un flux SSE déconnecté via `POST /chat/resume` avec le dernier curseur vu.
+- Le Playground se reconnecte automatiquement aux flux SSE interrompus en utilisant le point de terminaison `/chat/resume` avec backoff exponentiel (max 3 tentatives) ; affiche un indicateur "Reconnexion en cours…" pendant la récupération.
+- Observabilité du cache de prompt : `cache_read_input_tokens` et `cache_creation_input_tokens` sont capturés à partir des réponses LLM, agrégés par tour dans `TurnProfiler`, enregistrés comme une ligne de résumé `turn_cache` (`tokens lus/créés + économies estimées`), et exposés dans le `done_payload` du chat sous un nouveau champ `cache`. Permet de vérifier que la mise en cache de prompt Anthropic fonctionne réellement, et sert également de détecteur pour savoir si les stations relais API honorent la remise de cache.
 
 ### Modifié
 
@@ -21,7 +22,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Corrigé
 
-- Les tokens de réflexion/reasoning persistent désormais dans les conversations multi-tours — le champ `signature` d'Anthropic est capturé et rejoué selon les exigences de l'API.
+- Les tokens de réflexion/raisonnement persistent désormais dans les conversations multi-tours — le champ `signature` d'Anthropic est capturé et rejoué selon les exigences de l'API.
+- Politique de rejeu du raisonnement consciente du fournisseur : `reasoning_content` (provenant de DeepSeek-R1, Qwen QwQ, Gemini thinking, OpenAI o-series) n'est plus rejoué aux fournisseurs non-Anthropic lors des tours suivants. Auparavant, le champ était sérialisé sans condition dans `ChatMessage.to_openai_dict()`, ce qui violait la documentation des fournisseurs (DeepSeek et Qwen documentent explicitement « ne pas renvoyer `reasoning_content` dans l'historique des messages ») et invalidait silencieusement leurs caches de préfixe automatique / KV à chaque échange multi-tour. La politique est centralisée dans `core/prompt/reasoning.py` — la famille Claude (y compris les proxies Bedrock et Vertex) continue de rejouer les blocs de réflexion avec signature comme requis.
 
 ## [v0.8.3] - 2026-04-16
 

@@ -12,8 +12,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- Conversation-Wiederherstellung: Synthetische tool_result-Zeilen bleiben jetzt nach einem unterbrochenen Turn erhalten; Clients können einen unterbrochenen SSE-Stream über `POST /chat/resume` mit dem zuletzt gesehenen Cursor fortsetzen.
-- Der Playground verbindet unterbrochene SSE-Streams jetzt automatisch wieder mit dem `/chat/resume`-Endpoint mit exponentiellem Backoff (max. 3 Versuche); zeigt während der Wiederherstellung einen "Reconnecting…"-Indikator an.
+- Conversation-Wiederherstellung: Synthetische tool_result-Zeilen bleiben nun nach einem unterbrochenen Turn bestehen; Clients können einen getrennten SSE-Stream über `POST /chat/resume` mit dem zuletzt gesehenen Cursor fortsetzen.
+- Playground stellt nun automatisch unterbrochene SSE-Streams mithilfe des `/chat/resume`-Endpunkts mit exponentiellem Backoff (max. 3 Versuche) wieder her; zeigt während der Wiederherstellung einen "Reconnecting…"-Indikator an.
+- Prompt-Cache-Observabilität: `cache_read_input_tokens` und `cache_creation_input_tokens` werden aus LLM-Responses erfasst, pro Turn in `TurnProfiler` aggregiert, als `turn_cache`-Zusammenfassungszeile (`read/create tokens + geschätzte Einsparungen`) protokolliert und in der Chat-`done_payload` unter einem neuen `cache`-Feld bereitgestellt. Ermöglicht die Überprüfung, dass Anthropic-Prompt-Caching tatsächlich trifft, und dient gleichzeitig als Detektor dafür, ob API-Relaisstationen den Cache-Rabatt berücksichtigen.
 
 ### Geändert
 
@@ -21,7 +22,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- Thinking/reasoning tokens bleiben jetzt über mehrteilige Gespräche hinweg erhalten — Das Anthropic-Feld `signature` wird erfasst und gemäß API-Anforderungen erneut abgespielt.
+- Thinking/Reasoning-Token bleiben jetzt über mehrteilige Gespräche hinweg erhalten — Das Anthropic-Feld `signature` wird erfasst und gemäß API-Anforderungen pro Austausch wiedergegeben.
+- Provider-bewusste Reasoning-Wiedergabepolitik: `reasoning_content` (von DeepSeek-R1, Qwen QwQ, Gemini Thinking, OpenAI o-Serie) wird nicht mehr an Nicht-Anthropic-Provider bei nachfolgenden Durchläufen wiedergegeben. Zuvor wurde das Feld bedingungslos in `ChatMessage.to_openai_dict()` serialisiert, was gegen Provider-Dokumentation verstieß (DeepSeek und Qwen dokumentieren beide explizit „senden Sie `reasoning_content` nicht in der Nachrichtenhistorie zurück") und stillschweigend ihre automatischen Präfixe / KV-Caches bei jedem mehrteiligen Austausch ungültig machte. Die Richtlinie ist zentralisiert in `core/prompt/reasoning.py` — Claude-Familie (einschließlich Bedrock- und Vertex-Proxys) gibt weiterhin Thinking-Blöcke mit Signatur wie erforderlich wieder.
 
 ## [v0.8.3] - 2026-04-16
 

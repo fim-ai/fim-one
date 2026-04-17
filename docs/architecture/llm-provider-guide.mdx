@@ -238,6 +238,96 @@ The DAG planner's `_dict_to_steps` parser handles three common edge cases:
 Under normal operation, native_fc returns properly structured tool call arguments and these edge cases do not arise. The defensive parsers exist as a safety net for custom `BaseLLM` subclasses, unusual provider behaviors, or fallback scenarios where structured output degrades to json_mode or plain_text.
 </Note>
 
+## Prompt caching (cross-provider)
+
+FIM One implements Anthropic's explicit prompt caching via `cache_control` breakpoints and simultaneously benefits every other provider's automatic prefix caching through the **Prompt Section Registry**. The goal is a single prompt-assembly path that works across all providers without per-call prompt shape divergence.
+
+### Architecture
+
+The `fim_one.core.prompt` module exposes three primitives:
+
+- **`PromptSection`** — a named fragment with either a static `content: str` or a dynamic `content: Callable`
+- **`PromptRegistry`** — a memoized store (static sections render once, dynamic sections re-render per call)
+- **`DYNAMIC_BOUNDARY`** — a sentinel marker the registry inserts between the last static section and the first dynamic one, so callers can split the rendered prompt at the cache breakpoint
+
+System prompts for ReAct (JSON mode, native function-calling mode, synthesis) are split into:
+
+- **Static prefix** (~95% of the prompt) — identity, core guidelines, tool descriptions
+- **Dynamic suffix** — current datetime, per-request language directive, handoff context
+
+### Capability detection
+
+`fim_one.core.prompt.caching.is_cache_capable(model_id)` returns `True` when the model id contains any of: `claude`, `anthropic`, `bedrock/anthropic`, `vertex_ai/claude`. These providers receive **two** `role="system"` messages with `cache_control: {"type": "ephemeral"}` on the first (static) message.
+
+Every other provider receives a **single** concatenated system message with no `cache_control` field — necessary because non-Anthropic endpoints either reject the field or silently drop it, and sending it through some relays causes `400 unknown parameter` errors.
+
+### Cross-provider coverage
+
+| Provider | Mechanism | Read discount | Our handling |
+|---|---|---|---|
+| **Anthropic Claude** (3, 3.5, 4) | Explicit `cache_control` | 0.10× | Two system messages with ephemeral breakpoint |
+| **AWS Bedrock Anthropic** | Passes through Anthropic cache | 0.10× | Same as Anthropic |
+| **GCP Vertex AI Claude** | Passes through Anthropic cache | 0.10× | Same as Anthropic |
+| **OpenAI GPT / o-series** | Auto prefix hash (≥1024 tokens) | 0.50× | Byte-stable prefix via Section Registry → automatic hit |
+| **DeepSeek (v3 / R1)** | Auto disk-backed prefix cache | 0.10× | Same as OpenAI |
+| **Moonshot Kimi (K1/K2)** | Auto prefix cache | 0.10×/0.50× | Same |
+| **ZhipuAI GLM-4.5+** | Auto long-context cache | 0.20× | Same |
+| **Grok (xAI)** | Auto prefix cache | 0.25× | Same |
+| **Google Gemini** | Separate `createCachedContent` API | 0.25× | **Not yet implemented** — tracked on v0.9 roadmap as `GeminiCacheAdapter` |
+| **Mistral / Cohere** | No native cache | N/A | N/A |
+
+The `PromptRegistry` benefits every provider with auto prefix caching "for free" — by keeping the static portion byte-identical across calls (current datetime lives in the dynamic suffix, not prefix), every auto-caching provider's hash matches and hits their cache. This is why the Registry is a foundational modelless win even before considering Anthropic-specific `cache_control`.
+
+### Observability
+
+Every `chat/*` response's `done_payload` now includes:
+
+```json
+"cache": {
+  "read_tokens": 1067,
+  "creation_tokens": 0
+}
+```
+
+`TurnProfiler` emits a structured log line per turn: `turn_cache summary | model=claude-sonnet-4-6 | read_tokens=1067 | create_tokens=0 | saved_input_tokens=961 (~90%)`. This also functions as a **relay honesty probe** — if you route through an API relay, compare actual billed input vs `read_tokens` to detect whether the relay strips `cache_control` or keeps the 0.10× discount.
+
+No dollar estimate is returned at the LLM layer — pricing and relay markup are applied above, so the LLM layer only returns objective token counts.
+
+### Multi-turn cache ROI
+
+Measured on Claude 4 ReAct turns with the default agent prompt:
+
+| Mode | Static prefix tokens | Dynamic suffix tokens | Cache ratio |
+|---|---|---|---|
+| JSON mode, no tools | ~753 | ~46 | 94.2% |
+| JSON mode with ~10 tools | ~1067 | ~46 | 95.9% |
+| Native function-calling | ~523 | ~46 | 91.9% |
+
+A 10-iteration ReAct run with 10 tools saves ~8,640 input tokens per turn after the first (9 cache hits × 1067 tokens × 90%). Anthropic charges 1.25× for cache write on the first call, so the breakeven is at the **second** call — single-shot queries do not benefit.
+
+## Reasoning replay policy (modelless correctness)
+
+Extended thinking / reasoning blocks behave differently across providers. A uniform serialization policy breaks both protocol contracts and automatic prefix caches. `fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` returns one of three values and gates `ChatMessage.to_openai_dict(replay_policy=...)` in `OpenAICompatibleLLM._build_request_kwargs()`.
+
+### Three policies
+
+- **`anthropic_thinking`** — Claude family (including `anthropic/`, `bedrock/anthropic`, `vertex_ai/claude`). Thinking blocks MUST be replayed with `signature` attached; Anthropic rejects subsequent turns if the signature is missing or altered.
+- **`informational_only`** — models that emit CoT but do NOT expect replay: DeepSeek R1 / R1-Distill, Qwen QwQ, Gemini 2.x thinking, OpenAI o1 / o3 / o4. Their documentation explicitly says "do not send `reasoning_content` back in message history". Sending it anyway:
+  - Violates the provider contract (may start rejecting in future versions)
+  - **Silently invalidates their automatic prefix cache** — message bytes mutate on every turn, breaking the hash
+- **`unsupported`** — models without reasoning capability (GPT-4o, GPT-4 Turbo, Gemini 1.5, Mistral, Llama). No CoT to replay; field should never appear. This policy is also the safe default for unknown model ids.
+
+### Enforcement
+
+All policy evaluation happens in one place (`_build_request_kwargs`). `ChatMessage.to_openai_dict(replay_policy=None)` preserves the A3 permissive default so uncoordinated callers don't regress. The cross-provider test matrix lives in `tests/test_reasoning_replay_policy.py` with **reverse assertions** proving that non-Anthropic requests do NOT leak `reasoning_content`.
+
+### For users
+
+Both feature and bug behavior is automatic — you don't need to configure anything. Workflow implications:
+
+- **If you switch agents between Claude and DeepSeek in the same conversation**, history is stored with thinking blocks intact; on the next turn, the outgoing message shape adapts per the current model.
+- **If you use a proxy / custom `BaseLLM` subclass**, make sure its model id is recognizable (contains one of the fragments) or the default `unsupported` policy will apply — which is safe but means Claude behind an unusual proxy might lose thinking replay. Add the model-id fragment to `_CACHE_CAPABLE_MODEL_FRAGMENTS` (in `core/prompt/caching.py`) and/or the reasoning policy lookup.
+
 ## Troubleshooting
 
 **"This model does not support assistant message prefill"**

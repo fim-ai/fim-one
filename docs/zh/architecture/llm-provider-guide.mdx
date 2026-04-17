@@ -238,6 +238,96 @@ DAG 规划器的 `_dict_to_steps` 解析器处理三个常见的边界情况：
 在正常操作下，native_fc 返回正确结构化的工具调用参数，这些边界情况不会出现。防御性解析器作为安全网存在，用于自定义 `BaseLLM` 子类、异常的提供商行为，或结构化输出降级到 json_mode 或 plain_text 的回退场景。
 </Note>
 
+## 提示词缓存（跨提供商）
+
+FIM One 通过 `cache_control` 断点实现 Anthropic 的显式提示词缓存，同时通过**提示词部分注册表**从其他所有提供商的自动前缀缓存中受益。目标是实现一条单一的提示词组装路径，在所有提供商中工作，而无需按调用的提示词形状差异。
+
+### 架构
+
+`fim_one.core.prompt` 模块公开三个基础元素：
+
+- **`PromptSection`** — 一个命名片段，包含静态 `content: str` 或动态 `content: Callable`
+- **`PromptRegistry`** — 一个记忆化存储（静态片段渲染一次，动态片段每次调用重新渲染）
+- **`DYNAMIC_BOUNDARY`** — 一个哨兵标记，注册表在最后一个静态片段和第一个动态片段之间插入，以便调用者可以在缓存断点处分割渲染的提示词
+
+ReAct 的系统提示词（JSON 模式、原生函数调用模式、综合）分为：
+
+- **静态前缀**（~95% 的提示词）— 身份、核心指南、工具描述
+- **动态后缀** — 当前日期时间、每个请求的语言指令、交接上下文
+
+### 能力检测
+
+`fim_one.core.prompt.caching.is_cache_capable(model_id)` 当模型 id 包含以下任何内容时返回 `True`：`claude`、`anthropic`、`bedrock/anthropic`、`vertex_ai/claude`。这些提供商接收**两个** `role="system"` 消息，第一个（静态）消息带有 `cache_control: {"type": "ephemeral"}`。
+
+所有其他提供商接收一个**单一的**连接系统消息，没有 `cache_control` 字段——这是必要的，因为非 Anthropic 端点要么拒绝该字段，要么静默丢弃它，通过某些中继发送它会导致 `400 unknown parameter` 错误。
+
+### 跨提供商覆盖
+
+| 提供商 | 机制 | 读取折扣 | 我们的处理 |
+|---|---|---|---|
+| **Anthropic Claude** (3, 3.5, 4) | 显式 `cache_control` | 0.10× | 两个系统消息，带有临时断点 |
+| **AWS Bedrock Anthropic** | 通过 Anthropic 缓存传递 | 0.10× | 与 Anthropic 相同 |
+| **GCP Vertex AI Claude** | 通过 Anthropic 缓存传递 | 0.10× | 与 Anthropic 相同 |
+| **OpenAI GPT / o-series** | 自动前缀哈希（≥1024 tokens） | 0.50× | 通过 Section Registry 的字节稳定前缀 → 自动命中 |
+| **DeepSeek (v3 / R1)** | 自动磁盘支持的前缀缓存 | 0.10× | 与 OpenAI 相同 |
+| **Moonshot Kimi (K1/K2)** | 自动前缀缓存 | 0.10×/0.50× | 相同 |
+| **ZhipuAI GLM-4.5+** | 自动长上下文缓存 | 0.20× | 相同 |
+| **Grok (xAI)** | 自动前缀缓存 | 0.25× | 相同 |
+| **Google Gemini** | 独立的 `createCachedContent` API | 0.25× | **尚未实现** — 在 v0.9 路线图上作为 `GeminiCacheAdapter` 跟踪 |
+| **Mistral / Cohere** | 无原生缓存 | N/A | N/A |
+
+`PromptRegistry` 通过自动前缀缓存为每个提供商"免费"提供优势 — 通过在调用中保持静态部分字节相同（当前日期时间位于动态后缀而非前缀），每个自动缓存提供商的哈希匹配并命中其缓存。这就是为什么即使在考虑 Anthropic 特定的 `cache_control` 之前，Registry 也是一个基础的无模型优势。
+
+### 可观测性
+
+每个 `chat/*` 响应的 `done_payload` 现在包括：
+
+```json
+"cache": {
+  "read_tokens": 1067,
+  "creation_tokens": 0
+}
+```
+
+`TurnProfiler` 每轮发出一条结构化日志行：`turn_cache summary | model=claude-sonnet-4-6 | read_tokens=1067 | create_tokens=0 | saved_input_tokens=961 (~90%)`。这也充当**中继诚实探针** — 如果你通过 API 中继路由，比较实际计费的输入 token 与 `read_tokens` 来检测中继是否剥离 `cache_control` 或保留 0.10× 折扣。
+
+LLM 层不返回美元估计 — 定价和中继加价在上层应用，因此 LLM 层仅返回客观的 token 计数。
+
+### 多轮缓存 ROI
+
+在 Claude 4 ReAct 轮次上测量，使用默认智能体提示词：
+
+| 模式 | 静态前缀 token | 动态后缀 token | 缓存比率 |
+|---|---|---|---|
+| JSON 模式，无工具 | ~753 | ~46 | 94.2% |
+| JSON 模式，约 10 个工具 | ~1067 | ~46 | 95.9% |
+| 原生函数调用 | ~523 | ~46 | 91.9% |
+
+一个包含 10 个工具的 10 次迭代 ReAct 运行，在第一次之后的每一轮可节省约 8,640 个输入 token（9 次缓存命中 × 1067 token × 90%）。Anthropic 对第一次调用的缓存写入收费 1.25 倍，因此损益平衡点在**第二次**调用——单次查询不会受益。
+
+## 推理重放策略（无模型正确性）
+
+扩展思考/推理块在不同提供商之间的行为不同。统一的序列化策略会破坏协议契约和自动前缀缓存。`fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` 返回三个值之一，并在 `OpenAICompatibleLLM._build_request_kwargs()` 中控制 `ChatMessage.to_openai_dict(replay_policy=...)` 的行为。
+
+### 三种策略
+
+- **`anthropic_thinking`** — Claude 系列（包括 `anthropic/`、`bedrock/anthropic`、`vertex_ai/claude`）。思考块必须附加 `signature` 进行重放；如果缺少或更改签名，Anthropic 会拒绝后续轮次。
+- **`informational_only`** — 发出 CoT 但不期望重放的模型：DeepSeek R1 / R1-Distill、Qwen QwQ、Gemini 2.x thinking、OpenAI o1 / o3 / o4。它们的文档明确说明"不要在消息历史中发送 `reasoning_content`"。即使发送：
+  - 违反提供商合约（未来版本可能开始拒绝）
+  - **静默失效其自动前缀缓存** — 消息字节在每个轮次变化，破坏哈希
+- **`unsupported`** — 不具备推理能力的模型（GPT-4o、GPT-4 Turbo、Gemini 1.5、Mistral、Llama）。没有 CoT 可重放；字段不应出现。此策略也是未知模型 ID 的安全默认值。
+
+### 执行
+
+所有策略评估都在一个地方进行（`_build_request_kwargs`）。`ChatMessage.to_openai_dict(replay_policy=None)` 保留了 A3 宽松的默认设置，以便不协调的调用者不会回退。跨提供商测试矩阵位于 `tests/test_reasoning_replay_policy.py` 中，**反向断言**证明非 Anthropic 请求不会泄露 `reasoning_content`。
+
+### 对于用户
+
+特性和错误行为都是自动的 — 您无需配置任何内容。工作流影响：
+
+- **如果您在同一对话中在 Claude 和 DeepSeek 智能体之间切换**，历史记录会完整保存思考块；在下一轮中，传出消息形状会根据当前模型进行调整。
+- **如果您使用代理 / 自定义 `BaseLLM` 子类**，请确保其模型 id 是可识别的（包含其中一个片段），否则默认的 `unsupported` 策略将适用 — 这是安全的，但意味着异常代理后的 Claude 可能会丢失思考重放。将模型 id 片段添加到 `_CACHE_CAPABLE_MODEL_FRAGMENTS`（在 `core/prompt/caching.py` 中）和/或推理策略查找。
+
 ## 故障排除
 
 **"This model does not support assistant message prefill"**
