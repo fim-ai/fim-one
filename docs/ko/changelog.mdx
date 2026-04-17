@@ -10,9 +10,11 @@ description: "FIM One의 모든 주요 변경 사항."
 
 ## [미출시]
 
-### Added
+### 추가됨
 
-- **Xinchuang (信创) database support**: the Database Connector now lists KingbaseES (人大金仓), HighGo (瀚高), and DM8 (达梦) alongside PostgreSQL/MySQL. KingbaseES and HighGo are PG-compatible and reuse `asyncpg` with no extra dependencies; DM8 uses the official `dmPython` vendor wheel. A standalone `scripts/test_xinchuang_dbs.py` lets operators verify live connectivity from the CLI.
+- **信创 데이터베이스 지원**: Database Connector는 이제 PostgreSQL/MySQL과 함께 KingbaseES (人大金仓), HighGo (瀚高), DM8 (达梦)을 나열합니다. KingbaseES와 HighGo는 PG 호환이며 추가 종속성 없이 `asyncpg`를 재사용합니다. DM8은 공식 `dmPython` vendor wheel을 사용합니다. 독립형 `scripts/test_xinchuang_dbs.py`를 통해 운영자는 CLI에서 라이브 연결성을 확인할 수 있습니다.
+- **Feishu Channel + IM을 통한 확인 게이트**: 새로운 `Channel` 리소스 타입(조직 범위, 저장 시 암호화된 자격증명)을 통해 조직은 Feishu 앱을 연결하여 아웃바운드 메시징을 수행할 수 있습니다. `requires_confirmation=True`로 표시된 도구는 이제 포털의 확인 대화상자만 표시하는 대신 구성된 Feishu 그룹에 승인/거부 대화형 카드를 전송합니다. 그룹의 모든 권한이 있는 멤버가 Feishu에서 직접 승인 또는 거부할 수 있습니다. Settings → Channels 관리 UI (목록, 생성/편집(더티 상태 보호 포함), 복사 가능한 콜백 URL이 있는 세부 정보, 테스트 전송), CRUD API (`/api/channels`), 및 서명 검증과 URL 챌린지 지원이 있는 Feishu 이벤트 콜백 엔드포인트 (`/api/channels/{id}/callback`)를 포함합니다. v0.9 IM Channel Integration 로드맵 항목의 첫 번째 단계이며, 2026-04-24 로드쇼를 위해 일정보다 먼저 출시됩니다.
+- **Agent Hook System (스켈레톤)**: `src/fim_one/core/hooks/`의 새로운 `PreToolUseHook` / `PostToolUseHook` 추상화를 통해 결정론적 로직이 LLM 루프 외부에서 실행될 수 있습니다. FeishuGateHook은 첫 번째 구체적인 구현이며, 확인 게이트 흐름에 연결됩니다. 전체 hook 라이프사이클 + 사용자 정의 YAML hook은 v0.9 범위에 남아 있습니다.
 
 ### 변경됨
 

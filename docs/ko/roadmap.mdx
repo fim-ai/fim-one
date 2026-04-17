@@ -228,14 +228,15 @@ flowchart LR
 
 ## 계획된 버전
 
-### v0.9 — 可观测性 + 生产强化
+### v0.9 — 관찰성 + 프로덕션 강화
 
-**目标**: 生产级运维、调试和监控。引入**Hook System** — 一个确定性执行层，位于智能体指令下方，无法被LLM覆盖。
+**목표**: 프로덕션 등급 운영, 디버깅 및 모니터링. **Hook System**을 도입합니다 — LLM이 재정의할 수 없는 에이전트 지시 아래에 위치하는 결정론적 강제 계층입니다.
 
-- [ ] **连接器渐进式披露 (第3-4阶段)**: 统一的`ConnectorExecutor`接口 (API/DB/MCP在一个抽象后面); 使用`jsonschema`进行操作参数验证; 协议无关的发现/执行
-- [ ] **YAML/JSON连接器配置**: 平台自动生成MCP服务器
-- [ ] **数据库连接器第4阶段**: 企业驱动 — Oracle (`oracledb`), SQL Server (`aioodbc`), [x] 达梦 DM8 (native `dmPython`), [x] 人大金仓 KingbaseES + 瀚高 HighGo (PG-compatible, reuse `asyncpg`), 南大通用 GBase (`aioodbc` + GBase ODBC)
-- [ ] **IM频道集成 (双向)**: **第1阶段 — 出站推送**: Lark、WeCom、Slack、Email、Teams通知操作来自智能体/工作流结果。**第2阶段 — 入站触发**: 用户在IM群聊中@提及智能体以触发任务，无需打开Portal; 每个频道的webhook接收器; 每个IM频道建模为具有双向操作的连接器 (发送 + 接收)。Hub模式杀手级功能
+- [ ] **Connector 점진적 공개 (Phase 3-4)**: 통합 `ConnectorExecutor` 인터페이스 (하나의 추상화 뒤의 API/DB/MCP); `jsonschema`를 사용한 작업 매개변수 검증; 프로토콜 무관 discover/execute
+- [ ] **YAML/JSON connector 구성**: 플랫폼 자동 생성 MCP 서버
+- [ ] **데이터베이스 connector Phase 4**: 엔터프라이즈 드라이버 — Oracle (`oracledb`), SQL Server (`aioodbc`), [x] 达梦 DM8 (native `dmPython`), [x] 人大金仓 KingbaseES + 瀚高 HighGo (PG-compatible, reuse `asyncpg`), 南大通用 GBase (`aioodbc` + GBase ODBC)
+- [ ] **IM Channel 통합 (양방향)**: **Phase 1 — 아웃바운드 푸시**: Lark, WeCom, Slack, Email, Teams 알림 작업을 에이전트/워크플로우 결과에서 실행합니다. **Phase 2 — 인바운드 트리거**: 사용자가 IM 그룹 채팅에서 에이전트를 @mention하여 Portal을 열지 않고 작업을 트리거합니다; 채널별 webhook 수신기; 각 IM 채널은 양방향 작업(전송 + 수신)이 있는 Connector로 모델링됩니다. Hub 모드 킬러 기능
+  - [x] **Feishu Channel (Phase 1 subset)** — Fernet 암호화된 자격 증명이 있는 조직 범위 `Channel` 리소스; 대화형 카드 전송 + 콜백(서명 검증 + URL 챌린지)을 지원하는 `FeishuChannel` 구현; 확인 게이트와 통합되어 쓰기 작업 승인이 구성된 Feishu 그룹 채팅에 Approve/Reject 카드로 표시됩니다; Settings → Channels 관리 UI. 2026-04-24 로드쇼를 위해 조기 배포됨. 남은 작업: WeCom, Slack, Email, Teams 아웃바운드 + Phase 2 인바운드 트리거.
 
 #### 공개 API (Phase 2)
 
@@ -252,33 +253,28 @@ Phase 1 (출시됨): API 키 인증 미들웨어, 범위 지원, 큐레이션된
 - [ ] **배치/비동기 API** — 최대 100개의 쿼리를 허용하는 `POST /api/batch`; 결과 폴링을 위한 `batch_id` 반환; 대량 KB 쿼리 또는 다중 에이전트 오케스트레이션에 유용
 - [ ] **외부 의존성별 서킷 브레이커** — 다운스트림 LLM 제공자 또는 커넥터를 사용할 수 없을 때 연쇄 장애 방지; 자동 폴백 및 복구
 
-#### 관찰성 및 에이전트 런타임
+#### 관찰성 & 에이전트 런타임
 
-- [ ] **Agent Trace Layer (Observability++)**: 애플리케이션 수준의 run/trace/thread 계층 구조로 에이전트 디버깅 — 각 대화 → `Trace`, 각 LLM 호출 / 도구 호출 / DAG 단계 → input/output/tokens/timing을 포함한 `Span`. 타임라인과 확장 가능한 LLM 호출 페이로드가 있는 프론트엔드 trace 뷰어. 이는 OTel(인프라 수준)을 넘어 개발자와 엔터프라이즈 클라이언트를 위한 실행 가능한 에이전트 루프 디버깅을 제공합니다. 데이터 싱크 옵션으로 OpenTelemetry 내보내기. LangSmith의 run/trace/thread 개념을 모델로 한 — 에이전트 관찰성을 위한 업계 검증 패턴.
-- [ ] **Metrics dashboard**: 지연시간, 성공률, token 사용량, 커넥터 호출 분석 — 에이전트별, 사용자별, 조직별 분석
-- [x] ~~**Circuit breaker**: 3상태 머신(closed/open/half-open)으로 커넥터별 실패 추적, 5xx 감지 및 모니터링 엔드포인트~~ *(v0.8에서 조기 배포 — 구현됨)*
-- [x] ~~**Workflow run 보존 정리**: 구성 가능한 최대 나이 및 workflow당 최대 개수를 포함한 백그라운드 정리 작업; workflow별 재정의; 수동 트리거를 위한 관리자 엔드포인트~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**Workflow 버전 변경 요약**: `compute_blueprint_diff()`는 버전 저장 시 blueprint diff에서 인간이 읽을 수 있는 요약을 자동 생성~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**DAG 품질 개선**: 비fast 단계에 대한 기본 모델 업그레이드; 계획에서 skill 자동 발견; 법률/의료/금융 도메인을 위한 인용 검증자; 구조화된 콘텐츠 컨텍스트 보존; router의 도메인 분류로 도메인 인식 모델 선택~~ *(v0.8.1에서 배포됨)*
+- [ ] **에이전트 추적 레이어 (관찰성++)**: 에이전트 디버깅을 위한 애플리케이션 수준의 실행/추적/스레드 계층 — 각 대화 → `Trace`, 각 LLM 호출 / 도구 호출 / DAG 단계 → 입력/출력/토큰/타이밍을 포함한 `Span`. 타임라인 및 확장 가능한 LLM 호출 페이로드가 있는 프론트엔드 추적 뷰어. 이는 OTel(인프라 수준)을 넘어 개발자 및 엔터프라이즈 클라이언트를 위한 실행 가능한 에이전트 루프 디버깅을 제공합니다. OpenTelemetry 내보내기를 데이터 싱크 옵션으로 제공. LangSmith의 실행/추적/스레드 개념을 모델로 함 — 에이전트 관찰성을 위한 업계 검증 패턴.
+- [ ] **메트릭 대시보드**: 지연시간, 성공률, 토큰 사용량, 커넥터 호출 분석 — 에이전트별, 사용자별, 조직별 분석
+- [x] ~~**서킷 브레이커**: 3상태 머신(폐쇄/개방/반개방)과 커넥터별 실패 추적, 5xx 감지 및 모니터링 엔드포인트~~ *(v0.8에서 조기 배포 — 구현됨)*
+- [x] ~~**워크플로우 실행 보존 정리**: 구성 가능한 최대 나이 및 워크플로우당 최대 개수를 사용한 백그라운드 정리 작업; 워크플로우별 재정의; 수동 트리거를 위한 관리자 엔드포인트~~ *(v0.8.1에서 배포됨)*
+- [x] ~~**워크플로우 버전 변경 요약**: `compute_blueprint_diff()`는 버전 저장 시 블루프린트 diff에서 인간이 읽을 수 있는 요약을 자동 생성~~ *(v0.8.1에서 배포됨)*
+- [x] ~~**DAG 품질 개선**: 비빠른 단계를 위한 기본 모델 업그레이드; 계획에서 스킬 자동 발견; 법률/의료/금융 도메인을 위한 인용 검증자; 구조화된 콘텐츠 컨텍스트 보존; 라우터의 도메인 분류와 도메인 인식 모델 선택~~ *(v0.8.1에서 배포됨)*
 - [x] ~~**ReAct의 도메인 모델 에스컬레이션**: 전문 도메인은 필수 웹 검색 및 인용 검증과 함께 추론 모델로 자동 에스컬레이션~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**모델별 Native Function Calling 토글**: `tool_choice_enabled` 설정으로 모델이 강제 도구 선택을 건너뛰고 JSON Mode로 직접 이동 가능~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**DatabaseMetaTool (DB 커넥터를 위한 Progressive Disclosure)**: 단일 `database` 메타 도구로 `list_tables`/`discover`/`query` 서브명령이 데이터베이스 커넥터당 3N개의 개별 도구를 대체; `DATABASE_TOOL_MODE` 환경 변수로 구성 가능(`progressive` 기본값, `legacy` 폴백)~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**`request_tools` 메타 도구를 통한 온디맨드 도구 로딩**: 스마트 선택 후 >12개의 도구를 사용할 수 있을 때, LLM은 대화 중에 동적으로 추가 도구를 로드할 수 있음; JSON 및 native function-calling 모드 모두에서 작동~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**MCPServerMetaTool (MCP를 위한 Progressive Disclosure)**: 단일 `mcp` 메타 도구로 `discover`/`call` 서브명령이 N*M개의 개별 MCP 도구를 대체; `MCP_TOOL_MODE` 환경 변수로 구성 가능(`progressive` 기본값, `legacy` 폴백)~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**Workflow Connection Dep 자동 구독**: Market 구독 계단식을 확장하여 Workflow의 연결 종속성(API Connectors, MCP Servers)을 자동 구독. Workflow 노드는 Connectors, MCP Servers, Agents(더 많은 deps를 재귀적으로 참조), 서브 Workflows를 참조할 수 있음 — 전체 트리의 모든 연결 deps는 구독 시 자동 구독되고 구독 해제 시 계단식 정리됨. 순환 감지를 포함한 재귀적 서브 workflow 해석으로 인해 Skill/Agent보다 복잡함. Solution(Skill/Agent) 연결 dep 자동 구독의 대응~~ *(v0.8.1에서 배포됨)*
-- [x] ~~**Workflow 실제 실행자**: MCP 및 BuiltinTool 노드 실행자 스텁을 전체 구현으로 대체(MCP 서버 발견 + 도구 호출; ToolRegistry 통합)~~ *(v0.8.1에서 배포됨)*
-- [ ] **Agent Hook System**: **LLM 루프 외부에서** 실행되는 결정론적 강제 계층 — hook은 도구 이벤트에서 자동으로 실행되며 에이전트 지시사항으로 우회할 수 없습니다. 3개의 hook 포인트: `PreToolUse`(실행 전 검증 / 차단), `PostToolUse`(실행 후 부작용), `SessionStart`(동적 컨텍스트 주입). 기본 제공 hook: 모든 커넥터 호출에서 `ConnectorCallLog` 자동 작성(현재 수동); 조직이 읽기 전용 모드일 때 쓰기 작업 차단; 에이전트에 도달하기 전에 oversized DB 쿼리 결과 자동 자르기. 사용자 정의 hook: 에이전트별 YAML 구성(`hooks:` 필드)으로 일치하는 도구 이벤트에서 트리거되는 shell 명령 또는 Python 호출 가능 선언 — 최신 에이전트 프레임워크 전체에서 공유되는 hook 기반 강제 패턴. 핵심 설계 원칙: **hook은 LLM이 이를 기억하는 데 의존해서는 안 되는 "항상 발생해야 하는" 로직용**. 지시사항은 "모든 호출 기록"; hook은 실제로 기록합니다. 지시사항은 "읽기 전용 모드에서 쓰지 마세요"; hook은 실제로 차단합니다.
-- [ ] **Agent Workspace (Persistent Agent Desktop)**: 3개 계층: (1) **Tool Output Offloading** — oversized 도구 응답(>8K chars)을 `workspace://` 파일로 자동 저장, 잘린 미리보기 + URI 반환; 기본 제공 도구 `read_workspace_file`, `list_workspace_files`, `write_workspace_file`로 선택적 액세스 및 에이전트 생성 아티팩트. (2) **Handoff Notes** — 압축/세션 전환 전체에서 컨텍스트 전환을 위한 `write_handoff(summary)`. (3) **Workspace UI** — 대화별 프론트엔드 파일 브라우저 패널(텍스트/JSON/CSV 미리보기, 다운로드, 삭제/이름 바꾸기); 세션 간 파일 보존; 사용자별 저장소 할당량 통합. adapter의 `truncate_tool_output()` + `GET /api/conversations/{id}/workspace` 엔드포인트 확장
-- [x] **Smart File Content Injection + `read_uploaded_file` tool**: 작은 업로드된 파일(`<32K` chars)은 LLM 컨텍스트에 자동 인라인; 큰 파일은 메타데이터 + 도구 힌트 획득. 이중 모드 `read_uploaded_file` tool(페이지 매김 읽기 + regex 검색). `GET /api/files/{file_id}/content` 엔드포인트, `.content` 사이드카 저장소, 파일 API 응답의 `content_length`
-- [x] ~~**Intelligent Document Processing (Vision-Aware)**: 적응형 문서 처리 — PDF 페이지는 vision 가능 모델(GPT-4o, Claude 3/4, Gemini)을 위해 PyMuPDF를 통해 이미지로 렌더링; pdfplumber를 통한 텍스트 전용 폴백. Admin의 모델별 `supports_vision` 플래그. `DOCUMENT_PROCESSING_MODE` 환경 변수로 구성 가능한 2가지 모드(vision/text). 스마트 PDF 처리: 텍스트 풍부 페이지는 텍스트 + 포함된 이미지 추출(token 효율적), 스캔된 페이지는 전체 페이지 PNG로 렌더링. DOCX/PPTX 포함 이미지 추출. 다중 턴 vision 지속성. 사전 구축된 샌드박스 이미지(`Dockerfile.sandbox`). `.pages/` 사이드카를 포함한 캐시된 페이지 렌더링.~~ *(v0.8.2에서 배포됨)*
-- [x] ~~**Universal Document Conversion (`convert_to_markdown` + OCR)** — Microsoft MarkItDown을 래핑하는 기본 제공 Agent 도구로 모든 에이전트에서 기본적으로 사용 가능. PDF, Word, Excel, PowerPoint, HTML, JSON, CSV, XML, ZIP, EPUB, Outlook .msg, 이미지, 오디오, YouTube URL 및 데이터 URI를 대화 내 깔끔한 Markdown으로 변환. Office 파일 및 스캔된 PDF 페이지의 포함 이미지는 공식 `markitdown-ocr` 플러그인을 사용하여 workspace의 vision 가능 LLM(DB 우선, ENV 폴백)을 통해 자동으로 OCR됨. 동일한 변환 커널은 RAG 수집 파이프라인에서 공유되므로 chat 시간 변환 및 knowledge-base 수집은 바이트 동일 Markdown을 생성합니다. 비 OpenAI 제공자(Claude, Gemini, Bedrock, Azure)는 모든 FIM One LLM을 openai-SDK 형태 클라이언트로 제시한 다음 LiteLLM을 통해 라우팅하는 `LiteLLMOpenAIShim`을 통해 투명하게 지원됩니다. 제로 회귀 폴백: vision 모델을 사용할 수 없을 때, 텍스트 전용 추출은 이전과 정확히 동일하게 계속됩니다.~~ *(v0.8.3에서 배포됨)*
-- [ ] **Cross-session file management**: 파일 브라우저 UI, 저장소 할당량, 자동 만료 정리
-- [ ] **Session-level file associations**: 어떤 파일이 어떤 대화에서 사용되었는지 추적
-- [ ] **Cross-session conversation recall**: 과거 대화 기록을 나열, 검색 및 읽기 위한 에이전트 도구 — `list_conversations`, `search_conversations`(기록 전체에서 키워드/regex), `read_conversation`(전체 스레드 검색). "지난번에 뭘 논의했나" 및 "지난주에 요청한 API 변경 찾기" 워크플로우를 활성화합니다. cross-session file management와 쌍을 이루어 완전한 장기 에이전트 메모리 계층을 형성
-- [ ] **Sandbox hardening**: 코드 실행 격리에 대한 v2 개선
-- [ ] **Performance testing**: 동시 로드 벤치마크
-- [ ] **MCP Connection Pooling**: 요청별 STDIO 서브프로세스 생성은 확장되지 않음 — 100명의 동시 사용자 = MCP 서버당 100개의 서브프로세스. STDIO 연결을 풀링하고 사용자별 env 격리(`(server_id, env_hash)`로 키 지정); SSE/HTTP 전송은 `httpx.AsyncClient` 세션을 공유합니다. 목표: 풀링된 STDIO에 대해 `≤100 ms` warm-start, 사용자 수와 관계없이 MCP 서버당 O(1) HTTP 연결
-- [ ] **Internal Harness Benchmark** — EVAL CENTER 인프라를 사용하여 harness 매개변수 변경(시스템 프롬프트, 자체 반영 빈도, 도구 선택 임계값)을
+- [x] ~~**모델별 네이티브 함수 호출 토글**: `tool_choice_enabled` 설정을 통해 모델이 강제 도구 선택을 건너뛰고 JSON 모드로 직접 이동 가능~~ *(v0.8.1에서 배포됨)*
+- [x] ~~**DatabaseMetaTool (DB 커넥터를 위한 점진적 공개)**: 단일 `database` 메타 도구와 `list_tables`/`discover`/`query` 하위 명령이 데이터베이스 커넥터당 3N개의 개별 도구를 대체; `DATABASE_TOOL_MODE` 환경 변수를 통해 구성 가능(`progressive` 기본값, `legacy` 폴백)~~ *(v0.8.1에서 배포됨)*
+- [x] ~~**`request_tools` 메타 도구를 통한 온디맨드 도구 로딩**: 스마트 선택 후 >12개의 도구를 사용할 수 있을 때, LLM은 대화 중간에 추가 도구를 동적으로 로드 가능; JSON 및 네이티브 함수 호출 모드 모두에서 작동~~ *(v0.8.1에서 배포됨)*
+- [x] ~~**MCPServerMetaTool (MCP를 위한 점진적 공개)**: 단일 `mcp` 메타 도구와 `discover`/`call` 하위 명령이 N*M개의 개별 MCP 도구를 대체; `MCP_TOOL_MODE` 환경 변수를 통해 구성 가능(`progressive` 기본값, `legacy` 폴백)~~ *(v0.8.1에서 배포됨)*
+- [x] ~~**워크플로우 연결 종속성 자동 구독**: Market 구독 캐스케이드를 확장하여 워크플로우의 연결 종속성(API 커넥터, MCP 서버)을 자동 구독. 워크플로우 노드는 커넥터, MCP 서버, 에이전트(더 많은 종속성을 재귀적으로 참조), 하위 워크플로우를 참조할 수 있음 — 전체 트리의 모든 연결 종속성은 구독 시 자동 구독되고 구독 해제 시 캐스케이드 정리되어야 함. 순환 감지를 통한 재귀적 하위 워크플로우 해석으로 인해 스킬/에이전트보다 복잡. 솔루션(스킬/에이전트) 연결 종속성 자동 구독의 대응물~~ *(v0.8.1에서 배포됨)*
+- [x] ~~**워크플로우 실제 실행자**: MCP 및 BuiltinTool 노드 실행자 스텁을 전체 구현으로 대체(MCP 서버 발견 + 도구 호출; ToolRegistry 통합)~~ *(v0.8.1에서 배포됨)*
+- [ ] **에이전트 훅 시스템**: **LLM 루프 외부에서** 실행되는 결정론적 강제 레이어 — 훅은 도구 이벤트에서 자동으로 실행되며 에이전트 지시사항으로 우회할 수 없습니다. 세 가지 훅 포인트: `PreToolUse`(실행 전 검증 / 차단), `PostToolUse`(실행 후 부작용), `SessionStart`(동적 컨텍스트 주입). 내장 훅: 모든 커넥터 호출에서 `ConnectorCallLog` 자동 작성(현재 수동); 조직이 읽기 전용 모드일 때 쓰기 작업 차단; 에이전트에 도달하기 전에 과도한 DB 쿼리 결과 자동 자르기. 사용자 정의 훅: 에이전트별 YAML 구성(`hooks:` 필드)으로 일치하는 도구 이벤트에서 트리거되는 셸 명령 또는 Python 호출 가능 선언 — 최신 에이전트 프레임워크에서 공유되는 훅 기반 강제 패턴. 핵심 설계 원칙: **훅은 LLM이 이를 기억하는 데 의존해서는 안 되는 "항상 발생해야 하는" 로직을 위한 것**. 지시사항은 "모든 호출 기록"; 훅은 실제로 기록합니다. 지시사항은 "읽기 전용 모드에서 쓰지 마세요"; 훅은 실제로 차단합니다.
+  - [x] **훅 시스템 스켈레톤 + FeishuGateHook** — ReAct 루프 아래에 연결된 클래스 기반 `PreToolUseHook` / `PostToolUseHook` 추상화; 첫 번째 구체적 훅은 `FeishuGateHook`로, `requires_confirmation=True`로 플래그된 도구를 가로채고 조직의 Feishu 채널을 통해 승인을 라우팅합니다. 전체 훅 수명 주기(사용자 정의 YAML 훅, 내장 감사/차단/자르기 훅, `SessionStart`)는 v0.9 범위로 유지됩니다. 2026-04-24 로드쇼를 위해 조기 배포됨.
+- [ ] **에이전트 워크스페이스 (영구 에이전트 데스크톱)**: 세 가지 레이어: (1) **도구 출력 오프로딩** — 과도한 도구 응답(>8K 문자)을 `workspace://` 파일에 자동 저장, 잘린 미리보기 + URI 반환; 선택적 액세스 및 에이전트 생성 아티팩트를 위한 내장 도구 `read_workspace_file`, `list_workspace_files`, `write_workspace_file`. (2) **핸드오프 노트** — 컨텍스트 전환을 위한 `write_handoff(summary)` 압축/세션 전환 간. (3) **워크스페이스 UI** — 대화별 프론트엔드 파일 브라우저 패널(텍스트/JSON/CSV 미리보기, 다운로드, 삭제/이름 바꾸기); 세션 간 파일 보존; 사용자별 저장소 할당량 통합. 어댑터의 `truncate_tool_output()` + `GET /api/conversations/{id}/workspace` 엔드포인트 확장
+- [x] **스마트 파일 콘텐츠 주입 + `read_uploaded_file` 도구**: 작은 업로드된 파일(`<32K` 문자)은 LLM 컨텍스트에 자동 인라인; 큰 파일은 메타데이터 + 도구 힌트를 받습니다. 이중 모드 `read_uploaded_file` 도구(페이지 매김 읽기 + 정규식 검색). `GET /api/files/{file_id}/content` 엔드포인트, `.content` 사이드카 저장소, 파일 API 응답의 `content_length`
+- [x] ~~**지능형 문서 처리 (비전 인식)**: 적응형 문서 처리 — PDF 페이지는 비전 가능 모델(GPT-4o, Claude 3/4, Gemini)을 위해 PyMuPDF를 통해 이미지로 렌더링; pdfplumber를 통한 텍스트 전용 폴백. 관리자의 모델별 `supports_vision` 플래그. 두 가지 모드(비전/텍스트)는 `DOCUMENT_PROCESSING_MODE` 환경 변수를 통해 구성 가능. 스마트 PDF 처리: 텍스트 풍부한 페이지는 텍스트 + 포함된 이미지 추출(토큰 효율적), 스캔된 페이지는 전체 페이지 PNG로 렌더링. DOCX/PPTX 포함 이미지 추출. 다중 턴 비전 지속성. 미리 빌드된 샌드박스 이미지(`Dockerfile.sandbox`). `.pages/` 사이드카를 사용한 캐시된 페이지 렌더링.~~ *(v0.8.2에서 배포됨)*
+- [x] ~~**범용 문서 변환 (`convert_to_markdown` + OCR)** — Microsoft MarkItDown을 래핑하는 내장 에이전트 도구로, 모든 에이전트에서 기본적으로 사용 가능. PDF, Word, Excel, PowerPoint, HTML, JSON, CSV, XML, ZIP, EPUB, Outlook .msg, 이미지, 오디오, YouTube URL 및 데이터 URI를 대화 내에서 깨끗한 Markdown으로 변환. Office 파일의 포함된 이미지 및 스캔된 PDF 페이지는 공식 `markitdown-ocr` 플러그인을 사용하여 워크스페이스의 비전 가능 LLM(DB 우선, ENV 폴백)을 통해 자동으로 OCR됩니다. 동일한 변환 커널은 RAG 수집 파이프라인에서 공유되므로 채팅 시간 변환 및 지식 기반 수집은 바이트 동일 Markdown을 생성합니다. 비OpenAI 제공자(Claude, Gemini, Bedrock, Azure)는 모든 FIM One LLM을 openai-SDK 모양의 클라이언트로 제시한 다음 LiteLLM을 통해 라우팅하는 `LiteLLMOpenAIShim`을 통해 투명하게 지원됩니다. 제로 회귀 폴백: 비전 모델을 사용할 수 없을 때, 텍스트 전용 추출은 이전과 정확히 동일하게 계속됩니다.~~ *(v0.8.3에서 배포됨)*
+- [ ] **세션 간 파일 관리**: 파일 브라우저
 #### Prompt Cache + Reasoning Follow-ups (Batch A MVPs에서)
 
 이 항목들은 Batch A에서 배포된 부분 작업(Conversation Recovery, System Prompt Registry, Thinking Blocks)을 완성하고 캐시 범위를 남은 제공자 계열로 확장합니다.

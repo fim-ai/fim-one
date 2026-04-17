@@ -10,9 +10,11 @@ description: "FIM One 的所有重要更改。"
 
 ## [未发布]
 
-### Added
+### 新增
 
-- **信创数据库支持**：Database Connector 现在列出了 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦），与 PostgreSQL/MySQL 并列。KingbaseES 和 HighGo 与 PG 兼容，复用 `asyncpg` 无需额外依赖；DM8 使用官方 `dmPython` 供应商 wheel。独立的 `scripts/test_xinchuang_dbs.py` 脚本让运维人员可以从 CLI 验证实时连接。
+- **信创数据库支持**：数据库连接器现在列出 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦），与 PostgreSQL/MySQL 并列。KingbaseES 和 HighGo 与 PG 兼容，复用 `asyncpg` 无需额外依赖；DM8 使用官方 `dmPython` 供应商 wheel。独立的 `scripts/test_xinchuang_dbs.py` 让运维人员从 CLI 验证实时连接。
+- **飞书频道 + IM 确认门控**：新的 `Channel` 资源类型（组织范围，凭证静态加密）让组织连接飞书应用用于出站消息。标记为 `requires_confirmation=True` 的工具现在向配置的飞书群组发送 Approve/Reject 交互卡片，而不仅在门户中显示确认对话框——群组中任何授权成员都可以直接从飞书批准或拒绝。涵盖设置 → 频道管理 UI（列表、创建/编辑含脏状态保护、详情含可复制回调 URL、测试发送）、CRUD API（`/api/channels`）和飞书事件回调端点（`/api/channels/{id}/callback`），支持签名验证和 URL 挑战。v0.9 IM 频道集成路线图项的第一步，提前交付用于 2026-04-24 路演。
+- **智能体 Hook 系统（骨架）**：`src/fim_one/core/hooks/` 中新的 `PreToolUseHook` / `PostToolUseHook` 抽象让确定性逻辑在 LLM 循环外运行——FeishuGateHook 是第一个具体实现，附加到确认门控流程。完整的 hook 生命周期 + 用户定义的 YAML hook 仍在 v0.9 范围内。
 
 ### 已更改
 
