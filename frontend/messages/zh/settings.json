@@ -9,7 +9,8 @@
     "credentials": "凭证",
     "usage": "使用情况",
     "notifications": "通知",
-    "subscriptions": "订阅"
+    "subscriptions": "订阅",
+    "channels": "频道"
   },
   "general": {
     "profileTitle": "个人资料",

@@ -1,0 +1,118 @@
+{
+  "title": "频道",
+  "description": "连接外部消息平台以接收来自智能体的通知和交互操作。",
+  "docsLink": "查看频道文档 →",
+  "create": "新建频道",
+  "empty": {
+    "title": "暂无频道",
+    "description": "连接飞书群组或其他消息平台以推送智能体通知并接收卡片操作。",
+    "cta": "连接您的第一个频道"
+  },
+  "types": {
+    "feishu": "飞书",
+    "wecom": "企业微信",
+    "slack": "Slack",
+    "teams": "Microsoft Teams"
+  },
+  "columns": {
+    "name": "名称",
+    "type": "类型",
+    "chat": "聊天",
+    "status": "状态",
+    "updated": "最后更新"
+  },
+  "noChat": "—",
+  "status": {
+    "enabled": "已启用",
+    "disabled": "已禁用"
+  },
+  "orgSelector": {
+    "label": "组织",
+    "placeholder": "选择一个组织",
+    "loadFailed": "加载组织失败",
+    "noOrgs": "配置频道前，您需要创建或加入一个组织。",
+    "goToOrgs": "前往组织"
+  },
+  "form": {
+    "createTitle": "新建频道",
+    "editTitle": "编辑频道",
+    "createDescription": "配置一个消息频道，以便您的智能体可以发送通知并接收交互操作。",
+    "editDescription": "更新此频道的配置。留空的密钥字段将保持其当前值。",
+    "type": "频道类型",
+    "typePlaceholder": "选择频道类型",
+    "name": "频道名称",
+    "namePlaceholder": "例如 运维团队 - 飞书",
+    "nameRequired": "请输入名称。",
+    "sectionGeneral": "常规",
+    "sectionFeishu": "飞书凭证",
+    "sectionFeishuDescription": "在飞书开放平台中创建应用并将其凭证复制到下方。",
+    "app_id": "应用 ID",
+    "app_id_placeholder": "cli_xxxxxxxxxxxx",
+    "app_id_required": "应用 ID 为必填项。",
+    "app_secret": "应用密钥",
+    "app_secret_placeholder": "您的应用密钥",
+    "app_secret_edit_placeholder": "已配置 - 留空以保持不变",
+    "app_secret_required": "应用密钥为必填项。",
+    "chat_id": "聊天 ID",
+    "chat_id_placeholder": "oc_xxxxxxxxxxxx",
+    "chat_id_hint": "粘贴智能体应该发布到的飞书群组的 open_chat_id。",
+    "chat_id_required": "Chat ID 是必需的。",
+    "verification_token_edit_placeholder": "已配置 - 留空以保持",
+    "verification_token_required": "验证token是必需的。",
+    "encrypt_key": "加密密钥（可选）",
+    "encrypt_key_placeholder": "仅在启用事件加密时需要",
+    "encrypt_key_edit_placeholder": "已配置 - 留空以保持",
+    "pickChat": "从群组列表中选择",
+    "pickChatComingSoon": "群组选择器即将推出 - 目前请直接粘贴聊天 ID。",
+    "verification_token": "Verification Token",
+    "verification_token_placeholder": "From Feishu 'Events & Callbacks' page"
+  },
+  "discard": {
+    "title": "放弃未保存的更改？",
+    "description": "您有未保存的输入。确定要关闭吗？",
+    "confirm": "放弃并关闭"
+  },
+  "details": {
+    "title": "频道详情",
+    "callbackUrlLabel": "回调 URL",
+    "callbackUrlHint": "在平台的 webhook 页面上注册此 URL。该 URL 是公开的；签名请求包含仅平台知道的共享密钥。",
+    "copyUrl": "复制 URL",
+    "chatIdLabel": "聊天 ID",
+    "chatNameLabel": "聊天名称",
+    "appIdLabel": "应用 ID",
+    "secretsConfigured": "密钥已配置",
+    "secretsMissing": "密钥缺失",
+    "howTo": "如何完成设置",
+    "step1": "复制上面的回调 URL。",
+    "step2": "打开飞书开放平台 -> 事件与回调，粘贴 URL。",
+    "step3": "完成挑战握手（FIM One 自动响应）。",
+    "step4": "订阅 card.action.trigger 事件，以便按钮点击到达您的智能体。",
+    "testSend": "发送测试消息",
+    "testing": "发送中...",
+    "copyToastSuccess": "回调 URL 已复制",
+    "copyToastFailed": "复制失败。请手动复制 URL。"
+  },
+  "actions": {
+    "viewDetails": "查看详情",
+    "edit": "编辑配置",
+    "test": "发送测试消息",
+    "enable": "启用",
+    "disable": "禁用",
+    "delete": "删除"
+  },
+  "messages": {
+    "created": "频道已创建",
+    "updated": "频道已更新",
+    "deleted": "频道已删除",
+    "enabled": "频道已启用",
+    "disabled": "频道已禁用",
+    "testSentWithChat": "测试消息已发送到 {chat}",
+    "testSent": "测试消息已发送",
+    "testFailed": "测试消息发送失败：{error}",
+    "loadFailed": "加载频道失败"
+  },
+  "deleteDialog": {
+    "title": "删除频道？",
+    "description": "这将永久删除频道 \"{name}\"。发送到此频道的智能体将停止传递消息。此操作无法撤销。"
+  }
+}

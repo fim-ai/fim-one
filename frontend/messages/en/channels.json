@@ -1,0 +1,129 @@
+{
+  "title": "Channels",
+  "description": "Connect external messaging platforms to receive notifications and interactive actions from your agents.",
+  "docsLink": "View the Channels documentation →",
+
+  "create": "New Channel",
+  "empty": {
+    "title": "No channels yet",
+    "description": "Connect a Feishu group or other messaging platform to push agent notifications and receive card actions.",
+    "cta": "Connect your first channel"
+  },
+
+  "types": {
+    "feishu": "Feishu",
+    "wecom": "WeCom",
+    "slack": "Slack",
+    "teams": "Microsoft Teams"
+  },
+
+  "columns": {
+    "name": "Name",
+    "type": "Type",
+    "chat": "Chat",
+    "status": "Status",
+    "updated": "Last updated"
+  },
+  "noChat": "—",
+
+  "status": {
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+
+  "orgSelector": {
+    "label": "Organization",
+    "placeholder": "Select an organization",
+    "loadFailed": "Failed to load organizations",
+    "noOrgs": "You need to create or join an organization before configuring channels.",
+    "goToOrgs": "Go to Organizations"
+  },
+
+  "form": {
+    "createTitle": "New Channel",
+    "editTitle": "Edit Channel",
+    "createDescription": "Configure a messaging channel so your agents can send notifications and receive interactive actions.",
+    "editDescription": "Update this channel's configuration. Secret fields left blank will keep their current values.",
+    "type": "Channel Type",
+    "typePlaceholder": "Select a channel type",
+    "name": "Channel Name",
+    "namePlaceholder": "e.g. Ops Team - Feishu",
+    "nameRequired": "Please enter a name.",
+    "sectionGeneral": "General",
+    "sectionFeishu": "Feishu Credentials",
+    "sectionFeishuDescription": "Create an app in the Feishu Open Platform and copy its credentials below.",
+    "app_id": "App ID",
+    "app_id_placeholder": "cli_xxxxxxxxxxxx",
+    "app_id_required": "App ID is required.",
+    "app_secret": "App Secret",
+    "app_secret_placeholder": "Your app secret",
+    "app_secret_edit_placeholder": "Configured - leave blank to keep",
+    "app_secret_required": "App Secret is required.",
+    "chat_id": "Chat ID",
+    "chat_id_placeholder": "oc_xxxxxxxxxxxx",
+    "chat_id_hint": "Paste the open_chat_id of the Feishu group the agent should post into.",
+    "chat_id_required": "Chat ID is required.",
+    "verification_token": "Verification Token",
+    "verification_token_placeholder": "From Feishu 'Events & Callbacks' page",
+    "verification_token_edit_placeholder": "Configured - leave blank to keep",
+    "verification_token_required": "Verification Token is required.",
+    "encrypt_key": "Encrypt Key (optional)",
+    "encrypt_key_placeholder": "Only required if event encryption is enabled",
+    "encrypt_key_edit_placeholder": "Configured - leave blank to keep",
+    "pickChat": "Pick from group list",
+    "pickChatComingSoon": "Group picker is coming soon - for now paste the chat ID directly."
+  },
+
+  "discard": {
+    "title": "Discard unsaved changes?",
+    "description": "You have unsaved input. Are you sure you want to close?",
+    "confirm": "Discard & close"
+  },
+
+  "details": {
+    "title": "Channel Details",
+    "callbackUrlLabel": "Callback URL",
+    "callbackUrlHint": "Register this URL on the platform's webhook page. The URL is public; the signed request contains a shared secret only the platform knows.",
+    "copyUrl": "Copy URL",
+    "chatIdLabel": "Chat ID",
+    "chatNameLabel": "Chat Name",
+    "appIdLabel": "App ID",
+    "secretsConfigured": "Secrets configured",
+    "secretsMissing": "Secrets missing",
+    "howTo": "How to finish setup",
+    "step1": "Copy the Callback URL above.",
+    "step2": "Open Feishu Open Platform -> Events & Callbacks and paste the URL.",
+    "step3": "Complete the challenge handshake (FIM One responds automatically).",
+    "step4": "Subscribe to the card.action.trigger event so button clicks reach your agent.",
+    "testSend": "Send Test Message",
+    "testing": "Sending...",
+    "copyToastSuccess": "Callback URL copied",
+    "copyToastFailed": "Copy failed. Please copy the URL manually."
+  },
+
+  "actions": {
+    "viewDetails": "View Details",
+    "edit": "Edit Configuration",
+    "test": "Send Test Message",
+    "enable": "Enable",
+    "disable": "Disable",
+    "delete": "Delete"
+  },
+
+  "messages": {
+    "created": "Channel created",
+    "updated": "Channel updated",
+    "deleted": "Channel deleted",
+    "enabled": "Channel enabled",
+    "disabled": "Channel disabled",
+    "testSentWithChat": "Test message sent to {chat}",
+    "testSent": "Test message sent",
+    "testFailed": "Test message failed: {error}",
+    "loadFailed": "Failed to load channels"
+  },
+
+  "deleteDialog": {
+    "title": "Delete channel?",
+    "description": "This permanently removes the channel \"{name}\". Agents that post to this channel will stop delivering messages. This action cannot be undone."
+  }
+}

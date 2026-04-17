@@ -1,0 +1,118 @@
+{
+  "title": "チャネル",
+  "description": "外部メッセージングプラットフォームを接続して、エージェントからの通知とインタラクティブアクションを受け取ります。",
+  "docsLink": "チャネルドキュメントを表示 →",
+  "create": "新しいチャネル",
+  "empty": {
+    "title": "チャネルがまだありません",
+    "description": "Feishuグループまたは他のメッセージングプラットフォームを接続して、エージェント通知をプッシュしカードアクションを受け取ります。",
+    "cta": "最初のチャネルを接続"
+  },
+  "types": {
+    "feishu": "Feishu",
+    "wecom": "WeCom",
+    "slack": "Slack",
+    "teams": "Microsoft Teams"
+  },
+  "columns": {
+    "name": "名前",
+    "type": "タイプ",
+    "chat": "チャット",
+    "status": "ステータス",
+    "updated": "最終更新"
+  },
+  "noChat": "—",
+  "status": {
+    "enabled": "有効",
+    "disabled": "無効"
+  },
+  "orgSelector": {
+    "label": "組織",
+    "placeholder": "組織を選択",
+    "loadFailed": "組織の読み込みに失敗しました",
+    "noOrgs": "チャネルを設定する前に、組織を作成または参加する必要があります。",
+    "goToOrgs": "組織に移動"
+  },
+  "form": {
+    "createTitle": "新しいチャネル",
+    "editTitle": "チャネルを編集",
+    "createDescription": "エージェントが通知を送信し、インタラクティブアクションを受け取るためのメッセージングチャネルを設定します。",
+    "editDescription": "このチャネルの設定を更新します。空白のままにされたシークレットフィールドは現在の値を保持します。",
+    "type": "チャネルタイプ",
+    "typePlaceholder": "チャネルタイプを選択",
+    "name": "チャネル名",
+    "namePlaceholder": "例：Ops Team - Feishu",
+    "nameRequired": "名前を入力してください。",
+    "sectionGeneral": "一般",
+    "sectionFeishu": "Feishu認証情報",
+    "sectionFeishuDescription": "Feishu Open Platformでアプリを作成し、その認証情報を以下にコピーします。",
+    "app_id": "アプリID",
+    "app_id_placeholder": "cli_xxxxxxxxxxxx",
+    "app_id_required": "App IDが必要です。",
+    "app_secret": "アプリシークレット",
+    "app_secret_placeholder": "アプリシークレット",
+    "app_secret_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
+    "app_secret_required": "App Secretが必要です。",
+    "chat_id": "チャットID",
+    "chat_id_placeholder": "oc_xxxxxxxxxxxx",
+    "chat_id_hint": "エージェントが投稿すべきFeishuグループのopen_chat_idを貼り付けます。",
+    "chat_id_required": "Chat IDが必要です。",
+    "verification_token": "検証トークン",
+    "verification_token_placeholder": "Feishuの「イベント＆コールバック」ページから",
+    "verification_token_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
+    "verification_token_required": "検証トークンが必要です。",
+    "encrypt_key": "暗号化キー（オプション）",
+    "encrypt_key_placeholder": "イベント暗号化が有効な場合のみ必須",
+    "encrypt_key_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
+    "pickChat": "グループリストから選択",
+    "pickChatComingSoon": "グループピッカーは近日公開予定です。現在はchat IDを直接貼り付けてください。"
+  },
+  "discard": {
+    "title": "保存されていない変更を破棄しますか？",
+    "description": "保存されていない入力があります。本当に閉じますか？",
+    "confirm": "破棄して閉じる"
+  },
+  "details": {
+    "title": "チャネル詳細",
+    "callbackUrlLabel": "コールバックURL",
+    "callbackUrlHint": "このURLをプラットフォームのウェブフックページに登録します。URLは公開されていますが、署名されたリクエストにはプラットフォームのみが知っている共有シークレットが含まれています。",
+    "copyUrl": "URLをコピー",
+    "chatIdLabel": "チャットID",
+    "chatNameLabel": "チャット名",
+    "appIdLabel": "アプリID",
+    "secretsConfigured": "シークレットが設定されました",
+    "secretsMissing": "シークレットが不足しています",
+    "howTo": "セットアップを完了する方法",
+    "step1": "上記のコールバックURLをコピーします。",
+    "step2": "Feishu Open Platform → イベント＆コールバックを開き、URLを貼り付けます。",
+    "step3": "チャレンジハンドシェイクを完了します（FIM Oneが自動的に応答します）。",
+    "step4": "card.action.trigger イベントをサブスクライブして、ボタンクリックがエージェントに到達するようにします。",
+    "testSend": "テストメッセージを送信",
+    "testing": "送信中...",
+    "copyToastSuccess": "コールバックURL をコピーしました",
+    "copyToastFailed": "コピーに失敗しました。URLを手動でコピーしてください。"
+  },
+  "actions": {
+    "viewDetails": "詳細を表示",
+    "edit": "設定を編集",
+    "test": "テストメッセージを送信",
+    "enable": "有効にする",
+    "disable": "無効にする",
+    "delete": "削除"
+  },
+  "messages": {
+    "created": "チャネルが作成されました",
+    "updated": "チャネルが更新されました",
+    "deleted": "チャネルが削除されました",
+    "enabled": "チャネルが有効になりました",
+    "disabled": "チャネルが無効になりました",
+    "testSentWithChat": "テストメッセージが {chat} に送信されました",
+    "testSent": "テストメッセージが送信されました",
+    "testFailed": "テストメッセージの送信に失敗しました: {error}",
+    "loadFailed": "チャネルの読み込みに失敗しました"
+  },
+  "deleteDialog": {
+    "title": "チャネルを削除しますか?",
+    "description": "チャネル \"{name}\" を永久に削除します。このチャネルに投稿するエージェントはメッセージの配信を停止します。この操作は取り消せません。"
+  }
+}

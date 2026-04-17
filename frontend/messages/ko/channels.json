@@ -1,0 +1,118 @@
+{
+  "title": "채널",
+  "description": "외부 메시징 플랫폼을 연결하여 에이전트로부터 알림 및 대화형 작업을 받습니다.",
+  "docsLink": "채널 문서 보기 →",
+  "create": "새 채널",
+  "empty": {
+    "title": "아직 채널이 없습니다",
+    "description": "Feishu 그룹 또는 다른 메시징 플랫폼을 연결하여 에이전트 알림을 푸시하고 카드 작업을 받습니다.",
+    "cta": "첫 번째 채널 연결"
+  },
+  "types": {
+    "feishu": "Feishu",
+    "wecom": "WeCom",
+    "slack": "Slack",
+    "teams": "Microsoft Teams"
+  },
+  "columns": {
+    "name": "이름",
+    "type": "유형",
+    "chat": "채팅",
+    "status": "상태",
+    "updated": "마지막 업데이트"
+  },
+  "noChat": "—",
+  "status": {
+    "enabled": "활성화됨",
+    "disabled": "비활성화됨"
+  },
+  "orgSelector": {
+    "label": "조직",
+    "placeholder": "조직 선택",
+    "loadFailed": "조직을 로드하지 못했습니다",
+    "noOrgs": "채널을 구성하기 전에 조직을 생성하거나 가입해야 합니다.",
+    "goToOrgs": "조직으로 이동"
+  },
+  "form": {
+    "createTitle": "새 채널",
+    "editTitle": "채널 편집",
+    "createDescription": "에이전트가 알림을 보내고 대화형 작업을 받을 수 있도록 메시징 채널을 구성합니다.",
+    "editDescription": "이 채널의 구성을 업데이트합니다. 비워둔 비밀 필드는 현재 값을 유지합니다.",
+    "type": "채널 유형",
+    "typePlaceholder": "채널 유형 선택",
+    "name": "채널 이름",
+    "namePlaceholder": "예: Ops Team - Feishu",
+    "nameRequired": "이름을 입력하세요.",
+    "sectionGeneral": "일반",
+    "sectionFeishu": "Feishu 자격증명",
+    "sectionFeishuDescription": "Feishu Open Platform에서 앱을 생성하고 아래에 자격증명을 복사합니다.",
+    "app_id": "앱 ID",
+    "app_id_placeholder": "cli_xxxxxxxxxxxx",
+    "app_id_required": "App ID는 필수입니다.",
+    "app_secret": "앱 시크릿",
+    "app_secret_placeholder": "앱 시크릿",
+    "app_secret_edit_placeholder": "구성됨 - 유지하려면 비워두세요",
+    "app_secret_required": "App Secret은 필수입니다.",
+    "chat_id": "채팅 ID",
+    "chat_id_placeholder": "oc_xxxxxxxxxxxx",
+    "chat_id_hint": "에이전트가 게시할 Feishu 그룹의 open_chat_id를 붙여넣습니다.",
+    "chat_id_required": "Chat ID는 필수입니다.",
+    "verification_token": "검증 Token",
+    "verification_token_placeholder": "Feishu '이벤트 및 콜백' 페이지에서",
+    "verification_token_edit_placeholder": "구성됨 - 유지하려면 비워두세요",
+    "verification_token_required": "검증 Token은 필수입니다.",
+    "encrypt_key": "암호화 키 (선택사항)",
+    "encrypt_key_placeholder": "이벤트 암호화가 활성화된 경우에만 필요",
+    "encrypt_key_edit_placeholder": "구성됨 - 유지하려면 비워두세요",
+    "pickChat": "그룹 목록에서 선택",
+    "pickChatComingSoon": "그룹 선택기가 곧 출시될 예정입니다 - 지금은 chat ID를 직접 붙여넣으세요."
+  },
+  "discard": {
+    "title": "저장하지 않은 변경사항을 버릴까요?",
+    "description": "저장하지 않은 입력이 있습니다. 정말 닫으시겠습니까?",
+    "confirm": "버리고 닫기"
+  },
+  "details": {
+    "title": "채널 세부정보",
+    "callbackUrlLabel": "콜백 URL",
+    "callbackUrlHint": "플랫폼의 웹훅 페이지에 이 URL을 등록합니다. URL은 공개이지만 서명된 요청에는 플랫폼만 알고 있는 공유 시크릿이 포함됩니다.",
+    "copyUrl": "URL 복사",
+    "chatIdLabel": "채팅 ID",
+    "chatNameLabel": "채팅 이름",
+    "appIdLabel": "앱 ID",
+    "secretsConfigured": "시크릿 구성됨",
+    "secretsMissing": "시크릿 누락",
+    "howTo": "설정을 완료하는 방법",
+    "step1": "위의 콜백 URL을 복사합니다.",
+    "step2": "Feishu Open Platform -> 이벤트 및 콜백을 열고 URL을 붙여넣습니다.",
+    "step3": "챌린지 핸드셰이크를 완료합니다 (FIM One이 자동으로 응답합니다).",
+    "step4": "card.action.trigger 이벤트를 구독하여 버튼 클릭이 에이전트에 도달하도록 합니다.",
+    "testSend": "테스트 메시지 전송",
+    "testing": "전송 중...",
+    "copyToastSuccess": "콜백 URL 복사됨",
+    "copyToastFailed": "복사 실패. URL을 수동으로 복사해주세요."
+  },
+  "actions": {
+    "viewDetails": "세부정보 보기",
+    "edit": "구성 편집",
+    "test": "테스트 메시지 전송",
+    "enable": "활성화",
+    "disable": "비활성화",
+    "delete": "삭제"
+  },
+  "messages": {
+    "created": "채널 생성됨",
+    "updated": "채널 업데이트됨",
+    "deleted": "채널 삭제됨",
+    "enabled": "채널 활성화됨",
+    "disabled": "채널 비활성화됨",
+    "testSentWithChat": "{chat}에 테스트 메시지 전송됨",
+    "testSent": "테스트 메시지 전송됨",
+    "testFailed": "테스트 메시지 전송 실패: {error}",
+    "loadFailed": "채널 로드 실패"
+  },
+  "deleteDialog": {
+    "title": "채널을 삭제하시겠습니까?",
+    "description": "이 작업은 \"{name}\" 채널을 영구적으로 제거합니다. 이 채널에 메시지를 게시하는 에이전트는 메시지 전달을 중지합니다. 이 작업은 취소할 수 없습니다."
+  }
+}

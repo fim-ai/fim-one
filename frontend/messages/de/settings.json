@@ -9,7 +9,8 @@
     "credentials": "Anmeldedaten",
     "usage": "Nutzung",
     "notifications": "Benachrichtigungen",
-    "subscriptions": "Abonnements"
+    "subscriptions": "Abonnements",
+    "channels": "Kanäle"
   },
   "general": {
     "profileTitle": "Profil",

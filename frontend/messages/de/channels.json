@@ -1,0 +1,118 @@
+{
+  "title": "Kanäle",
+  "description": "Verbinden Sie externe Messaging-Plattformen, um Benachrichtigungen und interaktive Aktionen von Ihren Agenten zu erhalten.",
+  "docsLink": "Kanäle-Dokumentation anzeigen →",
+  "create": "Neuer Kanal",
+  "empty": {
+    "title": "Noch keine Kanäle",
+    "description": "Verbinden Sie eine Feishu-Gruppe oder eine andere Messaging-Plattform, um Agent-Benachrichtigungen zu versenden und Kartenaktion zu empfangen.",
+    "cta": "Verbinden Sie Ihren ersten Kanal"
+  },
+  "types": {
+    "feishu": "Feishu",
+    "wecom": "WeCom",
+    "slack": "Slack",
+    "teams": "Microsoft Teams"
+  },
+  "columns": {
+    "name": "Name",
+    "type": "Typ",
+    "chat": "Chat",
+    "status": "Status",
+    "updated": "Zuletzt aktualisiert"
+  },
+  "noChat": "—",
+  "status": {
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert"
+  },
+  "orgSelector": {
+    "label": "Organisation",
+    "placeholder": "Wählen Sie eine Organisation",
+    "loadFailed": "Organisationen konnten nicht geladen werden",
+    "noOrgs": "Sie müssen eine Organisation erstellen oder beitreten, bevor Sie Kanäle konfigurieren können.",
+    "goToOrgs": "Zu Organisationen"
+  },
+  "form": {
+    "createTitle": "Neuer Kanal",
+    "editTitle": "Kanal bearbeiten",
+    "createDescription": "Konfigurieren Sie einen Messaging-Kanal, damit Ihre Agenten Benachrichtigungen versenden und interaktive Aktionen empfangen können.",
+    "editDescription": "Aktualisieren Sie die Konfiguration dieses Kanals. Leere Geheimfelder behalten ihre aktuellen Werte.",
+    "type": "Kanaltyp",
+    "typePlaceholder": "Wählen Sie einen Kanaltyp",
+    "name": "Kanalname",
+    "namePlaceholder": "z. B. Ops Team - Feishu",
+    "nameRequired": "Bitte geben Sie einen Namen ein.",
+    "sectionGeneral": "Allgemein",
+    "sectionFeishu": "Feishu-Anmeldedaten",
+    "sectionFeishuDescription": "Erstellen Sie eine App auf der Feishu Open Platform und kopieren Sie ihre Anmeldedaten unten.",
+    "app_id": "App-ID",
+    "app_id_placeholder": "cli_xxxxxxxxxxxx",
+    "app_id_required": "App-ID ist erforderlich.",
+    "app_secret": "App-Geheimnis",
+    "app_secret_placeholder": "Ihr App-Geheimnis",
+    "app_secret_edit_placeholder": "Konfiguriert - leer lassen zum Behalten",
+    "app_secret_required": "App-Geheimnis ist erforderlich.",
+    "chat_id": "Chat-ID",
+    "chat_id_placeholder": "oc_xxxxxxxxxxxx",
+    "chat_id_hint": "Fügen Sie die open_chat_id der Feishu-Gruppe ein, in die der Agent posten soll.",
+    "chat_id_required": "Chat-ID ist erforderlich.",
+    "verification_token": "Verifizierungstoken",
+    "verification_token_placeholder": "Von der Feishu-Seite 'Events & Callbacks'",
+    "verification_token_edit_placeholder": "Konfiguriert - leer lassen zum Behalten",
+    "verification_token_required": "Verifizierungstoken ist erforderlich.",
+    "encrypt_key": "Verschlüsselungsschlüssel (optional)",
+    "encrypt_key_placeholder": "Nur erforderlich, wenn Event-Verschlüsselung aktiviert ist",
+    "encrypt_key_edit_placeholder": "Konfiguriert - leer lassen zum Behalten",
+    "pickChat": "Aus Gruppenliste auswählen",
+    "pickChatComingSoon": "Die Gruppenauswahl kommt bald - fügen Sie vorerst die Chat-ID direkt ein."
+  },
+  "discard": {
+    "title": "Ungespeicherte Änderungen verwerfen?",
+    "description": "Sie haben ungespeicherte Eingaben. Möchten Sie wirklich schließen?",
+    "confirm": "Verwerfen und schließen"
+  },
+  "details": {
+    "title": "Kanaldetails",
+    "callbackUrlLabel": "Callback-URL",
+    "callbackUrlHint": "Registrieren Sie diese URL auf der Webhook-Seite der Plattform. Die URL ist öffentlich; die signierte Anfrage enthält ein gemeinsames Geheimnis, das nur die Plattform kennt.",
+    "copyUrl": "URL kopieren",
+    "chatIdLabel": "Chat-ID",
+    "chatNameLabel": "Chat-Name",
+    "appIdLabel": "App-ID",
+    "secretsConfigured": "Geheimnisse konfiguriert",
+    "secretsMissing": "Geheimnisse fehlen",
+    "howTo": "So schließen Sie die Einrichtung ab",
+    "step1": "Kopieren Sie die obige Callback-URL.",
+    "step2": "Öffnen Sie Feishu Open Platform -> Events & Callbacks und fügen Sie die URL ein.",
+    "step3": "Schließen Sie den Challenge-Handshake ab (FIM One antwortet automatisch).",
+    "step4": "Abonnieren Sie das Ereignis card.action.trigger, damit Schaltflächenklicks Ihren Agent erreichen.",
+    "testSend": "Testnachricht senden",
+    "testing": "Wird gesendet...",
+    "copyToastSuccess": "Callback-URL kopiert",
+    "copyToastFailed": "Kopieren fehlgeschlagen. Bitte kopieren Sie die URL manuell."
+  },
+  "actions": {
+    "viewDetails": "Details anzeigen",
+    "edit": "Konfiguration bearbeiten",
+    "test": "Testnachricht senden",
+    "enable": "Aktivieren",
+    "disable": "Deaktivieren",
+    "delete": "Löschen"
+  },
+  "messages": {
+    "created": "Kanal erstellt",
+    "updated": "Kanal aktualisiert",
+    "deleted": "Kanal gelöscht",
+    "enabled": "Kanal aktiviert",
+    "disabled": "Kanal deaktiviert",
+    "testSentWithChat": "Testnachricht an {chat} gesendet",
+    "testSent": "Testnachricht gesendet",
+    "testFailed": "Testnachricht fehlgeschlagen: {error}",
+    "loadFailed": "Kanäle konnten nicht geladen werden"
+  },
+  "deleteDialog": {
+    "title": "Kanal löschen?",
+    "description": "Dies entfernt den Kanal \"{name}\" dauerhaft. Agenten, die in diesen Kanal posten, stellen die Nachrichtenübermittlung ein. Diese Aktion kann nicht rückgängig gemacht werden."
+  }
+}

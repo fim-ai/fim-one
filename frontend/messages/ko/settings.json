@@ -9,7 +9,8 @@
     "credentials": "자격증명",
     "usage": "사용량",
     "notifications": "알림",
-    "subscriptions": "구독"
+    "subscriptions": "구독",
+    "channels": "채널"
   },
   "general": {
     "profileTitle": "프로필",
