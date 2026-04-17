@@ -1,6 +1,6 @@
 """fim-one: LLM-powered Agent Runtime with dynamic DAG planning and concurrent execution."""
 
-__version__ = "0.1.0"
+__version__ = "0.8.4"
 __fim_license__ = "FIM-SAL-1.1"
 __fim_origin__ = "https://github.com/fim-ai/fim-one"
 

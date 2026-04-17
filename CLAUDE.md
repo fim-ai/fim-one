@@ -170,8 +170,11 @@ When the user asks "what's next on the roadmap?" or "接下来做什么", BEFORE
 
 1. **Archive**: move all content from `CHANGELOG [Unreleased]` → `CHANGELOG [vX.Y] (YYYY-MM-DD)`
 2. **Mark shipped**: in ROADMAP, add the date to the version heading and move it under **Shipped Versions**
-3. **Fresh start**: open a new empty `[Unreleased]` section in CHANGELOG
-4. **Then answer**: suggest the next priorities from the first unfinished planned version's `- [ ]` items
+3. **Bump version number**: update BOTH `pyproject.toml` (`version = "X.Y.Z"`) AND `src/fim_one/__init__.py` (`__version__ = "X.Y.Z"`) to match the newly-shipped roadmap version. These two files are the source of truth for `/api/version` (powering the frontend About dialog) — they MUST stay in lockstep with the ROADMAP's latest "Shipped" heading. Never let them drift (the repo once sat at `0.1.0` while ROADMAP was on `v0.8.4`).
+4. **Fresh start**: open a new empty `[Unreleased]` section in CHANGELOG
+5. **Then answer**: suggest the next priorities from the first unfinished planned version's `- [ ]` items
+
+**Version Sync Invariant (applies at ALL times, not just at cut-release)**: `pyproject.toml::version`, `src/fim_one/__init__.py::__version__`, and the highest-numbered version under ROADMAP **Shipped Versions** must always be equal. If you notice drift at any point during a session, fix it in the same commit as the work that surfaced it.
 
 <!-- GT I18N RULES START -->
 
