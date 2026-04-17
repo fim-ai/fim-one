@@ -14,6 +14,10 @@ description: "FIM One 的所有重要更改。"
 
 - 对话恢复：合成 tool_result 行现在在中断的轮次后持久化；客户端可以通过 `POST /chat/resume` 使用最后看到的游标恢复断开连接的 SSE 流。
 
+### 已更改
+
+- 系统提示词现在使用带有 Anthropic 提示词缓存断点的记忆化部分注册表，在稳定前缀上进行缓存 — 对于 Claude 模型，缓存前缀的每轮 token 成本降低约 60-80%。ReAct JSON 模式、原生函数调用模式和合成对于支持缓存的提供商（Claude、Bedrock Anthropic、Vertex Claude）都会发出两条系统消息，对于其他所有提供商则回退到单个连接的消息。
+
 ### 已修复
 
 - 思考/推理 token 现在在多轮对话中持久化 — Anthropic `signature` 字段已捕获并根据 API 要求重放。

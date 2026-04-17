@@ -14,6 +14,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - Conversation recovery: synthetic tool_result rows now persist after an interrupted turn; clients can resume a disconnected SSE stream via `POST /chat/resume` with the last-seen cursor.
 
+### Changed
+
+- System prompts now use a memoized section registry with Anthropic prompt-caching breakpoints on the stable prefix — reduces per-turn token cost ~60-80% on cached prefix for Claude models. ReAct JSON mode, native function-calling mode, and synthesis all emit two system messages for cache-capable providers (Claude, Bedrock Anthropic, Vertex Claude) and fall back to a single concatenated message for every other provider.
+
 ### Fixed
 
 - Thinking/reasoning tokens now persist across multi-turn conversations — Anthropic `signature` field is captured and replayed per API requirements.

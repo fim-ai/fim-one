@@ -14,6 +14,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 - Conversation recovery: Synthetische tool_result Zeilen bleiben jetzt nach einem unterbrochenen Turn bestehen; Clients können einen unterbrochenen SSE-Stream über `POST /chat/resume` mit dem zuletzt gesehenen Cursor fortsetzen.
 
+### Geändert
+
+- System-Prompts verwenden nun eine memoized Section Registry mit Anthropic Prompt-Caching Breakpoints auf dem stabilen Präfix — reduziert die Token-Kosten pro Turn um ~60-80% auf dem gecachten Präfix für Claude-Modelle. ReAct JSON-Modus, nativer Function-Calling-Modus und Synthese geben zwei System-Nachrichten für Cache-fähige Provider (Claude, Bedrock Anthropic, Vertex Claude) aus und fallen auf eine einzelne verkettete Nachricht für alle anderen Provider zurück.
+
 ### Behoben
 
 - Thinking/reasoning tokens bleiben jetzt über mehrteilige Gespräche hinweg erhalten — Das Anthropic-Feld `signature` wird erfasst und gemäß API-Anforderungen erneut abgespielt.

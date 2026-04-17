@@ -38,6 +38,15 @@ class ChatMessage:
     # mutated.  Captured from the LiteLLM response and persisted to DB so
     # multi-turn conversations remain valid.
     signature: str | None = None
+    # Anthropic prompt-caching breakpoint.  When set (typically to
+    # ``{"type": "ephemeral"}``), LiteLLM forwards the field to Anthropic
+    # so every token **up to and including** this message becomes part of
+    # the cached prefix — subsequent requests that repeat the same prefix
+    # pay ~10% of the normal input-token cost for cached tokens.  Only
+    # meaningful on Anthropic-family endpoints; non-Anthropic providers
+    # should never receive this field (see
+    # :func:`fim_one.core.prompt.is_cache_capable`).
+    cache_control: dict[str, str] | None = None
 
     # ------------------------------------------------------------------
     # Vision helpers
@@ -102,6 +111,15 @@ class ChatMessage:
             d["reasoning_content"] = self.reasoning_content
         if self.signature:
             d["signature"] = self.signature
+        # Anthropic prompt-caching breakpoint — LiteLLM forwards this
+        # field at the message level for system messages and at the
+        # content-block level for user/assistant messages.  Only include
+        # when explicitly set; LiteLLM drops unknown params via
+        # ``litellm.drop_params=True`` for providers that don't
+        # understand ``cache_control``, but explicit caller-side gating
+        # (see ``is_cache_capable``) prevents vendor-proxy edge cases.
+        if self.cache_control is not None:
+            d["cache_control"] = self.cache_control
         return d
 
 

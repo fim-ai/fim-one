@@ -30,6 +30,7 @@ from fim_one.core.model.retry import is_context_overflow
 from fim_one.core.model.structured import StructuredCallResult, structured_llm_call
 from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.model.usage import UsageTracker
+from fim_one.core.prompt import is_cache_capable
 from fim_one.core.tool import ToolRegistry
 from fim_one.core.utils import extract_json
 
@@ -139,10 +140,6 @@ You are FIM One, an AI-powered assistant. \
 You solve tasks by reasoning step-by-step and using tools when necessary. \
 Never claim to be any other AI — you are FIM One.
 
-Current date and time: {current_datetime} (the current year is {current_year}). \
-When searching for up-to-date information, always use the current year \
-({current_year}) in your queries, NOT a previous year.
-
 You MUST respond with a single JSON object (no markdown, no extra text) in \
 one of the following two formats:
 
@@ -210,10 +207,6 @@ You are FIM One, an AI-powered assistant. \
 You solve tasks by reasoning step-by-step and using tools when necessary. \
 Never claim to be any other AI — you are FIM One.
 
-Current date and time: {current_datetime} (the current year is {current_year}). \
-When searching for up-to-date information, always use the current year \
-({current_year}) in your queries, NOT a previous year.
-
 Guidelines:
 - Always think carefully before acting.
 - Use tools only when the task requires external information or computation.
@@ -241,6 +234,16 @@ file constitutes hallucination and is strictly forbidden.
 - If you called the same tool with identical arguments twice and got the same result, change approach or finalize.
 - When a tool returns exit code 1 for grep/diff/test, this means "no match/difference/false" — NOT an error.
 """
+
+# Dynamic suffix appended **after** the cacheable prefix.  Kept small so
+# only the per-call wall-clock-sensitive bits land in the non-cached
+# portion of the system prompt.
+_DATETIME_CONTEXT_TEMPLATE = (
+    "Current date and time: {current_datetime} "
+    "(the current year is {current_year}). "
+    "When searching for up-to-date information, always use the current year "
+    "({current_year}) in your queries, NOT a previous year."
+)
 
 
 class ReActAgent:
@@ -606,18 +609,40 @@ class ReActAgent:
                 "fence — it will be rendered by the UI and the user cannot copy the source.",
             ]
         )
-        if language_directive:
-            system_parts.append(f"- {language_directive}")
-
-        system_content = "\n".join(system_parts)
+        # Static prefix = identity + agent directive + generic guidelines.
+        # These are stable for the lifetime of the agent, so cache-capable
+        # providers can cache them across synthesis calls.  Dynamic
+        # suffix = per-call language directive (when set).
+        static_prefix = "\n".join(system_parts)
+        dynamic_suffix = f"- {language_directive}" if language_directive else ""
 
         tool_context = "\n".join(context_parts) if context_parts else "(no tool calls)"
         user_content = f"Question: {query}\n\nAgent execution trace:\n{tool_context}"
 
-        messages = [
-            ChatMessage(role="system", content=system_content),
-            ChatMessage(role="user", content=user_content),
-        ]
+        synthesis_model_id = getattr(self._llm, "model_id", None)
+        messages: list[ChatMessage]
+        if is_cache_capable(synthesis_model_id) and dynamic_suffix:
+            # Two-message form with a cache breakpoint on the static
+            # prefix.  Synthesis is a single-shot call, so the cache hit
+            # only pays off when the same agent is invoked repeatedly —
+            # which is exactly the common case.
+            messages = [
+                ChatMessage(
+                    role="system",
+                    content=static_prefix,
+                    cache_control={"type": "ephemeral"},
+                ),
+                ChatMessage(role="system", content=dynamic_suffix),
+                ChatMessage(role="user", content=user_content),
+            ]
+        else:
+            combined = static_prefix
+            if dynamic_suffix:
+                combined = combined + "\n" + dynamic_suffix
+            messages = [
+                ChatMessage(role="system", content=combined),
+                ChatMessage(role="user", content=user_content),
+            ]
 
         async for chunk in self._llm.stream_chat(messages):
             if chunk.delta_content:
@@ -1001,14 +1026,13 @@ class ReActAgent:
         # Measure the one-time pre-loop setup costs so they can be
         # attributed to the first turn's profiler (I.16).
         _schema_start = time.perf_counter()
-        system_prompt = self._build_system_prompt(tools=tools)
-        if image_urls:
-            system_prompt += "\n" + _VISION_CONTEXT_HINT
+        static_prefix, dynamic_suffix = self._build_system_prompt_split(tools=tools)
+        messages: list[ChatMessage] = self._emit_system_messages(
+            static_prefix,
+            dynamic_suffix,
+            vision_hint=bool(image_urls),
+        )
         _initial_schema_build = time.perf_counter() - _schema_start
-
-        messages: list[ChatMessage] = [
-            ChatMessage(role="system", content=system_prompt),
-        ]
 
         # Load history from memory.
         _initial_memory_load = 0.0
@@ -1310,10 +1334,26 @@ class ReActAgent:
             # sees updated tool descriptions on the next iteration.
             if action.tool_name == "request_tools" and not step.error:
                 with profiler.phase("tool_schema_build"):
-                    messages[0] = ChatMessage(
-                        role="system",
-                        content=self._build_system_prompt(tools=tools),
+                    new_prefix, new_suffix = self._build_system_prompt_split(
+                        tools=tools,
                     )
+                    new_system_messages = self._emit_system_messages(
+                        new_prefix,
+                        new_suffix,
+                        vision_hint=bool(image_urls),
+                    )
+                    # Replace the leading system message(s).  The
+                    # original ``_emit_system_messages`` call may have
+                    # produced 1 or 2 entries; count how many leading
+                    # ``role="system"`` messages we currently have and
+                    # swap them in-place.
+                    old_count = 0
+                    for m in messages:
+                        if m.role == "system":
+                            old_count += 1
+                        else:
+                            break
+                    messages[:old_count] = new_system_messages
                 logger.info(
                     "Rebuilt system prompt after request_tools (now %d tools)",
                     len(tools),
@@ -1399,12 +1439,12 @@ class ReActAgent:
 
         # Measure the one-time pre-loop setup costs (I.16).
         _schema_start = time.perf_counter()
-        system_prompt = self._build_system_prompt_native()
-        if image_urls:
-            system_prompt += "\n" + _VISION_CONTEXT_HINT
-        messages: list[ChatMessage] = [
-            ChatMessage(role="system", content=system_prompt),
-        ]
+        static_prefix, dynamic_suffix = self._build_system_prompt_split_native()
+        messages: list[ChatMessage] = self._emit_system_messages(
+            static_prefix,
+            dynamic_suffix,
+            vision_hint=bool(image_urls),
+        )
 
         # Load history from memory.
         _initial_memory_load = 0.0
@@ -2062,6 +2102,14 @@ class ReActAgent:
     ) -> str:
         """Build the system prompt, including descriptions of available tools.
 
+        The returned string is the **joined** form of static prefix +
+        dynamic suffix — useful for non-cache-capable providers and for
+        the ``messages[0]`` replacement path after ``request_tools``
+        refreshes the tool registry.  Cache-capable call sites should
+        prefer :meth:`_build_system_messages` to emit two separate
+        :class:`ChatMessage` objects with a cache-control breakpoint on
+        the prefix.
+
         Args:
             tools: Optional tool registry override.  When ``None``,
                 ``self._tools`` is used.
@@ -2069,40 +2117,147 @@ class ReActAgent:
         Returns:
             The full system prompt string.
         """
-        if self._system_prompt_override is not None:
-            return self._system_prompt_override
-
-        now_dt, now, year = self._get_localized_time()
-        tool_descriptions = self._format_tool_descriptions(tools=tools)
-        prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-            tool_descriptions=tool_descriptions,
-            current_datetime=now,
-            current_year=year,
-        )
-        if self._extra_instructions:
-            prompt += f"\n\nAdditional instructions:\n{self._extra_instructions}"
-        prompt = self._inject_handoff_context(prompt)
-        return prompt
+        prefix, suffix = self._build_system_prompt_split(tools=tools)
+        if not suffix:
+            return prefix
+        if not prefix:
+            return suffix
+        return prefix + "\n\n" + suffix
 
     def _build_system_prompt_native(self) -> str:
         """Build the system prompt for native function-calling mode.
+
+        See :meth:`_build_system_prompt` for the split variant used by
+        cache-capable call sites.
 
         Returns:
             The system prompt string (tool descriptions are passed via the
             ``tools`` parameter instead of being embedded in the prompt).
         """
-        if self._system_prompt_override is not None:
-            return self._system_prompt_override
+        prefix, suffix = self._build_system_prompt_split_native()
+        if not suffix:
+            return prefix
+        if not prefix:
+            return suffix
+        return prefix + "\n\n" + suffix
 
-        now_dt, now, year = self._get_localized_time()
-        prompt = _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE.format(
+    def _build_system_prompt_split(
+        self,
+        tools: ToolRegistry | None = None,
+    ) -> tuple[str, str]:
+        """Return ``(static_prefix, dynamic_suffix)`` for JSON-mode prompt.
+
+        The prefix contains identity, response format, tool descriptions,
+        extra instructions, and handoff — everything that is stable for
+        the lifetime of a ReAct run.  The suffix contains only the
+        wall-clock-sensitive datetime context, so cache-capable providers
+        can cache the prefix and re-send only the suffix on every turn.
+
+        A user-supplied ``system_prompt`` override disables the split
+        entirely (the whole string goes into the prefix).
+
+        Args:
+            tools: Optional tool registry override.
+
+        Returns:
+            ``(static_prefix, dynamic_suffix)``.
+        """
+        if self._system_prompt_override is not None:
+            return self._system_prompt_override, ""
+
+        tool_descriptions = self._format_tool_descriptions(tools=tools)
+        prefix = _SYSTEM_PROMPT_TEMPLATE.format(
+            tool_descriptions=tool_descriptions,
+        )
+        if self._extra_instructions:
+            prefix += f"\n\nAdditional instructions:\n{self._extra_instructions}"
+        prefix = self._inject_handoff_context(prefix)
+
+        suffix = self._build_datetime_suffix()
+        return prefix, suffix
+
+    def _build_system_prompt_split_native(self) -> tuple[str, str]:
+        """Return ``(static_prefix, dynamic_suffix)`` for native-tool mode."""
+        if self._system_prompt_override is not None:
+            return self._system_prompt_override, ""
+
+        prefix = _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE
+        if self._extra_instructions:
+            prefix += f"\n\nAdditional instructions:\n{self._extra_instructions}"
+        prefix = self._inject_handoff_context(prefix)
+
+        suffix = self._build_datetime_suffix()
+        return prefix, suffix
+
+    def _build_datetime_suffix(self) -> str:
+        """Format the localized datetime context for the dynamic suffix."""
+        _now_dt, now, year = self._get_localized_time()
+        return _DATETIME_CONTEXT_TEMPLATE.format(
             current_datetime=now,
             current_year=year,
         )
-        if self._extra_instructions:
-            prompt += f"\n\nAdditional instructions:\n{self._extra_instructions}"
-        prompt = self._inject_handoff_context(prompt)
-        return prompt
+
+    def _emit_system_messages(
+        self,
+        static_prefix: str,
+        dynamic_suffix: str,
+        *,
+        vision_hint: bool = False,
+    ) -> list[ChatMessage]:
+        """Build the initial system-message list for a ReAct run.
+
+        Cache-capable models (Claude, Bedrock/Anthropic, Vertex Claude)
+        get **two** system messages: a cacheable static prefix with
+        ``cache_control={"type": "ephemeral"}``, then the per-call
+        dynamic suffix.  Every other provider gets a single concatenated
+        system message — ``cache_control`` would either be silently
+        dropped or rejected by strict vendor proxies.
+
+        Args:
+            static_prefix: The cacheable portion of the system prompt.
+            dynamic_suffix: The per-call portion (datetime, etc.).
+            vision_hint: When ``True``, append :data:`_VISION_CONTEXT_HINT`
+                to whichever message carries the dynamic suffix (or the
+                prefix when there is no suffix).  The vision hint is
+                per-conversation content and therefore goes after the
+                cache breakpoint.
+
+        Returns:
+            A list of one or two :class:`ChatMessage` objects ready to
+            prepend to the conversation.
+        """
+        suffix = dynamic_suffix
+        if vision_hint:
+            # Vision hint piggy-backs on the dynamic side so the static
+            # prefix stays byte-identical across conversations with and
+            # without attachments.
+            suffix = (suffix + "\n" + _VISION_CONTEXT_HINT) if suffix else _VISION_CONTEXT_HINT
+
+        model_id = getattr(self._tool_llm, "model_id", None)
+        if not is_cache_capable(model_id) or not suffix or not static_prefix:
+            # Single-message fallback: concatenate everything.  Non-
+            # cache-capable providers see exactly the same prompt text
+            # they saw before this refactor.
+            combined = static_prefix
+            if suffix:
+                if combined:
+                    combined = combined + "\n\n" + suffix
+                else:
+                    combined = suffix
+            return [ChatMessage(role="system", content=combined)]
+
+        # Two-message form with an Anthropic cache breakpoint on the
+        # static prefix.  Every token up to and including this message
+        # becomes part of the cached prefix; the suffix re-processes
+        # every turn (cheap since it's just the datetime line).
+        return [
+            ChatMessage(
+                role="system",
+                content=static_prefix,
+                cache_control={"type": "ephemeral"},
+            ),
+            ChatMessage(role="system", content=suffix),
+        ]
 
     def _inject_handoff_context(self, prompt: str) -> str:
         """Append the latest handoff note to a system prompt, if available.

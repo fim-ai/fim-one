@@ -14,6 +14,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - Récupération de conversation : les lignes tool_result synthétiques persistent désormais après un tour interrompu ; les clients peuvent reprendre un flux SSE déconnecté via `POST /chat/resume` avec le dernier curseur vu.
 
+### Modifié
+
+- Les prompts système utilisent désormais un registre de sections mémorisé avec des points de rupture de mise en cache de prompts Anthropic sur le préfixe stable — réduit le coût des tokens par tour d'environ 60-80% sur le préfixe mis en cache pour les modèles Claude. Le mode ReAct JSON, le mode d'appel de fonction natif et la synthèse émettent tous deux messages système pour les fournisseurs compatibles avec le cache (Claude, Bedrock Anthropic, Vertex Claude) et reviennent à un seul message concaténé pour tous les autres fournisseurs.
+
 ### Corrigé
 
 - Les tokens de réflexion/reasoning persistent désormais dans les conversations multi-tours — le champ `signature` d'Anthropic est capturé et rejoué selon les exigences de l'API.
