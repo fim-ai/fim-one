@@ -348,7 +348,7 @@ class TestUpdateAndDelete:
 
 class TestTestChannel:
     @pytest.mark.asyncio
-    async def test_invokes_send_text(
+    async def test_invokes_send_interactive_card(
         self,
         client: AsyncClient,
         seed: dict[str, Any],
@@ -372,7 +372,7 @@ class TestTestChannel:
 
         send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
         with patch(
-            "fim_one.core.channels.feishu.FeishuChannel.send_text",
+            "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
             new=send_mock,
         ):
             resp = await client.post(
@@ -381,6 +381,11 @@ class TestTestChannel:
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
         send_mock.assert_awaited_once()
+        # Verify chat_id + a card dict (has the expected shape) were passed.
+        args, _ = send_mock.await_args
+        assert args[0] == "oc_test"
+        assert isinstance(args[1], dict)
+        assert "elements" in args[1]
 
 
 # ---------------------------------------------------------------------------

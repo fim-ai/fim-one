@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.channels import build_channel
-from fim_one.core.channels.feishu import FeishuChannel
+from fim_one.core.channels.feishu import FeishuChannel, build_confirmation_card
 from fim_one.db import get_session
 from fim_one.web.auth import (
     get_current_user,
@@ -228,12 +228,26 @@ async def test_channel(
             ok=False, error="channel has no chat_id configured"
         )
 
-    # FeishuChannel has dedicated send_text, others reuse send_message.
+    # FeishuChannel: send a preview of the actual confirmation card, so
+    # operators can visually verify what users will see when a real
+    # tool-confirmation gate fires.  Buttons carry a sentinel
+    # confirmation_id; clicks are safely no-ops (the callback handler
+    # gracefully ignores confirmation_ids that don't match a DB row).
     if isinstance(adapter, FeishuChannel):
-        result = await adapter.send_text(
-            chat_id,
-            f"FIM One test message from {user.email or user.username}",
+        sender = user.email or user.username
+        card = build_confirmation_card(
+            confirmation_id=f"test-{uuid.uuid4()}",
+            title="FIM One - Test Confirmation Card",
+            summary=(
+                f"**This is a preview.** It shows exactly how a real "
+                f"confirmation gate will appear when an agent requests "
+                f"approval for a sensitive tool call.\n\n"
+                f"Sent by **{sender}** from the FIM One portal."
+            ),
+            tool_name="(preview) submit_approval",
+            tool_args_preview='{\n  "contract_id": "PO-2024-0892",\n  "amount": 386000\n}',
         )
+        result = await adapter.send_interactive_card(chat_id, card)
     else:
         result = await adapter.send_message(
             {
