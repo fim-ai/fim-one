@@ -5,7 +5,7 @@
   "create": "Neuer Kanal",
   "empty": {
     "title": "Noch keine Kanäle",
-    "description": "Verbinden Sie eine Feishu-Gruppe oder eine andere Messaging-Plattform, um Agent-Benachrichtigungen zu versenden und Kartenaktion zu empfangen.",
+    "description": "Verbinden Sie eine Feishu-Gruppe oder eine andere Messaging-Plattform, um Agent-Benachrichtigungen zu versenden und Kartenvorgänge zu empfangen.",
     "cta": "Verbinden Sie Ihren ersten Kanal"
   },
   "types": {
@@ -51,7 +51,7 @@
     "app_id_required": "App-ID ist erforderlich.",
     "app_secret": "App-Geheimnis",
     "app_secret_placeholder": "Ihr App-Geheimnis",
-    "app_secret_edit_placeholder": "Konfiguriert - leer lassen zum Behalten",
+    "app_secret_edit_placeholder": "Konfiguriert - leer lassen zum Beibehalten",
     "app_secret_required": "App-Geheimnis ist erforderlich.",
     "chat_id": "Chat-ID",
     "chat_id_placeholder": "oc_xxxxxxxxxxxx",
@@ -59,17 +59,16 @@
     "chat_id_required": "Chat-ID ist erforderlich.",
     "verification_token": "Verifizierungstoken",
     "verification_token_placeholder": "Von der Feishu-Seite 'Events & Callbacks'",
-    "verification_token_edit_placeholder": "Konfiguriert - leer lassen zum Behalten",
+    "verification_token_edit_placeholder": "Konfiguriert - leer lassen zum Beibehalten",
     "verification_token_required": "Verifizierungstoken ist erforderlich.",
     "encrypt_key": "Verschlüsselungsschlüssel (optional)",
-    "encrypt_key_placeholder": "Nur erforderlich, wenn Event-Verschlüsselung aktiviert ist",
-    "encrypt_key_edit_placeholder": "Konfiguriert - leer lassen zum Behalten",
-    "pickChat": "Aus Gruppenliste auswählen",
-    "pickChatComingSoon": "Die Gruppenauswahl kommt bald - fügen Sie vorerst die Chat-ID direkt ein."
+    "encrypt_key_placeholder": "Nur erforderlich, wenn die Ereignisverschlüsselung aktiviert ist",
+    "encrypt_key_edit_placeholder": "Konfiguriert - leer lassen zum Beibehalten",
+    "pickChat": "Aus Gruppenliste auswählen"
   },
   "discard": {
-    "title": "Ungespeicherte Änderungen verwerfen?",
-    "description": "Sie haben ungespeicherte Eingaben. Möchten Sie wirklich schließen?",
+    "title": "Nicht gespeicherte Änderungen verwerfen?",
+    "description": "Sie haben nicht gespeicherte Eingaben. Sind Sie sicher, dass Sie schließen möchten?",
     "confirm": "Verwerfen und schließen"
   },
   "details": {
@@ -80,13 +79,13 @@
     "chatIdLabel": "Chat-ID",
     "chatNameLabel": "Chat-Name",
     "appIdLabel": "App-ID",
-    "secretsConfigured": "Geheimnisse konfiguriert",
-    "secretsMissing": "Geheimnisse fehlen",
+    "secretsConfigured": "Secrets konfiguriert",
+    "secretsMissing": "Secrets fehlen",
     "howTo": "So schließen Sie die Einrichtung ab",
     "step1": "Kopieren Sie die obige Callback-URL.",
     "step2": "Öffnen Sie Feishu Open Platform -> Events & Callbacks und fügen Sie die URL ein.",
-    "step3": "Schließen Sie den Challenge-Handshake ab (FIM One antwortet automatisch).",
-    "step4": "Abonnieren Sie das Ereignis card.action.trigger, damit Schaltflächenklicks Ihren Agent erreichen.",
+    "step3": "Führen Sie den Challenge-Handshake durch (FIM One antwortet automatisch).",
+    "step4": "Abonnieren Sie das card.action.trigger-Ereignis, damit Schaltflächenklicks Ihren Agent erreichen.",
     "testSend": "Testnachricht senden",
     "testing": "Wird gesendet...",
     "copyToastSuccess": "Callback-URL kopiert",
@@ -113,6 +112,18 @@
   },
   "deleteDialog": {
     "title": "Kanal löschen?",
-    "description": "Dies entfernt den Kanal \"{name}\" dauerhaft. Agenten, die in diesen Kanal posten, stellen die Nachrichtenübermittlung ein. Diese Aktion kann nicht rückgängig gemacht werden."
+    "description": "Dies entfernt den Kanal \"{name}\" dauerhaft. Agents, die in diesen Kanal posten, stellen die Nachrichtenübermittlung ein. Diese Aktion kann nicht rückgängig gemacht werden."
+  },
+  "picker": {
+    "title": "Wählen Sie eine Feishu-Gruppe",
+    "description": "Wählen Sie die Gruppe, an die Bestätigungskarten gesendet werden. Der Bot muss bereits zur Gruppe hinzugefügt sein.",
+    "loading": "Gruppen werden geladen...",
+    "empty": "Keine Gruppen gefunden. Stellen Sie sicher, dass der Bot zu mindestens einer Gruppe hinzugefügt wurde.",
+    "error": "Gruppen konnten nicht geladen werden: {error}",
+    "retry": "Erneut versuchen",
+    "memberCount": "{n} Mitglieder",
+    "externalBadge": "Extern",
+    "needCredentials": "Füllen Sie zuerst App-ID und App-Geheimnis aus.",
+    "select": "Auswählen"
   }
 }

@@ -30,7 +30,7 @@
     "label": "조직",
     "placeholder": "조직 선택",
     "loadFailed": "조직을 로드하지 못했습니다",
-    "noOrgs": "채널을 구성하기 전에 조직을 생성하거나 가입해야 합니다.",
+    "noOrgs": "채널을 구성하기 전에 조직을 생성하거나 참여해야 합니다.",
     "goToOrgs": "조직으로 이동"
   },
   "form": {
@@ -50,7 +50,7 @@
     "app_id_placeholder": "cli_xxxxxxxxxxxx",
     "app_id_required": "App ID는 필수입니다.",
     "app_secret": "앱 시크릿",
-    "app_secret_placeholder": "앱 시크릿",
+    "app_secret_placeholder": "앱 비밀",
     "app_secret_edit_placeholder": "구성됨 - 유지하려면 비워두세요",
     "app_secret_required": "App Secret은 필수입니다.",
     "chat_id": "채팅 ID",
@@ -64,8 +64,7 @@
     "encrypt_key": "암호화 키 (선택사항)",
     "encrypt_key_placeholder": "이벤트 암호화가 활성화된 경우에만 필요",
     "encrypt_key_edit_placeholder": "구성됨 - 유지하려면 비워두세요",
-    "pickChat": "그룹 목록에서 선택",
-    "pickChatComingSoon": "그룹 선택기가 곧 출시될 예정입니다 - 지금은 chat ID를 직접 붙여넣으세요."
+    "pickChat": "그룹 목록에서 선택"
   },
   "discard": {
     "title": "저장하지 않은 변경사항을 버릴까요?",
@@ -73,19 +72,19 @@
     "confirm": "버리고 닫기"
   },
   "details": {
-    "title": "채널 세부정보",
+    "title": "채널 상세정보",
     "callbackUrlLabel": "콜백 URL",
-    "callbackUrlHint": "플랫폼의 웹훅 페이지에 이 URL을 등록합니다. URL은 공개이지만 서명된 요청에는 플랫폼만 알고 있는 공유 시크릿이 포함됩니다.",
+    "callbackUrlHint": "플랫폼의 webhook 페이지에 이 URL을 등록합니다. URL은 공개이며, 서명된 요청에는 플랫폼만 알고 있는 공유 비밀이 포함됩니다.",
     "copyUrl": "URL 복사",
     "chatIdLabel": "채팅 ID",
     "chatNameLabel": "채팅 이름",
     "appIdLabel": "앱 ID",
     "secretsConfigured": "시크릿 구성됨",
-    "secretsMissing": "시크릿 누락",
+    "secretsMissing": "시크릿 누락됨",
     "howTo": "설정을 완료하는 방법",
     "step1": "위의 콜백 URL을 복사합니다.",
-    "step2": "Feishu Open Platform -> 이벤트 및 콜백을 열고 URL을 붙여넣습니다.",
-    "step3": "챌린지 핸드셰이크를 완료합니다 (FIM One이 자동으로 응답합니다).",
+    "step2": "Feishu Open Platform -> Events & Callbacks를 열고 URL을 붙여넣습니다.",
+    "step3": "챌린지 핸드셰이크를 완료합니다(FIM One이 자동으로 응답합니다).",
     "step4": "card.action.trigger 이벤트를 구독하여 버튼 클릭이 에이전트에 도달하도록 합니다.",
     "testSend": "테스트 메시지 전송",
     "testing": "전송 중...",
@@ -93,7 +92,7 @@
     "copyToastFailed": "복사 실패. URL을 수동으로 복사해주세요."
   },
   "actions": {
-    "viewDetails": "세부정보 보기",
+    "viewDetails": "세부 정보 보기",
     "edit": "구성 편집",
     "test": "테스트 메시지 전송",
     "enable": "활성화",
@@ -108,11 +107,23 @@
     "disabled": "채널 비활성화됨",
     "testSentWithChat": "{chat}에 테스트 메시지 전송됨",
     "testSent": "테스트 메시지 전송됨",
-    "testFailed": "테스트 메시지 전송 실패: {error}",
+    "testFailed": "테스트 메시지 실패: {error}",
     "loadFailed": "채널 로드 실패"
   },
   "deleteDialog": {
     "title": "채널을 삭제하시겠습니까?",
     "description": "이 작업은 \"{name}\" 채널을 영구적으로 제거합니다. 이 채널에 메시지를 게시하는 에이전트는 메시지 전달을 중지합니다. 이 작업은 취소할 수 없습니다."
+  },
+  "picker": {
+    "title": "Feishu 그룹 선택",
+    "description": "확인 카드가 전송될 그룹을 선택합니다. 봇이 이미 그룹에 추가되어 있어야 합니다.",
+    "loading": "그룹 로드 중...",
+    "empty": "그룹을 찾을 수 없습니다. 봇이 최소한 하나의 그룹에 추가되었는지 확인하세요.",
+    "error": "그룹을 로드할 수 없습니다: {error}",
+    "retry": "다시 시도",
+    "memberCount": "{n}명의 멤버",
+    "externalBadge": "외부",
+    "needCredentials": "먼저 App ID와 App Secret을 입력하세요.",
+    "select": "선택"
   }
 }

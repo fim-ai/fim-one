@@ -1,7 +1,7 @@
 {
   "title": "Canaux",
   "description": "Connectez des plateformes de messagerie externes pour recevoir des notifications et des actions interactives de vos agents.",
-  "docsLink": "Consulter la documentation des Canaux →",
+  "docsLink": "Voir la documentation des Canaux →",
   "create": "Nouveau Canal",
   "empty": {
     "title": "Aucun canal pour le moment",
@@ -58,14 +58,13 @@
     "chat_id_hint": "Collez l'open_chat_id du groupe Feishu dans lequel l'agent doit publier.",
     "chat_id_required": "L'ID de chat est requis.",
     "verification_token": "Jeton de Vérification",
-    "verification_token_placeholder": "De la page Feishu 'Événements et Callbacks'",
+    "verification_token_placeholder": "De la page Feishu 'Événements et Rappels'",
     "verification_token_edit_placeholder": "Configuré - laissez vide pour conserver",
     "verification_token_required": "Le jeton de vérification est requis.",
     "encrypt_key": "Clé de Chiffrement (optionnel)",
     "encrypt_key_placeholder": "Requis uniquement si le chiffrement des événements est activé",
     "encrypt_key_edit_placeholder": "Configuré - laissez vide pour conserver",
-    "pickChat": "Choisir dans la liste des groupes",
-    "pickChatComingSoon": "Le sélecteur de groupe arrive bientôt - pour l'instant, collez l'ID de chat directement."
+    "pickChat": "Sélectionner dans la liste des groupes"
   },
   "discard": {
     "title": "Abandonner les modifications non enregistrées ?",
@@ -74,19 +73,19 @@
   },
   "details": {
     "title": "Détails du Canal",
-    "callbackUrlLabel": "URL de Callback",
+    "callbackUrlLabel": "URL de Rappel",
     "callbackUrlHint": "Enregistrez cette URL sur la page webhook de la plateforme. L'URL est publique ; la demande signée contient un secret partagé que seule la plateforme connaît.",
     "copyUrl": "Copier l'URL",
     "chatIdLabel": "ID de Chat",
-    "chatNameLabel": "Nom du Chat",
-    "appIdLabel": "ID d'Application",
+    "chatNameLabel": "Nom du chat",
+    "appIdLabel": "ID d'application",
     "secretsConfigured": "Secrets configurés",
     "secretsMissing": "Secrets manquants",
     "howTo": "Comment terminer la configuration",
-    "step1": "Copiez l'URL de Callback ci-dessus.",
-    "step2": "Ouvrez Plateforme Ouverte Feishu -> Événements et Callbacks et collez l'URL.",
+    "step1": "Copiez l'URL de rappel ci-dessus.",
+    "step2": "Ouvrez Feishu Open Platform -> Événements et rappels et collez l'URL.",
     "step3": "Complétez la poignée de main de défi (FIM One répond automatiquement).",
-    "step4": "Abonnez-vous à l'événement card.action.trigger pour que les clics sur les boutons atteignent votre agent.",
+    "step4": "Abonnez-vous à l'événement card.action.trigger pour que les clics de bouton atteignent votre agent.",
     "testSend": "Envoyer un message de test",
     "testing": "Envoi en cours...",
     "copyToastSuccess": "URL de rappel copiée",
@@ -108,11 +107,23 @@
     "disabled": "Canal désactivé",
     "testSentWithChat": "Message de test envoyé à {chat}",
     "testSent": "Message de test envoyé",
-    "testFailed": "Échec de l'envoi du message de test : {error}",
+    "testFailed": "Échec du message de test : {error}",
     "loadFailed": "Échec du chargement des canaux"
   },
   "deleteDialog": {
     "title": "Supprimer le canal ?",
-    "description": "Cela supprime définitivement le canal « {name} ». Les agents qui publient sur ce canal cesseront de livrer les messages. Cette action ne peut pas être annulée."
+    "description": "Cela supprime définitivement le canal \"{name}\". Les agents qui publient sur ce canal cesseront de livrer des messages. Cette action ne peut pas être annulée."
+  },
+  "picker": {
+    "title": "Sélectionnez un groupe Feishu",
+    "description": "Choisissez le groupe où les cartes de confirmation seront envoyées. Le bot doit déjà être ajouté au groupe.",
+    "loading": "Chargement des groupes...",
+    "empty": "Aucun groupe trouvé. Assurez-vous que le bot est ajouté à au moins un groupe.",
+    "error": "Impossible de charger les groupes : {error}",
+    "retry": "Réessayer",
+    "memberCount": "{n} membres",
+    "externalBadge": "Externe",
+    "needCredentials": "Remplissez d'abord l'ID d'application et le secret d'application.",
+    "select": "Sélectionner"
   }
 }

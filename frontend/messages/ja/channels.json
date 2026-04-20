@@ -1,11 +1,11 @@
 {
   "title": "チャネル",
   "description": "外部メッセージングプラットフォームを接続して、エージェントからの通知とインタラクティブアクションを受け取ります。",
-  "docsLink": "チャネルドキュメントを表示 →",
+  "docsLink": "チャネルのドキュメントを表示 →",
   "create": "新しいチャネル",
   "empty": {
     "title": "チャネルがまだありません",
-    "description": "Feishuグループまたは他のメッセージングプラットフォームを接続して、エージェント通知をプッシュしカードアクションを受け取ります。",
+    "description": "Feishuグループまたは他のメッセージングプラットフォームを接続して、エージェント通知をプッシュし、カードアクションを受け取ります。",
     "cta": "最初のチャネルを接続"
   },
   "types": {
@@ -36,7 +36,7 @@
   "form": {
     "createTitle": "新しいチャネル",
     "editTitle": "チャネルを編集",
-    "createDescription": "エージェントが通知を送信し、インタラクティブアクションを受け取るためのメッセージングチャネルを設定します。",
+    "createDescription": "エージェントが通知を送信し、インタラクティブアクションを受け取るようにメッセージングチャネルを設定します。",
     "editDescription": "このチャネルの設定を更新します。空白のままにされたシークレットフィールドは現在の値を保持します。",
     "type": "チャネルタイプ",
     "typePlaceholder": "チャネルタイプを選択",
@@ -51,21 +51,20 @@
     "app_id_required": "App IDが必要です。",
     "app_secret": "アプリシークレット",
     "app_secret_placeholder": "アプリシークレット",
-    "app_secret_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
+    "app_secret_edit_placeholder": "設定済み - 保持するには空白のままにします",
     "app_secret_required": "App Secretが必要です。",
     "chat_id": "チャットID",
     "chat_id_placeholder": "oc_xxxxxxxxxxxx",
     "chat_id_hint": "エージェントが投稿すべきFeishuグループのopen_chat_idを貼り付けます。",
     "chat_id_required": "Chat IDが必要です。",
     "verification_token": "検証トークン",
-    "verification_token_placeholder": "Feishuの「イベント＆コールバック」ページから",
-    "verification_token_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
+    "verification_token_placeholder": "Feishuの「イベントとコールバック」ページから",
+    "verification_token_edit_placeholder": "設定済み - 保持するには空白のままにします",
     "verification_token_required": "検証トークンが必要です。",
     "encrypt_key": "暗号化キー（オプション）",
-    "encrypt_key_placeholder": "イベント暗号化が有効な場合のみ必須",
-    "encrypt_key_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
-    "pickChat": "グループリストから選択",
-    "pickChatComingSoon": "グループピッカーは近日公開予定です。現在はchat IDを直接貼り付けてください。"
+    "encrypt_key_placeholder": "イベント暗号化が有効な場合のみ必要",
+    "encrypt_key_edit_placeholder": "設定済み - 保持するには空白のままにします",
+    "pickChat": "グループリストから選択"
   },
   "discard": {
     "title": "保存されていない変更を破棄しますか？",
@@ -73,7 +72,7 @@
     "confirm": "破棄して閉じる"
   },
   "details": {
-    "title": "チャネル詳細",
+    "title": "チャネルの詳細",
     "callbackUrlLabel": "コールバックURL",
     "callbackUrlHint": "このURLをプラットフォームのウェブフックページに登録します。URLは公開されていますが、署名されたリクエストにはプラットフォームのみが知っている共有シークレットが含まれています。",
     "copyUrl": "URLをコピー",
@@ -86,10 +85,10 @@
     "step1": "上記のコールバックURLをコピーします。",
     "step2": "Feishu Open Platform → イベント＆コールバックを開き、URLを貼り付けます。",
     "step3": "チャレンジハンドシェイクを完了します（FIM Oneが自動的に応答します）。",
-    "step4": "card.action.trigger イベントをサブスクライブして、ボタンクリックがエージェントに到達するようにします。",
+    "step4": "card.action.triggerイベントをサブスクライブして、ボタンクリックがエージェントに到達するようにします。",
     "testSend": "テストメッセージを送信",
     "testing": "送信中...",
-    "copyToastSuccess": "コールバックURL をコピーしました",
+    "copyToastSuccess": "コールバックURLをコピーしました",
     "copyToastFailed": "コピーに失敗しました。URLを手動でコピーしてください。"
   },
   "actions": {
@@ -106,13 +105,25 @@
     "deleted": "チャネルが削除されました",
     "enabled": "チャネルが有効になりました",
     "disabled": "チャネルが無効になりました",
-    "testSentWithChat": "テストメッセージが {chat} に送信されました",
-    "testSent": "テストメッセージが送信されました",
-    "testFailed": "テストメッセージの送信に失敗しました: {error}",
+    "testSentWithChat": "テストメッセージを{chat}に送信しました",
+    "testSent": "テストメッセージを送信しました",
+    "testFailed": "テストメッセージの送信に失敗しました：{error}",
     "loadFailed": "チャネルの読み込みに失敗しました"
   },
   "deleteDialog": {
-    "title": "チャネルを削除しますか?",
-    "description": "チャネル \"{name}\" を永久に削除します。このチャネルに投稿するエージェントはメッセージの配信を停止します。この操作は取り消せません。"
+    "title": "チャネルを削除しますか？",
+    "description": "チャネル「{name}」を永続的に削除します。このチャネルに投稿するエージェントはメッセージの配信を停止します。この操作は取り消せません。"
+  },
+  "picker": {
+    "title": "Feishuグループを選択",
+    "description": "確認カードが送信されるグループを選択します。ボットは既にグループに追加されている必要があります。",
+    "loading": "グループを読み込み中...",
+    "empty": "グループが見つかりません。ボットが少なくとも1つのグループに追加されていることを確認してください。",
+    "error": "グループの読み込みに失敗しました：{error}",
+    "retry": "再試行",
+    "memberCount": "{n}人のメンバー",
+    "externalBadge": "外部",
+    "needCredentials": "まずApp IDとApp Secretを入力してください。",
+    "select": "選択"
   }
 }

@@ -70,8 +70,20 @@
     "encrypt_key": "Encrypt Key (optional)",
     "encrypt_key_placeholder": "Only required if event encryption is enabled",
     "encrypt_key_edit_placeholder": "Configured - leave blank to keep",
-    "pickChat": "Pick from group list",
-    "pickChatComingSoon": "Group picker is coming soon - for now paste the chat ID directly."
+    "pickChat": "Pick from group list"
+  },
+
+  "picker": {
+    "title": "Select a Feishu group",
+    "description": "Choose the group where confirmation cards will be sent. The bot must already be added to the group.",
+    "loading": "Loading groups...",
+    "empty": "No groups found. Make sure the bot is added to at least one group.",
+    "error": "Unable to load groups: {error}",
+    "retry": "Retry",
+    "memberCount": "{n} members",
+    "externalBadge": "External",
+    "needCredentials": "Fill in App ID and App Secret first.",
+    "select": "Select"
   },
 
   "discard": {

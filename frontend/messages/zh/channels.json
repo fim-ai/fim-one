@@ -1,11 +1,11 @@
 {
   "title": "频道",
-  "description": "连接外部消息平台以接收来自智能体的通知和交互操作。",
+  "description": "连接外部消息平台以接收来自您的智能体的通知和交互操作。",
   "docsLink": "查看频道文档 →",
   "create": "新建频道",
   "empty": {
-    "title": "暂无频道",
-    "description": "连接飞书群组或其他消息平台以推送智能体通知并接收卡片操作。",
+    "title": "还没有频道",
+    "description": "连接飞书群或其他消息平台以推送智能体通知并接收卡片操作。",
     "cta": "连接您的第一个频道"
   },
   "types": {
@@ -63,7 +63,6 @@
     "encrypt_key_placeholder": "仅在启用事件加密时需要",
     "encrypt_key_edit_placeholder": "已配置 - 留空以保持",
     "pickChat": "从群组列表中选择",
-    "pickChatComingSoon": "群组选择器即将推出 - 目前请直接粘贴聊天 ID。",
     "verification_token": "Verification Token",
     "verification_token_placeholder": "From Feishu 'Events & Callbacks' page"
   },
@@ -114,5 +113,17 @@
   "deleteDialog": {
     "title": "删除频道？",
     "description": "这将永久删除频道 \"{name}\"。发送到此频道的智能体将停止传递消息。此操作无法撤销。"
+  },
+  "picker": {
+    "title": "选择飞书群组",
+    "description": "选择将发送确认卡片的群组。机器人必须已添加到该群组。",
+    "loading": "正在加载群组...",
+    "empty": "未找到群组。请确保机器人已添加到至少一个群组。",
+    "error": "无法加载群组：{error}",
+    "retry": "重试",
+    "memberCount": "{n} 名成员",
+    "externalBadge": "外部",
+    "needCredentials": "请先填写 App ID 和 App Secret。",
+    "select": "选择"
   }
 }
