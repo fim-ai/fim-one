@@ -38,8 +38,10 @@ import type {
   Channel,
   ChannelCreateRequest,
   ChannelType,
+  ChatInfo,
   FeishuChannelConfigInput,
 } from "@/types/channel"
+import { FeishuChatPicker } from "./feishu-chat-picker"
 
 interface ChannelFormDialogProps {
   open: boolean
@@ -81,6 +83,17 @@ export function ChannelFormDialog({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+
+  // Picker prerequisites: app_id is required; for create mode the user must
+  // also have typed an app_secret. For edit mode, the server can fall back
+  // to the stored (encrypted) secret.
+  const canOpenPicker =
+    appId.trim().length > 0 &&
+    (isEditing
+      ? appSecret.length > 0 ||
+        (channel?.config.app_secret_configured ?? false)
+      : appSecret.length > 0)
 
   // Reset / prefill on open
   useEffect(() => {
@@ -353,8 +366,14 @@ export function ChannelFormDialog({
                     </Label>
                     <button
                       type="button"
-                      onClick={() => toast.info(t("form.pickChatComingSoon"))}
-                      className="text-xs text-primary hover:underline"
+                      onClick={() => setShowPicker(true)}
+                      disabled={!canOpenPicker}
+                      title={
+                        !canOpenPicker
+                          ? t("picker.needCredentials")
+                          : undefined
+                      }
+                      className="text-xs text-primary hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
                     >
                       {t("form.pickChat")}
                     </button>
@@ -480,6 +499,19 @@ export function ChannelFormDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <FeishuChatPicker
+        open={showPicker}
+        onOpenChange={setShowPicker}
+        appId={appId}
+        appSecret={appSecret}
+        channelId={channel?.id ?? null}
+        orgId={orgId}
+        onSelect={(chat: ChatInfo) => {
+          setChatId(chat.chat_id)
+          clearFieldError("chat_id")
+        }}
+      />
     </>
   )
 }
