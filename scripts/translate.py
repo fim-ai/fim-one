@@ -501,10 +501,11 @@ def translate_json_file(src_path: Path, locale: str, config: dict[str, str], for
 
     # Classify each key
     to_translate: dict[str, str] = {}  # keys needing (re)translation
-    added = modified = deleted = unchanged = 0
+    added = modified = stale = deleted = unchanged = 0
 
     for key, en_value in src_flat.items():
         en_hash = _hash(en_value)
+        existing_value = existing_flat.get(key)
         if force:
             to_translate[key] = en_value
         elif key not in existing_flat:
@@ -514,6 +515,16 @@ def translate_json_file(src_path: Path, locale: str, config: dict[str, str], for
             # EN value changed since last translation → retranslate
             to_translate[key] = en_value
             modified += 1
+        elif (
+            locale in ('zh', 'ja', 'ko')
+            and existing_value is not None
+            and len(existing_value) > 3
+            and _check_untranslated(existing_value, locale)
+        ):
+            # Target value is still English (no CJK) despite hash match →
+            # stale cache or earlier fallback; force retranslation.
+            to_translate[key] = en_value
+            stale += 1
         else:
             unchanged += 1
 
@@ -534,6 +545,8 @@ def translate_json_file(src_path: Path, locale: str, config: dict[str, str], for
             parts.append(f"+{added} new")
         if modified:
             parts.append(f"~{modified} modified")
+        if stale:
+            parts.append(f"!{stale} stale-en")
         if deleted:
             parts.append(f"-{deleted} deleted")
         if unchanged:
