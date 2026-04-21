@@ -414,6 +414,7 @@ def build_confirmation_card(
     summary: str,
     tool_name: str,
     tool_args_preview: str,
+    approver_hint: str | None = None,
     approve_text: str = "Approve",
     reject_text: str = "Reject",
 ) -> dict[str, Any]:
@@ -449,6 +450,16 @@ def build_confirmation_card(
                     "tag": "markdown",
                     "content": summary[:2000],
                 },
+                *(
+                    [
+                        {
+                            "tag": "markdown",
+                            "content": f"> {approver_hint[:300]}",
+                        }
+                    ]
+                    if approver_hint
+                    else []
+                ),
                 {
                     "tag": "column_set",
                     "horizontal_spacing": "8px",

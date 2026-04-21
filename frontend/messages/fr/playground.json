@@ -166,6 +166,11 @@
     "expired": "Demande expirée",
     "errorToast": "Échec de la soumission de la décision",
     "expand": "Développer",
-    "collapse": "Réduire"
+    "collapse": "Réduire",
+    "channelSentLabeled": "Demande d'approbation envoyée au canal : {channel}. Ouvrez le canal pour approuver ou rejeter.",
+    "channelSentGeneric": "Demande d'approbation envoyée au canal lié. Ouvrez le canal pour approuver ou rejeter.",
+    "scopeInitiator": "Seul l'utilisateur qui a lancé cette exécution peut approuver.",
+    "scopeAgentOwner": "Seul le propriétaire de l'agent peut approuver.",
+    "scopeOrgMembers": "Tout membre de cette organisation peut approuver."
   }
 }

@@ -39,6 +39,9 @@ interface AwaitingConfirmationEvent {
   confirmation_id: string
   tool_name: string
   arguments: Record<string, unknown>
+  mode?: "inline" | "channel"
+  channel_label?: string
+  approver_scope?: "initiator" | "agent_owner" | "org_members" | ""
   timeout_at: string
   agent_id: string
 }
@@ -347,6 +350,9 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
                 arguments={ev.arguments}
                 timeoutAt={ev.timeout_at}
                 agentId={ev.agent_id}
+                mode={ev.mode}
+                channelLabel={ev.channel_label}
+                approverScope={ev.approver_scope}
               />
             </div>
           )
@@ -421,6 +427,9 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
                 arguments={ev.arguments}
                 timeoutAt={ev.timeout_at}
                 agentId={ev.agent_id}
+                mode={ev.mode}
+                channelLabel={ev.channel_label}
+                approverScope={ev.approver_scope}
               />
             </div>
           )

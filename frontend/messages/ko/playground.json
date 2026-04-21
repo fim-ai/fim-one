@@ -166,6 +166,11 @@
     "expired": "요청 만료됨",
     "errorToast": "결정 제출 실패",
     "expand": "확장",
-    "collapse": "축소"
+    "collapse": "축소",
+    "channelSentLabeled": "승인 요청이 채널로 전송되었습니다: {channel}. 채널을 열어 승인 또는 거부하세요.",
+    "channelSentGeneric": "승인 요청이 연결된 채널로 전송되었습니다. 채널을 열어 승인 또는 거부하세요.",
+    "scopeInitiator": "이 실행을 시작한 사용자만 승인할 수 있습니다.",
+    "scopeAgentOwner": "에이전트 소유자만 승인할 수 있습니다.",
+    "scopeOrgMembers": "이 조직의 누구나 승인할 수 있습니다."
   }
 }

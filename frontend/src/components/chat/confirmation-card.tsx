@@ -56,6 +56,16 @@ export interface ConfirmationCardProps {
   /** ISO8601 UTC timestamp of when the request expires. */
   timeoutAt: string
   agentId: string
+  /**
+   * Routing mode. `inline` shows Approve/Reject buttons in the portal;
+   * `channel` renders a read-only status card directing the operator to
+   * the external channel where the actual decision happens.
+   */
+  mode?: "inline" | "channel"
+  /** User-given channel name, shown in the read-only channel-mode card. */
+  channelLabel?: string
+  /** Controls who may approve — shown as a helper line on both modes. */
+  approverScope?: "initiator" | "agent_owner" | "org_members" | ""
 }
 
 const PARAMS_COLLAPSE_THRESHOLD = 10
@@ -86,8 +96,12 @@ export function ConfirmationCard({
   arguments: args,
   timeoutAt,
   agentId: _agentId,
+  mode = "inline",
+  channelLabel = "",
+  approverScope = "",
 }: ConfirmationCardProps) {
   void _agentId // reserved for future multi-agent display
+  const isChannelMode = mode === "channel"
   const t = useTranslations("playground")
   const tError = useTranslations("errors")
 
@@ -373,10 +387,36 @@ export function ConfirmationCard({
         </div>
       )}
 
-      {/* Action buttons */}
-      {(state === "pending" ||
-        state === "submitting" ||
-        state === "error") && (
+      {/* Channel-mode status strip — no buttons; decision happens in the
+          external channel. Only shown while the request is still open. */}
+      {isChannelMode &&
+        (state === "pending" ||
+          state === "submitting" ||
+          state === "error") && (
+          <div className="rounded-md border border-amber-300/60 bg-amber-100/40 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200">
+            {channelLabel
+              ? t("confirmation.channelSentLabeled", { channel: channelLabel })
+              : t("confirmation.channelSentGeneric")}
+          </div>
+        )}
+
+      {/* Approver-scope hint — tells the reader who is allowed to act. */}
+      {approverScope && (
+        <div className="text-xs text-muted-foreground">
+          {approverScope === "initiator" &&
+            t("confirmation.scopeInitiator")}
+          {approverScope === "agent_owner" &&
+            t("confirmation.scopeAgentOwner")}
+          {approverScope === "org_members" &&
+            t("confirmation.scopeOrgMembers")}
+        </div>
+      )}
+
+      {/* Action buttons — inline mode only. */}
+      {!isChannelMode &&
+        (state === "pending" ||
+          state === "submitting" ||
+          state === "error") && (
         <div className="flex items-center gap-2 pt-1">
           <Button
             type="button"

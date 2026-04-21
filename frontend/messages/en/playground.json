@@ -165,6 +165,11 @@
     "rejectedAt": "Rejected at {time}",
     "expired": "Request expired",
     "errorToast": "Failed to submit decision",
+    "channelSentLabeled": "Approval request sent to channel: {channel}. Open the channel to approve or reject.",
+    "channelSentGeneric": "Approval request sent to the linked channel. Open the channel to approve or reject.",
+    "scopeInitiator": "Only the user who started this run can approve.",
+    "scopeAgentOwner": "Only the agent owner can approve.",
+    "scopeOrgMembers": "Anyone in this organization can approve.",
     "expand": "Expand",
     "collapse": "Collapse"
   }

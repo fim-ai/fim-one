@@ -126,6 +126,15 @@ def _request_to_event_payload(request: "ConfirmationRequest") -> dict[str, Any]:
         "arguments": arguments,
         "timeout_at": timeout_at.astimezone(timezone.utc).isoformat(),
         "agent_id": str(request.agent_id or ""),
+        # Routing metadata — frontend renders a read-only card when
+        # mode == "channel" (decision has to be made in the external
+        # channel, not in the portal).  ``channel_label`` is the
+        # user-given name of the channel row (e.g. "审批群", not
+        # "Feishu") so the UI stays channel-type-agnostic. Empty string
+        # when not applicable.
+        "mode": str(payload.get("mode") or request.mode or "inline"),
+        "channel_label": str(payload.get("channel_label") or ""),
+        "approver_scope": str(payload.get("approver_scope") or ""),
     }
 
 

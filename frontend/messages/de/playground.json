@@ -166,6 +166,11 @@
     "expired": "Anfrage abgelaufen",
     "errorToast": "Entscheidung konnte nicht eingereicht werden",
     "expand": "Erweitern",
-    "collapse": "Reduzieren"
+    "collapse": "Reduzieren",
+    "channelSentLabeled": "Genehmigungsanfrage an Kanal gesendet: {channel}. Öffnen Sie den Kanal, um zu genehmigen oder abzulehnen.",
+    "channelSentGeneric": "Genehmigungsanfrage an den verknüpften Kanal gesendet. Öffnen Sie den Kanal, um zu genehmigen oder abzulehnen.",
+    "scopeInitiator": "Nur der Benutzer, der diese Ausführung gestartet hat, kann genehmigen.",
+    "scopeAgentOwner": "Nur der Agent-Besitzer kann genehmigen.",
+    "scopeOrgMembers": "Jeder in dieser Organisation kann genehmigen."
   }
 }

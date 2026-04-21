@@ -262,8 +262,9 @@ class FeishuGateHook(PreToolUseHook):
             )
 
         confirmation_id = str(uuid.uuid4())
+        channel_label = str(getattr(channel_row, "name", "") or "")
         async with self._session_factory() as session:
-            await self._create_confirmation_row(
+            row = await self._create_confirmation_row(
                 session,
                 confirmation_id=confirmation_id,
                 context=context,
@@ -271,10 +272,19 @@ class FeishuGateHook(PreToolUseHook):
                 org_id=org_id,
                 channel_id=channel_row.id,
                 mode="channel",
+                channel_label=channel_label,
             )
 
+        # Also notify the frontend so the portal shows a read-only card
+        # ("Approval sent to channel: <name>") while the operator is
+        # expected to decide in the external channel. Frontend switches
+        # layout based on payload.mode.
+        await emit_inline_confirmation(row)
+
         card = self._build_card(
-            confirmation_id=confirmation_id, context=context
+            confirmation_id=confirmation_id,
+            context=context,
+            agent_row=agent_row,
         )
         send_result = await channel.send_interactive_card(chat_id, card)
         if not send_result.ok:
@@ -453,6 +463,7 @@ class FeishuGateHook(PreToolUseHook):
         self,
         session: AsyncSession,
         *,
+        channel_label: str | None = None,
         confirmation_id: str,
         context: HookContext,
         agent_row: Any,
@@ -462,9 +473,16 @@ class FeishuGateHook(PreToolUseHook):
     ) -> Any:
         from fim_one.web.models.channel import ConfirmationRequest
 
+        approver_scope = str(
+            getattr(agent_row, "confirmation_approver_scope", "initiator")
+            or "initiator"
+        ).lower()
         payload: dict[str, Any] = {
             "tool_name": context.tool_name,
             "tool_args": context.tool_args or {},
+            "mode": mode,
+            "channel_label": channel_label or "",
+            "approver_scope": approver_scope,
         }
         # Approver: when the agent is scoped to "initiator" we stamp the
         # invoking user; otherwise leave NULL so the callback endpoint can
@@ -554,9 +572,16 @@ class FeishuGateHook(PreToolUseHook):
     # Card builder
     # ------------------------------------------------------------------
 
+    _SCOPE_HINT_MAP: dict[str, str] = {
+        "initiator": "Approvable by: the user who started this run.",
+        "agent_owner": "Approvable by: the agent owner only.",
+        "org_members": "Approvable by: any member of this organization.",
+    }
+
     def _build_card(
         self,
         *,
+        agent_row: Any = None,
         confirmation_id: str,
         context: HookContext,
     ) -> dict[str, Any]:
@@ -575,10 +600,20 @@ class FeishuGateHook(PreToolUseHook):
             summary_lines.append(
                 f"\nPortal: {self._callback_base_url}"
             )
+        scope = (
+            str(
+                getattr(agent_row, "confirmation_approver_scope", "")
+                or ""
+            ).lower()
+            if agent_row is not None
+            else ""
+        )
+        approver_hint = self._SCOPE_HINT_MAP.get(scope)
         return build_confirmation_card(
             confirmation_id=confirmation_id,
             title="FIM One — Approval Required",
             summary="\n".join(summary_lines),
+            approver_hint=approver_hint,
             tool_name=tool_name,
             tool_args_preview=preview,
         )

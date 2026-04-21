@@ -166,6 +166,11 @@
     "expired": "请求已过期",
     "errorToast": "提交决定失败",
     "expand": "展开",
-    "collapse": "折叠"
+    "collapse": "折叠",
+    "channelSentLabeled": "批准请求已发送到频道：{channel}。打开频道以批准或拒绝。",
+    "channelSentGeneric": "批准请求已发送到关联的频道。打开频道以批准或拒绝。",
+    "scopeInitiator": "只有启动此运行的用户才能批准。",
+    "scopeAgentOwner": "只有智能体所有者才能批准。",
+    "scopeOrgMembers": "此组织中的任何人都可以批准。"
   }
 }

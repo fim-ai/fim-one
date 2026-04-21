@@ -166,6 +166,11 @@
     "expired": "リクエストの期限が切れました",
     "errorToast": "決定の送信に失敗しました",
     "expand": "展開",
-    "collapse": "折りたたむ"
+    "collapse": "折りたたむ",
+    "channelSentLabeled": "承認リクエストがチャネル {channel} に送信されました。チャネルを開いて承認または却下してください。",
+    "channelSentGeneric": "承認リクエストがリンクされたチャネルに送信されました。チャネルを開いて承認または却下してください。",
+    "scopeInitiator": "このランを開始したユーザーのみが承認できます。",
+    "scopeAgentOwner": "エージェント所有者のみが承認できます。",
+    "scopeOrgMembers": "この組織内の誰でも承認できます。"
   }
 }
