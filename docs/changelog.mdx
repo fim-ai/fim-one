@@ -19,6 +19,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Channels and the Hook System architecture documented**: new `docs/architecture/hook-system.mdx` explains the three hook points, why hooks run outside the LLM loop, and walks through FeishuGateHook end-to-end. Existing architecture pages (system-overview, organization, react-engine, philosophy) cross-link to it. README now lists Messaging Channels as a first-class v0.8 capability and the Application Layer diagram includes IM targets alongside Portal/API/iframe.
 - **Hook Approval Playground**: Channels details sheet now has a "Test Approval Flow" action that simulates a sensitive tool call, pushes a real confirmation card to the linked Feishu group, and polls for the reviewer's decision live. Unlike the existing preview button, this exercises the full production path (genuine `ConfirmationRequest` row, real Feishu callback, status transitions), so demos and pre-rollout rehearsals use the same code path a production hook would.
 
+- **Per-agent task completion notifications**: agents can now push a summary card to the org's channel (currently Feishu) when a long-running ReAct or DAG task finishes. Configurable per-agent in Settings → Agent → Notifications. First consumer of the generic outbound notification pattern.
+
 ### Changed
 
 - Playground loading indicators now use a subtle text shimmer instead of the fake-looking progress bar that froze at a pseudo-full width after 8 seconds. Unified the two existing shimmer implementations (`.shiny-text` and `.text-shimmer`) into a single theme-aware primitive with an optional warm preset.
@@ -39,6 +41,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - Pending approval requests now auto-expire after `CHANNEL_CONFIRMATION_TTL_MINUTES` (default 24h) via a background sweeper. Prevents a stale click days later from flipping agent state that has already been torn down; the next click on an expired card gets a grey "Expired" decided card and a "no longer active" toast.
 - Send Test Message now delivers a plain text notification (no Approve/Reject buttons) and lives only in the channel details sheet — not the row dropdown. Users who don't intend to use approval hooks aren't confused by interactive buttons on a "test" message. Approval round-trip testing remains available via the Approval Playground button.
 - Channel details sheet tightened: "How to finish setup" is now a collapsible section collapsed by default (so it doesn't dominate the sheet for already-configured channels), and the outer padding was reduced so content sits closer to the sheet edge.
+- Builder AI no longer reports masked (`****`) credentials as missing — it now recognizes them as configured and skips false "credential missing" guidance.
+- Playground agent list now shows all accessible agents instead of only published ones, so draft agents can be tested without publishing first.
 
 ## [v0.8.4] - 2026-04-17
 
