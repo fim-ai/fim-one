@@ -610,10 +610,17 @@ async def channel_callback(
         preview = (raw_body or b"").decode("utf-8", errors="replace")[:2000]
     except Exception:
         preview = ""
+    # Log header keys that matter for diagnosing signature / schema issues.
+    relevant_headers = {
+        k: v
+        for k, v in headers.items()
+        if k.lower().startswith(("x-lark", "content-type", "user-agent"))
+    }
     logger.info(
-        "channel_callback: channel=%s type=%s body_preview=%s",
+        "channel_callback: channel=%s type=%s headers=%s body_preview=%s",
         channel_id,
         channel.type,
+        relevant_headers,
         preview,
     )
 
