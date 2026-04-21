@@ -62,6 +62,10 @@ export function ChannelsSettings() {
   const [channels, setChannels] = useState<Channel[]>([])
   const [loading, setLoading] = useState(true)
 
+  const currentOrg = orgs.find((o) => o.id === orgId) ?? null
+  const canManage =
+    currentOrg?.role === "owner" || currentOrg?.role === "admin"
+
   // Dialog / sheet targets
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Channel | null>(null)
@@ -193,7 +197,7 @@ export function ChannelsSettings() {
             setEditTarget(null)
             setFormOpen(true)
           }}
-          disabled={!orgId}
+          disabled={!orgId || !canManage}
         >
           <Plus className="h-4 w-4" />
           {t("create")}
@@ -218,6 +222,13 @@ export function ChannelsSettings() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+      )}
+
+      {/* Member read-only banner */}
+      {!orgsLoading && currentOrg && !canManage && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+          {t("orgSelector.memberReadOnly")}
         </div>
       )}
 
@@ -253,19 +264,23 @@ export function ChannelsSettings() {
             {t("empty.title")}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("empty.description")}
+            {canManage
+              ? t("empty.description")
+              : t("orgSelector.memberReadOnlyEmpty")}
           </p>
-          <Button
-            className="mt-4 gap-1.5"
-            onClick={() => {
-              setEditTarget(null)
-              setFormOpen(true)
-            }}
-            disabled={!orgId}
-          >
-            <Plus className="h-4 w-4" />
-            {t("empty.cta")}
-          </Button>
+          {canManage && (
+            <Button
+              className="mt-4 gap-1.5"
+              onClick={() => {
+                setEditTarget(null)
+                setFormOpen(true)
+              }}
+              disabled={!orgId}
+            >
+              <Plus className="h-4 w-4" />
+              {t("empty.cta")}
+            </Button>
+          )}
         </div>
       )}
 
@@ -352,15 +367,17 @@ export function ChannelsSettings() {
                           <Eye className="mr-2 h-4 w-4" />
                           {t("actions.viewDetails")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setEditTarget(ch)
-                            setFormOpen(true)
-                          }}
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          {t("actions.edit")}
-                        </DropdownMenuItem>
+                        {canManage && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setEditTarget(ch)
+                              setFormOpen(true)
+                            }}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            {t("actions.edit")}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => handleQuickTest(ch)}
                           disabled={!ch.is_active || testingId === ch.id}
@@ -368,23 +385,29 @@ export function ChannelsSettings() {
                           <Send className="mr-2 h-4 w-4" />
                           {t("actions.test")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleToggleActive(ch)}
-                          disabled={isMutating}
-                        >
-                          <Power className="mr-2 h-4 w-4" />
-                          {ch.is_active
-                            ? t("actions.disable")
-                            : t("actions.enable")}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setDeleteTarget(ch)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {t("actions.delete")}
-                        </DropdownMenuItem>
+                        {canManage && (
+                          <DropdownMenuItem
+                            onClick={() => handleToggleActive(ch)}
+                            disabled={isMutating}
+                          >
+                            <Power className="mr-2 h-4 w-4" />
+                            {ch.is_active
+                              ? t("actions.disable")
+                              : t("actions.enable")}
+                          </DropdownMenuItem>
+                        )}
+                        {canManage && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeleteTarget(ch)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {t("actions.delete")}
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>

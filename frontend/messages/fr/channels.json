@@ -31,7 +31,9 @@
     "placeholder": "Sélectionnez une organisation",
     "loadFailed": "Échec du chargement des organisations",
     "noOrgs": "Vous devez créer ou rejoindre une organisation avant de configurer les canaux.",
-    "goToOrgs": "Aller aux Organisations"
+    "goToOrgs": "Aller aux Organisations",
+    "memberReadOnly": "Vous avez un accès en lecture seule à cette organisation. Seuls les administrateurs et les propriétaires peuvent créer ou modifier des canaux. Demandez à un administrateur de vous accorder un rôle supérieur, ou basculez vers une organisation où vous êtes administrateur.",
+    "memberReadOnlyEmpty": "Aucun canal pour le moment, et vous n'avez pas la permission d'en créer un dans cette organisation. Seuls les administrateurs et les propriétaires peuvent créer des canaux."
   },
   "form": {
     "createTitle": "Nouveau Canal",

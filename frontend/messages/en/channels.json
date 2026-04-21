@@ -36,7 +36,9 @@
     "placeholder": "Select an organization",
     "loadFailed": "Failed to load organizations",
     "noOrgs": "You need to create or join an organization before configuring channels.",
-    "goToOrgs": "Go to Organizations"
+    "goToOrgs": "Go to Organizations",
+    "memberReadOnly": "You have read-only access to this organization. Only admins and owners can create or edit channels. Ask an admin to grant you a higher role, or switch to an organization where you are an admin.",
+    "memberReadOnlyEmpty": "No channels yet, and you do not have permission to create one in this organization. Only admins and owners can create channels."
   },
 
   "form": {

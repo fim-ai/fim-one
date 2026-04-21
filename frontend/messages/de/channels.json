@@ -31,7 +31,9 @@
     "placeholder": "Wählen Sie eine Organisation",
     "loadFailed": "Organisationen konnten nicht geladen werden",
     "noOrgs": "Sie müssen eine Organisation erstellen oder beitreten, bevor Sie Kanäle konfigurieren können.",
-    "goToOrgs": "Zu Organisationen"
+    "goToOrgs": "Zu Organisationen",
+    "memberReadOnly": "Sie haben Lesezugriff auf diese Organisation. Nur Administratoren und Eigentümer können Kanäle erstellen oder bearbeiten. Bitten Sie einen Administrator, Ihnen eine höhere Rolle zu gewähren, oder wechseln Sie zu einer Organisation, in der Sie Administrator sind.",
+    "memberReadOnlyEmpty": "Noch keine Kanäle vorhanden, und Sie haben keine Berechtigung, einen in dieser Organisation zu erstellen. Nur Administratoren und Eigentümer können Kanäle erstellen."
   },
   "form": {
     "createTitle": "Neuer Kanal",

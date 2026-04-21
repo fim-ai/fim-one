@@ -31,7 +31,9 @@
     "placeholder": "选择一个组织",
     "loadFailed": "加载组织失败",
     "noOrgs": "配置频道前，您需要创建或加入一个组织。",
-    "goToOrgs": "前往组织"
+    "goToOrgs": "前往组织",
+    "memberReadOnly": "您对此组织只有只读访问权限。只有管理员和所有者可以创建或编辑频道。请要求管理员授予您更高的角色，或切换到您是管理员的组织。",
+    "memberReadOnlyEmpty": "还没有频道，您没有权限在此组织中创建频道。只有管理员和所有者可以创建频道。"
   },
   "form": {
     "createTitle": "新建频道",
