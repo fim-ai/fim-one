@@ -242,7 +242,17 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 ## 활동
 
-![Alt](https://repobeats.axiom.co/api/embed/ff8b449fd183a323d81f33fc96e7ce42ad745f65.svg "Repobeats analytics image")
+<p align="center">
+  <a href="https://github.com/fim-ai/fim-one/pulse">
+    <img src="https://github-readme-stats.vercel.app/api/pin/?username=fim-ai&repo=fim-one&show_owner=true&theme=dark" alt="fim-one repo stats" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/fim-ai/fim-one/commits">
+    <img src="https://github-readme-activity-graph.vercel.app/graph?username=fim-ai&theme=github-compact&hide_border=true&area=true&custom_title=fim-ai%20activity" alt="fim-ai activity graph" />
+  </a>
+</p>
 
 ## 기여자
 
