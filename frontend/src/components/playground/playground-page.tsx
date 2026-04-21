@@ -978,7 +978,7 @@ function PlaygroundContent({
   // Fetch published agents on mount
   useEffect(() => {
     if (agentsLoaded) return
-    agentApi.list(1, 50, "published").then((res) => {
+    agentApi.list(1, 50).then((res) => {
       setAgents((res.items as AgentResponse[]).filter(a => !a.name.startsWith("__builder_")))
       setAgentsLoaded(true)
     }).catch(() => setAgentsLoaded(true))
