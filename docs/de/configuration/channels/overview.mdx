@@ -12,6 +12,23 @@ Ein **Channel** ist eine Brücke zwischen FIM One und einer externen Messaging-P
 
 Channels sind auf eine **Organisation** beschränkt, nicht auf einen einzelnen Benutzer. Jeder Org-Admin kann sie erstellen, bearbeiten und deaktivieren.
 
+## Warum Kanäle organisationsweit sind
+
+Ein Kanal ist die **Identität** einer Organisation auf einer externen IM-Plattform — nicht die Hotline einer Einzelperson. Wenn ein Agent eine Karte in eine Feishu-Gruppe postet, trägt die Nachricht die Autorität der Organisation, die den Kanal konfiguriert hat: Der Bot ist beim Feishu-Mandanten dieser Organisation registriert, die Gruppenmitglieder sind Kollegen innerhalb dieser Organisation, und der Genehmigungsverlauf / die Audit-Spur gehört dieser Organisation.
+
+FIM One spiegelt diese Zuordnung eins-zu-eins wider:
+
+| FIM One | Externe IM-Plattform |
+|---|---|
+| **Organization** | Feishu-Mandant / Unternehmen (und dessen Administratoren) |
+| **Channel** | Ein Bot + Gruppenchat, der diesem Mandanten gehört |
+| **Org member** | Eine Person innerhalb dieses Mandanten, die genehmigen, Benachrichtigungen erhalten oder auf Karten reagieren kann |
+| **Agent (org-published)** | Der KI-Worker, der im Namen der Organisation handelt |
+
+Persönliche Agenten (unveröffentlicht, im Besitz eines einzelnen Benutzers) haben absichtlich keinen Zugriff auf Kanäle. Ein persönlicher Agent, der eine Nachricht an einen Organisationskanal sendet, würde die Organisation imitieren — ein Audit-Risiko und ein Governance-Verstoß. Das Veröffentlichen eines Agenten in einer Organisation ist die Möglichkeit, wie dieser Agent das Recht erhält, im Namen der Organisation durch ihre Kanäle zu sprechen.
+
+Diese Einschränkung gilt einheitlich: Sowohl `FeishuGateHook` (Genehmigungsrouting) als auch Abschlussbenachrichtigungen (vom Agent konfigurierter Kanal) respektieren die gleiche Organisations-Identitätsgrenze.
+
 ## Unterstützte Plattformen
 
 | Plattform | Status | Eingehend | Ausgehend | Genehmigungskarte |

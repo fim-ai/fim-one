@@ -12,6 +12,23 @@ A **Channel** is a bridge between FIM One and an external messaging platform —
 
 Channels are scoped to an **organization**, not an individual user. Any org admin can create, edit, and disable them.
 
+## Why channels are org-scoped
+
+A channel is an organization's **identity** in an external IM platform — not an individual's hotline. When an agent posts a card to a Feishu group, the message carries the authority of the organization that configured the channel: the bot is registered to that organization's Feishu tenant, the group members are peers inside that organization, and the approval / audit trail belongs to that organization.
+
+FIM One mirrors this mapping one-to-one:
+
+| FIM One | External IM platform |
+|---|---|
+| **Organization** | Feishu tenant / enterprise (and its admins) |
+| **Channel** | A bot + group chat owned by that tenant |
+| **Org member** | A person inside that tenant who can approve, receive notifications, or react to cards |
+| **Agent (org-published)** | The AI worker acting on behalf of the organization |
+
+Personal agents (unpublished, owned by a single user) intentionally have no access to channels. A personal agent sending a message to an org's channel would be impersonating the organization — an audit hazard and a governance violation. Publishing an agent to an organization is how that agent earns the right to speak on the organization's behalf through its channels.
+
+This constraint applies uniformly: both `FeishuGateHook` (approval routing) and completion notifications (agent-configured channel) respect the same org-identity boundary.
+
 ## Supported platforms
 
 | Platform | Status | Inbound | Outbound | Approval card |

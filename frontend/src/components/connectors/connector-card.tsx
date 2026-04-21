@@ -261,7 +261,7 @@ export function ConnectorCard({
                   {t("privateDefaultBadge")}
                 </span>
               </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={5} className="max-w-xs">
+              <TooltipContent side="bottom" sideOffset={5} className="max-w-sm whitespace-normal break-words leading-relaxed">
                 {t("privateDefaultHelp")}
               </TooltipContent>
             </Tooltip>

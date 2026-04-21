@@ -12,6 +12,23 @@ Un **Canal** est un pont entre FIM One et une plateforme de messagerie externe �
 
 Les canaux sont limités à une **organisation**, et non à un utilisateur individuel. Tout administrateur d'organisation peut les créer, les modifier et les désactiver.
 
+## Pourquoi les canaux sont limités à l'organisation
+
+Un canal est l'**identité** d'une organisation sur une plateforme de messagerie instantanée externe — pas une ligne directe personnelle. Quand un agent publie une carte à un groupe Feishu, le message porte l'autorité de l'organisation qui a configuré le canal : le bot est enregistré auprès du tenant Feishu de cette organisation, les membres du groupe sont des pairs au sein de cette organisation, et la piste d'approbation / audit appartient à cette organisation.
+
+FIM One reflète ce mappage un-à-un :
+
+| FIM One | Plateforme de messagerie instantanée externe |
+|---|---|
+| **Organisation** | Tenant / entreprise Feishu (et ses administrateurs) |
+| **Canal** | Un bot + conversation de groupe possédés par ce tenant |
+| **Membre de l'organisation** | Une personne au sein de ce tenant qui peut approuver, recevoir des notifications ou réagir aux cartes |
+| **Agent (publié par l'organisation)** | Le worker IA agissant au nom de l'organisation |
+
+Les agents personnels (non publiés, possédés par un seul utilisateur) n'ont intentionnellement pas accès aux canaux. Un agent personnel envoyant un message à un canal de l'organisation usurperait l'identité de l'organisation — un risque d'audit et une violation de gouvernance. Publier un agent à une organisation est la façon dont cet agent gagne le droit de parler au nom de l'organisation à travers ses canaux.
+
+Cette contrainte s'applique uniformément : à la fois `FeishuGateHook` (routage des approbations) et les notifications d'achèvement (canal configuré par l'agent) respectent la même limite d'identité organisationnelle.
+
 ## Plateformes supportées
 
 | Plateforme | Statut | Entrant | Sortant | Carte d'approbation |
