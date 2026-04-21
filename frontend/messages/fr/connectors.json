@@ -230,5 +230,6 @@
   "templateCategory_database": "Base de données",
   "fromTemplate": "À partir d'un modèle",
   "privateDefaultBadge": "Par défaut privé",
-  "privateDefaultHelp": "Le secours est désactivé — seul vous (le propriétaire) pouvez utiliser l'identifiant par défaut de ce connecteur. Les autres utilisateurs doivent configurer leurs propres identifiants avant que ce connecteur ne fonctionne pour eux."
+  "privateDefaultHelp": "Le secours est désactivé — seul vous (le propriétaire) pouvez utiliser l'identifiant par défaut de ce connecteur. Les autres utilisateurs doivent configurer leurs propres identifiants avant que ce connecteur ne fonctionne pour eux.",
+  "requiresConfirmationHelp": "Lorsque cette option est cochée, les agents demandent une approbation avant d'appeler cette action. Le lieu où l'approbation est collectée — en ligne dans le chat ou via un canal lié — est configuré par agent."
 }

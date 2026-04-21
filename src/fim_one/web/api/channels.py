@@ -18,9 +18,8 @@ from datetime import datetime, UTC
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from typing import cast as _cast
 
-from sqlalchemy import CursorResult, select, update as sa_update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.channels import build_channel
@@ -759,58 +758,34 @@ async def _record_decision(
     decision: str,
     open_id: str | None,
 ) -> tuple[str | None, bool, dict[str, Any] | None]:
-    """Atomically flip the ConfirmationRequest status if still pending.
+    """Flip the ConfirmationRequest status via the shared helper.
 
-    Uses a conditional ``UPDATE ... WHERE status='pending'`` so that two
-    concurrent callbacks (e.g. same user double-taps and both clicks
-    race through the webhook) can't both succeed — only the UPDATE
-    whose WHERE predicate matches ``pending`` at commit time changes a
-    row.  The other caller sees rowcount=0 and falls into the
-    "already-decided" branch.
+    Delegates to :func:`fim_one.web.api.confirmations.apply_confirmation_decision`
+    so both the Feishu callback path and the frontend respond endpoint
+    stamp the same fields (``status`` / ``responded_at`` / optionally
+    ``approver_user_id`` / ``responded_by_open_id``) consistently.
 
-    This works on both SQLite and Postgres without needing
-    ``SELECT ... FOR UPDATE``: SQLite serializes writes on a single
-    connection, Postgres uses MVCC with row-level locks on UPDATE.
+    For the Feishu path we only have an ``open_id``; ``approver_user_id``
+    stays NULL because the platform user has not mapped back to a FIM One
+    ``User`` row.  A future enhancement (task #6) can resolve open_id →
+    user_id on the way in.
 
-    Returns ``(final_status, newly_applied, payload)``:
-
-    * ``(None, False, None)`` — confirmation row not found.
-    * ``(status, True, payload)`` — this call won the race and flipped
-      the row.
-    * ``(status, False, payload)`` — the row was already terminal when
-      the UPDATE ran (duplicate click or lost race); no state change.
+    Returns ``(final_status, newly_applied, payload)`` — see helper.
     """
-    new_status = "approved" if decision == "approve" else "rejected"
-    stmt = (
-        sa_update(ConfirmationRequest)
-        .where(
-            ConfirmationRequest.id == confirmation_id,
-            ConfirmationRequest.status == "pending",
-        )
-        .values(
-            status=new_status,
-            responded_at=datetime.now(UTC),
-            responded_by_open_id=open_id,
-        )
-    )
-    result = _cast(CursorResult[Any], await db.execute(stmt))
-    await db.commit()
-    newly_applied = (result.rowcount or 0) == 1
-
-    row = (
-        await db.execute(
-            select(ConfirmationRequest).where(
-                ConfirmationRequest.id == confirmation_id
-            )
-        )
-    ).scalar_one_or_none()
-    if row is None:
+    # Narrow to the two decisions the helper's Literal accepts.  Anything
+    # else is a programming error (the caller already filtered).
+    if decision not in ("approve", "reject"):  # pragma: no cover - defensive
         return (None, False, None)
 
-    payload_snapshot: dict[str, Any] | None = (
-        dict(row.payload) if isinstance(row.payload, dict) else None
+    from fim_one.web.api.confirmations import apply_confirmation_decision
+
+    return await apply_confirmation_decision(
+        db,
+        confirmation_id=confirmation_id,
+        decision=decision,  # type: ignore[arg-type]
+        approver_user_id=None,
+        responded_by_open_id=open_id,
     )
-    return (row.status, newly_applied, payload_snapshot)
 
 
 __all__ = ["router"]

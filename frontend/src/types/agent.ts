@@ -26,6 +26,11 @@ export interface AgentResponse {
   org_id?: string | null
   is_builder?: boolean
   compact_instructions?: string | null
+  // Human-in-the-loop approval routing (Phase 2)
+  confirmation_mode?: "auto" | "inline_only" | "channel_only"
+  confirmation_approver_scope?: "initiator" | "agent_owner" | "org_members"
+  require_confirmation_for_all?: boolean
+  approval_channel_id?: string | null
   forked_from: string | null
   publish_status: string | null
   reviewed_by: string | null
@@ -51,6 +56,10 @@ export interface AgentCreate {
   sandbox_config?: SandboxConfig
   execution_mode?: "react" | "dag" | "auto"
   compact_instructions?: string | null
+  confirmation_mode?: "auto" | "inline_only" | "channel_only"
+  confirmation_approver_scope?: "initiator" | "agent_owner" | "org_members"
+  require_confirmation_for_all?: boolean
+  approval_channel_id?: string | null
 }
 
 export interface AgentUpdate {
@@ -68,6 +77,10 @@ export interface AgentUpdate {
   sandbox_config?: SandboxConfig
   execution_mode?: "react" | "dag" | "auto"
   compact_instructions?: string | null
+  confirmation_mode?: "auto" | "inline_only" | "channel_only"
+  confirmation_approver_scope?: "initiator" | "agent_owner" | "org_members"
+  require_confirmation_for_all?: boolean
+  approval_channel_id?: string | null
 }
 
 export interface AgentTemplate {

@@ -162,6 +162,29 @@
     "helperText": "当此智能体完成对话轮次时，摘要卡片将发布到选定的频道。审批卡片（阻止）仍由智能体的钩子控制。",
     "missingChannelError": "请选择一个频道。",
     "loading": "加载频道中…",
-    "personalAgentHint": "完成通知需要组织范围的智能体。请先将此智能体发布到组织，然后在此处配置频道。"
+    "personalAgentHint": "频道代表组织在外部系统（Feishu、Slack 等）中的身份，而不是个人的身份。将此智能体发布到组织以将其连接到该组织的频道。",
+    "personalAgentBlockedSave": "在启用完成通知之前，请将此智能体发布到组织。",
+    "emptyChannelsBlockedSave": "此组织中没有活跃频道。在组织设置 → 频道中添加一个，然后重试。"
+  },
+  "approval": {
+    "sectionTitle": "审批",
+    "helperText": "控制智能体在运行需要确认的工具之前如何收集用户审批。",
+    "modeLabel": "确认模式",
+    "modeAuto": "自动（如果已链接则使用频道，否则使用内联）",
+    "modeInlineOnly": "仅在聊天中内联",
+    "modeChannelOnly": "仅频道（如果未链接频道则阻止）",
+    "approverScopeLabel": "审批人范围",
+    "approverInitiator": "启动运行的用户",
+    "approverAgentOwner": "仅智能体所有者",
+    "approverOrgMembers": "组织中的任何人",
+    "requireAllLabel": "要求确认每个工具调用",
+    "requireAllHelp": "覆盖按操作设置；每个工具调用都会先询问。",
+    "channelLabel": "审批频道",
+    "channelPlaceholder": "使用默认值（智能体的通知频道）",
+    "channelHelp": "如果未设置，审批请求将被路由到智能体的完成通知频道。",
+    "channelOnlyNoChannelsError": "仅频道模式至少需要一个已链接的频道。",
+    "emptyChannels": "此组织中没有活跃频道。",
+    "emptyChannelsAction": "在组织设置 → 频道中配置一个",
+    "personalAgentHint": "将此智能体发布到组织以通过频道路由审批。"
   }
 }

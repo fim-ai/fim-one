@@ -151,5 +151,21 @@
       "Research React, Vue, and Svelte simultaneously — for each fetch npm weekly downloads, GitHub stars, and latest version — then rank them and produce a styled HTML scorecard with medal badges",
       "In parallel: (1) implement merge sort and quick sort, benchmark both on 10,000 random integers; (2) find all Fibonacci numbers up to index 50 that are also prime; (3) solve N-Queens for N=8 and count all solutions — compile everything into one styled HTML report"
     ]
+  },
+  "confirmation": {
+    "title": "Approval required",
+    "toolLabel": "Action",
+    "parametersLabel": "Parameters",
+    "expiresIn": "Expires in {time}",
+    "approveButton": "Approve",
+    "rejectButton": "Reject",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "approvedBy": "Approved by you at {time}",
+    "rejectedAt": "Rejected at {time}",
+    "expired": "Request expired",
+    "errorToast": "Failed to submit decision",
+    "expand": "Expand",
+    "collapse": "Collapse"
   }
 }

@@ -23,6 +23,12 @@ class AgentCreate(BaseModel):
     execution_mode: Literal["react", "dag", "auto"] = "auto"
     compact_instructions: str | None = None
     is_active: bool = True
+    confirmation_mode: Literal["auto", "inline_only", "channel_only"] = "auto"
+    confirmation_approver_scope: Literal[
+        "initiator", "agent_owner", "org_members"
+    ] = "initiator"
+    require_confirmation_for_all: bool = False
+    approval_channel_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -41,6 +47,12 @@ class AgentUpdate(BaseModel):
     execution_mode: Literal["react", "dag", "auto"] | None = None
     compact_instructions: str | None = None
     is_active: bool | None = None
+    confirmation_mode: Literal["auto", "inline_only", "channel_only"] | None = None
+    confirmation_approver_scope: Literal[
+        "initiator", "agent_owner", "org_members"
+    ] | None = None
+    require_confirmation_for_all: bool | None = None
+    approval_channel_id: str | None = None
 
 
 class AgentResponse(BaseModel):
@@ -72,6 +84,10 @@ class AgentResponse(BaseModel):
     review_note: str | None = None
     forked_from: str | None = None
     source: str | None = None
+    confirmation_mode: str = "auto"
+    confirmation_approver_scope: str = "initiator"
+    require_confirmation_for_all: bool = False
+    approval_channel_id: str | None = None
     created_at: str
     updated_at: str | None
 

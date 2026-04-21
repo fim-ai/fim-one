@@ -91,6 +91,18 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
       if (msg.event === "resume_done") {
         continue
       }
+      // awaiting_confirmation is emitted mid-stream when a tool hook pauses
+      // execution pending human approval. Forward it as a first-class item
+      // so ReactOutput can render the inline ConfirmationCard. Payload shape
+      // is frozen (see Phase 1 Task #3) — do not normalize/reshape.
+      if (msg.event === "awaiting_confirmation") {
+        result.push({
+          event: msg.event,
+          data: msg.data,
+          timestamp: msg.timestamp,
+        })
+        continue
+      }
       // Normalize step events for backward compat with stored sse_events
       const data = msg.event === "step"
         ? normalizeStep(msg.data as ReactStepEvent)

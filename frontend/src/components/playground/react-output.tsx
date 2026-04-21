@@ -28,6 +28,20 @@ import type { ToolMeta } from "@/hooks/use-tool-catalog"
 import { SuggestedFollowups } from "./suggested-followups"
 import { parseEvidence, parseSimpleEvidence, mergeEvidence, type ParsedEvidence } from "@/lib/evidence-utils"
 import { EvidenceProvider } from "@/contexts/evidence-context"
+import { ConfirmationCard } from "@/components/chat/confirmation-card"
+
+/**
+ * Wire shape emitted by the backend for `awaiting_confirmation` SSE events.
+ * FROZEN — see Phase 1 Task #3. Keep in sync with `confirmation_sse.py::_request_to_event_payload`.
+ */
+interface AwaitingConfirmationEvent {
+  type: "awaiting_confirmation"
+  confirmation_id: string
+  tool_name: string
+  arguments: Record<string, unknown>
+  timeout_at: string
+  agent_id: string
+}
 
 /* ------------------------------------------------------------------ */
 /*  Iteration grouping helpers (ReAct mode)                            */
@@ -320,6 +334,24 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
           )
         })}
 
+        {/* Awaiting-confirmation cards — persist after done so the operator's
+             decision record stays visible in the transcript. */}
+        {items.filter((i) => i.event === "awaiting_confirmation").map((item) => {
+          const originalIdx = items.indexOf(item)
+          const ev = item.data as AwaitingConfirmationEvent
+          return (
+            <div key={`conf-${ev.confirmation_id}`} data-react-idx={originalIdx}>
+              <ConfirmationCard
+                confirmationId={ev.confirmation_id}
+                toolName={ev.tool_name}
+                arguments={ev.arguments}
+                timeoutAt={ev.timeout_at}
+                agentId={ev.agent_id}
+              />
+            </div>
+          )
+        })}
+
         {/* Answer card — shown during streaming or after done */}
         {(displayAnswer || isAnswerStreaming) && (
           <div data-react-idx={doneItem ? items.indexOf(doneItem) : undefined}>
@@ -376,6 +408,20 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
           return (
             <div key={idx} data-react-idx={idx}>
               <DoneCard done={done} items={items} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} isPostProcessing={isPostProcessing} />
+            </div>
+          )
+        }
+        if (item.event === "awaiting_confirmation") {
+          const ev = item.data as AwaitingConfirmationEvent
+          return (
+            <div key={`conf-${ev.confirmation_id}`} data-react-idx={idx}>
+              <ConfirmationCard
+                confirmationId={ev.confirmation_id}
+                toolName={ev.tool_name}
+                arguments={ev.arguments}
+                timeoutAt={ev.timeout_at}
+                agentId={ev.agent_id}
+              />
             </div>
           )
         }

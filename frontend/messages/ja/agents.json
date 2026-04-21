@@ -162,6 +162,29 @@
     "helperText": "このエージェントが会話ターンを終了すると、サマリーカードが選択されたチャネルに投稿されます。承認カード（ブロッキング）はエージェントのhooksによって制御されたままです。",
     "missingChannelError": "チャネルを選択してください。",
     "loading": "チャネルを読み込み中…",
-    "personalAgentHint": "完了通知には組織スコープのエージェントが必要です。このエージェントを組織に公開してから、ここでチャネルを設定してください。"
+    "personalAgentHint": "チャネルは個人ではなく、組織の外部システム（Feishu、Slack など）での身元を表します。このエージェントを組織に公開して、その組織のチャネルに接続します。",
+    "personalAgentBlockedSave": "完了通知を有効にする前に、このエージェントを組織に公開してください。",
+    "emptyChannelsBlockedSave": "この組織にはアクティブなチャネルがありません。組織設定 → チャネルで追加してから、もう一度お試しください。"
+  },
+  "approval": {
+    "sectionTitle": "承認",
+    "helperText": "確認が必要なツールを実行する前に、エージェントがユーザーの承認をどのように収集するかを制御します。",
+    "modeLabel": "確認モード",
+    "modeAuto": "自動（リンク済みチャネルがあれば使用、なければインライン）",
+    "modeInlineOnly": "チャット内のみ",
+    "modeChannelOnly": "チャネルのみ（リンク済みチャネルがない場合はブロック）",
+    "approverScopeLabel": "承認者の範囲",
+    "approverInitiator": "実行を開始したユーザー",
+    "approverAgentOwner": "エージェント所有者のみ",
+    "approverOrgMembers": "組織内の誰でも",
+    "requireAllLabel": "すべてのツール呼び出しで確認が必要",
+    "requireAllHelp": "アクション単位の設定をオーバーライドします。すべてのツール呼び出しで最初に確認を求めます。",
+    "channelLabel": "承認チャネル",
+    "channelPlaceholder": "デフォルトを使用（エージェントの通知チャネル）",
+    "channelHelp": "設定されていない場合、承認リクエストはエージェントの完了通知チャネルにルーティングされます。",
+    "channelOnlyNoChannelsError": "チャネルのみモードには、少なくとも 1 つのリンク済みチャネルが必要です。",
+    "emptyChannels": "この組織にはアクティブなチャネルがありません。",
+    "emptyChannelsAction": "組織設定 → チャネルで設定してください",
+    "personalAgentHint": "このエージェントを組織に公開して、承認をチャネル経由でルーティングしてください。"
   }
 }

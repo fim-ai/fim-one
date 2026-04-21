@@ -162,6 +162,29 @@
     "helperText": "Wenn dieser Agent einen Gesprächsturn beendet, wird eine Zusammenfassungskarte an den ausgewählten Kanal gesendet. Genehmigungskarten (blockierend) werden weiterhin durch die Hooks des Agenten gesteuert.",
     "missingChannelError": "Bitte wählen Sie einen Kanal aus.",
     "loading": "Kanäle werden geladen…",
-    "personalAgentHint": "Abschlussbenachrichtigungen erfordern einen organisationsweit geltenden Agenten. Veröffentlichen Sie diesen Agenten zunächst in einer Organisation und konfigurieren Sie dann einen Kanal hier."
+    "personalAgentHint": "Kanäle stellen die Identität einer Organisation in externen Systemen dar (Feishu, Slack, …), nicht die eines Einzelnen. Veröffentlichen Sie diesen Agent in einer Organisation, um ihn mit den Kanälen dieser Organisation zu verbinden.",
+    "personalAgentBlockedSave": "Veröffentlichen Sie diesen Agent in einer Organisation, bevor Sie Benachrichtigungen zum Abschluss aktivieren.",
+    "emptyChannelsBlockedSave": "Keine aktiven Kanäle in dieser Organisation. Fügen Sie einen unter Organisationseinstellungen → Kanäle hinzu und versuchen Sie es erneut."
+  },
+  "approval": {
+    "sectionTitle": "Genehmigung",
+    "helperText": "Steuert, wie der Agent die Genehmigung des Benutzers einholt, bevor Tools ausgeführt werden, die eine Bestätigung erfordern.",
+    "modeLabel": "Bestätigungsmodus",
+    "modeAuto": "Automatisch (Kanal verwenden, falls verknüpft, sonst inline)",
+    "modeInlineOnly": "Nur inline im Chat",
+    "modeChannelOnly": "Nur Kanal (blockiert, wenn kein Kanal verknüpft ist)",
+    "approverScopeLabel": "Genehmiger-Bereich",
+    "approverInitiator": "Der Benutzer, der die Ausführung gestartet hat",
+    "approverAgentOwner": "Nur der Agent-Besitzer",
+    "approverOrgMembers": "Jeder in der Organisation",
+    "requireAllLabel": "Bestätigung für jeden Tool-Aufruf erforderlich",
+    "requireAllHelp": "Überschreibt Einstellungen pro Aktion; jeder Tool-Aufruf wird zuerst nachgefragt.",
+    "channelLabel": "Genehmigungskanal",
+    "channelPlaceholder": "Standard verwenden (Benachrichtigungskanal des Agents)",
+    "channelHelp": "Falls nicht festgelegt, werden Genehmigungsanfragen an den Benachrichtigungskanal des Agents weitergeleitet.",
+    "channelOnlyNoChannelsError": "Der Nur-Kanal-Modus erfordert mindestens einen verknüpften Kanal.",
+    "emptyChannels": "Keine aktiven Kanäle in dieser Organisation.",
+    "emptyChannelsAction": "Konfigurieren Sie einen unter Organisationseinstellungen → Kanäle",
+    "personalAgentHint": "Veröffentlichen Sie diesen Agent in einer Organisation, um Genehmigungen über einen Kanal weiterzuleiten."
   }
 }

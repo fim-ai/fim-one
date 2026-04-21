@@ -269,7 +269,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
       </div>
 
       {/* ---- Right panel: form or empty state ---- */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {!showForm ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-sm text-muted-foreground">
@@ -277,7 +277,7 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
             </p>
           </div>
         ) : (
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               <p className="text-sm font-medium mb-2">
                 {editingActionId && !isAddingNew ? t("editAction") : t("newAction")}
@@ -395,6 +395,9 @@ export function ActionManager({ connector, onChanged }: ActionManagerProps) {
                 />
                 <span>{t("requiresConfirmation")}</span>
               </label>
+              <p className="text-xs text-muted-foreground">
+                {t("requiresConfirmationHelp")}
+              </p>
 
               {/* Form buttons */}
               <div className="flex justify-end gap-2 pt-1">

@@ -162,6 +162,29 @@
     "helperText": "Lorsque cet agent termine un tour de conversation, une carte de résumé est publiée sur le canal sélectionné. Les cartes d'approbation (bloquantes) restent contrôlées par les hooks de l'agent.",
     "missingChannelError": "Veuillez sélectionner un canal.",
     "loading": "Chargement des canaux…",
-    "personalAgentHint": "Les notifications d'achèvement nécessitent un agent au niveau de l'organisation. Publiez d'abord cet agent dans une organisation, puis configurez un canal ici."
+    "personalAgentHint": "Les canaux représentent l'identité d'une organisation dans les systèmes externes (Feishu, Slack, …), pas celle d'un individu. Publiez cet agent dans une organisation pour le connecter aux canaux de cette organisation.",
+    "personalAgentBlockedSave": "Publiez cet agent dans une organisation avant d'activer les notifications de fin.",
+    "emptyChannelsBlockedSave": "Aucun canal actif dans cette org. Ajoutez-en un dans Paramètres de l'organisation → Canaux, puis réessayez."
+  },
+  "approval": {
+    "sectionTitle": "Approbation",
+    "helperText": "Contrôle la manière dont l'agent collecte l'approbation de l'utilisateur avant d'exécuter les outils qui nécessitent une confirmation.",
+    "modeLabel": "Mode de confirmation",
+    "modeAuto": "Auto (utiliser le canal s'il est lié, sinon en ligne)",
+    "modeInlineOnly": "En ligne dans le chat uniquement",
+    "modeChannelOnly": "Canal uniquement (bloqué s'il n'y a pas de canal lié)",
+    "approverScopeLabel": "Portée de l'approbateur",
+    "approverInitiator": "L'utilisateur qui a lancé l'exécution",
+    "approverAgentOwner": "Uniquement le propriétaire de l'agent",
+    "approverOrgMembers": "Toute personne dans l'organisation",
+    "requireAllLabel": "Exiger une confirmation pour chaque appel d'outil",
+    "requireAllHelp": "Remplace les paramètres par action ; chaque appel d'outil demandera d'abord.",
+    "channelLabel": "Canal d'approbation",
+    "channelPlaceholder": "Utiliser le canal par défaut (canal de notification de l'agent)",
+    "channelHelp": "S'il n'est pas défini, les demandes d'approbation seront acheminées vers le canal de notification de fin de l'agent.",
+    "channelOnlyNoChannelsError": "Le mode canal uniquement nécessite au moins un canal lié.",
+    "emptyChannels": "Aucun canal actif dans cette org.",
+    "emptyChannelsAction": "Configurez-en un dans Paramètres de l'organisation → Canaux",
+    "personalAgentHint": "Publiez cet agent dans une organisation pour acheminer les approbations via un canal."
   }
 }

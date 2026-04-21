@@ -151,5 +151,21 @@
   "autoAgentDescription": "최적의 에이전트에 자동으로 위임합니다",
   "reconnecting": "다시 연결 중...",
   "reconnectAttempt": "다시 연결 중... ({attempt}/{max})",
-  "reconnectFailed": "재연결 실패"
+  "reconnectFailed": "재연결 실패",
+  "confirmation": {
+    "title": "승인 필요",
+    "toolLabel": "작업",
+    "parametersLabel": "매개변수",
+    "expiresIn": "{time}에 만료됨",
+    "approveButton": "승인",
+    "rejectButton": "거부",
+    "approved": "승인됨",
+    "rejected": "거부됨",
+    "approvedBy": "{time}에 승인됨",
+    "rejectedAt": "{time}에 거부됨",
+    "expired": "요청 만료됨",
+    "errorToast": "결정 제출 실패",
+    "expand": "확장",
+    "collapse": "축소"
+  }
 }

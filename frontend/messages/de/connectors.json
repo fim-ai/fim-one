@@ -230,5 +230,6 @@
   "templateCategory_database": "Datenbank",
   "fromTemplate": "Aus Vorlage",
   "privateDefaultBadge": "Privates Standard-token",
-  "privateDefaultHelp": "Fallback ist deaktiviert – nur Sie (der Besitzer) können das Standard-token dieses Connectors verwenden. Andere Benutzer müssen ihre eigenen Anmeldedaten konfigurieren, bevor dieser Connector für sie funktioniert."
+  "privateDefaultHelp": "Fallback ist deaktiviert – nur Sie (der Besitzer) können das Standard-token dieses Connectors verwenden. Andere Benutzer müssen ihre eigenen Anmeldedaten konfigurieren, bevor dieser Connector für sie funktioniert.",
+  "requiresConfirmationHelp": "Wenn aktiviert, fordern Agenten eine Genehmigung an, bevor diese Aktion aufgerufen wird. Wo die Genehmigung eingeholt wird – inline im Chat oder über einen verknüpften Kanal – wird pro Agent konfiguriert."
 }

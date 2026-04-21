@@ -94,6 +94,7 @@ from .api.workflow_templates import (
 from .api.agent_templates import router as agent_templates_router
 from .api.connector_templates import router as connector_templates_router
 from .api.channels import router as channels_router
+from .api.confirmations import router as confirmations_router
 from .api.hooks import router as hooks_router
 from .api.metrics import router as metrics_router
 from .api.notifications import router as notifications_router
@@ -120,8 +121,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     from fim_one.core.workflow.scheduler import WorkflowScheduler
     from fim_one.core.workflow.run_cleanup import WorkflowRunCleaner
     from fim_one.core.channels.expiry import ConfirmationRequestExpirer
+    from fim_one.web.confirmation_sse import register_confirmation_bridge
 
     await init_db()
+
+    # Bridge the core ``emit_inline_confirmation`` hook to the chat SSE
+    # stream.  Must run before any agent turn — any tool flagged
+    # requires_confirmation would otherwise skip the inline push.
+    register_confirmation_bridge()
 
     # Start the workflow scheduler daemon
     scheduler = WorkflowScheduler()
@@ -390,6 +397,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router)
     app.include_router(hooks_router)
     app.include_router(channels_router)
+    app.include_router(confirmations_router)
     app.include_router(notifications_router)
     app.include_router(user_settings_router)
     app.include_router(version_router)

@@ -55,6 +55,42 @@ class Agent(UUIDPKMixin, TimestampMixin, Base):
         Boolean, default=True, nullable=False, server_default=sa.text("TRUE")
     )
 
+    # --- Human-in-the-loop approval routing (Phase 1) -----------------------
+    # confirmation_mode: "auto" (infer from connector+channel), "inline_only"
+    # (always surface an in-app approval card), "channel_only" (always push
+    # to approval_channel_id; fail if none bound).
+    confirmation_mode: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="auto",
+        server_default=sa.text("'auto'"),
+    )
+    # confirmation_approver_scope: who can approve.
+    #   "initiator"    — only the user who triggered the tool call
+    #   "agent_owner"  — only the agent owner (user_id)
+    #   "org_members"  — any member of the agent's org
+    confirmation_approver_scope: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="initiator",
+        server_default=sa.text("'initiator'"),
+    )
+    # If True, every tool call goes through the approval gate regardless of
+    # the connector's requires_confirmation flag.
+    require_confirmation_for_all: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("FALSE"),
+    )
+    # Explicit channel binding for "channel" confirmation mode. Nullable; when
+    # NULL the hook falls back to inline (if allowed) or fails closed.
+    approval_channel_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("channels.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     # Publish review fields

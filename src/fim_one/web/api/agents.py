@@ -67,6 +67,14 @@ def _agent_to_response(agent: Agent, *, is_owner: bool = True) -> AgentResponse:
         ),
         review_note=getattr(agent, "review_note", None),
         forked_from=getattr(agent, "forked_from", None),
+        confirmation_mode=getattr(agent, "confirmation_mode", "auto") or "auto",
+        confirmation_approver_scope=getattr(
+            agent, "confirmation_approver_scope", "initiator"
+        ) or "initiator",
+        require_confirmation_for_all=bool(
+            getattr(agent, "require_confirmation_for_all", False)
+        ),
+        approval_channel_id=getattr(agent, "approval_channel_id", None),
         created_at=agent.created_at.isoformat() if agent.created_at else "",
         updated_at=agent.updated_at.isoformat() if agent.updated_at else None,
     )
@@ -174,6 +182,10 @@ async def create_agent(
         sandbox_config=body.sandbox_config,
         execution_mode=body.execution_mode,
         compact_instructions=body.compact_instructions,
+        confirmation_mode=body.confirmation_mode,
+        confirmation_approver_scope=body.confirmation_approver_scope,
+        require_confirmation_for_all=body.require_confirmation_for_all,
+        approval_channel_id=body.approval_channel_id,
         status="draft",
     )
     db.add(agent)

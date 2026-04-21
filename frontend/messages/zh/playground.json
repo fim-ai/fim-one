@@ -151,5 +151,21 @@
   "autoAgentDescription": "自动委派给最佳智能体",
   "reconnecting": "重新连接中...",
   "reconnectAttempt": "重新连接中...({attempt}/{max})",
-  "reconnectFailed": "重新连接失败"
+  "reconnectFailed": "重新连接失败",
+  "confirmation": {
+    "title": "需要批准",
+    "toolLabel": "操作",
+    "parametersLabel": "参数",
+    "expiresIn": "过期时间：{time}",
+    "approveButton": "批准",
+    "rejectButton": "拒绝",
+    "approved": "已批准",
+    "rejected": "已拒绝",
+    "approvedBy": "您在 {time} 批准",
+    "rejectedAt": "在 {time} 被拒绝",
+    "expired": "请求已过期",
+    "errorToast": "提交决定失败",
+    "expand": "展开",
+    "collapse": "折叠"
+  }
 }

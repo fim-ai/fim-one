@@ -151,5 +151,21 @@
   "autoAgentDescription": "Delegiert automatisch an den besten Agent",
   "reconnecting": "Verbindung wird wiederhergestellt...",
   "reconnectAttempt": "Verbindung wird wiederhergestellt... ({attempt}/{max})",
-  "reconnectFailed": "Wiederherstellung der Verbindung fehlgeschlagen"
+  "reconnectFailed": "Wiederherstellung der Verbindung fehlgeschlagen",
+  "confirmation": {
+    "title": "Genehmigung erforderlich",
+    "toolLabel": "Aktion",
+    "parametersLabel": "Parameter",
+    "expiresIn": "Läuft ab in {time}",
+    "approveButton": "Genehmigen",
+    "rejectButton": "Ablehnen",
+    "approved": "Genehmigt",
+    "rejected": "Abgelehnt",
+    "approvedBy": "Von Ihnen genehmigt um {time}",
+    "rejectedAt": "Abgelehnt um {time}",
+    "expired": "Anfrage abgelaufen",
+    "errorToast": "Entscheidung konnte nicht eingereicht werden",
+    "expand": "Erweitern",
+    "collapse": "Reduzieren"
+  }
 }

@@ -70,6 +70,7 @@
   "responseExtract": "Response Extract (JMESPath)",
   "responseExtractHelp": "JMESPath expression to extract relevant data from the API response.",
   "requiresConfirmation": "Requires user confirmation before execution",
+  "requiresConfirmationHelp": "When checked, agents will request approval before calling this action. Where approval is collected — inline in chat or via a linked channel — is configured per agent.",
   "advancedBuilder": "Advanced Builder",
   "advancedBuilderDesc": "Best for bulk API doc imports, complex endpoint configuration, and multi-step API debugging.",
   "advancedBuilderDescDb": "Best for strategic schema annotation, bulk visibility management, and multi-step analysis for large databases.",

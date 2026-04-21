@@ -151,5 +151,21 @@
   "autoAgentDescription": "最適なエージェントに自動的に委譲します",
   "reconnecting": "再接続中...",
   "reconnectAttempt": "再接続中... ({attempt}/{max})",
-  "reconnectFailed": "再接続に失敗しました"
+  "reconnectFailed": "再接続に失敗しました",
+  "confirmation": {
+    "title": "承認が必要です",
+    "toolLabel": "アクション",
+    "parametersLabel": "パラメータ",
+    "expiresIn": "{time}で期限切れ",
+    "approveButton": "承認",
+    "rejectButton": "却下",
+    "approved": "承認されました",
+    "rejected": "却下されました",
+    "approvedBy": "{time}にあなたによって承認されました",
+    "rejectedAt": "{time}に却下されました",
+    "expired": "リクエストの期限が切れました",
+    "errorToast": "決定の送信に失敗しました",
+    "expand": "展開",
+    "collapse": "折りたたむ"
+  }
 }

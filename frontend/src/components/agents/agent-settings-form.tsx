@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Bell, Bot, Check, Info, Loader2, Zap, GitBranch, Sparkles } from "lucide-react"
+import { Bell, Bot, Check, Info, Loader2, Zap, GitBranch, ShieldCheck, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -74,6 +74,15 @@ export function AgentSettingsForm({
   const [notifyChannelId, setNotifyChannelId] = useState<string>("")
   const [availableChannels, setAvailableChannels] = useState<Channel[]>([])
   const [isLoadingChannels, setIsLoadingChannels] = useState<boolean>(false)
+  // Approval routing (Phase 2)
+  const [confirmationMode, setConfirmationMode] = useState<
+    "auto" | "inline_only" | "channel_only"
+  >("auto")
+  const [confirmationApproverScope, setConfirmationApproverScope] = useState<
+    "initiator" | "agent_owner" | "org_members"
+  >("initiator")
+  const [requireConfirmationForAll, setRequireConfirmationForAll] = useState<boolean>(false)
+  const [approvalChannelId, setApprovalChannelId] = useState<string>("")
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const [availableKBs, setAvailableKBs] = useState<{ id: string; name: string; document_count: number }[]>([])
@@ -119,6 +128,20 @@ export function AgentSettingsForm({
       const onComplete = (notifications?.on_complete as Record<string, unknown> | undefined) ?? {}
       setNotifyOnComplete(onComplete.enabled === true)
       setNotifyChannelId(typeof onComplete.channel_id === "string" ? onComplete.channel_id : "")
+      // Approval routing
+      setConfirmationMode(
+        (agent.confirmation_mode as "auto" | "inline_only" | "channel_only") || "auto"
+      )
+      setConfirmationApproverScope(
+        (agent.confirmation_approver_scope as
+          | "initiator"
+          | "agent_owner"
+          | "org_members") || "initiator"
+      )
+      setRequireConfirmationForAll(agent.require_confirmation_for_all === true)
+      setApprovalChannelId(
+        typeof agent.approval_channel_id === "string" ? agent.approval_channel_id : ""
+      )
       setFieldErrors({})
     } else {
       setName("")
@@ -141,6 +164,10 @@ export function AgentSettingsForm({
       setCompactInstructions("")
       setNotifyOnComplete(false)
       setNotifyChannelId("")
+      setConfirmationMode("auto")
+      setConfirmationApproverScope("initiator")
+      setRequireConfirmationForAll(false)
+      setApprovalChannelId("")
       setFieldErrors({})
     }
   }, [agent])
@@ -226,9 +253,13 @@ export function AgentSettingsForm({
       selectedFastModelConfigId !== ((agent.model_config_json?.fast_model_config_id as string) ?? "") ||
       compactInstructions !== (agent.compact_instructions || "") ||
       notifyOnComplete !== origNotifyEnabled ||
-      notifyChannelId !== origNotifyChannelId
+      notifyChannelId !== origNotifyChannelId ||
+      confirmationMode !== (agent.confirmation_mode || "auto") ||
+      confirmationApproverScope !== (agent.confirmation_approver_scope || "initiator") ||
+      requireConfirmationForAll !== (agent.require_confirmation_for_all === true) ||
+      approvalChannelId !== (agent.approval_channel_id || "")
     onDirtyChange(dirty)
-  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, selectedMCPServers, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, selectedModelConfigId, selectedFastModelConfigId, compactInstructions, notifyOnComplete, notifyChannelId, onDirtyChange])
+  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, selectedMCPServers, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, selectedModelConfigId, selectedFastModelConfigId, compactInstructions, notifyOnComplete, notifyChannelId, confirmationMode, confirmationApproverScope, requireConfirmationForAll, approvalChannelId, onDirtyChange])
 
   const toggleCategory = (cat: string) => {
     setToolCategories((prev) =>
@@ -243,9 +274,37 @@ export function AgentSettingsForm({
     const trimmedName = name.trim()
     if (!trimmedName) return
 
-    // Validation: if completion notification is on, a channel must be selected
+    // Validation: if completion notification is on, a channel must be selectable AND selected.
+    // Three unreachable states, each with its own feedback surface:
+    //   1. Personal agent — Select isn't rendered; inline error would be invisible → toast.
+    //   2. Org agent with zero channels — Select isn't rendered either → toast.
+    //   3. Org agent with channels but none chosen — Select IS rendered → inline field error.
     if (notifyOnComplete && !notifyChannelId) {
+      if (!agent?.org_id) {
+        toast.error(t("notifications.personalAgentBlockedSave"))
+        return
+      }
+      if (availableChannels.length === 0) {
+        toast.error(t("notifications.emptyChannelsBlockedSave"))
+        return
+      }
       setFieldErrors((prev) => ({ ...prev, notifyChannel: t("notifications.missingChannelError") }))
+      return
+    }
+
+    // Approval precheck: channel_only without any reachable channel is unshippable.
+    // Block submit if mode=channel_only AND no approval channel AND no completion channel
+    // AND org has zero channels — every path to deliver approval would fail.
+    if (
+      confirmationMode === "channel_only" &&
+      !approvalChannelId &&
+      !notifyChannelId &&
+      availableChannels.length === 0
+    ) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        approvalChannel: t("approval.channelOnlyNoChannelsError"),
+      }))
       return
     }
 
@@ -308,6 +367,10 @@ export function AgentSettingsForm({
         ...(modelConfigJson !== undefined && { model_config_json: modelConfigJson }),
         ...(hasSandboxConfig && { sandbox_config: sandboxCfg }),
         compact_instructions: compactInstructions.trim() || null,
+        confirmation_mode: confirmationMode,
+        confirmation_approver_scope: confirmationApproverScope,
+        require_confirmation_for_all: requireConfirmationForAll,
+        approval_channel_id: approvalChannelId || null,
       }
 
       let result: AgentResponse
@@ -973,6 +1036,158 @@ export function AgentSettingsForm({
                       </p>
                     )}
                   </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Approval (human-in-the-loop routing) */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+              <Label className="text-sm font-medium">{t("approval.sectionTitle")}</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("approval.helperText")}
+            </p>
+
+            {/* Confirmation mode */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                {t("approval.modeLabel")}
+              </Label>
+              <Select
+                value={confirmationMode}
+                onValueChange={(v) => {
+                  setConfirmationMode(v as "auto" | "inline_only" | "channel_only")
+                  clearFieldError("approvalChannel")
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">{t("approval.modeAuto")}</SelectItem>
+                  <SelectItem value="inline_only">{t("approval.modeInlineOnly")}</SelectItem>
+                  <SelectItem value="channel_only">{t("approval.modeChannelOnly")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Approver scope */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                {t("approval.approverScopeLabel")}
+              </Label>
+              <Select
+                value={confirmationApproverScope}
+                onValueChange={(v) =>
+                  setConfirmationApproverScope(
+                    v as "initiator" | "agent_owner" | "org_members"
+                  )
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="initiator">{t("approval.approverInitiator")}</SelectItem>
+                  <SelectItem value="agent_owner">{t("approval.approverAgentOwner")}</SelectItem>
+                  <SelectItem value="org_members">{t("approval.approverOrgMembers")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Require-for-all switch */}
+            <div className="flex items-center justify-between gap-3 rounded-md border border-input px-3 py-2">
+              <div className="flex-1 space-y-0.5">
+                <Label
+                  htmlFor="require-confirmation-for-all"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  {t("approval.requireAllLabel")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("approval.requireAllHelp")}
+                </p>
+              </div>
+              <Switch
+                id="require-confirmation-for-all"
+                checked={requireConfirmationForAll}
+                onCheckedChange={setRequireConfirmationForAll}
+              />
+            </div>
+
+            {/* Approval channel (hidden when inline_only) */}
+            {confirmationMode !== "inline_only" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  {t("approval.channelLabel")}
+                </Label>
+                {isLoadingChannels ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>{t("notifications.loading")}</span>
+                  </div>
+                ) : !agent?.org_id ? (
+                  <div className="rounded-md border border-dashed border-input px-3 py-2.5 space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {t("approval.personalAgentHint")}
+                    </p>
+                  </div>
+                ) : availableChannels.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-input px-3 py-2.5 space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {t("approval.emptyChannels")}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      asChild
+                    >
+                      <Link href="/settings?tab=channels">
+                        {t("approval.emptyChannelsAction")}
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <Select
+                    value={approvalChannelId || "__default__"}
+                    onValueChange={(v) => {
+                      setApprovalChannelId(v === "__default__" ? "" : v)
+                      clearFieldError("approvalChannel")
+                    }}
+                  >
+                    <SelectTrigger
+                      className="w-full"
+                      aria-invalid={!!fieldErrors.approvalChannel}
+                    >
+                      <SelectValue placeholder={t("approval.channelPlaceholder")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__default__">
+                        {t("approval.channelPlaceholder")}
+                      </SelectItem>
+                      {availableChannels.map((ch) => (
+                        <SelectItem key={ch.id} value={ch.id}>
+                          {ch.name}
+                          <span className="text-muted-foreground ml-1 text-xs">
+                            ({ch.type})
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {t("approval.channelHelp")}
+                </p>
+                {fieldErrors.approvalChannel && (
+                  <p className="text-sm text-destructive">
+                    {fieldErrors.approvalChannel}
+                  </p>
                 )}
               </div>
             )}

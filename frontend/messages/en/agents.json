@@ -183,9 +183,33 @@
     "channelPlaceholder": "Select a channel…",
     "emptyState": "No active channels in this org.",
     "emptyStateAction": "Configure one in Organization Settings → Channels",
-    "personalAgentHint": "Completion notifications require an org-scoped agent. Publish this agent to an organization first, then configure a channel here.",
+    "personalAgentHint": "Channels represent an organization's identity in external systems (Feishu, Slack, …), not an individual's. Publish this agent to an organization to connect it to that organization's channels.",
+    "personalAgentBlockedSave": "Publish this agent to an organization before enabling completion notifications.",
+    "emptyChannelsBlockedSave": "No active channels in this org. Add one in Organization Settings → Channels, then try again.",
     "helperText": "When this agent finishes a conversation turn, a summary card is posted to the selected channel. Approval cards (blocking) remain controlled by the agent's hooks.",
     "missingChannelError": "Please select a channel.",
     "loading": "Loading channels…"
+  },
+
+  "approval": {
+    "sectionTitle": "Approval",
+    "helperText": "Controls how the agent collects user approval before running tools that require confirmation.",
+    "modeLabel": "Confirmation mode",
+    "modeAuto": "Auto (use channel if linked, else inline)",
+    "modeInlineOnly": "Inline in chat only",
+    "modeChannelOnly": "Channel only (blocks if no channel linked)",
+    "approverScopeLabel": "Approver scope",
+    "approverInitiator": "The user who started the run",
+    "approverAgentOwner": "Only the agent owner",
+    "approverOrgMembers": "Anyone in the organization",
+    "requireAllLabel": "Require confirmation for every tool call",
+    "requireAllHelp": "Overrides per-action settings; every tool call will ask first.",
+    "channelLabel": "Approval channel",
+    "channelPlaceholder": "Use default (agent's notification channel)",
+    "channelHelp": "If not set, approval requests will be routed to the agent's completion notification channel.",
+    "channelOnlyNoChannelsError": "Channel-only mode requires at least one linked channel.",
+    "emptyChannels": "No active channels in this org.",
+    "emptyChannelsAction": "Configure one in Organization Settings → Channels",
+    "personalAgentHint": "Publish this agent to an organization to route approvals through a channel."
   }
 }

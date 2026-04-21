@@ -12,14 +12,15 @@ description: "FIM Oneへの全ての注目すべき変更。"
 
 ### 追加
 
-- **信创数据库支持**：Database Connector 现在列出 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦），与 PostgreSQL/MySQL 并列。KingbaseES 和 HighGo 与 PG 兼容，复用 `asyncpg`，无需额外依赖；DM8 使用官方 `dmPython` vendor wheel。独立的 `scripts/test_xinchuang_dbs.py` 让运维人员从 CLI 验证实时连接。
-- **飞书频道 + IM 确认门控**：新增 `Channel` 资源类型（组织范围，凭证静态加密），让组织连接飞书应用以实现出站消息。标记为 `requires_confirmation=True` 的工具现在会向配置的飞书群组发送 Approve/Reject 交互卡片，而不仅仅在门户中显示确认对话框——群组中任何授权成员都可以直接从飞书批准或拒绝。涵盖 Settings → Channels 管理 UI（列表、创建/编辑含脏状态保护、详情含可复制回调 URL、测试发送）、CRUD API（`/api/channels`）和飞书事件回调端点（`/api/channels/{id}/callback`），支持签名验证和 URL challenge。v0.9 IM Channel Integration 路线图项的第一步，提前在 2026-04-24 路演前发布。
-- **智能体 Hook 系统（骨架）**：`src/fim_one/core/hooks/` 中新增 `PreToolUseHook` / `PostToolUseHook` 抽象，让确定性逻辑在 LLM 循环外运行——FeishuGateHook 是第一个具体实现，附加到确认门控流程。完整的 hook 生命周期 + 用户定义的 YAML hook 仍在 v0.9 范围内。
-- **Hook 系统现已在 ReAct 和 DAG 运行时上线**：在其 `model_config_json` 中声明 `hooks.class_hooks` 的智能体会在每个聊天会话上实例化并注册这些 hook。第一个消费者——`FeishuGateHook`——在智能体调用其连接器操作标记为 `requires_confirmation=True` 的工具时自动触发，向组织的飞书群组发送 Approve/Reject 卡片，阻止工具执行，并根据判决恢复或中止。之前 hook 抽象已就位，但 web 层没有将其连接到实时聊天。
-- **频道和 Hook 系统架构已文档化**：新增 `docs/architecture/hook-system.mdx` 解释三个 hook 点、为什么 hook 在 LLM 循环外运行，并端到端演示 FeishuGateHook。现有架构页面（system-overview、organization、react-engine、philosophy）交叉链接到它。README 现在将 Messaging Channels 列为一流的 v0.8 能力，应用层图表在 Portal/API/iframe 旁边包含 IM 目标。
-- **Hook 批准游乐场**：频道详情表单现在有"Test Approval Flow"操作，模拟敏感工具调用，向关联的飞书群组推送真实确认卡片，并实时轮询审阅者的决定。与现有预览按钮不同，这执行完整的生产路径（真实的 `ConfirmationRequest` 行、真实飞书回调、状态转换），因此演示和预发布排演使用与生产 hook 相同的代码路径。
+- **信创数据库サポート**: Database Connectorは、PostgreSQL/MySQLと並んでKingbaseES（人大金仓）、HighGo（瀚高）、DM8（达梦）をリストアップするようになりました。KingbaseESとHighGoはPG互換で、追加の依存関係なしに`asyncpg`を再利用します。DM8は公式の`dmPython`ベンダーホイールを使用します。スタンドアロンの`scripts/test_xinchuang_dbs.py`により、オペレーターはCLIからライブ接続性を検証できます。
+- **Feishuチャネル + IM経由の確認ゲート**: 新しい`Channel`リソースタイプ（組織スコープ、認証情報は保存時に暗号化）により、組織はFeishuアプリを接続して送信メッセージを実現できます。`requires_confirmation=True`とマークされたツールは、ポータルの確認ダイアログのみを表示する代わりに、Approve/Rejectインタラクティブカードを設定されたFeishuグループに送信します。グループの任意の認可されたメンバーがFeishuから直接承認または拒否できます。Settings → Channels管理UI（リスト、作成/編集とダーティ状態保護、コピー可能なコールバックURLを含む詳細、テスト送信）、CRUD API（`/api/channels`）、署名検証とURLチャレンジサポート付きのFeishuイベントコールバックエンドポイント（`/api/channels/{id}/callback`）をカバーします。v0.9 IM Channel Integration ロードマップアイテムの最初のステップで、2026-04-24ロードショーに向けて予定より早く提供されます。
+- **Agent Hook System（スケルトン）**: `src/fim_one/core/hooks/`の新しい`PreToolUseHook` / `PostToolUseHook`抽象化により、決定論的ロジックがLLMループの外で実行できます。FeishuGateHookが最初の具体的な実装で、確認ゲートフローに接続されています。完全なhookライフサイクルとユーザー定義YAMLフックはv0.9スコープのままです。
+- **Hook Systemは現在ReAct and DAG runtimeで稼働中**: `model_config_json`で`hooks.class_hooks`を宣言するエージェントは、すべてのチャットセッションでそれらのフックがインスタンス化および登録されます。最初のコンシューマー — `FeishuGateHook` — は、エージェントが`requires_confirmation=True`とマークされたコネクタアクションを持つツールを呼び出すときに自動的に発火し、Approve/Rejectカードを組織のFeishuグループに投稿し、ツールをブロックし、判定に基づいて再開または中止します。以前は、フック抽象化は実装されていましたが、ウェブレイヤーのライブチャットへの配線は何もありませんでした。
+- **ChannelsとHook Systemアーキテクチャドキュメント**: 新しい`docs/architecture/hook-system.mdx`は、3つのフックポイント、フックがLLMループの外で実行される理由、およびFeishuGateHookをエンドツーエンドで説明します。既存のアーキテクチャページ（system-overview、organization、react-engine、philosophy）はそれへのクロスリンクを持ちます。READMEはMessaging Channelsをv0.8の第一級機能としてリストアップし、Application Layerダイアグラムはポータル/API/iframeと並んでIM対象を含みます。
+- **Hook Approval Playground**: Channelsの詳細シートに「Test Approval Flow」アクションが追加され、機密ツール呼び出しをシミュレートし、リンクされたFeishuグループに実際の確認カードをプッシュし、レビュアーの決定をライブでポーリングします。既存のプレビューボタンとは異なり、これは完全な本番パスを実行します（本物の`ConfirmationRequest`行、実際のFeishuコールバック、ステータス遷移）ため、デモと本番前リハーサルは本番フックが使用するのと同じコードパスを使用します。
 
-- **按智能体任务完成通知**：智能体现在可以在长时间运行的 ReAct 或 DAG 任务完成时向组织的频道（目前为飞书）推送摘要卡片。在 Settings → Agent → Notifications 中按智能体配置。通用出站通知模式的第一个消费者。
+- **エージェント単位のタスク完了通知**: エージェントは、長時間実行されるReActまたはDAGタスクが完了したときに、組織のチャネル（現在Feishu）にサマリーカードをプッシュできるようになりました。Settings → Agent → Notificationsでエージェント単位で設定可能です。汎用送信通知パターンの最初のコンシューマーです。
+- **設定可能な確認ゲート — インラインまたはチャネル**: すべてのエージェントは、Settings内に「Approval」セクションを持つようになり、3つのルーティングモード（Auto / Inline only / Channel only）、承認者スコープセレクター（initiator / agent owner / anyone in the org）、「すべてのツール呼び出しに対して確認を要求」オーバーライド、および明示的な承認チャネルピッカーを備えています。Autoモードは、リンクされたチャネルが存在する場合はそれを使用し、チャットストリーム内のインライン承認カードに適切にフォールバックします。そのため、チャネルを持たないエージェントでも、サイレント失敗の代わりに実際の承認UXを取得します。新しい`POST /api/confirmations/{id}/respond`エンドポイントは、Feishu webhookと単一の決定記録パスを共有するため、チャットでクリックされたか、Feishuグループでクリックされたかに関わらず、すべての承認は同じ`approver_user_id`と`decided_at`監査フィールドをスタンプします。
 
 ### 変更
 

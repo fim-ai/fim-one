@@ -151,5 +151,21 @@
   "autoAgentDescription": "Délègue automatiquement au meilleur agent",
   "reconnecting": "Reconnexion en cours...",
   "reconnectAttempt": "Reconnexion en cours... ({attempt}/{max})",
-  "reconnectFailed": "Échec de la reconnexion"
+  "reconnectFailed": "Échec de la reconnexion",
+  "confirmation": {
+    "title": "Approbation requise",
+    "toolLabel": "Action",
+    "parametersLabel": "Paramètres",
+    "expiresIn": "Expire dans {time}",
+    "approveButton": "Approuver",
+    "rejectButton": "Rejeter",
+    "approved": "Approuvé",
+    "rejected": "Rejeté",
+    "approvedBy": "Approuvé par vous à {time}",
+    "rejectedAt": "Rejeté à {time}",
+    "expired": "Demande expirée",
+    "errorToast": "Échec de la soumission de la décision",
+    "expand": "Développer",
+    "collapse": "Réduire"
+  }
 }

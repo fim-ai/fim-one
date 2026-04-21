@@ -162,6 +162,57 @@ def _emit(sse_events: list[dict[str, Any]], event: str, data: Any) -> str:
     return _sse(event, data)
 
 
+async def _pump_inline_confirmations(
+    agent_id: str,
+    user_id: str,
+    progress_queue: "asyncio.Queue[str]",
+    sse_events: list[dict[str, Any]],
+) -> None:
+    """Forward ``awaiting_confirmation`` events from the in-process queue.
+
+    Runs for the lifetime of a single SSE response.  The bridge
+    (``fim_one.web.confirmation_sse``) parks each inline ``ConfirmationRequest``
+    on a ``(agent_id, user_id)`` queue; this coroutine drains that queue
+    and pushes frames onto the SSE ``progress_queue`` so the frontend sees
+    ``awaiting_confirmation`` MID-stream (before the gate hook's DB poll
+    returns).
+
+    Cancelled by the handler when the stream ends; never raises.
+    """
+    # Imported lazily so the import graph stays acyclic during module
+    # initialisation (chat.py is imported by app.py before lifespan runs).
+    from fim_one.web.confirmation_sse import queue_for
+
+    if not agent_id or not user_id:
+        return
+
+    q = queue_for(agent_id, user_id)
+    try:
+        while True:
+            event = await q.get()
+            _append_event(sse_events, "awaiting_confirmation", event)
+            try:
+                progress_queue.put_nowait(
+                    _sse("awaiting_confirmation", event)
+                )
+            except asyncio.QueueFull:
+                logger.warning(
+                    "SSE progress queue full — dropping awaiting_confirmation "
+                    "event for agent=%s user=%s",
+                    agent_id,
+                    user_id,
+                )
+    except asyncio.CancelledError:
+        # Expected at stream teardown.
+        raise
+    except Exception:  # pragma: no cover - defensive
+        logger.exception(
+            "inline-confirmation pump crashed for agent=%s user=%s",
+            agent_id,
+            user_id,
+        )
+
+
 def _extract_final_thinking(
     messages: list[Any] | None,
 ) -> dict[str, str] | None:
@@ -2654,6 +2705,24 @@ async def react_endpoint(
 
         progress_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
         done_event = asyncio.Event()
+
+        # Fan pending inline confirmations into the SSE stream mid-turn.
+        # The hook inside the agent task commits a ConfirmationRequest row
+        # and fires the bridge listener; this pump turns those rows into
+        # ``awaiting_confirmation`` SSE frames while the hook's DB poll
+        # is still blocked.  Cancelled below when the stream tears down.
+        _react_confirm_agent_id = str(agent_cfg.get("agent_id") or "")
+        _react_confirm_user_id = str(current_user_id or "")
+        _confirmation_pump_task: asyncio.Task[None] | None = None
+        if _react_confirm_agent_id and _react_confirm_user_id:
+            _confirmation_pump_task = asyncio.create_task(
+                _pump_inline_confirmations(
+                    _react_confirm_agent_id,
+                    _react_confirm_user_id,
+                    progress_queue,
+                    sse_events,
+                )
+            )
         iter_start = time.time()
         thinking_done_iter = 0  # track which iteration's thinking-done was emitted
         current_iteration = 1  # track the current iteration for _on_answer_token
@@ -2937,6 +3006,8 @@ async def react_endpoint(
                                 await asyncio.wait_for(run_task, timeout=5.0)
                         except Exception:
                             logger.exception("Unexpected error while cancelling ReAct task")
+                        # Pump task is cancelled in the outer ``finally``;
+                        # the early return here is still safe.
                         return
                     now = time.time()
                     if now - last_keepalive >= 15.0:
@@ -3302,6 +3373,10 @@ async def react_endpoint(
             )
             yield _sse("end", {})
         finally:
+            if _confirmation_pump_task is not None:
+                _confirmation_pump_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await _confirmation_pump_task
             if user_mcp_client:
                 await user_mcp_client.disconnect_all()
             if conversation_id:
@@ -3634,6 +3709,21 @@ async def dag_endpoint(
 
         progress_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
         done_event = asyncio.Event()
+
+        # Inline confirmation pump — mirrors the ReAct handler.  See
+        # ``_pump_inline_confirmations`` for rationale.
+        _dag_confirm_agent_id = str(agent_cfg.get("agent_id") or "")
+        _dag_confirm_user_id = str(current_user_id or "")
+        _dag_confirmation_pump_task: asyncio.Task[None] | None = None
+        if _dag_confirm_agent_id and _dag_confirm_user_id:
+            _dag_confirmation_pump_task = asyncio.create_task(
+                _pump_inline_confirmations(
+                    _dag_confirm_agent_id,
+                    _dag_confirm_user_id,
+                    progress_queue,
+                    sse_events,
+                )
+            )
 
         def on_step_progress(step_id: str, event: str, data: dict[str, Any]) -> None:
             # Convert raw artifact dicts (path-based) to download URLs.
@@ -4421,6 +4511,10 @@ async def dag_endpoint(
             )
             yield _sse("end", {})
         finally:
+            if _dag_confirmation_pump_task is not None:
+                _dag_confirmation_pump_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await _dag_confirmation_pump_task
             if dag_user_mcp_client:
                 await dag_user_mcp_client.disconnect_all()
             if conversation_id:

@@ -81,16 +81,35 @@ class ConfirmationRequest(UUIDPKMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    # Delivery mode for this request: "channel" (pushed to a messaging channel,
+    # the original behaviour) or "inline" (surfaced in the frontend). Existing
+    # rows are backfilled to "channel" in the Phase 1 migration.
+    mode: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="channel",
+        server_default=sa.text("'channel'"),
+    )
+    # Optional explicit approver. When set, only this user's approval counts;
+    # otherwise the Agent's confirmation_approver_scope governs eligibility.
+    approver_user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     org_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    channel_id: Mapped[str] = mapped_column(
+    # Nullable since v0.9: inline-mode requests do NOT go through a
+    # messaging channel, so no ``Channel`` row exists to point at.
+    # Channel-mode requests still set this column.
+    channel_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("channels.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     # pending / approved / rejected / expired

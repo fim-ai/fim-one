@@ -32,6 +32,7 @@ from fim_one.web.hooks_bootstrap import (
     HOOK_FACTORIES,
     build_hook_registry_for_agent,
 )
+from fim_one.web.models.agent import Agent
 from fim_one.web.models.channel import Channel, ConfirmationRequest
 from fim_one.web.models.organization import Organization
 from fim_one.web.models.user import User
@@ -312,6 +313,20 @@ async def test_integration_feishu_gate_blocks_then_approves(
     # ``requires_confirmation`` off ``ConnectorToolAdapter`` directly, so we
     # patch the import in react.py to use our fake class.  (Python duck-types
     # the attribute access regardless.)
+    # Seed the Agent ORM row so FeishuGateHook can look up its
+    # confirmation routing fields.
+    async with session_factory() as db:
+        db.add(
+            Agent(
+                id="agent-int-1",
+                user_id=seed["user_id"],
+                org_id=seed["org_id"],
+                name="Integration Agent",
+                confirmation_mode="auto",
+            )
+        )
+        await db.commit()
+
     agent = ReActAgent(
         llm=_MockLLM(),
         tools=tools,
