@@ -1132,10 +1132,10 @@ async def ai_annotate(
     # ------------------------------------------------------------------
     # Async path: full annotate — background job
     # ------------------------------------------------------------------
-    stmt_count = select(DatabaseSchema.id).where(DatabaseSchema.connector_id == connector_id)
+    id_stmt = select(DatabaseSchema.id).where(DatabaseSchema.connector_id == connector_id)
     if body.table_names:
-        stmt = stmt.where(DatabaseSchema.table_name.in_(body.table_names))
-    result = await db.execute(stmt)
+        id_stmt = id_stmt.where(DatabaseSchema.table_name.in_(body.table_names))
+    result = await db.execute(id_stmt)
     schema_ids = [row[0] for row in result.all()]
 
     if not schema_ids:
