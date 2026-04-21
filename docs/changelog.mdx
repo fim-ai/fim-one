@@ -28,6 +28,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - Uploaded file content no longer leaks into exported conversations; only the user's message text is included.
 - Parallel tool calls no longer collide when a provider reuses `index=0` for every streamed tool-call delta; the aggregator now detects boundaries via id or name change and remaps subsequent deltas to the correct slot.
 - Settings → Channels now reflects the current user's org role: members (non-admin/owner) see a disabled "New Channel" button, hidden Edit / Enable-Disable / Delete actions, a read-only banner, and a permission-aware empty state — instead of an enabled CTA that failed on submit with "Organization admin access required".
+- Session-expiry redirect now preserves the query string, so users land back on the exact tab / filter they were viewing after re-authenticating instead of the bare path.
+- Feishu channel form no longer shows a spurious "discard unsaved changes" prompt when interacting with the chat picker that's layered above the dialog.
+- Feishu channel setup hints no longer duplicate Chinese labels when the UI itself is already in Chinese (e.g. previously rendered "事件与回调 (事件与回调)").
 
 ## [v0.8.4] - 2026-04-17
 
