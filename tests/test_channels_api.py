@@ -348,12 +348,16 @@ class TestUpdateAndDelete:
 
 class TestTestChannel:
     @pytest.mark.asyncio
-    async def test_invokes_send_interactive_card(
+    async def test_sends_plain_text_no_buttons(
         self,
         client: AsyncClient,
         seed: dict[str, Any],
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
+        """The /test endpoint is a connectivity sanity check; it must
+        deliver a plain text message (no interactive buttons), so users
+        who don't use approval hooks aren't confused by Approve/Reject
+        CTAs on a supposedly-harmless test."""
         async with session_factory() as db:
             ch = Channel(
                 id=str(uuid.uuid4()),
@@ -372,7 +376,7 @@ class TestTestChannel:
 
         send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
         with patch(
-            "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
+            "fim_one.core.channels.feishu.FeishuChannel.send_message",
             new=send_mock,
         ):
             resp = await client.post(
@@ -381,13 +385,11 @@ class TestTestChannel:
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
         send_mock.assert_awaited_once()
-        # Verify chat_id + a card dict (has the expected shape) were passed.
         args, _ = send_mock.await_args
-        assert args[0] == "oc_test"
-        assert isinstance(args[1], dict)
-        # v2.0 card: elements now nested under `body`
-        assert args[1].get("schema") == "2.0"
-        assert "elements" in args[1].get("body", {})
+        payload = args[0]
+        assert payload["chat_id"] == "oc_test"
+        assert payload["msg_type"] == "text"
+        assert "FIM One test message" in payload["content"]
 
 
 # ---------------------------------------------------------------------------

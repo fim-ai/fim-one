@@ -105,8 +105,7 @@
     "edit": "编辑配置",
     "enable": "启用",
     "disable": "禁用",
-    "delete": "删除",
-    "test": "发送测试消息"
+    "delete": "删除"
   },
   "messages": {
     "created": "频道已创建",

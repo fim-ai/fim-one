@@ -125,7 +125,6 @@
   "actions": {
     "viewDetails": "View Details",
     "edit": "Edit Configuration",
-    "test": "Send Test Message",
     "enable": "Enable",
     "disable": "Disable",
     "delete": "Delete"

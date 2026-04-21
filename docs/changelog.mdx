@@ -35,6 +35,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - Restored the plain "Send Test Message" action on channel rows and the details sheet. The Approval Playground exercises the full hook round-trip, but a notification-only channel (no approval hook wired) still needs a quick credential/connectivity sanity check, which the plain test-send covers.
 - Concurrent clicks on the same Feishu approval card can no longer both succeed. The `/callback` handler now flips the `ConfirmationRequest` status via a conditional `UPDATE ... WHERE status='pending'` and uses the affected rowcount to decide which caller "won"; previously two parallel requests could both read `pending` and race a write, potentially ending up with approved-then-rejected on the same row.
 - Pending approval requests now auto-expire after `CHANNEL_CONFIRMATION_TTL_MINUTES` (default 24h) via a background sweeper. Prevents a stale click days later from flipping agent state that has already been torn down; the next click on an expired card gets a grey "Expired" decided card and a "no longer active" toast.
+- Send Test Message now delivers a plain text notification (no Approve/Reject buttons) and lives only in the channel details sheet — not the row dropdown. Users who don't intend to use approval hooks aren't confused by interactive buttons on a "test" message. Approval round-trip testing remains available via the Approval Playground button.
+- Channel details sheet tightened: "How to finish setup" is now a collapsible section collapsed by default (so it doesn't dominate the sheet for already-configured channels), and the outer padding was reduced so content sits closer to the sheet edge.
 
 ## [v0.8.4] - 2026-04-17
 

@@ -105,8 +105,7 @@
     "edit": "Modifier la configuration",
     "enable": "Activer",
     "disable": "Désactiver",
-    "delete": "Supprimer",
-    "test": "Envoyer un message de test"
+    "delete": "Supprimer"
   },
   "messages": {
     "created": "Canal créé",

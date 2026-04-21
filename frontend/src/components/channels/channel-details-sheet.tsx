@@ -2,10 +2,15 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { Check, Copy, Loader2, Send, Sparkles } from "lucide-react"
+import { Check, ChevronDown, Copy, Loader2, Send, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Sheet,
   SheetContent,
@@ -84,7 +89,7 @@ export function ChannelDetailsSheet({
         </SheetHeader>
 
         {channel && (
-          <div className="space-y-6 px-6 pb-6">
+          <div className="space-y-5 px-4 pb-4">
             {/* Callback URL block */}
             <section className="space-y-2">
               <div className="flex items-center justify-between">
@@ -113,21 +118,28 @@ export function ChannelDetailsSheet({
               </p>
             </section>
 
-            {/* How-to block */}
-            <section className="space-y-2 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">
-              <h3 className="text-sm font-semibold text-foreground">
-                {t("details.howTo")}
-              </h3>
-              <ol className="ml-5 list-decimal space-y-1 text-sm text-muted-foreground">
-                <li>{t("details.step1")}</li>
-                <li>{t("details.step2")}</li>
-                <li>{t("details.step3")}</li>
-                <li>{t("details.step4")}</li>
-                <li>{t("details.step5")}</li>
-                <li>{t("details.step6")}</li>
-                <li>{t("details.step7")}</li>
-              </ol>
-            </section>
+            {/* How-to block — collapsed by default; users who've
+                already finished setup don't need it taking up space.
+                Click the header to reveal the 7-step checklist. */}
+            <Collapsible className="rounded-md border border-primary/30 bg-primary/5">
+              <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+                <h3 className="text-sm font-semibold text-foreground">
+                  {t("details.howTo")}
+                </h3>
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="px-3 pb-3">
+                <ol className="ml-5 list-decimal space-y-1 text-sm text-muted-foreground">
+                  <li>{t("details.step1")}</li>
+                  <li>{t("details.step2")}</li>
+                  <li>{t("details.step3")}</li>
+                  <li>{t("details.step4")}</li>
+                  <li>{t("details.step5")}</li>
+                  <li>{t("details.step6")}</li>
+                  <li>{t("details.step7")}</li>
+                </ol>
+              </CollapsibleContent>
+            </Collapsible>
 
             {/* Metadata */}
             <section className="space-y-3">

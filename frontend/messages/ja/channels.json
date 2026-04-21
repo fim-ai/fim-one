@@ -105,8 +105,7 @@
     "edit": "設定を編集",
     "enable": "有効にする",
     "disable": "無効にする",
-    "delete": "削除",
-    "test": "テストメッセージを送信"
+    "delete": "削除"
   },
   "messages": {
     "created": "チャネルが作成されました",

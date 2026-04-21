@@ -240,34 +240,19 @@ async def test_channel(
             ok=False, error="channel has no chat_id configured"
         )
 
-    # FeishuChannel: send a preview of the actual confirmation card, so
-    # operators can visually verify what users will see when a real
-    # tool-confirmation gate fires.  Buttons carry a sentinel
-    # confirmation_id; clicks are safely no-ops (the callback handler
-    # gracefully ignores confirmation_ids that don't match a DB row).
-    if isinstance(adapter, FeishuChannel):
-        sender = user.email or user.username
-        card = build_confirmation_card(
-            confirmation_id=f"test-{uuid.uuid4()}",
-            title="FIM One - Test Confirmation Card",
-            summary=(
-                f"**This is a preview.** It shows exactly how a real "
-                f"confirmation gate will appear when an agent requests "
-                f"approval for a sensitive tool call.\n\n"
-                f"Sent by **{sender}** from the FIM One portal."
-            ),
-            tool_name="(preview) submit_approval",
-            tool_args_preview='{\n  "contract_id": "PO-2024-0892",\n  "amount": 386000\n}',
-        )
-        result = await adapter.send_interactive_card(chat_id, card)
-    else:
-        result = await adapter.send_message(
-            {
-                "chat_id": chat_id,
-                "msg_type": "text",
-                "content": f"FIM One test message from {user.email or user.username}",
-            }
-        )
+    # Send a plain text notification — no interactive buttons.
+    # The Approval Playground covers the rich-card round-trip; this
+    # endpoint exists purely as a connectivity/credentials sanity
+    # check, so users who don't want approval gates aren't confused by
+    # Approve/Reject buttons on a "test" message.
+    sender = user.email or user.username
+    result = await adapter.send_message(
+        {
+            "chat_id": chat_id,
+            "msg_type": "text",
+            "content": f"FIM One test message from {sender}",
+        }
+    )
     return ChannelTestResponse(ok=result.ok, error=result.error)
 
 

@@ -105,8 +105,7 @@
     "edit": "설정 편집",
     "enable": "활성화",
     "disable": "비활성화",
-    "delete": "삭제",
-    "test": "테스트 메시지 전송"
+    "delete": "삭제"
   },
   "messages": {
     "created": "채널이 생성되었습니다",

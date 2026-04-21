@@ -11,7 +11,6 @@ import {
   Pencil,
   Plus,
   Power,
-  Send,
   Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -72,7 +71,6 @@ export function ChannelsSettings() {
   const [detailsTarget, setDetailsTarget] = useState<Channel | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null)
   const [isMutating, setIsMutating] = useState(false)
-  const [testingId, setTestingId] = useState<string | null>(null)
 
   // Load organizations once — the first one becomes the default selection.
   useEffect(() => {
@@ -156,32 +154,6 @@ export function ChannelsSettings() {
       toast.error(getErrorMessage(err, tError))
     } finally {
       setIsMutating(false)
-    }
-  }
-
-  // Plain notification test — complements the Approval Playground, which
-  // exists in the details sheet.  Useful when the channel is only
-  // configured for one-way messages (no hook wired up).
-  const handleQuickTest = async (ch: Channel) => {
-    setTestingId(ch.id)
-    try {
-      const result = await channelsApi.test(ch.id)
-      if (result.ok) {
-        const chat = result.chat_name ?? ch.config.chat_name
-        if (chat) {
-          toast.success(t("messages.testSentWithChat", { chat }))
-        } else {
-          toast.success(t("messages.testSent"))
-        }
-      } else {
-        toast.error(
-          t("messages.testFailed", { error: result.error ?? "unknown" }),
-        )
-      }
-    } catch (err: unknown) {
-      toast.error(getErrorMessage(err, tError))
-    } finally {
-      setTestingId(null)
     }
   }
 
@@ -381,13 +353,6 @@ export function ChannelsSettings() {
                             {t("actions.edit")}
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem
-                          onClick={() => handleQuickTest(ch)}
-                          disabled={!ch.is_active || testingId === ch.id}
-                        >
-                          <Send className="mr-2 h-4 w-4" />
-                          {t("actions.test")}
-                        </DropdownMenuItem>
                         {canManage && (
                           <DropdownMenuItem
                             onClick={() => handleToggleActive(ch)}
