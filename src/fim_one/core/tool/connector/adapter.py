@@ -109,6 +109,21 @@ class ConnectorToolAdapter(BaseTool):
         return "connector"
 
     @property
+    def requires_confirmation(self) -> bool:
+        """True when this action was flagged as sensitive in the action row.
+
+        The ReAct / DAG engines forward this flag into ``HookContext.metadata``
+        so that pre-tool-use hooks (e.g. :class:`FeishuGateHook`) can gate
+        the call on human approval.
+        """
+        return self._requires_confirmation
+
+    @property
+    def action_id(self) -> str | None:
+        """The originating ConnectorAction row ID, if known."""
+        return self._action_id
+
+    @property
     def parameters_schema(self) -> dict[str, Any]:
         return enrich_parameters_schema(self._parameters_schema_val)
 

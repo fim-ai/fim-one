@@ -310,6 +310,9 @@ class ReActAgent:
         pinned_tools: list[str] | None = None,
         max_turn_tokens: int = int(os.getenv("REACT_MAX_TURN_TOKENS", "0")),
         completion_check: bool = True,
+        agent_id: str | None = None,
+        org_id: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         self._llm = llm
         self._fast_llm = fast_llm
@@ -330,6 +333,11 @@ class ReActAgent:
         self._workspace = workspace
         self._max_turn_tokens = max_turn_tokens
         self._completion_check = completion_check
+        # Identity — forwarded into HookContext so hooks (e.g. FeishuGateHook)
+        # can look up org-scoped resources and persist audit rows.
+        self._agent_id = agent_id
+        self._org_id = org_id
+        self._user_id = user_id
 
         # Auto-register workspace tools when a workspace is provided.
         if workspace is not None:
@@ -400,6 +408,40 @@ class ReActAgent:
         for tool in workspace_tools:
             if tool.name not in self._tools:
                 self._tools.register(tool)
+
+    def _build_hook_metadata(
+        self,
+        tool_name: str,
+        tool_call_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Assemble the ``HookContext.metadata`` dict for a tool call.
+
+        The metadata carries cross-cutting info that hooks need but the
+        raw ``HookContext`` fields don't cover:
+
+        - ``requires_confirmation`` — derived from the connector action
+          row.  Read by :class:`FeishuGateHook` to decide whether to
+          prompt for human approval.  Always ``False`` for built-in
+          tools (workspace, web_search, etc.).
+        - ``org_id`` — needed by :class:`FeishuGateHook` to locate the
+          active Feishu channel for the owning organization.
+        - ``tool_call_id`` — surfaced for audit / traceability when the
+          underlying LLM assigned one (native function-calling mode).
+        """
+        meta: dict[str, Any] = {}
+        if self._org_id is not None:
+            meta["org_id"] = self._org_id
+        if tool_call_id is not None:
+            meta["tool_call_id"] = tool_call_id
+
+        # Duck-type on ``requires_confirmation`` — this is exposed as a
+        # property by :class:`ConnectorToolAdapter` and absent on every
+        # built-in tool (workspace, web_search, ...).  The attribute is
+        # typed ``bool`` when present, ``False`` when absent.
+        tool = self._tools.get(tool_name)
+        requires_attr = getattr(tool, "requires_confirmation", False)
+        meta["requires_confirmation"] = bool(requires_attr)
+        return meta
 
     @staticmethod
     def _compute_args_hash(args: dict[str, Any] | None) -> str:
@@ -1878,6 +1920,9 @@ class ReActAgent:
                     hook_point=HookPoint.PRE_TOOL_USE,
                     tool_name=tc.name,
                     tool_args=tool_args,
+                    agent_id=self._agent_id,
+                    user_id=self._user_id,
+                    metadata=self._build_hook_metadata(tc.name, tool_call_id=tc.id),
                 )
                 pre_result = await self._hook_registry.run_pre_tool(pre_ctx)
                 if not pre_result.allow:
@@ -1923,6 +1968,9 @@ class ReActAgent:
                         tool_name=tc.name,
                         tool_args=tool_args,
                         tool_result=observation,
+                        agent_id=self._agent_id,
+                        user_id=self._user_id,
+                        metadata=self._build_hook_metadata(tc.name, tool_call_id=tc.id),
                     )
                     post_result = await self._hook_registry.run_post_tool(post_ctx)
                     if post_result.modified_result is not None:
@@ -2428,6 +2476,9 @@ class ReActAgent:
                 hook_point=HookPoint.PRE_TOOL_USE,
                 tool_name=tool_name,
                 tool_args=tool_args,
+                agent_id=self._agent_id,
+                user_id=self._user_id,
+                metadata=self._build_hook_metadata(tool_name),
             )
             pre_result = await self._hook_registry.run_pre_tool(pre_ctx)
             if not pre_result.allow:
@@ -2463,6 +2514,9 @@ class ReActAgent:
                     tool_name=tool_name,
                     tool_args=tool_args,
                     tool_result=observation,
+                    agent_id=self._agent_id,
+                    user_id=self._user_id,
+                    metadata=self._build_hook_metadata(tool_name),
                 )
                 post_result = await self._hook_registry.run_post_tool(post_ctx)
                 if post_result.modified_result is not None:

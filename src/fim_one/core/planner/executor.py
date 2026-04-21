@@ -375,6 +375,10 @@ class DAGExecutor:
                 extra_instructions=self._agent.extra_instructions,
                 max_iterations=self._agent.max_iterations,
                 context_guard=context_guard or self._agent.context_guard,
+                hook_registry=self._agent.hook_registry,
+                agent_id=self._agent._agent_id,
+                org_id=self._agent._org_id,
+                user_id=self._agent._user_id,
             )
 
         # No registry → fall back to the constructor-provided agent.
@@ -416,6 +420,10 @@ class DAGExecutor:
             extra_instructions=self._agent.extra_instructions,
             max_iterations=self._agent.max_iterations,
             context_guard=context_guard,
+            hook_registry=self._agent.hook_registry,
+            agent_id=self._agent._agent_id,
+            org_id=self._agent._org_id,
+            user_id=self._agent._user_id,
         )
 
     def _build_model_aware_guard(self, llm: BaseLLM) -> ContextGuard | None:

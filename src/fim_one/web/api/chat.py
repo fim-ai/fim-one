@@ -33,6 +33,7 @@ from collections.abc import AsyncGenerator
 from contextlib import suppress
 from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -662,6 +663,7 @@ async def _resolve_agent_config(
             "grounding_config": agent.grounding_config,
             "sandbox_config": agent.sandbox_config,
             "owner_user_id": agent.user_id,
+            "org_id": agent.org_id,
             "compact_instructions": agent.compact_instructions,
         }
 
@@ -2854,6 +2856,23 @@ async def react_endpoint(
             # tool selection should never drop, regardless of domain.
             _pinned: list[str] = ["web_search"]
 
+            # --- Hook System bootstrap ---
+            # Load any class_hooks declared on this agent's ``model_config_json``
+            # and hand the resulting HookRegistry to ReAct.  The session factory
+            # (``create_session``) is independent of the per-request session
+            # so hooks can open/commit their own transactions (FeishuGateHook
+            # polls the ``confirmation_requests`` table from a background
+            # task while the request is still streaming).
+            from fim_one.db import create_session as _create_hook_session
+            from fim_one.web.hooks_bootstrap import build_hook_registry_for_agent
+
+            _agent_shim_ns = SimpleNamespace(
+                model_config_json=(agent_cfg or {}).get("model_config_json")
+            )
+            _hook_registry = await build_hook_registry_for_agent(
+                _agent_shim_ns, _create_hook_session
+            )
+
             agent = ReActAgent(
                 llm=llm,
                 tools=tools,
@@ -2866,6 +2885,10 @@ async def react_endpoint(
                 agent_directive=agent_instructions,
                 pinned_tools=_pinned,
                 max_turn_tokens=get_react_max_turn_tokens(),
+                hook_registry=_hook_registry,
+                agent_id=(agent_cfg or {}).get("agent_id"),
+                org_id=(agent_cfg or {}).get("org_id"),
+                user_id=current_user_id,
             )
 
             # Only send images as vision content when model supports it
@@ -3750,6 +3773,19 @@ async def dag_endpoint(
                     if isinstance(tool, GroundedRetrieveTool):
                         tool.set_usage_tracker(fast_usage_tracker)
 
+                # --- Hook System bootstrap for DAG ---
+                from fim_one.db import create_session as _create_hook_session_dag
+                from fim_one.web.hooks_bootstrap import (
+                    build_hook_registry_for_agent,
+                )
+
+                _agent_shim_ns_dag = SimpleNamespace(
+                    model_config_json=(agent_cfg or {}).get("model_config_json")
+                )
+                _hook_registry_dag = await build_hook_registry_for_agent(
+                    _agent_shim_ns_dag, _create_hook_session_dag
+                )
+
                 agent = ReActAgent(
                     llm=fast_llm,
                     tools=tools,
@@ -3758,6 +3794,10 @@ async def dag_endpoint(
                     context_guard=dag_context_guard,
                     user_timezone=user_timezone,
                     agent_directive=agent_instructions,
+                    hook_registry=_hook_registry_dag,
+                    agent_id=(agent_cfg or {}).get("agent_id"),
+                    org_id=(agent_cfg or {}).get("org_id"),
+                    user_id=current_user_id,
                 )
                 from fim_one.db import create_session as _create_registry_session
 
