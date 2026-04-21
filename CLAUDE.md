@@ -92,6 +92,15 @@ All UI text must use `next-intl` — **never hardcode English strings**. Use `us
 - Backend: update ALL locale regex patterns in `src/fim_one/web/schemas/auth.py` — includes `preferred_language` (`UpdateProfileRequest`) and `locale` (`SendVerificationCodeRequest`, `SendLoginCodeRequest`, `SendResetCodeRequest`, `SendForgotCodeRequest`). Missing this causes silent 400 rejections and locale won't persist after refresh.
 - Docs: add a full `navigation.languages[]` entry in `docs/docs.json` — copy an existing locale block, update `"language"`, translate tab/group names, and prefix all page paths with `{locale}/`. Missing this means the locale won't appear in Mintlify's language switcher even if translated files exist.
 
+**Adding a new doc page or group — MANDATORY multi-locale nav sync:**
+`docs/docs.json` navigation is NOT auto-translated by the pre-commit hook. The hook only translates `.mdx` file contents. When you add/rename/remove a page or group in the EN section, you MUST make the mirror change in all 5 translated locale sections (`zh`, `ja`, `ko`, `de`, `fr`) in the same commit:
+- **Page added**: add `{locale}/path/to/page` to every locale's matching `pages` array
+- **Group added**: add the full group block `{ "group": "<translated name>", "icon": "...", "pages": [...] }` to every locale, with `pages` paths prefixed by `{locale}/`. Translate the group name — look up the canonical term in `frontend/messages/{locale}/<ns>.json` (e.g. "Channels" → 频道/チャネル/채널/Kanäle/Canaux) rather than inventing one.
+- **Page/group removed or renamed**: do the same rename/removal in all 5 locales.
+- **Verification**: after editing, run `python3 -c "import json; json.load(open('docs/docs.json'))"` to confirm JSON validity, and `grep -c "<new-page-path>" docs/docs.json` should equal `1 + 5 = 6` (one EN + 5 locales).
+
+Missing this step causes a silent UX failure: translated `.mdx` files exist on disk and are fully usable via direct URL, but Mintlify's sidebar in non-EN locales won't list them, so users never discover them.
+
 ## Alembic Migration Rules (MANDATORY — SQLite/PG dual-track)
 
 Dev uses SQLite, production uses PostgreSQL. One set of migration files must work on both. Alembic is the **single source of truth** — `start.sh` runs `alembic upgrade head` on every startup.

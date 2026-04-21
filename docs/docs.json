@@ -194,7 +194,15 @@
                   "zh/configuration/database",
                   "zh/configuration/models",
                   "zh/configuration/model-management",
-                  "zh/configuration/oauth-providers"
+                  "zh/configuration/oauth-providers",
+                  {
+                    "group": "频道",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "zh/configuration/channels/overview",
+                      "zh/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -323,7 +331,15 @@
                   "ja/configuration/database",
                   "ja/configuration/models",
                   "ja/configuration/model-management",
-                  "ja/configuration/oauth-providers"
+                  "ja/configuration/oauth-providers",
+                  {
+                    "group": "チャネル",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "ja/configuration/channels/overview",
+                      "ja/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -452,7 +468,15 @@
                   "ko/configuration/database",
                   "ko/configuration/models",
                   "ko/configuration/model-management",
-                  "ko/configuration/oauth-providers"
+                  "ko/configuration/oauth-providers",
+                  {
+                    "group": "채널",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "ko/configuration/channels/overview",
+                      "ko/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -581,7 +605,15 @@
                   "de/configuration/database",
                   "de/configuration/models",
                   "de/configuration/model-management",
-                  "de/configuration/oauth-providers"
+                  "de/configuration/oauth-providers",
+                  {
+                    "group": "Kanäle",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "de/configuration/channels/overview",
+                      "de/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -710,7 +742,15 @@
                   "fr/configuration/database",
                   "fr/configuration/models",
                   "fr/configuration/model-management",
-                  "fr/configuration/oauth-providers"
+                  "fr/configuration/oauth-providers",
+                  {
+                    "group": "Canaux",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "fr/configuration/channels/overview",
+                      "fr/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
