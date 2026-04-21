@@ -74,7 +74,9 @@ export function DbConnectorSettingsForm({
   const [database, setDatabase] = useState(() => connector?.db_config?.database ?? "")
   const [dbSchema, setDbSchema] = useState(() => connector?.db_config?.schema ?? "")
   const [username, setUsername] = useState(() => connector?.db_config?.username ?? "")
-  const [password, setPassword] = useState(() => connector?.db_config?.password ?? "")
+  // Always start empty so the placeholder ("********") is visible on edit.
+  // Empty on save = keep stored password (see build payload below).
+  const [password, setPassword] = useState("")
   const [ssl, setSsl] = useState(() => connector?.db_config?.ssl ?? false)
   const [readOnly, setReadOnly] = useState(() => connector?.db_config?.read_only ?? true)
   const [maxRows, setMaxRows] = useState(() => connector?.db_config?.max_rows ?? 1000)
@@ -102,7 +104,7 @@ export function DbConnectorSettingsForm({
         setDatabase(cfg.database || "")
         setDbSchema(cfg.schema || "")
         setUsername(cfg.username || "")
-        setPassword(cfg.password || "")
+        setPassword("")
         setSsl(cfg.ssl ?? false)
         setReadOnly(cfg.read_only ?? true)
         setMaxRows(cfg.max_rows ?? 1000)
@@ -171,9 +173,12 @@ export function DbConnectorSettingsForm({
     setIsTesting(true)
     setTestResult(null)
     try {
+      // Empty password + existing connector => send "***" sentinel so backend
+      // resolves the stored password from the encrypted saved config.
+      const passwordForTest = password === "" && connector?.id ? "***" : password
       const dbConfig = {
         driver, host: host.trim(), port,
-        database: database.trim(), username: username.trim(), password,
+        database: database.trim(), username: username.trim(), password: passwordForTest,
         schema: dbSchema || undefined,
         ssl, read_only: readOnly, max_rows: maxRows, query_timeout: queryTimeout,
       }
