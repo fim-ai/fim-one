@@ -18,7 +18,9 @@ from datetime import datetime, UTC
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from typing import cast as _cast
+
+from sqlalchemy import CursorResult, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.channels import build_channel
@@ -772,21 +774,44 @@ async def _record_decision(
     decision: str,
     open_id: str | None,
 ) -> tuple[str | None, bool, dict[str, Any] | None]:
-    """Flip the ConfirmationRequest status if still pending.
+    """Atomically flip the ConfirmationRequest status if still pending.
 
-    Returns a tuple ``(final_status, newly_applied, payload)``:
+    Uses a conditional ``UPDATE ... WHERE status='pending'`` so that two
+    concurrent callbacks (e.g. same user double-taps and both clicks
+    race through the webhook) can't both succeed — only the UPDATE
+    whose WHERE predicate matches ``pending`` at commit time changes a
+    row.  The other caller sees rowcount=0 and falls into the
+    "already-decided" branch.
+
+    This works on both SQLite and Postgres without needing
+    ``SELECT ... FOR UPDATE``: SQLite serializes writes on a single
+    connection, Postgres uses MVCC with row-level locks on UPDATE.
+
+    Returns ``(final_status, newly_applied, payload)``:
 
     * ``(None, False, None)`` — confirmation row not found.
-    * ``(status, True, payload)`` — transitioned from ``pending`` to
-      ``status`` as a result of this call.
-    * ``(status, False, payload)`` — row was already in ``status`` when
-      we looked it up; this call was a no-op (duplicate click).
-
-    ``payload`` is the row's JSON payload (e.g., ``tool_name``,
-    ``tool_args``), cached at creation time — returned so the caller can
-    render an informative "decided" card back to Feishu without doing a
-    second query.
+    * ``(status, True, payload)`` — this call won the race and flipped
+      the row.
+    * ``(status, False, payload)`` — the row was already terminal when
+      the UPDATE ran (duplicate click or lost race); no state change.
     """
+    new_status = "approved" if decision == "approve" else "rejected"
+    stmt = (
+        sa_update(ConfirmationRequest)
+        .where(
+            ConfirmationRequest.id == confirmation_id,
+            ConfirmationRequest.status == "pending",
+        )
+        .values(
+            status=new_status,
+            responded_at=datetime.now(UTC),
+            responded_by_open_id=open_id,
+        )
+    )
+    result = _cast(CursorResult[Any], await db.execute(stmt))
+    await db.commit()
+    newly_applied = (result.rowcount or 0) == 1
+
     row = (
         await db.execute(
             select(ConfirmationRequest).where(
@@ -797,22 +822,10 @@ async def _record_decision(
     if row is None:
         return (None, False, None)
 
-    # Snapshot payload before commit so we can return it after the
-    # row's attributes are expired.
     payload_snapshot: dict[str, Any] | None = (
         dict(row.payload) if isinstance(row.payload, dict) else None
     )
-
-    if row.status != "pending":
-        # Already decided — ignore duplicate clicks.
-        return (row.status, False, payload_snapshot)
-
-    row.status = "approved" if decision == "approve" else "rejected"
-    row.responded_at = datetime.now(UTC)
-    row.responded_by_open_id = open_id
-    new_status = row.status
-    await db.commit()
-    return (new_status, True, payload_snapshot)
+    return (row.status, newly_applied, payload_snapshot)
 
 
 __all__ = ["router"]

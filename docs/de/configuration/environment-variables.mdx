@@ -387,15 +387,24 @@ Registriert das `email_send` Built-in-Tool automatisch, wenn `SMTP_HOST`, `SMTP_
 - **Lokale Entwicklung**: SQLite + Multi-Worker ist für leichte Nutzung in Ordnung; fügen Sie einfach `REDIS_URL` hinzu, wenn Sie die Inject-Funktion verwenden.
 </Warning>
 
-## Workflow-Ausführungs-Aufbewahrung
+## Workflow Run Retention
 
-Hintergrund-Bereinigungsaufgabe, die automatisch alte Workflow-Ausführungen löscht. Pro-Workflow-Überschreibungen (konfiguriert in der Workflow-Einstellungs-UI) haben Vorrang vor diesen globalen Standardwerten.
+Background cleanup task that automatically purges old workflow runs. Per-workflow overrides (configured in the workflow settings UI) take priority over these global defaults.
 
-| Variable | Erforderlich | Standard | Beschreibung |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `WORKFLOW_RUN_MAX_AGE_DAYS` | Nein | `30` | Löschen Sie Workflow-Ausführungen, die älter als diese Anzahl von Tagen sind |
-| `WORKFLOW_RUN_MAX_PER_WORKFLOW` | Nein | `100` | Behalten Sie höchstens diese Anzahl von Ausführungen pro Workflow (älteste werden zuerst gelöscht) |
-| `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS` | Nein | `24` | Wie oft die Hintergrund-Bereinigungsaufgabe ausgeführt wird, in Stunden |
+| `WORKFLOW_RUN_MAX_AGE_DAYS` | No | `30` | Delete workflow runs older than this many days |
+| `WORKFLOW_RUN_MAX_PER_WORKFLOW` | No | `100` | Keep at most this many runs per workflow (oldest deleted first) |
+| `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS` | No | `24` | How often the background cleanup task runs, in hours |
+
+### Channel Confirmation Request Expiry
+
+Background sweeper that marks stale pending approval requests (produced by channel hooks like `FeishuGateHook` or the Approval Playground) as expired. Ensures a click days later on a forgotten card doesn't flip agent state that has already been torn down.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `CHANNEL_CONFIRMATION_TTL_MINUTES` | No | `1440` | Pending confirmations older than this are auto-expired (default: 24 hours) |
+| `CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS` | No | `600` | How often the expiry sweeper runs (default: every 10 minutes) |
 
 ---
 

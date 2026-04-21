@@ -391,13 +391,22 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 ## 工作流运行保留
 
-自动清理旧工作流运行的后台任务。每个工作流的覆盖设置（在工作流设置UI中配置）优先于这些全局默认值。
+自动清除旧工作流运行的后台清理任务。每个工作流的覆盖设置（在工作流设置 UI 中配置）优先于这些全局默认值。
 
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `WORKFLOW_RUN_MAX_AGE_DAYS` | 否 | `30` | 删除早于此天数的工作流运行 |
+| `WORKFLOW_RUN_MAX_AGE_DAYS` | 否 | `30` | 删除超过此天数的工作流运行 |
 | `WORKFLOW_RUN_MAX_PER_WORKFLOW` | 否 | `100` | 每个工作流最多保留此数量的运行（最旧的优先删除） |
-| `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS` | 否 | `24` | 后台清理任务运行的频率，以小时为单位 |
+| `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS` | 否 | `24` | 后台清理任务运行的频率，单位为小时 |
+
+### 频道确认请求过期
+
+后台清理程序，将由频道钩子（如 `FeishuGateHook` 或 Approval Playground）产生的陈旧待批准请求标记为已过期。确保数天后点击被遗忘的卡片不会翻转已被拆除的智能体状态。
+
+| 变量 | 必需 | 默认值 | 描述 |
+|---|---|---|---|
+| `CHANNEL_CONFIRMATION_TTL_MINUTES` | 否 | `1440` | 超过此时间的待确认请求将自动过期（默认：24 小时） |
+| `CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS` | 否 | `600` | 过期清理程序的运行频率（默认：每 10 分钟） |
 
 ---
 

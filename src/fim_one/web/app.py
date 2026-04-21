@@ -119,6 +119,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     from fim_one.core.model import close_shared_http_client
     from fim_one.core.workflow.scheduler import WorkflowScheduler
     from fim_one.core.workflow.run_cleanup import WorkflowRunCleaner
+    from fim_one.core.channels.expiry import ConfirmationRequestExpirer
 
     await init_db()
 
@@ -137,9 +138,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     )
     cleanup_task = asyncio.create_task(cleaner.run_loop())
 
+    # Start periodic expiry sweep for stale confirmation requests.
+    confirmation_expirer = ConfirmationRequestExpirer(
+        max_age_minutes=int(
+            os.getenv("CHANNEL_CONFIRMATION_TTL_MINUTES", "1440")
+        ),
+        sweep_interval_seconds=int(
+            os.getenv("CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS", "600")
+        ),
+    )
+    confirmation_expirer_task = asyncio.create_task(
+        confirmation_expirer.run_loop()
+    )
+
     yield
 
-    # Graceful shutdown: stop cleanup, scheduler, then dispose the DB
+    # Graceful shutdown: stop sweepers, scheduler, then dispose the DB
+    confirmation_expirer_task.cancel()
+    try:
+        await confirmation_expirer_task
+    except asyncio.CancelledError:
+        pass
+
     cleanup_task.cancel()
     try:
         await cleanup_task

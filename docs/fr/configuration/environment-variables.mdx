@@ -387,7 +387,7 @@ Enregistre automatiquement l'outil intégré `email_send` lorsque `SMTP_HOST`, `
 
 ## Rétention des exécutions de flux de travail
 
-Tâche de nettoyage en arrière-plan qui supprime automatiquement les anciennes exécutions de flux de travail. Les remplacements par flux de travail (configurés dans l'interface utilisateur des paramètres du flux de travail) ont priorité sur ces valeurs par défaut globales.
+Tâche de nettoyage en arrière-plan qui purge automatiquement les anciennes exécutions de flux de travail. Les remplacements par flux de travail (configurés dans l'interface utilisateur des paramètres du flux de travail) ont priorité sur ces valeurs par défaut globales.
 
 | Variable | Requis | Par défaut | Description |
 |---|---|---|---|
@@ -395,7 +395,14 @@ Tâche de nettoyage en arrière-plan qui supprime automatiquement les anciennes 
 | `WORKFLOW_RUN_MAX_PER_WORKFLOW` | Non | `100` | Conserver au maximum ce nombre d'exécutions par flux de travail (les plus anciennes supprimées en premier) |
 | `WORKFLOW_RUN_CLEANUP_INTERVAL_HOURS` | Non | `24` | Fréquence d'exécution de la tâche de nettoyage en arrière-plan, en heures |
 
----
+### Expiration des demandes de confirmation de canal
+
+Sweeper en arrière-plan qui marque les demandes d'approbation en attente obsolètes (produites par des hooks de canal comme `FeishuGateHook` ou le Approval Playground) comme expirées. Garantit qu'un clic quelques jours plus tard sur une carte oubliée ne bascule pas l'état de l'agent qui a déjà été démonté.
+
+| Variable | Requis | Par défaut | Description |
+|---|---|---|---|
+| `CHANNEL_CONFIRMATION_TTL_MINUTES` | Non | `1440` | Les confirmations en attente plus anciennes que ceci sont automatiquement expirées (par défaut : 24 heures) |
+| `CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS` | Non | `600` | Fréquence d'exécution du sweeper d'expiration (par défaut : toutes les 10 minutes) |
 
 ## OAuth (Optionnel)
 

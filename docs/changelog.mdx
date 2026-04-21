@@ -33,6 +33,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - Feishu channel setup hints no longer duplicate Chinese labels when the UI itself is already in Chinese (e.g. previously rendered "事件与回调 (事件与回调)").
 - Feishu approval cards now become read-only after the first decision: the `/callback` webhook returns a replacement card with the Approve/Reject buttons removed and the header coloured green (approved) or red (rejected), preventing repeated clicks. Duplicate clicks that still arrive from stale Feishu clients get a "This request was already approved/rejected." toast and a fresh copy of the decided card so the stale view catches up.
 - Restored the plain "Send Test Message" action on channel rows and the details sheet. The Approval Playground exercises the full hook round-trip, but a notification-only channel (no approval hook wired) still needs a quick credential/connectivity sanity check, which the plain test-send covers.
+- Concurrent clicks on the same Feishu approval card can no longer both succeed. The `/callback` handler now flips the `ConfirmationRequest` status via a conditional `UPDATE ... WHERE status='pending'` and uses the affected rowcount to decide which caller "won"; previously two parallel requests could both read `pending` and race a write, potentially ending up with approved-then-rejected on the same row.
+- Pending approval requests now auto-expire after `CHANNEL_CONFIRMATION_TTL_MINUTES` (default 24h) via a background sweeper. Prevents a stale click days later from flipping agent state that has already been torn down; the next click on an expired card gets a grey "Expired" decided card and a "no longer active" toast.
 
 ## [v0.8.4] - 2026-04-17
 
