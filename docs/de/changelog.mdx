@@ -24,8 +24,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 - Der Gesprächsexport zeigt nun das korrekte Moduskennzeichen ("Planner" / "规划") für automatisch geroutete DAG-Gespräche an, anstatt immer "Standard" anzuzeigen.
 - Exportzeitstempel berücksichtigen nun die konfigurierte Zeitzone des Benutzers, anstatt rohe UTC anzuzeigen.
-- Hochgeladener Dateiinhalt wird nicht mehr in exportierte Gespräche durchgelassen; nur der Nachrichtentext des Benutzers ist enthalten.
-- Parallele Tool-Aufrufe kollidieren nicht mehr, wenn ein Provider `index=0` für jeden gestreamten Tool-Call-Delta wiederverwendet; der Aggregator erkennt nun Grenzen über ID- oder Namensänderungen und ordnet nachfolgende Deltas dem korrekten Slot zu.
+- Hochgeladene Dateiinhalte werden nicht mehr in exportierte Gespräche übernommen; nur der Nachrichtentext des Benutzers ist enthalten.
+- Parallele Tool-Aufrufe kollidieren nicht mehr, wenn ein Provider `index=0` für jeden gestreamten Tool-Call-Delta wiederverwendet; der Aggregator erkennt nun Grenzen über ID- oder Namensänderungen und ordnet nachfolgende Deltas dem korrekten Slot neu zu.
+- Einstellungen → Kanäle spiegelt nun die aktuelle Organisationsrolle des Benutzers wider: Mitglieder (Nicht-Admin/Eigentümer) sehen eine deaktivierte Schaltfläche "Neuer Kanal", verborgene Aktionen zum Bearbeiten / Aktivieren-Deaktivieren / Löschen, ein schreibgeschütztes Banner und einen berechtigungsgesteuerten leeren Zustand — anstatt eines aktivierten CTA, das bei der Übermittlung mit "Organisationsadministratorzugriff erforderlich" fehlgeschlagen ist.
 
 ## [v0.8.4] - 2026-04-17
 

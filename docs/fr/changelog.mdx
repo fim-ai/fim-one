@@ -20,12 +20,13 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - Les indicateurs de chargement du Playground utilisent désormais un scintillement de texte subtil au lieu de la barre de progression d'apparence artificielle qui se figeait à une largeur pseudo-complète après 8 secondes. Les deux implémentations de scintillement existantes (`.shiny-text` et `.text-shimmer`) ont été unifiées en une primitive unique sensible au thème avec un préréglage chaleureux optionnel.
 
-### Corrigé
+### Corrections
 
-- L'export de conversation affiche désormais le libellé de mode correct (« Planner » / « 规划 ») pour les conversations DAG acheminées automatiquement au lieu d'afficher toujours « Standard ».
-- Les horodatages d'export respectent désormais le fuseau horaire configuré par l'utilisateur au lieu d'afficher l'UTC brut.
+- L'export de conversation affiche désormais le libellé de mode correct ("Planner" / "规划") pour les conversations DAG acheminées automatiquement au lieu d'afficher toujours "Standard".
+- Les horodatages d'export respectent désormais le fuseau horaire configuré de l'utilisateur au lieu d'afficher l'UTC brut.
 - Le contenu des fichiers téléchargés ne fuit plus dans les conversations exportées ; seul le texte du message de l'utilisateur est inclus.
-- Les appels d'outils parallèles ne se heurtent plus lorsqu'un fournisseur réutilise `index=0` pour chaque delta d'appel d'outil en streaming ; l'agrégateur détecte désormais les limites via un changement d'id ou de nom et remapppe les deltas suivants vers l'emplacement correct.
+- Les appels d'outils parallèles ne se heurtent plus lorsqu'un fournisseur réutilise `index=0` pour chaque delta d'appel d'outil en streaming ; l'agrégateur détecte désormais les limites via un changement d'id ou de nom et remappage les deltas suivants vers l'emplacement correct.
+- Paramètres → Canaux reflète désormais le rôle organisationnel de l'utilisateur actuel : les membres (non-administrateur/propriétaire) voient un bouton "Nouveau canal" désactivé, des actions Modifier / Activer-Désactiver / Supprimer masquées, une bannière en lecture seule et un état vide tenant compte des autorisations — au lieu d'un CTA activé qui échouait à la soumission avec "Accès administrateur organisationnel requis".
 
 ## [v0.8.4] - 2026-04-17
 

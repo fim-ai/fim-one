@@ -26,6 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - Export timestamps now respect the user's configured timezone instead of displaying raw UTC.
 - Uploaded file content no longer leaks into exported conversations; only the user's message text is included.
 - Parallel tool calls no longer collide when a provider reuses `index=0` for every streamed tool-call delta; the aggregator now detects boundaries via id or name change and remaps subsequent deltas to the correct slot.
+- Settings → Channels now reflects the current user's org role: members (non-admin/owner) see a disabled "New Channel" button, hidden Edit / Enable-Disable / Delete actions, a read-only banner, and a permission-aware empty state — instead of an enabled CTA that failed on submit with "Organization admin access required".
 
 ## [v0.8.4] - 2026-04-17
 
