@@ -64,7 +64,15 @@ async def create_builder_session(
             f"2. Call connector_test_connection to verify connectivity before building actions\n"
             f"3. If the user provides an OpenAPI spec URL, use connector_import_openapi (with dry_run=true first)\n"
             f"4. For manual action building, call connector_list_actions first, then create/update as needed\n"
-            f"5. After building, test key actions with connector_test_action\n"
+            f"5. After building, test key actions with connector_test_action\n\n"
+            f"IMPORTANT — Credential masking:\n"
+            f"When connector_get_settings returns auth_config, secret values are ALWAYS masked for display — "
+            f"you will see strings like '****abcd' (masked with last 4 chars visible) or '****' (fully masked). "
+            f"This is encrypted/desensitized output, NOT a missing value. The credential IS configured on the server.\n"
+            f"- If the user asks whether the configuration is complete, DO NOT say the API key or token is missing "
+            f"just because the returned value starts with '****'. Treat any masked value as present and valid.\n"
+            f"- Only report a credential as missing when the field itself is absent from auth_config, is null, or is an empty string.\n"
+            f"- If the user wants to verify the credential actually works, use connector_test_connection — never ask them to paste the real key.\n"
         )
     elif body.target_type == "agent":
         result = await db.execute(
@@ -136,7 +144,14 @@ async def create_builder_session(
             f"2. Call db_list_tables to see current state\n"
             f"3. Use db_batch_set_visibility to handle system/framework tables by prefix\n"
             f"4. Use db_get_table_detail + db_run_sample_query for ambiguous tables\n"
-            f"5. Use db_annotate_table / db_annotate_column to add human-readable names\n"
+            f"5. Use db_annotate_table / db_annotate_column to add human-readable names\n\n"
+            f"IMPORTANT — Credential masking:\n"
+            f"When db_get_connector_settings returns the db_config, the 'password' field is ALWAYS masked as '****'. "
+            f"This is desensitized display only — the real password is stored encrypted on the server and IS configured.\n"
+            f"- If the user asks whether the database credentials are complete, DO NOT say the password is missing "
+            f"just because you see '****'. Treat a masked password as present and valid.\n"
+            f"- Only report the password as missing when the field itself is absent, null, or an empty string.\n"
+            f"- To verify the credential actually works, call db_test_connection — never ask the user to paste the real password.\n"
         )
     else:
         raise AppError("unsupported_target_type", status_code=400)
