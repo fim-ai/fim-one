@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Building2, Clock, Eye, MoreHorizontal, PackageMinus, Pencil, ShoppingBag, Trash2, XCircle } from "lucide-react"
+import { ArrowRight, Building2, Clock, Eye, MoreHorizontal, PackageMinus, Pencil, ShoppingBag, Trash2, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -217,6 +217,19 @@ export function KBCard({
       <p className="flex-1 text-xs text-muted-foreground line-clamp-2">
         {kb.description || t("noDescription")}
       </p>
+
+      <div className="mt-3 flex justify-end">
+        <Button
+          asChild
+          size="sm"
+          className="gap-1.5 opacity-100 md:translate-y-1 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100"
+        >
+          <Link href={`/kb/${kb.id}`}>
+            {t("enter")}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </Button>
+      </div>
     </div>
   )
 }

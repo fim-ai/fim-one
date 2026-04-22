@@ -16,6 +16,7 @@
   "chunkCount": "{count} 件のチャンク",
   "docAndChunkStats": "{docCount} 件のドキュメント、{chunkCount} 件のチャンク",
   "noDescription": "説明なし",
+  "enter": "入る",
   "view": "表示",
   "backToKb": "KB に戻る",
   "strategy": "戦略",

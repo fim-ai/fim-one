@@ -92,7 +92,7 @@ export default function AgentEditorPage() {
     setAgent(saved)
     if (isNew) {
       setIsNew(false)
-      router.replace(`/agents/${saved.id}`)
+      router.replace("/agents")
     }
   }
 

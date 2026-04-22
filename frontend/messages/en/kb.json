@@ -19,6 +19,7 @@
   "chunkCount": "{count} chunks",
   "docAndChunkStats": "{docCount} docs, {chunkCount} chunks",
   "noDescription": "No description",
+  "enter": "Enter",
 
   "view": "View",
   "backToKb": "Back to KB",

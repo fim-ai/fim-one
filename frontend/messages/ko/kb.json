@@ -16,6 +16,7 @@
   "chunkCount": "{count}개 청크",
   "docAndChunkStats": "{docCount}개 문서, {chunkCount}개 청크",
   "noDescription": "설명 없음",
+  "enter": "들어가기",
   "view": "보기",
   "backToKb": "KB로 돌아가기",
   "strategy": "전략",

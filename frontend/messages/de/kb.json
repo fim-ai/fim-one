@@ -16,6 +16,7 @@
   "chunkCount": "{count} Chunks",
   "docAndChunkStats": "{docCount} Dokumente, {chunkCount} Chunks",
   "noDescription": "Keine Beschreibung",
+  "enter": "Öffnen",
   "view": "Anzeigen",
   "backToKb": "Zurück zur Wissensdatenbank",
   "strategy": "Strategie",

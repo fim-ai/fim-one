@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Bot, Building2, Clock, Copy, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, RotateCw, ShoppingBag, XCircle } from "lucide-react"
+import { ArrowRight, Bot, Building2, Clock, Copy, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, RotateCw, ShoppingBag, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -219,6 +219,30 @@ export function AgentCard({
       <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-3">
         {agent.description || t("noDescription")}
       </p>
+
+      <div className="mt-auto flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          asChild
+          size="sm"
+          className="gap-1.5 opacity-100 md:translate-y-1 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100"
+        >
+          <Link href={`/new?agent=${agent.id}`}>
+            <MessageSquare className="h-3.5 w-3.5" />
+            {t("startChat")}
+          </Link>
+        </Button>
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="gap-1.5 opacity-100 md:translate-y-1 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100"
+        >
+          <Link href={`/agents/${agent.id}`}>
+            {tc("edit")}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </Button>
+      </div>
 
     </div>
   )

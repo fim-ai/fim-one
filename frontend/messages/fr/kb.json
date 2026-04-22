@@ -16,6 +16,7 @@
   "chunkCount": "{count} chunks",
   "docAndChunkStats": "{docCount} docs, {chunkCount} chunks",
   "noDescription": "Aucune description",
+  "enter": "Entrer",
   "view": "Afficher",
   "backToKb": "Retour à la BC",
   "strategy": "stratégie",

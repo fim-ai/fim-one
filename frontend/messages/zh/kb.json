@@ -16,6 +16,7 @@
   "chunkCount": "{count} 个块",
   "docAndChunkStats": "{docCount} 个文档，{chunkCount} 个块",
   "noDescription": "无描述",
+  "enter": "进入",
   "view": "查看",
   "backToKb": "返回知识库",
   "strategy": "策略",
