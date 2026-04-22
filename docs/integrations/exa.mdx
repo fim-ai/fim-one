@@ -1,0 +1,108 @@
+---
+title: "Exa"
+icon: "magnifying-glass"
+description: "Use Exa as the default web search provider in FIM One agents — neural, fast, deep-reasoning, and instant modes with sensible defaults."
+---
+
+[Exa](https://exa.ai) is integrated as a first-class web search backend in FIM One. Agents get access to the full Exa surface — `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, and `instant` search types — plus structured content retrieval (highlights, text, summaries) and rich filtering (categories, domains, recency). Sensible defaults ship out of the box, so downstream developers get Exa best practices without manual tuning.
+
+## Why Exa in FIM One
+
+- **Neural search for agent reasoning** — Exa's embedding-native search returns semantically relevant results, not just keyword matches. This matters for research agents that reason over web content.
+- **Deep-reasoning mode for hard queries** — single-call multi-hop reasoning over the open web, without the agent orchestrating sub-queries itself.
+- **Built-in content extraction** — highlights + text + optional summaries arrive with the search call, eliminating a second round-trip to fetch and clean page content.
+- **Tight domain / recency controls** — includes/excludes domain lists (up to 1200 entries), ISO-8601 date windows, and `maxAgeHours` for time-sensitive workflows.
+
+## Quick start
+
+### 1. Get an Exa API key
+
+Sign up at [exa.ai](https://exa.ai) and grab your API key from the dashboard.
+
+### 2. Set the key in FIM One
+
+Add to your `.env`:
+
+```bash
+EXA_API_KEY=your_key_here
+```
+
+That's it. If `WEB_SEARCH_PROVIDER` is unset, FIM One auto-selects Exa when `EXA_API_KEY` is present.
+
+To make Exa explicit:
+
+```bash
+WEB_SEARCH_PROVIDER=exa
+EXA_API_KEY=your_key_here
+```
+
+### 3. Use it from any agent
+
+Web search is exposed to agents as a built-in tool — no extra wiring needed. Agents with `web_search` enabled will automatically route through Exa.
+
+## Configuration
+
+All Exa-specific knobs have sensible defaults. Override any of them via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `EXA_API_KEY` | — | **Required.** Your Exa API key. |
+| `EXA_SEARCH_TYPE` | `auto` | One of `auto`, `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, `instant`. |
+| `EXA_CATEGORY` | — | One of `company`, `research paper`, `news`, `personal site`, `financial report`, `people`. |
+| `EXA_INCLUDE_DOMAINS` | — | Comma-separated allowlist (max 1200 entries). |
+| `EXA_EXCLUDE_DOMAINS` | — | Comma-separated blocklist (max 1200 entries). |
+| `EXA_START_PUBLISHED_DATE` | — | ISO-8601, e.g. `2025-01-01`. |
+| `EXA_END_PUBLISHED_DATE` | — | ISO-8601. |
+| `EXA_MAX_AGE_HOURS` | — | Only return pages indexed in the last N hours. |
+| `EXA_INCLUDE_HIGHLIGHTS` | `true` | Pull highlight snippets from results. |
+| `EXA_TEXT_MAX_CHARS` | `800` | Cap on text/snippet length per result. |
+| `EXA_SUMMARY_QUERY` | — | Optional custom summary prompt per result. |
+
+### How snippets are assembled
+
+FIM One cascades through Exa's content fields to produce a useful snippet on every result, regardless of which content types the API populated:
+
+1. `highlights` (joined with ` … `) — preferred when present
+2. `text` — falls back to extracted article text, truncated to `EXA_TEXT_MAX_CHARS`
+3. `summary` — used when both above are empty
+
+This guarantees downstream agents always have a non-empty snippet to reason over, even for results where Exa couldn't extract highlights.
+
+### Preset: news monitoring
+
+```bash
+EXA_SEARCH_TYPE=fast
+EXA_CATEGORY=news
+EXA_MAX_AGE_HOURS=24
+EXA_TEXT_MAX_CHARS=1200
+```
+
+### Preset: research paper retrieval
+
+```bash
+EXA_SEARCH_TYPE=neural
+EXA_CATEGORY=research paper
+EXA_INCLUDE_HIGHLIGHTS=true
+EXA_TEXT_MAX_CHARS=2000
+```
+
+### Preset: deep-reasoning agent
+
+```bash
+EXA_SEARCH_TYPE=deep-reasoning
+EXA_TEXT_MAX_CHARS=1500
+EXA_SUMMARY_QUERY=What is the key finding and its supporting evidence?
+```
+
+## Attribution
+
+Every Exa request from FIM One carries an `x-exa-integration: fim-one` header so Exa can attribute API usage back to this integration in maintainer dashboards. This is used only for integration-level attribution — no end-user identification or tracking.
+
+## Source
+
+The Exa connector lives at [`src/fim_one/core/web/search/exa.py`](https://github.com/fim-ai/fim-one/blob/master/src/fim_one/core/web/search/exa.py) and follows the same `BaseWebSearch` protocol as Jina, Tavily, and Brave — switching providers is a single env-var change.
+
+## Links
+
+- [Exa homepage](https://exa.ai) · [Exa API reference](https://exa.ai/docs/reference/search)
+- [FIM One quickstart](/quickstart) · [Environment variables reference](/configuration/environment-variables)

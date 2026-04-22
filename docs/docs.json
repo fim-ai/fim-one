@@ -62,6 +62,13 @@
                 ]
               },
               {
+                "group": "Integrations",
+                "icon": "plug-circle-bolt",
+                "pages": [
+                  "integrations/exa"
+                ]
+              },
+              {
                 "group": "Features",
                 "icon": "puzzle-piece",
                 "tag": "CORE",
@@ -199,6 +206,13 @@
                 ]
               },
               {
+                "group": "集成",
+                "icon": "plug-circle-bolt",
+                "pages": [
+                  "zh/integrations/exa"
+                ]
+              },
+              {
                 "group": "功能",
                 "icon": "puzzle-piece",
                 "tag": "CORE",
@@ -326,6 +340,13 @@
                   "ja/configuration/models",
                   "ja/configuration/model-management",
                   "ja/configuration/oauth-providers"
+                ]
+              },
+              {
+                "group": "統合",
+                "icon": "plug-circle-bolt",
+                "pages": [
+                  "ja/integrations/exa"
                 ]
               },
               {
@@ -459,6 +480,13 @@
                 ]
               },
               {
+                "group": "통합",
+                "icon": "plug-circle-bolt",
+                "pages": [
+                  "ko/integrations/exa"
+                ]
+              },
+              {
                 "group": "기능",
                 "icon": "puzzle-piece",
                 "tag": "CORE",
@@ -589,6 +617,13 @@
                 ]
               },
               {
+                "group": "Integrationen",
+                "icon": "plug-circle-bolt",
+                "pages": [
+                  "de/integrations/exa"
+                ]
+              },
+              {
                 "group": "Funktionen",
                 "icon": "puzzle-piece",
                 "tag": "CORE",
@@ -716,6 +751,13 @@
                   "fr/configuration/models",
                   "fr/configuration/model-management",
                   "fr/configuration/oauth-providers"
+                ]
+              },
+              {
+                "group": "Intégrations",
+                "icon": "plug-circle-bolt",
+                "pages": [
+                  "fr/integrations/exa"
                 ]
               },
               {

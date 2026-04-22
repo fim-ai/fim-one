@@ -1,0 +1,106 @@
+---
+title: "Exa"
+icon: "magnifying-glass"
+description: "在 FIM One 智能体中使用 Exa 作为默认网络搜索提供商 — 神经、快速、深度推理和即时模式，具有合理的默认设置。"
+---
+
+[Exa](https://exa.ai) 作为一流的网络搜索后端集成在 FIM One 中。智能体可以访问完整的 Exa 功能 — `neural`、`fast`、`deep-lite`、`deep`、`deep-reasoning` 和 `instant` 搜索类型 — 以及结构化内容检索（高亮、文本、摘要）和丰富的过滤选项（类别、域名、时效性）。开箱即用的合理默认设置使下游开发者无需手动调整即可获得 Exa 最佳实践。
+
+## 为什么在 FIM One 中使用 Exa
+
+- **用于智能体推理的神经搜索** — Exa 的嵌入原生搜索返回语义相关的结果，而不仅仅是关键词匹配。这对于在网络内容上进行推理的研究智能体很重要。
+- **用于困难查询的深度推理模式** — 在开放网络上进行单次调用的多跳推理，无需智能体自己编排子查询。
+- **内置内容提取** — 高亮、文本和可选摘要随搜索调用一起返回，消除了获取和清理页面内容的第二次往返。
+- **严格的域名/时效性控制** — 包括/排除域名列表（最多 1200 个条目）、ISO-8601 日期窗口和 `maxAgeHours`，用于时间敏感的工作流。
+
+## 快速开始
+
+### 1. 获取 Exa API 密钥
+
+在 [exa.ai](https://exa.ai) 注册并从仪表板获取您的 API 密钥。
+
+### 2. 在 FIM One 中设置密钥
+
+添加到你的 `.env`：
+
+```bash
+EXA_API_KEY=your_key_here
+```
+
+就这样。如果 `WEB_SEARCH_PROVIDER` 未设置，当 `EXA_API_KEY` 存在时，FIM One 会自动选择 Exa。
+
+要明确指定 Exa：
+
+```bash
+WEB_SEARCH_PROVIDER=exa
+EXA_API_KEY=your_key_here
+```
+
+### 3. 从任何智能体使用它
+
+Web search 作为内置工具暴露给智能体 — 无需额外配置。启用了 `web_search` 的智能体将自动通过 Exa 路由。
+
+## 配置
+
+所有 Exa 特定的参数都有合理的默认值。通过环境变量覆盖其中任何一个：
+
+| 变量 | 默认值 | 描述 |
+|---|---|---|
+| `EXA_API_KEY` | — | **必需。** 你的 Exa API 密钥。 |
+| `EXA_SEARCH_TYPE` | `auto` | 以下之一：`auto`、`neural`、`fast`、`deep-lite`、`deep`、`deep-reasoning`、`instant`。 |
+| `EXA_CATEGORY` | — | 以下之一：`company`、`research paper`、`news`、`personal site`、`financial report`、`people`。 |
+| `EXA_INCLUDE_DOMAINS` | — | 逗号分隔的允许列表（最多 1200 个条目）。 |
+| `EXA_EXCLUDE_DOMAINS` | — | 逗号分隔的阻止列表（最多 1200 个条目）。 |
+| `EXA_START_PUBLISHED_DATE` | — | ISO-8601 格式，例如 `2025-01-01`。 |
+| `EXA_END_PUBLISHED_DATE` | — | ISO-8601 格式。 |
+| `EXA_MAX_AGE_HOURS` | — | 仅返回在过去 N 小时内索引的页面。 |
+| `EXA_INCLUDE_HIGHLIGHTS` | `true` | 从结果中提取高亮片段。 |
+| `EXA_TEXT_MAX_CHARS` | `800` | 每个结果的文本/片段长度上限。 |
+| `EXA_SUMMARY_QUERY` | — | 可选的每个结果的自定义摘要提示词。 |
+
+### 片段如何组装
+
+FIM One 通过 Exa 的内容字段级联，在每个结果上生成有用的片段，无论 API 填充了哪些内容类型：
+
+1. `highlights`（用 ` … ` 连接）— 存在时优先使用
+2. `text` — 回退到提取的文章文本，截断到 `EXA_TEXT_MAX_CHARS`
+3. `summary` — 当上述两者都为空时使用
+
+这保证了下游智能体始终有非空片段可用于推理，即使对于 Exa 无法提取亮点的结果也是如此。
+
+### 预设：新闻监控
+
+```bash
+EXA_SEARCH_TYPE=fast
+EXA_CATEGORY=news
+EXA_MAX_AGE_HOURS=24
+EXA_TEXT_MAX_CHARS=1200
+```
+
+### 预设：研究论文检索
+
+```bash
+EXA_SEARCH_TYPE=neural
+EXA_CATEGORY=research paper
+EXA_INCLUDE_HIGHLIGHTS=true
+EXA_TEXT_MAX_CHARS=2000
+```
+
+### 预设：深度推理智能体
+
+```bash
+EXA_SEARCH_TYPE=deep-reasoning
+EXA_TEXT_MAX_CHARS=1500
+EXA_SUMMARY_QUERY=What is the key finding and its supporting evidence?
+```
+
+## 归属
+
+来自 FIM One 的每个 Exa 请求都携带 `x-exa-integration: fim-one` 标头，以便 Exa 可以在维护者仪表板中将 API 使用情况归属于此集成。这仅用于集成级别的归属——不涉及最终用户识别或跟踪。
+
+Exa 连接器位于 [`src/fim_one/core/web/search/exa.py`](https://github.com/fim-ai/fim-one/blob/master/src/fim_one/core/web/search/exa.py)，遵循与 Jina、Tavily 和 Brave 相同的 `BaseWebSearch` 协议 — 切换提供商只需更改一个环境变量。
+
+## 链接
+
+- [Exa 主页](https://exa.ai) · [Exa API 参考](https://exa.ai/docs/reference/search)
+- [FIM One 快速入门](/quickstart) · [环境变量参考](/configuration/environment-variables)

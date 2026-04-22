@@ -1,0 +1,106 @@
+---
+title: "Exa"
+icon: "magnifying-glass"
+description: "FIM One 智能体에서 Exa를 기본 웹 검색 제공자로 사용 — 신경망, 빠른, 심층 추론 및 즉시 모드와 합리적인 기본값."
+---
+
+[Exa](https://exa.ai)는 FIM One의 일급 웹 검색 백엔드로 통합되어 있습니다. 智能体는 전체 Exa 표면에 접근할 수 있습니다 — `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, `instant` 검색 유형 — 그리고 구조화된 콘텐츠 검색(하이라이트, 텍스트, 요약) 및 풍부한 필터링(카테고리, 도메인, 최신성). 합리적인 기본값이 기본으로 제공되므로 다운스트림 개발자는 수동 튜닝 없이 Exa 모범 사례를 얻을 수 있습니다.
+
+## FIM One에서 Exa를 사용하는 이유
+
+- **에이전트 추론을 위한 신경망 검색** — Exa의 임베딩 기반 검색은 단순 키워드 매칭이 아닌 의미론적으로 관련된 결과를 반환합니다. 이는 웹 콘텐츠를 기반으로 추론하는 연구 에이전트에 중요합니다.
+- **어려운 쿼리를 위한 심화 추론 모드** — 에이전트가 직접 하위 쿼리를 조율하지 않고도 공개 웹에 대한 단일 호출 다중 홉 추론을 수행합니다.
+- **내장된 콘텐츠 추출** — 하이라이트 + 텍스트 + 선택적 요약이 검색 호출과 함께 제공되어 페이지 콘텐츠를 가져오고 정리하는 두 번째 왕복을 제거합니다.
+- **엄격한 도메인 / 최신성 제어** — 도메인 목록 포함/제외(최대 1200개 항목), ISO-8601 날짜 범위, 시간에 민감한 워크플로우를 위한 `maxAgeHours`를 포함합니다.
+
+## 빠른 시작
+
+### 1. Exa API 키 받기
+
+[exa.ai](https://exa.ai)에서 가입하고 대시보드에서 API 키를 받으세요.
+
+### 2. FIM One에서 키 설정
+
+`.env`에 다음을 추가하세요:
+
+```bash
+EXA_API_KEY=your_key_here
+```
+
+완료입니다. `WEB_SEARCH_PROVIDER`가 설정되지 않은 경우, `EXA_API_KEY`가 있으면 FIM One이 자동으로 Exa를 선택합니다.
+
+Exa를 명시적으로 설정하려면:
+
+```bash
+WEB_SEARCH_PROVIDER=exa
+EXA_API_KEY=your_key_here
+```
+
+### 3. 모든 에이전트에서 사용하기
+
+웹 검색은 에이전트에 기본 제공 도구로 노출됩니다 — 추가 설정이 필요하지 않습니다. `web_search`가 활성화된 에이전트는 자동으로 Exa를 통해 라우팅됩니다.
+
+## 구성
+
+모든 Exa 관련 설정에는 합리적인 기본값이 있습니다. 환경 변수를 통해 다음 중 하나를 재정의할 수 있습니다:
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `EXA_API_KEY` | — | **필수.** Exa API 키입니다. |
+| `EXA_SEARCH_TYPE` | `auto` | `auto`, `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, `instant` 중 하나입니다. |
+| `EXA_CATEGORY` | — | `company`, `research paper`, `news`, `personal site`, `financial report`, `people` 중 하나입니다. |
+| `EXA_INCLUDE_DOMAINS` | — | 쉼표로 구분된 허용 목록(최대 1200개 항목). |
+| `EXA_EXCLUDE_DOMAINS` | — | 쉼표로 구분된 차단 목록(최대 1200개 항목). |
+| `EXA_START_PUBLISHED_DATE` | — | ISO-8601, 예: `2025-01-01`. |
+| `EXA_END_PUBLISHED_DATE` | — | ISO-8601. |
+| `EXA_MAX_AGE_HOURS` | — | 지난 N시간 내에 색인된 페이지만 반환합니다. |
+| `EXA_INCLUDE_HIGHLIGHTS` | `true` | 결과에서 하이라이트 스니펫을 가져옵니다. |
+| `EXA_TEXT_MAX_CHARS` | `800` | 결과당 텍스트/스니펫 길이 상한선입니다. |
+| `EXA_SUMMARY_QUERY` | — | 결과당 선택적 사용자 정의 요약 프롬프트입니다. |
+
+### 스니펫이 어떻게 조립되는지
+
+FIM One은 Exa의 콘텐츠 필드를 통해 API가 채운 콘텐츠 유형에 관계없이 모든 결과에 유용한 스니펫을 생성합니다:
+
+1. `highlights` (` … `로 결합) — 존재할 때 선호됨
+2. `text` — 추출된 기사 텍스트로 폴백, `EXA_TEXT_MAX_CHARS`로 잘림
+3. `summary` — 위의 두 항목이 모두 비어있을 때 사용됨
+
+이는 Exa가 하이라이트를 추출할 수 없었던 결과에 대해서도 다운스트림 에이전트가 항상 비어있지 않은 스니펫을 추론할 수 있도록 보장합니다.
+
+### 사전 설정: 뉴스 모니터링
+
+```bash
+EXA_SEARCH_TYPE=fast
+EXA_CATEGORY=news
+EXA_MAX_AGE_HOURS=24
+EXA_TEXT_MAX_CHARS=1200
+```
+
+### 사전 설정: 연구 논문 검색
+
+```bash
+EXA_SEARCH_TYPE=neural
+EXA_CATEGORY=research paper
+EXA_INCLUDE_HIGHLIGHTS=true
+EXA_TEXT_MAX_CHARS=2000
+```
+
+### Preset: deep-reasoning 에이전트
+
+```bash
+EXA_SEARCH_TYPE=deep-reasoning
+EXA_TEXT_MAX_CHARS=1500
+EXA_SUMMARY_QUERY=What is the key finding and its supporting evidence?
+```
+
+## 속성 지정
+
+FIM One의 모든 Exa 요청에는 `x-exa-integration: fim-one` 헤더가 포함되어 있어 Exa가 유지보수자 대시보드에서 이 통합으로 API 사용을 추적할 수 있습니다. 이는 통합 수준의 속성 지정에만 사용되며, 최종 사용자 식별이나 추적에는 사용되지 않습니다.
+
+Exa 커넥터는 [`src/fim_one/core/web/search/exa.py`](https://github.com/fim-ai/fim-one/blob/master/src/fim_one/core/web/search/exa.py)에 위치하며, Jina, Tavily, Brave와 동일한 `BaseWebSearch` 프로토콜을 따릅니다 — 제공자 전환은 단일 환경 변수 변경으로 가능합니다.
+
+## 링크
+
+- [Exa 홈페이지](https://exa.ai) · [Exa API 참고](https://exa.ai/docs/reference/search)
+- [FIM One 빠른 시작](/quickstart) · [환경 변수 참고](/configuration/environment-variables)
