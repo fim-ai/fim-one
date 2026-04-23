@@ -53,6 +53,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - Channel details sheet tightened: "How to finish setup" is now a collapsible section collapsed by default (so it doesn't dominate the sheet for already-configured channels), and the outer padding was reduced so content sits closer to the sheet edge.
 - Builder AI no longer reports masked (`****`) credentials as missing — it now recognizes them as configured and skips false "credential missing" guidance.
 - Playground agent list now shows all accessible agents instead of only published ones, so draft agents can be tested without publishing first.
+- Chat image uploads no longer crash the stream on malformed `data:` URLs — the MIME extractor now safely falls back to `application/octet-stream` instead of raising an IndexError mid-generate.
+- Playground image thumbnails now cancel in-flight fetches on unmount via `AbortController`, avoiding stale blob-URL assignments and wasted bandwidth during rapid navigation.
 
 ## [v0.8.4] - 2026-04-17
 
