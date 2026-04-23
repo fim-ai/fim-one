@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     # Skip the auto-commit this workflow itself produces, to avoid recursion
     # even if someone later swaps GITHUB_TOKEN for a PAT.
-    if: "!startsWith(github.event.head_commit.message, 'chore(i18n): sync')"
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(i18n): sync') }}
 
     steps:
       - name: Checkout
