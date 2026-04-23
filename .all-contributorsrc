@@ -37,6 +37,16 @@
         "code",
         "test"
       ]
+    },
+    {
+      "login": "Houjiawei330",
+      "name": "Houx.",
+      "avatar_url": "https://avatars.githubusercontent.com/u/49180524?v=4",
+      "profile": "https://github.com/Houjiawei330",
+      "contributions": [
+        "code",
+        "bug"
+      ]
     }
   ],
   "skipCi": true
