@@ -283,8 +283,12 @@ export function ConnectorCard({
           </p>
         ) : (
           <p className="text-xs text-muted-foreground mb-1">
-            {authDisplay}
-            {" \u00B7 "}
+            {authDisplay && (
+              <>
+                {authDisplay}
+                {" \u00B7 "}
+              </>
+            )}
             {t("actionCount", { count: connector.actions.length })}
           </p>
         )
