@@ -14,6 +14,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - **L'autorité de traduction s'est déplacée des fichiers de locale vers le glossaire** : les règles de traduction vivent désormais dans [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — une source unique de vérité chargée dans chaque appel de traduction LLM (JSON, MDX, README). Le hook de pré-commit refuse maintenant inconditionnellement les modifications manuelles des fichiers de locale générés (supprimant le remplacement antérieur `ALLOW_LOCALE_EDIT=1`), car les modifications dispersées par locale dérivent silencieusement et sont écrasées lors d'une retradution complète. Pour corriger une mauvaise traduction, modifiez le glossaire (une règle permanente qui s'applique aux cinq locales) et régénérez les fichiers affectés avec `--force`. Les règles de glossaire en ligne précédemment intégrées dans trois invites système ont été consolidées dans le fichier de glossaire externe.
 
+## [v0.8.5] - 2026-04-23
+
 ### Ajouté
 
 - **Flux i18n convivial pour les contributeurs** : les contributeurs n'ont plus besoin de configurer `LLM_API_KEY` pour soumettre des PR qui modifient les fichiers sources en anglais. Si l'étape de traduction pré-commit locale est ignorée (pas de clé), un nouveau flux de travail `.github/workflows/i18n-sync.yml` traduit EN → ZH/JA/KO/DE/FR sur `master` après la fusion de la PR et valide automatiquement le résultat. Le hook pré-commit refuse désormais les modifications manuelles des fichiers de locale générés (avec un remplacement `ALLOW_LOCALE_EDIT=1` pour les corrections de traduction légitimes), empêchant la dérive silencieuse entre les sources EN et les résultats traduits.

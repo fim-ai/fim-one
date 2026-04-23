@@ -226,17 +226,29 @@ flowchart LR
 - **Thinking-block persistence with signature** — `reasoning_content` + Anthropic `signature` persisted in `metadata_["thinking"]` and replayed on subsequent turns; fixes HTTP 400 signature mismatch on Claude 4 multi-turn conversations
 - **Provider-aware reasoning replay policy** — Centralized `reasoning_replay_policy()` in `core/prompt/reasoning.py` gates serialization per provider family: Claude replays thinking blocks with signature; DeepSeek-R1/Qwen-QwQ/Gemini-thinking/o-series drop `reasoning_content` on outbound (previously leaked, breaking provider KV caches and violating API docs)
 
+### v0.8.5 (2026-04-23) — Channel Integration + Hook System + Contributor i18n
+- **Feishu Channel (Phase 1 subset)** — Org-scoped `Channel` 리소스(Fernet 암호화 자격증명 포함); `FeishuChannel`은 대화형 카드 전송 + 콜백 지원(서명 검증 + URL 챌린지); Settings → Channels 관리 UI(목록, 더티 상태 보호가 있는 생성/편집, 복사 가능한 콜백 URL이 있는 상세 정보, 테스트 전송); CRUD API(`/api/channels`) 및 이벤트 콜백 엔드포인트(`/api/channels/{id}/callback`). 2026-04-24 로드쇼를 위해 조기 출시
+- **Agent Hook System (ReAct + DAG 런타임에서 라이브)** — `src/fim_one/core/hooks/`의 `PreToolUseHook` / `PostToolUseHook` 추상화; `model_config_json`에서 `hooks.class_hooks`를 선언하는 에이전트는 채팅 세션당 훅이 인스턴스화되고 등록됨. 첫 번째 소비자 `FeishuGateHook`은 에이전트가 `requires_confirmation=True` 도구를 호출할 때 연결된 Feishu 그룹에 승인/거부 카드를 게시하고, 실행을 차단한 후 판정에 따라 재개 또는 중단
+- **구성 가능한 확인 게이트(인라인 또는 채널)** — 모든 에이전트는 세 가지 라우팅 모드(자동 / 인라인만 / 채널만), 승인자 범위 선택기(개시자 / 소유자 / 조직의 모든 사람), 도구별 재정의, 명시적 승인 채널 선택기가 있는 승인 섹션을 받음. 자동 모드는 채널이 연결되지 않았을 때 인라인 승인 카드로 우아하게 폴백됨. `POST /api/confirmations/{id}/respond`는 Feishu 웹훅과 단일 의사 결정 기록 경로를 공유
+- **에이전트별 작업 완료 알림** — 장시간 실행되는 ReAct 또는 DAG 에이전트는 작업이 완료될 때 조직의 채널에 요약 카드를 푸시할 수 있음. 일반 아웃바운드 알림 패턴의 첫 번째 소비자
+- **Hook 승인 Playground** — Channels 상세 정보 시트에는 전체 프로덕션 경로를 실행하는 "Test Approval Flow" 작업이 있음(진정한 `ConfirmationRequest` 행, 실제 Feishu 콜백, 상태 전환) — 프로덕션 훅이 사용하는 동일한 코드 경로
+- **Contributor 친화적 i18n CI 폴백** — `.github/workflows/i18n-sync.yml`은 PR 병합 후 마스터에서 EN → ZH/JA/KO/DE/FR로 번역하고 `[skip ci]`로 자동 커밋; 기여자는 더 이상 로컬에서 `LLM_API_KEY`가 필요하지 않음. 생성된 로케일 파일(`ALLOW_LOCALE_EDIT=1` 정당한 번역 수정을 위한 재정의)에 대한 수동 편집을 거부하는 사전 커밋 로케일 편집 가드. 스모크 테스트 푸시를 통해 엔드투엔드 검증됨
+- **Exa 통합 문서** — 전체 Exa 검색 표면(신경망 / 빠름 / 심층 추론 / 즉시), 필터링, 콘텐츠 검색, 세 가지 조정된 사전 설정을 다루는 첫 번째 클래스 Exa 페이지가 있는 전용 통합 섹션
+- **信创(Xinchuang) 데이터베이스 지원** — 데이터베이스 커넥터는 이제 PostgreSQL/MySQL과 함께 KingbaseES(人大金仓), HighGo(瀚高), DM8(达梦)을 나열함. PG 호환 드라이버는 `asyncpg`를 재사용; DM8은 `dmPython`을 사용. `scripts/test_xinchuang_dbs.py`는 CLI에서 라이브 연결을 검증
+- **Channels + Hook System 아키텍처 문서** — `docs/architecture/hook-system.mdx`는 세 가지 훅 포인트를 설명하고 FeishuGateHook을 엔드투엔드로 안내; 기존 아키텍처 페이지는 교차 링크; README는 메시징 채널을 첫 번째 클래스 기능으로 나열
+- **강화** — 중복된 Feishu 콜백 클릭은 이중 결정 대신 대체 카드를 생성; 동시 콜백 클릭은 조건부 `UPDATE ... WHERE status='pending'` 행 개수 확인을 통해 해결; 보류 중인 승인은 백그라운드 스위퍼를 통해 `CHANNEL_CONFIRMATION_TTL_MINUTES`(기본값 24시간) 후 자동 만료; Settings → Channels는 조직 역할을 존중(멤버는 읽기 전용 UI 표시); 병렬 도구 호출 집계기는 모든 델타에 대해 `index=0`을 재사용하는 제공자를 처리; 세션 만료 리디렉션은 쿼리 문자열을 보존
+
 ## 계획된 버전
 
-### v0.8.5 — Channel & Hook Polish
+### v0.8.6 — Channel & Hook Polish
 
-**목표**: v0.9 프로덕션 강화 단계가 시작되기 전에 v0.8 Channel + Hook 출시의 미완료 항목을 정리합니다. 범위는 의도적으로 좁게 설정되었습니다 — 새로운 기능이 아닌 개선입니다.
+**Goal**: v0.8.5 Channel + Hook 롤아웃의 미해결 항목을 정리한 후 v0.9 프로덕션 강화 단계를 진행합니다. 범위는 의도적으로 좁게 설정되었습니다 — 새로운 기능이 아닌 폴리싱입니다.
 
-- [ ] **Hook별 설정 통과** — 현재 `class_hooks` 항목은 단순 문자열입니다. Agent별로 `FeishuGateHook.timeout_seconds`, `poll_interval_seconds` 또는 `callback_base_url`을 재정의하려면 스키마가 `{"name": "feishu_gate", "config": {...}}` 객체를 수용하고 이를 hook 팩토리에 kwargs로 전달해야 합니다. 낮은 위험도의 후속 작업입니다. 현재 기본값(120초 timeout / 1.5초 poll / 환경 변수 callback URL)은 당분간 수용 가능합니다.
-- [ ] **DAG `tools_used` 정확성** — 완료 알림 카드는 현재 `tools_used`를 `plan.steps[*].tool_hint`(planner의 제안)에서 파생하며, 실제로 단계별 ReAct 루프가 선택한 실제 도구 이름이 아닙니다. DAG executor의 단계 완료 콜백에서 실제 선택된 도구 이름을 추출하여 알림 카드가 실제로 실행된 내용을 반영하도록 합니다.
-- [ ] **위임된 하위 Agent 및 Workflow AGENT 노드에 대한 Hook 상속 정책** — 현재 `CallAgentTool` 자식 및 Workflow `AGENT` 노드는 부모의 hook 레지스트리를 상속하지 않는 새로운 ReActAgent를 생성하므로, 위임을 통해 도달한 민감한 도구 호출은 `feishu_gate`를 조용히 우회합니다. 결정 및 문서화: 자식 Agent가 상속하는가(기본값-보안, 게이트 우회 방지) 또는 격리하는가(팀이 승인 게이트가 없는 작업을 자식 Agent에 위임할 수 있음)? Eval Center 실행은 설계상 opt-out으로 유지됩니다(자동화는 인간 승인에 의해 차단될 수 없음).
+- [ ] **Hook별 설정 통과** — 현재 `class_hooks` 항목은 단순 문자열이며, `FeishuGateHook.timeout_seconds`, `poll_interval_seconds` 또는 `callback_base_url`을 에이전트별로 재정의하려면 스키마가 `{"name": "feishu_gate", "config": {...}}` 객체를 수용하고 이를 hook 팩토리에 kwargs로 전달해야 합니다. 낮은 위험도의 후속 작업이며, 현재 기본값(120초 타임아웃 / 1.5초 폴 / 환경 변수 콜백 URL)은 당분간 수용 가능합니다.
+- [ ] **DAG `tools_used` 정확도** — 완료 알림 카드는 현재 `tools_used`를 `plan.steps[*].tool_hint`(플래너의 제안)에서 파생하며, 단계별 ReAct 루프가 선택한 실제 도구 이름이 아닙니다. DAG 실행자의 단계 완료 콜백에서 실제 선택된 도구 이름을 추출하여 알림 카드가 실제로 실행된 내용을 반영하도록 합니다.
+- [ ] **위임된 하위 에이전트 및 Workflow AGENT 노드에 대한 Hook 상속 정책** — 현재 `CallAgentTool` 자식 및 Workflow `AGENT` 노드는 부모의 hook 레지스트리를 상속하지 않는 새로운 ReActAgent를 생성하므로, 위임을 통해 도달한 민감한 도구 호출은 `feishu_gate`를 조용히 우회합니다. 결정 및 문서화: 자식 에이전트가 상속하는가(기본값-보안, 게이트 우회 방지) 또는 격리하는가(팀이 승인 게이트가 없는 작업을 자식 에이전트에 위임할 수 있음)? Eval Center 실행은 설계상 옵트아웃으로 유지됩니다(자동화는 인간 승인을 차단할 수 없음).
 
-여기의 모든 항목은 기존 추상화에 의해 추가적이며 — 스키마 변경 없음, API 호환성 손상 없음, v0.8.4와 v0.9 사이에 안전하게 단계적으로 적용 가능합니다.
+여기의 모든 항목은 추가적이며 기존 추상화 뒤에 있습니다 — 스키마 변경 없음, 호환성을 깨뜨리는 API 변경 없음, v0.8.5와 v0.9 사이에 단계적으로 안전하게 적용할 수 있습니다.
 
 ### v0.9 — 관찰성 + 프로덕션 강화
 

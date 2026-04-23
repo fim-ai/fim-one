@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fim-one"
-version = "0.8.4"
+version = "0.8.5"
 description = "LLM-powered Agent Runtime with dynamic DAG planning and concurrent execution"
 readme = "README.md"
 license = "LicenseRef-FIM-One"
