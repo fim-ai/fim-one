@@ -2711,7 +2711,7 @@ async def react_endpoint(
         # and fires the bridge listener; this pump turns those rows into
         # ``awaiting_confirmation`` SSE frames while the hook's DB poll
         # is still blocked.  Cancelled below when the stream tears down.
-        _react_confirm_agent_id = str(agent_cfg.get("agent_id") or "")
+        _react_confirm_agent_id = str((agent_cfg or {}).get("agent_id") or "")
         _react_confirm_user_id = str(current_user_id or "")
         _confirmation_pump_task: asyncio.Task[None] | None = None
         if _react_confirm_agent_id and _react_confirm_user_id:
@@ -3712,7 +3712,7 @@ async def dag_endpoint(
 
         # Inline confirmation pump — mirrors the ReAct handler.  See
         # ``_pump_inline_confirmations`` for rationale.
-        _dag_confirm_agent_id = str(agent_cfg.get("agent_id") or "")
+        _dag_confirm_agent_id = str((agent_cfg or {}).get("agent_id") or "")
         _dag_confirm_user_id = str(current_user_id or "")
         _dag_confirmation_pump_task: asyncio.Task[None] | None = None
         if _dag_confirm_agent_id and _dag_confirm_user_id:

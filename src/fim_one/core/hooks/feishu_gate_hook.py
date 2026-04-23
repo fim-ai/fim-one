@@ -126,14 +126,15 @@ class FeishuGateHook(PreToolUseHook):
 
     async def execute(self, context: HookContext) -> HookResult:
         # --- Step 1: load the agent row ----------------------------------
+        # No agent context means this is a bound-agent-less chat session
+        # (pure model chat, quick tasks, etc.) — there are no per-agent
+        # confirmation rules to enforce, so the gate silently bows out.
+        # The tool's own ``requires_confirmation`` flag only matters when
+        # an agent-scoped routing/approver policy exists to resolve it.
         if not context.agent_id:
             return HookResult(
-                allow=False,
-                error=(
-                    "Tool requires confirmation but no agent_id was provided "
-                    "in the hook context — cannot resolve confirmation mode."
-                ),
-                side_effects=["feishu_gate: no agent context"],
+                allow=True,
+                side_effects=["feishu_gate: no agent context, skipping gate"],
             )
 
         async with self._session_factory() as session:
