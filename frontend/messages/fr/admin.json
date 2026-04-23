@@ -126,7 +126,7 @@
     "user": "Utilisateur",
     "tokensLabel": "{count} tokens",
     "quotaValue": "Quota : {value}",
-    "unlimited": "Limite globale",
+    "unlimited": "Illimité",
     "totalUsers": "{count, plural, one {# utilisateur} other {# utilisateurs}} au total",
     "previous": "Précédent",
     "pageOf": "Page {page} sur {pages}",
@@ -147,7 +147,7 @@
     "setQuotaDesc": "Définir un quota mensuel de jetons pour {username}.",
     "monthlyTokenQuota": "Quota mensuel de jetons",
     "quotaPlaceholder": "par ex. 1000000",
-    "quotaHint": "Entrez 0 ou laissez vide pour utiliser la limite globale (pas de remplacement par utilisateur).",
+    "quotaHint": "Laissez vide pour hériter de la limite globale. Entrez 0 pour accorder un quota illimité à cet utilisateur. Max : 2 000 000 000.",
     "quotaUpdated": "Quota de jetons mis à jour",
     "forceLogout": "Forcer la déconnexion",
     "userLoggedOut": "Utilisateur déconnecté",
@@ -174,7 +174,11 @@
     "deleteUserItem4": "Fichiers téléchargés par l'utilisateur",
     "deleteUserItem5": "Fichiers sandbox et temporaires",
     "deletePermanently": "Supprimer définitivement",
-    "userDeleted": "Utilisateur \"{username}\" supprimé"
+    "userDeleted": "Utilisateur \"{username}\" supprimé",
+    "registered": "Enregistré",
+    "inheritGlobal": "Limite globale",
+    "quotaTooLarge": "Le quota doit être inférieur ou égal à 2 000 000 000",
+    "quotaInvalid": "Veuillez entrer un entier non négatif valide"
   },
   "conversations": {
     "title": "Conversations",

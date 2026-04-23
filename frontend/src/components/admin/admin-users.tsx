@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { formatTokens } from "@/lib/utils"
+import { useDateFormatter } from "@/hooks/use-date-formatter"
 import {
   Loader2,
   Search,
@@ -65,6 +66,7 @@ export function AdminUsers() {
   const t = useTranslations("admin.users")
   const tc = useTranslations("common")
   const tError = useTranslations("errors")
+  const { formatDate } = useDateFormatter()
 
   // --- List state ---
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -251,9 +253,24 @@ export function AdminUsers() {
 
   const handleSetQuota = async () => {
     if (!quotaTarget) return
+    const trimmed = quotaValue.trim()
+    let parsed: number | null
+    if (trimmed === "") {
+      parsed = null
+    } else {
+      const n = Number(trimmed)
+      if (!Number.isInteger(n) || n < 0) {
+        toast.error(t("quotaInvalid"))
+        return
+      }
+      if (n > 2_000_000_000) {
+        toast.error(t("quotaTooLarge"))
+        return
+      }
+      parsed = n
+    }
     setIsMutating(true)
     try {
-      const parsed = quotaValue.trim() === "" || quotaValue.trim() === "0" ? null : parseInt(quotaValue, 10)
       await adminApi.setUserQuota(quotaTarget.id, parsed)
       toast.success(t("quotaUpdated"))
       setQuotaTarget(null)
@@ -351,6 +368,9 @@ export function AdminUsers() {
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
                   {t("usageQuota")}
                 </th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
+                  {t("registered")}
+                </th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">
                   {tc("actions")}
                 </th>
@@ -409,9 +429,16 @@ export function AdminUsers() {
                           <p className="text-muted-foreground text-xs">{t("tokensLabel", { count: formatTokens(u.monthly_tokens) })}</p>
                         )}
                         <p className="text-xs text-muted-foreground/70">
-                          {u.token_quota !== null ? t("quotaValue", { value: formatTokens(u.token_quota) }) : t("unlimited")}
+                          {u.token_quota === null
+                            ? t("inheritGlobal")
+                            : u.token_quota === 0
+                              ? t("unlimited")
+                              : t("quotaValue", { value: formatTokens(u.token_quota) })}
                         </p>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                      {formatDate(u.created_at, "--")}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <DropdownMenu>
@@ -764,6 +791,8 @@ export function AdminUsers() {
               <Input
                 type="number"
                 min={0}
+                max={2_000_000_000}
+                step={1}
                 value={quotaValue}
                 onChange={(e) => setQuotaValue(e.target.value)}
                 placeholder={t("quotaPlaceholder")}

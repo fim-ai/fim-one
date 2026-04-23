@@ -40,7 +40,7 @@
     "todayCount": "本日 {count}",
     "messages": "メッセージ",
     "totalTokens": "総トークン数",
-    "fastLlmTokens": "Fast LLM: {tokens}",
+    "fastLlmTokens": "高速LLM: {tokens}",
     "agents": "エージェント",
     "knowledgeBases": "ナレッジベース",
     "documents": "ドキュメント",
@@ -126,7 +126,7 @@
     "user": "ユーザー",
     "tokensLabel": "{count} トークン",
     "quotaValue": "クォータ: {value}",
-    "unlimited": "グローバルリミット",
+    "unlimited": "無制限",
     "totalUsers": "合計 {count, plural, one {# ユーザー} other {# ユーザー}}",
     "previous": "前へ",
     "pageOf": "ページ {page} / {pages}",
@@ -147,7 +147,7 @@
     "setQuotaDesc": "{username} の月間トークンクォータを設定します。",
     "monthlyTokenQuota": "月間トークンクォータ",
     "quotaPlaceholder": "例: 1000000",
-    "quotaHint": "0 を入力するか空のままにすると、グローバルリミットが使用されます（ユーザー単位のオーバーライドなし）。",
+    "quotaHint": "空のままにするとグローバル制限を継承します。0を入力するとこのユーザーに無制限のクォータを付与します。最大: 2,000,000,000。",
     "quotaUpdated": "トークンクォータが更新されました",
     "forceLogout": "ログアウトを強制",
     "userLoggedOut": "ユーザーがログアウトしました",
@@ -174,7 +174,11 @@
     "deleteUserItem4": "ユーザーがアップロードしたファイル",
     "deleteUserItem5": "サンドボックスと一時ファイル",
     "deletePermanently": "永久に削除",
-    "userDeleted": "ユーザー「{username}」が削除されました"
+    "userDeleted": "ユーザー「{username}」が削除されました",
+    "registered": "登録済み",
+    "inheritGlobal": "グローバル制限",
+    "quotaTooLarge": "クォータは2,000,000,000以下である必要があります",
+    "quotaInvalid": "有効な非負の整数を入力してください"
   },
   "conversations": {
     "title": "会話",
@@ -288,7 +292,7 @@
     "activeConfig": "アクティブ設定",
     "activeConfigDesc": "アクティブなモデルグループを選択します。「Default (ENV)」は環境変数を使用します。",
     "currentProfile": "アクティブプロファイル",
-    "defaultEnv": "Default (ENV)",
+    "defaultEnv": "デフォルト (ENV)",
     "effectiveModels": "有効なモデル",
     "sourceEnv": "ENV",
     "sourceGroup": "グループ",
@@ -434,7 +438,7 @@
       "agent": "エージェント",
       "connector": "コネクター",
       "kb": "ナレッジベース",
-      "mcp_server": "MCP Server"
+      "mcp_server": "MCPサーバー"
     },
     "reviewActionLabels": {
       "submitted": "提出済み",
@@ -1129,7 +1133,7 @@
     "typeAgent": "エージェント",
     "typeSkill": "スキル",
     "typeConnector": "コネクタ",
-    "typeMcpServer": "MCP Server",
+    "typeMcpServer": "MCPサーバー",
     "typeWorkflow": "ワークフロー",
     "typeKnowledgeBase": "ナレッジベース",
     "takeDown": "削除",

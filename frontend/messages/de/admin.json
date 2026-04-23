@@ -126,7 +126,7 @@
     "user": "Benutzer",
     "tokensLabel": "{count} Token",
     "quotaValue": "Kontingent: {value}",
-    "unlimited": "Globales Limit",
+    "unlimited": "Unbegrenzt",
     "totalUsers": "{count, plural, one {# Benutzer} other {# Benutzer}} insgesamt",
     "previous": "Zurück",
     "pageOf": "Seite {page} von {pages}",
@@ -147,7 +147,7 @@
     "setQuotaDesc": "Legen Sie ein monatliches Token-Kontingent für {username} fest.",
     "monthlyTokenQuota": "Monatliches Token-Kontingent",
     "quotaPlaceholder": "z. B. 1000000",
-    "quotaHint": "Geben Sie 0 ein oder lassen Sie das Feld leer, um das globale Limit zu verwenden (keine benutzerdefinierten Überschreibungen).",
+    "quotaHint": "Leer lassen, um das globale Limit zu übernehmen. Geben Sie 0 ein, um diesem Benutzer unbegrenztes Kontingent zu gewähren. Max: 2.000.000.000.",
     "quotaUpdated": "Token-Kontingent aktualisiert",
     "forceLogout": "Abmeldung erzwingen",
     "userLoggedOut": "Benutzer abgemeldet",
@@ -174,7 +174,11 @@
     "deleteUserItem4": "Von Benutzern hochgeladene Dateien",
     "deleteUserItem5": "Sandbox- und temporäre Dateien",
     "deletePermanently": "Dauerhaft löschen",
-    "userDeleted": "Benutzer \"{username}\" gelöscht"
+    "userDeleted": "Benutzer \"{username}\" gelöscht",
+    "registered": "Registriert",
+    "inheritGlobal": "Globales Limit",
+    "quotaTooLarge": "Kontingent darf 2.000.000.000 nicht überschreiten",
+    "quotaInvalid": "Bitte geben Sie eine gültige nicht-negative ganze Zahl ein"
   },
   "conversations": {
     "title": "Unterhaltungen",
