@@ -528,9 +528,13 @@ function ImageThumbnail({ fileId, filename }: { fileId: string; filename: string
 }
 
 /** Renders a single history turn (user message + execution steps) using the same hooks as live mode. */
-const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, assistantMetadata, sseMessages, hideDagGraph }: {
+const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orphanUserContents, assistantMetadata, sseMessages, hideDagGraph }: {
   userContent: string | null
   userMetadata?: Record<string, unknown> | null
+  // Aborted user messages that precede the paired user in the same turn
+  // (stop-and-retry history). Rendered as plain bubbles above the main
+  // user+output pair so the full retry history stays visible.
+  orphanUserContents?: string[]
   assistantMetadata?: Record<string, unknown> | null
   sseMessages: SSEMessage[]
   hideDagGraph: boolean
@@ -572,6 +576,14 @@ const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, assis
 
   return (
     <>
+      {orphanUserContents && orphanUserContents.length > 0 && orphanUserContents.map((txt, idx) => (
+        <div key={`orphan-${idx}`} className="flex gap-3 items-center">
+          <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
+          <div className="flex-1">
+            <CollapsibleText content={txt} className="text-sm text-foreground whitespace-pre-wrap" />
+          </div>
+        </div>
+      ))}
       {userContent && (
         <div className={cn("flex gap-3", !clipMetadata && !fileMetadata && "items-center")}>
           <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
@@ -797,22 +809,44 @@ function PlaygroundContent({
   // Available during BOTH live mode (shows previous turns) and history mode (shows all turns).
   const allHistoryTurns = useMemo(() => {
     if (!activeConversation?.messages?.length) return null
-    const turns: Array<{ user: MessageResponse | null; assistantMetadata: Record<string, unknown> | null; sseMessages: SSEMessage[] }> = []
+    const turns: Array<{
+      user: MessageResponse | null
+      orphanUsers: MessageResponse[]
+      assistantMetadata: Record<string, unknown> | null
+      sseMessages: SSEMessage[]
+    }> = []
     const msgs = activeConversation.messages
     for (let i = 0; i < msgs.length; i++) {
       const msg = msgs[i]
       if (msg.role === "assistant") {
         const reconstructed = reconstructSSEMessages(msg)
         if (reconstructed) {
-          // Walk backwards to find the original "text" user message, skipping inject messages.
+          // Walk backwards within the current turn: collect every
+          // non-inject user message until the previous turn's assistant
+          // boundary. The most recent user is the "paired" one that
+          // triggered this assistant response; earlier users are orphan
+          // retries (stop-and-retry history) that stay visible instead
+          // of being silently dropped.
           let userMsg: MessageResponse | null = null
+          const orphanUsers: MessageResponse[] = []
           for (let j = i - 1; j >= 0; j--) {
-            if (msgs[j].role === "user" && msgs[j].message_type !== "inject") {
-              userMsg = msgs[j]
-              break
+            const mj = msgs[j]
+            if (mj.role === "assistant") break
+            if (mj.role === "user" && mj.message_type !== "inject") {
+              if (userMsg === null) {
+                userMsg = mj
+              } else {
+                // Preserve chronological order (oldest first).
+                orphanUsers.unshift(mj)
+              }
             }
           }
-          turns.push({ user: userMsg, assistantMetadata: msg.metadata, sseMessages: reconstructed })
+          turns.push({
+            user: userMsg,
+            orphanUsers,
+            assistantMetadata: msg.metadata,
+            sseMessages: reconstructed,
+          })
         }
       }
     }
@@ -1485,6 +1519,9 @@ function PlaygroundContent({
                         <HistoryTurn
                           userContent={turn.user?.content ?? null}
                           userMetadata={turn.user?.metadata}
+                          orphanUserContents={turn.orphanUsers
+                            .map((m) => m.content)
+                            .filter((c): c is string => !!c)}
                           assistantMetadata={turn.assistantMetadata}
                           sseMessages={turn.sseMessages}
                           hideDagGraph={hasLiveMessages}
