@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { ArrowRight, Bot, Building2, Clock, Copy, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, RotateCw, ShoppingBag, XCircle } from "lucide-react"
+import { Bot, Building2, Clock, Copy, MoreHorizontal, PackageMinus, Pencil, Trash2, Globe, GlobeLock, MessageSquare, RotateCw, ShoppingBag, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -57,13 +57,15 @@ export function AgentCard({
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
       {/* Header: name + hover menu */}
       <div className="flex items-center gap-2 mb-1.5">
-        <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground flex items-center gap-1.5">
+        <h3 className="flex flex-1 min-w-0 items-center gap-1.5">
           {agent.icon ? (
             <span className="shrink-0 text-base leading-none">{agent.icon}</span>
           ) : (
             <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
-          {agent.name}
+          <span className="truncate text-sm font-medium leading-none text-card-foreground">
+            {agent.name}
+          </span>
         </h3>
         {isOwner ? (
           <DropdownMenu>
@@ -77,18 +79,6 @@ export function AgentCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/new?agent=${agent.id}`}>
-                  <MessageSquare className="h-4 w-4" />
-                  {t("startChat")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href={`/agents/${agent.id}`}>
-                  <Pencil className="h-4 w-4" />
-                  {tc("edit")}
-                </Link>
-              </DropdownMenuItem>
               {onFork && (
                 <DropdownMenuItem onClick={() => onFork(agent.id)}>
                   <Copy className="h-4 w-4" />
@@ -124,13 +114,6 @@ export function AgentCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/new?agent=${agent.id}`}>
-                  <MessageSquare className="h-4 w-4" />
-                  {t("startChat")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => onUninstall(agent.id)}>
                 <PackageMinus className="h-4 w-4" />
                 {tc("uninstall")}
@@ -220,28 +203,30 @@ export function AgentCard({
         {agent.description || t("noDescription")}
       </p>
 
-      <div className="mt-auto flex flex-col gap-2 sm:flex-row sm:justify-end">
+      <div className="mt-auto flex min-h-10 flex-col gap-2 sm:flex-row sm:items-end">
         <Button
           asChild
           size="sm"
-          className="gap-1.5 opacity-100 md:translate-y-1 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100"
+          className="w-full gap-2 text-sm font-medium leading-none sm:flex-[1.1]"
         >
           <Link href={`/new?agent=${agent.id}`}>
-            <MessageSquare className="h-3.5 w-3.5" />
             {t("startChat")}
+            <MessageSquare className="h-4 w-4 shrink-0" />
           </Link>
         </Button>
-        <Button
-          asChild
-          size="sm"
-          variant="outline"
-          className="gap-1.5 opacity-100 md:translate-y-1 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100"
-        >
-          <Link href={`/agents/${agent.id}`}>
-            {tc("edit")}
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </Button>
+        {isOwner && (
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="w-full gap-2 text-sm font-medium leading-none sm:flex-[0.9]"
+          >
+            <Link href={`/agents/${agent.id}`}>
+              {tc("edit")}
+              <Pencil className="h-4 w-4 shrink-0" />
+            </Link>
+          </Button>
+        )}
       </div>
 
     </div>

@@ -99,7 +99,7 @@ function ConnectorEditorPageInner() {
     setConnector(saved)
     if (isNew) {
       setIsNew(false)
-      router.replace(`/connectors/${saved.id}`)
+      router.replace("/connectors")
     }
   }
 

@@ -71,13 +71,15 @@ export function ConnectorCard({
 
       {/* Header: name + hover menu */}
       <div className="flex items-center gap-2 mb-1.5">
-        <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground flex items-center gap-1.5">
+        <h3 className="flex flex-1 min-w-0 items-center gap-1.5">
           {connector.icon ? (
             <span className="shrink-0 text-base leading-none">{connector.icon}</span>
           ) : (
             <Plug className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
-          {connector.name}
+          <span className="truncate text-sm font-medium leading-none text-card-foreground">
+            {connector.name}
+          </span>
         </h3>
         {isOwner ? (
           <DropdownMenu>
@@ -91,12 +93,6 @@ export function ConnectorCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/connectors/${connector.id}`}>
-                  <Pencil className="h-4 w-4" />
-                  {tc("edit")}
-                </Link>
-              </DropdownMenuItem>
               {onExport && (
                 <DropdownMenuItem onClick={() => onExport(connector.id)}>
                   <Download className="h-4 w-4" />
@@ -318,6 +314,22 @@ export function ConnectorCard({
       <p className="flex-1 text-xs text-muted-foreground line-clamp-2">
         {connector.description || t("noDescription")}
       </p>
+
+      {isOwner && (
+        <div className="mt-3">
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="w-full gap-2 text-sm font-medium leading-none"
+          >
+            <Link href={`/connectors/${connector.id}`}>
+              {tc("edit")}
+              <Pencil className="h-4 w-4 shrink-0" />
+            </Link>
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

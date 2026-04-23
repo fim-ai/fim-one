@@ -74,9 +74,11 @@ export function SkillCard({
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
       {/* Header: icon + name + dropdown menu */}
       <div className="flex items-center gap-2 mb-1.5">
-        <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground flex items-center gap-1.5">
+        <h3 className="flex flex-1 min-w-0 items-center gap-1.5">
           <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-          {skill.name}
+          <span className="truncate text-sm font-medium leading-none text-card-foreground">
+            {skill.name}
+          </span>
         </h3>
         {isOwner ? (
           <DropdownMenu>
@@ -90,10 +92,6 @@ export function SkillCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(skill)}>
-                <Pencil className="h-4 w-4" />
-                {tc("edit")}
-              </DropdownMenuItem>
               {onFork && (
                 <DropdownMenuItem onClick={() => onFork(skill.id)}>
                   <Copy className="h-4 w-4" />
@@ -234,15 +232,17 @@ export function SkillCard({
 
       {/* Edit CTA — owner only */}
       {isOwner && onEdit && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-auto w-full gap-1.5 text-xs h-7"
-          onClick={() => onEdit(skill)}
-        >
-          <Pencil className="h-3 w-3" />
-          {tc("edit")}
-        </Button>
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2 text-sm font-medium leading-none"
+            onClick={() => onEdit(skill)}
+          >
+            {tc("edit")}
+            <Pencil className="h-4 w-4 shrink-0" />
+          </Button>
+        </div>
       )}
     </div>
   )

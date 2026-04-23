@@ -79,13 +79,15 @@ export function WorkflowCard({
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
       {/* Header: icon + name + dropdown menu */}
       <div className="flex items-center gap-2 mb-1.5">
-        <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground flex items-center gap-1.5">
+        <h3 className="flex flex-1 min-w-0 items-center gap-1.5">
           {workflow.icon ? (
             <span className="shrink-0 text-base leading-none">{workflow.icon}</span>
           ) : (
             <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
-          {workflow.name}
+          <span className="truncate text-sm font-medium leading-none text-card-foreground">
+            {workflow.name}
+          </span>
         </h3>
         {isOwner ? (
           <DropdownMenu>
@@ -99,18 +101,6 @@ export function WorkflowCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/workflows/${workflow.id}`}>
-                  <Pencil className="h-4 w-4" />
-                  {tc("edit")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href={`/workflows/${workflow.id}?run=true`}>
-                  <Play className="h-4 w-4" />
-                  {t("editorRun")}
-                </Link>
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onExport(workflow.id)}>
                 <Download className="h-4 w-4" />
                 {tc("export")}
@@ -278,6 +268,32 @@ export function WorkflowCard({
           {t("noRuns")}
         </div>
       )}
+
+      <div className="mt-auto flex min-h-10 flex-col gap-2 sm:flex-row sm:items-end">
+        <Button
+          asChild
+          size="sm"
+          className="w-full gap-2 text-sm font-medium leading-none sm:flex-[1.1]"
+        >
+          <Link href={`/workflows/${workflow.id}?run=true`}>
+            {t("editorRun")}
+            <Play className="h-4 w-4 shrink-0" />
+          </Link>
+        </Button>
+        {isOwner && (
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="w-full gap-2 text-sm font-medium leading-none sm:flex-[0.9]"
+          >
+            <Link href={`/workflows/${workflow.id}`}>
+              {tc("edit")}
+              <Pencil className="h-4 w-4 shrink-0" />
+            </Link>
+          </Button>
+        )}
+      </div>
 
     </div>
   )

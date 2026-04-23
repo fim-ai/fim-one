@@ -50,6 +50,7 @@ export function AgentSettingsForm({
 }: AgentSettingsFormProps) {
   const t = useTranslations("agents")
   const tc = useTranslations("common")
+  const isCreateMode = !agent
   const [name, setName] = useState("")
   const [icon, setIcon] = useState<string | null>(null)
   const [description, setDescription] = useState("")
@@ -1226,7 +1227,7 @@ export function AgentSettingsForm({
       <div className="flex justify-end pt-4">
         <Button type="submit" disabled={isSubmitting || !name.trim()}>
           {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          {tc("save")}
+          {isCreateMode ? tc("create") : tc("save")}
         </Button>
       </div>
     </form>

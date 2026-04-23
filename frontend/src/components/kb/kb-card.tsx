@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { ArrowRight, Building2, Clock, Eye, MoreHorizontal, PackageMinus, Pencil, ShoppingBag, Trash2, XCircle } from "lucide-react"
+import { Building2, Clock, Eye, MoreHorizontal, PackageMinus, Pencil, ShoppingBag, Trash2, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -51,8 +51,10 @@ export function KBCard({
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
       {/* Header: name + hover menu */}
       <div className="flex items-center gap-2 mb-1.5">
-        <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground">
-          {kb.name}
+        <h3 className="flex flex-1 min-w-0 items-center">
+          <span className="truncate text-sm font-medium leading-none text-card-foreground">
+            {kb.name}
+          </span>
         </h3>
         {isOwner ? (
           <DropdownMenu>
@@ -66,17 +68,6 @@ export function KBCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/kb/${kb.id}`}>
-                  <Eye className="h-4 w-4" />
-                  {t("view")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onEdit(kb)}>
-                <Pencil className="h-4 w-4" />
-                {tc("edit")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => onDelete(kb.id)}>
                 <Trash2 className="h-4 w-4" />
                 {tc("delete")}
@@ -218,17 +209,28 @@ export function KBCard({
         {kb.description || t("noDescription")}
       </p>
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex min-h-10 flex-col gap-2 sm:flex-row sm:items-end">
         <Button
           asChild
           size="sm"
-          className="gap-1.5 opacity-100 md:translate-y-1 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100"
+          className="w-full gap-2 text-sm font-medium leading-none sm:flex-[1.1]"
         >
           <Link href={`/kb/${kb.id}`}>
-            {t("enter")}
-            <ArrowRight className="h-3.5 w-3.5" />
+            {t("view")}
+            <Eye className="h-4 w-4 shrink-0" />
           </Link>
         </Button>
+        {isOwner && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-2 text-sm font-medium leading-none sm:flex-[0.9]"
+            onClick={() => onEdit(kb)}
+          >
+            {tc("edit")}
+            <Pencil className="h-4 w-4 shrink-0" />
+          </Button>
+        )}
       </div>
     </div>
   )
