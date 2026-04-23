@@ -63,13 +63,15 @@ flowchart LR
 | Land | Copilot | 한 시스템에 내장하여 UI 내에서 가치 입증 |
 | Expand | Copilot → Hub | 더 많은 시스템으로 확대; Hub가 이들을 통합 |
 
-## Known Issues
+## 알려진 문제
 
-재현 가능하지만 아직 수정되지 않은 프로덕션 버그입니다. 각 항목은 증상, 의심되는 영역, 해결 방법(있는 경우)을 명시합니다. 수정이 범위가 정해지고 일정이 잡히면 항목이 버전 섹션으로 이동합니다.
+프로덕션에서 재현 가능하지만 아직 수정되지 않은 추적된 버그입니다. 각 항목은 증상, 의심되는 영향 범위, 해결 방법(있는 경우)을 명시합니다. 수정이 범위가 정해지고 일정이 잡히면 항목이 버전 섹션으로 이동합니다.
 
-- **Agent editor shows unsaved-changes warning on entry without any edit.** `/agents/[id]`를 통해 기존 agent를 열고 즉시 뒤로 가기를 클릭하면 필드를 건드리지 않았는데도 "Unsaved changes" 대화상자가 나타납니다. dirty check는 20개 이상의 필드를 로드된 agent payload와 비교하므로, state init과 dirty compare 사이의 비대칭 기본값 하나만으로도 phantom mismatch를 유발할 수 있습니다. 현재 의심은 중첩된 `model_config_json` / notification / approval-routing 필드 중 하나이며, `undefined` vs `null` vs `""` 정규화에서 비롯되었을 가능성이 있습니다. 특히 org-scoped agent에서 재현됩니다. 해결 방법: 대화상자를 닫으세요(`Discard and leave`) — 실제로 변경된 것이 없으므로 데이터 손실이 없습니다. 시도된 수정(`cb40c86a`)은 resource picker의 관련 orphan-badge flicker를 제거했지만 이 문제를 해결하지는 못했습니다.
+- **에이전트 편집기가 편집 없이 저장되지 않은 변경 경고를 표시합니다.** `/agents/[id]`를 통해 기존 에이전트를 열고 즉시 뒤로 가기를 클릭하면 어떤 필드도 수정하지 않았는데도 "저장되지 않은 변경" 대화가 나타납니다. 더티 체크는 로드된 에이전트 페이로드에 대해 20개 이상의 필드를 비교하므로, 상태 초기화와 더티 비교 간의 하나의 비대칭 기본값만으로도 가짜 불일치를 유발할 수 있습니다. 현재 의심은 `undefined` vs `null` vs `""` 정규화로 인한 중첩된 `model_config_json` / 알림 / 승인 라우팅 필드 중 하나입니다. 특히 조직 범위 에이전트에서 재현됩니다. 해결 방법: 대화를 무시합니다(`변경 사항 버리고 나가기`) — 실제로 변경된 것이 없으므로 데이터 손실이 없습니다. 시도된 수정(`cb40c86a`)은 리소스 피커에서 관련 고아 배지 깜박임을 제거했지만 이 문제를 해결하지 못했습니다.
 
-- **Saving an agent edit can fail with `Input should be 'initiator', 'agent_owner' or 'org_members'`.** Pydantic은 데이터베이스의 모든 저장된 값이 세 가지 유효한 리터럴 중 하나임에도 불구하고 `/api/agents/{id}` PUT 경계에서 `confirmation_approver_scope` 필드를 거부합니다. 의심: frontend `as "initiator" | "agent_owner" | "org_members"` cast는 compile-time-only promise이므로, legacy 또는 예상치 못한 runtime string(template, import, 또는 이전 migration에서 비롯되었을 가능성)이 `setConfirmationApproverScope`를 통과하여 그대로 다시 전송될 수 있습니다. 해결 방법: 저장하기 전에 Approval → Approver Scope 드롭다운에서 값을 명시적으로 다시 선택하세요.
+- **에이전트 편집을 저장하면 `Input should be 'initiator', 'agent_owner' or 'org_members'` 오류가 발생할 수 있습니다.** Pydantic은 데이터베이스의 모든 저장된 값이 세 가지 유효한 리터럴 중 하나임에도 불구하고 `/api/agents/{id}` PUT 경계에서 `confirmation_approver_scope` 필드를 거부합니다. 의심: 프론트엔드 `as "initiator" | "agent_owner" | "org_members"` 캐스트는 컴파일 타임 전용 약속이므로, 레거시 또는 예상치 못한 런타임 문자열(템플릿, 임포트 또는 이전 마이그레이션에서 가능)이 `setConfirmationApproverScope`를 통과하여 그대로 에코백될 수 있습니다. 해결 방법: 저장하기 전에 승인 → 승인자 범위 드롭다운에서 명시적으로 값을 다시 선택합니다.
+
+- **Playground에서 중지 및 재시도하면 사용자 쿼리 버블이 시각적으로 중복되거나 턴 전환 중에 잠깐 사라질 수 있습니다.** 스트리밍 턴이 중단되고 재시도되면 백엔드는 고아 사용자 메시지를 유지합니다. 그러면 프론트엔드는 세 가지 라이브 렌더 소스(`activeConversation.messages`(DB 스냅샷), SSE `messages` 스트림, 낙관적 `pendingQuery` 플레이스홀더)를 단일 소스 없이 조정해야 합니다. 스트림 전 윈도우 동안 두 소스 모두 동일한 텍스트를 렌더링할 수 있으며("쿼리가 두 번 나타남"), 턴 전환 중에 디스플레이가 순간적으로 이전 턴으로 돌아갈 수 있습니다. 기본 데이터는 정확합니다: 모든 고아 메시지는 유지되고, 새로운 `normalize_alternating_messages` 파이프라인을 통해 다음 LLM 호출로 컨텍스트로 전달되며, 페이지 새로 고침 후 표시됩니다. 아티팩트는 순전히 일시적인 렌더 타이밍입니다. 참고로 Claude의 자체 웹 UI는 유사한 버그 클래스를 나타냅니다. 응답 중간에 중지하고 즉시 후속 쿼리를 보내면 때때로 후속 쿼리가 새 턴으로 추가되는 대신 첫 번째 쿼리의 형제 편집 분기로 포크됩니다. 따라서 이는 낙관적 UI + SSE + 유지된 히스토리 설계의 알려진 어려운 문제이지 FIM One 특정 결함이 아닙니다. 적절한 수정을 위해서는 세 가지 렌더 소스를 하나의 파생 상태로 축소해야 합니다. 더 광범위한 Playground 상태 머신 리팩토링까지 연기됩니다.
 
 ## 배포된 버전
 
