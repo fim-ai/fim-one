@@ -12,7 +12,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Corrigé
 
-- **Paramètres de l'agent : les ressources liées ne clignotent plus en tant que « (已删除) » à l'entrée.** Les sélecteurs KB / connecteur / serveur MCP dérivaient autrefois le badge orphelin de manière synchrone à partir de `selected − available`, de sorte que tout agent dont la récupération de la liste d'inventaire était plus lente que la récupération de l'agent marquait brièvement chaque ressource liée comme supprimée avant de revenir à l'état correct — particulièrement visible pour les agents d'organisation avec plusieurs connecteurs. Le badge orphelin attend maintenant que chaque récupération d'inventaire se stabilise avant de s'afficher.
+- **Paramètres de l'agent : les ressources liées ne clignotent plus en tant que « (已删除) » à l'entrée.** Les sélecteurs KB / connecteur / serveur MCP utilisaient auparavant le badge orphelin de manière synchrone à partir de `selected − available`, de sorte que tout agent dont la récupération de la liste d'inventaire était plus lente que la récupération de l'agent marquait brièvement chaque ressource liée comme supprimée avant de revenir à l'état correct — particulièrement visible pour les agents d'organisation avec plusieurs connecteurs. Le badge orphelin attend maintenant que chaque récupération d'inventaire se stabilise avant le rendu.
 
 ### Modifié
 

@@ -12,7 +12,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Agent-Einstellungen: gebundene Ressourcen flackern beim Eintrag nicht mehr als "(gelöscht)".** Die KB- / Connector- / MCP-Server-Picker leiteten das Waisenkennzeichen synchron von `selected − available` ab, sodass jeder Agent, dessen Inventarlisten-Abruf langsamer war als der Agent-Abruf, kurzzeitig jede verknüpfte Ressource als gelöscht markierte, bevor es zum korrekten Status zurücksprang — besonders auffällig bei Org-Agenten mit mehreren Connectoren. Das Waisenkennzeichen wartet nun darauf, dass jeder Inventarabruf abgeschlossen ist, bevor es gerendert wird.
+- **Agent-Einstellungen: gebundene Ressourcen flackern beim Eintrag nicht mehr als "(gelöscht)".** Die KB- / Connector- / MCP-Server-Picker leiteten das Waisenkennzeichen zuvor synchron von `selected − available` ab, sodass jeder Agent, dessen Bestandslisten-Abruf langsamer war als der Agent-Abruf, kurzzeitig jede verknüpfte Ressource als gelöscht markierte, bevor es zum korrekten Status zurücksprang — besonders auffällig bei Org-Agenten mit mehreren Connectoren. Das Waisenkennzeichen wartet nun, bis jeder Bestandslisten-Abruf abgeschlossen ist, bevor es gerendert wird.
 
 ### Geändert
 
