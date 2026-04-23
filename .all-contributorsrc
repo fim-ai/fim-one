@@ -47,16 +47,6 @@
         "code",
         "bug"
       ]
-    },
-    {
-      "login": "zhao-ruixuan",
-      "name": "赵瑞轩 (Rui Zhao)",
-      "avatar_url": "https://ui-avatars.com/api/?name=Rui+Zhao&size=80&background=6E56CF&color=fff&bold=true",
-      "profile": "https://gitee.com/zhao-ruixuan",
-      "contributions": [
-        "code",
-        "design"
-      ]
     }
   ],
   "skipCi": true
