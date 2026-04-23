@@ -88,6 +88,13 @@ export function AgentSettingsForm({
   const [availableKBs, setAvailableKBs] = useState<{ id: string; name: string; document_count: number }[]>([])
   const [availableConnectors, setAvailableConnectors] = useState<ConnectorResponse[]>([])
   const [availableMCPServers, setAvailableMCPServers] = useState<MCPServerResponse[]>([])
+  // Track whether the inventory fetches have settled, so the orphan/(已删除)
+  // branch only fires after we actually know what the user has access to.
+  // Without this, a fast agent fetch + slow inventory fetch would briefly
+  // render every selected ID as orphan, even if it's a perfectly live resource.
+  const [kbsLoaded, setKbsLoaded] = useState(false)
+  const [connectorsLoaded, setConnectorsLoaded] = useState(false)
+  const [mcpServersLoaded, setMcpServersLoaded] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { data: catalog } = useToolCatalog()
 
@@ -178,14 +185,17 @@ export function AgentSettingsForm({
       .list(1, 100)
       .then((d) => setAvailableKBs(d.items || []))
       .catch(() => setAvailableKBs([]))
+      .finally(() => setKbsLoaded(true))
     connectorApi
       .list(1, 100)
       .then((d) => setAvailableConnectors(d.items || []))
       .catch(() => setAvailableConnectors([]))
+      .finally(() => setConnectorsLoaded(true))
     mcpServerApi
       .list(1, 100)
       .then((d) => setAvailableMCPServers(d.items || []))
       .catch(() => setAvailableMCPServers([]))
+      .finally(() => setMcpServersLoaded(true))
     modelApi.list("llm").then(setSystemModels).catch(() => {})
   }, [])
 
@@ -710,7 +720,7 @@ export function AgentSettingsForm({
           </div>
 
           {/* Knowledge Bases */}
-          {(availableKBs.length > 0 || selectedKBs.some((id) => !availableKBs.some((kb) => kb.id === id))) && (
+          {(availableKBs.length > 0 || (kbsLoaded && selectedKBs.some((id) => !availableKBs.some((kb) => kb.id === id)))) && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{t("knowledgeBases")}</label>
               <p className="text-xs text-muted-foreground">
@@ -809,7 +819,7 @@ export function AgentSettingsForm({
           )}
 
           {/* Connectors */}
-          {(availableConnectors.length > 0 || selectedConnectors.some((id) => !availableConnectors.some((c) => c.id === id))) && (
+          {(availableConnectors.length > 0 || (connectorsLoaded && selectedConnectors.some((id) => !availableConnectors.some((c) => c.id === id)))) && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{t("connectors")}</label>
               <p className="text-xs text-muted-foreground">
@@ -875,7 +885,7 @@ export function AgentSettingsForm({
           )}
 
           {/* MCP Servers */}
-          {(availableMCPServers.length > 0 || selectedMCPServers.some((id) => !availableMCPServers.some((s) => s.id === id))) && (
+          {(availableMCPServers.length > 0 || (mcpServersLoaded && selectedMCPServers.some((id) => !availableMCPServers.some((s) => s.id === id)))) && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{t("mcpServers")}</label>
               <p className="text-xs text-muted-foreground">
