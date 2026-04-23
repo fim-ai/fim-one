@@ -10,27 +10,27 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**당신의 시스템들이 서로 통신하지 않습니다. FIM One은 AI 기반 브릿지입니다 — 코파일럿으로 임베드하거나, 모두를 허브로 연결하세요.**
+**복잡한 엔터프라이즈 스택을 가진 글로벌 팀을 위한 AI 커넥터 허브. Copilot으로 임베드하거나, 글로벌 플랫폼이 도달할 수 없는 시스템을 포함한 모든 시스템을 허브로 연결하세요.**
 
-🌐 [웹사이트](https://one.fim.ai/) · 📖 [문서](https://docs.fim.ai) · 📋 [변경 로그](https://docs.fim.ai/changelog) · 🐛 [버그 신고](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ 설정을 건너뛰세요 — FIM One을 클라우드에서 시도하세요.**
-> 관리형 버전이 **[cloud.fim.ai](https://cloud.fim.ai/)**에서 라이브 중입니다: Docker 없음, API 키 없음, 설정 없음. 로그인하고 몇 초 안에 시스템 연결을 시작하세요. _얼리 액세스, 피드백 환영합니다._
+> **☁️ 설정을 건너뛰고 클라우드에서 FIM One을 시도하세요.**
+> 관리형 버전이 **[cloud.fim.ai](https://cloud.fim.ai/)**에서 라이브 중입니다: Docker 없음, API 키 없음, 설정 없음. 로그인하고 몇 초 안에 시스템 연결을 시작하세요. _초기 액세스, 피드백 환영합니다._
 
 ---
 
 ## 개요
 
-모든 회사는 서로 통신하지 않는 시스템들을 가지고 있습니다 — ERP, CRM, OA, 재무, HR, 커스텀 데이터베이스. FIM One은 기존 인프라를 수정하지 않고 이들을 모두 연결하는 **AI 기반 허브**입니다.
+글로벌 기업들은 서로 통신하지 않는 시스템들(ERP, CRM, OA, HR, 재무, 데이터베이스, 지역별 IM 플랫폼)을 운영하고 있습니다. FIM One은 Feishu, WeCom, DingTalk, DM, Kingbase 등 글로벌 AI 플랫폼이 접근할 수 없는 중국 전용 시스템을 포함하여 모든 시스템을 통합하는 **AI 커넥터 허브**입니다.
 
 | 모드           | 설명                                              | 접근 방식                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
 | **Standalone** | 범용 AI 어시스턴트 — 검색, 코드, 지식베이스         | Portal                  |
 | **Copilot**    | 호스트 시스템의 UI에 내장된 AI                       | iframe / widget / embed |
-| **Hub**        | 연결된 모든 시스템 전반의 중앙 AI 오케스트레이션   | Portal / API            |
+| **Hub**        | 모든 연결된 시스템 간 중앙 AI 오케스트레이션   | Portal / API            |
 
 ```mermaid
 graph LR
@@ -116,10 +116,10 @@ cd frontend && pnpm install && cd ..
 ## 주요 기능
 
 #### 커넥터 허브
-- **세 가지 배포 모드** — 독립형 어시스턴트, 임베디드 코파일럿, 또는 중앙 허브; 동일한 에이전트 코어.
-- **모든 시스템, 하나의 패턴** — API, 데이터베이스, MCP 서버 연결. 작업은 인증 주입과 함께 에이전트 도구로 자동 등록됩니다. 점진적 공개 메타 도구는 모든 도구 유형에서 토큰 사용량을 80% 이상 감소시킵니다.
-- **데이터베이스 커넥터** — PostgreSQL, MySQL, Oracle, SQL Server, 그리고 중국 레거시 DB(DM, KingbaseES, GBase, Highgo). 스키마 내부 검사 및 AI 기반 주석.
-- **세 가지 구축 방법** — OpenAPI 스펙 가져오기, AI 채팅 빌더, 또는 MCP 서버 직접 연결.
+- **세 가지 배포 모드** — 독립형 어시스턴트, 임베디드 코파일럿 또는 중앙 허브; 동일한 에이전트 코어.
+- **모든 시스템, 하나의 패턴** — API, 데이터베이스, MCP 서버 연결. 작업은 인증 주입을 통해 에이전트 도구로 자동 등록됩니다. 점진적 공개 메타 도구는 모든 도구 유형에서 토큰 사용량을 80% 이상 감소시킵니다.
+- **데이터베이스 커넥터** — PostgreSQL, MySQL, Oracle, SQL Server 및 중국에서 일반적인 엔터프라이즈 데이터베이스(DM, KingbaseES, GBase, Highgo)로, 대부분의 글로벌 플랫폼이 접근할 수 없습니다. 스키마 내부 검사 및 AI 기반 주석.
+- **세 가지 구축 방법** — OpenAPI 스펙 가져오기, AI 채팅 빌더 또는 MCP 서버 직접 연결.
 
 #### 계획 및 실행
 - **동적 DAG 계획** — LLM이 런타임에 목표를 의존성 그래프로 분해합니다. 하드코딩된 워크플로우가 없습니다.
@@ -138,10 +138,10 @@ cd frontend && pnpm install && cd ..
 - **도구 아티팩트** — 풍부한 출력 (HTML 미리보기, 파일)이 채팅에서 렌더링됩니다.
 
 #### 메시징 채널 (v0.8)
-- **조직 범위 IM 브릿지** — Feishu (Lark)로의 아웃바운드 메시징을 위한 `BaseChannel` 추상화; Slack / WeCom / Teams / Email은 v0.9 로드맵에 포함됨.
-- **Fernet 암호화 자격증명** — 앱 시크릿 및 암호화 키는 저장 시 암호화됨; 모든 인바운드 콜백은 서명 검증됨.
-- **대화형 승인 카드** — 민감한 도구 호출이 발생하면 `FeishuGateHook`이 Feishu 그룹에 승인/거부 카드를 게시함; 도구는 그룹 멤버가 결정을 탭할 때까지 차단됨. 커스텀 워크플로우 엔진 없이 루프 내 인간 승인.
-- **찾아보기 및 선택 UI** — Feishu 콘솔에서 원본 `chat_id` 값을 복사할 필요 없음; 포털이 Feishu API를 호출하고 그룹 선택기를 표시함.
+- **조직 범위 IM 브릿지** — Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom, DingTalk 전반에 걸친 아웃바운드 메시징을 위한 `BaseChannel` 추상화. 첫 번째 배포 구현은 Feishu이며, Slack / Teams / WeCom / Email은 v0.9 로드맵의 다음 항목입니다.
+- **Fernet 암호화 자격증명** — 앱 시크릿 및 암호화 키는 저장 시 암호화되며, 모든 인바운드 콜백은 서명 검증됩니다.
+- **대화형 승인 카드** — 채널 기본 `GateHook` (현재 Feishu, 다음은 Slack/Teams)은 민감한 도구 호출이 발생할 때 그룹에 승인/거부 카드를 게시합니다. 도구는 그룹 멤버가 결정을 탭할 때까지 차단됩니다. 커스텀 워크플로우 엔진 없이 인간-루프 승인을 제공합니다.
+- **찾아보기 및 선택 UI** — 공급업체 콘솔에서 원본 채널 ID를 복사할 필요가 없습니다. 포털은 IM 플랫폼의 API를 호출하고 그룹 선택기를 표시합니다.
 
 #### 플랫폼
 - **멀티테넌트** — JWT 인증, 조직 격리, 사용량 분석 및 커넥터 메트릭을 포함한 관리자 패널.
@@ -199,9 +199,9 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 | ----------- | ------------------------------------------------------------------- |
 | Backend     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
 | Frontend    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
-| AI / RAG    | OpenAI 호환 LLM, Jina AI (임베딩 + 검색), LanceDB          |
-| Database    | SQLite (개발) / PostgreSQL (프로덕션)                                    |
-| Messaging   | Feishu Open Platform (Lark), Fernet 암호화 자격증명, HMAC 서명 검증 |
+| AI / RAG    | OpenAI 호환 LLM, Jina AI (embed + search), LanceDB          |
+| Database    | SQLite (dev) / PostgreSQL (prod)                                    |
+| Messaging   | `BaseChannel` 추상화 (Slack, Teams, Discord, Feishu/Lark, WeCom, DingTalk), Fernet 암호화 자격증명, HMAC 서명 검증 |
 | Infra       | Docker, uv, pnpm, SSE 스트리밍                                    |
 
 ## 개발

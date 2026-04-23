@@ -10,27 +10,27 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**Vos systèmes ne communiquent pas entre eux. FIM One est le pont alimenté par l'IA — intégrez-le en tant que Copilote, ou connectez-les tous en tant que Hub.**
+**Le hub de connecteurs IA pour les équipes mondiales avec des stacks d'entreprise complexes. Intégrez en tant que Copilot, ou connectez chaque système en tant que Hub — y compris ceux que votre plateforme mondiale ne peut pas atteindre.**
 
-🌐 [Site web](https://one.fim.ai/) · 📖 [Documentation](https://docs.fim.ai) · 📋 [Journal des modifications](https://docs.fim.ai/changelog) · 🐛 [Signaler un bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [Site Web](https://one.fim.ai/) · 📖 [Documentation](https://docs.fim.ai) · 📋 [Journal des modifications](https://docs.fim.ai/changelog) · 🐛 [Signaler un bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ Ignorez la configuration — essayez FIM One sur le Cloud.**
-> Une version gérée est disponible à **[cloud.fim.ai](https://cloud.fim.ai/)** : pas de Docker, pas de clés API, pas de configuration. Connectez-vous et commencez à connecter vos systèmes en quelques secondes. _Accès anticipé, les retours sont les bienvenus._
+> **☁️ Ignorez la configuration — essayez FIM One sur Cloud.**
+> Une version gérée est en direct sur **[cloud.fim.ai](https://cloud.fim.ai/)** : pas de Docker, pas de clés API, pas de configuration. Connectez-vous et commencez à connecter vos systèmes en quelques secondes. _Accès anticipé, les commentaires sont les bienvenus._
 
 ---
 
 ## Aperçu
 
-Chaque entreprise dispose de systèmes qui ne communiquent pas entre eux — ERP, CRM, OA, finance, HR, bases de données personnalisées. FIM One est le **hub alimenté par l'IA** qui les connecte tous sans modifier votre infrastructure existante.
+Les grandes entreprises exploitent une multitude de systèmes qui ne communiquent pas entre eux — ERP, CRM, OA, HR, finance, bases de données, plateformes de messagerie instantanée dans différentes régions. FIM One est le **hub de connecteurs AI** qui orchestre l'ensemble de ces systèmes, y compris les systèmes exclusifs à la Chine (Feishu, WeCom, DingTalk, DM, Kingbase, etc.) que votre plateforme AI mondiale ne peut pas atteindre.
 
 | Mode           | Description                                             | Accès                   |
 | -------------- | ------------------------------------------------------- | ----------------------- |
-| **Standalone** | Assistant IA polyvalent — recherche, code, KB           | Portail                 |
-| **Copilot**    | IA intégrée dans l'interface utilisateur d'un système   | iframe / widget / embed |
-| **Hub**        | Orchestration IA centrale sur tous les systèmes connectés | Portail / API           |
+| **Standalone** | Assistant AI polyvalent — recherche, code, KB           | Portail                 |
+| **Copilot**    | AI intégré dans l'interface utilisateur d'un système    | iframe / widget / embed |
+| **Hub**        | Orchestration AI centralisée sur tous les systèmes connectés | Portail / API           |
 
 ```mermaid
 graph LR
@@ -116,10 +116,10 @@ cd frontend && pnpm install && cd ..
 ## Fonctionnalités principales
 
 #### Hub de connecteurs
-- **Trois modes de livraison** — Assistant autonome, Copilot intégré ou Hub central ; même cœur d'agent.
-- **N'importe quel système, un seul modèle** — Connectez des API, des bases de données, des serveurs MCP. Les actions s'enregistrent automatiquement en tant qu'outils d'agent avec injection d'authentification. Les méta-outils à divulgation progressive réduisent l'utilisation des jetons de 80 %+ sur tous les types d'outils.
-- **Connecteurs de base de données** — PostgreSQL, MySQL, Oracle, SQL Server, plus les bases de données héritées chinoises (DM, KingbaseES, GBase, Highgo). Introspection de schéma et annotation alimentée par l'IA.
-- **Trois façons de construire** — Importez une spécification OpenAPI, utilisez le générateur de chat IA ou connectez directement les serveurs MCP.
+- **Trois modes de livraison** — Assistant autonome, Copilot intégré ou Hub central ; même noyau d'agent.
+- **N'importe quel système, un seul modèle** — Connectez des API, des bases de données, des serveurs MCP. Les actions s'enregistrent automatiquement en tant qu'outils d'agent avec injection d'authentification. Les méta-outils à divulgation progressive réduisent l'utilisation de tokens de 80 %+ sur tous les types d'outils.
+- **Connecteurs de bases de données** — PostgreSQL, MySQL, Oracle, SQL Server et bases de données d'entreprise courantes en Chine (DM, KingbaseES, GBase, Highgo) que la plupart des plateformes mondiales ne peuvent pas atteindre. Introspection de schéma et annotation alimentée par l'IA.
+- **Trois façons de construire** — Importez une spécification OpenAPI, utilisez le générateur de chat IA ou connectez directement des serveurs MCP.
 
 #### Planification et exécution
 - **Planification DAG dynamique** — L'LLM décompose les objectifs en graphes de dépendances à l'exécution. Aucun workflow codé en dur.
@@ -138,10 +138,10 @@ cd frontend && pnpm install && cd ..
 - **Artefacts d'outils** — Les sorties enrichies (aperçus HTML, fichiers) sont rendues dans le chat.
 
 #### Canaux de Messagerie (v0.8)
-- **Pont IM étendu à l'organisation** — Abstraction `BaseChannel` pour la messagerie sortante vers Feishu (Lark) aujourd'hui ; Slack / WeCom / Teams / Email sur la feuille de route v0.9.
-- **Identifiants chiffrés Fernet** — Les secrets d'application et les clés de chiffrement sont chiffrés au repos ; chaque signature de rappel entrant est vérifiée.
-- **Cartes d'approbation interactives** — `FeishuGateHook` publie une carte Approuver / Rejeter dans votre groupe Feishu lorsqu'un appel d'outil sensible se déclenche ; l'outil se bloque jusqu'à ce qu'un membre du groupe appuie sur un verdict. Approbation avec intervention humaine sans moteur de flux de travail personnalisé.
-- **Interface de navigation et sélection** — Pas besoin de copier les valeurs `chat_id` brutes depuis la console Feishu ; le portail appelle l'API Feishu et affiche un sélecteur de groupe.
+- **Pont IM étendu à l'organisation** — abstraction `BaseChannel` pour la messagerie sortante sur Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom et DingTalk. La première implémentation livrée est Feishu ; Slack / Teams / WeCom / Email sont les prochains sur la feuille de route v0.9.
+- **Identifiants chiffrés avec Fernet** — Les secrets d'application et les clés de chiffrement sont chiffrés au repos ; chaque signature de rappel entrant est vérifiée.
+- **Cartes d'approbation interactives** — `GateHook` natif du canal (Feishu aujourd'hui, Slack/Teams ensuite) publie une carte Approuver / Rejeter dans votre groupe lorsqu'un appel d'outil sensible se déclenche ; l'outil se bloque jusqu'à ce qu'un membre du groupe appuie sur un verdict. Approbation avec intervention humaine sans moteur de flux de travail personnalisé.
+- **Interface de navigation et sélection** — Pas besoin de copier les ID de canal bruts depuis la console du fournisseur ; le portail appelle l'API de la plateforme IM et affiche un sélecteur de groupe.
 
 #### Plateforme
 - **Multi-locataire** — Authentification JWT, isolation des organisations, panneau d'administration avec analytique d'utilisation et métriques des connecteurs.
@@ -201,8 +201,8 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 | Frontend    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
 | IA / RAG    | LLMs compatibles OpenAI, Jina AI (embed + search), LanceDB          |
 | Base de données | SQLite (dev) / PostgreSQL (prod)                                    |
-| Messagerie  | Feishu Open Platform (Lark), identifiants chiffrés Fernet, vérification de signature HMAC |
-| Infrastructure | Docker, uv, pnpm, SSE streaming                                    |
+| Messagerie  | Abstraction `BaseChannel` (Slack, Teams, Discord, Feishu/Lark, WeCom, DingTalk), identifiants chiffrés Fernet, vérification de signature HMAC |
+| Infrastructure | Docker, uv, pnpm, streaming SSE                                    |
 
 ## Développement
 

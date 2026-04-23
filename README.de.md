@@ -10,27 +10,27 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**Ihre Systeme kommunizieren nicht miteinander. FIM One ist die KI-gestützte Brücke — als Copilot einbetten oder alle als Hub verbinden.**
+**Der KI-Konnektorhub für globale Teams mit komplexen Enterprise-Stacks. Einbettbar als Copilot oder verbinde jedes System als Hub — einschließlich derjenigen, die deine globale Plattform nicht erreichen kann.**
 
-🌐 [Website](https://one.fim.ai/) · 📖 [Dokumentation](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Bug melden](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Bug melden](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ Setup überspringen — probieren Sie FIM One in der Cloud.**
-> Eine verwaltete Version ist live unter **[cloud.fim.ai](https://cloud.fim.ai/)**: kein Docker, keine API-Schlüssel, keine Konfiguration. Melden Sie sich an und verbinden Sie Ihre Systeme in Sekunden. _Early Access, Feedback willkommen._
+> **☁️ Überspringe das Setup — probiere FIM One in der Cloud.**
+> Eine verwaltete Version ist live unter **[cloud.fim.ai](https://cloud.fim.ai/)**: kein Docker, keine API-Schlüssel, keine Konfiguration. Melde dich an und beginne, deine Systeme in Sekunden zu verbinden. _Early Access, Feedback willkommen._
 
 ---
 
 ## Übersicht
 
-Jedes Unternehmen hat Systeme, die nicht miteinander kommunizieren — ERP, CRM, OA, Finanzen, HR, benutzerdefinierte Datenbanken. FIM One ist der **KI-gestützte Hub**, der sie alle verbindet, ohne Ihre vorhandene Infrastruktur zu ändern.
+Große Unternehmen betreiben eine Vielzahl von Systemen, die nicht miteinander kommunizieren — ERP, CRM, OA, HR, Finanzsysteme, Datenbanken, IM-Plattformen in verschiedenen Regionen. FIM One ist der **AI-Connector-Hub**, der alle diese Systeme orchestriert, einschließlich der nur in China verfügbaren Systeme (Feishu, WeCom, DingTalk, DM, Kingbase usw.), die Ihre globale AI-Plattform nicht erreichen kann.
 
-| Modus          | Was es ist                                              | Zugriff                 |
+| Modus           | Beschreibung                                              | Zugriff                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
-| **Standalone** | Universeller KI-Assistent — Suche, Code, KB            | Portal                  |
-| **Copilot**    | KI eingebettet in die Benutzeroberfläche eines Systems  | iframe / widget / embed |
-| **Hub**        | Zentrale KI-Orchestrierung über alle verbundenen Systeme | Portal / API            |
+| **Standalone** | Universeller AI-Assistent — Suche, Code, Wissensdatenbank         | Portal                  |
+| **Copilot**    | AI eingebettet in der Benutzeroberfläche eines Host-Systems                       | iframe / Widget / Embed |
+| **Hub**        | Zentrale AI-Orchestrierung über alle verbundenen Systeme   | Portal / API            |
 
 ```mermaid
 graph LR
@@ -117,9 +117,9 @@ cd frontend && pnpm install && cd ..
 
 #### Connector Hub
 - **Drei Bereitstellungsmodi** — Eigenständiger Assistent, eingebetteter Copilot oder zentraler Hub; gleicher Agent-Kern.
-- **Beliebiges System, ein Muster** — Verbinden Sie APIs, Datenbanken, MCP-Server. Aktionen werden automatisch als Agent-Tools mit Authentifizierungsinjektion registriert. Progressive Disclosure Meta-Tools reduzieren die Token-Nutzung um über 80% bei allen Tool-Typen.
-- **Datenbank-Connectoren** — PostgreSQL, MySQL, Oracle, SQL Server, plus chinesische Legacy-Datenbanken (DM, KingbaseES, GBase, Highgo). Schema-Introspection und KI-gestützte Annotation.
-- **Drei Wege zum Erstellen** — Importieren Sie OpenAPI-Spezifikationen, nutzen Sie den KI-Chat-Builder oder verbinden Sie MCP-Server direkt.
+- **Jedes System, ein Muster** — Verbinden Sie APIs, Datenbanken, MCP-Server. Aktionen werden automatisch als Agent-Tools mit Auth-Injection registriert. Progressive Disclosure Meta-Tools reduzieren die Token-Nutzung um 80%+ über alle Tool-Typen hinweg.
+- **Datenbank-Connectoren** — PostgreSQL, MySQL, Oracle, SQL Server und in China verbreitete Enterprise-Datenbanken (DM, KingbaseES, GBase, Highgo), die die meisten globalen Plattformen nicht erreichen können. Schema-Introspection und KI-gestützte Annotation.
+- **Drei Möglichkeiten zum Erstellen** — OpenAPI-Spezifikation importieren, KI-Chat-Builder verwenden oder MCP-Server direkt verbinden.
 
 #### Planung & Ausführung
 - **Dynamische DAG-Planung** — LLM zerlegt Ziele zur Laufzeit in Abhängigkeitsgraphen. Keine hartcodierten Workflows.
@@ -138,10 +138,10 @@ cd frontend && pnpm install && cd ..
 - **Tool artifacts** — Rich Outputs (HTML-Vorschau, Dateien) im Chat gerendert.
 
 #### Messaging Channels (v0.8)
-- **Org-scoped IM bridge** — `BaseChannel` Abstraktion für ausgehende Nachrichten an Feishu (Lark) heute; Slack / WeCom / Teams / Email auf der v0.9 Roadmap.
-- **Fernet-verschlüsselte Anmeldedaten** — App-Geheimnisse und Verschlüsselungsschlüssel im Ruhezustand verschlüsselt; jede eingehende Callback-Signatur verifiziert.
-- **Interaktive Genehmigungskarten** — `FeishuGateHook` sendet eine Approve / Reject Karte an Ihre Feishu-Gruppe, wenn ein sensitiver Tool-Aufruf ausgelöst wird; das Tool blockiert, bis ein Gruppenmitglied ein Urteil bestätigt. Human-in-the-Loop-Genehmigung ohne benutzerdefinierten Workflow-Engine.
-- **Browse-and-pick UI** — Keine rohen `chat_id` Werte aus der Feishu-Konsole kopieren; das Portal ruft die Feishu API auf und zeigt einen Gruppenwähler.
+- **Org-scoped IM bridge** — `BaseChannel` Abstraktion für ausgehende Nachrichten über Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom und DingTalk. Erste Implementierung wird mit Feishu ausgeliefert; Slack / Teams / WeCom / Email stehen als nächstes auf der v0.9 Roadmap.
+- **Fernet-verschlüsselte Anmeldedaten** — App-Secrets und Verschlüsselungsschlüssel sind im Ruhezustand verschlüsselt; jede eingehende Callback-Signatur wird verifiziert.
+- **Interaktive Genehmigungskarten** — Channel-native `GateHook` (heute Feishu, nächstes Slack/Teams) postet eine Approve / Reject Karte in Ihre Gruppe, wenn ein sensitiver Tool-Aufruf ausgelöst wird; das Tool blockiert, bis ein Gruppenmitglied ein Urteil bestätigt. Human-in-the-Loop-Genehmigung ohne benutzerdefinierten Workflow-Engine.
+- **Browse-and-pick UI** — Keine Notwendigkeit, rohe Channel-IDs aus der Vendor-Konsole zu kopieren; das Portal ruft die API der IM-Plattform auf und zeigt einen Gruppenwähler.
 
 #### Plattform
 - **Multi-Mandanten** — JWT-Authentifizierung, Organisationsisolation, Admin-Panel mit Nutzungsanalytics und Connector-Metriken.
@@ -193,16 +193,16 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 
 > Vollständige Referenz: [Umgebungsvariablen](https://docs.fim.ai/configuration/environment-variables)
 
-## Tech-Stack
+## Tech Stack
 
-| Layer       | Technologie                                                         |
+| Layer       | Technology                                                          |
 | ----------- | ------------------------------------------------------------------- |
 | Backend     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
 | Frontend    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
-| KI / RAG    | OpenAI-kompatible LLMs, Jina AI (embed + search), LanceDB          |
-| Datenbank   | SQLite (dev) / PostgreSQL (prod)                                    |
-| Messaging   | Feishu Open Platform (Lark), Fernet-verschlüsselte Anmeldedaten, HMAC-Signaturverifizierung |
-| Infra       | Docker, uv, pnpm, SSE streaming                                    |
+| AI / RAG    | OpenAI-kompatible LLMs, Jina AI (embed + search), LanceDB          |
+| Database    | SQLite (dev) / PostgreSQL (prod)                                    |
+| Messaging   | `BaseChannel` Abstraktion (Slack, Teams, Discord, Feishu/Lark, WeCom, DingTalk), Fernet-verschlüsselte Anmeldedaten, HMAC-Signaturverifizierung |
+| Infra       | Docker, uv, pnpm, SSE Streaming                                    |
 
 ## Entwicklung
 

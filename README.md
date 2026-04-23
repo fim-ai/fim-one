@@ -10,7 +10,7 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**Your systems don't talk to each other. FIM One is the AI-powered bridge — embed as a Copilot, or connect them all as a Hub.**
+**The AI connector hub for global teams with complex enterprise stacks. Embed as a Copilot, or connect every system as a Hub — including the ones your global platform can't reach.**
 
 🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
@@ -24,7 +24,7 @@
 
 ## Overview
 
-Every company has systems that don't talk to each other — ERP, CRM, OA, finance, HR, custom databases. FIM One is the **AI-powered hub** that connects them all without modifying your existing infrastructure.
+Global enterprises run a sprawl of systems that don't talk to each other — ERP, CRM, OA, HR, finance, databases, IM platforms across regions. FIM One is the **AI connector hub** that orchestrates across all of them, including the China-only systems (Feishu, WeCom, DingTalk, DM, Kingbase, etc.) that your global AI platform can't reach.
 
 | Mode           | What it is                                              | Access                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
@@ -118,7 +118,7 @@ cd frontend && pnpm install && cd ..
 #### Connector Hub
 - **Three delivery modes** — Standalone assistant, embedded Copilot, or central Hub; same agent core.
 - **Any system, one pattern** — Connect APIs, databases, MCP servers. Actions auto-register as agent tools with auth injection. Progressive disclosure meta-tools reduce token usage by 80%+ across all tool types.
-- **Database connectors** — PostgreSQL, MySQL, Oracle, SQL Server, plus Chinese legacy DBs (DM, KingbaseES, GBase, Highgo). Schema introspection and AI-powered annotation.
+- **Database connectors** — PostgreSQL, MySQL, Oracle, SQL Server, and enterprise databases common in China (DM, KingbaseES, GBase, Highgo) that most global platforms can't reach. Schema introspection and AI-powered annotation.
 - **Three ways to build** — Import OpenAPI spec, AI chat builder, or connect MCP servers directly.
 
 #### Planning & Execution
@@ -138,10 +138,10 @@ cd frontend && pnpm install && cd ..
 - **Tool artifacts** — Rich outputs (HTML previews, files) rendered in-chat.
 
 #### Messaging Channels (v0.8)
-- **Org-scoped IM bridge** — `BaseChannel` abstraction for outbound messaging to Feishu (Lark) today; Slack / WeCom / Teams / Email on the v0.9 roadmap.
+- **Org-scoped IM bridge** — `BaseChannel` abstraction for outbound messaging across Slack, Microsoft Teams, Discord, Feishu (Lark), WeCom, and DingTalk. First shipping implementation is Feishu; Slack / Teams / WeCom / Email are next on the v0.9 roadmap.
 - **Fernet-encrypted credentials** — App secrets and encrypt keys encrypted at rest; every inbound callback signature-verified.
-- **Interactive approval cards** — `FeishuGateHook` posts an Approve / Reject card to your Feishu group when a sensitive tool call fires; the tool blocks until a group member taps a verdict. Human-in-the-loop approval without a custom workflow engine.
-- **Browse-and-pick UI** — No copying raw `chat_id` values from the Feishu console; the portal calls the Feishu API and shows a group picker.
+- **Interactive approval cards** — Channel-native `GateHook` (Feishu today, Slack/Teams next) posts an Approve / Reject card to your group when a sensitive tool call fires; the tool blocks until a group member taps a verdict. Human-in-the-loop approval without a custom workflow engine.
+- **Browse-and-pick UI** — No copying raw channel IDs from the vendor console; the portal calls the IM platform's API and shows a group picker.
 
 #### Platform
 - **Multi-tenant** — JWT auth, org isolation, admin panel with usage analytics and connector metrics.
@@ -201,7 +201,7 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 | Frontend    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
 | AI / RAG    | OpenAI-compatible LLMs, Jina AI (embed + search), LanceDB          |
 | Database    | SQLite (dev) / PostgreSQL (prod)                                    |
-| Messaging   | Feishu Open Platform (Lark), Fernet-encrypted credentials, HMAC signature verification |
+| Messaging   | `BaseChannel` abstraction (Slack, Teams, Discord, Feishu/Lark, WeCom, DingTalk), Fernet-encrypted credentials, HMAC signature verification |
 | Infra       | Docker, uv, pnpm, SSE streaming                                    |
 
 ## Development

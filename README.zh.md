@@ -10,27 +10,27 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**您的系统无法相互通信。FIM One 是由 AI 驱动的桥梁 — 可作为 Copilot 嵌入，或将它们全部作为中枢连接。**
+**全球团队复杂企业堆栈的 AI 连接器中心。作为 Copilot 嵌入，或将每个系统作为中心连接 — 包括全球平台无法访问的系统。**
 
-🌐 [网站](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告错误](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [网站](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ 跳过设置 — 在云端尝试 FIM One。**
+> **☁️ 跳过设置 — 在云上尝试 FIM One。**
 > 托管版本已在 **[cloud.fim.ai](https://cloud.fim.ai/)** 上线：无需 Docker、无需 API 密钥、无需配置。登录并在几秒内开始连接您的系统。_早期访问，欢迎反馈。_
 
 ---
 
 ## 概述
 
-每个公司都有相互不通的系统——ERP、CRM、OA、财务、HR、自定义数据库。FIM One 是**AI 驱动的枢纽**，可以连接它们所有系统，而无需修改现有基础设施。
+全球企业运营着大量互不连接的系统——ERP、CRM、OA、HR、财务、数据库、即时通讯平台遍布各地区。FIM One 是**AI 连接器枢纽**，可跨所有系统进行编排，包括全球 AI 平台无法接触的中国特色系统（飞书、企业微信、钉钉、DM、金仓等）。
 
 | 模式           | 说明                                              | 访问方式                  |
 | -------------- | ------------------------------------------------------- | ----------------------- |
-| **独立模式** | 通用 AI 助手——搜索、代码、知识库         | 门户网站                  |
-| **副驾驶模式**    | 嵌入在主系统 UI 中的 AI                       | iframe / widget / embed |
-| **枢纽模式**        | 跨所有连接系统的中央 AI 编排   | 门户网站 / API            |
+| **独立模式** | 通用 AI 助手——搜索、代码、知识库         | Portal                  |
+| **Copilot**    | AI 嵌入宿主系统的 UI                       | iframe / widget / embed |
+| **Hub**    | 跨所有连接系统的中央 AI 编排   | Portal / API            |
 
 ```mermaid
 graph LR
@@ -116,9 +116,9 @@ cd frontend && pnpm install && cd ..
 ## 主要功能
 
 #### 连接器中心
-- **三种交付模式** — 独立助手、嵌入式 Copilot 或中央 Hub；同一个智能体核心。
-- **任何系统，统一模式** — 连接 API、数据库、MCP 服务器。操作自动注册为智能体工具并注入身份验证。渐进式披露元工具可将所有工具类型的令牌使用量减少 80% 以上。
-- **数据库连接器** — PostgreSQL、MySQL、Oracle、SQL Server，以及国产遗留数据库（DM、KingbaseES、GBase、Highgo）。Schema 内省和 AI 驱动的注解。
+- **三种交付模式** — 独立智能体、嵌入式 Copilot 或中央 Hub；同一智能体核心。
+- **任何系统，统一模式** — 连接 API、数据库、MCP 服务器。操作自动注册为智能体工具并注入身份验证。渐进式披露元工具可将所有工具类型的 token 使用量减少 80% 以上。
+- **数据库连接器** — PostgreSQL、MySQL、Oracle、SQL Server 以及中国常见的企业数据库（DM、KingbaseES、GBase、Highgo），这些是大多数全球平台无法接触的。支持 Schema 内省和 AI 驱动的注解。
 - **三种构建方式** — 导入 OpenAPI 规范、AI 聊天构建器或直接连接 MCP 服务器。
 
 #### 规划与执行
@@ -138,10 +138,10 @@ cd frontend && pnpm install && cd ..
 - **工具制品** — 丰富的输出（HTML 预览、文件）在聊天中呈现。
 
 #### 消息通道 (v0.8)
-- **组织范围的即时通讯桥接** — `BaseChannel` 抽象层用于向飞书（Lark）发送出站消息；Slack / WeCom / Teams / Email 在 v0.9 路线图中。
+- **组织范围的 IM 桥接** — `BaseChannel` 抽象，支持跨 Slack、Microsoft Teams、Discord、Feishu (Lark)、WeCom 和 DingTalk 的出站消息。首个发布实现是 Feishu；Slack / Teams / WeCom / Email 在 v0.9 路线图中排在后续。
 - **Fernet 加密凭证** — 应用密钥和加密密钥在静态时加密；每个入站回调都经过签名验证。
-- **交互式审批卡片** — 当敏感工具调用触发时，`FeishuGateHook` 向你的飞书群组发布一张"批准/拒绝"卡片；工具会阻塞直到群组成员点击一个决议。无需自定义工作流引擎的人工审批循环。
-- **浏览并选择 UI** — 无需从飞书控制台复制原始 `chat_id` 值；门户调用飞书 API 并显示群组选择器。
+- **交互式审批卡片** — 通道原生 `GateHook`（目前支持 Feishu，Slack/Teams 即将推出）在敏感工具调用触发时向你的群组发送 Approve / Reject 卡片；工具会阻塞直到群组成员点击审批结果。无需自定义工作流引擎的人工审批循环。
+- **浏览并选择 UI** — 无需从供应商控制台复制原始通道 ID；门户调用 IM 平台的 API 并显示群组选择器。
 
 #### 平台
 - **多租户** — JWT 认证、组织隔离、管理面板（包含使用情况分析和连接器指标）。
@@ -199,9 +199,9 @@ JINA_API_KEY=jina_...                       # unlocks web tools + RAG
 | ----------- | ------------------------------------------------------------------- |
 | 后端     | Python 3.11+, FastAPI, SQLAlchemy, Alembic, asyncio                 |
 | 前端    | Next.js 14, React 18, Tailwind CSS, shadcn/ui, React Flow v12      |
-| AI / RAG    | OpenAI 兼容的 LLM, Jina AI (嵌入 + 搜索), LanceDB          |
-| 数据库    | SQLite (开发) / PostgreSQL (生产)                                    |
-| 消息传递   | Feishu Open Platform (Lark), Fernet 加密凭证, HMAC 签名验证 |
+| AI / RAG    | OpenAI-compatible LLMs, Jina AI (embed + search), LanceDB          |
+| 数据库    | SQLite (dev) / PostgreSQL (prod)                                    |
+| 消息传递   | `BaseChannel` 抽象（Slack、Teams、Discord、Feishu/Lark、WeCom、DingTalk），Fernet 加密凭证，HMAC 签名验证 |
 | 基础设施       | Docker, uv, pnpm, SSE 流式传输                                    |
 
 ## 开发
