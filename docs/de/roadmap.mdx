@@ -243,13 +243,13 @@ flowchart LR
 
 ### v0.8.6 — Channel & Hook Polish
 
-**Goal**: Close loose ends from the v0.8.5 Channel + Hook rollout before the v0.9 production-hardening wave lands. Scope is intentionally narrow — polish, not new capability.
+**Ziel**: Lose Enden aus dem v0.8.5 Channel + Hook Rollout vor der v0.9 Production-Hardening-Welle schließen. Der Umfang ist absichtlich eng — Polish, keine neue Funktionalität.
 
-- [ ] **Per-hook config pass-through** — `class_hooks` entries today are bare strings; to override `FeishuGateHook.timeout_seconds`, `poll_interval_seconds`, or `callback_base_url` per-agent, the schema needs to accept `{"name": "feishu_gate", "config": {...}}` objects that get forwarded as kwargs to the hook factory. Low-risk follow-up; current defaults (120s timeout / 1.5s poll / env-var callback URL) are acceptable in the meantime.
-- [ ] **DAG `tools_used` accuracy** — the completion notification card currently derives `tools_used` from `plan.steps[*].tool_hint` (the planner's suggestion), not the real tool names the per-step ReAct loops chose. Plumb the actual chosen tool names out of the DAG executor's step-completion callback so notification cards reflect what was actually run.
-- [ ] **Hook inheritance policy for delegated sub-agents and Workflow AGENT nodes** — today `CallAgentTool` children and Workflow `AGENT` nodes create fresh ReActAgents that do not inherit the parent's hook registry, so a sensitive tool call reached via delegation silently bypasses `feishu_gate`. Decide and document: do child agents inherit (default-secure, prevents gate bypass) or isolate (lets teams delegate non-approval-gated work to a child agent)? Eval Center runs stay opt-out by design (automation cannot block on human approval).
+- [ ] **Per-Hook-Konfiguration Pass-Through** — `class_hooks` Einträge sind heute einfache Strings; um `FeishuGateHook.timeout_seconds`, `poll_interval_seconds` oder `callback_base_url` pro Agent zu überschreiben, muss das Schema `{"name": "feishu_gate", "config": {...}}` Objekte akzeptieren, die als kwargs an die Hook-Factory weitergeleitet werden. Risikoarme Fortsetzung; die aktuellen Standardwerte (120s Timeout / 1,5s Poll / env-var Callback-URL) sind vorerst akzeptabel.
+- [ ] **DAG `tools_used` Genauigkeit** — die Completion-Benachrichtigungskarte leitet `tools_used` derzeit von `plan.steps[*].tool_hint` ab (der Vorschlag des Planers), nicht von den echten Tool-Namen, die die ReAct-Schleifen pro Schritt gewählt haben. Leite die tatsächlich gewählten Tool-Namen aus dem Callback zur Schrittabschluss des DAG-Executors weiter, damit Benachrichtigungskarten widerspiegeln, was tatsächlich ausgeführt wurde.
+- [ ] **Hook-Vererbungsrichtlinie für delegierte Sub-Agenten und Workflow AGENT-Knoten** — heute erstellen `CallAgentTool` Kinder und Workflow `AGENT` Knoten neue ReActAgents, die die Hook-Registry des übergeordneten Elements nicht erben, sodass ein sensibler Tool-Aufruf, der über Delegation erreicht wird, `feishu_gate` stillschweigend umgeht. Entscheiden und dokumentieren: Erben untergeordnete Agenten (Standard-sicher, verhindert Gate-Umgehung) oder isolieren (ermöglicht Teams, nicht-genehmigungsgated Arbeit an einen untergeordneten Agenten zu delegieren)? Eval Center Läufe bleiben absichtlich Opt-out (Automatisierung kann nicht bei menschlicher Genehmigung blockieren).
 
-Everything here is additive and behind existing abstractions — no schema changes, no breaking API changes, safe to land piecewise between v0.8.5 and v0.9.
+Alles hier ist additiv und hinter bestehenden Abstraktionen — keine Schema-Änderungen, keine Breaking API-Änderungen, sicher stückweise zwischen v0.8.5 und v0.9 zu landen.
 
 ### v0.9 — Observability + Production Hardening
 

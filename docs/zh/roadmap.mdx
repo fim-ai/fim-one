@@ -228,28 +228,28 @@ flowchart LR
 - **提供商感知推理重放策略** — `core/prompt/reasoning.py` 中的集中式 `reasoning_replay_policy()` 按提供商族系控制序列化：Claude 重放带签名的思考块；DeepSeek-R1/Qwen-QwQ/Gemini-thinking/o-series 在出站时删除 `reasoning_content`（之前泄露，破坏提供商 KV 缓存并违反 API 文档）
 
 ### v0.8.5 (2026-04-23) — 通道集成 + 钩子系统 + 贡献者国际化
-- **Feishu 通道（第一阶段子集）** — 组织范围的 `Channel` 资源，支持 Fernet 加密凭证；`FeishuChannel` 支持交互式卡片发送 + 回调（签名验证 + URL 挑战）；设置 → 通道管理 UI（列表、创建/编辑含脏状态保护、详情含可复制回调 URL、测试发送）；CRUD API（`/api/channels`）和事件回调端点（`/api/channels/{id}/callback`）。为 2026-04-24 路演提前发布
+- **Feishu 通道（第一阶段子集）** — 组织范围的 `Channel` 资源，采用 Fernet 加密凭证；`FeishuChannel` 支持交互式卡片发送 + 回调（签名验证 + URL 挑战）；设置 → 通道管理 UI（列表、创建/编辑含脏状态保护、详情含可复制回调 URL、测试发送）；CRUD API（`/api/channels`）和事件回调端点（`/api/channels/{id}/callback`）。为 2026-04-24 路演提前发布
 - **智能体钩子系统（在 ReAct + DAG 运行时中实时运行）** — `PreToolUseHook` / `PostToolUseHook` 抽象位于 `src/fim_one/core/hooks/`；在 `model_config_json` 中声明 `hooks.class_hooks` 的智能体会在每个聊天会话中实例化和注册钩子。首个消费者 `FeishuGateHook` 在智能体调用 `requires_confirmation=True` 工具时向关联的 Feishu 群组发送审批/拒绝卡片，阻止执行，并根据裁决恢复或中止
-- **可配置的确认闸门（内联或通道）** — 每个智能体都有一个审批部分，包含三种路由模式（自动 / 仅内联 / 仅通道）、审批人范围选择器（发起人 / 所有者 / 组织内任何人）、按工具覆盖和显式审批通道选择器。自动模式在未链接通道时优雅地回退到内联审批卡片。`POST /api/confirmations/{id}/respond` 与 Feishu webhook 共享单一决策记录路径
-- **按智能体任务完成通知** — 长时间运行的 ReAct 或 DAG 智能体可在任务完成时向组织通道推送摘要卡片。通用出站通知模式的首个消费者
-- **钩子审批演练场** — 通道详情表有"测试审批流程"操作，可执行完整生产路径（真实 `ConfirmationRequest` 行、真实 Feishu 回调、状态转换）——与生产钩子使用的代码路径相同
-- **贡献者友好的国际化 CI 回退** — `.github/workflows/i18n-sync.yml` 在 PR 合并后在 master 分支上将 EN → ZH/JA/KO/DE/FR 翻译并自动提交，带 `[skip ci]` 标签；贡献者不再需要本地 `LLM_API_KEY`。提交前语言环境编辑守卫拒绝手动编辑生成的语言环境文件（`ALLOW_LOCALE_EDIT=1` 覆盖用于合法翻译修复）。通过烟雾测试推送端到端验证
+- **可配置确认闸门（内联或通道）** — 每个智能体都获得审批部分，包含三种路由模式（自动 / 仅内联 / 仅通道）、审批人范围选择器（发起人 / 所有者 / 组织内任何人）、按工具覆盖和显式审批通道选择器。自动模式在未链接通道时优雅地回退到内联审批卡片。`POST /api/confirmations/{id}/respond` 与 Feishu webhook 共享单一决策记录路径
+- **按智能体任务完成通知** — 长时间运行的 ReAct 或 DAG 智能体可在任务完成时向组织的通道推送摘要卡片。通用出站通知模式的首个消费者
+- **钩子审批演练场** — 通道详情表有"测试审批流程"操作，该操作执行完整生产路径（真实 `ConfirmationRequest` 行、真实 Feishu 回调、状态转换）——与生产钩子使用的代码路径相同
+- **贡献者友好的国际化 CI 回退** — `.github/workflows/i18n-sync.yml` 在 PR 合并后在 master 上将 EN → ZH/JA/KO/DE/FR 翻译，并使用 `[skip ci]` 自动提交；贡献者不再需要本地 `LLM_API_KEY`。提交前语言环境编辑守卫拒绝手动编辑生成的语言环境文件（`ALLOW_LOCALE_EDIT=1` 覆盖用于合法翻译修复）。通过烟雾测试推送端到端验证
 - **Exa 集成文档** — 专用集成部分，首个一流的 Exa 页面涵盖完整 Exa 搜索表面（神经 / 快速 / 深度推理 / 即时）、过滤、内容检索和三个调优预设
-- **信创数据库支持** — 数据库连接器现在列出 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦），与 PostgreSQL/MySQL 并列。PG 兼容驱动复用 `asyncpg`；DM8 使用 `dmPython`。`scripts/test_xinchuang_dbs.py` 从 CLI 验证实时连接
-- **通道 + 钩子系统架构文档** — `docs/architecture/hook-system.mdx` 解释三个钩子点并端到端演示 FeishuGateHook；现有架构页面交叉链接；README 将消息通道列为一流能力
-- **加固** — 重复的 Feishu 回调点击生成替换卡片而非双重决策；并发回调点击通过条件 `UPDATE ... WHERE status='pending'` 行计数检查解决；待处理审批在 `CHANNEL_CONFIRMATION_TTL_MINUTES`（默认 24 小时）后通过后台清理器自动过期；设置 → 通道尊重组织角色（成员看到只读 UI）；并行工具调用聚合器处理为每个增量复用 `index=0` 的提供商；会话过期重定向保留查询字符串
+- **信创数据库支持** — 数据库连接器现在列出 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦）以及 PostgreSQL/MySQL。PG 兼容驱动重用 `asyncpg`；DM8 使用 `dmPython`。`scripts/test_xinchuang_dbs.py` 从 CLI 验证实时连接
+- **通道 + 钩子系统架构文档** — `docs/architecture/hook-system.mdx` 解释三个钩子点并端到端演示 FeishuGateHook；现有架构页面交叉链接；README 将消息通道列为一流功能
+- **加固** — 重复 Feishu 回调点击产生替换卡片而非双重决策；并发回调点击通过条件 `UPDATE ... WHERE status='pending'` 行计数检查解决；待处理审批在 `CHANNEL_CONFIRMATION_TTL_MINUTES`（默认 24 小时）后通过后台清理器自动过期；设置 → 通道尊重组织角色（成员看到只读 UI）；并行工具调用聚合器处理为每个增量重用 `index=0` 的提供商；会话过期重定向保留查询字符串
 
 ## 计划版本
 
 ### v0.8.6 — 通道与钩子优化
 
-**目标**：在v0.9生产加固波浪到来之前，关闭v0.8.5通道+钩子推出中的遗留问题。范围有意缩小——优化而非新功能。
+**目标**：在v0.9生产加固波到来之前，收尾v0.8.5通道+钩子推出中的遗留问题。范围刻意狭窄——优化而非新功能。
 
-- [ ] **按钩子配置透传** — 目前`class_hooks`条目是裸字符串；要按智能体覆盖`FeishuGateHook.timeout_seconds`、`poll_interval_seconds`或`callback_base_url`，模式需要接受`{"name": "feishu_gate", "config": {...}}`对象，这些对象作为kwargs转发给钩子工厂。低风险后续工作；当前默认值（120秒超时/1.5秒轮询/环境变量回调URL）暂时可接受。
-- [ ] **DAG`tools_used`准确性** — 完成通知卡片目前从`plan.steps[*].tool_hint`（规划器的建议）而非每步ReAct循环选择的真实工具名称推导`tools_used`。从DAG执行器的步骤完成回调中导出实际选择的工具名称，使通知卡片反映实际运行的内容。
-- [ ] **委托子智能体和Workflow AGENT节点的钩子继承策略** — 目前`CallAgentTool`子节点和Workflow`AGENT`节点创建不继承父级钩子注册表的新ReActAgent，因此通过委托到达的敏感工具调用会静默绕过`feishu_gate`。决定并文档化：子智能体是继承（默认安全，防止闸门绕过）还是隔离（让团队将非审批闸门工作委托给子智能体）？评估中心运行按设计保持选择退出（自动化无法阻止人工审批）。
+- [ ] **单个钩子配置透传** — 目前`class_hooks`条目是裸字符串；要在单个智能体级别覆盖`FeishuGateHook.timeout_seconds`、`poll_interval_seconds`或`callback_base_url`，架构需要接受`{"name": "feishu_gate", "config": {...}}`对象，这些对象作为kwargs转发给钩子工厂。低风险后续；当前默认值（120秒超时/1.5秒轮询/环境变量回调URL）暂时可接受。
+- [ ] **DAG`tools_used`准确性** — 完成通知卡片目前从`plan.steps[*].tool_hint`（规划器的建议）而非DAG执行器的各步ReAct循环实际选择的真实工具名称推导`tools_used`。从DAG执行器的步骤完成回调中导出实际选择的工具名称，使通知卡片反映实际运行的内容。
+- [ ] **委托子智能体和Workflow AGENT节点的钩子继承策略** — 目前`CallAgentTool`子节点和Workflow`AGENT`节点创建不继承父级钩子注册表的全新ReActAgent，因此通过委托到达的敏感工具调用无声地绕过`feishu_gate`。决策并文档化：子智能体是否继承（默认安全，防止闸门绕过）还是隔离（让团队将非审批闸门工作委托给子智能体）？评估中心运行按设计保持选择退出（自动化不能阻止人工审批）。
 
-这里的所有内容都是附加的且在现有抽象后面——无模式更改、无破坏性API更改，可在v0.8.5和v0.9之间分段安全落地。
+这里的所有内容都是附加的且在现有抽象后面——无架构变更，无破坏性API变更，安全地在v0.8.5和v0.9之间逐段推出。
 
 ### v0.9 — 可观测性 + 生产强化
 
