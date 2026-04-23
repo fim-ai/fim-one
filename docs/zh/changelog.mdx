@@ -12,17 +12,18 @@ description: "FIM One 的所有重要更改。"
 
 ### 新增
 
-- **贡献者友好的 i18n 工作流**：贡献者不再需要配置 `LLM_API_KEY` 即可提交涉及英文源文件的 PR。如果跳过本地 pre-commit 翻译步骤（无密钥），新的 `.github/workflows/i18n-sync.yml` 工作流会在 PR 合并后在 `master` 上将 EN → ZH/JA/KO/DE/FR 进行翻译，并自动提交结果。pre-commit 钩子现在也会拒绝对生成的语言环境文件进行手动编辑（可通过 `ALLOW_LOCALE_EDIT=1` 覆盖以进行合法的翻译修复），防止 EN 源文件和翻译输出之间的无声漂移。
-- **Exa 集成文档页面**：侧边栏中新增专门的集成部分，首个 Exa 页面涵盖完整的 Exa 搜索表面（neural / fast / deep-reasoning / instant）、过滤、内容检索以及针对新闻监控、研究论文检索和深度推理智能体的三个调优预设。作为 Exa 集成目录的合作伙伴面向的登陆页面。
-- **信创数据库支持**：数据库连接器现在列出 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦）以及 PostgreSQL/MySQL。KingbaseES 和 HighGo 与 PG 兼容，使用 `asyncpg` 且无额外依赖；DM8 使用官方 `dmPython` 供应商 wheel。独立的 `scripts/test_xinchuang_dbs.py` 让运维人员可以从 CLI 验证实时连接。
-- **飞书频道 + 通过 IM 的确认门控**：新的 `Channel` 资源类型（组织范围，凭证静态加密）让组织可以连接飞书应用进行出站消息传递。标记为 `requires_confirmation=True` 的工具现在会向配置的飞书群组发送 Approve/Reject 交互卡片，而不仅仅在门户中显示确认对话框——群组中的任何授权成员都可以直接从飞书中批准或拒绝。涵盖设置 → 频道管理 UI（列表、创建/编辑带脏状态保护、包含可复制回调 URL 的详情、测试发送）、CRUD API（`/api/channels`）和飞书事件回调端点（`/api/channels/{id}/callback`）带签名验证和 URL 质询支持。v0.9 IM 频道集成路线图项的第一步，提前于 2026-04-24 路演发布。
-- **智能体钩子系统（骨架）**：`src/fim_one/core/hooks/` 中新的 `PreToolUseHook` / `PostToolUseHook` 抽象让确定性逻辑在 LLM 循环外运行——FeishuGateHook 是第一个具体实现，附加到确认门控流。完整的钩子生命周期 + 用户定义的 YAML 钩子仍在 v0.9 范围内。
-- **钩子系统现已在 ReAct 和 DAG 运行时中上线**：在其 `model_config_json` 中声明 `hooks.class_hooks` 的智能体会在每个聊天会话上实例化并注册这些钩子。第一个消费者——`FeishuGateHook`——在智能体调用其连接器操作标记为 `requires_confirmation=True` 的工具时自动触发，向组织的飞书群组发送 Approve/Reject 卡片，阻止工具，并根据判决恢复或中止。之前钩子抽象已就位，但 web 层中没有任何东西将其连接到实时聊天。
-- **频道和钩子系统架构已文档化**：新的 `docs/architecture/hook-system.mdx` 解释了三个钩子点、为什么钩子在 LLM 循环外运行，并端到端演示了 FeishuGateHook。现有架构页面（system-overview、organization、react-engine、philosophy）交叉链接到它。README 现在将消息频道列为第一类 v0.8 功能，应用层图表在 Portal/API/iframe 旁边包含 IM 目标。
-- **钩子批准游乐场**：频道详情表现在有一个"测试批准流程"操作，可以模拟敏感工具调用，向链接的飞书群组推送真实确认卡片，并实时轮询审阅者的决定。与现有预览按钮不同，这会执行完整的生产路径（真实的 `ConfirmationRequest` 行、真实的飞书回调、状态转换），因此演示和预发布排练使用与生产钩子相同的代码路径。
+- **贡献者友好的 i18n 工作流**：贡献者不再需要配置 `LLM_API_KEY` 即可提交涉及英文源文件的 PR。如果跳过本地 pre-commit 翻译步骤（无密钥），新的 `.github/workflows/i18n-sync.yml` 工作流会在 PR 合并后在 `master` 上将 EN → ZH/JA/KO/DE/FR 进行翻译，并自动提交结果。pre-commit 钩子现在还会拒绝对生成的语言环境文件进行手动编辑（可使用 `ALLOW_LOCALE_EDIT=1` 覆盖以进行合法的翻译修复），防止 EN 源文件和翻译输出之间出现无声漂移。
+- **i18n CI 回退端到端验证**：烟雾测试推送（仅 EN，本地翻译钩子已跳过）确认 GitHub Actions 工作流检测到更改的源文件，翻译成所有五种语言环境，并使用 `[skip ci]` 自动提交结果到 master 以防止递归。
+- **Exa 集成文档页面**：侧边栏中的专用集成部分，包含一流的 Exa 页面，涵盖完整的 Exa 搜索表面（neural / fast / deep-reasoning / instant）、过滤、内容检索和三个针对新闻监控、研究论文检索和深度推理智能体的调优预设。作为 Exa 集成目录的合作伙伴面向登陆页面。
+- **信创数据库支持**：数据库连接器现在列出 KingbaseES（人大金仓）、HighGo（瀚高）和 DM8（达梦），与 PostgreSQL/MySQL 并列。KingbaseES 和 HighGo 与 PG 兼容，重用 `asyncpg`，无需额外依赖；DM8 使用官方 `dmPython` 供应商轮子。独立的 `scripts/test_xinchuang_dbs.py` 让运营人员可以从 CLI 验证实时连接。
+- **飞书频道 + 通过 IM 的确认门**：新的 `Channel` 资源类型（组织范围，凭证静态加密）让组织连接飞书应用以进行出站消息传递。标记为 `requires_confirmation=True` 的工具现在会向配置的飞书群组发送 Approve/Reject 交互卡片，而不仅仅在门户中显示确认对话框——群组的任何授权成员都可以直接从飞书中批准或拒绝。涵盖设置 → 频道管理 UI（列表、创建/编辑带脏状态保护、带可复制回调 URL 的详情、测试发送）、CRUD API（`/api/channels`）和飞书事件回调端点（`/api/channels/{id}/callback`），具有签名验证和 URL 质询支持。v0.9 IM 频道集成路线图项目的第一步，提前为 2026-04-24 路演发布。
+- **智能体钩子系统（骨架）**：`src/fim_one/core/hooks/` 中的新 `PreToolUseHook` / `PostToolUseHook` 抽象让确定性逻辑在 LLM 循环外运行——FeishuGateHook 是第一个具体实现，附加到确认门流程。完整的钩子生命周期 + 用户定义的 YAML 钩子仍在 v0.9 范围内。
+- **钩子系统现已在 ReAct 和 DAG 运行时中运行**：在其 `model_config_json` 中声明 `hooks.class_hooks` 的智能体在每个聊天会话上都会实例化并注册这些钩子。第一个消费者——`FeishuGateHook`——在智能体调用其连接器操作标记为 `requires_confirmation=True` 的工具时自动触发，向组织的飞书群组发布 Approve/Reject 卡片，阻止该工具，并根据判决恢复或中止。以前钩子抽象已就位，但 web 层中没有任何东西将其连接到实时聊天。
+- **频道和钩子系统架构已记录**：新的 `docs/architecture/hook-system.mdx` 解释了三个钩子点、为什么钩子在 LLM 循环外运行，并端到端演示了 FeishuGateHook。现有架构页面（system-overview、organization、react-engine、philosophy）交叉链接到它。README 现在将消息频道列为一流的 v0.8 功能，应用层图表在 Portal/API/iframe 旁边包括 IM 目标。
+- **钩子批准游乐场**：频道详情表现在有一个"测试批准流程"操作，可以模拟敏感工具调用，向链接的飞书群组推送真实确认卡片，并实时轮询审核者的决定。与现有预览按钮不同，这会执行完整的生产路径（真实的 `ConfirmationRequest` 行、真实的飞书回调、状态转换），因此演示和预发布排练使用与生产钩子相同的代码路径。
 
-- **每个智能体的任务完成通知**：智能体现在可以在长时间运行的 ReAct 或 DAG 任务完成时向组织的频道（当前为飞书）推送摘要卡片。可在设置 → 智能体 → 通知中按智能体配置。通用出站通知模式的第一个消费者。
-- **可配置的确认门控——内联*或*频道**：每个智能体现在在设置中都有一个"批准"部分，包含三种路由模式（自动 / 仅内联 / 仅频道）、批准者范围选择器（发起者 / 智能体所有者 / 组织中的任何人）、"要求每个工具调用都确认"覆盖以及显式批准频道选择器。自动模式使用链接的频道（如果存在）并优雅地回退到聊天流中的内联批准卡片——因此没有任何频道的智能体仍会获得真实的批准 UX，而不是无声失败。新的 `POST /api/confirmations/{id}/respond` 端点与飞书 webhook 共享单一决策记录路径，因此每个批准——无论是在聊天中点击还是在飞书群组中点击——都会标记相同的 `approver_user_id` 和 `decided_at` 审计字段。
+- **按智能体任务完成通知**：智能体现在可以在长时间运行的 ReAct 或 DAG 任务完成时向组织的频道（当前为飞书）推送摘要卡片。可在设置 → 智能体 → 通知中按智能体配置。通用出站通知模式的第一个消费者。
+- **可配置的确认门——内联*或*频道**：每个智能体现在在设置中都有一个"批准"部分，包含三种路由模式（自动 / 仅内联 / 仅频道）、批准者范围选择器（发起者 / 智能体所有者 / 组织中的任何人）、"要求每个工具调用都确认"覆盖和显式批准频道选择器。自动模式使用链接的频道（如果存在）并优雅地回退到聊天流中的内联批准卡片——因此没有任何频道的智能体仍然会获得真实的批准 UX，而不是无声失败。新的 `POST /api/confirmations/{id}/respond` 端点与飞书 webhook 共享单一决策记录路径，因此每个批准——无论是在聊天中点击还是在飞书群组中点击——都会标记相同的 `approver_user_id` 和 `decided_at` 审计字段。
 
 ### 已更改
 
