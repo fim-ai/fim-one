@@ -202,7 +202,7 @@
     "conversationDeleted": "对话已删除",
     "view": "查看",
     "viewTitle": "对话消息",
-    "viewSubtitle": "{title} -- {username}",
+    "viewSubtitle": "{title} —— {username}",
     "messageRole": {
       "user": "用户",
       "assistant": "助手",

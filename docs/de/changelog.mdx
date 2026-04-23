@@ -16,10 +16,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Agent-Einstellungen: gebundene Ressourcen flackern nicht mehr als "(已删除)" beim Eintrag.** Die KB- / Connector- / MCP-Server-Picker leiteten das Waisenkennzeichen synchron von `selected − available` ab, sodass jeder Agent, dessen Bestandslistenabruf langsamer war als der Agent-Abruf, kurzzeitig jede verknüpfte Ressource als gelöscht markierte, bevor es zum korrekten Status zurücksprang — besonders auffällig bei Org-Agenten mit mehreren Connectoren. Das Waisenkennzeichen wartet jetzt, bis jeder Bestandslistenabruf abgeschlossen ist, bevor es gerendert wird.
-- **Toasts folgen jetzt dem Light/Dark-Theme.** Der Root-Toaster war unabhängig von der Benutzereinstellung auf Dark hartcodiert.
-- **Nutzungsaufschlüsselung nach Agent dupliziert nicht mehr "Direct Chat"-Zeilen.** Konversationen, die an gelöschte Agenten gebunden waren, erzeugten früher eine Zeile pro verwaister `agent_id`; sie werden jetzt zu einer einzelnen Zeile zusammengefasst.
-- **Self-Hosted-Bereitstellungen schlagen nicht mehr intermittierend mit `container name already in use` fehl.** Ein neuer idempotenter `./deploy.sh`-Wrapper räumt Hash-Präfix-Zombie-Container und DooD-Sandbox-Kinder vor `docker compose up` auf, sodass wiederholte Bereitstellungen nicht mehr bei der Sandbox-Service-Bezeichnung kollidieren.
+- **Agent-Einstellungen: gebundene Ressourcen flackern nicht mehr als "(已删除)" beim Eintrag.** Die KB- / Connector- / MCP-Server-Picker leiteten das Waisenkennzeichen synchron von `selected − available` ab, sodass jeder Agent, dessen Inventarliste langsamer abgerufen wurde als der Agent selbst, kurzzeitig jede verknüpfte Ressource als gelöscht markierte, bevor der korrekte Status wiederhergestellt wurde — besonders auffällig bei Org-Agenten mit mehreren Connectoren. Das Waisenkennzeichen wartet nun darauf, dass jeder Inventarabruf abgeschlossen ist, bevor es gerendert wird.
+- **Toasts folgen nun dem Light/Dark-Theme.** Der Root-Toaster war unabhängig von der Benutzereinstellung auf Dark codiert.
+- **Nutzungsaufschlüsselung nach Agent dupliziert keine "Direct Chat"-Zeilen mehr.** Konversationen, die an gelöschte Agenten gebunden waren, erzeugten eine Zeile pro verwaisten `agent_id`; sie werden nun in einer einzelnen Zeile zusammengefasst.
+- **Self-Hosted-Deployments schlagen nicht mehr intermittierend mit `container name already in use` fehl.** Ein neuer idempotenter `./deploy.sh`-Wrapper bereinigt Hash-Präfix-Zombie-Container und DooD-Sandbox-Kinder vor `docker compose up`, sodass wiederholte Deployments nicht mehr auf dem Sandbox-Service-Namen kollidieren.
 
 ### Geändert
 
