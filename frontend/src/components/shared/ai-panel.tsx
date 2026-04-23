@@ -111,8 +111,7 @@ export function AIPanel({
       window.dispatchEvent(new CustomEvent("builder-mode-change", { detail: { active: true } }))
       onBuilderModeChange?.(true)
     } catch {
-      const builderFailedKey = mode === "agent" ? "builderInitFailed" : "builderInitFailed"
-      toast.error(t(builderFailedKey))
+      toast.error(t("builderInitFailed"))
     } finally {
       setBuilderLoading(false)
     }

@@ -2645,7 +2645,7 @@ async def react_endpoint(
                         {
                             "file_id": fid,
                             "filename": fname,
-                            "mime_type": durl.split(";")[0].split(":")[1],
+                            "mime_type": durl.split(";")[0].split(":", 1)[1] if ":" in durl else "application/octet-stream",
                             "source": "upload",
                         }
                         for fid, fname, durl in image_data
@@ -3567,7 +3567,7 @@ async def dag_endpoint(
                         {
                             "file_id": fid,
                             "filename": fname,
-                            "mime_type": durl.split(";")[0].split(":")[1],
+                            "mime_type": durl.split(";")[0].split(":", 1)[1] if ":" in durl else "application/octet-stream",
                             "source": "upload",
                         }
                         for fid, fname, durl in dag_image_data

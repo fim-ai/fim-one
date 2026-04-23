@@ -145,7 +145,7 @@ class PostgreSQLDriver(DatabaseDriver):
         try:
             async with self._pool.acquire() as conn:
                 # Set statement timeout
-                await conn.execute(f"SET statement_timeout = {timeout_s * 1000}")
+                await conn.execute(f"SET statement_timeout = {int(timeout_s * 1000)}")
                 try:
                     stmt = await asyncio.wait_for(conn.prepare(sql), timeout=timeout_s)
                     columns = [a.name for a in stmt.get_attributes()]

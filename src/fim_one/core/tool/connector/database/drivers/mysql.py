@@ -138,7 +138,8 @@ class MySQLDriver(DatabaseDriver):
                 async with conn.cursor() as cur:
                     # Set session-level query timeout
                     await cur.execute(
-                        f"SET SESSION MAX_EXECUTION_TIME = {timeout_s * 1000}"
+                        "SET SESSION MAX_EXECUTION_TIME = %s",
+                        (int(timeout_s * 1000),),
                     )
                     try:
                         await asyncio.wait_for(cur.execute(sql), timeout=timeout_s)

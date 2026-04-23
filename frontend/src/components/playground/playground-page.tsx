@@ -471,20 +471,20 @@ function ImageThumbnail({ fileId, filename }: { fileId: string; filename: string
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    let revoked = false
+    const controller = new AbortController()
     const token = localStorage.getItem(ACCESS_TOKEN_KEY)
     fetch(`${getApiBaseUrl()}/api/files/${fileId}`, {
+      signal: controller.signal,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((res) => res.blob())
       .then((blob) => {
-        if (!revoked) setBlobUrl(URL.createObjectURL(blob))
+        if (!controller.signal.aborted) setBlobUrl(URL.createObjectURL(blob))
       })
       .catch(() => {})
 
     return () => {
-      revoked = true
-      // blobUrl cleanup happens via the separate ref below
+      controller.abort()
     }
   }, [fileId])
 
