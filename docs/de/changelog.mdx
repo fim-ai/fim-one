@@ -10,6 +10,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Geändert
+
+- **Übersetzungsautorität von Locale-Dateien zur Glossar verschoben**: Übersetzungsregeln befinden sich jetzt in [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — einer einzigen Quelle der Wahrheit, die in jeden LLM-Übersetzungsaufruf (JSON, MDX, README) geladen wird. Der Pre-Commit-Hook weigert sich jetzt bedingungslos, manuelle Änderungen an generierten Locale-Dateien vorzunehmen (wodurch die vorherige `ALLOW_LOCALE_EDIT=1`-Überschreibung entfernt wird), da verstreute Änderungen pro Locale stillschweigend abweichen und bei vollständiger Neuübersetzung überschrieben werden. Um eine Fehlübersetzung zu beheben, bearbeiten Sie die Glossar (eine permanente Regel, die auf alle fünf Locales angewendet wird) und generieren Sie betroffene Dateien mit `--force` neu. Inline-Glossar-Regeln, die zuvor in drei Systemaufforderungen eingebettet waren, wurden in die externe Glossar-Datei konsolidiert.
+
 ### Hinzugefügt
 
 - **Contributor-freundlicher i18n-Workflow**: Mitwirkende müssen `LLM_API_KEY` nicht mehr konfigurieren, um PRs einzureichen, die englische Quelldateien betreffen. Wenn der lokale Pre-Commit-Übersetzungsschritt übersprungen wird (kein Schlüssel), übersetzt ein neuer `.github/workflows/i18n-sync.yml`-Workflow EN → ZH/JA/KO/DE/FR auf `master` nach dem Zusammenführen des PR und committed das Ergebnis automatisch. Der Pre-Commit-Hook weigert sich nun auch, manuelle Änderungen an generierten Locale-Dateien vorzunehmen (mit einem `ALLOW_LOCALE_EDIT=1`-Override für legitime Übersetzungskorrektionen), um stille Abweichungen zwischen EN-Quellen und übersetzten Ausgaben zu verhindern.

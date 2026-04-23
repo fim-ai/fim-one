@@ -437,32 +437,49 @@ def get_staged_en_files() -> list[Path]:
 # JSON translation
 # ---------------------------------------------------------------------------
 
-_JSON_SYSTEM_PROMPT = """\
-You are a professional software localisation expert for an AI platform. \
-Your task is to translate UI string values from English to {locale}. \
-Rules:
-- Translate ONLY the values, never the keys.
-- Preserve all placeholder tokens literally, e.g. {{name}}, {{count}}, {{0}}.
-- Keep HTML tags intact.
-- Keep these terms in English: API, MCP, DAG, FIM One, OAuth, SSO, JWT, SSE, LLM, RAG.
-- AI domain glossary (use these translations for {locale} when applicable): \
-  "temperature"/"temp" → 温度 (zh) / 温度 (ja) / 온도 (ko), \
-  "token" → token (keep in English), \
-  "prompt" → 提示词 (zh), \
-  "reasoning" → 推理 (zh), \
-  "embedding" → 嵌入 (zh), \
-  "fine-tuning" → 微调 (zh), \
-  "context window" → 上下文窗口 (zh), \
-  "hallucination" → 幻觉 (zh), \
-  "inference" → 推理 (zh), \
-  "model" → 模型 (zh), \
-  "provider" → 提供商 (zh). \
-  For non-zh locales, use the standard AI industry translation for each term.
-- Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
-  "connector" → localised equivalent (e.g. 连接器 in zh). Do NOT keep them in English.
-- Return ONLY a valid JSON object mapping the same keys to their translated values. \
-  No markdown fences, no extra text — pure JSON only.
-"""
+_GLOSSARY_PATH = ROOT / "scripts" / "translation-glossary.md"
+
+
+def _load_glossary() -> str:
+    """Load the translation glossary. Returns a prompt-injectable section.
+
+    The glossary is the single source of truth for translation rules — terms
+    that stay English, canonical translations per locale, and style rules.
+    Edit translation-glossary.md to change behavior; never edit locale files
+    directly.
+
+    Braces are doubled so the returned string is safe to pass through
+    `str.format(locale=...)` alongside the rest of the system prompt — the
+    glossary is free to contain JSON-ish `{key}` snippets or placeholder
+    examples like `{variable}` without colliding with format substitution.
+    """
+    try:
+        content = _GLOSSARY_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return ""
+    escaped = content.replace("{", "{{").replace("}", "}}")
+    return (
+        "\n\n---\n\n"
+        "TRANSLATION GLOSSARY (authoritative — follow every rule strictly):\n\n"
+        f"{escaped}\n"
+    )
+
+
+_GLOSSARY = _load_glossary()
+
+
+_JSON_SYSTEM_PROMPT = (
+    "You are a professional software localisation expert for an AI platform. "
+    "Your task is to translate UI string values from English to {locale}.\n"
+    "\n"
+    "Structural rules (these are orthogonal to the glossary below):\n"
+    "- Translate ONLY the values, never the keys.\n"
+    "- Preserve all placeholder tokens literally, e.g. {{name}}, {{count}}, {{0}}.\n"
+    "- Keep HTML tags intact.\n"
+    "- Return ONLY a valid JSON object mapping the same keys to their translated values. "
+    "No markdown fences, no extra text — pure JSON only.\n"
+    + _GLOSSARY
+)
 
 
 def translate_json_file(src_path: Path, locale: str, config: dict[str, str], force: bool = False, batch_size: int = 4000) -> Path | None:
@@ -880,32 +897,23 @@ def _translate_sections(
 # MDX translation
 # ---------------------------------------------------------------------------
 
-_MDX_SYSTEM_PROMPT = """\
-You are a professional technical documentation translator for an AI platform. \
-Translate the following MDX documentation section from English to {locale}.
-
-STRICT rules — violating any of these will break the documentation site:
-1. NEVER translate or modify content inside code blocks (``` ... ``` or ` ... `).
-2. NEVER translate import/export statements (lines starting with import or export).
-3. NEVER translate JSX component names, prop keys, or prop values that are paths or identifiers.
-4. NEVER translate variable placeholders like {{name}}, {{count}}, {{0}}.
-5. NEVER translate these technical terms: API, MCP, DAG, FIM One, OAuth, SSO, JWT, SSE, \
-   FastAPI, SQLAlchemy, Pydantic, Alembic, LLM, RAG, ReAct, JSON, HTTP, HTTPS, URL, UUID, \
-   Python, TypeScript, JavaScript, Node.js, npm, pnpm, uv, Docker, PostgreSQL, SQLite.
-6. AI domain glossary — always use AI-industry translations, NOT general-purpose meanings: \
-   "temperature"/"temp" = LLM sampling temperature (温度 in zh, NOT 临时); \
-   "token" = keep in English; "prompt" = 提示词 (zh); "reasoning" = 推理 (zh); \
-   "embedding" = 嵌入 (zh); "inference" = 推理 (zh); "model" = 模型 (zh); \
-   "provider" = 提供商 (zh); "context window" = 上下文窗口 (zh); \
-   "hallucination" = 幻觉 (zh); "fine-tuning" = 微调 (zh). \
-   For non-zh locales, use the standard AI industry translation for each term.
-7. Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
-   "connector" → localised equivalent (e.g. 连接器 in zh). Do NOT keep them in English.
-8. For frontmatter (--- ... ---): translate ONLY the VALUES of title, description, \
-   and sidebarTitle. Leave all other frontmatter keys and values untouched.
-9. Preserve ALL blank lines, heading levels, list markers, and MDX structure exactly.
-10. Return ONLY the translated content — no extra commentary, no markdown fences wrapping the output.
-"""
+_MDX_SYSTEM_PROMPT = (
+    "You are a professional technical documentation translator for an AI platform. "
+    "Translate the following MDX documentation section from English to {locale}.\n"
+    "\n"
+    "Structural rules (these are orthogonal to the glossary below — violating any "
+    "of these will break the documentation site):\n"
+    "1. NEVER translate or modify content inside code blocks (``` ... ``` or ` ... `).\n"
+    "2. NEVER translate import/export statements (lines starting with import or export).\n"
+    "3. NEVER translate JSX component names, prop keys, or prop values that are paths or identifiers.\n"
+    "4. NEVER translate variable placeholders like {{name}}, {{count}}, {{0}}.\n"
+    "5. For frontmatter (--- ... ---): translate ONLY the VALUES of title, description, "
+    "and sidebarTitle. Leave all other frontmatter keys and values untouched.\n"
+    "6. Preserve ALL blank lines, heading levels, list markers, and MDX structure exactly.\n"
+    "7. Return ONLY the translated content — no extra commentary, no markdown fences "
+    "wrapping the output.\n"
+    + _GLOSSARY
+)
 
 
 # MDX files that cause Mintlify build failures when translated.
@@ -950,31 +958,20 @@ def translate_mdx_file(src_path: Path, locale: str, config: dict[str, str], forc
 # README translation
 # ---------------------------------------------------------------------------
 
-_README_SYSTEM_PROMPT = """\
-You are a professional technical writer and translator for an AI platform. \
-Translate the following GitHub README section from English to {locale}.
-
-STRICT rules:
-1. NEVER translate or modify content inside code blocks (``` ... ``` or ` ... `).
-2. NEVER translate shell commands, file paths, or environment variable names.
-3. NEVER translate these technical terms: API, MCP, DAG, FIM One, OAuth, SSO, JWT, SSE, \
-   FastAPI, SQLAlchemy, Pydantic, Alembic, LLM, RAG, ReAct, JSON, HTTP, HTTPS, URL, UUID, \
-   Python, TypeScript, JavaScript, Node.js, npm, pnpm, uv, Docker, PostgreSQL, SQLite.
-4. AI domain glossary — always use AI-industry translations, NOT general-purpose meanings: \
-   "temperature"/"temp" = LLM sampling temperature (温度 in zh, NOT 临时); \
-   "token" = keep in English; "prompt" = 提示词 (zh); "reasoning" = 推理 (zh); \
-   "embedding" = 嵌入 (zh); "inference" = 推理 (zh); "model" = 模型 (zh); \
-   "provider" = 提供商 (zh); "context window" = 上下文窗口 (zh); \
-   "hallucination" = 幻觉 (zh); "fine-tuning" = 微调 (zh). \
-   For non-zh locales, use the standard AI industry translation for each term.
-5. Translate domain terms naturally: "agent" → localised equivalent (e.g. 智能体 in zh), \
-   "connector" → localised equivalent (e.g. 连接器 in zh). Do NOT keep them in English.
-6. NEVER translate badge markdown ([![...](...)]) or any markdown image/link URLs.
-7. NEVER translate HTML tags or attributes.
-8. Preserve ALL markdown structure: headings, lists, tables, bold, italic, links.
-9. Translate heading text, paragraph text, table cell text, and list item text.
-10. Return ONLY the translated content — no extra commentary.
-"""
+_README_SYSTEM_PROMPT = (
+    "You are a professional technical writer and translator for an AI platform. "
+    "Translate the following GitHub README section from English to {locale}.\n"
+    "\n"
+    "Structural rules (orthogonal to the glossary below):\n"
+    "1. NEVER translate or modify content inside code blocks (``` ... ``` or ` ... `).\n"
+    "2. NEVER translate shell commands, file paths, or environment variable names.\n"
+    "3. NEVER translate badge markdown ([![...](...)]) or any markdown image/link URLs.\n"
+    "4. NEVER translate HTML tags or attributes.\n"
+    "5. Preserve ALL markdown structure: headings, lists, tables, bold, italic, links.\n"
+    "6. Translate heading text, paragraph text, table cell text, and list item text.\n"
+    "7. Return ONLY the translated content — no extra commentary.\n"
+    + _GLOSSARY
+)
 
 
 def translate_readme_file(src_path: Path, locale: str, config: dict[str, str], force: bool = False) -> Path | None:

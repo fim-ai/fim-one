@@ -92,19 +92,17 @@ Chaque nouveau module **doit** avoir un fichier de test correspondant. Chaque co
 
 ## Pipeline de hook de pré-commit
 
-Le hook s'exécute automatiquement à chaque commit. Il traite uniquement les fichiers staged pertinents pour chaque étape -- si vous avez modifié uniquement des fichiers Python, l'étape i18n est ignorée, et vice versa.
+Le hook s'exécute automatiquement à chaque commit. Il traite uniquement les fichiers staged pertinents pour chaque étape — si vous avez modifié uniquement des fichiers Python, l'étape i18n est ignorée, et vice versa.
 
-| Ordre | Étape | Déclencheur | Ce qu'elle fait |
+| Ordre | Étape | Déclencheur | Ce qu'il fait |
 |---|---|---|---|
-| 0 | Garde de modification de locale | Tout fichier staged sous `messages/{locale}/`, `docs/{locale}/`, ou `README.{locale}.md` | Abandonne le commit. Contournement : `ALLOW_LOCALE_EDIT=1 git commit ...` |
-| 1 | Régénération de spec OpenAPI | `src/fim_one/web/**/*.py` modifié | Ré-exporte `docs/openapi.json` à partir des routes FastAPI |
-| 2 | Traduction i18n | `messages/en/*.json`, `docs/*.mdx`, ou `README.md` modifié (nécessite `LLM_API_KEY` local, sinon CI le gère après la fusion) | Traduit les clés nouvelles/modifiées dans toutes les locales cibles |
+| 0 | Garde contre les modifications de locale | Tout fichier staged sous `messages/{locale}/`, `docs/{locale}/`, ou `README.{locale}.md` | Interrompt le commit — pas de contournement possible. Corrigez les traductions via `scripts/translation-glossary.md` à la place. |
+| 1 | Régénération de spec OpenAPI | `src/fim_one/web/**/*.py` modifié | Réexporte `docs/openapi.json` à partir des routes FastAPI |
+| 2 | Traduction i18n | `messages/en/*.json`, `docs/*.mdx`, ou `README.md` modifié (nécessite une `LLM_API_KEY` locale, sinon CI la gère après la fusion) | Traduit les clés nouvelles/modifiées dans toutes les locales cibles |
 | 3 | Vérification de type mypy | Tout `src/fim_one/**/*.py` modifié | Exécute mypy avec la chaîne d'importation complète sur les fichiers staged |
 | 4 | Validation MDX | Tout fichier `.mdx` staged | Valide la syntaxe JSX/MDX avant qu'elle n'atteigne Mintlify |
 
-Si une étape échoue, le commit est abandonné. Corrigez les erreurs signalées et réessayez.
-
----
+Si une étape échoue, le commit est interrompu. Corrigez les erreurs signalées et réessayez.
 
 ## i18n
 
@@ -113,21 +111,21 @@ FIM One prend en charge 6 paramètres régionaux (EN, ZH, JA, KO, DE, FR). Les t
 **Modifiez uniquement les fichiers sources en anglais :**
 
 - `frontend/messages/en/{namespace}.json` -- chaînes d'interface utilisateur
-- `docs/*.mdx` (niveau racine, pas de sous-répertoires de paramètres régionaux) -- documentation
+- `docs/*.mdx` (niveau racine, pas les sous-répertoires de paramètres régionaux) -- documentation
 - `README.md` -- fichier readme du projet
 
-Les autres fichiers de paramètres régionaux (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) sont **générés automatiquement** et le hook de pré-commit refuse les commits qui les modifient manuellement. Si vous devez corriger manuellement une traduction, contournez une fois avec `ALLOW_LOCALE_EDIT=1 git commit ...` et notez la raison dans votre PR.
+Les autres fichiers de paramètres régionaux (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) sont **générés automatiquement** et le hook de pré-commit refuse inconditionnellement les commits qui les modifient manuellement. Pour corriger une traduction incorrecte, modifiez [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — la source unique de vérité injectée dans chaque invite pour chaque règle de traduction — puis régénérez les fichiers affectés avec `uv run scripts/translate.py --files <en-sources> --force`. Chaque correction du glossaire s'applique à tous les cinq paramètres régionaux de manière permanente.
 
 **Deux chemins pour générer les fichiers de paramètres régionaux :**
 
-1. **Hook de pré-commit local** — s'exécute si `LLM_API_KEY` est défini dans `.env`. La traduction se fait avant le push, vous pouvez donc prévisualiser la sortie.
+1. **Hook de pré-commit local** — s'exécute si `LLM_API_KEY` est défini dans `.env`. La traduction se fait avant le push, vous pouvez donc prévisualiser le résultat.
 2. **Secours CI** — si le hook local n'avait pas de clé et a été ignoré, [`.github/workflows/i18n-sync.yml`](https://github.com/fim-ai/fim-one/blob/master/.github/workflows/i18n-sync.yml) traduit sur `master` après fusion et valide automatiquement le résultat.
 
 Les contributeurs sans clé API peuvent valider librement les modifications EN — le chemin CI garantit que les paramètres régionaux arrivent correctement.
 
-**Ajouter un nouvel espace de noms i18n :** Créez `messages/en/{ns}.json` -- les autres fichiers de paramètres régionaux sont générés au prochain commit ou sur CI après fusion.
+**Ajouter un nouvel espace de noms i18n :** Créez `messages/en/{ns}.json` -- les autres fichiers de paramètres régionaux sont générés lors du prochain commit ou sur CI après fusion.
 
-**Forcer une retraduction complète :** `uv run scripts/translate.py --all` (nécessite une `LLM_API_KEY` locale).
+**Forcer une retraduction complète :** `uv run scripts/translate.py --all` (nécessite `LLM_API_KEY` local).
 
 ## Migrations de base de données
 

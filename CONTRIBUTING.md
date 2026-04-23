@@ -167,15 +167,22 @@ Bonus points:
 >
 > ### Never manually edit translated files
 >
-> `messages/{zh,ja,ko,de,fr}/`, `docs/{zh,ja,ko,de,fr}/`, and `README.{zh,ja,ko,de,fr}.md` are regenerated from English sources — manual edits get silently overwritten. The pre-commit hook **refuses commits** that touch these files and will show you an error.
+> `messages/{zh,ja,ko,de,fr}/`, `docs/{zh,ja,ko,de,fr}/`, and `README.{zh,ja,ko,de,fr}.md` are regenerated from English sources — manual edits get silently overwritten with no audit trail. The pre-commit hook **unconditionally refuses commits** that touch these files.
 >
-> If you really need to fix a bad translation by hand (rare, e.g. wrong domain terminology the LLM can't infer), override once with:
+> ### Found a bad translation? Edit the glossary, not the locale file.
 >
-> ```bash
-> ALLOW_LOCALE_EDIT=1 git commit ...
-> ```
+> FIM One uses a prompt-driven translation model: [`scripts/translation-glossary.md`](scripts/translation-glossary.md) is the single source of truth for every translation rule — terms that must stay in English (product names, technical standards), canonical per-locale vocabulary (e.g. `Channel` → `通道`, not `频道`), and style rules. This file is injected into every LLM translation call.
 >
-> and mention in the PR description what you fixed and why.
+> To fix a mistranslation:
+>
+> 1. Add or update a rule in `scripts/translation-glossary.md`.
+> 2. Regenerate affected locale files:
+>    ```bash
+>    uv run scripts/translate.py --files <affected EN sources> --force
+>    ```
+> 3. Commit both the glossary change and the regenerated locale files together.
+>
+> This way every fix becomes a permanent rule that applies to all five locales and all future translations — no scattered manual edits, no silent drift.
 
 ### What's Welcome
 

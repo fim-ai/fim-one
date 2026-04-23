@@ -100,7 +100,7 @@ The hook runs automatically on every commit. It only processes staged files rele
 
 | Order | Step | Trigger | What it does |
 |---|---|---|---|
-| 0 | Locale-edit guard | Any staged file under `messages/{locale}/`, `docs/{locale}/`, or `README.{locale}.md` | Aborts the commit. Override: `ALLOW_LOCALE_EDIT=1 git commit ...` |
+| 0 | Locale-edit guard | Any staged file under `messages/{locale}/`, `docs/{locale}/`, or `README.{locale}.md` | Aborts the commit — no override. Fix translations via `scripts/translation-glossary.md` instead. |
 | 1 | OpenAPI spec regen | `src/fim_one/web/**/*.py` changed | Re-exports `docs/openapi.json` from FastAPI routes |
 | 2 | i18n translation | `messages/en/*.json`, `docs/*.mdx`, or `README.md` changed (needs local `LLM_API_KEY`, else CI handles it after merge) | Translates new/changed keys into all target locales |
 | 3 | mypy type checking | Any `src/fim_one/**/*.py` changed | Runs mypy with full import chain on staged files |
@@ -120,7 +120,7 @@ FIM One supports 6 locales (EN, ZH, JA, KO, DE, FR). Translations are fully auto
 - `docs/*.mdx` (root level, not locale subdirs) -- documentation
 - `README.md` -- project readme
 
-Other locale files (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) are **auto-generated** and the pre-commit hook refuses commits that manually edit them. If you need to hand-fix a translation, override once with `ALLOW_LOCALE_EDIT=1 git commit ...` and note the reason in your PR.
+Other locale files (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) are **auto-generated** and the pre-commit hook unconditionally refuses commits that manually edit them. To fix a mistranslation, edit [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — the prompt-injected single source of truth for every translation rule — then regenerate affected files with `uv run scripts/translate.py --files <en-sources> --force`. Every glossary fix applies to all five locales permanently.
 
 **Two paths to generating locale files:**
 

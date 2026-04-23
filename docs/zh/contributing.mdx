@@ -92,42 +92,42 @@ mypy 严格模式已启用。整个代码库通过零错误检查，预提交钩
 
 ---
 
-## Pre-commit hook 流程
+## 预提交钩子管道
 
-该 hook 在每次提交时自动运行。它仅处理与每个步骤相关的暂存文件 -- 如果你只修改了 Python 文件，i18n 步骤会被跳过，反之亦然。
+钩子在每次提交时自动运行。它仅处理与每个步骤相关的暂存文件——如果你只更改了Python文件，i18n步骤会被跳过，反之亦然。
 
-| 顺序 | 步骤 | 触发条件 | 功能 |
+| 顺序 | 步骤 | 触发条件 | 作用 |
 |---|---|---|---|
-| 0 | 区域编辑保护 | `messages/{locale}/`、`docs/{locale}/` 或 `README.{locale}.md` 下的任何暂存文件 | 中止提交。覆盖方法：`ALLOW_LOCALE_EDIT=1 git commit ...` |
-| 1 | OpenAPI 规范重新生成 | `src/fim_one/web/**/*.py` 已更改 | 从 FastAPI 路由重新导出 `docs/openapi.json` |
-| 2 | i18n 翻译 | `messages/en/*.json`、`docs/*.mdx` 或 `README.md` 已更改（需要本地 `LLM_API_KEY`，否则 CI 在合并后处理） | 将新增/更改的键翻译为所有目标区域 |
-| 3 | mypy 类型检查 | 任何 `src/fim_one/**/*.py` 已更改 | 在暂存文件上运行 mypy，包含完整导入链 |
-| 4 | MDX 验证 | 任何暂存的 `.mdx` 文件 | 在到达 Mintlify 之前验证 JSX/MDX 语法 |
+| 0 | 语言环境编辑守卫 | 任何`messages/{locale}/`、`docs/{locale}/`或`README.{locale}.md`下的暂存文件 | 中止提交——无法覆盖。通过`scripts/translation-glossary.md`修复翻译。 |
+| 1 | OpenAPI规范重新生成 | `src/fim_one/web/**/*.py`已更改 | 从FastAPI路由重新导出`docs/openapi.json` |
+| 2 | i18n翻译 | `messages/en/*.json`、`docs/*.mdx`或`README.md`已更改（需要本地`LLM_API_KEY`，否则CI在合并后处理） | 将新的/已更改的键翻译为所有目标语言环境 |
+| 3 | mypy类型检查 | 任何`src/fim_one/**/*.py`已更改 | 在暂存文件上运行带有完整导入链的mypy |
+| 4 | MDX验证 | 任何暂存的`.mdx`文件 | 在到达Mintlify之前验证JSX/MDX语法 |
 
 如果任何步骤失败，提交将被中止。修复报告的错误并重试。
 
-## i18n
+## 国际化
 
-FIM One 支持 6 种语言环境（EN、ZH、JA、KO、DE、FR）。翻译完全自动化。
+FIM One支持6种语言环境（EN、ZH、JA、KO、DE、FR）。翻译完全自动化。
 
 **仅编辑英文源文件：**
 
-- `frontend/messages/en/{namespace}.json` -- UI 字符串
-- `docs/*.mdx`（根级别，不是语言环境子目录）-- 文档
-- `README.md` -- 项目 readme
+- `frontend/messages/en/{namespace}.json` -- UI字符串
+- `docs/*.mdx`（根目录，不是语言环境子目录）-- 文档
+- `README.md` -- 项目自述文件
 
-其他语言环境文件（`messages/zh/`、`docs/zh/`、`README.zh.md` 等）是**自动生成的**，pre-commit hook 拒绝手动编辑这些文件的提交。如果需要手动修复翻译，可以使用 `ALLOW_LOCALE_EDIT=1 git commit ...` 覆盖一次，并在 PR 中注明原因。
+其他语言环境文件（`messages/zh/`、`docs/zh/`、`README.zh.md`等）是**自动生成的**，提交前钩子无条件拒绝手动编辑这些文件。要修复翻译错误，请编辑[`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md)——每条翻译规则的提示词注入单一信息源——然后用`uv run scripts/translate.py --files <en-sources> --force`重新生成受影响的文件。每个词汇表修复永久适用于所有五种语言环境。
 
-**生成语言环境文件的两种方式：**
+**生成语言环境文件的两条路径：**
 
-1. **本地 pre-commit hook** — 如果在 `.env` 中设置了 `LLM_API_KEY`，则会运行。翻译在推送前进行，因此你可以预览输出。
-2. **CI 回退** — 如果本地 hook 没有密钥并跳过了，[`.github/workflows/i18n-sync.yml`](https://github.com/fim-ai/fim-one/blob/master/.github/workflows/i18n-sync.yml) 会在合并到 `master` 后进行翻译并自动提交结果。
+1. **本地提交前钩子** -- 如果在`.env`中设置了`LLM_API_KEY`则运行。翻译在推送前进行，因此你可以预览输出。
+2. **CI备用方案** -- 如果本地钩子没有密钥而跳过，[`.github/workflows/i18n-sync.yml`](https://github.com/fim-ai/fim-one/blob/master/.github/workflows/i18n-sync.yml)会在合并后在`master`分支上进行翻译，并自动提交结果。
 
-没有 API 密钥的贡献者可以自由提交 EN 更改 — CI 路径确保语言环境文件正确生成。
+没有API密钥的贡献者可以自由提交英文更改——CI路径确保语言环境文件正确生成。
 
-**添加新的 i18n 命名空间：** 创建 `messages/en/{ns}.json` -- 其他语言环境文件会在下次提交或合并后的 CI 中生成。
+**添加新的国际化命名空间：** 创建`messages/en/{ns}.json`——其他语言环境文件会在下次提交或合并后的CI中生成。
 
-**强制完全重新翻译：** `uv run scripts/translate.py --all`（需要本地 `LLM_API_KEY`）。
+**强制完整重新翻译：** `uv run scripts/translate.py --all`（需要本地`LLM_API_KEY`）。
 
 ## 数据库迁移
 

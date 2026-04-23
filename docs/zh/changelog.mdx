@@ -10,6 +10,10 @@ description: "FIM One 的所有重要更改。"
 
 ## [未发布]
 
+### 已更改
+
+- **翻译权威从语言环境文件转移到词汇表**：翻译规则现在位于 [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) ——一个单一的真实来源，被加载到每个LLM翻译调用中（JSON、MDX、README）。预提交钩子现在无条件地拒绝对生成的语言环境文件的手动编辑（移除了之前的 `ALLOW_LOCALE_EDIT=1` 覆盖），因为分散的按语言环境编辑会悄悄漂移并在完整重新翻译时被覆盖。要修复翻译错误，请编辑词汇表（一个适用于所有五种语言的永久规则）并使用 `--force` 重新生成受影响的文件。之前嵌入在三个系统提示中的内联词汇表规则已合并到外部词汇表文件中。
+
 ### 新增
 
 - **贡献者友好的 i18n 工作流**：贡献者不再需要配置 `LLM_API_KEY` 即可提交涉及英文源文件的 PR。如果跳过本地 pre-commit 翻译步骤（无密钥），新的 `.github/workflows/i18n-sync.yml` 工作流会在 PR 合并后在 `master` 上将 EN → ZH/JA/KO/DE/FR 进行翻译，并自动提交结果。pre-commit 钩子现在还会拒绝对生成的语言环境文件进行手动编辑（可使用 `ALLOW_LOCALE_EDIT=1` 覆盖以进行合法的翻译修复），防止 EN 源文件和翻译输出之间出现无声漂移。

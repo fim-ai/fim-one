@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Changed
+
+- **Translation authority shifted from locale files to glossary**: translation rules now live in [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — a single source of truth loaded into every LLM translation call (JSON, MDX, README). The pre-commit hook now unconditionally refuses manual edits to generated locale files (removing the prior `ALLOW_LOCALE_EDIT=1` override), because scattered per-locale edits silently drift and get overwritten on full retranslation. To fix a mistranslation, edit the glossary (a permanent rule that applies to all five locales) and regenerate affected files with `--force`. Inline glossary rules previously embedded in three system prompts have been consolidated into the external glossary file.
+
 ### Added
 
 - **Contributor-friendly i18n workflow**: contributors no longer need to configure `LLM_API_KEY` to submit PRs that touch English source files. If the local pre-commit translation step is skipped (no key), a new `.github/workflows/i18n-sync.yml` workflow translates EN → ZH/JA/KO/DE/FR on `master` after the PR is merged and auto-commits the result. The pre-commit hook also now refuses manual edits to generated locale files (with an `ALLOW_LOCALE_EDIT=1` override for legitimate translation fixes), preventing silent drift between EN sources and translated outputs.

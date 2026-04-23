@@ -10,6 +10,10 @@ description: "FIM One의 모든 주요 변경 사항."
 
 ## [미출시]
 
+### 변경 사항
+
+- **번역 권한이 로캘 파일에서 용어집으로 이동**: 번역 규칙은 이제 [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md)에 있습니다. 이는 모든 LLM 번역 호출(JSON, MDX, README)에 로드되는 단일 정보 출처입니다. 사전 커밋 훅은 이제 생성된 로캘 파일에 대한 수동 편집을 무조건 거부합니다(이전의 `ALLOW_LOCALE_EDIT=1` 재정의 제거). 분산된 로캘별 편집은 조용히 드리프트되고 전체 재번역 시 덮어써지기 때문입니다. 오역을 수정하려면 용어집을 편집하고(모든 5개 로캘에 적용되는 영구 규칙) `--force`를 사용하여 영향을 받는 파일을 재생성하세요. 이전에 3개의 시스템 프롬프트에 포함된 인라인 용어집 규칙은 외부 용어집 파일로 통합되었습니다.
+
 ### 추가됨
 
 - **기여자 친화적 i18n 워크플로우**: 기여자는 더 이상 영어 소스 파일을 수정하는 PR을 제출하기 위해 `LLM_API_KEY`를 구성할 필요가 없습니다. 로컬 pre-commit 번역 단계를 건너뛰면(키 없음), 새로운 `.github/workflows/i18n-sync.yml` 워크플로우가 PR 병합 후 `master`에서 EN → ZH/JA/KO/DE/FR로 번역하고 자동으로 커밋합니다. pre-commit 훅은 이제 생성된 로케일 파일의 수동 편집을 거부합니다(`ALLOW_LOCALE_EDIT=1` 오버라이드로 정당한 번역 수정 가능). 이는 EN 소스와 번역된 출력 간의 무음 드리프트를 방지합니다.

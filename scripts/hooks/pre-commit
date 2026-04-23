@@ -31,14 +31,16 @@ if [ -d "$ROOT/frontend/messages" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Locale-edit guard: refuse manual edits to auto-generated locale files
+# Locale-edit guard: refuse ALL manual edits to auto-generated locale files
 # (messages/{locale}/, docs/{locale}/, README.{locale}.md). These are
 # regenerated from EN sources by scripts/translate.py — manual edits get
-# silently overwritten and cause translation drift.
+# silently overwritten and cause translation drift with no audit trail.
 #
-# Emergency override: ALLOW_LOCALE_EDIT=1 git commit ...
+# To fix a mistranslation, edit scripts/translation-glossary.md instead.
+# The glossary is prompt-injected into every translation run and applies
+# to all five locales uniformly. See that file's header for details.
 # ---------------------------------------------------------------------------
-if [ "${ALLOW_LOCALE_EDIT:-0}" != "1" ] && [ -n "$LOCALE_GUARD_PATTERN" ]; then
+if [ -n "$LOCALE_GUARD_PATTERN" ]; then
   FORBIDDEN_LOCALE=$(git diff --cached --name-only --diff-filter=ACM \
     | grep -E "$LOCALE_GUARD_PATTERN" || true)
   if [ -n "$FORBIDDEN_LOCALE" ]; then
@@ -46,13 +48,13 @@ if [ "${ALLOW_LOCALE_EDIT:-0}" != "1" ] && [ -n "$LOCALE_GUARD_PATTERN" ]; then
     echo "ERROR: commit touches auto-generated locale files:" >&2
     echo "$FORBIDDEN_LOCALE" | sed 's/^/  /' >&2
     echo "" >&2
-    echo "These files are regenerated from EN sources. Edit the source instead:" >&2
-    echo "  frontend/messages/en/*.json   (UI strings)" >&2
-    echo "  docs/*.mdx                     (docs — root level only)" >&2
-    echo "  README.md" >&2
+    echo "These files are regenerated from EN sources. Do NOT edit them directly." >&2
     echo "" >&2
-    echo "Emergency override (for legitimate manual translation fixes):" >&2
-    echo "  ALLOW_LOCALE_EDIT=1 git commit ..." >&2
+    echo "To change a translation:" >&2
+    echo "  - If the EN source is wrong: edit it (translations regenerate automatically)." >&2
+    echo "  - If the translation picks a wrong term / style: edit" >&2
+    echo "    scripts/translation-glossary.md to encode the correct rule." >&2
+    echo "  - Then run: uv run scripts/translate.py --files <affected sources> --force" >&2
     echo "" >&2
     exit 1
   fi
