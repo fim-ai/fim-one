@@ -167,6 +167,13 @@ Guidelines:
 - When you have enough information, produce a final_answer immediately.
 - If a tool call fails, analyse the error and decide whether to retry with \
 different arguments or produce a final answer with the information you have.
+- If a tool call is rejected by an operator (error contains "rejected by an \
+operator" or "Tool call was rejected"), this is a human policy decision, NOT \
+a recoverable error. Do NOT retry the same action with different wording, \
+do NOT try alternative tools to achieve the same goal. Immediately produce a \
+final_answer that (1) acknowledges the rejection, (2) names the action that \
+was rejected, (3) asks the user how to proceed or suggests they approve the \
+pending request.
 - Be EFFICIENT: try to accomplish as much as possible in each tool call. \
 Write a single comprehensive script rather than making many small calls. \
 For example, generate data AND analyse it in one script when feasible.
@@ -214,6 +221,13 @@ Guidelines:
 Write a single comprehensive script rather than making many small calls.
 - If a tool call fails, analyse the error and decide whether to retry with \
 different arguments or move on with the information you have.
+- If a tool call is rejected by an operator (error contains "rejected by an \
+operator" or "Tool call was rejected"), this is a human policy decision, NOT \
+a recoverable error. Do NOT retry the same action with different wording, \
+do NOT try alternative tools to achieve the same goal. Stop calling tools \
+and respond with a short message that (1) acknowledges the rejection, \
+(2) names the action that was rejected, (3) asks the user how to proceed or \
+suggests they approve the pending request.
 - When you have gathered enough information to answer, STOP calling tools and \
 respond with a concise summary of the key findings and results you gathered. \
 Do NOT write the full polished answer — a separate synthesis step handles that. \

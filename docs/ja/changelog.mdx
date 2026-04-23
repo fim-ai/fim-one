@@ -14,16 +14,17 @@ description: "FIM Oneへの全ての注目すべき変更。"
 
 - **管理者ユーザー: ユーザーごとの無制限クォータ + 登録列。** クォータフィールドを空のままにするとグローバルリミットを継承し、`0`に設定するとユーザーに無制限の使用を許可します。以前は両方が同じ状態に折りたたまれていたため、個別に無制限アクセスを付与するにはDBを直接編集する必要がありました。ユーザーテーブルにはオンボーディング監査用の登録列も追加されます。
 
-### Fixed
+### 修复
 
-- **Agent settings: bound resources no longer flicker as "(已删除)" on entry.** The KB / connector / MCP-server pickers used to derive the orphan badge synchronously from `selected − available`, so any agent whose inventory list fetch was slower than the agent fetch would briefly mark every linked resource as deleted before snapping back to the correct state — most noticeable for org agents with multiple connectors. The orphan badge now waits for each inventory fetch to settle before rendering.
-- **Toasts now follow the light/dark theme.** The root toaster was hardcoded to dark regardless of user preference.
-- **Usage by-agent breakdown no longer duplicates "Direct Chat" rows.** Conversations tied to deleted agents used to produce one row per orphaned `agent_id`; they now collapse into a single row.
-- **Self-hosted deploys no longer fail intermittently with `container name already in use`.** A new idempotent `./deploy.sh` wrapper sweeps hash-prefixed zombie containers and DooD sandbox children before `docker compose up`, so repeat deploys stop colliding on the sandbox service name.
-- **No more redundant `chore(i18n): sync translations` commits after pushes.** The pre-commit translation hook updated `.translation-cache.json` on disk but forgot to stage it, so CI would see stale cache entries, re-translate the same sections, and auto-commit a slightly different output due to LLM nondeterminism. The hook now stages the cache alongside the translated files — CI detects no diff and exits silently as intended.
-- **Agent chat no longer crashes when a confirmation-required tool runs in an unbound-agent session.** Pure model conversations that invoked a built-in tool marked `requires_confirmation=true` hit a hard 500 (or a red "no agent_id" gate error in the UI) because the per-agent approval router had no configuration to consult. The gate now bows out gracefully when there is no agent to route for, and the chat stream no longer trips on a missing `agent_cfg`.
-- **Retry no longer fails on strict-alternation providers when history contains orphan user messages.** Stopping and retrying a turn leaves a "stopped" user message in conversation history; replaying that history to Claude (which enforces alternating user/assistant turns) previously returned HTTP 400 and silently dropped earlier messages. Consecutive same-role messages are now collapsed into a single turn before dispatch, so every orphan is carried into the next call as context — retry works even if you stop, add "I wasn't done — continue with this...", and retry again.
-- **Playground retry no longer briefly shows the query twice.** The retry flow simultaneously replayed the stopped turn from history and rendered a fresh user bubble for the in-flight turn; during the pre-stream window both were visible. The in-flight bubble is now suppressed whenever history already renders the same content.
+- **智能体设置：绑定资源不再在进入时闪烁显示"(已删除)"。** KB / 连接器 / MCP-server 选择器之前从 `selected − available` 同步派生孤立徽章，因此任何库存列表获取速度慢于智能体获取的智能体都会在正确状态恢复前短暂将每个链接资源标记为已删除——对于拥有多个连接器的组织智能体最为明显。孤立徽章现在会等待每个库存获取完成后再进行渲染。
+- **Toast 现在遵循浅色/深色主题。** 根 toaster 之前被硬编码为深色，不管用户偏好如何。
+- **按智能体的使用情况分解不再重复"直接聊天"行。** 与已删除智能体关联的对话之前会为每个孤立的 `agent_id` 生成一行；现在它们会折叠为单一行。
+- **自托管部署不再间歇性地因 `container name already in use` 而失败。** 新的幂等 `./deploy.sh` 包装器在 `docker compose up` 之前清理哈希前缀的僵尸容器和 DooD 沙箱子进程，因此重复部署不再在沙箱服务名称上发生冲突。
+- **推送后不再出现冗余的 `chore(i18n): sync translations` 提交。** 预提交翻译钩子在磁盘上更新了 `.translation-cache.json` 但忘记暂存它，因此 CI 会看到陈旧的缓存条目，重新翻译相同的部分，并由于 LLM 的非确定性而自动提交略有不同的输出。钩子现在会与翻译文件一起暂存缓存——CI 检测不到差异并按预期静默退出。
+- **当确认必需的工具在未绑定智能体会话中运行时，智能体聊天不再崩溃。** 调用标记为 `requires_confirmation=true` 的内置工具的纯模型对话之前会触发硬 500（或 UI 中的红色"无 agent_id"闸门错误），因为按智能体的审批路由器没有要查询的配置。当没有智能体可路由时，闸门现在会优雅地退出，聊天流不再因缺失的 `agent_cfg` 而出错。
+- **当历史记录包含孤立用户消息时，重试不再在严格交替提供商上失败。** 停止并重试一个轮次会在对话历史中留下"已停止"的用户消息；将该历史重新播放到 Claude（它强制交替的用户/助手轮次）之前会返回 HTTP 400 并静默丢弃早期消息。现在在分派前会将连续的同角色消息折叠为单一轮次，因此每个孤立消息都会作为上下文被传入下一个调用——即使你停止、添加"我还没完成——用这个继续..."并重试，重试也能工作。
+- **演练场重试不再短暂显示查询两次。** 重试流同时重新播放了历史中的已停止轮次并为进行中的轮次渲染了新的用户气泡；在流前窗口期间两者都可见。现在当历史已经渲染了相同内容时，进行中的气泡会被抑制。
+- **ReAct 智能体在操作员拒绝审批请求后不再重试释义的工具调用——它会确认拒绝并停止。**
 
 ### 変更
 
