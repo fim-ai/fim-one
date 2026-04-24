@@ -216,7 +216,15 @@
                   "zh/configuration/database",
                   "zh/configuration/models",
                   "zh/configuration/model-management",
-                  "zh/configuration/oauth-providers"
+                  "zh/configuration/oauth-providers",
+                  {
+                    "group": "渠道",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "zh/configuration/channels/overview",
+                      "zh/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -304,6 +312,13 @@
                   "zh/api/overview",
                   "zh/api/authentication"
                 ]
+              },
+              {
+                "group": "端点",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
@@ -360,7 +375,15 @@
                   "ja/configuration/database",
                   "ja/configuration/models",
                   "ja/configuration/model-management",
-                  "ja/configuration/oauth-providers"
+                  "ja/configuration/oauth-providers",
+                  {
+                    "group": "チャネル",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "ja/configuration/channels/overview",
+                      "ja/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -448,6 +471,13 @@
                   "ja/api/overview",
                   "ja/api/authentication"
                 ]
+              },
+              {
+                "group": "エンドポイント",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
@@ -504,7 +534,15 @@
                   "ko/configuration/database",
                   "ko/configuration/models",
                   "ko/configuration/model-management",
-                  "ko/configuration/oauth-providers"
+                  "ko/configuration/oauth-providers",
+                  {
+                    "group": "채널",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "ko/configuration/channels/overview",
+                      "ko/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -592,6 +630,13 @@
                   "ko/api/overview",
                   "ko/api/authentication"
                 ]
+              },
+              {
+                "group": "엔드포인트",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
@@ -648,7 +693,15 @@
                   "de/configuration/database",
                   "de/configuration/models",
                   "de/configuration/model-management",
-                  "de/configuration/oauth-providers"
+                  "de/configuration/oauth-providers",
+                  {
+                    "group": "Kanäle",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "de/configuration/channels/overview",
+                      "de/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -736,6 +789,13 @@
                   "de/api/overview",
                   "de/api/authentication"
                 ]
+              },
+              {
+                "group": "Endpunkte",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
@@ -792,7 +852,15 @@
                   "fr/configuration/database",
                   "fr/configuration/models",
                   "fr/configuration/model-management",
-                  "fr/configuration/oauth-providers"
+                  "fr/configuration/oauth-providers",
+                  {
+                    "group": "Canaux",
+                    "icon": "tower-broadcast",
+                    "pages": [
+                      "fr/configuration/channels/overview",
+                      "fr/configuration/channels/feishu"
+                    ]
+                  }
                 ]
               },
               {
@@ -880,6 +948,13 @@
                   "fr/api/overview",
                   "fr/api/authentication"
                 ]
+              },
+              {
+                "group": "Points de terminaison",
+                "icon": "code",
+                "openapi": {
+                  "source": "openapi.json"
+                }
               }
             ]
           },
