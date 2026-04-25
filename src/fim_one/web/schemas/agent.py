@@ -29,6 +29,7 @@ class AgentCreate(BaseModel):
     ] = "initiator"
     require_confirmation_for_all: bool = False
     approval_channel_id: str | None = None
+    suggest_followups: bool = False
 
 
 class AgentUpdate(BaseModel):
@@ -53,6 +54,7 @@ class AgentUpdate(BaseModel):
     ] | None = None
     require_confirmation_for_all: bool | None = None
     approval_channel_id: str | None = None
+    suggest_followups: bool | None = None
 
 
 class AgentResponse(BaseModel):
@@ -88,6 +90,7 @@ class AgentResponse(BaseModel):
     confirmation_approver_scope: str = "initiator"
     require_confirmation_for_all: bool = False
     approval_channel_id: str | None = None
+    suggest_followups: bool = False
     created_at: str
     updated_at: str | None
 

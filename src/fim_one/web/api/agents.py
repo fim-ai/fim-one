@@ -75,6 +75,7 @@ def _agent_to_response(agent: Agent, *, is_owner: bool = True) -> AgentResponse:
             getattr(agent, "require_confirmation_for_all", False)
         ),
         approval_channel_id=getattr(agent, "approval_channel_id", None),
+        suggest_followups=bool(getattr(agent, "suggest_followups", False)),
         created_at=agent.created_at.isoformat() if agent.created_at else "",
         updated_at=agent.updated_at.isoformat() if agent.updated_at else None,
     )
@@ -186,6 +187,7 @@ async def create_agent(
         confirmation_approver_scope=body.confirmation_approver_scope,
         require_confirmation_for_all=body.require_confirmation_for_all,
         approval_channel_id=body.approval_channel_id,
+        suggest_followups=body.suggest_followups,
         status="draft",
     )
     db.add(agent)

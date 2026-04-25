@@ -186,5 +186,10 @@
     "emptyChannels": "Aucun canal actif dans cette org.",
     "emptyChannelsAction": "Configurez-en un dans Paramètres de l'organisation → Canaux",
     "personalAgentHint": "Publiez cet agent dans une organisation pour acheminer les approbations via un canal."
+  },
+  "suggestFollowups": {
+    "sectionTitle": "Suggestions de suivi",
+    "helperText": "Après chaque réponse, générez trois questions de suivi que l'utilisateur pourrait poser ensuite. Utilise le modèle rapide pour un aller-retour supplémentaire — désactivez cette option pour les agents de type tâche qui n'ont pas besoin de continuation conversationnelle.",
+    "enabledLabel": "Suggérer des questions de suivi après chaque réponse"
   }
 }

@@ -31,6 +31,8 @@ export interface AgentResponse {
   confirmation_approver_scope?: "initiator" | "agent_owner" | "org_members"
   require_confirmation_for_all?: boolean
   approval_channel_id?: string | null
+  // Opt-in: emit follow-up question suggestions after answer (default false)
+  suggest_followups?: boolean
   forked_from: string | null
   publish_status: string | null
   reviewed_by: string | null
@@ -60,6 +62,7 @@ export interface AgentCreate {
   confirmation_approver_scope?: "initiator" | "agent_owner" | "org_members"
   require_confirmation_for_all?: boolean
   approval_channel_id?: string | null
+  suggest_followups?: boolean
 }
 
 export interface AgentUpdate {
@@ -81,6 +84,7 @@ export interface AgentUpdate {
   confirmation_approver_scope?: "initiator" | "agent_owner" | "org_members"
   require_confirmation_for_all?: boolean
   approval_channel_id?: string | null
+  suggest_followups?: boolean
 }
 
 export interface AgentTemplate {

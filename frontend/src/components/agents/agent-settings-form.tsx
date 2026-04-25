@@ -83,6 +83,8 @@ export function AgentSettingsForm({
   >("initiator")
   const [requireConfirmationForAll, setRequireConfirmationForAll] = useState<boolean>(false)
   const [approvalChannelId, setApprovalChannelId] = useState<string>("")
+  // Follow-up suggestions toggle (default OFF)
+  const [suggestFollowups, setSuggestFollowups] = useState<boolean>(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const [availableKBs, setAvailableKBs] = useState<{ id: string; name: string; document_count: number }[]>([])
@@ -149,6 +151,7 @@ export function AgentSettingsForm({
       setApprovalChannelId(
         typeof agent.approval_channel_id === "string" ? agent.approval_channel_id : ""
       )
+      setSuggestFollowups(agent.suggest_followups === true)
       setFieldErrors({})
     } else {
       setName("")
@@ -175,6 +178,7 @@ export function AgentSettingsForm({
       setConfirmationApproverScope("initiator")
       setRequireConfirmationForAll(false)
       setApprovalChannelId("")
+      setSuggestFollowups(false)
       setFieldErrors({})
     }
   }, [agent])
@@ -267,9 +271,10 @@ export function AgentSettingsForm({
       confirmationMode !== (agent.confirmation_mode || "auto") ||
       confirmationApproverScope !== (agent.confirmation_approver_scope || "initiator") ||
       requireConfirmationForAll !== (agent.require_confirmation_for_all === true) ||
-      approvalChannelId !== (agent.approval_channel_id || "")
+      approvalChannelId !== (agent.approval_channel_id || "") ||
+      suggestFollowups !== (agent.suggest_followups === true)
     onDirtyChange(dirty)
-  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, selectedMCPServers, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, selectedModelConfigId, selectedFastModelConfigId, compactInstructions, notifyOnComplete, notifyChannelId, confirmationMode, confirmationApproverScope, requireConfirmationForAll, approvalChannelId, onDirtyChange])
+  }, [agent, name, icon, description, instructions, executionMode, toolCategories, suggestedPrompts, selectedKBs, selectedConnectors, selectedMCPServers, confidenceThreshold, temperature, sandboxMemory, sandboxCpu, sandboxTimeout, selectedModelConfigId, selectedFastModelConfigId, compactInstructions, notifyOnComplete, notifyChannelId, confirmationMode, confirmationApproverScope, requireConfirmationForAll, approvalChannelId, suggestFollowups, onDirtyChange])
 
   const toggleCategory = (cat: string) => {
     setToolCategories((prev) =>
@@ -381,6 +386,7 @@ export function AgentSettingsForm({
         confirmation_approver_scope: confirmationApproverScope,
         require_confirmation_for_all: requireConfirmationForAll,
         approval_channel_id: approvalChannelId || null,
+        suggest_followups: suggestFollowups,
       }
 
       let result: AgentResponse
@@ -1201,6 +1207,32 @@ export function AgentSettingsForm({
                 )}
               </div>
             )}
+          </div>
+
+          {/* Follow-up Suggestions */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              <Label className="text-sm font-medium">
+                {t("suggestFollowups.sectionTitle")}
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("suggestFollowups.helperText")}
+            </p>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-input px-3 py-2">
+              <Label
+                htmlFor="suggest-followups"
+                className="text-sm font-normal cursor-pointer"
+              >
+                {t("suggestFollowups.enabledLabel")}
+              </Label>
+              <Switch
+                id="suggest-followups"
+                checked={suggestFollowups}
+                onCheckedChange={setSuggestFollowups}
+              />
+            </div>
           </div>
 
           {/* Compact Instructions */}

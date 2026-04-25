@@ -186,5 +186,10 @@
     "emptyChannels": "此组织中没有活跃频道。",
     "emptyChannelsAction": "在组织设置 → 频道中配置一个",
     "personalAgentHint": "将此智能体发布到组织以通过频道路由审批。"
+  },
+  "suggestFollowups": {
+    "sectionTitle": "后续建议",
+    "helperText": "在每个答案之后，生成用户可能接下来提出的三个后续问题。使用快速模型进行额外的一轮往返——对于不需要对话延续的任务型智能体，请关闭此选项。",
+    "enabledLabel": "在每个答案后建议后续问题"
   }
 }

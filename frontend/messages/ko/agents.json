@@ -186,5 +186,10 @@
     "emptyChannels": "이 조직에 활성 채널이 없습니다.",
     "emptyChannelsAction": "조직 설정 → 채널에서 구성하세요",
     "personalAgentHint": "이 agent를 조직에 게시하여 승인을 채널을 통해 라우팅하세요."
+  },
+  "suggestFollowups": {
+    "sectionTitle": "후속 질문 제안",
+    "helperText": "각 답변 후 사용자가 다음에 물어볼 수 있는 세 가지 후속 질문을 생성합니다. 빠른 모델을 한 번 더 사용합니다 — 대화형 연속이 필요 없는 작업 스타일 에이전트의 경우 비활성화하세요.",
+    "enabledLabel": "각 답변 후 후속 질문 제안"
   }
 }

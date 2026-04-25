@@ -211,5 +211,11 @@
     "emptyChannels": "No active channels in this org.",
     "emptyChannelsAction": "Configure one in Organization Settings → Channels",
     "personalAgentHint": "Publish this agent to an organization to route approvals through a channel."
+  },
+
+  "suggestFollowups": {
+    "sectionTitle": "Follow-up Suggestions",
+    "helperText": "After each answer, generate three follow-up questions the user might ask next. Uses the fast model for one extra round-trip — leave off for task-style agents that don't need conversational continuation.",
+    "enabledLabel": "Suggest follow-up questions after each answer"
   }
 }

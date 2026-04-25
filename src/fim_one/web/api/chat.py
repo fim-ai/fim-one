@@ -8,9 +8,14 @@ Both endpoints stream Server-Sent Events with the following event names:
 - ``compact``        – Context compaction occurred (original_messages, kept_messages).
 - ``answer``         – Streamed answer text (start / delta / done) emitted before ``done``.
 - ``done``           – Final result payload (answer complete, emitted immediately).
-- ``end``            – Stream terminator (emitted right after ``done``, NOT persisted).
-  Suggestions and title generation run as background tasks and are persisted
-  directly to the database (message metadata and conversation title).
+- ``post_processing`` – Phase marker emitted between ``done`` and ``end`` while
+  follow-up suggestions are being generated.  Only emitted when the agent has
+  ``suggest_followups=True`` (opt-in per agent, default off).
+- ``suggestions``    – Follow-up question list ``{"items": list[str]}``.
+  Same gating as ``post_processing``.
+- ``end``            – Stream terminator (emitted right after the optional
+  ``suggestions`` event, NOT persisted).  Auto-title generation and
+  fast-LLM token accounting run as a background task after ``end``.
 
 A keepalive comment (``": keepalive\\n\\n"``) is emitted every 15 seconds of
 inactivity to prevent proxy/browser timeouts during long LLM calls.
@@ -717,6 +722,7 @@ async def _resolve_agent_config(
             "owner_user_id": agent.user_id,
             "org_id": agent.org_id,
             "compact_instructions": agent.compact_instructions,
+            "suggest_followups": bool(getattr(agent, "suggest_followups", False)),
         }
 
 
@@ -3224,96 +3230,116 @@ async def react_endpoint(
                 await get_broker().unregister(conversation_id)
                 interrupt_queue = None  # prevent double-unregister in finally
 
-            # -- Send end immediately — post-processing runs in background --
+            # -- Inline suggestions (opt-in per agent) ----------------------
+            # Generated synchronously between ``done`` and ``end`` so the
+            # frontend can render them without a refetch round-trip.  Skipped
+            # entirely when the agent has ``suggest_followups=False`` (default)
+            # or when the answer is empty — both eliminate the extra LLM call.
+            _suggest_usage_tracker = UsageTracker()
+            _suggest_followups_on = bool(
+                (agent_cfg or {}).get("suggest_followups")
+            )
+            _react_suggestions: list[str] = []
+            if _suggest_followups_on and (result.answer or "").strip():
+                yield _emit(sse_events, "post_processing", {})
+                try:
+                    _react_suggestions = await _generate_suggestions(
+                        fast_llm,
+                        q,
+                        result.answer,
+                        preferred_language=preferred_language,
+                        usage_tracker=_suggest_usage_tracker,
+                    )
+                except Exception:
+                    logger.debug(
+                        "Inline suggestions generation failed", exc_info=True
+                    )
+                yield _emit(
+                    sse_events, "suggestions", {"items": _react_suggestions}
+                )
+                # -- Persist suggestions into the assistant message metadata.
+                # Refresh ``sse_events`` on disk so stored-conversation replay
+                # surfaces both events on the next page-load.
+                if conversation_id and _react_suggestions:
+                    try:
+                        from fim_one.db import create_session as _persist_create_session
+                        from fim_one.web.models import Message as _MsgModel
+
+                        async with _persist_create_session() as _persist_db:
+                            _last_msg = (
+                                await _persist_db.execute(
+                                    sa_select(_MsgModel)
+                                    .where(
+                                        _MsgModel.conversation_id == conversation_id,
+                                        _MsgModel.role == "assistant",
+                                    )
+                                    .order_by(_MsgModel.created_at.desc())
+                                    .limit(1)
+                                )
+                            ).scalar_one_or_none()
+                            if _last_msg is not None:
+                                _md = dict(_last_msg.metadata_ or {})
+                                _md["suggestions"] = _react_suggestions
+                                _md["sse_events"] = sse_events
+                                _last_msg.metadata_ = _md
+                                await _persist_db.commit()
+                    except Exception:
+                        logger.debug(
+                            "Failed to persist inline suggestions", exc_info=True
+                        )
+
+            # -- Send end after optional suggestions ------------------------
             yield _sse("end", {})
 
-            # -- Background post-processing: suggestions, title, fast token accounting --
-            # Fire-and-forget: the SSE stream closes right after end, so the
-            # client won't receive these as SSE events.  Instead the background
-            # task writes results directly to DB for the frontend to fetch via
-            # the conversation API.
+            # -- Background: title generation + fast-LLM token accounting --
+            # These don't need to stream to the user; the conversation list
+            # refetches title and tokens are observability only.
             _bg_conversation_id = conversation_id
             _bg_fast_llm = fast_llm
             _bg_query = q
             _bg_answer = result.answer
             _bg_preferred_language = preferred_language
-            _bg_done_payload = done_payload
+            _bg_inline_summary = _suggest_usage_tracker.get_summary()
 
             async def _react_post_processing() -> None:
-                """Background task for suggestions, title, and fast-LLM token tracking."""
+                """Background task for title + fast-LLM token tracking."""
                 from fim_one.db import create_session as _bg_create_session
 
                 _bg_db: AsyncSession | None = None
                 try:
                     _bg_usage_tracker = UsageTracker()
 
-                    async def _bg_maybe_generate_title() -> str | None:
-                        if not _bg_conversation_id:
-                            return None
-                        try:
-                            from sqlalchemy import func as _sa_func
-
-                            from fim_one.web.models import (
-                                Message as _MsgModel,
-                            )
-
-                            async with _bg_create_session() as _cnt_db:
-                                msg_count = (
-                                    await _cnt_db.execute(
-                                        sa_select(_sa_func.count())
-                                        .select_from(_MsgModel)
-                                        .where(_MsgModel.conversation_id == _bg_conversation_id)
-                                    )
-                                ).scalar() or 0
-                            if msg_count <= 2:
-                                return await _generate_title(
-                                    _bg_fast_llm,
-                                    _bg_query,
-                                    _bg_answer,
-                                    preferred_language=_bg_preferred_language,
-                                    usage_tracker=_bg_usage_tracker,
-                                )
-                        except Exception:
-                            logger.debug("Auto-title generation failed", exc_info=True)
-                        return None
-
-                    suggestions, gen_title = await asyncio.gather(
-                        _generate_suggestions(
-                            _bg_fast_llm,
-                            _bg_query,
-                            _bg_answer,
-                            preferred_language=_bg_preferred_language,
-                            usage_tracker=_bg_usage_tracker,
-                        ),
-                        _bg_maybe_generate_title(),
-                    )
-
                     if not _bg_conversation_id:
                         return
 
-                    _bg_db = _bg_create_session()
-                    if suggestions:
-                        try:
-                            from fim_one.web.models import Message as _MsgModel
+                    gen_title: str | None = None
+                    try:
+                        from sqlalchemy import func as _sa_func
 
-                            # Store suggestions in the most recent assistant message's metadata
-                            _last_msg_stmt = (
-                                sa_select(_MsgModel)
-                                .where(
-                                    _MsgModel.conversation_id == _bg_conversation_id,
-                                    _MsgModel.role == "assistant",
+                        from fim_one.web.models import (
+                            Message as _MsgModel,
+                        )
+
+                        async with _bg_create_session() as _cnt_db:
+                            msg_count = (
+                                await _cnt_db.execute(
+                                    sa_select(_sa_func.count())
+                                    .select_from(_MsgModel)
+                                    .where(_MsgModel.conversation_id == _bg_conversation_id)
                                 )
-                                .order_by(_MsgModel.created_at.desc())
-                                .limit(1)
+                            ).scalar() or 0
+                        if msg_count <= 2:
+                            gen_title = await _generate_title(
+                                _bg_fast_llm,
+                                _bg_query,
+                                _bg_answer,
+                                preferred_language=_bg_preferred_language,
+                                usage_tracker=_bg_usage_tracker,
                             )
-                            _last_msg = (await _bg_db.execute(_last_msg_stmt)).scalar_one_or_none()
-                            if _last_msg and _last_msg.metadata_:
-                                _last_msg.metadata_["suggestions"] = suggestions
-                            elif _last_msg:
-                                _last_msg.metadata_ = {"suggestions": suggestions}
-                            await _bg_db.commit()
-                        except Exception:
-                            logger.debug("Failed to persist suggestions", exc_info=True)
+                    except Exception:
+                        logger.debug("Auto-title generation failed", exc_info=True)
+
+                    _bg_db = _bg_create_session()
                     if gen_title:
                         try:
                             from sqlalchemy import update as _sa_update
@@ -3329,9 +3355,13 @@ async def react_endpoint(
                         except Exception:
                             logger.debug("Failed to persist title", exc_info=True)
 
-                    # Capture fast LLM token usage
+                    # Capture fast LLM token usage (combined inline + bg).
                     bg_fast_summary = _bg_usage_tracker.get_summary()
-                    if bg_fast_summary.total_tokens > 0:
+                    combined_tokens = (
+                        bg_fast_summary.total_tokens
+                        + _bg_inline_summary.total_tokens
+                    )
+                    if combined_tokens > 0:
                         try:
                             from sqlalchemy import func as _sa_func
                             from sqlalchemy import update as _sa_update
@@ -3343,11 +3373,11 @@ async def react_endpoint(
                                 .where(Conversation.id == _bg_conversation_id)
                                 .values(
                                     total_tokens=_sa_func.coalesce(Conversation.total_tokens, 0)
-                                    + bg_fast_summary.total_tokens,
+                                    + combined_tokens,
                                     fast_llm_tokens=_sa_func.coalesce(
                                         Conversation.fast_llm_tokens, 0
                                     )
-                                    + bg_fast_summary.total_tokens,
+                                    + combined_tokens,
                                 )
                             )
                             await _bg_db.commit()
@@ -4347,91 +4377,108 @@ async def dag_endpoint(
                 await get_broker().unregister(conversation_id)
                 dag_interrupt_queue = None  # prevent double-unregister in finally
 
-            # -- Send end immediately — post-processing runs in background --
+            # -- Inline suggestions (opt-in per agent) ----------------------
+            _dag_suggest_usage_tracker = UsageTracker()
+            _dag_suggest_followups_on = bool(
+                (agent_cfg or {}).get("suggest_followups")
+            )
+            _dag_suggestions: list[str] = []
+            if _dag_suggest_followups_on and (answer or "").strip():
+                yield _emit(sse_events, "post_processing", {})
+                try:
+                    _dag_suggestions = await _generate_suggestions(
+                        fast_llm,
+                        q,
+                        answer,
+                        preferred_language=preferred_language,
+                        usage_tracker=_dag_suggest_usage_tracker,
+                    )
+                except Exception:
+                    logger.debug(
+                        "Inline DAG suggestions generation failed", exc_info=True
+                    )
+                yield _emit(
+                    sse_events, "suggestions", {"items": _dag_suggestions}
+                )
+                if conversation_id and _dag_suggestions:
+                    try:
+                        from fim_one.db import create_session as _persist_create_session
+                        from fim_one.web.models import Message as _MsgModel
+
+                        async with _persist_create_session() as _persist_db:
+                            _last_msg = (
+                                await _persist_db.execute(
+                                    sa_select(_MsgModel)
+                                    .where(
+                                        _MsgModel.conversation_id == conversation_id,
+                                        _MsgModel.role == "assistant",
+                                    )
+                                    .order_by(_MsgModel.created_at.desc())
+                                    .limit(1)
+                                )
+                            ).scalar_one_or_none()
+                            if _last_msg is not None:
+                                _md = dict(_last_msg.metadata_ or {})
+                                _md["suggestions"] = _dag_suggestions
+                                _md["sse_events"] = sse_events
+                                _last_msg.metadata_ = _md
+                                await _persist_db.commit()
+                    except Exception:
+                        logger.debug(
+                            "Failed to persist inline DAG suggestions",
+                            exc_info=True,
+                        )
+
+            # -- Send end after optional suggestions ------------------------
             yield _sse("end", {})
 
-            # -- Background post-processing: suggestions, title, fast token accounting --
+            # -- Background: title generation + fast-LLM token accounting --
             _dag_bg_conversation_id = conversation_id
             _dag_bg_fast_llm = fast_llm
             _dag_bg_query = q
             _dag_bg_answer = answer
             _dag_bg_preferred_language = preferred_language
+            _dag_bg_inline_summary = _dag_suggest_usage_tracker.get_summary()
 
             async def _dag_post_processing() -> None:
-                """Background task for DAG suggestions, title, and fast-LLM token tracking."""
+                """Background task for DAG title + fast-LLM token tracking."""
                 from fim_one.db import create_session as _bg_create_session
 
                 _bg_db: AsyncSession | None = None
                 try:
                     _bg_usage_tracker = UsageTracker()
 
-                    async def _bg_dag_maybe_generate_title() -> str | None:
-                        if not _dag_bg_conversation_id:
-                            return None
-                        try:
-                            from sqlalchemy import func as _sa_func
-
-                            from fim_one.web.models import (
-                                Message as _MsgModel,
-                            )
-
-                            async with _bg_create_session() as _cnt_db:
-                                msg_count = (
-                                    await _cnt_db.execute(
-                                        sa_select(_sa_func.count())
-                                        .select_from(_MsgModel)
-                                        .where(_MsgModel.conversation_id == _dag_bg_conversation_id)
-                                    )
-                                ).scalar() or 0
-                            if msg_count <= 2:
-                                return await _generate_title(
-                                    _dag_bg_fast_llm,
-                                    _dag_bg_query,
-                                    _dag_bg_answer,
-                                    preferred_language=_dag_bg_preferred_language,
-                                    usage_tracker=_bg_usage_tracker,
-                                )
-                        except Exception:
-                            logger.debug("Auto-title generation failed", exc_info=True)
-                        return None
-
-                    dag_suggestions, dag_gen_title = await asyncio.gather(
-                        _generate_suggestions(
-                            _dag_bg_fast_llm,
-                            _dag_bg_query,
-                            _dag_bg_answer,
-                            preferred_language=_dag_bg_preferred_language,
-                            usage_tracker=_bg_usage_tracker,
-                        ),
-                        _bg_dag_maybe_generate_title(),
-                    )
-
                     if not _dag_bg_conversation_id:
                         return
 
-                    _bg_db = _bg_create_session()
-                    if dag_suggestions:
-                        try:
-                            from fim_one.web.models import Message as _MsgModel
+                    dag_gen_title: str | None = None
+                    try:
+                        from sqlalchemy import func as _sa_func
 
-                            # Store suggestions in the most recent assistant message's metadata
-                            _last_msg_stmt = (
-                                sa_select(_MsgModel)
-                                .where(
-                                    _MsgModel.conversation_id == _dag_bg_conversation_id,
-                                    _MsgModel.role == "assistant",
+                        from fim_one.web.models import (
+                            Message as _MsgModel,
+                        )
+
+                        async with _bg_create_session() as _cnt_db:
+                            msg_count = (
+                                await _cnt_db.execute(
+                                    sa_select(_sa_func.count())
+                                    .select_from(_MsgModel)
+                                    .where(_MsgModel.conversation_id == _dag_bg_conversation_id)
                                 )
-                                .order_by(_MsgModel.created_at.desc())
-                                .limit(1)
+                            ).scalar() or 0
+                        if msg_count <= 2:
+                            dag_gen_title = await _generate_title(
+                                _dag_bg_fast_llm,
+                                _dag_bg_query,
+                                _dag_bg_answer,
+                                preferred_language=_dag_bg_preferred_language,
+                                usage_tracker=_bg_usage_tracker,
                             )
-                            _last_msg = (await _bg_db.execute(_last_msg_stmt)).scalar_one_or_none()
-                            if _last_msg and _last_msg.metadata_:
-                                _last_msg.metadata_["suggestions"] = dag_suggestions
-                            elif _last_msg:
-                                _last_msg.metadata_ = {"suggestions": dag_suggestions}
-                            await _bg_db.commit()
-                        except Exception:
-                            logger.debug("Failed to persist suggestions", exc_info=True)
+                    except Exception:
+                        logger.debug("Auto-title generation failed", exc_info=True)
+
+                    _bg_db = _bg_create_session()
                     if dag_gen_title:
                         try:
                             from sqlalchemy import update as _sa_update
@@ -4447,9 +4494,12 @@ async def dag_endpoint(
                         except Exception:
                             logger.debug("Failed to persist title", exc_info=True)
 
-                    # Capture fast LLM token usage
                     bg_fast_summary = _bg_usage_tracker.get_summary()
-                    if bg_fast_summary.total_tokens > 0:
+                    combined_tokens = (
+                        bg_fast_summary.total_tokens
+                        + _dag_bg_inline_summary.total_tokens
+                    )
+                    if combined_tokens > 0:
                         try:
                             from sqlalchemy import func as _sa_func
                             from sqlalchemy import update as _sa_update
@@ -4461,9 +4511,9 @@ async def dag_endpoint(
                                 .where(ConvModel.id == _dag_bg_conversation_id)
                                 .values(
                                     total_tokens=_sa_func.coalesce(ConvModel.total_tokens, 0)
-                                    + bg_fast_summary.total_tokens,
+                                    + combined_tokens,
                                     fast_llm_tokens=_sa_func.coalesce(ConvModel.fast_llm_tokens, 0)
-                                    + bg_fast_summary.total_tokens,
+                                    + combined_tokens,
                                 )
                             )
                             await _bg_db.commit()

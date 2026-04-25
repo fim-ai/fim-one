@@ -186,5 +186,10 @@
     "emptyChannels": "Keine aktiven Kanäle in dieser Organisation.",
     "emptyChannelsAction": "Konfigurieren Sie einen unter Organisationseinstellungen → Kanäle",
     "personalAgentHint": "Veröffentlichen Sie diesen Agent in einer Organisation, um Genehmigungen über einen Kanal weiterzuleiten."
+  },
+  "suggestFollowups": {
+    "sectionTitle": "Nachfrage-Vorschläge",
+    "helperText": "Nach jeder Antwort drei Folgefragen generieren, die der Nutzer möglicherweise stellen könnte. Verwendet das schnelle Modell für eine zusätzliche Anfrage-Antwort-Runde — deaktivieren Sie dies für aufgabenorientierte Agenten, die keine Gesprächsfortsetzung benötigen.",
+    "enabledLabel": "Folgefragen nach jeder Antwort vorschlagen"
   }
 }
