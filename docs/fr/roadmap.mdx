@@ -342,12 +342,11 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 - [ ] Reconstruction de jetons de réflexion mid-stream (granularité de reprise plus fine que événement SSE complet)
 - [ ] Sonde d'honnêteté de cache de relais API (déclenchée par admin : détecte les relais supprimant `cache_control`)
 
-#### Fiabilité — suivi (Matrice de priorités Agent Core)
+#### Suivi de la fiabilité (Matrice de priorités d'Agent Core)
 
 - [ ] Persistance de l'état de remplacement de contenu (invariant de streaming #2 : « une fois vu, destin figé »)
-- [ ] Routeur de contexte des pièces jointes (dédupplication, agrégation du budget, vérifications de vivacité ; s'associe au déchargement Workspace)
-- [ ] Workers de requête latérale (pools dédiés pour rappel / classification / résumé afin qu'ils ne rivalisent pas pour le budget de limite de débit principal)
-- [x] Les modifications du fournisseur LLM Admin s'appliquent sans redémarrage du processus (vider le cache du client LiteLLM lors de l'invalidation + filet de sécurité TTL du registre de 60 s)
+- [ ] Routeur de contexte des pièces jointes (dédupliquer, agréger le budget, vérifications de disponibilité ; s'associe au déchargement de l'espace de travail)
+- [ ] Travailleurs de requête auxiliaire (pools dédiés pour rappel / classification / résumé afin qu'ils ne concurrencent pas le budget de limite de débit principal)
 
 #### Écosystème + mise à l'échelle
 

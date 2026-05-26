@@ -19,10 +19,6 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 - **`/settings?tab=billing` wird jetzt in voller Breite angezeigt und ist visuell konsistent mit den anderen Einstellungs-Tabs.** Die `max-w-4xl` Breitenbegrenzung und der redundante äußere Scroll-Container wurden entfernt; das Seitentitel-Symbol wurde gelöscht; die Karten für Plan / Nutzung / Abonnement / Plan-Vergleich wurden umgeschrieben, um das gleiche schlanke Bordered-Div-Muster (kompakte Labels + `tabular-nums` Zahlen) wie der Nutzungs-Tab zu verwenden. Das alte Layout sah aus wie eine eigenständige Seite, die versehentlich in den Einstellungsrahmen eingeklemmt wurde.
 
-### Behoben
-
-- **Admin-LLM-Provider-Änderungen werden jetzt sofort wirksam, ohne dass ein Prozess neu gestartet werden muss.** Das Aktualisieren von `base_url` oder `api_key` eines Providers über das Admin-Panel hat zuvor unsere interne Registry-Version erhöht, aber LiteLLMs eigenen `AsyncOpenAI`-Client-Cache (600 s TTL) an die alten Anmeldedaten gebunden gelassen, sodass Anfragen weiterhin den veralteten Endpoint treffen konnten, bis der gecachte Client ablief oder der API-Container neu gestartet wurde — was sich als undurchsichtige `litellm.InternalServerError: OpenAIException - Connection error.`-Wiederholungen in der Produktion manifestierte. Der Admin-Invalidierungs-Hook leert diesen Cache jetzt, und die Registry hat einen 60-s-TTL-Sicherheitspuffer, damit sich jeder zukünftige Code-Pfad, der die Invalidierung vergisst, innerhalb von maximal einer Minute selbst heilt.
-
 ## [v0.8.6] - 2026-05-08
 
 ### Added

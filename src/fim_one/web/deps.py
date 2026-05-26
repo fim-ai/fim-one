@@ -60,7 +60,6 @@ from __future__ import annotations
 import json
 import os
 import logging
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -392,14 +391,6 @@ def get_model_registry() -> ModelRegistry:
 # Cached registry + version for hot-switching.
 _cached_registry: ModelRegistry | None = None
 _cached_registry_version: int = -1
-_cached_registry_built_at: float = 0.0
-
-# Safety-net TTL for the registry cache. Version-based invalidation from
-# admin endpoints is the primary path; this TTL guarantees the cache
-# self-heals within at most this many seconds even if an invalidation
-# call is somehow missed (e.g. direct DB edits, future code paths that
-# forget to call ``_invalidate_model_group_cache``). Keep short.
-_REGISTRY_CACHE_TTL_SECONDS: float = 60.0
 
 
 def _build_llm_from_group_model(
@@ -509,18 +500,13 @@ async def get_model_registry_with_group(
 
     Falls back to the ENV-only registry when no group is active.
     """
-    global _cached_registry, _cached_registry_version, _cached_registry_built_at
+    global _cached_registry, _cached_registry_version
 
     from fim_one.web.api.admin import get_model_group_version
 
     current_version = get_model_group_version()
-    cache_age = time.monotonic() - _cached_registry_built_at
 
-    if (
-        _cached_registry is not None
-        and _cached_registry_version == current_version
-        and cache_age < _REGISTRY_CACHE_TTL_SECONDS
-    ):
+    if _cached_registry is not None and _cached_registry_version == current_version:
         return _cached_registry
 
     # Rebuild
@@ -532,7 +518,6 @@ async def get_model_registry_with_group(
 
     _cached_registry = registry
     _cached_registry_version = current_version
-    _cached_registry_built_at = time.monotonic()
     return registry
 
 
