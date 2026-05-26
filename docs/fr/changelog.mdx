@@ -19,6 +19,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - **`/settings?tab=billing` s'affiche désormais en pleine largeur et visuellement cohérent avec les autres onglets des Paramètres.** Suppression du plafond de largeur `max-w-4xl` et du conteneur de défilement externe redondant ; suppression de l'icône du titre de la page ; réécriture des cartes plan / utilisation / abonnement / comparaison des plans pour utiliser le même motif de div bordée épurée (étiquettes compactes + nombres `tabular-nums`) que l'onglet Utilisation. L'ancienne mise en page ressemblait à une page autonome accidentellement coincée dans le cadre des paramètres.
 
+### Corrigé
+
+- **Les modifications du fournisseur LLM par l'administrateur prennent désormais effet immédiatement, sans nécessiter un redémarrage du processus.** La mise à jour de `base_url` ou `api_key` d'un fournisseur via le panneau d'administration augmentait précédemment la version de notre registre interne, mais laissait le cache du client `AsyncOpenAI` de LiteLLM lui-même (TTL de 600 s) lié aux anciennes identifiants, de sorte que les requêtes pouvaient continuer à frapper l'ancien endpoint jusqu'à l'expiration du client en cache ou le redémarrage du conteneur API — se manifestant par des retries opaques `litellm.InternalServerError: OpenAIException - Connection error.` en production. Le hook d'invalidation de l'administrateur vide désormais ce cache, et le registre dispose d'un TTL de sécurité de 60 s afin que tout chemin de code futur qui oublie d'invalider s'auto-répare en au maximum une minute.
+
 ## [v0.8.6] - 2026-05-08
 
 ### Added

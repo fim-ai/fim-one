@@ -3396,9 +3396,29 @@ _model_group_version: int = 0
 
 
 def _invalidate_model_group_cache() -> None:
-    """Increment the version counter to signal deps.py to rebuild the registry."""
+    """Increment the version counter to signal deps.py to rebuild the registry.
+
+    Also flush LiteLLM's internal AsyncOpenAI client cache. LiteLLM keys
+    cached clients on ``(api_key, api_base, timeout, …)`` with a 600 s
+    TTL; without this flush, a stale client bound to the previous
+    provider URL/key can keep serving requests after admin config edits
+    until the TTL expires or the process restarts.
+    """
     global _model_group_version
     _model_group_version += 1
+    try:
+        import litellm
+
+        cache = getattr(litellm, "in_memory_llm_clients_cache", None)
+        if cache is not None and hasattr(cache, "flush_cache"):
+            cache.flush_cache()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to flush LiteLLM client cache after model group change",
+            exc_info=True,
+        )
 
 
 def get_model_group_version() -> int:

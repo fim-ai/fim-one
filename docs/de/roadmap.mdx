@@ -344,9 +344,10 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 #### Zuverlässigkeits-Nachverfolgungen (Agent Core Priority Matrix)
 
-- [ ] Content replacement state persistence (streaming invariant #2: "once seen, fate frozen")
-- [ ] Attachment context router (dedup, aggregate budget, liveness checks; pairs with Workspace offloading)
-- [ ] Side query workers (dedicated pools for recall / classify / summary so they don't contend for main rate-limit budget)
+- [ ] Content Replacement State Persistence (Streaming Invariant #2: "once seen, fate frozen")
+- [ ] Attachment Context Router (Dedup, Aggregate Budget, Liveness Checks; pairs with Workspace Offloading)
+- [ ] Side Query Workers (dedizierte Pools für Recall / Classify / Summary, damit sie nicht um das Haupt-Rate-Limit-Budget konkurrieren)
+- [x] Admin LLM Provider Edits apply without process restart (flush LiteLLM client cache on invalidate + 60 s registry TTL safety net)
 
 #### Ökosystem + Skalierung
 
