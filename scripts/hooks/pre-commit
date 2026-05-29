@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-ROOT="$(git rev-parse --show-toplevel)"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "pre-commit: not inside a git repository" >&2
+  exit 1
+}
 
 # ---------------------------------------------------------------------------
 # Discover locale subdirs from frontend/messages/ (excluding 'en')
