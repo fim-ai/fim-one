@@ -2237,7 +2237,11 @@ class ReActAgent:
         iteration: int,
         on_iteration: IterationCallback | None,
     ) -> None:
-        """Emit SSE inject events and append a combined user message.
+        """Emit SSE inject events and append one user message per inject.
+
+        Each drained inject becomes its own ``[USER INTERRUPT]`` user message
+        (a distinct block) rather than being concatenated into a single blob,
+        matching how the UI and DB already treat each inject separately.
 
         This is shared by both ``_run_json`` and ``_run_native`` to avoid
         duplicating the drain -> emit -> append logic.
@@ -2261,27 +2265,31 @@ class ReActAgent:
                     None,
                 )
 
-        # Append as a SINGLE combined message so the LLM addresses ALL
-        # injected messages, not just the last one.
-        if len(injected_msgs) == 1:
-            combined_content = (
-                f"[USER INTERRUPT]: {injected_msgs[0].content}\n\nAcknowledge and adjust if needed."
+        # Append each injected message as its OWN user block so the LLM sees
+        # them as distinct messages (mirroring how the UI renders and the DB
+        # persists each inject separately) rather than one concatenated blob.
+        # Each carries a lightweight ``[USER INTERRUPT]`` prefix so the model
+        # knows it arrived mid-work; only the final block states the
+        # acknowledge-and-adjust instruction, so it is said once rather than
+        # repeated N times.
+        last_idx = len(injected_msgs) - 1
+        for idx, injected in enumerate(injected_msgs):
+            content = f"[USER INTERRUPT]: {injected.content}"
+            if idx == last_idx:
+                if last_idx == 0:
+                    content += "\n\nAcknowledge and adjust if needed."
+                else:
+                    content += (
+                        "\n\n(These interrupts arrived while you were working — "
+                        "acknowledge ALL of them and adjust your response if needed.)"
+                    )
+            messages.append(
+                ChatMessage(
+                    role="user",
+                    content=content,
+                    pinned=True,
+                )
             )
-        else:
-            parts = [f"{i + 1}. {m.content}" for i, m in enumerate(injected_msgs)]
-            combined_content = (
-                f"[USER INTERRUPT]: The user sent {len(injected_msgs)} "
-                "messages while you were working:\n"
-                + "\n".join(parts)
-                + "\n\nAcknowledge ALL of them and adjust your response if needed."
-            )
-        messages.append(
-            ChatMessage(
-                role="user",
-                content=combined_content,
-                pinned=True,
-            )
-        )
 
     def _get_localized_time(self) -> tuple[datetime, str, int]:
         """Return ``(datetime_obj, formatted_str, year)`` in the user's tz."""
