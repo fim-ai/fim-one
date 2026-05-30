@@ -31,6 +31,11 @@ class OAuthUserInfo:
     username: str
     email: str | None
     display_name: str | None
+    # Whether the provider asserts the email address is verified. Auto-binding a
+    # third-party login to an existing local account by email MUST require this
+    # — otherwise an attacker could set their provider email to a victim's
+    # address and take over the local account. Defaults to False (untrusted).
+    email_verified: bool = False
 
 
 class OAuthEmailRequiredError(Exception):
@@ -185,14 +190,18 @@ async def fetch_user_info(provider: OAuthProvider, access_token: str) -> OAuthUs
             # endpoint returns the "public profile" email which may differ
             # from the primary (e.g. tony@fim.com.cn vs taotao9229@gmail.com)
             email = None
+            email_verified = False
             email_resp = await client.get(
                 "https://api.github.com/user/emails", headers=headers
             )
             if email_resp.status_code == 200:
                 emails = email_resp.json()
                 primary = next((e for e in emails if e.get("primary")), None)
-                email = primary["email"] if primary else None
+                if primary:
+                    email = primary.get("email")
+                    email_verified = bool(primary.get("verified"))
             # Fall back to /user profile email if /user/emails failed
+            # (verification status unknown → treat as unverified).
             if not email:
                 email = data.get("email")
             return OAuthUserInfo(
@@ -201,29 +210,37 @@ async def fetch_user_info(provider: OAuthProvider, access_token: str) -> OAuthUs
                 username=data.get("login", ""),
                 email=email,
                 display_name=data.get("name"),
+                email_verified=email_verified,
             )
         elif provider.name == "google":
+            # The v2 /userinfo endpoint reports verification as "verified_email".
             return OAuthUserInfo(
                 provider="google",
                 id=data["id"],
                 username=data.get("email", "").split("@")[0],
                 email=data.get("email"),
                 display_name=data.get("name"),
+                email_verified=bool(data.get("verified_email")),
             )
         elif provider.name == "discord":
+            # Discord's user object carries a "verified" flag for the email.
             return OAuthUserInfo(
                 provider="discord",
                 id=data["id"],
                 username=data.get("username", ""),
                 email=data.get("email"),
                 display_name=data.get("global_name") or data.get("username"),
+                email_verified=bool(data.get("verified")),
             )
         elif provider.name == "feishu":
             # `data` already holds the full response body from the initial GET above.
             info = data.get("data", {})
             open_id = info.get("open_id", "")
             # Feishu may return enterprise_email or email; personal accounts may have neither.
-            email = info.get("email") or info.get("enterprise_email") or None
+            # Only the enterprise_email is administratively controlled by the org
+            # and can be trusted as verified; a self-set personal email cannot.
+            enterprise_email = info.get("enterprise_email")
+            email = info.get("email") or enterprise_email or None
             name = info.get("name") or info.get("en_name") or f"feishu_{open_id[:8]}"
             return OAuthUserInfo(
                 provider="feishu",
@@ -231,6 +248,7 @@ async def fetch_user_info(provider: OAuthProvider, access_token: str) -> OAuthUs
                 username=(info.get("en_name") or name).lower().replace(" ", "_"),
                 email=email,
                 display_name=info.get("name") or info.get("en_name"),
+                email_verified=bool(enterprise_email) and email == enterprise_email,
             )
         else:
             raise ValueError(f"Unknown provider: {provider.name}")

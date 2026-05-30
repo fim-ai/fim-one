@@ -28,6 +28,7 @@ from fim_one.web.auth import (
     create_refresh_token,
     decode_token,
     get_current_user,
+    hash_refresh_token,
 )
 from fim_one.web.models import User, UserOAuthBinding
 from fim_one.web.oauth import (
@@ -288,10 +289,13 @@ async def _handle_login(
         if user_info.display_name and binding.display_name != user_info.display_name:
             binding.display_name = user_info.display_name
     else:
-        # 2. No binding found -- check if a local account with this email exists.
-        #    If found, auto-bind: log in as that existing user.
+        # 2. No binding found -- check if a local account with this *verified*
+        #    email exists. If found, auto-bind: log in as that existing user.
+        #    Auto-binding is gated on email_verified: matching on an unverified
+        #    address would let an attacker set their third-party email to a
+        #    victim's address and take over the victim's local account.
         user = None
-        if user_info.email:
+        if user_info.email and user_info.email_verified:
             email_result = await db.execute(
                 select(User).where(func.lower(User.email) == user_info.email.lower())
             )
@@ -371,7 +375,11 @@ async def _handle_login(
     # Issue JWT tokens
     jwt_access = create_access_token(user.id, user.email)
     jwt_refresh = create_refresh_token(user.id, user.email)
-    user.refresh_token = jwt_refresh
+    # Store the SHA-256 digest, never the raw token: the /refresh endpoint
+    # compares against hash_refresh_token(...), so storing the plaintext here
+    # both leaks a long-lived credential into the DB and permanently breaks
+    # token rotation for OAuth users (the hash comparison would never match).
+    user.refresh_token = hash_refresh_token(jwt_refresh)
     user.refresh_token_expires_at = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     await db.commit()
 
