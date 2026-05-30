@@ -29,9 +29,9 @@ from sqlalchemy.orm import selectinload
 
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin, hash_password, hash_password_async
-from fim_one.web.models import Agent, AuditLog, Connector, ConnectorCallLog, Conversation, InviteCode, KnowledgeBase, MCPServer as MCPServerModel, Message, ModelConfig, Organization, SystemSetting, User
-from fim_one.web.models.billing import BillingPlan, Subscription
-from fim_one.web.models.review_log import ReviewLog
+from fim_one.db.models import Agent, AuditLog, Connector, ConnectorCallLog, Conversation, InviteCode, KnowledgeBase, MCPServer as MCPServerModel, Message, ModelConfig, Organization, SystemSetting, User
+from fim_one.db.models.billing import BillingPlan, Subscription
+from fim_one.db.models.review_log import ReviewLog
 from fim_one.web.schemas.billing import (
     AdminBillingPlanCreate,
     AdminBillingPlanRead,
@@ -1388,7 +1388,7 @@ async def get_system_health(
 
     # Check DB for admin-configured models (system-level, user_id=NULL)
     from sqlalchemy import select as sa_select  # noqa: PLC0415
-    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM  # noqa: PLC0415
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM  # noqa: PLC0415
 
     _db_result = await db.execute(
         sa_select(ModelConfigORM.role).where(
@@ -2435,7 +2435,7 @@ async def list_review_log(
 # ---------------------------------------------------------------------------
 
 
-from fim_one.web.models.model_provider import (
+from fim_one.db.models.model_provider import (
     ModelGroup,
     ModelProvider,
     ModelProviderModel,

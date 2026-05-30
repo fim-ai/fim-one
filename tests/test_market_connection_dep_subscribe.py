@@ -21,14 +21,14 @@ from fim_one.web.api.market import (
     _cascade_clean_connection_deps,
 )
 from fim_one.web.dependency_analyzer import resolve_solution_dependencies
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.connector_credential import ConnectorCredential
-from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.mcp_server_credential import MCPServerCredential
-from fim_one.web.models.resource_subscription import ResourceSubscription
-from fim_one.web.models.skill import Skill
-from fim_one.web.models.user import User
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.connector_credential import ConnectorCredential
+from fim_one.db.models.mcp_server import MCPServer
+from fim_one.db.models.mcp_server_credential import MCPServerCredential
+from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.skill import Skill
+from fim_one.db.models.user import User
 from fim_one.web.platform import MARKET_ORG_ID
 
 
@@ -52,7 +52,7 @@ def _reset_cred_key(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture()
 async def async_session():
     """Create an in-memory SQLite database with all required tables."""
-    import fim_one.web.models  # noqa: F401 — register all models
+    import fim_one.db.models  # noqa: F401 — register all models
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",

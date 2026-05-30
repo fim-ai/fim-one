@@ -149,7 +149,7 @@ class GroundedRetrieveTool(BaseTool):
             kb_names: dict[str, str] = {}
             try:
                 from fim_one.db import create_session
-                from fim_one.web.models.knowledge_base import KnowledgeBase as KBModel
+                from fim_one.db.models.knowledge_base import KnowledgeBase as KBModel
                 from sqlalchemy import select
 
                 db = create_session()

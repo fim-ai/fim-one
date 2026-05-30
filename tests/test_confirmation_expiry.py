@@ -15,12 +15,12 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-import fim_one.web.models  # noqa: F401
+import fim_one.db.models  # noqa: F401
 from fim_one.core.channels.expiry import ConfirmationRequestExpirer
 from fim_one.db.base import Base
-from fim_one.web.models.channel import Channel, ConfirmationRequest
-from fim_one.web.models.organization import Organization
-from fim_one.web.models.user import User
+from fim_one.db.models.channel import Channel, ConfirmationRequest
+from fim_one.db.models.organization import Organization
+from fim_one.db.models.user import User
 
 
 @pytest_asyncio.fixture

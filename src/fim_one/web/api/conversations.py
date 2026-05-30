@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user
-from fim_one.web.models import Agent, Conversation, Message, User
+from fim_one.db.models import Agent, Conversation, Message, User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.conversation import (
     BatchDeleteRequest,

@@ -15,11 +15,11 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401  # populate Base.metadata
+import fim_one.db.models  # noqa: F401  # populate Base.metadata
 from fim_one.db.base import Base
-from fim_one.web.models.channel import Channel, ConfirmationRequest
-from fim_one.web.models.organization import Organization
-from fim_one.web.models.user import User
+from fim_one.db.models.channel import Channel, ConfirmationRequest
+from fim_one.db.models.organization import Organization
+from fim_one.db.models.user import User
 
 
 @pytest.fixture(autouse=True)

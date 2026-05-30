@@ -29,10 +29,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
 from fim_one.web.app import create_app
-from fim_one.web.models import BillingPlan, Subscription, User
+from fim_one.db.models import BillingPlan, Subscription, User
 
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -83,7 +83,7 @@ async def _enable_billing_flag(db_session: AsyncSession) -> None:
     Every admin-billing endpoint is now wrapped in
     :func:`require_billing_enabled`; without this row the routes 503.
     """
-    from fim_one.web.models import SystemSetting
+    from fim_one.db.models import SystemSetting
 
     db_session.add(SystemSetting(key="billing_enabled", value="true"))
     await db_session.commit()

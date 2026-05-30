@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.config import settings
-from fim_one.web.models import BillingPlan, Subscription, User
+from fim_one.db.models import BillingPlan, Subscription, User
 from fim_one.web.schemas.billing import (
     CheckoutRequest,
     PlanInfo,

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .models.organization import OrgMembership
+    from fim_one.db.models.organization import OrgMembership
 
 import asyncio
 
@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
 
-from .models.api_key import ApiKey
-from .models.user import User
+from fim_one.db.models.api_key import ApiKey
+from fim_one.db.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -439,7 +439,7 @@ async def get_current_admin(
 
 async def get_user_org_ids(user_id: str, db: AsyncSession) -> list[str]:
     """All org IDs the user belongs to."""
-    from .models.organization import OrgMembership
+    from fim_one.db.models.organization import OrgMembership
 
     result = await db.execute(
         select(OrgMembership.org_id).where(OrgMembership.user_id == user_id)
@@ -451,7 +451,7 @@ async def require_org_member(
     org_id: str, user: User, db: AsyncSession
 ) -> "OrgMembership":
     """Return membership or raise 403."""
-    from .models.organization import OrgMembership
+    from fim_one.db.models.organization import OrgMembership
 
     result = await db.execute(
         select(OrgMembership).where(

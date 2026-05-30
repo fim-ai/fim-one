@@ -20,9 +20,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
-from fim_one.web.models import BillingPlan, SystemSetting
+from fim_one.db.models import BillingPlan, SystemSetting
 from fim_one.web.services.default_plan import (
     get_default_plan_id,
     get_free_plan_id,

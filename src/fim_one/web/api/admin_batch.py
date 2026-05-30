@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
-from fim_one.web.models import Agent, Connector, KnowledgeBase, User
+from fim_one.db.models import Agent, Connector, KnowledgeBase, User
 from fim_one.web.schemas.workflow import BatchOperationResponse
 
 from fim_one.web.api.admin_utils import write_audit

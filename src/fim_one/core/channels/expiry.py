@@ -36,7 +36,7 @@ from sqlalchemy import CursorResult
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models.channel import ConfirmationRequest
+from fim_one.db.models.channel import ConfirmationRequest
 
 logger = logging.getLogger(__name__)
 

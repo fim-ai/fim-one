@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models.eval import EvalCase, EvalDataset
-from fim_one.web.models.user import User
+from fim_one.db.models.eval import EvalCase, EvalDataset
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.eval import (
     EvalCaseCreate,

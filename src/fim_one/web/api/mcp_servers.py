@@ -16,9 +16,9 @@ from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
-from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.resource_subscription import ResourceSubscription
-from fim_one.web.models.user import User
+from fim_one.db.models.mcp_server import MCPServer
+from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.mcp_server import (
     MCPMyCredentialStatus,
@@ -174,7 +174,7 @@ async def list_mcp_servers(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    from fim_one.web.models.mcp_server_credential import MCPServerCredential
+    from fim_one.db.models.mcp_server_credential import MCPServerCredential
     from fim_one.web.visibility import build_visibility_filter
     user_org_ids = await get_user_org_ids(current_user.id, db)
 
@@ -261,7 +261,7 @@ async def get_mcp_server(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    from fim_one.web.models.mcp_server_credential import MCPServerCredential
+    from fim_one.db.models.mcp_server_credential import MCPServerCredential
     server = await _get_accessible_server(server_id, current_user.id, db)
     cred_result = await db.execute(
         select(MCPServerCredential).where(
@@ -583,7 +583,7 @@ async def get_my_mcp_credentials(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Return current user's personal credentials status for this MCP server."""
-    from fim_one.web.models.mcp_server_credential import MCPServerCredential
+    from fim_one.db.models.mcp_server_credential import MCPServerCredential
 
     server = await _get_accessible_server(server_id, current_user.id, db)
     result = await db.execute(
@@ -617,7 +617,7 @@ async def upsert_my_mcp_credentials(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Create or replace the current user's personal env credentials for this MCP server."""
-    from fim_one.web.models.mcp_server_credential import MCPServerCredential
+    from fim_one.db.models.mcp_server_credential import MCPServerCredential
 
     await _get_accessible_server(server_id, current_user.id, db)
 

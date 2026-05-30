@@ -17,9 +17,9 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
-from fim_one.web.models import BillingPlan, Subscription, User
+from fim_one.db.models import BillingPlan, Subscription, User
 from fim_one.web.services.subscription_lifecycle import (
     downgrade_expired_canceled_subscriptions,
 )

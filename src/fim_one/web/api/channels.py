@@ -34,8 +34,8 @@ from fim_one.web.auth import (
     require_org_admin,
     require_org_member,
 )
-from fim_one.web.models.channel import Channel, ConfirmationRequest
-from fim_one.web.models.user import User
+from fim_one.db.models.channel import Channel, ConfirmationRequest
+from fim_one.db.models.user import User
 from fim_one.web.schemas.channel import (
     ChannelCreate,
     ChannelListResponse,

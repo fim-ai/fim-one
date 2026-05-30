@@ -15,7 +15,7 @@ from typing import Any, cast
 from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models.workflow import Workflow, WorkflowRun
+from fim_one.db.models.workflow import Workflow, WorkflowRun
 
 logger = logging.getLogger(__name__)
 

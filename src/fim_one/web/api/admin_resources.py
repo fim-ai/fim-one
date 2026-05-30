@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import Agent, KnowledgeBase, User
+from fim_one.db.models import Agent, KnowledgeBase, User
 from fim_one.web.schemas.common import PaginatedResponse
 
 from fim_one.web.api.admin_utils import write_audit

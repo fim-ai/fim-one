@@ -27,8 +27,8 @@ from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
-from fim_one.web.models import User, Workflow, WorkflowApproval, WorkflowRun, WorkflowVersion
-from fim_one.web.models.resource_subscription import ResourceSubscription
+from fim_one.db.models import User, Workflow, WorkflowApproval, WorkflowRun, WorkflowVersion
+from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.workflow import (
     BatchRunResultItem,

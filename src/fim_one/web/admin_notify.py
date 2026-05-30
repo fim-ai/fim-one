@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from fim_one.db.engine import create_session
 from fim_one.web.email import _send_email, _smtp_configured
-from fim_one.web.models import SystemSetting, User
+from fim_one.db.models import SystemSetting, User
 
 logger = logging.getLogger(__name__)
 

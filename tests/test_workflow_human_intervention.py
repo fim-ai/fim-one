@@ -487,7 +487,7 @@ def test_get_executor() -> None:
 
 def test_workflow_approval_model_fields() -> None:
     """WorkflowApproval model should have all required fields."""
-    from fim_one.web.models.workflow import WorkflowApproval
+    from fim_one.db.models.workflow import WorkflowApproval
 
     # Check the table name
     assert WorkflowApproval.__tablename__ == "workflow_approvals"

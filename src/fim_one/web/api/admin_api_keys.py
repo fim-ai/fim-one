@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import ApiKey, User
+from fim_one.db.models import ApiKey, User
 
 from .admin_utils import write_audit
 

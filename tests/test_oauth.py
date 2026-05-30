@@ -18,10 +18,10 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
 from fim_one.web.api.oauth import _handle_login
-from fim_one.web.models import User, UserOAuthBinding
+from fim_one.db.models import User, UserOAuthBinding
 from fim_one.web.oauth import OAuthUserInfo
 
 

@@ -689,7 +689,7 @@ class AgentExecutor:
                 # If agent_id specified, load agent config
                 instructions: str | None = None
                 if agent_id:
-                    from fim_one.web.models import Agent
+                    from fim_one.db.models import Agent
                     from sqlalchemy import select
 
                     result = await db.execute(
@@ -863,7 +863,7 @@ class ConnectorExecutor:
 
             # Load connector and action from DB
             async with create_session() as db:
-                from fim_one.web.models.connector import Connector, ConnectorAction
+                from fim_one.db.models.connector import Connector, ConnectorAction
                 from sqlalchemy import select
 
                 conn_result = await db.execute(
@@ -2763,7 +2763,7 @@ class HumanInterventionExecutor:
         approval_id = str(_uuid.uuid4())
 
         async with db_session_factory() as db:
-            from fim_one.web.models.workflow import WorkflowApproval
+            from fim_one.db.models.workflow import WorkflowApproval
 
             approval = WorkflowApproval(
                 id=approval_id,
@@ -2796,7 +2796,7 @@ class HumanInterventionExecutor:
             if elapsed >= timeout_seconds:
                 # Mark as expired in DB
                 async with db_session_factory() as db:
-                    from fim_one.web.models.workflow import WorkflowApproval
+                    from fim_one.db.models.workflow import WorkflowApproval
                     from sqlalchemy import select
 
                     result = await db.execute(
@@ -2821,7 +2821,7 @@ class HumanInterventionExecutor:
 
             # Poll DB for status change
             async with db_session_factory() as db:
-                from fim_one.web.models.workflow import WorkflowApproval
+                from fim_one.db.models.workflow import WorkflowApproval
                 from sqlalchemy import select
 
                 result = await db.execute(
@@ -2932,7 +2932,7 @@ class MCPExecutor:
 
             # Load MCP server config from DB
             from fim_one.db import create_session
-            from fim_one.web.models.mcp_server import MCPServer
+            from fim_one.db.models.mcp_server import MCPServer
             from sqlalchemy import select
 
             async with create_session() as db:
@@ -2963,7 +2963,7 @@ class MCPExecutor:
 
                 if context.user_id:
                     try:
-                        from fim_one.web.models.mcp_server_credential import (
+                        from fim_one.db.models.mcp_server_credential import (
                             MCPServerCredential,
                         )
 
@@ -3293,7 +3293,7 @@ class SubWorkflowExecutor:
             from sqlalchemy import select as sa_select
 
             async with context.db_session_factory() as session:
-                from fim_one.web.models.workflow import Workflow
+                from fim_one.db.models.workflow import Workflow
 
                 result = await session.execute(
                     sa_select(Workflow).where(

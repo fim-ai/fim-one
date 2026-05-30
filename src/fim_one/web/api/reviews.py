@@ -13,13 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user, require_org_admin
 from fim_one.web.exceptions import AppError
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.knowledge_base import KnowledgeBase
-from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.skill import Skill
-from fim_one.web.models.workflow import Workflow
-from fim_one.web.models.user import User
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.knowledge_base import KnowledgeBase
+from fim_one.db.models.mcp_server import MCPServer
+from fim_one.db.models.skill import Skill
+from fim_one.db.models.workflow import Workflow
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse
 
 router = APIRouter(prefix="/api/orgs/{org_id}/reviews", tags=["reviews"])
@@ -97,7 +97,7 @@ async def log_review_event(
     note: str | None = None,
 ) -> None:
     """Append a review audit log entry.  Caller must commit after calling this."""
-    from fim_one.web.models.review_log import ReviewLog
+    from fim_one.db.models.review_log import ReviewLog
 
     entry = ReviewLog(
         org_id=org_id,
@@ -129,7 +129,7 @@ async def list_review_log(
     """Return the review audit trail for an org (newest first)."""
     await _check_review_permission(org_id, current_user, db)
 
-    from fim_one.web.models.review_log import ReviewLog
+    from fim_one.db.models.review_log import ReviewLog
 
     query = select(ReviewLog).where(ReviewLog.org_id == org_id)
     if resource_type:
@@ -192,7 +192,7 @@ async def list_reviews(
             owner_username = None
             owner_id = getattr(r, "user_id", None)
             if owner_id:
-                from fim_one.web.models.user import User as UserModel
+                from fim_one.db.models.user import User as UserModel
 
                 user_result = await db.execute(
                     select(UserModel.username).where(UserModel.id == owner_id)

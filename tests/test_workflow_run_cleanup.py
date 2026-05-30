@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from fim_one.core.workflow.run_cleanup import WorkflowRunCleaner
 from fim_one.db.base import Base
-from fim_one.web.models.workflow import Workflow, WorkflowRun
+from fim_one.db.models.workflow import Workflow, WorkflowRun
 
 
 # ---------------------------------------------------------------------------

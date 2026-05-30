@@ -31,7 +31,7 @@ from fim_one.db.base import Base
 @pytest.fixture()
 async def async_session():
     """Create an in-memory SQLite database with all required tables."""
-    import fim_one.web.models  # noqa: F401
+    import fim_one.db.models  # noqa: F401
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
@@ -66,7 +66,7 @@ class TestMCPServerAccessControl:
     """Non-owners must not see command, args, url, env, or headers."""
 
     def _make_server(self, owner_id: str) -> Any:
-        from fim_one.web.models.mcp_server import MCPServer
+        from fim_one.db.models.mcp_server import MCPServer
 
         return MCPServer(
             id=str(uuid.uuid4()),
@@ -138,7 +138,7 @@ class TestConnectorAccessControl:
     """Non-owners must not see actions, auth_config, base_url, or db_config."""
 
     def _make_connector(self, owner_id: str) -> Any:
-        from fim_one.web.models.connector import Connector, ConnectorAction
+        from fim_one.db.models.connector import Connector, ConnectorAction
 
         connector = Connector(
             id=str(uuid.uuid4()),
@@ -218,7 +218,7 @@ class TestAgentAccessControl:
     """Non-owners must not see instructions, compact_instructions, or model_config_json."""
 
     def _make_agent(self, owner_id: str) -> Any:
-        from fim_one.web.models import Agent
+        from fim_one.db.models import Agent
 
         return Agent(
             id=str(uuid.uuid4()),
@@ -280,7 +280,7 @@ class TestSkillAccessControl:
     """Non-owners must not see content or script."""
 
     def _make_skill(self, owner_id: str) -> Any:
-        from fim_one.web.models.skill import Skill
+        from fim_one.db.models.skill import Skill
 
         return Skill(
             id=str(uuid.uuid4()),
@@ -336,7 +336,7 @@ class TestWorkflowAccessControl:
     """Non-owners must not see blueprint, input_schema, output_schema, or webhook_url."""
 
     def _make_workflow(self, owner_id: str) -> Any:
-        from fim_one.web.models import Workflow
+        from fim_one.db.models import Workflow
 
         return Workflow(
             id=str(uuid.uuid4()),
@@ -405,7 +405,7 @@ class TestForkDenialConnector:
         from sqlalchemy.orm import selectinload
 
         from fim_one.web.exceptions import AppError
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         connector = Connector(
             user_id=owner_id,
@@ -442,7 +442,7 @@ class TestForkDenialAgent:
         self, async_session: AsyncSession, owner_id: str, subscriber_id: str
     ) -> None:
         from fim_one.web.exceptions import AppError
-        from fim_one.web.models import Agent
+        from fim_one.db.models import Agent
 
         agent = Agent(
             user_id=owner_id,
@@ -468,7 +468,7 @@ class TestForkDenialSkill:
         self, async_session: AsyncSession, owner_id: str, subscriber_id: str
     ) -> None:
         from fim_one.web.exceptions import AppError
-        from fim_one.web.models.skill import Skill
+        from fim_one.db.models.skill import Skill
 
         skill = Skill(
             user_id=owner_id,
@@ -495,7 +495,7 @@ class TestForkDenialMCPServer:
         self, async_session: AsyncSession, owner_id: str, subscriber_id: str
     ) -> None:
         from fim_one.web.exceptions import AppError
-        from fim_one.web.models.mcp_server import MCPServer
+        from fim_one.db.models.mcp_server import MCPServer
 
         server = MCPServer(
             user_id=owner_id,
@@ -522,7 +522,7 @@ class TestForkDenialWorkflow:
         self, async_session: AsyncSession, owner_id: str, subscriber_id: str
     ) -> None:
         from fim_one.web.exceptions import AppError
-        from fim_one.web.models import Workflow
+        from fim_one.db.models import Workflow
 
         wf = Workflow(
             user_id=owner_id,
@@ -553,7 +553,7 @@ class TestExportDenialConnector:
         self, async_session: AsyncSession, owner_id: str, subscriber_id: str
     ) -> None:
         from fim_one.web.exceptions import AppError
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         connector = Connector(
             user_id=owner_id,
@@ -581,7 +581,7 @@ class TestExportDenialWorkflow:
         self, async_session: AsyncSession, owner_id: str, subscriber_id: str
     ) -> None:
         from fim_one.web.exceptions import AppError
-        from fim_one.web.models import Workflow
+        from fim_one.db.models import Workflow
 
         wf = Workflow(
             user_id=owner_id,

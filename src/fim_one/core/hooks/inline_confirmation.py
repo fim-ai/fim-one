@@ -32,7 +32,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
-    from fim_one.web.models.channel import ConfirmationRequest
+    from fim_one.db.models.channel import ConfirmationRequest
 
 
 logger = logging.getLogger(__name__)

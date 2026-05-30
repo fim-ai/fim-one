@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models import BillingPlan, Subscription, User
+from fim_one.db.models import BillingPlan, Subscription, User
 
 logger = logging.getLogger(__name__)
 

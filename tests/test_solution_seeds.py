@@ -20,8 +20,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fim_one.db.base import Base
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.skill import Skill
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.skill import Skill
 from fim_one.web.platform import MARKET_ORG_ID, ensure_market_org
 from fim_one.web.solution_seeds import SOLUTION_TEMPLATES, import_solution_templates
 
@@ -34,7 +34,7 @@ from fim_one.web.solution_seeds import SOLUTION_TEMPLATES, import_solution_templ
 @pytest.fixture()
 async def async_session():
     """Create an in-memory SQLite database with all required tables."""
-    import fim_one.web.models  # noqa: F401 -- register all models
+    import fim_one.db.models  # noqa: F401 -- register all models
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",

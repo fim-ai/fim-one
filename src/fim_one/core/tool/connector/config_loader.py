@@ -439,7 +439,7 @@ def config_to_connector(
 
     Note: imports are deferred to avoid circular imports at module level.
     """
-    from fim_one.web.models.connector import Connector, ConnectorAction
+    from fim_one.db.models.connector import Connector, ConnectorAction
 
     connector_id = str(uuid.uuid4())
 

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_, select
 
-from fim_one.web.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.resource_subscription import ResourceSubscription
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

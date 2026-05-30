@@ -18,8 +18,8 @@ from typing import TypedDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.skill import Skill
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.skill import Skill
 
 logger = logging.getLogger(__name__)
 

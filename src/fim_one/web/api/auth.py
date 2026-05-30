@@ -30,9 +30,9 @@ from fim_one.web.api.admin import (
 )
 from fim_one.web.api.admin_utils import get_setting
 from fim_one.web.services.default_plan import get_default_plan_id
-from fim_one.web.models.audit_log import AuditLog
-from fim_one.web.models.email_verification import EmailVerification
-from fim_one.web.models.invite_code import InviteCode
+from fim_one.db.models.audit_log import AuditLog
+from fim_one.db.models.email_verification import EmailVerification
+from fim_one.db.models.invite_code import InviteCode
 from fim_one.web.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -46,20 +46,20 @@ from fim_one.web.auth import (
     verify_password,
     verify_password_async,
 )
-from fim_one.web.models import LoginHistory, User
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.api_key import ApiKey
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.connector_call_log import ConnectorCallLog
-from fim_one.web.models.conversation import Conversation
-from fim_one.web.models.eval import EvalCase, EvalCaseResult, EvalDataset, EvalRun
-from fim_one.web.models.knowledge_base import KnowledgeBase
-from fim_one.web.models.model_config import ModelConfig
-from fim_one.web.models.oauth_binding import UserOAuthBinding
-from fim_one.web.models.organization import OrgMembership
-from fim_one.web.models.resource_subscription import ResourceSubscription
-from fim_one.web.models.skill import Skill
-from fim_one.web.models.workflow import Workflow, WorkflowRun
+from fim_one.db.models import LoginHistory, User
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.api_key import ApiKey
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.connector_call_log import ConnectorCallLog
+from fim_one.db.models.conversation import Conversation
+from fim_one.db.models.eval import EvalCase, EvalCaseResult, EvalDataset, EvalRun
+from fim_one.db.models.knowledge_base import KnowledgeBase
+from fim_one.db.models.model_config import ModelConfig
+from fim_one.db.models.oauth_binding import UserOAuthBinding
+from fim_one.db.models.organization import OrgMembership
+from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.skill import Skill
+from fim_one.db.models.workflow import Workflow, WorkflowRun
 from fim_one.web.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,

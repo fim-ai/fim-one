@@ -20,17 +20,17 @@ from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.dependency_analyzer import resolve_solution_dependencies
 from fim_one.web.exceptions import AppError
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.connector_credential import ConnectorCredential
-from fim_one.web.models.knowledge_base import KnowledgeBase
-from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.mcp_server_credential import MCPServerCredential
-from fim_one.web.models.organization import OrgMembership, Organization
-from fim_one.web.models.resource_subscription import ResourceSubscription
-from fim_one.web.models.skill import Skill
-from fim_one.web.models.user import User
-from fim_one.web.models.workflow import Workflow
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.connector_credential import ConnectorCredential
+from fim_one.db.models.knowledge_base import KnowledgeBase
+from fim_one.db.models.mcp_server import MCPServer
+from fim_one.db.models.mcp_server_credential import MCPServerCredential
+from fim_one.db.models.organization import OrgMembership, Organization
+from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.skill import Skill
+from fim_one.db.models.user import User
+from fim_one.db.models.workflow import Workflow
 from fim_one.web.platform import MARKET_ORG_ID
 from fim_one.web.schemas.common import ApiResponse
 

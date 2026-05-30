@@ -18,14 +18,14 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
-from fim_one.web.models.billing import (
+from fim_one.db.models.billing import (
     BillingPlan,
     StripeWebhookEvent,
     Subscription,
 )
-from fim_one.web.models.user import User
+from fim_one.db.models.user import User
 
 
 # ---------------------------------------------------------------------------

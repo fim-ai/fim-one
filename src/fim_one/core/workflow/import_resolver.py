@@ -139,7 +139,7 @@ async def _query_accessible_ids(
 
 def _get_model_for_resource_type(resource_type: str) -> Any:
     """Return the ORM model class for a given resource type string."""
-    from fim_one.web.models import Agent, Connector, KnowledgeBase, MCPServer, Workflow
+    from fim_one.db.models import Agent, Connector, KnowledgeBase, MCPServer, Workflow
 
     mapping: dict[str, Any] = {
         "agent": Agent,
@@ -196,7 +196,7 @@ async def resolve_blueprint_references(
 
     # Fetch subscribed resource IDs if not provided by the caller
     if subscribed_ids is None:
-        from fim_one.web.models.resource_subscription import ResourceSubscription
+        from fim_one.db.models.resource_subscription import ResourceSubscription
 
         sub_result = await db.execute(
             select(ResourceSubscription.resource_id).where(

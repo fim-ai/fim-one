@@ -11,15 +11,15 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401
+import fim_one.db.models  # noqa: F401
 from fim_one.core.agent.hooks import HookContext, HookPoint
 from fim_one.core.channels import ChannelSendResult
 from fim_one.core.hooks import FeishuGateHook, create_feishu_gate_hook
 from fim_one.db.base import Base
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.channel import Channel, ConfirmationRequest
-from fim_one.web.models.organization import Organization
-from fim_one.web.models.user import User
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.channel import Channel, ConfirmationRequest
+from fim_one.db.models.organization import Organization
+from fim_one.db.models.user import User
 
 
 @pytest.fixture(autouse=True)

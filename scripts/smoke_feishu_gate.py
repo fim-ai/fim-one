@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
-import fim_one.web.models  # noqa: F401,E402 — register all ORM classes
+import fim_one.db.models  # noqa: F401,E402 — register all ORM classes
 from fim_one.core.agent.hooks import HookPoint  # noqa: E402
 from fim_one.core.agent.react import ReActAgent  # noqa: E402
 from fim_one.core.channels import ChannelSendResult  # noqa: E402
@@ -55,9 +55,9 @@ from fim_one.core.tool.connector.adapter import ConnectorToolAdapter  # noqa: E4
 from fim_one.core.tool.registry import ToolRegistry  # noqa: E402
 from fim_one.db.base import Base  # noqa: E402
 from fim_one.web.hooks_bootstrap import build_hook_registry_for_agent  # noqa: E402
-from fim_one.web.models.channel import Channel, ConfirmationRequest  # noqa: E402
-from fim_one.web.models.organization import Organization  # noqa: E402
-from fim_one.web.models.user import User  # noqa: E402
+from fim_one.db.models.channel import Channel, ConfirmationRequest  # noqa: E402
+from fim_one.db.models.organization import Organization  # noqa: E402
+from fim_one.db.models.user import User  # noqa: E402
 
 # conftest.FakeLLM — not used as a pytest fixture, just as a helper class.
 sys.path.insert(

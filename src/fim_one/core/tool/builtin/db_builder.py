@@ -33,7 +33,7 @@ class _DbBuilderBase(BaseTool, ABC):
         return "db_builder"
 
     async def _get_connector(self, db: Any) -> Any:
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         result = await db.execute(
             select(Connector).where(
@@ -44,7 +44,7 @@ class _DbBuilderBase(BaseTool, ABC):
         return result.scalar_one_or_none()
 
     async def _get_schemas(self, db: Any) -> list[Any]:
-        from fim_one.web.models.database_schema import DatabaseSchema
+        from fim_one.db.models.database_schema import DatabaseSchema
 
         result = await db.execute(
             select(DatabaseSchema)
@@ -312,7 +312,7 @@ class DbGetTableDetailTool(_DbBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.database_schema import DatabaseSchema
+        from fim_one.db.models.database_schema import DatabaseSchema
 
         table_name = kwargs["table_name"]
         async with create_session() as db:
@@ -387,7 +387,7 @@ class DbAnnotateTableTool(_DbBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.database_schema import DatabaseSchema
+        from fim_one.db.models.database_schema import DatabaseSchema
 
         table_name = kwargs["table_name"]
         async with create_session() as db:
@@ -446,7 +446,7 @@ class DbAnnotateColumnTool(_DbBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.database_schema import DatabaseSchema, SchemaColumn
+        from fim_one.db.models.database_schema import DatabaseSchema, SchemaColumn
 
         table_name = kwargs["table_name"]
         column_name = kwargs["column_name"]
@@ -512,7 +512,7 @@ class DbSetTableVisibilityTool(_DbBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.database_schema import DatabaseSchema
+        from fim_one.db.models.database_schema import DatabaseSchema
 
         table_name = kwargs["table_name"]
         visible = bool(kwargs["visible"])

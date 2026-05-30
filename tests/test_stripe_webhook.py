@@ -30,11 +30,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
 from fim_one.web.api import webhooks as webhooks_module
 from fim_one.web.app import create_app
-from fim_one.web.models import (
+from fim_one.db.models import (
     BillingPlan,
     StripeWebhookEvent,
     Subscription,
@@ -86,7 +86,7 @@ async def db_session(engine) -> AsyncIterator[AsyncSession]:
 @pytest_asyncio.fixture(autouse=True)
 async def _enable_billing_flag(db_session: AsyncSession) -> None:
     """Persist ``billing_enabled='true'`` so the webhook gate passes."""
-    from fim_one.web.models import SystemSetting
+    from fim_one.db.models import SystemSetting
 
     db_session.add(SystemSetting(key="billing_enabled", value="true"))
     await db_session.commit()

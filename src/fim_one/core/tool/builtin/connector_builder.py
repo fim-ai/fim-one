@@ -36,7 +36,7 @@ class _ConnectorBuilderBase(BaseTool, ABC):
 
     async def _get_connector(self, db: Any) -> Any:
         """Fetch the connector and verify ownership."""
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         result = await db.execute(
             select(Connector)
@@ -169,7 +169,7 @@ class ConnectorCreateActionTool(_ConnectorBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.connector import ConnectorAction
+        from fim_one.db.models.connector import ConnectorAction
 
         async with create_session() as db:
             connector = await self._get_connector(db)
@@ -240,7 +240,7 @@ class ConnectorUpdateActionTool(_ConnectorBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.connector import ConnectorAction
+        from fim_one.db.models.connector import ConnectorAction
 
         action_id = kwargs.pop("action_id")
         async with create_session() as db:
@@ -306,7 +306,7 @@ class ConnectorDeleteActionTool(_ConnectorBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.connector import ConnectorAction
+        from fim_one.db.models.connector import ConnectorAction
 
         action_id = kwargs["action_id"]
         async with create_session() as db:
@@ -377,7 +377,7 @@ class ConnectorUpdateSettingsTool(_ConnectorBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         _updatable = {"name", "base_url", "auth_type", "auth_config"}
         updates = {k: v for k, v in kwargs.items() if k in _updatable}
@@ -449,7 +449,7 @@ class ConnectorTestActionTool(_ConnectorBuilderBase):
     async def run(self, **kwargs: Any) -> str:  # noqa: C901
         import re
         from fim_one.db import create_session
-        from fim_one.web.models.connector import Connector, ConnectorAction
+        from fim_one.db.models.connector import Connector, ConnectorAction
 
         action_id = kwargs["action_id"]
         params = kwargs.get("params") or {}
@@ -579,7 +579,7 @@ class ConnectorGetSettingsTool(_ConnectorBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         async with create_session() as db:
             result = await db.execute(
@@ -659,7 +659,7 @@ class ConnectorTestConnectionTool(_ConnectorBuilderBase):
     async def run(self, **kwargs: Any) -> str:
         import time
         from fim_one.db import create_session
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         probe_path = (kwargs.get("path") or "/").lstrip("/")
 
@@ -862,7 +862,7 @@ class ConnectorImportOpenAPITool(_ConnectorBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:  # noqa: C901
         from fim_one.db import create_session
-        from fim_one.web.models.connector import ConnectorAction
+        from fim_one.db.models.connector import ConnectorAction
 
         url: str | None = kwargs.get("url")
         spec: dict[str, Any] | None = kwargs.get("spec")

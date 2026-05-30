@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user, get_user_org_ids
-from fim_one.web.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, User
-from fim_one.web.models.resource_subscription import ResourceSubscription
-from fim_one.web.models.workflow import Workflow, WorkflowRun
+from fim_one.db.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, User
+from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.workflow import Workflow, WorkflowRun
 from fim_one.web.visibility import build_visibility_filter
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])

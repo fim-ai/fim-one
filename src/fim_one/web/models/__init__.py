@@ -1,85 +1,14 @@
-"""ORM models for the FIM One web layer."""
+"""Back-compat shim — ORM models moved to :mod:`fim_one.db.models` (Track B, 2026-05).
+
+Importing ``fim_one.web.models`` used to drag in the entire FastAPI app via
+``fim_one/web/__init__.py``. Models now live under :mod:`fim_one.db.models` so the
+database/migration layers can populate ``Base.metadata`` without importing the web
+layer. This shim keeps any lingering ``from fim_one.web.models import X`` working.
+
+Prefer ``from fim_one.db.models import X`` in new code.
+"""
 
 from __future__ import annotations
 
-from .agent import Agent
-from .announcement import Announcement
-from .api_key import ApiKey
-from .audit_log import AuditLog
-from .billing import BillingPlan, StripeWebhookEvent, Subscription
-from .channel import Channel, ConfirmationRequest
-from .connector import Connector, ConnectorAction
-from .connector_credential import ConnectorCredential
-from .eval import EvalDataset, EvalCase, EvalRun, EvalCaseResult
-from .connector_call_log import ConnectorCallLog
-from .database_schema import DatabaseSchema, SchemaColumn
-from .conversation import Conversation
-from .email_verification import EmailVerification
-from .invite_code import InviteCode
-from .ip_rule import IpRule
-from .login_history import LoginHistory
-from .mcp_server import MCPServer
-from .mcp_server_credential import MCPServerCredential
-from .notification_preference import NotificationPreference
-from .knowledge_base import KBDocument, KnowledgeBase
-from .message import Message
-from .resource_subscription import ResourceSubscription
-from .model_config import ModelConfig
-from .model_provider import ModelGroup, ModelProvider, ModelProviderModel
-from .oauth_binding import UserOAuthBinding
-from .organization import Organization, OrgMembership
-from .sensitive_word import SensitiveWord
-from .skill import Skill
-from .system_setting import SystemSetting
-from .user import User
-from .workflow import Workflow, WorkflowApproval, WorkflowRun, WorkflowTemplate, WorkflowVersion
-
-__all__ = [
-    "Agent",
-    "Announcement",
-    "ApiKey",
-    "AuditLog",
-    "BillingPlan",
-    "Channel",
-    "ConfirmationRequest",
-    "Connector",
-    "ConnectorAction",
-    "ConnectorCredential",
-    "EvalCaseResult",
-    "EvalCase",
-    "EvalDataset",
-    "EvalRun",
-    "ConnectorCallLog",
-    "Conversation",
-    "DatabaseSchema",
-    "EmailVerification",
-    "InviteCode",
-    "IpRule",
-    "KBDocument",
-    "KnowledgeBase",
-    "LoginHistory",
-    "MCPServer",
-    "MCPServerCredential",
-    "Message",
-    "NotificationPreference",
-    "ResourceSubscription",
-    "ModelConfig",
-    "ModelGroup",
-    "ModelProvider",
-    "ModelProviderModel",
-    "Organization",
-    "OrgMembership",
-    "SchemaColumn",
-    "SensitiveWord",
-    "Skill",
-    "StripeWebhookEvent",
-    "Subscription",
-    "SystemSetting",
-    "User",
-    "UserOAuthBinding",
-    "Workflow",
-    "WorkflowApproval",
-    "WorkflowRun",
-    "WorkflowTemplate",
-    "WorkflowVersion",
-]
+from fim_one.db.models import *  # noqa: F401,F403
+from fim_one.db.models import __all__ as __all__  # re-export the public surface

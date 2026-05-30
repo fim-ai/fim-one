@@ -44,7 +44,7 @@ from fim_one.core.hooks.feishu_gate_hook import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from fim_one.web.models.channel import ConfirmationRequest
+    from fim_one.db.models.channel import ConfirmationRequest
 
 
 logger = logging.getLogger(__name__)

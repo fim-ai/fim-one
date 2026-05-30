@@ -90,7 +90,7 @@ from fim_one.core.utils import extract_json_value, get_language_directive
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import User
+from fim_one.db.models import User
 
 from ..deps import (
     get_dag_max_replan_rounds,
@@ -157,7 +157,7 @@ def _build_guardrail_tripwired_payload(
 
 async def _check_sensitive_words(text: str, db: AsyncSession) -> list[str]:
     """Return list of matched blocked words. Empty = clean."""
-    from fim_one.web.models import SensitiveWord
+    from fim_one.db.models import SensitiveWord
 
     result = await db.execute(
         sa_select(SensitiveWord).where(
@@ -646,7 +646,7 @@ async def _resolve_user(
     user_timezone: str | None = None
     try:
         from fim_one.db import create_session
-        from fim_one.web.models import User
+        from fim_one.db.models import User
 
         async with create_session() as session:
             result = await session.execute(sa_select(User).where(User.id == user_id))
@@ -687,7 +687,7 @@ async def _validate_conversation_ownership(
 ) -> None:
     """Ensure the conversation belongs to *user_id*.  Raises 404 otherwise."""
     from fim_one.db import create_session
-    from fim_one.web.models import Conversation
+    from fim_one.db.models import Conversation
 
     async with create_session() as session:
         result = await session.execute(
@@ -710,7 +710,7 @@ async def _get_plan_quota_for_user(session: Any, user_id: str) -> int | None:
     Defensively swallows query errors: a mock-shaped session that does
     not understand the join still produces a valid (legacy) quota.
     """
-    from fim_one.web.models import BillingPlan, User
+    from fim_one.db.models import BillingPlan, User
 
     try:
         result = await session.execute(
@@ -746,7 +746,7 @@ async def _get_quota_status(user_id: str) -> tuple[int, int]:
     """
     from fim_one.db import create_session
     from fim_one.web.api.admin_utils import get_setting
-    from fim_one.web.models import Conversation, User
+    from fim_one.db.models import Conversation, User
 
     async with create_session() as session:
         result = await session.execute(sa_select(User.token_quota).where(User.id == user_id))
@@ -852,7 +852,7 @@ async def _resolve_agent_config(
     ``model_config_json``, ``kb_ids``, and ``grounding_config``, or ``None``.
     """
     from fim_one.db import create_session
-    from fim_one.web.models import Agent, Conversation
+    from fim_one.db.models import Agent, Conversation
 
     resolved_id = agent_id
 
@@ -957,7 +957,7 @@ async def _resolve_model_supports_vision(
     Mirrors :func:`_resolve_llm` resolution priority: agent config id >
     DB default model group > ``False`` fallback.
     """
-    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
 
     if agent_cfg:
         cfg = agent_cfg.get("model_config_json") or {}
@@ -973,7 +973,7 @@ async def _resolve_model_supports_vision(
                 return bool(val)
 
     # Model Group fallback: check the active group's general model
-    from fim_one.web.models.model_provider import ModelGroup
+    from fim_one.db.models.model_provider import ModelGroup
 
     group_stmt = (
         sa_select(ModelGroup)
@@ -1050,7 +1050,7 @@ async def _resolve_vision_llm(
     resolver does not actively rank it above fast/general.
     """
     from fim_one.web.deps import _build_llm_from_group_model
-    from fim_one.web.models.model_provider import ModelGroup
+    from fim_one.db.models.model_provider import ModelGroup
 
     # Step 1 — Primary LLM if it advertises vision support.
     if await _resolve_model_supports_vision(agent_cfg, db):
@@ -1246,7 +1246,7 @@ async def _resolve_tools(
         kb_owner_map: dict[str, str] = {}
         try:
             from fim_one.db import create_session as _kb_cs
-            from fim_one.web.models.knowledge_base import KnowledgeBase as _KBModel
+            from fim_one.db.models.knowledge_base import KnowledgeBase as _KBModel
 
             async with _kb_cs() as _kb_db:
                 _kb_result = await _kb_db.execute(
@@ -1303,8 +1303,8 @@ async def _resolve_tools(
             get_database_tool_mode,
         )
         from fim_one.db import create_session
-        from fim_one.web.models.connector import Connector as ConnectorModel
-        from fim_one.web.models.connector_call_log import ConnectorCallLog
+        from fim_one.db.models.connector import Connector as ConnectorModel
+        from fim_one.db.models.connector_call_log import ConnectorCallLog
 
         agent_id_for_log = agent_cfg.get("agent_id") if agent_cfg else None
         _connector_tool_mode = get_connector_tool_mode(agent_cfg)
@@ -1336,7 +1336,7 @@ async def _resolve_tools(
 
         try:
             async with create_session() as session:
-                from fim_one.web.models.database_schema import (
+                from fim_one.db.models.database_schema import (
                     DatabaseSchema as DatabaseSchemaModel,
                 )
 
@@ -1528,8 +1528,8 @@ async def _resolve_tools(
                 build_database_meta_tool as _ad_build_db_meta,
             )
             from fim_one.db import create_session
-            from fim_one.web.models.connector import Connector as ConnectorModel
-            from fim_one.web.models.database_schema import (
+            from fim_one.db.models.connector import Connector as ConnectorModel
+            from fim_one.db.models.database_schema import (
                 DatabaseSchema as DatabaseSchemaModel,
             )
             from fim_one.web.visibility import resolve_visibility
@@ -1757,7 +1757,7 @@ async def _resolve_tools(
         from sqlalchemy import true as _true
 
         from fim_one.db import create_session as _create_session
-        from fim_one.web.models.mcp_server import MCPServer as _MCPServerModel
+        from fim_one.db.models.mcp_server import MCPServer as _MCPServerModel
 
         # Determine which MCP servers to load based on agent config
         _agent_mcp_ids = agent_cfg.get("mcp_server_ids") if agent_cfg else None
@@ -1806,7 +1806,7 @@ async def _resolve_tools(
     if user_id and not agent_cfg:
         try:
             from fim_one.db import create_session as _cs_agents
-            from fim_one.web.models.agent import Agent as AgentModel
+            from fim_one.db.models.agent import Agent as AgentModel
             from fim_one.web.visibility import resolve_visibility as _rv_agents
 
             async with _cs_agents() as _cat_db:
@@ -1913,7 +1913,7 @@ async def _connect_pending_mcp_servers(
                     from sqlalchemy import select as _sa_select
 
                     from fim_one.db import create_session as _cs_cred
-                    from fim_one.web.models.mcp_server_credential import (
+                    from fim_one.db.models.mcp_server_credential import (
                         MCPServerCredential as _MCPCred,
                     )
 
@@ -2049,7 +2049,7 @@ def _kb_system_hint(agent_cfg: dict[str, Any]) -> str:
 async def _resolve_skill_stubs(skill_ids: list[str]) -> str:
     """Return a compact stub block for all bound skills."""
     from fim_one.db import create_session
-    from fim_one.web.models.skill import Skill
+    from fim_one.db.models.skill import Skill
 
     try:
         async with create_session() as session:
@@ -2081,7 +2081,7 @@ async def _resolve_skill_descriptors(
 ) -> list[dict[str, str]]:
     """Return ``[{"name": ..., "description": ...}]`` for planner skill discovery."""
     from fim_one.db import create_session
-    from fim_one.web.models.skill import Skill
+    from fim_one.db.models.skill import Skill
 
     try:
         async with create_session() as session:
@@ -2100,7 +2100,7 @@ async def _resolve_skill_descriptors(
 async def _resolve_user_skill_ids(user_id: str) -> list[str]:
     """Fetch all active, visible skill IDs for a user (own + org + subscribed)."""
     from fim_one.db import create_session
-    from fim_one.web.models.skill import Skill
+    from fim_one.db.models.skill import Skill
     from fim_one.web.visibility import resolve_visibility
 
     try:
@@ -2141,7 +2141,7 @@ def get_skill_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
 async def _resolve_skill_inline(skill_ids: list[str]) -> str:
     """Return full skill content for inline injection into system prompt."""
     from fim_one.db import create_session
-    from fim_one.web.models.skill import Skill
+    from fim_one.db.models.skill import Skill
 
     try:
         async with create_session() as session:
@@ -2383,7 +2383,7 @@ async def inject_message(
     Returns 409 if no active execution exists for the conversation.
     """
     # Ownership check: verify the conversation belongs to the authenticated user.
-    from fim_one.web.models import Conversation as _ConvModel
+    from fim_one.db.models import Conversation as _ConvModel
 
     _conv_result = await db.execute(
         sa_select(_ConvModel.user_id).where(_ConvModel.id == body.conversation_id)
@@ -2412,7 +2412,7 @@ async def inject_message(
 
     # Persist the injected message to DB immediately.
     try:
-        from fim_one.web.models import Message as MessageModel
+        from fim_one.db.models import Message as MessageModel
 
         msg = MessageModel(
             conversation_id=body.conversation_id,
@@ -2447,7 +2447,7 @@ async def recall_inject(
 ) -> dict[str, bool]:
     """Recall (cancel) a queued inject message before the agent consumes it."""
     # Ownership check: verify the conversation belongs to the authenticated user.
-    from fim_one.web.models import Conversation as _ConvModel
+    from fim_one.db.models import Conversation as _ConvModel
 
     _conv_result = await db.execute(
         sa_select(_ConvModel.user_id).where(_ConvModel.id == body.conversation_id)
@@ -2498,10 +2498,10 @@ async def resume_stream(
         - 404 ``no_recent_assistant_message`` — conversation has no
           assistant reply to resume from (e.g. the turn never completed).
     """
-    from fim_one.web.models import (
+    from fim_one.db.models import (
         Conversation as _ConvModel,
     )
-    from fim_one.web.models import (
+    from fim_one.db.models import (
         Message as MessageModel,
     )
 
@@ -2805,7 +2805,7 @@ async def react_endpoint(
         if conversation_id:
             try:
                 from fim_one.db import create_session
-                from fim_one.web.models import Message as MessageModel
+                from fim_one.db.models import Message as MessageModel
 
                 db_session = create_session()
                 # Build final metadata by merging image info and caller-provided user_metadata
@@ -3383,10 +3383,10 @@ async def react_endpoint(
             # -- Persist assistant message BEFORE yielding done -----------
             if db_session and conversation_id:
                 try:
-                    from fim_one.web.models import (
+                    from fim_one.db.models import (
                         Conversation,
                     )
-                    from fim_one.web.models import (
+                    from fim_one.db.models import (
                         Message as MessageModel,
                     )
 
@@ -3501,7 +3501,7 @@ async def react_endpoint(
                 if conversation_id and _react_suggestions:
                     try:
                         from fim_one.db import create_session as _persist_create_session
-                        from fim_one.web.models import Message as _MsgModel
+                        from fim_one.db.models import Message as _MsgModel
 
                         async with _persist_create_session() as _persist_db:
                             _last_msg = (
@@ -3554,7 +3554,7 @@ async def react_endpoint(
                     try:
                         from sqlalchemy import func as _sa_func
 
-                        from fim_one.web.models import (
+                        from fim_one.db.models import (
                             Message as _MsgModel,
                         )
 
@@ -3582,7 +3582,7 @@ async def react_endpoint(
                         try:
                             from sqlalchemy import update as _sa_update
 
-                            from fim_one.web.models import Conversation
+                            from fim_one.db.models import Conversation
 
                             await _bg_db.execute(
                                 _sa_update(Conversation)
@@ -3604,7 +3604,7 @@ async def react_endpoint(
                             from sqlalchemy import func as _sa_func
                             from sqlalchemy import update as _sa_update
 
-                            from fim_one.web.models import Conversation
+                            from fim_one.db.models import Conversation
 
                             await _bg_db.execute(
                                 _sa_update(Conversation)
@@ -3841,7 +3841,7 @@ async def dag_endpoint(
         if conversation_id:
             try:
                 from fim_one.db import create_session
-                from fim_one.web.models import Message as MessageModel
+                from fim_one.db.models import Message as MessageModel
 
                 db_session = create_session()
                 # Build final metadata by merging image info and caller-provided user_metadata
@@ -4590,10 +4590,10 @@ async def dag_endpoint(
             # -- Persist assistant message BEFORE yielding done -----------
             if db_session and conversation_id:
                 try:
-                    from fim_one.web.models import (
+                    from fim_one.db.models import (
                         Conversation as ConvModel,
                     )
-                    from fim_one.web.models import (
+                    from fim_one.db.models import (
                         Message as MessageModel,
                     )
 
@@ -4714,7 +4714,7 @@ async def dag_endpoint(
                 if conversation_id and _dag_suggestions:
                     try:
                         from fim_one.db import create_session as _persist_create_session
-                        from fim_one.web.models import Message as _MsgModel
+                        from fim_one.db.models import Message as _MsgModel
 
                         async with _persist_create_session() as _persist_db:
                             _last_msg = (
@@ -4766,7 +4766,7 @@ async def dag_endpoint(
                     try:
                         from sqlalchemy import func as _sa_func
 
-                        from fim_one.web.models import (
+                        from fim_one.db.models import (
                             Message as _MsgModel,
                         )
 
@@ -4794,7 +4794,7 @@ async def dag_endpoint(
                         try:
                             from sqlalchemy import update as _sa_update
 
-                            from fim_one.web.models import Conversation as ConvModel
+                            from fim_one.db.models import Conversation as ConvModel
 
                             await _bg_db.execute(
                                 _sa_update(ConvModel)
@@ -4815,7 +4815,7 @@ async def dag_endpoint(
                             from sqlalchemy import func as _sa_func
                             from sqlalchemy import update as _sa_update
 
-                            from fim_one.web.models import Conversation as ConvModel
+                            from fim_one.db.models import Conversation as ConvModel
 
                             await _bg_db.execute(
                                 _sa_update(ConvModel)
@@ -4968,7 +4968,7 @@ async def auto_endpoint(
     # the correct label instead of "auto".
     if body.conversation_id and mode != "auto":
         from sqlalchemy import update as _sa_update_mode
-        from fim_one.web.models import Conversation as _ConvModelAuto
+        from fim_one.db.models import Conversation as _ConvModelAuto
 
         async with _create_session() as _mode_db:
             await _mode_db.execute(

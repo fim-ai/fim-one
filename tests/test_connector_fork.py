@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import selectinload
 
 from fim_one.db.base import Base
-from fim_one.web.models.connector import Connector, ConnectorAction
-from fim_one.web.models.user import User
+from fim_one.db.models.connector import Connector, ConnectorAction
+from fim_one.db.models.user import User
 from fim_one.web.schemas.connector import ConnectorForkRequest
 
 
@@ -24,7 +24,7 @@ from fim_one.web.schemas.connector import ConnectorForkRequest
 async def async_session():
     """Create an in-memory SQLite database with all required tables."""
     # Import all models so Base.metadata is fully populated
-    import fim_one.web.models  # noqa: F401
+    import fim_one.db.models  # noqa: F401
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",

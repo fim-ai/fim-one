@@ -12,13 +12,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401
+import fim_one.db.models  # noqa: F401
 from fim_one.core.channels import ChannelSendResult
 from fim_one.db.base import Base
 from fim_one.web.auth import create_access_token
-from fim_one.web.models.channel import Channel, ConfirmationRequest
-from fim_one.web.models.organization import Organization, OrgMembership
-from fim_one.web.models.user import User
+from fim_one.db.models.channel import Channel, ConfirmationRequest
+from fim_one.db.models.organization import Organization, OrgMembership
+from fim_one.db.models.user import User
 
 
 # ---------------------------------------------------------------------------

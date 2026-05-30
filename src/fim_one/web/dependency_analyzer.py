@@ -222,11 +222,11 @@ async def _fetch_by_id(model_cls: Any, resource_id: str, db: AsyncSession) -> An
 
 async def _resolve_agent(agent_id: str, db: AsyncSession) -> DependencyManifest:
     """Resolve dependencies for a single Agent."""
-    from fim_one.web.models.agent import Agent
-    from fim_one.web.models.connector import Connector
-    from fim_one.web.models.knowledge_base import KnowledgeBase
-    from fim_one.web.models.mcp_server import MCPServer
-    from fim_one.web.models.skill import Skill
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.connector import Connector
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+    from fim_one.db.models.mcp_server import MCPServer
+    from fim_one.db.models.skill import Skill
 
     manifest = DependencyManifest()
 
@@ -314,11 +314,11 @@ async def _resolve_skill(skill_id: str, db: AsyncSession) -> DependencyManifest:
     - ``agent`` → content dep + recursively resolve the agent's own deps
     - ``connector`` / ``mcp_server`` → connection dep (requires credentials)
     """
-    from fim_one.web.models.agent import Agent
-    from fim_one.web.models.connector import Connector
-    from fim_one.web.models.knowledge_base import KnowledgeBase
-    from fim_one.web.models.mcp_server import MCPServer
-    from fim_one.web.models.skill import Skill
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.connector import Connector
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+    from fim_one.db.models.mcp_server import MCPServer
+    from fim_one.db.models.skill import Skill
 
     manifest = DependencyManifest()
 
@@ -400,11 +400,11 @@ async def _resolve_workflow(
 
     Handles recursive sub-workflow and agent references with cycle detection.
     """
-    from fim_one.web.models.agent import Agent
-    from fim_one.web.models.connector import Connector
-    from fim_one.web.models.knowledge_base import KnowledgeBase
-    from fim_one.web.models.mcp_server import MCPServer
-    from fim_one.web.models.workflow import Workflow
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.connector import Connector
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+    from fim_one.db.models.mcp_server import MCPServer
+    from fim_one.db.models.workflow import Workflow
 
     if _visited_workflows is None:
         _visited_workflows = set()

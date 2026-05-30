@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class _AgentLike(Protocol):
-    """Structural subset of :class:`fim_one.web.models.agent.Agent`.
+    """Structural subset of :class:`fim_one.db.models.agent.Agent`.
 
     We accept anything with ``model_config_json`` so callers that already
     hold a lightweight dict (e.g. :func:`_resolve_agent_config` in
@@ -105,7 +105,7 @@ async def build_hook_registry_for_agent(
 
     Args:
         agent: An object with a ``model_config_json`` attribute.  The
-            canonical caller is :class:`fim_one.web.models.agent.Agent`.
+            canonical caller is :class:`fim_one.db.models.agent.Agent`.
         session_factory: Zero-arg callable yielding a fresh
             :class:`AsyncSession`.  Each hook uses this to run DB
             operations in its own transaction — critically, independent

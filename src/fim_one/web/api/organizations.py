@@ -21,8 +21,8 @@ from fim_one.web.auth import (
     require_org_owner,
 )
 from fim_one.web.exceptions import AppError
-from fim_one.web.models.organization import OrgMembership, Organization
-from fim_one.web.models.user import User
+from fim_one.db.models.organization import OrgMembership, Organization
+from fim_one.db.models.user import User
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 

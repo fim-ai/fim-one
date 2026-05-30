@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models.organization import OrgMembership, Organization
+from fim_one.db.models.organization import OrgMembership, Organization
 
 MARKET_ORG_SLUG = "market"
 MARKET_ORG_ID = "00000000-0000-0000-0000-000000000001"

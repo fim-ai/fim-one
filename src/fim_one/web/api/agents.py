@@ -13,11 +13,11 @@ from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
-from fim_one.web.models import Agent, User
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.knowledge_base import KnowledgeBase
-from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.resource_subscription import ResourceSubscription
+from fim_one.db.models import Agent, User
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.knowledge_base import KnowledgeBase
+from fim_one.db.models.mcp_server import MCPServer
+from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.web.schemas.agent import AgentCreate, AgentForkRequest, AgentResponse, AgentUpdate
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.visibility import build_visibility_filter

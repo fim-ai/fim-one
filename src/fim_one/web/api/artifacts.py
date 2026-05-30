@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import User
+from fim_one.db.models import User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ async def _validate_conversation_ownership(
     from sqlalchemy import select as sa_select
 
     from fim_one.db import create_session
-    from fim_one.web.models import Conversation
+    from fim_one.db.models import Conversation
 
     async with create_session() as session:
         result = await session.execute(
@@ -183,7 +183,7 @@ async def list_all_artifacts(
     from sqlalchemy import select as sa_select
 
     from fim_one.db import create_session
-    from fim_one.web.models import Conversation, Message
+    from fim_one.db.models import Conversation, Message
 
     async with create_session() as session:
         result = await session.execute(

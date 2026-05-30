@@ -122,7 +122,7 @@ class _LazySettings:
     other top-level imports run. Validating Stripe config eagerly at
     module-import time would therefore see a half-loaded environment and
     surface confusing errors to anyone importing
-    ``fim_one.web.models.user`` or similar unrelated paths. Constructing
+    ``fim_one.db.models.user`` or similar unrelated paths. Constructing
     on first access defers validation to the first real use.
     """
 

@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class _AgentLike(Protocol):
-    """Structural subset of :class:`fim_one.web.models.agent.Agent`.
+    """Structural subset of :class:`fim_one.db.models.agent.Agent`.
 
     The real ORM row works; so does a
     :class:`types.SimpleNamespace` wrapper used in the web layer when the
@@ -158,7 +158,7 @@ async def notify_agent_completion(
     """Fire-and-forget completion notification.
 
     If the agent is configured for completion notifications, load the
-    target :class:`fim_one.web.models.channel.Channel`, instantiate its
+    target :class:`fim_one.db.models.channel.Channel`, instantiate its
     adapter, and hand off a :class:`CompletionSummary` to
     :meth:`BaseChannel.send_completion` — the adapter decides how to
     render it (Feishu card, Slack message, DingTalk markdown, ...).
@@ -203,7 +203,7 @@ async def notify_agent_completion(
         agent_org_id = getattr(agent, "org_id", None)
 
         # Fetch the channel in its own short-lived session.
-        from fim_one.web.models.channel import Channel
+        from fim_one.db.models.channel import Channel
 
         async with session_factory() as db:
             stmt = sa_select(Channel).where(Channel.id == channel_id)

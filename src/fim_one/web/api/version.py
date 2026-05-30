@@ -21,8 +21,8 @@ from fim_one.web.deps import (
     _reasoning_max_output,
     _reasoning_context_size,
 )
-from fim_one.web.models.model_provider import ModelGroup, ModelProviderModel
-from fim_one.web.models.user import User
+from fim_one.db.models.model_provider import ModelGroup, ModelProviderModel
+from fim_one.db.models.user import User
 
 router = APIRouter(prefix="/api", tags=["system"])
 

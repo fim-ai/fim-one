@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import User
+from fim_one.db.models import User
 from fim_one.web.schemas.common import ApiResponse
 
 logger = logging.getLogger(__name__)

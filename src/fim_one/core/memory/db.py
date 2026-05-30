@@ -200,7 +200,7 @@ async def _persist_synthetic_tool_results(
 
     try:
         from fim_one.db import create_session
-        from fim_one.web.models import Message as MessageModel
+        from fim_one.db.models import Message as MessageModel
         from sqlalchemy import select as sa_select, text as sa_text
 
         async with create_session() as session:
@@ -386,7 +386,7 @@ class DbMemory(BaseMemory):
         """
         try:
             from fim_one.db import create_session
-            from fim_one.web.models import Message as MessageModel
+            from fim_one.db.models import Message as MessageModel
             from sqlalchemy import select as sa_select
 
             async with create_session() as session:

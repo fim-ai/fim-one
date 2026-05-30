@@ -22,10 +22,10 @@ from fim_one.web.exceptions import AppError
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
-from fim_one.web.models.connector import Connector, ConnectorAction
-from fim_one.web.models.connector_credential import ConnectorCredential
-from fim_one.web.models.resource_subscription import ResourceSubscription
-from fim_one.web.models.user import User
+from fim_one.db.models.connector import Connector, ConnectorAction
+from fim_one.db.models.connector_credential import ConnectorCredential
+from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.connector import (
     ActionCreate,

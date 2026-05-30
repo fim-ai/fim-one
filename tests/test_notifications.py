@@ -26,13 +26,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401  (register models)
+import fim_one.db.models  # noqa: F401  (register models)
 from fim_one.core.channels import CompletionSummary
 from fim_one.core.channels.feishu import FeishuChannel, _format_duration
 from fim_one.db.base import Base
-from fim_one.web.models.channel import Channel
-from fim_one.web.models.organization import Organization
-from fim_one.web.models.user import User
+from fim_one.db.models.channel import Channel
+from fim_one.db.models.organization import Organization
+from fim_one.db.models.user import User
 from fim_one.web.notifications import notify_agent_completion
 
 

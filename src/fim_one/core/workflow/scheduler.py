@@ -116,7 +116,7 @@ class WorkflowScheduler:
     async def _tick(self) -> None:
         """Single scheduler cycle: query due workflows and dispatch runs."""
         from fim_one.db import create_session
-        from fim_one.web.models import Workflow
+        from fim_one.db.models import Workflow
 
         from sqlalchemy import select
 
@@ -219,7 +219,7 @@ class WorkflowScheduler:
 
         # Update last_scheduled_at immediately to prevent duplicate triggers
         from fim_one.db import create_session
-        from fim_one.web.models import Workflow
+        from fim_one.db.models import Workflow
 
         from sqlalchemy import select
 
@@ -268,7 +268,7 @@ class WorkflowScheduler:
 
             # Create the run record
             from fim_one.db import create_session
-            from fim_one.web.models import WorkflowRun
+            from fim_one.db.models import WorkflowRun
 
             try:
                 async with create_session() as db:

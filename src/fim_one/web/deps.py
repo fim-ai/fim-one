@@ -437,7 +437,7 @@ async def _get_active_group_config(
     Returns None if no group is active.
     """
     from sqlalchemy import select
-    from fim_one.web.models.model_provider import ModelGroup
+    from fim_one.db.models.model_provider import ModelGroup
 
     stmt = select(ModelGroup).where(
         ModelGroup.is_active == True  # noqa: E712
@@ -590,7 +590,7 @@ async def get_llm_by_config_id(
 ) -> OpenAICompatibleLLM | None:
     """Look up a ModelConfig by id and build an LLM instance."""
     from sqlalchemy import select
-    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
 
     stmt = select(ModelConfigORM).where(
         ModelConfigORM.id == config_id,
@@ -624,7 +624,7 @@ async def get_system_default_llm(
     Kept for backward compatibility.
     """
     from sqlalchemy import select
-    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
 
     stmt = (
         select(ModelConfigORM)
@@ -665,7 +665,7 @@ async def get_system_llm_by_role(
     ``None`` if no active config with that role exists.
     """
     from sqlalchemy import select
-    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
 
     stmt = (
         select(ModelConfigORM)
@@ -720,7 +720,7 @@ async def _get_context_budget_for_role(
 ) -> int:
     """Return input token budget for the given role from DB config or ENV."""
     from sqlalchemy import select
-    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
 
     stmt = (
         select(ModelConfigORM)
@@ -747,7 +747,7 @@ async def get_effective_context_budget(db: "AsyncSession") -> int:
 async def get_effective_fast_context_budget(db: "AsyncSession") -> int:
     """Input token budget for the fast model: DB role=fast -> role=general -> ENV."""
     from sqlalchemy import select
-    from fim_one.web.models.model_config import ModelConfig as ModelConfigORM
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
 
     for role in ("fast", "general"):
         stmt = (

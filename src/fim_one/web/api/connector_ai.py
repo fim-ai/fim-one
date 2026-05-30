@@ -17,8 +17,8 @@ from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.core.model.structured import structured_llm_call
 from fim_one.web.deps import get_effective_fast_llm
-from fim_one.web.models.connector import Connector, ConnectorAction
-from fim_one.web.models.user import User
+from fim_one.db.models.connector import Connector, ConnectorAction
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse
 from fim_one.web.schemas.connector import (
     AIActionResult,

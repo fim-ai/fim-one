@@ -30,7 +30,7 @@ from fim_one.web.auth import (
     get_current_user,
     hash_refresh_token,
 )
-from fim_one.web.models import User, UserOAuthBinding
+from fim_one.db.models import User, UserOAuthBinding
 from fim_one.web.oauth import (
     OAuthUserInfo,
     build_authorize_url,

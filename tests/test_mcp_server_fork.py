@@ -9,8 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fim_one.db.base import Base
-from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.user import User
+from fim_one.db.models.mcp_server import MCPServer
+from fim_one.db.models.user import User
 from fim_one.web.schemas.mcp_server import MCPServerForkRequest
 
 
@@ -22,7 +22,7 @@ from fim_one.web.schemas.mcp_server import MCPServerForkRequest
 @pytest.fixture()
 async def async_session():
     """Create an in-memory SQLite database with all required tables."""
-    import fim_one.web.models  # noqa: F401
+    import fim_one.db.models  # noqa: F401
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",

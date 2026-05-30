@@ -17,7 +17,7 @@ from fim_one.core.notification.lark_provider import LarkNotificationProvider
 from fim_one.core.notification.slack_provider import SlackNotificationProvider
 from fim_one.core.notification.wecom_provider import WeComNotificationProvider
 from fim_one.web.auth import get_current_admin, get_current_user
-from fim_one.web.models.user import User
+from fim_one.db.models.user import User
 from fim_one.web.schemas.notification import (
     NotificationProviderInfo,
     NotificationSendRequest,

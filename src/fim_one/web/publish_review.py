@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models.organization import Organization
+from fim_one.db.models.organization import Organization
 from fim_one.web.platform import is_market_org
 
 _REVIEW_COLUMN_MAP = {

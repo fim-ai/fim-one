@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import User
-from fim_one.web.models.eval import EvalCaseResult, EvalDataset, EvalRun
+from fim_one.db.models import User
+from fim_one.db.models.eval import EvalCaseResult, EvalDataset, EvalRun
 from fim_one.web.schemas.common import PaginatedResponse
 
 from fim_one.web.api.admin_utils import write_audit
@@ -91,7 +91,7 @@ async def list_eval_datasets(
 ) -> PaginatedResponse:
     """List all eval datasets across all users. Requires admin privileges."""
     # Subquery: case count per dataset
-    from fim_one.web.models.eval import EvalCase
+    from fim_one.db.models.eval import EvalCase
 
     case_count_sub = (
         select(

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from fim_one.core.security.connector_credentials import resolve_connector_credentials
 from fim_one.core.security.encryption import encrypt_credential
 from fim_one.db.base import Base
-from fim_one.web.models.connector_credential import ConnectorCredential
+from fim_one.db.models.connector_credential import ConnectorCredential
 
 
 @pytest.fixture(autouse=True)

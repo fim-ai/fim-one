@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from fim_one.db.base import Base
 from fim_one.web.api.chat import _resolve_vision_llm
-from fim_one.web.models.model_provider import (
+from fim_one.db.models.model_provider import (
     ModelGroup,
     ModelProvider,
     ModelProviderModel,

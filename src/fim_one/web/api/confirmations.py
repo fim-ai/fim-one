@@ -30,10 +30,10 @@ from typing import cast as _cast
 
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.channel import ConfirmationRequest
-from fim_one.web.models.organization import OrgMembership
-from fim_one.web.models.user import User
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.channel import ConfirmationRequest
+from fim_one.db.models.organization import OrgMembership
+from fim_one.db.models.user import User
 
 logger = logging.getLogger(__name__)
 

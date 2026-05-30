@@ -34,10 +34,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
 from fim_one.web.app import create_app
-from fim_one.web.models import BillingPlan, SystemSetting, User
+from fim_one.db.models import BillingPlan, SystemSetting, User
 from fim_one.web.services.billing_flag import (
     SETTING_BILLING_ENABLED,
     SETTING_DEFAULT_PLAN_ID,

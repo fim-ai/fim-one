@@ -18,8 +18,8 @@ from sqlalchemy.orm import selectinload
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models.connector import Connector, ConnectorAction
-from fim_one.web.models.user import User
+from fim_one.db.models.connector import Connector, ConnectorAction
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse
 
 logger = logging.getLogger(__name__)

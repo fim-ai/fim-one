@@ -10,8 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from fim_one.db.base import Base
-from fim_one.web.models.workflow import Workflow
-from fim_one.web.models.user import User
+from fim_one.db.models.workflow import Workflow
+from fim_one.db.models.user import User
 from fim_one.web.schemas.workflow import WorkflowForkRequest
 
 
@@ -59,7 +59,7 @@ SAMPLE_INPUT_SCHEMA = {
 @pytest.fixture()
 async def async_session():
     """Create an in-memory SQLite database with all required tables."""
-    import fim_one.web.models  # noqa: F401
+    import fim_one.db.models  # noqa: F401
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import (
+from fim_one.db.models import (
     ApiKey,
     ConnectorCredential,
     LoginHistory,
@@ -27,10 +27,10 @@ from fim_one.web.models import (
     ResourceSubscription,
     User,
 )
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.conversation import Conversation
-from fim_one.web.models.mcp_server import MCPServer
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.conversation import Conversation
+from fim_one.db.models.mcp_server import MCPServer
 from fim_one.web.services.quota_enforcer import get_user_quota_by_id
 from fim_one.web.schemas.user_settings import (
     AgentUsage,
@@ -518,9 +518,9 @@ async def _resolve_resource_name(
     """Best-effort lookup of a subscription's resource name."""
     from typing import Any
 
-    from fim_one.web.models.connector import Connector
-    from fim_one.web.models.knowledge_base import KnowledgeBase
-    from fim_one.web.models.mcp_server import MCPServer
+    from fim_one.db.models.connector import Connector
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+    from fim_one.db.models.mcp_server import MCPServer
 
     model_map: dict[str, Any] = {
         "agent": Agent,

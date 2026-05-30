@@ -31,7 +31,7 @@ class _AgentBuilderBase(BaseTool, ABC):
         return "agent_builder"
 
     async def _get_agent(self, db: Any) -> Any:
-        from fim_one.web.models.agent import Agent
+        from fim_one.db.models.agent import Agent
 
         result = await db.execute(
             select(Agent).where(
@@ -189,7 +189,7 @@ class AgentListConnectorsTool(_AgentBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
         from sqlalchemy.orm import selectinload
 
         async with create_session() as db:
@@ -258,7 +258,7 @@ class AgentAddConnectorTool(_AgentBuilderBase):
 
     async def run(self, **kwargs: Any) -> str:
         from fim_one.db import create_session
-        from fim_one.web.models.connector import Connector
+        from fim_one.db.models.connector import Connector
 
         connector_id: str = kwargs["connector_id"]
 

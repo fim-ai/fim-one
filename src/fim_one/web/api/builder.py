@@ -12,9 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import Agent
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.user import User
+from fim_one.db.models import Agent
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse
 
 router = APIRouter(prefix="/api/builder", tags=["builder"])

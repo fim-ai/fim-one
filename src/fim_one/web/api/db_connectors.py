@@ -27,9 +27,9 @@ from fim_one.core.tool.connector.database.safety import SqlSafetyError, validate
 from fim_one.db import create_session, get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.database_schema import DatabaseSchema, SchemaColumn
-from fim_one.web.models.user import User
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.database_schema import DatabaseSchema, SchemaColumn
+from fim_one.db.models.user import User
 from fim_one.web.schemas.common import ApiResponse
 from fim_one.web.schemas.db_connector import (
     AiAnnotateJobResponse,

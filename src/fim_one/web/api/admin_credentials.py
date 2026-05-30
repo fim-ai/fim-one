@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import Connector, MCPServer as MCPServerModel, User
-from fim_one.web.models.connector_credential import ConnectorCredential
-from fim_one.web.models.mcp_server_credential import MCPServerCredential
+from fim_one.db.models import Connector, MCPServer as MCPServerModel, User
+from fim_one.db.models.connector_credential import ConnectorCredential
+from fim_one.db.models.mcp_server_credential import MCPServerCredential
 from fim_one.web.schemas.common import PaginatedResponse
 
 from fim_one.web.api.admin_utils import write_audit

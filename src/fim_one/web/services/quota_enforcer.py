@@ -40,7 +40,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models import BillingPlan, SystemSetting, User
+from fim_one.db.models import BillingPlan, SystemSetting, User
 from fim_one.web.services.billing_flag import is_billing_enabled
 
 logger = logging.getLogger(__name__)

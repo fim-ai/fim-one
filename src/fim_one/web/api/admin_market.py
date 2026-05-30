@@ -14,13 +14,13 @@ from fim_one.db import get_session
 from fim_one.web.api.admin_utils import write_audit
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import User
-from fim_one.web.models.agent import Agent
-from fim_one.web.models.connector import Connector
-from fim_one.web.models.knowledge_base import KnowledgeBase
-from fim_one.web.models.mcp_server import MCPServer
-from fim_one.web.models.skill import Skill
-from fim_one.web.models.workflow import Workflow
+from fim_one.db.models import User
+from fim_one.db.models.agent import Agent
+from fim_one.db.models.connector import Connector
+from fim_one.db.models.knowledge_base import KnowledgeBase
+from fim_one.db.models.mcp_server import MCPServer
+from fim_one.db.models.skill import Skill
+from fim_one.db.models.workflow import Workflow
 from fim_one.web.platform import MARKET_ORG_ID, ensure_market_org
 from fim_one.web.solution_seeds import import_solution_templates
 

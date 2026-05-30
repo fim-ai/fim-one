@@ -47,7 +47,7 @@ async def init_db() -> None:
     global _engine, _session_factory
 
     # Import all models so Base.metadata is fully populated.
-    import fim_one.web.models  # noqa: F401
+    import fim_one.db.models  # noqa: F401
 
     url = _get_database_url()
     logger.info("Initializing database: %s", url.split("@")[-1] if "@" in url else url)

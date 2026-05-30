@@ -20,7 +20,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import fim_one.web.models  # noqa: F401 — register all models with metadata
+import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
 from fim_one.web.api.auth import _create_2fa_temp_token
 from fim_one.web.api.chat import _resolve_user
@@ -33,7 +33,7 @@ from fim_one.web.auth import (
     get_current_user_optional,
 )
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import User
+from fim_one.db.models import User
 
 
 def _creds(token: str) -> HTTPAuthorizationCredentials:

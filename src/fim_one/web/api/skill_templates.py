@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import User
-from fim_one.web.models.skill import Skill
+from fim_one.db.models import User
+from fim_one.db.models.skill import Skill
 from fim_one.web.schemas.common import ApiResponse
 
 router = APIRouter(prefix="/api/skill-templates", tags=["skill-templates"])

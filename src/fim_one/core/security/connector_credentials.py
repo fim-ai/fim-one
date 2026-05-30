@@ -69,7 +69,7 @@ async def resolve_connector_credentials(
     """
     # Local import to avoid a cycle at module import time — the ORM model
     # module transitively imports fim_one.db which pulls in settings.
-    from fim_one.web.models.connector_credential import ConnectorCredential
+    from fim_one.db.models.connector_credential import ConnectorCredential
 
     if calling_user_id:
         row = (

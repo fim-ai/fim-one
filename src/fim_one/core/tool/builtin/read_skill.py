@@ -65,7 +65,7 @@ class ReadSkillTool(BaseTool):
             return "[Error] name is required"
 
         from fim_one.db import create_session
-        from fim_one.web.models.skill import Skill
+        from fim_one.db.models.skill import Skill
         from sqlalchemy import select
 
         try:

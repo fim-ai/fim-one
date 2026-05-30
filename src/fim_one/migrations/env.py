@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from fim_one.db.base import Base
 
 # Import all models so Base.metadata is fully populated for autogenerate
-import fim_one.web.models  # noqa: F401
+import fim_one.db.models  # noqa: F401
 
 config = context.config
 

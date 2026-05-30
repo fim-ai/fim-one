@@ -370,7 +370,7 @@ class FeishuGateHook(PreToolUseHook):
     async def _load_agent(
         self, session: AsyncSession, agent_id: str
     ) -> Any:
-        from fim_one.web.models.agent import Agent
+        from fim_one.db.models.agent import Agent
 
         stmt = select(Agent).where(Agent.id == agent_id).limit(1)
         result = await session.execute(stmt)
@@ -394,7 +394,7 @@ class FeishuGateHook(PreToolUseHook):
 
         Returns ``None`` if nothing resolvable.
         """
-        from fim_one.web.models.channel import Channel
+        from fim_one.db.models.channel import Channel
 
         # 1. Explicit approval channel.
         approval_id = getattr(agent_row, "approval_channel_id", None)
@@ -472,7 +472,7 @@ class FeishuGateHook(PreToolUseHook):
         channel_id: str | None,
         mode: str,
     ) -> Any:
-        from fim_one.web.models.channel import ConfirmationRequest
+        from fim_one.db.models.channel import ConfirmationRequest
 
         approver_scope = str(
             getattr(agent_row, "confirmation_approver_scope", "initiator")
@@ -530,7 +530,7 @@ class FeishuGateHook(PreToolUseHook):
 
     async def _await_decision(self, confirmation_id: str) -> str | None:
         """Poll the ``confirmation_requests`` row until terminal."""
-        from fim_one.web.models.channel import ConfirmationRequest
+        from fim_one.db.models.channel import ConfirmationRequest
 
         deadline = asyncio.get_event_loop().time() + self._timeout_seconds
         while True:
@@ -551,7 +551,7 @@ class FeishuGateHook(PreToolUseHook):
             await asyncio.sleep(self._poll_interval_seconds)
 
     async def _mark_expired(self, confirmation_id: str) -> None:
-        from fim_one.web.models.channel import ConfirmationRequest
+        from fim_one.db.models.channel import ConfirmationRequest
 
         try:
             async with self._session_factory() as session:

@@ -36,7 +36,7 @@ from fim_one.core.memory.db import (
 )
 from fim_one.core.model.types import ChatMessage, ToolCallRequest
 from fim_one.db.base import Base
-from fim_one.web.models import Conversation, Message, User
+from fim_one.db.models import Conversation, Message, User
 
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"

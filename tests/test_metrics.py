@@ -20,7 +20,7 @@ from sqlalchemy.orm import sessionmaker
 
 from fim_one.db.base import Base
 from fim_one.web.app import create_app
-from fim_one.web.models import (
+from fim_one.db.models import (
     Connector,
     ConnectorCallLog,
     Conversation,

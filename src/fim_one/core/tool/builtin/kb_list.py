@@ -58,7 +58,7 @@ class KBListTool(BaseTool):
             from sqlalchemy import select
 
             from fim_one.db import create_session
-            from fim_one.web.models.knowledge_base import KnowledgeBase
+            from fim_one.db.models.knowledge_base import KnowledgeBase
 
             async with create_session() as session:
                 result = await session.execute(

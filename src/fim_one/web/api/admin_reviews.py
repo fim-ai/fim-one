@@ -15,10 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_admin
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import Agent, Connector, KnowledgeBase, MCPServer as MCPServerModel, Organization, User
-from fim_one.web.models.skill import Skill
-from fim_one.web.models.workflow import Workflow
-from fim_one.web.models.review_log import ReviewLog
+from fim_one.db.models import Agent, Connector, KnowledgeBase, MCPServer as MCPServerModel, Organization, User
+from fim_one.db.models.skill import Skill
+from fim_one.db.models.workflow import Workflow
+from fim_one.db.models.review_log import ReviewLog
 from fim_one.web.schemas.common import ApiResponse
 
 from fim_one.web.api.admin_utils import write_audit

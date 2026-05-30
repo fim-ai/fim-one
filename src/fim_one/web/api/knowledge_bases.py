@@ -22,8 +22,8 @@ from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.exceptions import AppError
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.web.deps import get_embedding, get_kb_manager
-from fim_one.web.models import KBDocument, KnowledgeBase, User
-from fim_one.web.models.resource_subscription import ResourceSubscription
+from fim_one.db.models import KBDocument, KnowledgeBase, User
+from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.knowledge_base import (
     ChunkResponse,

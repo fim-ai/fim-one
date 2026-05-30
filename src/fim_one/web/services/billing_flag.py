@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
 from fim_one.web.config import settings
-from fim_one.web.models import BillingPlan, SystemSetting, User
+from fim_one.db.models import BillingPlan, SystemSetting, User
 
 logger = logging.getLogger(__name__)
 

@@ -22,7 +22,7 @@ from sqlalchemy.orm import selectinload
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.models import Conversation, Message, User
+from fim_one.db.models import Conversation, Message, User
 
 router = APIRouter(prefix="/api/conversations", tags=["export"])
 logger = logging.getLogger(__name__)

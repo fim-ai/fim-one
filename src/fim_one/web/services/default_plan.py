@@ -24,7 +24,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.web.models import BillingPlan, SystemSetting
+from fim_one.db.models import BillingPlan, SystemSetting
 
 logger = logging.getLogger(__name__)
 
