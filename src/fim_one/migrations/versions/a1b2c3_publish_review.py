@@ -72,7 +72,11 @@ def upgrade() -> None:
         if not table_has_column(bind, table_name, "reviewed_at"):
             op.add_column(
                 table_name,
-                sa.Column("reviewed_at", sa.DateTime, nullable=True),
+                # timezone=True: ORM writes tz-aware datetimes (datetime.now(UTC)),
+                # which asyncpg rejects against a naive TIMESTAMP column on PG.
+                # New deployments create it correctly here; existing PG databases
+                # are repaired by the m5o7q9s1u234 re-scan migration.
+                sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
             )
 
         if not table_has_column(bind, table_name, "review_note"):

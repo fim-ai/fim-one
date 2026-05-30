@@ -86,6 +86,7 @@ Dev = SQLite, prod = PG. One migration set for both. `start.sh` runs `alembic up
 - **Idempotent**: use `table_exists()` / `table_has_column()` / `index_exists()` from `fim_one.migrations.helpers`.
 - **Boolean defaults**: `server_default=sa.text("FALSE")`/`"TRUE"` — never `"0"`/`"1"` (PG rejects). Same for ORM model `server_default`.
 - **Integer default**: `server_default="0"` OK. **Timestamp**: `sa.text('(CURRENT_TIMESTAMP)')` OK.
+- **Timestamp columns MUST be `sa.DateTime(timezone=True)`** in BOTH the ORM model and the migration. The ORM writes tz-aware `datetime.now(UTC)`, which asyncpg rejects against a naive PG column — SQLite hides this, so it's a latent PG-only 500. A one-time scan (`l2n4p6r8t901`) already converted all columns that existed then; any new naive timestamp column re-introduces the bug (ref: `m5o7q9s1u234`).
 - **JSON**: SQLite `json_extract(col, '$.key')` vs PG `col::json->>'key'`. Check `bind.dialect.name` in data migrations (ref: `b2d4e6f8a901`).
 - **SQLite ALTER COLUMN**: use `op.batch_alter_table()` (SQLite can't ALTER).
 - **Auto-apply**: after writing migration in main worktree (NOT agent worktree), immediately `uv run alembic upgrade head`.
