@@ -416,6 +416,7 @@ def _create_jwt(user_id: str) -> str:
 
     payload = {
         "sub": user_id,
+        "type": "access",
         "exp": datetime.now(UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)

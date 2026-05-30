@@ -627,6 +627,14 @@ async def _resolve_user(
     except pyjwt.InvalidTokenError:
         raise AppError("invalid_token", status_code=401)
 
+    # Token-type confinement: the SSE endpoints accept either a normal access
+    # token (Authorization header) or a short-lived sse_ticket (query param).
+    # Every other token type (refresh / bind_ticket / oauth_state / 2fa temp
+    # token) shares the signing key and carries "sub", so without this check it
+    # could be replayed here as an access token.
+    if payload.get("type") not in ("access", "sse_ticket"):
+        raise AppError("invalid_token_type", status_code=401)
+
     # SSE ticket or normal access token — both have "sub" as user_id
     user_id: str | None = payload.get("sub")
     if not user_id:

@@ -323,6 +323,17 @@ async def get_current_user(
 
     # JWT authentication
     payload = decode_token(token)
+    # Token-type confinement: only genuine access tokens authenticate API
+    # requests. Refresh tokens, SSE/bind tickets and the 2FA temp token are all
+    # signed with the same key and carry a "sub", so without this check any of
+    # them could be replayed as an access token — most critically the 2FA temp
+    # token, which would bypass the second factor entirely. Mirrors the explicit
+    # type assertion in the /refresh endpoint.
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
     user_id: str | None = payload.get("sub")
     if user_id is None:
         raise HTTPException(
@@ -383,6 +394,10 @@ async def get_current_user_optional(
     try:
         payload = decode_token(token)
     except HTTPException:
+        return None
+    # Token-type confinement (see get_current_user) — only access tokens may
+    # authenticate; any other token type is treated as anonymous.
+    if payload.get("type") != "access":
         return None
     user_id: str | None = payload.get("sub")
     if user_id is None:
