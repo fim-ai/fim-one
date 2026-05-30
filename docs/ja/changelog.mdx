@@ -10,6 +10,11 @@ description: "FIM Oneへの全ての注目すべき変更。"
 
 ## [未リリース]
 
+### セキュリティ
+
+- **二要素認証のバイパスを修正しました。** API およびチャット/SSE 認証は、正規のアクセストークンを必須とするようになりました（SSE ストリーミングは短命のチケットも受け入れます）。2FA テンポラリトークン、リフレッシュトークン、バインド/SSE チケット——すべて同じキーで署名されています——は認証に再利用できなくなったため、盗まれたパスワードだけでは二要素認証をスキップできなくなりました。
+- **OAuth ログインは、未検証のメールアドレスで既存アカウントに自動リンクされなくなりました。** サードパーティアカウントはプロバイダーがメールアドレスを検証済みとマークした場合にのみ、ローカルアカウントとメールアドレスで照合されるため、攻撃者が制御する未検証のアドレスを使用したアカウント乗っ取りを防ぎます。
+
 ### Added
 
 - **`file_ops.apply_patch` — V4A形式のdiffパッチをファイルに適用します。** エージェントが行ベースのハンクとファジーな空白マッチングを使用して複数行の編集を行うことができます。既存の`find_replace`を補完し、完全な部分文字列マッチが脆弱な場合に対応します。
@@ -36,20 +41,22 @@ description: "FIM Oneへの全ての注目すべき変更。"
 - **翻訳の権限がロケール別ファイルから単一の用語集に移行しました。** ルールは [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) に存在し、すべての LLM 翻訳呼び出し（JSON、MDX、README）に読み込まれます。pre-commit フックは生成されたロケールファイルへの手動編集を無条件に拒否します。誤訳を修正するには、用語集を編集して `--force` で再生成してください。
 - **ライセンサーと準拠法。** FIM One Source Available License は **FIM Labs Pte. Ltd.**（シンガポール）により付与されるようになりました。準拠法は中国から シンガポール に移行し、紛争は シンガポール の SIAC 仲裁に提出されます（仲裁人 1 名、英語）。新しいトップレベルの `NOTICE` ファイルは、R&D 帰属、商標、およびサードパーティコンポーネントポリシーを記録します。許可された使用または制限条件に変更はありません。
 
-### Fixed
+### 修正
 
-- **Browser tab title now reflects the active sub-tab in `/settings` and `/admin`** (e.g. `Settings · Billing — FIM One`)、複数のピン留めタブが区別可能になりました。
-- **Usage page no longer reports "Unlimited" when an admin has set a default token quota** — 統一されたクォータチェーン（ユーザー単位のオーバーライド → プラン階層 → システムデフォルト）を通じて解決されるようになりました。
-- **Agent settings: bound resources no longer flicker as "(已删除)" on entry.** Orphan badge はインベントリフェッチが落ち着くまで待機してからレンダリングされます。
-- **Toasts now follow the light/dark theme** ハードコードされたダークテーマではなくなりました。
-- **Usage by-agent breakdown no longer duplicates "Direct Chat" rows** 削除されたエージェントに関連付けられた会話の場合。
-- **Self-hosted `./deploy.sh` no longer fails with `container name already in use`** — `docker compose up` の前にハッシュプレフィックス付きのゾンビコンテナと DooD サンドボックス子プロセスをクリーンアップします。
-- **No more redundant `chore(i18n): sync translations` commits after pushes** — pre-commit 翻訳フックが翻訳されたファイルと一緒に `.translation-cache.json` をステージングするようになりました。
-- **Agent chat no longer crashes when a confirmation-required tool runs in an unbound-agent session** — ルーティング対象のエージェントがない場合、ゲートは適切に終了します。
-- **Retry no longer fails on strict-alternation providers (Claude) when history contains orphan user messages from stopped turns** — 同じロールの連続メッセージはディスパッチ前に単一のターンに折りたたまれます。
-- **Playground retry no longer briefly shows the query twice** ストリーム前のウィンドウ中に。
-- **ReAct agent now acknowledges and stops after an operator rejects an approval request**, パラフレーズされたツール呼び出しを再試行する代わりに。
-- **Playground "Suggested follow-ups" returns and is now opt-in per agent** （デフォルトはオフ；エージェント設定の新しい `Follow-up Suggestions` トグル）。
+- **管理员对智能体、连接器、知识库和MCP服务器的批准/拒绝在PostgreSQL上不再失败。** publish-review `reviewed_at` 列现在支持时区，因此在PG上的批准写入成功（该bug在SQLite开发数据库上不可见）。
+- **OAuth用户可以再次刷新其会话。** OAuth颁发的刷新令牌以刷新端点无法匹配的形式存储，导致访问令牌过期后必须重新登录；现在它以与其他路径相同的摘要形式存储。
+- **浏览器标签页标题现在反映`/settings`和`/admin`中的活跃子标签页**（例如`Settings · Billing — FIM One`），因此多个固定标签页可以区分。
+- **使用页面在管理员设置默认令牌配额时不再报告"无限制"** — 现在通过统一的配额链解析（按用户覆盖 → 计划层级 → 系统默认值）。
+- **智能体设置：绑定资源在进入时不再闪烁显示"(已删除)"。** 孤立徽章等待库存获取稳定后再渲染。
+- **Toast通知现在遵循浅色/深色主题**，而不是硬编码为深色。
+- **按智能体的使用情况明细不再为与已删除智能体关联的对话重复显示"直接聊天"行。**
+- **自托管`./deploy.sh`不再因`container name already in use`而失败** — 在`docker compose up`之前清理哈希前缀的僵尸容器和DooD沙箱子进程。
+- **推送后不再出现冗余的`chore(i18n): sync translations`提交** — 预提交翻译钩子现在与翻译文件一起暂存`.translation-cache.json`。
+- **当确认必需的工具在未绑定智能体的会话中运行时，智能体聊天不再崩溃** — 当没有智能体可路由时，闸门优雅地退出。
+- **当历史记录包含来自已停止轮次的孤立用户消息时，重试不再在严格交替提供商（Claude）上失败** — 相同角色的连续消息在分派前折叠为单个轮次。
+- **Playground重试在流前窗口期间不再短暂显示查询两次。**
+- **ReAct智能体现在在操作员拒绝批准请求后确认并停止**，而不是重试改述的工具调用。
+- **Playground"建议后续问题"返回并现在按智能体选择加入**（默认关闭；智能体设置中新增`Follow-up Suggestions`切换）。
 
 ## [v0.8.5] - 2026-04-23
 

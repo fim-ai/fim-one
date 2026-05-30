@@ -10,6 +10,11 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Sicherheit
+
+- **Eine Zwei-Faktor-Authentifizierungs-Umgehung wurde geschlossen.** API- und Chat-/SSE-Authentifizierung erfordern nun ein echtes Zugriffstoken (SSE-Streaming akzeptiert auch sein kurzlebiges Ticket); das 2FA-Temp-Token, Refresh-Tokens und Bind-/SSE-Tickets — alle mit demselben Schlüssel signiert — können nicht mehr zur Authentifizierung wiedergegeben werden, sodass ein gestohlenes Passwort allein nicht mehr den zweiten Faktor umgehen kann.
+- **OAuth-Login verknüpft sich nicht mehr automatisch mit einem bestehenden Konto bei einer unverifizierter E-Mail.** Ein Drittanbieter-Konto wird mit einem lokalen Konto nur dann per E-Mail abgeglichen, wenn der Anbieter diese E-Mail als verifiziert kennzeichnet, was eine Übernahme über eine von einem Angreifer kontrollierte unverifizierte Adresse verhindert.
+
 ### Added
 
 - **`file_ops.apply_patch` — apply V4A-format diff patches to files.** Lets agents make multi-line edits with line-based hunks and fuzzy whitespace matching, complementing the existing `find_replace` for cases where exact substring match is brittle.
@@ -38,18 +43,20 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Der Browser-Tab-Titel spiegelt nun den aktiven Sub-Tab in `/settings` und `/admin` wider** (z. B. `Settings · Billing — FIM One`), sodass mehrere angeheftete Tabs unterscheidbar sind.
-- **Die Nutzungsseite meldet nicht mehr "Unlimited", wenn ein Administrator ein Standard-Token-Kontingent festgelegt hat** — sie wird nun über die einheitliche Kontingentkette aufgelöst (Benutzer-Override → Plan-Tier → Systemstandard).
-- **Agent-Einstellungen: gebundene Ressourcen flackern nicht mehr als "(已删除)" beim Eintritt.** Das Orphan-Badge wartet darauf, dass Bestandsabrufe sich stabilisieren, bevor es gerendert wird.
-- **Toasts folgen nun dem Hell-/Dunkel-Design** statt hartcodiert dunkel zu sein.
-- **Die Nutzungsaufschlüsselung nach Agent dupliziert nicht mehr "Direct Chat"-Zeilen** für Gespräche, die an gelöschte Agenten gebunden sind.
-- **Self-Hosted `./deploy.sh` schlägt nicht mehr mit `container name already in use` fehl** — bereinigt Hash-prefixierte Zombie-Container und DooD-Sandbox-Kinder vor `docker compose up`.
-- **Keine redundanten `chore(i18n): sync translations` Commits mehr nach Pushes** — der Pre-Commit-Übersetzungs-Hook stellt `.translation-cache.json` zusammen mit übersetzten Dateien bereit.
-- **Agent-Chat stürzt nicht mehr ab, wenn ein bestätigungspflichtiges Tool in einer ungebundenen Agent-Sitzung ausgeführt wird** — das Gate weicht elegant aus, wenn es keinen Agent zum Weiterleiten gibt.
-- **Wiederholung schlägt nicht mehr bei Strict-Alternation-Providern (Claude) fehl, wenn der Verlauf verwaiste Benutzernachrichten von gestoppten Turns enthält** — aufeinanderfolgende Nachrichten derselben Rolle werden vor dem Versand zu einem einzelnen Turn zusammengefasst.
-- **Playground-Wiederholung zeigt die Abfrage nicht mehr kurz zweimal** während des Pre-Stream-Fensters.
-- **ReAct-Agent erkennt nun an und stoppt, nachdem ein Operator eine Genehmigungsanfrage ablehnt**, statt umformulierte Tool-Aufrufe erneut zu versuchen.
-- **Playground "Suggested follow-ups" kehrt zurück und ist nun optional pro Agent** (standardmäßig deaktiviert; neuer `Follow-up Suggestions` Toggle in Agent-Einstellungen).
+- **Admin-Genehmigung/Ablehnung von Agenten, Konnektoren, Wissensdatenbanken und MCP-Servern schlägt auf PostgreSQL nicht mehr fehl.** Die Spalte `reviewed_at` in der Publish-Review ist jetzt zeitzonen-bewusst, sodass Genehmigungsschreibvorgänge auf PG erfolgreich sind (der Fehler war in SQLite-Entwicklungsdatenbanken unsichtbar).
+- **OAuth-Benutzer können ihre Sitzung jetzt wieder aktualisieren.** Das von OAuth ausgegebene Aktualisierungstoken wurde in einer Form gespeichert, die der Aktualisierungsendpunkt nie abgleichen konnte, was nach Ablauf des Zugriffstokens zu einer erneuten Anmeldung führte; es wird jetzt wie jeder andere Pfad als Digest gespeichert.
+- **Der Browser-Reiter-Titel spiegelt jetzt den aktiven Unter-Reiter in `/settings` und `/admin` wider** (z. B. `Settings · Billing — FIM One`), sodass mehrere angeheftete Reiter unterscheidbar sind.
+- **Die Nutzungsseite meldet nicht mehr „Unlimited", wenn ein Admin ein Standard-Token-Kontingent festgelegt hat** — sie wird jetzt über die einheitliche Kontingentkette aufgelöst (Benutzer-Override → Plan-Tier → Systemstandard).
+- **Agent-Einstellungen: Gebundene Ressourcen flackern beim Eintritt nicht mehr als „(已删除)"** — das Orphan-Badge wartet, bis sich die Bestandsabrufe stabilisieren, bevor es gerendert wird.
+- **Toasts folgen jetzt dem Hell-/Dunkel-Design** statt hartcodiert dunkel zu sein.
+- **Die Nutzungsaufschlüsselung nach Agent dupliziert nicht mehr „Direct Chat"-Zeilen** für Unterhaltungen, die an gelöschte Agenten gebunden sind.
+- **Self-Hosted `./deploy.sh` schlägt nicht mehr mit `container name already in use` fehl** — bereinigt Hash-Präfix-Zombie-Container und DooD-Sandbox-Kinder vor `docker compose up`.
+- **Keine redundanten `chore(i18n): sync translations`-Commits mehr nach Pushes** — der Pre-Commit-Übersetzungs-Hook stellt `.translation-cache.json` neben übersetzten Dateien bereit.
+- **Agent-Chat stürzt nicht mehr ab, wenn ein genehmigungspflichtiges Tool in einer ungebundenen Agent-Sitzung ausgeführt wird** — das Gate weicht elegant aus, wenn es keinen Agent zum Weiterleiten gibt.
+- **Wiederholung schlägt nicht mehr bei Strict-Alternation-Providern (Claude) fehl, wenn der Verlauf verwaiste Benutzernachrichten aus gestoppten Turns enthält** — Nachrichten mit aufeinanderfolgenden gleichen Rollen werden vor dem Versand in einen einzelnen Turn zusammengefasst.
+- **Playground-Wiederholung zeigt die Abfrage während des Pre-Stream-Fensters nicht mehr kurz zweimal an**.
+- **ReAct-Agent erkennt jetzt an und stoppt, nachdem ein Operator eine Genehmigungsanfrage ablehnt**, statt umformulierte Tool-Aufrufe erneut zu versuchen.
+- **Playground „Suggested follow-ups" kehrt zurück und ist jetzt pro Agent opt-in** (Standard aus; neuer Toggle `Follow-up Suggestions` in den Agent-Einstellungen).
 
 ## [v0.8.5] - 2026-04-23
 

@@ -10,6 +10,11 @@ description: "FIM One의 모든 주요 변경 사항."
 
 ## [미출시]
 
+### 보안
+
+- **2단계 인증 우회 문제를 해결했습니다.** API 및 채팅/SSE 인증은 이제 정상적인 액세스 토큰이 필요하며(SSE 스트리밍은 단기 티켓도 허용), 2FA 임시 토큰, 새로고침 토큰, 바인드/SSE 티켓——모두 동일한 키로 서명됨——은 더 이상 인증에 재사용될 수 없으므로, 도용된 비밀번호만으로는 2단계 인증을 건너뛸 수 없습니다.
+- **OAuth 로그인이 더 이상 확인되지 않은 이메일의 기존 계정에 자동으로 연결되지 않습니다.** 제3자 계정은 공급자가 해당 이메일을 확인됨으로 표시할 때만 이메일로 로컬 계정과 일치하므로, 공격자가 제어하는 확인되지 않은 주소를 통한 탈취를 방지합니다.
+
 ### 추가됨
 
 - **`file_ops.apply_patch` — V4A 형식 diff 패치를 파일에 적용합니다.** 에이전트가 라인 기반 청크와 유연한 공백 매칭을 사용하여 여러 줄을 편집할 수 있게 하며, 정확한 부분 문자열 매칭이 취약한 경우를 보완하는 기존 `find_replace`를 보완합니다.
@@ -36,20 +41,22 @@ description: "FIM One의 모든 주요 변경 사항."
 - **번역 권한이 로케일별 파일에서 단일 용어집으로 이동했습니다.** 규칙은 [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md)에 있으며, 모든 LLM 번역 호출(JSON, MDX, README)에 로드됩니다. pre-commit 훅은 생성된 로케일 파일에 대한 수동 편집을 무조건 거부합니다. 번역 오류를 수정하려면 용어집을 편집하고 `--force`로 재생성하세요.
 - **라이선서 및 준거법.** FIM One Source Available License는 이제 **FIM Labs Pte. Ltd.**(싱가포르)에서 부여되며, 준거법은 중국에서 싱가포르로 이동하고, 분쟁은 싱가포르의 SIAC 중재(중재인 1명, 영어)로 진행됩니다. 새로운 최상위 `NOTICE` 파일은 R&D 귀속, 상표 및 제3자 구성 요소 정책을 기록합니다. 허용된 사용 또는 제한 조건에는 변경 사항이 없습니다.
 
-### Fixed
+### 수정됨
 
-- **Browser tab title now reflects the active sub-tab in `/settings` and `/admin`** (e.g. `Settings · Billing — FIM One`), so multiple pinned tabs are distinguishable.
-- **Usage page no longer reports "Unlimited" when an admin has set a default token quota** — it now resolves through the unified quota chain (per-user override → plan tier → system default).
-- **Agent settings: bound resources no longer flicker as "(已删除)" on entry.** Orphan badge waits for inventory fetches to settle before rendering.
-- **Toasts now follow the light/dark theme** instead of being hardcoded to dark.
-- **Usage by-agent breakdown no longer duplicates "Direct Chat" rows** for conversations tied to deleted agents.
-- **Self-hosted `./deploy.sh` no longer fails with `container name already in use`** — sweeps hash-prefixed zombie containers and DooD sandbox children before `docker compose up`.
-- **No more redundant `chore(i18n): sync translations` commits after pushes** — the pre-commit translation hook now stages `.translation-cache.json` alongside translated files.
-- **Agent chat no longer crashes when a confirmation-required tool runs in an unbound-agent session** — the gate bows out gracefully when there's no agent to route for.
-- **Retry no longer fails on strict-alternation providers (Claude) when history contains orphan user messages from stopped turns** — consecutive same-role messages collapse into a single turn before dispatch.
-- **Playground retry no longer briefly shows the query twice** during the pre-stream window.
-- **ReAct agent now acknowledges and stops after an operator rejects an approval request**, instead of retrying paraphrased tool calls.
-- **Playground "Suggested follow-ups" returns and is now opt-in per agent** (default off; new `Follow-up Suggestions` toggle in agent settings).
+- **관리자의 에이전트, 커넥터, 지식 베이스 및 MCP 서버 승인/거부가 PostgreSQL에서 더 이상 실패하지 않습니다.** publish-review `reviewed_at` 열이 이제 타임존을 인식하므로 PG에서 승인 쓰기가 성공합니다(버그는 SQLite 개발 데이터베이스에서는 보이지 않았습니다).
+- **OAuth 사용자가 다시 세션을 새로고칠 수 있습니다.** OAuth에서 발급한 새로고침 토큰이 새로고침 엔드포인트가 일치시킬 수 없는 형식으로 저장되어 액세스 토큰이 만료되면 다시 로그인을 강제했습니다. 이제 다른 모든 경로처럼 다이제스트로 저장됩니다.
+- **브라우저 탭 제목이 이제 `/settings` 및 `/admin`의 활성 하위 탭을 반영합니다**(예: `Settings · Billing — FIM One`). 따라서 여러 고정 탭을 구분할 수 있습니다.
+- **사용량 페이지가 관리자가 기본 토큰 할당량을 설정했을 때 더 이상 "무제한"을 보고하지 않습니다** — 이제 통합 할당량 체인(사용자별 재정의 → 플랜 계층 → 시스템 기본값)을 통해 해결됩니다.
+- **에이전트 설정: 바인딩된 리소스가 진입 시 "(已删除)"로 더 이상 깜빡이지 않습니다.** 고아 배지는 인벤토리 가져오기가 안정화될 때까지 렌더링을 기다립니다.
+- **토스트가 이제 라이트/다크 테마를 따릅니다** 하드코딩된 다크 대신.
+- **에이전트별 사용량 분석이 더 이상 삭제된 에이전트와 연결된 대화에 대해 "Direct Chat" 행을 중복하지 않습니다.**
+- **자체 호스팅 `./deploy.sh`가 더 이상 `container name already in use`로 실패하지 않습니다** — `docker compose up` 전에 해시 접두사가 있는 좀비 컨테이너와 DooD 샌드박스 자식을 정리합니다.
+- **푸시 후 중복된 `chore(i18n): sync translations` 커밋이 더 이상 없습니다** — 사전 커밋 번역 훅이 이제 번역된 파일과 함께 `.translation-cache.json`을 스테이징합니다.
+- **에이전트 채팅이 더 이상 확인 필수 도구가 바인딩되지 않은 에이전트 세션에서 실행될 때 충돌하지 않습니다** — 게이트는 라우팅할 에이전트가 없을 때 우아하게 빠져나갑니다.
+- **재시도가 더 이상 엄격한 교대 제공자(Claude)에서 중단된 턴의 고아 사용자 메시지를 포함하는 히스토리에서 실패하지 않습니다** — 동일한 역할의 연속 메시지가 디스패치 전에 단일 턴으로 축소됩니다.
+- **연습장 재시도가 더 이상 사전 스트림 윈도우 중에 쿼리를 두 번 표시하지 않습니다.**
+- **ReAct 에이전트가 이제 운영자가 승인 요청을 거부한 후 승인을 인정하고 중지합니다**, 다시 표현된 도구 호출을 재시도하는 대신.
+- **연습장 "제안된 후속 질문"이 반환되고 이제 에이전트별로 옵트인입니다**(기본값 해제; 에이전트 설정의 새로운 `Follow-up Suggestions` 토글).
 
 ## [v0.8.5] - 2026-04-23
 

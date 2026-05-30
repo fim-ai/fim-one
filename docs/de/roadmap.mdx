@@ -264,6 +264,12 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 **Ziel**: Produktionsreife Operationen + vier Säulen schließen die Lücke zwischen „Anweisungen, die der Agent möglicherweise befolgt" und „Garantien, die das System durchsetzt" — Trace Layer (sehen, was passiert ist) · Hook System (durchsetzen, was passieren muss) · Agent Workspace (persistente Dateien + Handoff) · IM Channel (Agents leben dort, wo Benutzer arbeiten).
 
+#### Auth & Security Hardening
+
+- [x] **JWT token-type confinement** — auth/SSE endpoints accept only genuine access tokens (plus SSE tickets for streaming), closing a 2FA bypass where any same-signed token authenticated
+- [x] **OAuth account-takeover & session fixes** — email auto-link requires a provider-verified email; OAuth refresh tokens stored hashed so session rotation works
+- [x] **PostgreSQL timezone-aware timestamps** — publish-review approval no longer 500s on PG; CI mypy gate + a tz-aware-column rule guard against recurrence
+
 #### Connector + Tooling
 
 - [ ] **Connector Progressive Disclosure Phase 3-4** — unified `ConnectorExecutor` (API/DB/MCP); `jsonschema` action validation; protocol-agnostic discover/execute

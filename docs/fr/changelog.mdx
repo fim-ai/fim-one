@@ -10,6 +10,11 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Non publié]
 
+### Sécurité
+
+- **Correction d'une faille d'authentification à deux facteurs.** L'authentification API et chat/SSE nécessite désormais un véritable jeton d'accès (la diffusion SSE accepte également son ticket à courte durée de vie) ; le jeton temporaire 2FA, les jetons d'actualisation et les tickets de liaison/SSE — tous signés avec la même clé — ne peuvent plus être rejoués pour s'authentifier, donc un mot de passe volé seul ne peut plus contourner le second facteur.
+- **La connexion OAuth ne lie plus automatiquement à un compte existant sur une adresse e-mail non vérifiée.** Un compte tiers n'est associé à un compte local par e-mail que lorsque le fournisseur marque cet e-mail comme vérifié, ce qui empêche la prise de contrôle via une adresse non vérifiée contrôlée par un attaquant.
+
 ### Ajouté
 
 - **`file_ops.apply_patch` — appliquer des correctifs au format V4A aux fichiers.** Permet aux agents d'effectuer des modifications multi-lignes avec des sections basées sur les lignes et une correspondance floue des espaces, complétant le `find_replace` existant pour les cas où la correspondance exacte de sous-chaîne est fragile.
@@ -38,18 +43,20 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Corrections
 
-- **Le titre de l'onglet du navigateur reflète désormais le sous-onglet actif dans `/settings` et `/admin`** (par exemple `Settings · Billing — FIM One`), de sorte que plusieurs onglets épinglés sont distinguables.
-- **La page d'utilisation ne signale plus "Unlimited" quand un administrateur a défini un quota de jetons par défaut** — elle se résout désormais via la chaîne de quota unifiée (remplacement par utilisateur → niveau de plan → défaut système).
-- **Paramètres de l'agent : les ressources liées ne scintillent plus en tant que "(已删除)" à l'entrée.** Le badge orphelin attend que les récupérations d'inventaire se stabilisent avant le rendu.
-- **Les toasts suivent désormais le thème clair/sombre** au lieu d'être codés en dur en sombre.
-- **La ventilation par agent de l'utilisation ne duplique plus les lignes "Direct Chat"** pour les conversations liées à des agents supprimés.
-- **Le `./deploy.sh` auto-hébergé ne échoue plus avec `container name already in use`** — il nettoie les conteneurs zombies préfixés par un hash et les enfants du sandbox DooD avant `docker compose up`.
-- **Plus de commits `chore(i18n): sync translations` redondants après les poussées** — le hook de traduction pré-commit met désormais en scène `.translation-cache.json` aux côtés des fichiers traduits.
-- **Le chat de l'agent ne plante plus quand un outil nécessitant une confirmation s'exécute dans une session d'agent non lié** — la porte se ferme gracieusement quand il n'y a pas d'agent pour router.
-- **La réessai ne échoue plus sur les fournisseurs à alternance stricte (Claude) quand l'historique contient des messages utilisateur orphelins provenant de tours arrêtés** — les messages consécutifs du même rôle s'effondrent en un seul tour avant la dispatch.
-- **La réessai du playground ne montre plus brièvement la requête deux fois** pendant la fenêtre pré-stream.
-- **L'agent ReAct reconnaît désormais et s'arrête après qu'un opérateur rejette une demande d'approbation**, au lieu de réessayer des appels d'outils paraphrasés.
-- **Les "Suggested follow-ups" du playground reviennent et sont désormais opt-in par agent** (désactivé par défaut ; nouveau bouton bascule `Follow-up Suggestions` dans les paramètres de l'agent).
+- **L'approbation/rejet par l'administrateur des agents, connecteurs, bases de connaissances et serveurs MCP ne échoue plus sur PostgreSQL.** La colonne `reviewed_at` de publish-review est désormais sensible au fuseau horaire, de sorte que les écritures d'approbation réussissent sur PG (le bug était invisible sur les bases de données SQLite de développement).
+- **Les utilisateurs OAuth peuvent à nouveau actualiser leur session.** Le jeton d'actualisation émis par OAuth était stocké sous une forme que le point de terminaison d'actualisation ne pouvait jamais faire correspondre, forçant une reconnexion une fois le jeton d'accès expiré ; il est maintenant stocké sous forme de digest comme tous les autres chemins.
+- **Le titre de l'onglet du navigateur reflète maintenant le sous-onglet actif dans `/settings` et `/admin`** (par exemple `Settings · Billing — FIM One`), de sorte que plusieurs onglets épinglés sont distinguables.
+- **La page d'utilisation ne rapporte plus « Unlimited » lorsqu'un administrateur a défini un quota de jetons par défaut** — elle se résout maintenant via la chaîne de quota unifiée (remplacement par utilisateur → niveau de plan → défaut système).
+- **Paramètres de l'agent : les ressources liées ne scintillent plus en tant que « (已删除) » à l'entrée.** Le badge orphelin attend que les récupérations d'inventaire se stabilisent avant le rendu.
+- **Les toasts suivent maintenant le thème clair/sombre** au lieu d'être codés en dur en sombre.
+- **La répartition par agent de la page d'utilisation ne duplique plus les lignes « Direct Chat »** pour les conversations liées à des agents supprimés.
+- **Le `./deploy.sh` auto-hébergé ne échoue plus avec `container name already in use`** — il nettoie les conteneurs zombies préfixés par hash et les enfants du bac à sable DooD avant `docker compose up`.
+- **Plus de commits `chore(i18n): sync translations` redondants après les poussées** — le hook de traduction pré-commit met maintenant en scène `.translation-cache.json` aux côtés des fichiers traduits.
+- **Le chat de l'agent ne plante plus lorsqu'un outil nécessitant une confirmation s'exécute dans une session d'agent non lié** — la porte se retire gracieusement quand il n'y a pas d'agent pour router.
+- **La réessai ne échoue plus sur les fournisseurs d'alternance stricte (Claude) lorsque l'historique contient des messages utilisateur orphelins provenant de tours arrêtés** — les messages de même rôle consécutifs se réduisent en un seul tour avant l'envoi.
+- **La réessai du terrain de jeu ne montre plus brièvement la requête deux fois** pendant la fenêtre pré-flux.
+- **L'agent ReAct reconnaît maintenant et s'arrête après qu'un opérateur rejette une demande d'approbation**, au lieu de réessayer des appels d'outils paraphrasés.
+- **Les « Suggestions de suivi » du terrain de jeu reviennent et sont maintenant opt-in par agent** (désactivé par défaut ; nouveau bouton bascule `Follow-up Suggestions` dans les paramètres de l'agent).
 
 ## [v0.8.5] - 2026-04-23
 

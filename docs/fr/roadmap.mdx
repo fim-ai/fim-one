@@ -264,6 +264,12 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 
 **Objectif** : Opérations de qualité production + quatre piliers comblant l'écart entre « instructions que l'agent pourrait suivre » et « garanties que le système applique » — Couche de traçage (voir ce qui s'est passé) · Système de hooks (appliquer ce qui doit se passer) · Espace de travail de l'agent (fichiers persistants + transfert) · Canal IM (les agents vivent où travaillent les utilisateurs).
 
+#### Auth & Security Hardening
+
+- [x] **JWT token-type confinement** — auth/SSE endpoints accept only genuine access tokens (plus SSE tickets for streaming), closing a 2FA bypass where any same-signed token authenticated
+- [x] **OAuth account-takeover & session fixes** — email auto-link requires a provider-verified email; OAuth refresh tokens stored hashed so session rotation works
+- [x] **PostgreSQL timezone-aware timestamps** — publish-review approval no longer 500s on PG; CI mypy gate + a tz-aware-column rule guard against recurrence
+
 #### Connecteur + outillage
 
 - [ ] **Phase 3-4 de divulgation progressive du connecteur** — `ConnectorExecutor` unifié (API/DB/MCP) ; validation d'action `jsonschema` ; découverte/exécution agnostique du protocole

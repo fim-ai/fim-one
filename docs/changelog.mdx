@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Security
+
+- **Closed a two-factor-authentication bypass.** API and chat/SSE authentication now require a genuine access token (SSE streaming also accepts its short-lived ticket); the 2FA temp token, refresh tokens, and bind/SSE tickets — all signed with the same key — can no longer be replayed to authenticate, so a stolen password alone can no longer skip the second factor.
+- **OAuth login no longer auto-links to an existing account on an unverified email.** A third-party account is matched to a local account by email only when the provider marks that email verified, preventing takeover via an attacker-controlled unverified address.
+
 ### Added
 
 - **`file_ops.apply_patch` — apply V4A-format diff patches to files.** Lets agents make multi-line edits with line-based hunks and fuzzy whitespace matching, complementing the existing `find_replace` for cases where exact substring match is brittle.
@@ -38,6 +43,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Admin approve/reject of agents, connectors, knowledge bases, and MCP servers no longer fails on PostgreSQL.** The publish-review `reviewed_at` column is now timezone-aware, so approval writes succeed on PG (the bug was invisible on SQLite dev databases).
+- **OAuth users can refresh their session again.** The OAuth-issued refresh token was stored in a form the refresh endpoint could never match, forcing a re-login once the access token expired; it is now stored as a digest like every other path.
 - **Browser tab title now reflects the active sub-tab in `/settings` and `/admin`** (e.g. `Settings · Billing — FIM One`), so multiple pinned tabs are distinguishable.
 - **Usage page no longer reports "Unlimited" when an admin has set a default token quota** — it now resolves through the unified quota chain (per-user override → plan tier → system default).
 - **Agent settings: bound resources no longer flicker as "(已删除)" on entry.** Orphan badge waits for inventory fetches to settle before rendering.

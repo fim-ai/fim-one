@@ -263,6 +263,12 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 **Goal**: Production-grade operations + four pillars closing the gap between "instructions the agent might follow" and "guarantees the system enforces" — Trace Layer (see what happened) · Hook System (enforce what must happen) · Agent Workspace (persistent files + handoff) · IM Channel (agents live where users work).
 
+#### Auth & Security Hardening
+
+- [x] **JWT token-type confinement** — auth/SSE endpoints accept only genuine access tokens (plus SSE tickets for streaming), closing a 2FA bypass where any same-signed token authenticated
+- [x] **OAuth account-takeover & session fixes** — email auto-link requires a provider-verified email; OAuth refresh tokens stored hashed so session rotation works
+- [x] **PostgreSQL timezone-aware timestamps** — publish-review approval no longer 500s on PG; CI mypy gate + a tz-aware-column rule guard against recurrence
+
 #### Connector + tooling
 
 - [ ] **Connector Progressive Disclosure Phase 3-4** — unified `ConnectorExecutor` (API/DB/MCP); `jsonschema` action validation; protocol-agnostic discover/execute
