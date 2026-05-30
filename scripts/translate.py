@@ -16,7 +16,8 @@ Environment (read from .env + os.environ):
     FAST_LLM_BASE_URL  → fallback LLM_BASE_URL  → default https://api.openai.com/v1
     FAST_LLM_MODEL     → fallback LLM_MODEL      → default gpt-4o-mini
 
-Git hook mode (GIT_HOOK=1): after translating, runs `git add` on all output files.
+Git hook mode (GIT_HOOK=1): after translating, runs `git add` on all output
+files plus the committed .translation-hashes.json index.
 """
 
 from __future__ import annotations
@@ -64,41 +65,56 @@ def tprint(*args: Any, **kwargs: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Section-based translation cache (thread-safe)
+# Committed EN-section hash index (.translation-hashes.json, KB-sized).
+# Stores ONLY hashes of EN sources — never translations. Used to decide which
+# already-committed translated sections can be reused verbatim.
+#   MDX/README cache_key (e.g. "docs/foo.mdx", "README.md") -> {locale: [en_section_hash, ...]}
+#   JSON cache_key       ("json_hashes/foo.json")          -> {locale: {key: en_value_hash}}
 # ---------------------------------------------------------------------------
 
-_CACHE_PATH = ROOT / ".translation-cache.json"
-_cache: dict | None = None
-_cache_lock = threading.Lock()
+_HASHES_PATH = ROOT / ".translation-hashes.json"
+_hashes: dict | None = None
+_hashes_lock = threading.Lock()
 
 
-def _get_cache() -> dict:
-    global _cache
-    if _cache is None:
+def _get_hashes() -> dict:
+    global _hashes
+    if _hashes is None:
         try:
-            _cache = json.loads(_CACHE_PATH.read_text(encoding="utf-8")) if _CACHE_PATH.exists() else {}
+            _hashes = json.loads(_HASHES_PATH.read_text(encoding="utf-8")) if _HASHES_PATH.exists() else {}
         except Exception:
-            _cache = {}
-    return _cache
+            _hashes = {}
+    return _hashes
 
 
-def _flush_cache() -> None:
-    with _cache_lock:
-        if _cache is not None:
-            _CACHE_PATH.write_text(
-                json.dumps(_cache, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+def _flush_hashes() -> None:
+    with _hashes_lock:
+        if _hashes is not None:
+            _HASHES_PATH.write_text(
+                json.dumps(_hashes, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
             )
 
 
-def _cache_get(cache_key: str, locale: str, h: str) -> str | None:
-    with _cache_lock:
-        return _get_cache().get(cache_key, {}).get(locale, {}).get(h)
+def _hashes_get_sections(cache_key: str, locale: str) -> list[str] | None:
+    with _hashes_lock:
+        v = _get_hashes().get(cache_key, {}).get(locale)
+        return list(v) if isinstance(v, list) else None
 
 
-def _cache_put(cache_key: str, locale: str, updates: dict[str, str]) -> None:
-    with _cache_lock:
-        cache = _get_cache()
-        cache.setdefault(cache_key, {}).setdefault(locale, {}).update(updates)
+def _hashes_put_sections(cache_key: str, locale: str, section_hashes: list[str]) -> None:
+    with _hashes_lock:
+        _get_hashes().setdefault(cache_key, {})[locale] = section_hashes
+
+
+def _hashes_get_json(cache_key: str, locale: str) -> dict[str, str]:
+    with _hashes_lock:
+        return dict(_get_hashes().get(cache_key, {}).get(locale, {}))
+
+
+def _hashes_put_json(cache_key: str, locale: str, updates: dict[str, str]) -> None:
+    with _hashes_lock:
+        _get_hashes().setdefault(cache_key, {}).setdefault(locale, {}).update(updates)
 
 
 def _hash(text: str) -> str:
@@ -528,7 +544,7 @@ _JSON_SYSTEM_PROMPT = (
 def translate_json_file(src_path: Path, locale: str, config: dict[str, str], force: bool = False, batch_size: int = 4000) -> Path | None:
     """Translate a JSON i18n file with full change detection: add, modify, delete.
 
-    Uses .translation-cache.json to store EN source hashes per key.
+    Uses .translation-hashes.json to store EN source hashes per key.
     - Added key: EN key not in target → translate
     - Modified key: EN value hash differs from cached hash → retranslate
     - Deleted key: target key not in EN source → remove from target
@@ -555,9 +571,7 @@ def translate_json_file(src_path: Path, locale: str, config: dict[str, str], for
             pass
 
     # Load cached EN source hashes: {key: hash_of_en_value}
-    with _cache_lock:
-        cache = _get_cache()
-        stored_hashes: dict[str, str] = cache.get(cache_key, {}).get(locale, {})
+    stored_hashes: dict[str, str] = _hashes_get_json(cache_key, locale)
 
     # Classify each key
     to_translate: dict[str, str] = {}  # keys needing (re)translation
@@ -727,7 +741,7 @@ def translate_json_file(src_path: Path, locale: str, config: dict[str, str], for
     successfully_translated_keys = set(existing_flat.keys()) | set(translated.keys())
     new_hashes = {key: _hash(src_flat[key]) for key in successfully_translated_keys if key in src_flat}
     if new_hashes:
-        _cache_put(cache_key, locale, new_hashes)
+        _hashes_put_json(cache_key, locale, new_hashes)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(json.dumps(unflatten_json(merged_flat), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -828,24 +842,42 @@ def _translate_sections(
     inner_workers: int = 5,
     force: bool = False,
     validate_fn: Callable[[str, str], list[str]] | None = None,
+    target_path: Path | None = None,
 ) -> str:
     sections = _split_sections(content)
     hashes = [_hash(s) for s in sections]
+    total = len(sections)
 
-    # Separate cached vs. needs translation
-    # force=True skips cache lookup entirely (used by --all)
+    # Read back the already-committed translation and stored EN hashes (only
+    # when not forcing and the output exists). This is the "output-aware" part:
+    # reuse comes from the committed translated file, not a stored-translation cache.
+    out_sections: list[str] = []
+    stored_hashes: list[str] | None = None
+    if not force and target_path is not None and target_path.exists():
+        try:
+            out_sections = _split_sections(target_path.read_text(encoding="utf-8"))
+        except Exception:
+            out_sections = []
+        stored_hashes = _hashes_get_sections(cache_key, locale)
+    # Reuse is safe only when EN and committed-output section counts align AND
+    # the stored hash count matches. Otherwise degrade to full retranslation
+    # (e.g. a heading was added/removed since last run).
+    aligned = (
+        not force
+        and stored_hashes is not None
+        and len(out_sections) == total
+        and len(stored_hashes) == total
+    )
+
     cached: dict[int, str] = {}
     to_translate: dict[int, str] = {}
     for i, (section, h) in enumerate(zip(sections, hashes)):
-        hit = None if force else _cache_get(cache_key, locale, h)
-        if hit is not None:
-            cached[i] = hit
+        if aligned and stored_hashes is not None and stored_hashes[i] == h:
+            cached[i] = out_sections[i]   # reuse committed translation verbatim
         else:
             to_translate[i] = section
 
     hits = len(cached)
-    total = len(sections)
-    new_translations: dict[str, str] = {}  # hash -> translated (only successful)
     failed_indices: set[int] = set()
 
     if to_translate:
@@ -935,18 +967,21 @@ def _translate_sections(
                 idx, translated = future.result()
                 if translated is not None:
                     results[idx] = translated
-                    new_translations[hashes[idx]] = translated  # cache success only
                 else:
-                    results[idx] = sections[idx]  # fallback to EN, but NOT cached
+                    results[idx] = sections[idx]   # EN fallback
                     failed_indices.add(idx)
-
-        if new_translations:
-            _cache_put(cache_key, locale, new_translations)
         if failed_indices:
-            tprint(f"  [{locale}] {src_path.name}: {len(failed_indices)} section(s) kept EN (not cached — will retry next run)")
+            tprint(f"  [{locale}] {src_path.name}: {len(failed_indices)} section(s) kept EN (will retry next run)")
     else:
-        tprint(f"  [{locale}] {src_path.name}: all {total} sections cached")
+        tprint(f"  [{locale}] {src_path.name}: all {total} sections reused (output-aware)")
         results = dict(cached)
+        failed_indices = set()
+
+    # Persist the positional EN-hash list. For FALLBACK (failed) sections store an
+    # empty-string sentinel ("" never equals a real 16-hex hash) so they retranslate
+    # next run; reused + successfully-translated sections store their real EN hash.
+    new_hash_list = ["" if i in failed_indices else hashes[i] for i in range(total)]
+    _hashes_put_sections(cache_key, locale, new_hash_list)
 
     return "".join(results[i] for i in range(total))
 
@@ -1004,6 +1039,7 @@ def translate_mdx_file(src_path: Path, locale: str, config: dict[str, str], forc
         src_path, content, locale, config, system,
         cache_key=f"docs/{rel}", force=force,
         validate_fn=_validate_mdx_section,
+        target_path=target_path,
     )
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1046,6 +1082,7 @@ def translate_readme_file(src_path: Path, locale: str, config: dict[str, str], f
         src_path, content, locale, config, system,
         cache_key="README.md", force=force,
         validate_fn=_validate_mdx_section,
+        target_path=target_path,
     )
 
     target_path.write_text(translated, encoding="utf-8")
@@ -1093,6 +1130,84 @@ def resolve_explicit_files(file_args: list[str]) -> list[Path]:
     return results
 
 
+def seed_hashes(target_locales: list[str]) -> None:
+    """One-time: populate .translation-hashes.json from EXISTING committed
+    translations, without calling the LLM. Lets the first real incremental run
+    reuse the already-committed outputs instead of retranslating everything.
+
+    For each EN source + locale, record the EN hashes ONLY when a committed
+    translation exists and (for MDX/README) its section count aligns with the
+    EN section count. Misaligned/missing outputs are left unseeded so the first
+    real run safely retranslates just those files.
+    """
+    seeded_json = seeded_mdx = seeded_readme = skipped = 0
+
+    # JSON
+    for src in all_en_json_files():
+        try:
+            src_flat = flatten_json(json.loads(src.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+        cache_key = f"json_hashes/{src.name}"
+        for locale in target_locales:
+            tgt = ROOT / "frontend" / "messages" / locale / src.name
+            if not tgt.exists():
+                continue
+            try:
+                tgt_flat = flatten_json(json.loads(tgt.read_text(encoding="utf-8")))
+            except Exception:
+                continue
+            new_hashes = {k: _hash(v) for k, v in src_flat.items() if k in tgt_flat}
+            if new_hashes:
+                _hashes_put_json(cache_key, locale, new_hashes)
+                seeded_json += 1
+
+    # MDX
+    for src in all_en_mdx_files():
+        try:
+            rel = src.relative_to(ROOT / "docs")
+        except ValueError:
+            continue
+        if str(rel) in _MDX_TRANSLATE_SKIP:
+            continue
+        en_sections = _split_sections(src.read_text(encoding="utf-8"))
+        cache_key = f"docs/{rel}"
+        for locale in target_locales:
+            tgt = ROOT / "docs" / locale / rel
+            if not tgt.exists():
+                continue
+            try:
+                out_sections = _split_sections(tgt.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if len(out_sections) == len(en_sections):
+                _hashes_put_sections(cache_key, locale, [_hash(s) for s in en_sections])
+                seeded_mdx += 1
+            else:
+                skipped += 1
+
+    # README
+    readme_src = ROOT / "README.md"
+    if readme_src.exists():
+        en_sections = _split_sections(readme_src.read_text(encoding="utf-8"))
+        for locale in target_locales:
+            tgt = readme_src.parent / f"README.{locale}.md"
+            if not tgt.exists():
+                continue
+            try:
+                out_sections = _split_sections(tgt.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if len(out_sections) == len(en_sections):
+                _hashes_put_sections("README.md", locale, [_hash(s) for s in en_sections])
+                seeded_readme += 1
+            else:
+                skipped += 1
+
+    print(f"Seeded hashes: {seeded_json} JSON, {seeded_mdx} MDX, {seeded_readme} README "
+          f"({skipped} skipped — count mismatch, will retranslate on first run)")
+
+
 # ---------------------------------------------------------------------------
 # Main entrypoint
 # ---------------------------------------------------------------------------
@@ -1102,6 +1217,7 @@ def main() -> None:
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--all", action="store_true", help="Retranslate ALL EN source files.")
     mode_group.add_argument("--files", nargs="+", metavar="FILE", help="Translate specific files only.")
+    mode_group.add_argument("--seed-hashes", action="store_true", dest="seed_hashes", help="Populate .translation-hashes.json from existing committed translations (no LLM).")
     parser.add_argument("--locale", nargs="+", metavar="LOCALE", help="Override target locale(s).")
     parser.add_argument("--force", action="store_true", help="Force retranslation (JSON: all keys; MDX/README: ignore cache).")
     parser.add_argument("--concurrency", type=int, default=3, help="Max concurrent API calls to the LLM (default: 3).")
@@ -1114,6 +1230,11 @@ def main() -> None:
     target_locales = args.locale or discover_locales()
     if not target_locales:
         print("No target locales found. Create a subdirectory under frontend/messages/ to add one.")
+        sys.exit(0)
+
+    if args.seed_hashes:
+        seed_hashes(target_locales)
+        _flush_hashes()
         sys.exit(0)
 
     config = load_llm_config()
@@ -1189,21 +1310,21 @@ def main() -> None:
     # (fed from docs/nav.template.json + scripts/docs-nav-glossary.json
     # + docs/nav-overrides/*.json). Nothing to do here.
 
-    # Flush cache to disk once at the end
-    _flush_cache()
+    # Flush hash index to disk once at the end
+    _flush_hashes()
 
-    # Git hook mode: stage all output files AND the translation cache.
-    # Forgetting the cache makes CI see stale entries, cache-miss on any
+    # Git hook mode: stage all output files AND the translation hash index.
+    # Forgetting the hash index makes CI see stale entries, miss on any
     # newly-translated section, and re-invoke the LLM — which produces
     # slightly different (nondeterministic) output and triggers a redundant
     # `chore(i18n)` auto-commit from the i18n-sync workflow.
     if git_hook and output_files:
         to_stage = [str(p) for p in output_files]
-        if _CACHE_PATH.exists():
-            to_stage.append(str(_CACHE_PATH))
+        if _HASHES_PATH.exists():
+            to_stage.append(str(_HASHES_PATH))
         try:
             subprocess.run(["git", "add", "--"] + to_stage, check=True, cwd=ROOT)
-            print(f"Staged {len(output_files)} translated file(s) + cache")
+            print(f"Staged {len(output_files)} translated file(s) + hash index")
         except subprocess.CalledProcessError as exc:
             print(f"WARNING: git add failed: {exc}")
     elif output_files:

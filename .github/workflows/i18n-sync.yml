@@ -131,7 +131,7 @@ jobs:
           git config user.name  "fim-one-bot"
           git config user.email "bot@fim.ai"
 
-          git add -A
+          git add docs frontend/messages README.md 'README.*.md' .translation-hashes.json
           git commit -m "chore(i18n): sync translations for ${GITHUB_SHA::8} [skip ci]"
           git push origin HEAD:master
         env:

@@ -37,3 +37,5 @@ data/
 uploads/
 .playwright-mcp/
 dev/
+# Local translation cache (superseded by committed .translation-hashes.json)
+.translation-cache.json
