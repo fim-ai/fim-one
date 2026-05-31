@@ -23,7 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.db import get_session
+from fim_one.db import create_session, get_session
 
 from fim_one.db.models.api_key import ApiKey
 from fim_one.db.models.user import User
@@ -291,13 +291,31 @@ async def _authenticate_api_key(raw_key: str, db: AsyncSession) -> User:
             detail="Account disabled",
         )
 
-    # Update usage stats with a direct UPDATE (avoids ORM load overhead)
-    await db.execute(
-        sa_update(ApiKey)
-        .where(ApiKey.id == api_key.id)
-        .values(last_used_at=datetime.now(UTC), total_requests=ApiKey.total_requests + 1)
-    )
-    await db.flush()
+    # Update usage stats in an INDEPENDENT, self-committing session.
+    #
+    # The request session (``db``) is yielded by ``get_session`` under an
+    # ``async with`` that only *closes* — i.e. rolls back uncommitted work — on
+    # exit; there is no request-end auto-commit. Issuing the increment on ``db``
+    # therefore only persists when the endpoint handler happens to commit for
+    # its own reasons. Every read-only API-key endpoint (dashboard, files,
+    # models, exports, …) never commits, so the counter was silently rolled
+    # back on each call. Committing on a separate session also decouples usage
+    # tracking from request success: a later failure in the handler must not
+    # roll back the "this key was used" fact. Best-effort — a stats write
+    # failure must never break authentication.
+    stats_session = create_session()
+    try:
+        await stats_session.execute(
+            sa_update(ApiKey)
+            .where(ApiKey.id == api_key.id)
+            .values(last_used_at=datetime.now(UTC), total_requests=ApiKey.total_requests + 1)
+        )
+        await stats_session.commit()
+    except Exception:  # noqa: BLE001 — usage stats are non-critical
+        await stats_session.rollback()
+        logger.warning("Failed to record API key usage stats", exc_info=True)
+    finally:
+        await stats_session.close()
 
     # Attach scopes as a transient attribute (None = unrestricted)
     user._api_key_scopes = (  # type: ignore[attr-defined]

@@ -24,6 +24,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **`/settings?tab=billing` now renders full-width and visually consistent with the rest of the Settings tabs.** Removed the `max-w-4xl` width cap and the redundant outer scroll container; dropped the page-title icon; rewrote the plan / usage / subscription / plans-comparison cards to use the same lean bordered-div pattern (compact labels + `tabular-nums` numbers) as the Usage tab. Old layout looked like a standalone page accidentally wedged into the settings frame.
 
+### Fixed
+
+- **API key usage stats (`total_requests`, `last_used_at`) now persist on every request.** Previously the increment was written on the request's database session, which is only committed by endpoints that perform their own writes — so read-only API-key calls (dashboard, files, models, exports, …) silently rolled the counter back. Usage is now recorded on an independent, self-committing session, decoupled from request success.
+
 ## [v0.8.6] - 2026-05-08
 
 ### Added
@@ -222,7 +226,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Added
 
 - **Marketplace redesign Phase 1 — Solutions + Components** — Two-tier Market model (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server) with scope selector (Global Market / org). KB removed from Market scope. Unified subscription model.
-- **Smart file content injection + `read_uploaded_file` tool** — Small uploads (`<32K` chars) auto-inlined into LLM context; large files get metadata + tool hint. Dual-mode reading tool with pagination and regex search. `GET /api/files/{file_id}/content` endpoint.
+- **Smart file content injection + `read_uploaded_file` tool** — Small uploads (under 32K chars) auto-inlined into LLM context; large files get metadata + tool hint. Dual-mode reading tool with pagination and regex search. `GET /api/files/{file_id}/content` endpoint.
 - **Workflow Blueprint System** — Visual workflow editor for multi-step automation: 25 node types (Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution, Iterator, Loop, VariableAggregator, ParameterExtractor, ListOperation, Transform, DocumentExtractor, QuestionUnderstanding, HumanIntervention, SubWorkflow, ENV + more), React Flow v12 editor with drag-and-drop palette, auto-layout, SSE real-time execution, variable interpolation, condition/classifier branching, error strategies per node, per-node timeout, import/export/duplicate, version history with diff viewer, 14 built-in templates, 306 tests.
 - **Workflow Triggers** — Cron scheduling with timezone support; public API keys (`wf_` prefix) for external execution without user auth; batch execution (up to 100 input sets, configurable parallelism).
 - **Workflow Operations** — Real-time execution log viewer, trace viewer with variable snapshots, run replay overlay on canvas, run history export, analytics dashboard with daily trends and percentiles, per-node statistics panel, favorites/pinning, inline validation badges, canvas node search (`Cmd+F`), keyboard shortcuts, snap-to-grid.
