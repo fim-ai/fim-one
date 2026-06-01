@@ -316,6 +316,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 - [ ] Per-key rate limiting (`X-RateLimit-*` headers, 429)
 - [ ] Per-key usage quota (monthly token/request budget)
+- [ ] Usage-stat write batching for high-QPS keys (process-local flush-on-shutdown, exact counts, no new dep) — deferred until a measured hotspot {/* dev: dev/public-api-phase2.md */}
 - [ ] Scope enforcement per endpoint
 - [ ] API versioning (`/v1/...`) + deprecation headers
 - [ ] Webhook callbacks (per-key)

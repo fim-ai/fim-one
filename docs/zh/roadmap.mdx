@@ -315,16 +315,17 @@ flowchart LR
 
 #### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
 
-- [ ] 按密钥速率限制（`X-RateLimit-*` 头部、429）
+- [ ] 按密钥速率限制（`X-RateLimit-*` 头、429）
 - [ ] 按密钥使用配额（月度令牌/请求预算）
-- [ ] 按端点的作用域强制
-- [ ] API 版本控制（`/v1/...`）+ 弃用头部
+- [ ] 高QPS密钥的使用统计写入批处理（进程本地关闭时刷新、精确计数、无新依赖）——延迟到测量到热点为止 {/* dev: dev/public-api-phase2.md */}
+- [ ] 按端点的作用域强制执行
+- [ ] API 版本控制（`/v1/...`）+ 弃用头
 - [ ] Webhook 回调（按密钥）
 - [ ] SDK 生成（Python + TypeScript）
 - [ ] 开发者门户（试用面板 + 按密钥分析）
 - [ ] API 密钥轮换（24小时宽限期）
 - [ ] 批量/异步 API（`POST /api/batch`）
-- [ ] 按外部依赖熔断器
+- [ ] 按外部依赖断路器
 
 #### 可观测性 {/* dev: dev/agent-trace-layer.md */}
 

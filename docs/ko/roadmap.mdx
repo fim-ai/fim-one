@@ -314,13 +314,14 @@ flowchart LR
 
 #### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
 
-- [ ] 키별 속도 제한 (`X-RateLimit-*` headers, 429)
-- [ ] 키별 사용량 할당량 (월간 토큰/요청 예산)
+- [ ] 키별 속도 제한 (`X-RateLimit-*` 헤더, 429)
+- [ ] 키별 사용량 할당 (월간 토큰/요청 예산)
+- [ ] 고QPS 키에 대한 사용량 통계 쓰기 배칭 (프로세스 로컬 플러시온셧다운, 정확한 카운트, 새로운 종속성 없음) — 측정된 핫스팟까지 연기됨 {/* dev: dev/public-api-phase2.md */}
 - [ ] 엔드포인트별 범위 적용
 - [ ] API 버전 관리 (`/v1/...`) + 지원 중단 헤더
 - [ ] Webhook 콜백 (키별)
 - [ ] SDK 생성 (Python + TypeScript)
-- [ ] 개발자 포털 (Try-it 패널 + 키별 분석)
+- [ ] 개발자 포털 (시도 패널 + 키별 분석)
 - [ ] API 키 로테이션 (24시간 유예)
 - [ ] 배치 / 비동기 API (`POST /api/batch`)
 - [ ] 외부 종속성별 서킷 브레이커

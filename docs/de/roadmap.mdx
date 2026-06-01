@@ -317,12 +317,13 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 - [ ] Pro-Schlüssel-Ratenbegrenzung (`X-RateLimit-*` Header, 429)
 - [ ] Pro-Schlüssel-Nutzungskontingent (monatliches Token-/Request-Budget)
+- [ ] Nutzungsstatistik-Schreibpufferung für High-QPS-Schlüssel (prozesslokal Flush-on-Shutdown, exakte Zählungen, keine neuen Abhängigkeiten) — aufgeschoben bis zu einem gemessenen Hotspot {/* dev: dev/public-api-phase2.md */}
 - [ ] Scope-Durchsetzung pro Endpunkt
 - [ ] API-Versionierung (`/v1/...`) + Deprecation-Header
 - [ ] Webhook-Callbacks (pro Schlüssel)
 - [ ] SDK-Generierung (Python + TypeScript)
 - [ ] Developer Portal (Try-it-Panels + Pro-Schlüssel-Analytik)
-- [ ] API-Schlüsselrotation (24h Gnadenfrist)
+- [ ] API-Schlüsselrotation (24h Kulanzfrist)
 - [ ] Batch-/Async-API (`POST /api/batch`)
 - [ ] Pro-externe-Abhängigkeit Circuit Breaker
 

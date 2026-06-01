@@ -317,14 +317,15 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 
 - [ ] Limitation de débit par clé (`X-RateLimit-*` headers, 429)
 - [ ] Quota d'utilisation par clé (budget mensuel de tokens/requêtes)
+- [ ] Traitement par lot des statistiques d'utilisation pour les clés à haut QPS (flush local au processus, comptages exacts, pas de nouvelle dépendance) — reporté jusqu'à identification d'un goulot d'étranglement mesuré {/* dev: dev/public-api-phase2.md */}
 - [ ] Application des scopes par endpoint
 - [ ] Versioning d'API (`/v1/...`) + headers de dépréciation
 - [ ] Callbacks webhook (par clé)
 - [ ] Génération de SDK (Python + TypeScript)
-- [ ] Portail développeur (panneaux Try-it + analytiques par clé)
+- [ ] Developer Portal (panneaux Try-it + analytics par clé)
 - [ ] Rotation de clés API (délai de grâce de 24h)
 - [ ] API batch / asynchrone (`POST /api/batch`)
-- [ ] Disjoncteur par dépendance externe
+- [ ] Circuit breaker par dépendance externe
 
 #### Observabilité {/* dev: dev/agent-trace-layer.md */}
 
