@@ -26,6 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Intermittent `APIConnectionError: Connection error` bursts during agent turns.** The shared HTTP connection pool kept idle keep-alive connections for up to 30 s; when an upstream relay or NAT silently reaped an idle connection, the next request reused the half-dead socket and failed. Keep-alive expiry is now a short 5 s by default (warm connections within a turn are still reused), and the pool is tunable via `LLM_HTTP_MAX_CONNECTIONS` / `LLM_HTTP_MAX_KEEPALIVE` / `LLM_HTTP_KEEPALIVE_EXPIRY` — set `LLM_HTTP_MAX_KEEPALIVE=0` to disable connection reuse entirely behind an unreliable upstream.
 - **API key usage stats (`total_requests`, `last_used_at`) now persist on every request.** Previously the increment was written on the request's database session, which is only committed by endpoints that perform their own writes — so read-only API-key calls (dashboard, files, models, exports, …) silently rolled the counter back. Usage is now recorded on an independent, self-committing session, decoupled from request success.
 
 ## [v0.8.6] - 2026-05-08

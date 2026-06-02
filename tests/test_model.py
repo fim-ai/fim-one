@@ -631,7 +631,36 @@ class TestSharedHttpClient:
         pool = client._transport._pool  # type: ignore[attr-defined]
         assert pool._max_connections == 100
         assert pool._max_keepalive_connections == 20
-        assert pool._keepalive_expiry == 30
+        # Default keepalive_expiry is short (httpx's own default) so that a
+        # connection idle long enough to be silently reaped upstream is
+        # dropped instead of reused — see the stale-connection note in
+        # openai_compatible.py.
+        assert pool._keepalive_expiry == 5.0
+
+    @pytest.mark.asyncio
+    async def test_pool_limits_from_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.core.model.openai_compatible import (
+            _get_shared_http_client,
+            close_shared_http_client,
+        )
+
+        monkeypatch.setenv("LLM_HTTP_MAX_CONNECTIONS", "50")
+        monkeypatch.setenv("LLM_HTTP_MAX_KEEPALIVE", "0")
+        monkeypatch.setenv("LLM_HTTP_KEEPALIVE_EXPIRY", "1.5")
+        # Force a rebuild so the new env values take effect.
+        await close_shared_http_client()
+        try:
+            client = _get_shared_http_client()
+            pool = client._transport._pool  # type: ignore[attr-defined]
+            assert pool._max_connections == 50
+            assert pool._max_keepalive_connections == 0
+            assert pool._keepalive_expiry == 1.5
+        finally:
+            # Restore the default client for the rest of the suite.
+            await close_shared_http_client()
+            _get_shared_http_client()
 
     def test_timeout_configured(self) -> None:
         import httpx

@@ -26,7 +26,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **API-Schlüssel-Nutzungsstatistiken (`total_requests`, `last_used_at`) werden jetzt bei jeder Anfrage persistiert.** Zuvor wurde die Inkrementierung in der Datenbanksitzung der Anfrage geschrieben, die nur von Endpunkten committed wird, die ihre eigenen Schreibvorgänge durchführen — daher wurden schreibgeschützte API-Schlüssel-Aufrufe (Dashboard, Dateien, Modelle, Exporte, …) stillschweigend zurückgerollt. Die Nutzung wird jetzt in einer unabhängigen, selbst-committenden Sitzung aufgezeichnet, entkoppelt vom Erfolg der Anfrage.
+- **Gelegentliche `APIConnectionError: Connection error`-Bursts während Agent-Turns.** Der gemeinsame HTTP-Verbindungspool behielt untätige Keep-Alive-Verbindungen bis zu 30 s; wenn ein vorgelagertes Relay oder NAT eine untätige Verbindung stillschweigend verwarf, verwendete die nächste Anfrage den halb-toten Socket erneut und schlug fehl. Die Keep-Alive-Ablaufzeit beträgt jetzt standardmäßig kurz 5 s (warme Verbindungen innerhalb eines Turns werden weiterhin wiederverwendet), und der Pool ist über `LLM_HTTP_MAX_CONNECTIONS` / `LLM_HTTP_MAX_KEEPALIVE` / `LLM_HTTP_KEEPALIVE_EXPIRY` konfigurierbar — setzen Sie `LLM_HTTP_MAX_KEEPALIVE=0`, um die Verbindungswiederverwendung vollständig hinter einem unzuverlässigen vorgelagerten System zu deaktivieren.
+- **API-Schlüssel-Nutzungsstatistiken (`total_requests`, `last_used_at`) werden jetzt bei jeder Anfrage persistent gespeichert.** Zuvor wurde das Inkrement in der Datenbanksitzung der Anfrage geschrieben, die nur von Endpunkten committed wird, die ihre eigenen Schreibvorgänge durchführen — daher wurden schreibgeschützte API-Schlüssel-Aufrufe (Dashboard, Dateien, Modelle, Exporte, …) stillschweigend zurückgesetzt. Die Nutzung wird jetzt in einer unabhängigen, selbst-committenden Sitzung aufgezeichnet, entkoppelt vom Anfrageerfolg.
 
 ## [v0.8.6] - 2026-05-08
 

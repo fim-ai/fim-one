@@ -26,7 +26,8 @@ description: "FIM One 的所有重要更新。"
 
 ### 已修复
 
-- **API 密钥使用统计（`total_requests`、`last_used_at`）现在在每次请求时持久化。** 之前增量是写入请求的数据库会话中，该会话仅由执行自己写入操作的端点提交——因此只读 API 密钥调用（仪表板、文件、模型、导出等）会无声地回滚计数器。现在使用情况记录在独立的、自提交的会话上，与请求成功状态解耦。
+- **智能体轮次中间歇性的`APIConnectionError: Connection error`突发。** 共享HTTP连接池将空闲的keep-alive连接保留长达30秒；当上游中继或NAT静默回收空闲连接时，下一个请求会重用半死的套接字并失败。Keep-alive过期时间现在默认为短的5秒（轮次内的热连接仍被重用），池可通过`LLM_HTTP_MAX_CONNECTIONS`/`LLM_HTTP_MAX_KEEPALIVE`/`LLM_HTTP_KEEPALIVE_EXPIRY`调整——设置`LLM_HTTP_MAX_KEEPALIVE=0`可在不可靠的上游后完全禁用连接重用。
+- **API密钥使用统计（`total_requests`、`last_used_at`）现在在每个请求上持久化。** 之前增量是在请求的数据库会话上写入的，该会话仅由执行自己写入操作的端点提交——因此只读API密钥调用（仪表板、文件、模型、导出等）会静默回滚计数器。使用情况现在记录在独立的自提交会话上，与请求成功解耦。
 
 ## [v0.8.6] - 2026-05-08
 

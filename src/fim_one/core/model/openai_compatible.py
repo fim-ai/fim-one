@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from collections.abc import AsyncIterator
 from typing import Any
@@ -104,14 +105,38 @@ litellm.suppress_debug_info = True
 # pool with better keepalive behaviour.  This is transparent to callers —
 # the litellm.acompletion() API is unchanged.
 #
-# Pool sizing rationale:
+# Pool sizing rationale (all overridable via env — see below):
 #   - max_connections=100: enough for concurrent agent/DAG/streaming calls
 #   - max_keepalive_connections=20: keep warm connections to frequent providers
-#   - keepalive_expiry=30: much longer than the default 5 s; avoids needless
-#     reconnects between successive LLM calls in a single agent turn
+#   - keepalive_expiry=5: a connection idle longer than this is DROPPED rather
+#     than silently reused.  A longer expiry (we previously used 30 s) opens a
+#     window where an intermediary (relay / NAT / LB) silently reaps an idle
+#     connection — no FIN/RST — and httpx, which does not probe a pooled
+#     connection before reuse, hands back the half-dead socket; the next write
+#     fails with ``APIConnectionError: Connection error``.  Successive LLM
+#     calls within a single agent turn are milliseconds-to-seconds apart, so a
+#     5 s expiry still lets them reuse a warm connection; only cross-turn /
+#     low-traffic idle connections (the ones that actually go stale) get
+#     discarded.  Set ``LLM_HTTP_MAX_KEEPALIVE=0`` to disable reuse entirely
+#     (one TLS handshake per call; zero stale-reuse risk).
 #   - connect timeout 10 s, overall timeout 300 s (LLM responses can be slow)
+#
+# Env overrides:
+#   - LLM_HTTP_MAX_CONNECTIONS   (default 100)
+#   - LLM_HTTP_MAX_KEEPALIVE     (default 20; 0 = never reuse a connection)
+#   - LLM_HTTP_KEEPALIVE_EXPIRY  (default 5.0, seconds)
 
 _SHARED_HTTP_CLIENT: httpx.AsyncClient | None = None
+
+
+def _pool_int(key: str, default: int) -> int:
+    raw = os.environ.get(key)
+    return int(raw) if raw else default
+
+
+def _pool_float(key: str, default: float) -> float:
+    raw = os.environ.get(key)
+    return float(raw) if raw else default
 
 
 def _get_shared_http_client() -> httpx.AsyncClient:
@@ -119,15 +144,22 @@ def _get_shared_http_client() -> httpx.AsyncClient:
 
     The client is also installed as ``litellm.aclient_session`` so that
     LiteLLM's internal OpenAI SDK client factory uses it automatically.
+
+    Pool limits are read from the environment (see module comment above) so
+    operators can tune keep-alive behaviour — or disable connection reuse
+    entirely — without a code change when running behind a flaky upstream.
     """
     global _SHARED_HTTP_CLIENT
     if _SHARED_HTTP_CLIENT is None or _SHARED_HTTP_CLIENT.is_closed:
+        max_conn = _pool_int("LLM_HTTP_MAX_CONNECTIONS", 100)
+        max_keepalive = _pool_int("LLM_HTTP_MAX_KEEPALIVE", 20)
+        keepalive_expiry = _pool_float("LLM_HTTP_KEEPALIVE_EXPIRY", 5.0)
         _SHARED_HTTP_CLIENT = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0, connect=10.0),
             limits=httpx.Limits(
-                max_connections=100,
-                max_keepalive_connections=20,
-                keepalive_expiry=30,
+                max_connections=max_conn,
+                max_keepalive_connections=max_keepalive,
+                keepalive_expiry=keepalive_expiry,
             ),
             follow_redirects=True,
         )
@@ -135,7 +167,10 @@ def _get_shared_http_client() -> httpx.AsyncClient:
         litellm.aclient_session = _SHARED_HTTP_CLIENT
         logger.info(
             "Shared HTTP connection pool initialised "
-            "(max_conn=100, keepalive=20, keepalive_expiry=30s)"
+            "(max_conn=%d, keepalive=%d, keepalive_expiry=%ss)",
+            max_conn,
+            max_keepalive,
+            keepalive_expiry,
         )
     return _SHARED_HTTP_CLIENT
 
