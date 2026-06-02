@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
   "name": "FIM One",
-  "description": "Open-source agent platform for Global × China enterprises — wire every system through one agent core. Self-hosted, any LLM.",
+  "description": "Source-available agent platform for Global × China enterprises — wire every system through one agent core. Self-hosted, any LLM.",
   "metadata": {
     "og:type": "website",
     "og:image": "/og-image.png",
