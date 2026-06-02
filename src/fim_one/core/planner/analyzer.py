@@ -16,6 +16,7 @@ from typing import Any
 from fim_one.core.model import BaseLLM, ChatMessage
 from fim_one.core.model.structured import structured_llm_call
 from fim_one.core.model.usage import UsageSummary
+from fim_one.core.utils import strip_tool_protocol
 
 from .types import AnalysisResult, ExecutionPlan
 
@@ -167,6 +168,10 @@ class PlanAnalyzer:
             "source is likely more authoritative based on recency and specificity.",
             "- LANGUAGE: The answer must be in the same language as the original "
             "goal. If the goal is in Chinese, respond in Chinese.",
+            "- NEVER reproduce raw tool-call protocol in your answer. Do not "
+            "output <tool_call>, <tool_response>, <function_call> tags, their "
+            "JSON payloads, or base64 blobs. The trace is for your reference "
+            "only — answer in natural language.",
         ]
         if self._language_directive:
             system_parts.append(f"- {self._language_directive}")
@@ -176,7 +181,7 @@ class PlanAnalyzer:
         user_content = (
             f"Goal: {goal}\n\n"
             f"Execution plan (round {plan.current_round}):\n{step_summaries}\n\n"
-            f"Analyzer reasoning: {judgment.reasoning}"
+            f"Analyzer reasoning: {strip_tool_protocol(judgment.reasoning)}"
         )
 
         messages = [

@@ -86,7 +86,11 @@ from fim_one.core.planner import (
 )
 from fim_one.core.security import is_stdio_allowed
 from fim_one.core.tool import ToolRegistry
-from fim_one.core.utils import extract_json_value, get_language_directive
+from fim_one.core.utils import (
+    extract_json_value,
+    get_language_directive,
+    strip_tool_protocol,
+)
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
@@ -3295,7 +3299,7 @@ async def react_endpoint(
                     "stream_answer failed, falling back to result.answer",
                     exc_info=True,
                 )
-                answer = result.answer
+                answer = strip_tool_protocol(result.answer or "")
                 for _ans_chunk in _chunk_answer(answer):
                     yield _emit(
                         sse_events,
@@ -4472,7 +4476,7 @@ async def dag_endpoint(
                         "stream_synthesize failed, falling back to analysis.final_answer",
                         exc_info=True,
                     )
-                    answer = analysis.final_answer or ""
+                    answer = strip_tool_protocol(analysis.final_answer or "")
                     for _ans_chunk in _chunk_answer(answer):
                         yield _emit(
                             sse_events,

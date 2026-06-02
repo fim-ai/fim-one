@@ -26,8 +26,9 @@ description: "FIM One 的所有重要更新。"
 
 ### 已修复
 
-- **智能体轮次中间歇性的`APIConnectionError: Connection error`突发。** 共享HTTP连接池将空闲的keep-alive连接保留长达30秒；当上游中继或NAT静默回收空闲连接时，下一个请求会重用半死的套接字并失败。Keep-alive过期时间现在默认为短的5秒（轮次内的热连接仍被重用），池可通过`LLM_HTTP_MAX_CONNECTIONS`/`LLM_HTTP_MAX_KEEPALIVE`/`LLM_HTTP_KEEPALIVE_EXPIRY`调整——设置`LLM_HTTP_MAX_KEEPALIVE=0`可在不可靠的上游后完全禁用连接重用。
-- **API密钥使用统计（`total_requests`、`last_used_at`）现在在每个请求上持久化。** 之前增量是在请求的数据库会话上写入的，该会话仅由执行自己写入操作的端点提交——因此只读API密钥调用（仪表板、文件、模型、导出等）会静默回滚计数器。使用情况现在记录在独立的自提交会话上，与请求成功解耦。
+- **原始工具调用协议不再泄露到智能体答案中。** 当模型即兴生成工具调用作为纯文本时（例如发出 `<tool_call>`/`<tool_response>` 块——当它尝试调用不可用的工具时很常见），该文本——包括其中的任何base64/文件转储——可能会逐字出现在回复中。所有答案路径现在都会剥离此伪协议，解析器还会将 `{"name","arguments"}` 方言识别为真正的工具调用，而不是泄露它。
+- **智能体轮次期间间歇性的 `APIConnectionError: Connection error` 突发。** 共享HTTP连接池为空闲keep-alive连接保留长达30秒；当上游中继或NAT静默回收空闲连接时，下一个请求会重用半死的套接字并失败。Keep-alive过期现在默认为短5秒（轮次内的热连接仍被重用），池可通过 `LLM_HTTP_MAX_CONNECTIONS` / `LLM_HTTP_MAX_KEEPALIVE` / `LLM_HTTP_KEEPALIVE_EXPIRY` 调整——设置 `LLM_HTTP_MAX_KEEPALIVE=0` 可在不可靠的上游后完全禁用连接重用。
+- **API密钥使用统计（`total_requests`、`last_used_at`）现在在每个请求时持久化。** 之前增量是在请求的数据库会话中写入的，该会话仅由执行自己写入的端点提交——因此只读API密钥调用（仪表板、文件、模型、导出等）会静默回滚计数器。使用情况现在记录在独立的自提交会话上，与请求成功解耦。
 
 ## [v0.8.6] - 2026-05-08
 

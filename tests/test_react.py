@@ -311,6 +311,31 @@ class TestParseAction:
         assert action.type == "tool_call"
         assert action.tool_args == {}
 
+    def test_hermes_style_name_arguments_parsed_as_tool_call(self) -> None:
+        # Hermes/Qwen dialect: {"name", "arguments"} instead of the expected
+        # {"type": "tool_call", "tool_name", "tool_args"}. Must be dispatched
+        # as a real tool call, not leaked as text.
+        agent = self._make_agent()
+        content = '<tool_call>{"name": "python_exec", "arguments": {"code": "x=1"}}</tool_call>'
+        action = agent._parse_action(content)
+        assert action.type == "tool_call"
+        assert action.tool_name == "python_exec"
+        assert action.tool_args == {"code": "x=1"}
+
+    def test_unparseable_tool_protocol_stripped_from_fallback(self) -> None:
+        # A fabricated tool transcript with trailing prose: the protocol must
+        # never survive into the final answer.
+        agent = self._make_agent()
+        content = (
+            "<tool_response>PDF generated: /tmp/r.pdf\nJVBERi0xLjQ=</tool_response>\n\n"
+            "Report ready at /tmp/r.pdf."
+        )
+        action = agent._parse_action(content)
+        assert action.type == "final_answer"
+        assert "<tool_response>" not in (action.answer or "")
+        assert "JVBERi0xLjQ" not in (action.answer or "")
+        assert "Report ready at /tmp/r.pdf." in (action.answer or "")
+
 
 # ======================================================================
 # Action / StepResult / AgentResult dataclasses

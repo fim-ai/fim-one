@@ -32,7 +32,7 @@ from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.model.usage import UsageTracker
 from fim_one.core.prompt import is_cache_capable
 from fim_one.core.tool import ToolRegistry
-from fim_one.core.utils import extract_json
+from fim_one.core.utils import extract_json, strip_tool_protocol
 
 from .builtin_guardrails import (
     get_default_input_guardrails,
@@ -747,7 +747,13 @@ class ReActAgent:
                 context_parts.append(f"Tool result: {obs}")
             elif msg.role == "assistant" and msg.content:
                 # Final iteration content (the brief/fallback answer).
-                context_parts.append(f"Assistant reasoning: {msg.content}")
+                # Strip any tool-call pseudo-protocol the model emitted as
+                # plain text — otherwise a fabricated <tool_call>/<tool_response>
+                # blob would be fed to the synthesis LLM as "reasoning" and
+                # echoed verbatim into the user-facing answer.
+                reasoning = strip_tool_protocol(msg.content)
+                if reasoning:
+                    context_parts.append(f"Assistant reasoning: {reasoning}")
 
         system_parts = [
             "You are FIM One, an AI-powered assistant. Never claim to be any "
@@ -772,6 +778,10 @@ class ReActAgent:
                 "",
                 "Guidelines:",
                 "- Present key results clearly; use markdown formatting when helpful.",
+                "- NEVER reproduce raw tool-call protocol in your answer. Do not "
+                "output <tool_call>, <tool_response>, <function_call> tags, their "
+                "JSON payloads, or base64 blobs. The trace is for your reference "
+                "only — answer in natural language.",
                 "- LANGUAGE: By default answer in the same language as the original "
                 "question. If the Agent Directive specifies different language "
                 "behaviour (e.g. translation), follow the Agent Directive.",
@@ -1885,6 +1895,12 @@ class ReActAgent:
             # enough to skip this extra round-trip.
             raw_answer = assistant_msg.content
             native_answer_text = raw_answer if isinstance(raw_answer, str) else ""
+            # Strip any tool-call pseudo-protocol the model emitted as plain
+            # text (e.g. <tool_call>/<tool_response> for an unregistered tool).
+            # This is the result.answer fallback used when stream_answer fails
+            # and what gets persisted to memory — it must never carry raw
+            # protocol noise.
+            native_answer_text = strip_tool_protocol(native_answer_text)
             if (
                 self._completion_check
                 and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
@@ -2579,7 +2595,7 @@ class ReActAgent:
             return Action(
                 type="final_answer",
                 reasoning="(could not parse LLM output as JSON)",
-                answer=content,
+                answer=strip_tool_protocol(content),
             )
 
         action_type = data.get("type", "final_answer")
@@ -2593,11 +2609,24 @@ class ReActAgent:
                 tool_args=data.get("tool_args") or {},
             )
 
+        # Hermes / Qwen-style dialect: the model emitted a tool call as
+        # ``{"name": ..., "arguments": {...}}`` (often wrapped in <tool_call>
+        # tags) instead of the expected ``{"type": "tool_call", ...}`` schema.
+        # Treat it as a real tool call so it is dispatched (and a missing tool
+        # surfaces as an error observation) rather than leaked as text.
+        if "type" not in data and isinstance(data.get("name"), str) and "arguments" in data:
+            return Action(
+                type="tool_call",
+                reasoning=reasoning,
+                tool_name=data["name"],
+                tool_args=data.get("arguments") or {},
+            )
+
         # Default to final_answer for any unrecognised type.
         return Action(
             type="final_answer",
             reasoning=reasoning,
-            answer=data.get("answer", content),
+            answer=strip_tool_protocol(data.get("answer", content)),
         )
 
     async def _execute_tool_call(self, action: Action) -> StepResult:

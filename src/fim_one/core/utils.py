@@ -185,6 +185,62 @@ def get_language_directive(preferred_language: str | None) -> str | None:
     return directives.get(preferred_language)
 
 
+# Tags some models (Hermes / Qwen-style) emit when they improvise a tool call
+# as plain text instead of using the structured function-calling channel —
+# most often when reaching for a tool that is not registered.  Both the
+# invocation side (``tool_call`` / ``function_call``) and the fabricated
+# result side (``tool_response`` / ``tool_result`` / ``tool_outputs``) are
+# covered.  Left unstripped, these blocks — and any base64/file dumps inside a
+# fake ``<tool_response>`` — leak verbatim into the user-facing answer.
+_TOOL_PROTOCOL_TAGS = "tool_call|tool_response|tool_result|tool_outputs?|function_call"
+_TOOL_PROTOCOL_BLOCK_RE = re.compile(
+    rf"<({_TOOL_PROTOCOL_TAGS})\b[^>]*>.*?</\1>",
+    re.DOTALL | re.IGNORECASE,
+)
+# An opening invocation/result tag that is never closed: strip from the tag to
+# the end of the text.  Only applied to the protocol tags above, so a dangling
+# ``<tool_call>`` at the tail (with no answer after it) cannot leak its JSON.
+_TOOL_PROTOCOL_UNCLOSED_RE = re.compile(
+    rf"<({_TOOL_PROTOCOL_TAGS})\b[^>]*>.*\Z",
+    re.DOTALL | re.IGNORECASE,
+)
+# Any remaining bare/closing protocol tag (without its partner).
+_TOOL_PROTOCOL_DANGLING_RE = re.compile(
+    rf"</?({_TOOL_PROTOCOL_TAGS})\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def strip_tool_protocol(text: str) -> str:
+    """Remove model-emitted tool-call pseudo-protocol blocks from *text*.
+
+    Some models emit tool invocations as literal ``<tool_call>{...}</tool_call>``
+    text (often followed by a fabricated ``<tool_response>...</tool_response>``)
+    instead of using the structured function-calling channel.  This noise must
+    never reach the user, so we strip well-formed blocks, an unclosed trailing
+    block, and any leftover dangling tags, then collapse the blank lines left
+    behind.
+
+    Returns the cleaned text.  May return an empty string when the content was
+    *entirely* protocol noise — callers that need a non-empty answer should
+    guard for that and fall back appropriately rather than emit the raw noise.
+    """
+    if not text:
+        return text
+    lowered = text.lower()
+    if not any(
+        marker in lowered
+        for marker in ("<tool_", "</tool_", "<function_call", "</function_call")
+    ):
+        return text
+    cleaned = _TOOL_PROTOCOL_BLOCK_RE.sub("", text)
+    cleaned = _TOOL_PROTOCOL_UNCLOSED_RE.sub("", cleaned)
+    cleaned = _TOOL_PROTOCOL_DANGLING_RE.sub("", cleaned)
+    # Collapse the blank lines left behind by removed blocks.
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def extract_json(text: str) -> dict[str, Any] | None:
     """Try to extract a JSON object from *text*.
 
