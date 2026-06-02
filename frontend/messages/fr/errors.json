@@ -79,5 +79,7 @@
   "sensitive_word_blocked": "Votre message a été bloqué car il contient du contenu restreint.",
   "sensitive_word_duplicate": "Ce mot sensible existe déjà.",
   "sensitive_word_not_found": "Mot sensible non trouvé.",
-  "someFilesFailedUpload": "Certains fichiers n'ont pas pu être téléchargés. Supprimez-les ou réessayez avant d'envoyer."
+  "someFilesFailedUpload": "Certains fichiers n'ont pas pu être téléchargés. Supprimez-les ou réessayez avant d'envoyer.",
+  "model_provider_name_taken": "Un fournisseur avec ce nom existe déjà.",
+  "model_name_taken": "Cet ID de modèle existe déjà sous ce fournisseur."
 }

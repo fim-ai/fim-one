@@ -2581,6 +2581,12 @@ async def admin_create_provider(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ProviderResponse:
     """Create a new model provider."""
+    existing = await db.execute(
+        select(ModelProvider).where(ModelProvider.name == body.name)
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise AppError("model_provider_name_taken", status_code=409)
+
     provider = ModelProvider(
         name=body.name,
         base_url=body.base_url,
@@ -2618,6 +2624,17 @@ async def admin_update_provider(
         raise AppError("model_provider_not_found", status_code=404)
 
     update_data = body.model_dump(exclude_unset=True)
+
+    # Reject a rename that collides with another provider's name
+    if "name" in update_data and update_data["name"] != provider.name:
+        clash = await db.execute(
+            select(ModelProvider).where(
+                ModelProvider.name == update_data["name"],
+                ModelProvider.id != provider_id,
+            )
+        )
+        if clash.scalar_one_or_none() is not None:
+            raise AppError("model_provider_name_taken", status_code=409)
 
     # Only update api_key if explicitly provided and non-empty
     if "api_key" in update_data and not update_data["api_key"]:
@@ -2693,6 +2710,15 @@ async def admin_create_provider_model(
     if provider is None:
         raise AppError("model_provider_not_found", status_code=404)
 
+    dup = await db.execute(
+        select(ModelProviderModel).where(
+            ModelProviderModel.provider_id == provider_id,
+            ModelProviderModel.model_name == body.model_name,
+        )
+    )
+    if dup.scalar_one_or_none() is not None:
+        raise AppError("model_name_taken", status_code=409)
+
     model = ModelProviderModel(
         provider_id=provider_id,
         name=body.name,
@@ -2754,6 +2780,19 @@ async def admin_update_provider_model(
         raise AppError("model_provider_model_not_found", status_code=404)
 
     update_data = body.model_dump(exclude_unset=True)
+
+    # Reject a rename that collides with another model under the same provider
+    if "model_name" in update_data and update_data["model_name"] != model.model_name:
+        clash = await db.execute(
+            select(ModelProviderModel).where(
+                ModelProviderModel.provider_id == model.provider_id,
+                ModelProviderModel.model_name == update_data["model_name"],
+                ModelProviderModel.id != model.id,
+            )
+        )
+        if clash.scalar_one_or_none() is not None:
+            raise AppError("model_name_taken", status_code=409)
+
     for field, value in update_data.items():
         setattr(model, field, value)
 

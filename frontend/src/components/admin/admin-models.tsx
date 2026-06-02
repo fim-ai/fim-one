@@ -88,7 +88,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { cn } from "@/lib/utils"
-import { adminApi } from "@/lib/api"
+import { adminApi, ApiError } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import type {
   ModelProviderResponse,
@@ -261,7 +261,11 @@ function ProviderFormDialog({ open, onOpenChange, provider, onSuccess }: Provide
       onSuccess()
       onOpenChange(false)
     } catch (err) {
-      toast.error(getErrorMessage(err, tError))
+      if (err instanceof ApiError && err.errorCode === "model_provider_name_taken") {
+        setFieldErrors({ name: getErrorMessage(err, tError) })
+      } else {
+        toast.error(getErrorMessage(err, tError))
+      }
     } finally {
       setIsSaving(false)
     }
@@ -538,7 +542,11 @@ function ModelFormDialog({ open, onOpenChange, providerId, model, onSuccess }: M
       onSuccess()
       onOpenChange(false)
     } catch (err) {
-      toast.error(getErrorMessage(err, tError))
+      if (err instanceof ApiError && err.errorCode === "model_name_taken") {
+        setFieldErrors({ modelName: getErrorMessage(err, tError) })
+      } else {
+        toast.error(getErrorMessage(err, tError))
+      }
     } finally {
       setIsSaving(false)
     }

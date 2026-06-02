@@ -7,7 +7,15 @@ Groups assign models to roles (general/fast/reasoning) for one-click switching.
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fim_one.core.security.encryption import EncryptedString
@@ -21,6 +29,7 @@ class ModelProvider(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "model_providers"
+    __table_args__ = (UniqueConstraint("name", name="uq_model_provider_name"),)
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -45,6 +54,11 @@ class ModelProviderModel(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "model_provider_models"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider_id", "model_name", name="uq_provider_model_name"
+        ),
+    )
 
     provider_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("model_providers.id", ondelete="CASCADE"), nullable=False, index=True

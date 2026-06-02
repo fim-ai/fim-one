@@ -65,6 +65,8 @@
 
   "model_config_not_found": "Model configuration not found.",
   "cannot_delete_system_model": "Cannot delete system model.",
+  "model_provider_name_taken": "A provider with this name already exists.",
+  "model_name_taken": "This model ID already exists under this provider.",
 
   "agent_not_found": "Agent not found.",
   "connector_ownership_denied": "You do not own connector \"{name}\".",
