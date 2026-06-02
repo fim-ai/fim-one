@@ -24,6 +24,7 @@ import type { FileMessageMetadata } from "@/components/playground/file-message-c
 import { useDagSteps } from "@/hooks/use-dag-steps"
 import { useReactSteps } from "@/hooks/use-react-steps"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { useFaviconLoading } from "@/hooks/use-favicon-loading"
 import { useLocalStorage } from "@/hooks/use-local-storage"
 import { useAuth } from "@/contexts/auth-context"
 import { useConversation } from "@/contexts/conversation-context"
@@ -163,6 +164,10 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     }
     return postProcessing
   }, [messages])
+
+  // Animate the favicon into a cycling moon while the turn is streaming or
+  // post-processing, so a backgrounded tab still shows progress.
+  useFaviconLoading(isRunning || isPostProcessing)
 
   // Mid-stream quota terminator — surface the structured `error` event
   // emitted by chat.py (`_build_quota_terminator_payload`) as a Dialog.
