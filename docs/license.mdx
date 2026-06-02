@@ -31,6 +31,32 @@ FIM One is distributed under the **FIM One Source Available License v1.2**. This
 | **White-labeling / removing branding** | You may **not** remove, alter, or obscure FIM One branding, logos, copyright notices, or license notices. White-labeling requires a separate commercial license. |
 | **Circumventing license checks** | You may **not** remove, disable, or circumvent any license verification, feature gating, or entitlement checks. |
 
+## Common Scenarios
+
+<Note>
+  The license restricts **how you deploy** FIM One — not **whether you charge money** for it. Paid and commercial use is fine; only three specific *shapes* are off-limits without a commercial license: **multi-tenant hosted service**, **white-labeling**, and **building a competing platform**.
+</Note>
+
+| Scenario | Allowed? | Why |
+|---|---|---|
+| Run FIM One internally for your own company or team | ✅ Yes | Internal use (§2a) |
+| Embed FIM One as the engine inside a product you build and sell — where the product is not itself an agent platform and is not offered as multi-tenant SaaS | ✅ Yes | Embedding (§2d), branding kept |
+| Deliver a FIM One-based solution to **one client** (consulting / systems integration): dedicated, single-tenant, FIM One branding intact, for that client's own internal use | ✅ Yes | Single-tenant exception (§3a) |
+| The same client delivery, but **white-labeled** under the client's brand (FIM One branding removed) | ❌ No | Needs commercial license (§3c) |
+| Reuse **one deployment to serve multiple clients**, or any multi-tenant setup | ❌ No | Hosted Service (§3a) |
+| Use FIM One to build another agent-orchestration, workflow, or task-planning **platform** | ❌ No | Competing Product (§3b) |
+| Operate a multi-tenant SaaS / "FIM One-as-a-Service" | ❌ No | Hosted Service (§3a) |
+
+<Warning>
+  **Doing client or consulting work?** Delivering a FIM One-based solution to a single client is permitted — but only if **all** of these hold:
+
+  1. The deployment is **dedicated to that one client** (single-tenant, not shared or reused across customers);
+  2. What you deliver is a **business application**, not a reusable agent-orchestration platform (that would be a Competing Product);
+  3. **FIM One branding, logos, and notices stay visible and unaltered.**
+
+  The most common trip-up is **white-labeling** — clients often want the solution under their own brand. The moment you remove or hide FIM One branding, you need a [commercial license](mailto:license@fim.ai). Multi-tenant reuse and competing-platform builds are the other two hard lines.
+</Warning>
+
 ## Key Terms
 
 - **Hosted Service** — Any service that allows third parties to access the Software's functionality over a network (SaaS, PaaS, API services, managed deployments).

@@ -7,13 +7,13 @@ description: "关于 FIM One 的常见问题 — 设置、功能、许可等。"
 ## 常见问题
 
 <AccordionGroup>
-  <Accordion title="支持哪些 LLM 提供商？">
-    FIM One 可与**任何兼容 OpenAI 的 LLM 提供商**配合使用。这包括：
+  <Accordion title="支持哪些LLM提供商？">
+    FIM One 与**任何OpenAI兼容的LLM提供商**配合使用。这包括：
 
-    - **商业 API** — OpenAI、DeepSeek、Anthropic (Claude)、阿里巴巴通义千问、Google Gemini，以及任何暴露 `/v1/chat/completions` 端点的提供商。
-    - **本地/自托管** — Ollama、vLLM、LocalAI、LM Studio，以及任何其他提供 OpenAI 兼容 API 格式的运行时。
+    - **商业API** — OpenAI、DeepSeek、Anthropic（Claude）、阿里巴巴通义千问、Google Gemini，以及任何公开`/v1/chat/completions`端点的提供商。
+    - **本地/自托管** — Ollama、vLLM、LocalAI、LM Studio，以及任何其他提供OpenAI兼容API格式的运行时。
 
-    你可以通过 `.env` 中的三个环境变量配置你的提供商：
+    你可以通过`.env`中的三个环境变量配置提供商：
 
     ```bash
     LLM_API_KEY=sk-your-key
@@ -25,42 +25,54 @@ description: "关于 FIM One 的常见问题 — 设置、功能、许可等。"
   </Accordion>
 
   <Accordion title="我可以使用本地或自托管模型吗？">
-    可以。FIM One 连接到任何实现 OpenAI 兼容 API 格式的端点。常见的自托管选项包括：
+    可以。FIM One连接到任何实现OpenAI兼容API格式的端点。常见的自托管选项包括：
 
-    | 运行时 | 基础 URL | 示例模型 |
+    | 运行时 | 基础URL | 示例模型 |
     |---------|----------|---------------|
     | **Ollama** | `http://localhost:11434/v1` | `qwen2.5:14b` |
     | **vLLM** | `http://localhost:8000/v1` | `Qwen/Qwen2.5-72B-Instruct` |
     | **LocalAI** | `http://localhost:8080/v1` | `llama3` |
-    | **LM Studio** | `http://localhost:1234/v1` | (你加载的任何模型) |
+    | **LM Studio** | `http://localhost:1234/v1` | （你加载的任何模型） |
 
-    当提供商不需要身份验证时，将 `LLM_API_KEY` 设置为任何非空字符串（例如 `ollama`）。所有智能体功能 — ReAct 推理、DAG 规划、工具调用 — 无论模型是本地还是云托管，都能以相同的方式工作。
+    当提供商不需要身份验证时，将`LLM_API_KEY`设置为任何非空字符串（例如`ollama`）。所有智能体功能——ReAct推理、DAG规划、工具调用——无论模型是本地还是云托管，都以相同方式工作。
   </Accordion>
 
-  <Accordion title="FIM One 是开源的吗？">
-    FIM One 在**源代码可用许可证**下发布。这不是 OSI 批准的开源许可证，但为大多数用例提供了广泛的自由：
+  <Accordion title="FIM One是开源的吗？">
+    FIM One在**源代码可用许可证**下发布。这不是OSI批准的开源许可证，但为大多数用例提供了广泛的自由：
 
     **允许的用途：**
     - 在你的组织内部使用
     - 修改和自定义开发
     - 保持许可证完整的分发
-    - 嵌入到你自己的（非竞争性）应用程序中
+    - 嵌入到你自己的（非竞争）应用程序中
 
     **受限的用途：**
-    - 多租户 SaaS 产品
+    - 多租户SaaS产品
     - 竞争性智能体平台
     - 白标或移除品牌
 
-    如有商业许可查询，请在 [GitHub](https://github.com/fim-ai/fim-one) 上开启一个 issue。有关完整条款，请参阅[许可证](https://github.com/fim-ai/fim-one/blob/master/LICENSE)。
+    如有商业许可询问，请在[GitHub](https://github.com/fim-ai/fim-one)上提交issue。完整条款请参阅[LICENSE](https://github.com/fim-ai/fim-one/blob/master/LICENSE)。
+  </Accordion>
+
+  <Accordion title="我可以将FIM One用于付费客户或咨询项目吗？">
+    可以——收费不是许可证限制的内容。你可以向单个客户交付基于FIM One的解决方案，前提是这是一个**专用的单租户部署**，供该客户自己内部使用，且**FIM One品牌保持完整**。
+
+    以下三种情况需要单独的[商业许可证](mailto:license@fim.ai)：
+
+    - **白标** — 移除或隐藏FIM One品牌，使其以客户品牌发布。（这是代理商和集成商最常见的问题。）
+    - **多租户重用** — 从一个共享部署为多个客户服务，或任何"FIM One即服务"产品。
+    - **竞争平台** — 使用FIM One构建另一个智能体编排、工作流或任务规划平台。
+
+    有关完整分解，请参阅许可证页面上的[常见场景](/license#common-scenarios)。
   </Accordion>
 
   <Accordion title="我如何报告安全漏洞？">
-    **不要为敏感漏洞开启公开的 GitHub issue。**
+    **不要为敏感漏洞开设公开GitHub issue。**
 
-    - **敏感报告**（凭证泄露、身份验证绕过、注入等）— 使用 [GitHub 安全公告](https://github.com/fim-ai/fim-one/security/advisories/new)或发送邮件至 **security@fim.ai**。
-    - **低严重性问题**（缺失头部、信息披露）— 使用 `security` 标签开启常规 GitHub issue。
+    - **敏感报告**（凭证泄露、身份验证绕过、注入等）— 使用[GitHub安全公告](https://github.com/fim-ai/fim-one/security/advisories/new)或发送邮件至**security@fim.ai**。
+    - **低严重性问题**（缺失头部、信息披露）— 使用`security`标签开设常规GitHub issue。
 
-    所有报告在 48 小时内（工作日）得到确认。关键问题会尽快修补；其他问题随下一个版本发布。
+    所有报告在48小时内（工作日）得到确认。关键问题尽快修补；其他问题随下一个版本发布。
 
     有关范围、响应时间表和自托管最佳实践，请参阅完整的[安全政策](https://github.com/fim-ai/fim-one/blob/master/SECURITY.md)。
   </Accordion>

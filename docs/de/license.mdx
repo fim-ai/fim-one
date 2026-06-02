@@ -1,40 +1,66 @@
 ---
 title: "Lizenz"
 icon: "scale-balanced"
-description: "FIM One Source Available License v1.2 — was Sie mit der Software dürfen und nicht dürfen."
+description: "FIM One Source Available License v1.2 — was Sie mit der Software tun dürfen und was nicht."
 ---
 
-FIM One wird unter der **FIM One Source Available License v1.2** vertrieben. Dies ist **keine** von der OSI genehmigte Open-Source-Lizenz. Der Quellcode ist öffentlich verfügbar, aber bestimmte kommerzielle Nutzungen sind eingeschränkt.
+FIM One wird unter der **FIM One Source Available License v1.2** vertrieben. Dies ist **keine** von der OSI zugelassene Open-Source-Lizenz. Der Quellcode ist öffentlich verfügbar, aber bestimmte kommerzielle Nutzungen sind eingeschränkt.
 
 <Tip>
   Wenn Ihr Anwendungsfall außerhalb der folgenden Berechtigungen liegt, [kontaktieren Sie uns](mailto:license@fim.ai) für eine kommerzielle Lizenz.
 </Tip>
 
-## Schnelle Zusammenfassung
+# Schnelle Zusammenfassung
 
 ### Zulässig
 
 | Anwendungsfall | Details |
 |---|---|
-| **Interne Nutzung** | Verwenden Sie FIM One innerhalb Ihrer Organisation und verbundener Unternehmen für interne Geschäftstätigkeiten. |
+| **Interne Nutzung** | Nutzen Sie FIM One innerhalb Ihrer Organisation und verbundener Unternehmen für interne Geschäftsvorgänge. |
 | **Änderung** | Ändern Sie den Quellcode und erstellen Sie abgeleitete Werke. |
 | **Verteilung** | Verteilen Sie die Software (mit einer Kopie der Lizenz). |
-| **Einbettung in Ihren Apps** | Verwenden Sie FIM One als Komponente in Ihren eigenen Anwendungen, solange diese kein konkurrierendes Produkt oder gehosteter Dienst sind. |
+| **Einbettung in Ihre Apps** | Nutzen Sie FIM One als Komponente in Ihren eigenen Anwendungen, solange diese kein konkurrierendes Produkt oder gehosteter Service sind. |
 | **Single-Tenant-Bereitstellung** | Stellen Sie FIM One für einen einzelnen Kunden in einer dedizierten Umgebung bereit, vorausgesetzt, das Branding bleibt erhalten und es wird kein Zugriff durch Dritte gewährt. |
 
 ### Eingeschränkt
 
 | Einschränkung | Details |
 |---|---|
-| **Multi-Tenant-SaaS / Gehosteter Service** | Sie dürfen FIM One nicht als Service für Dritte anbieten (z. B. „FIM One-as-a-Service", verwaltete Multi-Tenant-Plattformen oder Weiterverkauf von Zugriff auf FIM One-Funktionalität als Cloud-Service). |
+| **Multi-Tenant-SaaS / Gehosteter Service** | Sie dürfen FIM One nicht als Service für Dritte anbieten (z. B. „FIM One-as-a-Service", verwaltete Multi-Tenant-Plattformen oder Weiterverkauf von FIM One-Funktionalität als Cloud-Service). |
 | **Konkurrierendes Produkt** | Sie dürfen FIM One nicht verwenden, um ein konkurrierendes Agent-Orchestrierungs-, Workflow-Ausführungs- oder Task-Planning-Produkt zu erstellen oder zu betreiben. |
 | **White-Labeling / Entfernen von Branding** | Sie dürfen FIM One-Branding, Logos, Urheberrechtshinweise oder Lizenzhinweise nicht entfernen, ändern oder verschleiern. White-Labeling erfordert eine separate kommerzielle Lizenz. |
 | **Umgehen von Lizenzprüfungen** | Sie dürfen keine Lizenzverifizierung, Feature-Gating oder Berechtigungsprüfungen entfernen, deaktivieren oder umgehen. |
 
+## Häufige Szenarien
+
+<Note>
+  Die Lizenz beschränkt **wie Sie FIM One bereitstellen** — nicht **ob Sie damit Geld verdienen**. Bezahlte und kommerzielle Nutzung ist in Ordnung; nur drei spezifische *Formen* sind ohne kommerzielle Lizenz nicht zulässig: **Multi-Tenant-Hosting-Service**, **White-Labeling** und **Aufbau einer konkurrierenden Plattform**.
+</Note>
+
+| Szenario | Zulässig? | Grund |
+|---|---|---|
+| FIM One intern für Ihr eigenes Unternehmen oder Team betreiben | ✅ Ja | Interne Nutzung (§2a) |
+| FIM One als Engine in ein von Ihnen entwickeltes und verkauftes Produkt einbetten — wobei das Produkt selbst keine Agent-Plattform ist und nicht als Multi-Tenant-SaaS angeboten wird | ✅ Ja | Einbettung (§2d), Branding bleibt erhalten |
+| Eine FIM One-basierte Lösung an **einen Kunden** liefern (Beratung / Systemintegration): dediziert, Single-Tenant, FIM One-Branding intakt, für die interne Nutzung dieses Kunden | ✅ Ja | Single-Tenant-Ausnahme (§3a) |
+| Dieselbe Kundenlieferung, aber **White-Labeled** unter der Marke des Kunden (FIM One-Branding entfernt) | ❌ Nein | Benötigt kommerzielle Lizenz (§3c) |
+| **Eine Bereitstellung wiederverwenden, um mehrere Kunden zu bedienen**, oder ein beliebiges Multi-Tenant-Setup | ❌ Nein | Hosted Service (§3a) |
+| FIM One verwenden, um eine weitere Agent-Orchestrierungs-, Workflow- oder Task-Planning-**Plattform** zu bauen | ❌ Nein | Konkurrierende Produkt (§3b) |
+| Einen Multi-Tenant-SaaS / „FIM One-as-a-Service" betreiben | ❌ Nein | Hosted Service (§3a) |
+
+<Warning>
+  **Führen Sie Kunden- oder Beratungsarbeiten durch?** Die Lieferung einer FIM One-basierten Lösung an einen einzelnen Kunden ist zulässig — aber nur, wenn **alle** folgenden Punkte erfüllt sind:
+
+  1. Die Bereitstellung ist **diesem einen Kunden gewidmet** (Single-Tenant, nicht gemeinsam genutzt oder über Kunden hinweg wiederverwendet);
+  2. Das, was Sie liefern, ist eine **Geschäftsanwendung**, keine wiederverwendbare Agent-Orchestrierungs-Plattform (das wäre ein Konkurrierendes Produkt);
+  3. **FIM One-Branding, Logos und Hinweise bleiben sichtbar und unverändert.**
+
+  Der häufigste Stolperstein ist **White-Labeling** — Kunden möchten die Lösung oft unter ihrer eigenen Marke. Sobald Sie FIM One-Branding entfernen oder verbergen, benötigen Sie eine [kommerzielle Lizenz](mailto:license@fim.ai). Multi-Tenant-Wiederverwendung und Konkurrenz-Plattform-Builds sind die anderen zwei harten Grenzen.
+</Warning>
+
 ## Schlüsselbegriffe
 
 - **Gehosteter Dienst** — Jeder Dienst, der es Dritten ermöglicht, auf die Funktionalität der Software über ein Netzwerk zuzugreifen (SaaS, PaaS, API-Dienste, verwaltete Bereitstellungen).
-- **Konkurrierendes Produkt** — Jedes Produkt, das Agenten-Orchestrierung, Agenten-Laufzeit, Workflow-Ausführung oder Aufgabenplanungsfunktionen bietet, die FIM One wesentlich ähnlich sind.
+- **Konkurrierendes Produkt** — Jedes Produkt, das Agent-Orchestrierung, Agent-Runtime, Workflow-Ausführung oder Task-Planning-Funktionen bietet, die FIM One wesentlich ähnlich sind.
 - **Abgeleitete Werke** — Jedes Werk, das auf der Software basiert oder von ihr abgeleitet ist, einschließlich Änderungen, Erweiterungen und Anpassungen.
 
 ## Kommerzielle Lizenzierung
@@ -49,4 +75,4 @@ Wenn Ihre beabsichtigte Nutzung durch diese Lizenz eingeschränkt ist, sind komm
 
 ## Vollständiger Lizenztext
 
-Diese Seite ist eine Zusammenfassung zur Vereinfachung und ersetzt nicht die tatsächliche Lizenz. Für den vollständigen rechtlichen Text siehe [LICENSE auf GitHub](https://github.com/fim-ai/fim-one/blob/master/LICENSE).
+Diese Seite ist eine Zusammenfassung zur Vereinfachung und ersetzt nicht die eigentliche Lizenz. Für den vollständigen rechtlichen Text siehe [LICENSE auf GitHub](https://github.com/fim-ai/fim-one/blob/master/LICENSE).

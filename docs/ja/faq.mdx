@@ -8,12 +8,12 @@ description: "FIM One についてのよくある質問 — セットアップ�
 
 <AccordionGroup>
   <Accordion title="どのLLMプロバイダーがサポートされていますか？">
-    FIM Oneは**OpenAI互換のあらゆるLLMプロバイダー**で動作します。これには以下が含まれます：
+    FIM Oneは**OpenAI互換のあらゆるLLMプロバイダー**で動作します。以下が含まれます：
 
-    - **商用API** — OpenAI、DeepSeek、Anthropic（Claude）、Alibaba Qwen、Google Gemini、および`/v1/chat/completions`エンドポイントを公開しているあらゆるプロバイダー。
+    - **商用API** — OpenAI、DeepSeek、Anthropic（Claude）、Alibaba Qwen、Google Gemini、および `/v1/chat/completions` エンドポイントを公開しているあらゆるプロバイダー。
     - **ローカル/自己ホスト型** — Ollama、vLLM、LocalAI、LM Studio、およびOpenAI互換API形式を提供するその他のランタイム。
 
-    プロバイダーは`.env`の3つの環境変数で設定します：
+    `.env` の3つの環境変数を通じてプロバイダーを設定します：
 
     ```bash
     LLM_API_KEY=sk-your-key
@@ -25,42 +25,54 @@ description: "FIM One についてのよくある質問 — セットアップ�
   </Accordion>
 
   <Accordion title="ローカルまたは自己ホスト型モデルを使用できますか？">
-    はい。FIM OneはOpenAI互換API形式を実装するあらゆるエンドポイントに接続します。一般的な自己ホスト型オプションには以下が含まれます：
+    はい。FIM OneはOpenAI互換API形式を実装するあらゆるエンドポイントに接続します。人気のある自己ホスト型オプションは以下の通りです：
 
     | ランタイム | ベースURL | モデル例 |
     |---------|----------|---------------|
     | **Ollama** | `http://localhost:11434/v1` | `qwen2.5:14b` |
     | **vLLM** | `http://localhost:8000/v1` | `Qwen/Qwen2.5-72B-Instruct` |
     | **LocalAI** | `http://localhost:8080/v1` | `llama3` |
-    | **LM Studio** | `http://localhost:1234/v1` | （読み込んだもの） |
+    | **LM Studio** | `http://localhost:1234/v1` | （ロードしたもの） |
 
-    プロバイダーが認証を必要としない場合、`LLM_API_KEY`を空でない文字列（例：`ollama`）に設定します。すべてのエージェント機能（ReAct推論、DAG計画、ツール呼び出し）は、モデルがローカルかクラウドホスト型かに関わらず同じように動作します。
+    プロバイダーが認証を必要としない場合、`LLM_API_KEY` を空でない文字列（例：`ollama`）に設定します。ReAct推論、DAG計画、ツール呼び出しなど、すべてのエージェント機能は、モデルがローカルかクラウドホスト型かに関わらず同じように動作します。
   </Accordion>
 
   <Accordion title="FIM Oneはオープンソースですか？">
-    FIM Oneは**ソース利用可能ライセンス**の下でリリースされています。これはOSI承認のオープンソースライセンスではありませんが、ほとんどのユースケースに対して広範な自由を提供します：
+    FIM Oneは**ソース利用可能ライセンス**の下でリリースされています。これはOSI認定のオープンソースライセンスではありませんが、ほとんどのユースケースに対して広範な自由度を提供します：
 
-    **許可される用途：**
+    **許可される行為：**
     - 組織内での内部使用
     - 修正とカスタム開発
     - ライセンスを保持した配布
     - 独自の（競合しない）アプリケーションへの組み込み
 
-    **制限される用途：**
-    - マルチテナントSaaS提供
+    **制限される行為：**
+    - マルチテナントSaaSオファリング
     - 競合するエージェントプラットフォーム
     - ホワイトラベリングまたはブランディングの削除
 
-    商用ライセンスのお問い合わせは、[GitHub](https://github.com/fim-ai/fim-one)でissueを開いてください。完全な条件については、[LICENSE](https://github.com/fim-ai/fim-one/blob/master/LICENSE)を参照してください。
+    商用ライセンスのお問い合わせについては、[GitHub](https://github.com/fim-ai/fim-one)でissueを開いてください。完全な条件については、[LICENSE](https://github.com/fim-ai/fim-one/blob/master/LICENSE)を参照してください。
   </Accordion>
 
-  <Accordion title="セキュリティ脆弱性を報告するにはどうすればよいですか？">
+  <Accordion title="有料クライアントまたはコンサルティングプロジェクトでFIM Oneを使用できますか？">
+    はい。お金を請求することはライセンスが制限する内容ではありません。FIM Oneベースのソリューションを単一のクライアントに提供できます。ただし、そのクライアント自身の内部使用のための**専用のシングルテナント展開**であり、**FIM Oneブランディングが保持されている**ことが条件です。
+
+    以下の3つは別の[商用ライセンス](mailto:license@fim.ai)が必要です：
+
+    - **ホワイトラベリング** — FIM Oneブランディングを削除または非表示にして、クライアントのブランドの下で出荷する場合。（これは代理店やインテグレーターにとって最も一般的な落とし穴です。）
+    - **マルチテナント再利用** — 1つの共有展開から複数のクライアントにサービスを提供する、またはあらゆる「FIM One-as-a-Service」オファリング。
+    - **競合プラットフォーム** — FIM Oneを使用して別のエージェント調整、ワークフロー、またはタスク計画プラットフォームを構築する場合。
+
+    ライセンスページの[一般的なシナリオ](/license#common-scenarios)で完全な内訳を参照してください。
+  </Accordion>
+
+  <Accordion title="セキュリティ脆弱性をどのように報告しますか？">
     **機密性の高い脆弱性については、公開GitHubのissueを開かないでください。**
 
-    - **機密性の高いレポート**（認証情報の露出、認証バイパス、インジェクション等）— [GitHub Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new)を使用するか、**security@fim.ai**にメールしてください。
-    - **低重度の問題**（ヘッダーの欠落、情報開示）— `security`ラベル付きで通常のGitHubのissueを開いてください。
+    - **機密レポート**（認証情報の漏洩、認証バイパス、インジェクション等）— [GitHub Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new)を使用するか、**security@fim.ai**にメールしてください。
+    - **低重度の問題**（ヘッダーの欠落、情報開示）— `security`ラベルを付けた通常のGitHubのissueを開いてください。
 
-    すべてのレポートは営業日以内に48時間以内に確認されます。重大な問題は可能な限り早くパッチが適用されます。その他の問題は次のリリースで提供されます。
+    すべてのレポートは営業日以内に48時間以内に確認されます。重大な問題は可能な限り早期にパッチされます。その他は次のリリースで提供されます。
 
     スコープ、応答タイムライン、自己ホスト型のベストプラクティスについては、完全な[セキュリティポリシー](https://github.com/fim-ai/fim-one/blob/master/SECURITY.md)を参照してください。
   </Accordion>

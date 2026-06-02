@@ -4,13 +4,13 @@ icon: "scale-balanced"
 description: "FIM One Source Available License v1.2 — ce que vous pouvez et ne pouvez pas faire avec le logiciel."
 ---
 
-FIM One est distribué sous la **FIM One Source Available License v1.2**. Il ne s'agit **pas** d'une licence open source approuvée par l'OSI. Le code source est publiquement disponible, mais certains usages commerciaux sont restreints.
+FIM One est distribué sous la **FIM One Source Available License v1.2**. Ce n'est **pas** une licence open source approuvée par l'OSI. Le code source est publiquement disponible, mais certains usages commerciaux sont restreints.
 
 <Tip>
-  Si votre cas d'usage ne correspond pas aux permissions ci-dessous, [contactez-nous](mailto:license@fim.ai) pour une licence commerciale.
+  Si votre cas d'usage sort du cadre des permissions ci-dessous, [contactez-nous](mailto:license@fim.ai) pour une licence commerciale.
 </Tip>
 
-## Résumé rapide
+# Résumé rapide
 
 ### Autorisé
 
@@ -24,16 +24,42 @@ FIM One est distribué sous la **FIM One Source Available License v1.2**. Il ne 
 
 ### Restrictions
 
-| Restriction | Détails |
+| Restriction | Details |
 |---|---|
-| **SaaS multi-locataire / Service hébergé** | Vous **ne pouvez pas** proposer FIM One en tant que service à des tiers (par exemple, « FIM One-as-a-Service », plateformes multi-locataires gérées ou revente d'accès à la fonctionnalité FIM One en tant que service cloud). |
-| **Produit concurrent** | Vous **ne pouvez pas** utiliser FIM One pour construire ou exploiter un produit concurrent d'orchestration d'agents, d'exécution de flux de travail ou de planification de tâches. |
-| **Marque blanche / suppression de la marque** | Vous **ne pouvez pas** supprimer, modifier ou masquer la marque FIM One, les logos, les avis de droits d'auteur ou les avis de licence. La marque blanche nécessite une licence commerciale distincte. |
-| **Contournement des vérifications de licence** | Vous **ne pouvez pas** supprimer, désactiver ou contourner les vérifications de licence, le contrôle des fonctionnalités ou les vérifications de droits. |
+| **Multi-tenant SaaS / Hosted Service** | Vous ne pouvez **pas** proposer FIM One en tant que service à des tiers (par exemple, « FIM One-as-a-Service », plateformes multi-locataires gérées, ou revente d'accès à la fonctionnalité FIM One en tant que service cloud). |
+| **Competing product** | Vous ne pouvez **pas** utiliser FIM One pour créer ou exploiter un produit concurrent d'orchestration d'agents, d'exécution de flux de travail ou de planification de tâches. |
+| **White-labeling / removing branding** | Vous ne pouvez **pas** supprimer, modifier ou masquer la marque FIM One, les logos, les avis de droits d'auteur ou les avis de licence. Le white-labeling nécessite une licence commerciale distincte. |
+| **Circumventing license checks** | Vous ne pouvez **pas** supprimer, désactiver ou contourner les vérifications de licence, le contrôle des fonctionnalités ou les vérifications de droits. |
+
+## Scénarios courants
+
+<Note>
+  La licence restreint **comment vous déployez** FIM One — pas **si vous pouvez facturer** pour cela. L'utilisation payante et commerciale est autorisée ; seules trois **formes** spécifiques sont interdites sans licence commerciale : **service hébergé multi-locataire**, **white-labeling**, et **construction d'une plateforme concurrente**.
+</Note>
+
+| Scénario | Autorisé ? | Raison |
+|---|---|---|
+| Exécuter FIM One en interne pour votre propre entreprise ou équipe | ✅ Oui | Utilisation interne (§2a) |
+| Intégrer FIM One comme moteur dans un produit que vous construisez et vendez — où le produit n'est pas lui-même une plateforme d'agent et n'est pas proposé en tant que SaaS multi-locataire | ✅ Oui | Intégration (§2d), marque conservée |
+| Livrer une solution basée sur FIM One à **un seul client** (conseil / intégration système) : dédiée, mono-locataire, marque FIM One intacte, pour l'utilisation interne de ce client | ✅ Oui | Exception mono-locataire (§3a) |
+| La même livraison client, mais **white-labelée** sous la marque du client (marque FIM One supprimée) | ❌ Non | Nécessite une licence commerciale (§3c) |
+| Réutiliser **un seul déploiement pour servir plusieurs clients**, ou toute configuration multi-locataire | ❌ Non | Service hébergé (§3a) |
+| Utiliser FIM One pour construire une autre **plateforme** d'orchestration d'agents, de flux de travail ou de planification de tâches | ❌ Non | Produit concurrent (§3b) |
+| Exploiter un SaaS multi-locataire / « FIM One-as-a-Service » | ❌ Non | Service hébergé (§3a) |
+
+<Warning>
+  **Vous faites du travail client ou du conseil ?** Livrer une solution basée sur FIM One à un seul client est autorisé — mais seulement si **tous** ces points sont respectés :
+
+  1. Le déploiement est **dédié à ce seul client** (mono-locataire, non partagé ou réutilisé entre clients) ;
+  2. Ce que vous livrez est une **application métier**, pas une plateforme d'orchestration d'agents réutilisable (ce serait un Produit concurrent) ;
+  3. **La marque, les logos et les mentions FIM One restent visibles et inchangés.**
+
+  Le piège le plus courant est le **white-labeling** — les clients veulent souvent la solution sous leur propre marque. Dès que vous supprimez ou masquez la marque FIM One, vous avez besoin d'une [licence commerciale](mailto:license@fim.ai). La réutilisation multi-locataire et les constructions de plateforme concurrente sont les deux autres limites strictes.
+</Warning>
 
 ## Termes clés
 
-- **Service hébergé** — Tout service qui permet à des tiers d'accéder aux fonctionnalités du Logiciel sur un réseau (SaaS, PaaS, services API, déploiements gérés).
+- **Service hébergé** — Tout service permettant à des tiers d'accéder aux fonctionnalités du Logiciel via un réseau (SaaS, PaaS, services API, déploiements gérés).
 - **Produit concurrent** — Tout produit fournissant des capacités d'orchestration d'agents, d'exécution d'agents, d'exécution de flux de travail ou de planification de tâches substantiellement similaires à FIM One.
 - **Œuvres dérivées** — Toute œuvre basée sur ou dérivée du Logiciel, y compris les modifications, extensions et adaptations.
 
@@ -43,7 +69,7 @@ Si votre utilisation prévue est restreinte par cette licence, des licences comm
 
 - Les déploiements SaaS multi-locataires et les services hébergés
 - La personnalisation de marque et la distribution OEM
-- Les autres cas d'utilisation non couverts par la licence source disponible
+- Les autres cas d'usage non couverts par la licence source disponible
 
 **Contact :** [license@fim.ai](mailto:license@fim.ai) ou ouvrez une discussion sur [GitHub](https://github.com/fim-ai/fim-one/discussions).
 

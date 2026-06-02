@@ -8,10 +8,10 @@ description: "FIM One에 대한 자주 묻는 질문 — 설정, 기능, 라이�
 
 <AccordionGroup>
   <Accordion title="어떤 LLM 제공자가 지원되나요?">
-    FIM One은 **모든 OpenAI 호환 LLM 제공자**와 함께 작동합니다. 여기에는 다음이 포함됩니다:
+    FIM One은 **OpenAI 호환 LLM 제공자라면 모두 작동합니다**. 여기에는 다음이 포함됩니다:
 
-    - **상용 API** — OpenAI, DeepSeek, Anthropic (Claude), Alibaba Qwen, Google Gemini 및 `/v1/chat/completions` 엔드포인트를 노출하는 모든 제공자.
-    - **로컬/자체 호스팅** — Ollama, vLLM, LocalAI, LM Studio 및 OpenAI 호환 API 형식을 제공하는 기타 런타임.
+    - **상용 API** — OpenAI, DeepSeek, Anthropic (Claude), Alibaba Qwen, Google Gemini, 그리고 `/v1/chat/completions` 엔드포인트를 제공하는 모든 제공자.
+    - **로컬/자체 호스팅** — Ollama, vLLM, LocalAI, LM Studio, 그리고 OpenAI 호환 API 형식을 제공하는 다른 모든 런타임.
 
     `.env`의 세 가지 환경 변수를 통해 제공자를 구성합니다:
 
@@ -21,48 +21,60 @@ description: "FIM One에 대한 자주 묻는 질문 — 설정, 기능, 라이�
     LLM_MODEL=gpt-4o                         # change for other models
     ```
 
-    제공자별 예제는 [빠른 시작](/quickstart) 가이드를 참조하세요.
+    제공자별 예시는 [빠른 시작](/quickstart) 가이드를 참조하세요.
   </Accordion>
 
   <Accordion title="로컬 또는 자체 호스팅 모델을 사용할 수 있나요?">
     네. FIM One은 OpenAI 호환 API 형식을 구현하는 모든 엔드포인트에 연결됩니다. 인기 있는 자체 호스팅 옵션은 다음과 같습니다:
 
-    | 런타임 | 기본 URL | 예제 모델 |
+    | 런타임 | 기본 URL | 예시 모델 |
     |---------|----------|---------------|
     | **Ollama** | `http://localhost:11434/v1` | `qwen2.5:14b` |
     | **vLLM** | `http://localhost:8000/v1` | `Qwen/Qwen2.5-72B-Instruct` |
     | **LocalAI** | `http://localhost:8080/v1` | `llama3` |
-    | **LM Studio** | `http://localhost:1234/v1` | (whatever you load) |
+    | **LM Studio** | `http://localhost:1234/v1` | (로드한 모델) |
 
-    제공자가 인증을 요구하지 않을 때 `LLM_API_KEY`를 비어있지 않은 문자열(예: `ollama`)로 설정합니다. 모든 에이전트 기능 — ReAct 추론, DAG 계획, 도구 호출 — 은 모델이 로컬인지 클라우드 호스팅인지에 관계없이 동일하게 작동합니다.
+    제공자가 인증을 요구하지 않을 때 `LLM_API_KEY`를 비어있지 않은 문자열(예: `ollama`)로 설정합니다. ReAct 추론, DAG 계획, 도구 호출 등 모든 에이전트 기능은 모델이 로컬인지 클라우드 호스팅인지에 관계없이 동일하게 작동합니다.
   </Accordion>
 
-  <Accordion title="FIM One은 오픈 소스인가요?">
-    FIM One은 **Source Available License** 하에 릴리스됩니다. 이는 OSI 승인 오픈 소스 라이선스는 아니지만 대부분의 사용 사례에 광범위한 자유를 제공합니다:
+  <Accordion title="FIM One은 오픈소스인가요?">
+    FIM One은 **소스 이용 가능 라이선스**로 공개됩니다. 이는 OSI 승인 오픈소스 라이선스는 아니지만 대부분의 사용 사례에 광범위한 자유를 제공합니다:
 
     **허용됨:**
     - 조직 내 내부 사용
-    - 수정 및 사용자 정의 개발
-    - 라이선스 유지와 함께 배포
+    - 수정 및 커스텀 개발
+    - 라이선스 유지 상태에서의 배포
     - 자신의 (경쟁하지 않는) 애플리케이션에 포함
 
     **제한됨:**
     - 다중 테넌트 SaaS 제공
-    - 경쟁 에이전트 플랫폼
-    - 화이트 라벨링 또는 브랜딩 제거
+    - 경쟁하는 에이전트 플랫폼
+    - 화이트라벨링 또는 브랜딩 제거
 
-    상용 라이선싱 문의는 [GitHub](https://github.com/fim-ai/fim-one)에서 이슈를 열어주세요. 전체 [LICENSE](https://github.com/fim-ai/fim-one/blob/master/LICENSE)에서 완전한 약관을 참조하세요.
+    상용 라이선싱 문의는 [GitHub](https://github.com/fim-ai/fim-one)에서 이슈를 열어주세요. 전체 약관은 [LICENSE](https://github.com/fim-ai/fim-one/blob/master/LICENSE)를 참조하세요.
+  </Accordion>
+
+  <Accordion title="FIM One을 유료 클라이언트 또는 컨설팅 프로젝트에 사용할 수 있나요?">
+    네 — 돈을 받는 것은 라이선스가 제한하는 것이 아닙니다. FIM One 기반 솔루션을 단일 클라이언트에 제공할 수 있으며, 이는 해당 클라이언트의 자체 내부 사용을 위한 **전용 단일 테넌트 배포**이고 **FIM One 브랜딩이 유지**되어야 합니다.
+
+    별도의 [상용 라이선스](mailto:license@fim.ai)가 필요한 세 가지 경우:
+
+    - **화이트라벨링** — FIM One 브랜딩을 제거하거나 숨겨서 클라이언트의 브랜드로 배포. (이것이 에이전시와 통합자에게 가장 흔한 문제입니다.)
+    - **다중 테넌트 재사용** — 하나의 공유 배포에서 여러 클라이언트에 서비스 제공, 또는 모든 "FIM One-as-a-Service" 제공.
+    - **경쟁하는 플랫폼** — FIM One을 사용하여 다른 에이전트 오케스트레이션, 워크플로우 또는 작업 계획 플랫폼 구축.
+
+    라이선스 페이지의 [일반적인 시나리오](/license#common-scenarios)에서 전체 분석을 참조하세요.
   </Accordion>
 
   <Accordion title="보안 취약점을 어떻게 보고하나요?">
     **민감한 취약점에 대해 공개 GitHub 이슈를 열지 마세요.**
 
-    - **민감한 보고** (자격증명 노출, 인증 우회, 주입 등) — [GitHub Security Advisories](https://github.com/fim-ai/fim-one/security/advisories/new)를 사용하거나 **security@fim.ai**로 이메일을 보내세요.
-    - **낮은 심각도 문제** (누락된 헤더, 정보 공개) — `security` 라벨과 함께 일반 GitHub 이슈를 열어주세요.
+    - **민감한 보고** (자격증명 노출, 인증 우회, 주입 등) — [GitHub 보안 권고](https://github.com/fim-ai/fim-one/security/advisories/new) 또는 **security@fim.ai**로 이메일.
+    - **낮은 심각도 문제** (누락된 헤더, 정보 공개) — `security` 레이블이 있는 일반 GitHub 이슈 열기.
 
-    모든 보고는 48시간(업무일) 내에 승인됩니다. 중요한 문제는 최대한 빨리 패치되며, 기타 문제는 다음 릴리스와 함께 제공됩니다.
+    모든 보고는 48시간(업무일) 내에 승인됩니다. 중요 문제는 가능한 한 빨리 패치되며, 기타는 다음 릴리스와 함께 제공됩니다.
 
-    범위, 응답 타임라인 및 자체 호스팅 모범 사례에 대한 전체 [보안 정책](https://github.com/fim-ai/fim-one/blob/master/SECURITY.md)을 참조하세요.
+    범위, 응답 타임라인, 자체 호스팅 모범 사례는 전체 [보안 정책](https://github.com/fim-ai/fim-one/blob/master/SECURITY.md)을 참조하세요.
   </Accordion>
 </AccordionGroup>
 
