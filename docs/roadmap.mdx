@@ -133,7 +133,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - **Global MCP servers**: admin-provisioned, loaded in all sessions
 - **Backward-compat**: registration_enabled → registration_mode auto-migration
 
-### v0.7.x (2026-03-07 to 2026-03-12) — Stability + Polish
+### v0.7.x (2026-03-07 to 2026-03-12) — Stability + Refinements
 - Invite code management
 - Per-user quotas (429 enforcement)
 - Structured audit logging
@@ -248,7 +248,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - **Channels + Hook System architecture docs** — `docs/architecture/hook-system.mdx` explains the three hook points and walks through FeishuGateHook end-to-end; existing architecture pages cross-link; README lists Messaging Channels as a first-class capability
 - **Hardening** — Duplicate Feishu callback clicks produce a replacement card instead of double-deciding; concurrent callback clicks resolved via conditional `UPDATE ... WHERE status='pending'` rowcount check; pending approvals auto-expire after `CHANNEL_CONFIRMATION_TTL_MINUTES` (default 24h) via background sweeper; Settings → Channels respects org role (members see read-only UI); parallel tool-call aggregator handles providers that reuse `index=0` for every delta; session-expiry redirect preserves query string
 
-### v0.8.6 (2026-05-08) — Stripe Billing + Polish
+### v0.8.6 (2026-05-08) — Stripe Billing + Refinements
 - [x] Stripe billing MVP — Free + Pro tiers; Checkout, Customer Portal, webhook lifecycle; `/settings?tab=billing`; admin plan/subscription CRUD; quota enforcement respects each user's plan
 - [x] Admin-controlled billing feature flag — `system_settings.billing_enabled` gates the entire Stripe pipeline so private deployments without Stripe credentials never surface a non-functional payment UX
 - [x] Per-user unlimited quota — empty inherits global default, `0` grants unlimited; previously both collapsed into the same state

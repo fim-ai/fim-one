@@ -134,9 +134,9 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 - **Globale MCP-Server**: von Admin bereitgestellt, in allen Sitzungen geladen
 - **Rückwärtskompatibilität**: registration_enabled → registration_mode automatische Migration
 
-### v0.7.x (2026-03-07 bis 2026-03-12) — Stabilität + Verbesserungen
+### v0.7.x (2026-03-07 bis 2026-03-12) — Stabilität + Verfeinerungen
 - Einladungscode-Verwaltung
-- Benutzer-spezifische Kontingente (429-Durchsetzung)
+- Pro-Benutzer-Kontingente (429-Durchsetzung)
 - Strukturiertes Audit-Logging
 - Filterung sensibler Wörter
 - Admin-Anmeldungsverlauf
@@ -144,31 +144,31 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 - Erweiterte Admin-Ansichten (Felder model_name, tools, kb_ids)
 - Docker Compose-Bereitstellung (einzelnes Image, benannte Volumes)
 - OAuth-Automatische Erkennung von window.location
-- Erweitertes Denken / Reasoning-Unterstützung (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) für OpenAI o-Serie, Gemini 2.5+, Claude
-- Admin pro-Tool Aktivieren/Deaktivieren (deaktivierte Tools werden zur Laufzeit aus dem Chat ausgeschlossen)
-- MCP-Server-Verwaltung auf die Seite „Konnektoren" verschoben
+- Extended Thinking / Reasoning-Unterstützung (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) für OpenAI o-Serie, Gemini 2.5+, Claude
+- Admin pro Tool aktivieren/deaktivieren (deaktivierte Tools zur Laufzeit aus Chat ausgeschlossen)
+- MCP-Server-Verwaltung auf Connectors-Seite verschoben
 - Duale Datenbankunterstützung: SQLite (Null-Konfiguration Standard) + PostgreSQL (Produktion); Docker Compose stellt PostgreSQL automatisch bereit
-- Dokumentationsseite zur Modellkonfiguration mit Extended-Thinking-Setup pro Anbieter
-- SSE Protocol v2: Echtzeit-Antwort-Streaming mit `delta_reasoning`, `usage`-Feldern und geteilten `done`/`suggestions`/`title`/`end`-Events; SQLite-Pool-Größe 5 -> 20
-- AI Builder-Erweiterung: 7 neue Builder-Tools (GetSettings, TestConnection, ImportOpenAPI für Konnektoren; ListConnectors, AddConnector, RemoveConnector, SetModel für Agenten), `is_builder`-Flag auf Agenten, automatische Builder-Prompt-Aktualisierung, SSRF-Schutz
-- SSE v2 Frontend: Streaming-Punkt-Puls-Cursor, DAG-Neuplan-Runden-Snapshots als einklappbare Karten, DAG-Layout entkoppelt von Schrittzuständen
-- Konzeptdokumentationsseite für AI Builder mit Konnektoren- und Agenten-Builder-Leitfäden
-- Organisationssystem: vollständige CRUD-Operationen mit rollenbasierter Mitgliedschaft (Eigentümer/Admin/Mitglied), Admin-Verwaltungs-UI
-- Dreiebenen-Ressourcensichtbarkeit (persönlich/Org/global) für Agenten, Konnektoren, Wissensdatenbanken, MCP-Server
-- Veröffentlichungs-/Unveröffentlichungs-API für alle Ressourcentypen; Eigentümerdelegation für veröffentlichte Agenten
+- Dokumentationsseite zur Modellkonfiguration mit Extended-Thinking-Setup pro Provider
+- SSE Protocol v2: Echtzeit-Antwort-Streaming mit `delta_reasoning`, `usage`-Feldern und aufgeteilten `done`/`suggestions`/`title`/`end`-Events; SQLite-Pool-Größe 5 -> 20
+- AI Builder-Erweiterung: 7 neue Builder-Tools (GetSettings, TestConnection, ImportOpenAPI für Connectors; ListConnectors, AddConnector, RemoveConnector, SetModel für Agents), `is_builder`-Flag auf Agents, automatische Builder-Prompt-Aktualisierung, SSRF-Schutz
+- SSE v2 Frontend: Streaming-Punkt-Puls-Cursor, DAG-Neuplanung-Runden-Snapshots als einklappbare Karten, DAG-Layout entkoppelt von Schrittzuständen
+- Konzeptdokumentationsseite für AI Builder mit Connector- und Agent-Builder-Leitfäden
+- Organisationssystem: vollständiges CRUD mit rollenbasierter Mitgliedschaft (Owner/Admin/Member), Admin-Verwaltungs-UI
+- Drei-Ebenen-Ressourcensichtbarkeit (persönlich/org/global) für Agents, Connectors, Knowledge Bases, MCP-Server
+- Veröffentlichungs-/Unveröffentlichungs-API für alle Ressourcentypen; Owner-Delegation für veröffentlichte Agents
 - Admin-Set-Visibility-Endpoint (ersetzt Clone-to-Global); einheitlicher `build_visibility_filter()`-Abfrage-Helper
-- Datenbank-Konnektoren (Phase 1-3): direkter SQL-Zugriff auf PG/MySQL/Oracle/SQL Server + chinesische Legacy-DBs; Schema-Introspection, KI-Annotation, schreibgeschützte Abfrageausführung, verschlüsselte Anmeldedaten, 3 Tools pro Konnektor (`list_tables`, `describe_table`, `query`)
-- **Evaluierungszentrum**: quantitatives Benchmarking der Agentenqualität — Test-Dataset CRUD (Prompt + erwartetes Verhalten + Assertions), Eval-Läufe (parallele Ausführung + LLM-Bewerter + Pro-Fall Pass/Fail/Latenz/Token-Ergebnisse), Ergebnis-Viewer mit automatischem Polling; Migration `r8t0v2x4z567`
-- Drei Modellrollen (Allgemein/Schnell/Reasoning) mit isolierter Umgebungskonfiguration pro Tier; Schnellmodell erbt keine Hauptmodell-Einstellungen mehr
+- Database Connectors (Phase 1-3): direkter SQL-Zugriff auf PG/MySQL/Oracle/SQL Server + chinesische Legacy-DBs; Schema-Introspection, KI-Annotation, schreibgeschützte Abfrageausführung, verschlüsselte Anmeldedaten, 3 Tools pro Connector (`list_tables`, `describe_table`, `query`)
+- **Evaluation Center**: quantitatives Agent-Qualitäts-Benchmarking — Test-Dataset CRUD (Prompt + erwartetes Verhalten + Assertions), Eval-Läufe (parallele Ausführung + LLM-Grader + Pro-Fall Pass/Fail/Latenz/Token-Ergebnisse), Ergebnis-Viewer mit automatischem Polling; Migration `r8t0v2x4z567`
+- Drei Modellrollen (General/Fast/Reasoning) mit Pro-Tier-Umgebungskonfiguration-Isolation; Fast-Modell erbt nicht mehr Hauptmodell-Einstellungen
 - `StepOutput`-Dataclass ersetzt einfache String-Schrittergebnisse für strukturierte Daten und Artefakt-Übergabe
 - Tool-Cache für DAG-Ausführung — identische Tool-Aufrufe pro Lauf gecacht mit asynchronem Lock-Stampede-Schutz (`DAG_TOOL_CACHE`)
 - Pro-Schritt-LLM-Verifizierung mit 1 Wiederholung bei Fehler (`DAG_STEP_VERIFICATION`)
-- Auto-Routing: schnelles LLM klassifiziert Abfragen als ReAct oder DAG; `/api/auto`-Endpoint; Frontend 3-Wege-Modusumschalter (`AUTO_ROUTING`)
-- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: Integrierte Market-Org (Shadow, kein automatischer Beitritt) ersetzt Platform-Org; Ressourcen werden durch Marketplace-Browsing entdeckt und explizit abonniert (Pull-Modell); Market-API zum Abonnieren gemeinsamer Ressourcen; Veröffentlichung auf Market erfordert immer Überprüfung; Ressourcen-Abonnements-Tabelle; Org-basierte Ressourcenfreigabe ersetzt globale Sichtbarkeit
-- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: `discoverable`-Flag auf Agenten; `sub_agent_ids`-Whitelist; CallAgentTool zum Delegieren von Aufgaben an spezialisierte Agenten
-- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials`-Tabelle; `PUT /api/mcp-servers/{id}/my-credentials`-Endpoint; `allow_fallback`-Flag für Fallback-Verhalten bei Anmeldedaten
+- Auto-Routing: Fast-LLM klassifiziert Abfragen als ReAct oder DAG; `/api/auto`-Endpoint; Frontend 3-Wege-Modus-Toggle (`AUTO_ROUTING`)
+- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: Integrierte Market-Org (Shadow, kein Auto-Join) ersetzt Platform-Org; Ressourcen über Marketplace-Browsing entdeckt und explizit abonniert (Pull-Modell); Market-API zum Abonnieren gemeinsamer Ressourcen; Veröffentlichung auf Market erfordert immer Überprüfung; Resource-Subscriptions-Tabelle; Org-basierte Ressourcenfreigabe ersetzt globale Sichtbarkeit
+- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: `discoverable`-Flag auf Agents; `sub_agent_ids`-Whitelist; CallAgentTool zum Delegieren von Aufgaben an spezialisierte Agents
+- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials`-Tabelle; `PUT /api/mcp-servers/{id}/my-credentials`-Endpoint; `allow_fallback`-Flag für Credential-Fallback-Verhalten
 - [x] ~~**Connector/KB Toggle**~~: `POST /api/connectors/{id}/toggle` und `POST /api/knowledge-bases/{id}/toggle` zum Aussetzen/Fortsetzen von Ressourcen
-- [x] ~~**Standalone KB Conversations**~~: `kb_ids`-Feld auf Konversationen für direkten KB-Chat ohne Agent-Bindung
+- [x] ~~**Standalone KB Conversations**~~: `kb_ids`-Feld auf Conversations für direkten KB-Chat ohne Agent-Bindung
 
 ### v0.8 (2026-03-20) — Connector Deklarative Konfiguration + Progressive Offenlegung
 - [x] **Datenbank-Konnektoren**: direkter SQL-Zugriff (PostgreSQL, MySQL, Oracle) *(in v0.7.x ausgeliefert — Phase 1-3)*
@@ -249,7 +249,7 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 - **Channels + Hook System architecture docs** — `docs/architecture/hook-system.mdx` explains the three hook points and walks through FeishuGateHook end-to-end; existing architecture pages cross-link; README lists Messaging Channels as a first-class capability
 - **Hardening** — Duplicate Feishu callback clicks produce a replacement card instead of double-deciding; concurrent callback clicks resolved via conditional `UPDATE ... WHERE status='pending'` rowcount check; pending approvals auto-expire after `CHANNEL_CONFIRMATION_TTL_MINUTES` (default 24h) via background sweeper; Settings → Channels respects org role (members see read-only UI); parallel tool-call aggregator handles providers that reuse `index=0` for every delta; session-expiry redirect preserves query string
 
-### v0.8.6 (2026-05-08) — Stripe Billing + Polish
+### v0.8.6 (2026-05-08) — Stripe Billing + Refinements
 - [x] Stripe billing MVP — Free + Pro tiers; Checkout, Customer Portal, webhook lifecycle; `/settings?tab=billing`; admin plan/subscription CRUD; quota enforcement respects each user's plan
 - [x] Admin-controlled billing feature flag — `system_settings.billing_enabled` gates the entire Stripe pipeline so private deployments without Stripe credentials never surface a non-functional payment UX
 - [x] Per-user unlimited quota — empty inherits global default, `0` grants unlimited; previously both collapsed into the same state

@@ -134,41 +134,41 @@ flowchart LR
 - **전역 MCP 서버**: 관리자 프로비저닝, 모든 세션에서 로드
 - **하위 호환성**: registration_enabled → registration_mode 자동 마이그레이션
 
-### v0.7.x (2026-03-07 to 2026-03-12) — 안정성 + 개선
+### v0.7.x (2026-03-07 to 2026-03-12) — Stability + Refinements
 - 초대 코드 관리
 - 사용자별 할당량 (429 적용)
 - 구조화된 감사 로깅
 - 민감한 단어 필터링
 - 관리자 로그인 기록
 - 관리자 파일 브라우저
-- 향상된 관리자 보기 (model_name, tools, kb_ids 필드)
+- 향상된 관리자 뷰 (model_name, tools, kb_ids 필드)
 - Docker Compose 배포 (단일 이미지, 명명된 볼륨)
 - OAuth 자동 감지 (window.location에서)
-- 확장 사고 / 추론 지원 (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) - OpenAI o-series, Gemini 2.5+, Claude
+- 확장 사고 / 추론 지원 (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) — OpenAI o-series, Gemini 2.5+, Claude
 - 관리자 도구별 활성화/비활성화 (비활성화된 도구는 런타임에 채팅에서 제외)
-- MCP 서버 관리를 커넥터 페이지로 이동
-- 이중 데이터베이스 지원: SQLite (제로 설정 기본값) + PostgreSQL (프로덕션); Docker Compose는 PostgreSQL 자동 프로비저닝
+- MCP 서버 관리를 Connectors 페이지로 이동
+- 이중 데이터베이스 지원: SQLite (제로 구성 기본값) + PostgreSQL (프로덕션); Docker Compose는 PostgreSQL 자동 프로비저닝
 - 모델 구성 문서 페이지 (제공자별 확장 사고 설정 포함)
 - SSE Protocol v2: `delta_reasoning`, `usage` 필드를 포함한 실시간 답변 스트리밍, `done`/`suggestions`/`title`/`end` 이벤트 분할; SQLite 풀 크기 5 -> 20
 - AI Builder 확장: 7개의 새로운 빌더 도구 (GetSettings, TestConnection, ImportOpenAPI for connectors; ListConnectors, AddConnector, RemoveConnector, SetModel for agents), 에이전트의 `is_builder` 플래그, 빌더 프롬프트 자동 새로고침, SSRF 가드
-- SSE v2 프론트엔드: 스트리밍 점 펄스 커서, 축소 가능한 카드로 표시되는 DAG 재계획 라운드 스냅샷, DAG 레이아웃과 단계 상태 분리
+- SSE v2 프론트엔드: 스트리밍 점 펄스 커서, DAG 재계획 라운드 스냅샷 (축소 가능한 카드), DAG 레이아웃 단계 상태에서 분리
 - AI Builder 개념 문서 페이지 (커넥터 및 에이전트 빌더 가이드 포함)
 - 조직 시스템: 역할 기반 멤버십 (소유자/관리자/멤버)을 포함한 전체 CRUD, 관리자 관리 UI
-- 에이전트, 커넥터, 지식 기반, MCP 서버에 대한 3단계 리소스 가시성 (개인/조직/전역)
+- 3계층 리소스 가시성 (개인/조직/글로벌) — 에이전트, 커넥터, 지식 기반, MCP 서버
 - 모든 리소스 유형에 대한 게시/게시 취소 API; 게시된 에이전트에 대한 소유자 위임
-- 관리자 설정 가시성 엔드포인트 (복제-전역 대체); 통합 `build_visibility_filter()` 쿼리 헬퍼
-- 데이터베이스 커넥터 (1-3단계): PG/MySQL/Oracle/SQL Server + 중국 레거시 DB에 대한 직접 SQL 액세스; 스키마 내부 검사, AI 주석, 읽기 전용 쿼리 실행, 암호화된 자격 증명, 커넥터당 3개 도구 (`list_tables`, `describe_table`, `query`)
-- **평가 센터**: 정량적 에이전트 품질 벤치마킹 — 테스트 데이터셋 CRUD (프롬프트 + 예상 동작 + 어설션), 평가 실행 (병렬 실행 + LLM 채점자 + 케이스별 통과/실패/지연/토큰 결과), 자동 폴링을 포함한 결과 뷰어; 마이그레이션 `r8t0v2x4z567`
-- 3가지 모델 역할 (General/Fast/Reasoning) (티어별 env 구성 격리 포함); 빠른 모델은 더 이상 주 모델 설정을 상속하지 않음
-- 구조화된 데이터 및 아티팩트 전달을 위한 일반 문자열 단계 결과를 대체하는 `StepOutput` 데이터클래스
-- DAG 실행을 위한 도구 캐시 — 실행당 동일한 도구 호출 캐시 (비동기 잠금 스탬피드 방지 포함) (`DAG_TOOL_CACHE`)
+- 관리자 가시성 설정 엔드포인트 (clone-to-global 대체); 통합 `build_visibility_filter()` 쿼리 헬퍼
+- 데이터베이스 커넥터 (Phase 1-3): PG/MySQL/Oracle/SQL Server + 중국 레거시 DB에 대한 직접 SQL 접근; 스키마 내부 검사, AI 주석, 읽기 전용 쿼리 실행, 암호화된 자격 증명, 커넥터당 3개 도구 (`list_tables`, `describe_table`, `query`)
+- **평가 센터**: 정량적 에이전트 품질 벤치마킹 — 테스트 데이터셋 CRUD (프롬프트 + 예상 동작 + 어설션), 평가 실행 (병렬 실행 + LLM 채점자 + 사례별 통과/실패/지연/토큰 결과), 자동 폴링을 포함한 결과 뷰어; 마이그레이션 `r8t0v2x4z567`
+- 3가지 모델 역할 (General/Fast/Reasoning) (계층별 환경 구성 격리 포함); 빠른 모델은 더 이상 주 모델 설정을 상속하지 않음
+- 구조화된 데이터 및 아티팩트 전달을 위한 `StepOutput` 데이터클래스 (일반 문자열 단계 결과 대체)
+- DAG 실행을 위한 도구 캐시 — 비동기 잠금 스탬피드 방지를 포함한 실행당 동일한 도구 호출 캐시 (`DAG_TOOL_CACHE`)
 - 실패 시 1회 재시도를 포함한 단계별 LLM 검증 (`DAG_STEP_VERIFICATION`)
 - 자동 라우팅: 빠른 LLM이 쿼리를 ReAct 또는 DAG로 분류; `/api/auto` 엔드포인트; 프론트엔드 3방향 모드 토글 (`AUTO_ROUTING`)
-- [x] ~~**Shadow Market 조직 + 리소스 구독**~~: 기본 제공 Market 조직 (shadow, 자동 가입 없음)이 Platform 조직을 대체; 마켓플레이스 브라우징 및 명시적 구독을 통해 발견된 리소스 (풀 모델); 공유 리소스 구독을 위한 Market API; Market에 게시하려면 항상 검토 필요; 리소스 구독 테이블; 전역 가시성을 대체하는 조직 기반 리소스 공유
-- [x] ~~**에이전트 자동 발견 및 하위 에이전트 바인딩**~~: 에이전트의 `discoverable` 플래그; `sub_agent_ids` 화이트리스트; 전문가 에이전트에 작업을 위임하기 위한 CallAgentTool
-- [x] ~~**MCP 서버 자격 증명 + 사용자별 재정의**~~: `mcp_server_credentials` 테이블; `PUT /api/mcp-servers/{id}/my-credentials` 엔드포인트; 자격 증명 폴백 동작을 위한 `allow_fallback` 플래그
-- [x] ~~**커넥터/KB 토글**~~: 리소스 일시 중단/재개를 위한 `POST /api/connectors/{id}/toggle` 및 `POST /api/knowledge-bases/{id}/toggle`
-- [x] ~~**독립형 KB 대화**~~: 에이전트 바인딩 없이 직접 KB 채팅을 위한 대화의 `kb_ids` 필드
+- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: 기본 제공 Market org (shadow, 자동 참여 없음)는 Platform org를 대체; 마켓플레이스 브라우징 및 명시적 구독을 통해 발견된 리소스 (풀 모델); Market API (공유 리소스 구독); Market에 게시는 항상 검토 필요; 리소스 구독 테이블; 글로벌 가시성을 대체하는 조직 기반 리소스 공유
+- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: 에이전트의 `discoverable` 플래그; `sub_agent_ids` 화이트리스트; 전문가 에이전트에 작업을 위임하기 위한 CallAgentTool
+- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials` 테이블; `PUT /api/mcp-servers/{id}/my-credentials` 엔드포인트; 자격 증명 폴백 동작을 위한 `allow_fallback` 플래그
+- [x] ~~**Connector/KB Toggle**~~: 리소스 일시 중단/재개를 위한 `POST /api/connectors/{id}/toggle` 및 `POST /api/knowledge-bases/{id}/toggle`
+- [x] ~~**Standalone KB Conversations**~~: 에이전트 바인딩 없이 직접 KB 채팅을 위한 대화의 `kb_ids` 필드
 
 ### v0.8 (2026-03-20) — 연결기 선언형 구성 + 점진적 공개
 - [x] **데이터베이스 연결기**: 직접 SQL 접근 (PostgreSQL, MySQL, Oracle) *(v0.7.x에서 출시 — Phase 1-3)*
@@ -248,14 +248,14 @@ flowchart LR
 - **Channels + Hook System 아키텍처 문서** — `docs/architecture/hook-system.mdx`는 세 가지 훅 포인트를 설명하고 FeishuGateHook을 엔드투엔드로 안내; 기존 아키텍처 페이지는 교차 링크; README는 메시징 통로를 첫 번째 클래스 기능으로 나열
 - **강화** — 중복된 Feishu 콜백 클릭은 이중 결정 대신 교체 카드 생성; 동시 콜백 클릭은 조건부 `UPDATE ... WHERE status='pending'` 행 개수 확인을 통해 해결; 대기 중인 승인은 백그라운드 스위퍼를 통해 `CHANNEL_CONFIRMATION_TTL_MINUTES`(기본값 24시간) 후 자동 만료; Settings → Channels는 조직 역할 준수(멤버는 읽기 전용 UI 표시); 병렬 도구 호출 수집기는 모든 델타에 대해 `index=0`을 재사용하는 제공자 처리; 세션 만료 리디렉션은 쿼리 문자열 보존
 
-### v0.8.6 (2026-05-08) — Stripe 결제 + 폴란드어 지원
-- [x] Stripe 결제 MVP — Free + Pro 티어; 체크아웃, 고객 포털, 웹훅 라이프사이클; `/settings?tab=billing`; 관리자 플랜/구독 CRUD; 할당량 적용이 각 사용자의 플랜을 존중
-- [x] 관리자 제어 결제 기능 플래그 — `system_settings.billing_enabled`가 전체 Stripe 파이프라인을 제어하므로 Stripe 자격증명이 없는 프라이빗 배포에서는 작동하지 않는 결제 UI가 표시되지 않음
-- [x] 사용자별 무제한 할당량 — 비어있으면 전역 기본값을 상속하고, `0`은 무제한을 부여함; 이전에는 둘 다 동일한 상태로 축소됨
+### v0.8.6 (2026-05-08) — Stripe 결제 + 개선사항
+- [x] Stripe 결제 MVP — Free + Pro 티어; Checkout, Customer Portal, webhook 라이프사이클; `/settings?tab=billing`; 관리자 플랜/구독 CRUD; 할당량 적용이 각 사용자의 플랜을 존중
+- [x] 관리자 제어 결제 기능 플래그 — `system_settings.billing_enabled`가 전체 Stripe 파이프라인을 제어하므로 Stripe 자격증명이 없는 프라이빗 배포는 작동하지 않는 결제 UI를 표시하지 않음
+- [x] 사용자별 무제한 할당량 — 비어있으면 전역 기본값을 상속하고, `0`은 무제한 부여; 이전에는 둘 다 동일한 상태로 축소됨
 - [x] 번역 용어집을 단일 정보 소스로 — `scripts/translation-glossary.md`가 로케일별 규칙을 통합; 사전 커밋이 생성된 로케일 파일에 대한 수동 편집을 무조건 거부
-- [x] 라이선스 + 준거법이 FIM Labs Pte. Ltd. (싱가포르)로 이전됨; SIAC 중재는 영어로 진행; 새로운 최상위 `NOTICE` 파일
-- [x] 연습장 후속 제안 복원, 에이전트별 옵트인
-- [x] 안정성 수정 — 엄격한 교대 제공자 기록, 병렬 도구 호출 경계 감지, 바운드되지 않은 에이전트 확인 흐름, 채널 역할 게이팅, 재시도 중복 제거, 거부 후 패러프레이징 없음
+- [x] 라이선스 + 준거법이 FIM Labs Pte. Ltd. (싱가포르)로 이전; SIAC 중재는 영어로 진행; 새로운 최상위 `NOTICE` 파일
+- [x] Playground 후속 제안 복원, 에이전트별 옵트인
+- [x] 안정성 수정 — 엄격한 교대 제공자 기록, 병렬 도구 호출 경계 감지, 바인딩되지 않은 에이전트 확인 흐름, 채널 역할 게이팅, 재시도 중복 제거, 거부 후 재표현 없음
 
 ## 계획된 버전
 

@@ -134,9 +134,9 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 - **Serveurs MCP globaux** : provisionnés par l'administrateur, chargés dans toutes les sessions
 - **Compatibilité rétroactive** : migration automatique registration_enabled → registration_mode
 
-### v0.7.x (2026-03-07 to 2026-03-12) — Stabilité + Polissage
+### v0.7.x (2026-03-07 à 2026-03-12) — Stabilité + Améliorations
 - Gestion des codes d'invitation
-- Quotas par utilisateur (application 429)
+- Quotas par utilisateur (application de 429)
 - Journalisation d'audit structurée
 - Filtrage des mots sensibles
 - Historique de connexion administrateur
@@ -144,29 +144,29 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 - Vues administrateur améliorées (champs model_name, tools, kb_ids)
 - Déploiement Docker Compose (image unique, volumes nommés)
 - Détection automatique OAuth depuis window.location
-- Support de la réflexion étendue / raisonnement (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) pour OpenAI série o, Gemini 2.5+, Claude
+- Support de la réflexion étendue / raisonnement (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) pour OpenAI o-series, Gemini 2.5+, Claude
 - Activation/désactivation par outil administrateur (outils désactivés exclus du chat à l'exécution)
 - Gestion des serveurs MCP déplacée vers la page Connecteurs
 - Support de base de données double : SQLite (par défaut sans configuration) + PostgreSQL (production) ; Docker Compose provisionne automatiquement PostgreSQL
 - Page de documentation de configuration des modèles avec configuration de la réflexion étendue par fournisseur
-- Protocole SSE v2 : diffusion de réponses en temps réel avec champs `delta_reasoning`, `usage`, et événements `done`/`suggestions`/`title`/`end` séparés ; taille du pool SQLite 5 -> 20
-- Expansion AI Builder : 7 nouveaux outils de construction (GetSettings, TestConnection, ImportOpenAPI pour connecteurs ; ListConnectors, AddConnector, RemoveConnector, SetModel pour agents), drapeau `is_builder` sur les agents, actualisation automatique du prompt du constructeur, protection SSRF
-- Frontend SSE v2 : curseur à point pulsant en continu, snapshots de re-plan DAG sous forme de cartes réductibles, mise en page DAG découplée des états d'étape
+- Protocole SSE v2 : streaming de réponses en temps réel avec champs `delta_reasoning`, `usage` et événements `done`/`suggestions`/`title`/`end` séparés ; taille du pool SQLite 5 -> 20
+- Expansion AI Builder : 7 nouveaux outils de construction (GetSettings, TestConnection, ImportOpenAPI pour les connecteurs ; ListConnectors, AddConnector, RemoveConnector, SetModel pour les agents), drapeau `is_builder` sur les agents, actualisation automatique du prompt de construction, garde SSRF
+- Frontend SSE v2 : curseur avec impulsion pointillée en streaming, snapshots de re-plan DAG sous forme de cartes réductibles, mise en page DAG découplée des états d'étape
 - Page de documentation du concept AI Builder avec guides de construction de connecteurs et d'agents
 - Système d'organisation : CRUD complet avec adhésion basée sur les rôles (propriétaire/administrateur/membre), interface de gestion administrateur
 - Visibilité des ressources à trois niveaux (personnel/org/global) pour les agents, connecteurs, bases de connaissances, serveurs MCP
-- API Publier/Dépublier pour tous les types de ressources ; délégation de propriétaire pour les agents publiés
-- Point de terminaison administrateur set-visibility (remplace clone-to-global) ; assistant de requête `build_visibility_filter()` unifié
+- API Publier/dépublier pour tous les types de ressources ; délégation de propriétaire pour les agents publiés
+- Point de terminaison administrateur set-visibility (remplace clone-to-global) ; assistant de requête unifié `build_visibility_filter()`
 - Connecteurs de base de données (Phase 1-3) : accès SQL direct à PG/MySQL/Oracle/SQL Server + BD héritées chinoises ; introspection de schéma, annotation IA, exécution de requête en lecture seule, identifiants chiffrés, 3 outils par connecteur (`list_tables`, `describe_table`, `query`)
-- **Centre d'évaluation** : évaluation quantitative de la qualité des agents — CRUD d'ensemble de test (prompt + comportement attendu + assertions), exécutions d'éval (exécution parallèle + évaluateur LLM + résultats par cas réussi/échoué/latence/jeton), visionneuse de résultats avec interrogation automatique ; migration `r8t0v2x4z567`
+- **Centre d'évaluation** : évaluation quantitative de la qualité des agents — CRUD de jeu de données de test (prompt + comportement attendu + assertions), exécutions d'éval (exécution parallèle + évaluateur LLM + résultats par cas réussi/échoué/latence/token), visionneuse de résultats avec interrogation automatique ; migration `r8t0v2x4z567`
 - Trois rôles de modèle (Général/Rapide/Raisonnement) avec isolation de configuration env par niveau ; le modèle rapide n'hérite plus des paramètres du modèle principal
-- Classe de données `StepOutput` remplaçant les résultats d'étape en chaîne simple pour les données structurées et la transmission d'artefacts
-- Cache d'outil pour l'exécution DAG — appels d'outil identiques mis en cache par exécution avec prévention du verrouillage asynchrone stampede (`DAG_TOOL_CACHE`)
+- Classe de données `StepOutput` remplaçant les résultats d'étape en chaîne simple pour les données structurées et le passage d'artefacts
+- Cache d'outils pour l'exécution DAG — appels d'outils identiques mis en cache par exécution avec verrou asynchrone pour la prévention de la ruée vers le stampede (`DAG_TOOL_CACHE`)
 - Vérification LLM par étape avec 1 nouvelle tentative en cas d'échec (`DAG_STEP_VERIFICATION`)
-- Routage automatique : LLM rapide classe les requêtes comme ReAct ou DAG ; point de terminaison `/api/auto` ; basculement de mode 3 voies frontend (`AUTO_ROUTING`)
-- [x] ~~**Organisation du marché fantôme + Abonnements aux ressources**~~ : Organisation du marché intégré (fantôme, pas d'adhésion automatique) remplace l'organisation de plateforme ; ressources découvertes via navigation sur le marché et explicitement souscrites (modèle pull) ; API de marché pour s'abonner aux ressources partagées ; la publication sur le marché nécessite toujours un examen ; tableau des abonnements aux ressources ; partage de ressources basé sur l'organisation remplaçant la visibilité globale
-- [x] ~~**Découverte automatique d'agent et liaison de sous-agent**~~ : drapeau `discoverable` sur les agents ; liste blanche `sub_agent_ids` ; CallAgentTool pour déléguer des tâches à des agents spécialisés
-- [x] ~~**Identifiants du serveur MCP + Remplacement par utilisateur**~~ : tableau `mcp_server_credentials` ; point de terminaison `PUT /api/mcp-servers/{id}/my-credentials` ; drapeau `allow_fallback` pour le comportement de secours des identifiants
+- Routage automatique : LLM rapide classe les requêtes comme ReAct ou DAG ; point de terminaison `/api/auto` ; bascule de mode 3 voies frontend (`AUTO_ROUTING`)
+- [x] ~~**Organisation du marché fantôme + Abonnements aux ressources**~~ : Organisation du marché intégrée (fantôme, pas d'adhésion automatique) remplace l'organisation de plateforme ; ressources découvertes via navigation sur le marché et explicitement abonnées (modèle pull) ; API Marché pour s'abonner aux ressources partagées ; publication sur le marché nécessite toujours un examen ; tableau d'abonnements aux ressources ; partage de ressources basé sur l'organisation remplaçant la visibilité globale
+- [x] ~~**Découverte automatique d'agents et liaison de sous-agents**~~ : drapeau `discoverable` sur les agents ; liste blanche `sub_agent_ids` ; CallAgentTool pour déléguer des tâches à des agents spécialisés
+- [x] ~~**Identifiants de serveur MCP + Remplacement par utilisateur**~~ : tableau `mcp_server_credentials` ; point de terminaison `PUT /api/mcp-servers/{id}/my-credentials` ; drapeau `allow_fallback` pour le comportement de secours des identifiants
 - [x] ~~**Basculement connecteur/KB**~~ : `POST /api/connectors/{id}/toggle` et `POST /api/knowledge-bases/{id}/toggle` pour suspendre/reprendre les ressources
 - [x] ~~**Conversations KB autonomes**~~ : champ `kb_ids` sur les conversations pour le chat KB direct sans liaison d'agent
 
@@ -251,12 +251,12 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 
 ### v0.8.6 (2026-05-08) — Facturation Stripe + Améliorations
 - [x] MVP de facturation Stripe — Niveaux Gratuit + Pro ; Checkout, Portail Client, cycle de vie webhook ; `/settings?tab=billing` ; CRUD de plan/abonnement administrateur ; l'application des quotas respecte le plan de chaque utilisateur
-- [x] Drapeau de facturation contrôlé par l'administrateur — `system_settings.billing_enabled` contrôle l'ensemble du pipeline Stripe afin que les déploiements privés sans identifiants Stripe ne présentent jamais une UX de paiement non fonctionnelle
-- [x] Quota illimité par utilisateur — vide hérite de la valeur par défaut globale, `0` accorde un quota illimité ; auparavant, les deux s'effondraient dans le même état
-- [x] Glossaire de traduction comme source unique de vérité — `scripts/translation-glossary.md` consolide les règles par langue ; pre-commit refuse inconditionnellement les modifications manuelles aux fichiers de langue générés
-- [x] Licence et droit applicable migrés vers FIM Labs Pte. Ltd. (Singapour) ; arbitrage SIAC en anglais ; nouveau fichier `NOTICE` de niveau supérieur
+- [x] Drapeau de fonctionnalité de facturation contrôlé par l'administrateur — `system_settings.billing_enabled` contrôle l'ensemble du pipeline Stripe afin que les déploiements privés sans identifiants Stripe ne présentent jamais une UX de paiement non fonctionnelle
+- [x] Quota illimité par utilisateur — vide hérite de la valeur par défaut globale, `0` accorde un accès illimité ; auparavant, les deux s'effondraient dans le même état
+- [x] Glossaire de traduction comme source unique de vérité — `scripts/translation-glossary.md` consolide les règles par locale ; pre-commit refuse inconditionnellement les modifications manuelles aux fichiers de locale générés
+- [x] Licence + droit applicable migrés vers FIM Labs Pte. Ltd. (Singapour) ; arbitrage SIAC en anglais ; nouveau fichier `NOTICE` de niveau supérieur
 - [x] Suggestions de suivi du Playground restaurées, opt-in par agent
-- [x] Corrections de stabilité — historique du fournisseur à alternance stricte, détection de limite d'appel d'outil parallèle, flux de confirmation d'agent non lié, gating de rôle de canal, suppression de duplication de nouvelle tentative, pas de paraphrase après rejet
+- [x] Corrections de stabilité — historique du fournisseur à alternance stricte, détection de limite d'appel d'outil parallèle, flux de confirmation d'agent non lié, gating de rôle de canal, suppression de doublons de nouvelle tentative, pas de paraphrase post-rejet
 
 ## Versions Planifiées
 

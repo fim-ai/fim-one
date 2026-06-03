@@ -134,7 +134,7 @@ flowchart LR
 - **全局 MCP 服务器**: 管理员配置、在所有会话中加载
 - **向后兼容**: registration_enabled → registration_mode 自动迁移
 
-### v0.7.x (2026-03-07 to 2026-03-12) — 稳定性 + 打磨
+### v0.7.x (2026-03-07 至 2026-03-12) — 稳定性 + 优化
 - 邀请码管理
 - 按用户配额（429 强制执行）
 - 结构化审计日志
@@ -142,29 +142,29 @@ flowchart LR
 - 管理员登录历史
 - 管理员文件浏览器
 - 增强的管理员视图（model_name、tools、kb_ids 字段）
-- Docker Compose 部署（单个镜像、命名卷）
+- Docker Compose 部署（单镜像、命名卷）
 - OAuth 自动检测（来自 window.location）
 - 扩展思考/推理支持（`LLM_REASONING_EFFORT`、`LLM_REASONING_BUDGET_TOKENS`）支持 OpenAI o 系列、Gemini 2.5+、Claude
 - 管理员按工具启用/禁用（禁用的工具在运行时从聊天中排除）
 - MCP 服务器管理移至连接器页面
 - 双数据库支持：SQLite（零配置默认）+ PostgreSQL（生产环境）；Docker Compose 自动配置 PostgreSQL
 - 模型配置文档页面，包含每个提供商的扩展思考设置
-- SSE 协议 v2：实时答案流式传输，包含 `delta_reasoning`、`usage` 字段，以及拆分的 `done`/`suggestions`/`title`/`end` 事件；SQLite 连接池大小 5 -> 20
-- AI Builder 扩展：7 个新的构建器工具（GetSettings、TestConnection、ImportOpenAPI 用于连接器；ListConnectors、AddConnector、RemoveConnector、SetModel 用于智能体），智能体上的 `is_builder` 标志，构建器提示自动刷新，SSRF 防护
+- SSE 协议 v2：实时答案流式传输，包含 `delta_reasoning`、`usage` 字段，以及分离的 `done`/`suggestions`/`title`/`end` 事件；SQLite 连接池大小 5 -> 20
+- AI Builder 扩展：7 个新的构建器工具（GetSettings、TestConnection、ImportOpenAPI 用于连接器；ListConnectors、AddConnector、RemoveConnector、SetModel 用于智能体），智能体上的 `is_builder` 标志，构建器提示词自动刷新，SSRF 防护
 - SSE v2 前端：流式点脉冲光标，DAG 重新规划轮快照作为可折叠卡片，DAG 布局与步骤状态解耦
 - AI Builder 概念文档页面，包含连接器和智能体构建器指南
-- 组织系统：完整的 CRUD 操作，基于角色的成员资格（所有者/管理员/成员），管理员管理 UI
+- 组织系统：完整的 CRUD 操作，具有基于角色的成员资格（所有者/管理员/成员），管理员管理 UI
 - 三层资源可见性（个人/组织/全局）用于智能体、连接器、知识库、MCP 服务器
 - 发布/取消发布 API 用于所有资源类型；已发布智能体的所有者委派
-- 管理员设置可见性端点（替换克隆到全局）；统一的 `build_visibility_filter()` 查询助手
-- 数据库连接器（第 1-3 阶段）：直接 SQL 访问 PG/MySQL/Oracle/SQL Server + 中文遗留数据库；模式内省、AI 注释、只读查询执行、加密凭证、每个连接器 3 个工具（`list_tables`、`describe_table`、`query`）
-- **评估中心**：定量智能体质量基准测试 — 测试数据集 CRUD（提示 + 预期行为 + 断言），评估运行（并行执行 + LLM 评分器 + 每个案例的通过/失败/延迟/令牌结果），带自动轮询的结果查看器；迁移 `r8t0v2x4z567`
-- 三个模型角色（通用/快速/推理）具有按层级的环境配置隔离；快速模型不再继承主模型设置
-- `StepOutput` 数据类替换纯字符串步骤结果，用于结构化数据和工件传递
-- DAG 执行的工具缓存 — 每次运行中相同的工具调用缓存，具有异步锁雷鸣羊群防护（`DAG_TOOL_CACHE`）
+- 管理员设置可见性端点（替代克隆到全局）；统一的 `build_visibility_filter()` 查询助手
+- 数据库连接器（第 1-3 阶段）：直接 SQL 访问 PG/MySQL/Oracle/SQL Server + 中文遗留数据库；模式内省、AI 注释、只读查询执行、加密凭证，每个连接器 3 个工具（`list_tables`、`describe_table`、`query`）
+- **评估中心**：定量智能体质量基准测试——测试数据集 CRUD（提示词 + 预期行为 + 断言），评估运行（并行执行 + LLM 评分器 + 单个案例通过/失败/延迟/令牌结果），结果查看器，带自动轮询；迁移 `r8t0v2x4z567`
+- 三个模型角色（通用/快速/推理），每层环境配置隔离；快速模型不再继承主模型设置
+- `StepOutput` 数据类替代纯字符串步骤结果，用于结构化数据和工件传递
+- DAG 执行的工具缓存——每次运行中相同的工具调用缓存，带异步锁防止雷鸣羊群（`DAG_TOOL_CACHE`）
 - 按步骤 LLM 验证，失败时重试 1 次（`DAG_STEP_VERIFICATION`）
-- 自动路由：快速 LLM 将查询分类为 ReAct 或 DAG；`/api/auto` 端点；前端 3 向模式切换（`AUTO_ROUTING`）
-- [x] ~~**影子市场组织 + 资源订阅**~~：内置市场组织（影子，无自动加入）替换平台组织；通过市场浏览发现资源并明确订阅（拉取模型）；用于订阅共享资源的市场 API；发布到市场始终需要审查；资源订阅表；基于组织的资源共享替换全局可见性
+- 自动路由：快速 LLM 将查询分类为 ReAct 或 DAG；`/api/auto` 端点；前端 3 路模式切换（`AUTO_ROUTING`）
+- [x] ~~**影子市场组织 + 资源订阅**~~：内置市场组织（影子，无自动加入）替代平台组织；资源通过市场浏览发现并显式订阅（拉取模型）；用于订阅共享资源的市场 API；发布到市场始终需要审查；资源订阅表；基于组织的资源共享替代全局可见性
 - [x] ~~**智能体自动发现和子智能体绑定**~~：智能体上的 `discoverable` 标志；`sub_agent_ids` 白名单；CallAgentTool 用于委派任务给专家智能体
 - [x] ~~**MCP 服务器凭证 + 按用户覆盖**~~：`mcp_server_credentials` 表；`PUT /api/mcp-servers/{id}/my-credentials` 端点；凭证回退行为的 `allow_fallback` 标志
 - [x] ~~**连接器/知识库切换**~~：`POST /api/connectors/{id}/toggle` 和 `POST /api/knowledge-bases/{id}/toggle` 用于暂停/恢复资源
@@ -249,14 +249,14 @@ flowchart LR
 - **通道 + 钩子系统架构文档** — `docs/architecture/hook-system.mdx` 解释三个钩子点并端到端演示 FeishuGateHook；现有架构页面交叉链接；README 将消息通道列为一流功能
 - **加固** — 重复 Feishu 回调点击产生替换卡片而非双重决策；并发回调点击通过条件 `UPDATE ... WHERE status='pending'` 行计数检查解决；待处理审批在 `CHANNEL_CONFIRMATION_TTL_MINUTES`（默认 24 小时）后通过后台清理器自动过期；设置 → 通道尊重组织角色（成员看到只读 UI）；并行工具调用聚合器处理为每个增量重用 `index=0` 的提供商；会话过期重定向保留查询字符串
 
-### v0.8.6 (2026-05-08) — Stripe 计费 + 波兰语支持
-- [x] Stripe 计费 MVP — 免费 + 专业版套餐；结账、客户门户、webhook 生命周期；`/settings?tab=billing`；管理员计划/订阅 CRUD；配额强制执行遵守每个用户的套餐
-- [x] 管理员控制的计费功能标志 — `system_settings.billing_enabled` 控制整个 Stripe 管道，因此没有 Stripe 凭证的私有部署永远不会显示非功能性的支付 UX
-- [x] 每用户无限配额 — 空值继承全局默认值，`0` 授予无限；以前两者都折叠为同一状态
-- [x] 翻译词汇表作为单一信息源 — `scripts/translation-glossary.md` 整合每个语言环境的规则；提交前钩子无条件拒绝对生成的语言环境文件的手动编辑
-- [x] 许可证 + 管辖法律迁移至 FIM Labs Pte. Ltd.（新加坡）；SIAC 仲裁采用英文；新的顶级 `NOTICE` 文件
+### v0.8.6 (2026-05-08) — Stripe 计费 + 优化
+- [x] Stripe 计费 MVP——免费 + 专业版；结账、客户门户、webhook 生命周期；`/settings?tab=billing`；管理员套餐/订阅 CRUD；配额强制执行遵守每个用户的套餐
+- [x] 管理员控制的计费功能开关——`system_settings.billing_enabled` 控制整个 Stripe 管道，使没有 Stripe 凭证的私有部署永远不会显示非功能性的支付 UX
+- [x] 每用户无限配额——空值继承全局默认值，`0` 授予无限；之前两者都折叠为同一状态
+- [x] 翻译词汇表作为单一信息源——`scripts/translation-glossary.md` 整合各语言环境规则；pre-commit 无条件拒绝对生成的语言环境文件的手动编辑
+- [x] 许可证 + 管辖法律迁移至 FIM Labs Pte. Ltd.（新加坡）；SIAC 仲裁使用英文；新的顶级 `NOTICE` 文件
 - [x] 演练场后续建议已恢复，每个智能体可选择启用
-- [x] 稳定性修复 — 严格交替提供商历史、并行工具调用边界检测、无界智能体确认流、通道角色门控、重试重复抑制、拒绝后无释义
+- [x] 稳定性修复——严格交替提供商历史、并行工具调用边界检测、无界智能体确认流、通道角色门控、重试去重、拒绝后无释义
 
 ## 计划版本
 

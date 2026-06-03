@@ -134,41 +134,41 @@ flowchart LR
 - **グローバル MCP サーバー**: 管理者がプロビジョニング、すべてのセッションで読み込み
 - **後方互換性**: registration_enabled → registration_mode 自動マイグレーション
 
-### v0.7.x (2026-03-07 to 2026-03-12) — 安定性 + ポーランド
+### v0.7.x (2026-03-07 to 2026-03-12) — Stability + Refinements
 - 招待コード管理
-- ユーザーごとのクォータ (429 強制)
+- ユーザーごとのクォータ（429 強制実行）
 - 構造化監査ログ
 - 機密ワードフィルタリング
 - 管理者ログイン履歴
 - 管理者ファイルブラウザ
-- 強化された管理者ビュー (model_name、tools、kb_ids フィールド)
-- Docker Compose デプロイメント (単一イメージ、名前付きボリューム)
-- OAuth 自動検出 (window.location から)
-- 拡張思考 / 推論サポート (`LLM_REASONING_EFFORT`、`LLM_REASONING_BUDGET_TOKENS`) OpenAI o シリーズ、Gemini 2.5+、Claude 向け
-- 管理者ツール単位の有効/無効切り替え (無効なツールはチャット実行時に除外)
-- MCP サーバー管理をコネクタページに移動
-- デュアルデータベースサポート: SQLite (ゼロコンフィグデフォルト) + PostgreSQL (本番環境); Docker Compose は自動的に PostgreSQL をプロビジョニング
-- モデル設定ドキュメントページ (プロバイダーごとの拡張思考セットアップ)
-- SSE Protocol v2: リアルタイム回答ストリーミング (`delta_reasoning`、`usage` フィールド、および分割 `done`/`suggestions`/`title`/`end` イベント); SQLite プール サイズ 5 -> 20
-- AI Builder 拡張: 7 つの新しいビルダーツール (GetSettings、TestConnection、ImportOpenAPI (コネクタ向け); ListConnectors、AddConnector、RemoveConnector、SetModel (エージェント向け))、エージェント上の `is_builder` フラグ、ビルダープロンプト自動更新、SSRF ガード
-- SSE v2 フロントエンド: ストリーミングドットパルスカーソル、DAG 再計画ラウンドスナップショット (折りたたみ可能なカード)、DAG レイアウトをステップ状態から分離
-- AI Builder コンセプトドキュメントページ (コネクタおよびエージェントビルダーガイド)
-- 組織システム: 完全な CRUD (ロールベースのメンバーシップ: オーナー/管理者/メンバー)、管理者管理 UI
-- 3 段階のリソース可視性 (個人/組織/グローバル) エージェント、コネクタ、ナレッジベース、MCP サーバー向け
-- すべてのリソースタイプの公開/非公開 API; 公開エージェントのオーナー委譲
-- 管理者設定可視性エンドポイント (クローン・トゥ・グローバルを置き換え); 統一された `build_visibility_filter()` クエリヘルパー
-- データベースコネクタ (フェーズ 1-3): PG/MySQL/Oracle/SQL Server + 中国レガシー DB への直接 SQL アクセス; スキーマ内省、AI アノテーション、読み取り専用クエリ実行、暗号化された認証情報、コネクタごと 3 つのツール (`list_tables`、`describe_table`、`query`)
-- **評価センター**: 定量的なエージェント品質ベンチマーク — テストデータセット CRUD (プロンプト + 期待される動作 + アサーション)、評価実行 (並列実行 + LLM グレーダー + ケースごとの合格/不合格/レイテンシ/トークン結果)、自動ポーリング付き結果ビューア; マイグレーション `r8t0v2x4z567`
-- 3 つのモデルロール (General/Fast/Reasoning) (ティアごとの env コンフィグ分離); 高速モデルはメインモデル設定を継承しない
-- `StepOutput` データクラス (構造化データとアーティファクト渡し用の通常文字列ステップ結果を置き換え)
-- DAG 実行用ツールキャッシュ — 実行ごとの同一ツール呼び出しキャッシュ (非同期ロック スタンピード防止付き) (`DAG_TOOL_CACHE`)
-- ステップごとの LLM 検証 (失敗時 1 回の再試行) (`DAG_STEP_VERIFICATION`)
-- 自動ルーティング: 高速 LLM がクエリを ReAct または DAG として分類; `/api/auto` エンドポイント; フロントエンド 3 方向モード切り替え (`AUTO_ROUTING`)
-- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: 組み込み Market org (shadow、自動参加なし) は Platform org を置き換え; マーケットプレイスブラウジングおよび明示的なサブスクリプション経由でリソースを発見 (プルモデル); Market API (共有リソースへのサブスクリプション); Market への公開は常にレビューが必要; リソースサブスクリプションテーブル; グローバル可視性を置き換える org ベースのリソース共有
-- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: エージェント上の `discoverable` フラグ; `sub_agent_ids` ホワイトリスト; CallAgentTool (タスクを専門エージェントに委譲)
-- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials` テーブル; `PUT /api/mcp-servers/{id}/my-credentials` エンドポイント; 認証情報フォールバック動作用の `allow_fallback` フラグ
-- [x] ~~**Connector/KB Toggle**~~: `POST /api/connectors/{id}/toggle` および `POST /api/knowledge-bases/{id}/toggle` (リソースの一時停止/再開)
-- [x] ~~**Standalone KB Conversations**~~: 会話上の `kb_ids` フィールド (エージェントバインディングなしの直接 KB チャット)
+- 拡張管理者ビュー（model_name、tools、kb_ids フィールド）
+- Docker Compose デプロイメント（単一イメージ、名前付きボリューム）
+- OAuth 自動検出（window.location から）
+- 拡張思考／推論サポート（`LLM_REASONING_EFFORT`、`LLM_REASONING_BUDGET_TOKENS`）— OpenAI o シリーズ、Gemini 2.5+、Claude 対応
+- 管理者ツール単位の有効化／無効化（無効なツールはチャット実行時に除外）
+- MCP サーバー管理を Connectors ページに移動
+- デュアルデータベース対応：SQLite（ゼロコンフィグデフォルト）+ PostgreSQL（本番環境）；Docker Compose が自動的に PostgreSQL をプロビジョニング
+- モデル設定ドキュメントページ（プロバイダーごとの拡張思考セットアップ）
+- SSE Protocol v2：リアルタイム回答ストリーミング（`delta_reasoning`、`usage` フィールド、`done`／`suggestions`／`title`／`end` イベント分割）；SQLite プール サイズ 5 → 20
+- AI Builder 拡張：7 つの新しいビルダーツール（GetSettings、TestConnection、ImportOpenAPI（コネクタ用）；ListConnectors、AddConnector、RemoveConnector、SetModel（エージェント用））、エージェント上の `is_builder` フラグ、ビルダープロンプト自動更新、SSRF ガード
+- SSE v2 フロントエンド：ストリーミングドット パルスカーソル、DAG 再計画ラウンドスナップショット（折りたたみ可能なカード）、DAG レイアウト ステップ状態から分離
+- AI Builder コンセプトドキュメントページ（コネクタおよびエージェントビルダーガイド）
+- 組織システム：完全な CRUD、ロールベースメンバーシップ（所有者／管理者／メンバー）、管理者管理 UI
+- 3 層リソース可視性（個人／組織／グローバル）— エージェント、コネクタ、ナレッジベース、MCP サーバー
+- すべてのリソースタイプの公開／非公開 API；公開エージェントの所有者委譲
+- 管理者設定可視性エンドポイント（clone-to-global 置き換え）；統一 `build_visibility_filter()` クエリヘルパー
+- データベースコネクタ（フェーズ 1～3）：PG／MySQL／Oracle／SQL Server + 中国レガシー DB への直接 SQL アクセス；スキーマ内省、AI アノテーション、読み取り専用クエリ実行、暗号化認証情報、コネクタごと 3 ツール（`list_tables`、`describe_table`、`query`）
+- **評価センター**：定量的エージェント品質ベンチマーク — テストデータセット CRUD（プロンプト + 期待される動作 + アサーション）、評価実行（並列実行 + LLM グレーダー + ケースごとの合格／不合格／レイテンシ／トークン結果）、結果ビューア（自動ポーリング）；マイグレーション `r8t0v2x4z567`
+- 3 つのモデルロール（General／Fast／Reasoning）、階層ごとの環境設定分離；Fast モデルはメインモデル設定を継承しない
+- `StepOutput` データクラス（プレーンテキストステップ結果を置き換え、構造化データとアーティファクト受け渡し対応）
+- DAG 実行用ツールキャッシュ — 実行ごとに同一ツール呼び出しをキャッシュ、非同期ロック スタンピード防止（`DAG_TOOL_CACHE`）
+- ステップごと LLM 検証（失敗時 1 回再試行）（`DAG_STEP_VERIFICATION`）
+- 自動ルーティング：Fast LLM がクエリを ReAct または DAG に分類；`/api/auto` エンドポイント；フロントエンド 3 方向モード切り替え（`AUTO_ROUTING`）
+- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~：組み込み Market org（シャドウ、自動参加なし）が Platform org を置き換え；リソースはマーケットプレイス閲覧および明示的サブスクリプション経由で検出（プルモデル）；Market API（共有リソースへのサブスクリプション）；Market への公開は常にレビュー必須；Resource subscriptions テーブル；グローバル可視性を置き換える組織ベースリソース共有
+- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~：エージェント上の `discoverable` フラグ；`sub_agent_ids` ホワイトリスト；CallAgentTool（タスク委譲用スペシャリストエージェント）
+- [x] ~~**MCP Server Credentials + Per-User Override**~~：`mcp_server_credentials` テーブル；`PUT /api/mcp-servers/{id}/my-credentials` エンドポイント；認証情報フォールバック動作用 `allow_fallback` フラグ
+- [x] ~~**Connector/KB Toggle**~~：`POST /api/connectors/{id}/toggle` および `POST /api/knowledge-bases/{id}/toggle`（リソース一時停止／再開）
+- [x] ~~**Standalone KB Conversations**~~：会話上の `kb_ids` フィールド（エージェント バインディングなしの直接 KB チャット）
 
 ### v0.8 (2026-03-20) — コネクタ宣言型設定 + 段階的情報開示
 - [x] **データベースコネクタ**: 直接SQL アクセス (PostgreSQL、MySQL、Oracle) *(v0.7.x で出荷 — フェーズ 1-3)*
@@ -249,14 +249,14 @@ flowchart LR
 - **Channels + Hook System アーキテクチャドキュメント** — `docs/architecture/hook-system.mdx` は 3 つのフックポイントを説明し、FeishuGateHook を end-to-end で説明します；既存のアーキテクチャページはクロスリンク；README は Messaging Channels を第一級の機能としてリストアップします
 - **強化** — 重複した Feishu コールバッククリックは二重決定の代わりに置換カードを生成；並行コールバッククリックは条件付き `UPDATE ... WHERE status='pending'` 行数チェックで解決；保留中の承認は `CHANNEL_CONFIRMATION_TTL_MINUTES`（デフォルト 24h）後にバックグラウンドスイーパーで自動期限切れ；Settings → Channels は組織ロールを尊重（メンバーは読み取り専用 UI を表示）；並行ツール呼び出しアグリゲーターは、すべてのデルタに対して `index=0` を再利用するプロバイダーを処理；セッション期限切れリダイレクトはクエリ文字列を保持
 
-### v0.8.6 (2026-05-08) — Stripe Billing + ポーランド対応
+### v0.8.6 (2026-05-08) — Stripe Billing + 改善
 - [x] Stripe billing MVP — Free + Pro ティア；Checkout、Customer Portal、webhook ライフサイクル；`/settings?tab=billing`；管理者プラン/サブスクリプション CRUD；クォータ強制は各ユーザーのプランを尊重
-- [x] 管理者制御の課金機能フラグ — `system_settings.billing_enabled` は Stripe パイプライン全体をゲートするため、Stripe 認証情報のないプライベートデプロイメントは機能しない支払い UX を表示しません
-- [x] ユーザーごとの無制限クォータ — 空は グローバルデフォルトを継承、`0` は無制限を付与；以前は両方が同じ状態に折りたたまれていました
-- [x] 翻訳用語集を単一の情報源として — `scripts/translation-glossary.md` はロケール別ルールを統合；pre-commit は生成されたロケールファイルへの手動編集を無条件に拒否します
+- [x] 管理者制御の課金機能フラグ — `system_settings.billing_enabled` は Stripe パイプライン全体をゲートするため、Stripe 認証情報のないプライベートデプロイメントは機能しない支払い UX を表示しない
+- [x] ユーザーごとの無制限クォータ — 空は グローバルデフォルトを継承、`0` は無制限を付与；以前は両方が同じ状態に折りたたまれていた
+- [x] 翻訳用語集を単一の情報源として — `scripts/translation-glossary.md` はロケール固有のルールを統合；pre-commit は生成されたロケールファイルへの手動編集を無条件に拒否
 - [x] ライセンス + 準拠法を FIM Labs Pte. Ltd.（シンガポール）に移行；SIAC 仲裁は英語；新しいトップレベル `NOTICE` ファイル
 - [x] Playground フォローアップ提案を復元、エージェントごとのオプトイン
-- [x] 安定性修正 — 厳密交互プロバイダー履歴、並列ツール呼び出し境界検出、バインドされていないエージェント確認フロー、チャネルロールゲーティング、重複再試行抑制、拒否後の言い換えなし
+- [x] 安定性の修正 — 厳密交互プロバイダー履歴、並列ツール呼び出し境界検出、無制限エージェント確認フロー、チャネルロールゲーティング、再試行重複抑制、拒否後の言い換えなし
 
 ## 計画されているバージョン
 
