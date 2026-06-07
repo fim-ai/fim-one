@@ -168,6 +168,12 @@ def _ts(dt: datetime) -> int:
     return int(dt.timestamp())
 
 
+def _epoch(dt: datetime) -> int:
+    """Epoch seconds for a stored datetime (SQLite returns naive UTC)."""
+    aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+    return int(aware.timestamp())
+
+
 def _checkout_completed_event(*, user_id: str, sub_id: str, customer_id: str = "cus_alice") -> dict[str, Any]:
     return {
         "id": "evt_checkout_1",
@@ -465,11 +471,82 @@ async def test_invoice_paid_renewal_resets_tokens(
         billing_reason="subscription_cycle",
         period_end=new_period_end,
     )
-    with _patch_construct(event):
+    fake_sub = {
+        "id": "sub_test_4",
+        "status": "active",
+        "current_period_end": _ts(new_period_end),
+    }
+    with _patch_construct(event), \
+         patch("stripe.Subscription.retrieve", return_value=fake_sub):
         resp = await _post_event(client, event)
     assert resp.status_code == 200
 
     await db_session.refresh(user_alice)
+    assert user_alice.tokens_used_this_period == 0
+    # Renewal MUST advance the cycle, not just reset the counter.
+    await db_session.refresh(sub)
+    assert _epoch(sub.current_period_end) == _ts(new_period_end)
+
+
+@pytest.mark.asyncio
+async def test_invoice_paid_renewal_advances_period_from_stripe_when_payload_lacks_it(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    user_alice: User,
+    pro_plan: BillingPlan,
+) -> None:
+    """Regression: renewal invoices may omit a usable period end.
+
+    The bug — the handler read the new period only from the invoice
+    payload, whose ``period_end``/line-item period is unreliable on
+    renewal — left ``current_period_end`` frozen at the prior cycle even
+    though Stripe charged. The fix retrieves the live subscription for
+    the authoritative bound. This event carries NO ``period_end`` in the
+    payload; the period must still advance from the Stripe lookup.
+    """
+    now = datetime.now(UTC)
+    old_period_end = now + timedelta(days=1)
+    sub = Subscription(
+        user_id=user_alice.id,
+        plan_id=pro_plan.id,
+        stripe_subscription_id="sub_test_renew_nostamp",
+        stripe_price_id=pro_plan.stripe_price_id or "price_test_pro",
+        status="active",
+        current_period_start=now - timedelta(days=30),
+        current_period_end=old_period_end,
+        updated_at=now,
+    )
+    db_session.add(sub)
+    await db_session.commit()
+
+    # Invoice payload deliberately has no period_end and no line items.
+    event = {
+        "id": "evt_invoice_paid_nostamp",
+        "type": "invoice.payment_succeeded",
+        "data": {
+            "object": {
+                "id": "in_nostamp",
+                "subscription": "sub_test_renew_nostamp",
+                "billing_reason": "subscription_cycle",
+            }
+        },
+    }
+    authoritative_end = now + timedelta(days=31)
+    fake_sub = {
+        "id": "sub_test_renew_nostamp",
+        "status": "active",
+        "current_period_end": _ts(authoritative_end),
+    }
+    with _patch_construct(event), \
+         patch("stripe.Subscription.retrieve", return_value=fake_sub):
+        resp = await _post_event(client, event)
+    assert resp.status_code == 200
+
+    await db_session.refresh(sub)
+    assert _epoch(sub.current_period_end) == _ts(authoritative_end)
+    assert _epoch(sub.current_period_end) > _epoch(old_period_end)
+    await db_session.refresh(user_alice)
+    assert _epoch(user_alice.quota_reset_at) == _ts(authoritative_end)
     assert user_alice.tokens_used_this_period == 0
 
 

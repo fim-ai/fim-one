@@ -302,11 +302,35 @@ async def _handle_invoice_paid(event: Any, db: AsyncSession) -> None:
     if sub_row is None:
         return
 
-    new_period_end = _from_stripe_ts(
-        obj.get("period_end") or obj.get("lines", {}).get("data", [{}])[0].get("period", {}).get("end")
-    )
-
     if billing_reason == "subscription_cycle":
+        # Pull the live subscription for the authoritative new period end.
+        # The renewal invoice payload does NOT reliably carry it: the
+        # top-level ``period_end`` is the invoice's usage window (not the
+        # subscription cycle) and the line-item ``period.end`` is absent
+        # on some API versions. Relying on the payload left
+        # ``current_period_end`` frozen at the prior cycle on renewal —
+        # the date never advanced even though Stripe charged and the
+        # cycle rolled. Mirror the checkout handler and ask Stripe
+        # directly, falling back to the payload only if the fetch fails.
+        new_period_end: datetime | None = None
+        try:
+            sub = stripe.Subscription.retrieve(str(subscription_id))
+            new_period_end = _from_stripe_ts(sub.get("current_period_end"))
+        except Exception:
+            logger.exception(
+                "invoice.payment_succeeded: could not retrieve subscription "
+                "%s for period bounds; falling back to invoice payload",
+                subscription_id,
+            )
+        if new_period_end is None:
+            new_period_end = _from_stripe_ts(
+                obj.get("period_end")
+                or obj.get("lines", {})
+                .get("data", [{}])[0]
+                .get("period", {})
+                .get("end")
+            )
+
         user = await db.get(User, sub_row.user_id)
         if user is not None:
             user.tokens_used_this_period = 0
