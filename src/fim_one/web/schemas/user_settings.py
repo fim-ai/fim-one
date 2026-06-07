@@ -121,6 +121,14 @@ class AgentUsage(BaseModel):
 
 class UsageResponse(BaseModel):
     total_tokens: int
+    # Usage over the billing-aligned quota window (subscription
+    # anniversary for paid, calendar month for free) — the interval
+    # chat.py enforces against. ``total_tokens`` reflects the selected
+    # stats ``period`` instead and may differ.
+    window_tokens: int = 0
+    # ISO-8601 timestamp at which the quota window (and ``window_tokens``)
+    # resets. ``None`` only if the window could not be resolved.
+    reset_at: str | None = None
     quota: int | None = None
     quota_used_pct: float | None = None
     daily: list[DailyUsage]

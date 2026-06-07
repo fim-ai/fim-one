@@ -20,6 +20,10 @@ interface AgentUsage {
 
 interface UsageData {
   total_tokens: number
+  // Usage over the billing-aligned quota window (what chat enforces);
+  // the quota progress line uses this so it matches quota_used_pct.
+  window_tokens: number
+  reset_at: string | null
   quota: number | null
   quota_used_pct: number | null
   daily: DailyUsage[]
@@ -116,7 +120,7 @@ export function UsageSettings() {
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {formatNumber(data.total_tokens)} /{" "}
+                    {formatNumber(data.window_tokens)} /{" "}
                     {formatNumber(data.quota)} {t("tokens")}
                   </p>
                 </div>

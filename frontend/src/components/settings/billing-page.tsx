@@ -63,6 +63,10 @@ interface SubscriptionInfo {
 
 interface UsageData {
   total_tokens: number
+  // Usage over the billing-aligned quota window — what chat enforces
+  // against. Prefer this over total_tokens for the quota display.
+  window_tokens: number
+  reset_at: string | null
   quota: number | null
   quota_used_pct: number | null
 }
@@ -243,7 +247,14 @@ export function BillingPage() {
 
   const usagePercent = useMemo<number | null>(() => {
     if (!usage || usage.quota == null || usage.quota <= 0) return null
-    return Math.min(100, Math.round((usage.total_tokens / usage.quota) * 100))
+    // Use the server's window-based percentage (measured over the quota
+    // window chat enforces against) rather than recomputing from
+    // total_tokens, which reflects the calendar month and would disagree
+    // with the actual cut-off point.
+    if (usage.quota_used_pct != null) {
+      return Math.min(100, Math.round(usage.quota_used_pct))
+    }
+    return Math.min(100, Math.round((usage.window_tokens / usage.quota) * 100))
   }, [usage])
 
   const showCanceledBanner =
@@ -551,13 +562,22 @@ interface UsageCardProps {
 function UsageCard({ usage, percent, subscription, locale }: UsageCardProps) {
   const t = useTranslations("billing")
 
-  // Reset date prefers the subscription's period boundary; falls back to
-  // a generic "no period" line on free tier where Stripe never set one.
-  const resetText = subscription?.current_period_end
-    ? t("usage.periodEndsOn", {
-        date: formatLongDate(subscription.current_period_end, locale),
-      })
-    : t("usage.noPeriod")
+  // The "usage this period" number resets on the quota window, which is
+  // not always the billing period: an annually-billed plan refills its
+  // monthly quota every month, not at the (yearly) billing boundary. So
+  // when there is a cap, show the quota-window reset; for unlimited
+  // users fall back to the subscription's billing boundary, then to the
+  // generic free-tier line.
+  const resetText =
+    usage?.quota != null && usage.quota > 0 && usage.reset_at
+      ? t("usage.resetOn", {
+          date: formatLongDate(usage.reset_at, locale),
+        })
+      : subscription?.current_period_end
+        ? t("usage.periodEndsOn", {
+            date: formatLongDate(subscription.current_period_end, locale),
+          })
+        : t("usage.noPeriod")
 
   // Color the bar in three bands so the user can read severity without
   // squinting at the digits: green < 75%, amber < 90%, red beyond.
@@ -579,7 +599,7 @@ function UsageCard({ usage, percent, subscription, locale }: UsageCardProps) {
         <>
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-3xl font-bold tabular-nums">
-              {formatTokens(usage.total_tokens, locale)}
+              {formatTokens(usage.window_tokens, locale)}
             </p>
             {usage.quota != null && usage.quota > 0 && (
               <p className="text-xs text-muted-foreground">
