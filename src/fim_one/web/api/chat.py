@@ -781,11 +781,17 @@ async def _get_quota_status(user_id: str) -> tuple[int, int]:
 
         from sqlalchemy import func as _func
 
-        first_of_month = datetime(date.today().year, date.today().month, 1, tzinfo=UTC)
+        from fim_one.web.services.quota_window import resolve_quota_window
+
+        # Window the usage sum to the user's billing-aligned quota period:
+        # paid users reset on their subscription's monthly anniversary,
+        # free users on the calendar month. Resolution is defensive — it
+        # falls back to the calendar month on any lookup failure.
+        window_start, _reset_at = await resolve_quota_window(session, user_id)
         monthly_result = await session.execute(
             sa_select(_func.coalesce(_func.sum(Conversation.total_tokens), 0)).where(
                 Conversation.user_id == user_id,
-                Conversation.created_at >= first_of_month,
+                Conversation.created_at >= window_start,
             )
         )
         monthly_tokens = int(monthly_result.scalar_one() or 0)
@@ -813,10 +819,29 @@ async def _check_token_quota(user_id: str) -> None:
         raise AppError("token_quota_exceeded", status_code=429)
 
 
+async def _quota_reset_iso(user_id: str) -> str:
+    """ISO-8601 timestamp of *user_id*'s next quota reset.
+
+    Billing-aligned: paid users reset on their subscription's monthly
+    anniversary, free users on the first of next calendar month. Falls
+    back to the calendar-month boundary if the window cannot be resolved.
+    """
+    from fim_one.db import create_session
+    from fim_one.web.services.quota_window import resolve_quota_window
+
+    try:
+        async with create_session() as session:
+            _start, reset_at = await resolve_quota_window(session, user_id)
+        return reset_at.isoformat()
+    except Exception:
+        return _next_month_reset_iso()
+
+
 def _build_quota_terminator_payload(
     *,
     monthly_tokens: int,
     user_quota: int,
+    reset_at: str,
 ) -> dict[str, Any]:
     """Construct the ``error`` event payload for mid-stream quota cutoff.
 
@@ -828,7 +853,9 @@ def _build_quota_terminator_payload(
       events use (compare ``step.type``, ``answer.status``).
     - ``code``: machine-readable reason; ``"QUOTA_EXCEEDED"`` here.
     - ``tokens_used`` / ``quota``: live counters for the dialog.
-    - ``reset_at``: ISO-8601 of the next monthly reset.
+    - ``reset_at``: ISO-8601 of the next quota reset — billing-aligned
+      (subscription anniversary for paid, calendar month for free),
+      resolved by the caller via :func:`_quota_reset_iso`.
     - ``plan_slug``: reserved for the upcoming Stripe billing
       integration; ``"free"`` for now since plan tiers don't exist yet.
     """
@@ -837,7 +864,7 @@ def _build_quota_terminator_payload(
         "code": "QUOTA_EXCEEDED",
         "tokens_used": monthly_tokens,
         "quota": user_quota,
-        "reset_at": _next_month_reset_iso(),
+        "reset_at": reset_at,
         "plan_slug": "free",
     }
 
@@ -3281,6 +3308,9 @@ async def react_endpoint(
                                             _monthly_used + _est_completion_tokens
                                         ),
                                         user_quota=_quota_cap,
+                                        reset_at=await _quota_reset_iso(
+                                            current_user_id
+                                        ),
                                     )
                                 )
                                 logger.info(
@@ -4459,6 +4489,9 @@ async def dag_endpoint(
                                                 _dag_used + _dag_est_completion
                                             ),
                                             user_quota=_dag_cap,
+                                            reset_at=await _quota_reset_iso(
+                                                current_user_id
+                                            ),
                                         )
                                     )
                                     logger.info(

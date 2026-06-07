@@ -27,6 +27,7 @@ from fim_one.web.api.chat import (
     _check_token_quota,
     _get_quota_status,
     _next_month_reset_iso,
+    _quota_reset_iso,
 )
 from fim_one.web.exceptions import AppError
 
@@ -40,10 +41,17 @@ class _FakeSession:
     """Minimal async-context-manager session whose ``execute`` returns a
     pre-baked sequence of scalar results.
 
-    ``_get_quota_status`` issues three queries in order:
+    ``_get_quota_status`` issues four queries in order:
       1. ``User.token_quota`` -> ``int | None``
       2. ``BillingPlan.monthly_token_quota`` (via plan_id join) -> ``int | None``
-      3. ``coalesce(sum(Conversation.total_tokens), 0)`` -> ``int``
+      3. ``resolve_quota_window`` subscription lookup (read via ``.first()``)
+      4. ``coalesce(sum(Conversation.total_tokens), 0)`` -> ``int``
+
+    Query 3 is served as ``.first() -> None`` (see ``execute``), so the
+    quota window resolves to the calendar month — the sum value at slot 4
+    is therefore independent of the (ignored) WHERE-clause window. The
+    ``None`` placeholder in ``_scalar_results`` exists only to keep the
+    FIFO index aligned so the sum still lands at slot 4.
 
     The constructor takes the user_quota / monthly_tokens pair (with an
     optional ``plan_quota`` override) so each test can dial in any state.
@@ -57,7 +65,7 @@ class _FakeSession:
         default_setting: str = "0",
         plan_quota: int | None = None,
     ) -> None:
-        self._scalar_results = [user_quota, plan_quota, monthly_tokens]
+        self._scalar_results = [user_quota, plan_quota, None, monthly_tokens]
         self._default_setting = default_setting
         self._scalar_idx = 0
 
@@ -82,6 +90,9 @@ class _FakeSession:
         )
         result.scalar_one_or_none = MagicMock(return_value=scalar_value)
         result.scalar_one = MagicMock(return_value=scalar_value or 0)
+        # The quota-window subscription lookup reads via ``.first()``;
+        # ``None`` means "no subscription" → calendar-month window.
+        result.first = MagicMock(return_value=None)
         return result
 
 
@@ -244,32 +255,41 @@ class TestQuotaTerminatorPayload:
         payload = _build_quota_terminator_payload(
             monthly_tokens=140,
             user_quota=100,
+            reset_at="2026-07-01T00:00:00+00:00",
         )
         assert payload["type"] == "error"
         assert payload["code"] == "QUOTA_EXCEEDED"
         assert payload["tokens_used"] == 140
         assert payload["quota"] == 100
-        assert "reset_at" in payload
         assert "plan_slug" in payload
 
-    def test_reset_at_is_iso_with_timezone(self) -> None:
+    def test_reset_at_passes_through_verbatim(self) -> None:
+        # The builder is a pure passthrough for reset_at; the value is
+        # computed upstream by _quota_reset_iso (covered below).
         payload = _build_quota_terminator_payload(
-            monthly_tokens=1, user_quota=1
+            monthly_tokens=1,
+            user_quota=1,
+            reset_at="2027-01-01T00:00:00+00:00",
         )
-        # ISO-8601 round-trips through fromisoformat.
-        parsed = datetime.fromisoformat(payload["reset_at"])
-        # Reset boundary is at 00:00, so day must be the 1st.
+        assert payload["reset_at"] == "2027-01-01T00:00:00+00:00"
+
+
+class TestQuotaResetIso:
+    """``_quota_reset_iso`` resolves the billing-aligned reset boundary.
+
+    With no subscription the window is the calendar month, so the reset
+    is the first of next month — the same contract the old inline
+    ``_next_month_reset_iso`` provided."""
+
+    @pytest.mark.asyncio
+    async def test_free_user_resets_on_first_of_next_month(self) -> None:
+        session = _FakeSession(user_quota=None, monthly_tokens=0)
+        with _patch_create_session(session):
+            iso = await _quota_reset_iso("user-1")
+        parsed = datetime.fromisoformat(iso)
         assert parsed.day == 1
         assert parsed.tzinfo is not None
-
-    def test_reset_at_is_in_the_future(self) -> None:
-        payload = _build_quota_terminator_payload(
-            monthly_tokens=1, user_quota=1
-        )
-        parsed = datetime.fromisoformat(payload["reset_at"])
-        # Must be strictly after "now" — reset is the start of NEXT month.
         assert parsed > datetime.now(UTC)
-        # And no more than ~32 days out (handles month-length variance).
         assert parsed - datetime.now(UTC) < timedelta(days=32)
 
 
@@ -328,7 +348,9 @@ class TestMidStreamGuardComposition:
         triggered = cap > 0 and used + 50 >= cap
         assert triggered is True
         payload = _build_quota_terminator_payload(
-            monthly_tokens=used + 50, user_quota=cap
+            monthly_tokens=used + 50,
+            user_quota=cap,
+            reset_at="2026-07-01T00:00:00+00:00",
         )
         assert payload["tokens_used"] == 230
         assert payload["quota"] == 200

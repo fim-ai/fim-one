@@ -32,6 +32,7 @@ from fim_one.db.models.connector import Connector
 from fim_one.db.models.conversation import Conversation
 from fim_one.db.models.mcp_server import MCPServer
 from fim_one.web.services.quota_enforcer import get_user_quota_by_id
+from fim_one.web.services.quota_window import resolve_quota_window
 from fim_one.web.schemas.user_settings import (
     AgentUsage,
     ConnectorCredentialInfo,
@@ -380,7 +381,20 @@ async def get_my_usage(
     quota = await get_user_quota_by_id(current_user.id, db)
     quota_used_pct = None
     if quota is not None and quota > 0:
-        quota_used_pct = round(total_tokens / quota * 100, 2)
+        # Measure the percentage against the *quota window* (billing
+        # anniversary for paid, calendar month for free), not the
+        # selected stats period above — otherwise the card's "X% used"
+        # would disagree with the point chat.py actually cuts the user
+        # off. The daily/by-agent breakdowns keep using ``since``.
+        window_start, _reset_at = await resolve_quota_window(db, current_user.id)
+        window_q = select(
+            func.coalesce(func.sum(Conversation.total_tokens), 0)
+        ).where(
+            Conversation.user_id == current_user.id,
+            Conversation.created_at >= window_start,
+        )
+        window_tokens = (await db.execute(window_q)).scalar() or 0
+        quota_used_pct = round(window_tokens / quota * 100, 2)
 
     return UsageResponse(
         total_tokens=int(total_tokens),
