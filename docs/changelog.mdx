@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+## [v0.8.7] - 2026-06-10
+
 ### Security
 
 - **Closed a two-factor-authentication bypass.** API and chat/SSE authentication now require a genuine access token (SSE streaming also accepts its short-lived ticket); the 2FA temp token, refresh tokens, and bind/SSE tickets — all signed with the same key — can no longer be replayed to authenticate, so a stolen password alone can no longer skip the second factor.

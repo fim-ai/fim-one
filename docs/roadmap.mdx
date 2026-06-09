@@ -257,6 +257,15 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [x] Playground follow-up suggestions restored, opt-in per agent
 - [x] Stability fixes — strict-alternation provider history, parallel tool-call boundary detection, unbound-agent confirmation flow, channel role gating, retry-duplicate suppression, post-rejection no-paraphrase
 
+### v0.8.7 (2026-06-10) — Security Hardening + Guardrails v0 + Billing Correctness
+- [x] JWT token-type confinement — closes a 2FA bypass where any same-signed token (temp/refresh/ticket) could authenticate API and SSE endpoints
+- [x] OAuth hardening — email auto-link requires a provider-verified email (account-takeover fix); OAuth refresh tokens stored hashed so session rotation works
+- [x] Content guardrails v0 — input/output tripwire layer (`core/agent/guardrail`); ships jailbreak detector + max-length output guardrail, env-var configured
+- [x] `file_ops.apply_patch` — V4A diff patches with fuzzy whitespace matching, complements `find_replace`
+- [x] Billing-cycle correctness — quota resets on the subscription anniversary (not calendar month); renewals advance the period via authoritative Stripe lookup; usage display aligned to the enforcement window
+- [x] Reliability fixes — pseudo-protocol tool-call leak stripped from answers; tunable HTTP keep-alive ends `APIConnectionError` bursts; API-key usage stats persist on read-only requests
+- [x] Billing tab visual overhaul — full-width, consistent with other Settings tabs
+
 ## Planned Versions
 
 ### v0.9 — Observability + Production Hardening
@@ -265,9 +274,8 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 #### Auth & Security Hardening
 
-- [x] **JWT token-type confinement** — auth/SSE endpoints accept only genuine access tokens (plus SSE tickets for streaming), closing a 2FA bypass where any same-signed token authenticated
-- [x] **OAuth account-takeover & session fixes** — email auto-link requires a provider-verified email; OAuth refresh tokens stored hashed so session rotation works
-- [x] **PostgreSQL timezone-aware timestamps** — publish-review approval no longer 500s on PG; CI mypy gate + a tz-aware-column rule guard against recurrence
+- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
+- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
 
 #### Connector + tooling
 
@@ -278,7 +286,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 #### Content Guardrails {/* dev: dev/openai-agents-insights.md */}
 
-- [x] Content guardrails (input/output, tripwire pattern) — v0 ships jailbreak detector + max-length output guardrail, env-var configuration, structured `guardrail_tripwired` SSE event
+- [x] ~~Content guardrails v0 (input/output tripwire, jailbreak detector, env-var config, `guardrail_tripwired` SSE event)~~ *(shipped in v0.8.7)*
 - [ ] Off-topic filter (classifier-backed input guardrail) — defer to v0.5 if regex stays sufficient
 - [ ] PII redactor output guardrail (regex + classifier hybrid)
 - [ ] Per-agent guardrail configuration UI (admin panel)
