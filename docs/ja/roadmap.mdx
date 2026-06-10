@@ -285,12 +285,12 @@ flowchart LR
 - [ ] **データベースコネクタフェーズ 4** — Oracle（`oracledb`）、SQL Server（`aioodbc`）、GBase（`aioodbc` + GBase ODBC）。DM8 / KingbaseES / HighGo は v0.8.5 で提供
 - [ ] **MCP 接続プーリング** — STDIO をユーザーごとの環境分離でプール；SSE/HTTP 用に `httpx.AsyncClient` を共有。目標は ≤100 ms のウォームスタート、サーバーあたり O(1) HTTP 接続
 
-#### コンテンツガードレール {/* dev: dev/openai-agents-insights.md */}
+#### コンテンツガードレール {/* dev: dev/archive/openai-agents-insights.md */}
 
-- [x] ~~コンテンツガードレール v0 (入力/出力トリップワイヤー、ジェイルブレイク検出器、環境変数設定、`guardrail_tripwired` SSE イベント)~~ *(v0.8.7で配信済み)*
-- [ ] オフトピックフィルター(分類器ベースの入力ガードレール) — 正規表現が十分な場合は v0.5 に延期
-- [ ] PII リダクター出力ガードレール(正規表現 + 分類器ハイブリッド)
-- [ ] エージェント別ガードレール設定 UI (管理パネル)
+- [x] ~~コンテンツガードレール v0 (入力/出力トリップワイヤー、ジェイルブレイク検出器、環境変数設定、`guardrail_tripwired` SSE イベント)~~ *(v0.8.7 でリリース済み)*
+- [ ] オフトピックフィルター (分類器ベースの入力ガードレール) — 正規表現で十分な場合は v0.5 に延期
+- [ ] PII リダクター出力ガードレール (正規表現 + 分類器ハイブリッド)
+- [ ] エージェントごとのガードレール設定 UI (管理パネル)
 
 #### Hook System {/* dev: dev/hook-system.md */}
 
@@ -315,11 +315,12 @@ flowchart LR
 - [ ] Tier 3 — ログインチケット交換(`LoginTicketCredential`フロントエンド/バックエンド分割システム向け、ユーザースコープAPIキーなし)
 - [ ] クロスティア監査可能性(`caller_user_id`、`effective_credential_source`、`scope_rules_applied`が`ConnectorCallLog`内)
 
-#### Channel → Integration Promotion {/* dev: dev/channel-integration-sso.md */}
+#### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
 
-- [ ] `ThirdPartyIntegration` モデル — Channel を Delivery + Login + Org-graph-sync サブ機能に昇格
-- [ ] Feishu SSO ("Login with Feishu" は FIM セッション + upstream トークンを生成し、Tier-2 のユーザーごとの API キー摩擦を削除)
-- [ ] Org graph sync (Feishu 部門 → FIM org ツリー); WeCom + DingTalk 次
+- [ ] `identity_providers` + `user_identity_map` モデル — ENV レベルのサードパーティログイン置き換える DB レベルの組織ごと SSO/OAuth 設定
+- [ ] Feishu SSO via IdP ("Login with Feishu" は FIM セッション + アップストリームトークン生成、Tier-2 のユーザーごと API キー摩擦を削除)
+- [ ] IdP 経由の組織グラフ同期 (Feishu 部門 → FIM 組織ツリー); WeCom + DingTalk は次
+- [ ] Channel は Delivery + Gate にスリム化; ID 機能 (SSO / OrgSync) は IdP のみに存在
 
 #### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
 
@@ -386,34 +387,34 @@ flowchart LR
 - [x] ~~Agent Core Phase 3: Conversation Recovery MVP, Compact Work Card, Turn Profiler, Per-user Rate Limiting~~ *(v0.8.3)*
 - [x] ~~Conversation resume MVP, System prompt registry + cache, Thinking-block persistence, Reasoning replay policy, Cache observability~~ *(v0.8.4)*
 
-### v1.0 — ホットプラグ + 組み込み可能
+### v1.0 — ホットプラグ + 埋め込み可能
 
-**目標**: ノーダウンタイムのコネクター追加、パッケージエコシステム、組み込み配信。
+**目標**: ゼロ再起動のコネクタ追加、パッケージエコシステム、および埋め込み配信。
 
-- [ ] **コネクタープログレッシブディスクロージャー (フェーズ 5)**: **セマンティックガイド付きツール選択** (クエリからのエンティティ抽出 → オントロジーレジストリルックアップ → コネクターセット削減; 50+ コネクターデプロイメントで 90%+ トークン削減); バッチ/ETL コネクター向けスケールモード; CLI スタイルの汎用 `connector <name> <action> <params>` インターフェース
-- [ ] **クロスコネクターエンティティアライメント (オントロジーレジストリ)**: 共有エンティティタイプ (顧客、注文、資産) を定義し、コネクター間でフィールドマッピングを行う; DAGPlanner が自動的にクロスシステムの JOIN キーを解決; ハードコードされたフィールド名なしでクロスコネクタークエリを有効化 (例: "Salesforce の顧客が Shopify で注文した")
-- [ ] **ホットプラグコネクター**: OpenAPI 仕様をアップロード、AI が設定を生成、5分以内にライブ (再起動不要)
-- [x] ~~**マーケットプレイス再設計フェーズ 1 — ソリューション + コンポーネント**~~: 二層マーケットモデル (ソリューション: エージェント/スキル/ワークフロー; コンポーネント: コネクター/MCP サーバー); スコープセレクター (グローバルマーケット / 組織); 統合サブスクリプションモデル (組織自動削除); KB をマーケットスコープから削除; データ移行で既存組織メンバーのサブスクリプションをバックフィル
-- [ ] **マーケットパッケージシステム**: マーケットプレイス向けの配布可能なリソースバンドル — タイプ別の「マーケットプレイス」を統一パッケージング層に置き換え。`fim-package.yaml` マニフェストは以下を宣言: メタデータ (名前、バージョン、説明、著者、ライセンス、タグ、`min_fim_version`)、エントリーポイント (プライマリスキルまたはエージェント)、リソースリスト (エージェント、スキル、コネクター、KB、MCP サーバー、ワークフロー、設定参照付き)、パッケージ間依存関係 (セムバージョン範囲)、必須認証情報 (インストール時収集用のコネクター参照にマッピング)、デフォルト付きユーザー設定可能変数。**2 つの使用モード**: (1) **インストール** — すべてのリソースをバッチ作成 + ID 置換を介して内部参照を自動配線; インストールはソース更新通知にリンク; `POST /api/market/packages/{id}/install`; (2) **フォーク** — ユーザーが所有する編集可能なコピーとしてクローン、更新リンクなし (これはテンプレートモード); `POST /api/market/packages/{id}/fork`。追加エンドポイント: 公開 (`POST /api/market/packages` レビューワークフロー付き)、アンインストール (`DELETE /packages/{id}/uninstall` 依存関係チェック + 変更リソース確認付き)、バージョン履歴 (`GET /packages/{id}/versions`)、アップグレード (`POST /packages/{id}/upgrade` リソースごとの差分プレビュー付き)。ネストされたパッケージ要件の依存関係リゾルバー、競合検出付き。`PackageInstallation` テーブルはアンインストール/アップグレード用のリソース ID マッピングを使用してユーザーごとのインストール済みパッケージを追跡。**個別リソース公開と共存** — パッケージは構成レイヤーであって置き換えではない; 単一のコネクターは依然として単独で公開可能。依存関係ツリーの例: `Package: contract-review` → `Skill: contract-review` (エントリーポイント) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
-- [ ] **クリエータープログラム**: マーケットプレイス収益化レイヤー — クリエータープロフィール、ポートフォリオページ、パッケージごとの分析 (インストール数、フォーク数、アクティブユーザー数、評価/レビュー)、パッケージが新規サブスクリプションを促す場合のアフィリエイト手数料追跡。料金設定付きの有料パッケージティア、購入フロー、承認ワークフロー。インストール傾向、収益レポート、ユーザーフィードバック付きクリエータースダッシュボード。プログラムパッケージ公開用の公開クリエータ API (パッケージ著者向けの CI/CD)。コミュニティ機能: パッケージコメント、Q&A、バージョンごとのチェンジログ
-- [ ] **組み込みウィジェット**: `<script src="fim-one.js">` をホストページに注入
-- [ ] **ページコンテキスト注入**: ウィジェットはホストページコンテキスト (現在の ID、URL、DOM セレクター) を読み取る
-- [ ] **高度なトリガー**: Webhook インバウンドイベント; スケジュール済みジョブの拡張 (マルチタイムゾーン、カレンダー対応)
-- [ ] **バッチ実行**: DAG 経由で 1000+ 項目を処理
+- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (クエリからのエンティティ抽出 → Ontology Registry ルックアップ → コネクタセット削減; 50+ コネクタデプロイメントで 90%+ トークン削減); バッチ/ETL コネクタ向けスケールモード; CLI スタイルの汎用 `connector <name> <action> <params>` インターフェース
+- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *2026-04-21 にダウングレード: オンデマンドカスタム配信、コア機能ではない*: 共有エンティティタイプ (Customer、Order、Asset) をコネクタ間のフィールドマッピングで定義; DAGPlanner がクロスシステム JOIN キーを自動解決; ハードコードされたフィールド名なしでクロスコネクタクエリを有効化 (例: "Salesforce の顧客で Shopify で注文した顧客")
+- [ ] **ホットプラグコネクタ**: OpenAPI スペックをアップロード、AI が設定を生成、5 分でライブ (再起動なし)
+- [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: 2 層マーケットモデル (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); スコープセレクタ (Global Market / org); 統一サブスクリプションモデル (org 自動表示削除); Market スコープから KB を削除; データマイグレーション既存 org メンバーのサブスクリプションをバックフィル
+- [ ] **Market Package System**: Marketplace 向けの配布可能リソースバンドル — リソースタイプごとの「マーケットプレイス」を統一パッケージングレイヤーに置き換え。`fim-package.yaml` マニフェストは以下を宣言: メタデータ (名前、バージョン、説明、作成者、ライセンス、タグ、`min_fim_version`)、エントリポイント (プライマリ Skill または Agent)、リソースリスト (agents、skills、connectors、KBs、MCP servers、workflows) と設定参照、パッケージ間依存関係 (semver 範囲)、必須認証情報 (インストール時収集用コネクタ参照にマップ)、およびデフォルト値を持つユーザー設定可能変数。**2 つの消費モード**: (1) **install** — すべてのリソースをバッチ作成 + ID 置換経由で内部参照を自動配線; インストールはソースにリンク、バージョン更新通知用; `POST /api/market/packages/{id}/install`; (2) **fork** — ユーザー所有の編集可能コピーとしてクローン、更新リンクなし (これはテンプレートモード); `POST /api/market/packages/{id}/fork`。追加エンドポイント: 公開 (`POST /api/market/packages` レビューワークフロー付き)、アンインストール (`DELETE /packages/{id}/uninstall` 依存関係チェック + 変更リソース確認付き)、バージョン履歴 (`GET /packages/{id}/versions`)、アップグレード (`POST /packages/{id}/upgrade` リソースごとの差分プレビュー付き)。ネストされたパッケージ要件の依存関係リゾルバー、競合検出付き。`PackageInstallation` テーブルはユーザーごとのインストール済みパッケージを追跡、アンインストール/アップグレード用リソース ID マッピング付き。**個別リソース公開と共存** — Package は合成レイヤー、置き換えではない; 単一 Connector は依然スタンドアロンで公開可能。例依存関係ツリー: `Package: contract-review` → `Skill: contract-review` (エントリポイント) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
+- [ ] **Creator Program**: マーケットプレイス収益化レイヤー — ポートフォリオページ付きクリエータープロフィール、パッケージごとの分析 (インストール、フォーク、アクティブユーザー、評価/レビュー)、パッケージが新規サブスクリプションを促進する場合のアフィリエイト手数料追跡。価格設定付き有料パッケージティア、購入フロー、承認ワークフロー。インストール傾向、収益レポート、ユーザーフィードバック付きクリエータダッシュボード。CI/CD パッケージ作成者向けプログラマティックパッケージ公開用公開クリエータ API。コミュニティ機能: パッケージコメント、Q&A、バージョンごとのチェンジログ
+- [ ] **埋め込み可能ウィジェット**: `<script src="fim-one.js">` をホストページに注入
+- [ ] **ページコンテキスト注入**: ウィジェットはホストページコンテキスト (現在の ID、URL、DOM セレクタ) を読み取り
+- [ ] **高度なトリガー**: Webhook インバウンドイベント; スケジュール済みジョブの強化 (マルチタイムゾーン、カレンダー対応)
+- [ ] **バッチ実行**: DAG 経由で 1000+ アイテムを処理
 - [ ] **エンタープライズセキュリティ**: IP ホワイトリスト、保存時暗号化、SSO
-- [ ] **KB 高度なエディタ**: パワーユーザー向けのビルダーモードエージェント — 大規模ナレッジベース管理 (一括 URL 取得、重複検出、ギャップ分析、ドキュメントライフサイクル管理); 既存の KB AI チャットを ReAct ツールループで拡張
-- [ ] **Stripe 請求 (v1 MVP — Pro サブスクリプション)**: フリー + Pro 二層サブスクリプション、月次トークンクォータ。Stripe Checkout (ホスト型) + カスタマーポータル (セルフサービス) + webhook 駆動ライフサイクル (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`)。クォータ枯渇時のソフトキャップ (HTTP 402 + アップグレードプロンプト) — v1 ではオーバーエッジチャージなし。ユーザーごとの請求のみ; 組織/チーム申請は v3 に延期。前提条件:
-  - [x] ~~**データモデル + SDK グラウンドワーク** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` テーブル、ORM モデル、Stripe SDK シングルトン、フリー + Pro シード~~ *(v0.8.6 で出荷)*
-  - [x] ~~**バックエンド API + webhook ハンドラー** (P2) — `/api/billing/*` + `/api/webhooks/stripe` シグネチャ検証 + べき等性付き; プラン対応クォータ; 時間ごとのライフサイクルスイープ~~ *(v0.8.6 で出荷)*
-  - [x] ~~**フロントエンド請求タブ + 402 アップグレードダイアログ** (P3) — `/settings?tab=billing` クォータ表示、アップグレード CTA、`past_due` バナー、ストリーム中の 402 ダイアログ~~ *(v0.8.6 で出荷)*
-  - [x] ~~**管理者プラン管理** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(v0.8.6 で出荷)*
-  - [x] ~~**管理者制御請求機能フラグ** (P5) — `system_settings.billing_enabled` が Stripe パイプラインをゲート; べき等的アクティベーション、フリー+Pro をシード、デフォルトプランポインターを設定、ユーザーをバックフィル; 切り替えのオン/オフは純粋フラグフリップ (アクティベーション後)~~ *(v0.8.6 で出荷)*
-  - [ ] **調整 + e2e + go-live** (P6) — 夜間 `subscriptions` ↔ `stripe.Subscription.list()` 調整スクリプト (見落とされた webhook リカバリ用); フルスタック幸福パス / キャンセル中期 / past-due リグレッション テスト; テストモード `stripe_price_id` からライブ `price_id` に切り替え; ステージング上の実際のカードでのスモークテスト。
+- [ ] **KB Advanced Editor**: 大規模ナレッジベースを管理するパワーユーザー向けビルダーモードエージェント — 一括 URL 取り込み、重複検出、ギャップ分析、ドキュメントライフサイクル管理; 既存 KB AI チャットを ReAct ツールループで拡張
+- [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Free + Pro 2 層サブスクリプション、月次トークンクォータ付き。Stripe Checkout (ホスト型) + Customer Portal (セルフサービス) + webhook 駆動ライフサイクル (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`)。クォータ枯渇時のソフトキャップ (HTTP 402 + アップグレードプロンプト) — v1 では超過料金なし。ユーザーごとの請求のみ; Org/Team サブスクリプションは v3 に延期。前提条件:
+  - [x] ~~**Data model + SDK groundwork** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` テーブル、ORM モデル、Stripe SDK シングルトン、Free + Pro シード~~ *(v0.8.6 で配信)*
+  - [x] ~~**Backend API + webhook handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` 署名検証 + べき等性付き; プラン対応クォータ; 時間ごとのライフサイクルスイープ~~ *(v0.8.6 で配信)*
+  - [x] ~~**Frontend billing tab + 402 upgrade dialog** (P3) — `/settings?tab=billing` クォータ表示、アップグレード CTA、`past_due` バナー、ストリーム中 402 ダイアログ~~ *(v0.8.6 で配信)*
+  - [x] ~~**Admin plan management** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(v0.8.6 で配信)*
+  - [x] ~~**Admin-controlled billing feature flag** (P5) — `system_settings.billing_enabled` は Stripe パイプラインをゲート; べき等的な有効化は Free+Pro をシード、デフォルトプランポインタを設定、ユーザーをバックフィル; トグルオン/オフは有効化後の純粋フラグフリップ~~ *(v0.8.6 で配信)*
+  - [ ] **Reconciliation + e2e + go-live** (P6) — 夜間 `subscriptions` ↔ `stripe.Subscription.list()` 調整スクリプト、見落とし webhook 復旧用; フルスタック happy-path / キャンセル中期 / past-due リグレッションテスト; テストモード `stripe_price_id` からライブ `price_id` に切り替え; ステージングで実カード使用のスモークテスト。
 
-- [ ] **チームプラン (Stripe シート)** — `stripe.Subscription.quantity` 経由のシート単位の価格設定、組織メンバーシップとの統合。企業が N シートを備えた 1 つのチーム全体プランにサブスクライブできます; クォータと機能フラグはユーザー個人ではなくシートグループを通じて解決。v1.0 Stripe MVP と既存の組織モデルの上に構築。
-- [ ] **請求なしデプロイメント向けのグループレベルトークンクォータ** — Stripe なしのエンタープライズ/プライベートデプロイメントは組織レベルのトークン予算を設定。クォータチェーンは `override > group > plan > default` に拡張; グループ解決は `max(user_quota, group_quota)` を使用するため、個別の VIP はチームキャップによって制約されません。チームプランと同時に展開し、同じプリミティブが請求済みとセルフホスト型トポロジーの両方に対応。
+- [ ] **Team plan (Stripe seats)** — `stripe.Subscription.quantity` 経由のシートごと価格設定、Organization メンバーシップと統合。企業が N シート付きの 1 つのチーム全体プランにサブスクライブ可能; クォータと機能フラグは個別ユーザーではなくシートグループ経由で解決。v1.0 Stripe MVP と既存 Organization モデルに基づいて構築。
+- [ ] **Group-level token quota for non-billing deployments** — Stripe なしのエンタープライズ/プライベートデプロイメントは organization レベルのトークン予算を設定。クォータチェーン `override > group > plan > default` に拡張; グループ解決は `max(user_quota, group_quota)` を使用、個別 VIP はチームキャップに制約されない。Team plan と並行してランド、同じプリミティブが請求ありとセルフホストトポロジーの両方に対応。
 
-**インパクト**: エンタープライズは FIM One をゼロからマルチシステムオーケストレーションへ数日で展開します。パッケージシステムはクリエータエコシステムを作成します — ソリューション著者は複合バンドル (スキル + エージェント + コネクター + KB + ワークフロー) を公開、エンタープライズは 1 クリックでインストール、クリエーターは採用から利益を得ます。インストール/フォークの二重性は「そのまま使用」と「テンプレートからカスタマイズ」の両方のユースケースを単一のメカニズムでカバーします。
+**Impact**: エンタープライズは FIM One をゼロからマルチシステムオーケストレーションに数日でデプロイ。パッケージシステムはクリエータエコシステムを作成 — ソリューション作成者は複合バンドル (Skill + Agents + Connectors + KBs + Workflows) を公開、エンタープライズはワンクリックでインストール、クリエータは採用から収益を得る。Install/fork 二重性は「そのまま使用」と「テンプレートからカスタマイズ」の両方のユースケースを単一メカニズムでカバー。
 
 ## Frozen Features (Shipped, Maintain Only)
 

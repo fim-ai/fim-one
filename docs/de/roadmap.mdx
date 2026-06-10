@@ -289,12 +289,12 @@ Nachverfolgter Bugs, die in der Produktion reproduzierbar sind, aber noch nicht 
 - [ ] **Database connectors Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo shipped in v0.8.5
 - [ ] **MCP Connection Pooling** — pool STDIO with per-user env isolation; share `httpx.AsyncClient` for SSE/HTTP. Target ≤100 ms warm-start, O(1) HTTP connections per server
 
-#### Content Guardrails {/* dev: dev/openai-agents-insights.md */}
+#### Content Guardrails {/* dev: dev/archive/openai-agents-insights.md */}
 
-- [x] ~~Content Guardrails v0 (Input/Output-Tripwire, Jailbreak-Detektor, Umgebungsvariablen-Konfiguration, `guardrail_tripwired` SSE-Event)~~ *(in v0.8.7 ausgeliefert)*
-- [ ] Off-Topic-Filter (Klassifizierer-gestützter Input-Guardrail) — auf v0.5 verschieben, falls Regex ausreichend bleibt
-- [ ] PII-Redaktor-Output-Guardrail (Regex + Klassifizierer Hybrid)
-- [ ] Pro-Agent-Guardrail-Konfiguration UI (Admin-Panel)
+- [x] ~~Content guardrails v0 (input/output tripwire, jailbreak detector, env-var config, `guardrail_tripwired` SSE event)~~ *(shipped in v0.8.7)*
+- [ ] Off-topic filter (classifier-backed input guardrail) — defer to v0.5 if regex stays sufficient
+- [ ] PII redactor output guardrail (regex + classifier hybrid)
+- [ ] Per-agent guardrail configuration UI (admin panel)
 
 #### Hook System {/* dev: dev/hook-system.md */}
 
@@ -319,11 +319,12 @@ Nachverfolgter Bugs, die in der Produktion reproduzierbar sind, aber noch nicht 
 - [ ] Stufe 3 — Login-Ticket-Austausch (`LoginTicketCredential` für Frontend/Backend-Split-Systeme ohne benutzer-spezifische API-Schlüssel)
 - [ ] Ebenenübergreifende Nachverfolgbarkeit (`caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`)
 
-#### Channel → Integration Promotion {/* dev: dev/channel-integration-sso.md */}
+#### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
 
-- [ ] `ThirdPartyIntegration` model — promote Channel into Delivery + Login + Org-graph-sync sub-capabilities
-- [ ] Feishu SSO ("Login with Feishu" yields FIM session + upstream token, removes per-user API-key friction for Tier-2)
-- [ ] Org graph sync (Feishu departments → FIM org tree); WeCom + DingTalk next
+- [ ] `identity_providers` + `user_identity_map` Modelle — DB-Level pro-Org SSO/OAuth-Konfiguration ersetzt ENV-Level Third-Party-Login
+- [ ] Feishu SSO via IdP ("Login with Feishu" ergibt FIM-Sitzung + Upstream-Token, entfernt Pro-Benutzer API-Key-Reibung für Tier-2)
+- [ ] Org-Graph-Synchronisierung via IdP (Feishu-Abteilungen → FIM-Org-Baum); WeCom + DingTalk folgen
+- [ ] Channel reduziert auf Delivery + Gate; Identity-Funktionen (SSO / OrgSync) leben nur in IdP
 
 #### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
 
@@ -392,32 +393,32 @@ Nachverfolgter Bugs, die in der Produktion reproduzierbar sind, aber noch nicht 
 
 ### v1.0 — Hot-Plug + Embeddable
 
-**Goal**: Zero-restart connector addition, Package ecosystem, and embedded delivery.
+**Ziel**: Connector-Hinzufügung ohne Neustart, Paket-Ökosystem und eingebettete Bereitstellung.
 
-- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (entity extraction from query → Ontology Registry lookup → connector set reduction; 90%+ token reduction for 50+ connector deployments); Scale mode for batch/ETL connectors; CLI-style universal `connector <name> <action> <params>` interface
-- [ ] **Cross-Connector Entity Alignment (Ontology Registry)**: define shared entity types (Customer, Order, Asset) with field mappings across connectors; DAGPlanner auto-resolves cross-system JOIN keys; enables cross-connector queries (e.g., "customers in Salesforce who ordered in Shopify") without hardcoded field names
-- [ ] **Hot-plug connectors**: upload OpenAPI spec, AI generates config, live in 5 minutes (no restart)
-- [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: Two-tier Market model (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); scope selector (Global Market / org); unified subscription model (org auto-appear removed); KB removed from Market scope; data migration backfills subscriptions for existing org members
-- [ ] **Market Package System**: Distributable resource bundles for the Marketplace — replaces per-type "marketplace" with a unified packaging layer. `fim-package.yaml` manifest declares: metadata (name, version, description, author, license, tags, `min_fim_version`), entry point (primary Skill or Agent), resource list (agents, skills, connectors, KBs, MCP servers, workflows) with config references, inter-package dependencies (semver ranges), required credentials (mapped to connector refs for install-time collection), and user-configurable variables with defaults. **Two consumption modes**: (1) **install** — batch-create all resources + auto-wire internal references via ID substitution; installation linked to source for version update notifications; `POST /api/market/packages/{id}/install`; (2) **fork** — clone as user-owned editable copies with no update link (this IS the template mode); `POST /api/market/packages/{id}/fork`. Additional endpoints: publish (`POST /api/market/packages` with review workflow), uninstall (`DELETE /packages/{id}/uninstall` with dependency check + modified-resource confirmation), version history (`GET /packages/{id}/versions`), upgrade (`POST /packages/{id}/upgrade` with per-resource diff preview). Dependency resolver for nested package requirements with conflict detection. `PackageInstallation` table tracks installed packages per user with resource ID mapping for uninstall/upgrade. **Coexists with individual resource publishing** — Package is a composition layer, not a replacement; a single Connector is still publishable standalone. Example dependency tree: `Package: contract-review` → `Skill: contract-review` (entry point) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
-- [ ] **Creator Program**: Marketplace monetization layer — creator profiles with portfolio pages, per-package analytics (installs, forks, active users, ratings/reviews), affiliate commission tracking when packages drive new subscriptions. Paid package tier with pricing, purchase flow, and approval workflow. Creator dashboard with install trends, revenue reporting, and user feedback. Public creator API for programmatic package publishing (CI/CD for package authors). Community features: package comments, Q&A, changelogs per version
-- [ ] **Embeddable widget**: `<script src="fim-one.js">` injected into host page
-- [ ] **Page context injection**: widget reads host page context (current ID, URL, DOM selectors)
-- [ ] **Advanced triggers**: Webhook inbound events; scheduled job enhancements (multi-timezone, calendar-aware)
-- [ ] **Batch execution**: process 1000+ items via DAG
-- [ ] **Enterprise security**: IP whitelisting, encryption at rest, SSO
-- [ ] **KB Advanced Editor**: Builder-mode agent for power users managing large knowledge bases — bulk URL ingestion, duplicate detection, gap analysis, document lifecycle management; extends existing KB AI chat with ReAct tool loop
-- [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Free + Pro two-tier subscription with monthly token quota. Stripe Checkout (hosted) + Customer Portal (self-service) + webhook-driven lifecycle (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). Soft-cap at quota exhaustion (HTTP 402 + upgrade prompt) — no overage charges in v1. Per-user billing only; Org/Team subscriptions deferred to v3. Prerequisites:
-  - [x] ~~**Data model + SDK groundwork** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` tables, ORM models, Stripe SDK singleton, Free + Pro seeds~~ *(shipped in v0.8.6)*
-  - [x] ~~**Backend API + webhook handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` with signature verification + idempotency; plan-aware quota; hourly lifecycle sweep~~ *(shipped in v0.8.6)*
-  - [x] ~~**Frontend billing tab + 402 upgrade dialog** (P3) — `/settings?tab=billing` quota display, upgrade CTA, `past_due` banner, mid-stream 402 dialog~~ *(shipped in v0.8.6)*
-  - [x] ~~**Admin plan management** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(shipped in v0.8.6)*
-  - [x] ~~**Admin-controlled billing feature flag** (P5) — `system_settings.billing_enabled` gates the Stripe pipeline; idempotent activation seeds Free+Pro, sets default plan pointer, backfills users; toggle off/on is pure flag flip after activation~~ *(shipped in v0.8.6)*
-  - [ ] **Reconciliation + e2e + go-live** (P6) — nightly `subscriptions` ↔ `stripe.Subscription.list()` reconcile script for missed-webhook recovery; full-stack happy-path / cancel-mid-period / past-due regression tests; switch from test-mode `stripe_price_id` to a live `price_id`; smoke test on staging with a real card.
+- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (Entity-Extraktion aus Abfrage → Ontology Registry Lookup → Connector-Set-Reduktion; 90%+ Token-Reduktion für 50+ Connector-Bereitstellungen); Scale-Modus für Batch-/ETL-Connectors; CLI-ähnliche universelle `connector <name> <action> <params>` Schnittstelle
+- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *herabgestuft 2026-04-21: bedarfsgerechte benutzerdefinierte Bereitstellung, keine Kernfunktionalität*: Definieren Sie gemeinsame Entity-Typen (Customer, Order, Asset) mit Feld-Mappings über Connectors hinweg; DAGPlanner löst Cross-System JOIN-Schlüssel automatisch auf; ermöglicht Cross-Connector-Abfragen (z. B. „Kunden in Salesforce, die in Shopify bestellt haben") ohne hartcodierte Feldnamen
+- [ ] **Hot-plug Connectors**: OpenAPI-Spezifikation hochladen, KI generiert Konfiguration, live in 5 Minuten (kein Neustart)
+- [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: Zwei-Ebenen-Marktmodell (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); Scope-Selector (Global Market / org); einheitliches Abonnementmodell (org auto-appear entfernt); KB aus Market-Scope entfernt; Datenmigration füllt Abonnements für bestehende Org-Mitglieder auf
+- [ ] **Market Package System**: Verteilbare Ressourcen-Bundles für den Marketplace — ersetzt pro-Typ „Marketplace" durch eine einheitliche Packaging-Schicht. `fim-package.yaml` Manifest deklariert: Metadaten (Name, Version, Beschreibung, Autor, Lizenz, Tags, `min_fim_version`), Entry Point (primärer Skill oder Agent), Ressourcenliste (Agents, Skills, Connectors, KBs, MCP Server, Workflows) mit Konfigurationsreferenzen, Inter-Package-Abhängigkeiten (Semver-Bereiche), erforderliche Anmeldedaten (auf Connector-Refs für Installationszeit-Erfassung abgebildet) und benutzerkonfigurierbare Variablen mit Standardwerten. **Zwei Verbrauchsmodi**: (1) **install** — Batch-Erstellung aller Ressourcen + Auto-Wiring interner Referenzen über ID-Substitution; Installation mit Quelle verknüpft für Versions-Update-Benachrichtigungen; `POST /api/market/packages/{id}/install`; (2) **fork** — Klonen als benutzergesteuerte bearbeitbare Kopien ohne Update-Link (dies IST der Template-Modus); `POST /api/market/packages/{id}/fork`. Zusätzliche Endpunkte: Veröffentlichung (`POST /api/market/packages` mit Review-Workflow), Deinstallation (`DELETE /packages/{id}/uninstall` mit Abhängigkeitsprüfung + Bestätigung geänderter Ressourcen), Versionsverlauf (`GET /packages/{id}/versions`), Upgrade (`POST /packages/{id}/upgrade` mit Pro-Ressourcen-Diff-Vorschau). Dependency Resolver für verschachtelte Package-Anforderungen mit Konflikt-Erkennung. `PackageInstallation` Tabelle verfolgt installierte Packages pro Benutzer mit Ressourcen-ID-Mapping für Deinstallation/Upgrade. **Koexistiert mit individueller Ressourcen-Veröffentlichung** — Package ist eine Kompositionsschicht, kein Ersatz; ein einzelner Connector ist immer noch eigenständig veröffentlichbar. Beispiel-Abhängigkeitsbaum: `Package: contract-review` → `Skill: contract-review` (Entry Point) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
+- [ ] **Creator Program**: Marketplace-Monetarisierungsschicht — Creator-Profile mit Portfolio-Seiten, Pro-Package-Analytik (Installationen, Forks, aktive Benutzer, Bewertungen/Rezensionen), Affiliate-Provisionserfassung, wenn Packages neue Abonnements fördern. Bezahlte Package-Stufe mit Preisgestaltung, Kaufablauf und Genehmigungsworkflow. Creator-Dashboard mit Installationstrends, Umsatzberichterstattung und Benutzerfeedback. Öffentliche Creator-API für programmatische Package-Veröffentlichung (CI/CD für Package-Autoren). Community-Funktionen: Package-Kommentare, Q&A, Changelogs pro Version
+- [ ] **Embeddable Widget**: `<script src="fim-one.js">` in Host-Seite injiziert
+- [ ] **Page Context Injection**: Widget liest Host-Seiten-Kontext (aktuelle ID, URL, DOM-Selektoren)
+- [ ] **Advanced Triggers**: Webhook-Inbound-Events; erweiterte Scheduled-Job-Funktionen (Multi-Zeitzone, Kalender-bewusst)
+- [ ] **Batch-Ausführung**: Verarbeitung von 1000+ Elementen über DAG
+- [ ] **Enterprise Security**: IP-Whitelisting, Verschlüsselung im Ruhezustand, SSO
+- [ ] **KB Advanced Editor**: Builder-Modus Agent für Power-User, die große Knowledge Bases verwalten — Massen-URL-Erfassung, Duplikat-Erkennung, Gap-Analyse, Dokument-Lifecycle-Management; erweitert bestehenden KB AI Chat mit ReAct Tool Loop
+- [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Kostenlos + Pro zwei-stufiges Abonnement mit monatlichem Token-Kontingent. Stripe Checkout (gehostet) + Customer Portal (Self-Service) + Webhook-gesteuerte Lebenszyklen (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). Soft-Cap bei Kontingent-Erschöpfung (HTTP 402 + Upgrade-Aufforderung) — keine Übergebühren in v1. Nur Pro-Benutzer-Abrechnung; Org/Team-Abonnements auf v3 verschoben. Voraussetzungen:
+  - [x] ~~**Datenmodell + SDK-Grundlagen** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` Tabellen, ORM-Modelle, Stripe SDK Singleton, Kostenlos + Pro Seeds~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Backend-API + Webhook-Handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` mit Signaturverifizierung + Idempotenz; Plan-bewusstes Kontingent; stündliche Lebenszyklen-Sweep~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Frontend Billing-Tab + 402 Upgrade-Dialog** (P3) — `/settings?tab=billing` Kontingent-Anzeige, Upgrade CTA, `past_due` Banner, Mid-Stream 402 Dialog~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Admin Plan-Management** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Admin-gesteuertes Billing Feature Flag** (P5) — `system_settings.billing_enabled` Gates die Stripe-Pipeline; idempotente Aktivierung Seeds Kostenlos+Pro, setzt Standard-Plan-Pointer, Backfills-Benutzer; Toggle aus/an ist reines Flag-Flip nach Aktivierung~~ *(ausgeliefert in v0.8.6)*
+  - [ ] **Reconciliation + e2e + Go-Live** (P6) — nächtliches `subscriptions` ↔ `stripe.Subscription.list()` Reconcile-Skript für Missed-Webhook-Wiederherstellung; Full-Stack Happy-Path / Cancel-Mid-Period / Past-Due Regressions-Tests; Wechsel von Test-Modus `stripe_price_id` zu Live `price_id`; Smoke-Test auf Staging mit echter Karte.
 
-- [ ] **Team plan (Stripe seats)** — Per-seat pricing via `stripe.Subscription.quantity`, integrated with Organization membership. Lets companies subscribe to one team-wide plan with N seats; quota and feature flags resolve through the seat group rather than the individual user. Builds on the v1.0 Stripe MVP and the existing Organization model.
-- [ ] **Group-level token quota for non-billing deployments** — Enterprise / private deployments without Stripe configure organization-level token budgets. Quota chain extends to `override > group > plan > default`; group resolution uses `max(user_quota, group_quota)` so individual VIPs aren't constrained by the team cap. Lands alongside the Team plan so the same primitives serve both billed and self-hosted topologies.
+- [ ] **Team Plan (Stripe Seats)** — Pro-Seat-Preisgestaltung über `stripe.Subscription.quantity`, integriert mit Organization-Mitgliedschaft. Ermöglicht Unternehmen, einen Team-weiten Plan mit N Seats zu abonnieren; Kontingent und Feature Flags werden über die Seat-Gruppe statt über den einzelnen Benutzer aufgelöst. Baut auf dem v1.0 Stripe MVP und dem bestehenden Organization-Modell auf.
+- [ ] **Group-Level Token Quota für Non-Billing-Bereitstellungen** — Enterprise / Private-Bereitstellungen ohne Stripe konfigurieren Organization-Level Token-Budgets. Quota-Kette erweitert zu `override > group > plan > default`; Group-Auflösung verwendet `max(user_quota, group_quota)`, sodass einzelne VIPs nicht durch die Team-Cap eingeschränkt werden. Landet neben dem Team Plan, sodass die gleichen Primitives sowohl abgerechnete als auch Self-Hosted-Topologien bedienen.
 
-**Impact**: Enterprises deploy FIM One from zero to multi-system orchestration in days. Package system creates a creator ecosystem — solution authors publish composite bundles (Skill + Agents + Connectors + KBs + Workflows), enterprises install with one click, creators earn from adoption. Install/fork duality covers both "use as-is" and "customize from template" use cases in a single mechanism.
+**Impact**: Unternehmen stellen FIM One von Null bis Multi-System-Orchestrierung in Tagen bereit. Package-System schafft ein Creator-Ökosystem — Solution-Autoren veröffentlichen zusammengesetzte Bundles (Skill + Agents + Connectors + KBs + Workflows), Unternehmen installieren mit einem Klick, Creator verdienen durch Adoption. Install/Fork-Dualität deckt sowohl „As-Is verwenden" als auch „Aus Template anpassen" Anwendungsfälle in einem einzigen Mechanismus ab.
 
 ## Gefrorene Funktionen (Ausgeliefert, nur Wartung)
 

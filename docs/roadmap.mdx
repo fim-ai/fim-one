@@ -284,7 +284,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [ ] **Database connectors Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo shipped in v0.8.5
 - [ ] **MCP Connection Pooling** — pool STDIO with per-user env isolation; share `httpx.AsyncClient` for SSE/HTTP. Target ≤100 ms warm-start, O(1) HTTP connections per server
 
-#### Content Guardrails {/* dev: dev/openai-agents-insights.md */}
+#### Content Guardrails {/* dev: dev/archive/openai-agents-insights.md */}
 
 - [x] ~~Content guardrails v0 (input/output tripwire, jailbreak detector, env-var config, `guardrail_tripwired` SSE event)~~ *(shipped in v0.8.7)*
 - [ ] Off-topic filter (classifier-backed input guardrail) — defer to v0.5 if regex stays sufficient
@@ -314,11 +314,12 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [ ] Tier 3 — Login-ticket exchange (`LoginTicketCredential` for frontend/backend-split systems with no user-scoped API key)
 - [ ] Cross-tier auditability (`caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`)
 
-#### Channel → Integration Promotion {/* dev: dev/channel-integration-sso.md */}
+#### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
 
-- [ ] `ThirdPartyIntegration` model — promote Channel into Delivery + Login + Org-graph-sync sub-capabilities
-- [ ] Feishu SSO ("Login with Feishu" yields FIM session + upstream token, removes per-user API-key friction for Tier-2)
-- [ ] Org graph sync (Feishu departments → FIM org tree); WeCom + DingTalk next
+- [ ] `identity_providers` + `user_identity_map` models — DB-level per-org SSO/OAuth config replacing ENV-level third-party login
+- [ ] Feishu SSO via IdP ("Login with Feishu" yields FIM session + upstream token, removes per-user API-key friction for Tier-2)
+- [ ] Org graph sync via IdP (Feishu departments → FIM org tree); WeCom + DingTalk next
+- [ ] Channel slims to Delivery + Gate; identity capabilities (SSO / OrgSync) live only in IdP
 
 #### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
 
@@ -390,7 +391,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 **Goal**: Zero-restart connector addition, Package ecosystem, and embedded delivery.
 
 - [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (entity extraction from query → Ontology Registry lookup → connector set reduction; 90%+ token reduction for 50+ connector deployments); Scale mode for batch/ETL connectors; CLI-style universal `connector <name> <action> <params>` interface
-- [ ] **Cross-Connector Entity Alignment (Ontology Registry)**: define shared entity types (Customer, Order, Asset) with field mappings across connectors; DAGPlanner auto-resolves cross-system JOIN keys; enables cross-connector queries (e.g., "customers in Salesforce who ordered in Shopify") without hardcoded field names
+- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *downgraded 2026-04-21: on-demand custom delivery, not a core capability*: define shared entity types (Customer, Order, Asset) with field mappings across connectors; DAGPlanner auto-resolves cross-system JOIN keys; enables cross-connector queries (e.g., "customers in Salesforce who ordered in Shopify") without hardcoded field names
 - [ ] **Hot-plug connectors**: upload OpenAPI spec, AI generates config, live in 5 minutes (no restart)
 - [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: Two-tier Market model (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); scope selector (Global Market / org); unified subscription model (org auto-appear removed); KB removed from Market scope; data migration backfills subscriptions for existing org members
 - [ ] **Market Package System**: Distributable resource bundles for the Marketplace — replaces per-type "marketplace" with a unified packaging layer. `fim-package.yaml` manifest declares: metadata (name, version, description, author, license, tags, `min_fim_version`), entry point (primary Skill or Agent), resource list (agents, skills, connectors, KBs, MCP servers, workflows) with config references, inter-package dependencies (semver ranges), required credentials (mapped to connector refs for install-time collection), and user-configurable variables with defaults. **Two consumption modes**: (1) **install** — batch-create all resources + auto-wire internal references via ID substitution; installation linked to source for version update notifications; `POST /api/market/packages/{id}/install`; (2) **fork** — clone as user-owned editable copies with no update link (this IS the template mode); `POST /api/market/packages/{id}/fork`. Additional endpoints: publish (`POST /api/market/packages` with review workflow), uninstall (`DELETE /packages/{id}/uninstall` with dependency check + modified-resource confirmation), version history (`GET /packages/{id}/versions`), upgrade (`POST /packages/{id}/upgrade` with per-resource diff preview). Dependency resolver for nested package requirements with conflict detection. `PackageInstallation` table tracks installed packages per user with resource ID mapping for uninstall/upgrade. **Coexists with individual resource publishing** — Package is a composition layer, not a replacement; a single Connector is still publishable standalone. Example dependency tree: `Package: contract-review` → `Skill: contract-review` (entry point) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
