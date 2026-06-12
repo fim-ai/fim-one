@@ -92,6 +92,13 @@ class Hook:
         tool_filter: Optional glob pattern to match tool names.  When set,
             the hook only fires for tools whose name matches the pattern
             (e.g. ``"github__*"`` for all GitHub connector tools).
+        fail_open: Behaviour when the handler raises.  When ``False``
+            (the default), a crashing ``PRE_TOOL_USE`` hook blocks the tool
+            call — enforcement hooks (security gates, approvals) must not be
+            bypassable by their own bugs.  Set ``True`` for non-enforcement
+            PRE hooks (loggers, rate limiters) that should never take the
+            agent down.  Has no effect on POST/SESSION hooks, which cannot
+            block execution.
     """
 
     def __init__(
@@ -102,6 +109,7 @@ class Hook:
         description: str = "",
         priority: int = 0,
         tool_filter: str | None = None,
+        fail_open: bool = False,
     ) -> None:
         self.name = name
         self.hook_point = hook_point
@@ -109,6 +117,7 @@ class Hook:
         self.description = description
         self.priority = priority
         self.tool_filter = tool_filter
+        self.fail_open = fail_open
 
     def matches_tool(self, tool_name: str | None) -> bool:
         """Check whether this hook should fire for the given tool name.
@@ -123,22 +132,45 @@ class Hook:
         return fnmatch.fnmatch(tool_name, self.tool_filter)
 
     async def execute(self, context: HookContext) -> HookResult:
-        """Execute the hook handler, swallowing any exceptions.
+        """Execute the hook handler, never crashing the agent.
 
-        Hooks must NEVER crash the agent.  If the handler raises, a
-        permissive ``HookResult`` (allow=True) is returned and the error
-        is logged.
+        If the handler raises, the failure is logged and a ``HookResult`` is
+        returned according to the hook's ``fail_open`` policy:
+
+        - ``PRE_TOOL_USE`` with ``fail_open=False`` (the default) →
+          ``allow=False``.  A crashing enforcement hook blocks the call so a
+          broken security gate cannot become a silent bypass.
+        - ``PRE_TOOL_USE`` with ``fail_open=True`` → ``allow=True``.  For
+          non-enforcement hooks (loggers, rate limiters) that should not take
+          the agent down.
+        - ``POST_TOOL_USE`` / ``SESSION_START`` → ``allow=True``.  These
+          cannot block execution; the result is simply left unmodified.
         """
         try:
             return await self.handler(context)
-        except Exception:
-            logger.exception(
-                "Hook '%s' raised an exception — allowing tool call to proceed",
-                self.name,
+        except Exception as exc:
+            fail_closed = (
+                self.hook_point is HookPoint.PRE_TOOL_USE and not self.fail_open
             )
+            logger.exception(
+                "Hook '%s' raised an exception — %s",
+                self.name,
+                "blocking tool call (fail-closed)"
+                if fail_closed
+                else "allowing tool call to proceed",
+            )
+            if fail_closed:
+                return HookResult(
+                    allow=False,
+                    error=(
+                        f"Hook '{self.name}' failed and the call was blocked "
+                        f"(fail-closed): {type(exc).__name__}"
+                    ),
+                    side_effects=[f"Hook '{self.name}' crashed: {exc}"],
+                )
             return HookResult(
                 allow=True,
-                side_effects=[f"Hook '{self.name}' failed with exception"],
+                side_effects=[f"Hook '{self.name}' failed with exception: {exc}"],
             )
 
     def __repr__(self) -> str:

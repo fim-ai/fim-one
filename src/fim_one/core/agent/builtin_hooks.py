@@ -230,6 +230,10 @@ def create_rate_limiter(
         ),
         priority=priority,
         tool_filter="*__*",  # Only connector tools.
+        # Not a security boundary — if the limiter itself crashes, it should
+        # not block tool calls (fail-open). Enforcement gates keep the default
+        # fail-closed policy.
+        fail_open=True,
     )
 
 
