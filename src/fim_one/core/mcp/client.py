@@ -6,6 +6,7 @@ import contextlib
 import logging
 from typing import Any
 
+from fim_one.core.security import validate_url as _validate_url
 from fim_one.core.tool.base import Tool
 
 from .adapter import MCPToolAdapter
@@ -178,6 +179,11 @@ class MCPClient:
                 "Install it with: uv sync --extra mcp"
             ) from exc
 
+        try:
+            _validate_url(url)
+        except ValueError as exc:
+            raise ValueError(f"SSRF check failed for MCP SSE URL: {exc}") from exc
+
         logger.info("Connecting to MCP server %r via SSE: %s", name, url)
 
         read, write = await self._exit_stack.enter_async_context(
@@ -248,6 +254,11 @@ class MCPClient:
                 "The 'mcp' package is required for MCP integration. "
                 "Install it with: uv sync --extra mcp"
             ) from exc
+
+        try:
+            _validate_url(url)
+        except ValueError as exc:
+            raise ValueError(f"SSRF check failed for MCP Streamable HTTP URL: {exc}") from exc
 
         logger.info("Connecting to MCP server %r via Streamable HTTP: %s", name, url)
 
