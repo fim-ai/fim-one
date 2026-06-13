@@ -42,6 +42,13 @@ def is_private_ip(ip_str: str) -> bool:
 
     if isinstance(addr, ipaddress.IPv4Address):
         return any(addr in net for net in _BLOCKED_IPV4_NETWORKS)
+
+    # For IPv6, also check IPv4-mapped addresses (::ffff:0:0/96).
+    # Python's ipaddress treats ::ffff:127.0.0.1 as an IPv6Address, so without
+    # this check it bypasses the IPv4 blocklist entirely.
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return any(addr.ipv4_mapped in net for net in _BLOCKED_IPV4_NETWORKS)
+
     return any(addr in net for net in _BLOCKED_IPV6_NETWORKS)
 
 
