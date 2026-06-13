@@ -90,3 +90,34 @@ class TestGetAllowedStdioCommands:
         monkeypatch.setenv("ALLOWED_STDIO_COMMANDS", "foo,bar")
         allowed = get_allowed_stdio_commands()
         assert allowed == {"foo", "bar"}
+
+
+class TestValidateMcpUrl:
+    """SSRF validation for SSE / Streamable-HTTP MCP server URLs (PR #14)."""
+
+    def test_blocks_imds_for_sse(self):
+        from fim_one.web.api.mcp_servers import _validate_mcp_url
+        from fim_one.web.exceptions import AppError
+
+        with pytest.raises(AppError) as exc:
+            _validate_mcp_url("sse", "http://169.254.169.254/latest/meta-data/")
+        assert exc.value.status_code == 400
+        assert exc.value.error_code == "mcp_url_blocked"
+
+    def test_blocks_imds_for_streamable_http(self):
+        from fim_one.web.api.mcp_servers import _validate_mcp_url
+        from fim_one.web.exceptions import AppError
+
+        with pytest.raises(AppError):
+            _validate_mcp_url("streamable_http", "http://127.0.0.1:8000/mcp")
+
+    def test_skips_stdio_transport(self):
+        from fim_one.web.api.mcp_servers import _validate_mcp_url
+
+        # stdio servers have no URL; validation must not run.
+        _validate_mcp_url("stdio", None)
+
+    def test_skips_when_url_missing(self):
+        from fim_one.web.api.mcp_servers import _validate_mcp_url
+
+        _validate_mcp_url("sse", None)
