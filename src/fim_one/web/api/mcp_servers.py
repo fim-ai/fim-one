@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.core.security import is_stdio_allowed, validate_stdio_command
+from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
@@ -113,6 +113,20 @@ def _enforce_stdio_policy(transport: str) -> None:
         )
 
 
+def _validate_mcp_url(transport: str, url: str | None) -> None:
+    """SSRF-check the URL for SSE / Streamable-HTTP MCP servers."""
+    if transport not in ("sse", "streamable_http") or not url:
+        return
+    try:
+        validate_url(url)
+    except ValueError as exc:
+        raise AppError(
+            "mcp_url_blocked",
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # Capabilities (must be before /{server_id} to avoid path conflict)
 # ---------------------------------------------------------------------------
@@ -135,6 +149,7 @@ async def create_mcp_server(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     _enforce_stdio_policy(body.transport)
+    _validate_mcp_url(body.transport, body.url)
 
     if body.transport == "stdio" and body.command:
         try:
@@ -288,6 +303,9 @@ async def update_mcp_server(
     # If transport is being changed to stdio, enforce the policy
     new_transport = update_data.get("transport", server.transport)
     _enforce_stdio_policy(new_transport)
+
+    new_url = update_data.get("url", server.url)
+    _validate_mcp_url(new_transport, new_url)
 
     new_command = update_data.get("command", server.command)
     if new_transport == "stdio" and new_command:
