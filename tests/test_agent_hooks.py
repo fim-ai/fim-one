@@ -391,8 +391,14 @@ class TestToolFiltering:
 
 class TestHookErrorHandling:
     @pytest.mark.asyncio
-    async def test_crashing_hook_doesnt_crash_agent(self) -> None:
-        """A hook that raises should return allow=True and log the error."""
+    async def test_crashing_pre_hook_fails_closed_by_default(self) -> None:
+        """A PRE hook that raises must BLOCK the call (fail-closed).
+
+        Enforcement hooks — security gates, human approvals — run at
+        PRE_TOOL_USE. If such a hook crashes, silently allowing the tool
+        through would turn a broken gate into a bypass, so the default is to
+        deny.
+        """
         hook = Hook("crasher", HookPoint.PRE_TOOL_USE, _crashing_handler)
         ctx = HookContext(
             hook_point=HookPoint.PRE_TOOL_USE,
@@ -400,12 +406,48 @@ class TestHookErrorHandling:
             tool_args={},
         )
         result = await hook.execute(ctx)
-        assert result.allow is True
-        assert any("failed" in s for s in result.side_effects)
+        assert result.allow is False
+        assert result.error is not None
+        assert any("crash" in s.lower() or "failed" in s.lower() for s in result.side_effects)
 
     @pytest.mark.asyncio
-    async def test_crashing_hook_in_registry(self) -> None:
-        """A crashing hook in the registry should not block subsequent hooks."""
+    async def test_crashing_pre_hook_fail_open_opt_in(self) -> None:
+        """A non-enforcement PRE hook can opt into fail-open via ``fail_open=True``.
+
+        Loggers and rate-limiters are not security boundaries; if they crash
+        they should not take the agent down.
+        """
+        hook = Hook(
+            "crasher",
+            HookPoint.PRE_TOOL_USE,
+            _crashing_handler,
+            fail_open=True,
+        )
+        ctx = HookContext(
+            hook_point=HookPoint.PRE_TOOL_USE,
+            tool_name="test",
+            tool_args={},
+        )
+        result = await hook.execute(ctx)
+        assert result.allow is True
+        assert any("failed" in s.lower() for s in result.side_effects)
+
+    @pytest.mark.asyncio
+    async def test_crashing_post_hook_does_not_block(self) -> None:
+        """A POST hook that raises leaves the already-produced result intact."""
+        hook = Hook("crasher", HookPoint.POST_TOOL_USE, _crashing_handler)
+        ctx = HookContext(
+            hook_point=HookPoint.POST_TOOL_USE,
+            tool_name="test",
+            tool_result="original",
+        )
+        result = await hook.execute(ctx)
+        # POST hooks cannot block execution; the result is simply not modified.
+        assert result.modified_result is None
+
+    @pytest.mark.asyncio
+    async def test_crashing_pre_hook_blocks_chain(self) -> None:
+        """A crashing enforcement PRE hook blocks the call and stops the chain."""
         call_log: list[str] = []
 
         async def good_hook(ctx: HookContext) -> HookResult:
@@ -413,7 +455,41 @@ class TestHookErrorHandling:
             return HookResult()
 
         registry = HookRegistry()
-        registry.register(Hook("crasher", HookPoint.PRE_TOOL_USE, _crashing_handler, priority=1))
+        registry.register(
+            Hook("crasher", HookPoint.PRE_TOOL_USE, _crashing_handler, priority=1)
+        )
+        registry.register(Hook("good", HookPoint.PRE_TOOL_USE, good_hook, priority=2))
+
+        ctx = HookContext(
+            hook_point=HookPoint.PRE_TOOL_USE,
+            tool_name="test",
+            tool_args={},
+        )
+        result = await registry.run_pre_tool(ctx)
+
+        # Fail-closed: the call is blocked and the later hook never runs.
+        assert result.allow is False
+        assert call_log == []
+
+    @pytest.mark.asyncio
+    async def test_fail_open_pre_hook_does_not_block_chain(self) -> None:
+        """A crashing fail-open PRE hook is skipped; subsequent hooks still run."""
+        call_log: list[str] = []
+
+        async def good_hook(ctx: HookContext) -> HookResult:
+            call_log.append("good")
+            return HookResult()
+
+        registry = HookRegistry()
+        registry.register(
+            Hook(
+                "crasher",
+                HookPoint.PRE_TOOL_USE,
+                _crashing_handler,
+                priority=1,
+                fail_open=True,
+            )
+        )
         registry.register(Hook("good", HookPoint.PRE_TOOL_USE, good_hook, priority=2))
 
         ctx = HookContext(
