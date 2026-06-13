@@ -70,6 +70,21 @@ class TestIsPrivateIp:
     def test_fe80_v6(self) -> None:
         assert is_private_ip("fe80::1") is True
 
+    # IPv4-mapped IPv6 (::ffff:0:0/96) — Python parses these as IPv6Address,
+    # so without an explicit ipv4_mapped check they bypass the IPv4 blocklist
+    # and reach internal services on dual-stack hosts (regression: PR #15).
+    def test_ipv4_mapped_loopback(self) -> None:
+        assert is_private_ip("::ffff:127.0.0.1") is True
+
+    def test_ipv4_mapped_imds(self) -> None:
+        assert is_private_ip("::ffff:169.254.169.254") is True
+
+    def test_ipv4_mapped_private_10(self) -> None:
+        assert is_private_ip("::ffff:10.0.0.1") is True
+
+    def test_ipv4_mapped_public_stays_allowed(self) -> None:
+        assert is_private_ip("::ffff:8.8.8.8") is False
+
 
 class TestLooksLikeJson:
     """Tests for the ``_looks_like_json`` heuristic."""
