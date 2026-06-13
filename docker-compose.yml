@@ -26,7 +26,10 @@ services:
     env_file: .env
     environment:
       # Internal services — auto-configured by compose, no user action needed.
-      DATABASE_URL: postgresql+asyncpg://fim:fim@postgres:5432/fim_one
+      # Credentials are single-sourced from the POSTGRES_* vars below so the URL
+      # and the postgres service can never drift. Override all three in .env for
+      # any deployment where the DB network isn't fully isolated.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-fim}:${POSTGRES_PASSWORD:-fim}@postgres:5432/${POSTGRES_DB:-fim_one}
       REDIS_URL: redis://redis:6379/0
       # DooD sandbox: host-side absolute path of the ./data volume mount.
       # The sandbox writes scripts to /app/data/sandbox/ inside the container;
@@ -52,13 +55,16 @@ services:
     mem_limit: 350m
     mem_reservation: 128m
     environment:
-      POSTGRES_USER: fim
-      POSTGRES_PASSWORD: fim
-      POSTGRES_DB: fim_one
+      # Defaults are safe ONLY because this service has no `ports:` mapping — it
+      # is reachable only from the internal compose network. Set POSTGRES_PASSWORD
+      # in .env before exposing the DB port or running on a shared host.
+      POSTGRES_USER: ${POSTGRES_USER:-fim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fim}
+      POSTGRES_DB: ${POSTGRES_DB:-fim_one}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fim -d fim_one"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fim} -d ${POSTGRES_DB:-fim_one}"]
       interval: 5s
       timeout: 3s
       retries: 5

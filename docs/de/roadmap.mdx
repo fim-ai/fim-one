@@ -282,6 +282,7 @@ Nachverfolgter Bugs, die in der Produktion reproduzierbar sind, aber noch nicht 
 - [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
 - [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
 - [x] Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL
+- [x] Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments
 
 #### Connector + Tooling
 

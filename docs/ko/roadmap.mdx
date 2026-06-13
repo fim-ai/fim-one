@@ -276,9 +276,10 @@ flowchart LR
 
 #### 인증 및 보안 강화
 
-- [x] ~~JWT 토큰 타입 제한(2FA 우회) + OAuth 계정 탈취 및 세션 수정~~ *(v0.8.7에서 배포됨)*
-- [x] ~~PostgreSQL 타임존 인식 타임스탬프~~ *(v0.8.6에서 배포됨)*
-- [x] 강제 로그아웃 타임스탬프 비교는 타임존 인식/순진한 값을 UTC로 정규화하여 변환 — 취소된 토큰은 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됨
+- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(v0.8.7에서 배포됨)*
+- [x] ~~PostgreSQL timezone-aware timestamps~~ *(v0.8.6에서 배포됨)*
+- [x] Force-logout timestamp comparison는 tz-aware/naive 값을 UTC로 정규화하여 변환 — 취소된 토큰이 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됨
+- [x] Docker Compose PostgreSQL 자격증명은 `POSTGRES_*` env를 통해 재정의 가능 (연결 문자열로 단일 소싱) — 노출된 배포에서 실수로 배포된 `fim:fim` 기본값 제거
 
 #### 연결기 + 도구
 

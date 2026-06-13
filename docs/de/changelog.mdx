@@ -16,8 +16,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Sicherheit
 
-- **Ein SSRF-Bypass über IPv4-gemappte IPv6-Adressen wurde blockiert.** Eine URL, deren Host ein IPv4-gemapptes IPv6-Literal war (z. B. `http://[::ffff:169.254.169.254]/`), umging die Blocklist für private IPs und konnte auf Dual-Stack-Hosts auf interne Dienste zugreifen — einschließlich Cloud-Instanz-Metadaten. Diese Adressen werden nun entpackt und gegen die IPv4-Blocklist überprüft, wodurch die Lücke über alle SSRF-geschützten Pfade geschlossen wird (Web Fetch, HTTP-Tool, Connectors, RAG-Importer).
-- **MCP SSE / Streamable-HTTP Server-URLs werden nun SSRF-validiert.** Ein authentifizierter Benutzer konnte einen MCP-Server auf eine interne Adresse verweisen und eine Anfrage an ihn auslösen, wenn der Server getestet oder verbunden wurde. Server-URLs werden nun bei der Erstellung/Aktualisierung und erneut bei der Verbindung validiert.
+- **SSRF-Umgehung über IPv4-mapped IPv6-Adressen blockiert.** Eine URL mit einem IPv4-mapped IPv6-Literal als Host (z. B. `http://[::ffff:169.254.169.254]/`) umging die Blocklist für private IPs und konnte auf Dual-Stack-Hosts auf interne Services — einschließlich Cloud-Instanz-Metadaten — zugreifen. Diese Adressen werden nun entpackt und gegen die IPv4-Blocklist geprüft, wodurch die Lücke in allen SSRF-geschützten Pfaden geschlossen wird (Web Fetch, HTTP Tool, Connectors, RAG Importer).
+- **MCP SSE / Streamable-HTTP Server-URLs werden nun SSRF-validiert.** Ein authentifizierter Benutzer konnte einen MCP-Server auf eine interne Adresse verweisen und eine Anfrage an ihn auslösen, wenn der Server getestet oder verbunden wurde. Server-URLs werden nun bei der Erstellung/Aktualisierung und erneut beim Verbinden validiert.
+- **Docker Compose PostgreSQL-Anmeldedaten sind nun über `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` überschreibbar.** Der zuvor hartcodierte Standard `fim:fim` ist einfach strukturiert (die Verbindungszeichenfolge wird aus denselben Variablen abgeleitet) und dokumentiert mit einer Warnung, ihn vor dem Freigeben der Datenbank zu ändern, sodass Operatoren nicht versehentlich Standard-Admin-Anmeldedaten ausliefern.
 
 ### Behoben
 

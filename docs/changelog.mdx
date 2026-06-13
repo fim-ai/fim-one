@@ -18,6 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **Blocked an SSRF bypass via IPv4-mapped IPv6 addresses.** A URL whose host was an IPv4-mapped IPv6 literal (e.g. `http://[::ffff:169.254.169.254]/`) slipped past the private-IP blocklist and could reach internal services — including cloud instance-metadata — on dual-stack hosts. These addresses are now unwrapped and checked against the IPv4 blocklist, closing the gap across every SSRF-protected path (web fetch, HTTP tool, connectors, RAG importer).
 - **MCP SSE / Streamable-HTTP server URLs are now SSRF-validated.** An authenticated user could point an MCP server at an internal address and trigger a request to it when the server was tested or connected. Server URLs are now validated on create/update and again at connect time.
+- **Docker Compose PostgreSQL credentials are now overridable via `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`.** The previously hardcoded `fim:fim` default is single-sourced (the connection string is derived from the same vars) and documented with a warning to change it before exposing the database, so operators no longer ship default admin credentials by accident.
 
 ### Fixed
 
