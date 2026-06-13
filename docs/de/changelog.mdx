@@ -1,21 +1,30 @@
 ---
 title: "Changelog"
 icon: "scroll"
-description: "Alle bemerkenswerten Änderungen an FIM One."
+description: "Alle wichtigen Änderungen an FIM One."
 ---
 
-Alle bemerkenswerten Änderungen an diesem Projekt werden hier dokumentiert.
+Alle wichtigen Änderungen an diesem Projekt sind hier dokumentiert.
 
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen entsprechen [Roadmap](/roadmap)-Meilensteinen.
 
 ## [Unreleased]
 
+### Sicherheit
+
+- **SSRF-Umgehung über IPv4-mapped IPv6-Adressen blockiert.** Eine URL mit einem IPv4-mapped IPv6-Literal als Host (z. B. `http://[::ffff:169.254.169.254]/`) umging die Blocklist für private IPs und konnte auf internen Hosts — einschließlich Cloud-Instanz-Metadaten — auf Dual-Stack-Hosts auf interne Services zugreifen. Diese Adressen werden nun entpackt und gegen die IPv4-Blocklist geprüft, wodurch die Lücke über alle SSRF-geschützten Pfade hinweg geschlossen wird (Web Fetch, HTTP-Tool, Connectors, RAG-Importer).
+- **MCP SSE / Streamable-HTTP Server-URLs werden nun SSRF-validiert.** Ein authentifizierter Benutzer konnte einen MCP-Server auf eine interne Adresse verweisen und eine Anfrage an ihn auslösen, wenn der Server getestet oder verbunden wurde. Server-URLs werden nun bei der Erstellung/Aktualisierung und erneut beim Verbinden validiert.
+
+### Behoben
+
+- **Enforcement-Hooks schlagen jetzt fehlgeschlagen ab, wenn sie abstürzen.** Ein `PRE_TOOL_USE`-Hook (z. B. ein Approval Gate), der eine Ausnahme auslöste, gab zuvor `allow=True` zurück, sodass der blockierte Tool-Aufruf trotzdem fortgesetzt wurde – ein abgestürztes Gate wurde stillschweigend zu einem Bypass. PRE-Hooks verweigern jetzt standardmäßig bei Fehlern; nicht erzwingende Hooks (Rate Limiter, Logger) behalten das alte Fail-Open-Verhalten über ein neues `fail_open`-Flag bei.
+
 ## [v0.8.7] - 2026-06-10
 
 ### Sicherheit
 
-- **Umgehung der Zwei-Faktor-Authentifizierung behoben.** API- und Chat-/SSE-Authentifizierung erfordern nun einen echten Zugangstoken (SSE-Streaming akzeptiert auch sein kurzlebiges Ticket); der 2FA-Temp-Token, Refresh-Tokens und Bind-/SSE-Tickets — alle mit demselben Schlüssel signiert — können nicht länger zur Authentifizierung wiedergegeben werden, sodass ein gestohlenes Passwort allein die zweite Komponente nicht mehr umgehen kann.
-- **OAuth-Anmeldung verlinkt sich nicht länger automatisch mit einem vorhandenen Konto bei unverifizierten E-Mails.** Ein Drittanbieter-Konto wird nur dann einer lokalen E-Mail-basierter E-Mail-Adresse zugeordnet, wenn der Provider diese als verifiziert kennzeichnet, um eine Übernahme über eine von einem Angreifer kontrollierte unverifizierten Adresse zu verhindern.
+- **Umgehung der Zwei-Faktor-Authentifizierung behoben.** API- und Chat-/SSE-Authentifizierung erfordern nun ein echtes Zugrifftoken (SSE-Streaming akzeptiert auch sein kurzlebiges Ticket); das 2FA-Temp-Token, Refresh-Tokens und Bind-/SSE-Tickets — alle mit demselben Schlüssel signiert — können nicht mehr zur Authentifizierung wiedergegeben werden, sodass ein gestohlenes Passwort allein nicht mehr die zweite Authentifizierungsfaktor umgehen kann.
+- **OAuth-Anmeldung verknüpft sich nicht mehr automatisch mit einem bestehenden Konto bei einer unverifizierter E-Mail.** Ein Drittanbieter-Konto wird nur dann mit einem lokalen Konto per E-Mail abgeglichen, wenn der Anbieter diese E-Mail als verifiziert kennzeichnet, was eine Übernahme über eine von einem Angreifer kontrollierte unverifizierte Adresse verhindert.
 
 ### Added
 
@@ -24,138 +33,138 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Geändert
 
-- **`/settings?tab=billing` wird jetzt in voller Breite angezeigt und ist visuell konsistent mit den anderen Einstellungs-Tabs.** Die `max-w-4xl` Breitenbegrenzung und der redundante äußere Scroll-Container wurden entfernt; das Seitentitel-Symbol wurde gelöscht; die Plan- / Nutzungs- / Abonnement- / Plan-Vergleich-Karten wurden umgeschrieben, um das gleiche schlanke Bordered-Div-Muster (kompakte Labels + `tabular-nums` Zahlen) wie der Nutzungs-Tab zu verwenden. Das alte Layout sah wie eine eigenständige Seite aus, die versehentlich in den Einstellungsrahmen eingeklemmt wurde.
+- **`/settings?tab=billing` wird jetzt in voller Breite dargestellt und ist visuell konsistent mit den anderen Einstellungs-Tabs.** Die `max-w-4xl` Breitenbegrenzung und der redundante äußere Scroll-Container wurden entfernt; das Seiten-Titel-Symbol wurde gelöscht; die Plan- / Nutzungs- / Abonnement- / Plan-Vergleichs-Karten wurden umgeschrieben, um das gleiche schlanke bordered-div-Muster (kompakte Labels + `tabular-nums` Zahlen) wie der Usage-Tab zu verwenden. Das alte Layout sah wie eine eigenständige Seite aus, die versehentlich in den Einstellungsrahmen eingeklemmt wurde.
 
 ### Behoben
 
-- **Token-Kontingent wird nun an Ihrem Abrechnungsdatum zurückgesetzt, nicht am 1. des Monats.** Die Nutzung wurde immer pro Kalendermonat gezählt, unabhängig davon, wann Sie sich anmeldeten, sodass zahlende Benutzer am 20. belastet werden konnten, aber bis zum 1. auf ein frisches Kontingent warten mussten — und ein Abonnement, das spät im Monat gestartet wurde, gewährte effektiv einige Tage später ein zweites volles Kontingent. Das Kontingent wird nun am monatlichen Jahrestag jedes Abonnements zurückgesetzt (kostenlose Benutzer werden immer noch am Kalendermonat zurückgesetzt). Jährlich abgerechnete Pläne werden korrekt jeden Monat aufgefüllt, nicht einmal pro Jahr. Der Tab „Plan & Abrechnung", die Nutzungskarte und der Dialog für überschrittenes Kontingent messen die Nutzung und zeigen das Zurücksetzdatum über dieses gleiche Fenster an, sodass die angezeigte „Nutzung in diesem Zeitraum" mit dem Punkt übereinstimmt, an dem der Chat Sie tatsächlich stoppt.
-- **Abonnementverlängerungen rücken nun den Abrechnungszeitraum vor.** Bei der automatischen Verlängerung blieb das angezeigte Enddatum des Zeitraums am vorherigen Zyklus eingefroren, obwohl Stripe berechnet und das Abonnement vorgerückt hatte — der Verlängerungshandler las die neue Periode nur aus der Invoice-Nutzlast, wo sie unzuverlässig ist. Sie wird nun von Stripe abgerufen, sodass das Zyklus-Enddatum (und die Kontingent-Zurückstellung) bei jeder Verlängerung vorwärts rücken. Dies entfernt auch ein latentes Risiko, bei dem das Kündigen eines solchen Abonnements das Konto sofort statt am wahren Periodenenende herabstufen könnte.
-- **Raw Tool-Call-Protokoll leckt nicht mehr in Agent-Antworten.** Wenn ein Modell einen Tool Call als Klartext improvvisiert (z. B. durch Ausgabe von `<tool_call>`/`<tool_response>`-Blöcken — häufig, wenn es ein nicht verfügbares Tool nutzt), konnte dieser Text — einschließlich aller Base64-/Datei-Dumps darin — wörtlich in der Antwort auftauchen. Alle Antwortpfade streifen nun dieses Pseudo-Protokoll ab, und der Parser erkennt zusätzlich den Dialekt `{"name","arguments"}` als echten Tool Call statt ihn durchsickern zu lassen.
-- **Intermittierende `APIConnectionError: Connection error`-Ausbrüche während Agent-Durchläufen.** Der gemeinsame HTTP-Verbindungspool behielt Idle-Keep-Alive-Verbindungen für bis zu 30 s; wenn ein vorgelagertes Relay oder NAT eine untätige Verbindung stillschweigend abhielt, stellte die nächste Anfrage den halbdead Socket wieder her und schlug fehl. Keep-Alive-Ablauf ist nun standardmäßig kurz 5 s (warme Verbindungen innerhalb eines Durchlaufs werden noch wiederverwendet), und der Pool ist über `LLM_HTTP_MAX_CONNECTIONS` / `LLM_HTTP_MAX_KEEPALIVE` / `LLM_HTTP_KEEPALIVE_EXPIRY` abstimmbar — setzen Sie `LLM_HTTP_MAX_KEEPALIVE=0`, um Verbindungswiederverwendung vollständig hinter einem unzuverlässigen vorgelagerten Service zu deaktivieren.
-- **API-Schlüssel-Nutzungsstatistiken (`total_requests`, `last_used_at`) werden nun bei jeder Anfrage beibehalten.** Zuvor wurde das Inkrementieren in der Datenbankssitzung der Anfrage geschrieben, die nur von Endpunkten committed wird, die eigene Schreibvorgänge durchführen — sodass schreibgeschützte API-Schlüssel-Aufrufe (Dashboard, Dateien, Modelle, Exporte, …) den Zähler stillschweigend zurückrollten. Die Nutzung wird nun in einer unabhängigen, selbst-committenden Sitzung aufgezeichnet, entkoppelt vom Anfrageerfolg.
+- **Token-Kontingent wird jetzt am Abrechnungsdatum zurückgesetzt, nicht am 1. des Monats.** Die Nutzung wurde immer pro Kalendermonat gezählt, unabhängig davon, wann Sie sich anmeldeten. Bezahlte Benutzer konnten am 20. abgerechnet werden, mussten aber bis zum 1. auf ein neues Kontingent warten – und ein Abonnement, das spät im Monat begonnen wurde, gewährte praktisch Tage später ein zweites volles Kontingent. Das Kontingent wird jetzt am monatlichen Jahrestag jedes Abonnements zurückgesetzt (kostenlose Benutzer werden weiterhin am Kalendermonat zurückgesetzt). Jährlich abgerechnete Pläne werden korrekt jeden Monat aufgefüllt, nicht einmal pro Jahr. Die Registerkarte „Plan & Abrechnung", die Nutzungskarte und der Dialog „Kontingent überschritten" messen die Nutzung und zeigen das Zurücksetzdatum über denselben Zeitraum an, sodass die angezeigte „Nutzung in diesem Zeitraum" dem Punkt entspricht, an dem der Chat Sie tatsächlich stoppt.
+- **Abonnementverlängerungen verschieben jetzt den Abrechnungszeitraum.** Bei automatischer Verlängerung blieb das angezeigte Enddatum des Zeitraums beim vorherigen Zyklus stehen, obwohl Stripe abgerechnet und das Abonnement vorwärts gerollt hatte – der Verlängerungshandler las den neuen Zeitraum nur aus der Rechnungsnutzlast, wo er unzuverlässig ist. Er ruft jetzt die maßgeblichen Zeitraumgrenzen von Stripe ab, sodass sich das Zyklus-Enddatum (und das Kontingent-Zurücksetzen) bei jeder Verlängerung vorwärts bewegen. Dies beseitigt auch ein latentes Risiko, bei dem das Kündigen eines solchen Abonnements das Konto sofort statt am echten Zeitraumende herabstufen könnte.
+- **Rohes Tool-Call-Protokoll leckt nicht mehr in Agent-Antworten.** Wenn ein Modell einen Tool-Call als Klartext improvisiert (z. B. durch Ausgabe von `<tool_call>`/`<tool_response>`-Blöcken – häufig, wenn es nach einem nicht verfügbaren Tool greift), könnte dieser Text – einschließlich aller Base64-/Datei-Dumps darin – wörtlich in der Antwort auftauchen. Alle Antwortpfade entfernen jetzt dieses Pseudo-Protokoll, und der Parser erkennt zusätzlich den `{"name","arguments"}`-Dialekt als echten Tool-Call statt ihn zu lecken.
+- **Zeitweilige `APIConnectionError: Connection error`-Ausbrüche während Agent-Durchläufen.** Der gemeinsame HTTP-Verbindungspool behielt Idle-Keep-Alive-Verbindungen bis zu 30 s; wenn ein vorgelagertes Relay oder NAT eine Idle-Verbindung stillschweigend abbaute, wiederverwendete die nächste Anfrage den halb-toten Socket und schlug fehl. Die Keep-Alive-Gültigkeitsdauer beträgt jetzt standardmäßig kurz 5 s (warme Verbindungen innerhalb eines Durchlaufs werden weiterhin wiederverwendet), und der Pool ist über `LLM_HTTP_MAX_CONNECTIONS` / `LLM_HTTP_MAX_KEEPALIVE` / `LLM_HTTP_KEEPALIVE_EXPIRY` abstimmbar – setzen Sie `LLM_HTTP_MAX_KEEPALIVE=0`, um die Verbindungswiederverwendung vollständig hinter einem unzuverlässigen vorgelagerten System zu deaktivieren.
+- **API-Schlüssel-Nutzungsstatistiken (`total_requests`, `last_used_at`) werden jetzt bei jeder Anfrage beibehalten.** Zuvor wurde das Inkrement in der Datenbanksitzung der Anfrage geschrieben, die nur von Endpunkten committed wird, die ihre eigenen Schreibvorgänge durchführen – sodass schreibgeschützte API-Schlüssel-Aufrufe (Dashboard, Dateien, Modelle, Exporte, …) den Zähler stillschweigend zurückrollten. Die Nutzung wird jetzt in einer unabhängigen, selbst-committenden Sitzung aufgezeichnet, entkoppelt vom Anfrageerfolg.
 
 ## [v0.8.6] - 2026-05-08
 
 ### Added
 
-- **Stripe-Abrechnung — Pro-Plan-Abonnement.** Neue Registerkarte `Plan & Billing` unter `/settings?tab=billing` zeigt den aktuellen Plan, monatliche Token-Nutzung, Periodenwechsel und entweder `Upgrade to Pro` (Stripe Checkout) oder `Manage subscription` (Customer Portal). Nach erfolgreicher Kasse öffnet sich ein Konfetti-Modal mit dem gekauften Plan; Redirect-Parameter werden erst nach dem Schließen entfernt, sodass ein Aktualisieren nicht erneut ausgelöst wird. Die Kontingentdurchsetzung respektiert den Plan jedes Benutzers; stornierte Abonnements bleiben bis zum Ende des bezahlten Zeitraums bei Pro; der 402-Kontingentdialog während der Nutzung landet nun auf der Abrechnung-Registerkarte. Admins verwalten Pläne und durchsuchen Abonnements unter Admin Panel → Billing. Pro verwendet derzeit einen Stripe **test-mode**-Preis; die Produktivumstellung ersetzt die Preis-ID.
-- **Von Admin kontrolliertes Billing-Feature-Flag.** Der `Enable Stripe Billing`-Toggle in Admin → System Settings steuert die gesamte Stripe-Pipeline — benutzerseitig `/api/billing/*`, Stripe-Webhook, Admin-Plan/Abonnement-CRUD und Frontend-Billing-Registerkarte + Admin-Navigation sind alle verborgen oder 503, wenn deaktiviert. Die erste Aktivierung startet Free + Pro, setzt den `default_plan_id`-Zeiger und füllt `users.plan_id` rückwirkend; nachfolgendes Aus-/Anschalten ist ein reines Flag-Flip. Private Deployments ohne Stripe-Anmeldedaten bleiben sauber. Die Kontingent-Kette fällt auf das vom Admin gesetzte `Default Monthly Token Quota` zurück, wenn Billing deaktiviert ist.
-- **Unbegrenztes Kontingent pro Benutzer + Registered-Spalte.** Ein leeres Kontingent-Feld erbt das globale Limit; `0` gewährt unbegrenzte Nutzung. Zuvor fielen beide in denselben Zustand zusammen. Die Benutzer-Tabelle erhält auch eine Registered-Spalte.
-- **Dokumentation in nicht-englischen Sprachen (`zh` / `ja` / `ko` / `de` / `fr`) zeigt jetzt die vollständige API Reference und Channels Configuration-Abschnitte** — die `Endpoints`-Gruppe und `Configuration > Channels`-Untergruppe waren zuvor nur auf Englisch verfügbar.
+- **Stripe billing — Pro plan subscription.** New `Plan & Billing` tab under `/settings?tab=billing` shows current plan, monthly token usage, period reset, and either `Upgrade to Pro` (Stripe Checkout) or `Manage subscription` (Customer Portal). Successful checkout opens a confetti modal naming the purchased plan; redirect params are stripped only after dismissal so a refresh doesn't re-trigger it. Quota enforcement respects each user's plan; canceled subscriptions stay on Pro until the paid period ends; the mid-stream 402 quota dialog now lands on the billing tab. Admins manage plans and browse subscriptions under Admin Panel → Billing. Pro currently uses a Stripe **test-mode** price; production cutover replaces the price ID.
+- **Admin-controlled billing feature flag.** `Enable Stripe Billing` toggle in Admin → System Settings gates the entire Stripe pipeline — user-facing `/api/billing/*`, Stripe webhook, admin plan/subscription CRUD, and frontend billing tab + admin nav all hide or 503 when off. First activation seeds Free + Pro, sets the `default_plan_id` pointer, and backfills `users.plan_id`; subsequent off/on is a pure flag flip. Private deployments without Stripe credentials stay clean. Quota chain falls back to the admin-set `Default Monthly Token Quota` when billing is off.
+- **Per-user unlimited quota + Registered column.** Empty quota field inherits the global limit; `0` grants unlimited. Previously both collapsed into the same state. Users table also gains a Registered column.
+- **Non-English docs (`zh` / `ja` / `ko` / `de` / `fr`) now show the full API Reference and Channels Configuration sections** — the `Endpoints` group and `Configuration > Channels` sub-group were previously English-only.
 
 ### Geändert
 
-- **`Plan & Billing` ist ein Einstellungsreiter, keine eigenständige Seite.** `/settings/billing` wurde zurück zu `/settings?tab=billing` verschoben, damit die linke Navigation beim Wechsel von Plänen sichtbar bleibt (entspricht GitHub / Linear / Notion). Die eigenständige Route leitet um, sodass alte Lesezeichen und frühere Stripe-Checkout-Return-URLs von früheren Bereitstellungen weiterhin funktionieren. Der Reiter `Subscriptions` wird in `Marketplace` umbenannt, um ihn von Plan-Abonnements zu unterscheiden.
-- **Das Kontingent des kostenlosen Plans ist auf der Admin-Seite „Pläne" schreibgeschützt.** Die Quelle ist Systemeinstellungen → Standard-Monatliches Token-Kontingent; Bearbeitungen dort werden automatisch propagiert. Das Backend ignoriert `monthly_token_quota` bei PATCH für den kostenlosen Plan stillschweigend.
-- **Token-Kontingente werden auf der Abrechnungsseite, in Plankarten und in der Admin-Plantabelle als `5M` / `100K`** angezeigt, nicht als `5,000,000`. Admin-EINGABE-Felder akzeptieren weiterhin rohe Zahlen.
-- **Übersetzungsautorität verschoben von einzelnen Locale-Dateien zu einer einzigen Glossar.** Regeln finden sich in [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md), das in jeden LLM-Übersetzungsaufruf (JSON, MDX, README) geladen wird. Der Pre-Commit-Hook lehnt Handearbeitungen an generierten Locale-Dateien bedingungslos ab. Um eine Fehlübersetzung zu beheben, bearbeiten Sie die Glossar und generieren Sie mit `--force` neu.
-- **Lizenzgeber und anwendbares Recht.** Die FIM One Source Available License wird jetzt von **FIM Labs Pte. Ltd.** (Singapur) erteilt; das anwendbare Recht wechselt von der VR China zu Singapur; Streitigkeiten werden der SIAC-Schiedsgerichtsbarkeit in Singapur unterstellt (ein Schiedsrichter, Englisch). Eine neue Top-Level-Datei `NOTICE` dokumentiert F&E-Zuschreibung, Markenzeichen und Richtlinie für Komponenten von Drittanbietern. Keine Änderung der zulässigen Nutzungs- oder Einschränkungsbedingungen.
+- **`Plan & Billing` ist ein Reiter in den Einstellungen, keine eigenständige Seite.** `/settings/billing` wurde zurück in `/settings?tab=billing` integriert, sodass die linke Navigation sichtbar bleibt, während Benutzer Pläne wechseln (wie bei GitHub / Linear / Notion). Die eigenständige Route leitet weiter, sodass alte Lesezeichen und frühere Stripe-Checkout-Rückgabe-URLs weiterhin funktionieren. Der Reiter `Subscriptions` wird in `Marketplace` umbenannt, um Verwechslungen mit Plan-Abonnements zu vermeiden.
+- **Kontingent des kostenlosen Plans ist auf der Admin-Seite „Plans" schreibgeschützt.** Stammt aus Systemeinstellungen → Standard-Monatsquota für Token; Änderungen dort werden automatisch übernommen. Backend ignoriert `monthly_token_quota` bei PATCH für den kostenlosen Plan stillschweigend.
+- **Token-Kontingente werden als `5M` / `100K`** statt `5,000,000` auf der Abrechnungsseite, auf Plan-Karten und in der Admin-Tabelle „Plans" angezeigt. Admin-EINGABEFELDER akzeptieren weiterhin Rohzahlen.
+- **Übersetzungsautorität verschoben von einzelnen Locale-Dateien zu einem zentralen Glossar.** Regeln befinden sich in [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) und werden in jeden LLM-Übersetzungsaufruf (JSON, MDX, README) geladen. Der Pre-Commit-Hook lehnt manuelle Änderungen an generierten Locale-Dateien bedingungslos ab. Um eine Fehlübersetzung zu beheben, bearbeiten Sie das Glossar und regenerieren Sie mit `--force`.
+- **Lizenzgeber und anwendbares Recht.** Die FIM One Source Available License wird nun von **FIM Labs Pte. Ltd.** (Singapur) gewährt; das anwendbare Recht wechselt von der VR China zu Singapur; Streitigkeiten werden durch SIAC-Schiedsverfahren in Singapur beigelegt (ein Schiedsrichter, Englisch). Eine neue `NOTICE`-Datei auf oberster Ebene dokumentiert F&E-Zuschreibung, Marken und die Richtlinie für Drittanbieter-Komponenten. Keine Änderung an den zulässigen Verwendungen oder Einschränkungsbedingungen.
 
 ### Behoben
 
-- **Admin-Genehmigung/-Ablehnung von Agents, Connectoren, Wissensdatenbanken und MCP-Servern schlägt auf PostgreSQL nicht mehr fehl.** Die Spalte `reviewed_at` im Publish-Review ist jetzt zeitzonen-bewusst, sodass Genehmigungsschreibvorgänge auf PG erfolgreich sind (der Bug war in SQLite-Entwicklungsdatenbanken unsichtbar).
-- **OAuth-Benutzer können ihre Sitzung jetzt aktualisieren.** Das vom OAuth ausgegebene Aktualisierungstoken wurde in einem Format gespeichert, das der Aktualisierungsendpunkt nie abgleichen konnte, was eine Neuanmeldung erzwang, sobald das Zugriffs-Token ablief; es wird jetzt als Digest wie bei jedem anderen Pfad gespeichert.
-- **Der Browser-Tab-Titel spiegelt jetzt die aktive Unter-Registerkarte in `/settings` und `/admin` wider** (z. B. `Settings · Billing — FIM One`), sodass mehrere angeheftete Registerkarten unterscheidbar sind.
-- **Die Nutzungsseite meldet nicht mehr "Unlimited", wenn ein Admin ein Standard-Token-Kontingent festgelegt hat** — sie wird jetzt durch die einheitliche Kontingent-Kette aufgelöst (Benutzer-Override → Tarif-Tier → Systemstandard).
-- **Agent-Einstellungen: Gebundene Ressourcen flackern beim Eintritt nicht mehr als "(已删除)"** — das Orphan-Badge wartet, bis die Bestandsaufnahme-Abrufe sich stabilisieren, bevor es gerendert wird.
-- **Benachrichtigungen folgen jetzt dem Hell-/Dunkeldesign** statt fest auf Dunkel programmiert zu sein.
-- **Die Aufschlüsselung der Nutzung nach Agent dupliziert keine "Direct Chat"-Zeilen mehr** für Konversationen, die an gelöschte Agents gebunden sind.
-- **Selbst gehostete `./deploy.sh` schlägt nicht mehr mit `container name already in use` fehl** — bereinigt Hash-präfixierte Zombie-Container und DooD-Sandbox-Kinder vor `docker compose up`.
-- **Keine redundanten `chore(i18n): sync translations` Commits mehr nach Pushes** — der Pre-Commit-Übersetzungs-Hook stellt `.translation-cache.json` zusammen mit übersetzten Dateien bereit.
-- **Agent-Chat stürzt nicht mehr ab, wenn ein genehmigungspflichtiges Tool in einer ungebundenen Agent-Sitzung ausgeführt wird** — das Gate beugt sich elegant aus, wenn es keinen Agent zum Routing gibt.
-- **Wiederholung schlägt nicht mehr bei Strict-Alternation-Providern (Claude) fehl, wenn der Verlauf verwaiste Benutzermeldungen von gestoppten Turns enthält** — aufeinanderfolgende Nachrichten mit derselben Rolle werden vor dem Dispatch zu einem einzelnen Turn zusammengefasst.
+- **Admin-Genehmigung/Ablehnung von Agenten, Konnektoren, Wissensdatenbanken und MCP-Servern schlägt auf PostgreSQL nicht mehr fehl.** Die Spalte `reviewed_at` in der Publish-Review ist jetzt zeitzonen-bewusst, sodass Genehmigungsschreibvorgänge auf PG erfolgreich sind (der Fehler war auf SQLite-Entwicklungsdatenbanken unsichtbar).
+- **OAuth-Benutzer können ihre Sitzung jetzt wieder aktualisieren.** Das von OAuth ausgegebene Aktualisierungstoken wurde in einer Form gespeichert, die der Aktualisierungsendpunkt nie abgleichen konnte, was nach Ablauf des Zugriffstokens zu einer erneuten Anmeldung führte; es wird jetzt wie jeder andere Pfad als Digest gespeichert.
+- **Der Browser-Registerkartentitel spiegelt jetzt die aktive Unterregisterkarte in `/settings` und `/admin` wider** (z. B. `Settings · Billing — FIM One`), sodass mehrere angeheftete Registerkarten unterscheidbar sind.
+- **Die Nutzungsseite meldet nicht mehr „Unlimited", wenn ein Administrator ein Standard-Token-Kontingent festgelegt hat** — sie wird jetzt über die einheitliche Kontingentkette aufgelöst (Benutzer-Override → Plan-Tier → Systemstandard).
+- **Agent-Einstellungen: Gebundene Ressourcen flackern beim Eintritt nicht mehr als „(已删除)"** — das Waisenbadge wartet, bis sich die Bestandsabrufe stabilisieren, bevor es gerendert wird.
+- **Toasts folgen jetzt dem Hell-/Dunkel-Design** statt hartcodiert dunkel zu sein.
+- **Die Nutzungsaufschlüsselung nach Agent dupliziert nicht mehr „Direct Chat"-Zeilen** für Konversationen, die an gelöschte Agenten gebunden sind.
+- **Self-Hosted `./deploy.sh` schlägt nicht mehr mit `container name already in use` fehl** — bereinigt Hash-präfixierte Zombie-Container und DooD-Sandbox-Kinder vor `docker compose up`.
+- **Keine redundanten `chore(i18n): sync translations`-Commits mehr nach Pushes** — der Pre-Commit-Übersetzungs-Hook stellt `.translation-cache.json` zusammen mit übersetzten Dateien bereit.
+- **Agent-Chat stürzt nicht mehr ab, wenn ein genehmigungspflichtiges Tool in einer ungebundenen Agent-Sitzung ausgeführt wird** — das Gate weicht elegant aus, wenn es keinen Agent zum Weiterleiten gibt.
+- **Wiederholung schlägt nicht mehr bei Strict-Alternation-Providern (Claude) fehl, wenn der Verlauf verwaiste Benutzernachrichten von gestoppten Turns enthält** — Nachrichten mit aufeinanderfolgenden gleichen Rollen werden vor dem Versand zu einem einzelnen Turn zusammengefasst.
 - **Playground-Wiederholung zeigt die Abfrage während des Pre-Stream-Fensters nicht mehr kurz zweimal an**.
-- **ReAct-Agent bestätigt jetzt und stoppt nach dem Ablehnen einer Genehmigungsanfrage durch einen Operator**, anstatt umformulierte Tool-Aufrufe erneut zu versuchen.
-- **Playground "Suggested follow-ups" kehrt zurück und ist jetzt pro Agent opt-in** (standardmäßig deaktiviert; neuer Toggle `Follow-up Suggestions` in den Agent-Einstellungen).
+- **ReAct-Agent bestätigt jetzt und stoppt, nachdem ein Operator eine Genehmigungsanfrage ablehnt**, statt umformulierte Tool-Aufrufe erneut zu versuchen.
+- **Playground „Suggested follow-ups" kehrt zurück und ist jetzt pro Agent opt-in** (Standard aus; neuer Toggle „Follow-up Suggestions" in Agent-Einstellungen).
 
 ## [v0.8.5] - 2026-04-23
 
 ### Hinzugefügt
 
-- **Contributor-freundlicher i18n-Workflow**: Mitwirkende müssen `LLM_API_KEY` nicht mehr konfigurieren, um PRs einzureichen, die englische Quelldateien ändern. Wenn der lokale Pre-Commit-Übersetzungsschritt übersprungen wird (kein Schlüssel), übersetzt ein neuer `.github/workflows/i18n-sync.yml`-Workflow EN → ZH/JA/KO/DE/FR auf `master`, nachdem der PR zusammengeführt wird, und führt das Ergebnis automatisch durch. Der Pre-Commit-Hook weigert sich nun auch, manuelle Bearbeitungen an generierten Locale-Dateien vorzunehmen (mit einem `ALLOW_LOCALE_EDIT=1`-Override für legitime Übersetzungskorrekturen), um stille Abweichungen zwischen EN-Quellen und übersetzten Ausgaben zu verhindern.
-- **i18n CI-Fallback End-to-End verifiziert**: Ein Smoke-Test-Push (nur EN, lokaler Übersetzungs-Hook übersprungen) bestätigte, dass der GitHub Actions-Workflow die geänderte Quelle erkennt, in alle fünf Locales übersetzt und das Ergebnis automatisch an master mit `[skip ci]` durchführt, um Rekursion zu verhindern.
-- **Exa-Integrationsdokumentationsseite**: Ein spezieller Integrations-Abschnitt in der Seitenleiste mit einer erstklassigen Exa-Seite, die die gesamte Exa-Suchoberfläche (neural / fast / deep-reasoning / instant), Filterung, Inhaltsabruf und drei abgestimmte Voreinstellungen für Nachrichtenüberwachung, Fachliteraturrecherche und Deep-Reasoning-Agenten abdeckt. Dient als partnergerichtete Landingpage für das Exa-Integrationsverzeichnis.
-- **Xinchuang (信创) Datenbank-Unterstützung**: Der Database Connector listet jetzt KingbaseES (人大金仓), HighGo (瀚高) und DM8 (达梦) neben PostgreSQL/MySQL auf. KingbaseES und HighGo sind PG-kompatibel und verwenden `asyncpg` ohne zusätzliche Abhängigkeiten; DM8 verwendet das offizielle `dmPython` Vendor-Wheel. Ein eigenständiges `scripts/test_xinchuang_dbs.py` ermöglicht Betreibern, die Live-Verbindung von der CLI aus zu überprüfen.
-- **Feishu Channel + Bestätigungsgatter über IM**: Ein neuer `Channel`-Ressourcentyp (im Organisationsbereich, Anmeldedaten verschlüsselt im Ruhezustand) ermöglicht es Organisationen, eine Feishu-App für ausgehende Nachrichten zu verbinden. Tools, die mit `requires_confirmation=True` gekennzeichnet sind, senden nun statt nur ein Bestätigungsdialog im Portal eine interaktive Approve/Reject-Karte an die konfigurierte Feishu-Gruppe — jedes autorisierte Gruppenmitglied kann direkt von Feishu aus genehmigen oder ablehnen. Umfasst Settings → Channels Management UI (Liste, Erstellen/Bearbeiten mit Dirty-State-Schutz, Details mit kopierbarer Callback-URL, Test-Send), CRUD API (`/api/channels`) und den Feishu-Event-Callback-Endpoint (`/api/channels/{id}/callback`) mit Signaturverifizierung und URL-Challenge-Unterstützung. Erster Schritt des Roadmap-Elements v0.9 IM Channel Integration, wird früher als geplant für die Roadshow am 2026-04-24 bereitgestellt.
-- **Agent Hook System (Grundgerüst)**: Eine neue `PreToolUseHook` / `PostToolUseHook`-Abstraktion in `src/fim_one/core/hooks/` ermöglicht es, dass deterministische Logik außerhalb der LLM-Schleife ausgeführt wird — der FeishuGateHook ist die erste konkrete Implementierung, angebunden an den Bestätigungsgatter-Flow. Vollständiger Hook-Lebenszyklus + benutzerdefinierte YAML-Hooks bleiben v0.9-Umfang.
-- **Hook System ist nun live in der ReAct- und DAG-Runtime**: Agenten, die `hooks.class_hooks` in ihrem `model_config_json` deklarieren, haben diese Hooks auf jeder Chat-Sitzung instanziiert und registriert. Der erste Consumer — `FeishuGateHook` — wird automatisch ausgelöst, wenn ein Agent ein Tool aufruft, dessen Connector-Aktion mit `requires_confirmation=True` gekennzeichnet ist, sendet eine Approve/Reject-Karte an die Feishu-Gruppe der Org, blockiert das Tool und setzt fort oder bricht ab, basierend auf dem Urteil. Zuvor war die Hook-Abstraktion vorhanden, aber nichts in der Web-Schicht verband sie mit dem Live-Chat.
-- **Channels und Hook System Architektur dokumentiert**: Eine neue `docs/architecture/hook-system.mdx` erklärt die drei Hook-Punkte, warum Hooks außerhalb der LLM-Schleife ausgeführt werden, und führt FeishuGateHook End-to-End durch. Bestehende Architektur-Seiten (system-overview, organization, react-engine, philosophy) verlinken darauf. Das README listet Messaging Channels nun als eine erstklassige v0.8-Fähigkeit auf, und das Application Layer-Diagramm enthält IM-Ziele neben Portal/API/iframe.
-- **Hook Approval Playground**: Das Channels-Detailblatt hat nun eine Aktion „Test Approval Flow", die einen Sensibel-Tool-Aufruf simuliert, eine echte Bestätigungskarte an die verlinkte Feishu-Gruppe sendet und die Entscheidung des Prüfers live abfragt. Im Gegensatz zur bestehenden Vorschau-Schaltfläche übt dies den vollständigen Produktionspfad aus (echte `ConfirmationRequest`-Zeile, echte Feishu-Callback, Statusübergänge), daher verwenden Demos und Vor-Rollout-Proben denselben Codepfad, den ein Produktions-Hook verwenden würde.
+- **Contributor-freundlicher i18n-Workflow**: Mitwirkende müssen `LLM_API_KEY` nicht mehr konfigurieren, um PRs einzureichen, die englische Quelldateien ändern. Wenn der lokale Pre-Commit-Übersetzungsschritt übersprungen wird (kein Schlüssel), übersetzt ein neuer `.github/workflows/i18n-sync.yml`-Workflow EN → ZH/JA/KO/DE/FR auf `master`, nachdem der PR zusammengeführt wird, und committed das Ergebnis automatisch. Der Pre-Commit-Hook verweigert jetzt auch manuelle Änderungen an generierten Locale-Dateien (mit einer `ALLOW_LOCALE_EDIT=1`-Überschreibung für legitime Übersetzungskorrektionen) und verhindert so stille Abweichungen zwischen EN-Quellen und übersetzten Ausgaben.
+- **i18n-CI-Fallback end-to-end verifiziert**: Ein Test-Push (nur EN, lokaler Übersetzungs-Hook übersprungen) bestätigte, dass der GitHub Actions-Workflow die geänderte Quelle erkennt, in alle fünf Locales übersetzt und das Ergebnis mit `[skip ci]` automatisch auf master committed, um Rekursion zu verhindern.
+- **Exa-Integrationsdokumentationsseite**: Dedizierter Integrations-Bereich in der Seitenleiste mit einer erstklassigen Exa-Seite, die die gesamte Exa-Suchoberfläche (neural / fast / deep-reasoning / instant), Filterung, Inhaltsabruf und drei optimierte Voreinstellungen für Nachrichtenüberwachung, Abruf von Forschungsarbeiten und Deep-Reasoning-Agenten abdeckt. Dient als Partner-Landing-Page für das Exa-Integrations-Verzeichnis.
+- **Xinchuang (信创) Datenbankunterstützung**: Der Database Connector listet jetzt KingbaseES (人大金仓), HighGo (瀚高) und DM8 (达梦) neben PostgreSQL/MySQL auf. KingbaseES und HighGo sind PG-kompatibel und verwenden `asyncpg` ohne zusätzliche Abhängigkeiten; DM8 verwendet das offizielle `dmPython`-Vendor-Wheel. Ein eigenständiges `scripts/test_xinchuang_dbs.py` ermöglicht Operatoren, Live-Konnektivität über die CLI zu verifizieren.
+- **Feishu Channel + Bestätigungsgate über IM**: Ein neuer `Channel`-Ressourcentyp (org-scoped, Anmeldedaten im Ruhezustand verschlüsselt) ermöglicht es Organisationen, eine Feishu-App für ausgehende Nachrichten zu verbinden. Tools mit `requires_confirmation=True` senden jetzt eine interaktive Karte zum Genehmigen/Ablehnen an die konfigurierte Feishu-Gruppe, anstatt nur den Bestätigungsdialog im Portal anzuzeigen — jedes autorisierte Mitglied der Gruppe kann direkt aus Feishu genehmigen oder ablehnen. Umfasst die Verwaltungs-UI für Einstellungen → Kanäle (Liste, Erstellen/Bearbeiten mit Dirty-State-Schutz, Details mit kopierbarer Callback-URL, Test-Versand), CRUD-API (`/api/channels`) und den Feishu-Event-Callback-Endpunkt (`/api/channels/{id}/callback`) mit Signaturverifizierung und URL-Challenge-Unterstützung. Erster Schritt des v0.9-IM-Channel-Integration-Roadmap-Elements, wird vor dem 2026-04-24-Roadshow vorzeitig ausgeliefert.
+- **Agent Hook System (Skeleton)**: Eine neue `PreToolUseHook` / `PostToolUseHook`-Abstraktion in `src/fim_one/core/hooks/` ermöglicht es, dass deterministische Logik außerhalb der LLM-Schleife läuft — der FeishuGateHook ist die erste konkrete Implementierung, angehängt an den Bestätigungsgate-Flow. Vollständiger Hook-Lebenszyklus + benutzerdefinierte YAML-Hooks bleiben v0.9-Umfang.
+- **Hook System ist jetzt in der ReAct- und DAG-Runtime live**: Agenten, die `hooks.class_hooks` in ihrer `model_config_json` deklarieren, haben diese Hooks auf jeder Chat-Sitzung instanziiert und registriert. Der erste Consumer — `FeishuGateHook` — wird automatisch ausgelöst, wenn ein Agent ein Tool aufruft, dessen Connector-Aktion mit `requires_confirmation=True` gekennzeichnet ist, postet eine Genehmigen/Ablehnen-Karte an die Feishu-Gruppe der Organisation, blockiert das Tool und setzt fort oder bricht ab, basierend auf dem Ergebnis. Zuvor war die Hook-Abstraktion vorhanden, aber nichts in der Web-Schicht verband sie mit Live-Chat.
+- **Kanäle und Hook System-Architektur dokumentiert**: Ein neues `docs/architecture/hook-system.mdx` erklärt die drei Hook-Punkte, warum Hooks außerhalb der LLM-Schleife laufen, und führt FeishuGateHook end-to-end durch. Bestehende Architekturseiten (system-overview, organization, react-engine, philosophy) verlinken darauf. README listet jetzt Messaging Channels als erstklassige v0.8-Fähigkeit auf und das Application Layer-Diagramm enthält IM-Ziele neben Portal/API/iframe.
+- **Hook Approval Playground**: Das Kanäle-Details-Blatt hat jetzt eine "Test Approval Flow"-Aktion, die einen sensiblen Tool-Aufruf simuliert, eine echte Bestätigungskarte an die verknüpfte Feishu-Gruppe pusht und live auf die Entscheidung des Prüfers wartet. Im Gegensatz zur bestehenden Vorschau-Schaltfläche nutzt dies den vollständigen Produktionspfad (echte `ConfirmationRequest`-Zeile, echter Feishu-Callback, Statusübergänge), sodass Demos und Pre-Rollout-Proben denselben Code-Pfad verwenden, den ein Production-Hook verwenden würde.
 
-- **Pro-Agent Task-Abschlussbenachrichtigungen**: Agenten können nun eine Zusammenfassungskarte an den Org-Channel (aktuell Feishu) senden, wenn eine lange ReAct- oder DAG-Aufgabe abgeschlossen ist. Konfigurierbar pro Agent in Settings → Agent → Notifications. Erster Consumer des generischen Outbound-Benachrichtigungsmusters.
-- **Konfigurierbares Bestätigungsgatter — inline *oder* Channel**: Jeder Agent hat nun einen Abschnitt „Approval" in Settings mit drei Routing-Modi (Auto / Nur inline / Nur Channel), einem Approver-Scope-Selector (Initiator / Agent-Besitzer / jeder in der Org), einem „Bestätigung für jeden Tool-Aufruf erforderlich"-Override und einem expliziten Approval-Channel-Picker. Der Auto-Modus verwendet einen verknüpften Channel, wenn dieser vorhanden ist, und fällt elegant auf eine Inline-Bestätigungskarte im Chat-Stream zurück, wenn nicht — damit Agenten ohne Channel weiterhin eine echte Approval UX bekommen, anstatt stillschweigend zu fehlschlagen. Ein neuer `POST /api/confirmations/{id}/respond`-Endpoint teilt einen einzelnen Decision-Recording-Pfad mit dem Feishu-Webhook, daher jede Genehmigung — ob im Chat oder in einer Feishu-Gruppe angeklickt — stempelt die gleichen `approver_user_id` und `decided_at` Audit-Felder.
+- **Pro-Agent-Task-Abschlussbenachrichtigungen**: Agenten können jetzt eine Zusammenfassungskarte an den Organisationskanal (derzeit Feishu) pushen, wenn eine lange laufende ReAct- oder DAG-Aufgabe abgeschlossen ist. Konfigurierbar pro Agent in Einstellungen → Agent → Benachrichtigungen. Erster Consumer des generischen ausgehenden Benachrichtigungsmusters.
+- **Konfigurierbares Bestätigungsgate — inline *oder* Kanal**: Jeder Agent hat jetzt einen "Approval"-Bereich in den Einstellungen mit drei Routing-Modi (Auto / Nur Inline / Nur Kanal), einem Genehmiger-Umfang-Selektor (Initiator / Agent-Besitzer / Jeder in der Organisation), einer "Bestätigung für jeden Tool-Aufruf erforderlich"-Überschreibung und einem expliziten Genehmigungskanal-Picker. Der Auto-Modus verwendet einen verknüpften Kanal, falls vorhanden, und fällt elegant auf eine Inline-Genehmigungskarte im Chat-Stream zurück — sodass Agenten ohne Kanal trotzdem eine echte Genehmigungserfahrung erhalten, anstatt stillschweigend zu fehlschlagen. Ein neuer `POST /api/confirmations/{id}/respond`-Endpunkt teilt einen einzelnen Entscheidungs-Aufzeichnungspfad mit dem Feishu-Webhook, sodass jede Genehmigung — ob in Chat oder in einer Feishu-Gruppe geklickt — dieselben `approver_user_id`- und `decided_at`-Audit-Felder stempelt.
 
 ### Geändert
 
-- Playground-Ladenindikatoren verwenden jetzt einen subtilen Text-Shimmer-Effekt statt der unrealistisch wirkenden Fortschrittsleiste, die sich nach 8 Sekunden bei einer Pseudo-Vollbreite einfriert. Die beiden bestehenden Shimmer-Implementierungen (`.shiny-text` und `.text-shimmer`) wurden in ein einzelnes Design-System-Primitiv mit optionaler Warm-Voreinstellung vereinheitlicht.
-- Connector-Karten zeigen jetzt ein „Private default"-Badge (mit Tooltip) an, wenn ein Connector `allow_fallback` deaktiviert hat, damit Besitzer auf einen Blick sehen können, welche Connectoren erfordern, dass jeder Benutzer seine eigenen Anmeldedaten bereitstellt. Der Hilfetext unter dem Allow-Fallback-Toggle in der Connector-Einstellungsform verdeutlicht auch, dass das Flag nur die Freigabe für andere Benutzer steuert — der Besitzer kann immer seine eigene Standard-Anmeldedaten verwenden, unabhängig davon.
+- Playground-Ladenindikatoren verwenden jetzt einen subtilen Text-Shimmer statt der unrealistisch aussehenden Fortschrittsleiste, die sich nach 8 Sekunden bei einer Pseudo-Vollbreite eingefroren hat. Die beiden bestehenden Shimmer-Implementierungen (`.shiny-text` und `.text-shimmer`) wurden in ein einzelnes Design-System-Primitiv mit optionalem Warm-Preset vereinheitlicht.
+- Connector-Karten zeigen jetzt ein „Private default"-Badge (mit Tooltip) an, wenn ein Connector `allow_fallback` deaktiviert hat, damit Besitzer auf einen Blick erkennen können, welche Connectoren erfordern, dass jeder Benutzer seine eigenen Anmeldedaten mitbringt. Der Hilfetext unter dem Allow-Fallback-Toggle im Connector-Einstellungsformular verdeutlicht auch, dass das Flag nur die Freigabe für andere Benutzer steuert — der Besitzer kann immer seine eigenen Standard-Anmeldedaten verwenden, unabhängig davon.
 
 ### Behoben
 
-- Connector-Aufrufe des Eigentümers eines Connectors mit `allow_fallback=false` und nur einer Standard-Anmeldedaten (keine benutzerspezifischen Anmeldedaten) führen nicht mehr zu 401 mit "Requires authentication". Der Eigentümer ist jetzt von der Fallback-Sperre befreit — diese Flag steuert nur, ob *andere* Benutzer die Standard-Anmeldedaten des Eigentümers verwenden dürfen. Zuvor sendeten die Agenten des Eigentümers stillschweigend unauthentifizierte Anfragen, und das gleiche Problem betraf auch Workflow `connector_action`-Knoten.
-- Der Gesprächexport zeigt jetzt das korrekte ModusLabel ("Planner" / "规划") für automatisch geroutete DAG-Gespräche anstatt immer "Standard" anzuzeigen.
-- Exportzeitstempel respektieren jetzt die konfigurierte Zeitzone des Benutzers anstatt rohe UTC anzuzeigen.
-- Hochgeladener Dateiinhalt leckt nicht mehr in exportierte Gespräche; nur der Nachrichtentext des Benutzers ist enthalten.
-- Parallele Werkzeugaufrufe kollidieren nicht mehr, wenn ein Anbieter `index=0` für jedes gestreamte Werkzeugaufruf-Delta wiederverwendet; der Aggregator erkennt jetzt Grenzen über eine Änderung der ID oder des Namens und ordnet nachfolgende Deltas dem richtigen Slot neu zu.
-- Einstellungen → Kanäle spiegelt jetzt die aktuelle Organisationsrolle des Benutzers wider: Mitglieder (Nicht-Admin/Eigentümer) sehen eine deaktivierte Schaltfläche "Neuer Kanal", verborgene Aktionen Bearbeiten / Aktivieren-Deaktivieren / Löschen, ein schreibgeschütztes Banner und einen berechtigungsabhängigen leeren Zustand — anstatt eines aktivierten CTA, das mit "Organization admin access required" beim Absenden fehlschlägt.
-- Die Umleitung nach Sitzungsablauf bewahrt jetzt die Abfragezeichenfolge, sodass Benutzer nach der erneuten Authentifizierung auf exakt die gleiche Registerkarte / den gleichen Filter landen, den sie gerade angesehen haben, anstatt auf den einfachen Pfad.
-- Das Feishu-Kanalformular zeigt nicht mehr eine ungerechtfertigte Aufforderung zum "Verwerfen ungespeicherter Änderungen" wenn mit der Chat-Auswahl interagiert wird, die über dem Dialog liegt.
-- Feishu-Kanal-Setup-Hinweise duplizieren nicht mehr chinesische Beschriftungen, wenn die Benutzeroberfläche bereits auf Chinesisch ist (z. B. zuvor gerendert als "事件与回调 (事件与回调)").
-- "Alle kommentieren" im Schema-Manager gibt nicht mehr 500 Internal Server Error zurück — der Backend-Pfad für Vollanmerkung hatte einen Bug mit ungebundener Variable, der jeden Aufruf blockierte.
-- Das Bearbeiten eines Datenbank-Connectors zeigt jetzt den Platzhalter `********` im Passwortfeld anstatt massierten Text mit drei Punkten, sodass deutlich wird, dass das Feld leer zu lassen das gespeicherte Passwort beibehält.
-- Das Aktualisieren einer Connector-Aktion bricht das Detailpanel nicht mehr zusammen — die bearbeitete Aktion bleibt ausgewählt, damit Benutzer sie weiter bearbeiten können.
-- Der KI-Connector-Editor unterscheidet jetzt Erfolg, teilweises Fehlschlag und vollständigen Fehlschlag anstatt die gleiche "abgeschlossen"-Nachricht für alle drei anzuzeigen. Fehlergründe werden inline angezeigt, damit Benutzer sehen, was tatsächlich schiefgelaufen ist.
-- Der KI-Connector-Editor kann nicht mehr mehrere Aktionen auf einmal stillschweigend löschen. Massenlöschen (>2 Aktionen) erfordert jetzt ein explizites destruktives Schlüsselwort in der Benutzeranweisung ("rebuild", "全部重建", "wipe", usw.); andernfalls wird die Operation mit einem klaren Fehler abgelehnt, um Einstellungen `requires_confirmation` / JMESPath vor versehentlichem Verlust zu schützen.
-- Bestätigungskarten im Portal-Chat zeigen jetzt, ob die Anfrage an einen Kanal (z. B. Feishu) geroutet oder inline bearbeitet wurde, zusammen mit einem für Menschen lesbaren Hinweis darüber, wer genehmigen darf (der Initiator, der Agent-Eigentümer oder ein beliebiges Organisationsmitglied). Kanal-geroutete Anfragen erzeugen auch eine Inline-Ausstehend-Karte, damit der Benutzer nicht ratlos ist, ob eine Benachrichtigung tatsächlich gesendet wurde.
-- Feishu-Genehmigungskarten werden nach der ersten Entscheidung schreibgeschützt: Der `/callback`-Webhook gibt eine Ersatzkarte zurück, bei der die Schaltflächen Genehmigen/Ablehnen entfernt sind und die Kopfzeile grün (genehmigt) oder rot (abgelehnt) gefärbt ist, wodurch wiederholtes Klicken verhindert wird. Doppelte Klicks, die immer noch von veralteten Feishu-Clients ankommen, erhalten einen Toast "Diese Anfrage wurde bereits genehmigt/abgelehnt." und eine neue Kopie der entschiedenen Karte, damit die veraltete Ansicht aufgeholt wird.
-- Die einfache Aktion "Test-Nachricht senden" auf Kanalzeilen und dem Detailblatt wurde wiederhergestellt. Der Approval Playground führt die vollständige Hook-Round-Trip durch, aber ein reiner Benachrichtigungskanal (ohne Genehmigungshook verdrahtet) benötigt immer noch eine schnelle Anmeldedaten-/Konnektivitätsprüfung, die der einfache Test-Versand abdeckt.
-- Gleichzeitige Klicks auf die gleiche Feishu-Genehmigungskarte können nicht mehr beide erfolgreich sein. Der `/callback`-Handler flippt jetzt den `ConfirmationRequest`-Status über ein bedingtes `UPDATE ... WHERE status='pending'` und verwendet die betroffene Zeilenzahl, um zu entscheiden, welcher Aufrufer "gewinnt"; zuvor könnten zwei parallele Anfragen beide `pending` lesen und einen Schreiben racen, was möglicherweise zu genehmigt-dann-abgelehnt auf der gleichen Zeile führt.
-- Ausstehende Genehmigungsanfragen verfallen jetzt automatisch nach `CHANNEL_CONFIRMATION_TTL_MINUTES` (Standard 24h) über einen Hintergrund-Sweeper. Verhindert, dass ein veralteter Klick Tage später einen Agent-Status flippt, der bereits abgebaut wurde; der nächste Klick auf eine abgelaufene Karte erhält eine graue "Abgelaufen"-entschiedene Karte und einen Toast "no longer active".
-- Test-Nachricht senden liefert jetzt eine einfache Textbenachrichtigung (keine Schaltflächen Genehmigen/Ablehnen) und lebt nur im Kanal-Detailblatt — nicht im Zeilen-Dropdown. Benutzer, die keine Genehmigungshooks verwenden möchten, werden nicht durch interaktive Schaltflächen auf einer "Test"-Nachricht verwirrt. Genehmigungsrunde-Test-Tests bleiben über die Schaltfläche Approval Playground verfügbar.
-- Kanal-Detailblatt gestrafft: "How to finish setup" ist jetzt ein einklappbarer Abschnitt, standardmäßig eingeklappt (damit er das Blatt für bereits konfigurierte Kanäle nicht dominiert), und die äußere Polsterung wurde reduziert, damit Inhalte näher am Blattkante sitzen.
-- Builder AI meldet maskierte (`****`) Anmeldedaten nicht mehr als fehlend — es erkennt sie jetzt als konfiguriert an und überspringt falsche "Anmeldedaten fehlend"-Hinweise.
-- Die Agent-Liste des Playground zeigt jetzt alle zugänglichen Agents anstatt nur veröffentlichte, sodass Entwurfs-Agents getestet werden können, ohne sie zuerst zu veröffentlichen.
-- Chat-Bild-Uploads stürzen den Stream nicht mehr auf fehlerhafte `data:`-URLs ab — der MIME-Extraktor fällt jetzt sicher auf `application/octet-stream` zurück anstatt einen IndexError mitten in der Generierung zu werfen.
-- Playground-Bild-Miniaturansichten heben jetzt In-Flight-Abrufe auf Unmount über `AbortController` auf, vermeiden veraltete Blob-URL-Zuweisungen und verschwendete Bandbreite während schneller Navigation.
+- Connector-Aufrufe, die vom Eigentümer eines Connectors mit `allow_fallback=false` und nur einem Standard-Credential (kein Pro-Benutzer-Credential) durchgeführt werden, führen nicht mehr zu 401 mit „Requires authentication". Der Eigentümer ist nun von der Fallback-Gate ausgenommen — dieses Flag steuert nur, ob *andere* Benutzer das Standard-Credential des Eigentümers verwenden dürfen. Zuvor sendeten die eigenen Agenten des Eigentümers stillschweigend unauthentifizierte Anfragen, und dasselbe Problem betraf auch Workflow-`connector_action`-Knoten.
+- Der Conversation-Export zeigt nun das korrekte Mode-Label („Planner" / „规划") für automatisch geroutete DAG-Conversations an, anstatt immer „Standard" anzuzeigen.
+- Export-Zeitstempel berücksichtigen nun die konfigurierte Zeitzone des Benutzers, anstatt rohe UTC anzuzeigen.
+- Hochgeladener Dateiinhalt wird nicht mehr in exportierte Conversations durchgesickert; nur der Nachrichtentext des Benutzers ist enthalten.
+- Parallele Tool-Aufrufe kollidieren nicht mehr, wenn ein Provider `index=0` für jeden gestreamten Tool-Call-Delta wiederverwendet; der Aggregator erkennt nun Grenzen über ID- oder Namensänderung und ordnet nachfolgende Deltas dem korrekten Slot zu.
+- Einstellungen → Channels spiegelt nun die Org-Rolle des aktuellen Benutzers wider: Mitglieder (Nicht-Admin/Eigentümer) sehen einen deaktivierten „New Channel"-Button, versteckte Edit-/Enable-Disable-/Delete-Aktionen, ein schreibgeschütztes Banner und einen berechtigungsgesteuerten leeren Zustand — anstatt eines aktivierten CTA, das bei der Übermittlung mit „Organization admin access required" fehlgeschlagen ist.
+- Die Session-Expiry-Umleitung bewahrt nun die Query-String, sodass Benutzer nach der erneuten Authentifizierung auf die genaue Registerkarte/den Filter landen, den sie angesehen haben, anstatt auf den bloßen Pfad.
+- Das Feishu-Channel-Formular zeigt nicht mehr eine falsche „discard unsaved changes"-Eingabeaufforderung bei der Interaktion mit der Chat-Auswahl, die über dem Dialog angeordnet ist.
+- Feishu-Channel-Setup-Hinweise duplizieren nicht mehr chinesische Labels, wenn die Benutzeroberfläche bereits auf Chinesisch ist (z. B. zuvor gerendert als „事件与回调 (事件与回调)").
+- „Annotate All" im Schema-Manager gibt nicht mehr 500 Internal Server Error zurück — der Full-Annotate-Backend-Pfad hatte einen Fehler bei ungebundenen Variablen, der jeden Aufruf blockierte.
+- Das Bearbeiten eines Datenbank-Connectors zeigt nun den `********`-Platzhalter im Passwortfeld anstelle von drei Punkten maskiertem Text, was deutlich macht, dass das Feld leer lassen das gespeicherte Passwort behält.
+- Das Aktualisieren einer Connector-Aktion bricht das Detail-Panel nicht mehr zusammen — die bearbeitete Aktion bleibt ausgewählt, sodass Benutzer weiterhin daran arbeiten können.
+- Der AI-Connector-Editor unterscheidet nun zwischen Erfolg, teilweisem Fehler und vollständigem Fehler, anstatt für alle drei dieselbe „completed"-Nachricht anzuzeigen. Fehlerursachen werden inline angezeigt, sodass Benutzer sehen können, was tatsächlich schiefgelaufen ist.
+- Der AI-Connector-Editor kann nicht mehr mehrere Aktionen auf einmal stillschweigend löschen. Bulk-Delete (>2 Aktionen) erfordert nun ein explizites destruktives Schlüsselwort in der Benutzeranweisung („rebuild", „全部重建", „wipe" usw.); andernfalls wird der Vorgang mit einer klaren Fehlermeldung abgelehnt, um `requires_confirmation`/JMESPath-Einstellungen vor versehentlichem Verlust zu schützen.
+- Bestätigungskarten im Portal-Chat zeigen nun an, ob die Anfrage an einen Channel (z. B. Feishu) geroutet oder inline verarbeitet wurde, zusammen mit einem benutzerfreundlichen Hinweis darauf, wer genehmigen darf (der Initiator, der Agent-Eigentümer oder ein beliebiges Org-Mitglied). Channel-geroutete Anfragen erzeugen auch eine inline ausstehende Karte, sodass der Benutzer nicht verwirrt ist, ob eine Benachrichtigung tatsächlich gesendet wurde.
+- Feishu-Genehmigungskarten werden nach der ersten Entscheidung schreibgeschützt: Der `/callback`-Webhook gibt eine Ersatzkarte mit entfernten Approve/Reject-Buttons und grünem (genehmigt) oder rotem (abgelehnt) Header zurück, was wiederholte Klicks verhindert. Doppelte Klicks, die noch von veralteten Feishu-Clients ankommen, erhalten einen „This request was already approved/rejected."-Toast und eine frische Kopie der entschiedenen Karte, sodass die veraltete Ansicht aufgeholt wird.
+- Die einfache „Send Test Message"-Aktion auf Channel-Zeilen und dem Detail-Sheet wurde wiederhergestellt. Der Approval Playground übt die vollständige Hook-Runde aus, aber ein Notification-Only-Channel (kein Approval-Hook verdrahtet) benötigt immer noch eine schnelle Credential/Connectivity-Sanity-Prüfung, die der einfache Test-Send abdeckt.
+- Gleichzeitige Klicks auf dieselbe Feishu-Genehmigungskarte können nicht mehr beide erfolgreich sein. Der `/callback`-Handler flippt nun den `ConfirmationRequest`-Status über ein bedingtes `UPDATE ... WHERE status='pending'` und verwendet die betroffene Zeilenanzahl, um zu entscheiden, welcher Aufrufer „gewonnen" hat; zuvor konnten zwei parallele Anfragen beide `pending` lesen und einen Schreibvorgang durchführen, was möglicherweise zu genehmigt-dann-abgelehnt in derselben Zeile führte.
+- Ausstehende Genehmigungsanfragen verfallen nun automatisch nach `CHANNEL_CONFIRMATION_TTL_MINUTES` (Standard 24h) über einen Background-Sweeper. Verhindert, dass ein veralteter Klick Tage später den Agent-Status flippt, der bereits abgerissen wurde; der nächste Klick auf eine abgelaufene Karte erhält eine graue „Expired"-Entscheidungskarte und einen „no longer active"-Toast.
+- Send Test Message liefert nun eine einfache Textbenachrichtigung (keine Approve/Reject-Buttons) und befindet sich nur im Channel-Detail-Sheet — nicht im Zeilen-Dropdown. Benutzer, die nicht beabsichtigen, Genehmigungshooks zu verwenden, werden nicht durch interaktive Buttons auf einer „Test"-Nachricht verwirrt. Genehmigungsrunde-Testen bleibt über die Approval Playground-Schaltfläche verfügbar.
+- Channel-Detail-Sheet gestrafft: „How to finish setup" ist nun ein standardmäßig eingeklappter Abschnitt (sodass er das Sheet für bereits konfigurierte Channels nicht dominiert), und der äußere Abstand wurde reduziert, sodass der Inhalt näher an der Sheet-Kante sitzt.
+- Builder AI meldet maskierte (`****`) Credentials nicht mehr als fehlend — es erkennt sie nun als konfiguriert und überspringt falsche „credential missing"-Anleitung.
+- Die Playground-Agent-Liste zeigt nun alle zugänglichen Agents anstelle von nur veröffentlichten, sodass Draft-Agents ohne vorherige Veröffentlichung getestet werden können.
+- Chat-Bild-Uploads stürzen den Stream nicht mehr bei fehlerhaften `data:`-URLs ab — der MIME-Extractor fällt nun sicher auf `application/octet-stream` zurück, anstatt einen IndexError mid-generate zu werfen.
+- Playground-Bild-Thumbnails brechen In-Flight-Abrufe beim Unmount über `AbortController` ab, vermeiden veraltete Blob-URL-Zuweisungen und verschwenden Bandbreite während schneller Navigation.
 
 ## [v0.8.4] - 2026-04-17
 
 ### Hinzugefügt
 
-- Conversation recovery: Synthetische tool_result-Zeilen bleiben nach einem unterbrochenen Turn bestehen; Clients können einen getrennten SSE-Stream über `POST /chat/resume` mit dem zuletzt gesehenen Cursor fortsetzen.
-- Playground stellt unterbrochene SSE-Streams nun automatisch mit dem `/chat/resume`-Endpunkt mit exponentiellem Backoff (max. 3 Versuche) wieder her; zeigt einen "Reconnecting…"-Indikator während der Wiederherstellung.
-- Prompt-Cache-Observability: `cache_read_input_tokens` und `cache_creation_input_tokens` werden aus LLM-Responses erfasst, pro Turn im `TurnProfiler` aggregiert, als `turn_cache`-Zusammenfassungszeile (`read/create tokens + estimated savings`) protokolliert und in der Chat-`done_payload` unter einem neuen `cache`-Feld bereitgestellt. Ermöglicht die Überprüfung, dass Anthropic-Prompt-Caching tatsächlich greift, und dient gleichzeitig als Detektor dafür, ob API-Relaisstationen den Cache-Rabatt berücksichtigen.
+- Conversation Recovery: Synthetische tool_result-Zeilen bleiben nach einer unterbrochenen Runde erhalten; Clients können einen unterbrochenen SSE-Stream über `POST /chat/resume` mit dem zuletzt gesehenen Cursor fortsetzen.
+- Playground stellt automatisch unterbrochene SSE-Streams mithilfe des `/chat/resume`-Endpunkts mit exponentiellem Backoff (max. 3 Versuche) wieder her; zeigt während der Wiederherstellung einen "Reconnecting…"-Indikator an.
+- Prompt-Cache-Observability: `cache_read_input_tokens` und `cache_creation_input_tokens` werden aus LLM-Responses erfasst, pro Runde in `TurnProfiler` aggregiert, als `turn_cache`-Zusammenfassungszeile (`read/create tokens + estimated savings`) protokolliert und in der Chat-`done_payload` unter einem neuen `cache`-Feld angezeigt. Ermöglicht die Überprüfung, dass Anthropic Prompt Caching tatsächlich trifft, und dient gleichzeitig als Detektor dafür, ob API-Relaystationen den Cache-Rabatt berücksichtigen.
 
 ### Geändert
 
-- System-Prompts verwenden nun ein memoized Section Registry mit Anthropic Prompt-Caching-Haltepunkten auf dem stabilen Präfix — reduziert die Token-Kosten pro Durchlauf um etwa 60-80% auf dem gecachten Präfix für Claude-Modelle. ReAct JSON Mode, nativer Function-Calling Mode und Synthesis geben zwei System-Nachrichten für Cache-fähige Provider (Claude, Bedrock Anthropic, Vertex Claude) aus und fallen auf eine einzelne verkettete Nachricht für alle anderen Provider zurück.
+- Systemaufforderungen verwenden jetzt ein memoiertes Abschnittsregister mit Anthropic-Prompt-Caching-Haltepunkten auf dem stabilen Präfix — reduziert die Token-Kosten pro Durchgang um ~60-80% auf dem gecachten Präfix für Claude-Modelle. ReAct JSON-Modus, nativer Function-Calling-Modus und Synthese geben zwei Systemmeldungen für Cache-fähige Anbieter aus (Claude, Bedrock Anthropic, Vertex Claude) und fallen auf eine einzelne verkettete Meldung für alle anderen Anbieter zurück.
 
 ### Behoben
 
-- Thinking/Reasoning-Token bleiben nun über mehrteilige Konversationen hinweg erhalten — das Anthropic-Feld `signature` wird erfasst und gemäß API-Anforderungen pro Durchlauf wiedergegeben.
-- Provider-bewusste Reasoning-Replay-Richtlinie: `reasoning_content` (von DeepSeek-R1, Qwen QwQ, Gemini thinking, OpenAI o-series) wird bei nachfolgenden Durchläufen nicht mehr an Nicht-Anthropic-Provider zurückgegeben. Zuvor wurde das Feld bedingungslos in `ChatMessage.to_openai_dict()` serialisiert, was gegen Provider-Dokumentation verstieß (DeepSeek und Qwen dokumentieren beide explizit „sende `reasoning_content` nicht in Message-History zurück") und ihre automatischen Präfixe / KV-Caches bei jedem mehrteiligen Austausch still deaktivierte. Die Richtlinie ist zentralisiert in `core/prompt/reasoning.py` — Claude-Familie (einschließlich Bedrock und Vertex Proxies) gibt weiterhin Thinking-Blöcke mit Signatur wie erforderlich zurück.
+- Thinking/Reasoning-Token bleiben nun über mehrteilige Konversationen hinweg erhalten — das Anthropic-Feld `signature` wird erfasst und gemäß API-Anforderungen pro Turn wiedergegeben.
+- Provider-bewusste Reasoning-Wiedergabepolitik: `reasoning_content` (von DeepSeek-R1, Qwen QwQ, Gemini Thinking, OpenAI o-Serie) wird bei nachfolgenden Turns nicht mehr an Nicht-Anthropic-Provider zurückgegeben. Zuvor wurde das Feld bedingungslos in `ChatMessage.to_openai_dict()` serialisiert, was gegen Provider-Dokumentation verstieß (DeepSeek und Qwen dokumentieren beide explizit „sende `reasoning_content` nicht zurück in der Nachrichtenhistorie") und ihre automatischen Präfixe / KV-Caches bei jedem mehrteiligen Austausch stillschweigend ungültig machte. Die Richtlinie ist zentralisiert in `core/prompt/reasoning.py` — die Claude-Familie (einschließlich Bedrock- und Vertex-Proxies) gibt Thinking-Blöcke mit Signatur wie erforderlich wieder.
 
 ## [v0.8.3] - 2026-04-16
 
 ### Hinzugefügt
 
-- **`convert_to_markdown` integriertes Werkzeug** — Neues universelles Agent-Werkzeug, das jede Datei, URL, YouTube-Link oder Daten-URI in sauberes Markdown mithilfe von Microsofts MarkItDown konvertiert. Unterstützt PDF, Word (.docx), Excel (.xlsx/.xls), PowerPoint (.pptx), HTML, JSON, CSV, XML, ZIP, EPUB, Outlook .msg, Bilder, Audio (Sprache → Text) und YouTube-Transkripte. Steht jedem Agent standardmäßig zur Verfügung — gleiche Ebene wie `web_fetch`. Wenn ein visionsfähiges LLM konfiguriert ist, werden eingebettete Bilder und gescannte PDF-Seiten automatisch über das offizielle `markitdown-ocr` Plugin OCR-verarbeitet. Diese Funktionalität war zuvor in der Hintergrund-RAG-Erfassungs-Pipeline versteckt; Agenten haben sie nun auf dem interaktiven Konversationspfad.
-- **Dokument-OCR via `markitdown-ocr`** — Eingebettete Bilder in DOCX / XLSX / PPTX und gescannte PDF-Seiten werden nun mit demselben visionsfähigen LLM OCR-verarbeitet, über das der Rest von FIM One läuft. Gilt sowohl für das integrierte `convert_to_markdown` Werkzeug als auch für die RAG-Erfassungs-Pipeline, sodass die Konvertierung zur Chat-Zeit und die Erfassung der Wissensdatenbank byteidentisches Markdown für dieselbe Eingabe erzeugen.
-- **Universelle Vision-Provider-Unterstützung für Dokument-OCR** — Ein neuer `LiteLLMOpenAIShim` Duck-Type umhüllt jedes FIM One `OpenAICompatibleLLM` in der openai SDK `.chat.completions.create(...)` API-Form und versendet dann über `litellm.completion()`. MarkItDown (das die openai SDK-Oberfläche hart codiert hat) kann nun Anthropic Claude, Google Gemini, Azure, Bedrock und alle anderen von LiteLLM unterstützten Provider nutzen — kein Provider-spezifischer Adapter-Code in FIM One erforderlich.
-- **Visionsbewusste RAG-Erfassung** — Wissensdatenbank-Uploads von Office-Dokumenten und gescannten PDFs lösen nun das Standard-Vision-LLM des Arbeitsbereichs auf (DB-first, ENV-Fallback) und leiten es an MarkItDown für die OCR während der Erfassung weiter. Null-Regression: Wenn kein visionsfähiges Modell verfügbar ist, wird die Erfassung stumm auf den reinen Text-Modus zurückgesetzt — genau das Verhalten vor der Funktion.
-- **Erweiterte MarkItDown-Formatunterstützung** — RAG erfasst nun nativ `.pdf`, `.msg` (Outlook), `.epub`, `.mp3`, `.wav` und `.m4a` via MarkItDowns Audio-Transkriptions- und Outlook-Zusätze. YouTube-URLs fließen über `convert_to_markdown` via `markitdown[youtube-transcription]`.
-- **`LLM_SUPPORTS_VISION` Umgebungsvariable** — Optionales Opt-out (`=false`) für den ENV-Modus-Dokument-OCR-Fallback. Das Standardverhalten ist optimistisch (`true`), was gängige ENV-Setups abdeckt (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`). Nur auf `false` setzen, wenn Ihr ENV-konfiguriertes `LLM_MODEL` Vision nicht unterstützt (z. B. `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`), um einen fehlgeschlagenen Vision-Aufruf bei jedem Dokument-Upload zu vermeiden. Wird völlig ignoriert, wenn eine von Admin kuratiertete ModelGroup aktiv ist — DB-Modus ist immer die Quelle der Wahrheit, wenn verfügbar.
-- **Turn-Level-Profiler** — Jeder ReAct-Turn protokolliert nun Phase-Level-Timings (`memory_load`, `compact`, `tool_schema_build`, `llm_first_token`, `llm_total`, `tool_exec`) in einer einzelnen strukturierten Log-Zeile pro Turn. Umschaltbar via `REACT_TURN_PROFILE_ENABLED` (Standard: an; auf `false` setzen für Null-Overhead-No-op).
-- **Strukturierte Compact-Work-Card** — Konversationsverdichtung analysiert nun ihre eigene 9-teilige Markdown-Ausgabe in eine typisierte `WorkCard` und führt neue Compacts in die vorherige ein, sodass Fehler und ausstehende Aufgaben von früher in einer langen Sitzung über mehrere Verdichtungsrunden hinweg überleben, anstatt von Grund auf neu zusammengefasst zu werden.
+- **`convert_to_markdown` Built-in Tool** — Neues universelles Agent-Tool, das beliebige Dateien, URLs, YouTube-Links oder Data URIs in sauberes Markdown mit Microsofts MarkItDown konvertiert. Unterstützt PDF, Word (.docx), Excel (.xlsx/.xls), PowerPoint (.pptx), HTML, JSON, CSV, XML, ZIP, EPUB, Outlook .msg, Bilder, Audio (Sprache → Text) und YouTube-Transkripte. Standardmäßig für jeden Agent verfügbar — gleiche Stufe wie `web_fetch`. Wenn ein Vision-fähiges LLM konfiguriert ist, werden eingebettete Bilder und gescannte PDF-Seiten automatisch über das offizielle `markitdown-ocr`-Plugin OCR'd. Diese Funktion war zuvor in der Hintergrund-RAG-Erfassungspipeline verborgen; Agents haben jetzt Zugriff darauf im interaktiven Gesprächspfad.
+- **Dokument-OCR via `markitdown-ocr`** — Eingebettete Bilder in DOCX / XLSX / PPTX und gescannte PDF-Seiten werden nun mit dem gleichen Vision-fähigen LLM OCR'd, das FIM One für den Rest nutzt. Gilt sowohl für das integrierte `convert_to_markdown`-Tool als auch für die RAG-Erfassungspipeline, sodass Chat-Zeit-Konvertierung und Knowledge-Base-Erfassung byte-identisches Markdown für die gleiche Eingabe erzeugen.
+- **Universelle Vision-Provider-Unterstützung für Dokument-OCR** — Ein neuer `LiteLLMOpenAIShim` Duck-Type umhüllt jedes FIM One `OpenAICompatibleLLM` in die openai SDK's `.chat.completions.create(...)`-API-Form und leitet dann durch `litellm.completion()` weiter. MarkItDown (das die openai SDK-Oberfläche hart codiert) kann nun Anthropic Claude, Google Gemini, Azure, Bedrock und jeden anderen von LiteLLM unterstützten Provider nutzen — ohne Pro-Provider-Adapter-Code in FIM One.
+- **Vision-bewusste RAG-Erfassung** — Knowledge-Base-Uploads von Office-Dokumenten und gescannten PDFs lösen nun das Standard-Vision-LLM des Workspace auf (DB-First, ENV-Fallback) und leiten es an MarkItDown für OCR während der Erfassung weiter. Null-Regression: Wenn kein Vision-fähiges Modell verfügbar ist, fällt die Erfassung stillschweigend in den reinen Text-Modus zurück — genau das Verhalten vor der Funktion.
+- **Erweiterte MarkItDown-Formatunterstützung** — RAG erfasst nun nativ `.pdf`, `.msg` (Outlook), `.epub`, `.mp3`, `.wav` und `.m4a` via MarkItDown's Audio-Transkriptions- und Outlook-Extras. YouTube-URLs fließen durch `convert_to_markdown` via `markitdown[youtube-transcription]`.
+- **`LLM_SUPPORTS_VISION` Umgebungsvariable** — Optionales Opt-out (`=false`) für den ENV-Modus Dokument-OCR-Fallback. Standardverhalten ist optimistisch (`true`), das die häufigen ENV-Setups abdeckt (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`). Nur auf `false` setzen, wenn Ihr ENV-konfiguriertes `LLM_MODEL` Vision nicht unterstützt (z. B. `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`), um einen fehlgeschlagenen Vision-Aufruf bei jedem Dokument-Upload zu überspringen. Wird vollständig ignoriert, wenn eine von Admin kuratierte ModelGroup aktiv ist — DB-Modus ist immer die Quelle der Wahrheit, wenn verfügbar.
+- **Turn-Level-Profiler** — Jeder ReAct-Turn protokolliert nun Phasen-Level-Timings (`memory_load`, `compact`, `tool_schema_build`, `llm_first_token`, `llm_total`, `tool_exec`) in einer einzelnen strukturierten Log-Zeile pro Turn. Umschaltbar via `REACT_TURN_PROFILE_ENABLED` (Standard: an; auf `false` setzen für Null-Overhead-No-Op).
+- **Strukturierte Compact-Arbeitskarte** — Gesprächsverdichtung parst nun ihre eigene 9-Abschnitt-Markdown-Ausgabe in eine typisierte `WorkCard` und führt neue Verdichtungen mit der vorherigen zusammen, sodass Fehler und ausstehende Aufgaben von früher in einer langen Sitzung über mehrere Verdichtungsrunden hinweg erhalten bleiben, anstatt von Grund auf neu zusammengefasst zu werden.
 
 ### Geändert
 
-- **Pro-Benutzer-Ratenbegrenzung** — Der LLM-Layer-Ratenbegrenzer verwaltet jetzt einen separaten Bucket pro Benutzer statt eines einzelnen prozessglobalen Buckets. Verhindert, dass ein störender Benutzer alle anderen Benutzer auf demselben Worker drosselt. Kann über `LLM_RATE_LIMIT_PER_USER` umgeschaltet werden (Standard: aktiviert).
+- **Benutzerbasierte Ratenbegrenzung** — Der LLM-Layer-Ratenbegrenzer verwaltet jetzt einen separaten Bucket pro Benutzer statt eines einzelnen prozessweiten Buckets. Verhindert, dass ein störender Benutzer alle anderen Benutzer auf demselben Worker drosselt. Umschaltbar über `LLM_RATE_LIMIT_PER_USER` (Standard: aktiviert).
 
 ### Behoben
 
-- **Dangling tool_use recovery** — Conversations interrupted mid-tool-execution (user Stop, SSE disconnect, crash) previously left an assistant message with a `tool_use` block and no matching `tool_result`, causing the next turn to crash with an opaque HTTP 400 from the LLM API. `DbMemory.get_messages()` now detects and repairs these dangling blocks on the read path with a synthetic `[interrupted]` tool_result. Raw DB log is not mutated.
-- **Empty-content assistant messages with tool_calls no longer dropped** — The DbMemory load-path filter previously silently discarded any assistant row with empty text content. Native function-calling intermediates (which carry only `tool_calls`, no text) were being wiped out. The filter now requires BOTH empty content AND no `tool_calls`.
+- **Dangling tool_use recovery** — Gespräche, die während der Tool-Ausführung unterbrochen wurden (Benutzer Stop, SSE-Disconnect, Absturz), hinterließen zuvor eine Assistenten-Nachricht mit einem `tool_use`-Block und keinem entsprechenden `tool_result`, was dazu führte, dass der nächste Turn mit einem undurchsichtigen HTTP 400 vom LLM API abstürzte. `DbMemory.get_messages()` erkennt und repariert diese hängenden Blöcke jetzt auf dem Read-Pfad mit einem synthetischen `[interrupted]` tool_result. Das Raw-DB-Log wird nicht mutiert.
+- **Leere Assistenten-Nachrichten mit tool_calls werden nicht mehr verworfen** — Der DbMemory-Load-Pfad-Filter verwarf zuvor stillschweigend alle Assistenten-Zeilen mit leerem Textinhalt. Native Function-Calling-Zwischenstufen (die nur `tool_calls` enthalten, keinen Text) wurden gelöscht. Der Filter erfordert jetzt SOWOHL leeren Inhalt ALS AUCH keine `tool_calls`.
 
 ## [v0.8.2] - 2026-04-10
 
@@ -170,131 +179,131 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Geändert
 
-- **Schnellere Vervollständigung von Chat-Antworten** — SSE-Stream schließt sich sofort nach Abschluss des Agenten; Titelerzeugung und Folgepunkte laufen im Hintergrund statt die Antwort zu blockieren.
-- **Intelligentere Kontext-Komprimierung** — Konversationskomprimierung verwendet ein strukturiertes 9-Abschnitt-Format, das Schlüsselinformationen (ursprüngliche Anfrage, Fehler, ausstehende Aufgaben) über lange Sitzungen hinweg besser bewahrt.
-- **Reduzierte Agent-Schleifen** — Anti-Loop-Anweisungen zu Agent-Prompts hinzugefügt; Zykluserkennung-Schwellenwert gesenkt, damit wiederholte identische Werkzeugaufrufe früher erkannt werden.
-- **Schnellerer Request-Start** — LLM-Konfigurationsabfragen und Domain-Klassifizierung laufen jetzt parallel, wodurch der Overhead pro Request um 400–1100 ms reduziert wird.
-- **Bessere Behandlung leerer Werkzeuge** — Werkzeuge, die keine Ausgabe zurückgeben, erzeugen jetzt eine aussagekräftige Nachricht statt „(no output)", was unnötige Wiederholungen verhindert.
-- **Automatische Bereinigung alter Werkzeugergebnisse** — Werkzeugergebnisse älter als die 6 neuesten werden automatisch vor der Kontext-Komprimierung gelöscht, um Konversationen schlank zu halten.
-- **Budget für Werkzeugergebnis-Aggregate** — Gesamte Werkzeugergebnis-Tokens sind auf 40K pro Sitzung begrenzt; neue Ergebnisse werden gekürzt, wenn das Budget überschritten wird, was Kontext-Überflutung durch große API-Antworten verhindert.
-- **Automatische Kontext-Überflutungs-Wiederherstellung** — Wenn der LLM eine Anfrage aufgrund von Kontext-Längenbegrenzung ablehnt, komprimiert der Agent automatisch auf 50% und versucht es erneut, statt die gesamte Konversation zum Absturz zu bringen.
-- **Schlüsselwort-basierte Werkzeugauswahl** — Wenn eine Abfrage eindeutig einem bestimmten Werkzeug nach Name oder Beschreibungs-Schlüsselwörtern entspricht, überspringt der Agent den LLM-basierten Werkzeugauswahlaufruf und spart 200–500 ms.
-- **LLM-Verbindungs-Pooling** — Alle LLM-API-Aufrufe nutzen jetzt einen gemeinsamen Verbindungspool mit optimierten Keepalive-Einstellungen, was Verbindungsoverhead über die gesamte Sitzung hinweg reduziert.
-- **Intelligentere Vervollständigungsprüfung** — Der Verifikationsschritt nach der Antwort wird für lange detaillierte Antworten (>200 Tokens) übersprungen, was einen unnötigen LLM-Roundtrip eliminiert.
-- **Modell-Fallback bei Provider-Ausfall** — Wenn das primäre Modell nicht verfügbar ist (rate-limited, überlastet oder offline), versucht der Agent automatisch erneut mit dem schnellen Modell, statt zu fehlschlagen.
+- **Schnellere Chat-Antwort-Fertigstellung** — SSE-Stream schließt sich sofort nach Abschluss des Agenten; Titelerzeugung und Folgeverbesserungen laufen im Hintergrund statt die Antwort zu blockieren.
+- **Intelligentere Kontext-Komprimierung** — Konversationskomprimierung nutzt ein strukturiertes 9-Abschnitt-Format, das Schlüsselinformationen (ursprüngliche Anfrage, Fehler, ausstehende Aufgaben) über lange Sitzungen hinweg besser bewahrt.
+- **Reduzierte Agent-Schleifen** — Anti-Loop-Anweisungen zu Agent-Prompts hinzugefügt; Zyklus-Erkennungsschwelle gesenkt, sodass wiederholte identische Tool-Aufrufe früher erkannt werden.
+- **Schnellerer Request-Start** — LLM-Konfigurationsabfragen und Domain-Klassifizierung laufen jetzt gleichzeitig ab und reduzieren den Pro-Request-Overhead um 400–1100 ms.
+- **Bessere Behandlung leerer Tools** — Tools, die keine Ausgabe zurückgeben, erzeugen jetzt eine aussagekräftige Meldung statt bloßem „(no output)", was unnötige Wiederholungen verhindert.
+- **Automatische Bereinigung alter Tool-Ergebnisse** — Tool-Ergebnisse älter als die 6 neuesten werden automatisch vor der Kontext-Komprimierung gelöscht, um Konversationen schlank zu halten.
+- **Tool-Ergebnis-Aggregat-Budget** — Gesamte Tool-Ergebnis-Token sind auf 40K pro Sitzung begrenzt; neue Ergebnisse werden gekürzt, wenn das Budget überschritten wird, um Kontext-Überfluss durch große API-Antworten zu verhindern.
+- **Kontext-Überfluss-Automatische-Wiederherstellung** — Wenn das LLM eine Anfrage wegen Kontext-Längenschwelle ablehnt, komprimiert der Agent automatisch auf 50 % und versucht es erneut, statt die gesamte Konversation zum Absturz zu bringen.
+- **Schlüsselwort-basierte Tool-Auswahl** — Wenn eine Abfrage offensichtlich einem bestimmten Tool nach Name oder Beschreibungs-Schlüsselwörtern entspricht, überspringt der Agent den LLM-basierten Tool-Auswahlaufruf und spart 200–500 ms.
+- **LLM-Verbindungs-Pooling** — Alle LLM-API-Aufrufe teilen sich jetzt einen einzelnen Verbindungs-Pool mit optimierten Keepalive-Einstellungen, was Verbindungs-Overhead über die gesamte Sitzung reduziert.
+- **Intelligentere Fertigstellungs-Prüfung** — Der Verifizierungsschritt nach der Antwort wird für lange detaillierte Antworten (>200 Token) übersprungen, was einen unnötigen LLM-Roundtrip eliminiert.
+- **Modell-Fallback bei Provider-Ausfall** — Wenn das primäre Modell nicht verfügbar ist (Rate-Limit, überlastet oder ausgefallen), versucht der Agent automatisch mit dem schnellen Modell erneut, statt zu fehlschlagen.
 
 ### Behoben
 
-- **Agent-Halluzination bei unlesbaren Dateien** — Wenn der KI-Agent eine Datei nicht lesen konnte (z. B. bildbasiertes PDF), las er zuvor andere nicht verwandte Dateien und präsentierte deren Inhalt als Inhalt der Zieldatei. Eine Dateiintegritäts-Schutzvorrichtung im System-Prompt verhindert dies jetzt.
-- **Datei-ID-Injection für Uploads** — Hochgeladene Dateien enthalten jetzt ihre UUID `file_id` im Nachrichtenkontext, sodass der Agent direkt über `read_uploaded_file` darauf zugreifen kann, ohne zu raten.
-- **Vision-Toggle-Lesen aus neuer Modellstruktur** — Das Flag `supports_vision` in Modellkonfigurationen wurde nicht korrekt aus der ORM-Struktur ModelGroup/ModelProviderModel gelesen. Behoben.
-- **Verbesserte Fehlermeldungen für unlesbaren Dateien** — Wenn Dateien nicht gelesen werden können, gibt das Tool jetzt spezifische Anleitung (Dateityp, Vision-Vorschlag) statt generischer Fehler zurück.
+- **Agent-Halluzinationen bei unlesbaren Dateien** — Wenn der KI-Agent eine Datei nicht lesen konnte (z. B. bildbasiertes PDF), las er zuvor andere nicht verwandte Dateien und präsentierte deren Inhalt als Inhalt der Zieldatei. Eine Dateiintegritäts-Schutzvorrichtung im System-Prompt verhindert dies nun.
+- **Datei-ID-Injection für Uploads** — Hochgeladene Dateien enthalten nun ihre UUID `file_id` im Nachrichtenkontext, sodass der Agent direkt über `read_uploaded_file` auf sie zugreifen kann, ohne zu raten.
+- **Vision-Toggle-Lesevorgänge aus neuer Modellstruktur** — Das Flag `supports_vision` in Modellkonfigurationen wurde nicht korrekt aus der ModelGroup/ModelProviderModel-ORM-Struktur gelesen. Behoben.
+- **Verbesserte Fehlermeldungen für unlebare Dateien** — Wenn Dateien nicht gelesen werden können, gibt das Tool nun spezifische Hinweise (Dateityp, Vision-Vorschlag) statt generischer Fehler zurück.
 
 ## [v0.8.1] - 2026-03-29
 
 ### Hinzugefügt
 
-- **Zeitzonenabhängige Admin-Benachrichtigungen** — Admin-Benachrichtigungs-E-Mails zeigen jetzt Ereigniszeitpunkte in der konfigurierten Zeitzone jedes Empfängers an, anstatt immer UTC anzuzeigen.
-- **Progressive Datenbankwerkzeug-Offenlegung** — Ein einzelnes `database` Meta-Werkzeug mit `list_tables`/`discover`/`query` Unterbefehlen ersetzt einzelne Pro-Tabellen-Werkzeuge. Konfigurierbar über die Umgebungsvariable `DATABASE_TOOL_MODE` (`progressive` Standard, `legacy` Fallback).
-- **On-Demand-Werkzeugladen** — Wenn mehr als 12 Werkzeuge verfügbar sind, ermöglicht ein `request_tools` Meta-Werkzeug dem Agenten, zusätzliche Werkzeuge während des Gesprächs dynamisch zu laden, anstatt auf die anfängliche Auswahl beschränkt zu sein.
-- **Progressive MCP-Werkzeug-Offenlegung** — Ein einzelnes `mcp` Meta-Werkzeug mit `discover`/`call` Unterbefehlen ersetzt einzelne Pro-Server-Werkzeuge. Konfigurierbar über die Umgebungsvariable `MCP_TOOL_MODE` (`progressive` Standard, `legacy` Fallback).
-- **Pro-Turn-Token-Budget-Schutzschalter** — Die Umgebungsvariable `REACT_MAX_TURN_TOKENS` bietet einen Notfallstopp für unkontrollierte Agent-Schleifen. Standard `0` (unbegrenzt) — verwenden Sie stattdessen das Pro-Benutzer-`token_quota` für tägliche Kostenkontrolle.
-- **Pro-Modell Native Function Calling Umschalter** — Die `tool_choice_enabled` Einstellung (Umgebungsvariable + Admin pro Modell) ermöglicht Modellen, die erzwungene Werkzeugauswahl ablehnen, Stufe 1 zu überspringen und direkt zum JSON-Modus zu gehen. Konfigurierbar unter Einstellungen → Modelle → Erweitert.
-- **DAG-Qualitätsüberholung** — Fünf Verbesserungen: Modell-Standardupgrade auf allgemeines Modell für Non-Fast-Schritte; Fähigkeiten-Selbstermittlung bei der Planung; Zitierverifizierer für rechtliche/medizinische/finanzielle Bereiche; strukturierte Inhaltskontext-Beibehaltung mit konfigurierbarem Kürzungsmultiplikator; Domain-Klassifizierung im Router mit Domain-bewusstem Modellauswahlverfahren.
-- **Domain-Modell-Eskalation in ReAct** — Spezialisierte Domains (rechtlich/medizinisch/finanziell) eskalieren automatisch zum Reasoning-Modell mit obligatorischer Websuche und Zitierverifikation.
-- **Dateianhang-Download** — Dateikarten in Chat-Nachrichten können jetzt angeklickt werden, um die ursprüngliche Datei herunterzuladen.
-- **Admin-Benachrichtigungs-Hauptschalter** — Globaler An/Aus-Schalter für Admin-E-Mail-Benachrichtigungen mit SMTP-Laufzeit-Erkennung. Zeigt ein Warnbanner an, wenn SMTP nicht konfiguriert ist, und deaktiviert alle Benachrichtigungssteuerelemente.
+- **Zeitzonenbewusste Admin-Benachrichtigungen** — Admin-Benachrichtigungs-E-Mails zeigen nun Ereigniszeiten in der konfigurierten Zeitzone jedes Empfängers an, anstatt immer UTC anzuzeigen.
+- **Progressive Datenbankwerkzeug-Offenlegung** — Ein einzelnes `database` Meta-Tool mit `list_tables`/`discover`/`query` Unterbefehlen ersetzt einzelne Pro-Tabellen-Tools. Konfigurierbar über die Umgebungsvariable `DATABASE_TOOL_MODE` (`progressive` Standard, `legacy` Fallback).
+- **On-Demand-Werkzeugladen** — Wenn mehr als 12 Tools verfügbar sind, ermöglicht ein `request_tools` Meta-Tool dem Agenten, zusätzliche Tools dynamisch während des Gesprächs zu laden, anstatt auf die anfängliche Auswahl beschränkt zu sein.
+- **Progressive MCP-Werkzeug-Offenlegung** — Ein einzelnes `mcp` Meta-Tool mit `discover`/`call` Unterbefehlen ersetzt einzelne Pro-Server-Tools. Konfigurierbar über die Umgebungsvariable `MCP_TOOL_MODE` (`progressive` Standard, `legacy` Fallback).
+- **Pro-Turn-Token-Budget-Schutzschalter** — Die Umgebungsvariable `REACT_MAX_TURN_TOKENS` bietet einen Notfall-Stopp für unkontrollierte Agent-Schleifen. Standard `0` (unbegrenzt) — verwenden Sie stattdessen das Pro-Benutzer-`token_quota` für tägliche Kostenkontrolle.
+- **Pro-Modell Native Function Calling-Umschalter** — Die Einstellung `tool_choice_enabled` (ENV + Admin pro Modell) ermöglicht es Modellen, die erzwungene Werkzeugauswahl ablehnen, Level 1 zu überspringen und direkt zum JSON-Modus zu gehen. Konfigurierbar unter Einstellungen → Modelle → Erweitert.
+- **DAG-Qualitätsüberholung** — Fünf Verbesserungen: Modell-Upgrade auf allgemeines Modell für Nicht-Fast-Schritte; automatische Skill-Erkennung in der Planung; Zitierverifizierer für rechtliche/medizinische/finanzielle Bereiche; strukturierte Inhaltskontext-Beibehaltung mit konfigurierbarem Kürzungsmultiplikator; Domänenklassifizierung im Router mit domänengesteuerter Modellauswahl.
+- **Domänenmodell-Eskalation in ReAct** — Spezialisierte Domänen (rechtlich/medizinisch/finanziell) eskalieren automatisch zum Reasoning-Modell mit obligatorischer Websuche und Zitierverifikation.
+- **Dateianhang-Download** — Dateikarten in Chat-Nachrichten können nun angeklickt werden, um die ursprüngliche Datei herunterzuladen.
+- **Admin-Benachrichtigungs-Hauptschalter** — Globaler Ein-/Aus-Schalter für Admin-E-Mail-Benachrichtigungen mit SMTP-Laufzeiterkennung. Zeigt ein Warnbanner an, wenn SMTP nicht konfiguriert ist, und deaktiviert alle Benachrichtigungssteuerelemente.
 - **SMTP Reply-To-Header** — Die neue Umgebungsvariable `SMTP_REPLY_TO` ermöglicht Antworten an eine andere Adresse als den Absender.
-- **Resource Fork Phase 1 (MCP Server + Skill)** — `POST /api/mcp-servers/{id}/fork` und `POST /api/skills/{id}/fork` Endpoints erstellen benutzergesteuerte Deep Copies mit `visibility=personal` und `forked_from` Abstammungsverfolgung. Verschlüsselte Umgebungsvariablen/Header werden beim MCP Server Fork übersprungen; Veröffentlichungsstatus wird beim Skill Fork übersprungen. Alembic-Migration fügt `forked_from` Spalte zu beiden Tabellen hinzu. 41 Tests.
-- **Workflow-Verbindungs-Abhängigkeits-Auto-Abonnement** — `DependencyAnalyzer._resolve_workflow` löst jetzt rekursiv Sub-Workflow-Abhängigkeiten mit Zyklenerkennung auf (besuchter Satz). Agent- und Sub-Workflow-Knoten werden in Abhängigkeitsmanifesten korrekt als Inhaltsabhängigkeiten hinzugefügt. Fehlende Ressourcen werden anmutig behandelt (Warnung protokollieren, kein Fehler). 19 Tests.
-- **Vordefinierte Lösungsvorlagen (Market Seed Content)** — 8 Vertical-Lösungsvorlagen, die bei der ersten Benutzerregistrierung idempotent bootstrappt werden: Finanzaudit, Vertragsprüfung, Datenberichterstellung, IT-Helpdesk, Personaleinarbeitung, Sales-Assistent, Content Writer, Besprechungszusammenfassung. Jede enthält einen Agent + Skill mit chinesischen Betriebsabläufen. Veröffentlicht in der Market-Organisation (`visibility=org`, `publish_status=approved`) für unmittelbare Marketplace-Verfügbarkeit. 4 Tests.
-- **ReAct-Zyklenerkennung** — Deterministische Erkennung wiederholter identischer Werkzeugaufrufe. Injiziert eine Warnung nach 3 aufeinanderfolgenden Aufrufen mit denselben Argumenten und verhindert, dass Agenten bei fehlgeschlagenen Werkzeugen in Schleifen geraten. Konfigurierbar über `REACT_CYCLE_DETECTION_THRESHOLD`.
-- **ReAct-Abschluss-Checkliste** — Einmalige Verifikationsaufforderung vor der Annahme endgültiger Antworten, wenn Werkzeuge verwendet wurden, wodurch vorzeitige oder unvollständige Antworten reduziert werden. Umschaltbar pro Agent-Instanz.
+- **Resource Fork Phase 1 (MCP Server + Skill)** — Die Endpunkte `POST /api/mcp-servers/{id}/fork` und `POST /api/skills/{id}/fork` erstellen benutzergesteuerte tiefe Kopien mit `visibility=personal` und `forked_from` Abstammungsverfolgung. Verschlüsselte Umgebungsvariablen/Header werden beim MCP-Server-Fork übersprungen; Veröffentlichungsstatus wird beim Skill-Fork übersprungen. Alembic-Migration fügt die Spalte `forked_from` zu beiden Tabellen hinzu. 41 Tests.
+- **Workflow-Verbindungs-Abhängigkeits-Automatisches-Abonnement** — `DependencyAnalyzer._resolve_workflow` löst nun rekursiv Sub-Workflow-Abhängigkeiten mit Zyklenerkennung (besuchte Menge) auf. Agent- und Sub-Workflow-Knoten werden korrekt als Inhaltsabhängigkeiten in Abhängigkeitsmanifesten hinzugefügt. Fehlende Ressourcen werden elegant behandelt (Warnung protokollieren, kein Fehler). 19 Tests.
+- **Vorgefertigte Lösungsvorlagen (Market Seed Content)** — 8 vertikale Lösungsvorlagen werden idempotent beim ersten Benutzerregistrierung gebootet: Financial Audit, Contract Review, Data Reporting, IT Helpdesk, HR Onboarding, Sales Assistant, Content Writer, Meeting Summary. Jede bündelt einen Agent + Skill mit chinesischen SOPs. Veröffentlicht auf Market-Organisation (`visibility=org`, `publish_status=approved`) für sofortige Marketplace-Verfügbarkeit. 4 Tests.
+- **ReAct-Zyklenerkennung** — Deterministische Erkennung wiederholter identischer Werkzeugaufrufe. Injiziert eine Warnung nach 3 aufeinanderfolgenden Aufrufen mit denselben Argumenten und verhindert, dass Agenten auf fehlgeschlagenen Tools schleifen. Konfigurierbar über `REACT_CYCLE_DETECTION_THRESHOLD`.
+- **ReAct-Abschluss-Checkliste** — Einmalige Verifizierungsaufforderung vor der Annahme endgültiger Antworten, wenn Tools verwendet wurden, um vorzeitige oder unvollständige Antworten zu reduzieren. Umschaltbar pro Agent-Instanz.
 
-### Änderungen
+### Geändert
 
-- **Completion Checklist Min-Tools Schwellenwert** — Die Checkliste wird jetzt nur ausgelöst, wenn der Agent 3+ Werkzeugaufrufe getätigt hat (konfigurierbar über `REACT_COMPLETION_CHECK_MIN_TOOLS`). Einfache 1-2 Werkzeug-Aufgaben überspringen die Verifizierung, um unnötige Latenz zu vermeiden.
-- **Dynamische System-Prompt-Budgetierung** — Die feste `SYSTEM_PROMPT_RESERVE` (4K Token) wurde aus der Kontextbudgetberechnung entfernt. ContextGuard berücksichtigt den System-Prompt jetzt dynamisch und gibt jeder Iteration ~4K mehr nutzbaren Kontext.
-- **Zentralisierte Werkzeugkürzung** — Alle Werkzeugtypen delegieren jetzt die Kürzung an ein gemeinsames Modul. Standardwerte konfigurierbar über `TOOL_OUTPUT_MAX_CHARS`, `TOOL_OUTPUT_MAX_ITEMS`, `TOOL_OUTPUT_MAX_BYTES` Umgebungsvariablen.
-- **Domain-Erkennung entkoppelt** — Die Domain-Klassifizierung läuft jetzt unabhängig in jedem Endpoint, nicht mehr an das automatische Routing gebunden. Domain-SOP-Anweisungen wurden gelockert, um zu lenken statt zu verpflichten.
-- **`AUTO_ROUTING` Umgebungsvariable entfernt** — Auto-Endpoint klassifiziert Abfragen immer.
+- **Completion-Checklisten-Mindesttools-Schwellenwert** — Die Checkliste wird jetzt nur ausgelöst, wenn der Agent 3+ Toolaufrufe getätigt hat (konfigurierbar über `REACT_COMPLETION_CHECK_MIN_TOOLS`). Einfache 1-2-Tool-Aufgaben überspringen die Verifizierung, um unnötige Latenz zu vermeiden.
+- **Dynamische Systemanfrage-Budgetierung** — Die feste `SYSTEM_PROMPT_RESERVE` (4K Token) wurde aus der Kontextbudgetberechnung entfernt. ContextGuard berücksichtigt die Systemanfrage jetzt dynamisch und gibt jeder Iteration ~4K mehr nutzbaren Kontext.
+- **Zentralisierte Tool-Kürzung** — Alle Tool-Typen delegieren die Kürzung jetzt an ein gemeinsames Modul. Standardwerte konfigurierbar über `TOOL_OUTPUT_MAX_CHARS`, `TOOL_OUTPUT_MAX_ITEMS`, `TOOL_OUTPUT_MAX_BYTES` Umgebungsvariablen.
+- **Domain-Erkennung entkoppelt** — Die Domain-Klassifizierung läuft unabhängig in jedem Endpunkt, nicht mehr mit Auto-Routing gebündelt. Domain-SOP-Anweisungen wurden gelockert, um eher zu leiten als vorzuschreiben, ob eine Websuche durchgeführt wird.
+- **`AUTO_ROUTING` Umgebungsvariable entfernt** — Auto-Endpunkt klassifiziert Abfragen immer.
 
 ### Behoben
 
-- **Duplizierte Nachrichtenübermittlung** — Chat-Eingabe verwendet nun einen synchronen Guard, um zu verhindern, dass dieselbe Nachricht bei schnellen Klicks mehrmals übermittelt wird.
-- **Strukturierte Output-Degradierungskette** — Die 3-stufige Fallback-Logik (natives FC → JSON-Modus → Klartext) durchläuft jetzt ordnungsgemäß alle Ebenen.
-- **`json_mode_enabled` DB-Wert ignoriert** — Modelle, die über Admin konfiguriert werden, verwenden nun korrekt ihre modellspezifische Einstellung, anstatt immer auf die Umgebungsvariable zurückzugreifen.
-- **DAG-Planungsfehler-Nachricht** — Zeigt nun benutzerfreundliche zweisprachige Nachricht statt roher Pipeline-Fehler an.
-- **MCP-Server-Besitzer-Umgehung für allow_fallback** — Der Server-Besitzer wird nicht mehr durch `allow_fallback=False` blockiert.
+- **Duplizierte Nachrichtenübermittlung** — Chat-Eingabe verwendet nun einen synchronen Guard, um zu verhindern, dass dieselbe Nachricht bei schnellen Klicks mehrfach eingereicht wird.
+- **Structured Output Degradation Chain** — Die 3-stufige Fallback-Kette (native FC → JSON mode → plain text) durchläuft nun korrekt alle Ebenen.
+- **`json_mode_enabled` DB-Wert ignoriert** — Modelle, die über Admin konfiguriert werden, verwenden nun korrekt ihre Pro-Modell-Einstellung statt immer auf die Umgebungsvariable zurückzugreifen.
+- **DAG-Planungsfehler-Nachricht** — Zeigt nun benutzerfreundliche zweisprachige Nachricht statt Raw-Pipeline-Fehler.
+- **MCP Server Owner Bypass für allow_fallback** — Server Owner wird nicht mehr durch `allow_fallback=False` blockiert.
 
 ## [v0.8] - 2026-03-20
 
 ### Hinzugefügt
 
-- **Marketplace-Redesign Phase 1 — Solutions + Components** — Zwei-Ebenen-Marktmodell (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server) mit Scope-Selektor (Global Market / org). KB aus Market-Scope entfernt. Einheitliches Abonnementmodell.
-- **Smart file content injection + `read_uploaded_file` tool** — Kleine Uploads (unter 32K Zeichen) werden automatisch in LLM-Kontext eingefügt; große Dateien erhalten Metadaten + Tool-Hinweis. Dualmodus-Lese-Tool mit Pagination und Regex-Suche. `GET /api/files/{file_id}/content` Endpoint.
-- **Workflow Blueprint System** — Visueller Workflow-Editor für mehrstufige Automatisierung: 25 Knotentypen (Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution, Iterator, Loop, VariableAggregator, ParameterExtractor, ListOperation, Transform, DocumentExtractor, QuestionUnderstanding, HumanIntervention, SubWorkflow, ENV + weitere), React Flow v12 Editor mit Drag-and-Drop-Palette, Auto-Layout, SSE-Echtzeit-Ausführung, Variableninterpolation, Condition/Classifier-Verzweigung, Fehlerstrategien pro Knoten, Timeout pro Knoten, Import/Export/Duplizieren, Versionsverlauf mit Diff-Viewer, 14 integrierte Templates, 306 Tests.
-- **Workflow Triggers** — Cron-Planung mit Zeitzonen-Unterstützung; öffentliche API-Schlüssel (`wf_` Präfix) für externe Ausführung ohne Benutzerauthentifizierung; Batch-Ausführung (bis zu 100 Eingabesätze, konfigurierbare Parallelisierung).
-- **Workflow Operations** — Echtzeit-Ausführungsprotokoll-Viewer, Trace-Viewer mit Variablen-Snapshots, Run-Replay-Overlay auf Canvas, Run-Verlauf-Export, Analytics-Dashboard mit täglichen Trends und Perzentilen, Pro-Knoten-Statistik-Panel, Favoriten/Anheften, Inline-Validierungsbadges, Canvas-Knotensuche (`Cmd+F`), Tastaturkürzel, Snap-to-Grid.
-- **Workflow Admin + Templates** — Admin-Verwaltungsreiter für alle Workflows, `WorkflowTemplate` Modell mit Admin CRUD und 5 Seed Templates, Veröffentlichungsflow mit Org-Level-Review-Gating, Import-Konflikt-Resolver für externe Referenzen.
-- **Agent Skill System** — On-Demand-Skill-Laden: `Skill` Modell mit CRUD/Veröffentlichung/Review, `read_skill(name)` Tool für progressive Offenlegung (~80% Token-Reduktion), `compact_instructions` pro Agent für benutzerdefinierte ContextGuard-Kompression. Vollständige Skills-UI mit Listenseite, Editor und Agent-Skill-Selektor.
-- **ConnectorMetaTool (Progressive Disclosure Phase 1-2)** — Einzelnes Meta-Tool ersetzt Pro-Action-Tools. System-Prompt erhält leichte Stubs (~30 Token/Connector); Agent ruft `discover`/`execute` bei Bedarf auf. Feature-Flag `CONNECTOR_TOOL_MODE` für Rückwärtskompatibilität.
-- **Connector Import/Export/Fork** — Connector-Templates via JSON-Export freigeben, Klonen und Anpassen via Fork. Backend bereinigt Anmeldedaten beim Export.
+- **Marketplace-Redesign Phase 1 — Solutions + Components** — Zwei-Ebenen-Marktmodell (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server) mit Scope-Selector (Global Market / org). KB aus Market-Scope entfernt. Einheitliches Abonnementmodell.
+- **Smart file content injection + `read_uploaded_file` tool** — Kleine Uploads (unter 32K Zeichen) werden automatisch in den LLM-Kontext eingefügt; große Dateien erhalten Metadaten + Tool-Hinweis. Dual-Mode-Lese-Tool mit Pagination und Regex-Suche. `GET /api/files/{file_id}/content` Endpoint.
+- **Workflow Blueprint System** — Visueller Workflow-Editor für mehrstufige Automatisierung: 25 Knotentypen (Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution, Iterator, Loop, VariableAggregator, ParameterExtractor, ListOperation, Transform, DocumentExtractor, QuestionUnderstanding, HumanIntervention, SubWorkflow, ENV + weitere), React Flow v12 Editor mit Drag-and-Drop-Palette, Auto-Layout, SSE-Echtzeit-Ausführung, Variable Interpolation, Condition/Classifier-Verzweigung, Fehlerstrategien pro Knoten, Pro-Knoten-Timeout, Import/Export/Duplizieren, Versionsverlauf mit Diff-Viewer, 14 vordefinierte Templates, 306 Tests.
+- **Workflow Triggers** — Cron-Planung mit Zeitzonenunterstützung; öffentliche API-Schlüssel (`wf_` Präfix) für externe Ausführung ohne Benutzerauthentifizierung; Batch-Ausführung (bis zu 100 Eingabesätze, konfigurierbare Parallelität).
+- **Workflow Operations** — Echtzeit-Ausführungsprotokoll-Viewer, Trace-Viewer mit Variablen-Snapshots, Run-Replay-Overlay auf Canvas, Run-Verlauf-Export, Analytics-Dashboard mit täglichen Trends und Perzentilen, Pro-Knoten-Statistik-Panel, Favoriten/Pinning, Inline-Validierungs-Badges, Canvas-Knotensuche (`Cmd+F`), Tastaturkürzel, Snap-to-Grid.
+- **Workflow Admin + Templates** — Admin-Verwaltungsreiter für alle Workflows, `WorkflowTemplate` Modell mit Admin CRUD und 5 Seed-Templates, Publish-Flow mit Org-Level-Review-Gating, Import-Konfliktlöser für externe Referenzen.
+- **Agent Skill System** — On-Demand-Skill-Laden: `Skill` Modell mit CRUD/Publish/Review, `read_skill(name)` Tool für progressive Offenlegung (~80% Token-Reduktion), `compact_instructions` pro Agent für benutzerdefinierte ContextGuard-Komprimierung. Vollständige Skills-UI mit Listenseite, Editor und Agent-Skill-Selector.
+- **ConnectorMetaTool (Progressive Disclosure Phase 1-2)** — Single Meta-Tool ersetzt Pro-Action-Tools. System Prompt erhält leichte Stubs (~30 Token/Connector); Agent ruft `discover`/`execute` bei Bedarf auf. Feature Flag `CONNECTOR_TOOL_MODE` für Rückwärtskompatibilität.
+- **Connector Import/Export/Fork** — Connector-Templates via JSON-Export teilen, via Fork klonen und anpassen. Backend bereinigt Anmeldedaten beim Export.
 - **Connector-Anmeldedaten-Verschlüsselung + Pro-Benutzer-Override** — `connector_credentials` Tabelle mit Fernet-Verschlüsselung, `allow_fallback` Flag, `GET/PUT/DELETE /my-credentials` Endpoints.
-- **Publish Review UI** — Org-Level-Review-System mit Genehmigung/Ablehnung-Workflow, Status-Badges auf Ressourcen-Karten, Review-Hinweis im Veröffentlichungs-Dialog, Erneute Einreichung für abgelehnte Ressourcen.
+- **Publish Review UI** — Org-Level-Review-System mit Approve/Reject-Workflow, Status-Badges auf Ressourcen-Karten, Review-Hinweis im Publish-Dialog, Erneut einreichen für abgelehnte Ressourcen.
 - **Semantic schema annotations** — 16 vordefinierte semantische Tags für Connector-Felder mit `description` und `pii` Flags, in LLM-Tool-Beschreibungen angezeigt.
 - **Agent Mid-Loop Self-Reflection** — Goal-Check-Prompt wird alle 6 Iterationen in ReAct eingefügt, um Drift in langen Ketten zu verhindern.
-- **Shadow Market org + Ressourcen-Abonnements** — Pull-basierte Ressourcenfreigabe: Ressourcen werden über Marketplace entdeckt und explizit abonniert. Market API zum Durchsuchen/Abonnieren/Abbestellen.
-- **Agent Auto-Discovery + Sub-Agent-Bindung** — `discoverable` Flag + `sub_agent_ids` Whitelist + `CallAgentTool` für einstufige Delegation.
-- **MCP Server Anmeldedaten + Pro-Benutzer-Override** — `mcp_server_credentials` Tabelle mit `allow_fallback` Flag für Anmeldedaten-Fallback-Verhalten.
-- **Connector/KB Toggle** — Suspend/Resume Endpoints für beide Ressourcentypen.
-- **Standalone KB Conversations** — `kb_ids` Feld auf Conversations für direkten KB-Chat ohne Agent-Bindung.
-- **Review Log Audit Tab** — Admin-Audit-Seite mit System-Log / Review-Log Toggle und filterbarem Review-Pfad pro Org/Ressource.
-- **Agent Directive in Synthesis** — `agent_directive` Parameter stellt sicher, dass endgültige Antworten den Kernzweck des Agenten berücksichtigen.
+- **Shadow Market org + Ressourcen-Abonnements** — Pull-basierte Ressourcen-Freigabe: Ressourcen werden über Marketplace erkannt und explizit abonniert. Market API für Browse/Subscribe/Unsubscribe.
+- **Agent Auto-Discovery + Sub-Agent-Binding** — `discoverable` Flag + `sub_agent_ids` Whitelist + `CallAgentTool` für einstufige Delegation.
+- **MCP Server-Anmeldedaten + Pro-Benutzer-Override** — `mcp_server_credentials` Tabelle mit `allow_fallback` Flag für Anmeldedaten-Fallback-Verhalten.
+- **Connector/KB-Toggle** — Suspend/Resume-Endpoints für beide Ressourcentypen.
+- **Standalone KB-Gespräche** — `kb_ids` Feld auf Gesprächen für direkte KB-Chats ohne Agent-Binding.
+- **Review Log Audit Tab** — Admin-Audit-Seite mit System Log / Review Log Toggle und filterbarer Review-Trail pro Org/Ressource.
+- **Agent Directive in Synthesis** — `agent_directive` Parameter stellt sicher, dass endgültige Antworten dem Kernzweck des Agenten entsprechen.
 
-### Changed
+### Geändert
 
-- **Subscription-based visibility model** — Simplified from 3-tier to 2-tier (own → subscribed). Auto-migration preserves existing access.
-- **Tool cache whitelist** — Replaced blacklist with explicit `cacheable` property on tools. 11 read-only tools marked cacheable.
-- **DAG executor cascade failure** — Failed steps now cascade-block dependents with transitive propagation.
-- **DAG planner improvements** — Tool descriptions in planner, full re-plan history across all rounds, 14 engine constants parameterized as env vars.
-- **stream_answer observation truncation** — Increased from 2000 to 8000 characters (configurable via `REACT_TOOL_OBS_TRUNCATION`).
-- **Evidence confidence UI** — Amber warning cards, `[N]` citation badges with hover popovers, conflict warning banner with side-by-side comparison.
-- **Workflow version change summaries** — Auto-generated human-readable summaries from blueprint diffs on version save.
-- **Workflow run retention cleanup** — Background cleanup task with configurable age/count limits. Env vars: `WORKFLOW_RUN_MAX_AGE_DAYS`, `WORKFLOW_RUN_MAX_PER_WORKFLOW`.
-- **Connector circuit breaker** — Three-state machine (closed/open/half-open) with per-connector failure tracking and monitoring endpoints.
-- **Replaced elkjs with lightweight BFS auto-layout** — `/workflows/[id]` bundle reduced from 473 kB to 43 kB.
+- **Abonnementbasiertes Sichtbarkeitsmodell** — Vereinfacht von 3-stufig auf 2-stufig (eigene → abonniert). Automatische Migration bewahrt bestehenden Zugriff.
+- **Tool-Cache-Whitelist** — Blacklist durch explizite `cacheable`-Eigenschaft auf Tools ersetzt. 11 schreibgeschützte Tools als cachebar markiert.
+- **DAG-Executor-Kaskadenfehler** — Fehlgeschlagene Schritte blockieren abhängige Schritte kaskadenartig mit transitiver Ausbreitung.
+- **DAG-Planer-Verbesserungen** — Werkzeugbeschreibungen im Planer, vollständiger Neuplanungsverlauf über alle Runden, 14 Engine-Konstanten als Umgebungsvariablen parametrisiert.
+- **stream_answer-Beobachtungstrunkierung** — Erhöht von 2000 auf 8000 Zeichen (konfigurierbar über `REACT_TOOL_OBS_TRUNCATION`).
+- **Evidence-Konfidenz-UI** — Bernsteinfarbene Warnkarten, `[N]`-Zitationsbadges mit Hover-Popups, Konflikt-Warnbanner mit Nebeneinander-Vergleich.
+- **Workflow-Versionsänderungszusammenfassungen** — Automatisch generierte lesbare Zusammenfassungen aus Blueprint-Diffs beim Speichern der Version.
+- **Workflow-Run-Aufbewahrungsbereinigung** — Hintergrund-Bereinigungsaufgabe mit konfigurierbaren Alters-/Anzahlgrenzen. Umgebungsvariablen: `WORKFLOW_RUN_MAX_AGE_DAYS`, `WORKFLOW_RUN_MAX_PER_WORKFLOW`.
+- **Connector-Schaltkreisunterbrecher** — Zustandsmaschine mit drei Zuständen (geschlossen/offen/halb-offen) mit Pro-Connector-Fehlertracking und Überwachungsendpunkten.
+- **elkjs durch leichtgewichtiges BFS-Auto-Layout ersetzt** — `/workflows/[id]`-Bundle reduziert von 473 kB auf 43 kB.
 
 ### Behoben
 
-- **Workflow eval namespace flattening** — Kurzvariblennamensauflösung in ConditionBranch und VariableAssign behoben.
+- **Workflow eval namespace flattening** — Behobene Auflösung von Kurzvariablennamen in ConditionBranch und VariableAssign.
 - **Keine erneute Überprüfung bei `is_active`-Umschaltung** — Das Umschalten von `is_active` setzt `publish_status` nicht mehr von `approved` auf `pending_review` zurück.
-- **Cascade-Skip für Bedingungszweige** — Übersprungene Knoten deaktivieren ausgehende Kanten korrekt.
-- **Abhängigkeitsanalysator** — `skill_ids`-Auflösung und Groß-/Kleinschreibung-unabhängige Knotentyp-Zuordnung behoben.
+- **Cascade-skip für Bedingungszweige** — Übersprungene Knoten deaktivieren ausgehende Kanten korrekt.
+- **Dependency analyzer** — Behobene `skill_ids`-Auflösung, Groß-/Kleinschreibung-unabhängiger Knotentyp-Abgleich.
 
 ### Entfernt
 
-- Das Feld `is_global` und alle Konzepte der globalen Sichtbarkeit wurden entfernt — ersetzt durch Market-Org + Abonnements.
-- Globale Agent/MCP-Server-Admin-Endpunkte wurden entfernt.
+- Entfernt `is_global` Feld und alle globalen Sichtbarkeitkonzepte — ersetzt durch Market org + Abonnements.
+- Entfernt globale Agent/MCP Server Admin-Endpunkte.
 
 ## [v0.7.5] - 2026-03-12
 
 ### Hinzugefügt
 
-- **Kostenloser Moduswechsel** — Wechsel zwischen Auto/React/DAG während eines Gesprächs. Verfolgung des Modus pro Durchlauf über `metadata.mode`.
-- **Drei Modellrollen** — Unabhängige Umgebungskonfiguration für General, Fast und Reasoning Tiers. Das Fast-Modell erbt keine Einstellungen des Hauptmodells mehr.
-- **DAG-Engine-Verbesserungen** — `StepOutput` strukturierte Daten, Tool-Cache mit asynchronem Lock Stampede Prevention, LLM-Verifizierung pro Schritt mit Retry (`DAG_STEP_VERIFICATION`), automatisches Routing über Fast LLM Klassifizierung (`AUTO_ROUTING`).
-- **Verschlüsselung von Connector-Anmeldedaten** — Auth-Tokens extrahiert in die Tabelle `connector_credentials` mit Fernet-Verschlüsselung über `CREDENTIAL_ENCRYPTION_KEY`. Endpunkte zur Außerkraftsetzung von Anmeldedaten pro Benutzer. Flag `allow_fallback`.
-- **ModelConfig API-Schlüsselverschlüsselung im Ruhezustand** — Transparente Verschlüsselung beim Schreiben / Entschlüsselung beim Lesen mit abwärtskompatiblem Klartexterkennung.
+- **Freier Moduswechsel** — Wechsel zwischen Auto/React/DAG während eines Gesprächs. Pro-Turn-Modusverfolgung über `metadata.mode`.
+- **Drei Modellrollen** — Unabhängige Umgebungskonfiguration für General, Fast und Reasoning Ebenen. Fast-Modell erbt keine Hauptmodelleinstellungen mehr.
+- **DAG-Engine-Verbesserungen** — `StepOutput` strukturierte Daten, Tool-Cache mit asynchronem Lock-Stampede-Schutz, LLM-Verifizierung pro Schritt mit Wiederholung (`DAG_STEP_VERIFICATION`), automatisches Routing über Fast-LLM-Klassifizierung (`AUTO_ROUTING`).
+- **Connector-Anmeldedatenverschlüsselung** — Auth-Token extrahiert in die Tabelle `connector_credentials` mit Fernet-Verschlüsselung über `CREDENTIAL_ENCRYPTION_KEY`. Pro-Benutzer-Anmeldedaten-Override-Endpunkte. Flag `allow_fallback`.
+- **ModelConfig API-Schlüsselverschlüsselung im Ruhezustand** — Transparente Verschlüsselung beim Schreiben / Entschlüsselung beim Lesen mit rückwärtskompatiblem Klartext-Erkennung.
 
 ### Geändert
 
-- **Skeleton Screens** — Alle Listen-/Grid-Seiten zeigen während des Ladens layoutbewusste Skeletons statt Spinner an.
+- **Skeleton Screens** — Alle Listen-/Grid-Seiten zeigen während des Ladens layoutgerechte Skelette statt Spinner an.
 
 ### Behoben
 
 - Schnellmodell erbt keine Einstellungen mehr vom Hauptmodell.
-- SSE-Routing-Ereignisfeldnamen an Backend abgestimmt.
+- SSE-Routing-Ereignisfeldnamen mit Backend abgestimmt.
 
 ## [v0.7.4] - 2026-03-12
 
@@ -322,8 +331,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 - Docker-Sandbox (DooD) Volume-Mount-Pfad-Übersetzung.
 - Sicherheit: Sandbox-AST-Dunder-Validierung, MCP-stdio-Standardwerte, SSRF-DNS-Rebinding, Shell-Metazeichen-Evasion, Connector-Template-Injection.
-- Admin-Dashboard-Statistiken Absturz auf PostgreSQL.
-- Docker: i18n-Dateiermittlung, Startup-Racebedingung, OAuth-Autokonfiguration für benutzerdefinierte Ports.
+- Admin-Dashboard-Statistiken-Absturz bei PostgreSQL.
+- Docker: i18n-Dateiermittlung, Startup-Race-Condition, OAuth-Autovererkennung für benutzerdefinierte Ports.
 - Export: RFC 5987-Dateiname für CJK.
 
 ## [v0.7.3] - 2026-03-06
@@ -331,70 +340,70 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 ### Hinzugefügt
 
 - **Globale MCP-Server** — Von Administratoren bereitgestellt, in allen Chat-Sitzungen geladen.
-- **Strukturiertes Audit-Logging** — `write_audit()` Helper mit strukturierten Spalten.
+- **Strukturiertes Audit-Logging** — `write_audit()`-Hilfsfunktion mit strukturierten Spalten.
 
 ### Behoben
 
-- Backward-Kompatibilität des Einladungscodes für das veraltete Feld `registration_enabled`.
+- Einladungscode-Rückwärtskompatibilität für das veraltete Feld `registration_enabled`.
 
 ## [v0.7.2] - 2026-03-06
 
 ### Hinzugefügt
 
-- **Nur-auf-Einladung-Registrierung** — Drei Modi (offen/Einladung/deaktiviert) mit CRUD für Einladungscodes.
-- **Speicherverwaltung** — Speicherverbrauch pro Benutzer, Löschen, Cleanup verwaister Daten.
-- **Erzwungene Abmeldung pro Benutzer** — Admin-Token-Widerruf.
+- **Nur auf Einladung verfügbare Registrierung** — Drei Modi (offen/Einladung/deaktiviert) mit Einladungscode-CRUD.
+- **Speicherverwaltung** — Speichernutzung pro Benutzer, Löschen, Bereinigung verwaister Dateien.
+- **Erzwungenes Logout pro Benutzer** — Admin-Token-Widerruf.
 - **Gesprächsmoderation** — Admin-Liste/Löschen aller Gespräche.
 
 ## [v0.7.1] - 2026-03-06
 
 ### Hinzugefügt
 
-- **API-Integritäts-Dashboard** — Systemstatistiken, Connector-Metriken, Token-Nutzungsdiagramme.
-- **JWT-Authentifizierung** — Token-basierte SSE-Authentifizierung, Gesprächseigentum.
-- **Admin-API** — Agent-Verwaltung, Token-Kontingent pro Benutzer (429-Erzwingung).
+- **API-Gesundheitsdashboard** — Systemstatistiken, Connector-Metriken, Token-Nutzungsdiagramme.
+- **JWT-Authentifizierung** — Token-basierte SSE-Authentifizierung, Gesprächseigentümerschaft.
+- **Admin-API** — Agent-Verwaltung, Pro-Benutzer-Token-Kontingent (429-Durchsetzung).
 
 ## [v0.7] - 2026-03-06
 
 ### Hinzugefügt
 
 - **Admin-Plattform** — Benutzerverwaltung, Rollenwechsel, Passwort zurücksetzen, Konto aktivieren/deaktivieren.
-- **First-run Setup-Assistent** — Geführte Erstellung von Admin-Konten.
-- **Personal Center** — Globale Anweisungen pro Benutzer, Spracheinstellung.
+- **Einrichtungs-Assistent beim ersten Start** — Geführte Erstellung des Admin-Kontos.
+- **Persönliches Zentrum** — Globale Anweisungen pro Benutzer, Spracheinstellung.
 
 ## [v0.6.5] - 2026-03-05
 
 ### Hinzugefügt
 
-- **Utility Tools** — `email_send`, `json_transform`, `template_render`, `text_utils`.
+- **Utility-Tools** — `email_send`, `json_transform`, `template_render`, `text_utils`.
 - **Connector-Antwortfilterung** — `CONNECTOR_RESPONSE_MAX_CHARS` und `CONNECTOR_RESPONSE_MAX_ITEMS`.
-- **Embedding-Modelloptionen** — Jina, OpenAI und benutzerdefinierte Anbieter.
+- **Embedding-Modelloptionen** — Jina, OpenAI und benutzerdefinierte Provider.
 
 ## [v0.6] - 2026-03-01
 
 ### Hinzugefügt
 
-- **Connector Platform** — Vollständige CRUD-Operationen, ConnectorToolAdapter, Verschlüsselung von Anmeldedaten pro Benutzer, Bestätigungsgate, Schaltkreisunterbrecher, Audit-Protokollierung.
+- **Connector Platform** — Vollständige CRUD-Operationen, ConnectorToolAdapter, verschlüsselte Anmeldedaten pro Benutzer, Bestätigungsschleuse, Schutzschalter, Audit-Protokollierung.
 - **MCP-Integration** — Automatische Tool-Erkennung über Protokoll, Prozessisolation.
 
 ## [v0.5] - 2026-02-28
 
-### Hinzugefügt
+### Added
 
-- **Vollständige RAG-Pipeline** — Jina Embedding + LanceDB + FTS + RRF + Reranker.
-- **Grounded Generation** — Evidenzgestützte Zitationen, Konflikterkennung, Konfidenzscores.
-- **KB-Dokumentenverwaltung** — Chunk-Level CRUD, Suche, Wiederholung, Schema-Migration.
-- **ContextGuard + Pinned Messages** — Token-Budget-Manager.
-- **DAG Re-Planning** — Bis zu 3 Runden; LLM Compact für Speicher.
+- **Full RAG pipeline** — Jina embedding + LanceDB + FTS + RRF + reranker.
+- **Grounded Generation** — Evidence-anchored citations, conflict detection, confidence scores.
+- **KB document management** — Chunk-level CRUD, search, retry, schema migration.
+- **ContextGuard + Pinned Messages** — Token budget manager.
+- **DAG Re-Planning** — Up to 3 rounds; LLM Compact for memory.
 
 ## [v0.4] - 2026-02-25
 
 ### Hinzugefügt
 
 - **Multi-Turn-Konversationen** — DbMemory-Persistierung, intelligente Kürzung.
-- **Tool-Step-Folding-UI** — Einklappen/Ausklappen von Toolaufrufen.
+- **Tool-Schritt-Faltungs-UI** — Werkzeugaufrufe ein-/ausklappen.
 - **HTTP-Request- und Shell-Exec-Tools**.
-- **Agent-Verwaltung** — Erstellen, Konfigurieren, Veröffentlichen mit gebundenen Modellen/Tools.
+- **Agentenverwaltung** — Erstellen, konfigurieren, veröffentlichen mit gebundenen Modellen/Tools.
 - **JWT-Authentifizierung**.
 
 ## [v0.3] - 2026-02-25

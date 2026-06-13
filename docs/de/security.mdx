@@ -63,11 +63,14 @@ Wenn Sie FIM One auf Ihrer eigenen Infrastruktur ausführen, befolgen Sie diese 
 | **Aktuell bleiben** | Rufen Sie regelmäßig die neueste Version ab. Sicherheitspatches werden nach bestem Bemühen auf die vorherige Nebenversion zurückportiert. |
 | **Netzwerkzugriff begrenzen** | Beschränken Sie Datenbank- und Anwendungsports auf vertrauenswürdige Netzwerke. Verwenden Sie Firewall-Regeln oder Sicherheitsgruppen. |
 
-## Sicherheits-Ruhmeshalle
+## Security Hall of Fame
 
-Wir würdigen alle bestätigten Meldungen von Sicherheitslücken (sofern diese nicht anonym bleiben möchten). Meldende qualifizieren sich auch für das [Pioneer-Programm](/contributing).
+Wir würdigen alle bestätigten Sicherheitslückenmelder (sofern sie nicht anonym bleiben möchten). Melder qualifizieren sich auch für das [Pioneer Program](/contributing).
 
-*Seien Sie der erste Sicherheitsforscher, der hier erwähnt wird.*
+| Researcher | Finding | Severity |
+| --- | --- | --- |
+| [Joshua Medvinsky](https://github.com/Joshua-Medvinsky) (FailSafe) | SSRF-Umgehung über IPv4-gemappte IPv6-Adressen (`::ffff:` Literale) zum Erreichen interner Dienste auf Dual-Stack-Hosts | High |
+| [Joshua Medvinsky](https://github.com/Joshua-Medvinsky) (FailSafe) | SSRF über nicht validierte MCP SSE / Streamable-HTTP Server-URLs | High |
 
 ## Vollständige Sicherheitsrichtlinie
 

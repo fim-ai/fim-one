@@ -47,6 +47,24 @@
         "code",
         "bug"
       ]
+    },
+    {
+      "login": "wcboy",
+      "name": "Chenying Wang",
+      "avatar_url": "https://avatars.githubusercontent.com/u/85050716?v=4",
+      "profile": "https://github.com/wcboy",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Joshua-Medvinsky",
+      "name": "Joshua Medvinsky",
+      "avatar_url": "https://avatars.githubusercontent.com/u/76570188?v=4",
+      "profile": "https://github.com/Joshua-Medvinsky",
+      "contributions": [
+        "security"
+      ]
     }
   ],
   "skipCi": true
