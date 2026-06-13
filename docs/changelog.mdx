@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Changed
+
+- **Agents now own mistakes more cleanly.** When a tool result contradicts something an agent said, it acknowledges and corrects in the same turn without over-apologizing or padding the reply with self-criticism.
+
 ### Security
 
 - **Blocked an SSRF bypass via IPv4-mapped IPv6 addresses.** A URL whose host was an IPv4-mapped IPv6 literal (e.g. `http://[::ffff:169.254.169.254]/`) slipped past the private-IP blocklist and could reach internal services — including cloud instance-metadata — on dual-stack hosts. These addresses are now unwrapped and checked against the IPv4 blocklist, closing the gap across every SSRF-protected path (web fetch, HTTP tool, connectors, RAG importer).
