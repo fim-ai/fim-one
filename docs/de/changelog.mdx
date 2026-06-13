@@ -21,7 +21,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Enforcement Hooks schlagen jetzt fehl, wenn sie abstürzen.** Ein `PRE_TOOL_USE` Hook (z. B. ein Approval Gate), der eine Exception auslöste, gab zuvor `allow=True` zurück, sodass der blockierte Tool Call trotzdem fortgesetzt wurde — ein abgestürztes Gate wurde stillschweigend zu einem Bypass. PRE Hooks lehnen jetzt standardmäßig bei Fehlern ab; nicht durchsetzende Hooks (Rate Limiter, Logger) behalten das alte Fail-Open-Verhalten über ein neues `fail_open` Flag.
+- **Force-Logout vergleicht Zeitstempel jetzt korrekt auf PostgreSQL.** Die Sitzungs-Invalidierungsprüfung nahm an, dass die gespeicherte Invalidierungszeit ein naives UTC war, und erzwang dies, was Vergleiche mit zeitzonenabhängigen Nicht-UTC-Werten, die PostgreSQL zurückgeben kann, stillschweigend beschädigte. Zeitstempel werden jetzt durch Konvertierung normalisiert, nicht durch Überschreibung, sodass widerrufene Token auf jedem Backend zuverlässig abgelehnt werden.
+- **Enforcement Hooks schließen jetzt fehlgeschlagen, wenn sie abstürzen.** Ein `PRE_TOOL_USE` Hook (z. B. ein Approval Gate), der eine Ausnahme auslöste, gab zuvor `allow=True` zurück, sodass der blockierte Tool-Aufruf trotzdem fortgesetzt wurde — ein abstürzender Gate wurde stillschweigend zu einem Bypass. PRE Hooks verweigern jetzt standardmäßig bei Fehlern; Nicht-Enforcement Hooks (Rate Limiter, Logger) behalten das alte Fail-Open-Verhalten über ein neues `fail_open` Flag bei.
 
 ## [v0.8.7] - 2026-06-10
 

@@ -288,8 +288,9 @@ flowchart LR
 
 #### 身份验证与安全加固
 
-- [x] ~~JWT 令牌类型限制（2FA 绕过）+ OAuth 账户接管与会话修复~~ *(在 v0.8.7 中发布)*
-- [x] ~~PostgreSQL 时区感知时间戳~~ *(在 v0.8.6 中发布)*
+- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
+- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
+- [x] Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL
 
 #### 连接器 + 工具链
 

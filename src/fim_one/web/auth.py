@@ -228,6 +228,20 @@ def decode_token(token: str) -> dict[str, Any]:
         ) from None
 
 
+def _as_utc(value: datetime) -> datetime:
+    """Coerce a stored timestamp to a tz-aware UTC datetime for safe comparison.
+
+    SQLite stores datetimes naive (read back as naive UTC); PostgreSQL
+    ``TIMESTAMP WITH TIME ZONE`` returns tz-aware UTC. We only *stamp* UTC onto
+    naive values — never override the tzinfo of an already-aware datetime, which
+    would silently corrupt a non-UTC offset instead of converting it. Aware
+    values are normalised to UTC so the comparison is offset-correct regardless.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 # ---------------------------------------------------------------------------
 # API key authentication
 # ---------------------------------------------------------------------------
@@ -380,7 +394,7 @@ async def get_current_user(
                 detail="Session invalidated",
             )
         token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
-        if token_issued <= user.tokens_invalidated_at.replace(tzinfo=UTC):
+        if token_issued <= _as_utc(user.tokens_invalidated_at):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session invalidated",
@@ -430,7 +444,7 @@ async def get_current_user_optional(
         if iat is None:
             return None
         token_issued = datetime.fromtimestamp(iat, tz=UTC) if isinstance(iat, (int, float)) else iat
-        if token_issued <= user.tokens_invalidated_at.replace(tzinfo=UTC):
+        if token_issued <= _as_utc(user.tokens_invalidated_at):
             return None
     if user is not None:
         user._api_key_scopes = None  # type: ignore[attr-defined]

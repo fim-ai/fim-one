@@ -274,10 +274,11 @@ Bogues tracés qui sont reproductibles en production mais pas encore corrigés. 
 
 **Objectif** : opérations de qualité production + quatre piliers comblant l'écart entre « instructions que l'agent pourrait suivre » et « garanties que le système impose » — Couche de traçabilité (voir ce qui s'est passé) · Système de hook (imposer ce qui doit se passer) · Espace de travail de l'agent (fichiers persistants + transfert) · Canal IM (les agents vivent où les utilisateurs travaillent).
 
-#### Authentification et durcissement de la sécurité
+#### Renforcement de l'authentification et de la sécurité
 
-- [x] ~~Confinement du type de jeton JWT (contournement 2FA) + corrections de prise de contrôle de compte OAuth et de session~~ *(livré dans v0.8.7)*
-- [x] ~~Horodatages PostgreSQL tenant compte du fuseau horaire~~ *(livré dans v0.8.6)*
+- [x] ~~Confinement du type de jeton JWT (contournement 2FA) + corrections de prise de compte OAuth et de session~~ *(livré dans v0.8.7)*
+- [x] ~~Horodatages PostgreSQL sensibles au fuseau horaire~~ *(livré dans v0.8.6)*
+- [x] La comparaison d'horodatage de déconnexion forcée normalise les valeurs sensibles/insensibles au fuseau horaire en UTC par conversion — les jetons révoqués sont fiablement rejetés sur SQLite et PostgreSQL
 
 #### Connecteur + outillage
 

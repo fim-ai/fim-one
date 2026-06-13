@@ -19,9 +19,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Blocage d'une contournement SSRF via les adresses IPv6 mappées IPv4.** Une URL dont l'hôte était un littéral IPv6 mappé IPv4 (par exemple `http://[::ffff:169.254.169.254]/`) échappait à la liste de blocage des adresses IP privées et pouvait atteindre les services internes — y compris les métadonnées d'instance cloud — sur les hôtes dual-stack. Ces adresses sont maintenant dépliées et vérifiées par rapport à la liste de blocage IPv4, fermant la brèche sur tous les chemins protégés contre SSRF (web fetch, outil HTTP, connecteurs, importateur RAG).
 - **Les URL des serveurs MCP SSE / Streamable-HTTP sont maintenant validées contre SSRF.** Un utilisateur authentifié pouvait pointer un serveur MCP vers une adresse interne et déclencher une requête vers celui-ci lors du test ou de la connexion du serveur. Les URL des serveurs sont maintenant validées à la création/mise à jour et à nouveau au moment de la connexion.
 
-### Corrigé
+### Corrections
 
-- **Les hooks d'application échouent maintenant en mode fermé en cas de crash.** Un hook `PRE_TOOL_USE` (par exemple une porte d'approbation) qui levait une exception retournait précédemment `allow=True`, ce qui permettait à l'appel d'outil bloqué de procéder de toute façon — une porte qui s'écrasait devenait silencieusement un contournement. Les hooks PRE refusent maintenant par défaut en cas d'erreur ; les hooks non-applicatifs (limiteur de débit, enregistreurs) conservent l'ancien comportement fail-open via un nouveau flag `fail_open`.
+- **Force-logout now compares timestamps correctly on PostgreSQL.** The session-invalidation check assumed the stored invalidation time was naive UTC and forced it as such, which silently corrupted comparisons against tz-aware non-UTC values that PostgreSQL can return. Timestamps are now normalized to UTC by conversion, not override, so revoked tokens are reliably rejected on every backend.
+- **Enforcement hooks now fail closed when they crash.** A `PRE_TOOL_USE` hook (e.g. an approval gate) that raised an exception previously returned `allow=True`, so the blocked tool call proceeded anyway — a crashing gate silently became a bypass. PRE hooks now deny by default on error; non-enforcement hooks (rate limiter, loggers) keep the old fail-open behavior via a new `fail_open` flag.
 
 ## [v0.8.7] - 2026-06-10
 

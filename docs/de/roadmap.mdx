@@ -279,8 +279,9 @@ Nachverfolgter Bugs, die in der Produktion reproduzierbar sind, aber noch nicht 
 
 #### Auth & Security Hardening
 
-- [x] ~~JWT-Token-Typ-Begrenzung (2FA-Umgehung) + OAuth-Kontoübernahme & Session-Fixes~~ *(in v0.8.7 ausgeliefert)*
-- [x] ~~PostgreSQL zeitzonenbewusste Zeitstempel~~ *(in v0.8.6 ausgeliefert)*
+- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
+- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
+- [x] Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL
 
 #### Connector + Tooling
 
