@@ -22,6 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Extended thinking now works on newer Anthropic models (Opus 4.6+, Sonnet 4.6, Fable 5).** These models removed the old fixed-budget thinking parameter — Opus 4.7/4.8 and Fable 5 reject it with a 400 — so configuring reasoning effort either errored or silently did nothing. We now send the adaptive-thinking protocol for these models (and drop the sampling parameters they no longer accept), so reasoning effort takes effect correctly. A model that uses adaptive thinking but is connected through a generic OpenAI-compatible proxy (where thinking can't be enabled) now logs a clear warning instead of failing silently — configure it as an Anthropic provider to enable thinking.
 - **Force-logout now compares timestamps correctly on PostgreSQL.** The session-invalidation check assumed the stored invalidation time was naive UTC and forced it as such, which silently corrupted comparisons against tz-aware non-UTC values that PostgreSQL can return. Timestamps are now normalized to UTC by conversion, not override, so revoked tokens are reliably rejected on every backend.
 - **Enforcement hooks now fail closed when they crash.** A `PRE_TOOL_USE` hook (e.g. an approval gate) that raised an exception previously returned `allow=True`, so the blocked tool call proceeded anyway — a crashing gate silently became a bypass. PRE hooks now deny by default on error; non-enforcement hooks (rate limiter, loggers) keep the old fail-open behavior via a new `fail_open` flag.
 
