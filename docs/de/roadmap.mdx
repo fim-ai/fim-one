@@ -10,7 +10,7 @@ description: "Feature roadmap and version planning for FIM One."
 
 ## Produktvision
 
-FIM One ist eine **All-in-One-Agenten-Plattform**, die drei progressive Bereitstellungsmodi bietet:
+FIM One ist eine **All-in-One-Agent-Plattform**, die drei progressive Liefermodi unterstützt:
 
 ```
 Standalone   → Your own AI assistant (Portal)
@@ -18,7 +18,7 @@ Copilot      → AI embedded in a host system (iframe / widget / embed)
 Hub          → Central cross-system orchestration (Portal / API)
 ```
 
-**Systemübergreifende Orchestrierung ist der Kernunterscheidungsfaktor.** Unternehmenskunden haben Legacy-Systeme — ERP, CRM, OA, Finanzen, HR — die über KI miteinander kommunizieren müssen:
+**Cross-System-Orchestrierung ist der Kernunterscheidungsfaktor.** Unternehmenskunden haben Legacy-Systeme — ERP, CRM, OA, Finance, HR — die über KI miteinander kommunizieren müssen:
 
 ```mermaid
 flowchart LR
@@ -60,20 +60,20 @@ flowchart LR
 
 | Schritt | Modus | Was passiert |
 |------|------|-------------|
-| Land | Copilot | In ein System einbetten, Wert in ihrer Benutzeroberfläche nachweisen |
+| Land | Copilot | In ein System einbetten, Mehrwert in ihrer Benutzeroberfläche nachweisen |
 | Expand | Copilot → Hub | Auf weitere Systeme ausrollen; Hub-Modus aggregiert diese |
 
 ## Bekannte Probleme
 
-Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nicht behoben wurden. Jeder Eintrag nennt das Symptom, den vermuteten Bereich und die Problemumgehung (falls vorhanden). Elemente werden in einen Versionsabschnitt verschoben, sobald eine Behebung geplant und eingeplant ist.
+Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nicht behoben wurden. Jeder Eintrag benennt das Symptom, den vermuteten Bereich und die Problemumgehung (falls vorhanden). Einträge werden in einen Versionsabschnitt verschoben, sobald eine Lösung definiert und geplant ist.
 
-- **Agent-Editor zeigt Warnung zu ungespeicherten Änderungen bei Eintrag ohne Bearbeitung.** Das Öffnen eines vorhandenen Agenten über `/agents/[id]` und sofortiges Zurückklicken löst den Dialog „Ungespeicherte Änderungen" aus, auch wenn kein Feld berührt wurde. Die Dirty-Check vergleicht 20+ Felder mit der geladenen Agent-Payload, daher reicht eine asymmetrische Standardeinstellung zwischen State-Initialisierung und Dirty-Vergleich aus, um einen Phantom-Mismatch zu verursachen – aktuelle Vermutung ist eines der verschachtelten Felder `model_config_json` / Benachrichtigung / Genehmigungsrouting, möglicherweise von `undefined` vs `null` vs `""` Normalisierung. Reproduzierbar besonders bei organisationsspezifischen Agenten. Problemumgehung: Dialog verwerfen (`Verwerfen und verlassen`) – kein Datenverlust, da sich nichts tatsächlich geändert hat. Versuchte Behebung (`cb40c86a`) entfernte ein verwandtes Orphan-Badge-Flimmern auf den Ressourcen-Pickern, löste dies aber nicht.
+- **Agent-Editor zeigt Warnung zu ungespeicherten Änderungen beim Öffnen ohne Bearbeitung.** Das Öffnen eines vorhandenen Agenten über `/agents/[id]` und sofortiges Zurückklicken löst den Dialog „Ungespeicherte Änderungen" aus, auch wenn kein Feld bearbeitet wurde. Die Dirty-Check vergleicht 20+ Felder mit der geladenen Agent-Payload, daher reicht eine asymmetrische Standardeinstellung zwischen State-Initialisierung und Dirty-Vergleich aus, um einen Phantom-Mismatch zu verursachen — aktuelle Vermutung ist eines der verschachtelten Felder `model_config_json` / Benachrichtigung / Genehmigungsrouting, möglicherweise von `undefined` vs `null` vs `""` Normalisierung. Reproduzierbar besonders bei organisationsbezogenen Agenten. Problemumgehung: Dialog verwerfen (`Verwerfen und verlassen`) — kein Datenverlust, da sich nichts tatsächlich geändert hat. Versuchte Lösung (`cb40c86a`) entfernte ein verwandtes Orphan-Badge-Flimmern auf den Ressourcen-Pickern, löste dieses Problem aber nicht.
 
-- **Das Speichern einer Agent-Bearbeitung kann mit `Input should be 'initiator', 'agent_owner' or 'org_members'` fehlschlagen.** Pydantic lehnt das Feld `confirmation_approver_scope` an der Grenze `/api/agents/{id}` PUT ab, obwohl jeder gespeicherte Wert in der Datenbank einer der drei gültigen Literale ist. Vermutung: Die Frontend-Umwandlung `as "initiator" | "agent_owner" | "org_members"` ist nur ein Compile-Zeit-Versprechen, daher kann ein Legacy- oder unerwarteter Runtime-String (möglicherweise aus einer Vorlage, einem Import oder einer älteren Migration) durch `setConfirmationApproverScope` durchschlüpfen und wörtlich zurückgegeben werden. Problemumgehung: Wählen Sie explizit einen Wert in der Dropdown-Liste Genehmigung → Genehmiger-Bereich aus, bevor Sie speichern.
+- **Das Speichern einer Agent-Bearbeitung kann mit `Input should be 'initiator', 'agent_owner' or 'org_members'` fehlschlagen.** Pydantic lehnt das Feld `confirmation_approver_scope` an der Grenze `/api/agents/{id}` PUT ab, obwohl jeder gespeicherte Wert in der Datenbank eines der drei gültigen Literale ist. Vermutung: Das Frontend-Cast `as "initiator" | "agent_owner" | "org_members"` ist nur ein Compile-Zeit-Versprechen, daher kann ein Legacy- oder unerwarteter Runtime-String (möglicherweise aus einer Vorlage, einem Import oder einer älteren Migration) durch `setConfirmationApproverScope` durchschlüpfen und wörtlich zurückgegeben werden. Problemumgehung: Wählen Sie explizit einen Wert in der Dropdown-Liste Genehmigung → Genehmiger-Bereich erneut aus, bevor Sie speichern.
 
-- **Playground-Stopp-und-Wiederholung zeigt vorübergehende visuelle Artefakte, die ein Seiten-Refresh immer behebt.** Drei gleichzeitige Render-Quellen – `activeConversation.messages` (DB-Snapshot), der SSE-Stream `messages` und der optimistische Platzhalter `pendingQuery` – werden nicht in einen einzelnen abgeleiteten State zusammengefasst, daher kann die Benutzeroberfläche zwischen dem Klick auf „Wiederholung" und der Ankunft der gepaarten Assistenten-Antwort (a) kurzzeitig dieselbe Abfrage zweimal im Pre-Stream-Fenster rendern, (b) vorherige verwaiste Benutzer-Blasen aus dem Wiederholungsverlauf löschen, während `hasLiveMessages` wahr ist und bevor der Snapshot neu geladen wird, und (c) im engen Fenster zwischen dem SSE-Ereignis „done" und dem nächsten `selectConversation`-Refresh flimmern. **Daten gehen nie verloren** – jede Benutzer-Nachricht (einschließlich abgebrochener Wiederholungen) wird in `conversation.messages` beibehalten, in den nächsten LLM-Aufruf über `normalize_alternating_messages` übernommen und nach dem Refresh korrekt über `HistoryTurn.orphanUserContents` gerendert, das in der Render-Behebung `48ba08c6` eingeführt wurde. Zur Kontextualisierung: Claudes eigene Web-Benutzeroberfläche zeigt eine analoge Fehlerklasse – das Stoppen mitten in einer Antwort und das sofortige Senden einer Folgefrage verzweigt manchmal die Folgefrage als Sibling-Edit-Branch der ersten Abfrage, anstatt sie als neuen Turn anzuhängen – daher ist dies ein bekanntes schwieriges Problem in optimistischen UI + SSE + persistierten Verlauf-Designs, kein FIM-One-spezifischer Fehler. Eine ordnungsgemäße Behebung erfordert das Zusammenfassen der drei Render-Quellen in einen einzelnen abgeleiteten State; aufgeschoben bis zu einer umfassenderen Playground-State-Machine-Umgestaltung.
+- **Playground-Stopp-und-Wiederholung zeigt vorübergehende visuelle Artefakte, die ein Seitenaktualisierung immer behebt.** Drei gleichzeitige Render-Quellen — `activeConversation.messages` (DB-Snapshot), der SSE-Stream `messages` und der optimistische Platzhalter `pendingQuery` — werden nicht in einen einzelnen abgeleiteten State zusammengefasst, daher kann zwischen dem Klick auf „Wiederholen" und der Ankunft der gepaarten Assistent-Antwort die Benutzeroberfläche (a) die gleiche Abfrage kurzzeitig zweimal im Pre-Stream-Fenster rendern, (b) vorherige verwaiste Benutzer-Blasen aus dem Wiederholungsverlauf löschen, während `hasLiveMessages` wahr ist und bevor der Snapshot neu geladen wird, und (c) im engen Fenster zwischen dem SSE-Event „done" und der nächsten `selectConversation`-Aktualisierung flimmern. **Daten gehen niemals verloren** — jede Benutzer-Nachricht (einschließlich abgebrochener Wiederholungen) wird in `conversation.messages` beibehalten, in den nächsten LLM-Aufruf über `normalize_alternating_messages` übernommen und nach der Aktualisierung korrekt über `HistoryTurn.orphanUserContents` (eingeführt in der Render-Korrektur `48ba08c6`) gerendert. Zur Kontextualisierung: Claudes eigene Web-Benutzeroberfläche zeigt eine analoge Fehlerklasse — das Stoppen mitten in einer Antwort und das sofortige Senden einer Folgefrage verzweigt die Folgefrage manchmal als Sibling-Edit-Zweig der ersten Abfrage statt sie als neuen Turn anzuhängen — daher ist dies ein bekanntes schwieriges Problem in Optimistic-UI + SSE + Persisted-History-Designs, kein FIM-One-spezifischer Fehler. Eine ordnungsgemäße Lösung erfordert das Zusammenfassen der drei Render-Quellen in einen einzelnen abgeleiteten State; aufgeschoben bis zu einer umfassenderen Playground-State-Machine-Umgestaltung.
 
-## Versionen im Umlauf
+## Ausgelieferte Versionen
 
 ### v0.1 (2026-02-22) — MVP: ReAct + DAG Planner
 - ReActAgent mit Tools (calculator, python_exec, web_search)
@@ -81,34 +81,34 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 - Portal UI mit Streaming + KaTeX
 
 ### v0.2 (2026-02-24) — Multi-Model + Memory
-- Retry / Rate Limiting / Nutzungsverfolgung
-- Native Function Calling (kein reines JSON-Parsing)
-- Multi-Model-Unterstützung (schnelles + Haupt-LLM)
+- Retry / rate limiting / usage tracking
+- Native function calling (no JSON-only parsing)
+- Multi-model support (fast + main LLM)
 - Memory: WindowMemory, SummaryMemory
-- FastAPI-Backend mit SSE-Streaming
+- FastAPI backend with SSE streaming
 
 ### v0.3 (2026-02-25) — Web Tools + MCP
-- Web-Tools (web_search, web_fetch) via Jina/Tavily/Brave
-- Dateioperationen-Tool
-- MCP-Client (Standard-Tool-Integration)
-- Tool-Autodiscovery + Kategorien
-- DAG-Visualisierung mit Click-to-Scroll
-- Code-Ausführung in Docker (`--network=none`)
+- Web tools (web_search, web_fetch) via Jina/Tavily/Brave
+- File operations tool
+- MCP client (standard tool integration)
+- Tool auto-discovery + categories
+- DAG visualization with click-to-scroll
+- Code exec in Docker (`--network=none`)
 
 ### v0.4 (2026-02-25) — Multi-Turn + Agents
 - Multi-Turn-Konversationen (DbMemory)
 - Tool-Schritt-Faltungs-UI
-- HTTP-Request- + Shell-Exec-Tools
+- HTTP-Request- und Shell-Exec-Tools
 - Verwaltung von Agenten (erstellen, konfigurieren, veröffentlichen)
 - JWT-Authentifizierung
-- Pro-Agent-Ausführungsmodus + Temperatursteuerung
+- Ausführungsmodus pro Agent + Temperaturkontrolle
 
 ### v0.5 (2026-02-28) — Full RAG + Grounded Gen
 - Vollständige RAG-Pipeline (Embedding + Vektorspeicher + FTS + RRF + Reranker)
-- Grounded Generation (Zitate, Konfidenzwerte)
+- Grounded Generation (Zitationen, Konfidenzwerte)
 - Wissensdatenbank-Dokumentverwaltung (CRUD, Suche, Wiederholung, Schemamigration)
 - ContextGuard + angeheftete Nachrichten (Token-Budget-Manager)
-- DbMemory-Persistenz + LLM Compact
+- DbMemory-Persistierung + LLM Compact
 - DAG Re-Planning (bis zu 3 Runden)
 
 ### v0.6 (2026-03-01) — Connector Platform
@@ -124,99 +124,99 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 ### v0.7 (2026-03-06) — Admin Platform + Multi-Tenant
 - **Admin Platform**: Benutzerverwaltung, Rollenwechsel, Passwort-Zurücksetzen, Konto aktivieren/deaktivieren
 - **Nur-auf-Einladung-Registrierung**: drei Modi (offen/Einladung/deaktiviert) + Einladungscode CRUD
-- **Speicherverwaltung**: Speichernutzung pro Benutzer, Löschen, Bereinigung verwaister Dateien
+- **Speicherverwaltung**: Festplattennutzung pro Benutzer, Löschen, verwaiste Bereinigung
 - **Gesprächsmoderation**: Admin-Liste/Löschen aller
 - **Erzwungenes Logout pro Benutzer**: alle Token widerrufen
-- **API-Gesundheits-Dashboard**: Systemstatistiken, Connector-Metriken
-- **Assistent für erste Einrichtung**: geführte Erstellung des Admin-Kontos
-- **Persönliches Zentrum**: globale Anweisungen pro Benutzer, Spracheinstellung
-- **JWT-Authentifizierung**: tokenbasierte SSE-Authentifizierung, Gesprächseigentümerschaft
-- **Globale MCP-Server**: von Admin bereitgestellt, in allen Sitzungen geladen
-- **Abwärtskompatibilität**: registration_enabled → registration_mode automatische Migration
+- **API-Health-Dashboard**: Systemstatistiken, Connector-Metriken
+- **First-Run-Setup-Assistent**: geführte Admin-Kontoerstellung
+- **Personal Center**: globale Anweisungen pro Benutzer, Spracheinstellung
+- **JWT auth**: Token-basierte SSE-Authentifizierung, Gesprächseigentümerschaft
+- **Global MCP servers**: von Admin bereitgestellt, in allen Sitzungen geladen
+- **Rückwärtskompatibilität**: registration_enabled → registration_mode automatische Migration
 
-### v0.7.x (2026-03-07 to 2026-03-12) — Stability + Refinements
-- Invite code management
-- Per-user quotas (429 enforcement)
-- Structured audit logging
-- Sensitive word filtering
-- Admin login history
-- Admin file browser
-- Enhanced admin views (model_name, tools, kb_ids fields)
-- Docker Compose deployment (single image, named volumes)
-- OAuth auto-detection from window.location
-- Extended thinking / reasoning support (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) for OpenAI o-series, Gemini 2.5+, Claude
-- Admin per-tool enable/disable (disabled tools excluded from chat at runtime)
-- MCP servers management moved to Connectors page
-- Dual database support: SQLite (zero-config default) + PostgreSQL (production); Docker Compose auto-provisions PostgreSQL
-- Models configuration documentation page with extended thinking setup per provider
-- SSE Protocol v2: real-time answer streaming with `delta_reasoning`, `usage` fields, and split `done`/`suggestions`/`title`/`end` events; SQLite pool size 5 -> 20
-- AI Builder expansion: 7 new builder tools (GetSettings, TestConnection, ImportOpenAPI for connectors; ListConnectors, AddConnector, RemoveConnector, SetModel for agents), `is_builder` flag on agents, builder prompt auto-refresh, SSRF guard
-- SSE v2 frontend: streaming dot-pulse cursor, DAG re-plan round snapshots as collapsible cards, DAG layout decoupled from step states
-- AI Builder concept documentation page with connector and agent builder guides
-- Organization system: full CRUD with role-based membership (owner/admin/member), admin management UI
-- Three-tier resource visibility (personal/org/global) for agents, connectors, knowledge bases, MCP servers
-- Publish/unpublish API for all resource types; owner delegation for published agents
-- Admin set-visibility endpoint (replaces clone-to-global); unified `build_visibility_filter()` query helper
-- Database Connectors (Phase 1-3): direct SQL access to PG/MySQL/Oracle/SQL Server + Chinese legacy DBs; schema introspection, AI annotation, read-only query execution, encrypted credentials, 3 tools per connector (`list_tables`, `describe_table`, `query`)
-- **Evaluation Center**: quantitative agent quality benchmarking — test dataset CRUD (prompt + expected behavior + assertions), eval runs (parallel execution + LLM grader + per-case pass/fail/latency/token results), results viewer with auto-polling; migration `r8t0v2x4z567`
-- Three model roles (General/Fast/Reasoning) with per-tier env config isolation; fast model no longer inherits main model settings
-- `StepOutput` dataclass replacing plain string step results for structured data and artifact passing
-- Tool cache for DAG execution — identical tool calls cached per-run with async lock stampede prevention (`DAG_TOOL_CACHE`)
-- Per-step LLM verification with 1 retry on failure (`DAG_STEP_VERIFICATION`)
-- Auto-routing: fast LLM classifies queries as ReAct or DAG; `/api/auto` endpoint; frontend 3-way mode toggle (`AUTO_ROUTING`)
-- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: Built-in Market org (shadow, no auto-join) replaces Platform org; resources discovered via marketplace browsing and explicitly subscribed (pull model); Market API for subscribing to shared resources; publish-to-Market always requires review; Resource subscriptions table; org-based resource sharing replacing global visibility
-- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: `discoverable` flag on agents; `sub_agent_ids` whitelist; CallAgentTool for delegating tasks to specialist agents
-- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials` table; `PUT /api/mcp-servers/{id}/my-credentials` endpoint; `allow_fallback` flag for credential fallback behavior
-- [x] ~~**Connector/KB Toggle**~~: `POST /api/connectors/{id}/toggle` and `POST /api/knowledge-bases/{id}/toggle` for suspending/resuming resources
-- [x] ~~**Standalone KB Conversations**~~: `kb_ids` field on conversations for direct KB chat without agent binding
+### v0.7.x (2026-03-07 bis 2026-03-12) — Stabilität + Verfeinerungen
+- Invite-Code-Verwaltung
+- Pro-Benutzer-Kontingente (429-Durchsetzung)
+- Strukturiertes Audit-Logging
+- Filterung sensibler Wörter
+- Admin-Anmeldungsverlauf
+- Admin-Dateibrowser
+- Erweiterte Admin-Ansichten (Felder model_name, tools, kb_ids)
+- Docker-Compose-Bereitstellung (einzelnes Image, benannte Volumes)
+- OAuth-Autoekennung von window.location
+- Unterstützung für erweitertes Denken / Reasoning (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) für OpenAI o-Serie, Gemini 2.5+, Claude
+- Admin pro Werkzeug aktivieren/deaktivieren (deaktivierte Werkzeuge zur Laufzeit aus Chat ausgeschlossen)
+- MCP-Server-Verwaltung auf Connectors-Seite verschoben
+- Duale Datenbankunterstützung: SQLite (Null-Konfiguration Standard) + PostgreSQL (Produktion); Docker Compose stellt PostgreSQL automatisch bereit
+- Dokumentationsseite zur Modellkonfiguration mit Extended-Thinking-Setup pro Anbieter
+- SSE-Protokoll v2: Echtzeit-Antwort-Streaming mit Feldern `delta_reasoning`, `usage` und aufgeteilten Events `done`/`suggestions`/`title`/`end`; SQLite-Pool-Größe 5 -> 20
+- AI-Builder-Erweiterung: 7 neue Builder-Tools (GetSettings, TestConnection, ImportOpenAPI für Connectors; ListConnectors, AddConnector, RemoveConnector, SetModel für Agents), Flag `is_builder` auf Agents, automatische Builder-Prompt-Aktualisierung, SSRF-Schutz
+- SSE-v2-Frontend: Streaming-Punkt-Puls-Cursor, DAG-Neuplanungs-Runden-Snapshots als einklappbare Karten, DAG-Layout entkoppelt von Schrittstatusangaben
+- Konzeptdokumentationsseite für AI Builder mit Connector- und Agent-Builder-Leitfäden
+- Organisationssystem: vollständige CRUD-Operationen mit rollenbasierter Mitgliedschaft (Besitzer/Admin/Mitglied), Admin-Verwaltungs-UI
+- Dreistufige Ressourcensichtbarkeit (persönlich/Org/global) für Agents, Connectors, Knowledge Bases, MCP-Server
+- Veröffentlichungs-/Unveröffentlichungs-API für alle Ressourcentypen; Besitzerdelegation für veröffentlichte Agents
+- Admin-Sichtbarkeitendpunkt (ersetzt Clone-to-Global); einheitlicher `build_visibility_filter()`-Abfrage-Helfer
+- Datenbank-Connectors (Phase 1-3): direkter SQL-Zugriff auf PG/MySQL/Oracle/SQL Server + chinesische Legacy-DBs; Schema-Introspection, KI-Annotation, schreibgeschützte Abfrageausführung, verschlüsselte Anmeldedaten, 3 Tools pro Connector (`list_tables`, `describe_table`, `query`)
+- **Evaluation Center**: quantitatives Benchmarking der Agent-Qualität — Test-Dataset-CRUD (Prompt + erwartetes Verhalten + Assertions), Eval-Läufe (parallele Ausführung + LLM-Grader + pro-Fall Pass/Fail/Latenz/Token-Ergebnisse), Ergebnis-Viewer mit automatischem Polling; Migration `r8t0v2x4z567`
+- Drei Modellrollen (General/Fast/Reasoning) mit isolierter Pro-Tier-Umgebungskonfiguration; Fast-Modell erbt nicht länger Hauptmodell-Einstellungen
+- `StepOutput`-Dataclass ersetzt einfache String-Schrittergebnisse für strukturierte Daten und Artefakt-Übergabe
+- Tool-Cache für DAG-Ausführung — identische Tool-Aufrufe pro Lauf gecacht mit asynchroner Lock-Stampede-Verhinderung (`DAG_TOOL_CACHE`)
+- Pro-Schritt-LLM-Verifizierung mit 1 Wiederholung bei Fehler (`DAG_STEP_VERIFICATION`)
+- Auto-Routing: schnelles LLM klassifiziert Abfragen als ReAct oder DAG; Endpunkt `/api/auto`; Frontend-3-Wege-Modusumschalter (`AUTO_ROUTING`)
+- [x] ~~**Shadow-Market-Organisation + Ressourcen-Abos**~~: Integrierte Market-Org (Shadow, kein automatischer Beitritt) ersetzt Platform-Org; Ressourcen über Marketplace-Browsing erkannt und explizit abonniert (Pull-Modell); Market-API zum Abonnieren gemeinsamer Ressourcen; Veröffentlichung auf Market erfordert immer Überprüfung; Ressourcen-Abos-Tabelle; Org-basierte Ressourcenfreigabe ersetzt globale Sichtbarkeit
+- [x] ~~**Agent-Autoekennung und Sub-Agent-Bindung**~~: Flag `discoverable` auf Agents; Whitelist `sub_agent_ids`; CallAgentTool zum Delegieren von Aufgaben an Spezial-Agents
+- [x] ~~**MCP-Server-Anmeldedaten + Pro-Benutzer-Überschreibung**~~: Tabelle `mcp_server_credentials`; Endpunkt `PUT /api/mcp-servers/{id}/my-credentials`; Flag `allow_fallback` für Anmeldedaten-Fallback-Verhalten
+- [x] ~~**Connector/KB-Umschalter**~~: `POST /api/connectors/{id}/toggle` und `POST /api/knowledge-bases/{id}/toggle` zum Aussetzen/Fortsetzen von Ressourcen
+- [x] ~~**Eigenständige KB-Konversationen**~~: Feld `kb_ids` auf Konversationen für direkten KB-Chat ohne Agent-Bindung
 
 ### v0.8 (2026-03-20) — Connector Declarative Config + Progressive Disclosure
-- [x] **Database connectors**: direkter SQL-Zugriff (PostgreSQL, MySQL, Oracle) *(ausgeliefert in v0.7.x — Phase 1-3)*
-- [x] **RBAC**: Zugriffskontrolle pro Benutzer/Rolle für Connectoren *(ausgeliefert in v0.7.x — org system + three-tier visibility)*
-- [x] **Connector credential encryption + per-user override**: `connector_credentials` Tabelle, Fernet-Verschlüsselung über `CREDENTIAL_ENCRYPTION_KEY`, `allow_fallback` Flag, `GET/PUT/DELETE /my-credentials` Endpunkte, Auflösung von Benutzer-Credentials beim Laden von Chat-Tools
-- [x] **Publish review UI**: Org-Level Publish-Review-System — Review-Toggle pro Org, ReviewsSheet mit Approve/Reject-Workflow, Status-Badges auf Ressourcen-Karten, Review-Hinweis im Publish-Dialog, Neueinreichung für abgelehnte Ressourcen
-- [x] **Connector Progressive Disclosure (Phase 1-2)**: einzelnes `ConnectorMetaTool` ersetzt Pro-Action-Tools; System-Prompt erhält nur leichte **Stubs** (Name + 1-Zeilen-Beschreibung, ~30 Token/Connector vs ~250 Token/Action); Agent ruft `discover(connector)` auf, um vollständiges Action-Schema bei Bedarf zu laden — Schema wird nur geladen, wenn das Modell einen Connector auswählt, wodurch das Prompt-Präfix für Caching stabil bleibt. Folgt dem Deferred-Tool-Loading-Muster, das in modernen Agent-Frameworks verbreitet ist. `execute` Subcommand; Feature Flag für Rückwärtskompatibilität.
-- [x] **Agent Skill System + Compact Instructions**: On-Demand-Laden von Agent-Anweisungen — `Skill` Modell (Name, Content/SOP, optionale Scripts) an Agents angehängt; im System-Prompt nur nach Name referenziert (~10 Token/Skill); Agent ruft `read_skill(name)` auf, um vollständigen Content bei Bedarf zu laden. Reduziert Pro-Konversations-Anweisungs-Token-Kosten um ~80%, während umfangreichere SOP-Bibliotheken ermöglicht werden. Gegenstück zu ConnectorMetaTool's Progressive Disclosure auf Anweisungs-Ebene. Ermöglicht die "指令 + 工具 + 技能" Differenzierungsgeschichte. Fügt auch `compact_instructions` Feld zum Agent-Modell hinzu — Pro-Agent-Kompressionspriorität-Liste injiziert in `ContextGuard` beim Komprimieren (z. B. "Bestellnummern und Beträge beibehalten, rohe API-Antworten verwerfen"), ersetzt das aktuelle statische generische Prompt. Folgt der Compact Instructions Konvention, die in modernen Agent-Frameworks weit verbreitet ist.
-- [x] **Connector import/export**: Connector-Templates teilen
-- [x] **Connector fork**: Existierende Connectoren klonen + anpassen
-- [x] **Workflow Phase 2 Nodes**: Iterator, Loop, VariableAggregator, ParameterExtractor, ListOperation, Transform, DocumentExtractor, QuestionUnderstanding, HumanIntervention — 9 erweiterte Node-Typen mit vollständigem Frontend + Backend + 150 neue Tests (275 gesamt). Node-Wiederholung mit exponentiellem Backoff, sichere Expression-Auswertung. Stats-Panel mit Success-Rate-Balken. 12 integrierte Templates. Pane-Kontextmenü (Einfügen, Alles auswählen, Ansicht anpassen, Auto-Layout).
-- [x] **Workflow Phase 3 Nodes: SubWorkflow + ENV** — 2 neue Node-Typen (25 Nodes gesamt), 14 neue Tests (306 gesamt), 14 integrierte Templates. SubWorkflow: vollständig DB-gestützter verschachtelter Workflow-Executor mit Ziel-Workflow-Auswahl, Variablen-Mapping und konfigurierbarem Tiefenlimit zur Vermeidung unendlicher Rekursion. ENV: liest verschlüsselte Umgebungsvariablen mit Key-Picker und Fallback-Defaults. Vollständiges Frontend (Node-Komponenten, Config-Panels, Palette-Einträge, Minimap-Farben). Pro-Node-Ausführungsstatistik-Panel (Success-Raten, Dauern, Fehleranzahlen sortiert nach schlechtesten zuerst). `getNodeStats` API-Client + `NodeStatEntry` Typ. Tastaturkürzel-Dialog (`?` Taste).
+- [x] **Database connectors**: direkter SQL-Zugriff (PostgreSQL, MySQL, Oracle) *(in v0.7.x ausgeliefert — Phase 1-3)*
+- [x] **RBAC**: Connector-Zugriffskontrolle pro Benutzer/Rolle *(in v0.7.x ausgeliefert — Org-System + dreistufige Sichtbarkeit)*
+- [x] **Connector-Anmeldedaten-Verschlüsselung + Benutzer-Override**: `connector_credentials` Tabelle, Fernet-Verschlüsselung über `CREDENTIAL_ENCRYPTION_KEY`, `allow_fallback` Flag, `GET/PUT/DELETE /my-credentials` Endpunkte, Anmeldedaten-Auflösung pro Benutzer beim Laden von Chat-Tools
+- [x] **Publish Review UI**: Org-weites Publish-Review-System — Review-Toggle pro Org, ReviewsSheet mit Genehmigung/Ablehnung-Workflow, Status-Badges auf Ressourcen-Karten, Review-Hinweis im Publish-Dialog, Erneute Einreichung für abgelehnte Ressourcen
+- [x] **Connector Progressive Disclosure (Phase 1-2)**: einzelnes `ConnectorMetaTool` ersetzt Pro-Action-Tools; System-Prompt erhält nur leichte **Stubs** (Name + 1-Zeilen-Beschreibung, ~30 Token/Connector vs ~250 Token/Action); Agent ruft `discover(connector)` auf, um vollständiges Action-Schema bei Bedarf zu laden — Schema wird nur geladen, wenn das Modell einen Connector auswählt, wodurch das Prompt-Präfix für Caching stabil bleibt. Folgt dem verzögerten Tool-Loading-Muster, das in modernen Agent-Frameworks üblich ist. `execute` Subcommand; Feature-Flag für Rückwärtskompatibilität.
+- [x] **Agent Skill System + Compact Instructions**: On-Demand-Skill-Laden für Agent-Anweisungen — `Skill` Modell (Name, Inhalt/SOP, optionale Scripts) an Agents angehängt; im System-Prompt nur nach Name referenziert (~10 Token/Skill); Agent ruft `read_skill(name)` auf, um vollständigen Inhalt bei Bedarf zu laden. Reduziert Pro-Konversations-Anweisungs-Token-Kosten um ~80%, während umfangreichere SOP-Bibliotheken ermöglicht werden. Gegenstück zu ConnectorMetaTool's Progressive Disclosure auf Anweisungsebene. Ermöglicht die "指令 + 工具 + 技能" Differenzierungsgeschichte. Fügt auch `compact_instructions` Feld zum Agent-Modell hinzu — Pro-Agent-Kompressionspriorität-Liste in `ContextGuard` beim Komprimieren eingespritzt (z.B. "Bestellungs-IDs und Beträge beibehalten, rohe API-Antworten verwerfen"), ersetzt das aktuelle statische generische Prompt. Folgt der Compact Instructions Konvention, die in modernen Agent-Frameworks weit verbreitet ist.
+- [x] **Connector Import/Export**: Connector-Templates teilen
+- [x] **Connector Fork**: Klonen + Anpassen bestehender Connectors
+- [x] **Workflow Phase 2 Nodes**: Iterator, Loop, VariableAggregator, ParameterExtractor, ListOperation, Transform, DocumentExtractor, QuestionUnderstanding, HumanIntervention — 9 erweiterte Node-Typen mit vollständigem Frontend + Backend + 150 neue Tests (275 gesamt). Node-Wiederholung mit exponentiellem Backoff, sichere Ausdrucksevaluierung. Stats-Panel mit Erfolgsquoten-Balken. 12 integrierte Templates. Pane-Kontextmenü (Einfügen, Alles auswählen, Ansicht anpassen, Auto-Layout).
+- [x] **Workflow Phase 3 Nodes: SubWorkflow + ENV** — 2 neue Node-Typen (25 Nodes gesamt), 14 neue Tests (306 gesamt), 14 integrierte Templates. SubWorkflow: vollständig DB-gestützter verschachtelter Workflow-Executor mit Ziel-Workflow-Auswahl, Variablen-Mapping und konfigurierbarem Tiefenlimit zur Vermeidung unendlicher Rekursion. ENV: liest verschlüsselte Umgebungsvariablen mit Schlüssel-Picker und Fallback-Defaults. Vollständiges Frontend (Node-Komponenten, Config-Panels, Palette-Einträge, Minimap-Farben). Pro-Node-Ausführungsstatistik-Panel (Erfolgsquoten, Dauern, Fehleranzahl sortiert nach schlechtesten zuerst). `getNodeStats` API-Client + `NodeStatEntry` Typ. Tastenkombinationen-Dialog (`?` Taste).
 - [x] **Workflow Scheduled Triggers**: Pro-Workflow Cron-Konfiguration mit Zeitzone, Standard-Eingaben und Next-Run-At-Berechnung. Preset-Cron-Buttons, 30 Trigger-Tests.
-- [x] **Workflow API Triggers**: Öffentliche Pro-Workflow API-Schlüssel (`wf_` Präfix) für externe Ausführung ohne Benutzer-Auth, mit Rate Limiting. API-Schlüssel-Management-Dialog mit Generate/Regenerate/Revoke, Trigger-URL und cURL/JS-Beispiele.
-- [x] **Workflow Batch Execution**: `POST /batch-run` mit bis zu 100 Input-Sets, konfigurierbarer Parallelität (1-10), zusammenklappbare Pro-Item-Ergebnisse, JSON-Export. 14 Batch-Ausführungs-Tests.
+- [x] **Workflow API Triggers**: Öffentliche Pro-Workflow API-Schlüssel (`wf_` Präfix) für externe Ausführung ohne Benutzer-Auth, mit Rate-Limiting. API-Schlüssel-Management-Dialog mit Generieren/Regenerieren/Widerrufen, Trigger-URL und cURL/JS-Beispiele.
+- [x] **Workflow Batch Execution**: `POST /batch-run` mit bis zu 100 Input-Sets, konfigurierbare Parallelität (1-10), zusammenklappbare Pro-Item-Ergebnisse, JSON-Export. 14 Batch-Ausführungs-Tests.
 - [x] **Workflow Execution Log Viewer**: Echtzeit-chronologischer SSE-Event-Stream im Run-Panel mit Zeitstempeln, farbcodierten Badges und Event-Typ-Filter-Toggles.
-- [x] **Workflow Run Stats**: Backend batch-fetcht Run-Anzahlen und Success-Raten über GROUP BY Subquery; Frontend zeigt Stats auf Workflow-Karten mit farbcodierten Success-Rate-Indikatoren.
-- [x] **Workflow Scheduler Daemon**: Background-Async-Service pollt alle 60s nach fälligen Cron-basierten Workflows. Croniter-Zeitzone-Unterstützung, Semaphore-Concurrency, `last_scheduled_at` Tracking, Webhook-Zustellung. 14 Tests.
+- [x] **Workflow Run Stats**: Backend Batch-Abruf von Run-Anzahl und Erfolgsquoten über GROUP BY Subquery; Frontend zeigt Stats auf Workflow-Karten mit farbcodierten Erfolgsquoten-Indikatoren.
+- [x] **Workflow Scheduler Daemon**: Hintergrund-Async-Service, der alle 60s nach fälligen Cron-basierten Workflows abfragt. Croniter-Zeitzone-Unterstützung, Semaphore-Parallelität, `last_scheduled_at` Tracking, Webhook-Zustellung. 14 Tests.
 - [x] **Workflow Import Conflict Resolver**: Erkennt ungelöste Agent/Connector/KB/MCP-Referenzen während des Imports. Batch-DB-Abfragen mit Sichtbarkeits-Filterung, Frontend-Toast-Warnungen. 17 Tests.
-- [x] **Workflow Test-Node Execution**: Isolierte Single-Node-Tests mit Mock-Variablen, integriert in Editor (Config-Panel Test-Button + Kontextmenü). 23 Tests.
+- [x] **Workflow Test-Node Execution**: Isolierte Single-Node-Tests mit Mock-Variablen, in Editor integriert (Config-Panel Test-Button + Kontextmenü). 23 Tests.
 - [x] **Workflow Version Diff**: Nebeneinander-Blueprint-Vergleich mit Node/Edge-Änderungserkennung, farbcodierte Indikatoren (hinzugefügt/entfernt/geändert).
-- [x] **Workflow Run Management**: Einzelne Runs löschen (`DELETE /runs/{run_id}`) und alle abgeschlossenen Runs löschen (`DELETE /runs`), mit Frontend-Bestätigungsdialogen.
-- [x] **Workflow Run Replay Overlay**: "View on Canvas" Button in Run-Verlauf zum Überlagern vergangener Ausführungsergebnisse auf der Canvas, zeigt Pro-Node-Status und Output ohne Neuausführung.
-- [x] **Workflow Favorites/Pinning**: Workflows mit Stern/Pin oben in der Liste mit localStorage-Persistierung.
-- [x] **Workflow Run History Export**: Run-Verlauf als JSON-Datei-Download mit vollständigen Run-Metadaten und Pro-Node-Ergebnissen exportieren.
+- [x] **Workflow Run Management**: Löschen einzelner Runs (`DELETE /runs/{run_id}`) und Löschen aller abgeschlossenen Runs (`DELETE /runs`), mit Frontend-Bestätigungsdialogen.
+- [x] **Workflow Run Replay Overlay**: "View on Canvas" Button in Run-Verlauf zum Überlagern vergangener Ausführungsergebnisse auf der Canvas, zeigt Pro-Node-Status und Ausgabe ohne Neuausführung.
+- [x] **Workflow Favorites/Pinning**: Star/Pin-Workflows oben in der Liste mit localStorage-Persistierung.
+- [x] **Workflow Run History Export**: Exportieren Sie Run-Verlauf als JSON-Datei-Download mit vollständigen Run-Metadaten und Pro-Node-Ergebnissen.
 - [x] **Admin Workflows Management**: Admin-Panel-Tab zum Verwalten aller Workflows über Benutzer — Liste, Toggle aktiv/inaktiv, Löschen mit Bestätigung. Batch-Endpunkte für Löschen, Toggle und Veröffentlichen mit Audit-Logging.
 - [x] **Workflow Templates System**: `WorkflowTemplate` ORM-Modell mit Admin-CRUD, öffentliche Listing/Clone-API und 5 Seed-Templates, die beim ersten Start automatisch eingefügt werden.
-- [x] **Workflow Inline Validation Badges**: Echtzeit-Pro-Node `ValidationBadge` auf Canvas mit Error/Warning-Tooltips für unmittelbares visuelles Feedback während der Bearbeitung.
-- [x] **Workflow Execution Trace Viewer**: Timeline-basierter Trace-Viewer Sheet mit Engine `trace_level` Parameter und Pro-Node-Variablen-Snapshots für Step-Through-Debugging.
-- [x] **Workflow Rate Limiting and Timeout**: Pro-Benutzer `WorkflowRateLimiter` (Sliding Window 10 Runs/Min, 3 gleichzeitig) und Standard 10-Minuten-Global-Run-Timeout.
-- [x] **Workflow Blueprint System**: Visueller Workflow-Editor zum Entwerfen und Ausführen von Multi-Step-Automation-Blueprints — `Workflow` / `WorkflowRun` ORM-Modelle, vollständige CRUD + SSE-Ausführungs-API, Import/Export, Duplizieren, Blueprint-Validierungs-Endpunkt, `WorkflowEngine` mit topologischer Sortierung + Semaphore-basierter Concurrency + Condition Branching und 12 Node-Typen (Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution), `VariableStore` mit `{{node_id.output}}` Interpolation und `env.*` Namespace, Error-Strategien pro Node (STOP_WORKFLOW / CONTINUE / FAIL_BRANCH) mit Pro-Node-Timeout und erweiterter Config-UI, React Flow v12 visueller Editor mit Drag-and-Drop-Palette + Node-Config-Panel + Variablen-Picker-Combobox + Add-Node-on-Edge + Auto-Layout (ELK.js) + Run-History-Sheet, Dify-Style kompaktes Node-Design mit Ring-basiertem Run-Status-Styling und animierten Edge-Übergängen, 4 integrierte Starter-Templates (Simple LLM Chain, Conditional Router, Knowledge-Augmented QA, HTTP API Pipeline) mit Template-Picker-Dialog und `GET /templates` + `POST /from-template` API, Stats-Endpunkt, `?run=true` URL-Parameter Auto-Open, Subprocess-basierte Code-Ausführungs-Sicherheit, 105-Test-Suite (Templates, Eval-Namespace-Flattening, Blueprint-Validierungs-Warnungen, Node/Edge-Löschung, Import/Export/Duplizieren, Deadlock-Erkennung, Multi-Condition-Branching)
-- [x] **Operation audit**: detailliertes Logging wer was getan hat — Admin-Review-Log-Audit-Tab hinzugefügt (Publish-Review-Trail pro Org/Ressource)
-- [x] **Semantic Schema Annotations**: erweitere Connector-Schema-Felder mit `semantic_tag`, `description` und `pii` Flags; Annotationen in LLM-Tool-Beschreibungen angezeigt, damit der Agent die Feld-Absicht versteht, ohne von Spaltennamen zu raten
+- [x] **Workflow Inline Validation Badges**: Echtzeit Pro-Node `ValidationBadge` auf Canvas mit Fehler/Warnungs-Tooltips für sofortiges visuelles Feedback während der Bearbeitung.
+- [x] **Workflow Execution Trace Viewer**: Zeitlinien-basierter Trace-Viewer Sheet mit Engine `trace_level` Parameter und Pro-Node-Variablen-Snapshots für Step-Through-Debugging.
+- [x] **Workflow Rate Limiting and Timeout**: Pro-Benutzer `WorkflowRateLimiter` (Sliding Window 10 Runs/Min, 3 gleichzeitig) und Standard 10-Minuten globales Run-Timeout.
+- [x] **Workflow Blueprint System**: Visueller Workflow-Editor zum Entwerfen und Ausführen mehrstufiger Automatisierungs-Blueprints — `Workflow` / `WorkflowRun` ORM-Modelle, vollständig CRUD + SSE-Ausführungs-API, Import/Export, Duplizieren, Blueprint-Validierungs-Endpunkt, `WorkflowEngine` mit topologischer Sortierung + Semaphore-basierter Parallelität + Bedingungsverzweigung und 12 Node-Typen (Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution), `VariableStore` mit `{{node_id.output}}` Interpolation und `env.*` Namespace, Fehlerstrategien Pro-Node (STOP_WORKFLOW / CONTINUE / FAIL_BRANCH) mit Pro-Node-Timeout und erweiterter Config-UI, React Flow v12 visueller Editor mit Drag-and-Drop-Palette + Node-Config-Panel + Variablen-Picker-Combobox + Add-Node-on-Edge + Auto-Layout (ELK.js) + Run-Verlauf Sheet, Dify-Style kompaktes Node-Design mit Ring-basiertem Run-Status-Styling und animierten Edge-Übergängen, 4 integrierte Starter-Templates (Simple LLM Chain, Conditional Router, Knowledge-Augmented QA, HTTP API Pipeline) mit Template-Picker-Dialog und `GET /templates` + `POST /from-template` API, Stats-Endpunkt, `?run=true` URL-Parameter Auto-Open, Subprocess-basierte Code-Ausführungs-Sicherheit, 105-Test-Suite (Templates, Eval-Namespace-Flattening, Blueprint-Validierungs-Warnungen, Node/Edge-Löschung, Import/Export/Duplizieren, Deadlock-Erkennung, Multi-Bedingungsverzweigung)
+- [x] **Operation audit**: detailliertes Logging wer was tat — Admin Review Log Audit Tab hinzugefügt (Publish Review Trail Pro Org/Ressource)
+- [x] **Semantic Schema Annotations**: Connector-Schema-Felder mit `semantic_tag`, `description` und `pii` Flags erweitern; Annotationen in LLM-Tool-Beschreibungen angezeigt, damit der Agent Feld-Absicht versteht, ohne von Spaltennamen zu raten
 
 ### v0.8.1 (2026-03-29) — Progressive Disclosure Maturity + ReAct Hardening
-- Progressive Disclosure für DB-Konnektoren (`DatabaseMetaTool`), MCP-Server (`MCPServerMetaTool`) und bedarfsgesteuertes Tool-Laden (`request_tools` Meta-Tool)
-- DAG-Qualitätsüberholung (5 Verbesserungen: Modell-Upgrade, automatische Skill-Erkennung, Zitierprüfer, strukturierte Inhaltsbewahrung, domänengesteuertes Routing)
-- Domain-Modell-Eskalation in ReAct (spezialisierte Domänen eskalieren automatisch zum Reasoning-Modell)
+- Progressive Disclosure für DB-Konnektoren (`DatabaseMetaTool`), MCP-Server (`MCPServerMetaTool`) und bedarfsgesteuerte Tool-Auswahl (`request_tools` Meta-Tool)
+- DAG-Qualitätsüberholung (5 Verbesserungen: Modell-Upgrade, automatische Skill-Erkennung, Zitierverifizierer, strukturierte Inhaltsbewahrung, domänengesteuerte Weiterleitung)
+- Domänen-Modell-Eskalation in ReAct (spezialisierte Domänen eskalieren automatisch zum Reasoning-Modell)
 - Pro-Modell Native Function Calling Toggle (`tool_choice_enabled`)
-- ReAct-Zyklenerkennung (deterministische Duplikat-Tool-Call-Prävention)
-- ReAct-Abschluss-Checkliste (Vor-Antwort-Verifizierung bei Tool-Verwendung)
-- Resource Fork Phase 1 (MCP Server + Skill Fork Endpoints mit Lineage-Tracking)
-- Workflow Connection Dep Auto-Subscribe (rekursive Sub-Workflow-Abhängigkeitsauflösung)
+- ReAct-Zyklenerkennung (deterministische Verhinderung doppelter Tool-Aufrufe)
+- ReAct-Abschluss-Checkliste (Vorüberprüfung vor Antwort, wenn Tools verwendet wurden)
+- Resource Fork Phase 1 (MCP Server + Skill Fork Endpunkte mit Abstammungsverfolgung)
+- Workflow-Verbindungs-Abhängigkeits-Automatisches-Abonnement (rekursive Abhängigkeitsauflösung von Unter-Workflows)
 - Vorgefertigte Lösungsvorlagen (8 vertikale Lösungen beim ersten Registrieren auf dem Markt bereitgestellt)
-- Verbesserungen der Admin-Benachrichtigungen (Zeitzonen-bewusst, Master-Schalter, SMTP Reply-To)
-- Pro-Turn Token Budget Circuit Breaker (`REACT_MAX_TURN_TOKENS`)
-- Zentralisierte Tool-Kürzung, dynamische System-Prompt-Budgetierung
-- Dateianhang-Download, Duplikat-Nachrichtenübermittlung behoben
+- Verbesserungen bei Admin-Benachrichtigungen (zeitzonenbewusst, Master-Schalter, SMTP Reply-To)
+- Pro-Turn Token-Budget Schaltkreisunterbrecher (`REACT_MAX_TURN_TOKENS`)
+- Zentralisierte Tool-Kürzung, dynamische Systemaufforderungs-Budgetierung
+- Dateianhang-Download, Behebung doppelter Nachrichtenübermittlung
 
 ### v0.8.2 (2026-04-10) — Agent Core Hardening + Vision Documents
 - **Agent Core Phase 0** — Compact prompt upgraded to 9-section structured format; empty tool result protection (descriptive message instead of `(no output)`); anti-loop prompt + cycle detection threshold lowered to 2; domain classifier + pre-flight DB config resolution parallelized (400–1100 ms saved per request); SSE `end` event sent immediately after answer, with title/suggestions moved to background tasks
@@ -267,13 +267,11 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 - [x] Reliability fixes — pseudo-protocol tool-call leak stripped from answers; tunable HTTP keep-alive ends `APIConnectionError` bursts; API-key usage stats persist on read-only requests
 - [x] Billing tab visual overhaul — full-width, consistent with other Settings tabs
 
-I notice you've provided a section heading "## Planned Versions" but no content to translate. 
-
-Could you please provide the full MDX documentation section that follows this heading? Once you share the complete content (including any paragraphs, lists, code blocks, or other elements), I'll translate it to German following all the structural rules and glossary guidelines you've outlined.
+# Geplante Versionen
 
 ### v0.9 — Observability + Production Hardening
 
-**Ziel**: Produktionsreife Operationen + vier Säulen, die die Lücke zwischen „Anweisungen, die der Agent möglicherweise befolgt" und „Garantien, die das System durchsetzt" schließen — Trace Layer (sehen, was passiert ist) · Hook System (durchsetzen, was passieren muss) · Agent Workspace (persistente Dateien + Handoff) · IM Channel (Agents leben dort, wo Benutzer arbeiten).
+**Ziel**: Produktionsreife Operationen + vier Säulen schließen die Lücke zwischen „Anweisungen, die der Agent möglicherweise befolgt" und „Garantien, die das System erzwingt" — Trace Layer (sehen, was passiert ist) · Hook System (erzwingen, was passieren muss) · Agent Workspace (persistente Dateien + Handoff) · IM Channel (Agenten leben dort, wo Benutzer arbeiten).
 
 #### Auth & Security Hardening
 
@@ -296,14 +294,14 @@ Could you please provide the full MDX documentation section that follows this he
 #### Content Guardrails {/* dev: dev/archive/openai-agents-insights.md */}
 
 - [x] ~~Content Guardrails v0 (Input/Output-Tripwire, Jailbreak-Detektor, Umgebungsvariablen-Konfiguration, `guardrail_tripwired` SSE-Event)~~ *(in v0.8.7 ausgeliefert)*
-- [ ] Off-Topic-Filter (Klassifizierer-gestützter Input-Guardrail) — auf v0.5 verschieben, falls Regex ausreichend bleibt
+- [ ] Off-Topic-Filter (Klassifizierer-gestützter Input-Guardrail) — auf v0.5 verschieben, wenn Regex ausreichend bleibt
 - [ ] PII-Redaktor-Output-Guardrail (Regex + Klassifizierer-Hybrid)
 - [ ] Pro-Agent-Guardrail-Konfiguration UI (Admin-Panel)
 
 #### Hook System {/* dev: dev/hook-system.md */}
 
 - [ ] Per-Hook-Konfigurationsweiterleitung (`{"name": ..., "config": {...}}` Schema)
-- [ ] DAG `tools_used` Genauigkeit (echte Toolnamen aus Pro-Schritt ReAct über Step-Completion-Callback)
+- [ ] DAG `tools_used` Genauigkeit (echte Toolnamen aus Per-Step ReAct über Step-Completion-Callback)
 - [ ] Hook-Vererbung für `CallAgentTool` + Workflow `AGENT` Knoten (Sicherheitsstandard vs. Flexibilitätsstandard)
 - [ ] Integrierte Hooks: `ConnectorCallLog` Autoaufzeichnung, Read-Only-Modus-Blockierung, DB-Ergebnistrunkierung, Pro-Connector-Ratenlimit
 - [ ] `SessionStart` Hook-Punkt + benutzerdefinierte YAML-Hooks
@@ -318,9 +316,9 @@ Could you please provide the full MDX documentation section that follows this he
 
 #### Connector-Autorisierungsebenen {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] Stufe 1 — DB-Modus (`ConnectorScopeGuard` PreToolUse Hook: Verb-Blockierung, Tabellen-Whitelist/Blacklist, Spalten-Redaktion, Scope-Prädikat-Injektion)
-- [ ] Stufe 2 — Open API-Modus (Admin-UI zur Anforderung benutzerspezifischer Anmeldedaten; Key-Binding-Integritäts-Dashboard)
-- [ ] Stufe 3 — Login-Ticket-Austausch (`LoginTicketCredential` für Frontend/Backend-geteilte Systeme ohne benutzergesteuerten API-Schlüssel)
+- [ ] Ebene 1 — DB-Modus (`ConnectorScopeGuard` PreToolUse Hook: Verb-Blocking, Tabellen-Whitelist/Blacklist, Spalten-Redaktion, Scope-Prädikat-Injektion)
+- [ ] Ebene 2 — Open API-Modus (Admin-UI zur Anforderung von Benutzer-Anmeldedaten; Key-Binding-Health-Dashboard)
+- [ ] Ebene 3 — Login-Ticket-Austausch (`LoginTicketCredential` für Frontend/Backend-Split-Systeme ohne benutzergebundene API-Schlüssel)
 - [ ] Ebenenübergreifende Nachverfolgbarkeit (`caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`)
 
 #### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
@@ -334,13 +332,13 @@ Could you please provide the full MDX documentation section that follows this he
 
 - [ ] Pro-Schlüssel-Ratenbegrenzung (`X-RateLimit-*` Header, 429)
 - [ ] Pro-Schlüssel-Nutzungskontingent (monatliches Token-/Request-Budget)
-- [ ] Nutzungsstatistik-Schreibpufferung für High-QPS-Schlüssel (prozesslokal mit Flush-on-Shutdown, exakte Zählungen, keine neue Abhängigkeit) — aufgeschoben bis zu einem gemessenen Engpass {/* dev: dev/public-api-phase2.md */}
+- [ ] Nutzungsstatistik-Schreibpufferung für High-QPS-Schlüssel (prozesslokal Flush-on-Shutdown, exakte Zählungen, keine neue Abhängigkeit) — aufgeschoben bis zu einem gemessenen Hotspot {/* dev: dev/public-api-phase2.md */}
 - [ ] Scope-Durchsetzung pro Endpunkt
 - [ ] API-Versionierung (`/v1/...`) + Deprecation-Header
 - [ ] Webhook-Callbacks (pro Schlüssel)
 - [ ] SDK-Generierung (Python + TypeScript)
 - [ ] Developer Portal (Try-it-Panels + Pro-Schlüssel-Analytik)
-- [ ] API-Schlüsselrotation (24-Stunden-Kulanzfrist)
+- [ ] API-Schlüsselrotation (24h Kulanzfrist)
 - [ ] Batch-/Async-API (`POST /api/batch`)
 - [ ] Pro-externe-Abhängigkeit Circuit Breaker
 
@@ -353,18 +351,18 @@ Could you please provide the full MDX documentation section that follows this he
 
 - [ ] Tool Output Offloading — `workspace://` URIs für >8K Antworten + `read/list/write_workspace_file` Tools
 - [ ] Handoff Notes — `write_handoff(summary)` bleibt bei Komprimierung erhalten
-- [ ] Workspace UI — Datei-Browser pro Konversation; sessionübergreifende Beibehaltung; Speicherquota pro Benutzer
+- [ ] Workspace UI — Dateibrowser pro Konversation; konversationsübergreifende Beibehaltung; Speicherkontingent pro Benutzer
 - [ ] Cross-session conversation recall — `list_conversations`, `search_conversations`, `read_conversation` Tools
 
 #### Prompt-Cache + Reasoning-Nachverfolgungen {/* dev: dev/prompt-cache-followups.md */}
 
-- [ ] Gemini Context Cache Adapter (separater REST-Cache-Lebenszyklus vs. Anthropic Inline-Marker)
-- [ ] Prompt-Registry-Erweiterung auf Planner / Verifier / Domain Classifier / Compact
-- [ ] Pro-Agent `cache_ttl` (kurzlebig 5min vs. erweitert 1h)
-- [ ] DAG-Schritt-Level-Checkpoint-Tabelle für Mid-DAG-Wiederaufnahme
-- [ ] Dedizierte `tool_call_id` Message-Spalte (indizierte Orphan-Query-Suche im großen Maßstab)
-- [ ] Mid-Stream-Thinking-Token-Rekonstruktion (Wiederaufnahme-Granularität feiner als vollständiges SSE-Event)
-- [ ] API-Relay-Cache-Honesty-Probe (Admin-ausgelöst: erkennt Relays, die `cache_control` entfernen)
+- [ ] Gemini Context Cache Adapter (separate REST cache lifecycle vs Anthropic inline marker)
+- [ ] Prompt registry expansion to planner / verifier / domain classifier / compact
+- [ ] Per-agent `cache_ttl` (ephemeral 5min vs extended 1h)
+- [ ] DAG step-level checkpoint table for mid-DAG resume
+- [ ] Dedicated `tool_call_id` Message column (indexed orphan-query lookup at scale)
+- [ ] Mid-stream thinking token reconstruction (resume granularity finer than complete SSE event)
+- [ ] API relay cache-honesty probe (admin-triggered: detects relays stripping `cache_control`)
 
 #### Zuverlässigkeits-Nachverfolgungen (Agent Core Priority Matrix)
 
@@ -374,7 +372,7 @@ Could you please provide the full MDX documentation section that follows this he
 
 #### Ökosystem + Skalierung
 
-- [ ] **Geplante Jobs + ereignisgesteuerte Agents** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Async Sub-Agent-Anwendungsfall für Hub-Modus
+- [ ] **Geplante Jobs + Event-gesteuerte Agents** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Async Sub-Agent-Anwendungsfall für Hub-Modus
 - [ ] **Workflow-Trigger-Identitätsobservabilität** — `ExecutionContext.trigger_source` (`webhook | cron | manual | batch | sub`) an allen 5 WorkflowEngine-Standorten gefüllt; in Run-Panel und Connector-Logs angezeigt
 - [ ] **Pro-Workflow `credential_policy` Override** (`owner` / `caller` / `auto`) — überschreibt Standard-`trigger_source → identity`-Zuordnung
 - [ ] **DB Schema Advanced Builder** — KI-gesteuerte Annotation für 1K-7K+ Tabellenbereitstellungen (Selektivität + geschäftlicher Kontext-Reasoning)
@@ -397,67 +395,67 @@ Could you please provide the full MDX documentation section that follows this he
 
 ### v1.0 — Hot-Plug + Embeddable
 
-**Ziel**: Connector-Hinzufügung ohne Neustart, Paket-Ökosystem und eingebettete Bereitstellung.
+**Ziel**: Connector-Hinzufügung ohne Neustart, Package-Ökosystem und eingebettete Bereitstellung.
 
-- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (Entity-Extraktion aus Abfrage → Ontology Registry Lookup → Connector-Set-Reduktion; 90%+ Token-Reduktion für 50+ Connector-Bereitstellungen); Scale-Modus für Batch-/ETL-Connectors; CLI-ähnliche universelle `connector <name> <action> <params>` Schnittstelle
-- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *herabgestuft 2026-04-21: bedarfsgerechte benutzerdefinierte Bereitstellung, keine Kernfunktion*: Definieren Sie gemeinsame Entity-Typen (Customer, Order, Asset) mit Feldmappings über Connectors hinweg; DAGPlanner löst Cross-System JOIN-Schlüssel automatisch auf; ermöglicht Cross-Connector-Abfragen (z. B. „Kunden in Salesforce, die in Shopify bestellt haben") ohne hartcodierte Feldnamen
-- [ ] **Hot-plug Connectors**: OpenAPI-Spec hochladen, KI generiert Konfiguration, live in 5 Minuten (kein Neustart)
-- [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: Zwei-Ebenen-Marktmodell (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); Scope-Selector (Global Market / org); einheitliches Abonnementmodell (org auto-appear entfernt); KB aus Market-Scope entfernt; Datenmigration füllt Abos für bestehende Org-Mitglieder auf
-- [ ] **Market Package System**: Verteilbare Ressourcen-Bundles für den Marketplace — ersetzt Pro-Typ „Marketplace" durch eine einheitliche Packaging-Schicht. `fim-package.yaml` Manifest deklariert: Metadaten (Name, Version, Beschreibung, Autor, Lizenz, Tags, `min_fim_version`), Entry Point (primäre Skill oder Agent), Ressourcenliste (Agents, Skills, Connectors, KBs, MCP Server, Workflows) mit Konfigurationsreferenzen, Paket-übergreifende Abhängigkeiten (Semver-Bereiche), erforderliche Anmeldedaten (auf Connector-Refs für Installationszeit-Erfassung abgebildet) und benutzerkonfigurierbare Variablen mit Standardwerten. **Zwei Verbrauchsmodi**: (1) **install** — Batch-Erstellung aller Ressourcen + automatische Verdrahtung interner Referenzen via ID-Substitution; Installation mit Quelle verknüpft für Versions-Update-Benachrichtigungen; `POST /api/market/packages/{id}/install`; (2) **fork** — Klonen als benutzergesteuerte bearbeitbare Kopien ohne Update-Link (dies IST der Template-Modus); `POST /api/market/packages/{id}/fork`. Zusätzliche Endpunkte: Veröffentlichung (`POST /api/market/packages` mit Review-Workflow), Deinstallation (`DELETE /packages/{id}/uninstall` mit Abhängigkeitsprüfung + Bestätigung geänderter Ressourcen), Versionsverlauf (`GET /packages/{id}/versions`), Upgrade (`POST /packages/{id}/upgrade` mit Pro-Ressourcen-Diff-Vorschau). Abhängigkeitsresolver für verschachtelte Paketanforderungen mit Konflikt-Erkennung. `PackageInstallation` Tabelle verfolgt installierte Pakete pro Benutzer mit Ressourcen-ID-Mapping für Deinstallation/Upgrade. **Koexistiert mit einzelner Ressourcen-Veröffentlichung** — Package ist eine Kompositionsschicht, kein Ersatz; ein einzelner Connector ist immer noch eigenständig veröffentlichbar. Beispiel-Abhängigkeitsbaum: `Package: contract-review` → `Skill: contract-review` (Entry Point) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
-- [ ] **Creator Program**: Marketplace-Monetarisierungsschicht — Creator-Profile mit Portfolio-Seiten, Pro-Paket-Analytik (Installationen, Forks, aktive Benutzer, Bewertungen/Rezensionen), Affiliate-Provisionserfassung, wenn Pakete neue Abos fördern. Bezahlte Paket-Stufe mit Preisgestaltung, Kaufablauf und Genehmigungsworkflow. Creator-Dashboard mit Installationstrends, Umsatzberichterstattung und Benutzer-Feedback. Öffentliche Creator-API für programmgesteuerte Paket-Veröffentlichung (CI/CD für Paketautoren). Community-Funktionen: Paket-Kommentare, Q&A, Changelogs pro Version
+- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (Entity-Extraktion aus Abfrage → Ontology Registry-Lookup → Connector-Set-Reduktion; 90%+ Token-Reduktion für 50+ Connector-Bereitstellungen); Scale-Modus für Batch-/ETL-Connectors; CLI-ähnliche universelle `connector <name> <action> <params>`-Schnittstelle
+- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *herabgestuft 2026-04-21: bedarfsgerechte benutzerdefinierte Bereitstellung, keine Kernfunktion*: Definieren Sie gemeinsame Entity-Typen (Customer, Order, Asset) mit Feld-Mappings über Connectors hinweg; DAGPlanner löst Cross-System-JOIN-Keys automatisch auf; ermöglicht Cross-Connector-Abfragen (z. B. „Kunden in Salesforce, die in Shopify bestellt haben") ohne hartcodierte Feldnamen
+- [ ] **Hot-plug Connectors**: OpenAPI-Spezifikation hochladen, KI generiert Konfiguration, live in 5 Minuten (kein Neustart)
+- [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: Zwei-Ebenen-Marktmodell (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); Scope-Selector (Global Market / org); einheitliches Abonnementmodell (org auto-appear entfernt); KB aus Market-Scope entfernt; Datenmigration füllt Abonnements für bestehende Org-Mitglieder auf
+- [ ] **Market Package System**: Verteilbare Ressourcen-Bundles für den Marketplace — ersetzt Pro-Typ-„Marketplace" durch eine einheitliche Packaging-Schicht. `fim-package.yaml`-Manifest deklariert: Metadaten (Name, Version, Beschreibung, Autor, Lizenz, Tags, `min_fim_version`), Entry Point (primärer Skill oder Agent), Ressourcenliste (Agents, Skills, Connectors, KBs, MCP-Server, Workflows) mit Konfigurationsreferenzen, Inter-Package-Abhängigkeiten (Semver-Bereiche), erforderliche Anmeldedaten (zugeordnet zu Connector-Refs für Installationszeit-Erfassung) und benutzerkonfigurierbare Variablen mit Standardwerten. **Zwei Konsummodi**: (1) **install** — Batch-Erstellung aller Ressourcen + automatische Verdrahtung interner Referenzen über ID-Substitution; Installation mit Quelle verknüpft für Versionsaktualisierungsbenachrichtigungen; `POST /api/market/packages/{id}/install`; (2) **fork** — Klonen als benutzergesteuerte bearbeitbare Kopien ohne Update-Link (dies ist der Template-Modus); `POST /api/market/packages/{id}/fork`. Zusätzliche Endpunkte: Veröffentlichung (`POST /api/market/packages` mit Review-Workflow), Deinstallation (`DELETE /packages/{id}/uninstall` mit Abhängigkeitsprüfung + Bestätigung geänderter Ressourcen), Versionsverlauf (`GET /packages/{id}/versions`), Upgrade (`POST /packages/{id}/upgrade` mit Pro-Ressourcen-Diff-Vorschau). Abhängigkeitsresolver für verschachtelte Package-Anforderungen mit Konflikt-Erkennung. `PackageInstallation`-Tabelle verfolgt installierte Packages pro Benutzer mit Ressourcen-ID-Mapping für Deinstallation/Upgrade. **Koexistiert mit individueller Ressourcenveröffentlichung** — Package ist eine Kompositionsschicht, kein Ersatz; ein einzelner Connector ist immer noch eigenständig veröffentlichbar. Beispiel-Abhängigkeitsbaum: `Package: contract-review` → `Skill: contract-review` (Entry Point) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
+- [ ] **Creator Program**: Marketplace-Monetarisierungsschicht — Creator-Profile mit Portfolio-Seiten, Pro-Package-Analysen (Installationen, Forks, aktive Benutzer, Bewertungen/Rezensionen), Affiliate-Provisionsverfolg wenn Packages neue Abonnements fördern. Bezahlte Package-Tier mit Preisgestaltung, Kaufablauf und Genehmigungsworkflow. Creator-Dashboard mit Installationstrends, Umsatzberichte und Benutzer-Feedback. Öffentliche Creator-API für programmgesteuerte Package-Veröffentlichung (CI/CD für Package-Autoren). Community-Funktionen: Package-Kommentare, Q&A, Changelogs pro Version
 - [ ] **Embeddable Widget**: `<script src="fim-one.js">` in Host-Seite eingefügt
 - [ ] **Page Context Injection**: Widget liest Host-Seiten-Kontext (aktuelle ID, URL, DOM-Selektoren)
-- [ ] **Advanced Triggers**: Webhook-Inbound-Events; erweiterte Zeitplan-Verbesserungen (Multi-Zeitzone, Kalender-bewusst)
-- [ ] **Batch-Ausführung**: Verarbeitung von 1000+ Elementen via DAG
-- [ ] **Enterprise Security**: IP-Whitelist, Verschlüsselung im Ruhezustand, SSO
-- [ ] **KB Advanced Editor**: Builder-Modus Agent für Power-User, die große Knowledge Bases verwalten — Bulk-URL-Erfassung, Duplikat-Erkennung, Gap-Analyse, Dokument-Lebenszyklusmanagement; erweitert bestehenden KB AI Chat mit ReAct Tool Loop
-- [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Free + Pro Zwei-Ebenen-Abonnement mit monatlichem Token-Kontingent. Stripe Checkout (gehostet) + Customer Portal (Self-Service) + Webhook-gesteuerte Lebenszyklen (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). Soft-Cap bei Kontingent-Erschöpfung (HTTP 402 + Upgrade-Aufforderung) — keine Übergebühren in v1. Nur Pro-Benutzer-Abrechnung; Org/Team-Abos auf v3 verschoben. Voraussetzungen:
-  - [x] ~~**Datenmodell + SDK-Grundlagen** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` Tabellen, ORM-Modelle, Stripe SDK Singleton, Free + Pro Seeds~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Backend-API + Webhook-Handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` mit Signaturverifizierung + Idempotenz; Plan-bewusste Kontingente; stündliche Lebenszyklusbereinigung~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Frontend Billing-Tab + 402 Upgrade-Dialog** (P3) — `/settings?tab=billing` Kontingent-Anzeige, Upgrade-CTA, `past_due` Banner, Mid-Stream 402 Dialog~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Admin Plan-Verwaltung** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Admin-gesteuerte Billing-Feature-Flag** (P5) — `system_settings.billing_enabled` Gates die Stripe-Pipeline; idempotente Aktivierung Seeds Free+Pro, setzt Standard-Plan-Pointer, Backfills-Benutzer; Toggle aus/an ist reines Flag-Flip nach Aktivierung~~ *(ausgeliefert in v0.8.6)*
-  - [ ] **Abstimmung + E2E + Go-Live** (P6) — nächtliches `subscriptions` ↔ `stripe.Subscription.list()` Abstimmungsskript zur Wiederherstellung verpasster Webhooks; vollständiger Happy-Path / Cancel-Mid-Period / Past-Due Regressionstests; Wechsel von Test-Modus `stripe_price_id` zu Live `price_id`; Smoke-Test auf Staging mit echter Karte.
+- [ ] **Advanced Triggers**: Webhook-Inbound-Events; erweiterte Scheduled-Job-Funktionen (Multi-Zeitzone, Kalender-bewusst)
+- [ ] **Batch-Ausführung**: Verarbeitung von 1000+ Elementen über DAG
+- [ ] **Enterprise-Sicherheit**: IP-Whitelisting, Verschlüsselung im Ruhezustand, SSO
+- [ ] **KB Advanced Editor**: Builder-Modus-Agent für Power-User, die große Knowledge Bases verwalten — Bulk-URL-Aufnahme, Duplikat-Erkennung, Gap-Analyse, Document-Lifecycle-Management; erweitert bestehenden KB-KI-Chat mit ReAct-Tool-Loop
+- [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Free + Pro Zwei-Ebenen-Abonnement mit monatlichem Token-Kontingent. Stripe Checkout (gehostet) + Customer Portal (Self-Service) + Webhook-gesteuerte Lebenszyklen (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). Soft-Cap bei Kontingent-Erschöpfung (HTTP 402 + Upgrade-Aufforderung) — keine Übergebühren in v1. Nur Pro-Benutzer-Abrechnung; Org/Team-Abonnements auf v3 verschoben. Voraussetzungen:
+  - [x] ~~**Datenmodell + SDK-Grundlagen** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events`-Tabellen, ORM-Modelle, Stripe-SDK-Singleton, Free + Pro-Seeds~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Backend-API + Webhook-Handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` mit Signaturverifizierung + Idempotenz; Plan-bewusstes Kontingent; stündliche Lebenszyklen-Sweep~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Frontend-Abrechnung-Tab + 402-Upgrade-Dialog** (P3) — `/settings?tab=billing` Kontingent-Anzeige, Upgrade-CTA, `past_due`-Banner, Mid-Stream-402-Dialog~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Admin-Plan-Verwaltung** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(ausgeliefert in v0.8.6)*
+  - [x] ~~**Admin-gesteuerte Abrechnung-Feature-Flag** (P5) — `system_settings.billing_enabled` Gates die Stripe-Pipeline; Idempotente Aktivierung Seeds Free+Pro, setzt Standard-Plan-Pointer, Backfills-Benutzer; Toggle aus/an ist reiner Flag-Flip nach Aktivierung~~ *(ausgeliefert in v0.8.6)*
+  - [ ] **Reconciliation + E2E + Go-Live** (P6) — nächtliches `subscriptions` ↔ `stripe.Subscription.list()` Reconcile-Skript für Missed-Webhook-Recovery; Full-Stack Happy-Path / Cancel-Mid-Period / Past-Due Regressions-Tests; Wechsel von Test-Modus `stripe_price_id` zu Live `price_id`; Smoke-Test auf Staging mit echter Karte.
 
-- [ ] **Team Plan (Stripe Seats)** — Pro-Seat-Preisgestaltung via `stripe.Subscription.quantity`, integriert mit Organization Membership. Ermöglicht Unternehmen, einen teamweiten Plan mit N Seats zu abonnieren; Kontingent und Feature-Flags werden durch die Seat-Gruppe statt durch den einzelnen Benutzer aufgelöst. Baut auf dem v1.0 Stripe MVP und dem bestehenden Organization-Modell auf.
-- [ ] **Group-Level Token-Kontingent für Nicht-Billing-Bereitstellungen** — Enterprise / Private-Bereitstellungen ohne Stripe konfigurieren Organisations-Level Token-Budgets. Kontingent-Kette erweitert auf `override > group > plan > default`; Group-Auflösung verwendet `max(user_quota, group_quota)`, sodass einzelne VIPs nicht durch die Team-Cap eingeschränkt werden. Landet neben dem Team Plan, sodass die gleichen Primitiven sowohl abgerechnete als auch selbstgehostete Topologien bedienen.
+- [ ] **Team Plan (Stripe Seats)** — Pro-Seat-Preisgestaltung über `stripe.Subscription.quantity`, integriert mit Organization-Mitgliedschaft. Ermöglicht Unternehmen, einen Team-weiten Plan mit N Seats zu abonnieren; Kontingent und Feature-Flags werden durch die Seat-Gruppe statt durch den einzelnen Benutzer aufgelöst. Baut auf dem v1.0 Stripe MVP und dem bestehenden Organization-Modell auf.
+- [ ] **Group-Level Token-Kontingent für Nicht-Billing-Bereitstellungen** — Enterprise/Private-Bereitstellungen ohne Stripe konfigurieren Organization-Level-Token-Budgets. Kontingent-Kette erweitert zu `override > group > plan > default`; Group-Auflösung verwendet `max(user_quota, group_quota)` damit einzelne VIPs nicht durch die Team-Cap eingeschränkt werden. Landet neben dem Team Plan, damit die gleichen Primitiven sowohl abgerechnete als auch Self-Hosted-Topologien bedienen.
 
-**Impact**: Unternehmen stellen FIM One von Null bis Multi-System-Orchestrierung in Tagen bereit. Das Paketsystem schafft ein Creator-Ökosystem — Lösungsautoren veröffentlichen zusammengesetzte Bundles (Skill + Agents + Connectors + KBs + Workflows), Unternehmen installieren mit einem Klick, Creator verdienen durch Adoption. Install/Fork-Dualität deckt sowohl „As-Is-Nutzung" als auch „Anpassung aus Template" Anwendungsfälle in einem einzigen Mechanismus ab.
+**Auswirkung**: Unternehmen stellen FIM One von Null bis Multi-System-Orchestrierung in Tagen bereit. Package-System schafft ein Creator-Ökosystem — Solution-Autoren veröffentlichen zusammengesetzte Bundles (Skill + Agents + Connectors + KBs + Workflows), Unternehmen installieren mit einem Klick, Creator verdienen durch Adoption. Install/Fork-Dualität deckt sowohl „As-Is verwenden" als auch „Aus Template anpassen" Anwendungsfälle in einem einzigen Mechanismus ab.
 
-## Gefrorene Funktionen (Ausgeliefert, nur Wartung)
+## Eingefrorene Funktionen (Ausgeliefert, nur Wartung)
 
-Gemäß der [Orthogonality Strategy](/strategy/orthogonality-strategy) sind diese Funktionen ausgeliefert und funktionsfähig, erhalten aber keine neuen Fähigkeiten (nur Fehlerbehebungen):
+Gemäß der [Orthogonality Strategy](/strategy/orthogonality-strategy) sind diese Funktionen ausgeliefert und funktionieren, erhalten aber keine neuen Funktionen (nur Fehlerbehebungen):
 
 | Funktion | Version | Grund für Einfrieren |
 |---------|---------|-----------|
-| ReAct Agent | v0.1, v0.9 | Modelle haben jetzt natives Tool Calling. Mid-Loop Self-Reflection (v0.9) verhindert Zieldrift in langen Ketten. Qualität der Tool-Observation-Synthese verbessert (8K Zeichen, konfigurierbar über `REACT_TOOL_OBS_TRUNCATION`) |
-| DAG Planning / Re-Planning | v0.1, v0.5, v0.7.5 | Modell-Reasoning-Fähigkeiten verbessern sich; Dekomposition wird Single-Shot. Per-Step-Verifikation in v0.7.5 ausgeliefert (`DAG_STEP_VERIFICATION`). Gehärtet: Cascade-Fehlerausbreitung, Verifier-Status-Fix, Planner-Tool-Beschreibungen, vollständiger Replan-Verlauf, Whitelist-basierter Tool-Cache. 14 Engine-Konstanten als ENV-Variablen verfügbar — keine weiteren Planning-Primitiven geplant |
-| Memory (Window, Summary, Compact) | v0.2, v0.5 | Context Windows wachsen (200K+); weniger Bedarf für externe Memory-Verwaltung |
-| RAG-Pipeline | v0.5 | Provider bauen Retrieval nativ ein (OpenAI file_search, Gemini Search Grounding) |
-| Grounded Generation | v0.5 | Modelle verbessern sich bei Zitationen; 5-stufige Pipeline bringt abnehmenden Nutzen |
+| ReAct Agent | v0.1, v0.9 | Modelle haben jetzt natives Tool Calling. Mid-Loop Self-Reflection (v0.9) verhindert Goal Drift in langen Ketten. Tool Observation Synthesis Qualität verbessert (8K Zeichen, konfigurierbar über `REACT_TOOL_OBS_TRUNCATION`) |
+| DAG Planning / Re-Planning | v0.1, v0.5, v0.7.5 | Modell-Reasoning-Fähigkeiten verbessern sich; Dekomposition wird Single-Shot. Per-Step Verification in v0.7.5 ausgeliefert (`DAG_STEP_VERIFICATION`). Gehärtet: Cascade Failure Propagation, Verifier Status Fix, Planner Tool Descriptions, vollständige Replan History, Whitelist-basierter Tool Cache. 14 Engine Constants als ENV Vars verfügbar — keine weiteren Planning Primitives geplant |
+| Memory (Window, Summary, Compact) | v0.2, v0.5 | Context Windows wachsen (200K+); weniger Bedarf für externes Memory Management |
+| RAG Pipeline | v0.5 | Provider bauen Retrieval nativ ein (OpenAI file_search, Gemini Search Grounding) |
+| Grounded Generation | v0.5 | Modelle verbessern sich bei Citations; 5-Stage Pipeline bringt abnehmenden Nutzen |
 | ContextGuard / Pinned Messages | v0.5 | Wird wie vorhanden ausgeliefert; keine neuen Funktionen |
 
-## Überlegungen (Auf unbestimmte Zeit aufgeschoben)
+## Überlegung (Auf unbestimmte Zeit aufgeschoben)
 
-Gemäß der Orthogonalitätsstrategie würden diese einen hohen Aufwand erfordern und ein Absorptionsrisiko bergen:
+Gemäß der Orthogonalitätsstrategie würden diese einen hohen Aufwand erfordern und einem Absorptionsrisiko ausgesetzt sein:
 
 | Feature | Grund für Aufschub |
 |---------|------------|
-| Multi-Agent-Orchestrierung (tiefe Hierarchien) | Anbieter bauen nativ (OpenAI Swarm, Google A2A und ähnliche Multi-Agent-Angebote). FIM One's CallAgentTool deckt den Fall der einstufigen Delegation ab; ereignisgesteuerte Hintergrund-Agenten werden durch Scheduled Jobs in v0.9 abgedeckt |
-| Agent-Selbstmodifizierende Skills (Procedural Memory) | Agenten aktualisieren ihre eigene `skill.md` während der Ausführung — hohe Komplexität, Sicherheits-/Audit-Oberfläche. Hängt davon ab, dass das Agent Skill System (v0.8) zuerst ausgeliefert wird. Neu bewerten, wenn Enterprise-Kunden explizit selbstverbessernde Agenten anfordern |
-| ~~Agent Workspace (Tool Output File Offloading)~~ | Befördert zu v0.9. Der Wert liegt in **selektivem Lesen**, nicht in Kontextkapazität — Cross-Framework-Validierung bestätigt. Ursprüngliche Aufschublogik („200K+ Fenster reduzieren Dringlichkeit") war falsch. |
-| Cross-Session Long-Term Memory | Kontextfenster wachsen schnell (200K–2M); Anbieter fügen integriertes Memory hinzu (OpenAI Memory, Gemini Context Caching); hohe Implementierungskosten vs. sinkender Differenzierungswert. Neu bewerten, wenn Enterprise-Kunden es explizit anfordern |
-| Memory Lifecycle (TTL, Quotas) | Hängt von Cross-Session Memory ab; gemeinsam aufgeschoben |
-| Active Context Compression Tool (agent-triggered) | Explizit eingefroren mit ContextGuard (v0.5). Kontextfenster bei 200K+ reduzieren den Wert. Wird nicht erneut überprüft, es sei denn, Kontextkosten werden zu einer großen Enterprise-Beschwerde |
-| Browser-Automatisierung / Computer Use | Hohe Wartungskosten (DOM-Änderungen, Anti-Bot, Sandboxing). Industrie konvergiert auf Computer Use Mode (Anthropic, OpenAI Operator, Google Mariner) und MCP Browser Tools (Puppeteer/Playwright MCP). Über MCP-Integration nutzen, nicht selbst bauen. Neu bewerten, wenn ein stabiler Computer Use MCP Standard entsteht |
-| Web Push Notifications | Browser-natives Push über Service Worker + VAPID. Überlappt mit IM Channel Integration (v0.8), die Enterprise-bevorzugte Kanäle abdeckt (Lark/Slack/WeCom/Email). IM Push hat höheren Enterprise-Wert; Web Push ist ein Nice-to-Have für Portal-only-Nutzer. Neu bewerten nach IM Channel Auslieferung — wenn Nutzer Browser-Benachrichtigungen über IM-Abdeckung hinaus anfordern |
-| Multi-user Workflow Collaborative Editing | Echtzeit-Co-Editing desselben Workflow-Blueprints (Figma/Notion-Stil) mit Cursor-Awareness, Konfliktauflösung und Pro-Node-Lock. Hohe Implementierungskosten (CRDT / OT, Presence-Infrastruktur), unklar Enterprise-Nachfrage über heutiges „ein Editor gleichzeitig + Version Diff" Modell. Neu bewerten, wenn mehrere Enterprises explizit gemeinsames Live-Editing anfordern |
-| Per-Node Workflow Execution Permissions (RBAC on Run) | Feinkörnige Autorisierung *innerhalb* einer einzelnen Workflow-Ausführung — z. B. „Node X erfordert Rolle `finance_approver` zur Ausführung". Heute findet Autorisierung auf Workflow-Ebene statt (wer kann auslösen) und auf Connector-Ebene (wessen Anmeldedaten führen aus); Per-Node RBAC fügt eine dritte Achse mit erheblicher Komplexität und keiner aktiven Kundenanfrage hinzu |
-| Cross-Org Workflow Sharing mit Live Updates | Workflow aus einer anderen Org abonnieren und Upstream-Updates ohne Neuforking erhalten. Heute Abonnement = Fork (Snapshot), daher brechen Upstream-Änderungen nie durch. Live Updates würden Upstream-kompatible Schema-Evolution + Konfliktauflösung erfordern; hohe Wartungskosten. Neu bewerten, wenn Enterprises „gemeinsame Workflows über Tochtergesellschaften" anfordern |
+| Multi-Agent-Orchestrierung (tiefe Hierarchien) | Anbieter bauen nativ (OpenAI Swarm, Google A2A und ähnliche Multi-Agent-Angebote). FIM One's CallAgentTool deckt den Ein-Ebenen-Delegationsfall ab; ereignisgesteuerte Hintergrund-Agenten werden durch Scheduled Jobs in v0.9 abgedeckt |
+| Agent Self-modifying Skills (Procedural Memory) | Agenten aktualisieren ihre eigene `skill.md` während der Ausführung — hohe Komplexität, Sicherheits-/Audit-Oberfläche. Hängt davon ab, dass das Agent Skill System (v0.8) zuerst ausgeliefert wird. Neu bewerten, wenn Unternehmenskunden explizit selbstverbessernde Agenten anfordern |
+| ~~Agent Workspace (Tool Output File Offloading)~~ | Befördert zu v0.9. Der Wert liegt in **selektivem Lesen**, nicht in Kontextkapazität — frameworkübergreifende Validierung bestätigt. Ursprüngliche Aufschublogik („200K+ Fenster reduzieren Dringlichkeit") war falsch. |
+| Cross-Session Long-Term Memory | Kontextfenster wachsen schnell (200K–2M); Anbieter fügen integriertes Memory hinzu (OpenAI memory, Gemini context caching); hohe Implementierungskosten vs. sinkender Differenzierungswert. Neu bewerten, wenn Unternehmenskunden es explizit anfordern |
+| Memory Lifecycle (TTL, Kontingente) | Hängt von Cross-Session Memory ab; zusammen aufgeschoben |
+| Active Context Compression Tool (agentgesteuert) | Explizit eingefroren mit ContextGuard (v0.5). Kontextfenster bei 200K+ reduzieren den Wert. Wird nicht erneut überprüft, es sei denn, Kontextkosten werden zu einer großen Unternehmensbeschwerde |
+| Browser-Automatisierung / Computer Use | Hohe Wartungskosten (DOM-Änderungen, Anti-Bot, Sandboxing). Industrie konvergiert zu Computer Use Mode (Anthropic, OpenAI Operator, Google Mariner) und MCP-Browser-Tools (Puppeteer/Playwright MCP). Über MCP-Integration nutzen, nicht selbst bauen. Neu bewerten, wenn stabiler Computer Use MCP Standard entsteht |
+| Web Push Notifications | Browser-natives Push über Service Worker + VAPID. Überlappt mit IM Channel Integration (v0.8), die unternehmensgenutzte Kanäle abdeckt (Lark/Slack/WeCom/Email). IM-Push hat höheren Unternehmenswert; Web Push ist ein Nice-to-Have für Portal-only-Benutzer. Neu bewerten nach IM Channel Auslieferung — wenn Benutzer Browser-Benachrichtigungen über IM-Abdeckung hinaus anfordern |
+| Multi-User-Workflow-Zusammenarbeit beim Bearbeiten | Echtzeit-Co-Editing desselben Workflow-Blueprints (Figma/Notion-Stil) mit Cursor-Awareness, Konfliktlösung und Pro-Node-Sperrung. Hohe Implementierungskosten (CRDT / OT, Presence-Infrastruktur), unklar, ob Unternehmensanforderung über heutiges „ein Editor gleichzeitig + Version Diff" Modell. Neu bewerten, wenn mehrere Unternehmen explizit gemeinsames Live-Editing anfordern |
+| Pro-Node-Workflow-Ausführungsberechtigungen (RBAC bei Ausführung) | Feinkörnige Autorisierung *innerhalb* einer einzelnen Workflow-Ausführung — z. B. „Node X erfordert Rolle `finance_approver` zur Ausführung". Heute erfolgt Autorisierung auf Workflow-Ebene (wer kann auslösen) und auf Connector-Ebene (wessen Anmeldedaten führen aus); Pro-Node RBAC fügt eine dritte Achse mit erheblicher Komplexität und ohne aktive Kundenanforderung hinzu |
+| Cross-Org-Workflow-Freigabe mit Live-Updates | Abonnieren Sie einen Workflow von einer anderen Org und erhalten Sie Upstream-Updates ohne erneutes Forking. Heute bedeutet Abonnement = Fork (Snapshot), daher werden Breaking Upstream-Änderungen nie weitergegeben. Live-Updates würden Upstream-kompatible Schema-Evolution + Konfliktlösung erfordern; hohe Wartungskosten. Neu bewerten, wenn Unternehmen „gemeinsame Workflows über Tochtergesellschaften" anfordern |
 
-## Wie Versionen mit Modi ausgerichtet sind
+## Wie Versionen mit Modi übereinstimmen
 
-| Version | Standalone | Copilot | Hub | Hinweise |
+| Version | Standalone | Copilot | Hub | Notizen |
 |---------|-----------|---------|-----|-------|
 | **v0.1–v0.3** | Working | Not yet | Not yet | Portal-only, single-user |
 | **v0.4** | Working | Not yet | Not yet | Multi-conversation, agent management |
@@ -476,7 +474,7 @@ The Orthogonality Strategy shapes where effort goes:
 |----------|-----------|----------|-----|
 | **Connector Platform** (v0.6+) | 50% | Ongoing | Core differentiation; no absorption risk |
 | **Enterprise Features** (RBAC, audit, security, observability) | 30% | v0.8–v1.0 | Boring but durable; production requirement. Agent Trace Layer is commercial anchor |
-| **Agent Intelligence** (Skill System, scheduled agents) | 15% | v0.8–v0.9 | 指令+工具+技能 differentiation story; low absorption risk — frameworks validate patterns, but enterprise SOPs are customer-specific |
+| **Agent Intelligence** (Skill System, scheduled agents) | 15% | v0.8–v0.9 | Instructions + tools + skills differentiation story; low absorption risk — frameworks validate patterns, but enterprise SOPs are customer-specific |
 | **v0.1–v0.5 maintenance** | 5% | Ongoing | Bug fixes only; no new features |
 
 ## Metric-Driven Milestones
@@ -492,16 +490,16 @@ Success is measured by:
 | Uptime SLA | 99.5% | 99.9% | 99.95% |
 | Support ticket themes | Integration, setup | Connector custom logic | Hot-plug, scaling |
 
-## Open Questions / TBD
+## Offene Fragen / TBD
 
-- **Marketplace moderation**: How to validate community packages and individual resources? Automated scanning for credential leaks in package configs? (v1.0)
-- **Token economics**: How to price multi-user, multi-agent scenarios? (v1.0)
-- **Package versioning**: Breaking changes in installed packages — auto-upgrade with migration scripts, or manual approval per update? Dependency diamond problem resolution? (v1.0)
-- **Package pricing**: Free vs paid tiers, commission rates for Creator Program, payment provider integration? (v1.0)
-- **Package credential UX**: Install-time credential collection — wizard-style step-by-step or deferred setup? Credential sharing across packages that use the same connector type? (v1.0)
-- **Telemetry opt-out**: How to honor privacy preferences? (v0.8)
-- **Connector versioning**: How to manage breaking changes in connector APIs? (v0.8)
-- **Rate limiting**: Per-user workflow rate limiting shipped (sliding window 10 runs/min, 3 concurrent). Per-connector and per-agent rate limiting TBD (v0.9)
-- **Connector authorization tier selection**: how does an admin discover which tier applies to a given upstream system? Auto-probe (try per-user API key → fall back to login-ticket → fall back to shared-DB) vs. explicit declaration in the connector spec? How do we express "this connector supports Tier 2 but the admin chose to operate in Tier 1" in the UI without confusing non-technical admins? (v0.9)
-- **Integration vs Connector duality**: when a Feishu binding is simultaneously an SSO provider AND an API-call surface, how do we present it in Settings? One object with three toggles, or three separate bindings that share a credential? Implications for uninstall semantics (does revoking SSO kill the Connector?) (v0.9)
+- **Marketplace-Moderation**: Wie können Community-Pakete und einzelne Ressourcen validiert werden? Automatisierte Überprüfung auf Credential-Leaks in Paket-Konfigurationen? (v1.0)
+- **Token-Ökonomie**: Wie werden Multi-User-, Multi-Agent-Szenarien bepreist? (v1.0)
+- **Paket-Versionierung**: Breaking Changes in installierten Paketen — automatisches Upgrade mit Migrationsskripten oder manuelle Genehmigung pro Update? Auflösung des Dependency-Diamond-Problems? (v1.0)
+- **Paket-Preisgestaltung**: Kostenlose vs. kostenpflichtige Stufen, Provisionsätze für Creator Program, Integration von Zahlungsanbietern? (v1.0)
+- **Paket-Credential-UX**: Credential-Erfassung bei Installation — Wizard-ähnlich Schritt für Schritt oder aufgeschobenes Setup? Credential-Sharing zwischen Paketen, die denselben Connector-Typ verwenden? (v1.0)
+- **Telemetrie-Opt-out**: Wie können Datenschutzpräferenzen berücksichtigt werden? (v0.8)
+- **Connector-Versionierung**: Wie können Breaking Changes in Connector-APIs verwaltet werden? (v0.8)
+- **Rate Limiting**: Pro-Benutzer-Workflow-Rate-Limiting implementiert (Sliding Window 10 Runs/Min, 3 gleichzeitig). Pro-Connector und Pro-Agent Rate Limiting TBD (v0.9)
+- **Connector-Autorisierungsstufen-Auswahl**: Wie kann ein Admin ermitteln, welche Stufe für ein bestimmtes Upstream-System gilt? Auto-Probe (versuche Pro-Benutzer-API-Schlüssel → Fallback auf Login-Ticket → Fallback auf Shared-DB) vs. explizite Deklaration in der Connector-Spezifikation? Wie drücken wir „dieser Connector unterstützt Stufe 2, aber der Admin hat sich für Stufe 1 entschieden" in der UI aus, ohne nicht-technische Admins zu verwirren? (v0.9)
+- **Integration vs. Connector-Dualität**: Wenn eine Feishu-Bindung gleichzeitig ein SSO-Provider UND eine API-Call-Oberfläche ist, wie präsentieren wir sie in den Einstellungen? Ein Objekt mit drei Umschaltern oder drei separate Bindungen, die eine Credential teilen? Auswirkungen auf die Deinstallations-Semantik (tötet das Widerrufen von SSO den Connector?) (v0.9)
 
