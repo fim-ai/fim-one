@@ -26,6 +26,14 @@ interface ConversationContextValue {
   typingTitles: Record<string, string>
   loadConversations: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
+  /**
+   * Silently re-fetch the active conversation's detail and fold it back into
+   * `activeConversation` (no spinner, no toast, no reset-on-error). Used after
+   * a turn completes to pull the just-persisted turn into history so the next
+   * send can stream immediately instead of blocking on a full reload. Returns
+   * `true` on success, `false` if the fetch failed or the user switched away.
+   */
+  reconcileActiveDetail: (id: string) => Promise<boolean>
   createConversation: (
     mode: "react" | "dag" | "auto",
     title?: string,
@@ -99,6 +107,18 @@ export function ConversationProvider({
       }
     } finally {
       setIsLoadingDetail(false)
+    }
+  }, [])
+
+  const reconcileActiveDetail = useCallback(async (id: string) => {
+    try {
+      const detail = await conversationApi.get(id)
+      // Only apply if the user hasn't switched to another conversation while
+      // the fetch was in flight — never clobber a different active detail.
+      setActiveConversation((prev) => (prev && prev.id === id ? detail : prev))
+      return true
+    } catch {
+      return false
     }
   }, [])
 
@@ -211,6 +231,7 @@ export function ConversationProvider({
         typingTitles,
         loadConversations,
         selectConversation,
+        reconcileActiveDetail,
         createConversation,
         deleteConversation,
         updateTitle,

@@ -125,6 +125,7 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     activeId,
     createConversation,
     selectConversation,
+    reconcileActiveDetail,
     animateTitle,
     clearActive,
   } = useConversation()
@@ -148,6 +149,14 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     resumeState,
     resumeAttempt,
   } = useSseResume({ conversationId: activeId ?? undefined })
+  // Live mirrors for use inside async callbacks / stale closures (refs avoid
+  // rebuilding runWithQuery on every streamed message).
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+  const isRunningRef = useRef(isRunning)
+  isRunningRef.current = isRunning
+  const activeIdRef = useRef(activeId)
+  activeIdRef.current = activeId
   const [injectedMessages, setInjectedMessages] = useState<{id?: string; content: string; ts: number}[]>([])
   const failedInjectRef = useRef<string | null>(null)
   const pendingNextTurnRef = useRef<string | null>(null)
@@ -337,6 +346,28 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
         setQuery(queued)
         toast.warning(t("injectFailed"))
       }
+      // Fold the just-completed turn into history so the next send streams
+      // immediately (no blocking full-history reload). Only for cleanly-
+      // persisted turns: the backend commits the assistant message + sse_events
+      // before emitting `done`, and `end` only fires after post-processing, so
+      // a graceful end with `done` and no guardrail trip is safe to refetch.
+      // Aborted / guardrail / errored turns aren't in the DB — leave live state
+      // intact and let the next send's fallback reload handle them.
+      const sawEnd = messages.some((m) => m.event === "end")
+      const sawDone = messages.some((m) => m.event === "done")
+      const sawGuardrail = messages.some((m) => m.event === "guardrail_tripwired")
+      if (activeId && !isError && sawEnd && sawDone && !sawGuardrail) {
+        const foldId = activeId
+        reconcileActiveDetail(foldId).then((ok) => {
+          // Bail if a new turn started or the user navigated away while the
+          // refetch was in flight — never clear a live, in-progress stream.
+          if (ok && !isRunningRef.current && activeIdRef.current === foldId) {
+            reset()
+            setPendingQuery(null)
+            setSourceMode(null)
+          }
+        })
+      }
     }
   }, [isRunning]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -404,9 +435,13 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
           sendingRef.current = false
           return
         }
-      } else {
-        // Existing conversation -- refresh to get all previous messages (with sse_events)
-        // so they render as history while the new turn streams live.
+      } else if (messagesRef.current.length > 0) {
+        // Existing conversation with un-folded volatile live state (an aborted /
+        // guardrail / errored turn that wasn't reconciled into history on
+        // completion). Reload so those previous messages render as history
+        // before start() clears the live area. Cleanly-completed turns are
+        // already folded into history, so the common case skips this reload and
+        // streams immediately instead of blocking on a full-history fetch.
         await selectConversation(convId)
       }
 
