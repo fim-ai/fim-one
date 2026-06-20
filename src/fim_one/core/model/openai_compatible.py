@@ -256,6 +256,49 @@ def _resolve_litellm_model(
     return f"openai/{model}", base_url
 
 
+# Anthropic model families that use the *adaptive* thinking protocol
+# (``thinking={"type": "adaptive"}`` + ``output_config.effort``) instead of the
+# legacy ``thinking={"type": "enabled", "budget_tokens": N}`` form.  The legacy
+# form is deprecated on Opus 4.6 / Sonnet 4.6 and **rejected with a 400** on
+# Opus 4.7, Opus 4.8, Fable 5, and Mythos 5.  LiteLLM only auto-maps
+# ``reasoning_effort`` → adaptive for the 4.6 models, so for everything newer we
+# must emit the adaptive protocol ourselves (see ``_build_request_kwargs``).
+_ANTHROPIC_ADAPTIVE_THINKING_FRAGMENTS = (
+    "opus-4-6",
+    "opus-4.6",
+    "opus_4_6",
+    "opus-4-7",
+    "opus-4.7",
+    "opus_4_7",
+    "opus-4-8",
+    "opus-4.8",
+    "opus_4_8",
+    "sonnet-4-6",
+    "sonnet-4.6",
+    "sonnet_4_6",
+    "fable-5",
+    "fable_5",
+    "mythos-5",
+    "mythos_5",
+)
+
+# Anthropic models that reject sampling parameters (``temperature`` / ``top_p`` /
+# ``top_k``) outright with a 400.  Opus 4.6 / Sonnet 4.6 still accept them, so
+# they are deliberately absent here.
+_ANTHROPIC_NO_SAMPLING_FRAGMENTS = (
+    "opus-4-7",
+    "opus-4.7",
+    "opus_4_7",
+    "opus-4-8",
+    "opus-4.8",
+    "opus_4_8",
+    "fable-5",
+    "fable_5",
+    "mythos-5",
+    "mythos_5",
+)
+
+
 class OpenAICompatibleLLM(BaseLLM):
     """LLM implementation backed by LiteLLM for universal provider support.
 
@@ -316,6 +359,30 @@ class OpenAICompatibleLLM(BaseLLM):
         self._json_mode_enabled = json_mode_enabled
         self._tool_choice_enabled = tool_choice_enabled
         self._context_size = context_size
+
+        # Guardrail: a Claude adaptive-thinking model routed through the generic
+        # OpenAI-compatible path can't receive adaptive thinking.  The OpenAI
+        # Chat Completions schema has no thinking/output_config concept, so the
+        # reasoning parameter is silently dropped (litellm.drop_params=True)
+        # before the request leaves us — thinking never turns on, with no error.
+        # Only the anthropic/ native route ("/v1/messages") supports it.
+        if (
+            self._litellm_model.startswith("openai/")
+            and (self._reasoning_effort or self._reasoning_budget_tokens)
+            and any(
+                f in f"{self._model} {self._litellm_model}".lower()
+                for f in _ANTHROPIC_ADAPTIVE_THINKING_FRAGMENTS
+            )
+        ):
+            logger.warning(
+                "Model %r uses Anthropic adaptive thinking but is routed through "
+                "the generic OpenAI-compatible path (litellm_model=%r); extended "
+                "thinking will NOT take effect — the reasoning parameter is dropped "
+                "before reaching the provider. Set provider='anthropic' (or use an "
+                "Anthropic base_url) to route natively and enable adaptive thinking.",
+                self._model,
+                self._litellm_model,
+            )
 
     @property
     def model_id(self) -> str:
@@ -662,6 +729,38 @@ class OpenAICompatibleLLM(BaseLLM):
         )
         return any(tag in model for tag in reasoning_tags)
 
+    def _anthropic_model_text(self) -> str | None:
+        """Lower-cased model identifier, only for Anthropic-routed models.
+
+        Returns ``None`` when the model is *not* routed natively through
+        LiteLLM's Anthropic transformer (``anthropic/`` prefix).  The
+        adaptive-thinking / sampling-param rules below are properties of the
+        Anthropic ``/v1/messages`` API; a Claude model reached through a
+        generic ``openai/`` proxy is the relay's translation problem, not
+        ours, so we leave those requests untouched.
+        """
+        if not (self._litellm_model or "").startswith("anthropic/"):
+            return None
+        return f"{self._model} {self._litellm_model}".lower()
+
+    def _uses_adaptive_thinking(self) -> bool:
+        """True for Anthropic models on the adaptive-thinking protocol.
+
+        These take ``thinking={"type": "adaptive"}`` + ``output_config.effort``;
+        the legacy ``budget_tokens`` form 400s on 4.7/4.8/Fable.
+        """
+        text = self._anthropic_model_text()
+        return bool(
+            text and any(f in text for f in _ANTHROPIC_ADAPTIVE_THINKING_FRAGMENTS)
+        )
+
+    def _rejects_sampling_params(self) -> bool:
+        """True for Anthropic models that 400 on temperature/top_p/top_k."""
+        text = self._anthropic_model_text()
+        return bool(
+            text and any(f in text for f in _ANTHROPIC_NO_SAMPLING_FRAGMENTS)
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -718,6 +817,12 @@ class OpenAICompatibleLLM(BaseLLM):
         if response_format is not None:
             kwargs["response_format"] = response_format
 
+        # Strict Anthropic models (Opus 4.7/4.8, Fable 5, Mythos 5) reject
+        # temperature/top_p/top_k outright (400) — drop the temperature we
+        # always set above, whether or not thinking is enabled.
+        if self._rejects_sampling_params():
+            kwargs.pop("temperature", None)
+
         # Resolve effective reasoning effort: per-call override > instance default.
         effective_reasoning = (
             self._reasoning_effort if reasoning_effort is _REASONING_INHERIT else reasoning_effort
@@ -730,8 +835,23 @@ class OpenAICompatibleLLM(BaseLLM):
                     "Dropping reasoning_effort for %s (unsupported with tools in chat completions)",
                     self._model,
                 )
+            elif self._uses_adaptive_thinking():
+                # Opus 4.6+/Sonnet 4.6/Fable/Mythos use the adaptive-thinking
+                # protocol.  The legacy thinking={type:"enabled", budget_tokens}
+                # form is deprecated on 4.6 and returns a 400 on 4.7/4.8/Fable,
+                # so emit adaptive directly instead of relying on LiteLLM's
+                # reasoning_effort mapping (which only special-cases 4.6).
+                kwargs["thinking"] = {"type": "adaptive"}
+                if isinstance(effective_reasoning, str):
+                    # output_config.effort: low | medium | high (LiteLLM passes
+                    # it through to the Anthropic /v1/messages body verbatim).
+                    kwargs["output_config"] = {"effort": effective_reasoning}
+                # Adaptive-thinking models reject (4.7/4.8/Fable) or don't need
+                # (4.6 defaults to 1.0) an explicit temperature — drop it.
+                kwargs.pop("temperature", None)
             elif self._reasoning_budget_tokens and self._litellm_model.startswith("anthropic/"):
-                # Explicit budget override — pass thinking directly, skip
+                # Legacy Anthropic models (Opus 4.5 / Sonnet 4.5 / Haiku 4.5):
+                # explicit budget override — pass thinking directly, skip
                 # reasoning_effort to avoid LiteLLM's auto-mapping conflict.
                 kwargs["thinking"] = {
                     "type": "enabled",
@@ -741,7 +861,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs["temperature"] = 1.0
             else:
                 # Let LiteLLM handle the translation for each provider:
-                #   - Anthropic: reasoning_effort → thinking param (auto budget)
+                #   - Anthropic (legacy): reasoning_effort → thinking (auto budget)
                 #   - OpenAI o-series: reasoning_effort passed through
                 #   - Others: drop_params=True handles unsupported cases
                 kwargs["reasoning_effort"] = effective_reasoning

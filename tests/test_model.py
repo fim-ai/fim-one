@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -494,12 +495,16 @@ class TestBuildRequestKwargs:
         assert kwargs["reasoning_effort"] == "high"
         assert "thinking" not in kwargs
 
-    def test_reasoning_effort_anthropic_delegates_to_litellm(self) -> None:
-        """Anthropic: pass reasoning_effort, preserve user temperature."""
+    def test_reasoning_effort_legacy_anthropic_delegates_to_litellm(self) -> None:
+        """Legacy Anthropic (Sonnet 4.5): pass reasoning_effort, force temp=1.0.
+
+        Models older than 4.6 still use the legacy enabled/budget thinking form,
+        so LiteLLM's reasoning_effort mapping is the right path for them.
+        """
         llm = OpenAICompatibleLLM(
             api_key="sk-test",
             base_url="https://api.anthropic.com/v1/",
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-4-5",
             reasoning_effort="high",
         )
         msgs = [ChatMessage(role="user", content="hi")]
@@ -515,12 +520,12 @@ class TestBuildRequestKwargs:
         # Bedrock/Anthropic thinking requires temperature=1.0 — auto-forced
         assert kwargs["temperature"] == 1.0
 
-    def test_reasoning_budget_anthropic_explicit_thinking(self) -> None:
-        """Explicit budget override → pass thinking directly, preserve user temperature."""
+    def test_reasoning_budget_legacy_anthropic_explicit_thinking(self) -> None:
+        """Legacy Anthropic + explicit budget → enabled/budget thinking form."""
         llm = OpenAICompatibleLLM(
             api_key="sk-test",
             base_url="https://api.anthropic.com/v1/",
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-4-5",
             reasoning_effort="high",
             reasoning_budget_tokens=8192,
         )
@@ -536,6 +541,171 @@ class TestBuildRequestKwargs:
         assert "reasoning_effort" not in kwargs
         # Bedrock/Anthropic thinking requires temperature=1.0 — auto-forced
         assert kwargs["temperature"] == 1.0
+
+    def test_reasoning_effort_anthropic_4_6_adaptive(self) -> None:
+        """Sonnet 4.6 → adaptive thinking + output_config.effort, no temperature."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1/",
+            model="claude-sonnet-4-6",
+            reasoning_effort="high",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["thinking"] == {"type": "adaptive"}
+        assert kwargs["output_config"] == {"effort": "high"}
+        assert "reasoning_effort" not in kwargs
+        # Adaptive-thinking models drop the explicit temperature.
+        assert "temperature" not in kwargs
+
+    def test_reasoning_effort_anthropic_opus_4_8_adaptive(self) -> None:
+        """Opus 4.8 → adaptive form only; never the deprecated enabled/budget.
+
+        Regression guard for the 400 'thinking.enabled is not supported for this
+        model. Use thinking.adaptive' returned by Opus 4.7/4.8.
+        """
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1/",
+            model="claude-opus-4-8",
+            reasoning_effort="medium",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["thinking"] == {"type": "adaptive"}
+        assert kwargs["output_config"] == {"effort": "medium"}
+        assert "reasoning_effort" not in kwargs
+        assert "temperature" not in kwargs
+
+    def test_anthropic_opus_4_8_budget_ignored_uses_adaptive(self) -> None:
+        """Opus 4.8 + budget set → adaptive wins; budget_tokens never sent (400)."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1/",
+            model="claude-opus-4-8",
+            reasoning_effort="high",
+            reasoning_budget_tokens=8192,
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["thinking"] == {"type": "adaptive"}
+        assert "budget_tokens" not in str(kwargs.get("thinking", {}))
+        assert kwargs["output_config"] == {"effort": "high"}
+        assert "temperature" not in kwargs
+
+    def test_anthropic_opus_4_8_drops_temperature_without_reasoning(self) -> None:
+        """Opus 4.8 rejects temperature outright — drop it even with no thinking."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1/",
+            model="claude-opus-4-8",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert "temperature" not in kwargs
+        assert "thinking" not in kwargs
+
+    def test_claude_via_openai_proxy_left_untouched(self) -> None:
+        """A Claude model reached through a generic openai/ proxy is the relay's
+        translation problem — we must not inject adaptive thinking or drop temp."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://my-proxy.com/v1",
+            model="claude-opus-4-8",
+            reasoning_effort="high",
+        )
+        assert llm._litellm_model == "openai/claude-opus-4-8"
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["reasoning_effort"] == "high"
+        assert "thinking" not in kwargs
+        assert "output_config" not in kwargs
+        # openai-routed: temperature is left as-is (the proxy owns translation)
+        assert kwargs["temperature"] == 0.7
+
+    def test_warns_when_adaptive_model_routed_via_openai(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """openai/ route + Claude adaptive family + reasoning → one warning."""
+        with caplog.at_level(logging.WARNING):
+            OpenAICompatibleLLM(
+                api_key="sk-test",
+                base_url="https://my-proxy.com/v1",
+                model="claude-opus-4-8",
+                reasoning_effort="high",
+            )
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "adaptive thinking" in warnings[0].getMessage()
+        assert "will NOT take effect" in warnings[0].getMessage()
+
+    def test_no_warning_when_adaptive_model_routed_natively(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Native anthropic/ route is correct — no warning."""
+        with caplog.at_level(logging.WARNING):
+            OpenAICompatibleLLM(
+                api_key="sk-test",
+                base_url="https://api.anthropic.com/v1/",
+                model="claude-opus-4-8",
+                reasoning_effort="high",
+            )
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_no_warning_for_openai_route_without_reasoning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """openai/ route but no reasoning configured → nothing to warn about."""
+        with caplog.at_level(logging.WARNING):
+            OpenAICompatibleLLM(
+                api_key="sk-test",
+                base_url="https://my-proxy.com/v1",
+                model="claude-opus-4-8",
+            )
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_no_warning_for_non_adaptive_model_via_openai(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A non-Claude reasoning model on openai/ route is fine — no warning."""
+        with caplog.at_level(logging.WARNING):
+            OpenAICompatibleLLM(
+                api_key="sk-test",
+                base_url="https://api.openai.com/v1",
+                model="o3",
+                reasoning_effort="high",
+            )
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
 
     def test_reasoning_effort_openai_keeps_temperature(self) -> None:
         """OpenAI: reasoning_effort does NOT force temperature=1."""
