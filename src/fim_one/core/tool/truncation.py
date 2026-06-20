@@ -26,8 +26,11 @@ Truncation strategy (truncate_tool_output)
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Module-level defaults, overridable via environment variables.
 _DEFAULT_MAX_CHARS = int(os.environ.get("TOOL_OUTPUT_MAX_CHARS", "50000"))
@@ -69,7 +72,16 @@ def truncate_tool_output(
             return _truncate_array(data, max_items)
         return content
 
-    # Content exceeds max_chars — parse to add a structure hint.
+    # Content exceeds max_chars — detail beyond the budget is dropped here.
+    # Log it so silent loss is observable (the budget itself is intentional).
+    logger.warning(
+        "truncate_tool_output: dropping %d chars (kept %d / %d total)",
+        len(content) - max_chars,
+        max_chars,
+        len(content),
+    )
+
+    # Parse to add a structure hint.
     try:
         data = json.loads(content)
     except (json.JSONDecodeError, ValueError):

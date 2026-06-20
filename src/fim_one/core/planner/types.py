@@ -16,6 +16,10 @@ class StepOutput:
     summary: str
     data: dict[str, Any] | None = None  # reserved for future structured data
     artifacts: list[Artifact] = field(default_factory=list)
+    # Extended-thinking the step's sub-agent produced while reaching the
+    # summary.  Preserved so the analyzer / synthesis stages can use a clue
+    # the step only surfaced in its reasoning instead of discarding it.
+    reasoning: str | None = None
 
     def __str__(self) -> str:
         return self.summary  # backward compat for string formatting

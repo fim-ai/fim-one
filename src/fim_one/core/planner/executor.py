@@ -554,7 +554,10 @@ class DAGExecutor:
                 on_thinking_delta=step_thinking_cb,
             )
             step.status = "completed"
-            step.result = StepOutput(summary=agent_result.answer)
+            step.result = StepOutput(
+                summary=agent_result.answer,
+                reasoning=agent_result.reasoning_content,
+            )
             step.usage = agent_result.usage
             logger.info(
                 "Step '%s' completed in %d iterations",
@@ -593,7 +596,10 @@ class DAGExecutor:
                             retry_query, on_iteration=_on_iteration,
                             on_thinking_delta=step_thinking_cb,
                         )
-                        step.result = StepOutput(summary=agent_result.answer)
+                        step.result = StepOutput(
+                            summary=agent_result.answer,
+                            reasoning=agent_result.reasoning_content,
+                        )
                         if agent_result.usage and step.usage:
                             step.usage += agent_result.usage
                         elif agent_result.usage:

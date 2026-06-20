@@ -70,3 +70,8 @@ class AgentResult:
     iterations: int = 0
     usage: UsageSummary | None = None
     messages: list[Any] = field(default_factory=list)
+    # Extended-thinking content from the final answer turn, if any.  Carried
+    # so downstream consumers (e.g. the DAG executor packing a step result)
+    # can preserve the model's reasoning instead of discarding it with the
+    # rest of the trajectory.
+    reasoning_content: str | None = None

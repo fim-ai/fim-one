@@ -392,3 +392,52 @@ class TestSystemMessagesPreserved:
             m for m in system_msgs if m.content == "You are a helpful assistant."
         ]
         assert len(original_system) == 1
+
+
+# ------------------------------------------------------------------
+# Detail-preservation: thinking must survive rebuilds + compaction
+# ------------------------------------------------------------------
+
+
+class _CapturingLLM(_MockLLM):
+    """_MockLLM that records the user-role content of each chat() call."""
+
+    def __init__(self, response_content: str = "summary") -> None:
+        super().__init__(response_content=response_content)
+        self.captured_user: str | None = None
+
+    async def chat(self, messages, **kw):  # type: ignore[no-untyped-def]
+        for m in messages:
+            if m.role == "user" and isinstance(m.content, str):
+                self.captured_user = m.content
+        return await super().chat(messages, **kw)
+
+
+class TestTruncateOversizedPreservesThinking:
+    def test_reasoning_and_signature_survive_truncation(self) -> None:
+        guard = ContextGuard(max_message_chars=10)
+        msg = ChatMessage(
+            role="assistant",
+            content="x" * 100,
+            reasoning_content="DEEP_THOUGHT",
+            signature="SIG-1",
+            cache_control={"type": "ephemeral"},
+        )
+        out = guard._truncate_oversized([msg])
+        assert out[0].content is not None
+        assert "[Truncated]" in out[0].content
+        assert out[0].reasoning_content == "DEEP_THOUGHT"
+        assert out[0].signature == "SIG-1"
+        assert out[0].cache_control == {"type": "ephemeral"}
+
+
+class TestCompactionSummariserSeesThinking:
+    async def test_reasoning_content_reaches_summariser(self) -> None:
+        llm = _CapturingLLM(response_content="summary")
+        guard = ContextGuard(compact_llm=llm, default_budget=400)
+        msgs = _make_messages(10)
+        # Put a clue ONLY in an old assistant turn's thinking block.
+        msgs[1].reasoning_content = "REASON_CLUE_XYZ"
+        await guard.check_and_compact(msgs)
+        assert llm.captured_user is not None
+        assert "REASON_CLUE_XYZ" in llm.captured_user

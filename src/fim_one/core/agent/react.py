@@ -18,7 +18,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -174,6 +174,18 @@ _DATETIME_CONTEXT_TEMPLATE = (
     "When searching for up-to-date information, always use the current year "
     "({current_year}) in your queries, NOT a previous year."
 )
+
+
+def _iter_answer_chunks(text: str, size: int = 240) -> Iterator[str]:
+    """Yield *text* in fixed-size slices for progressive SSE streaming.
+
+    Used when the ReAct loop already produced its final answer and we stream
+    that text verbatim instead of re-deriving it via a second LLM call.
+    Slicing is by Unicode code point, so multi-byte characters are never
+    split mid-token.
+    """
+    for start in range(0, len(text), size):
+        yield text[start : start + size]
 
 
 class ReActAgent:
@@ -632,32 +644,65 @@ class ReActAgent:
         Yields:
             Incremental text chunks (tokens) of the synthesised answer.
         """
+        # --- Approach A: stream the loop's own final answer verbatim ------
+        # When the ReAct loop ended with a genuine final-answer turn (no tool
+        # call on the last iteration), that text was produced by the model
+        # with the ENTIRE trajectory in its context window — every prior
+        # thinking block and tool result it was given.  Re-deriving the answer
+        # here, via a second LLM call over a *truncated text projection* of
+        # the trace, silently drops the model's own conclusions (the root
+        # cause of "thinking found it, the final answer lost it").  Stream the
+        # model's answer directly instead.  Only fall through to synthesis
+        # when the loop produced NO usable textual answer (ended on tool
+        # results, hit max iterations, or dumped everything into a thinking
+        # block — handled below by replaying reasoning_content).
+        final_answer = (result.answer or "").strip()
+        ended_with_answer = bool(result.steps) and (
+            result.steps[-1].action.type == "final_answer"
+        )
+        if ended_with_answer and final_answer:
+            for piece in _iter_answer_chunks(final_answer):
+                yield piece
+            return
+
         # Build a synthesis context from the conversation messages.
         # Filter to tool calls and their results for a concise summary.
         context_parts: list[str] = []
         for msg in result.messages:
-            if msg.role == "assistant" and msg.tool_calls:
-                for tc in msg.tool_calls:
-                    context_parts.append(
-                        f"Tool call: {tc.name}({json.dumps(tc.arguments, ensure_ascii=False)})"
-                    )
+            if msg.role == "assistant":
+                # Replay the model's extended-thinking into the synthesis
+                # context too.  A clue the model discovered in an earlier
+                # turn's thinking block must not be dropped here — otherwise
+                # the fallback re-derives a poorer answer than the model
+                # already reasoned out (the detail-loss root cause, applied
+                # to the tool-only / max-iteration finish).
+                if msg.reasoning_content:
+                    thinking = strip_tool_protocol(msg.reasoning_content)
+                    if thinking:
+                        context_parts.append(f"Assistant thinking: {thinking}")
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        context_parts.append(
+                            f"Tool call: {tc.name}({json.dumps(tc.arguments, ensure_ascii=False)})"
+                        )
+                # Final/intermediate iteration content (the brief/fallback
+                # answer).  Strip any tool-call pseudo-protocol the model
+                # emitted as plain text — otherwise a fabricated
+                # <tool_call>/<tool_response> blob would be fed to the
+                # synthesis LLM as "reasoning" and echoed verbatim into the
+                # user-facing answer.
+                if isinstance(msg.content, str) and msg.content:
+                    reasoning = strip_tool_protocol(msg.content)
+                    if reasoning:
+                        context_parts.append(f"Assistant reasoning: {reasoning}")
             elif msg.role == "tool":
-                obs = msg.content or ""
+                obs = msg.content if isinstance(msg.content, str) else ""
                 # Truncate very long tool results to keep the synthesis
                 # prompt within reasonable token limits while preserving
                 # enough content for structured data (JSON, tables, code).
                 if len(obs) > _TOOL_OBS_TRUNCATION:
                     obs = obs[:_TOOL_OBS_TRUNCATION] + "... (truncated)"
                 context_parts.append(f"Tool result: {obs}")
-            elif msg.role == "assistant" and msg.content:
-                # Final iteration content (the brief/fallback answer).
-                # Strip any tool-call pseudo-protocol the model emitted as
-                # plain text — otherwise a fabricated <tool_call>/<tool_response>
-                # blob would be fed to the synthesis LLM as "reasoning" and
-                # echoed verbatim into the user-facing answer.
-                reasoning = strip_tool_protocol(msg.content)
-                if reasoning:
-                    context_parts.append(f"Assistant reasoning: {reasoning}")
 
         system_parts = [
             "You are FIM One, an AI-powered assistant. Never claim to be any "
@@ -1855,6 +1900,7 @@ class ReActAgent:
                 iterations=iteration,
                 usage=usage_tracker.get_summary(),
                 messages=messages,
+                reasoning_content=assistant_msg.reasoning_content,
             )
 
         # Max iterations exceeded.

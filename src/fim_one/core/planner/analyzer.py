@@ -253,12 +253,27 @@ class PlanAnalyzer:
             hint = step.tool_hint or "none"
             result_text = step.result.summary if step.result else "(no result)"
             if len(result_text) > max_result_chars:
+                logger.warning(
+                    "Analyzer: truncating step '%s' result (%d -> %d chars)",
+                    step.id,
+                    len(result_text),
+                    max_result_chars,
+                )
                 result_text = result_text[:max_result_chars] + "\n  [Result truncated]"
-            lines.append(
+            block = (
                 f"[{step.id}] (status: {step.status}, deps: {deps}, tool_hint: {hint})\n"
                 f"  Task: {step.task}\n"
                 f"  Result: {result_text}"
             )
+            # Surface the step's extended-thinking so a clue it found only in
+            # reasoning reaches the analyzer / synthesis instead of being lost
+            # with the rest of the sub-agent's trajectory.
+            reasoning = step.result.reasoning if step.result else None
+            if reasoning:
+                if len(reasoning) > max_result_chars:
+                    reasoning = reasoning[:max_result_chars] + "\n  [Reasoning truncated]"
+                block += f"\n  Reasoning: {reasoning}"
+            lines.append(block)
 
         return "\n\n".join(lines)
 

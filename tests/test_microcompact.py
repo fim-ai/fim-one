@@ -227,3 +227,26 @@ class TestMicroCompact:
         ]
         result = micro_compact(messages, keep_recent=1)
         assert "1" in _content_str(result[0])
+
+
+class TestMicroCompactPreservesFields:
+    """Rebuilding a cleared message must not drop thinking/cache fields."""
+
+    def test_cleared_message_preserves_thinking_and_cache_fields(self) -> None:
+        msgs = [
+            ChatMessage(
+                role="tool",
+                content=f"big result {i}",
+                tool_call_id=f"tc_{i}",
+                reasoning_content=("THINK" if i == 0 else None),
+                signature=("SIG" if i == 0 else None),
+                cache_control=({"type": "ephemeral"} if i == 0 else None),
+            )
+            for i in range(8)
+        ]
+        # 8 tool results, keep 6 → first 2 are cleared.
+        out = micro_compact(msgs, keep_recent=6)
+        assert _content_str(out[0]).startswith("[result cleared")
+        assert out[0].reasoning_content == "THINK"
+        assert out[0].signature == "SIG"
+        assert out[0].cache_control == {"type": "ephemeral"}

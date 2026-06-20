@@ -83,6 +83,14 @@ def micro_compact(
                 tool_calls=msg.tool_calls,
                 name=msg.name,
                 pinned=msg.pinned,
+                # Carry the thinking/cache fields through the rebuild.  Tool
+                # results don't normally hold reasoning, but copying these
+                # keeps the rebuild lossless and future-proof (an assistant
+                # turn must never lose its signed thinking block or its
+                # cache breakpoint just because a placeholder was swapped in).
+                reasoning_content=msg.reasoning_content,
+                signature=msg.signature,
+                cache_control=msg.cache_control,
             ))
             cleared += 1
         else:

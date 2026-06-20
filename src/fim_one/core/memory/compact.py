@@ -216,10 +216,15 @@ class CompactUtils:
         old_messages = compactable[:-keep_recent]
         recent_messages = list(compactable[-keep_recent:])
 
-        # Build the text block to summarise.
+        # Build the text block to summarise.  Include extended-thinking so a
+        # clue the model surfaced only in a reasoning block survives the
+        # summary instead of being silently dropped (the summariser can only
+        # preserve what it is shown).
         lines: list[str] = []
         for msg in old_messages:
             prefix = "User" if msg.role == "user" else "Assistant"
+            if msg.reasoning_content:
+                lines.append(f"{prefix} (thinking): {msg.reasoning_content}")
             lines.append(f"{prefix}: {cls.content_as_text(msg.content)}")
         history_text = "\n".join(lines)
 

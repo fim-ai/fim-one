@@ -231,7 +231,16 @@ class ContextGuard:
                     content=truncated,
                     tool_call_id=msg.tool_call_id,
                     tool_calls=msg.tool_calls,
+                    name=msg.name,
                     pinned=msg.pinned,
+                    # Preserve the thinking/cache fields across the rebuild.
+                    # Dropping reasoning_content + signature here would lose
+                    # an assistant turn's extended-thinking block (and the
+                    # next Anthropic replay would be malformed without its
+                    # signature).
+                    reasoning_content=msg.reasoning_content,
+                    signature=msg.signature,
+                    cache_control=msg.cache_control,
                 ))
             else:
                 result.append(msg)
@@ -285,10 +294,15 @@ class ContextGuard:
             old_messages = compactable[:-keep_recent]
             recent_messages = compactable[-keep_recent:]
 
-        # Build the text block to summarise.
+        # Build the text block to summarise.  Include extended-thinking so a
+        # clue the model surfaced only in a reasoning block survives the
+        # summary instead of being silently dropped (the summariser can only
+        # preserve what it is shown).
         lines: list[str] = []
         for msg in old_messages:
             prefix = msg.role.capitalize()
+            if msg.reasoning_content:
+                lines.append(f"{prefix} (thinking): {msg.reasoning_content}")
             lines.append(f"{prefix}: {CompactUtils.content_as_text(msg.content)}")
         history_text = "\n".join(lines)
 

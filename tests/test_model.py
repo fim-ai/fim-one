@@ -107,6 +107,46 @@ class TestChatMessageToOpenAIDict:
         assert len(d["tool_calls"]) == 1
 
 
+class TestReasoningReplaySerialization:
+    """Anthropic thinking must round-trip on replay; others must not.
+
+    This is the foundation that makes "the final-turn model saw its own
+    earlier thinking" true.  (The litellm -> Anthropic wire reconstruction
+    of the signed thinking block still needs a live smoke test; this only
+    asserts our own serialization contract.)
+    """
+
+    def test_anthropic_thinking_replays_reasoning_and_signature(self) -> None:
+        msg = ChatMessage(
+            role="assistant",
+            content="answer",
+            reasoning_content="my private chain of thought",
+            signature="sig-abc",
+        )
+        d = msg.to_openai_dict(replay_policy="anthropic_thinking")
+        assert d["reasoning_content"] == "my private chain of thought"
+        assert d["signature"] == "sig-abc"
+
+    def test_informational_only_drops_reasoning(self) -> None:
+        msg = ChatMessage(
+            role="assistant",
+            content="answer",
+            reasoning_content="cot",
+            signature="sig",
+        )
+        d = msg.to_openai_dict(replay_policy="informational_only")
+        assert "reasoning_content" not in d
+        assert "signature" not in d
+
+    def test_policy_resolves_claude_to_anthropic_thinking(self) -> None:
+        from fim_one.core.prompt.reasoning import reasoning_replay_policy
+
+        assert reasoning_replay_policy("claude-opus-4-8") == "anthropic_thinking"
+        assert reasoning_replay_policy("claude-opus-4-8[1m]") == "anthropic_thinking"
+        assert reasoning_replay_policy("deepseek-r1") == "informational_only"
+        assert reasoning_replay_policy(None) == "unsupported"
+
+
 # ======================================================================
 # ToolCallRequest
 # ======================================================================

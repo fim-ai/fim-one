@@ -461,3 +461,88 @@ class TestReActTurnProfiler:
         assert not [
             r for r in caplog.records if "turn_profile" in r.getMessage()
         ]
+
+
+class _CapturingLLM(FakeLLM):
+    """FakeLLM that records the messages passed to ``stream_chat``."""
+
+    def __init__(self, responses: list[LLMResult] | None = None) -> None:
+        super().__init__(responses=responses)
+        self.captured_messages: list[ChatMessage] = []
+
+    async def stream_chat(self, messages: list[ChatMessage], **kw: Any):  # type: ignore[no-untyped-def]
+        self.captured_messages = list(messages)
+        async for chunk in super().stream_chat(messages, **kw):
+            yield chunk
+
+
+class TestStreamAnswer:
+    """stream_answer must not lose detail to a redundant second synthesis."""
+
+    @staticmethod
+    def _final_step(answer: str) -> StepResult:
+        return StepResult(
+            action=Action(type="final_answer", reasoning="r", answer=answer)
+        )
+
+    async def test_streams_final_answer_verbatim_without_llm_call(self) -> None:
+        """Loop already produced the answer → stream it, no second LLM call."""
+        answer = "Tao An's paper was accepted to HHAI 2026."
+        # The FakeLLM response would corrupt the answer if (wrongly) used.
+        llm = FakeLLM(responses=[_final_answer_response("SHOULD NOT BE USED")])
+        agent = ReActAgent(llm=llm, tools=ToolRegistry())
+        result = AgentResult(
+            answer=answer,
+            steps=[self._final_step(answer)],
+            messages=[ChatMessage(role="assistant", content=answer)],
+        )
+
+        out = "".join([t async for t in agent.stream_answer("q", result)])
+
+        assert out == answer
+        assert llm.call_count == 0  # no redundant synthesis pass
+
+    async def test_falls_back_to_synthesis_when_no_final_answer(self) -> None:
+        """Tool-only / max-iter finish (no final_answer) → synthesise."""
+        llm = FakeLLM(
+            responses=[LLMResult(message=ChatMessage(role="assistant", content="SYNTH"))]
+        )
+        agent = ReActAgent(llm=llm, tools=ToolRegistry())
+        result = AgentResult(
+            answer="",
+            steps=[],
+            messages=[ChatMessage(role="tool", content="obs", tool_call_id="x")],
+        )
+
+        out = "".join([t async for t in agent.stream_answer("q", result)])
+
+        assert out == "SYNTH"
+        assert llm.call_count == 1
+
+    async def test_fallback_synthesis_includes_reasoning_content(self) -> None:
+        """A clue living only in a turn's thinking must reach the synthesis."""
+        llm = _CapturingLLM(
+            responses=[LLMResult(message=ChatMessage(role="assistant", content="ok"))]
+        )
+        agent = ReActAgent(llm=llm, tools=ToolRegistry())
+        result = AgentResult(
+            answer="",
+            steps=[],
+            messages=[
+                ChatMessage(
+                    role="assistant",
+                    content=None,
+                    reasoning_content="HHAI_2026_CLUE",
+                ),
+                ChatMessage(role="tool", content="obs", tool_call_id="x"),
+            ],
+        )
+
+        _ = "".join([t async for t in agent.stream_answer("q", result)])
+
+        joined = "\n".join(
+            m.content
+            for m in llm.captured_messages
+            if isinstance(m.content, str)
+        )
+        assert "HHAI_2026_CLUE" in joined
