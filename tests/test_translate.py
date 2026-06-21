@@ -50,3 +50,45 @@ class TestCheckUntranslated:
     def test_single_letter_tokens_not_flagged(self, ) -> None:
         # "v" alone (e.g. in a version tag) is not a translatable word.
         assert translate._check_untranslated("# [v1.0]", "zh") is False
+
+
+class TestSectionReuseIsContentAddressed:
+    """Reuse must match by section content (EN hash), not by position.
+
+    Regression guard: inserting/deleting a heading must only (re)translate the
+    genuinely new/changed sections — never the whole file. A positional-alignment
+    scheme retranslated every section whenever the section count changed (e.g. a
+    new "## [vX.Y]" changelog heading), which made every cut-release cost hundreds
+    of LLM calls.
+    """
+
+    def test_insertion_only_translates_new_section(self, monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+        # Prior committed state: two sections, already translated.
+        en_v1 = "# A\n\nalpha prose\n\n# B\n\nbeta prose\n"
+        committed = tmp_path / "out.md"
+        committed.write_text("# A\n\n阿尔法\n\n# B\n\n贝塔\n", encoding="utf-8")
+        v1_sections = translate._split_sections(en_v1)
+        translate._hashes_put_sections(
+            "test/reuse", "zh", [translate._hash(s) for s in v1_sections]
+        )
+
+        # New EN: insert "# NEW" between A and B — section count changes 2 → 3.
+        en_v2 = "# A\n\nalpha prose\n\n# NEW\n\ngamma prose\n\n# B\n\nbeta prose\n"
+
+        calls: list[str] = []
+
+        def fake_llm(config, system, content, temperature=0.3):  # type: ignore[no-untyped-def]
+            calls.append(content)
+            return "翻译 " + content  # contains CJK → not flagged untranslated
+
+        monkeypatch.setattr(translate, "llm_chat", fake_llm)
+
+        result = translate._translate_sections(
+            tmp_path / "src.md", en_v2, "zh", {}, "sys",
+            cache_key="test/reuse", target_path=committed,
+        )
+
+        # Only the inserted section is translated; A and B are reused verbatim.
+        assert len(calls) == 1
+        assert "gamma prose" in calls[0]
+        assert "阿尔法" in result and "贝塔" in result

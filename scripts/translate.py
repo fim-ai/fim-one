@@ -860,32 +860,35 @@ def _translate_sections(
     hashes = [_hash(s) for s in sections]
     total = len(sections)
 
-    # Read back the already-committed translation and stored EN hashes (only
-    # when not forcing and the output exists). This is the "output-aware" part:
-    # reuse comes from the committed translated file, not a stored-translation cache.
-    out_sections: list[str] = []
-    stored_hashes: list[str] | None = None
+    # Build a content-addressed reuse map {EN-section-hash: committed-translation}
+    # from the previously committed output. The stored EN hashes and the committed
+    # translated sections were written together on the prior run, so they align
+    # positionally — zipping them reconstructs which translation belongs to which
+    # EN section. This is the "output-aware" part: reuse comes from the committed
+    # translated file, not a stored-translation cache.
+    #
+    # Matching by CONTENT (hash) rather than by POSITION means inserting, deleting,
+    # or reordering a section only re-translates the genuinely new/changed sections
+    # instead of the whole file. Adding a heading like "## [v0.8.8]" used to shift
+    # every section index and force a full retranslation of the entire
+    # changelog/roadmap (hundreds of LLM calls per cut-release).
+    reuse_map: dict[str, str] = {}
     if not force and target_path is not None and target_path.exists():
         try:
             out_sections = _split_sections(target_path.read_text(encoding="utf-8"))
         except Exception:
             out_sections = []
         stored_hashes = _hashes_get_sections(cache_key, locale)
-    # Reuse is safe only when EN and committed-output section counts align AND
-    # the stored hash count matches. Otherwise degrade to full retranslation
-    # (e.g. a heading was added/removed since last run).
-    aligned = (
-        not force
-        and stored_hashes is not None
-        and len(out_sections) == total
-        and len(stored_hashes) == total
-    )
+        if stored_hashes is not None and len(stored_hashes) == len(out_sections):
+            for h_old, translated_old in zip(stored_hashes, out_sections):
+                if h_old:  # skip empty-sentinel (previously-failed) sections
+                    reuse_map[h_old] = translated_old
 
     cached: dict[int, str] = {}
     to_translate: dict[int, str] = {}
     for i, (section, h) in enumerate(zip(sections, hashes)):
-        if aligned and stored_hashes is not None and stored_hashes[i] == h:
-            cached[i] = out_sections[i]   # reuse committed translation verbatim
+        if h in reuse_map:
+            cached[i] = reuse_map[h]   # reuse committed translation verbatim
         else:
             to_translate[i] = section
 
