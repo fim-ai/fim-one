@@ -824,7 +824,19 @@ def _check_untranslated(text: str, locale: str) -> bool:
     prose = stripped.strip()
     if not prose:
         return False  # section is all code — nothing to translate
-    return not _CJK_PATTERN.search(prose)
+    if _CJK_PATTERN.search(prose):
+        return False  # already contains target-script characters → translated
+    # No CJK found. Only treat this as a failed translation when the prose
+    # actually contains translatable English words. Heading-only sections like
+    # "## [v0.8.6] - 2026-05-08" are pure version tags / dates / punctuation with
+    # nothing to translate — they correctly stay byte-identical across locales.
+    # Flagging them as untranslated makes them fail validation, get stored with
+    # the empty-hash sentinel, and re-attempt on EVERY run forever (they can
+    # never gain CJK characters), which silently inflates every commit by dozens
+    # of wasted LLM calls. Require at least one real word (≥2 ASCII letters).
+    if not _re.search(r"[A-Za-z]{2,}", prose):
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
