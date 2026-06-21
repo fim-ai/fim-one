@@ -356,13 +356,14 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 #### Prompt-Cache + Reasoning-Nachverfolgungen {/* dev: dev/prompt-cache-followups.md */}
 
-- [ ] Gemini Context Cache Adapter (separate REST cache lifecycle vs Anthropic inline marker)
-- [ ] Prompt registry expansion to planner / verifier / domain classifier / compact
-- [ ] Per-agent `cache_ttl` (ephemeral 5min vs extended 1h)
-- [ ] DAG step-level checkpoint table for mid-DAG resume
-- [ ] Dedicated `tool_call_id` Message column (indexed orphan-query lookup at scale)
-- [ ] Mid-stream thinking token reconstruction (resume granularity finer than complete SSE event)
-- [ ] API relay cache-honesty probe (admin-triggered: detects relays stripping `cache_control`)
+- [x] Reasoning-Detail vollständig erhalten — Loop streamt seine echte finale Antwort (keine verlustbehaftete Neusynthese); Reasoning übersteht Komprimierung, Kontext-Neuerstellungen und Sub-Agent-Schritte
+- [ ] Gemini Context Cache Adapter (separater REST-Cache-Lebenszyklus vs. Anthropic Inline-Marker)
+- [ ] Prompt-Registry-Erweiterung auf Planner / Verifier / Domain Classifier / Compact
+- [ ] Pro-Agent `cache_ttl` (kurzlebig 5min vs. erweitert 1h)
+- [ ] DAG-Schritt-Level-Checkpoint-Tabelle für Mid-DAG-Wiederaufnahme
+- [ ] Dedizierte `tool_call_id` Message-Spalte (indizierte Orphan-Query-Suche im großen Maßstab)
+- [ ] Mid-Stream Thinking-Token-Rekonstruktion (Wiederaufnahme-Granularität feiner als vollständiges SSE-Event)
+- [ ] API-Relay-Cache-Ehrlichkeits-Sonde (Admin-ausgelöst: erkennt Relays, die `cache_control` entfernen)
 
 #### Zuverlässigkeits-Nachverfolgungen (Agent Core Priority Matrix)
 

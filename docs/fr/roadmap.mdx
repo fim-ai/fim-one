@@ -354,14 +354,15 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 - [ ] Interface utilisateur de l'espace de travail — navigateur de fichiers par conversation ; rétention entre sessions ; quota de stockage par utilisateur
 - [ ] Rappel de conversation entre sessions — outils `list_conversations`, `search_conversations`, `read_conversation`
 
-#### Cache d'invite + suites de raisonnement {/* dev: dev/prompt-cache-followups.md */}
+#### Cache de prompts + suites de raisonnement {/* dev: dev/prompt-cache-followups.md */}
 
-- [ ] Adaptateur Gemini Context Cache (cycle de vie de cache REST séparé vs marqueur inline Anthropic)
-- [ ] Expansion du registre d'invite vers planificateur / vérificateur / classificateur de domaine / compact
-- [ ] `cache_ttl` par agent (éphémère 5min vs étendu 1h)
-- [ ] Tableau de points de contrôle au niveau des étapes DAG pour reprise mid-DAG
+- [x] Détail du raisonnement préservé de bout en bout — la boucle diffuse sa réponse finale authentique (pas de re-synthèse avec perte) ; le raisonnement survit à la compaction, aux reconstructions de contexte et aux étapes de sous-agent
+- [ ] Adaptateur Google Gemini Context Cache (cycle de vie de cache REST séparé vs marqueur inline Anthropic)
+- [ ] Expansion du registre de prompts vers planificateur / vérificateur / classificateur de domaine / compact
+- [ ] `cache_ttl` par agent (5 min éphémère vs 1 h étendu)
+- [ ] Table de points de contrôle au niveau des étapes DAG pour reprise en milieu de DAG
 - [ ] Colonne Message `tool_call_id` dédiée (recherche d'orphelins indexée à grande échelle)
-- [ ] Reconstruction de jetons de réflexion mid-stream (granularité de reprise plus fine que événement SSE complet)
+- [ ] Reconstruction de tokens de réflexion en milieu de flux (granularité de reprise plus fine que l'événement SSE complet)
 - [ ] Sonde d'honnêteté de cache de relais API (déclenchée par admin : détecte les relais supprimant `cache_control`)
 
 #### Suivi de la fiabilité (Matrice de priorités Agent Core)

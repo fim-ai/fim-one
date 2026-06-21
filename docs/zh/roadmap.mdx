@@ -356,14 +356,15 @@ flowchart LR
 - [ ] Workspace UI——每个对话的文件浏览器；跨会话保留；按用户存储配额
 - [ ] 跨会话对话回忆——`list_conversations`、`search_conversations`、`read_conversation` 工具
 
-#### 提示词缓存 + 推理后续跟进 {/* dev: dev/prompt-cache-followups.md */}
+#### 提示词缓存 + 推理后续 {/* dev: dev/prompt-cache-followups.md */}
 
-- [ ] Gemini Context Cache Adapter（独立 REST 缓存生命周期 vs Anthropic 内联标记）
-- [ ] 提示词注册表扩展至规划器 / 验证器 / 域分类器 / 紧凑型
-- [ ] 单个智能体 `cache_ttl`（临时 5 分钟 vs 扩展 1 小时）
-- [ ] DAG 步骤级检查点表，用于 DAG 中途恢复
-- [ ] 专用 `tool_call_id` Message 列（大规模孤立查询索引查找）
-- [ ] 中途思维 token 重建（恢复粒度细于完整 SSE 事件）
+- [x] 推理细节端到端保留——循环流式传输其真实最终答案（无损失重新合成）；推理在压缩、上下文重建和子智能体步骤中保留
+- [ ] Gemini 上下文缓存适配器（独立 REST 缓存生命周期 vs Anthropic 内联标记）
+- [ ] 提示词注册表扩展到规划器 / 验证器 / 领域分类器 / 紧凑
+- [ ] 每个智能体 `cache_ttl`（临时 5 分钟 vs 扩展 1 小时）
+- [ ] DAG 步骤级检查点表用于中途 DAG 恢复
+- [ ] 专用 `tool_call_id` 消息列（大规模索引孤立查询查找）
+- [ ] 中流思维令牌重建（恢复粒度比完整 SSE 事件更细）
 - [ ] API 中继缓存诚实性探针（管理员触发：检测中继是否剥离 `cache_control`）
 
 #### 可靠性后续工作（智能体核心优先级矩阵）

@@ -355,6 +355,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 #### Prompt cache + reasoning follow-ups {/* dev: dev/prompt-cache-followups.md */}
 
+- [x] Reasoning detail preserved end-to-end — loop streams its genuine final answer (no lossy re-synthesis); reasoning survives compaction, context rebuilds, and sub-agent steps
 - [ ] Gemini Context Cache Adapter (separate REST cache lifecycle vs Anthropic inline marker)
 - [ ] Prompt registry expansion to planner / verifier / domain classifier / compact
 - [ ] Per-agent `cache_ttl` (ephemeral 5min vs extended 1h)
