@@ -912,3 +912,62 @@ class TestSharedHttpClient:
         # Ensure state is clean after double-close
         from fim_one.core.model.openai_compatible import _SHARED_HTTP_CLIENT
         assert _SHARED_HTTP_CLIENT is None
+
+    @pytest.mark.asyncio
+    async def test_recreate_after_external_close_flushes_litellm_cache(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: an idle-TTL eviction closes the shared session by closing
+        the http_client LiteLLM handed to a cached OpenAI client.  The next
+        acquisition MUST recreate the session *and* flush LiteLLM's now-stale
+        client cache, so the dead session is not reused for up to 600 s.
+
+        This is the prod outage where LLM calls kept failing with "Cannot send a
+        request, as the client has been closed." until the process restarted.
+        """
+        import litellm as _litellm
+        from fim_one.core.model import openai_compatible as oc
+
+        # Start from a known-good initialised pool.
+        await oc.close_shared_http_client()
+        original = oc._get_shared_http_client()
+
+        flush_calls: list[int] = []
+        monkeypatch.setattr(
+            _litellm.in_memory_llm_clients_cache,
+            "flush_cache",
+            lambda: flush_calls.append(1),
+        )
+
+        # Simulate LiteLLM eviction closing our shared session out from under us
+        # (i.e. NOT via close_shared_http_client, which nulls the global).
+        await original.aclose()
+        assert original.is_closed
+
+        fresh = oc._get_shared_http_client()
+        assert fresh is not original
+        assert not fresh.is_closed
+        assert _litellm.aclient_session is fresh
+        # The stale cached OpenAI clients (wrapping the dead session) were dropped.
+        assert flush_calls == [1]
+
+    @pytest.mark.asyncio
+    async def test_initial_build_does_not_flush_cache(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A first-time build (no prior session) must NOT flush the cache —
+        flushing is only correct when *replacing* a closed session."""
+        import litellm as _litellm
+        from fim_one.core.model import openai_compatible as oc
+
+        await oc.close_shared_http_client()  # global is now None
+
+        flush_calls: list[int] = []
+        monkeypatch.setattr(
+            _litellm.in_memory_llm_clients_cache,
+            "flush_cache",
+            lambda: flush_calls.append(1),
+        )
+
+        oc._get_shared_http_client()
+        assert flush_calls == []

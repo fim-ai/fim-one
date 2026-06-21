@@ -151,6 +151,7 @@ def _get_shared_http_client() -> httpx.AsyncClient:
     """
     global _SHARED_HTTP_CLIENT
     if _SHARED_HTTP_CLIENT is None or _SHARED_HTTP_CLIENT.is_closed:
+        recreating = _SHARED_HTTP_CLIENT is not None  # closed → being replaced
         max_conn = _pool_int("LLM_HTTP_MAX_CONNECTIONS", 100)
         max_keepalive = _pool_int("LLM_HTTP_MAX_KEEPALIVE", 20)
         keepalive_expiry = _pool_float("LLM_HTTP_KEEPALIVE_EXPIRY", 5.0)
@@ -165,14 +166,45 @@ def _get_shared_http_client() -> httpx.AsyncClient:
         )
         # Tell LiteLLM to use this client for all OpenAI-compatible providers.
         litellm.aclient_session = _SHARED_HTTP_CLIENT
+        # CRITICAL: LiteLLM caches AsyncOpenAI clients (200 entries / 600 s TTL)
+        # that each wrap the shared session above.  When LiteLLM evicts one of
+        # those cached clients (idle-TTL expiry — e.g. after a quiet period), the
+        # OpenAI SDK closes the http_client it was handed, which is *our shared
+        # session*.  That silently closes the pool for every other cached client
+        # too, and since this factory is the only place that recreates it, every
+        # subsequent call fails with "Cannot send a request, as the client has
+        # been closed." until the process restarts.  Whenever we replace a closed
+        # session we MUST also drop LiteLLM's now-stale cached clients so they are
+        # rebuilt around the fresh session on the next call.
+        if recreating:
+            _flush_litellm_client_cache()
         logger.info(
-            "Shared HTTP connection pool initialised "
+            "Shared HTTP connection pool %s "
             "(max_conn=%d, keepalive=%d, keepalive_expiry=%ss)",
+            "recreated after close" if recreating else "initialised",
             max_conn,
             max_keepalive,
             keepalive_expiry,
         )
     return _SHARED_HTTP_CLIENT
+
+
+def _flush_litellm_client_cache() -> None:
+    """Drop LiteLLM's in-memory cache of provider SDK clients.
+
+    These cached ``AsyncOpenAI`` clients hold a reference to the previous (now
+    closed) shared httpx session; flushing forces LiteLLM to rebuild them around
+    the freshly created session.  Best-effort — guarded so a LiteLLM internal
+    API change can never break LLM calls.
+    """
+    try:
+        # ``litellm`` is treated as untyped, but the cache object carries a real
+        # annotation so its ``flush_cache`` reads as an untyped call under strict
+        # mypy; route the access through ``Any`` to keep the call type-clean.
+        cache: Any = litellm.in_memory_llm_clients_cache
+        cache.flush_cache()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Could not flush LiteLLM client cache: %s", exc)
 
 
 async def close_shared_http_client() -> None:
@@ -458,6 +490,10 @@ class OpenAICompatibleLLM(BaseLLM):
             stream=False,
             reasoning_effort=reasoning_effort,
         )
+        # Re-validate the shared pool before every attempt: if an idle-TTL
+        # eviction closed it, recreate it (and flush LiteLLM's stale clients)
+        # so this call uses a live session instead of a dead one.
+        _get_shared_http_client()
         response = await litellm.acompletion(**kwargs)
 
         choice = response.choices[0]
@@ -531,6 +567,9 @@ class OpenAICompatibleLLM(BaseLLM):
             max_tokens=max_tokens,
             stream=True,
         )
+        # See ``_chat_impl``: recreate the shared pool if an idle eviction
+        # closed it, so each (re)tried stream starts from a live session.
+        _get_shared_http_client()
         stream = await litellm.acompletion(**kwargs)
 
         async def _iterate() -> AsyncIterator[StreamChunk]:
