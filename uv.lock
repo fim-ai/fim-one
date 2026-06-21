@@ -895,7 +895,7 @@ wheels = [
 
 [[package]]
 name = "fim-one"
-version = "0.8.7"
+version = "0.8.8"
 source = { editable = "." }
 dependencies = [
     { name = "croniter" },

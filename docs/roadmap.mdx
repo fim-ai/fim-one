@@ -266,6 +266,14 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [x] Reliability fixes — pseudo-protocol tool-call leak stripped from answers; tunable HTTP keep-alive ends `APIConnectionError` bursts; API-key usage stats persist on read-only requests
 - [x] Billing tab visual overhaul — full-width, consistent with other Settings tabs
 
+### v0.8.8 (2026-06-22) — SSRF Hardening + Reliability & Reasoning Fixes
+- [x] SSRF hardening — blocklist unwraps IPv4-mapped IPv6 (`::ffff:` instance-metadata bypass); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect
+- [x] LLM reliability — shared HTTP pool self-heals after a LiteLLM client-cache eviction closes it; chat sends stream instantly (history folded in background, no full reload)
+- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works where the old fixed-budget param 400s on 4.7/4.8; warns on OpenAI-proxy misroute
+- [x] Reasoning detail preserved end-to-end — genuine final answer streamed verbatim; survives compaction, context rebuilds, and sub-agent steps (no lossy re-synthesis)
+- [x] PreToolUse enforcement hooks fail closed on error — a crashing approval gate no longer silently allows the call; non-enforcement hooks keep fail-open via `fail_open`
+- [x] Force-logout timestamp comparison normalized to UTC by conversion + Docker Compose `POSTGRES_*` credential override (no shipped `fim:fim` default)
+
 ## Planned Versions
 
 ### v0.9 — Observability + Production Hardening
@@ -276,13 +284,14 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 - [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
 - [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
-- [x] Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL
-- [x] Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments
+- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
+- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
+- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
 
 #### Model & Provider Compatibility
 
-- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
-- [x] Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart
+- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute~~ *(shipped in v0.8.8)*
+- [x] ~~Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart~~ *(shipped in v0.8.8)*
 
 #### Connector + tooling
 
@@ -305,6 +314,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [ ] Hook inheritance for `CallAgentTool` + Workflow `AGENT` nodes (security default vs flexibility default)
 - [ ] Built-in hooks: `ConnectorCallLog` autorecord, read-only-mode block, DB result truncation, per-connector rate-limit
 - [ ] `SessionStart` hook point + user-defined YAML hooks
+- [x] ~~PreToolUse enforcement hooks fail closed on error — a crashing approval gate no longer silently allows the call; non-enforcement hooks keep fail-open via `fail_open`~~ *(shipped in v0.8.8)*
 - [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG runtime~~ *(shipped in v0.8.5)*
 
 #### IM Channel Integration {/* dev: dev/im-channels.md */}
@@ -356,7 +366,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 #### Prompt cache + reasoning follow-ups {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] Reasoning detail preserved end-to-end — loop streams its genuine final answer (no lossy re-synthesis); reasoning survives compaction, context rebuilds, and sub-agent steps
+- [x] ~~Reasoning detail preserved end-to-end — loop streams its genuine final answer (no lossy re-synthesis); reasoning survives compaction, context rebuilds, and sub-agent steps~~ *(shipped in v0.8.8)*
 - [ ] Gemini Context Cache Adapter (separate REST cache lifecycle vs Anthropic inline marker)
 - [ ] Prompt registry expansion to planner / verifier / domain classifier / compact
 - [ ] Per-agent `cache_ttl` (ephemeral 5min vs extended 1h)

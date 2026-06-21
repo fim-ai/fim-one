@@ -267,6 +267,14 @@ flowchart LR
 - [x] 안정성 개선 — 답변에서 제거된 의사 프로토콜 도구 호출 누수; 조정 가능한 HTTP keep-alive로 `APIConnectionError` 버스트 종료; API 키 사용 통계가 읽기 전용 요청에서 유지
 - [x] 청구 탭 시각적 개선 — 전체 너비, 다른 설정 탭과 일치
 
+### v0.8.8 (2026-06-22) — SSRF 강화 + 안정성 및 추론 수정
+- [x] SSRF 강화 — 차단 목록이 IPv4 매핑 IPv6(`::ffff:` 인스턴스 메타데이터 우회)를 언래핑하고, MCP SSE/Streamable-HTTP 서버 URL이 생성 및 연결 시 SSRF 검증됨
+- [x] LLM 안정성 — 공유 HTTP 풀이 LiteLLM 클라이언트 캐시 제거 후 자동 복구되고, 채팅이 스트림을 즉시 전송(기록이 백그라운드에서 처리되며 전체 재로드 없음)
+- [x] Anthropic 적응형 사고 프로토콜(Opus 4.6+/Sonnet 4.6/Fable 5용) — 확장 사고가 이전의 고정 예산 파라미터 400 오류가 발생하는 4.7/4.8에서 작동하며, OpenAI 프록시 오라우팅 시 경고 표시
+- [x] 추론 세부 정보가 종단 간 보존됨 — 진정한 최종 답변이 그대로 스트리밍되고, 압축, 컨텍스트 재구성 및 하위 에이전트 단계를 거쳐도 유지됨(손실 없는 재합성 없음)
+- [x] PreToolUse 강제 실행 훅이 오류 시 폐쇄 상태로 실패 — 충돌하는 승인 게이트가 더 이상 호출을 자동으로 허용하지 않으며, 비강제 실행 훅은 `fail_open`을 통해 개방 상태로 유지됨
+- [x] 강제 로그아웃 타임스탬프 비교가 UTC 변환으로 정규화되고 Docker Compose `POSTGRES_*` 자격 증명 재정의(배송된 `fim:fim` 기본값 없음)
+
 # 계획된 버전
 
 ### v0.9 — 관찰성 + 프로덕션 강화
@@ -277,13 +285,14 @@ flowchart LR
 
 - [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(v0.8.7에서 출시)*
 - [x] ~~PostgreSQL timezone-aware timestamps~~ *(v0.8.6에서 출시)*
-- [x] Force-logout timestamp comparison는 tz-aware/naive 값을 UTC로 정규화하여 변환합니다 — 취소된 토큰이 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됩니다
-- [x] Docker Compose PostgreSQL 자격증명은 `POSTGRES_*` env를 통해 재정의 가능합니다 (연결 문자열로 단일 소싱됨) — 노출된 배포에서 실수로 배포된 `fim:fim` 기본값이 더 이상 없습니다
+- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(v0.8.8에서 출시)*
+- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(v0.8.8에서 출시)*
+- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(v0.8.8에서 출시)*
 
-#### 모델 & 제공자 호환성
+#### 모델 및 제공자 호환성
 
-- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
-- [x] Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart
+- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — 이전의 고정 예산 매개변수(4.7/4.8에서 400)를 거부한 모델에서 확장 사고가 작동하며, OpenAI 프록시 오류 라우팅에 대해 경고함~~ *(v0.8.8에서 배포됨)*
+- [x] ~~공유 LLM HTTP 풀이 LiteLLM 클라이언트 캐시 제거 후 자동으로 복구됨 — 재시작할 때까지 무한정 실패하는 대신 호출이 풀을 투명하게 재생성함~~ *(v0.8.8에서 배포됨)*
 
 #### 연결기 + 도구
 
@@ -299,14 +308,15 @@ flowchart LR
 - [ ] PII 편집기 출력 가드레일 (정규식 + 분류기 하이브리드)
 - [ ] 에이전트별 가드레일 설정 UI (관리자 패널)
 
-#### Hook System {/* dev: dev/hook-system.md */}
+#### 훅 시스템 {/* dev: dev/hook-system.md */}
 
 - [ ] 훅별 설정 통과 (`{"name": ..., "config": {...}}` 스키마)
-- [ ] DAG `tools_used` 정확도 (단계 완료 콜백을 통한 단계별 ReAct의 실제 도구 이름)
+- [ ] DAG `tools_used` 정확도 (단계 완료 콜백을 통한 ReAct의 실제 도구 이름)
 - [ ] `CallAgentTool` + Workflow `AGENT` 노드에 대한 훅 상속 (보안 기본값 vs 유연성 기본값)
 - [ ] 기본 제공 훅: `ConnectorCallLog` 자동 기록, 읽기 전용 모드 차단, DB 결과 잘림, 커넥터별 속도 제한
 - [ ] `SessionStart` 훅 포인트 + 사용자 정의 YAML 훅
-- [x] ~~스켈레톤 + FeishuGateHook + 승인 Playground + ReAct/DAG 런타임~~ *(v0.8.5에서 출시)*
+- [x] ~~PreToolUse 강제 훅이 오류 시 실패 종료 — 충돌하는 승인 게이트가 더 이상 호출을 자동으로 허용하지 않음; 비강제 훅은 `fail_open`을 통해 실패 개방 유지~~ *(v0.8.8에서 출시)*
+- [x] ~~스켈레톤 + FeishuGateHook + 승인 연습장 + ReAct/DAG 런타임~~ *(v0.8.5에서 출시)*
 
 #### IM 채널 통합 {/* dev: dev/im-channels.md */}
 
@@ -355,15 +365,15 @@ flowchart LR
 - [ ] Workspace UI — 대화별 파일 브라우저, 세션 간 보존, 사용자별 저장소 할당량
 - [ ] Cross-session conversation recall — `list_conversations`, `search_conversations`, `read_conversation` 도구
 
-#### 프롬프트 캐시 + 추론 후속 조치 {/* dev: dev/prompt-cache-followups.md */}
+#### 프롬프트 캐시 + 추론 후속 작업 {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] 추론 세부 정보가 종단 간 보존됨 — 루프가 진정한 최종 답변을 스트리밍함(손실 없는 재합성 없음); 추론이 압축, 컨텍스트 재구성, 하위 에이전트 단계를 거쳐 유지됨
-- [ ] Gemini Context Cache Adapter (별도 REST 캐시 수명 주기 대 Anthropic 인라인 마커)
+- [x] ~~추론 세부 정보가 종단 간 보존됨 — 루프가 진정한 최종 답변을 스트리밍함(손실 없는 재합성 없음); 추론이 압축, 컨텍스트 재구축 및 하위 에이전트 단계에서 유지됨~~ *(v0.8.8에서 배포됨)*
+- [ ] Gemini Context Cache Adapter (Anthropic 인라인 마커 대 별도 REST 캐시 수명 주기)
 - [ ] 프롬프트 레지스트리 확장 — 플래너 / 검증자 / 도메인 분류기 / 컴팩트
-- [ ] 에이전트별 `cache_ttl` (임시 5분 대 확장 1시간)
-- [ ] DAG 단계 수준 체크포인트 테이블 — 중간 DAG 재개
+- [ ] 에이전트별 `cache_ttl` (임시 5분 vs 연장 1시간)
+- [ ] DAG 단계 수준 체크포인트 테이블 (중간 DAG 재개용)
 - [ ] 전용 `tool_call_id` Message 열 (대규모 고아 쿼리 조회 인덱싱)
-- [ ] 중간 스트림 사고 토큰 재구성 (완전한 SSE 이벤트보다 세분화된 재개 세분성)
+- [ ] 중간 스트림 사고 토큰 재구성 (완전한 SSE 이벤트보다 세밀한 재개 세분성)
 - [ ] API 릴레이 캐시 정직성 프로브 (관리자 트리거: 릴레이가 `cache_control`을 제거하는지 감지)
 
 #### 신뢰성 후속 조치 (Agent Core 우선순위 매트릭스)

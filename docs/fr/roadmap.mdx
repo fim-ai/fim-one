@@ -267,23 +267,32 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 - [x] Correctifs de fiabilité — fuite d'appel d'outil pseudo-protocole supprimée des réponses ; keep-alive HTTP réglable met fin aux rafales `APIConnectionError` ; les statistiques d'utilisation des clés API persistent sur les demandes en lecture seule
 - [x] Refonte visuelle de l'onglet Facturation — pleine largeur, cohérente avec les autres onglets Paramètres
 
+### v0.8.8 (2026-06-22) — SSRF Hardening + Reliability & Reasoning Fixes
+- [x] SSRF hardening — blocklist unwraps IPv4-mapped IPv6 (`::ffff:` instance-metadata bypass); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect
+- [x] LLM reliability — shared HTTP pool self-heals after a LiteLLM client-cache eviction closes it; chat sends stream instantly (history folded in background, no full reload)
+- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works where the old fixed-budget param 400s on 4.7/4.8; warns on OpenAI-proxy misroute
+- [x] Reasoning detail preserved end-to-end — genuine final answer streamed verbatim; survives compaction, context rebuilds, and sub-agent steps (no lossy re-synthesis)
+- [x] `PreToolUse` enforcement hooks fail closed on error — a crashing approval gate no longer silently allows the call; non-enforcement hooks keep fail-open via `fail_open`
+- [x] Force-logout timestamp comparison normalized to UTC by conversion + Docker Compose `POSTGRES_*` credential override (no shipped `fim:fim` default)
+
 # Versions Planifiées
 
 ### v0.9 — Observabilité + Durcissement pour la production
 
 **Objectif** : Opérations de qualité production + quatre piliers comblant l'écart entre « instructions que l'agent pourrait suivre » et « garanties que le système applique » — Couche de traçage (voir ce qui s'est passé) · Système de hooks (appliquer ce qui doit se passer) · Espace de travail de l'agent (fichiers persistants + transfert) · Canal IM (les agents vivent où travaillent les utilisateurs).
 
-#### Auth & Security Hardening
+#### Durcissement de l'authentification et de la sécurité
 
-- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
-- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
-- [x] Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL
-- [x] Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments
+- [x] ~~Confinement du type de jeton JWT (contournement 2FA) + corrections de prise de compte OAuth et de session~~ *(livré dans v0.8.7)*
+- [x] ~~Horodatages PostgreSQL sensibles au fuseau horaire~~ *(livré dans v0.8.6)*
+- [x] ~~La comparaison d'horodatage de déconnexion forcée normalise les valeurs sensibles/naïves au fuseau horaire en UTC par conversion — les jetons révoqués sont fiablement rejetés sur SQLite et PostgreSQL~~ *(livré dans v0.8.8)*
+- [x] ~~Les identifiants PostgreSQL Docker Compose peuvent être remplacés via les variables d'environnement `POSTGRES_*` (source unique dans la chaîne de connexion) — plus de défaut `fim:fim` accidentellement expédié sur les déploiements exposés~~ *(livré dans v0.8.8)*
+- [x] ~~La liste de blocage SSRF ferme le contournement IPv6 mappé IPv4 (`::ffff:` métadonnées d'instance) ; les URL du serveur MCP SSE/Streamable-HTTP sont validées SSRF à la création et à la connexion~~ *(livré dans v0.8.8)*
 
 #### Compatibilité des modèles et fournisseurs
 
-- [x] Protocole adaptive-thinking d'Anthropic pour Opus 4.6+/Sonnet 4.6/Fable 5 — la réflexion étendue fonctionne sur les modèles qui ont rejeté l'ancien paramètre de budget fixe (400 sur 4.7/4.8) ; avertit en cas de mauvais routage via proxy OpenAI
-- [x] Le pool HTTP LLM partagé s'auto-répare après qu'une éviction du cache client LiteLLM le ferme — les appels recréent le pool de manière transparente au lieu d'échouer indéfiniment jusqu'au redémarrage
+- [x] ~~Protocole de réflexion adaptative Anthropic pour Opus 4.6+/Sonnet 4.6/Fable 5 — la réflexion étendue fonctionne sur les modèles qui ont rejeté l'ancien paramètre de budget fixe (400 sur 4.7/4.8) ; avertit en cas de mauvais routage du proxy OpenAI~~ *(livré dans v0.8.8)*
+- [x] ~~Le pool HTTP LLM partagé s'auto-répare après une éviction du cache client LiteLLM qui le ferme — les appels recréent le pool de manière transparente au lieu d'échouer indéfiniment jusqu'au redémarrage~~ *(livré dans v0.8.8)*
 
 #### Connecteur + outillage
 
@@ -299,14 +308,15 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 - [ ] Garde-fou de sortie rédacteur PII (hybride regex + classificateur)
 - [ ] Interface de configuration des garde-fous par agent (panneau d'administration)
 
-#### Hook System {/* dev: dev/hook-system.md */}
+#### Système de hooks {/* dev: dev/hook-system.md */}
 
-- [ ] Per-hook config pass-through (`{"name": ..., "config": {...}}` schema)
-- [ ] DAG `tools_used` accuracy (real tool names from per-step ReAct via step-completion callback)
-- [ ] Hook inheritance for `CallAgentTool` + Workflow `AGENT` nodes (security default vs flexibility default)
-- [ ] Built-in hooks: `ConnectorCallLog` autorecord, read-only-mode block, DB result truncation, per-connector rate-limit
-- [ ] `SessionStart` hook point + user-defined YAML hooks
-- [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG runtime~~ *(shipped in v0.8.5)*
+- [ ] Passage de configuration par hook (`{"name": ..., "config": {...}}` schéma)
+- [ ] Précision du DAG `tools_used` (noms réels des outils à partir de ReAct par étape via callback de fin d'étape)
+- [ ] Héritage des hooks pour `CallAgentTool` + nœuds Workflow `AGENT` (défaut de sécurité vs défaut de flexibilité)
+- [ ] Hooks intégrés : enregistrement automatique `ConnectorCallLog`, blocage du mode lecture seule, troncature des résultats DB, limite de débit par connecteur
+- [ ] Point de hook `SessionStart` + hooks YAML définis par l'utilisateur
+- [x] ~~Les hooks d'application PreToolUse échouent fermés en cas d'erreur — une porte d'approbation qui s'écrase ne permet plus silencieusement l'appel ; les hooks sans application conservent fail-open via `fail_open`~~ *(livré en v0.8.8)*
+- [x] ~~Squelette + FeishuGateHook + Playground d'approbation + runtime ReAct/DAG~~ *(livré en v0.8.5)*
 
 #### Intégration de canal IM {/* dev: dev/im-channels.md */}
 
@@ -355,15 +365,15 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 - [ ] Interface utilisateur de l'espace de travail — navigateur de fichiers par conversation ; rétention entre sessions ; quota de stockage par utilisateur
 - [ ] Rappel de conversation entre sessions — outils `list_conversations`, `search_conversations`, `read_conversation`
 
-#### Cache de prompts + suites de raisonnement {/* dev: dev/prompt-cache-followups.md */}
+#### Cache de prompt + suites de raisonnement {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] Détail du raisonnement préservé de bout en bout — la boucle diffuse sa réponse finale authentique (pas de re-synthèse avec perte) ; le raisonnement survit à la compaction, aux reconstructions de contexte et aux étapes de sous-agent
-- [ ] Adaptateur Google Gemini Context Cache (cycle de vie de cache REST séparé vs marqueur inline Anthropic)
-- [ ] Expansion du registre de prompts vers planificateur / vérificateur / classificateur de domaine / compact
-- [ ] `cache_ttl` par agent (5 min éphémère vs 1 h étendu)
-- [ ] Table de points de contrôle au niveau des étapes DAG pour reprise en milieu de DAG
-- [ ] Colonne Message `tool_call_id` dédiée (recherche d'orphelins indexée à grande échelle)
-- [ ] Reconstruction de tokens de réflexion en milieu de flux (granularité de reprise plus fine que l'événement SSE complet)
+- [x] ~~Détail de raisonnement préservé de bout en bout — la boucle diffuse sa réponse finale authentique (pas de re-synthèse avec perte); le raisonnement survit à la compaction, aux reconstructions de contexte et aux étapes de sous-agent~~ *(livré en v0.8.8)*
+- [ ] Adaptateur Gemini Context Cache (cycle de vie de cache REST séparé vs marqueur inline Anthropic)
+- [ ] Expansion du registre de prompt vers planificateur / vérificateur / classificateur de domaine / compact
+- [ ] `cache_ttl` par agent (éphémère 5min vs étendu 1h)
+- [ ] Table de point de contrôle au niveau des étapes DAG pour reprise en milieu de DAG
+- [ ] Colonne Message `tool_call_id` dédiée (recherche d'orphelin indexée à grande échelle)
+- [ ] Reconstruction de token de réflexion en milieu de flux (granularité de reprise plus fine que l'événement SSE complet)
 - [ ] Sonde d'honnêteté de cache de relais API (déclenchée par admin : détecte les relais supprimant `cache_control`)
 
 #### Suivi de la fiabilité (Matrice de priorités Agent Core)

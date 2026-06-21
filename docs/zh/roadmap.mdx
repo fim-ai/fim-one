@@ -269,6 +269,14 @@ flowchart LR
 
 ---
 
+### v0.8.8 (2026-06-22) — SSRF 加固 + 可靠性与推理修复
+- [x] SSRF 加固——阻止列表解包 IPv4 映射的 IPv6（`::ffff:` 实例元数据绕过）；MCP SSE/Streamable-HTTP 服务器 URL 在创建和连接时进行 SSRF 验证
+- [x] LLM 可靠性——共享 HTTP 连接池在 LiteLLM 客户端缓存驱逐关闭后自我修复；聊天立即发送流（历史记录在后台折叠，无需完整重新加载）
+- [x] Anthropic 自适应思考协议用于 Opus 4.6+/Sonnet 4.6/Fable 5——扩展思考在旧的固定预算参数在 4.7/4.8 上返回 400 时工作；在 OpenAI 代理误路由时发出警告
+- [x] 推理细节端到端保留——真实最终答案逐字流式传输；在压缩、上下文重建和子智能体步骤中保留（无有损重新合成）
+- [x] PreToolUse 执行钩子在错误时故障关闭——崩溃的确认闸门不再默认允许调用；非执行钩子通过 `fail_open` 保持故障开放
+- [x] 强制登出时间戳比较通过转换为 UTC 进行规范化 + Docker Compose `POSTGRES_*` 凭证覆盖（无附带的 `fim:fim` 默认值）
+
 ## 计划版本
 
 ### v0.9 — 可观测性 + 生产级加固
@@ -279,13 +287,14 @@ flowchart LR
 
 - [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
 - [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
-- [x] Force-logout 时间戳比较将时区感知/朴素值规范化为 UTC 转换——撤销的令牌在 SQLite 和 PostgreSQL 上都能可靠地被拒绝
-- [x] Docker Compose PostgreSQL 凭证可通过 `POSTGRES_*` 环境变量覆盖（单一来源进入连接字符串）——不再意外泄露暴露部署上的 `fim:fim` 默认值
+- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
+- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
+- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
 
 #### 模型与提供商兼容性
 
-- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
-- [x] 共享LLM HTTP池在LiteLLM客户端缓存驱逐关闭后自我修复——调用透明地重新创建池，而不是在重启前无限期失败
+- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute~~ *(shipped in v0.8.8)*
+- [x] ~~Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart~~ *(shipped in v0.8.8)*
 
 #### 连接器 + 工具
 
@@ -303,12 +312,13 @@ flowchart LR
 
 #### 钩子系统 {/* dev: dev/hook-system.md */}
 
-- [ ] 单个钩子配置传递（`{"name": ..., "config": {...}}`架构）
-- [ ] DAG `tools_used`准确性（通过步骤完成回调从单步ReAct获取真实工具名称）
-- [ ] `CallAgentTool` + Workflow `AGENT`节点的钩子继承（安全默认值与灵活性默认值）
-- [ ] 内置钩子：`ConnectorCallLog`自动记录、只读模式阻止、数据库结果截断、单个连接器速率限制
-- [ ] `SessionStart`钩子点 + 用户定义的YAML钩子
-- [x] ~~骨架 + FeishuGateHook + 审批演练场 + ReAct/DAG运行时~~ *（在v0.8.5中发布）*
+- [ ] 每个钩子的配置传递（`{"name": ..., "config": {...}}` 架构）
+- [ ] DAG `tools_used` 准确性（通过步骤完成回调从每步 ReAct 获取的真实工具名称）
+- [ ] `CallAgentTool` + 工作流 `AGENT` 节点的钩子继承（安全默认值 vs 灵活性默认值）
+- [ ] 内置钩子：`ConnectorCallLog` 自动记录、只读模式阻止、数据库结果截断、每个连接器的速率限制
+- [ ] `SessionStart` 钩子点 + 用户定义的 YAML 钩子
+- [x] ~~PreToolUse 强制钩子在错误时失败关闭——崩溃的审批闸门不再默默允许调用；非强制钩子通过 `fail_open` 保持失败开放~~ *（在 v0.8.8 中发布）*
+- [x] ~~骨架 + FeishuGateHook + 审批演练场 + ReAct/DAG 运行时~~ *（在 v0.8.5 中发布）*
 
 #### IM 通道集成 {/* dev: dev/im-channels.md */}
 
@@ -359,14 +369,14 @@ flowchart LR
 
 #### 提示词缓存 + 推理后续 {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] 推理细节端到端保留——循环流式传输其真实最终答案（无损失重新合成）；推理在压缩、上下文重建和子智能体步骤中保留
-- [ ] Gemini 上下文缓存适配器（独立 REST 缓存生命周期 vs Anthropic 内联标记）
-- [ ] 提示词注册表扩展到规划器 / 验证器 / 领域分类器 / 紧凑
-- [ ] 每个智能体 `cache_ttl`（临时 5 分钟 vs 扩展 1 小时）
-- [ ] DAG 步骤级检查点表用于中途 DAG 恢复
-- [ ] 专用 `tool_call_id` 消息列（大规模索引孤立查询查找）
-- [ ] 中流思维令牌重建（恢复粒度比完整 SSE 事件更细）
-- [ ] API 中继缓存诚实性探针（管理员触发：检测中继是否剥离 `cache_control`）
+- [x] ~~推理细节端到端保留——循环流式传输其真实最终答案（无损耗重新合成）；推理在压缩、上下文重建和子智能体步骤中保留~~ *(v0.8.8中已发布)*
+- [ ] Gemini上下文缓存适配器（独立REST缓存生命周期vs Anthropic内联标记）
+- [ ] 提示词注册表扩展到规划器/验证器/域分类器/紧凑
+- [ ] 按智能体`cache_ttl`（临时5分钟vs扩展1小时）
+- [ ] DAG步骤级检查点表用于DAG中途恢复
+- [ ] 专用`tool_call_id`消息列（大规模索引孤立查询查找）
+- [ ] 中流思维令牌重建（恢复粒度比完整SSE事件更细）
+- [ ] API中继缓存诚实性探针（管理员触发：检测中继剥离`cache_control`）
 
 #### 可靠性后续工作（智能体核心优先级矩阵）
 

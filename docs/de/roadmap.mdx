@@ -267,6 +267,14 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 - [x] Reliability fixes — pseudo-protocol tool-call leak stripped from answers; tunable HTTP keep-alive ends `APIConnectionError` bursts; API-key usage stats persist on read-only requests
 - [x] Billing tab visual overhaul — full-width, consistent with other Settings tabs
 
+### v0.8.8 (2026-06-22) — SSRF Hardening + Reliability & Reasoning Fixes
+- [x] SSRF hardening — blocklist unwraps IPv4-mapped IPv6 (`::ffff:` instance-metadata bypass); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect
+- [x] LLM reliability — shared HTTP pool self-heals after a LiteLLM client-cache eviction closes it; chat sends stream instantly (history folded in background, no full reload)
+- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works where the old fixed-budget param 400s on 4.7/4.8; warns on OpenAI-proxy misroute
+- [x] Reasoning detail preserved end-to-end — genuine final answer streamed verbatim; survives compaction, context rebuilds, and sub-agent steps (no lossy re-synthesis)
+- [x] PreToolUse enforcement hooks fail closed on error — a crashing approval gate no longer silently allows the call; non-enforcement hooks keep fail-open via `fail_open`
+- [x] Force-logout timestamp comparison normalized to UTC by conversion + Docker Compose `POSTGRES_*` credential override (no shipped `fim:fim` default)
+
 # Geplante Versionen
 
 ### v0.9 — Observability + Production Hardening
@@ -277,13 +285,14 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 - [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
 - [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
-- [x] Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL
-- [x] Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments
+- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
+- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
+- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
 
 #### Model & Provider Compatibility
 
-- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
-- [x] Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart
+- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute~~ *(shipped in v0.8.8)*
+- [x] ~~Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart~~ *(shipped in v0.8.8)*
 
 #### Connector + Tooling
 
@@ -301,12 +310,13 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 #### Hook System {/* dev: dev/hook-system.md */}
 
-- [ ] Per-Hook-Konfigurationsweiterleitung (`{"name": ..., "config": {...}}` Schema)
-- [ ] DAG `tools_used` Genauigkeit (echte Toolnamen aus Per-Step ReAct über Step-Completion-Callback)
+- [ ] Per-Hook-Konfiguration Pass-Through (`{"name": ..., "config": {...}}` Schema)
+- [ ] DAG `tools_used` Genauigkeit (echte Toolnamen aus Pro-Schritt ReAct über Step-Completion-Callback)
 - [ ] Hook-Vererbung für `CallAgentTool` + Workflow `AGENT` Knoten (Sicherheitsstandard vs. Flexibilitätsstandard)
 - [ ] Integrierte Hooks: `ConnectorCallLog` Autoaufzeichnung, Read-Only-Modus-Blockierung, DB-Ergebnistrunkierung, Pro-Connector-Ratenlimit
 - [ ] `SessionStart` Hook-Punkt + benutzerdefinierte YAML-Hooks
-- [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG Runtime~~ *(in v0.8.5 ausgeliefert)*
+- [x] ~~PreToolUse-Erzwingungshooks schließen bei Fehler fehl — ein abstürzender Genehmigungsgateway blockiert den Aufruf nicht mehr stillschweigend; Nicht-Erzwingungshooks behalten Fail-Open über `fail_open`~~ *(in v0.8.8 ausgeliefert)*
+- [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG-Laufzeit~~ *(in v0.8.5 ausgeliefert)*
 
 #### IM Channel Integration {/* dev: dev/im-channels.md */}
 
@@ -355,15 +365,15 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 - [ ] Workspace UI — Dateibrowser pro Konversation; konversationsübergreifende Beibehaltung; Speicherkontingent pro Benutzer
 - [ ] Cross-session conversation recall — `list_conversations`, `search_conversations`, `read_conversation` Tools
 
-#### Prompt-Cache + Reasoning-Nachverfolgungen {/* dev: dev/prompt-cache-followups.md */}
+#### Prompt-Cache + Reasoning-Folgeabfragen {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] Reasoning-Detail vollständig erhalten — Loop streamt seine echte finale Antwort (keine verlustbehaftete Neusynthese); Reasoning übersteht Komprimierung, Kontext-Neuerstellungen und Sub-Agent-Schritte
+- [x] ~~Reasoning-Detail end-to-end bewahrt — Loop streamt seine echte finale Antwort (keine verlustbehaftete Resynthese); Reasoning übersteht Komprimierung, Kontext-Neuaufbau und Sub-Agent-Schritte~~ *(ausgeliefert in v0.8.8)*
 - [ ] Gemini Context Cache Adapter (separater REST-Cache-Lebenszyklus vs. Anthropic Inline-Marker)
 - [ ] Prompt-Registry-Erweiterung auf Planner / Verifier / Domain Classifier / Compact
 - [ ] Pro-Agent `cache_ttl` (kurzlebig 5min vs. erweitert 1h)
 - [ ] DAG-Schritt-Level-Checkpoint-Tabelle für Mid-DAG-Wiederaufnahme
 - [ ] Dedizierte `tool_call_id` Message-Spalte (indizierte Orphan-Query-Suche im großen Maßstab)
-- [ ] Mid-Stream Thinking-Token-Rekonstruktion (Wiederaufnahme-Granularität feiner als vollständiges SSE-Event)
+- [ ] Mid-Stream-Thinking-Token-Rekonstruktion (Wiederaufnahme-Granularität feiner als vollständiges SSE-Event)
 - [ ] API-Relay-Cache-Ehrlichkeits-Sonde (Admin-ausgelöst: erkennt Relays, die `cache_control` entfernen)
 
 #### Zuverlässigkeits-Nachverfolgungen (Agent Core Priority Matrix)

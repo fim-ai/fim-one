@@ -267,23 +267,32 @@ flowchart LR
 - [x] 信頼性修正 — 疑似プロトコルツール呼び出しリークを回答から削除；調整可能な HTTP キープアライブで `APIConnectionError` バーストを解消；API キー使用統計は読み取り専用リクエストで永続化
 - [x] 請求タブのビジュアルオーバーホール — フルワイド、他の設定タブと統一
 
+### v0.8.8 (2026-06-22) — SSRF強化 + 信頼性と推論の修正
+- [x] SSRF強化 — ブロックリストがIPv4マップIPv6（`::ffff:` インスタンスメタデータバイパス）をアンラップ；MCP SSE/Streamable-HTTPサーバーURL は作成時と接続時にSSRF検証
+- [x] LLM信頼性 — 共有HTTPプールはLiteLLMクライアントキャッシュ削除後に自己修復；チャットはストリームを即座に送信（履歴はバックグラウンドで折り込み、完全リロードなし）
+- [x] Anthropic適応思考プロトコル（Opus 4.6+/Sonnet 4.6/Fable 5対応） — 拡張思考は古い固定予算パラメータが4.7/4.8で400エラーになる場合に機能；OpenAIプロキシ誤ルーティングで警告
+- [x] 推論詳細をエンドツーエンドで保持 — 真の最終回答はそのままストリーム配信；圧縮、コンテキスト再構築、サブエージェントステップを経ても保持（ロスレス再合成なし）
+- [x] PreToolUse強制フック — エラー時にフェイルクローズ；クラッシュした確認闸門は呼び出しを暗黙的に許可しなくなる；非強制フックは`fail_open`経由でフェイルオープンを維持
+- [x] Force-logoutタイムスタンプ比較をUTC変換で正規化 + Docker Compose `POSTGRES_*` 認証情報オーバーライド（出荷時の`fim:fim`デフォルトなし）
+
 # 計画されたバージョン
 
 ### v0.9 — 可観測性 + 本番環境対応
 
 **目標**: 本番環境レベルの運用 + 4つの柱で「エージェントが従うかもしれない指示」と「システムが強制する保証」のギャップを埋める — トレースレイヤー（何が起きたかを確認） · フックシステム（必ず実行されるべきことを強制） · エージェントワークスペース（永続ファイル + ハンドオフ） · IMチャネル（エージェントがユーザーの作業場所に存在）。
 
-#### 認証とセキュリティの強化
+#### 認証とセキュリティ強化
 
-- [x] ~~JWT トークンタイプの制限（2FA バイパス）+ OAuth アカウント乗っ取りとセッション修正~~ *(v0.8.7 でリリース)*
+- [x] ~~JWT トークンタイプ制限（2FA バイパス）+ OAuth アカウント乗っ取り & セッション修正~~ *(v0.8.7 でリリース)*
 - [x] ~~PostgreSQL タイムゾーン対応タイムスタンプ~~ *(v0.8.6 でリリース)*
-- [x] Force-logout タイムスタンプ比較により、タイムゾーン対応/非対応の値を UTC に正規化——失効したトークンは SQLite と PostgreSQL の両方で確実に拒否される
-- [x] Docker Compose PostgreSQL 認証情報は `POSTGRES_*` env で上書き可能（接続文字列に単一ソース化）——公開されたデプロイメントで誤ってデフォルトの `fim:fim` が配布されることはなくなった
+- [x] ~~ログアウト強制タイムスタンプ比較は tz 対応/非対応値を UTC に正規化 — 失効トークンは SQLite と PostgreSQL の両方で確実に拒否~~ *(v0.8.8 でリリース)*
+- [x] ~~Docker Compose PostgreSQL 認証情報は `POSTGRES_*` env で上書き可能（接続文字列に単一ソース化）— 公開デプロイで誤ってリリースされた `fim:fim` デフォルトはもう発生しない~~ *(v0.8.8 でリリース)*
+- [x] ~~SSRF ブロックリストは IPv4 マップ IPv6 バイパス（`::ffff:` インスタンスメタデータ）を閉じる；MCP SSE/Streamable-HTTP サーバー URL は作成 + 接続時に SSRF 検証~~ *(v0.8.8 でリリース)*
 
 #### モデル & プロバイダー互換性
 
-- [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
-- [x] Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart
+- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute~~ *(v0.8.8でリリース)*
+- [x] ~~Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart~~ *(v0.8.8でリリース)*
 
 #### コネクタ + ツーリング
 
@@ -299,14 +308,15 @@ flowchart LR
 - [ ] PII リダクター出力ガードレール (正規表現 + 分類器ハイブリッド)
 - [ ] エージェント単位のガードレール設定 UI (管理パネル)
 
-#### フックシステム {/* dev: dev/hook-system.md */}
+#### Hook System {/* dev: dev/hook-system.md */}
 
-- [ ] フックごとの設定パススルー（`{"name": ..., "config": {...}}` スキーマ）
-- [ ] DAG `tools_used` 精度（ステップ完了コールバック経由の実際のツール名からの ReAct）
-- [ ] `CallAgentTool` + ワークフロー `AGENT` ノードのフック継承（セキュリティデフォルト対柔軟性デフォルト）
-- [ ] 組み込みフック：`ConnectorCallLog` 自動記録、読み取り専用モードブロック、DB 結果切り詰め、コネクタごとのレート制限
-- [ ] `SessionStart` フックポイント + ユーザー定義 YAML フック
-- [x] ~~スケルトン + FeishuGateHook + 承認プレイグラウンド + ReAct/DAG ランタイム~~ *(v0.8.5 でリリース)*
+- [ ] Per-hook config pass-through (`{"name": ..., "config": {...}}` スキーマ)
+- [ ] DAG `tools_used` 精度（ステップ完了コールバック経由の実際のツール名から ReAct）
+- [ ] `CallAgentTool` + Workflow `AGENT` ノードの Hook 継承（セキュリティデフォルト vs 柔軟性デフォルト）
+- [ ] 組み込み Hook：`ConnectorCallLog` 自動記録、読み取り専用モードブロック、DB 結果切り詰め、コネクタごとのレート制限
+- [ ] `SessionStart` Hook ポイント + ユーザー定義 YAML Hook
+- [x] ~~PreToolUse 強制 Hook はエラー時にフェイルクローズ——クラッシュした確認ゲートはもはや呼び出しを暗黙的に許可しない；非強制 Hook は `fail_open` 経由でフェイルオープンを維持~~ *(v0.8.8 でリリース)*
+- [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG ランタイム~~ *(v0.8.5 でリリース)*
 
 #### IM チャネル統合 {/* dev: dev/im-channels.md */}
 
@@ -355,16 +365,16 @@ flowchart LR
 - [ ] ワークスペース UI — 会話ごとのファイルブラウザ、セッション間の保持、ユーザーごとのストレージクォータ
 - [ ] セッション間会話リコール — `list_conversations`、`search_conversations`、`read_conversation` ツール
 
-#### プロンプトキャッシュ + 推理フォローアップ {/* dev: dev/prompt-cache-followups.md */}
+#### プロンプトキャッシュ + 推論フォローアップ {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] 推理詳細がエンドツーエンドで保持される — ループがその真正な最終回答をストリーミングする（ロッシーな再合成なし）；推理はコンパクション、コンテキスト再構築、サブエージェントステップを通じて保持される
-- [ ] Gemini Context Cache Adapter（REST キャッシュライフサイクルと Anthropic インラインマーカーの分離）
-- [ ] プロンプトレジストリ拡張からプランナー / 検証者 / ドメイン分類器 / コンパクトへ
-- [ ] エージェントごとの `cache_ttl`（一時的な 5 分 vs 拡張 1 時間）
+- [x] ~~推論詳細がエンドツーエンドで保持される — ループはその真の最終回答をストリーミング（非可逆的な再合成なし）；推論はコンパクション、コンテキスト再構築、およびサブエージェントステップを通じて保持される~~ *(v0.8.8でリリース)*
+- [ ] Gemini Context Cache Adapter（Anthropicのインラインマーカーとは別のREST キャッシュライフサイクル）
+- [ ] プロンプトレジストリの拡張からプランナー / 検証者 / ドメイン分類器 / コンパクトへ
+- [ ] エージェントごとの `cache_ttl`（一時的な5分対拡張1時間）
 - [ ] DAG ステップレベルのチェックポイントテーブル（DAG 中盤での再開用）
-- [ ] 専用 `tool_call_id` メッセージカラム（スケール時のインデックス付きオーファンクエリ検索）
-- [ ] ミッドストリーム思考トークン再構築（完全な SSE イベントより細かい再開粒度）
-- [ ] API リレーキャッシュ正直性プローブ（管理者トリガー：`cache_control` をストリップするリレーを検出）
+- [ ] 専用 `tool_call_id` メッセージカラム（スケール時のインデックス付きオーファンクエリルックアップ）
+- [ ] ミッドストリーム思考トークン再構築（完全なSSE イベントより細かい再開粒度）
+- [ ] API リレーキャッシュ正直性プローブ（管理者トリガー：リレーが `cache_control` をストリップしているかどうかを検出）
 
 #### 信頼性フォローアップ（Agent Core優先度マトリックス）
 
