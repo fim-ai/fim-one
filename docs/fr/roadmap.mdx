@@ -282,7 +282,8 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 
 #### Compatibilité des modèles et fournisseurs
 
-- [x] Protocole de réflexion adaptative Anthropic pour Opus 4.6+/Sonnet 4.6/Fable 5 — la réflexion étendue fonctionne sur les modèles qui ont rejeté l'ancien paramètre de budget fixe (400 sur 4.7/4.8) ; avertit en cas de mauvais routage via proxy OpenAI
+- [x] Protocole adaptive-thinking d'Anthropic pour Opus 4.6+/Sonnet 4.6/Fable 5 — la réflexion étendue fonctionne sur les modèles qui ont rejeté l'ancien paramètre de budget fixe (400 sur 4.7/4.8) ; avertit en cas de mauvais routage via proxy OpenAI
+- [x] Le pool HTTP LLM partagé s'auto-répare après qu'une éviction du cache client LiteLLM le ferme — les appels recréent le pool de manière transparente au lieu d'échouer indéfiniment jusqu'au redémarrage
 
 #### Connecteur + outillage
 

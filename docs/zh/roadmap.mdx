@@ -282,9 +282,10 @@ flowchart LR
 - [x] Force-logout 时间戳比较将时区感知/朴素值规范化为 UTC 转换——撤销的令牌在 SQLite 和 PostgreSQL 上都能可靠地被拒绝
 - [x] Docker Compose PostgreSQL 凭证可通过 `POSTGRES_*` 环境变量覆盖（单一来源进入连接字符串）——不再意外泄露暴露部署上的 `fim:fim` 默认值
 
-#### 模型和提供商兼容性
+#### 模型与提供商兼容性
 
 - [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
+- [x] 共享LLM HTTP池在LiteLLM客户端缓存驱逐关闭后自我修复——调用透明地重新创建池，而不是在重启前无限期失败
 
 #### 连接器 + 工具
 

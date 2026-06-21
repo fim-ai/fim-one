@@ -282,6 +282,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 #### Model & Provider Compatibility
 
 - [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
+- [x] Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart
 
 #### Connector + tooling
 

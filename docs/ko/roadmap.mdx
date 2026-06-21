@@ -280,9 +280,10 @@ flowchart LR
 - [x] Force-logout timestamp comparison는 tz-aware/naive 값을 UTC로 정규화하여 변환합니다 — 취소된 토큰이 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됩니다
 - [x] Docker Compose PostgreSQL 자격증명은 `POSTGRES_*` env를 통해 재정의 가능합니다 (연결 문자열로 단일 소싱됨) — 노출된 배포에서 실수로 배포된 `fim:fim` 기본값이 더 이상 없습니다
 
-#### 모델 및 공급자 호환성
+#### 모델 & 제공자 호환성
 
 - [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
+- [x] Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart
 
 #### 연결기 + 도구
 

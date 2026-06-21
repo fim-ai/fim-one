@@ -280,9 +280,10 @@ flowchart LR
 - [x] Force-logout タイムスタンプ比較により、タイムゾーン対応/非対応の値を UTC に正規化——失効したトークンは SQLite と PostgreSQL の両方で確実に拒否される
 - [x] Docker Compose PostgreSQL 認証情報は `POSTGRES_*` env で上書き可能（接続文字列に単一ソース化）——公開されたデプロイメントで誤ってデフォルトの `fim:fim` が配布されることはなくなった
 
-#### モデル・プロバイダー互換性
+#### モデル & プロバイダー互換性
 
 - [x] Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute
+- [x] Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart
 
 #### コネクタ + ツーリング
 
