@@ -904,6 +904,45 @@ class ConnectorExecutor:
                     connector, context.user_id, db
                 )
 
+                # Audit every workflow connector call, mirroring the chat path
+                # (chat.py `_log_connector_call`). Without this, connector calls
+                # made from a workflow left no ConnectorCallLog trail. Runs in
+                # its own session; conversation_id/agent_id are absent in the
+                # workflow context.
+                _log_user_id = context.user_id
+
+                async def _log_connector_call(**kwargs: Any) -> None:
+                    """Persist a connector call log entry in its own DB session."""
+                    try:
+                        from fim_one.db import create_session as _log_cs
+                        from fim_one.db.models.connector_call_log import (
+                            ConnectorCallLog,
+                        )
+
+                        async with _log_cs() as log_session:
+                            log_session.add(
+                                ConnectorCallLog(
+                                    connector_id=kwargs.get("connector_id", ""),
+                                    connector_name=kwargs.get("connector_name", ""),
+                                    action_id=kwargs.get("action_id"),
+                                    action_name=kwargs.get("action_name", ""),
+                                    conversation_id=None,
+                                    user_id=_log_user_id,
+                                    agent_id=None,
+                                    request_method=kwargs.get("request_method", ""),
+                                    request_url=kwargs.get("request_url", ""),
+                                    response_status=kwargs.get("response_status"),
+                                    response_time_ms=kwargs.get("response_time_ms"),
+                                    success=kwargs.get("success", False),
+                                    error_message=kwargs.get("error_message"),
+                                )
+                            )
+                            await log_session.commit()
+                    except Exception:
+                        logger.debug(
+                            "Failed to log workflow connector call", exc_info=True
+                        )
+
                 adapter = ConnectorToolAdapter(
                     connector_name=connector.name,
                     connector_base_url=connector.base_url or "",
@@ -916,10 +955,14 @@ class ConnectorExecutor:
                     action_parameters_schema=action.parameters_schema,
                     action_request_body_template=action.request_body_template,
                     action_response_extract=action.response_extract,
+                    # NOTE: confirmation pass-through (audit P0#3 item b) is
+                    # intentionally deferred — workflow runs are unattended and
+                    # the WorkflowApproval system is separate; pending design.
                     action_requires_confirmation=False,
                     auth_credentials=auth_credentials,
                     connector_id=connector_id,
                     action_id=action_id,
+                    on_call_complete=_log_connector_call,
                 )
 
             output = await adapter.run(**params)
@@ -2962,6 +3005,7 @@ class MCPExecutor:
                 effective_headers: dict[str, str] | None = server.headers
 
                 if context.user_id:
+                    has_user_cred = False
                     try:
                         from fim_one.db.models.mcp_server_credential import (
                             MCPServerCredential,
@@ -2987,12 +3031,33 @@ class MCPExecutor:
                                     **(effective_headers or {}),
                                     **headers_dict,
                                 }
+                            has_user_cred = bool(env_dict or headers_dict)
                     except Exception:
                         logger.warning(
                             "Failed to load MCP credentials for user %s, server %s",
                             context.user_id,
                             server_id,
                             exc_info=True,
+                        )
+
+                    # allow_fallback gate (align with chat.py MCP path): a
+                    # non-owner with no usable per-user credential must not
+                    # silently fall back to the owner's server-level env/headers.
+                    if (
+                        not has_user_cred
+                        and not getattr(server, "allow_fallback", True)
+                        and server.user_id != context.user_id
+                    ):
+                        return NodeResult(
+                            node_id=node.id,
+                            status=NodeStatus.FAILED,
+                            error=(
+                                f"MCP server '{server.name}' requires your own "
+                                "credentials (fallback to the owner's is "
+                                "disabled). Configure per-user credentials to "
+                                "use it in a workflow."
+                            ),
+                            duration_ms=_ms_since(t0),
                         )
 
             # Connect to MCP server and discover tools

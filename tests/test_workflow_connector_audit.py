@@ -1,0 +1,110 @@
+"""Workflow connector calls must leave a ConnectorCallLog trail (audit P0#3c).
+
+Before the fix, the workflow CONNECTOR node built its ConnectorToolAdapter
+without an ``on_call_complete`` callback, so connector calls made from a
+workflow left no audit record — unlike the chat path. These tests pin the
+wiring and the log row the callback writes.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from fim_one.core.workflow.nodes import ConnectorExecutor
+from fim_one.core.workflow.types import (
+    ExecutionContext,
+    NodeStatus,
+    NodeType,
+    WorkflowNodeDef,
+)
+from fim_one.core.workflow.variable_store import VariableStore
+from fim_one.db.models.connector_call_log import ConnectorCallLog
+
+
+def _fake_db_cm(added: list[Any]) -> AsyncMock:
+    """A create_session() mock returning connector then action, capturing add()."""
+    fake_connector = MagicMock(
+        id="c1", name="C", base_url="http://x", auth_type="none", auth_config=None
+    )
+    fake_action = MagicMock(
+        name="act",
+        description="d",
+        method="GET",
+        path="/p",
+        parameters_schema=None,
+        request_body_template=None,
+        response_extract=None,
+    )
+    conn_res = MagicMock()
+    conn_res.scalar_one_or_none.return_value = fake_connector
+    act_res = MagicMock()
+    act_res.scalar_one_or_none.return_value = fake_action
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(side_effect=[conn_res, act_res])
+    mock_session.add = MagicMock(side_effect=lambda o: added.append(o))
+
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+    return mock_cm
+
+
+@pytest.mark.asyncio
+async def test_connector_call_is_audited() -> None:
+    added: list[Any] = []
+    captured: dict[str, Any] = {}
+
+    class FakeAdapter:
+        def __init__(self, **kwargs: Any) -> None:
+            captured["on_call_complete"] = kwargs.get("on_call_complete")
+
+        async def run(self, **kwargs: Any) -> dict[str, Any]:
+            cb = captured["on_call_complete"]
+            assert cb is not None  # wiring: the audit callback must be passed
+            await cb(
+                connector_id="c1",
+                connector_name="C",
+                action_id="a1",
+                action_name="act",
+                request_method="GET",
+                request_url="http://x/p",
+                response_status=200,
+                response_time_ms=5,
+                success=True,
+                error_message=None,
+            )
+            return {"ok": True}
+
+    node = WorkflowNodeDef(
+        id="conn_1",
+        type=NodeType.CONNECTOR,
+        data={"type": "CONNECTOR", "connector_id": "c1", "action_id": "a1"},
+    )
+    store = VariableStore()
+    ctx = ExecutionContext(run_id="r", user_id="user-9", workflow_id="w")
+
+    with (
+        patch("fim_one.db.create_session", return_value=_fake_db_cm(added)),
+        patch(
+            "fim_one.core.security.connector_credentials.resolve_connector_credentials",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "fim_one.core.tool.connector.adapter.ConnectorToolAdapter",
+            FakeAdapter,
+        ),
+    ):
+        result = await ConnectorExecutor().execute(node, store, ctx)
+
+    assert result.status == NodeStatus.COMPLETED
+    logs = [o for o in added if isinstance(o, ConnectorCallLog)]
+    assert len(logs) == 1
+    log = logs[0]
+    assert log.user_id == "user-9"
+    assert log.conversation_id is None  # no conversation in workflow context
+    assert log.agent_id is None
+    assert log.success is True

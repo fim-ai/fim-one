@@ -57,6 +57,8 @@ class FakeMCPServer:
         working_dir: str | None = None,
         headers: dict[str, str] | None = None,
         is_active: bool = True,
+        allow_fallback: bool = True,
+        user_id: str | None = "owner-default",
     ) -> None:
         self.id = id
         self.name = name
@@ -68,6 +70,8 @@ class FakeMCPServer:
         self.working_dir = working_dir
         self.headers = headers
         self.is_active = is_active
+        self.allow_fallback = allow_fallback
+        self.user_id = user_id
 
 
 class FakeMCPToolAdapter:
@@ -285,7 +289,7 @@ class TestMCPExecutor:
             captured_params.update(kwargs)
             return await original_run(**kwargs)
 
-        target_tool.run = capturing_run  # type: ignore[assignment]
+        target_tool.run = capturing_run  # type: ignore[method-assign]
 
         mock_client = _mock_mcp_client(tools=[target_tool], transport="sse")
 
@@ -449,7 +453,7 @@ class TestMCPExecutor:
         async def failing_run(**kwargs: Any) -> str:
             raise RuntimeError("connection lost")
 
-        failing_tool.run = failing_run  # type: ignore[assignment]
+        failing_tool.run = failing_run  # type: ignore[method-assign]
 
         mock_client = _mock_mcp_client(tools=[failing_tool], transport="sse")
 
@@ -490,6 +494,100 @@ class TestMCPExecutor:
 
         assert result.status == NodeStatus.COMPLETED
         mock_client.connect_streamable_http.assert_awaited_once()
+
+    async def test_allow_fallback_false_non_owner_no_cred_blocks(
+        self, executor: MCPExecutor, store: VariableStore, context: ExecutionContext
+    ) -> None:
+        """allow_fallback=False + non-owner + no per-user cred → FAILED, never connects.
+
+        Guards against silently using the owner's server-level env for a
+        non-owner who has not configured their own credentials.
+        """
+        node = _make_node({
+            "server_id": "srv-1",
+            "tool_name": "read_file",
+            "parameters": {},
+        })
+
+        # context.user_id == "user-1"; server owned by someone else.
+        server = FakeMCPServer(
+            transport="sse",
+            url="http://mcp.example.com/sse",
+            env={"SECRET": "owner-only"},
+            allow_fallback=False,
+            user_id="owner-1",
+        )
+        mock_cm = _mock_db_session(server=server, credential=None)
+        mock_client = _mock_mcp_client(tools=[FakeMCPToolAdapter("read_file")])
+
+        with (
+            patch("fim_one.db.create_session", return_value=mock_cm),
+            patch("fim_one.core.mcp.MCPClient", return_value=mock_client),
+        ):
+            result = await executor.execute(node, store, context)
+
+        assert result.status == NodeStatus.FAILED
+        assert "credentials" in (result.error or "")
+        # Must short-circuit before any connection attempt.
+        mock_client.connect_sse.assert_not_awaited()
+
+    async def test_allow_fallback_false_owner_proceeds(
+        self, executor: MCPExecutor, store: VariableStore, context: ExecutionContext
+    ) -> None:
+        """allow_fallback=False but caller IS the owner → gate does not apply."""
+        node = _make_node({
+            "server_id": "srv-1",
+            "tool_name": "read_file",
+            "parameters": {},
+        })
+
+        server = FakeMCPServer(
+            transport="sse",
+            url="http://mcp.example.com/sse",
+            allow_fallback=False,
+            user_id="user-1",  # same as context.user_id
+        )
+        mock_cm = _mock_db_session(server=server, credential=None)
+        mock_client = _mock_mcp_client(
+            tools=[FakeMCPToolAdapter("read_file")], transport="sse"
+        )
+
+        with (
+            patch("fim_one.db.create_session", return_value=mock_cm),
+            patch("fim_one.core.mcp.MCPClient", return_value=mock_client),
+        ):
+            result = await executor.execute(node, store, context)
+
+        assert result.status == NodeStatus.COMPLETED
+
+    async def test_allow_fallback_true_non_owner_proceeds(
+        self, executor: MCPExecutor, store: VariableStore, context: ExecutionContext
+    ) -> None:
+        """allow_fallback=True (default) keeps the prior behavior for non-owners."""
+        node = _make_node({
+            "server_id": "srv-1",
+            "tool_name": "read_file",
+            "parameters": {},
+        })
+
+        server = FakeMCPServer(
+            transport="sse",
+            url="http://mcp.example.com/sse",
+            allow_fallback=True,
+            user_id="owner-1",
+        )
+        mock_cm = _mock_db_session(server=server, credential=None)
+        mock_client = _mock_mcp_client(
+            tools=[FakeMCPToolAdapter("read_file")], transport="sse"
+        )
+
+        with (
+            patch("fim_one.db.create_session", return_value=mock_cm),
+            patch("fim_one.core.mcp.MCPClient", return_value=mock_client),
+        ):
+            result = await executor.execute(node, store, context)
+
+        assert result.status == NodeStatus.COMPLETED
 
 
 class TestMCPExecutorRegistered:
