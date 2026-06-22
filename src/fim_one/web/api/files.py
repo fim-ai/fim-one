@@ -161,8 +161,10 @@ async def upload_file(
                 )
             f.write(chunk)
 
-    # Extract text content for preview
-    extracted = _extract_content(dest)
+    # Extract text content for preview. Offloaded to a thread because
+    # _extract_text_sync does heavy CPU+I/O parsing (PDF/DOCX/etc) that would
+    # otherwise block the event loop for the duration of the extraction.
+    extracted = await asyncio.to_thread(_extract_content, dest)
     content_preview: str | None = None
     content_length: int | None = None
     if extracted:
