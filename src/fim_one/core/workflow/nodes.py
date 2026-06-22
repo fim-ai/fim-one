@@ -743,15 +743,30 @@ class ConnectorExecutor:
                 from fim_one.db.models.connector import Connector, ConnectorAction
                 from sqlalchemy import select
 
-                conn_result = await db.execute(
-                    select(Connector).where(Connector.id == connector_id)
-                )
+                # Enforce visibility against the run's identity: a shared
+                # workflow is a graph of references, and each referenced
+                # connector enforces its own per-user access at run time. Only
+                # connectors the runner owns or has subscribed to are usable —
+                # not any connector that merely exists by id (tightened from
+                # existence-only to match chat assembly + agent binding).
+                conn_stmt = select(Connector).where(Connector.id == connector_id)
+                if context.user_id:
+                    from fim_one.web.visibility import resolve_visibility
+
+                    _vis_clause, _, _ = await resolve_visibility(
+                        Connector, context.user_id, "connector", db
+                    )
+                    conn_stmt = conn_stmt.where(_vis_clause)
+                conn_result = await db.execute(conn_stmt)
                 connector = conn_result.scalar_one_or_none()
                 if not connector:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=f"Connector '{connector_id}' not found",
+                        error=(
+                            f"Connector '{connector_id}' not found or not "
+                            "accessible to you"
+                        ),
                         duration_ms=_ms_since(t0),
                     )
 

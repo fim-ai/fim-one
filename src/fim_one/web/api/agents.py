@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -120,39 +121,41 @@ async def _validate_binding_ownership(
     kb_ids: list[str] | None = None,
     mcp_server_ids: list[str] | None = None,
 ) -> None:
-    """Verify that all referenced connector_ids, kb_ids, and mcp_server_ids belong to the user.
+    """Verify the user can *access* every referenced connector / KB / MCP server.
 
-    Raises HTTP 403 if any referenced resource is not owned by the user.
+    Access means visibility — the user owns the resource OR has an explicit
+    subscription to it (org-shared and Market-installed resources are surfaced
+    via subscriptions). This is the same model chat assembly and the resource
+    lists already use, so a subscribed connector can be bound to an agent
+    rather than 403-ing as "not owned".
+
+    Raises HTTP 403 if any referenced resource is not visible to the user.
     """
-    if connector_ids:
-        result = await db.execute(
-            select(func.count())
-            .select_from(Connector)
-            .where(Connector.id.in_(connector_ids), Connector.user_id == user_id)
-        )
-        owned_count = result.scalar_one()
-        if owned_count != len(connector_ids):
-            raise AppError("connector_ownership_denied", status_code=403)
+    from fim_one.web.visibility import resolve_visibility
 
-    if kb_ids:
+    async def _assert_visible(
+        model: Any, resource_type: str, ids: list[str] | None, err_code: str
+    ) -> None:
+        if not ids:
+            return
+        clause, _, _ = await resolve_visibility(model, user_id, resource_type, db)
         result = await db.execute(
             select(func.count())
-            .select_from(KnowledgeBase)
-            .where(KnowledgeBase.id.in_(kb_ids), KnowledgeBase.user_id == user_id)
+            .select_from(model)
+            .where(model.id.in_(ids), clause)
         )
-        owned_count = result.scalar_one()
-        if owned_count != len(kb_ids):
-            raise AppError("kb_ownership_denied", status_code=403)
+        if result.scalar_one() != len(set(ids)):
+            raise AppError(err_code, status_code=403)
 
-    if mcp_server_ids:
-        result = await db.execute(
-            select(func.count())
-            .select_from(MCPServer)
-            .where(MCPServer.id.in_(mcp_server_ids), MCPServer.user_id == user_id)
-        )
-        owned_count = result.scalar_one()
-        if owned_count != len(mcp_server_ids):
-            raise AppError("mcp_server_ownership_denied", status_code=403)
+    await _assert_visible(
+        Connector, "connector", connector_ids, "connector_ownership_denied"
+    )
+    await _assert_visible(
+        KnowledgeBase, "knowledge_base", kb_ids, "kb_ownership_denied"
+    )
+    await _assert_visible(
+        MCPServer, "mcp_server", mcp_server_ids, "mcp_server_ownership_denied"
+    )
 
 
 @router.post("", response_model=ApiResponse)

@@ -293,12 +293,13 @@ flowchart LR
 
 #### 身份验证与安全加固
 
-- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
-- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
-- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
-- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
-- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
-- [x] ~~所有者凭证回退是可选的：连接器/MCP 服务器默认 `allow_fallback` 关闭（现有行已翻转）；缺少凭证的无回退资源从工具集中隐藏，而不是在调用时失败~~
+- [x] ~~JWT令牌类型限制（2FA绕过）+ OAuth账户接管与会话修复~~ *(在v0.8.7中发布)*
+- [x] ~~PostgreSQL时区感知时间戳~~ *(在v0.8.6中发布)*
+- [x] ~~强制登出时间戳比较通过转换将时区感知/朴素值规范化为UTC——撤销的令牌在SQLite和PostgreSQL上都能可靠地被拒绝~~ *(在v0.8.8中发布)*
+- [x] ~~Docker Compose PostgreSQL凭证可通过`POSTGRES_*`环境变量覆盖（单一来源进入连接字符串）——不再意外在暴露的部署上发布`fim:fim`默认值~~ *(在v0.8.8中发布)*
+- [x] ~~SSRF阻止列表关闭IPv4映射IPv6绕过（`::ffff:`实例元数据）；MCP SSE/Streamable-HTTP服务器URL在创建+连接时进行SSRF验证~~ *(在v0.8.8中发布)*
+- [x] ~~所有者凭证回退是可选的：连接器/MCP服务器默认`allow_fallback`关闭（现有行已翻转）；缺少凭证的无回退资源从工具集中隐藏，而不是在调用时失败~~
+- [x] ~~资源访问统一于可见性（自有+已订阅）：已订阅的连接器/知识库/MCP服务器可绑定到智能体（不再出现"未拥有"403），工作流连接器步骤强制执行运行者的访问权限而不是按id运行任何连接器~~
 
 #### 模型与提供商兼容性
 
@@ -321,12 +322,11 @@ flowchart LR
 
 #### 钩子系统 {/* dev: dev/hook-system.md */}
 
-- [ ] 每个钩子的配置传递（`{"name": ..., "config": {...}}` 架构）
-- [ ] DAG `tools_used` 准确性（通过步骤完成回调从每步 ReAct 获取的真实工具名称）
-- [ ] `CallAgentTool` + 工作流 `AGENT` 节点的钩子继承（安全默认值 vs 灵活性默认值）
-- [ ] 内置钩子：`ConnectorCallLog` 自动记录、只读模式阻止、数据库结果截断、每个连接器的速率限制
+- [ ] 按钩子配置传递（`{"name": ..., "config": {...}}`架构）
+- [ ] `CallAgentTool` + 工作流 `AGENT` 节点的钩子继承（安全默认值与灵活性默认值）
+- [ ] 内置钩子：`ConnectorCallLog` 自动记录、只读模式阻止、数据库结果截断、按连接器速率限制
 - [ ] `SessionStart` 钩子点 + 用户定义的 YAML 钩子
-- [x] ~~PreToolUse 强制钩子在错误时失败关闭——崩溃的审批闸门不再默默允许调用；非强制钩子通过 `fail_open` 保持失败开放~~ *（在 v0.8.8 中发布）*
+- [x] ~~PreToolUse 强制钩子在出错时失败关闭——崩溃的审批闸门不再无声地允许调用；非强制钩子通过 `fail_open` 保持失败开放~~ *（在 v0.8.8 中发布）*
 - [x] ~~骨架 + FeishuGateHook + 审批演练场 + ReAct/DAG 运行时~~ *（在 v0.8.5 中发布）*
 
 #### IM 通道集成 {/* dev: dev/im-channels.md */}
@@ -352,17 +352,16 @@ flowchart LR
 
 #### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
 
-- [ ] 按键速率限制（`X-RateLimit-*` 头部、429）
-- [ ] 按键使用配额（月度令牌/请求预算）
-- [ ] 高QPS键的使用统计写入批处理（进程本地关闭时刷新、精确计数、无新依赖）——延迟至测得的热点 {/* dev: dev/public-api-phase2.md */}
-- [ ] 按端点的作用域强制
+- [ ] 按密钥速率限制（`X-RateLimit-*` 头部、429）
+- [ ] 按密钥使用配额（月度令牌/请求预算）
+- [ ] 按端点的作用域强制执行
 - [ ] API 版本控制（`/v1/...`）+ 弃用头部
-- [ ] Webhook 回调（按键）
+- [ ] Webhook 回调（按密钥）
 - [ ] SDK 生成（Python + TypeScript）
-- [ ] 开发者门户（试用面板 + 按键分析）
+- [ ] 开发者门户（试用面板 + 按密钥分析）
 - [ ] API 密钥轮换（24小时宽限期）
 - [ ] 批量/异步 API（`POST /api/batch`）
-- [ ] 按外部依赖的断路器
+- [ ] 按外部依赖断路器
 
 #### 可观测性 {/* dev: dev/agent-trace-layer.md */}
 
@@ -376,32 +375,19 @@ flowchart LR
 - [ ] Workspace UI——每个对话的文件浏览器；跨会话保留；按用户存储配额
 - [ ] 跨会话对话回忆——`list_conversations`、`search_conversations`、`read_conversation` 工具
 
-#### 提示词缓存 + 推理后续 {/* dev: dev/prompt-cache-followups.md */}
+#### 提示词缓存 + 推理后续步骤 {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] ~~推理细节端到端保留——循环流式传输其真实最终答案（无损耗重新合成）；推理在压缩、上下文重建和子智能体步骤中保留~~ *(v0.8.8中已发布)*
-- [ ] Gemini上下文缓存适配器（独立REST缓存生命周期vs Anthropic内联标记）
-- [ ] 提示词注册表扩展到规划器/验证器/域分类器/紧凑
-- [ ] 按智能体`cache_ttl`（临时5分钟vs扩展1小时）
-- [ ] DAG步骤级检查点表用于DAG中途恢复
-- [ ] 专用`tool_call_id`消息列（大规模索引孤立查询查找）
-- [ ] 中流思维令牌重建（恢复粒度比完整SSE事件更细）
-- [ ] API中继缓存诚实性探针（管理员触发：检测中继剥离`cache_control`）
-
-#### 可靠性后续工作（智能体核心优先级矩阵）
-
-- [ ] 内容替换状态持久化（流式不变量 #2："一旦看到，命运冻结"）
-- [ ] 附件上下文路由器（去重、聚合预算、活跃性检查；与工作区卸载配对）
-- [ ] 侧查询工作线程（用于召回/分类/摘要的专用池，以便它们不会争用主速率限制预算）
+- [x] ~~推理细节端到端保留——循环流式传输其真实最终答案（无损耗重新合成）；推理在压缩、上下文重建和子智能体步骤中保留~~ *(在 v0.8.8 中发布)*
+- [ ] Gemini 上下文缓存适配器（独立 REST 缓存生命周期 vs Anthropic 内联标记）
+- [ ] 每个智能体的 `cache_ttl`（临时 5 分钟 vs 扩展 1 小时）
 
 #### 生态系统 + 扩展
 
-- [ ] **定时任务 + 事件触发的智能体** — `scheduled_jobs` + `job_runs` + APScheduler；cron + webhook-inbound。Hub 模式下的异步子智能体用例
-- [ ] **工作流触发身份可观测性** — `ExecutionContext.trigger_source`（`webhook | cron | manual | batch | sub`）在全部 5 个 WorkflowEngine 站点中填充；在运行面板和连接器日志中展示
+- [ ] **定时任务 + 事件触发智能体** — `scheduled_jobs` + `job_runs` + APScheduler；cron + webhook-inbound。Hub 模式下的异步子智能体用例
+- [ ] **工作流触发身份可观测性** — `ExecutionContext.trigger_source`（`webhook | cron | manual | batch | sub`）在全部 5 个 WorkflowEngine 站点填充；在运行面板和连接器日志中展示
 - [ ] **按工作流 `credential_policy` 覆盖** （`owner` / `caller` / `auto`） — 覆盖默认的 `trigger_source → identity` 映射
 - [ ] **数据库架构高级构建器** — 用于 1K-7K+ 表部署的 AI 驱动标注（选择性 + 业务上下文推理）
 - [ ] 沙箱加固（v2 代码执行隔离）
-- [ ] 性能测试（并发负载基准测试）
-- [ ] 内部工具基准测试（通过评估中心量化工具参数变化）
 
 #### 已提前发布
 

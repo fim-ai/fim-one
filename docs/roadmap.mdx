@@ -296,6 +296,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
 - [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
 - [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~
+- [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~
 
 #### Model & Provider Compatibility
 
@@ -319,7 +320,6 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 #### Hook System {/* dev: dev/hook-system.md */}
 
 - [ ] Per-hook config pass-through (`{"name": ..., "config": {...}}` schema)
-- [ ] DAG `tools_used` accuracy (real tool names from per-step ReAct via step-completion callback)
 - [ ] Hook inheritance for `CallAgentTool` + Workflow `AGENT` nodes (security default vs flexibility default)
 - [ ] Built-in hooks: `ConnectorCallLog` autorecord, read-only-mode block, DB result truncation, per-connector rate-limit
 - [ ] `SessionStart` hook point + user-defined YAML hooks
@@ -351,7 +351,6 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 
 - [ ] Per-key rate limiting (`X-RateLimit-*` headers, 429)
 - [ ] Per-key usage quota (monthly token/request budget)
-- [ ] Usage-stat write batching for high-QPS keys (process-local flush-on-shutdown, exact counts, no new dep) — deferred until a measured hotspot {/* dev: dev/public-api-phase2.md */}
 - [ ] Scope enforcement per endpoint
 - [ ] API versioning (`/v1/...`) + deprecation headers
 - [ ] Webhook callbacks (per-key)
@@ -377,18 +376,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 
 - [x] ~~Reasoning detail preserved end-to-end — loop streams its genuine final answer (no lossy re-synthesis); reasoning survives compaction, context rebuilds, and sub-agent steps~~ *(shipped in v0.8.8)*
 - [ ] Gemini Context Cache Adapter (separate REST cache lifecycle vs Anthropic inline marker)
-- [ ] Prompt registry expansion to planner / verifier / domain classifier / compact
 - [ ] Per-agent `cache_ttl` (ephemeral 5min vs extended 1h)
-- [ ] DAG step-level checkpoint table for mid-DAG resume
-- [ ] Dedicated `tool_call_id` Message column (indexed orphan-query lookup at scale)
-- [ ] Mid-stream thinking token reconstruction (resume granularity finer than complete SSE event)
-- [ ] API relay cache-honesty probe (admin-triggered: detects relays stripping `cache_control`)
-
-#### Reliability follow-ups (Agent Core Priority Matrix)
-
-- [ ] Content replacement state persistence (streaming invariant #2: "once seen, fate frozen")
-- [ ] Attachment context router (dedup, aggregate budget, liveness checks; pairs with Workspace offloading)
-- [ ] Side query workers (dedicated pools for recall / classify / summary so they don't contend for main rate-limit budget)
 
 #### Ecosystem + scaling
 
@@ -397,8 +385,6 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [ ] **Per-workflow `credential_policy` override** (`owner` / `caller` / `auto`) — overrides default `trigger_source → identity` mapping
 - [ ] **DB Schema Advanced Builder** — AI-driven annotation for 1K-7K+ table deployments (selectivity + business-context reasoning)
 - [ ] Sandbox hardening (v2 code execution isolation)
-- [ ] Performance testing (concurrent load benchmarks)
-- [ ] Internal Harness Benchmark (quantify harness parameter changes via Eval Center)
 
 #### Already shipped early
 

@@ -297,6 +297,7 @@ Aufgeschobene Härtung — nicht blockierend; nur aufgreifen, wenn das entsprech
 - [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
 - [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
 - [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~
+- [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~
 
 #### Model & Provider Compatibility
 
@@ -320,12 +321,11 @@ Aufgeschobene Härtung — nicht blockierend; nur aufgreifen, wenn das entsprech
 #### Hook System {/* dev: dev/hook-system.md */}
 
 - [ ] Per-Hook-Konfiguration Pass-Through (`{"name": ..., "config": {...}}` Schema)
-- [ ] DAG `tools_used` Genauigkeit (echte Toolnamen aus Pro-Schritt ReAct über Step-Completion-Callback)
 - [ ] Hook-Vererbung für `CallAgentTool` + Workflow `AGENT` Knoten (Sicherheitsstandard vs. Flexibilitätsstandard)
 - [ ] Integrierte Hooks: `ConnectorCallLog` Autoaufzeichnung, Read-Only-Modus-Blockierung, DB-Ergebnistrunkierung, Pro-Connector-Ratenlimit
 - [ ] `SessionStart` Hook-Punkt + benutzerdefinierte YAML-Hooks
-- [x] ~~PreToolUse-Erzwingungshooks schließen bei Fehler fehl — ein abstürzender Genehmigungsgateway blockiert den Aufruf nicht mehr stillschweigend; Nicht-Erzwingungshooks behalten Fail-Open über `fail_open`~~ *(in v0.8.8 ausgeliefert)*
-- [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG-Laufzeit~~ *(in v0.8.5 ausgeliefert)*
+- [x] ~~PreToolUse Enforcement Hooks schlagen bei Fehler fehl geschlossen — ein abstürzender Approval Gate erlaubt den Aufruf nicht mehr stillschweigend; Nicht-Enforcement-Hooks behalten Fail-Open über `fail_open`~~ *(in v0.8.8 ausgeliefert)*
+- [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG Runtime~~ *(in v0.8.5 ausgeliefert)*
 
 #### IM Channel Integration {/* dev: dev/im-channels.md */}
 
@@ -352,7 +352,6 @@ Aufgeschobene Härtung — nicht blockierend; nur aufgreifen, wenn das entsprech
 
 - [ ] Pro-Schlüssel-Ratenbegrenzung (`X-RateLimit-*` Header, 429)
 - [ ] Pro-Schlüssel-Nutzungskontingent (monatliches Token-/Request-Budget)
-- [ ] Nutzungsstatistik-Schreibpufferung für High-QPS-Schlüssel (prozesslokal Flush-on-Shutdown, exakte Zählungen, keine neue Abhängigkeit) — aufgeschoben bis zu einem gemessenen Hotspot {/* dev: dev/public-api-phase2.md */}
 - [ ] Scope-Durchsetzung pro Endpunkt
 - [ ] API-Versionierung (`/v1/...`) + Deprecation-Header
 - [ ] Webhook-Callbacks (pro Schlüssel)
@@ -374,32 +373,19 @@ Aufgeschobene Härtung — nicht blockierend; nur aufgreifen, wenn das entsprech
 - [ ] Workspace UI — Dateibrowser pro Konversation; konversationsübergreifende Beibehaltung; Speicherkontingent pro Benutzer
 - [ ] Cross-session conversation recall — `list_conversations`, `search_conversations`, `read_conversation` Tools
 
-#### Prompt-Cache + Reasoning-Folgeabfragen {/* dev: dev/prompt-cache-followups.md */}
+#### Prompt Cache + Reasoning Follow-ups {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] ~~Reasoning-Detail end-to-end bewahrt — Loop streamt seine echte finale Antwort (keine verlustbehaftete Resynthese); Reasoning übersteht Komprimierung, Kontext-Neuaufbau und Sub-Agent-Schritte~~ *(ausgeliefert in v0.8.8)*
+- [x] ~~Reasoning-Details end-to-end beibehalten — Loop streamt seine echte finale Antwort (keine verlustbehaftete Neusynthese); Reasoning bleibt bei Komprimierung, Kontext-Wiederherstellung und Sub-Agent-Schritten erhalten~~ *(ausgeliefert in v0.8.8)*
 - [ ] Gemini Context Cache Adapter (separater REST-Cache-Lebenszyklus vs. Anthropic Inline-Marker)
-- [ ] Prompt-Registry-Erweiterung auf Planner / Verifier / Domain Classifier / Compact
 - [ ] Pro-Agent `cache_ttl` (kurzlebig 5min vs. erweitert 1h)
-- [ ] DAG-Schritt-Level-Checkpoint-Tabelle für Mid-DAG-Wiederaufnahme
-- [ ] Dedizierte `tool_call_id` Message-Spalte (indizierte Orphan-Query-Suche im großen Maßstab)
-- [ ] Mid-Stream-Thinking-Token-Rekonstruktion (Wiederaufnahme-Granularität feiner als vollständiges SSE-Event)
-- [ ] API-Relay-Cache-Ehrlichkeits-Sonde (Admin-ausgelöst: erkennt Relays, die `cache_control` entfernen)
-
-#### Zuverlässigkeits-Nachverfolgungen (Agent Core Priority Matrix)
-
-- [ ] Content replacement state persistence (streaming invariant #2: "once seen, fate frozen")
-- [ ] Attachment context router (dedup, aggregate budget, liveness checks; pairs with Workspace offloading)
-- [ ] Side query workers (dedicated pools for recall / classify / summary so they don't contend for main rate-limit budget)
 
 #### Ökosystem + Skalierung
 
-- [ ] **Geplante Jobs + Event-gesteuerte Agents** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Async Sub-Agent-Anwendungsfall für Hub-Modus
+- [ ] **Geplante Jobs + ereignisgesteuerte Agents** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Async Sub-Agent-Anwendungsfall für Hub-Modus
 - [ ] **Workflow-Trigger-Identitätsobservabilität** — `ExecutionContext.trigger_source` (`webhook | cron | manual | batch | sub`) an allen 5 WorkflowEngine-Standorten gefüllt; in Run-Panel und Connector-Logs angezeigt
 - [ ] **Pro-Workflow `credential_policy` Override** (`owner` / `caller` / `auto`) — überschreibt Standard-`trigger_source → identity`-Zuordnung
 - [ ] **DB Schema Advanced Builder** — KI-gesteuerte Annotation für 1K-7K+ Tabellenbereitstellungen (Selektivität + geschäftlicher Kontext-Reasoning)
 - [ ] Sandbox-Härtung (v2 Code-Execution-Isolation)
-- [ ] Performance-Tests (Concurrent-Load-Benchmarks)
-- [ ] Internal Harness Benchmark (Harness-Parameteränderungen über Eval Center quantifizieren)
 
 #### Bereits früh ausgeliefert
 

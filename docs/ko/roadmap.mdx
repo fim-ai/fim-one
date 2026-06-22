@@ -291,12 +291,13 @@ flowchart LR
 
 #### 인증 및 보안 강화
 
-- [x] ~~JWT 토큰 타입 제한 (2FA 우회) + OAuth 계정 탈취 및 세션 수정~~ *(v0.8.7에서 출시)*
+- [x] ~~JWT 토큰 타입 격리 (2FA 우회) + OAuth 계정 탈취 및 세션 수정~~ *(v0.8.7에서 출시)*
 - [x] ~~PostgreSQL 타임존 인식 타임스탬프~~ *(v0.8.6에서 출시)*
-- [x] ~~강제 로그아웃 타임스탬프 비교는 타임존 인식/순진한 값을 UTC로 정규화합니다 — 취소된 토큰이 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됩니다~~ *(v0.8.8에서 출시)*
-- [x] ~~Docker Compose PostgreSQL 자격증명은 `POSTGRES_*` 환경 변수를 통해 재정의 가능합니다 (연결 문자열로 단일 소싱됨) — 노출된 배포에서 실수로 배송된 `fim:fim` 기본값이 더 이상 없습니다~~ *(v0.8.8에서 출시)*
-- [x] ~~SSRF 차단 목록은 IPv4 매핑 IPv6 우회(`::ffff:` 인스턴스 메타데이터)를 닫습니다; MCP SSE/Streamable-HTTP 서버 URL은 생성 + 연결 시 SSRF 검증됩니다~~ *(v0.8.8에서 출시)*
-- [x] ~~소유자 자격증명 폴백은 선택 사항입니다: 커넥터/MCP 서버는 기본적으로 `allow_fallback` 해제 상태입니다 (기존 행 전환됨); 자격증명이 없는 폴백 없는 리소스는 호출 시 실패하는 대신 도구 집합에서 숨겨집니다~~
+- [x] ~~강제 로그아웃 타임스탬프 비교는 타임존 인식/비인식 값을 UTC로 정규화합니다 — 취소된 토큰이 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됩니다~~ *(v0.8.8에서 출시)*
+- [x] ~~Docker Compose PostgreSQL 자격증명은 `POSTGRES_*` env를 통해 재정의 가능합니다 (연결 문자열에 단일 소싱됨) — 노출된 배포에서 실수로 배포된 `fim:fim` 기본값이 더 이상 없습니다~~ *(v0.8.8에서 출시)*
+- [x] ~~SSRF 차단 목록은 IPv4 매핑 IPv6 우회(`::ffff:` 인스턴스 메타데이터)를 닫습니다. MCP SSE/Streamable-HTTP 서버 URL은 생성 + 연결 시 SSRF 검증됩니다~~ *(v0.8.8에서 출시)*
+- [x] ~~소유자 자격증명 폴백은 옵트인입니다: 커넥터/MCP 서버는 기본적으로 `allow_fallback`이 꺼져 있습니다 (기존 행이 전환됨). 자격증명이 없는 폴백 없는 리소스는 호출 시 실패하는 대신 도구 집합에서 숨겨집니다~~
+- [x] ~~리소스 접근이 가시성에 통합됩니다 (소유 + 구독): 구독한 커넥터/KB/MCP 서버는 에이전트에 바인딩 가능합니다 ("소유하지 않음" 403 없음), 워크플로우 커넥터 단계는 ID로 커넥터를 실행하는 대신 실행자의 접근을 적용합니다~~
 
 #### 모델 및 제공자 호환성
 
@@ -317,14 +318,13 @@ flowchart LR
 - [ ] PII 편집기 출력 가드레일 (정규식 + 분류기 하이브리드)
 - [ ] 에이전트별 가드레일 설정 UI (관리자 패널)
 
-#### 훅 시스템 {/* dev: dev/hook-system.md */}
+#### Hook System {/* dev: dev/hook-system.md */}
 
-- [ ] 훅별 설정 통과 (`{"name": ..., "config": {...}}` 스키마)
-- [ ] DAG `tools_used` 정확도 (단계 완료 콜백을 통한 ReAct의 실제 도구 이름)
-- [ ] `CallAgentTool` + Workflow `AGENT` 노드에 대한 훅 상속 (보안 기본값 vs 유연성 기본값)
-- [ ] 기본 제공 훅: `ConnectorCallLog` 자동 기록, 읽기 전용 모드 차단, DB 결과 잘림, 커넥터별 속도 제한
-- [ ] `SessionStart` 훅 포인트 + 사용자 정의 YAML 훅
-- [x] ~~PreToolUse 강제 훅이 오류 시 실패 종료 — 충돌하는 승인 게이트가 더 이상 호출을 자동으로 허용하지 않음; 비강제 훅은 `fail_open`을 통해 실패 개방 유지~~ *(v0.8.8에서 출시)*
+- [ ] Hook별 설정 통과 (`{"name": ..., "config": {...}}` 스키마)
+- [ ] `CallAgentTool` + Workflow `AGENT` 노드에 대한 Hook 상속 (보안 기본값 vs 유연성 기본값)
+- [ ] 기본 제공 Hook: `ConnectorCallLog` 자동 기록, 읽기 전용 모드 차단, DB 결과 잘라내기, 커넥터별 속도 제한
+- [ ] `SessionStart` Hook 포인트 + 사용자 정의 YAML Hook
+- [x] ~~PreToolUse 강제 Hook은 오류 시 닫혀서 실패 — 충돌하는 승인 게이트가 더 이상 호출을 자동으로 허용하지 않음; 비강제 Hook은 `fail_open`을 통해 열려서 실패 유지~~ *(v0.8.8에서 출시)*
 - [x] ~~스켈레톤 + FeishuGateHook + 승인 연습장 + ReAct/DAG 런타임~~ *(v0.8.5에서 출시)*
 
 #### IM 채널 통합 {/* dev: dev/im-channels.md */}
@@ -352,15 +352,14 @@ flowchart LR
 
 - [ ] 키별 속도 제한 (`X-RateLimit-*` 헤더, 429)
 - [ ] 키별 사용량 할당 (월간 토큰/요청 예산)
-- [ ] 고QPS 키에 대한 사용량 통계 쓰기 배칭 (프로세스 로컬 플러시온셧다운, 정확한 카운트, 새로운 의존성 없음) — 측정된 핫스팟까지 연기됨 {/* dev: dev/public-api-phase2.md */}
 - [ ] 엔드포인트별 범위 적용
 - [ ] API 버전 관리 (`/v1/...`) + 지원 중단 헤더
 - [ ] Webhook 콜백 (키별)
 - [ ] SDK 생성 (Python + TypeScript)
-- [ ] 개발자 포털 (시도해보기 패널 + 키별 분석)
+- [ ] 개발자 포털 (Try-it 패널 + 키별 분석)
 - [ ] API 키 로테이션 (24시간 유예)
 - [ ] 배치 / 비동기 API (`POST /api/batch`)
-- [ ] 외부 의존성별 서킷 브레이커
+- [ ] 외부 종속성별 서킷 브레이커
 
 #### 관찰성 {/* dev: dev/agent-trace-layer.md */}
 
@@ -374,32 +373,19 @@ flowchart LR
 - [ ] Workspace UI — 대화별 파일 브라우저, 세션 간 보존, 사용자별 저장소 할당량
 - [ ] Cross-session conversation recall — `list_conversations`, `search_conversations`, `read_conversation` 도구
 
-#### 프롬프트 캐시 + 추론 후속 작업 {/* dev: dev/prompt-cache-followups.md */}
+#### 프롬프트 캐시 + 추론 후속 조치 {/* dev: dev/prompt-cache-followups.md */}
 
-- [x] ~~추론 세부 정보가 종단 간 보존됨 — 루프가 진정한 최종 답변을 스트리밍함(손실 없는 재합성 없음); 추론이 압축, 컨텍스트 재구축 및 하위 에이전트 단계에서 유지됨~~ *(v0.8.8에서 배포됨)*
+- [x] ~~추론 세부 정보가 종단 간 보존됨 — 루프가 진정한 최종 답변을 스트리밍함(손실 없는 재합성 없음); 추론이 압축, 컨텍스트 재구성 및 하위 에이전트 단계를 거쳐 유지됨~~ *(v0.8.8에서 출시됨)*
 - [ ] Gemini Context Cache Adapter (Anthropic 인라인 마커 대 별도 REST 캐시 수명 주기)
-- [ ] 프롬프트 레지스트리 확장 — 플래너 / 검증자 / 도메인 분류기 / 컴팩트
-- [ ] 에이전트별 `cache_ttl` (임시 5분 vs 연장 1시간)
-- [ ] DAG 단계 수준 체크포인트 테이블 (중간 DAG 재개용)
-- [ ] 전용 `tool_call_id` Message 열 (대규모 고아 쿼리 조회 인덱싱)
-- [ ] 중간 스트림 사고 토큰 재구성 (완전한 SSE 이벤트보다 세밀한 재개 세분성)
-- [ ] API 릴레이 캐시 정직성 프로브 (관리자 트리거: 릴레이가 `cache_control`을 제거하는지 감지)
-
-#### 신뢰성 후속 조치 (Agent Core 우선순위 매트릭스)
-
-- [ ] 콘텐츠 교체 상태 지속성 (스트리밍 불변성 #2: "한 번 본 것은 운명이 정해짐")
-- [ ] 첨부 파일 컨텍스트 라우터 (중복 제거, 예산 집계, 생존 여부 확인; 워크스페이스 오프로딩과 쌍을 이룸)
-- [ ] 사이드 쿼리 워커 (회상 / 분류 / 요약을 위한 전용 풀로 메인 속도 제한 예산과 경합하지 않음)
+- [ ] 에이전트당 `cache_ttl` (임시 5분 대 확장 1시간)
 
 #### 에코시스템 + 확장
 
-- [ ] **예약된 작업 + 이벤트 트리거 에이전트** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Hub 모드의 비동기 서브-에이전트 사용 사례
-- [ ] **워크플로우 트리거 ID 관찰성** — `ExecutionContext.trigger_source` (`webhook | cron | manual | batch | sub`)가 모든 5개 WorkflowEngine 사이트에서 채워짐; 실행 패널 및 커넥터 로그에 표시
+- [ ] **예약된 작업 + 이벤트 트리거 에이전트** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Hub 모드를 위한 비동기 하위 에이전트 사용 사례
+- [ ] **워크플로우 트리거 ID 관찰성** — `ExecutionContext.trigger_source` (`webhook | cron | manual | batch | sub`)이 모든 5개 WorkflowEngine 사이트에서 채워짐; 실행 패널 및 커넥터 로그에 표시됨
 - [ ] **워크플로우별 `credential_policy` 오버라이드** (`owner` / `caller` / `auto`) — 기본 `trigger_source → identity` 매핑 오버라이드
-- [ ] **DB 스키마 고급 빌더** — 1K-7K+ 테이블 배포를 위한 AI 기반 주석(선택성 + 비즈니스 컨텍스트 추론)
+- [ ] **DB 스키마 고급 빌더** — 1K-7K+ 테이블 배포를 위한 AI 기반 주석 (선택성 + 비즈니스 컨텍스트 추론)
 - [ ] 샌드박스 강화 (v2 코드 실행 격리)
-- [ ] 성능 테스트 (동시 로드 벤치마크)
-- [ ] 내부 하네스 벤치마크 (Eval Center를 통한 하네스 매개변수 변경 정량화)
 
 #### 이미 조기 배포됨
 
