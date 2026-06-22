@@ -87,6 +87,7 @@
             "architecture/philosophy",
             "architecture/organization",
             "architecture/market",
+            "architecture/sharing-and-credentials",
             "architecture/context-management",
             "architecture/progressive-disclosure",
             "architecture/connector-architecture",
