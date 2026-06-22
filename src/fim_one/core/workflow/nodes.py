@@ -250,6 +250,13 @@ class LLMExecutor:
             result = await llm.chat(messages)
             output = result.message.content or ""
 
+            # Meter token usage so unattended (webhook/cron) runs are billed to
+            # the workflow owner instead of being a free LLM spigot.
+            if context.usage_tracker is not None and getattr(result, "usage", None):
+                await context.usage_tracker.record(
+                    result.usage, model=getattr(llm, "model_id", None)
+                )
+
             await store.set(f"{node.id}.output", output)
 
             return NodeResult(
@@ -586,6 +593,20 @@ class AgentExecutor:
 
             agent_result = await agent.run(query)
             output = agent_result.answer
+
+            # Meter the agent's token usage to the workflow owner (same reason
+            # as the LLM node — unattended runs must not be free LLM usage).
+            if context.usage_tracker is not None and agent_result.usage is not None:
+                _u = agent_result.usage
+                await context.usage_tracker.record(
+                    {
+                        "prompt_tokens": _u.prompt_tokens,
+                        "completion_tokens": _u.completion_tokens,
+                        "total_tokens": _u.total_tokens,
+                        "cache_read_input_tokens": _u.cache_read_input_tokens,
+                        "cache_creation_input_tokens": _u.cache_creation_input_tokens,
+                    }
+                )
 
             await store.set(f"{node.id}.output", output)
 

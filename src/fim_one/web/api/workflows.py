@@ -547,6 +547,13 @@ async def trigger_workflow(
     if not wf.blueprint or not wf.blueprint.get("nodes"):
         raise AppError("blueprint_empty", status_code=400)
 
+    # Quota gate: an unattended (webhook) run bills its LLM usage to the
+    # workflow owner. Reject up-front when the owner is already over quota so
+    # the public trigger can't be used as a free, unmetered LLM spigot.
+    from fim_one.web.api.chat import _check_token_quota
+
+    await _check_token_quota(wf.user_id)
+
     # Rate limit: reject if there's already a running run for this workflow
     running_result = await db.execute(
         select(func.count()).where(
@@ -605,6 +612,7 @@ async def trigger_workflow(
     outputs: dict[str, Any] = {}
     node_results: dict[str, Any] = {}
     error_msg: str | None = None
+    run_tokens = 0
 
     try:
         engine = WorkflowEngine(
@@ -642,9 +650,11 @@ async def trigger_workflow(
             elif event_name == "run_completed":
                 outputs = event_data.get("outputs", {})
                 final_status = event_data.get("status", "completed")
+                run_tokens = int(event_data.get("total_tokens", 0) or 0)
             elif event_name == "run_failed":
                 final_status = "failed"
                 error_msg = event_data.get("error")
+                run_tokens = int(event_data.get("total_tokens", 0) or 0)
 
     except Exception as exc:
         final_status = "failed"
@@ -671,6 +681,7 @@ async def trigger_workflow(
                 db_run.completed_at = datetime.now(UTC)
                 db_run.duration_ms = elapsed_ms
                 db_run.error = error_msg
+                db_run.total_tokens = run_tokens
                 await persist_db.commit()
     except Exception:
         logger.exception("Failed to persist trigger run %s", run_id)

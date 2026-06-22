@@ -147,6 +147,12 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     )
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Tokens consumed by LLM/Agent nodes during this run, billed to the
+    # workflow owner. Counted toward the owner's quota window so unattended
+    # (webhook/cron) runs can't mint free, unmetered LLM usage.
+    total_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     workflow: Mapped[Workflow] = relationship(back_populates="runs", lazy="raise")
     approvals: Mapped[list[WorkflowApproval]] = relationship(

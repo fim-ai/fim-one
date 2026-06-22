@@ -291,13 +291,14 @@ Durcissement différé — non bloquant ; à traiter uniquement si le scénario 
 
 #### Durcissement de l'authentification et de la sécurité
 
-- [x] ~~Confinement du type de jeton JWT (contournement 2FA) + corrections de prise de compte OAuth et de session~~ *(livré dans v0.8.7)*
+- [x] ~~Confinement du type de jeton JWT (contournement 2FA) + correctifs de prise de compte OAuth et de session~~ *(livré dans v0.8.7)*
 - [x] ~~Horodatages PostgreSQL sensibles au fuseau horaire~~ *(livré dans v0.8.6)*
 - [x] ~~La comparaison d'horodatage de déconnexion forcée normalise les valeurs sensibles/non sensibles au fuseau horaire en UTC par conversion — les jetons révoqués sont fiablement rejetés sur SQLite et PostgreSQL~~ *(livré dans v0.8.8)*
 - [x] ~~Les identifiants PostgreSQL Docker Compose sont remplaçables via les variables d'environnement `POSTGRES_*` (source unique dans la chaîne de connexion) — plus de défaut `fim:fim` accidentellement expédié sur les déploiements exposés~~ *(livré dans v0.8.8)*
-- [x] ~~La liste de blocage SSRF ferme le contournement IPv6 mappé IPv4 (`::ffff:` métadonnées d'instance); les URL du serveur MCP SSE/Streamable-HTTP sont validées SSRF à la création et à la connexion~~ *(livré dans v0.8.8)*
-- [x] ~~L'authentification par défaut du propriétaire est optionnelle : les connecteurs/serveurs MCP ont par défaut `allow_fallback` désactivé (lignes existantes inversées); une ressource sans authentification par défaut que vous ne possédez pas est masquée de l'ensemble d'outils au lieu d'échouer au moment de l'appel~~
-- [x] ~~L'accès aux ressources unifié sur la visibilité (propre + abonné) : les connecteurs/KB/serveurs MCP abonnés sont liables aux agents (plus de 403 « non possédé »), et les étapes du connecteur de flux de travail appliquent l'accès du lanceur au lieu d'exécuter n'importe quel connecteur par id~~
+- [x] ~~La liste de blocage SSRF ferme le contournement IPv6 mappé IPv4 (`::ffff:` métadonnées d'instance) ; les URL du serveur MCP SSE/Streamable-HTTP sont validées SSRF à la création et à la connexion~~ *(livré dans v0.8.8)*
+- [x] ~~Le secours aux identifiants du propriétaire est optionnel : les connecteurs/serveurs MCP désactivent par défaut `allow_fallback` (les lignes existantes sont inversées) ; une ressource sans secours pour laquelle vous n'avez pas d'identifiants est masquée de l'ensemble d'outils au lieu d'échouer au moment de l'appel~~
+- [x] ~~L'accès aux ressources unifié sur la visibilité (propre + abonné) : les connecteurs/KB/serveurs MCP abonnés sont liables aux agents (plus de 403 « non possédé »), et les étapes du connecteur de flux de travail appliquent l'accès du runner au lieu d'exécuter n'importe quel connecteur par id~~
+- [x] ~~Les exécutions de flux de travail webhook/cron sont mesurées par rapport au quota de jetons du propriétaire — les étapes LLM/agent sans surveillance sont contrôlées à l'avance et leur utilisation compte vers le même quota que le chat, fermant le chemin LLM gratuit non mesuré~~
 
 #### Compatibilité des modèles et fournisseurs
 

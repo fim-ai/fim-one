@@ -796,6 +796,19 @@ async def _get_quota_status(user_id: str) -> tuple[int, int]:
             )
         )
         monthly_tokens = int(monthly_result.scalar_one() or 0)
+
+        # Include unattended workflow runs (webhook/cron) billed to this owner,
+        # so their LLM usage counts against the same quota as chat instead of
+        # being a free, unmetered spigot.
+        from fim_one.db.models.workflow import WorkflowRun
+
+        wf_result = await session.execute(
+            sa_select(_func.coalesce(_func.sum(WorkflowRun.total_tokens), 0)).where(
+                WorkflowRun.user_id == user_id,
+                WorkflowRun.created_at >= window_start,
+            )
+        )
+        monthly_tokens += int(wf_result.scalar_one() or 0)
         return (monthly_tokens, int(user_quota))
 
 

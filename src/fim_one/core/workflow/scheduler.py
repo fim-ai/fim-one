@@ -265,6 +265,7 @@ class WorkflowScheduler:
             outputs: dict[str, Any] = {}
             node_results: dict[str, Any] = {}
             error_msg: str | None = None
+            run_tokens = 0
 
             # Create the run record
             from fim_one.db import create_session
@@ -317,26 +318,42 @@ class WorkflowScheduler:
                     workflow_id=workflow_id,
                 )
 
-                async for event_name, event_data in engine.execute_streaming(
-                    parsed, inputs
-                ):
-                    if event_name in (
-                        "node_started",
-                        "node_completed",
-                        "node_failed",
-                        "node_skipped",
+                # Quota gate: bill unattended cron runs to the workflow owner;
+                # skip execution when the owner is already over quota so a
+                # schedule can't mint free, unmetered LLM usage.
+                from fim_one.web.api.chat import _get_quota_status
+
+                _used, _cap = await _get_quota_status(user_id)
+                if _cap > 0 and _used >= _cap:
+                    final_status = "failed"
+                    error_msg = "token_quota_exceeded"
+                    logger.warning(
+                        "Scheduled workflow %s skipped: owner over token quota",
+                        workflow_id,
+                    )
+                else:
+                    async for event_name, event_data in engine.execute_streaming(
+                        parsed, inputs
                     ):
-                        nid = event_data.get("node_id", "")
-                        node_results[nid] = {
-                            **(node_results.get(nid) or {}),
-                            **event_data,
-                        }
-                    elif event_name == "run_completed":
-                        outputs = event_data.get("outputs", {})
-                        final_status = event_data.get("status", "completed")
-                    elif event_name == "run_failed":
-                        final_status = "failed"
-                        error_msg = event_data.get("error")
+                        if event_name in (
+                            "node_started",
+                            "node_completed",
+                            "node_failed",
+                            "node_skipped",
+                        ):
+                            nid = event_data.get("node_id", "")
+                            node_results[nid] = {
+                                **(node_results.get(nid) or {}),
+                                **event_data,
+                            }
+                        elif event_name == "run_completed":
+                            outputs = event_data.get("outputs", {})
+                            final_status = event_data.get("status", "completed")
+                            run_tokens = int(event_data.get("total_tokens", 0) or 0)
+                        elif event_name == "run_failed":
+                            final_status = "failed"
+                            error_msg = event_data.get("error")
+                            run_tokens = int(event_data.get("total_tokens", 0) or 0)
 
             except Exception as exc:
                 final_status = "failed"
@@ -368,6 +385,7 @@ class WorkflowScheduler:
                         db_run.completed_at = datetime.now(UTC)
                         db_run.duration_ms = elapsed_ms
                         db_run.error = error_msg
+                        db_run.total_tokens = run_tokens
                         await persist_db.commit()
             except Exception:
                 logger.exception(

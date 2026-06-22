@@ -24,6 +24,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **Trimmed the visual workflow builder to 9 core node types.** Sixteen rarely-used utility and control-flow nodes — environment variables, HTTP request, code execution, iterator/loop, sub-workflow, template/list/transform helpers, and the parameter/question extractors and classifier — were removed so the builder focuses on orchestrating agents, connectors, MCP servers, and knowledge bases. As a side effect a shared workflow no longer carries embedded secrets: it is now purely a graph of references, and each referenced resource enforces its own per-user access at run time. Existing workflows built on a removed node will need to be rebuilt with the remaining set.
 
+### Security
+
+- **Webhook- and cron-triggered workflows now count against the owner's token quota.** An unattended workflow run — triggered through its public API key or on a schedule — used to execute LLM and agent steps without checking or recording any token usage, an unmetered free-LLM path that bypassed quotas entirely. Such runs are now gated on the workflow owner's quota up front (a public trigger is refused, and a scheduled run is skipped, when the owner is already over quota) and their token usage is recorded per run and counted toward the same monthly quota as chat.
+
 ### Fixed
 
 - **Leaving (or being removed from) an organization now revokes its shared access.** Resources you could reach only through that organization are unsubscribed, and the per-user connector/MCP credentials you saved for them are deleted — so you can no longer use those resources or fall back to the owner's credential after departing. Resources you subscribed to via the Market are unaffected.

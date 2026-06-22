@@ -104,3 +104,6 @@ class ExecutionContext:
     depth: int = 0
     max_run_duration: int | None = None  # seconds; None = use engine default
     cancel_event: asyncio.Event | None = None  # shared cancel signal
+    # Shared across all nodes of a run: accumulates LLM/Agent token usage so the
+    # run total can be billed to the workflow owner (see WorkflowRun.total_tokens).
+    usage_tracker: Any = None  # core.model.usage.UsageTracker | None

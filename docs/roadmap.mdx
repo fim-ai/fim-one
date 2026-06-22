@@ -297,6 +297,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
 - [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~
 - [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~
+- [x] ~~Webhook/cron workflow runs are metered to the owner's token quota — unattended LLM/agent steps are gated up-front and their usage counts toward the same quota as chat, closing the unmetered free-LLM path~~
 
 #### Model & Provider Compatibility
 

@@ -75,6 +75,11 @@ class WorkflowEngine:
         self._workflow_id = workflow_id
         self._workflow_timeout_ms = workflow_timeout_ms  # 0 = no limit
         self._trace_level = trace_level
+        from fim_one.core.model.usage import UsageTracker
+
+        # One tracker shared by every node of this run so LLM/Agent token usage
+        # accumulates into a single run total (billed to the workflow owner).
+        self._usage_tracker = UsageTracker()
 
     async def execute_streaming(
         self,
@@ -344,6 +349,11 @@ class WorkflowEngine:
                 env_vars=self._env_vars,
                 cancel_event=self._cancel_event,
             )
+            # Share this run's usage tracker with whatever context is used
+            # (an externally-supplied one, e.g. the webhook path, included) so
+            # token accounting accumulates into a single run total.
+            if ctx.usage_tracker is None:
+                ctx.usage_tracker = self._usage_tracker
 
             # Retry config from node data (default: no retry)
             retry_count = max(int(node.data.get("retry_count", 0)), 0)
@@ -673,6 +683,7 @@ class WorkflowEngine:
                             "status": "failed",
                             "error": f"Nodes failed: {failed_nodes}",
                             "duration_ms": elapsed_ms,
+                            "total_tokens": self._usage_tracker.get_summary().total_tokens,
                         },
                     )
                 else:
@@ -682,6 +693,7 @@ class WorkflowEngine:
                             "status": "completed",
                             "outputs": outputs,
                             "duration_ms": elapsed_ms,
+                            "total_tokens": self._usage_tracker.get_summary().total_tokens,
                         },
                     )
 
@@ -693,6 +705,7 @@ class WorkflowEngine:
                         "status": "cancelled",
                         "error": "Execution cancelled",
                         "duration_ms": elapsed_ms,
+                        "total_tokens": self._usage_tracker.get_summary().total_tokens,
                     },
                 )
             except Exception as exc:
@@ -704,6 +717,7 @@ class WorkflowEngine:
                         "status": "failed",
                         "error": str(exc),
                         "duration_ms": elapsed_ms,
+                        "total_tokens": self._usage_tracker.get_summary().total_tokens,
                     },
                 )
             finally:
