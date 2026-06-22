@@ -130,6 +130,51 @@ class KnowledgeBaseManager:
         )
         return len(all_chunks), content_hash
 
+    @staticmethod
+    async def _resolve_owner_for_caller(kb_id: str, caller_user_id: str | None) -> str | None:
+        """Resolve the KB's owner for the vector-store path, gated by access.
+
+        A KB's data lives under ``user_{owner}/kb_{id}/``, so retrieval must use
+        the *owner's* id to build the path — not the caller's. Centralizing this
+        here means every caller (chat, the workflow KB node, agentless KB chat)
+        gets correct, access-checked retrieval without threading an owner map of
+        its own; the previous behaviour silently used the caller's id and so
+        returned nothing for any KB the caller didn't personally own.
+
+        Returns the owner id when the caller may read the KB (owner, an explicit
+        subscriber, or a trusted system caller with ``caller_user_id is None``),
+        otherwise ``None`` — signalling "not visible", which the caller should
+        treat as an empty result rather than a wrong-path lookup.
+        """
+        from sqlalchemy import select
+
+        from fim_one.db import create_session
+        from fim_one.db.models.knowledge_base import KnowledgeBase
+        from fim_one.db.models.resource_subscription import ResourceSubscription
+
+        async with create_session() as db:
+            owner_id = (
+                await db.execute(
+                    select(KnowledgeBase.user_id).where(KnowledgeBase.id == kb_id)
+                )
+            ).scalar_one_or_none()
+            if owner_id is None:
+                return None  # KB does not exist
+            if caller_user_id is None or owner_id == caller_user_id:
+                return owner_id  # system caller or owner
+            # Non-owner: require an explicit subscription (own + subscribed is
+            # the same visibility model chat assembly and binding already use).
+            sub = (
+                await db.execute(
+                    select(ResourceSubscription.id).where(
+                        ResourceSubscription.user_id == caller_user_id,
+                        ResourceSubscription.resource_type == "knowledge_base",
+                        ResourceSubscription.resource_id == kb_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            return owner_id if sub is not None else None
+
     async def retrieve(
         self,
         query: str,
@@ -144,28 +189,35 @@ class KnowledgeBaseManager:
         Args:
             query: Search query.
             kb_id: Knowledge base ID.
-            user_id: User ID.
+            user_id: The *calling* user's id. The owner whose vector store is
+                read is resolved from ``kb_id`` internally and gated by this
+                caller's access (owner or subscriber).
             top_k: Number of results.
             mode: Retrieval mode ("hybrid", "dense", or "fts").
 
         Returns:
-            List of relevant Document objects.
+            List of relevant Document objects (empty if the caller cannot see
+            the KB or it does not exist).
         """
+        owner_id = await self._resolve_owner_for_caller(kb_id, user_id)
+        if owner_id is None:
+            return []
+
         retriever: BaseRetriever
         if mode == "dense":
             retriever = DenseRetriever(
-                self._store, self._embedding, kb_id=kb_id, user_id=user_id
+                self._store, self._embedding, kb_id=kb_id, user_id=owner_id
             )
         elif mode == "fts":
             retriever = FTSRetriever(
-                self._store, kb_id=kb_id, user_id=user_id
+                self._store, kb_id=kb_id, user_id=owner_id
             )
         else:
             dense = DenseRetriever(
-                self._store, self._embedding, kb_id=kb_id, user_id=user_id
+                self._store, self._embedding, kb_id=kb_id, user_id=owner_id
             )
             sparse = FTSRetriever(
-                self._store, kb_id=kb_id, user_id=user_id
+                self._store, kb_id=kb_id, user_id=owner_id
             )
             retriever = HybridRetriever(
                 dense, sparse, reranker=self._reranker
