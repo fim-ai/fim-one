@@ -88,6 +88,7 @@ export interface ConnectorCreate {
   base_url: string
   auth_type?: string
   auth_config?: Record<string, unknown> | null
+  allow_fallback?: boolean
 }
 
 export interface ConnectorUpdate {

@@ -75,7 +75,7 @@ Bugs tracés qui sont reproductibles en production mais pas encore corrigés. Ch
 
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
-Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+Durcissement différé — non bloquant ; à traiter uniquement si le scénario correspondant se présente.
 
 - [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
 - [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
@@ -294,8 +294,9 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] ~~Confinement du type de jeton JWT (contournement 2FA) + corrections de prise de compte OAuth et de session~~ *(livré dans v0.8.7)*
 - [x] ~~Horodatages PostgreSQL sensibles au fuseau horaire~~ *(livré dans v0.8.6)*
 - [x] ~~La comparaison d'horodatage de déconnexion forcée normalise les valeurs sensibles/naïves au fuseau horaire en UTC par conversion — les jetons révoqués sont fiablement rejetés sur SQLite et PostgreSQL~~ *(livré dans v0.8.8)*
-- [x] ~~Les identifiants PostgreSQL Docker Compose peuvent être remplacés via les variables d'environnement `POSTGRES_*` (source unique dans la chaîne de connexion) — plus de défaut `fim:fim` accidentellement expédié sur les déploiements exposés~~ *(livré dans v0.8.8)*
+- [x] ~~Les identifiants PostgreSQL Docker Compose sont remplaçables via les variables d'environnement `POSTGRES_*` (source unique dans la chaîne de connexion) — plus de défaut `fim:fim` accidentellement expédié sur les déploiements exposés~~ *(livré dans v0.8.8)*
 - [x] ~~La liste de blocage SSRF ferme le contournement IPv6 mappé IPv4 (`::ffff:` métadonnées d'instance) ; les URL du serveur MCP SSE/Streamable-HTTP sont validées SSRF à la création et à la connexion~~ *(livré dans v0.8.8)*
+- [x] ~~Le recours aux identifiants du propriétaire est optionnel : les connecteurs/serveurs MCP ont par défaut `allow_fallback` désactivé (les lignes existantes sont inversées) ; une ressource sans recours que vous n'avez pas les identifiants pour est masquée de l'ensemble d'outils au lieu d'échouer au moment de l'appel~~
 
 #### Compatibilité des modèles et fournisseurs
 

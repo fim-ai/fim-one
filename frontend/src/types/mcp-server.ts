@@ -41,6 +41,7 @@ export interface MCPServerCreate {
   working_dir?: string | null
   headers?: Record<string, string> | null
   is_active?: boolean
+  allow_fallback?: boolean
 }
 
 export interface MCPServerUpdate {

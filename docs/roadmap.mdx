@@ -295,6 +295,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
 - [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
 - [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
+- [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~
 
 #### Model & Provider Compatibility
 

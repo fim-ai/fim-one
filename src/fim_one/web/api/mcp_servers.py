@@ -173,6 +173,7 @@ async def create_mcp_server(
         working_dir=body.working_dir,
         headers=body.headers,
         is_active=body.is_active,
+        allow_fallback=body.allow_fallback,
     )
     db.add(server)
     await db.commit()

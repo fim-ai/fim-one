@@ -283,6 +283,7 @@ async def create_connector(
         auth_type=body.auth_type,
         auth_config=clean_auth_config or None,
         db_config=db_config,
+        allow_fallback=body.allow_fallback,
         status="published",
     )
     db.add(connector)

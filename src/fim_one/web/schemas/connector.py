@@ -72,6 +72,10 @@ class ConnectorCreate(BaseModel):
     auth_config: dict[str, Any] | None = None
     db_config: dict[str, Any] | None = None
     is_active: bool = True
+    # Whether subscribers without their own credentials may fall back to the
+    # owner's default credential. Defaults to False — sharing the owner's token
+    # is opt-in, not the default (the owner can always use it regardless).
+    allow_fallback: bool = False
 
     @field_validator("base_url")
     @classmethod

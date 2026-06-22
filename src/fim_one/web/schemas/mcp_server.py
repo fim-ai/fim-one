@@ -16,6 +16,10 @@ class MCPServerCreate(BaseModel):
     working_dir: str | None = None
     headers: dict[str, str] | None = None
     is_active: bool = True
+    # Whether subscribers without their own credentials may fall back to the
+    # owner's server-level env/headers. Defaults to False — sharing the owner's
+    # credentials is opt-in (the owner can always use them regardless).
+    allow_fallback: bool = False
 
     @model_validator(mode="after")
     def validate_transport(self) -> MCPServerCreate:

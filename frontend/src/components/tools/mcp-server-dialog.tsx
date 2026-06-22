@@ -71,7 +71,7 @@ export function MCPServerDialog({
   const [envPairs, setEnvPairs] = useState<Array<{ key: string; value: string }>>([])
   const [headerPairs, setHeaderPairs] = useState<Array<{ key: string; value: string }>>([])
   const [isActive, setIsActive] = useState(false)
-  const [allowFallback, setAllowFallback] = useState(true)
+  const [allowFallback, setAllowFallback] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -122,7 +122,7 @@ export function MCPServerDialog({
             : []
         )
         setIsActive(server.is_active)
-        setAllowFallback(server.allow_fallback ?? true)
+        setAllowFallback(server.allow_fallback ?? false)
       } else {
         setName(initialValues?.name ?? "")
         setDescription(initialValues?.description ?? "")
@@ -154,7 +154,7 @@ export function MCPServerDialog({
       url !== (server.url || "") ||
       workingDir !== (server.working_dir || "") ||
       isActive !== server.is_active ||
-      allowFallback !== (server.allow_fallback ?? true) ||
+      allowFallback !== (server.allow_fallback ?? false) ||
       JSON.stringify(envPairs) !== JSON.stringify(
         server.env ? Object.entries(server.env).map(([key, value]) => ({ key, value })) : []
       ) ||
@@ -271,6 +271,7 @@ export function MCPServerDialog({
           url: (transport === "sse" || transport === "streamable_http") ? url.trim() || null : null,
           headers: headersObj,
           is_active: isActive,
+          allow_fallback: allowFallback,
         }
         const created = await mcpServerApi.create(body)
         onSuccess(created)
@@ -537,8 +538,8 @@ export function MCPServerDialog({
             </button>
           </div>
 
-          {/* Allow Fallback — only shown in edit mode */}
-          {isEdit && (
+          {/* Allow Fallback — shown on both create and edit */}
+          {(
             <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5">

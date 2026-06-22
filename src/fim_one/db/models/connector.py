@@ -43,7 +43,7 @@ class Connector(UUIDPKMixin, TimestampMixin, Base):
         String(36), ForeignKey("organizations.id"), nullable=True, index=True
     )
     allow_fallback: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=sa.text("TRUE")
+        Boolean, default=False, server_default=sa.text("FALSE")
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default=sa.text("TRUE")

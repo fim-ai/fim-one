@@ -42,7 +42,7 @@ class MCPServer(UUIDPKMixin, TimestampMixin, Base):
         String(36), ForeignKey("organizations.id"), nullable=True, index=True
     )
     allow_fallback: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False, server_default=sa.text("TRUE")
+        Boolean, default=False, nullable=False, server_default=sa.text("FALSE")
     )
 
     forked_from: Mapped[str | None] = mapped_column(String(36), nullable=True)

@@ -41,8 +41,9 @@ export function ConnectorSettingsForm({
   const [defaultApiKey, setDefaultApiKey] = useState("")
   const [defaultUsername, setDefaultUsername] = useState("")
   const [defaultPassword, setDefaultPassword] = useState("")
-  // Allow fallback setting
-  const [allowFallback, setAllowFallback] = useState(true)
+  // Allow fallback setting — defaults OFF: sharing the owner's credential with
+  // subscribers is opt-in, not the default.
+  const [allowFallback, setAllowFallback] = useState(false)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<{ baseUrl?: string }>({})
@@ -64,7 +65,7 @@ export function ConnectorSettingsForm({
       setDefaultApiKey(typeof cfg.default_api_key === "string" ? cfg.default_api_key : "")
       setDefaultUsername(typeof cfg.default_username === "string" ? cfg.default_username : "")
       setDefaultPassword(typeof cfg.default_password === "string" ? cfg.default_password : "")
-      setAllowFallback(connector.allow_fallback ?? true)
+      setAllowFallback(connector.allow_fallback ?? false)
     } else {
       setName("")
       setIcon(null)
@@ -156,6 +157,7 @@ export function ConnectorSettingsForm({
         base_url: trimmedUrl,
         auth_type: authType,
         ...(authConfig && { auth_config: authConfig }),
+        ...(authType !== "none" && { allow_fallback: allowFallback }),
       }
 
       let result: ConnectorResponse
@@ -371,8 +373,8 @@ export function ConnectorSettingsForm({
             </div>
           )}
 
-          {/* Allow Fallback — shown in edit mode for connectors with auth (regardless of visibility) */}
-          {connector && authType !== "none" && (
+          {/* Allow Fallback — shown for connectors with auth, on both create and edit */}
+          {authType !== "none" && (
             <div className="flex items-center justify-between rounded-md border border-border p-3">
               <div className="space-y-0.5">
                 <p className="text-sm font-medium">{t("allowFallback")}</p>

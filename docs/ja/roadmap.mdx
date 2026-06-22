@@ -73,13 +73,13 @@ flowchart LR
 
 - **Playground の停止と再試行は、ページ更新で常にクリアされる一時的なビジュアルアーティファクトを表示する。** 3 つの同時レンダーソース — `activeConversation.messages`（DB スナップショット）、SSE `messages` ストリーム、および楽観的な `pendingQuery` プレースホルダー — は単一の派生状態に統合されていないため、「Retry」をクリックしてからペアのアシスタント応答が到着するまでの間に、UI は (a) ストリーム前ウィンドウで同じクエリを 2 回簡潔にレンダリングし、(b) `hasLiveMessages` が true で次のスナップショット再読み込みの前に再試行履歴から以前の孤立したユーザーバブルをドロップし、(c) SSE「done」イベントと次の `selectConversation` 更新の間の狭いウィンドウでフリッカーすることができます。**データは決して失われません** — すべてのユーザーメッセージ（中止された再試行を含む）は `conversation.messages` に永続化され、`normalize_alternating_messages` を経由して次の LLM 呼び出しに持ち込まれ、`48ba08c6` レンダー修正で導入された `HistoryTurn.orphanUserContents` を経由した更新後に正しくレンダリングされます。文脈として、Claude 自身の Web UI は類似のバグクラスを示しています — 応答の途中で停止し、すぐにフォローアップクエリを送信すると、フォローアップが最初のクエリの兄弟編集ブランチとしてフォークされることがあり、新しいターンとして追加されるのではなく — これは楽観的 UI + SSE + 永続化履歴設計における既知の難しい問題であり、FIM One 固有の欠陥ではありません。適切な修正には、3 つのレンダーソースを単一の派生状態に統合する必要があります。より広い Playground ステートマシンリファクタリングまで延期されています。
 
-## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
+## バックログ（低優先度） {/* dev: dev/dag-evidence-fidelity.md */}
 
-Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+延期されたハードニング——ブロッキングではなく、マッチするシナリオが表示される場合のみ取り上げます。
 
-- [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
-- [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
-- [ ] **Port the source-fidelity guideline into the ReAct fallback synthesis prompt** so total/severity mislabels are caught in ReAct too, not only in DAG.
+- [ ] **DAG エビデンスが独自の切り詰めバジェットを取得**、`DAG_ANALYZER_TRUNCATION` から分離されているため、ソースエビデンスがアナライザー/合成検証の前にサマリーバジェットによって再度クリップされません。
+- [ ] **構造認識エビデンス切り詰め**（ヘッド+テール / リストとテーブルを保持）により、長い列挙がキャップによってサイレントに末尾を失う代わりに生き残ります。
+- [ ] **ソース忠実性ガイドラインを ReAct フォールバック合成プロンプトに移植**し、合計/重大度の誤ラベルが DAG だけでなく ReAct でも検出されるようにします。
 
 ## 出荷済みバージョン
 
@@ -291,11 +291,12 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 
 #### 認証とセキュリティ強化
 
-- [x] ~~JWT トークンタイプ制限（2FA バイパス）+ OAuth アカウント乗っ取り & セッション修正~~ *(v0.8.7 でリリース)*
+- [x] ~~JWT トークンタイプ制限（2FA バイパス）+ OAuth アカウント乗っ取り＆セッション修正~~ *(v0.8.7 でリリース)*
 - [x] ~~PostgreSQL タイムゾーン対応タイムスタンプ~~ *(v0.8.6 でリリース)*
-- [x] ~~ログアウト強制タイムスタンプ比較は tz 対応/非対応値を UTC に正規化 — 失効トークンは SQLite と PostgreSQL の両方で確実に拒否~~ *(v0.8.8 でリリース)*
-- [x] ~~Docker Compose PostgreSQL 認証情報は `POSTGRES_*` env で上書き可能（接続文字列に単一ソース化）— 公開デプロイで誤ってリリースされた `fim:fim` デフォルトはもう発生しない~~ *(v0.8.8 でリリース)*
-- [x] ~~SSRF ブロックリストは IPv4 マップ IPv6 バイパス（`::ffff:` インスタンスメタデータ）を閉じる；MCP SSE/Streamable-HTTP サーバー URL は作成 + 接続時に SSRF 検証~~ *(v0.8.8 でリリース)*
+- [x] ~~強制ログアウト時刻比較により tz 対応/非対応値を UTC に正規化——失効トークンは SQLite と PostgreSQL の両方で確実に拒否~~ *(v0.8.8 でリリース)*
+- [x] ~~Docker Compose PostgreSQL 認証情報は `POSTGRES_*` env で上書き可能（接続文字列に単一ソース化）——意図しない `fim:fim` デフォルトの公開デプロイメントへの搭載を防止~~ *(v0.8.8 でリリース)*
+- [x] ~~SSRF ブロックリストが IPv4 マップ IPv6 バイパス（`::ffff:` インスタンスメタデータ）を閉鎖；MCP SSE/Streamable-HTTP サーバー URL は作成時＋接続時に SSRF 検証~~ *(v0.8.8 でリリース)*
+- [x] ~~所有者認証情報フォールバックはオプトイン：コネクタ/MCP サーバーはデフォルト `allow_fallback` オフ（既存行は反転）；認証情報がないフォールバックなしリソースはツールセットから非表示（呼び出し時に失敗する代わりに）~~
 
 #### モデル & プロバイダー互換性
 

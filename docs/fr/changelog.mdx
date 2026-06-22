@@ -10,10 +10,11 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
-### Modifié
+### Modifications
 
-- **Les nouveaux agents utilisent par défaut l'exécution ReAct au lieu d'Auto.** Le mode Auto effectuait un appel de classification supplémentaire du modèle rapide par requête pour choisir entre ReAct et DAG ; les nouveaux agents (et les modèles intégrés/marketplace) utilisent maintenant par défaut ReAct, supprimant cette latence et ce coût par message. Auto et DAG restent sélectionnables par agent ; les agents existants conservent leur mode actuel.
-- **La création d'agent IA récupère d'un modèle rapide faible.** La construction ou l'affinage d'un agent à partir d'une instruction en langage naturel s'exécute sur le modèle rapide ; s'il ne peut pas produire une configuration valide, la requête réessaie une fois sur le modèle général plus puissant avant de signaler une erreur, de sorte qu'un modèle rapide trop faible ne remonte plus comme une défaillance à l'utilisateur.
+- **Les connecteurs et les serveurs MCP ne partagent plus les identifiants du propriétaire par défaut (rupture de compatibilité).** L'option « Autoriser le recours aux identifiants du propriétaire » est désormais explicite : les nouveaux connecteurs/serveurs MCP sont créés avec cette option désactivée, et tous les connecteurs/serveurs existants ont également été désactivés. Un abonné qui s'appuyait sur le jeton du propriétaire pour utiliser un connecteur ou un serveur MCP partagé devra désormais ajouter ses propres identifiants, ou le propriétaire doit réactiver le recours sur cette ressource. Les propriétaires peuvent toujours utiliser leurs propres identifiants indépendamment du paramètre. Par conséquent, un connecteur dont le recours est désactivé et pour lequel vous n'avez pas d'identifiants est désormais masqué de l'ensemble d'outils de l'agent (comme le faisaient déjà les serveurs MCP) au lieu d'être proposé et d'échouer lors de l'appel.
+- **Les nouveaux agents utilisent par défaut l'exécution ReAct au lieu du mode Auto.** Le mode Auto effectuait un appel de classification supplémentaire du modèle rapide par requête pour choisir entre ReAct et DAG ; les nouveaux agents (et les modèles intégrés/marketplace) utilisent désormais par défaut ReAct, supprimant cette latence et ce coût par message. Auto et DAG restent sélectionnables par agent ; les agents existants conservent leur mode actuel.
+- **La création d'agent IA récupère d'un modèle rapide faible.** La création ou l'affinage d'un agent à partir d'une instruction en langage naturel s'exécute sur le modèle rapide ; s'il ne peut pas produire une configuration valide, la requête réessaie une fois sur le modèle général plus puissant avant d'échouer, de sorte qu'un modèle rapide trop faible ne remonte plus comme une défaillance à l'utilisateur.
 
 ### Supprimés
 

@@ -75,7 +75,7 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
-Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+Aufgeschobene Härtung — nicht blockierend; nur aufgreifen, wenn das entsprechende Szenario auftritt.
 
 - [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
 - [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
@@ -296,6 +296,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
 - [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
 - [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
+- [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~
 
 #### Model & Provider Compatibility
 

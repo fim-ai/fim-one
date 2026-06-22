@@ -75,11 +75,11 @@ flowchart LR
 
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
-Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+연기된 강화 — 차단하지 않음; 일치하는 시나리오가 나타날 때만 진행.
 
-- [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
-- [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
-- [ ] **Port the source-fidelity guideline into the ReAct fallback synthesis prompt** so total/severity mislabels are caught in ReAct too, not only in DAG.
+- [ ] **DAG 증거가 자체 절단 예산을 가짐**, `DAG_ANALYZER_TRUNCATION`에서 분리되어 소스 증거가 분석기/합성 검증 전에 요약 예산으로 다시 잘리지 않음.
+- [ ] **구조 인식 증거 절단** (head+tail / 목록 및 표 유지) 긴 열거형이 상한선으로 인해 조용히 꼬리를 잃지 않고 유지됨.
+- [ ] **소스 충실도 지침을 ReAct 폴백 합성 프롬프트로 이식** 전체/심각도 오류 레이블이 DAG뿐만 아니라 ReAct에서도 포착됨.
 
 ## 배포된 버전
 
@@ -291,11 +291,12 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 
 #### 인증 및 보안 강화
 
-- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(v0.8.7에서 출시)*
-- [x] ~~PostgreSQL timezone-aware timestamps~~ *(v0.8.6에서 출시)*
-- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(v0.8.8에서 출시)*
-- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(v0.8.8에서 출시)*
-- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(v0.8.8에서 출시)*
+- [x] ~~JWT 토큰 타입 제한 (2FA 우회) + OAuth 계정 탈취 및 세션 수정~~ *(v0.8.7에서 출시)*
+- [x] ~~PostgreSQL 타임존 인식 타임스탬프~~ *(v0.8.6에서 출시)*
+- [x] ~~강제 로그아웃 타임스탬프 비교는 타임존 인식/순진한 값을 UTC로 정규화합니다 — 취소된 토큰이 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됩니다~~ *(v0.8.8에서 출시)*
+- [x] ~~Docker Compose PostgreSQL 자격증명은 `POSTGRES_*` 환경 변수를 통해 재정의 가능합니다 (연결 문자열로 단일 소싱됨) — 노출된 배포에서 실수로 배송된 `fim:fim` 기본값이 더 이상 없습니다~~ *(v0.8.8에서 출시)*
+- [x] ~~SSRF 차단 목록은 IPv4 매핑 IPv6 우회(`::ffff:` 인스턴스 메타데이터)를 닫습니다; MCP SSE/Streamable-HTTP 서버 URL은 생성 + 연결 시 SSRF 검증됩니다~~ *(v0.8.8에서 출시)*
+- [x] ~~소유자 자격증명 폴백은 선택 사항입니다: 커넥터/MCP 서버는 기본적으로 `allow_fallback` 해제 상태입니다 (기존 행 전환됨); 자격증명이 없는 폴백 없는 리소스는 호출 시 실패하는 대신 도구 집합에서 숨겨집니다~~
 
 #### 모델 및 제공자 호환성
 

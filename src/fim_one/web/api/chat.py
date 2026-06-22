@@ -1408,7 +1408,27 @@ async def _resolve_tools(
                 db_connectors_collected: list[tuple[Any, dict[str, Any], list[Any]]] = []
 
                 for conn in connectors:
+                    # Owner-credential fallback gate (mirrors the MCP gate
+                    # below): a non-owner without their own credential may only
+                    # use this connector if it opts into owner-credential
+                    # fallback. Otherwise hide the tool entirely instead of
+                    # registering one that would fail at call time.
+                    _is_conn_owner = bool(user_id) and conn.user_id == user_id
+
                     if conn.type == "database" and conn.db_config:
+                        # Database connectors have no per-user credential — a
+                        # non-owner can only run them via the owner's db_config
+                        # (fallback). Skip when fallback is disabled.
+                        if not _is_conn_owner and not getattr(
+                            conn, "allow_fallback", False
+                        ):
+                            logger.info(
+                                "Skipping DB connector %r: allow_fallback=False "
+                                "and caller is not the owner",
+                                conn.name,
+                            )
+                            continue
+
                         # Database connector — decrypt config and build schema
                         from fim_one.core.security.encryption import decrypt_db_config
 
@@ -1470,6 +1490,22 @@ async def _resolve_tools(
                         resolved_creds: dict[str, Any] = await resolve_connector_credentials(
                             conn, user_id, session
                         )
+
+                        # No per-user credential and no owner-fallback for a
+                        # non-owner → resolved_creds is empty. Hide the tool
+                        # rather than registering one that would 401 at call
+                        # time (mirrors the MCP gate).
+                        if (
+                            not resolved_creds
+                            and not _is_conn_owner
+                            and not getattr(conn, "allow_fallback", False)
+                        ):
+                            logger.info(
+                                "Skipping connector %r: allow_fallback=False "
+                                "and caller has no credentials",
+                                conn.name,
+                            )
+                            continue
 
                         if _connector_tool_mode == "progressive":
                             # Collect for batch meta-tool creation
