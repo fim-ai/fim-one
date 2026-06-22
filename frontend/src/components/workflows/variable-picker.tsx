@@ -7,27 +7,12 @@ import {
   Square,
   Brain,
   GitBranch,
-  MessageSquareMore,
   Bot,
   Library,
   Plug,
-  Globe,
-  Variable,
-  FileText,
-  Code,
-  Repeat,
-  RefreshCw,
-  Combine,
-  FileSearch,
   Braces,
-  ListFilter,
-  ArrowRightLeft,
-  FileScan,
-  MessageCircleQuestion,
   UserCheck,
   Cable,
-  Wrench,
-  KeyRound,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -50,27 +35,11 @@ const nodeTypeIcons: Record<WorkflowNodeType, React.ReactNode> = {
   end: <Square className="h-3 w-3" />,
   llm: <Brain className="h-3 w-3" />,
   conditionBranch: <GitBranch className="h-3 w-3" />,
-  questionClassifier: <MessageSquareMore className="h-3 w-3" />,
   agent: <Bot className="h-3 w-3" />,
   knowledgeRetrieval: <Library className="h-3 w-3" />,
   connector: <Plug className="h-3 w-3" />,
-  httpRequest: <Globe className="h-3 w-3" />,
-  variableAssign: <Variable className="h-3 w-3" />,
-  templateTransform: <FileText className="h-3 w-3" />,
-  codeExecution: <Code className="h-3 w-3" />,
-  iterator: <Repeat className="h-3 w-3" />,
-  loop: <RefreshCw className="h-3 w-3" />,
-  variableAggregator: <Combine className="h-3 w-3" />,
-  parameterExtractor: <FileSearch className="h-3 w-3" />,
-  listOperation: <ListFilter className="h-3 w-3" />,
-  transform: <ArrowRightLeft className="h-3 w-3" />,
-  documentExtractor: <FileScan className="h-3 w-3" />,
-  questionUnderstanding: <MessageCircleQuestion className="h-3 w-3" />,
   humanIntervention: <UserCheck className="h-3 w-3" />,
   mcp: <Cable className="h-3 w-3" />,
-  builtinTool: <Wrench className="h-3 w-3" />,
-  subWorkflow: <GitBranch className="h-3 w-3" />,
-  env: <KeyRound className="h-3 w-3" />,
 }
 
 const nodeTypeColors: Record<WorkflowNodeType, string> = {
@@ -78,27 +47,11 @@ const nodeTypeColors: Record<WorkflowNodeType, string> = {
   end: "text-red-500",
   llm: "text-blue-500",
   conditionBranch: "text-orange-500",
-  questionClassifier: "text-teal-500",
   agent: "text-indigo-500",
   knowledgeRetrieval: "text-teal-500",
   connector: "text-purple-500",
-  httpRequest: "text-slate-500",
-  variableAssign: "text-gray-500",
-  templateTransform: "text-amber-500",
-  codeExecution: "text-emerald-500",
-  iterator: "text-cyan-500",
-  loop: "text-orange-500",
-  variableAggregator: "text-sky-500",
-  parameterExtractor: "text-violet-500",
-  listOperation: "text-lime-500",
-  transform: "text-rose-500",
-  documentExtractor: "text-amber-600",
-  questionUnderstanding: "text-pink-500",
   humanIntervention: "text-sky-500",
   mcp: "text-violet-500",
-  builtinTool: "text-zinc-500",
-  subWorkflow: "text-indigo-500",
-  env: "text-amber-600",
 }
 
 // --- Helper: extract output variables from a node ---
@@ -136,35 +89,12 @@ export function getNodeOutputVariables(node: Node): NodeVariable[] {
       break
     }
 
-    case "variableAssign": {
-      const assignments = (data.assignments ?? []) as Array<{ variable: string }>
-      for (const a of assignments) {
-        if (a.variable) {
-          variables.push({
-            nodeId,
-            nodeType,
-            variableName: a.variable,
-            reference: `{{${nodeId}.${a.variable}}}`,
-          })
-        }
-      }
-      break
-    }
-
     // All other node types that have a single output_variable
     case "llm":
     case "agent":
     case "knowledgeRetrieval":
     case "connector":
-    case "httpRequest":
-    case "templateTransform":
-    case "codeExecution":
-    case "listOperation":
-    case "transform":
-    case "documentExtractor":
-    case "questionUnderstanding":
     case "mcp":
-    case "builtinTool":
     case "humanIntervention": {
       const outputVar = (data.output_variable ?? "") as string
       if (outputVar) {
@@ -178,7 +108,7 @@ export function getNodeOutputVariables(node: Node): NodeVariable[] {
       break
     }
 
-    // end, conditionBranch, questionClassifier have no output variables
+    // end, conditionBranch have no output variables
     default:
       break
   }

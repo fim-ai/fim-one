@@ -323,14 +323,6 @@ def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
                     code="empty_conditions",
                     message="Condition branch has no conditions defined",
                 ))
-        elif node.type == NodeType.QUESTION_CLASSIFIER:
-            classes = node.data.get("classes", []) or node.data.get("categories", [])
-            if not classes:
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="empty_classes",
-                    message="Question classifier has no classes defined",
-                ))
         elif node.type == NodeType.LLM:
             prompt = node.data.get("prompt_template", "") or node.data.get("prompt", "")
             if not prompt:
@@ -339,70 +331,6 @@ def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
                     code="empty_prompt",
                     message="LLM node has no prompt template",
                 ))
-        elif node.type == NodeType.CODE_EXECUTION:
-            code = node.data.get("code", "")
-            if not code:
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="empty_code",
-                    message="Code execution node has no code",
-                ))
-        elif node.type == NodeType.LIST_OPERATION:
-            if not node.data.get("input_variable"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_input_variable",
-                    message="List operation node has no input variable",
-                ))
-            operation = node.data.get("operation", "")
-            if operation in ("filter", "map") and not node.data.get("expression"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_expression",
-                    message=f"List operation '{operation}' requires an expression",
-                ))
-        elif node.type == NodeType.TRANSFORM:
-            if not node.data.get("input_variable"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_input_variable",
-                    message="Transform node has no input variable",
-                ))
-            operations = node.data.get("operations", [])
-            if not operations:
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="empty_operations",
-                    message="Transform node has no operations configured",
-                ))
-        elif node.type == NodeType.ITERATOR:
-            if not node.data.get("list_variable"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_list_variable",
-                    message="Iterator node has no list variable configured",
-                ))
-        elif node.type == NodeType.LOOP:
-            if not node.data.get("condition"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_condition",
-                    message="Loop node has no condition expression",
-                ))
-        elif node.type == NodeType.DOCUMENT_EXTRACTOR:
-            if not node.data.get("input_variable"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_input_variable",
-                    message="Document extractor node has no input variable",
-                ))
-        elif node.type == NodeType.QUESTION_UNDERSTANDING:
-            if not node.data.get("input_variable"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_input_variable",
-                    message="Question understanding node has no input variable",
-                ))
         elif node.type == NodeType.HUMAN_INTERVENTION:
             prompt_msg = node.data.get("prompt_message", "")
             if not prompt_msg:
@@ -410,20 +338,6 @@ def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
                     node_id=node.id,
                     code="empty_prompt_message",
                     message="Human intervention node has no review prompt",
-                ))
-        elif node.type == NodeType.PARAMETER_EXTRACTOR:
-            if not node.data.get("input_text"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_input_text",
-                    message="Parameter extractor node has no input text",
-                ))
-            params = node.data.get("parameters", [])
-            if not params:
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="empty_parameters",
-                    message="Parameter extractor has no parameters to extract",
                 ))
         elif node.type == NodeType.MCP:
             if not node.data.get("server_id"):
@@ -437,30 +351,6 @@ def validate_blueprint(blueprint: WorkflowBlueprint) -> list[BlueprintWarning]:
                     node_id=node.id,
                     code="missing_tool_name",
                     message="MCP node has no tool selected",
-                ))
-        elif node.type == NodeType.BUILTIN_TOOL:
-            if not node.data.get("tool_id"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_tool_id",
-                    message="Builtin tool node has no tool selected",
-                ))
-
-        elif node.type == NodeType.SUB_WORKFLOW:
-            if not node.data.get("workflow_id"):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_workflow_id",
-                    message="Sub-workflow node has no workflow ID configured",
-                ))
-
-        elif node.type == NodeType.ENV:
-            env_keys = node.data.get("env_keys")
-            if not env_keys or not isinstance(env_keys, list):
-                warnings.append(BlueprintWarning(
-                    node_id=node.id,
-                    code="missing_env_keys",
-                    message="ENV node has no environment variable keys configured",
                 ))
 
     return warnings

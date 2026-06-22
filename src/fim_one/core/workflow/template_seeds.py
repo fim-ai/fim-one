@@ -303,92 +303,6 @@ _KNOWLEDGE_QA: dict[str, Any] = {
 }
 
 # ---------------------------------------------------------------------------
-# 4. API Integration
-# ---------------------------------------------------------------------------
-
-_API_INTEGRATION: dict[str, Any] = {
-    "name": "API Integration",
-    "description": "Call an external HTTP API, transform the response with a template, and return structured output.",
-    "icon": "Globe",
-    "category": "integration",
-    "sort_order": 40,
-    "blueprint": {
-        "nodes": [
-            _node(
-                "start_1",
-                "START",
-                {
-                    "label": "Start",
-                    "input_schema": {
-                        "variables": [
-                            {
-                                "name": "url",
-                                "type": "string",
-                                "required": True,
-                                "description": "Target URL to call",
-                            },
-                            {
-                                "name": "method",
-                                "type": "string",
-                                "required": False,
-                                "description": "HTTP method (GET, POST, etc.)",
-                                "default": "GET",
-                            },
-                        ]
-                    },
-                },
-                x=100,
-                y=200,
-            ),
-            _node(
-                "http_1",
-                "HTTP_REQUEST",
-                {
-                    "label": "HTTP Request",
-                    "url": "{{input.url}}",
-                    "method": "{{input.method}}",
-                    "headers": {},
-                    "body": "",
-                },
-                x=400,
-                y=200,
-            ),
-            _node(
-                "transform_1",
-                "TEMPLATE_TRANSFORM",
-                {
-                    "label": "Format Response",
-                    "template": (
-                        "HTTP Response (status {{http_1.status_code}}):\n\n"
-                        "{{http_1.output}}"
-                    ),
-                },
-                x=700,
-                y=200,
-            ),
-            _node(
-                "end_1",
-                "END",
-                {
-                    "label": "End",
-                    "output_mapping": {
-                        "result": "{{transform_1.output}}",
-                    },
-                },
-                x=1000,
-                y=200,
-            ),
-        ],
-        "edges": [
-            _edge("e-start-http", "start_1", "http_1"),
-            _edge("e-http-transform", "http_1", "transform_1"),
-            _edge("e-transform-end", "transform_1", "end_1"),
-        ],
-        "viewport": {"x": 0, "y": 0, "zoom": 1},
-    },
-}
-
-# ---------------------------------------------------------------------------
 # 5. Agent Task
 # ---------------------------------------------------------------------------
 
@@ -460,6 +374,5 @@ TEMPLATE_SEEDS: list[dict[str, Any]] = [
     _SIMPLE_LLM_CHAIN,
     _CONDITIONAL_ROUTER,
     _KNOWLEDGE_QA,
-    _API_INTEGRATION,
     _AGENT_TASK,
 ]

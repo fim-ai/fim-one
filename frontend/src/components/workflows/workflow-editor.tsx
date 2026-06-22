@@ -49,27 +49,11 @@ import { StartNode } from "./nodes/start-node"
 import { EndNode } from "./nodes/end-node"
 import { LLMNode } from "./nodes/llm-node"
 import { ConditionBranchNode } from "./nodes/condition-branch-node"
-import { QuestionClassifierNode } from "./nodes/question-classifier-node"
 import { AgentNode } from "./nodes/agent-node"
 import { KnowledgeRetrievalNode } from "./nodes/knowledge-retrieval-node"
 import { ConnectorNode } from "./nodes/connector-node"
-import { HTTPRequestNode } from "./nodes/http-request-node"
-import { VariableAssignNode } from "./nodes/variable-assign-node"
-import { TemplateTransformNode } from "./nodes/template-transform-node"
-import { CodeExecutionNode } from "./nodes/code-execution-node"
-import { IteratorNode } from "./nodes/iterator-node"
-import { LoopNode } from "./nodes/loop-node"
-import { VariableAggregatorNode } from "./nodes/variable-aggregator-node"
-import { ParameterExtractorNode } from "./nodes/parameter-extractor-node"
-import { ListOperationNode } from "./nodes/list-operation-node"
-import { TransformNode } from "./nodes/transform-node"
-import { DocumentExtractorNode } from "./nodes/document-extractor-node"
-import { QuestionUnderstandingNode } from "./nodes/question-understanding-node"
 import { HumanInterventionNode } from "./nodes/human-intervention-node"
 import { MCPNode } from "./nodes/mcp-node"
-import { BuiltinToolNode } from "./nodes/builtin-tool-node"
-import { SubWorkflowNode } from "./nodes/sub-workflow-node"
-import { ENVNode } from "./nodes/env-node"
 
 // MUST be defined outside the component to prevent ReactFlow infinite re-renders
 const nodeTypes = {
@@ -77,27 +61,11 @@ const nodeTypes = {
   end: EndNode,
   llm: LLMNode,
   conditionBranch: ConditionBranchNode,
-  questionClassifier: QuestionClassifierNode,
   agent: AgentNode,
   knowledgeRetrieval: KnowledgeRetrievalNode,
   connector: ConnectorNode,
-  httpRequest: HTTPRequestNode,
-  variableAssign: VariableAssignNode,
-  templateTransform: TemplateTransformNode,
-  codeExecution: CodeExecutionNode,
-  iterator: IteratorNode,
-  loop: LoopNode,
-  variableAggregator: VariableAggregatorNode,
-  parameterExtractor: ParameterExtractorNode,
-  listOperation: ListOperationNode,
-  transform: TransformNode,
-  documentExtractor: DocumentExtractorNode,
-  questionUnderstanding: QuestionUnderstandingNode,
   humanIntervention: HumanInterventionNode,
   mcp: MCPNode,
-  builtinTool: BuiltinToolNode,
-  subWorkflow: SubWorkflowNode,
-  env: ENVNode,
 }
 
 // Custom edge types - defined outside component for stability
@@ -110,28 +78,12 @@ const minimapNodeColor: Record<string, string> = {
   start: "#22c55e",
   end: "#ef4444",
   llm: "#3b82f6",
-  questionClassifier: "#14b8a6",
   agent: "#6366f1",
   knowledgeRetrieval: "#14b8a6",
   conditionBranch: "#f97316",
   connector: "#a855f7",
-  httpRequest: "#64748b",
-  variableAssign: "#6b7280",
-  templateTransform: "#f59e0b",
-  codeExecution: "#10b981",
-  iterator: "#06b6d4",
-  loop: "#f97316",
-  variableAggregator: "#0ea5e9",
-  parameterExtractor: "#8b5cf6",
-  listOperation: "#84cc16",
-  transform: "#f43f5e",
-  documentExtractor: "#d97706",
-  questionUnderstanding: "#ec4899",
   humanIntervention: "#0ea5e9",
   mcp: "#8b5cf6",
-  builtinTool: "#71717a",
-  subWorkflow: "#6366f1",
-  env: "#d97706",
 }
 
 const getMinimapNodeColor = (node: Node) => minimapNodeColor[node.type ?? ""] ?? "#6b7280"
@@ -141,27 +93,11 @@ const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
   end: { output_mapping: {} },
   llm: { prompt_template: "", output_variable: "llm_result", temperature: 0.7 },
   conditionBranch: { mode: "expression", conditions: [] },
-  questionClassifier: { classes: [] },
   agent: { agent_id: "", output_variable: "agent_result" },
   knowledgeRetrieval: { kb_id: "", query_template: "", top_k: 5, output_variable: "kb_result" },
   connector: { connector_id: "", action: "", parameters: {}, output_variable: "connector_result" },
-  httpRequest: { method: "GET", url: "", output_variable: "http_result" },
-  variableAssign: { assignments: [] },
-  templateTransform: { template: "", output_variable: "template_result" },
-  codeExecution: { language: "python", code: "", output_variable: "code_result" },
-  iterator: { list_variable: "", iterator_variable: "current_item", index_variable: "current_index", max_iterations: 100 },
-  loop: { condition: "", max_iterations: 50, loop_variable: "loop_index" },
-  variableAggregator: { variables: [], mode: "list", separator: "\n" },
-  parameterExtractor: { input_text: "", parameters: [], extraction_prompt: "" },
-  listOperation: { input_variable: "", operation: "filter", expression: "", output_variable: "list_result" },
-  transform: { input_variable: "", operations: [], output_variable: "transform_result" },
-  documentExtractor: { input_variable: "", input_type: "text", extract_mode: "full_text", output_variable: "document_result" },
-  questionUnderstanding: { input_variable: "", mode: "rewrite", output_variable: "question_result" },
   humanIntervention: { prompt_message: "", assignee: "", timeout_hours: 24, output_variable: "approval_result" },
   mcp: { server_id: "", tool_name: "", parameters: {}, output_variable: "mcp_result" },
-  builtinTool: { tool_id: "", parameters: {}, output_variable: "tool_result" },
-  subWorkflow: { workflow_id: "", input_mapping: {}, output_variable: "sub_result" },
-  env: { env_keys: [], output_variable: "env_result" },
 }
 
 interface WorkflowEditorProps {

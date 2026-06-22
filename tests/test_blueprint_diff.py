@@ -65,23 +65,23 @@ class TestAddedNodes:
             nodes=[
                 _node("1", "START"),
                 _node("2", "LLM"),
-                _node("3", "CODE_EXECUTION", label="CodeExecution"),
+                _node("3", "CONNECTOR", label="Connector"),
             ]
         )
         result = compute_blueprint_diff(old, new)
         assert "Added 2 nodes" in result
         assert "LLM" in result
-        assert "CodeExecution" in result
+        assert "Connector" in result
 
 
 class TestRemovedNodes:
     def test_single_removed_node(self) -> None:
         old = _bp(
-            nodes=[_node("1", "START"), _node("2", "HTTP_REQUEST", label="HTTPRequest")]
+            nodes=[_node("1", "START"), _node("2", "CONNECTOR", label="Connector")]
         )
         new = _bp(nodes=[_node("1", "START")])
         result = compute_blueprint_diff(old, new)
-        assert "Removed 1 node (HTTPRequest)" in result
+        assert "Removed 1 node (Connector)" in result
 
     def test_multiple_removed_nodes(self) -> None:
         old = _bp(
@@ -278,7 +278,7 @@ class TestComplexDiff:
             nodes=[
                 _node("start", "START"),
                 _node("llm1", "LLM", config={"model": "gpt-4"}),
-                _node("http1", "HTTP_REQUEST", label="HTTPRequest"),
+                _node("http1", "CONNECTOR", label="ConnectorA"),
                 _node("end", "END"),
             ],
             edges=[
@@ -292,7 +292,7 @@ class TestComplexDiff:
                 _node("start", "START"),
                 _node("llm1", "LLM", config={"model": "claude-3"}),
                 _node("agent1", "AGENT", label="Agent"),
-                _node("code1", "CODE_EXECUTION", label="CodeExecution"),
+                _node("code1", "CONNECTOR", label="ConnectorB"),
                 _node("end", "END"),
             ],
             edges=[
@@ -307,10 +307,10 @@ class TestComplexDiff:
         # Added: agent1, code1
         assert "Added 2 nodes" in result
         assert "Agent" in result
-        assert "CodeExecution" in result
+        assert "Connector" in result
 
         # Removed: http1
-        assert "Removed 1 node (HTTPRequest)" in result
+        assert "Removed 1 node (ConnectorA)" in result
 
         # Modified: llm1 config changed
         assert "Modified 1 node (LLM)" in result
@@ -365,9 +365,9 @@ class TestNodeLabel:
 
     def test_type_used_when_no_label(self) -> None:
         old = _bp()
-        new = _bp(nodes=[_node("1", "CODE_EXECUTION")])
+        new = _bp(nodes=[_node("1", "CONNECTOR")])
         result = compute_blueprint_diff(old, new)
-        assert "CODE_EXECUTION" in result
+        assert "CONNECTOR" in result
 
     def test_node_without_data(self) -> None:
         """Node with no data dict still works — falls back to id."""

@@ -70,27 +70,11 @@ export type WorkflowNodeType =
   | "end"
   | "llm"
   | "conditionBranch"
-  | "questionClassifier"
   | "agent"
   | "knowledgeRetrieval"
   | "connector"
-  | "httpRequest"
-  | "variableAssign"
-  | "templateTransform"
-  | "codeExecution"
-  | "iterator"
-  | "loop"
-  | "variableAggregator"
-  | "parameterExtractor"
-  | "listOperation"
-  | "transform"
-  | "documentExtractor"
-  | "questionUnderstanding"
   | "humanIntervention"
   | "mcp"
-  | "builtinTool"
-  | "subWorkflow"
-  | "env"
 
 // --- Per-node data interfaces ---
 
@@ -127,16 +111,6 @@ export interface ConditionNodeData {
   }>
 }
 
-export interface QuestionClassifierNodeData {
-  model?: string
-  prompt?: string
-  classes: Array<{
-    id: string
-    label: string
-    description?: string
-  }>
-}
-
 export interface AgentNodeData {
   agent_id: string
   prompt_template?: string
@@ -157,84 +131,6 @@ export interface ConnectorNodeData {
   output_variable: string
 }
 
-export interface HTTPRequestNodeData {
-  method: string
-  url: string
-  headers?: Record<string, string>
-  body?: string
-  output_variable: string
-}
-
-export interface VariableAssignNodeData {
-  assignments: Array<{
-    variable: string
-    expression: string
-  }>
-}
-
-export interface TemplateTransformNodeData {
-  template: string
-  output_variable: string
-}
-
-export interface CodeExecutionNodeData {
-  language: "python" | "javascript"
-  code: string
-  output_variable: string
-}
-
-export interface IteratorNodeData {
-  list_variable: string
-  iterator_variable: string
-  index_variable: string
-  max_iterations: number
-}
-
-export interface LoopNodeData {
-  condition: string
-  max_iterations: number
-  loop_variable: string
-}
-
-export interface VariableAggregatorNodeData {
-  variables: string[]
-  mode: "list" | "concat" | "merge" | "first_non_empty"
-  separator: string
-}
-
-export interface ListOperationNodeData {
-  input_variable: string
-  operation: "filter" | "map" | "sort" | "slice" | "flatten" | "unique" | "reverse" | "length"
-  expression: string
-  slice_start?: number
-  slice_end?: number
-  output_variable: string
-}
-
-export interface TransformNodeData {
-  input_variable: string
-  operations: Array<{
-    type: "json_path" | "type_cast" | "format" | "regex_extract" | "string_op" | "math_op"
-    config: Record<string, unknown>
-  }>
-  output_variable: string
-}
-
-export interface DocumentExtractorNodeData {
-  input_variable: string
-  input_type: "text" | "base64" | "url"
-  extract_mode: "full_text" | "pages" | "metadata" | "tables"
-  page_range?: string
-  output_variable: string
-}
-
-export interface QuestionUnderstandingNodeData {
-  input_variable: string
-  mode: "rewrite" | "expand" | "classify" | "decompose"
-  system_prompt?: string
-  output_variable: string
-}
-
 export interface HumanInterventionNodeData {
   prompt_message: string
   assignee: string
@@ -248,35 +144,6 @@ export interface MCPNodeData {
   parameters: Record<string, unknown>
   output_variable: string
 }
-
-export interface BuiltinToolNodeData {
-  tool_id: string
-  parameters: Record<string, unknown>
-  output_variable: string
-}
-
-export interface ParameterExtractorNodeData {
-  input_text: string
-  parameters: Array<{
-    name: string
-    type: string
-    description: string
-    required?: boolean
-  }>
-  extraction_prompt?: string
-}
-
-export interface SubWorkflowNodeData {
-  workflow_id: string
-  input_mapping: Record<string, string>
-  output_variable: string
-}
-
-export interface ENVNodeData {
-  env_keys: string[]
-  output_variable: string
-}
-
 
 // --- Validation types ---
 

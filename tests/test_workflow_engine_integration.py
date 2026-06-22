@@ -1,12 +1,17 @@
 """Integration tests for complex workflow engine scenarios.
 
 Exercises the engine with realistic multi-node graphs combining:
-- Variable passing across nodes
 - Parallel branches merging (diamond patterns)
 - Mixed error strategies in a single graph
 - Condition branching with downstream node execution
 - Env variable injection and interpolation
 - Cancellation mid-execution
+
+Generic "do work" nodes use kept node types:
+- A node that must SUCCEED headlessly -> HUMAN_INTERVENTION
+  (auto-approves when context.db_session_factory is None, i.e. test mode).
+- A node that must FAIL deterministically -> CONNECTOR with no
+  connector_id/action_id (returns FAILED immediately).
 """
 
 from __future__ import annotations
@@ -23,7 +28,6 @@ from fim_one.core.workflow.types import (
     ExecutionContext,
     NodeResult,
     NodeStatus,
-    NodeType,
     WorkflowBlueprint,
     WorkflowEdgeDef,
     WorkflowNodeDef,
@@ -66,16 +70,36 @@ def _llm_node(node_id: str, **data: Any) -> dict:
     }
 
 
-def _variable_assign_node(node_id: str, **data: Any) -> dict:
+def _work_node(node_id: str, **data: Any) -> dict:
+    """A generic node that SUCCEEDS headlessly.
+
+    Uses HUMAN_INTERVENTION, which auto-approves (status COMPLETED) when no
+    db_session_factory is present (test mode).
+    """
     return {
         "id": node_id,
-        "type": "variableAssign",
+        "type": "humanIntervention",
         "position": {"x": 200, "y": 0},
         "data": {
-            "type": "VARIABLE_ASSIGN",
-            "assignments": [
-                {"variable": "result", "mode": "literal", "value": "done"}
-            ],
+            "type": "HUMAN_INTERVENTION",
+            "title": "Auto step",
+            **data,
+        },
+    }
+
+
+def _fail_node(node_id: str, **data: Any) -> dict:
+    """A generic node that FAILS deterministically.
+
+    Uses CONNECTOR with no connector_id/action_id, which returns FAILED
+    immediately without touching the database.
+    """
+    return {
+        "id": node_id,
+        "type": "connector",
+        "position": {"x": 200, "y": 0},
+        "data": {
+            "type": "CONNECTOR",
             **data,
         },
     }
@@ -95,36 +119,6 @@ def _condition_node(
             "conditions": conditions or [
                 {"expression": "True", "handle": "true"},
             ],
-            **data,
-        },
-    }
-
-
-def _code_node(node_id: str, code: str = "result = 42", **data: Any) -> dict:
-    return {
-        "id": node_id,
-        "type": "codeExecution",
-        "position": {"x": 200, "y": 0},
-        "data": {
-            "type": "CODE_EXECUTION",
-            "code": code,
-            **data,
-        },
-    }
-
-
-def _template_node(
-    node_id: str,
-    template: str = "Hello {{input.name}}",
-    **data: Any,
-) -> dict:
-    return {
-        "id": node_id,
-        "type": "templateTransform",
-        "position": {"x": 200, "y": 0},
-        "data": {
-            "type": "TEMPLATE_TRANSFORM",
-            "template": template,
             **data,
         },
     }
@@ -183,19 +177,15 @@ class TestParallelDiamond:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _variable_assign_node("va_a", assignments=[
-                    {"variable": "a_result", "mode": "literal", "value": "from_a"},
-                ]),
-                _variable_assign_node("va_b", assignments=[
-                    {"variable": "b_result", "mode": "literal", "value": "from_b"},
-                ]),
+                _work_node("wa"),
+                _work_node("wb"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "va_a"),
-                _edge("start_1", "va_b"),
-                _edge("va_a", "end_1"),
-                _edge("va_b", "end_1"),
+                _edge("start_1", "wa"),
+                _edge("start_1", "wb"),
+                _edge("wa", "end_1"),
+                _edge("wb", "end_1"),
             ],
         })
 
@@ -203,8 +193,8 @@ class TestParallelDiamond:
         events = await _collect_events(engine, bp, {"query": "test"})
 
         completed = _completed_node_ids(events)
-        assert "va_a" in completed
-        assert "va_b" in completed
+        assert "wa" in completed
+        assert "wb" in completed
         assert "end_1" in completed
 
         # Run should complete successfully
@@ -218,16 +208,15 @@ class TestParallelDiamond:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_a", code="result = 42"),
-                _code_node("code_b", code="raise ValueError('boom')",
-                           error_strategy="stop_workflow"),
+                _work_node("wa"),
+                _fail_node("fail_b", error_strategy="stop_workflow"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_a"),
-                _edge("start_1", "code_b"),
-                _edge("code_a", "end_1"),
-                _edge("code_b", "end_1"),
+                _edge("start_1", "wa"),
+                _edge("start_1", "fail_b"),
+                _edge("wa", "end_1"),
+                _edge("fail_b", "end_1"),
             ],
         })
 
@@ -235,7 +224,7 @@ class TestParallelDiamond:
         events = await _collect_events(engine, bp)
 
         failed = _failed_node_ids(events)
-        assert "code_b" in failed
+        assert "fail_b" in failed
 
         run_events = _events_by_type(events, "run_failed")
         assert len(run_events) == 1
@@ -246,16 +235,15 @@ class TestParallelDiamond:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_a", code="result = 42"),
-                _code_node("code_b", code="raise ValueError('boom')",
-                           error_strategy="continue"),
+                _work_node("wa"),
+                _fail_node("fail_b", error_strategy="continue"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_a"),
-                _edge("start_1", "code_b"),
-                _edge("code_a", "end_1"),
-                _edge("code_b", "end_1"),
+                _edge("start_1", "wa"),
+                _edge("start_1", "fail_b"),
+                _edge("wa", "end_1"),
+                _edge("fail_b", "end_1"),
             ],
         })
 
@@ -264,9 +252,9 @@ class TestParallelDiamond:
 
         failed = _failed_node_ids(events)
         completed = _completed_node_ids(events)
-        assert "code_b" in failed
-        assert "code_a" in completed
-        # End should still complete since code_b used CONTINUE
+        assert "fail_b" in failed
+        assert "wa" in completed
+        # End should still complete since fail_b used CONTINUE
         assert "end_1" in completed
 
 
@@ -287,20 +275,16 @@ class TestConditionDiamondMerge:
                 _condition_node("cond_1", conditions=[
                     {"id": "c1", "expression": "True"},
                 ]),
-                _variable_assign_node("va_true", assignments=[
-                    {"variable": "path", "mode": "literal", "value": "true_path"},
-                ]),
-                _variable_assign_node("va_false", assignments=[
-                    {"variable": "path", "mode": "literal", "value": "false_path"},
-                ]),
+                _work_node("w_true"),
+                _work_node("w_false"),
                 _end_node(),
             ],
             "edges": [
                 _edge("start_1", "cond_1"),
-                _edge("cond_1", "va_true", sourceHandle="condition-c1"),
-                _edge("cond_1", "va_false", sourceHandle="source-default"),
-                _edge("va_true", "end_1"),
-                _edge("va_false", "end_1"),
+                _edge("cond_1", "w_true", sourceHandle="condition-c1"),
+                _edge("cond_1", "w_false", sourceHandle="source-default"),
+                _edge("w_true", "end_1"),
+                _edge("w_false", "end_1"),
             ],
         })
 
@@ -310,8 +294,8 @@ class TestConditionDiamondMerge:
         completed = _completed_node_ids(events)
         skipped = _skipped_node_ids(events)
 
-        assert "va_true" in completed
-        assert "va_false" in skipped
+        assert "w_true" in completed
+        assert "w_false" in skipped
         assert "end_1" in completed
 
     @pytest.mark.asyncio
@@ -323,20 +307,16 @@ class TestConditionDiamondMerge:
                 _condition_node("cond_1", conditions=[
                     {"id": "c1", "expression": "False"},
                 ]),
-                _variable_assign_node("va_special", assignments=[
-                    {"variable": "path", "mode": "literal", "value": "special"},
-                ]),
-                _variable_assign_node("va_default", assignments=[
-                    {"variable": "path", "mode": "literal", "value": "default"},
-                ]),
+                _work_node("w_special"),
+                _work_node("w_default"),
                 _end_node(),
             ],
             "edges": [
                 _edge("start_1", "cond_1"),
-                _edge("cond_1", "va_special", sourceHandle="condition-c1"),
-                _edge("cond_1", "va_default", sourceHandle="source-default"),
-                _edge("va_special", "end_1"),
-                _edge("va_default", "end_1"),
+                _edge("cond_1", "w_special", sourceHandle="condition-c1"),
+                _edge("cond_1", "w_default", sourceHandle="source-default"),
+                _edge("w_special", "end_1"),
+                _edge("w_default", "end_1"),
             ],
         })
 
@@ -346,8 +326,8 @@ class TestConditionDiamondMerge:
         completed = _completed_node_ids(events)
         skipped = _skipped_node_ids(events)
 
-        assert "va_special" in skipped
-        assert "va_default" in completed
+        assert "w_special" in skipped
+        assert "w_default" in completed
 
 
 # ---------------------------------------------------------------------------
@@ -369,21 +349,18 @@ class TestMixedErrorStrategies:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_ok", code="result = 'ok'"),
-                _code_node("code_fail", code="raise ValueError('boom')",
-                           error_strategy="fail_branch"),
-                _variable_assign_node("va_after_fail", assignments=[
-                    {"variable": "x", "mode": "literal", "value": "1"},
-                ]),
+                _work_node("work_ok"),
+                _fail_node("work_fail", error_strategy="fail_branch"),
+                _work_node("w_after_fail"),
                 _end_node("end_ok"),
                 _end_node("end_fail"),
             ],
             "edges": [
-                _edge("start_1", "code_ok"),
-                _edge("start_1", "code_fail"),
-                _edge("code_fail", "va_after_fail"),
-                _edge("va_after_fail", "end_fail"),
-                _edge("code_ok", "end_ok"),
+                _edge("start_1", "work_ok"),
+                _edge("start_1", "work_fail"),
+                _edge("work_fail", "w_after_fail"),
+                _edge("w_after_fail", "end_fail"),
+                _edge("work_ok", "end_ok"),
             ],
         })
 
@@ -394,10 +371,10 @@ class TestMixedErrorStrategies:
         completed = _completed_node_ids(events)
         skipped = _skipped_node_ids(events)
 
-        assert "code_fail" in failed
-        assert "va_after_fail" in skipped  # downstream of fail_branch
+        assert "work_fail" in failed
+        assert "w_after_fail" in skipped  # downstream of fail_branch
         assert "end_fail" in skipped  # downstream of fail_branch
-        assert "code_ok" in completed  # sibling branch unaffected
+        assert "work_ok" in completed  # sibling branch unaffected
         assert "end_ok" in completed  # sibling end node completes
 
 
@@ -423,116 +400,6 @@ class TestEnvVariableInjection:
         result = await store.interpolate("Key is {{env.API_KEY}}")
         assert result == "Key is secret-123"
 
-    @pytest.mark.asyncio
-    async def test_template_transform_with_regular_vars(self):
-        """TemplateTransform Jinja2 renders with store variables (non-env)."""
-        bp = parse_blueprint({
-            "nodes": [
-                _start_node(),
-                _template_node("tmpl_1", template="Hello {{ input_name }}"),
-                _end_node(),
-            ],
-            "edges": [
-                _edge("start_1", "tmpl_1"),
-                _edge("tmpl_1", "end_1"),
-            ],
-        })
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp, {"name": "World"})
-
-        completed = _completed_node_ids(events)
-        assert "tmpl_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        assert len(run_completed) == 1
-
-
-# ---------------------------------------------------------------------------
-# Test: Code Execution Variable Passing
-# ---------------------------------------------------------------------------
-
-
-class TestCodeExecutionIntegration:
-    """Test code execution nodes with variable passing."""
-
-    @pytest.mark.asyncio
-    async def test_code_result_available_downstream(self):
-        """Code node result should be accessible by downstream nodes."""
-        bp = parse_blueprint({
-            "nodes": [
-                _start_node(),
-                _code_node("code_1", code="result = 42"),
-                _end_node(output_mapping={
-                    "answer": "{{code_1.result}}",
-                }),
-            ],
-            "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "end_1"),
-            ],
-        })
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "code_1" in completed
-        assert "end_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        assert len(run_completed) == 1
-        assert run_completed[0]["status"] == "completed"
-
-    @pytest.mark.asyncio
-    async def test_chained_code_nodes(self):
-        """Code nodes in sequence should be able to read each other's outputs."""
-        bp = parse_blueprint({
-            "nodes": [
-                _start_node(),
-                _code_node("code_1", code="result = 10"),
-                _code_node("code_2", code="result = 20"),
-                _end_node(),
-            ],
-            "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "code_2"),
-                _edge("code_2", "end_1"),
-            ],
-        })
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "code_1" in completed
-        assert "code_2" in completed
-        assert "end_1" in completed
-
-    @pytest.mark.asyncio
-    async def test_code_with_input_variables(self):
-        """Code node should have access to start inputs."""
-        bp = parse_blueprint({
-            "nodes": [
-                _start_node(),
-                _code_node("code_1", code="result = 'processed'"),
-                _end_node(),
-            ],
-            "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "end_1"),
-            ],
-        })
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp, {"name": "World"})
-
-        completed = _completed_node_ids(events)
-        assert "code_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        assert run_completed[0]["status"] == "completed"
-
 
 # ---------------------------------------------------------------------------
 # Test: Cancellation During Execution
@@ -547,44 +414,39 @@ class TestCancellationScenarios:
         """Cancelling after first node should skip remaining nodes."""
         cancel = asyncio.Event()
 
-        async def slow_execute(node, store, ctx):
-            """Slow executor that allows cancellation to fire."""
-            await asyncio.sleep(0.3)
-            return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="done")
-
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_1", code="result = 1"),
-                _code_node("code_2", code="result = 2"),
+                _work_node("work_1"),
+                _work_node("work_2"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "code_2"),
-                _edge("code_2", "end_1"),
+                _edge("start_1", "work_1"),
+                _edge("work_1", "work_2"),
+                _edge("work_2", "end_1"),
             ],
         })
 
         engine = WorkflowEngine(max_concurrency=5, cancel_event=cancel)
 
         events: list[tuple[str, dict]] = []
-        saw_code_1_started = False
+        saw_work_1_started = False
 
         async for event_name, event_data in engine.execute_streaming(bp):
             events.append((event_name, event_data))
-            if event_name == "node_started" and event_data.get("node_id") == "code_1":
-                saw_code_1_started = True
-            if event_name == "node_completed" and event_data.get("node_id") == "code_1":
+            if event_name == "node_started" and event_data.get("node_id") == "work_1":
+                saw_work_1_started = True
+            if event_name == "node_completed" and event_data.get("node_id") == "work_1":
                 cancel.set()
 
-        # code_1 should have started
-        assert saw_code_1_started
+        # work_1 should have started
+        assert saw_work_1_started
 
         # After cancellation, remaining nodes should be skipped
         skipped = _skipped_node_ids(events)
-        # code_2 and end_1 should be skipped
-        assert "code_2" in skipped or "end_1" in skipped
+        # work_2 and end_1 should be skipped
+        assert "work_2" in skipped or "end_1" in skipped
 
 
 # ---------------------------------------------------------------------------
@@ -602,17 +464,15 @@ class TestComplexGraph:
         edges = []
 
         for i in range(1, 9):
-            nodes.append(_variable_assign_node(f"va_{i}", assignments=[
-                {"variable": f"step_{i}", "mode": "literal", "value": str(i)},
-            ]))
+            nodes.append(_work_node(f"w_{i}"))
 
         nodes.append(_end_node())
 
-        # Chain: start → va_1 → va_2 → ... → va_8 → end
+        # Chain: start → w_1 → w_2 → ... → w_8 → end
         prev = "start_1"
         for i in range(1, 9):
-            edges.append(_edge(prev, f"va_{i}"))
-            prev = f"va_{i}"
+            edges.append(_edge(prev, f"w_{i}"))
+            prev = f"w_{i}"
         edges.append(_edge(prev, "end_1"))
 
         bp = parse_blueprint({"nodes": nodes, "edges": edges})
@@ -621,7 +481,7 @@ class TestComplexGraph:
 
         completed = _completed_node_ids(events)
         for i in range(1, 9):
-            assert f"va_{i}" in completed
+            assert f"w_{i}" in completed
 
         run_completed = _events_by_type(events, "run_completed")
         assert len(run_completed) == 1
@@ -634,11 +494,9 @@ class TestComplexGraph:
         edges = []
 
         for i in range(1, 6):
-            nodes.append(_variable_assign_node(f"va_{i}", assignments=[
-                {"variable": f"branch_{i}", "mode": "literal", "value": str(i)},
-            ]))
-            edges.append(_edge("start_1", f"va_{i}"))
-            edges.append(_edge(f"va_{i}", "end_1"))
+            nodes.append(_work_node(f"w_{i}"))
+            edges.append(_edge("start_1", f"w_{i}"))
+            edges.append(_edge(f"w_{i}", "end_1"))
 
         nodes.append(_end_node())
 
@@ -648,7 +506,7 @@ class TestComplexGraph:
 
         completed = _completed_node_ids(events)
         for i in range(1, 6):
-            assert f"va_{i}" in completed
+            assert f"w_{i}" in completed
         assert "end_1" in completed
 
     @pytest.mark.asyncio
@@ -657,20 +515,16 @@ class TestComplexGraph:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _variable_assign_node("va_1", assignments=[
-                    {"variable": "x", "mode": "literal", "value": "1"},
-                ]),
-                _variable_assign_node("va_2", assignments=[
-                    {"variable": "y", "mode": "literal", "value": "2"},
-                ]),
+                _work_node("w_1"),
+                _work_node("w_2"),
                 _end_node("end_1"),
                 _end_node("end_2"),
             ],
             "edges": [
-                _edge("start_1", "va_1"),
-                _edge("start_1", "va_2"),
-                _edge("va_1", "end_1"),
-                _edge("va_2", "end_2"),
+                _edge("start_1", "w_1"),
+                _edge("start_1", "w_2"),
+                _edge("w_1", "end_1"),
+                _edge("w_2", "end_2"),
             ],
         })
 
@@ -696,12 +550,12 @@ class TestInputPreview:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_1", code="result = 42"),
+                _work_node("work_1"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "end_1"),
+                _edge("start_1", "work_1"),
+                _edge("work_1", "end_1"),
             ],
         })
 
@@ -709,11 +563,11 @@ class TestInputPreview:
         events = await _collect_events(engine, bp, {"name": "test"})
 
         started_events = _events_by_type(events, "node_started")
-        # code_1 should have an input_preview (showing start_1 outputs)
-        code_1_started = [e for e in started_events if e.get("node_id") == "code_1"]
-        assert len(code_1_started) == 1
+        # work_1 should have an input_preview (showing start_1 outputs)
+        work_1_started = [e for e in started_events if e.get("node_id") == "work_1"]
+        assert len(work_1_started) == 1
         # input_preview should be set (may be None for Start node's first output)
-        assert "input_preview" in code_1_started[0]
+        assert "input_preview" in work_1_started[0]
 
 
 # ---------------------------------------------------------------------------
@@ -734,19 +588,19 @@ class TestWorkflowTimeoutIntegration:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_1", code="result = 1"),
+                _work_node("work_1"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "end_1"),
+                _edge("start_1", "work_1"),
+                _edge("work_1", "end_1"),
             ],
         })
 
         engine = WorkflowEngine(max_concurrency=5, workflow_timeout_ms=100)
 
         with patch(
-            "fim_one.core.workflow.nodes.CodeExecutionExecutor.execute",
+            "fim_one.core.workflow.nodes.HumanInterventionExecutor.execute",
             side_effect=slow_execute,
         ):
             events = await _collect_events(engine, bp)
@@ -788,12 +642,12 @@ class TestEventOrdering:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_1", code="result = 1"),
+                _work_node("work_1"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "end_1"),
+                _edge("start_1", "work_1"),
+                _edge("work_1", "end_1"),
             ],
         })
 
@@ -809,14 +663,14 @@ class TestEventOrdering:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_1", code="result = 1"),
-                _code_node("code_2", code="result = 2"),
+                _work_node("work_1"),
+                _work_node("work_2"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "code_2"),
-                _edge("code_2", "end_1"),
+                _edge("start_1", "work_1"),
+                _edge("work_1", "work_2"),
+                _edge("work_2", "end_1"),
             ],
         })
 
@@ -845,14 +699,14 @@ class TestEventOrdering:
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _code_node("code_1", code="result = 1"),
-                _code_node("code_2", code="result = 2"),
+                _work_node("work_1"),
+                _work_node("work_2"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "code_1"),
-                _edge("code_1", "code_2"),
-                _edge("code_2", "end_1"),
+                _edge("start_1", "work_1"),
+                _edge("work_1", "work_2"),
+                _edge("work_2", "end_1"),
             ],
         })
 
@@ -860,18 +714,18 @@ class TestEventOrdering:
         events = await _collect_events(engine, bp)
 
         # Find positions
-        code_1_completed = None
-        code_2_started = None
+        work_1_completed = None
+        work_2_started = None
         for idx, (name, data) in enumerate(events):
             nid = data.get("node_id")
-            if name == "node_completed" and nid == "code_1":
-                code_1_completed = idx
-            if name == "node_started" and nid == "code_2":
-                code_2_started = idx
+            if name == "node_completed" and nid == "work_1":
+                work_1_completed = idx
+            if name == "node_started" and nid == "work_2":
+                work_2_started = idx
 
-        assert code_1_completed is not None
-        assert code_2_started is not None
-        assert code_1_completed < code_2_started
+        assert work_1_completed is not None
+        assert work_2_started is not None
+        assert work_1_completed < work_2_started
 
 
 # ---------------------------------------------------------------------------
@@ -938,56 +792,60 @@ class TestConcurrencyLimits:
 
     @pytest.mark.asyncio
     async def test_max_concurrency_one(self):
-        """With max_concurrency=1, nodes should execute sequentially."""
+        """With max_concurrency=1, nodes should execute sequentially.
+
+        Uses CONNECTOR nodes here (not HUMAN_INTERVENTION): the engine
+        deliberately does NOT hold the concurrency semaphore for
+        HUMAN_INTERVENTION (long human waits must not block the pool), so
+        only a semaphore-gated node type exercises this guarantee. The
+        patched executor ignores the connector_id/action_id entirely.
+        """
         execution_log: list[tuple[str, str]] = []
 
         async def tracking_execute(node, store, ctx):
             execution_log.append((node.id, "start"))
             await asyncio.sleep(0.01)
             execution_log.append((node.id, "end"))
-            if node.type == NodeType.VARIABLE_ASSIGN:
-                for a in node.data.get("assignments", []):
-                    await store.set(f"{node.id}.{a['variable']}", a["value"])
             return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="ok")
 
         bp = parse_blueprint({
             "nodes": [
                 _start_node(),
-                _variable_assign_node("va_1"),
-                _variable_assign_node("va_2"),
-                _variable_assign_node("va_3"),
+                _fail_node("w_1", connector_id="c", action_id="a"),
+                _fail_node("w_2", connector_id="c", action_id="a"),
+                _fail_node("w_3", connector_id="c", action_id="a"),
                 _end_node(),
             ],
             "edges": [
-                _edge("start_1", "va_1"),
-                _edge("start_1", "va_2"),
-                _edge("start_1", "va_3"),
-                _edge("va_1", "end_1"),
-                _edge("va_2", "end_1"),
-                _edge("va_3", "end_1"),
+                _edge("start_1", "w_1"),
+                _edge("start_1", "w_2"),
+                _edge("start_1", "w_3"),
+                _edge("w_1", "end_1"),
+                _edge("w_2", "end_1"),
+                _edge("w_3", "end_1"),
             ],
         })
 
         engine = WorkflowEngine(max_concurrency=1)
 
         with patch(
-            "fim_one.core.workflow.nodes.VariableAssignExecutor.execute",
+            "fim_one.core.workflow.nodes.ConnectorExecutor.execute",
             side_effect=tracking_execute,
         ):
             events = await _collect_events(engine, bp)
 
         completed = _completed_node_ids(events)
-        assert "va_1" in completed
-        assert "va_2" in completed
-        assert "va_3" in completed
+        assert "w_1" in completed
+        assert "w_2" in completed
+        assert "w_3" in completed
 
-        # With concurrency=1, no two VA nodes should overlap
+        # With concurrency=1, no two work nodes should overlap
         # Check that each "start" is followed by its "end" before next "start"
-        va_entries = [(nid, action) for nid, action in execution_log
-                      if nid.startswith("va_")]
-        for i in range(0, len(va_entries) - 1, 2):
-            nid_start, action_start = va_entries[i]
-            nid_end, action_end = va_entries[i + 1]
+        w_entries = [(nid, action) for nid, action in execution_log
+                     if nid.startswith("w_")]
+        for i in range(0, len(w_entries) - 1, 2):
+            nid_start, action_start = w_entries[i]
+            nid_end, action_end = w_entries[i + 1]
             assert nid_start == nid_end, f"Expected matching pair, got {nid_start}/{nid_end}"
             assert action_start == "start"
             assert action_end == "end"

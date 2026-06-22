@@ -709,7 +709,7 @@ class TestTemplateSeedData:
         """Every seed template has all required fields."""
         from fim_one.core.workflow.template_seeds import TEMPLATE_SEEDS
 
-        assert len(TEMPLATE_SEEDS) >= 5
+        assert len(TEMPLATE_SEEDS) >= 4
 
         for seed in TEMPLATE_SEEDS:
             assert "name" in seed

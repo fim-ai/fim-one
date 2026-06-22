@@ -4,29 +4,21 @@ Covers:
 - NodeTestRequest / NodeTestResponse schema validation
 - Node lookup in blueprint
 - Non-testable node type rejection (START, END)
-- Successful isolated execution of testable node types
-- Timeout handling
-- Error propagation
 - Variable store population and snapshot
+- Response construction from execution results
 """
 
 from __future__ import annotations
 
-import asyncio
 import pytest
 from typing import Any
 
 from pydantic import ValidationError
 
-from fim_one.core.workflow.nodes import get_executor
-from fim_one.core.workflow.parser import _resolve_node_type
 from fim_one.core.workflow.types import (
-    ErrorStrategy,
-    ExecutionContext,
     NodeResult,
     NodeStatus,
     NodeType,
-    WorkflowNodeDef,
 )
 from fim_one.core.workflow.variable_store import VariableStore
 from fim_one.web.schemas.workflow import NodeTestRequest, NodeTestResponse
@@ -55,50 +47,14 @@ def _end_node(node_id: str = "end_1", **data: Any) -> dict:
     }
 
 
-def _variable_assign_node(
-    node_id: str = "var_assign_1", **data: Any
-) -> dict:
+def _llm_node(node_id: str = "llm_1", **data: Any) -> dict:
     return {
         "id": node_id,
-        "type": "variableAssign",
+        "type": "llm",
         "position": {"x": 200, "y": 0},
         "data": {
-            "type": "VARIABLE_ASSIGN",
-            "assignments": [
-                {"variable": "greeting", "value": "Hello, {{input.name}}!"},
-            ],
-            **data,
-        },
-    }
-
-
-def _template_transform_node(
-    node_id: str = "template_1", **data: Any
-) -> dict:
-    return {
-        "id": node_id,
-        "type": "templateTransform",
-        "position": {"x": 200, "y": 0},
-        "data": {
-            "type": "TEMPLATE_TRANSFORM",
-            "template": "Result: {{input.value}}",
-            "output_variable": "result",
-            **data,
-        },
-    }
-
-
-def _code_execution_node(
-    node_id: str = "code_1", **data: Any
-) -> dict:
-    return {
-        "id": node_id,
-        "type": "codeExecution",
-        "position": {"x": 200, "y": 0},
-        "data": {
-            "type": "CODE_EXECUTION",
-            "code": "result = x + y",
-            "output_variable": "result",
+            "type": "LLM",
+            "prompt_template": "Hello, {{input.name}}!",
             **data,
         },
     }
@@ -183,8 +139,8 @@ class TestSchemas:
 
     def test_response_failed(self):
         resp = NodeTestResponse(
-            node_id="code_1",
-            node_type="CODE_EXECUTION",
+            node_id="llm_1",
+            node_type="LLM",
             status="failed",
             error="NameError: name 'foo' is not defined",
             duration_ms=5,
@@ -215,10 +171,6 @@ class TestNonTestableNodeTypes:
         non_testable = frozenset({NodeType.START, NodeType.END})
         assert NodeType.LLM not in non_testable
 
-    def test_code_execution_is_testable(self):
-        non_testable = frozenset({NodeType.START, NodeType.END})
-        assert NodeType.CODE_EXECUTION not in non_testable
-
 
 # ---------------------------------------------------------------------------
 # Node lookup in blueprint
@@ -231,13 +183,13 @@ class TestNodeLookup:
     def test_find_existing_node(self):
         bp = _blueprint_with_nodes(
             _start_node(),
-            _variable_assign_node("var_1"),
+            _llm_node("llm_lookup"),
             _end_node(),
         )
         raw_nodes = bp["nodes"]
-        found = next((n for n in raw_nodes if n["id"] == "var_1"), None)
+        found = next((n for n in raw_nodes if n["id"] == "llm_lookup"), None)
         assert found is not None
-        assert found["data"]["type"] == "VARIABLE_ASSIGN"
+        assert found["data"]["type"] == "LLM"
 
     def test_missing_node_returns_none(self):
         bp = _blueprint_with_nodes(_start_node(), _end_node())
@@ -295,167 +247,6 @@ class TestVariableStoreSetup:
 # ---------------------------------------------------------------------------
 
 
-class TestIsolatedExecution:
-    """Test executing individual nodes with the get_executor() pattern."""
-
-    @pytest.mark.asyncio
-    async def test_variable_assign_execution(self):
-        """VariableAssign node should write variables to the store."""
-        node_def = WorkflowNodeDef(
-            id="var_1",
-            type=NodeType.VARIABLE_ASSIGN,
-            data={
-                "type": "VARIABLE_ASSIGN",
-                "assignments": [
-                    {"variable": "greeting", "value": "Hello!"},
-                ],
-            },
-        )
-        store = VariableStore()
-        context = ExecutionContext(
-            run_id="test-run-001",
-            user_id="user-1",
-            workflow_id="wf-1",
-        )
-
-        executor = get_executor(NodeType.VARIABLE_ASSIGN)
-        result = await executor.execute(node_def, store, context)
-
-        assert result.status == NodeStatus.COMPLETED
-        assert result.node_id == "var_1"
-
-        snapshot = await store.snapshot()
-        assert "var_1.greeting" in snapshot
-
-    @pytest.mark.asyncio
-    async def test_code_execution_with_mock_vars(self):
-        """CodeExecution node should use variables from the store.
-
-        The code executor injects store variables via a ``variables`` dict,
-        so user code accesses them as ``variables['input.x']``.
-        """
-        node_def = WorkflowNodeDef(
-            id="code_1",
-            type=NodeType.CODE_EXECUTION,
-            data={
-                "type": "CODE_EXECUTION",
-                "code": "result = variables['input.x'] + variables['input.y']",
-                "output_variable": "result",
-            },
-        )
-        store = VariableStore()
-        await store.set("input.x", 10)
-        await store.set("input.y", 20)
-
-        context = ExecutionContext(
-            run_id="test-run-002",
-            user_id="user-1",
-            workflow_id="wf-1",
-        )
-
-        executor = get_executor(NodeType.CODE_EXECUTION)
-        result = await executor.execute(node_def, store, context)
-
-        assert result.status == NodeStatus.COMPLETED
-        snapshot = await store.snapshot()
-        assert snapshot.get("code_1.output") == 30
-
-    @pytest.mark.asyncio
-    async def test_template_transform_with_mock_vars(self):
-        """TemplateTransform uses Jinja2 with snapshot_safe() as context.
-
-        Variables with dotted keys like ``input.name`` are passed as
-        ``**snapshot`` to Jinja2's ``render()``. Since dots create nested
-        access in Jinja2 (``input`` -> ``.name``), we set up a flat key
-        ``name`` that Jinja2 can directly resolve.
-        """
-        node_def = WorkflowNodeDef(
-            id="tmpl_1",
-            type=NodeType.TEMPLATE_TRANSFORM,
-            data={
-                "type": "TEMPLATE_TRANSFORM",
-                "template": "Welcome {{ name }}!",
-                "output_variable": "message",
-            },
-        )
-        store = VariableStore()
-        # Use a flat key that Jinja2 can directly resolve
-        await store.set("name", "Bob")
-
-        context = ExecutionContext(
-            run_id="test-run-003",
-            user_id="user-1",
-            workflow_id="wf-1",
-        )
-
-        executor = get_executor(NodeType.TEMPLATE_TRANSFORM)
-        result = await executor.execute(node_def, store, context)
-
-        assert result.status == NodeStatus.COMPLETED
-        snapshot = await store.snapshot()
-        assert "Bob" in str(snapshot.get("tmpl_1.output", ""))
-
-    @pytest.mark.asyncio
-    async def test_execution_timeout(self):
-        """Verify asyncio.wait_for timeout works for long-running nodes.
-
-        The CodeExecution executor has its own internal 30s timeout, but
-        the test-node endpoint wraps it with an external asyncio.wait_for
-        at 30s. We test a shorter timeout here to confirm the pattern works.
-        """
-        node_def = WorkflowNodeDef(
-            id="code_slow",
-            type=NodeType.CODE_EXECUTION,
-            data={
-                "type": "CODE_EXECUTION",
-                "code": "import time; time.sleep(10); result = 'done'",
-                "output_variable": "result",
-            },
-        )
-        store = VariableStore()
-        context = ExecutionContext(
-            run_id="test-run-timeout",
-            user_id="user-1",
-            workflow_id="wf-1",
-        )
-
-        executor = get_executor(NodeType.CODE_EXECUTION)
-
-        # The executor itself has a 30s internal timeout (subprocess),
-        # and the endpoint wraps with wait_for(30s). We test with a very
-        # short timeout to verify the external timeout path.
-        with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(
-                executor.execute(node_def, store, context),
-                timeout=0.3,
-            )
-
-    @pytest.mark.asyncio
-    async def test_execution_error_returns_failed(self):
-        """Node execution errors should produce a FAILED result."""
-        node_def = WorkflowNodeDef(
-            id="code_err",
-            type=NodeType.CODE_EXECUTION,
-            data={
-                "type": "CODE_EXECUTION",
-                "code": "result = 1 / 0",
-                "output_variable": "result",
-            },
-        )
-        store = VariableStore()
-        context = ExecutionContext(
-            run_id="test-run-error",
-            user_id="user-1",
-            workflow_id="wf-1",
-        )
-
-        executor = get_executor(NodeType.CODE_EXECUTION)
-        result = await executor.execute(node_def, store, context)
-
-        assert result.status == NodeStatus.FAILED
-        assert result.error is not None
-
-
 # ---------------------------------------------------------------------------
 # Response construction from NodeResult
 # ---------------------------------------------------------------------------
@@ -472,17 +263,17 @@ class TestResponseConstruction:
 
         # Simulate execution result
         result = NodeResult(
-            node_id="code_1",
+            node_id="llm_1",
             status=NodeStatus.COMPLETED,
             output=25,
             duration_ms=12,
         )
-        await store.set("code_1.result", 25)
+        await store.set("llm_1.result", 25)
 
         snapshot = await store.snapshot()
         resp = NodeTestResponse(
             node_id=result.node_id,
-            node_type="CODE_EXECUTION",
+            node_type="LLM",
             status=result.status.value,
             output=result.output,
             error=result.error,
@@ -493,7 +284,7 @@ class TestResponseConstruction:
         assert resp.status == "completed"
         assert resp.output == 25
         assert resp.error is None
-        assert resp.variables_after["code_1.result"] == 25
+        assert resp.variables_after["llm_1.result"] == 25
         assert resp.variables_after["input.x"] == 5
 
     @pytest.mark.asyncio
@@ -503,8 +294,8 @@ class TestResponseConstruction:
         snapshot = await store.snapshot()
 
         resp = NodeTestResponse(
-            node_id="code_1",
-            node_type="CODE_EXECUTION",
+            node_id="llm_1",
+            node_type="LLM",
             status="failed",
             error="ZeroDivisionError: division by zero",
             duration_ms=3,
@@ -523,8 +314,8 @@ class TestResponseConstruction:
         snapshot = await store.snapshot()
 
         resp = NodeTestResponse(
-            node_id="code_slow",
-            node_type="CODE_EXECUTION",
+            node_id="llm_slow",
+            node_type="LLM",
             status="failed",
             error="Node execution timed out after 30 seconds",
             duration_ms=30001,

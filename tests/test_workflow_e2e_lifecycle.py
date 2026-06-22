@@ -10,11 +10,9 @@ Scenarios covered:
 1. Simple LLM chain with variable interpolation
 2. Condition branching (true path, false/default path, skipped events)
 3. Error strategies: stop_workflow, continue, fail_branch
-4. Template transform with variable chaining
-5. Code execution with output captured via variable store
-6. Parallel diamond (fan-out / fan-in)
-7. Cancellation mid-execution
-8. Empty workflow (Start -> End)
+4. Parallel diamond (fan-out / fan-in)
+5. Cancellation mid-execution
+6. Empty workflow (Start -> End)
 """
 
 from __future__ import annotations
@@ -76,19 +74,31 @@ def _llm_node(node_id: str, **data: Any) -> dict:
     }
 
 
-def _variable_assign_node(node_id: str, **data: Any) -> dict:
+def _work_node(node_id: str, **data: Any) -> dict:
+    """A generic "do work" node that completes successfully.
+
+    Backed by HUMAN_INTERVENTION, which auto-approves and completes in
+    headless test mode (no db_session_factory).  Used as a topology
+    placeholder in orchestration tests (parallel/diamond/branch/chain)
+    whose intent is the engine's scheduling behavior, not the node body.
+    """
+    extra = {k: v for k, v in data.items() if k != "assignments"}
     return {
         "id": node_id,
-        "type": "variableAssign",
+        "type": "custom",
         "position": {"x": 200, "y": 0},
         "data": {
-            "type": "VARIABLE_ASSIGN",
-            "assignments": [
-                {"variable": "result", "mode": "literal", "value": "done"}
-            ],
-            **data,
+            "type": "HUMAN_INTERVENTION",
+            "title": f"work-{node_id}",
+            **extra,
         },
     }
+
+
+# Backwards-compatible alias: orchestration tests used this builder purely
+# as a lightweight pass-through node.  The VARIABLE_ASSIGN node type no
+# longer exists, so it now maps to the generic kept work node.
+_variable_assign_node = _work_node
 
 
 def _condition_node(
@@ -112,33 +122,29 @@ def _condition_node(
 
 
 def _code_node(node_id: str, code: str = "result = 42", **data: Any) -> dict:
-    return {
-        "id": node_id,
-        "type": "codeExecution",
-        "position": {"x": 200, "y": 0},
-        "data": {
-            "type": "CODE_EXECUTION",
-            "code": code,
-            **data,
-        },
-    }
+    """Topology placeholder used by orchestration tests.
 
+    The CODE_EXECUTION node type was removed.  These tests only care about
+    whether a node completes or fails (for error-strategy / cancellation /
+    parallel scheduling assertions), not about executing Python.  We map to
+    a kept node type accordingly:
 
-def _template_node(
-    node_id: str,
-    template: str = "Hello {{ input_name }}",
-    **data: Any,
-) -> dict:
-    return {
-        "id": node_id,
-        "type": "templateTransform",
-        "position": {"x": 200, "y": 0},
-        "data": {
-            "type": "TEMPLATE_TRANSFORM",
-            "template": template,
-            **data,
-        },
-    }
+    - ``code`` containing ``raise`` -> a CONNECTOR node with no config, which
+      always fails (engine then applies ``error_strategy``).
+    - otherwise -> a HUMAN_INTERVENTION node that completes in test mode.
+    """
+    if "raise" in code:
+        return {
+            "id": node_id,
+            "type": "custom",
+            "position": {"x": 200, "y": 0},
+            "data": {
+                "type": "CONNECTOR",
+                # Missing connector_id/action_id -> deterministic failure.
+                **data,
+            },
+        }
+    return _work_node(node_id, **data)
 
 
 def _edge(source: str, target: str, **kw: Any) -> dict:
@@ -791,240 +797,6 @@ class TestErrorStrategies:
 
 
 # ===========================================================================
-# 4. Template transform + variable chaining
-# ===========================================================================
-
-
-class TestTemplateTransformChaining:
-    """Start -> VarAssign(x=hello) -> TemplateTransform -> End."""
-
-    @pytest.mark.asyncio
-    async def test_template_renders_with_variable_values(self):
-        """Template should render using variables set by upstream nodes."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _variable_assign_node(
-                        "va_1",
-                        assignments=[
-                            {
-                                "variable": "greeting",
-                                "mode": "literal",
-                                "value": "hello",
-                            }
-                        ],
-                    ),
-                    # Jinja2 template references the flat variable name.
-                    # VariableAssignExecutor stores under both "greeting"
-                    # (flat) and "va_1.greeting" (namespaced).  The
-                    # TemplateTransformExecutor renders using snapshot_safe()
-                    # which exposes dotted keys: use "va_1.greeting" or
-                    # just the dotted key syntax Jinja2 doesn't support with
-                    # dots -- so we use the namespaced form with underscores.
-                    _template_node(
-                        "tmpl_1",
-                        template="Message: {{ greeting }}",
-                    ),
-                    _end_node(
-                        output_mapping={"rendered": "{{tmpl_1.output}}"},
-                    ),
-                ],
-                "edges": [
-                    _edge("start_1", "va_1"),
-                    _edge("va_1", "tmpl_1"),
-                    _edge("tmpl_1", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "va_1" in completed
-        assert "tmpl_1" in completed
-        assert "end_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        assert len(run_completed) == 1
-        assert run_completed[0]["status"] == "completed"
-        outputs = run_completed[0].get("outputs", {})
-        assert outputs.get("rendered") == "Message: hello"
-
-    @pytest.mark.asyncio
-    async def test_template_with_input_variables(self):
-        """Template rendering with workflow-level input variables."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _template_node(
-                        "tmpl_1",
-                        # snapshot_safe() stores inputs as "input.name";
-                        # Jinja2 dot access: input is a top-level key
-                        # But snapshot keys are dotted strings, not nested dicts.
-                        # The flat key "input.name" is accessible via
-                        # the underscore alias or the Jinja2 bracket syntax.
-                        template="Hello {{ input_name }}",
-                    ),
-                    _end_node(
-                        output_mapping={"msg": "{{tmpl_1.output}}"},
-                    ),
-                ],
-                "edges": [
-                    _edge("start_1", "tmpl_1"),
-                    _edge("tmpl_1", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp, {"name": "World"})
-
-        completed = _completed_node_ids(events)
-        assert "tmpl_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        assert run_completed[0]["status"] == "completed"
-
-
-# ===========================================================================
-# 5. Code execution with output capture
-# ===========================================================================
-
-
-class TestCodeExecution:
-    """Start -> CodeExecution -> End with output mapping."""
-
-    @pytest.mark.asyncio
-    async def test_code_result_captured_in_end_node(self):
-        """Code node result should be accessible via output_mapping."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _code_node("code_1", code="result = 42"),
-                    _end_node(
-                        output_mapping={"answer": "{{code_1.output}}"},
-                    ),
-                ],
-                "edges": [
-                    _edge("start_1", "code_1"),
-                    _edge("code_1", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "code_1" in completed
-        assert "end_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        assert run_completed[0]["status"] == "completed"
-        outputs = run_completed[0].get("outputs", {})
-        # Code output is JSON-parsed: integer 42 becomes "42" via
-        # store.interpolate (which converts non-string values to JSON)
-        assert outputs.get("answer") is not None
-
-    @pytest.mark.asyncio
-    async def test_code_string_result(self):
-        """Code node returning a string result."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _code_node(
-                        "code_1", code='result = "hello world"'
-                    ),
-                    _end_node(
-                        output_mapping={"msg": "{{code_1.output}}"},
-                    ),
-                ],
-                "edges": [
-                    _edge("start_1", "code_1"),
-                    _edge("code_1", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "code_1" in completed
-        assert "end_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        outputs = run_completed[0].get("outputs", {})
-        assert outputs.get("msg") == "hello world"
-
-    @pytest.mark.asyncio
-    async def test_code_with_dict_result(self):
-        """Code node returning a dictionary."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _code_node(
-                        "code_1",
-                        code='result = {"key": "value", "num": 42}',
-                    ),
-                    _end_node(),
-                ],
-                "edges": [
-                    _edge("start_1", "code_1"),
-                    _edge("code_1", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "code_1" in completed
-        assert "end_1" in completed
-
-    @pytest.mark.asyncio
-    async def test_code_failure_produces_error(self):
-        """Code that raises should produce a node_failed event."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _code_node(
-                        "code_1",
-                        code="raise RuntimeError('test error')",
-                        error_strategy="stop_workflow",
-                    ),
-                    _end_node(),
-                ],
-                "edges": [
-                    _edge("start_1", "code_1"),
-                    _edge("code_1", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        failed = _failed_node_ids(events)
-        assert "code_1" in failed
-
-        fail_events = _events_by_type(events, "node_failed")
-        code_fail = next(
-            e for e in fail_events if e.get("node_id") == "code_1"
-        )
-        assert "error" in code_fail
-        assert code_fail["error"]  # non-empty
-
-
-# ===========================================================================
 # 6. Parallel diamond (fan-out / fan-in)
 # ===========================================================================
 
@@ -1337,95 +1109,6 @@ class TestEmptyWorkflow:
 # ===========================================================================
 
 
-class TestVariableChaining:
-    """Test that variables flow correctly between nodes."""
-
-    @pytest.mark.asyncio
-    async def test_code_to_code_variable_passing(self):
-        """Chained code nodes: second can access first's output."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _code_node("code_1", code="result = 10"),
-                    _code_node("code_2", code="result = 20"),
-                    _end_node(
-                        output_mapping={
-                            "first": "{{code_1.output}}",
-                            "second": "{{code_2.output}}",
-                        },
-                    ),
-                ],
-                "edges": [
-                    _edge("start_1", "code_1"),
-                    _edge("code_1", "code_2"),
-                    _edge("code_2", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "code_1" in completed
-        assert "code_2" in completed
-        assert "end_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        assert run_completed[0]["status"] == "completed"
-
-    @pytest.mark.asyncio
-    async def test_variable_assign_to_template_chaining(self):
-        """VariableAssign -> TemplateTransform -> End variable flow."""
-        bp = parse_blueprint(
-            {
-                "nodes": [
-                    _start_node(),
-                    _variable_assign_node(
-                        "va_1",
-                        assignments=[
-                            {
-                                "variable": "name",
-                                "mode": "literal",
-                                "value": "Alice",
-                            },
-                            {
-                                "variable": "age",
-                                "mode": "literal",
-                                "value": "30",
-                            },
-                        ],
-                    ),
-                    _template_node(
-                        "tmpl_1",
-                        template="{{ name }} is {{ age }} years old",
-                    ),
-                    _end_node(
-                        output_mapping={"bio": "{{tmpl_1.output}}"},
-                    ),
-                ],
-                "edges": [
-                    _edge("start_1", "va_1"),
-                    _edge("va_1", "tmpl_1"),
-                    _edge("tmpl_1", "end_1"),
-                ],
-            }
-        )
-
-        engine = WorkflowEngine(max_concurrency=5)
-        events = await _collect_events(engine, bp)
-
-        completed = _completed_node_ids(events)
-        assert "va_1" in completed
-        assert "tmpl_1" in completed
-        assert "end_1" in completed
-
-        run_completed = _events_by_type(events, "run_completed")
-        outputs = run_completed[0].get("outputs", {})
-        assert outputs.get("bio") == "Alice is 30 years old"
-
-
 class TestComplexLifecycleGraphs:
     """Multi-step workflows combining different node types."""
 
@@ -1505,7 +1188,7 @@ class TestComplexLifecycleGraphs:
 
     @pytest.mark.asyncio
     async def test_deep_linear_chain_all_nodes_complete(self):
-        """Linear chain of 6 VariableAssign nodes executes in order."""
+        """Linear chain of 6 work nodes executes in order."""
         nodes = [_start_node()]
         edges = []
 

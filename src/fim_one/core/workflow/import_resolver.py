@@ -60,7 +60,6 @@ _REFERENCE_FIELDS: dict[NodeType, list[tuple[str, str]]] = {
         ("knowledge_base_id", "knowledge_base"),
         ("kb_id", "knowledge_base"),
     ],
-    NodeType.SUB_WORKFLOW: [("workflow_id", "workflow")],
     NodeType.MCP: [("server_id", "mcp_server")],
 }
 

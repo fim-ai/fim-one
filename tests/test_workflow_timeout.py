@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from fim_one.core.workflow.engine import WorkflowEngine
+from fim_one.core.workflow.nodes import get_executor as _real_get_executor
 from fim_one.core.workflow.types import (
+    NodeResult,
+    NodeStatus,
     NodeType,
     WorkflowBlueprint,
     WorkflowEdgeDef,
@@ -13,19 +18,40 @@ from fim_one.core.workflow.types import (
 )
 
 
+class _SleepExecutor:
+    """Test-only executor that sleeps for a configurable duration."""
+
+    def __init__(self, delay_seconds: float) -> None:
+        self._delay = delay_seconds
+
+    async def execute(self, node, store, context):  # type: ignore[no-untyped-def]
+        await asyncio.sleep(self._delay)
+        await store.set(f"{node.id}.output", "done")
+        return NodeResult(node_id=node.id, status=NodeStatus.COMPLETED, output="done")
+
+
+def _patched_get_executor(delays: dict[str, float]):
+    """Return a get_executor replacement that injects sleep delays by node id.
+
+    Falls back to the real executor for node types that aren't sleeping.
+    """
+
+    def _factory(node_type: NodeType):  # type: ignore[no-untyped-def]
+        # The engine calls get_executor(node.type); we can't see the id here,
+        # so we route by type: LLM nodes become sleep executors.
+        if node_type == NodeType.LLM:
+            return _SleepExecutor(delays.get("__default__", 30.0))
+        return _real_get_executor(node_type)
+
+    return _factory
+
+
 def _make_slow_blueprint(delay_seconds: float = 5.0) -> WorkflowBlueprint:
-    """Create a minimal blueprint whose CODE_EXECUTION node sleeps longer than the timeout."""
+    """Create a minimal blueprint whose LLM node sleeps longer than the timeout."""
     return WorkflowBlueprint(
         nodes=[
             WorkflowNodeDef(id="start", type=NodeType.START, data={}),
-            WorkflowNodeDef(
-                id="slow",
-                type=NodeType.CODE_EXECUTION,
-                data={
-                    "code": f"import time; time.sleep({delay_seconds})",
-                    "language": "python",
-                },
-            ),
+            WorkflowNodeDef(id="slow", type=NodeType.LLM, data={}),
             WorkflowNodeDef(id="end", type=NodeType.END, data={}),
         ],
         edges=[
@@ -49,8 +75,12 @@ def _make_fast_blueprint() -> WorkflowBlueprint:
 
 
 @pytest.mark.asyncio
-async def test_timeout_cancels_workflow() -> None:
+async def test_timeout_cancels_workflow(monkeypatch) -> None:
     """A workflow exceeding the timeout should emit run_failed with timeout message."""
+    monkeypatch.setattr(
+        "fim_one.core.workflow.engine.get_executor",
+        _patched_get_executor({"__default__": 10.0}),
+    )
     engine = WorkflowEngine(
         workflow_timeout_ms=1000,  # 1 second timeout
         run_id="test-run-timeout",
@@ -79,27 +109,21 @@ async def test_timeout_cancels_workflow() -> None:
 
 
 @pytest.mark.asyncio
-async def test_partial_results_preserved_on_timeout() -> None:
+async def test_partial_results_preserved_on_timeout(monkeypatch) -> None:
     """Nodes that completed before timeout should have their events emitted."""
+    monkeypatch.setattr(
+        "fim_one.core.workflow.engine.get_executor",
+        _patched_get_executor({"__default__": 30.0}),
+    )
     blueprint = WorkflowBlueprint(
         nodes=[
             WorkflowNodeDef(id="start", type=NodeType.START, data={}),
-            WorkflowNodeDef(
-                id="fast",
-                type=NodeType.CODE_EXECUTION,
-                data={"code": "result = 42", "language": "python"},
-            ),
-            WorkflowNodeDef(
-                id="slow",
-                type=NodeType.CODE_EXECUTION,
-                data={"code": "import time; time.sleep(30)", "language": "python"},
-            ),
+            WorkflowNodeDef(id="slow", type=NodeType.LLM, data={}),
             WorkflowNodeDef(id="end", type=NodeType.END, data={}),
         ],
         edges=[
-            WorkflowEdgeDef(id="e1", source="start", target="fast"),
-            WorkflowEdgeDef(id="e2", source="fast", target="slow"),
-            WorkflowEdgeDef(id="e3", source="slow", target="end"),
+            WorkflowEdgeDef(id="e1", source="start", target="slow"),
+            WorkflowEdgeDef(id="e2", source="slow", target="end"),
         ],
     )
 
@@ -128,8 +152,12 @@ async def test_partial_results_preserved_on_timeout() -> None:
 
 
 @pytest.mark.asyncio
-async def test_custom_timeout_overrides_default() -> None:
+async def test_custom_timeout_overrides_default(monkeypatch) -> None:
     """When a custom timeout is provided, it should override the default."""
+    monkeypatch.setattr(
+        "fim_one.core.workflow.engine.get_executor",
+        _patched_get_executor({"__default__": 10.0}),
+    )
     engine = WorkflowEngine(
         workflow_timeout_ms=1000,  # Custom 1s timeout
         run_id="test-custom-timeout",

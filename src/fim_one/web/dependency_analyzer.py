@@ -209,7 +209,6 @@ _WORKFLOW_NODE_REFS: dict[str, list[tuple[str, str]]] = {
         ("knowledge_base_id", "knowledge_base"),
         ("kb_id", "knowledge_base"),
     ],
-    "SUB_WORKFLOW": [("workflow_id", "workflow")],
     "MCP": [("server_id", "mcp_server")],
 }
 

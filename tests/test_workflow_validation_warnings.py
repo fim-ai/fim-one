@@ -154,7 +154,7 @@ class TestDisconnectedNodes:
             nodes=[
                 _start(),
                 _node("orphan_a", "LLM", prompt_template="a"),
-                _node("orphan_b", "CODE_EXECUTION", code="x=1"),
+                _node("orphan_b", "CONNECTOR"),
                 _end(),
             ],
             edges=[_edge("start", "end")],
@@ -302,45 +302,6 @@ class TestNodeSpecificWarnings:
         warnings = validate_blueprint(bp)
         assert not _has_warning(warnings, "empty_conditions", "cb")
 
-    # --- QUESTION_CLASSIFIER -----------------------------------------------
-
-    def test_question_classifier_no_classes(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("qc", "QUESTION_CLASSIFIER"),
-                _end(),
-            ],
-            edges=[_edge("start", "qc"), _edge("qc", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "empty_classes", "qc")
-
-    def test_question_classifier_with_classes(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("qc", "QUESTION_CLASSIFIER", classes=["billing", "support"]),
-                _end(),
-            ],
-            edges=[_edge("start", "qc"), _edge("qc", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "empty_classes", "qc")
-
-    def test_question_classifier_with_categories(self) -> None:
-        """The alt field 'categories' is also accepted."""
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("qc", "QUESTION_CLASSIFIER", categories=["a", "b"]),
-                _end(),
-            ],
-            edges=[_edge("start", "qc"), _edge("qc", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "empty_classes", "qc")
-
     # --- LLM ---------------------------------------------------------------
 
     def test_llm_no_prompt(self) -> None:
@@ -380,247 +341,6 @@ class TestNodeSpecificWarnings:
         warnings = validate_blueprint(bp)
         assert not _has_warning(warnings, "empty_prompt", "llm")
 
-    # --- CODE_EXECUTION ----------------------------------------------------
-
-    def test_code_execution_no_code(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("code", "CODE_EXECUTION"),
-                _end(),
-            ],
-            edges=[_edge("start", "code"), _edge("code", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "empty_code", "code")
-
-    def test_code_execution_with_code(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("code", "CODE_EXECUTION", code="print('hi')"),
-                _end(),
-            ],
-            edges=[_edge("start", "code"), _edge("code", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "empty_code", "code")
-
-    # --- LIST_OPERATION ----------------------------------------------------
-
-    def test_list_operation_no_input_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("lo", "LIST_OPERATION", operation="filter"),
-                _end(),
-            ],
-            edges=[_edge("start", "lo"), _edge("lo", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_input_variable", "lo")
-
-    def test_list_operation_filter_no_expression(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node(
-                    "lo",
-                    "LIST_OPERATION",
-                    input_variable="items",
-                    operation="filter",
-                ),
-                _end(),
-            ],
-            edges=[_edge("start", "lo"), _edge("lo", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_expression", "lo")
-
-    def test_list_operation_map_no_expression(self) -> None:
-        """The 'map' operation also requires an expression."""
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node(
-                    "lo",
-                    "LIST_OPERATION",
-                    input_variable="items",
-                    operation="map",
-                ),
-                _end(),
-            ],
-            edges=[_edge("start", "lo"), _edge("lo", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_expression", "lo")
-
-    def test_list_operation_sort_no_expression_needed(self) -> None:
-        """The 'sort' operation does NOT require an expression."""
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node(
-                    "lo",
-                    "LIST_OPERATION",
-                    input_variable="items",
-                    operation="sort",
-                ),
-                _end(),
-            ],
-            edges=[_edge("start", "lo"), _edge("lo", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_expression", "lo")
-
-    # --- TRANSFORM ---------------------------------------------------------
-
-    def test_transform_no_input_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("tf", "TRANSFORM", operations=["upper"]),
-                _end(),
-            ],
-            edges=[_edge("start", "tf"), _edge("tf", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_input_variable", "tf")
-
-    def test_transform_no_operations(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("tf", "TRANSFORM", input_variable="x"),
-                _end(),
-            ],
-            edges=[_edge("start", "tf"), _edge("tf", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "empty_operations", "tf")
-
-    def test_transform_complete(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node(
-                    "tf",
-                    "TRANSFORM",
-                    input_variable="x",
-                    operations=["upper"],
-                ),
-                _end(),
-            ],
-            edges=[_edge("start", "tf"), _edge("tf", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_input_variable", "tf")
-        assert not _has_warning(warnings, "empty_operations", "tf")
-
-    # --- ITERATOR ----------------------------------------------------------
-
-    def test_iterator_no_list_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("it", "ITERATOR"),
-                _end(),
-            ],
-            edges=[_edge("start", "it"), _edge("it", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_list_variable", "it")
-
-    def test_iterator_with_list_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("it", "ITERATOR", list_variable="items"),
-                _end(),
-            ],
-            edges=[_edge("start", "it"), _edge("it", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_list_variable", "it")
-
-    # --- LOOP --------------------------------------------------------------
-
-    def test_loop_no_condition(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("loop", "LOOP"),
-                _end(),
-            ],
-            edges=[_edge("start", "loop"), _edge("loop", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_condition", "loop")
-
-    def test_loop_with_condition(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("loop", "LOOP", condition="count < 10"),
-                _end(),
-            ],
-            edges=[_edge("start", "loop"), _edge("loop", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_condition", "loop")
-
-    # --- DOCUMENT_EXTRACTOR ------------------------------------------------
-
-    def test_document_extractor_no_input_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("de", "DOCUMENT_EXTRACTOR"),
-                _end(),
-            ],
-            edges=[_edge("start", "de"), _edge("de", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_input_variable", "de")
-
-    def test_document_extractor_with_input_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("de", "DOCUMENT_EXTRACTOR", input_variable="file"),
-                _end(),
-            ],
-            edges=[_edge("start", "de"), _edge("de", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_input_variable", "de")
-
-    # --- QUESTION_UNDERSTANDING --------------------------------------------
-
-    def test_question_understanding_no_input_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("qu", "QUESTION_UNDERSTANDING"),
-                _end(),
-            ],
-            edges=[_edge("start", "qu"), _edge("qu", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_input_variable", "qu")
-
-    def test_question_understanding_with_input_variable(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("qu", "QUESTION_UNDERSTANDING", input_variable="query"),
-                _end(),
-            ],
-            edges=[_edge("start", "qu"), _edge("qu", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_input_variable", "qu")
-
     # --- HUMAN_INTERVENTION ------------------------------------------------
 
     def test_human_intervention_no_prompt_message(self) -> None:
@@ -646,50 +366,6 @@ class TestNodeSpecificWarnings:
         )
         warnings = validate_blueprint(bp)
         assert not _has_warning(warnings, "empty_prompt_message", "hi")
-
-    # --- PARAMETER_EXTRACTOR -----------------------------------------------
-
-    def test_parameter_extractor_no_input_text(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("pe", "PARAMETER_EXTRACTOR"),
-                _end(),
-            ],
-            edges=[_edge("start", "pe"), _edge("pe", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_input_text", "pe")
-
-    def test_parameter_extractor_no_parameters(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("pe", "PARAMETER_EXTRACTOR", input_text="some text"),
-                _end(),
-            ],
-            edges=[_edge("start", "pe"), _edge("pe", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "empty_parameters", "pe")
-
-    def test_parameter_extractor_complete(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node(
-                    "pe",
-                    "PARAMETER_EXTRACTOR",
-                    input_text="extract from here",
-                    parameters=[{"name": "email", "type": "string"}],
-                ),
-                _end(),
-            ],
-            edges=[_edge("start", "pe"), _edge("pe", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_input_text", "pe")
-        assert not _has_warning(warnings, "empty_parameters", "pe")
 
     # --- MCP ---------------------------------------------------------------
 
@@ -730,109 +406,6 @@ class TestNodeSpecificWarnings:
         assert not _has_warning(warnings, "missing_server_id", "mcp")
         assert not _has_warning(warnings, "missing_tool_name", "mcp")
 
-    # --- BUILTIN_TOOL ------------------------------------------------------
-
-    def test_builtin_tool_no_tool_id(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("bt", "BUILTIN_TOOL"),
-                _end(),
-            ],
-            edges=[_edge("start", "bt"), _edge("bt", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_tool_id", "bt")
-
-    def test_builtin_tool_with_tool_id(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("bt", "BUILTIN_TOOL", tool_id="calculator"),
-                _end(),
-            ],
-            edges=[_edge("start", "bt"), _edge("bt", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_tool_id", "bt")
-
-    # --- SUB_WORKFLOW ------------------------------------------------------
-
-    def test_sub_workflow_no_workflow_id(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("sw", "SUB_WORKFLOW"),
-                _end(),
-            ],
-            edges=[_edge("start", "sw"), _edge("sw", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_workflow_id", "sw")
-
-    def test_sub_workflow_with_workflow_id(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("sw", "SUB_WORKFLOW", workflow_id="wf-abc"),
-                _end(),
-            ],
-            edges=[_edge("start", "sw"), _edge("sw", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_workflow_id", "sw")
-
-    # --- ENV ---------------------------------------------------------------
-
-    def test_env_no_env_keys(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("env", "ENV"),
-                _end(),
-            ],
-            edges=[_edge("start", "env"), _edge("env", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_env_keys", "env")
-
-    def test_env_empty_list(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("env", "ENV", env_keys=[]),
-                _end(),
-            ],
-            edges=[_edge("start", "env"), _edge("env", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_env_keys", "env")
-
-    def test_env_non_list(self) -> None:
-        """env_keys that is not a list (e.g. a string) triggers the warning."""
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("env", "ENV", env_keys="API_KEY"),
-                _end(),
-            ],
-            edges=[_edge("start", "env"), _edge("env", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert _has_warning(warnings, "missing_env_keys", "env")
-
-    def test_env_with_valid_keys(self) -> None:
-        bp = _make_blueprint(
-            nodes=[
-                _start(),
-                _node("env", "ENV", env_keys=["API_KEY", "SECRET"]),
-                _end(),
-            ],
-            edges=[_edge("start", "env"), _edge("env", "end")],
-        )
-        warnings = validate_blueprint(bp)
-        assert not _has_warning(warnings, "missing_env_keys", "env")
-
 
 # ===========================================================================
 # TestMultipleWarnings
@@ -848,14 +421,14 @@ class TestMultipleWarnings:
             nodes=[
                 _start(),
                 _node("llm", "LLM"),  # no prompt
-                _node("code", "CODE_EXECUTION"),  # no code
-                _node("orphan", "ITERATOR"),  # disconnected + no list_variable
+                _node("hi", "HUMAN_INTERVENTION"),  # no prompt_message
+                _node("orphan", "CONNECTOR"),  # disconnected
                 _end(),
             ],
             edges=[
                 _edge("start", "llm"),
-                _edge("llm", "code"),
-                _edge("code", "end"),
+                _edge("llm", "hi"),
+                _edge("hi", "end"),
                 # orphan has no edges
             ],
         )
@@ -863,9 +436,8 @@ class TestMultipleWarnings:
         codes = _warning_codes(warnings)
 
         assert "empty_prompt" in codes
-        assert "empty_code" in codes
+        assert "empty_prompt_message" in codes
         assert "disconnected_node" in codes
-        assert "missing_list_variable" in codes
 
     def test_clean_blueprint_no_warnings(self) -> None:
         """A properly configured blueprint returns an empty list."""

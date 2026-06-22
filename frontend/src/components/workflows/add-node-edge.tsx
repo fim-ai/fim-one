@@ -21,27 +21,11 @@ const defaultNodeData: Record<WorkflowNodeType, Record<string, unknown>> = {
   end: { output_mapping: {} },
   llm: { prompt_template: "", output_variable: "llm_result", temperature: 0.7 },
   conditionBranch: { mode: "expression", conditions: [] },
-  questionClassifier: { classes: [] },
   agent: { agent_id: "", output_variable: "agent_result" },
   knowledgeRetrieval: { kb_id: "", query_template: "", top_k: 5, output_variable: "kb_result" },
   connector: { connector_id: "", action: "", parameters: {}, output_variable: "connector_result" },
-  httpRequest: { method: "GET", url: "", output_variable: "http_result" },
-  variableAssign: { assignments: [] },
-  templateTransform: { template: "", output_variable: "template_result" },
-  codeExecution: { language: "python", code: "", output_variable: "code_result" },
-  iterator: { list_variable: "", iterator_variable: "current_item", index_variable: "current_index", max_iterations: 100 },
-  loop: { condition: "", max_iterations: 50, loop_variable: "loop_index" },
-  variableAggregator: { variables: [], mode: "list", separator: "\n" },
-  parameterExtractor: { input_text: "", parameters: [], extraction_prompt: "" },
-  listOperation: { input_variable: "", operation: "filter", expression: "", output_variable: "list_result" },
-  transform: { input_variable: "", operations: [], output_variable: "transform_result" },
-  documentExtractor: { input_variable: "", input_type: "text", extract_mode: "full_text", output_variable: "document_result" },
-  questionUnderstanding: { input_variable: "", mode: "rewrite", output_variable: "question_result" },
   humanIntervention: { prompt_message: "", assignee: "", timeout_hours: 24, output_variable: "approval_result" },
   mcp: { server_id: "", tool_name: "", parameters: {}, output_variable: "mcp_result" },
-  builtinTool: { tool_id: "", parameters: {}, output_variable: "tool_result" },
-  subWorkflow: { workflow_id: "", input_mapping: {}, output_variable: "sub_result" },
-  env: { env_keys: [], output_variable: "env_result" },
 }
 
 export function AddNodeEdge({
@@ -66,6 +50,29 @@ export function AddNodeEdge({
   const [search, setSearch] = useState("")
   const pickerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Hover is shared between the edge hit-area and the button cluster. A short
+  // close delay prevents flicker when the pointer travels from the line to the
+  // buttons (they live in separate DOM trees: SVG path vs. HTML portal).
+  const handleHoverEnter = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current)
+      hoverTimeoutRef.current = null
+    }
+    setIsHovered(true)
+  }, [])
+
+  const handleHoverLeave = useCallback(() => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    hoverTimeoutRef.current = setTimeout(() => setIsHovered(false), 120)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    }
+  }, [])
 
   // Subscribe reactively to source node data so edge labels update when
   // conditions/classes are edited in the config panel
@@ -218,6 +225,17 @@ export function AddNodeEdge({
           strokeWidth: 2,
         }}
       />
+      {/* Transparent wide hit-area: reveal the add/cut buttons on hover
+          anywhere along the line, not just at the midpoint. */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={20}
+        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        onMouseEnter={handleHoverEnter}
+        onMouseLeave={handleHoverLeave}
+      />
       <EdgeLabelRenderer>
         {/* Edge label for condition/classifier branches */}
         {edgeLabel && (
@@ -237,10 +255,8 @@ export function AddNodeEdge({
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
           }}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => {
-            if (!showPicker) setIsHovered(false)
-          }}
+          onMouseEnter={handleHoverEnter}
+          onMouseLeave={handleHoverLeave}
         >
           <div className="flex items-center gap-1">
             {/* Delete edge button */}

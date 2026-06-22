@@ -9,10 +9,7 @@ import {
 } from "@xyflow/react"
 import type { EdgeProps } from "@xyflow/react"
 import { useTranslations } from "next-intl"
-import type {
-  ConditionNodeData,
-  QuestionClassifierNodeData,
-} from "@/types/workflow"
+import type { ConditionNodeData } from "@/types/workflow"
 
 /**
  * Resolves a human-readable edge label from the sourceHandle ID and
@@ -41,16 +38,6 @@ export function resolveEdgeLabel(
     if (matched) return matched.label || null
     // Fallback for default handle
     if (sourceHandleId === "source-default") return defaultLabel
-    return null
-  }
-
-  if (sourceNodeType === "questionClassifier") {
-    const nodeData = sourceNodeData as unknown as QuestionClassifierNodeData
-    const classes = nodeData.classes ?? []
-    // sourceHandle format: "class-{id}"
-    const classId = sourceHandleId.replace(/^class-/, "")
-    const matched = classes.find((c) => c.id === classId)
-    if (matched) return matched.label || null
     return null
   }
 

@@ -118,15 +118,6 @@ class TestExtractReferences:
         assert refs[0].resource_type == "knowledge_base"
         assert refs[0].field_name == "knowledge_base_id"
 
-    def test_sub_workflow_node(self) -> None:
-        bp = _minimal_blueprint(
-            _make_node("sw_1", NodeType.SUB_WORKFLOW, workflow_id="wf-001")
-        )
-        refs = _extract_references(bp)
-        assert len(refs) == 1
-        assert refs[0].resource_type == "workflow"
-        assert refs[0].referenced_id == "wf-001"
-
     def test_mcp_node(self) -> None:
         bp = _minimal_blueprint(
             _make_node("mcp_1", NodeType.MCP, server_id="srv-xyz")
@@ -177,12 +168,12 @@ class TestExtractReferences:
     def test_ignores_non_reference_nodes(self) -> None:
         bp = _minimal_blueprint(
             _make_node("llm_1", NodeType.LLM, prompt_template="hello"),
-            _make_node("code_1", NodeType.CODE_EXECUTION, code="x = 1"),
+            _make_node("human_1", NodeType.HUMAN_INTERVENTION, prompt_message="ok"),
         )
         bp.edges = [
             WorkflowEdgeDef(id="e1", source="start_1", target="llm_1"),
-            WorkflowEdgeDef(id="e2", source="llm_1", target="code_1"),
-            WorkflowEdgeDef(id="e3", source="code_1", target="end_1"),
+            WorkflowEdgeDef(id="e2", source="llm_1", target="human_1"),
+            WorkflowEdgeDef(id="e3", source="human_1", target="end_1"),
         ]
         refs = _extract_references(bp)
         assert len(refs) == 0

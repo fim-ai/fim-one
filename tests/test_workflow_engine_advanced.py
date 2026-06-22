@@ -209,18 +209,17 @@ class TestEngineRetry:
     def _make_flaky_blueprint(
         self, retry_count: int = 2, retry_delay_ms: int = 100
     ) -> dict:
-        """Create a blueprint with a code_execution node that uses retry config."""
+        """Create a blueprint with an LLM node that uses retry config."""
         return {
             "nodes": [
                 _start_node(),
                 {
                     "id": "code_1",
-                    "type": "code_execution",
+                    "type": "llm",
                     "position": {"x": 200, "y": 0},
                     "data": {
-                        "type": "CODE_EXECUTION",
-                        "language": "python",
-                        "code": "result = 'success'",
+                        "type": "LLM",
+                        "prompt_template": "test",
                         "output_variable": "code_result",
                         "retry_count": retry_count,
                         "retry_delay_ms": retry_delay_ms,
@@ -239,24 +238,30 @@ class TestEngineRetry:
         """Verify retry_count and retry_delay_ms are read from node data."""
         raw = self._make_flaky_blueprint(retry_count=3, retry_delay_ms=500)
         bp = parse_blueprint(raw)
-        code_node = next(n for n in bp.nodes if n.type == NodeType.CODE_EXECUTION)
+        code_node = next(n for n in bp.nodes if n.id == "code_1")
         assert code_node.data["retry_count"] == 3
         assert code_node.data["retry_delay_ms"] == 500
 
     @pytest.mark.asyncio
     async def test_no_retry_by_default(self):
         """Nodes without retry_count should not retry."""
+        async def ok_execute(node, store, ctx):
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output="ok",
+            )
+
         raw = {
             "nodes": [
                 _start_node(),
                 {
                     "id": "code_1",
-                    "type": "code_execution",
+                    "type": "llm",
                     "position": {"x": 200, "y": 0},
                     "data": {
-                        "type": "CODE_EXECUTION",
-                        "language": "python",
-                        "code": "result = 'ok'",
+                        "type": "LLM",
+                        "prompt_template": "test",
                         "output_variable": "code_result",
                         # No retry_count
                     },
@@ -270,7 +275,22 @@ class TestEngineRetry:
         }
         bp = parse_blueprint(raw)
         engine = WorkflowEngine(max_concurrency=1)
-        events = await _collect_events(engine, bp)
+
+        with patch(
+            "fim_one.core.workflow.engine.get_executor"
+        ) as mock_get:
+            mock_executor = AsyncMock()
+            mock_executor.execute = ok_execute
+
+            def get_exec_side_effect(node_type):
+                if node_type == NodeType.LLM:
+                    return mock_executor
+                from fim_one.core.workflow.nodes import get_executor as real_get
+                return real_get(node_type)
+
+            mock_get.side_effect = get_exec_side_effect
+
+            events = await _collect_events(engine, bp)
 
         # Should not see any node_retrying events
         retry_events = [e for e in events if e[0] == "node_retrying"]
@@ -310,7 +330,7 @@ class TestEngineRetry:
             mock_executor.execute = mock_execute
 
             def get_exec_side_effect(node_type):
-                if node_type == NodeType.CODE_EXECUTION:
+                if node_type == NodeType.LLM:
                     return mock_executor
                 # For other node types, use real executors
                 from fim_one.core.workflow.nodes import get_executor as real_get
@@ -361,7 +381,7 @@ class TestEngineRetry:
             mock_executor.execute = always_fail
 
             def get_exec_side_effect(node_type):
-                if node_type == NodeType.CODE_EXECUTION:
+                if node_type == NodeType.LLM:
                     return mock_executor
                 from fim_one.core.workflow.nodes import get_executor as real_get
                 return real_get(node_type)
@@ -420,7 +440,7 @@ class TestEngineRetry:
             mock_executor.execute = fail_and_cancel
 
             def get_exec_side_effect(node_type):
-                if node_type == NodeType.CODE_EXECUTION:
+                if node_type == NodeType.LLM:
                     return mock_executor
                 from fim_one.core.workflow.nodes import get_executor as real_get
                 return real_get(node_type)
@@ -455,7 +475,7 @@ class TestEngineRetry:
             mock_executor.execute = fail_once
 
             def get_exec_side_effect(node_type):
-                if node_type == NodeType.CODE_EXECUTION:
+                if node_type == NodeType.LLM:
                     return mock_executor
                 from fim_one.core.workflow.nodes import get_executor as real_get
                 return real_get(node_type)
@@ -474,7 +494,29 @@ class TestEngineRetry:
         bp = parse_blueprint(raw)
         engine = WorkflowEngine(max_concurrency=1)
 
-        events = await _collect_events(engine, bp)
+        async def ok_execute(node, store, ctx):
+            return NodeResult(
+                node_id=node.id,
+                status=NodeStatus.COMPLETED,
+                output="ok",
+            )
+
+        with patch(
+            "fim_one.core.workflow.engine.get_executor"
+        ) as mock_get:
+            mock_executor = AsyncMock()
+            mock_executor.execute = ok_execute
+
+            def get_exec_side_effect(node_type):
+                if node_type == NodeType.LLM:
+                    return mock_executor
+                from fim_one.core.workflow.nodes import get_executor as real_get
+                return real_get(node_type)
+
+            mock_get.side_effect = get_exec_side_effect
+
+            events = await _collect_events(engine, bp)
+
         retry_events = [e for e in events if e[0] == "node_retrying"]
         assert len(retry_events) == 0
 
@@ -601,8 +643,8 @@ class TestWorkflowTimeout:
                     "type": "custom",
                     "position": {"x": 400, "y": 0},
                     "data": {
-                        "type": "VARIABLE_ASSIGN",
-                        "assignments": [],
+                        "type": "HUMAN_INTERVENTION",
+                        "title": "review",
                     },
                 },
                 _end_node(),
@@ -665,37 +707,22 @@ def _variable_assign_node(
     assignments: list[dict] | None = None,
     **data: Any,
 ) -> dict:
-    """Helper to build a VARIABLE_ASSIGN node (lightweight pass-through)."""
+    """Helper to build a lightweight pass-through "work" node.
+
+    Uses a HUMAN_INTERVENTION node which, in headless test mode (no
+    db_session_factory), auto-approves and completes immediately.  This
+    gives the orchestration/branch-routing tests a generic node that
+    simply runs to completion, without depending on any deleted node type.
+    The ``assignments`` argument is accepted and ignored for call-site
+    compatibility with the original branch-routing graphs.
+    """
     return {
         "id": node_id,
         "type": "custom",
         "position": {"x": 300, "y": 0},
         "data": {
-            "type": "VARIABLE_ASSIGN",
-            "assignments": assignments or [],
-            **data,
-        },
-    }
-
-
-def _question_classifier_node(
-    node_id: str,
-    classes: list[dict],
-    input_variable: str = "",
-    default_handle: str = "",
-    **data: Any,
-) -> dict:
-    """Helper to build a QUESTION_CLASSIFIER node definition."""
-    return {
-        "id": node_id,
-        "type": "custom",
-        "position": {"x": 200, "y": 0},
-        "data": {
-            "type": "QUESTION_CLASSIFIER",
-            "classes": classes,
-            "input_variable": input_variable,
-            "default_handle": default_handle,
-            **data,
+            "type": "HUMAN_INTERVENTION",
+            "title": f"work-{node_id}",
         },
     }
 
@@ -1110,9 +1137,8 @@ class TestConditionBranchRouting:
     async def test_nested_conditions_outer_false(self):
         """When the outer condition is false, cond_2 is skipped.
 
-        A skipped branching node (CONDITION_BRANCH / QUESTION_CLASSIFIER)
-        deactivates all its outgoing edges, causing downstream nodes to
-        cascade-skip as well.
+        A skipped branching node (CONDITION_BRANCH) deactivates all its
+        outgoing edges, causing downstream nodes to cascade-skip as well.
         """
         raw = {
             "nodes": [
@@ -1233,139 +1259,6 @@ class TestConditionBranchRouting:
         assert "node_a" in skipped, "Node A should be skipped (inner condition false)"
         assert "node_b" in completed, "Node B (inner default) should run"
         assert "node_c" in skipped, "Node C should be skipped (outer condition true)"
-        assert "end_1" in completed
-
-    # ------------------------------------------------------------------
-    # 6. QuestionClassifier routing — mock LLM to return a specific class
-    # ------------------------------------------------------------------
-    @pytest.mark.asyncio
-    async def test_question_classifier_routing(self):
-        """Start -> QuestionClassifier -> (class_0: A, class_1: B) -> End.
-
-        Mock the LLM to return "Technical" which maps to class_1.
-        Verify only branch B activates.
-        """
-        raw = {
-            "nodes": [
-                _start_node(),
-                _question_classifier_node(
-                    "qc_1",
-                    classes=[
-                        {"id": "c0", "label": "General"},
-                        {"id": "c1", "label": "Technical"},
-                    ],
-                    input_variable="input.question",
-                ),
-                _variable_assign_node(
-                    "branch_general",
-                    assignments=[{"variable": "route", "value": "general"}],
-                ),
-                _variable_assign_node(
-                    "branch_technical",
-                    assignments=[{"variable": "route", "value": "technical"}],
-                ),
-                _end_node(),
-            ],
-            "edges": [
-                _edge("start_1", "qc_1"),
-                _edge("qc_1", "branch_general", sourceHandle="class-c0"),
-                _edge("qc_1", "branch_technical", sourceHandle="class-c1"),
-                _edge("branch_general", "end_1"),
-                _edge("branch_technical", "end_1"),
-            ],
-        }
-        bp = parse_blueprint(raw)
-        engine = WorkflowEngine(max_concurrency=1)
-
-        # Mock the QuestionClassifierExecutor.execute to return "Technical"
-        # which maps to handle "class-c1"
-        async def mock_qc_execute(node, store, ctx):
-            # Simulate the executor storing its result and returning active_handles
-            await store.set(f"{node.id}.output", "Technical")
-            await store.set(f"{node.id}.active_handle", "class-c1")
-            return NodeResult(
-                node_id=node.id,
-                status=NodeStatus.COMPLETED,
-                output="Technical",
-                active_handles=["class-c1"],
-                duration_ms=1,
-            )
-
-        with patch(
-            "fim_one.core.workflow.nodes.QuestionClassifierExecutor.execute",
-            side_effect=mock_qc_execute,
-        ):
-            events = await _collect_events(
-                engine, bp, inputs={"question": "How do I configure SSL?"}
-            )
-
-        completed = _completed_node_ids(events)
-        skipped = _skipped_node_ids(events)
-
-        assert "branch_technical" in completed, (
-            "Technical branch should run (LLM returned 'Technical')"
-        )
-        assert "branch_general" in skipped, (
-            "General branch should be skipped"
-        )
-        assert "end_1" in completed
-
-    # ------------------------------------------------------------------
-    # 6b. QuestionClassifier routing — first class matches
-    # ------------------------------------------------------------------
-    @pytest.mark.asyncio
-    async def test_question_classifier_routing_first_class(self):
-        """Mock LLM to return 'General' (class_0).  Branch A runs, B skipped."""
-        raw = {
-            "nodes": [
-                _start_node(),
-                _question_classifier_node(
-                    "qc_1",
-                    classes=[
-                        {"id": "c0", "label": "General"},
-                        {"id": "c1", "label": "Technical"},
-                    ],
-                    input_variable="input.question",
-                ),
-                _variable_assign_node("branch_general"),
-                _variable_assign_node("branch_technical"),
-                _end_node(),
-            ],
-            "edges": [
-                _edge("start_1", "qc_1"),
-                _edge("qc_1", "branch_general", sourceHandle="class-c0"),
-                _edge("qc_1", "branch_technical", sourceHandle="class-c1"),
-                _edge("branch_general", "end_1"),
-                _edge("branch_technical", "end_1"),
-            ],
-        }
-        bp = parse_blueprint(raw)
-        engine = WorkflowEngine(max_concurrency=1)
-
-        async def mock_qc_execute(node, store, ctx):
-            await store.set(f"{node.id}.output", "General")
-            await store.set(f"{node.id}.active_handle", "class-c0")
-            return NodeResult(
-                node_id=node.id,
-                status=NodeStatus.COMPLETED,
-                output="General",
-                active_handles=["class-c0"],
-                duration_ms=1,
-            )
-
-        with patch(
-            "fim_one.core.workflow.nodes.QuestionClassifierExecutor.execute",
-            side_effect=mock_qc_execute,
-        ):
-            events = await _collect_events(
-                engine, bp, inputs={"question": "Hello there!"}
-            )
-
-        completed = _completed_node_ids(events)
-        skipped = _skipped_node_ids(events)
-
-        assert "branch_general" in completed
-        assert "branch_technical" in skipped
         assert "end_1" in completed
 
     # ------------------------------------------------------------------
