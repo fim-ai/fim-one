@@ -1973,11 +1973,7 @@ function PlaygroundContent({
                         "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
                         "border select-none",
                         isRunning && "opacity-50 cursor-not-allowed",
-                        mode === "auto"
-                          ? "border-violet-500/40 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20"
-                          : mode === "dag"
-                            ? "border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-                            : "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                        "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
                       )}
                     >
                       {mode === "auto" ? (
@@ -2025,9 +2021,7 @@ function PlaygroundContent({
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
                     "border select-none",
-                    selectedAgent
-                      ? "border-primary/40 text-primary"
-                      : "border-primary/30 bg-primary/5 text-primary",
+                    "border-border/60 bg-muted/40 text-muted-foreground",
                     isRunning
                       ? "opacity-50 cursor-not-allowed"
                       : "hover:bg-muted/70 hover:text-foreground"

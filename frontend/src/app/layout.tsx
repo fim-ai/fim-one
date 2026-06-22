@@ -82,7 +82,10 @@ export default async function RootLayout({
           />
         )}
       </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} ${cabinetGrotesk.variable} font-sans antialiased`}>
+      <body
+        suppressHydrationWarning
+        className={`${inter.variable} ${jetbrainsMono.variable} ${cabinetGrotesk.variable} font-sans antialiased`}
+      >
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             <AuthProvider>
