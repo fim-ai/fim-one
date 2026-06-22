@@ -89,6 +89,7 @@ from fim_one.core.tool import ToolRegistry
 from fim_one.core.utils import (
     extract_json_value,
     get_language_directive,
+    spawn_background,
     strip_tool_protocol,
 )
 from fim_one.db import get_session
@@ -3475,7 +3476,7 @@ async def react_endpoint(
                     org_id=(agent_cfg or {}).get("org_id"),
                     model_config_json=(agent_cfg or {}).get("model_config_json"),
                 )
-                asyncio.create_task(
+                spawn_background(
                     notify_agent_completion(
                         agent=_agent_notify_shim,
                         conversation_id=conversation_id,
@@ -3661,7 +3662,7 @@ async def react_endpoint(
                     if _bg_db:
                         await _bg_db.close()
 
-            asyncio.create_task(_react_post_processing())
+            spawn_background(_react_post_processing())
         except (
             InputGuardrailTripwireTriggered,
             OutputGuardrailTripwireTriggered,
@@ -4700,7 +4701,7 @@ async def dag_endpoint(
                     org_id=(agent_cfg or {}).get("org_id"),
                     model_config_json=(agent_cfg or {}).get("model_config_json"),
                 )
-                asyncio.create_task(
+                spawn_background(
                     notify_agent_completion(
                         agent=_dag_agent_notify_shim,
                         conversation_id=conversation_id,
@@ -4873,7 +4874,7 @@ async def dag_endpoint(
                     if _bg_db:
                         await _bg_db.close()
 
-            asyncio.create_task(_dag_post_processing())
+            spawn_background(_dag_post_processing())
         except (
             InputGuardrailTripwireTriggered,
             OutputGuardrailTripwireTriggered,

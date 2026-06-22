@@ -2,9 +2,55 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
+from collections.abc import Coroutine
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
+
+# Strong references to in-flight fire-and-forget background tasks.  asyncio only
+# keeps a *weak* reference to a task, so a bare ``asyncio.create_task(coro)``
+# whose handle is discarded can be garbage-collected mid-flight — the coroutine
+# then stops silently.  Holding the task here until it finishes prevents that.
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
+
+
+def spawn_background(
+    coro: Coroutine[Any, Any, Any], *, name: str | None = None
+) -> asyncio.Task[Any]:
+    """Schedule a fire-and-forget coroutine with a guaranteed strong reference.
+
+    Use instead of a bare ``asyncio.create_task(coro)`` whenever the resulting
+    task handle would otherwise be discarded (background ingest, webhook
+    delivery, post-run notifications, async jobs).  The task is retained in a
+    module-level set until completion and removed via a done-callback, so it
+    cannot be garbage-collected while running.  Exceptions that would otherwise
+    vanish into an un-awaited task are logged.
+
+    Tasks that are awaited or stored by the caller do *not* need this helper —
+    they already have a strong reference.
+    """
+    task = asyncio.create_task(coro, name=name)
+    _BACKGROUND_TASKS.add(task)
+
+    def _on_done(t: asyncio.Task[Any]) -> None:
+        _BACKGROUND_TASKS.discard(t)
+        if not t.cancelled():
+            exc = t.exception()
+            if exc is not None:
+                logger.error(
+                    "Background task %r failed: %s",
+                    t.get_name(),
+                    exc,
+                    exc_info=exc,
+                )
+
+    task.add_done_callback(_on_done)
+    return task
 
 
 _VALID_JSON_ESCAPES = frozenset('"\\/bfnrtu')

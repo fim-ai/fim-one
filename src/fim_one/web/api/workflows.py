@@ -23,6 +23,7 @@ from sqlalchemy import CursorResult, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session, create_session
+from fim_one.core.utils import spawn_background
 from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
 from fim_one.web.exceptions import AppError
 from fim_one.web.auth import get_current_user, get_user_org_ids
@@ -687,7 +688,7 @@ async def trigger_workflow(
             "duration_ms": elapsed_ms,
             "completed_at": datetime.now(UTC).isoformat(),
         }
-        asyncio.create_task(_deliver_webhook(wf_webhook_url, webhook_payload))
+        spawn_background(_deliver_webhook(wf_webhook_url, webhook_payload))
 
     trigger_response = WorkflowTriggerResponse(
         run_id=run_id,
@@ -1114,12 +1115,9 @@ async def unpublish_workflow(
     is_org_admin = False
 
     if wf.visibility == "org" and wf.org_id and not is_owner:
-        try:
-            from fim_one.web.auth import require_org_admin
-            await require_org_admin(wf.org_id, current_user, db)
-            is_org_admin = True
-        except Exception:
-            pass
+        from fim_one.web.auth import user_is_org_admin
+
+        is_org_admin = await user_is_org_admin(wf.org_id, current_user, db)
 
     if not (is_owner or is_admin or is_org_admin):
         raise AppError("unpublish_denied", status_code=403)
@@ -1546,7 +1544,7 @@ async def run_workflow(
                     "duration_ms": elapsed_ms,
                     "completed_at": datetime.now(UTC).isoformat(),
                 }
-                asyncio.create_task(_deliver_webhook(wf_webhook_url, webhook_payload))
+                spawn_background(_deliver_webhook(wf_webhook_url, webhook_payload))
 
             yield _sse("end", {})
 

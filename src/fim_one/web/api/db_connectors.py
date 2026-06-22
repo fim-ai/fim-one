@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_one.core.model.base import BaseLLM
-from fim_one.core.utils import get_language_directive
+from fim_one.core.utils import get_language_directive, spawn_background
 from fim_one.core.security.encryption import decrypt_db_config
 from fim_one.core.tool.connector.database.pool import ConnectionPoolManager
 from fim_one.core.tool.connector.database.safety import SqlSafetyError, validate_sql
@@ -923,7 +923,7 @@ async def db_ai_chat(
                 job_id = str(uuid.uuid4())
                 job = _AnnotateJob(job_id=job_id, total_batches=0)
                 _annotate_jobs[job_id] = job
-                asyncio.create_task(_run_annotate_all_job(job, schema_ids, llm))
+                spawn_background(_run_annotate_all_job(job, schema_ids, llm))
                 n_batches = math.ceil(len(schema_ids) / 30)
                 return {
                     "ok": True,
@@ -1149,7 +1149,7 @@ async def ai_annotate(
     job = _AnnotateJob(job_id=job_id, total_batches=0)
     _annotate_jobs[job_id] = job
 
-    asyncio.create_task(_run_annotate_all_job(job, schema_ids, llm))
+    spawn_background(_run_annotate_all_job(job, schema_ids, llm))
 
     logger.info(
         "Started annotate-all job %s for connector=%s (%d tables)",

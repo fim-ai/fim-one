@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.model.structured import structured_llm_call
+from fim_one.core.utils import spawn_background
 from fim_one.core.model.types import ChatMessage
 from fim_one.db import create_session, get_session
 from fim_one.web.auth import get_current_user
@@ -305,7 +306,7 @@ async def create_run(
 
     # Fire background task — capture agent instructions and LLM instances by value
     agent_instructions = agent.instructions
-    asyncio.create_task(
+    spawn_background(
         _execute_eval_run(run.id, agent_instructions, cases, llm, grader_llm)
     )
 

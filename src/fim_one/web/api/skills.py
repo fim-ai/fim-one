@@ -399,13 +399,9 @@ async def unpublish_skill(
     is_org_admin = False
 
     if skill.visibility == "org" and skill.org_id and not is_owner:
-        try:
-            from fim_one.web.auth import require_org_admin
+        from fim_one.web.auth import user_is_org_admin
 
-            await require_org_admin(skill.org_id, current_user, db)
-            is_org_admin = True
-        except Exception:
-            pass
+        is_org_admin = await user_is_org_admin(skill.org_id, current_user, db)
 
     if not (is_owner or is_admin or is_org_admin):
         raise AppError("unpublish_denied", status_code=403)

@@ -4,18 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-import asyncio
 import os
 import secrets
-import shutil
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select, update
 
+from fim_one.core.utils import spawn_background
 from fim_one.web.admin_notify import notify_admins
 from fim_one.web.email import _smtp_configured, send_verification_email
 from fim_one.web.exceptions import AppError
@@ -50,16 +49,15 @@ from fim_one.db.models import LoginHistory, User
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.api_key import ApiKey
 from fim_one.db.models.connector import Connector
-from fim_one.db.models.connector_call_log import ConnectorCallLog
 from fim_one.db.models.conversation import Conversation
-from fim_one.db.models.eval import EvalCase, EvalCaseResult, EvalDataset, EvalRun
+from fim_one.db.models.eval import EvalCase, EvalDataset, EvalRun
 from fim_one.db.models.knowledge_base import KnowledgeBase
 from fim_one.db.models.model_config import ModelConfig
 from fim_one.db.models.oauth_binding import UserOAuthBinding
 from fim_one.db.models.organization import OrgMembership
-from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.db.models.skill import Skill
-from fim_one.db.models.workflow import Workflow, WorkflowRun
+from fim_one.db.models.workflow import Workflow
+from fim_one.web.services.user_deletion import purge_user_data
 from fim_one.web.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
@@ -358,7 +356,7 @@ async def register(
 
     # Notify admins of new registration (fire-and-forget, skip for first user)
     if not is_first_user_check:
-        asyncio.create_task(
+        spawn_background(
             notify_admins(
                 "new_user_registration",
                 "New User Registered",
@@ -1481,12 +1479,6 @@ async def get_announcement(
 # Self account deletion
 # ---------------------------------------------------------------------------
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_CONVERSATIONS_DIR = _PROJECT_ROOT.parent / "data" / "sandbox"
-_uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
-_UPLOADS_BASE = _uploads_base if _uploads_base.is_absolute() else _PROJECT_ROOT / _uploads_base
-_UPLOADS_CONVERSATIONS_DIR = _UPLOADS_BASE / "conversations"
-
 
 @router.delete("/account")
 async def delete_own_account(
@@ -1497,26 +1489,8 @@ async def delete_own_account(
     user_id = current_user.id
     label = current_user.username or current_user.email
 
-    # --- Clean up file-system resources before DB delete ---
-    conv_result = await db.execute(
-        select(Conversation.id).where(Conversation.user_id == user_id)
-    )
-    conv_ids = [row[0] for row in conv_result.fetchall()]
-
-    for conv_id in conv_ids:
-        sandbox_dir = _CONVERSATIONS_DIR / conv_id
-        if sandbox_dir.exists():
-            shutil.rmtree(sandbox_dir, ignore_errors=True)
-        uploads_dir = _UPLOADS_CONVERSATIONS_DIR / conv_id
-        if uploads_dir.exists():
-            shutil.rmtree(uploads_dir, ignore_errors=True)
-
-    user_uploads = _UPLOADS_BASE / f"user_{user_id}"
-    if user_uploads.exists():
-        shutil.rmtree(user_uploads, ignore_errors=True)
-
     # --- Audit trail (must happen before DB delete since user is the actor) ---
-    audit_detail = f"user self-deleted; cleaned {len(conv_ids)} conversations, sandbox & upload dirs"
+    summary = await purge_user_data(db, user_id)
     db.add(
         AuditLog(
             admin_id=user_id,
@@ -1525,61 +1499,12 @@ async def delete_own_account(
             target_type="user",
             target_id=user_id,
             target_label=label,
-            detail=audit_detail,
+            detail=(
+                f"user self-deleted; cleaned {summary['conversations']} conversations, "
+                f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
+            ),
         )
     )
-
-    # --- Explicit deletion of tables NOT covered by ORM cascade ---
-
-    # 1. API keys (user_id nullable, no cascade)
-    await db.execute(delete(ApiKey).where(ApiKey.user_id == user_id))
-
-    # 2. Login history (user_id nullable, no cascade)
-    await db.execute(delete(LoginHistory).where(LoginHistory.user_id == user_id))
-
-    # 3. Eval data (FK to users, no cascade) — delete in order: case_results → runs → cases → datasets
-    eval_run_ids_q = select(EvalRun.id).where(EvalRun.user_id == user_id)
-    await db.execute(delete(EvalCaseResult).where(EvalCaseResult.run_id.in_(eval_run_ids_q)))
-    await db.execute(delete(EvalRun).where(EvalRun.user_id == user_id))
-    await db.execute(delete(EvalCase).where(EvalCase.user_id == user_id))
-    await db.execute(delete(EvalDataset).where(EvalDataset.user_id == user_id))
-
-    # 4. Connector call logs (user_id nullable, no cascade)
-    await db.execute(delete(ConnectorCallLog).where(ConnectorCallLog.user_id == user_id))
-
-    # 5. Resource subscriptions (user_id FK, no cascade)
-    await db.execute(delete(ResourceSubscription).where(ResourceSubscription.user_id == user_id))
-
-    # 6. Email verifications (matched by email, no FK to users)
-    user_email = current_user.email
-    await db.execute(delete(EmailVerification).where(EmailVerification.email == user_email))
-
-    # 7. Org memberships (user_id FK, no cascade on user delete)
-    await db.execute(delete(OrgMembership).where(OrgMembership.user_id == user_id))
-
-    # 8. Anonymize audit_logs — preserve records but remove admin_id reference
-    await db.execute(
-        update(AuditLog)
-        .where(AuditLog.admin_id == user_id)
-        .values(admin_id=None)
-    )
-
-    # --- DB delete (eagerly load all relationships for cascade) ---
-    result = await db.execute(
-        select(User)
-        .options(
-            selectinload(User.conversations).selectinload(Conversation.messages),
-            selectinload(User.agents),
-            selectinload(User.knowledge_bases),
-            selectinload(User.model_configs),
-            selectinload(User.connectors),
-            selectinload(User.mcp_servers),
-            selectinload(User.oauth_bindings),
-        )
-        .where(User.id == user_id)
-    )
-    user_obj = result.scalar_one()
-    await db.delete(user_obj)
     await db.commit()
 
     return {"deleted": True}

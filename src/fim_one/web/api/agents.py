@@ -445,12 +445,9 @@ async def unpublish_agent(
     is_org_admin = False
 
     if agent.visibility == "org" and agent.org_id and not is_owner:
-        try:
-            from fim_one.web.auth import require_org_admin
-            await require_org_admin(agent.org_id, current_user, db)
-            is_org_admin = True
-        except Exception:
-            pass
+        from fim_one.web.auth import user_is_org_admin
+
+        is_org_admin = await user_is_org_admin(agent.org_id, current_user, db)
 
     if not (is_owner or is_admin or is_org_admin):
         raise AppError("unpublish_denied", status_code=403)

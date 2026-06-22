@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 import os
@@ -18,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from fim_one.db import get_session
+from fim_one.core.utils import spawn_background
 from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.exceptions import AppError
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
@@ -498,7 +498,7 @@ async def upload_document(
     doc = result.scalar_one()
 
     # Background ingest
-    asyncio.create_task(
+    spawn_background(
         _ingest_document(
             doc_id=doc.id,
             kb_id=kb_id,
@@ -708,7 +708,7 @@ async def retry_document(
     await db.commit()
 
     # Launch background ingestion (same as upload flow)
-    asyncio.create_task(
+    spawn_background(
         _ingest_document(
             doc_id=doc.id,
             kb_id=kb_id,
@@ -769,7 +769,7 @@ async def create_document(
     doc = result.scalar_one()
 
     # Background ingest (reuse existing pipeline)
-    asyncio.create_task(
+    spawn_background(
         _ingest_document(
             doc_id=doc.id,
             kb_id=kb_id,
@@ -895,7 +895,7 @@ async def import_urls(
             doc = result_row.scalar_one()
 
         # Background ingest (identical to file upload — handles PDF/DOCX/md via loader_for_extension)
-        asyncio.create_task(
+        spawn_background(
             _ingest_document(
                 doc_id=doc.id,
                 kb_id=kb_id,

@@ -513,6 +513,21 @@ async def require_org_admin(
     return membership
 
 
+async def user_is_org_admin(org_id: str, user: User, db: AsyncSession) -> bool:
+    """Non-raising probe: is *user* an admin/owner of *org_id*?
+
+    Unlike :func:`require_org_admin` (which raises 403 on failure), this returns
+    a bool for permission checks that fall back to a non-admin path.  Only the
+    authorization rejection (``HTTPException``) is swallowed — unexpected errors
+    (DB failures, bugs) propagate instead of being silently masked.
+    """
+    try:
+        await require_org_admin(org_id, user, db)
+        return True
+    except HTTPException:
+        return False
+
+
 async def require_org_owner(
     org_id: str, user: User, db: AsyncSession
 ) -> "OrgMembership":
