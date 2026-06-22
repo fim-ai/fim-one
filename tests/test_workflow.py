@@ -2425,11 +2425,11 @@ class TestTemplatesPhase2:
     """Comprehensive tests for the built-in template system."""
 
     def test_all_templates_listed(self):
-        """list_templates() should return exactly 5 templates."""
+        """list_templates() should return exactly 7 templates."""
         from fim_one.core.workflow.templates import list_templates
 
         templates = list_templates()
-        assert len(templates) == 5
+        assert len(templates) == 7
 
     def test_template_ids_unique(self):
         """All template IDs should be unique."""

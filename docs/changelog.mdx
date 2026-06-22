@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Added
+
+- **Two new workflow starter templates: Connector Action and MCP Tool Call.** The "Create from Template" gallery now showcases the connector and MCP nodes — call an external system or an MCP tool, then summarize the result with an LLM. Pick the specific connector/server after creating.
+
 ### Changed
 
 - **Connectors and MCP servers no longer share the owner's credential by default (breaking).** "Allow fallback to the owner's credential" is now opt-in: new connectors/MCP servers are created with it off, and all existing ones were switched off as well. A subscriber who was relying on the owner's token to use a shared connector or MCP server will now need to add their own credential, or the owner must re-enable fallback on that resource. Owners can always use their own credential regardless of the setting. As a result, a connector whose fallback is off and for which you have no credential is now hidden from the agent's toolset (matching how MCP servers already behaved) instead of being offered and then failing when called.

@@ -10,6 +10,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+### Ajouté
+
+- **Deux nouveaux modèles de démarrage de workflow : Connector Action et MCP Tool Call.** La galerie « Create from Template » présente désormais les nœuds connecteur et MCP — appelez un système externe ou un outil MCP, puis résumez le résultat avec un LLM. Choisissez le connecteur/serveur spécifique après la création.
+
 ### Modifications
 
 - **Les connecteurs et les serveurs MCP ne partagent plus les identifiants du propriétaire par défaut (rupture de compatibilité).** L'option « Autoriser le recours aux identifiants du propriétaire » est désormais explicite : les nouveaux connecteurs/serveurs MCP sont créés avec cette option désactivée, et tous les connecteurs/serveurs existants ont également été désactivés. Un abonné qui s'appuyait sur le jeton du propriétaire pour utiliser un connecteur ou un serveur MCP partagé devra désormais ajouter ses propres identifiants, ou le propriétaire doit réactiver le recours sur cette ressource. Les propriétaires peuvent toujours utiliser leurs propres identifiants indépendamment du paramètre. Par conséquent, un connecteur dont le recours est désactivé et pour lequel vous n'avez pas d'identifiants est désormais masqué de l'ensemble d'outils de l'agent (comme le faisaient déjà les serveurs MCP) au lieu d'être proposé et d'échouer lors de l'appel.

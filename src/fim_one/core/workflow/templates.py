@@ -547,6 +547,186 @@ _HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
+# Template 6 — Connector Action
+# ---------------------------------------------------------------------------
+
+_CONNECTOR_ACTION: dict[str, Any] = {
+    "id": "connector-action",
+    "name": "Connector Action",
+    "description": (
+        "Call an external system through a connector, then summarize the "
+        "result with an LLM. Pick the connector and action after creating."
+    ),
+    "icon": "Plug",
+    "category": "integration",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "query",
+                                "type": "string",
+                                "required": True,
+                                "description": "Input passed to the connector action",
+                            }
+                        ]
+                    },
+                },
+                x=100,
+                y=200,
+            ),
+            _node(
+                "connector_1",
+                "CONNECTOR",
+                {
+                    "label": "Connector Action",
+                    "connector_id": "",
+                    "action": "",
+                    "parameters": {},
+                    "output_variable": "connector_result",
+                },
+                x=400,
+                y=200,
+            ),
+            _node(
+                "llm_1",
+                "LLM",
+                {
+                    "label": "Summarize Result",
+                    "prompt_template": (
+                        "Summarize the following result from an external system "
+                        "in clear, concise language for the user.\n\n"
+                        "Result:\n{{connector_1.output}}"
+                    ),
+                },
+                x=700,
+                y=200,
+            ),
+            _node(
+                "end_1",
+                "END",
+                {
+                    "label": "End",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "{{llm_1.output}}",
+                            }
+                        ]
+                    },
+                },
+                x=1000,
+                y=200,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-connector", "start_1", "connector_1"),
+            _edge("e-connector-llm", "connector_1", "llm_1"),
+            _edge("e-llm-end", "llm_1", "end_1"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Template 7 — MCP Tool Call
+# ---------------------------------------------------------------------------
+
+_MCP_TOOL_CALL: dict[str, Any] = {
+    "id": "mcp-tool-call",
+    "name": "MCP Tool Call",
+    "description": (
+        "Invoke a tool on an MCP server, then format the output with an LLM. "
+        "Pick the server and tool after creating."
+    ),
+    "icon": "Cable",
+    "category": "integration",
+    "blueprint": {
+        "nodes": [
+            _node(
+                "start_1",
+                "START",
+                {
+                    "label": "Start",
+                    "input_schema": {
+                        "variables": [
+                            {
+                                "name": "query",
+                                "type": "string",
+                                "required": True,
+                                "description": "Input passed to the MCP tool",
+                            }
+                        ]
+                    },
+                },
+                x=100,
+                y=200,
+            ),
+            _node(
+                "mcp_1",
+                "MCP",
+                {
+                    "label": "MCP Tool",
+                    "server_id": "",
+                    "tool_name": "",
+                    "parameters": {},
+                    "output_variable": "mcp_result",
+                },
+                x=400,
+                y=200,
+            ),
+            _node(
+                "llm_1",
+                "LLM",
+                {
+                    "label": "Format Output",
+                    "prompt_template": (
+                        "Turn the following tool output into a clear, "
+                        "user-facing answer.\n\n"
+                        "Tool output:\n{{mcp_1.output}}"
+                    ),
+                },
+                x=700,
+                y=200,
+            ),
+            _node(
+                "end_1",
+                "END",
+                {
+                    "label": "End",
+                    "output_schema": {
+                        "variables": [
+                            {
+                                "name": "result",
+                                "type": "string",
+                                "value": "{{llm_1.output}}",
+                            }
+                        ]
+                    },
+                },
+                x=1000,
+                y=200,
+            ),
+        ],
+        "edges": [
+            _edge("e-start-mcp", "start_1", "mcp_1"),
+            _edge("e-mcp-llm", "mcp_1", "llm_1"),
+            _edge("e-llm-end", "llm_1", "end_1"),
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -556,6 +736,8 @@ WORKFLOW_TEMPLATES: list[dict[str, Any]] = [
     _KNOWLEDGE_QA,
     _AGENT_WITH_KB,
     _HUMAN_APPROVAL_PIPELINE,
+    _CONNECTOR_ACTION,
+    _MCP_TOOL_CALL,
 ]
 
 _TEMPLATES_BY_ID: dict[str, dict[str, Any]] = {t["id"]: t for t in WORKFLOW_TEMPLATES}

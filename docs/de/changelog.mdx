@@ -10,6 +10,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Zwei neue Workflow-Starter-Templates: Connector Action und MCP Tool Call.** Die Galerie "Create from Template" zeigt nun die Connector- und MCP-Knoten — rufen Sie ein externes System oder ein MCP-Tool auf und fassen Sie das Ergebnis dann mit einem LLM zusammen. Wählen Sie den spezifischen Connector/Server nach der Erstellung aus.
+
 ### Geändert
 
 - **Konnektoren und MCP-Server teilen die Anmeldedaten des Besitzers standardmäßig nicht mehr (Breaking Change).** "Fallback auf die Anmeldedaten des Besitzers zulassen" ist jetzt opt-in: neue Konnektoren/MCP-Server werden mit dieser Einstellung deaktiviert erstellt, und alle vorhandenen wurden ebenfalls deaktiviert. Ein Abonnent, der sich auf das Token des Besitzers verlassen hat, um einen gemeinsamen Konnektor oder MCP-Server zu nutzen, muss jetzt seine eigenen Anmeldedaten hinzufügen oder der Besitzer muss das Fallback für diese Ressource erneut aktivieren. Besitzer können immer ihre eigenen Anmeldedaten verwenden, unabhängig von der Einstellung. Dadurch ist ein Konnektor, dessen Fallback deaktiviert ist und für den Sie keine Anmeldedaten haben, jetzt in der Toolbox des Agenten ausgeblendet (wie MCP-Server bereits verhalten), anstatt angeboten zu werden und dann beim Aufrufen fehlzuschlagen.
