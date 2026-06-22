@@ -427,7 +427,7 @@
   "variablesPanelEmpty": "尚未定义任何工作流变量。",
   "variablesPanelAdd": "添加变量",
   "variablesPanelName": "名称",
-  "variablesPanelNamePlaceholder": "variable_name",
+  "variablesPanelNamePlaceholder": "变量名称",
   "variablesPanelType": "类型",
   "variablesPanelDefaultValue": "默认值",
   "variablesPanelDefaultPlaceholder": "默认值",
