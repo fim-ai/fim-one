@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Changed
+
+- **AI agent creation recovers from a weak fast model.** Building or refining an agent from a natural-language instruction runs on the fast model; if it can't produce valid configuration, the request now retries once on the stronger general model before erroring, so a too-weak fast model no longer surfaces as a failure to the user.
+
 ## [v0.8.8] - 2026-06-22
 
 ### Changed

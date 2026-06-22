@@ -10,6 +10,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+### Modifié
+
+- **La création d'agent IA récupère d'un modèle rapide faible.** La création ou l'affinage d'un agent à partir d'une instruction en langage naturel s'exécute sur le modèle rapide ; si celui-ci ne peut pas produire une configuration valide, la requête réessaie maintenant une fois sur le modèle général plus puissant avant de générer une erreur, de sorte qu'un modèle rapide trop faible ne remonte plus comme une défaillance à l'utilisateur.
+
 ## [v0.8.8] - 2026-06-22
 
 ### Modifié

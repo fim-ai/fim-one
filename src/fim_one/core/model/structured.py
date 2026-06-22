@@ -54,6 +54,9 @@ class StructuredCallResult(Generic[T]):
         level_used: Which extraction level succeeded.
         llm_calls: Total number of LLM calls made (including retries).
         total_usage: Accumulated token usage across all calls.
+        escalated: ``True`` if the primary model exhausted every extraction
+            level and the call fell back to ``escalate_llm`` (the stronger
+            model).  ``llm_calls``/``total_usage`` then cover both models.
     """
 
     value: T
@@ -61,6 +64,7 @@ class StructuredCallResult(Generic[T]):
     level_used: Literal["native_fc", "json_mode", "plain_text"]
     llm_calls: int = 1
     total_usage: dict[str, int] = field(default_factory=dict)
+    escalated: bool = False
 
 
 # ------------------------------------------------------------------
@@ -99,6 +103,18 @@ def _build_tool_def(name: str, schema: dict[str, Any]) -> dict[str, Any]:
             "parameters": schema,
         },
     }
+
+
+def _same_model(a: BaseLLM, b: BaseLLM) -> bool:
+    """Whether two LLM handles point at the same underlying model.
+
+    Escalating to the same model wastes a call and never improves the
+    outcome, so a caller that resolved fast == general is skipped.
+    """
+    if a is b:
+        return True
+    a_id, b_id = a.model_id, b.model_id
+    return a_id is not None and a_id == b_id
 
 
 def _transform(
@@ -209,12 +225,22 @@ async def structured_llm_call(
     default_value: T | Any = _SENTINEL,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    escalate_llm: BaseLLM | None = None,
 ) -> StructuredCallResult[T]:
     """Structured LLM call with 3-level degradation.
 
     Tries Native FC → JSON Mode → Plain text, based on ``llm.abilities``.
     Each text-based level retries once with a reformat prompt before
     falling to the next.
+
+    When ``escalate_llm`` is supplied and the primary ``llm`` exhausts
+    *every* level, the whole degradation chain is retried once on the
+    stronger model before ``default_value`` / :class:`StructuredOutputError`
+    is reached.  Exhausting a cheap model is a clean, observed failure
+    signal — no difficulty prediction needed — so this lets callers run the
+    common case on a fast model and pay for the strong model only on the
+    requests that actually need it.  Escalating to the same underlying model
+    is skipped (a no-op that would only waste a call).
 
     Args:
         llm: The LLM instance to call.
@@ -318,6 +344,31 @@ async def structured_llm_call(
                     )
 
         logger.debug("structured_llm_call: level '%s' exhausted", level)
+
+    # --- Primary model exhausted every level: escalate to the stronger model ---
+    if escalate_llm is not None and not _same_model(escalate_llm, llm):
+        logger.info(
+            "structured_llm_call: primary model exhausted all levels; "
+            "escalating to stronger model %s",
+            escalate_llm.model_id or "<unknown>",
+        )
+        escalated = await structured_llm_call(
+            escalate_llm,
+            messages,
+            schema,
+            function_name,
+            parse_fn=parse_fn,
+            regex_fallback=regex_fallback,
+            default_value=default_value,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            escalate_llm=None,  # single hop only — never chain escalations
+        )
+        # Fold in the primary model's spent calls/tokens for accurate accounting.
+        escalated.llm_calls += calls
+        escalated.total_usage = _accumulate_usage(usage, escalated.total_usage)
+        escalated.escalated = True
+        return escalated
 
     # --- All levels failed ---
     if default_value is not _SENTINEL:

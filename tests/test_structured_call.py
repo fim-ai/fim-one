@@ -439,3 +439,131 @@ class TestNestedSchema:
         assert len(result.value["steps"]) == 2
         assert result.value["steps"][0]["id"] == "s1"
         assert result.value["steps"][1]["dependencies"] == ["s1"]
+
+
+# ======================================================================
+# Escalation to a stronger model
+# ======================================================================
+
+
+class _IdLLM(FakeLLM):
+    """FakeLLM that reports a fixed ``model_id`` for same-model detection."""
+
+    def __init__(self, model_id: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._model_id = model_id
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+
+def _garbage(content: str = "not json at all") -> FakeLLM:
+    """A plain-text LLM that never yields parseable JSON."""
+    return FakeLLM(
+        responses=[
+            LLMResult(message=ChatMessage(role="assistant", content=content), usage=_usage()),
+        ],
+    )
+
+
+def _valid(answer: str = "42") -> FakeLLM:
+    return FakeLLM(
+        responses=[
+            LLMResult(
+                message=ChatMessage(role="assistant", content=json.dumps({"answer": answer})),
+                usage=_usage(prompt=20, completion=10),
+            ),
+        ],
+    )
+
+
+class TestEscalation:
+    async def test_escalates_after_primary_exhausts(self) -> None:
+        primary = _garbage()
+        strong = _valid("42")
+        result = await structured_llm_call(
+            primary,
+            [ChatMessage(role="user", content="x")],
+            SIMPLE_SCHEMA,
+            "fn",
+            escalate_llm=strong,
+        )
+        assert result.value == {"answer": "42"}
+        assert result.escalated is True
+        # Primary exhausted its chain, then the strong model was tried.
+        assert primary.call_count >= 1
+        assert strong.call_count >= 1
+        # Accounting folds in both models' calls and tokens.
+        assert result.llm_calls == primary.call_count + strong.call_count
+        assert result.total_usage["total_tokens"] == 15 * primary.call_count + 30 * strong.call_count
+
+    async def test_no_escalation_when_primary_succeeds(self) -> None:
+        primary = _valid("ok")
+        strong = _valid("unused")
+        result = await structured_llm_call(
+            primary,
+            [ChatMessage(role="user", content="x")],
+            SIMPLE_SCHEMA,
+            "fn",
+            escalate_llm=strong,
+        )
+        assert result.value == {"answer": "ok"}
+        assert result.escalated is False
+        assert strong.call_count == 0  # strong model never touched
+
+    async def test_escalation_falls_back_to_default_when_both_fail(self) -> None:
+        primary = _garbage()
+        strong = _garbage("still not json")
+        result = await structured_llm_call(
+            primary,
+            [ChatMessage(role="user", content="x")],
+            SIMPLE_SCHEMA,
+            "fn",
+            default_value={"answer": "fallback"},
+            escalate_llm=strong,
+        )
+        assert result.value == {"answer": "fallback"}
+        assert result.escalated is True
+        assert strong.call_count >= 1
+
+    async def test_escalation_raises_when_both_fail_no_default(self) -> None:
+        primary = _garbage()
+        strong = _garbage()
+        with pytest.raises(StructuredOutputError):
+            await structured_llm_call(
+                primary,
+                [ChatMessage(role="user", content="x")],
+                SIMPLE_SCHEMA,
+                "fn",
+                escalate_llm=strong,
+            )
+
+    async def test_escalation_skipped_for_same_instance(self) -> None:
+        primary = _garbage()
+        with pytest.raises(StructuredOutputError):
+            await structured_llm_call(
+                primary,
+                [ChatMessage(role="user", content="x")],
+                SIMPLE_SCHEMA,
+                "fn",
+                escalate_llm=primary,  # same object -> no escalation, no extra calls
+            )
+        # Only the primary's own degradation chain ran (attempt + reformat retry).
+        assert primary.call_count == 2
+
+    async def test_escalation_skipped_for_same_model_id(self) -> None:
+        primary = _IdLLM("model-x", responses=_garbage()._responses)
+        strong = _IdLLM(
+            "model-x",
+            responses=_valid("would-succeed")._responses,
+        )
+        with pytest.raises(StructuredOutputError):
+            await structured_llm_call(
+                primary,
+                [ChatMessage(role="user", content="x")],
+                SIMPLE_SCHEMA,
+                "fn",
+                escalate_llm=strong,
+            )
+        assert strong.call_count == 0  # identical model_id -> skipped

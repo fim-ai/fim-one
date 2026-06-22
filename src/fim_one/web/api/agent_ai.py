@@ -16,7 +16,7 @@ from fim_one.core.utils import get_language_directive
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.core.model.structured import structured_llm_call
-from fim_one.web.deps import get_effective_fast_llm
+from fim_one.web.deps import get_effective_fast_llm, get_effective_llm
 from fim_one.db.models import Agent
 from fim_one.db.models.connector import Connector
 from fim_one.db.models.knowledge_base import KnowledgeBase
@@ -232,6 +232,7 @@ async def ai_create_agent(
         schema=_CREATE_AGENT_SCHEMA,
         function_name="create_agent",
         default_value=None,
+        escalate_llm=await get_effective_llm(db),
     )
     if sc.value is None or not isinstance(sc.value, dict):
         raise AppError("llm_invalid_json", status_code=422, detail="LLM failed to return valid agent config")
@@ -308,6 +309,7 @@ async def ai_refine_agent(
         schema=_REFINE_AGENT_SCHEMA,
         function_name="refine_agent",
         default_value=None,
+        escalate_llm=await get_effective_llm(db),
     )
     if sc.value is None or not isinstance(sc.value, dict):
         raise AppError("llm_invalid_json", status_code=422, detail="LLM failed to return valid agent updates")

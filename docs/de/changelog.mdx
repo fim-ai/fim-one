@@ -10,6 +10,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Geändert
+
+- **Die Erstellung von KI-Agenten erholt sich von einem schwachen schnellen Modell.** Das Erstellen oder Verfeinern eines Agenten aus einer natürlichsprachlichen Anweisung läuft auf dem schnellen Modell; wenn es keine gültige Konfiguration erzeugen kann, wird die Anfrage jetzt einmal auf dem stärkeren allgemeinen Modell wiederholt, bevor ein Fehler auftritt, sodass ein zu schwaches schnelles Modell nicht mehr als Fehler für den Benutzer sichtbar wird.
+
 ## [v0.8.8] - 2026-06-22
 
 ### Geändert
