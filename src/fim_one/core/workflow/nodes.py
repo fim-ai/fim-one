@@ -771,6 +771,25 @@ class ConnectorExecutor:
                         duration_ms=_ms_since(t0),
                     )
 
+                # Fail closed on confirmation-required actions (audit P0#3b).
+                # A workflow has no per-call interactive confirmation channel,
+                # so an action flagged requires_confirmation must not run
+                # unattended (the previous behavior silently bypassed the gate).
+                # The workflow-native way to gate a sensitive step is to place a
+                # Human Intervention node before it.
+                if action.requires_confirmation:
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=(
+                            f"Action '{action.name}' requires confirmation and "
+                            "cannot run unattended in a workflow. Add a Human "
+                            "Intervention node before this step to gate it, or "
+                            "use an action that does not require confirmation."
+                        ),
+                        duration_ms=_ms_since(t0),
+                    )
+
                 # Resolve auth credentials via the shared helper so workflow
                 # and chat paths share identical lookup semantics (per-user
                 # override, owner-exempt default fallback, etc).
@@ -833,9 +852,9 @@ class ConnectorExecutor:
                     action_parameters_schema=action.parameters_schema,
                     action_request_body_template=action.request_body_template,
                     action_response_extract=action.response_extract,
-                    # NOTE: confirmation pass-through (audit P0#3 item b) is
-                    # intentionally deferred — workflow runs are unattended and
-                    # the WorkflowApproval system is separate; pending design.
+                    # Always False here: confirmation-required actions are
+                    # rejected above (fail-closed); a Human Intervention node is
+                    # the workflow-native approval gate.
                     action_requires_confirmation=False,
                     auth_credentials=auth_credentials,
                     connector_id=connector_id,

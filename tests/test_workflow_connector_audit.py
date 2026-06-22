@@ -24,7 +24,7 @@ from fim_one.core.workflow.variable_store import VariableStore
 from fim_one.db.models.connector_call_log import ConnectorCallLog
 
 
-def _fake_db_cm(added: list[Any]) -> AsyncMock:
+def _fake_db_cm(added: list[Any], *, requires_confirmation: bool = False) -> AsyncMock:
     """A create_session() mock returning connector then action, capturing add()."""
     fake_connector = MagicMock(
         id="c1", name="C", base_url="http://x", auth_type="none", auth_config=None
@@ -37,6 +37,7 @@ def _fake_db_cm(added: list[Any]) -> AsyncMock:
         parameters_schema=None,
         request_body_template=None,
         response_extract=None,
+        requires_confirmation=requires_confirmation,
     )
     conn_res = MagicMock()
     conn_res.scalar_one_or_none.return_value = fake_connector
@@ -108,3 +109,39 @@ async def test_connector_call_is_audited() -> None:
     assert log.conversation_id is None  # no conversation in workflow context
     assert log.agent_id is None
     assert log.success is True
+
+
+@pytest.mark.asyncio
+async def test_confirmation_required_action_fails_closed() -> None:
+    """A requires_confirmation action must not run unattended in a workflow (P0#3b).
+
+    Previously the connector node hardcoded confirmation off and ran the action
+    anyway. It now fails closed before resolving credentials or calling out.
+    """
+    added: list[Any] = []
+    node = WorkflowNodeDef(
+        id="conn_1",
+        type=NodeType.CONNECTOR,
+        data={"type": "CONNECTOR", "connector_id": "c1", "action_id": "a1"},
+    )
+    store = VariableStore()
+    ctx = ExecutionContext(run_id="r", user_id="user-9", workflow_id="w")
+
+    resolve = AsyncMock(return_value={})
+    with (
+        patch(
+            "fim_one.db.create_session",
+            return_value=_fake_db_cm(added, requires_confirmation=True),
+        ),
+        patch(
+            "fim_one.core.security.connector_credentials.resolve_connector_credentials",
+            new=resolve,
+        ),
+    ):
+        result = await ConnectorExecutor().execute(node, store, ctx)
+
+    assert result.status == NodeStatus.FAILED
+    assert "confirmation" in (result.error or "").lower()
+    # Must short-circuit: no credential resolution, no audit log, no call.
+    resolve.assert_not_awaited()
+    assert not [o for o in added if isinstance(o, ConnectorCallLog)]
