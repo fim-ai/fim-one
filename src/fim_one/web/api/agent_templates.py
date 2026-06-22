@@ -93,7 +93,7 @@ async def create_agent_from_template(
         model_config_json=blueprint.get("model_config_json"),
         tool_categories=blueprint.get("tool_categories"),
         suggested_prompts=blueprint.get("suggested_prompts"),
-        execution_mode=blueprint.get("execution_mode", "auto"),
+        execution_mode=blueprint.get("execution_mode", "react"),
         sandbox_config=blueprint.get("sandbox_config"),
         status="draft",
     )

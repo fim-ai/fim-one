@@ -59,7 +59,7 @@ export function AgentSettingsForm({
   const [selectedKBs, setSelectedKBs] = useState<string[]>([])
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([])
   const [selectedMCPServers, setSelectedMCPServers] = useState<string[]>([])
-  const [executionMode, setExecutionMode] = useState<"react" | "dag" | "auto">("auto")
+  const [executionMode, setExecutionMode] = useState<"react" | "dag" | "auto">("react")
   const [confidenceThreshold, setConfidenceThreshold] = useState<number | null>(null)
   const [temperature, setTemperature] = useState<number | null>(null)
   const [sandboxMemory, setSandboxMemory] = useState<string>("")
@@ -121,7 +121,7 @@ export function AgentSettingsForm({
       setSelectedKBs(agent.kb_ids || [])
       setSelectedConnectors(agent.connector_ids || [])
       setSelectedMCPServers(agent.mcp_server_ids || [])
-      setExecutionMode(agent.execution_mode || "auto")
+      setExecutionMode(agent.execution_mode || "react")
       const ct = agent.grounding_config?.confidence_threshold
       setConfidenceThreshold(typeof ct === "number" ? ct : null)
       const rawTemp = agent.model_config_json?.temperature
@@ -253,7 +253,7 @@ export function AgentSettingsForm({
       JSON.stringify(selectedKBs) !== JSON.stringify(agent.kb_ids || []) ||
       JSON.stringify(selectedConnectors) !== JSON.stringify(agent.connector_ids || []) ||
       JSON.stringify(selectedMCPServers) !== JSON.stringify(agent.mcp_server_ids || []) ||
-      executionMode !== (agent.execution_mode || "auto") ||
+      executionMode !== (agent.execution_mode || "react") ||
       (() => {
         const ct = agent.grounding_config?.confidence_threshold
         const origCt = typeof ct === "number" ? ct : null

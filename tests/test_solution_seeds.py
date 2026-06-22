@@ -315,7 +315,7 @@ class TestImportSolutionTemplates:
             assert agent.status == "published"
             assert agent.publish_status == "approved"
             assert agent.published_at is not None
-            assert agent.execution_mode == "auto"
+            assert agent.execution_mode == "react"
 
         # Check skills
         skills_result = await async_session.execute(

@@ -36,7 +36,7 @@ _CUSTOMER_SUPPORT: dict[str, Any] = {
             "- Summarize the resolution at the end of the conversation\n"
             "- Always maintain a professional, helpful, and empathetic tone"
         ),
-        "execution_mode": "auto",
+        "execution_mode": "react",
         "tool_categories": ["web"],
         "suggested_prompts": [
             "How do I reset my password?",
@@ -78,7 +78,7 @@ _RESEARCH_ASSISTANT: dict[str, Any] = {
             "- Note conflicting information and explain different perspectives\n"
             "- End with conclusions and recommended next steps"
         ),
-        "execution_mode": "auto",
+        "execution_mode": "react",
         "tool_categories": ["web", "knowledge"],
         "suggested_prompts": [
             "Research the latest trends in renewable energy",
@@ -176,7 +176,7 @@ _DATA_ANALYST: dict[str, Any] = {
             "- Highlight unexpected findings or anomalies\n"
             "- Provide actionable insights, not just raw numbers"
         ),
-        "execution_mode": "auto",
+        "execution_mode": "react",
         "tool_categories": ["computation", "filesystem"],
         "suggested_prompts": [
             "Analyze this CSV file and find key patterns",

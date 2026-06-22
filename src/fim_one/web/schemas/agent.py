@@ -20,7 +20,7 @@ class AgentCreate(BaseModel):
     mcp_server_ids: list[str] | None = None
     grounding_config: dict[str, Any] | None = None
     sandbox_config: dict[str, Any] | None = None
-    execution_mode: Literal["react", "dag", "auto"] = "auto"
+    execution_mode: Literal["react", "dag", "auto"] = "react"
     compact_instructions: str | None = None
     is_active: bool = True
     confirmation_mode: Literal["auto", "inline_only", "channel_only"] = "auto"

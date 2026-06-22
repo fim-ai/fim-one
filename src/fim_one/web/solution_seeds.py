@@ -73,7 +73,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. Remain objective and neutral — do not speculate; distinguish facts from assumptions\n"
                 "5. Output structured audit reports containing findings, risk level, recommendations, and references"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "Financial Report Review SOP",
@@ -131,7 +131,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. Flag potentially missing important clauses (force majeure, confidentiality, IP ownership, etc.)\n"
                 "5. Use a clear comparison format showing original text and suggested revisions side by side"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "Contract Clause Review SOP",
@@ -197,7 +197,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. Use tables, lists, and other structured formats to present comparisons and trends\n"
                 "5. Flag anomalous data points for deeper analysis and hypothesise possible causes"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "Data Analysis Report SOP",
@@ -257,7 +257,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. When data operations are involved, remind the user to back up first\n"
                 "5. If the issue exceeds self-service scope, clearly state that escalation is needed and suggest what information to provide to the operations team"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "IT Troubleshooting SOP",
@@ -325,7 +325,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. For questions involving personal privacy (e.g., salary details), direct the employee to their HR representative\n"
                 "5. Use checklists and step-by-step formats to help new employees track their onboarding progress"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "New Employee Onboarding SOP",
@@ -391,7 +391,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. Output documents should be well-formatted, use professional language, and be ready for customer delivery\n"
                 "5. Provide stage-specific support based on the sales phase (lead / discovery / proposal / negotiation / close)"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "Sales Proposal Writing SOP",
@@ -456,7 +456,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. Use data, case studies, and storytelling to strengthen persuasiveness\n"
                 "5. Adapt tone and format to the platform (blog, LinkedIn, newsletter, social media, etc.)"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "Marketing Content Creation SOP",
@@ -524,7 +524,7 @@ SOLUTION_TEMPLATES: list[_TemplateDef] = [
                 "4. Maintain an objective record — do not inject personal opinions or bias\n"
                 "5. Use concise, clear language and avoid redundancy"
             ),
-            "execution_mode": "auto",
+            "execution_mode": "react",
         },
         "skill": {
             "name": "Meeting Minutes SOP",

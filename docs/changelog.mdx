@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **New agents now default to ReAct execution instead of Auto.** Auto mode spent one extra fast-model classification call per request to decide between ReAct and DAG; new agents (and the built-in/marketplace templates) now default to ReAct, removing that per-message latency and cost. Auto and DAG remain selectable per agent; existing agents keep their current mode.
 - **AI agent creation recovers from a weak fast model.** Building or refining an agent from a natural-language instruction runs on the fast model; if it can't produce valid configuration, the request now retries once on the stronger general model before erroring, so a too-weak fast model no longer surfaces as a failure to the user.
 
 ## [v0.8.8] - 2026-06-22
