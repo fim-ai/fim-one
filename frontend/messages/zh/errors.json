@@ -81,5 +81,6 @@
   "sensitive_word_not_found": "找不到敏感词。",
   "someFilesFailedUpload": "某些文件上传失败。请删除它们或在发送前重试。",
   "model_provider_name_taken": "已存在同名的提供商。",
-  "model_name_taken": "此提供商下已存在该模型ID。"
+  "model_name_taken": "此提供商下已存在该模型ID。",
+  "cannot_delete_org_owner": "该用户拥有一个或多个组织。请先转移所有权或删除这些组织。"
 }

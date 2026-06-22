@@ -93,7 +93,7 @@ Dev = SQLite, prod = PG. One migration set for both. `start.sh` runs `alembic up
 
 ## User Deletion File Cleanup (MANDATORY)
 
-New user-owned module writing to disk → update `delete_user()` in `src/fim_one/web/api/admin.py`. ORM cascade only drops rows; files get orphaned.
+New user-owned module writing to disk → update `purge_user_data()` in `src/fim_one/web/services/user_deletion.py` (the single path both admin delete and self-serve delete funnel through). ORM cascade only drops rows; files get orphaned. New table with a FK to `users` and no `ondelete` cascade → also add an explicit FK-safe `DELETE` there, or `db.delete(user)` will hit a FK violation (SQLite now runs with `PRAGMA foreign_keys=ON`).
 
 Current registry (search `Clean up file-system resources`):
 

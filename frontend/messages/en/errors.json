@@ -28,6 +28,7 @@
   "cannot_revoke_own_admin": "Cannot revoke your own admin role.",
   "cannot_disable_own_account": "Cannot disable your own account.",
   "cannot_delete_own_account": "Cannot delete your own account.",
+  "cannot_delete_org_owner": "This user owns one or more organizations. Transfer ownership or delete those organizations first.",
   "cannot_force_logout_self": "Cannot force logout yourself.",
   "invalid_registration_mode": "Invalid registration mode: {mode}.",
   "invite_code_not_found": "Invite code not found.",

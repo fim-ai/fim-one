@@ -41,6 +41,7 @@ from fim_one.web.schemas.billing import (
 )
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.model_config import ModelConfigResponse
+from fim_one.web.services.user_deletion import purge_user_data
 
 # ---------------------------------------------------------------------------
 # Settings helpers (delegated to admin_utils, re-exported for compatibility)
@@ -1060,19 +1061,7 @@ async def delete_user(
     if current_user.id == user_id:
         raise AppError("cannot_delete_own_account")
 
-    result = await db.execute(
-        select(User)
-        .options(
-            selectinload(User.conversations).selectinload(Conversation.messages),
-            selectinload(User.agents),
-            selectinload(User.knowledge_bases),
-            selectinload(User.model_configs),
-            selectinload(User.connectors),
-            selectinload(User.mcp_servers),
-            selectinload(User.oauth_bindings),
-        )
-        .where(User.id == user_id)
-    )
+    result = await db.execute(select(User).where(User.id == user_id))
     target_user = result.scalar_one_or_none()
     if target_user is None:
         raise AppError("user_not_found", status_code=404)
@@ -1080,62 +1069,17 @@ async def delete_user(
     info = _user_to_info(target_user)
     label = target_user.username or target_user.email
 
-    # --- Clean up file-system resources before DB delete ---
-    # NOTE: Every user-owned entity that stores files on disk MUST be cleaned
-    # here.  When adding a new module with disk storage, add its cleanup below
-    # and update the "User Deletion File Cleanup" section in CLAUDE.md.
-
-    # 1. Conversations — sandbox workspaces + published artifacts
-    conv_result = await db.execute(
-        select(Conversation.id).where(Conversation.user_id == user_id)
-    )
-    conv_ids = [row[0] for row in conv_result.fetchall()]
-
-    for conv_id in conv_ids:
-        sandbox_dir = _CONVERSATIONS_DIR / conv_id
-        if sandbox_dir.exists():
-            shutil.rmtree(sandbox_dir, ignore_errors=True)
-        uploads_dir = _UPLOADS_CONVERSATIONS_DIR / conv_id
-        if uploads_dir.exists():
-            shutil.rmtree(uploads_dir, ignore_errors=True)
-
-    # 2. Knowledge bases — uploaded documents + vector embeddings
-    kb_result = await db.execute(
-        select(KnowledgeBase.id).where(KnowledgeBase.user_id == user_id)
-    )
-    kb_ids = [row[0] for row in kb_result.fetchall()]
-
-    kb_uploads_dir = _UPLOADS_BASE / "kb"
-    for kb_id in kb_ids:
-        kb_dir = kb_uploads_dir / kb_id
-        if kb_dir.exists():
-            shutil.rmtree(kb_dir, ignore_errors=True)
-
-    vector_store_base = Path(os.environ.get("VECTOR_STORE_DIR", "./data/vector_store"))
-    vector_user_dir = vector_store_base / f"user_{user_id}"
-    if vector_user_dir.exists():
-        shutil.rmtree(vector_user_dir, ignore_errors=True)
-
-    # 3. User uploads (general file uploads)
-    user_uploads = _UPLOADS_BASE / f"user_{user_id}"
-    if user_uploads.exists():
-        shutil.rmtree(user_uploads, ignore_errors=True)
-
-    # 4. Avatar
-    avatar_dir = _UPLOADS_BASE / "avatars"
-    if avatar_dir.exists():
-        for avatar_file in avatar_dir.glob(f"{user_id}_*"):
-            avatar_file.unlink(missing_ok=True)
-        for avatar_file in avatar_dir.glob(f"{user_id}.*"):
-            avatar_file.unlink(missing_ok=True)
-
-    # --- DB delete & audit ---
-    await db.delete(target_user)
+    # Unified deletion: file cleanup + FK-safe row removal + ORM cascade.
+    # Raises cannot_delete_org_owner if the user still owns any organization.
+    summary = await purge_user_data(db, user_id)
     await db.commit()
     await write_audit(
         db, current_user, "user.delete",
         target_type="user", target_id=user_id, target_label=label,
-        detail=f"deleted user {label}; cleaned {len(conv_ids)} conversations, sandbox & upload dirs",
+        detail=(
+            f"deleted user {label}; cleaned {summary['conversations']} conversations, "
+            f"{summary['knowledge_bases']} knowledge bases, sandbox & upload dirs"
+        ),
     )
     return info
 

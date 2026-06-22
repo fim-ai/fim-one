@@ -23,7 +23,9 @@ class Conversation(UUIDPKMixin, TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(200), default="")
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
-    agent_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("agents.id"), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(20), default="active")
     starred: Mapped[bool] = mapped_column(Boolean, default=False)
     model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)

@@ -82,6 +82,10 @@ async def init_db() -> None:
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA busy_timeout=30000")
+            # Enforce foreign-key constraints (OFF by default in SQLite).
+            # PG enforces these natively; without this, ON DELETE cascades /
+            # SET NULL silently no-op in dev, hiding PG-only delete failures.
+            cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
     logger.info("Database initialized successfully")
