@@ -73,6 +73,14 @@ flowchart LR
 
 - **演练场停止并重试显示瞬间视觉伪影，页面刷新总能清除。** 三个并发渲染源——`activeConversation.messages`（数据库快照）、SSE `messages` 流和乐观的 `pendingQuery` 占位符——未折叠为单一派生状态，因此在点击"重试"和配对的助手响应到达之间，UI 可能会（a）在流前窗口中短暂渲染相同查询两次，（b）在 `hasLiveMessages` 为真且快照重新加载前从重试历史中删除先前的孤立用户气泡，以及（c）在 SSE"完成"事件和下一个 `selectConversation` 刷新之间的狭窄窗口中闪烁。**数据永远不会丢失**——每条用户消息（包括中止的重试）都持久化在 `conversation.messages` 中，通过 `normalize_alternating_messages` 传入下一个 LLM 调用，并在 `48ba08c6` 渲染修复中引入的 `HistoryTurn.orphanUserContents` 通过刷新后正确渲染。作为背景，Claude 自己的网页 UI 展示了类似的缺陷类别——在响应中途停止并立即发送后续查询有时会将后续查询作为第一个查询的同级编辑分支而不是作为新轮次追加——因此这是乐观 UI + SSE + 持久化历史设计中的已知难题，而非 FIM One 特定缺陷。正确的修复需要将三个渲染源折叠为单一派生状态；延迟至更广泛的演练场状态机重构。
 
+## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
+
+Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+
+- [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
+- [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
+- [ ] **Port the source-fidelity guideline into the ReAct fallback synthesis prompt** so total/severity mislabels are caught in ReAct too, not only in DAG.
+
 ## 已发布的版本
 
 ### v0.1 (2026-02-22) — MVP：ReAct + DAG 规划器

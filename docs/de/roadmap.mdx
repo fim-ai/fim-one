@@ -73,6 +73,14 @@ Nachverfolgter Fehler, die in der Produktion reproduzierbar sind, aber noch nich
 
 - **Playground-Stopp-und-Wiederholung zeigt vorübergehende visuelle Artefakte, die ein Seitenaktualisierung immer behebt.** Drei gleichzeitige Render-Quellen — `activeConversation.messages` (DB-Snapshot), der SSE-Stream `messages` und der optimistische Platzhalter `pendingQuery` — werden nicht in einen einzelnen abgeleiteten State zusammengefasst, daher kann zwischen dem Klick auf „Wiederholen" und der Ankunft der gepaarten Assistent-Antwort die Benutzeroberfläche (a) die gleiche Abfrage kurzzeitig zweimal im Pre-Stream-Fenster rendern, (b) vorherige verwaiste Benutzer-Blasen aus dem Wiederholungsverlauf löschen, während `hasLiveMessages` wahr ist und bevor der Snapshot neu geladen wird, und (c) im engen Fenster zwischen dem SSE-Event „done" und der nächsten `selectConversation`-Aktualisierung flimmern. **Daten gehen niemals verloren** — jede Benutzer-Nachricht (einschließlich abgebrochener Wiederholungen) wird in `conversation.messages` beibehalten, in den nächsten LLM-Aufruf über `normalize_alternating_messages` übernommen und nach der Aktualisierung korrekt über `HistoryTurn.orphanUserContents` (eingeführt in der Render-Korrektur `48ba08c6`) gerendert. Zur Kontextualisierung: Claudes eigene Web-Benutzeroberfläche zeigt eine analoge Fehlerklasse — das Stoppen mitten in einer Antwort und das sofortige Senden einer Folgefrage verzweigt die Folgefrage manchmal als Sibling-Edit-Zweig der ersten Abfrage statt sie als neuen Turn anzuhängen — daher ist dies ein bekanntes schwieriges Problem in Optimistic-UI + SSE + Persisted-History-Designs, kein FIM-One-spezifischer Fehler. Eine ordnungsgemäße Lösung erfordert das Zusammenfassen der drei Render-Quellen in einen einzelnen abgeleiteten State; aufgeschoben bis zu einer umfassenderen Playground-State-Machine-Umgestaltung.
 
+## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
+
+Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+
+- [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
+- [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
+- [ ] **Port the source-fidelity guideline into the ReAct fallback synthesis prompt** so total/severity mislabels are caught in ReAct too, not only in DAG.
+
 ## Ausgelieferte Versionen
 
 ### v0.1 (2026-02-22) — MVP: ReAct + DAG Planner

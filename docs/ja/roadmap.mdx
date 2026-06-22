@@ -73,6 +73,14 @@ flowchart LR
 
 - **Playground の停止と再試行は、ページ更新で常にクリアされる一時的なビジュアルアーティファクトを表示する。** 3 つの同時レンダーソース — `activeConversation.messages`（DB スナップショット）、SSE `messages` ストリーム、および楽観的な `pendingQuery` プレースホルダー — は単一の派生状態に統合されていないため、「Retry」をクリックしてからペアのアシスタント応答が到着するまでの間に、UI は (a) ストリーム前ウィンドウで同じクエリを 2 回簡潔にレンダリングし、(b) `hasLiveMessages` が true で次のスナップショット再読み込みの前に再試行履歴から以前の孤立したユーザーバブルをドロップし、(c) SSE「done」イベントと次の `selectConversation` 更新の間の狭いウィンドウでフリッカーすることができます。**データは決して失われません** — すべてのユーザーメッセージ（中止された再試行を含む）は `conversation.messages` に永続化され、`normalize_alternating_messages` を経由して次の LLM 呼び出しに持ち込まれ、`48ba08c6` レンダー修正で導入された `HistoryTurn.orphanUserContents` を経由した更新後に正しくレンダリングされます。文脈として、Claude 自身の Web UI は類似のバグクラスを示しています — 応答の途中で停止し、すぐにフォローアップクエリを送信すると、フォローアップが最初のクエリの兄弟編集ブランチとしてフォークされることがあり、新しいターンとして追加されるのではなく — これは楽観的 UI + SSE + 永続化履歴設計における既知の難しい問題であり、FIM One 固有の欠陥ではありません。適切な修正には、3 つのレンダーソースを単一の派生状態に統合する必要があります。より広い Playground ステートマシンリファクタリングまで延期されています。
 
+## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
+
+Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+
+- [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
+- [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
+- [ ] **Port the source-fidelity guideline into the ReAct fallback synthesis prompt** so total/severity mislabels are caught in ReAct too, not only in DAG.
+
 ## 出荷済みバージョン
 
 ### v0.1 (2026-02-22) — MVP: ReAct + DAG Planner

@@ -73,6 +73,14 @@ flowchart LR
 
 - **Playground 중지 및 재시도가 페이지 새로 고침으로 항상 지워지는 일시적 시각 아티팩트를 표시합니다.** 세 가지 동시 렌더 소스 — `activeConversation.messages`(DB 스냅샷), SSE `messages` 스트림, 낙관적 `pendingQuery` 플레이스홀더 — 가 단일 파생 상태로 축소되지 않으므로, "Retry"를 클릭한 후 쌍을 이루는 assistant 응답이 도착하기 전 사이에 UI는 (a) 사전 스트림 창에서 동일한 쿼리를 잠시 두 번 렌더링하거나, (b) `hasLiveMessages`가 true이고 스냅샷이 다시 로드되기 전에 재시도 기록에서 이전 orphan 사용자 버블을 삭제하거나, (c) SSE "done" 이벤트와 다음 `selectConversation` 새로 고침 사이의 좁은 창에서 깜박일 수 있습니다. **데이터는 절대 손실되지 않습니다** — 모든 사용자 메시지(중단된 재시도 포함)는 `conversation.messages`에 유지되고, `normalize_alternating_messages`를 통해 다음 LLM 호출로 전달되며, `48ba08c6` 렌더 수정에서 도입된 `HistoryTurn.orphanUserContents`를 통해 새로 고침 후 올바르게 렌더링됩니다. 참고로 Claude의 자체 웹 UI는 유사한 클래스의 버그를 나타냅니다 — 응답 중간에 중지하고 즉시 후속 쿼리를 보내면 때때로 후속 쿼리가 첫 번째 쿼리의 형제 편집 분기로 포크되어 새로운 턴으로 추가되지 않습니다 — 따라서 이는 낙관적 UI + SSE + 유지된 기록 설계에서 알려진 어려운 문제이며, FIM One 특정 결함이 아닙니다. 적절한 수정을 위해서는 세 가지 렌더 소스를 단일 파생 상태로 축소해야 합니다. 더 광범위한 Playground 상태 머신 리팩토링까지 연기되었습니다.
 
+## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
+
+Deferred hardening — not blocking; pick up only if the matching scenario shows up.
+
+- [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
+- [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
+- [ ] **Port the source-fidelity guideline into the ReAct fallback synthesis prompt** so total/severity mislabels are caught in ReAct too, not only in DAG.
+
 ## 배포된 버전
 
 ### v0.1 (2026-02-22) — MVP: ReAct + DAG Planner
