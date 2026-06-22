@@ -17,6 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Leaving (or being removed from) an organization now revokes its shared access.** Resources you could reach only through that organization are unsubscribed, and the per-user connector/MCP credentials you saved for them are deleted — so you can no longer use those resources or fall back to the owner's credential after departing. Resources you subscribed to via the Market are unaffected.
 - **Deleting an account now removes everything, consistently.** The admin "delete user" and self-serve "delete my account" paths used to diverge — each cleaned a different set of on-disk files (and both computed their file paths wrongly, so each silently missed some), and the admin path left behind API keys, login history, eval data, call logs, and subscriptions. Both now run through one routine that removes every record and file, and the delete no longer fails on databases that enforce foreign keys.
 - **A user who still owns an organization can no longer be deleted.** The request is now rejected with a clear message to transfer ownership (or delete the organization) first, instead of failing obscurely or leaving the organization orphaned.
 - **Deleting an agent no longer breaks past conversations.** Conversations that referenced the agent are kept as historical records and simply have the agent link cleared, rather than blocking the deletion.

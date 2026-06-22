@@ -522,6 +522,52 @@ async def unsubscribe_resource(
     return ApiResponse(data={"unsubscribed": True})
 
 
+async def reclaim_org_subscriptions(
+    db: AsyncSession, *, user_id: str, org_id: str
+) -> int:
+    """Revoke a user's subscriptions + per-user credentials scoped to one org.
+
+    Called when a user leaves or is removed from an organization: any resource
+    they could reach only by virtue of membership in ``org_id`` is unsubscribed,
+    and the per-user connector / MCP credentials they stored for those resources
+    are deleted — so they can neither see the resource afterwards nor fall back
+    to the owner's credential.
+
+    Scoped strictly to ``org_id`` (decision D4): Market-published subscriptions
+    (``org_id == MARKET_ORG_ID``) are intentionally left untouched.
+
+    Does **not** commit — the caller owns the transaction. Returns the number of
+    subscriptions removed.
+    """
+    subs = (
+        await db.execute(
+            select(ResourceSubscription).where(
+                ResourceSubscription.user_id == user_id,
+                ResourceSubscription.org_id == org_id,
+            )
+        )
+    ).scalars().all()
+
+    for sub in subs:
+        if sub.resource_type == "connector":
+            await db.execute(
+                delete(ConnectorCredential).where(
+                    ConnectorCredential.connector_id == sub.resource_id,
+                    ConnectorCredential.user_id == user_id,
+                )
+            )
+        elif sub.resource_type == "mcp_server":
+            await db.execute(
+                delete(MCPServerCredential).where(
+                    MCPServerCredential.server_id == sub.resource_id,
+                    MCPServerCredential.user_id == user_id,
+                )
+            )
+        await db.delete(sub)
+
+    return len(subs)
+
+
 async def _cascade_clean_content_deps(
     *,
     user_id: str,

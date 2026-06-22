@@ -24,6 +24,7 @@ from fim_one.web.exceptions import AppError
 from fim_one.db.models.organization import OrgMembership, Organization
 from fim_one.db.models.user import User
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
+from fim_one.web.api.market import reclaim_org_subscriptions
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 
 # ---------------------------------------------------------------------------
@@ -588,6 +589,11 @@ async def remove_member(
                 status_code=403,
                 detail="Only the owner can remove admins",
             )
+
+    # Revoke everything the user could reach only through this org: their
+    # org-scoped subscriptions and the per-user credentials stored for those
+    # resources (D4 — this org only; Market-published subs are left intact).
+    await reclaim_org_subscriptions(db, user_id=user_id, org_id=org_id)
 
     await db.delete(target_membership)
     await db.commit()
