@@ -15,6 +15,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Les nouveaux agents utilisent par défaut l'exécution ReAct au lieu d'Auto.** Le mode Auto effectuait un appel de classification supplémentaire du modèle rapide par requête pour choisir entre ReAct et DAG ; les nouveaux agents (et les modèles intégrés/marketplace) utilisent maintenant par défaut ReAct, supprimant cette latence et ce coût par message. Auto et DAG restent sélectionnables par agent ; les agents existants conservent leur mode actuel.
 - **La création d'agent IA récupère d'un modèle rapide faible.** La construction ou l'affinage d'un agent à partir d'une instruction en langage naturel s'exécute sur le modèle rapide ; s'il ne peut pas produire une configuration valide, la requête réessaie une fois sur le modèle général plus puissant avant de signaler une erreur, de sorte qu'un modèle rapide trop faible ne remonte plus comme une défaillance à l'utilisateur.
 
+### Corrigé
+
+- **Les réponses multi-étapes (DAG) ne déforment plus leurs sources.** Quand l'étape de recherche d'un plan récupérait une page et la résumait, seul ce résumé se propageait — donc une source listant 11 éléments pouvait apparaître dans la réponse finale comme 6, ou la gravité d'un élément pouvait être mal étiquetée, et l'étape d'évaluation des objectifs ne pouvait pas le détecter car elle ne voyait jamais la source originale. Chaque étape conserve désormais sa sortie d'outil brute comme preuve de source faisant autorité, que la synthèse finale et l'évaluateur vérifient par rapport à la réponse, donc les totaux, énumérations et attributs correspondent à ce que les sources ont réellement dit (et la confiance baisse avec une divergence nommée quand ce n'est pas le cas).
+
 ## [v0.8.8] - 2026-06-22
 
 ### Modifié

@@ -68,6 +68,15 @@ note that sources corroborate each other. If there are contradictions \
 "final_answer" with both versions and indicate which source is likely more \
 authoritative based on recency and specificity.
 - Lower the "confidence" score when sources contradict each other.
+- FIDELITY CHECK: A step may include "Source evidence" — the raw tool output, \
+which is authoritative. When a step's "Result" makes a factual claim drawn \
+from that evidence (a total such as "fixed 6 CVEs", an enumeration, or an \
+attribute like severity / version / date), verify each claim against the \
+evidence. If the Result states a total that disagrees with the evidence, \
+drops items the evidence lists, or mislabels an attribute (e.g. calls a "Low" \
+severity item "Medium"), the goal is at best PARTIALLY achieved: lower the \
+"confidence" and name the specific discrepancy in "reasoning". Do not mark a \
+goal fully achieved when the answer misrepresents the source.
 """
 
 
@@ -172,6 +181,14 @@ class PlanAnalyzer:
             "output <tool_call>, <tool_response>, <function_call> tags, their "
             "JSON payloads, or base64 blobs. The trace is for your reference "
             "only — answer in natural language.",
+            "- A step may include 'Source evidence' — the raw tool output. It "
+            "is authoritative ground truth. Use it ONLY to verify and correct "
+            "the step results; never copy it verbatim. Any factual claim you "
+            "make (a total such as '6 CVEs', enumerated items, or attributes "
+            "like severity / version / date) MUST match the evidence exactly. "
+            "If a step result contradicts the evidence — wrong total, dropped "
+            "items, wrong severity — follow the evidence, not the summary. When "
+            "you state a total count, state the true total from the evidence.",
         ]
         if self._language_directive:
             system_parts.append(f"- {self._language_directive}")
@@ -273,6 +290,19 @@ class PlanAnalyzer:
                 if len(reasoning) > max_result_chars:
                     reasoning = reasoning[:max_result_chars] + "\n  [Reasoning truncated]"
                 block += f"\n  Reasoning: {reasoning}"
+            # Surface the raw tool output as authoritative source evidence so
+            # the analyzer/synthesis can verify the Result's factual claims
+            # (totals, enumerations, severities) instead of trusting a summary
+            # that may have silently dropped or mislabelled items.
+            evidence = step.result.evidence if step.result else None
+            if evidence:
+                if len(evidence) > max_result_chars:
+                    evidence = evidence[:max_result_chars] + "\n  [Evidence truncated]"
+                block += (
+                    "\n  Source evidence (raw tool output — authoritative; "
+                    "verify the Result's factual claims against this):\n"
+                    f"  {evidence}"
+                )
             lines.append(block)
 
         return "\n\n".join(lines)

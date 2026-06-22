@@ -15,6 +15,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 - **Neue Agenten verwenden standardmäßig ReAct-Ausführung statt Auto.** Der Auto-Modus führte pro Anfrage einen zusätzlichen Fast-Model-Klassifizierungsaufruf durch, um zwischen ReAct und DAG zu entscheiden; neue Agenten (und die integrierten/Marketplace-Vorlagen) verwenden jetzt standardmäßig ReAct, wodurch diese Pro-Nachricht-Latenz und Kosten entfallen. Auto und DAG bleiben pro Agent wählbar; bestehende Agenten behalten ihren aktuellen Modus.
 - **Die Erstellung von KI-Agenten erholt sich von einem schwachen Fast Model.** Das Erstellen oder Verfeinern eines Agenten aus einer natürlichsprachigen Anweisung läuft auf dem Fast Model; wenn es keine gültige Konfiguration erzeugen kann, wird die Anfrage jetzt einmal auf dem stärkeren allgemeinen Modell wiederholt, bevor ein Fehler auftritt, sodass ein zu schwaches Fast Model nicht mehr als Fehler für den Benutzer angezeigt wird.
 
+### Behoben
+
+- **Multi-Step-Antworten (DAG) stellen ihre Quellen nicht mehr falsch dar.** Wenn der Rechercheschritt eines Plans eine Seite abgerufen und zusammengefasst hat, floss nur diese Zusammenfassung weiter — sodass eine Quelle, die 11 Elemente auflistete, in der endgültigen Antwort als 6 erscheinen konnte, oder die Schweregrad eines Elements konnte falsch gekennzeichnet werden, und der Zielauswertungsschritt konnte dies nicht erkennen, weil er die ursprüngliche Quelle nie sah. Jeder Schritt behält nun seine rohe Toolausgabe als autoritative Quellenbelege, die die endgültige Synthese und der Evaluator gegen die Antwort überprüfen, sodass Summen, Aufzählungen und Attribute dem entsprechen, was die Quellen tatsächlich sagten (und das Vertrauen sinkt mit einer benannten Diskrepanz, wenn dies nicht der Fall ist).
+
 ## [v0.8.8] - 2026-06-22
 
 ### Geändert

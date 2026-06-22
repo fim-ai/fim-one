@@ -32,6 +32,11 @@ ProgressCallback = Callable[[str, str, dict[str, Any]], Any]
 
 logger = logging.getLogger(__name__)
 
+# Max chars of raw tool-observation evidence retained per step so downstream
+# synthesis / the analyzer can verify the answer's factual claims against the
+# source instead of trusting the sub-agent's (lossy) summary.  0 disables it.
+_STEP_EVIDENCE_CHARS = int(os.getenv("DAG_STEP_EVIDENCE_CHARS", "16000"))
+
 
 class DAGExecutor:
     """Execute an ``ExecutionPlan`` respecting DAG dependencies.
@@ -489,6 +494,12 @@ class DAGExecutor:
         query = self._build_step_query(step, context)
 
         iter_start = 0.0
+        # Accumulate raw tool observations so the source material survives the
+        # step's own summarisation.  Without this, only the sub-agent's
+        # (lossy) final_answer propagates downstream — and a summary that
+        # silently drops items or mislabels them cannot be caught or repaired
+        # by the analyzer / synthesis, which would only see the summary.
+        evidence_parts: list[str] = []
 
         def _on_iteration(
             iteration: int,
@@ -532,6 +543,12 @@ class DAGExecutor:
                     payload["content_type"] = step_result.content_type
                 if getattr(step_result, "artifacts", None):
                     payload["artifacts"] = step_result.artifacts
+            # Retain the raw observation as source evidence.  final_answer /
+            # thinking / __selecting_tools__ already returned above, so a
+            # completed iteration with an observation here is a tool result.
+            if not is_starting and observation and _STEP_EVIDENCE_CHARS > 0:
+                tool_label = action.tool_name or action.type
+                evidence_parts.append(f"[{tool_label}] {observation}")
             self._notify(step.id, "iteration", payload)
 
         agent = self._resolve_agent(step)
@@ -703,6 +720,15 @@ class DAGExecutor:
                                 step.id,
                                 retry_exc,
                             )
+
+            # Preserve the raw source material on the (possibly retried) result
+            # so the analyzer and synthesis can verify factual claims against
+            # it rather than trusting the sub-agent's summary alone.
+            if evidence_parts and step.result is not None:
+                evidence = "\n\n".join(evidence_parts)
+                if len(evidence) > _STEP_EVIDENCE_CHARS:
+                    evidence = evidence[:_STEP_EVIDENCE_CHARS] + "\n[evidence truncated]"
+                step.result.evidence = evidence
 
         except asyncio.CancelledError:
             raise

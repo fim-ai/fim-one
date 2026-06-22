@@ -20,6 +20,14 @@ class StepOutput:
     # summary.  Preserved so the analyzer / synthesis stages can use a clue
     # the step only surfaced in its reasoning instead of discarding it.
     reasoning: str | None = None
+    # Raw tool observations gathered while the step ran (web fetches, search
+    # results, file reads, …).  Unlike ``summary`` — which is the sub-agent's
+    # own, necessarily lossy distillation — this preserves the source material
+    # so downstream synthesis and the analyzer can verify the answer's factual
+    # claims (totals like "6 CVEs", enumerations, attributes like severity)
+    # against ground truth instead of trusting a summary that may have silently
+    # dropped or mislabelled items.
+    evidence: str | None = None
 
     def __str__(self) -> str:
         return self.summary  # backward compat for string formatting

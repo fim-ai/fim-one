@@ -429,6 +429,93 @@ class TestDAGExecutorBuildStepQuery:
 
 
 # ======================================================================
+# DAGExecutor evidence capture
+# ======================================================================
+
+
+class TestDAGExecutorEvidenceCapture:
+    """Raw tool observations must be retained on the step result.
+
+    Regression: only the sub-agent's (lossy) ``final_answer`` propagated
+    downstream.  A step that fetched a source listing 11 items but summarised
+    only 6 left the other 5 unrecoverable — and the analyzer/synthesis had no
+    way to verify the summary against the source.
+    """
+
+    def _make_fake_agent(self, observation: str, answer: str) -> Any:
+        from unittest.mock import MagicMock
+
+        from fim_one.core.agent.types import Action, AgentResult
+
+        class _FakeAgent:
+            # _resolve_agent eagerly evaluates ``agent.tools.copy()`` even
+            # though it returns this same agent when no registry is set.
+            tools = MagicMock()
+
+            async def run(
+                self,
+                query: str,
+                on_iteration: Any = None,
+                on_thinking_delta: Any = None,
+            ) -> Any:
+                act = Action(
+                    type="tool_call",
+                    reasoning="",
+                    tool_name="web_fetch",
+                    tool_args={"url": "https://example.test"},
+                )
+                if on_iteration is not None:
+                    on_iteration(1, act, None, None)  # start
+                    on_iteration(1, act, observation, None)  # done w/ observation
+                return AgentResult(answer=answer, iterations=1)
+
+        return _FakeAgent()
+
+    def _make_executor(self, agent: Any) -> DAGExecutor:
+        ex = DAGExecutor(
+            agent=agent,
+            enable_tool_cache=False,
+            enable_citation_verification=False,
+        )
+        # _execute_step is normally reached via execute(), which sets this.
+        ex._on_progress = None
+        return ex
+
+    async def test_observation_captured_as_evidence(self) -> None:
+        obs = "CVE-2026-48618 High\nCVE-2026-48931 Low\n(11 total)"
+        agent = self._make_fake_agent(observation=obs, answer="Fixed 6 CVEs.")
+        ex = self._make_executor(agent)
+        step = PlanStep(id="step_1", task="fetch the changelog")
+
+        await ex._execute_step(step, context="")
+
+        assert step.status == "completed"
+        assert step.result is not None
+        assert step.result.summary == "Fixed 6 CVEs."
+        # The source survives even though the summary dropped items.
+        assert step.result.evidence is not None
+        assert "CVE-2026-48931 Low" in step.result.evidence
+        assert "[web_fetch]" in step.result.evidence
+
+    async def test_evidence_truncated_to_limit(self) -> None:
+        from unittest.mock import patch
+
+        from fim_one.core.planner import executor as _executor_mod
+
+        agent = self._make_fake_agent(observation="Z" * 5000, answer="done")
+        ex = self._make_executor(agent)
+        step = PlanStep(id="step_1", task="fetch")
+
+        with patch.object(_executor_mod, "_STEP_EVIDENCE_CHARS", 100):
+            await ex._execute_step(step, context="")
+
+        assert step.result is not None
+        assert step.result.evidence is not None
+        assert "[evidence truncated]" in step.result.evidence
+        assert len(step.result.evidence) < 200
+
+
+# ======================================================================
 # PlanAnalyzer
 # ======================================================================
 
