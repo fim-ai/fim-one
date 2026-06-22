@@ -80,7 +80,6 @@
   "configAddMapping": "Ajouter un mappage",
   "configKey": "Clé",
   "configValue": "Valeur",
-  "configModel": "Modèle",
   "configPromptTemplate": "Modèle de prompt",
   "configOutputVariable": "Variable de sortie",
   "configTemperature": "Température",
@@ -149,7 +148,6 @@
   "historyViewDetails": "Voir les détails",
   "historyBack": "Retour à la liste",
   "historyButton": "Historique",
-  "configModelPlaceholder": "Sélectionner un modèle...",
   "configConditionVariable": "Variable (par ex. '{{node_id.output}}')",
   "configConditionValue": "Valeur",
   "configDefaultBranchLabel": "Libellé de la branche par défaut (Sinon)",
@@ -170,10 +168,6 @@
   "variablePickerEmpty": "Aucune variable disponible à partir d'autres nœuds",
   "configSystemPrompt": "Invite système",
   "configSystemPromptHint": "Définir le comportement et le rôle du modèle",
-  "configModelTier": "Niveau de modèle",
-  "configModelTierFast": "Rapide",
-  "configModelTierMain": "Principal",
-  "configModelTierHint": "Rapide pour la vitesse, Principal pour la qualité",
   "configStartName": "Nom",
   "configStartType": "Type",
   "configStartDefault": "Par défaut",
@@ -718,5 +712,6 @@
   "statusChanged": "Statut du flux de travail mis à jour",
   "runPanelStatusCompleted": "Terminé",
   "runPanelStatusFailed": "Échoué",
-  "runPanelStatusRunning": "En cours d'exécution"
+  "runPanelStatusRunning": "En cours d'exécution",
+  "configModelManagedHint": "Utilise votre modèle configuré au niveau du système (défini dans Fournisseurs de modèles)."
 }

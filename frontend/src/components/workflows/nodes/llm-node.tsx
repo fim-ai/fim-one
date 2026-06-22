@@ -24,11 +24,6 @@ function LLMNodeComponent({ data, selected }: NodeProps) {
       runOverlay={nodeData._runOverlay}
       validationState={nodeData._validationState}
     >
-      {nodeData.model && (
-        <p className="text-[10px] text-muted-foreground truncate">
-          {nodeData.model}
-        </p>
-      )}
       {nodeData.prompt_template && (
         <p className="text-[10px] text-muted-foreground/70 line-clamp-1">
           {nodeData.prompt_template}

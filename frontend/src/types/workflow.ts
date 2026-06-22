@@ -92,8 +92,6 @@ export interface EndNodeData {
 }
 
 export interface LLMNodeData {
-  model?: string
-  model_tier?: "fast" | "main"
   system_prompt?: string
   prompt_template: string
   output_variable: string

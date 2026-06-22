@@ -636,64 +636,15 @@ function EndConfig({ data, updateField, t, otherNodes }: ConfigProps) {
 }
 
 function LLMConfig({ data, updateField, t, otherNodes }: ConfigProps) {
-  const modelTier = (data.model_tier ?? "main") as string
-
   return (
     <div className="space-y-3">
-      {/* Model section */}
+      {/* Model section — the model is fully system-managed: it resolves to the
+          configured Model Provider (else .env), exactly like the playground.
+          The node exposes no model knob on purpose. */}
       <SectionHeader label={t("configSectionModel")} />
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium">{t("configModel")}</label>
-        <Select
-          value={(data.model ?? "__default__") as string}
-          onValueChange={(v) => updateField("model", v === "__default__" ? "" : v)}
-        >
-          <SelectTrigger className="w-full h-7 text-xs">
-            <SelectValue placeholder={t("configModelPlaceholder")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__default__">{t("configModelPlaceholder")}</SelectItem>
-            <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-            <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-            <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
-            <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
-            <SelectItem value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</SelectItem>
-            <SelectItem value="deepseek-chat">DeepSeek Chat</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Model Tier toggle */}
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium">{t("configModelTier")}</label>
-        <div className="flex rounded-md border border-border overflow-hidden">
-          <button
-            type="button"
-            className={`flex-1 h-7 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-              modelTier === "fast"
-                ? "bg-primary text-primary-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted"
-            }`}
-            onClick={() => updateField("model_tier", "fast")}
-          >
-            {t("configModelTierFast")}
-          </button>
-          <button
-            type="button"
-            className={`flex-1 h-7 text-xs font-medium transition-colors border-l border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-              modelTier === "main"
-                ? "bg-primary text-primary-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted"
-            }`}
-            onClick={() => updateField("model_tier", "main")}
-          >
-            {t("configModelTierMain")}
-          </button>
-        </div>
-        <p className="text-[10px] text-muted-foreground/60">
-          {t("configModelTierHint")}
-        </p>
-      </div>
+      <p className="text-[10px] text-muted-foreground/60">
+        {t("configModelManagedHint")}
+      </p>
 
       {/* Prompt section */}
       <SectionHeader label={t("configSectionPrompt")} />

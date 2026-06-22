@@ -222,25 +222,24 @@ class LLMExecutor:
         t0 = time.time()
         try:
             from fim_one.core.model.types import ChatMessage
-            from fim_one.web.deps import get_effective_fast_llm, get_effective_llm
+            from fim_one.web.deps import get_effective_llm
             from fim_one.db import create_session
 
             # Get config from node data (accept both frontend and legacy keys)
             prompt_template = node.data.get("prompt_template", "") or node.data.get("prompt", "")
             system_prompt = node.data.get("system_prompt", "")
-            model_tier = node.data.get("model_tier", "fast")  # "fast" or "main"
 
             # Interpolate variables in prompts
             prompt = await store.interpolate(prompt_template)
             if system_prompt:
                 system_prompt = await store.interpolate(system_prompt)
 
-            # Resolve LLM
+            # Resolve the LLM the same way the playground/chat does: the
+            # system-configured model (provider config, else .env), with its own
+            # internal fast/degradation handling. The node deliberately exposes
+            # no model knob — what runs is the processed system model selection.
             async with create_session() as db:
-                if model_tier == "main":
-                    llm = await get_effective_llm(db)
-                else:
-                    llm = await get_effective_fast_llm(db)
+                llm = await get_effective_llm(db)
 
             # Build messages
             messages: list[ChatMessage] = []

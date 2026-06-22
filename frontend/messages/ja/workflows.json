@@ -80,7 +80,6 @@
   "configAddMapping": "マッピングを追加",
   "configKey": "キー",
   "configValue": "値",
-  "configModel": "モデル",
   "configPromptTemplate": "プロンプトテンプレート",
   "configOutputVariable": "出力変数",
   "configTemperature": "温度",
@@ -149,7 +148,6 @@
   "historyViewDetails": "詳細を表示",
   "historyBack": "リストに戻る",
   "historyButton": "履歴",
-  "configModelPlaceholder": "モデルを選択...",
   "configConditionVariable": "変数 (例: '{{node_id.output}}')",
   "configConditionValue": "値",
   "configDefaultBranchLabel": "デフォルト (Else) ブランチラベル",
@@ -170,10 +168,6 @@
   "variablePickerEmpty": "他のノードから利用可能な変数がありません",
   "configSystemPrompt": "システムプロンプト",
   "configSystemPromptHint": "モデルの動作とロールを設定",
-  "configModelTier": "モデルティア",
-  "configModelTierFast": "高速",
-  "configModelTierMain": "メイン",
-  "configModelTierHint": "高速は速度重視、メインは品質重視",
   "configStartName": "名前",
   "configStartType": "タイプ",
   "configStartDefault": "デフォルト",
@@ -718,5 +712,6 @@
   "statusChanged": "ワークフローステータスが更新されました",
   "runPanelStatusCompleted": "完了",
   "runPanelStatusFailed": "失敗",
-  "runPanelStatusRunning": "実行中"
+  "runPanelStatusRunning": "実行中",
+  "configModelManagedHint": "システムで設定されたモデルを使用します（モデルプロバイダーで設定）。"
 }

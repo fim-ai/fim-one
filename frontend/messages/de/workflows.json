@@ -80,7 +80,6 @@
   "configAddMapping": "Zuordnung hinzufügen",
   "configKey": "Schlüssel",
   "configValue": "Wert",
-  "configModel": "Modell",
   "configPromptTemplate": "Eingabeaufforderungsvorlage",
   "configOutputVariable": "Ausgabevariable",
   "configTemperature": "Temperatur",
@@ -149,7 +148,6 @@
   "historyViewDetails": "Details anzeigen",
   "historyBack": "Zurück zur Liste",
   "historyButton": "Verlauf",
-  "configModelPlaceholder": "Modell auswählen...",
   "configConditionVariable": "Variable (z.B. '{{node_id.output}}')",
   "configConditionValue": "Wert",
   "configDefaultBranchLabel": "Standardbezeichnung (Else) für Verzweigung",
@@ -170,10 +168,6 @@
   "variablePickerEmpty": "Keine Variablen von anderen Knoten verfügbar",
   "configSystemPrompt": "Systemaufforderung",
   "configSystemPromptHint": "Legen Sie das Verhalten und die Rolle des Modells fest",
-  "configModelTier": "Modellstufe",
-  "configModelTierFast": "Schnell",
-  "configModelTierMain": "Hauptmodell",
-  "configModelTierHint": "Schnell für Geschwindigkeit, Hauptmodell für Qualität",
   "configStartName": "Name",
   "configStartType": "Typ",
   "configStartDefault": "Standard",
@@ -718,5 +712,6 @@
   "statusChanged": "Workflow-Status aktualisiert",
   "runPanelStatusCompleted": "Abgeschlossen",
   "runPanelStatusFailed": "Fehlgeschlagen",
-  "runPanelStatusRunning": "Wird ausgeführt"
+  "runPanelStatusRunning": "Wird ausgeführt",
+  "configModelManagedHint": "Verwendet Ihr systemkonfiguriertes Modell (festgelegt in Modellanbietern)."
 }

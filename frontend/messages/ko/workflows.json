@@ -80,7 +80,6 @@
   "configAddMapping": "매핑 추가",
   "configKey": "키",
   "configValue": "값",
-  "configModel": "모델",
   "configPromptTemplate": "프롬프트 템플릿",
   "configOutputVariable": "출력 변수",
   "configTemperature": "온도",
@@ -149,7 +148,6 @@
   "historyViewDetails": "세부 정보 보기",
   "historyBack": "목록으로 돌아가기",
   "historyButton": "기록",
-  "configModelPlaceholder": "모델을 선택하세요...",
   "configConditionVariable": "변수 (예: '{{node_id.output}}')",
   "configConditionValue": "값",
   "configDefaultBranchLabel": "기본 (Else) 분기 레이블",
@@ -170,10 +168,6 @@
   "variablePickerEmpty": "다른 노드에서 사용 가능한 변수가 없습니다",
   "configSystemPrompt": "시스템 프롬프트",
   "configSystemPromptHint": "모델의 동작과 역할 설정",
-  "configModelTier": "모델 계층",
-  "configModelTierFast": "빠름",
-  "configModelTierMain": "메인",
-  "configModelTierHint": "빠름은 속도, 메인은 품질",
   "configStartName": "이름",
   "configStartType": "유형",
   "configStartDefault": "기본값",
@@ -433,7 +427,7 @@
   "variablesPanelEmpty": "아직 정의된 워크플로우 변수가 없습니다.",
   "variablesPanelAdd": "변수 추가",
   "variablesPanelName": "이름",
-  "variablesPanelNamePlaceholder": "variable_name",
+  "variablesPanelNamePlaceholder": "변수_이름",
   "variablesPanelType": "유형",
   "variablesPanelDefaultValue": "기본값",
   "variablesPanelDefaultPlaceholder": "기본값",
@@ -718,5 +712,6 @@
   "statusChanged": "워크플로우 상태가 업데이트되었습니다",
   "runPanelStatusCompleted": "완료됨",
   "runPanelStatusFailed": "실패",
-  "runPanelStatusRunning": "실행 중"
+  "runPanelStatusRunning": "실행 중",
+  "configModelManagedHint": "시스템에 구성된 모델을 사용합니다(Model Providers에서 설정)."
 }

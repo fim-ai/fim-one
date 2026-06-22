@@ -190,8 +190,6 @@
   "configAddMapping": "Add mapping",
   "configKey": "Key",
   "configValue": "Value",
-  "configModel": "Model",
-  "configModelPlaceholder": "Select a model...",
   "configPromptTemplate": "Prompt template",
   "configOutputVariable": "Output variable",
   "configTemperature": "Temperature",
@@ -242,10 +240,7 @@
 
   "configSystemPrompt": "System Prompt",
   "configSystemPromptHint": "Set the model's behavior and role",
-  "configModelTier": "Model Tier",
-  "configModelTierFast": "Fast",
-  "configModelTierMain": "Main",
-  "configModelTierHint": "Fast for speed, Main for quality",
+  "configModelManagedHint": "Uses your system-configured model (set in Model Providers).",
 
   "configStartName": "Name",
   "configStartType": "Type",
