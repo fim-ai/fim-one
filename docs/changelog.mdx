@@ -15,6 +15,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **New agents now default to ReAct execution instead of Auto.** Auto mode spent one extra fast-model classification call per request to decide between ReAct and DAG; new agents (and the built-in/marketplace templates) now default to ReAct, removing that per-message latency and cost. Auto and DAG remain selectable per agent; existing agents keep their current mode.
 - **AI agent creation recovers from a weak fast model.** Building or refining an agent from a natural-language instruction runs on the fast model; if it can't produce valid configuration, the request now retries once on the stronger general model before erroring, so a too-weak fast model no longer surfaces as a failure to the user.
 
+### Removed
+
+- **Trimmed the visual workflow builder to 9 core node types.** Sixteen rarely-used utility and control-flow nodes — environment variables, HTTP request, code execution, iterator/loop, sub-workflow, template/list/transform helpers, and the parameter/question extractors and classifier — were removed so the builder focuses on orchestrating agents, connectors, MCP servers, and knowledge bases. As a side effect a shared workflow no longer carries embedded secrets: it is now purely a graph of references, and each referenced resource enforces its own per-user access at run time. Existing workflows built on a removed node will need to be rebuilt with the remaining set.
+
 ### Fixed
 
 - **Leaving (or being removed from) an organization now revokes its shared access.** Resources you could reach only through that organization are unsubscribed, and the per-user connector/MCP credentials you saved for them are deleted — so you can no longer use those resources or fall back to the owner's credential after departing. Resources you subscribed to via the Market are unaffected.
