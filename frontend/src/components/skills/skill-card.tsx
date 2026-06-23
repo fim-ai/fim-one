@@ -228,22 +228,9 @@ export function SkillCard({
       </div>
 
       {/* Description */}
-      <p className="flex-1 text-xs text-muted-foreground line-clamp-2 mb-3">
+      <p className="flex-1 text-xs text-muted-foreground line-clamp-2">
         {skill.description || t("noDescription")}
       </p>
-
-      {/* Edit CTA — owner only */}
-      {isOwner && onEdit && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-auto w-full gap-1.5 text-xs h-7"
-          onClick={() => onEdit(skill)}
-        >
-          <Pencil className="h-3 w-3" />
-          {tc("edit")}
-        </Button>
-      )}
     </div>
   )
 }
