@@ -1429,15 +1429,20 @@ async def _resolve_tools(
                     _is_conn_owner = bool(user_id) and conn.user_id == user_id
 
                     if conn.type == "database" and conn.db_config:
-                        # Database connectors have no per-user credential — a
-                        # non-owner can only run them via the owner's db_config
-                        # (fallback). Skip when fallback is disabled.
-                        if not _is_conn_owner and not getattr(
-                            conn, "allow_fallback", False
-                        ):
+                        # Raw-SQL DB tools are OWNER-ONLY: they run against the
+                        # owner's (typically high-privilege) DB account with no
+                        # per-caller scoping. allow_fallback (an API-credential
+                        # sharing switch) does NOT grant a non-owner the raw-SQL
+                        # surface. See db_raw_sql_tool_allowed().
+                        from fim_one.core.security.connector_credentials import (
+                            db_raw_sql_tool_allowed,
+                        )
+
+                        if not db_raw_sql_tool_allowed(conn, user_id):
                             logger.info(
-                                "Skipping DB connector %r: allow_fallback=False "
-                                "and caller is not the owner",
+                                "Skipping raw-SQL DB connector %r for non-owner "
+                                "caller (owner-only; allow_fallback does not "
+                                "apply to DB)",
                                 conn.name,
                             )
                             continue
@@ -1644,8 +1649,22 @@ async def _resolve_tools(
 
                 # Database connectors — use progressive mode (single meta-tool)
                 _ad_db_collected: list[tuple[Any, dict[str, Any], list[Any]]] = []
+                from fim_one.core.security.connector_credentials import (
+                    db_raw_sql_tool_allowed,
+                )
+
                 for _ad_db_conn in _ad_connectors:
                     if _ad_db_conn.type == "database" and _ad_db_conn.db_config:
+                        # Raw-SQL DB tools are owner-only (see agent-mode gate):
+                        # a subscriber must not get raw SQL on the owner's
+                        # privileged account.
+                        if not db_raw_sql_tool_allowed(_ad_db_conn, user_id):
+                            logger.info(
+                                "Skipping raw-SQL DB connector %r for non-owner "
+                                "caller (owner-only)",
+                                _ad_db_conn.name,
+                            )
+                            continue
                         try:
                             config = decrypt_db_config(_ad_db_conn.db_config)
                             schema_tables = []

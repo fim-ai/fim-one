@@ -731,6 +731,24 @@ async def publish_connector(
     """Publish connector to org or global scope."""
     connector = await _get_owned_connector(connector_id, current_user.id, db)
 
+    # Database connectors are not shareable yet. Sharing one exposes raw SQL
+    # on the owner's (typically high-privilege) DB account with no per-caller
+    # scoping, and subscribers would get nothing safe to use until the
+    # declarative-action layer (per-caller, default-deny) ships. Block at the
+    # source; the tool-assembly layer also gates raw SQL to owner-only as
+    # defense-in-depth. See dev/legacy-capability-layer/01-read-path-db.md.
+    if connector.type == "database":
+        raise AppError(
+            "db_connector_not_shareable",
+            status_code=400,
+            detail=(
+                "Database connectors cannot be shared yet — sharing would "
+                "expose raw SQL on the owner's database account with no "
+                "per-caller scoping. This will be enabled via the "
+                "declarative-action layer."
+            ),
+        )
+
     if body.scope == "org":
         if not body.org_id:
             raise AppError("org_id_required", status_code=400)
