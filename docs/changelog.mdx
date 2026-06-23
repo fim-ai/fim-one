@@ -27,6 +27,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Security
 
+- **Database connectors can no longer be shared, and their raw-SQL tool is owner-only.** Publishing a database connector to an organization or globally is now rejected, and the arbitrary-SQL database tool is only ever offered to the connector's owner — never to a subscriber, regardless of the owner-credential fallback setting. Previously a shared database connector exposed unrestricted SQL over the owner's (typically high-privilege) database account to anyone who subscribed, with no per-caller scoping. Per-user scoped database access will return through a future declarative-action layer.
 - **Webhook- and cron-triggered workflows now count against the owner's token quota.** An unattended workflow run — triggered through its public API key or on a schedule — used to execute LLM and agent steps without checking or recording any token usage, an unmetered free-LLM path that bypassed quotas entirely. Such runs are now gated on the workflow owner's quota up front (a public trigger is refused, and a scheduled run is skipped, when the owner is already over quota) and their token usage is recorded per run and counted toward the same monthly quota as chat.
 
 ### Fixed
