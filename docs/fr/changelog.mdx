@@ -10,9 +10,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
-### Ajouté
+### Ajouts
 
-- **Deux nouveaux modèles de démarrage de workflow : Connector Action et MCP Tool Call.** La galerie « Create from Template » présente désormais les nœuds connecteur et MCP — appelez un système externe ou un outil MCP, puis résumez le résultat avec un LLM. Choisissez le connecteur/serveur spécifique après la création.
+- **Les agents peuvent désormais exécuter un workflow en cours de conversation.** Les workflows actifs sans approbation humaine que vous possédez ou auxquels vous êtes abonné sont proposés à l'agent comme outil `run_workflow` — en chat normal et avec un agent sélectionné — afin qu'une tâche puisse déléguer un sous-processus déterministe et répétable à un workflow et récupérer ses résultats. Chaque exécution est enregistrée dans l'historique des exécutions du workflow et son utilisation de tokens est comptabilisée par rapport au quota du propriétaire du workflow (l'exécution est refusée si le propriétaire a déjà dépassé son quota). Les workflows avec une étape d'intervention humaine restent accessibles uniquement par déclenchement (depuis la page Workflows ou leur clé API), car ils peuvent bloquer pendant longtemps.
+- **Deux nouveaux modèles de démarrage de workflow : Connector Action et MCP Tool Call.** La galerie « Create from Template » présente désormais les nœuds de connecteur et MCP — appelez un système externe ou un outil MCP, puis résumez le résultat avec un LLM. Sélectionnez le connecteur/serveur spécifique après la création.
 
 ### Modifications
 

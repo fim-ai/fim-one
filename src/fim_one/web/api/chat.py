@@ -1708,6 +1708,21 @@ async def _resolve_tools(
                 )
             )
 
+    # Workflows are static recipes — the deterministic twin of skills.  Exposed
+    # the same way (global, pull-on-demand via run_workflow), regardless of
+    # agent selection.
+    if user_id:
+        _all_workflow_ids = await _resolve_user_workflow_ids(user_id)
+        if _all_workflow_ids:
+            from fim_one.core.tool.builtin.run_workflow import RunWorkflowTool
+
+            tools.register(
+                RunWorkflowTool(
+                    workflow_ids=_all_workflow_ids,
+                    user_id=user_id,
+                )
+            )
+
     # File tools — always register when user is authenticated
     if user_id:
         from fim_one.core.tool.builtin.list_uploaded_files import ListUploadedFilesTool
@@ -2197,6 +2212,90 @@ async def _resolve_user_skill_ids(user_id: str) -> list[str]:
     except Exception:
         logger.warning("Failed to resolve user skill IDs", exc_info=True)
         return []
+
+
+async def _resolve_user_workflow_ids(user_id: str) -> list[str]:
+    """Fetch active, visible, inline-runnable workflow IDs for a user.
+
+    Workflows are the *static recipe* twin of skills.  Excludes workflows
+    carrying a ``HUMAN_INTERVENTION`` node — those block on approval and so are
+    only triggerable from the Workflows page, never inline from an agent loop.
+    """
+    from fim_one.db import create_session
+    from fim_one.db.models.workflow import Workflow
+    from fim_one.web.visibility import resolve_visibility
+
+    try:
+        async with create_session() as session:
+            vis_filter, _, _ = await resolve_visibility(
+                Workflow, user_id, "workflow", session
+            )
+            result = await session.execute(
+                sa_select(Workflow.id, Workflow.blueprint).where(
+                    vis_filter,
+                    Workflow.is_active == True,  # noqa: E712
+                    Workflow.status == "active",
+                )
+            )
+            ids: list[str] = []
+            for wid, blueprint in result.all():
+                nodes = (blueprint or {}).get("nodes") or []
+                if any((n or {}).get("type") == "HUMAN_INTERVENTION" for n in nodes):
+                    continue
+                ids.append(wid)
+            return ids
+    except Exception:
+        logger.warning("Failed to resolve user workflow IDs", exc_info=True)
+        return []
+
+
+def _format_workflow_inputs(input_schema: Any) -> str:
+    """Render a workflow's input schema as a compact ``name?:type`` field list."""
+    if not isinstance(input_schema, dict):
+        return ""
+    props = input_schema.get("properties")
+    if not isinstance(props, dict) or not props:
+        return ""
+    required = set(input_schema.get("required") or [])
+    parts: list[str] = []
+    for key, spec in props.items():
+        typ = spec.get("type", "any") if isinstance(spec, dict) else "any"
+        mark = "" if key in required else "?"
+        parts.append(f"{key}{mark}:{typ}")
+    return ", ".join(parts)
+
+
+async def _resolve_workflow_stubs(workflow_ids: list[str]) -> str:
+    """Return a compact stub block advertising runnable workflows."""
+    from fim_one.db import create_session
+    from fim_one.db.models.workflow import Workflow
+
+    try:
+        async with create_session() as session:
+            result = await session.execute(
+                sa_select(
+                    Workflow.name, Workflow.description, Workflow.input_schema
+                ).where(Workflow.id.in_(workflow_ids))
+            )
+            rows = result.all()
+        if not rows:
+            return ""
+        lines = [
+            "\n\n## Available Workflows",
+            "Call run_workflow(name, inputs) to execute one of these "
+            "deterministic automations:",
+        ]
+        for name, desc, input_schema in rows:
+            if desc and len(desc) > _SKILL_STUB_DESC_LEN:
+                desc = desc[: _SKILL_STUB_DESC_LEN - 3] + "..."
+            stub = f"- **{name}**" + (f": {desc}" if desc else "")
+            fields = _format_workflow_inputs(input_schema)
+            if fields:
+                stub += f" (inputs: {fields})"
+            lines.append(stub)
+        return "\n".join(lines)
+    except Exception:
+        return ""
 
 
 def get_skill_tool_mode(agent_cfg: dict[str, Any] | None = None) -> str:
@@ -2787,6 +2886,15 @@ async def react_endpoint(
             _skill_block = await _resolve_skill_stubs(_react_skill_ids)
         if _skill_block:
             extra_instructions = (extra_instructions or "") + _skill_block
+
+    # Inject workflow stubs — static recipes, the deterministic twin of skills
+    _react_workflow_ids = (
+        await _resolve_user_workflow_ids(current_user_id) if current_user_id else None
+    )
+    if _react_workflow_ids:
+        _wf_block = await _resolve_workflow_stubs(_react_workflow_ids)
+        if _wf_block:
+            extra_instructions = (extra_instructions or "") + _wf_block
     if _react_domain_hint:
         _domain_instructions = (
             f"\n\n## Domain: {_react_domain_hint}\n"
@@ -3892,6 +4000,15 @@ async def dag_endpoint(
             extra_instructions = (extra_instructions or "") + _skill_block
         # Also resolve compact descriptors for planner skill discovery.
         _dag_skill_descs = await _resolve_skill_descriptors(_dag_skill_ids)
+
+    # Inject workflow stubs — static recipes, the deterministic twin of skills
+    _dag_workflow_ids = (
+        await _resolve_user_workflow_ids(current_user_id) if current_user_id else None
+    )
+    if _dag_workflow_ids:
+        _wf_block = await _resolve_workflow_stubs(_dag_workflow_ids)
+        if _wf_block:
+            extra_instructions = (extra_instructions or "") + _wf_block
 
     # Load attached images (async to avoid blocking the event loop)
     dag_image_data: list[tuple[str, str, str]] = []

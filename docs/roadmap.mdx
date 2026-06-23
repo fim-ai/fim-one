@@ -310,6 +310,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [ ] **YAML/JSON connector config** — platform auto-generates MCP server
 - [ ] **Database connectors Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo shipped in v0.8.5
 - [ ] **MCP Connection Pooling** — pool STDIO with per-user env isolation; share `httpx.AsyncClient` for SSE/HTTP. Target ≤100 ms warm-start, O(1) HTTP connections per server
+- [x] ~~Agents can pull `run_workflow` to run a deterministic workflow as a sub-step (static recipe ↔ Skill's dynamic recipe); human-gated workflows stay trigger-only, runs are audited, depth/re-entrancy guarded~~
 
 #### Content Guardrails {/* dev: dev/archive/openai-agents-insights.md */}
 

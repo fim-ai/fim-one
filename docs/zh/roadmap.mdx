@@ -312,7 +312,8 @@ flowchart LR
 - [ ] **连接器渐进式披露第3-4阶段** — 统一的 `ConnectorExecutor`（API/DB/MCP）；`jsonschema` 操作验证；协议无关的发现/执行
 - [ ] **YAML/JSON 连接器配置** — 平台自动生成 MCP 服务器
 - [ ] **数据库连接器第4阶段** — Oracle（`oracledb`）、SQL Server（`aioodbc`）、GBase（`aioodbc` + GBase ODBC）。DM8 / KingbaseES / HighGo 已在 v0.8.5 中发布
-- [ ] **MCP 连接池** — 使用按用户环境隔离的 STDIO 连接池；为 SSE/HTTP 共享 `httpx.AsyncClient`。目标 ≤100 ms 热启动，每个服务器 O(1) HTTP 连接
+- [ ] **MCP 连接池** — 使用按用户环境隔离的 STDIO 池；为 SSE/HTTP 共享 `httpx.AsyncClient`。目标 ≤100 ms 热启动，每个服务器 O(1) HTTP 连接
+- [x] ~~智能体可以拉取 `run_workflow` 来运行确定性工作流作为子步骤（静态配方 ↔ 技能的动态配方）；人工门控工作流保持仅触发状态，运行被审计，深度/重入性受保护~~
 
 #### 内容护栏 {/* dev: dev/archive/openai-agents-insights.md */}
 

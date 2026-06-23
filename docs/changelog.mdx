@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Agents can now run a workflow mid-conversation.** Active, human-approval-free workflows you own or have subscribed to are offered to the agent as a `run_workflow` tool — in normal chat and with an agent selected alike — so a task can hand off a deterministic, repeatable sub-process to a workflow and get its outputs back. Each such run is recorded in the workflow's run history and its token usage counts against the workflow owner's quota (the run is refused if the owner is already over quota). Workflows with a Human Intervention step stay trigger-only (from the Workflows page or their API key), since they can block for a long time.
 - **Two new workflow starter templates: Connector Action and MCP Tool Call.** The "Create from Template" gallery now showcases the connector and MCP nodes — call an external system or an MCP tool, then summarize the result with an LLM. Pick the specific connector/server after creating.
 
 ### Changed

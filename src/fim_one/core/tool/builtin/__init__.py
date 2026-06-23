@@ -35,6 +35,7 @@ from .kb_retrieve import KBRetrieveTool
 from .kb_list import KBListTool
 from .markitdown_tool import MarkItDownTool
 from .read_skill import ReadSkillTool
+from .run_workflow import RunWorkflowTool
 from .request_tools import RequestToolsTool
 from .list_uploaded_files import ListUploadedFilesTool
 from .read_uploaded_file import ReadUploadedFileTool
@@ -91,6 +92,7 @@ __all__ = [
     "KBListTool",
     "MarkItDownTool",
     "ReadSkillTool",
+    "RunWorkflowTool",
     "ListUploadedFilesTool",
     "ReadUploadedFileTool",
     "NodeExecTool",
@@ -160,6 +162,7 @@ _ARTIFACTS_KWARGS: dict[type, str] = {
 _SKIP_AUTO_DISCOVER: set[type] = {
     CallAgentTool,  # requires available_agents list — injected by chat.py for multi-agent setups
     ReadSkillTool,  # requires skill_ids — registered by _resolve_tools()
+    RunWorkflowTool,  # requires workflow_ids — registered by _resolve_tools()
     RequestToolsTool,  # requires all_tools + active_tools registries — injected by ReActAgent
     ListUploadedFilesTool,  # requires user_id
     ReadUploadedFileTool,  # requires user_id

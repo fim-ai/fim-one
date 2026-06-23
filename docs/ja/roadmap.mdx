@@ -308,9 +308,10 @@ flowchart LR
 #### コネクタ + ツーリング
 
 - [ ] **Connector Progressive Disclosure Phase 3-4** — 統一された `ConnectorExecutor` (API/DB/MCP); `jsonschema` アクション検証; プロトコル非依存の discover/execute
-- [ ] **YAML/JSON コネクタ設定** — プラットフォームが自動生成する MCP サーバー
+- [ ] **YAML/JSON コネクタ設定** — プラットフォームが MCP サーバーを自動生成
 - [ ] **Database connectors Phase 4** — Oracle (`oracledb`)、SQL Server (`aioodbc`)、GBase (`aioodbc` + GBase ODBC)。DM8 / KingbaseES / HighGo は v0.8.5 で提供
-- [ ] **MCP Connection Pooling** — STDIO をプール化し、ユーザーごとの環境分離を実現; SSE/HTTP 用に `httpx.AsyncClient` を共有。ウォームスタート ≤100 ms、サーバーあたり O(1) HTTP 接続を目標
+- [ ] **MCP Connection Pooling** — STDIO をプール化し、ユーザーごとの環境分離を実現; SSE/HTTP 用に `httpx.AsyncClient` を共有。ウォームスタート ≤100 ms、サーバーあたり O(1) HTTP 接続を目指す
+- [x] ~~エージェントが `run_workflow` をプルして、決定論的ワークフローをサブステップとして実行 (静的レシピ ↔ Skill の動的レシピ); 人間がゲートするワークフローはトリガーのみ、実行は監査対象、深さ/再入性ガード~~
 
 #### コンテンツガードレール {/* dev: dev/archive/openai-agents-insights.md */}
 

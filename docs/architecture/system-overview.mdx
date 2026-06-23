@@ -1,7 +1,7 @@
 ---
 title: "System Overview"
 icon: "table-columns"
-description: "How Agent, Knowledge Base, Connector, Built-in Tools, MCP, and Skills compose into a unified architecture."
+description: "How Agent, Knowledge Base, Connector, Built-in Tools, MCP, Skills, and Workflows compose into a unified architecture."
 ---
 
 ## The unified tool abstraction
@@ -20,12 +20,13 @@ flowchart TD
     TR --- KB["<b>Knowledge Base</b><br/>KBRetrieve or<br/>GroundedRetrieve"]
     TR --- CT["<b>Connectors</b><br/>HTTP API, Database,<br/>auth injection, audit"]
     TR --- MCP["<b>MCP Servers</b><br/>user + global,<br/>process-isolated"]
-    TR --- SK["<b>Skills</b><br/>global SOPs,<br/>progressive or inline"]
+    TR --- SK["<b>Skills</b><br/>global SOPs (dynamic recipe),<br/>read_skill on demand"]
+    TR --- WF["<b>Workflows</b><br/>static recipe (DAG),<br/>run_workflow on demand"]
 ```
 
-Five capability sources converge into one registry. The agent draws from all of them equally.
+Six capability sources converge into one registry. The agent draws from all of them equally. The last two are a matched pair: a **Skill** is a *dynamic recipe* (an SOP the LLM interprets step by step), and a **Workflow** is a *static recipe* (a deterministic graph that runs the same way every time). Both are pulled through a tool — `read_skill` and `run_workflow` respectively — and neither contains the other; they are peers consumed by the same runtime.
 
-## Five capability sources
+## Six capability sources
 
 ### Built-in Tools
 
@@ -51,6 +52,12 @@ Skills support two injection modes -- **progressive** (default) and **inline** -
 
 For a deeper look at why Skills are global (not Agent-bound) and how they interact with the dual-mode resource discovery, see [Agent & Resource Discovery](/architecture/agent-discovery).
 
+### Workflows
+
+A Workflow is the **static recipe** to a Skill's dynamic one: a deterministic DAG an agent reaches for when a sub-task must run identically every time and leave an audit trail (scheduled reconciliations, multi-step approval-free pipelines). Like Skills, runnable Workflows are loaded globally per user by visibility — independent of agent selection — and exposed through a single `run_workflow(name, inputs)` tool, with each workflow's input fields advertised as a compact system-prompt stub. The LLM pulls one by name when a task maps onto it.
+
+Only Workflows that are **active** and **free of human-approval (`HUMAN_INTERVENTION`) nodes** are inline-runnable — a gate that blocks for minutes or hours cannot sit inside an agent turn, so those Workflows remain trigger-only from the Workflows page. Inline runs execute as the workflow owner (subscribed Workflows use the publisher's bound credentials), persist a `WorkflowRun` for the audit trail, and are protected by a re-entrancy guard plus a nesting-depth cap so a Workflow's `AGENT` node can never start an unbounded call cycle.
+
 ## Per-request tool assembly
 
 Every chat request assembles a fresh tool set through a filtering pipeline in `_resolve_tools()`. This is not a static configuration -- it is computed per request based on the agent's settings, the user's identity, and the available connectors and MCP servers.
@@ -62,7 +69,8 @@ flowchart LR
     C --> D["Connector + DB loading\n(progressive)"]
     D --> E["MCP loading\n(progressive)"]
     E --> SK["Skills injection"]
-    SK --> CA["CallAgent registration"]
+    SK --> WF["Workflow injection"]
+    WF --> CA["CallAgent registration"]
     CA --> F{"Tools > 12?"}
     F -->|Yes| G["LLM tool selection"]
     F -->|No| H["Use full set"]
@@ -78,7 +86,7 @@ The eight steps:
 3. **KB injection.** If the agent has `kb_ids`, the generic retrieval tool is replaced with `KBRetrieveTool` or `GroundedRetrieveTool` based on retrieval mode.
 4. **Connector loading.** In agent-constrained mode, only the agent's bound connectors are loaded. In auto-discovery mode (no agent selected), all connectors visible to the user are loaded. Both API connectors (`ConnectorMetaTool`) and database connectors (`DatabaseMetaTool`) use [progressive disclosure](/architecture/progressive-disclosure) by default -- lightweight stubs in the system prompt, full schemas loaded on demand.
 5. **MCP loading.** The user's personal MCP servers plus admin-provisioned global MCP servers are loaded and connected. In progressive mode (default), a single `MCPServerMetaTool` consolidates all servers; the LLM calls `discover` and `call` subcommands on demand. See [Progressive Disclosure](/architecture/progressive-disclosure).
-6. **Skills injection.** All active Skills visible to the user are loaded -- regardless of agent selection. In progressive mode, `ReadSkillTool` is registered with compact stubs in the system prompt. In inline mode, full Skill content is embedded directly.
+6. **Skills + Workflows injection.** All active Skills visible to the user are loaded -- regardless of agent selection. In progressive mode, `ReadSkillTool` is registered with compact stubs in the system prompt; in inline mode, full Skill content is embedded directly. The same step loads all active, inline-runnable Workflows and registers `RunWorkflowTool` with one stub per workflow (name, description, input fields). Workflows carrying a human-approval node are skipped here.
 7. **CallAgent registration (Auto mode only).** When no specific Agent is selected, all active, visible Agents are assembled into a catalog and exposed via `CallAgentTool`, enabling the LLM to delegate tasks to specialist agents. Delegated agents receive a full `ToolRegistry` built from their own configuration but exclude `call_agent` to prevent infinite recursion. When a specific Agent is selected, `CallAgentTool` is not registered — agents are specialized and do not delegate to other agents. This prevents marketplace agents from accessing other agents' private prompts.
 8. **Runtime selection.** If the total tool count exceeds 12, a lightweight LLM call picks the most relevant subset (up to 6) for this specific query. A `request_tools` meta-tool is automatically registered, allowing the LLM to dynamically load additional tools mid-conversation if the initial selection missed a needed tool. Selection failure is non-fatal -- the agent falls back to the full set. See [Progressive Disclosure](/architecture/progressive-disclosure).
 9. **Hook registration.** The agent's declared hooks (from `model_config_json.hooks`) are instantiated and attached to a `HookRegistry`. Each chosen tool call will be wrapped: `PreToolUse` hooks can block or rewrite args before execution; `PostToolUse` hooks can rewrite the observation before it returns to the LLM. Hooks run **outside the LLM loop** and cannot be bypassed by agent instructions — see [Hook System](/architecture/hook-system).
@@ -93,7 +101,8 @@ The result: the agent sees exactly the tools it needs, no more. A simple agent w
 | Enterprise system integration (ERP, CRM, OA) | Connector | Auth governance, audit trail, operation-level access control |
 | Knowledge retrieval with citations and evidence | Knowledge Base | RAG pipeline, grounded generation, confidence scoring |
 | Third-party tool ecosystem | MCP | Standard protocol, process isolation, community servers |
-| Organizational policies, SOPs, handling procedures | Skill | Global by default, progressive loading, visibility-scoped |
+| Organizational policies, SOPs, handling procedures | Skill (dynamic recipe) | Global by default, progressive loading, visibility-scoped |
+| A deterministic, repeatable multi-step process invoked mid-conversation | Workflow (static recipe) | Same output every run, audit trail, runs as owner; human-gated ones stay trigger-only |
 | Delegating tasks to specialist agents | CallAgent | Semantic agent routing, full tool inheritance, parallel execution |
 | Direct database access | Database Connector | Schema-aware SQL, optional read-only enforcement |
 | Custom internal tooling | MCP or Built-in | MCP for process isolation; built-in for tight integration |
@@ -114,7 +123,35 @@ Both engines also support **agent delegation** via `CallAgentTool` when in Auto 
 
 ### Workflow Engine — the third paradigm
 
-Alongside the LLM-driven ReAct and DAG engines, FIM One includes a **Workflow Engine** — a visual DAG editor with 26 node types for fixed-process automation (approval chains, scheduled ETL, multi-step pipelines). Workflows can invoke Agents, Connectors, Knowledge Bases, MCP Servers, LLM calls, HTTP requests, Python code, and human approval gates. The relationship is asymmetric: Workflows can orchestrate Agents (via the AGENT node), but Agents cannot directly invoke Workflows. Use Agents for flexible, exploratory tasks; use Workflows for deterministic, repeatable processes. See [Execution Modes](/concepts/execution-modes) for details.
+Alongside the LLM-driven ReAct and DAG engines, FIM One includes a **Workflow Engine** — a visual DAG editor with 9 core node types (Start, End, LLM, Condition Branch, Agent, Knowledge Retrieval, Connector, MCP, Human Intervention) for fixed-process automation. Use Agents for flexible, exploratory tasks; use Workflows for deterministic, repeatable processes. See [Execution Modes](/concepts/execution-modes) for details.
+
+The two compose **in both directions**, but each direction routes through the single runtime — the agent loop — never through a second execution engine:
+
+- **Workflow → Agent.** A Workflow's `AGENT` node runs an agent as one deterministic step.
+- **Agent → Workflow.** An agent (or a Skill it is following) pulls `run_workflow` to delegate a sub-task that must run deterministically.
+
+This is the resolution to the obvious cycle worry: only the **agent loop is a runtime**. Skills and Workflows are inert recipes it loads; they never execute each other. "A Skill calling a Workflow" physically means the agent, while following the Skill's SOP, calls `run_workflow`. Every invocation passes through the agent, so the call graph is a **star**, not a mesh — and the back-edges are bounded (`read_skill` only returns text; `call_agent` and `run_workflow` carry depth caps and a re-entrancy guard).
+
+```mermaid
+flowchart TD
+    U["User message / conversation"] --> RT
+
+    subgraph RT["Agent Loop = the only runtime"]
+      direction TB
+      note["System prompt carries a stub catalog + a set of tools.<br/><b>The LLM pulls what it needs — nothing is auto-pushed.</b>"]
+    end
+
+    RT -.->|pull| BT["Built-in tools<br/>(calculator, web_search, file_ops…)"]
+    RT -.->|pull| RS["read_skill → <b>Skill</b><br/>(dynamic recipe) · returns text only"]
+    RT -.->|pull| RW["run_workflow → <b>Workflow</b><br/>(static recipe) · depth-capped"]
+    RT -.->|pull| CA["call_agent → another Agent<br/>· excludes itself, depth-capped"]
+    RT -.->|pull| RES["Connectors / MCP / KB<br/>(SQL lives here)"]
+
+    RW -. "AGENT node" .-> RT
+    CA -. delegate .-> RT
+```
+
+Two reads of the same picture: **tools are pulled, not pushed** (a Skill or Workflow the LLM never selects simply never fires — which is why dynamic capabilities can feel invisible until a query matches one), and **Skills and Workflows are peers** routed through one runtime rather than nested inside each other.
 
 ## Lifecycle overview
 

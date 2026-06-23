@@ -305,12 +305,13 @@ flowchart LR
 - [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — 이전의 고정 예산 매개변수(4.7/4.8에서 400)를 거부한 모델에서 확장 사고가 작동하며, OpenAI 프록시 오류 라우팅에 대해 경고함~~ *(v0.8.8에서 배포됨)*
 - [x] ~~공유 LLM HTTP 풀이 LiteLLM 클라이언트 캐시 제거 후 자동으로 복구됨 — 재시작할 때까지 무한정 실패하는 대신 호출이 풀을 투명하게 재생성함~~ *(v0.8.8에서 배포됨)*
 
-#### 연결기 + 도구
+#### 커넥터 + 도구
 
-- [ ] **연결기 점진적 공개 단계 3-4** — 통합 `ConnectorExecutor` (API/DB/MCP); `jsonschema` 작업 검증; 프로토콜 무관 발견/실행
-- [ ] **YAML/JSON 연결기 구성** — 플랫폼 자동 생성 MCP 서버
-- [ ] **데이터베이스 연결기 단계 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo v0.8.5에서 출시
-- [ ] **MCP 연결 풀링** — 사용자별 환경 격리를 통한 STDIO 풀; SSE/HTTP용 `httpx.AsyncClient` 공유. 목표 ≤100 ms 웜 스타트, 서버당 O(1) HTTP 연결
+- [ ] **Connector Progressive Disclosure Phase 3-4** — 통합 `ConnectorExecutor` (API/DB/MCP); `jsonschema` 액션 검증; 프로토콜 무관 발견/실행
+- [ ] **YAML/JSON 커넥터 설정** — 플랫폼이 MCP 서버 자동 생성
+- [ ] **데이터베이스 커넥터 Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo는 v0.8.5에서 출시됨
+- [ ] **MCP Connection Pooling** — STDIO 풀링 및 사용자별 환경 격리; SSE/HTTP용 `httpx.AsyncClient` 공유. 목표 ≤100 ms 웜 스타트, 서버당 O(1) HTTP 연결
+- [x] ~~스마트 에이전트가 `run_workflow`를 가져와 결정론적 워크플로우를 서브 스텝으로 실행 (정적 레시피 ↔ Skill의 동적 레시피); 인간 승인 워크플로우는 트리거 전용 유지, 실행은 감사됨, 깊이/재진입성 보호~~
 
 #### 콘텐츠 가드레일 {/* dev: dev/archive/openai-agents-insights.md */}
 

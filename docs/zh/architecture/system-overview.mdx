@@ -1,14 +1,14 @@
 ---
 title: "系统概览"
 icon: "table-columns"
-description: "智能体、知识库、连接器、内置工具、MCP 和技能如何组成统一架构。"
+description: "智能体、知识库、连接器、内置工具、MCP、技能和工作流如何组成统一架构。"
 ---
 
-## 统一工具抽象
+## 统一的工具抽象
 
-FIM One 的核心设计理念是**智能体能做的一切都是工具**。计算器、知识库查询、ERP API 调用和第三方 MCP 服务器都实现相同的 `Tool` 协议：`name`、`description`、`parameters_schema`、`category` 和 `run()`。智能体不知道也不关心它是在调用本地 Python 函数、查询向量数据库、代理到遗留系统还是调用社区 MCP 服务器。它看到的是 `ToolRegistry` 中的一个平面工具列表。
+FIM One的核心设计理念是**智能体能做的一切都是工具**。计算器、知识库查询、ERP API调用和第三方MCP服务器都实现相同的`Tool`协议：`name`、`description`、`parameters_schema`、`category`和`run()`。智能体不知道也不关心它是在调用本地Python函数、查询向量数据库、代理到遗留系统，还是调用社区MCP服务器。它看到的是`ToolRegistry`中的一个平面工具列表。
 
-这是一个深思熟虑的架构选择，而不是偶然的简化。这意味着添加新的能力来源永远不需要改变智能体、执行引擎或上下文管理层。你注册工具；智能体使用它们。
+这是一个刻意的架构选择，而不是偶然的简化。这意味着添加新的能力来源永远不需要改变智能体、执行引擎或上下文管理层。你注册工具；智能体使用它们。
 
 ```mermaid
 flowchart TD
@@ -20,12 +20,13 @@ flowchart TD
     TR --- KB["<b>Knowledge Base</b><br/>KBRetrieve or<br/>GroundedRetrieve"]
     TR --- CT["<b>Connectors</b><br/>HTTP API, Database,<br/>auth injection, audit"]
     TR --- MCP["<b>MCP Servers</b><br/>user + global,<br/>process-isolated"]
-    TR --- SK["<b>Skills</b><br/>global SOPs,<br/>progressive or inline"]
+    TR --- SK["<b>Skills</b><br/>global SOPs (dynamic recipe),<br/>read_skill on demand"]
+    TR --- WF["<b>Workflows</b><br/>static recipe (DAG),<br/>run_workflow on demand"]
 ```
 
-五个能力来源汇聚到一个注册表中。智能体平等地从所有来源中获取。
+六个能力来源汇聚到一个注册表中。智能体从所有来源平等地获取。最后两个是配对的：**Skill**是*动态配方*（LLM逐步解释的标准操作程序），**Workflow**是*静态配方*（每次运行方式相同的确定性图）。两者都通过工具拉取——分别是`read_skill`和`run_workflow`——且彼此不包含；它们是由同一运行时消费的对等体。
 
-## 五个能力来源
+## 六个能力来源
 
 ### 内置工具
 
@@ -51,9 +52,15 @@ flowchart TD
 
 要深入了解为什么技能是全局的（不与智能体绑定）以及它们如何与双模式资源发现交互，请参阅[智能体和资源发现](/architecture/agent-discovery)。
 
-## 按请求进行工具组装
+### 工作流
 
-每个聊天请求都通过 `_resolve_tools()` 中的过滤管道组装一个新鲜的工具集。这不是静态配置 -- 它是根据智能体的设置、用户身份以及可用的连接器和 MCP 服务器按请求计算的。
+工作流是技能的**静态配方**，对应技能的动态配方：一个确定性DAG，当子任务必须每次都以相同方式运行并留下审计跟踪时，智能体会使用它（定时对账、多步骤无需审批的管道）。与技能类似，可运行的工作流按可见性全局加载到每个用户，独立于智能体选择——并通过单个 `run_workflow(name, inputs)` 工具公开，每个工作流的输入字段作为紧凑的系统提示片段进行广告。LLM在任务映射到工作流时按名称拉取一个。
+
+只有**活跃**且**不含人工审批（`HUMAN_INTERVENTION`）节点**的工作流才能内联运行——确认闸门可能阻塞数分钟或数小时，不能位于智能体轮次内，因此这些工作流仅保持从工作流页面触发。内联运行以工作流所有者身份执行（订阅的工作流使用发布者绑定的凭证），持久化 `WorkflowRun` 用于审计跟踪，并受到重入保护和嵌套深度上限保护，以防工作流的 `AGENT` 节点启动无界调用循环。
+
+## 按请求组装工具
+
+每个聊天请求都通过`_resolve_tools()`中的过滤管道组装一个新鲜的工具集。这不是静态配置——它是根据智能体的设置、用户身份以及可用的连接器和MCP服务器动态计算的。
 
 ```mermaid
 flowchart LR
@@ -62,7 +69,8 @@ flowchart LR
     C --> D["Connector + DB loading\n(progressive)"]
     D --> E["MCP loading\n(progressive)"]
     E --> SK["Skills injection"]
-    SK --> CA["CallAgent registration"]
+    SK --> WF["Workflow injection"]
+    WF --> CA["CallAgent registration"]
     CA --> F{"Tools > 12?"}
     F -->|Yes| G["LLM tool selection"]
     F -->|No| H["Use full set"]
@@ -73,17 +81,17 @@ flowchart LR
 
 八个步骤：
 
-1. **基础发现。** `discover_builtin_tools()` 加载所有内置工具，范围限定在对话的沙箱内。
-2. **智能体类别过滤。** `filter_by_category(*agent.tool_categories)` 限制为仅智能体允许使用的类别。
-3. **知识库注入。** 如果智能体有 `kb_ids`，通用检索工具将被替换为 `KBRetrieveTool` 或 `GroundedRetrieveTool`，具体取决于检索模式。
-4. **连接器加载。** 在智能体约束模式下，仅加载智能体绑定的连接器。在自动发现模式下（未选择智能体），加载用户可见的所有连接器。API 连接器（`ConnectorMetaTool`）和数据库连接器（`DatabaseMetaTool`）默认使用[渐进式披露](/architecture/progressive-disclosure) -- 系统提示词中的轻量级存根，按需加载完整模式。
-5. **MCP 加载。** 加载并连接用户的个人 MCP 服务器以及管理员配置的全局 MCP 服务器。在渐进模式（默认）下，单个 `MCPServerMetaTool` 整合所有服务器；LLM 按需调用 `discover` 和 `call` 子命令。参见[渐进式披露](/architecture/progressive-disclosure)。
-6. **技能注入。** 加载用户可见的所有活跃技能 -- 无论是否选择了智能体。在渐进模式下，`ReadSkillTool` 在系统提示词中注册为紧凑存根。在内联模式下，完整的技能内容直接嵌入。
-7. **CallAgent 注册（仅自动模式）。** 当未选择特定智能体时，所有活跃的、用户可见的智能体被组装成一个目录，并通过 `CallAgentTool` 暴露，使 LLM 能够将任务委托给专家智能体。被委托的智能体接收从其自身配置构建的完整 `ToolRegistry`，但排除 `call_agent` 以防止无限递归。当选择了特定智能体时，不注册 `CallAgentTool` -- 智能体是专门化的，不委托给其他智能体。这防止了市场智能体访问其他智能体的私有提示词。
-8. **运行时选择。** 如果工具总数超过 12，一个轻量级 LLM 调用为此特定查询选择最相关的子集（最多 6 个）。一个 `request_tools` 元工具自动注册，允许 LLM 在对话中动态加载额外工具，如果初始选择遗漏了所需工具。选择失败是非致命的 -- 智能体回退到完整集合。参见[渐进式披露](/architecture/progressive-disclosure)。
-9. **钩子注册。** 智能体声明的钩子（来自 `model_config_json.hooks`）被实例化并附加到 `HookRegistry`。每个选定的工具调用都将被包装：`PreToolUse` 钩子可以在执行前阻止或重写参数；`PostToolUse` 钩子可以在观察返回给 LLM 前重写它。钩子在 **LLM 循环外** 运行，无法被智能体指令绕过 -- 参见[钩子系统](/architecture/hook-system)。
+1. **基础发现。** `discover_builtin_tools()`加载所有内置工具，范围限定在对话的沙箱内。
+2. **智能体类别过滤。** `filter_by_category(*agent.tool_categories)`限制只使用智能体允许的类别。
+3. **知识库注入。** 如果智能体有`kb_ids`，通用检索工具会根据检索模式替换为`KBRetrieveTool`或`GroundedRetrieveTool`。
+4. **连接器加载。** 在智能体约束模式下，仅加载智能体绑定的连接器。在自动发现模式下（未选择智能体），加载用户可见的所有连接器。API连接器（`ConnectorMetaTool`）和数据库连接器（`DatabaseMetaTool`）默认使用[渐进式披露](/architecture/progressive-disclosure)——系统提示中的轻量级存根，按需加载完整架构。
+5. **MCP加载。** 加载并连接用户的个人MCP服务器以及管理员配置的全局MCP服务器。在渐进模式（默认）下，单个`MCPServerMetaTool`整合所有服务器；LLM按需调用`discover`和`call`子命令。参见[渐进式披露](/architecture/progressive-disclosure)。
+6. **技能+工作流注入。** 加载用户可见的所有活跃技能——无论是否选择了智能体。在渐进模式下，`ReadSkillTool`以系统提示中的紧凑存根注册；在内联模式下，完整的技能内容直接嵌入。同一步骤加载所有活跃的、可内联运行的工作流，并为每个工作流注册`RunWorkflowTool`（名称、描述、输入字段各一个存根）。包含人工审批节点的工作流在此步骤中被跳过。
+7. **CallAgent注册（仅自动模式）。** 未选择特定智能体时，所有活跃的、可见的智能体被组装成一个目录，并通过`CallAgentTool`公开，使LLM能够将任务委托给专家智能体。被委托的智能体接收从其自身配置构建的完整`ToolRegistry`，但排除`call_agent`以防止无限递归。选择特定智能体时，不注册`CallAgentTool`——智能体是专业化的，不委托给其他智能体。这防止了市场智能体访问其他智能体的私有提示。
+8. **运行时选择。** 如果工具总数超过12个，一个轻量级LLM调用为此特定查询选择最相关的子集（最多6个）。自动注册一个`request_tools`元工具，允许LLM在对话中期动态加载额外工具，以防初始选择遗漏了所需工具。选择失败是非致命的——智能体回退到完整集合。参见[渐进式披露](/architecture/progressive-disclosure)。
+9. **钩子注册。** 智能体声明的钩子（来自`model_config_json.hooks`）被实例化并附加到`HookRegistry`。每个选中的工具调用都会被包装：`PreToolUse`钩子可以在执行前阻止或重写参数；`PostToolUse`钩子可以在观察返回给LLM前重写它。钩子在**LLM循环外**运行，不能被智能体指令绕过——参见[钩子系统](/architecture/hook-system)。
 
-结果：智能体恰好看到它需要的工具，不多不少。一个没有连接器和知识库的简单智能体可能看到 5 个工具。一个连接到 3 个企业系统、拥有一个有根据的知识库和 2 个 MCP 服务器的 Hub 智能体可能看到 30 个 -- 但经过选择后，只有最相关的 6 个进入上下文。
+结果：智能体恰好看到它需要的工具，不多不少。没有连接器和知识库的简单智能体可能看到5个工具。连接到3个企业系统、拥有一个接地知识库和2个MCP服务器的Hub智能体可能看到30个——但经过选择后，只有最相关的6个进入上下文。
 
 ## 何时使用什么
 
@@ -91,14 +99,15 @@ flowchart LR
 |------|-----|-----|
 | 通用计算、代码执行、文本转换 | 内置工具 | 始终可用，无需配置 |
 | 企业系统集成（ERP、CRM、OA） | 连接器 | 身份验证治理、审计跟踪、操作级访问控制 |
-| 带引用和证据的知识检索 | 知识库 | RAG 管道、有根据的生成、置信度评分 |
-| 第三方工具生态系统 | MCP | 标准协议、进程隔离、社区服务器 |
-| 组织政策、标准操作流程、处理程序 | 技能 | 默认全局、渐进式加载、可见性范围 |
+| 带引用和证据的知识检索 | 知识库 | RAG管道、有根据的生成、置信度评分 |
+| 第三方工具生态系统 | MCP | 标准协议、流程隔离、社区服务器 |
+| 组织政策、标准操作流程、处理规程 | 技能（动态配方） | 默认全局、渐进式加载、可见性范围 |
+| 确定性、可重复的多步骤流程在对话中调用 | 工作流（静态配方） | 每次运行输出相同、审计跟踪、以所有者身份运行；人工审批的流程保持仅触发状态 |
 | 将任务委派给专家智能体 | 调用智能体 | 语义智能体路由、完整工具继承、并行执行 |
-| 直接数据库访问 | 数据库连接器 | 模式感知 SQL、可选的只读强制执行 |
-| 自定义内部工具 | MCP 或内置 | MCP 用于进程隔离；内置用于紧密集成 |
+| 直接数据库访问 | 数据库连接器 | 架构感知SQL、可选只读强制执行 |
+| 自定义内部工具 | MCP或内置 | MCP用于流程隔离；内置用于紧密集成 |
 
-这些类别不是互斥的。单个智能体可以在一次对话中使用所有五个能力来源——加载用于投诉处理标准操作流程的技能、查询知识库获取政策文档、调用连接器检查 ERP、将分析委派给专家智能体（自动模式）以及使用内置工具格式化结果。
+这些类别不是互斥的。单个智能体可以在一次对话中使用所有五个能力来源——加载用于投诉处理标准操作流程的技能、查询知识库获取政策文档、调用连接器检查ERP、将分析委派给专家智能体（自动模式）、使用内置工具格式化结果。
 
 ## 执行引擎是正交的
 
@@ -112,9 +121,37 @@ flowchart LR
 
 两个引擎还支持通过 `CallAgentTool` 进行**智能体委派**，当处于自动模式时（未选择智能体）。在原生函数调用模式中，LLM 可以在单次转换中调用多个 `call_agent` 调用，这些调用通过 `asyncio.gather` 并发执行。每个被委派的智能体接收自己的 `ToolRegistry` 并作为完整的执行单元运行。有关智能体发现、技能作为全局 SOP 和智能体委派的详细设计，请参阅 [智能体和资源发现](/architecture/agent-discovery)。
 
-### 工作流引擎 — 第三范式
+### 工作流引擎——第三范式
 
-除了 LLM 驱动的 ReAct 和 DAG 引擎外，FIM One 还包括**工作流引擎** — 一个可视化 DAG 编辑器，拥有 26 种节点类型，用于固定流程自动化（审批链、定时 ETL、多步骤管道）。工作流可以调用智能体、连接器、知识库、MCP 服务器、LLM 调用、HTTP 请求、Python 代码和人工审批门。这种关系是不对称的：工作流可以编排智能体（通过 AGENT 节点），但智能体无法直接调用工作流。将智能体用于灵活的探索性任务；将工作流用于确定性的可重复流程。详见 [执行模式](/concepts/execution-modes)。
+除了LLM驱动的ReAct和DAG引擎外，FIM One还包括**工作流引擎**——一个可视化DAG编辑器，具有9种核心节点类型（开始、结束、LLM、条件分支、智能体、知识检索、连接器、MCP、人工干预），用于固定流程自动化。对于灵活的、探索性的任务使用智能体；对于确定性的、可重复的流程使用工作流。详见[执行模式](/concepts/execution-modes)。
+
+两者可以**双向组合**，但每个方向都通过单一运行时——智能体循环——路由，永远不会通过第二个执行引擎：
+
+- **工作流→智能体。** 工作流的`AGENT`节点将智能体作为一个确定性步骤运行。
+- **智能体→工作流。** 智能体（或它正在遵循的技能）调用`run_workflow`来委派必须确定性运行的子任务。
+
+这解决了明显的循环担忧：只有**智能体循环是运行时**。技能和工作流是它加载的惯性配方；它们永远不会相互执行。"技能调用工作流"在物理上意味着智能体在遵循技能的SOP时调用`run_workflow`。每次调用都通过智能体，因此调用图是一个**星形**，而不是网格——反向边是有界的（`read_skill`仅返回文本；`call_agent`和`run_workflow`带有深度上限和重入保护）。
+
+```mermaid
+flowchart TD
+    U["User message / conversation"] --> RT
+
+    subgraph RT["Agent Loop = the only runtime"]
+      direction TB
+      note["System prompt carries a stub catalog + a set of tools.<br/><b>The LLM pulls what it needs — nothing is auto-pushed.</b>"]
+    end
+
+    RT -.->|pull| BT["Built-in tools<br/>(calculator, web_search, file_ops…)"]
+    RT -.->|pull| RS["read_skill → <b>Skill</b><br/>(dynamic recipe) · returns text only"]
+    RT -.->|pull| RW["run_workflow → <b>Workflow</b><br/>(static recipe) · depth-capped"]
+    RT -.->|pull| CA["call_agent → another Agent<br/>· excludes itself, depth-capped"]
+    RT -.->|pull| RES["Connectors / MCP / KB<br/>(SQL lives here)"]
+
+    RW -. "AGENT node" .-> RT
+    CA -. delegate .-> RT
+```
+
+同一图片的两种理解：**工具被拉取，不被推送**（技能或工作流LLM从未选择的简单不会触发——这就是为什么动态能力在查询匹配之前会感到不可见），以及**技能和工作流是对等的**，通过一个运行时路由，而不是嵌套在彼此内部。
 
 ## 生命周期概述
 

@@ -1,14 +1,14 @@
 ---
 title: "システム概要"
 icon: "table-columns"
-description: "エージェント、ナレッジベース、コネクタ、組み込みツール、MCP、スキルが統一されたアーキテクチャにどのように構成されるかについて。"
+description: "Agent、Knowledge Base、Connector、Built-in Tools、MCP、Skills、およびWorkflowsが統一されたアーキテクチャにどのように構成されるかについて。"
 ---
 
 ## 統一されたツール抽象化
 
-FIM Oneの中心的な設計洞察は、**エージェントができることはすべてツール**ということです。計算機、ナレッジベースクエリ、ERP API呼び出し、サードパーティMCPサーバーはすべて同じ`Tool`プロトコルを実装しています：`name`、`description`、`parameters_schema`、`category`、および`run()`。エージェントは、ローカルPython関数を呼び出しているのか、ベクトルデータベースをクエリしているのか、レガシーシステムにプロキシしているのか、またはコミュニティMCPサーバーを呼び出しているのかを知りません。`ToolRegistry`内の呼び出し可能なツールのフラットリストを見ます。
+FIM Oneの中心的な設計洞察は、**エージェントが実行できるすべてのものはツール**ということです。計算機、ナレッジベースクエリ、ERP API呼び出し、サードパーティMCPサーバーはすべて同じ`Tool`プロトコルを実装しています：`name`、`description`、`parameters_schema`、`category`、`run()`。エージェントは、ローカルPython関数を呼び出しているのか、ベクトルデータベースをクエリしているのか、レガシーシステムにプロキシしているのか、コミュニティMCPサーバーを呼び出しているのかを知りません。`ToolRegistry`内の呼び出し可能なツールのフラットなリストを見ます。
 
-これは意図的なアーキテクチャ上の選択であり、偶然の単純化ではありません。つまり、新しい機能ソースを追加する場合、エージェント、実行エンジン、またはコンテキスト管理レイヤーを変更する必要がないということです。ツールを登録するだけで、エージェントがそれらを使用します。
+これは意図的なアーキテクチャ上の選択であり、偶然の単純化ではありません。つまり、新しい機能ソースを追加する際に、エージェント、実行エンジン、またはコンテキスト管理レイヤーを変更する必要がないということです。ツールを登録すれば、エージェントがそれらを使用します。
 
 ```mermaid
 flowchart TD
@@ -20,12 +20,13 @@ flowchart TD
     TR --- KB["<b>Knowledge Base</b><br/>KBRetrieve or<br/>GroundedRetrieve"]
     TR --- CT["<b>Connectors</b><br/>HTTP API, Database,<br/>auth injection, audit"]
     TR --- MCP["<b>MCP Servers</b><br/>user + global,<br/>process-isolated"]
-    TR --- SK["<b>Skills</b><br/>global SOPs,<br/>progressive or inline"]
+    TR --- SK["<b>Skills</b><br/>global SOPs (dynamic recipe),<br/>read_skill on demand"]
+    TR --- WF["<b>Workflows</b><br/>static recipe (DAG),<br/>run_workflow on demand"]
 ```
 
-5つの機能ソースが1つのレジストリに収束します。エージェントはそれらすべてから等しく引き出します。
+6つの機能ソースが1つのレジストリに収束します。エージェントはそれらすべてから等しく引き出します。最後の2つはペアになっています：**Skill**は*動的レシピ*（LLMが段階的に解釈するSOP）であり、**Workflow**は*静的レシピ*（毎回同じ方法で実行される決定論的グラフ）です。どちらも`read_skill`と`run_workflow`というツールを通じて取得され、どちらも他方を含みません。それらはピアであり、同じランタイムによって消費されます。
 
-## 5つの機能ソース
+## 6つの機能ソース
 
 ### 組み込みツール
 
@@ -51,9 +52,15 @@ flowchart TD
 
 スキルがグローバル（エージェント非依存）である理由と、デュアルモードリソース検出との相互作用について詳しく知るには、[エージェント＆リソース検出](/architecture/agent-discovery)を参照してください。
 
+### ワークフロー
+
+ワークフローはスキルの**静的レシピ**です。決定論的なDAGであり、サブタスクが毎回同じように実行され、監査証跡を残す必要がある場合にエージェントが利用します（スケジュール済み調整、複数ステップの承認不要パイプライン）。スキルと同様に、実行可能なワークフローはユーザーごとに可視性に基づいてグローバルに読み込まれ、エージェント選択とは独立して、単一の `run_workflow(name, inputs)` ツールを通じて公開されます。各ワークフローの入力フィールドはコンパクトなシステムプロンプトスタブとして通知されます。LLMはタスクがそれにマップされるとき、名前でワークフローを取得します。
+
+**アクティブ**で、人間による承認（`HUMAN_INTERVENTION`）ノードが**ない**ワークフローのみがインライン実行可能です。ゲートが数分から数時間ブロックする場合、エージェントターン内に配置することはできないため、これらのワークフローはワークフローページからのトリガーのみとなります。インライン実行はワークフロー所有者として実行され（サブスクライブされたワークフローはパブリッシャーのバインドされた認証情報を使用）、監査証跡のための `WorkflowRun` を永続化し、再入性ガードとネストの深さ上限によって保護されるため、ワークフローの `AGENT` ノードが無制限の呼び出しサイクルを開始することはできません。
+
 ## リクエストごとのツールアセンブリ
 
-すべてのチャットリクエストは、`_resolve_tools()` のフィルタリングパイプラインを通じて、リクエストごとに新しいツールセットをアセンブルします。これは静的な設定ではなく、エージェントの設定、ユーザーのアイデンティティ、利用可能なコネクタと MCP サーバーに基づいてリクエストごとに計算されます。
+すべてのチャットリクエストは、`_resolve_tools()`のフィルタリングパイプラインを通じて、リクエストごとに新しいツールセットをアセンブリします。これは静的な設定ではなく、エージェントの設定、ユーザーのアイデンティティ、利用可能なコネクタとMCPサーバーに基づいて計算されます。
 
 ```mermaid
 flowchart LR
@@ -62,7 +69,8 @@ flowchart LR
     C --> D["Connector + DB loading\n(progressive)"]
     D --> E["MCP loading\n(progressive)"]
     E --> SK["Skills injection"]
-    SK --> CA["CallAgent registration"]
+    SK --> WF["Workflow injection"]
+    WF --> CA["CallAgent registration"]
     CA --> F{"Tools > 12?"}
     F -->|Yes| G["LLM tool selection"]
     F -->|No| H["Use full set"]
@@ -73,32 +81,33 @@ flowchart LR
 
 8つのステップ：
 
-1. **ベース検出。** `discover_builtin_tools()` はすべての組み込みツールを読み込み、会話のサンドボックスにスコープします。
-2. **エージェントカテゴリフィルタ。** `filter_by_category(*agent.tool_categories)` は、エージェントが使用を許可されているカテゴリのみに制限します。
-3. **KB インジェクション。** エージェントが `kb_ids` を持つ場合、汎用検索ツールは検索モードに基づいて `KBRetrieveTool` または `GroundedRetrieveTool` に置き換えられます。
-4. **コネクタ読み込み。** エージェント制約モードでは、エージェントにバインドされたコネクタのみが読み込まれます。オートディスカバリーモード（エージェント未選択）では、ユーザーに表示されるすべてのコネクタが読み込まれます。API コネクタ（`ConnectorMetaTool`）とデータベースコネクタ（`DatabaseMetaTool`）の両方は、デフォルトで[プログレッシブディスクロージャ](/architecture/progressive-disclosure)を使用します。システムプロンプトの軽量スタブ、必要に応じて読み込まれる完全なスキーマ。
-5. **MCP 読み込み。** ユーザーの個人用 MCP サーバーと管理者がプロビジョニングしたグローバル MCP サーバーが読み込まれて接続されます。プログレッシブモード（デフォルト）では、単一の `MCPServerMetaTool` がすべてのサーバーを統合します。LLM は必要に応じて `discover` と `call` サブコマンドを呼び出します。[プログレッシブディスクロージャ](/architecture/progressive-disclosure)を参照してください。
-6. **スキルインジェクション。** ユーザーに表示されるすべてのアクティブなスキルが読み込まれます。エージェント選択に関係なく。プログレッシブモードでは、`ReadSkillTool` がシステムプロンプトのコンパクトなスタブで登録されます。インラインモードでは、完全なスキルコンテンツが直接埋め込まれます。
-7. **CallAgent 登録（オートモードのみ）。** 特定のエージェントが選択されていない場合、すべてのアクティブで表示されるエージェントがカタログにアセンブルされ、`CallAgentTool` を通じて公開され、LLM が専門エージェントにタスクを委譲できるようになります。委譲されたエージェントは、独自の設定から構築された完全な `ToolRegistry` を受け取りますが、無限再帰を防ぐために `call_agent` を除外します。特定のエージェントが選択されている場合、`CallAgentTool` は登録されません。エージェントは専門化されており、他のエージェントに委譲しません。これにより、マーケットプレイスエージェントが他のエージェントのプライベートプロンプトにアクセスするのを防ぎます。
-8. **ランタイム選択。** ツールの総数が 12 を超える場合、軽量な LLM 呼び出しがこの特定のクエリに最も関連するサブセット（最大 6 個）を選択します。`request_tools` メタツールが自動的に登録され、LLM が会話中に追加のツールを動的に読み込むことができるようになります。初期選択で必要なツールが見落とされた場合。選択失敗は致命的ではなく、エージェントは完全なセットにフォールバックします。[プログレッシブディスクロージャ](/architecture/progressive-disclosure)を参照してください。
-9. **フック登録。** エージェントの宣言されたフック（`model_config_json.hooks` から）がインスタンス化され、`HookRegistry` にアタッチされます。選択されたツール呼び出しはそれぞれラップされます。`PreToolUse` フックは実行前に引数をブロックまたは書き換えることができます。`PostToolUse` フックは観測を LLM に返す前に書き換えることができます。フックは **LLM ループの外で** 実行され、エージェント命令によってバイパスされることはできません。[フックシステム](/architecture/hook-system)を参照してください。
+1. **ベース検出。** `discover_builtin_tools()`はすべての組み込みツールを読み込み、会話のサンドボックスにスコープします。
+2. **エージェントカテゴリフィルタ。** `filter_by_category(*agent.tool_categories)`は、エージェントが使用を許可されているカテゴリのみに制限します。
+3. **KB注入。** エージェントが`kb_ids`を持つ場合、汎用検索ツールは検索モードに基づいて`KBRetrieveTool`または`GroundedRetrieveTool`に置き換えられます。
+4. **コネクタ読み込み。** エージェント制約モードでは、エージェントにバインドされたコネクタのみが読み込まれます。オートディスカバリーモード（エージェント未選択）では、ユーザーに表示されるすべてのコネクタが読み込まれます。APIコネクタ（`ConnectorMetaTool`）とデータベースコネクタ（`DatabaseMetaTool`）の両方は、デフォルトで[プログレッシブディスクロージャ](/architecture/progressive-disclosure)を使用します——システムプロンプトの軽量スタブ、必要に応じて読み込まれる完全なスキーマ。
+5. **MCP読み込み。** ユーザーの個人MCPサーバーと管理者がプロビジョニングしたグローバルMCPサーバーが読み込まれて接続されます。プログレッシブモード（デフォルト）では、単一の`MCPServerMetaTool`がすべてのサーバーを統合します。LLMは必要に応じて`discover`および`call`サブコマンドを呼び出します。[プログレッシブディスクロージャ](/architecture/progressive-disclosure)を参照してください。
+6. **スキル+ワークフロー注入。** ユーザーに表示されるすべてのアクティブなスキルが読み込まれます——エージェント選択に関係なく。プログレッシブモードでは、`ReadSkillTool`はシステムプロンプトのコンパクトスタブで登録されます。インラインモードでは、完全なスキルコンテンツが直接埋め込まれます。同じステップがすべてのアクティブでインラインで実行可能なワークフローを読み込み、`RunWorkflowTool`を1つのワークフローあたり1つのスタブ（名前、説明、入力フィールド）で登録します。人間の承認ノードを含むワークフローはここではスキップされます。
+7. **CallAgentの登録（オートモードのみ）。** 特定のエージェントが選択されていない場合、すべてのアクティブで表示されるエージェントがカタログにアセンブリされ、`CallAgentTool`を通じて公開されます。これにより、LLMはタスクをスペシャリストエージェントに委譲できます。委譲されたエージェントは、独自の設定から構築された完全な`ToolRegistry`を受け取りますが、無限再帰を防ぐために`call_agent`を除外します。特定のエージェントが選択されている場合、`CallAgentTool`は登録されません——エージェントは専門化されており、他のエージェントに委譲しません。これにより、マーケットプレイスエージェントが他のエージェントのプライベートプロンプトにアクセスするのを防ぎます。
+8. **ランタイム選択。** ツールの総数が12を超える場合、軽量なLLM呼び出しがこの特定のクエリに最も関連するサブセット（最大6個）を選択します。`request_tools`メタツールが自動的に登録され、LLMが会話の途中で追加のツールを動的に読み込むことができます。初期選択で必要なツールが見落とされた場合です。選択失敗は致命的ではありません——エージェントは完全なセットにフォールバックします。[プログレッシブディスクロージャ](/architecture/progressive-disclosure)を参照してください。
+9. **フック登録。** エージェントの宣言されたフック（`model_config_json.hooks`から）がインスタンス化され、`HookRegistry`に接続されます。選択されたツール呼び出しはそれぞれラップされます：`PreToolUse`フックは実行前に引数をブロックまたは書き直すことができます。`PostToolUse`フックは、観測がLLMに返される前に書き直すことができます。フックは**LLMループの外で**実行され、エージェント命令によってバイパスされることはできません——[フックシステム](/architecture/hook-system)を参照してください。
 
-結果：エージェントは必要なツールだけを見ます。それ以上ではなく。コネクタなし、KB なしの単純なエージェントは 5 つのツールを見るかもしれません。3 つのエンタープライズシステムに接続された Hub エージェント、グラウンデッド知識ベース、2 つの MCP サーバーを持つエージェントは 30 個を見るかもしれません。ただし、選択後、最も関連する 6 個だけがコンテキストに入ります。
+結果：エージェントは必要なツールのみを見ます。コネクタがなくKBもない単純なエージェントは5つのツールを見るかもしれません。3つのエンタープライズシステムに接続され、グラウンデッド知識ベースと2つのMCPサーバーを持つハブエージェントは30個を見るかもしれません——しかし選択後、最も関連性の高い6個だけがコンテキストに入ります。
 
-## 何を使うべきか
+## When to use what
 
-| 必要な機能 | 使用するもの | 理由 |
+| Need | Use | Why |
 |------|-----|-----|
-| 一般的な計算、コード実行、テキスト変換 | 組み込みツール | 常に利用可能、設定不要 |
-| エンタープライズシステム統合（ERP、CRM、OA） | コネクタ | 認証ガバナンス、監査証跡、操作レベルのアクセス制御 |
-| 引用と証拠を伴う知識検索 | ナレッジベース | RAGパイプライン、根拠のある生成、信頼度スコアリング |
-| サードパーティツールエコシステム | MCP | 標準プロトコル、プロセス分離、コミュニティサーバー |
-| 組織ポリシー、SOP、処理手順 | スキル | デフォルトでグローバル、段階的読み込み、可視性スコープ |
-| 専門エージェントへのタスク委譲 | エージェント呼び出し | セマンティックエージェントルーティング、完全なツール継承、並列実行 |
-| 直接データベースアクセス | データベースコネクタ | スキーマ認識SQL、オプションの読み取り専用強制 |
-| カスタム内部ツール | MCP または組み込み | MCPはプロセス分離用、組み込みは緊密な統合用 |
+| General computation, code execution, text transforms | Built-in Tool | Always available, no config needed |
+| Enterprise system integration (ERP, CRM, OA) | Connector | Auth governance, audit trail, operation-level access control |
+| Knowledge retrieval with citations and evidence | Knowledge Base | RAG pipeline, grounded generation, confidence scoring |
+| Third-party tool ecosystem | MCP | Standard protocol, process isolation, community servers |
+| Organizational policies, SOPs, handling procedures | Skill (dynamic recipe) | Global by default, progressive loading, visibility-scoped |
+| A deterministic, repeatable multi-step process invoked mid-conversation | Workflow (static recipe) | Same output every run, audit trail, runs as owner; human-gated ones stay trigger-only |
+| Delegating tasks to specialist agents | CallAgent | Semantic agent routing, full tool inheritance, parallel execution |
+| Direct database access | Database Connector | Schema-aware SQL, optional read-only enforcement |
+| Custom internal tooling | MCP or Built-in | MCP for process isolation; built-in for tight integration |
 
-これらのカテゴリは相互に排他的ではありません。単一のエージェントは1つの会話で5つすべての機能ソースを使用できます。苦情処理SOPのスキルを読み込み、ポリシードキュメントのナレッジベースをクエリし、ERPを確認するためにコネクタを呼び出し、専門エージェント（自動モード）に分析を委譲し、組み込みツールを使用して結果をフォーマットします。
+カテゴリは相互に排他的ではありません。単一の智能体は1つの会話内で5つの機能ソースすべてを使用できます——苦情処理SOP用のSkillを読み込み、ポリシードキュメント用にナレッジベースをクエリし、ERP確認用にコネクタを呼び出し、分析を専門の智能体に委譲し（Autoモード）、結果をフォーマットするために組み込みツールを使用します。
 
 ## 実行エンジンは直交している
 
@@ -114,7 +123,35 @@ flowchart LR
 
 ### ワークフローエンジン — 第3のパラダイム
 
-LLM駆動のReActおよびDAGエンジンと並んで、FIM Oneには**ワークフローエンジン**が含まれています。これは26種類のノードタイプを備えたビジュアルDAGエディタで、固定プロセスの自動化（承認チェーン、スケジュール済みETL、マルチステップパイプライン）に対応しています。ワークフローはエージェント、コネクタ、ナレッジベース、MCP サーバー、LLM呼び出し、HTTPリクエスト、Pythonコード、および人間による承認ゲートを呼び出すことができます。この関係は非対称です。ワークフローはエージェントを（AGENTノード経由で）オーケストレートできますが、エージェントはワークフローを直接呼び出すことはできません。柔軟で探索的なタスクにはエージェントを使用し、決定論的で反復可能なプロセスにはワークフローを使用してください。詳細は[実行モード](/concepts/execution-modes)を参照してください。
+LLM駆動のReActおよびDAGエンジンと並んで、FIM Oneは**ワークフローエンジン**を備えています。これは9つのコアノードタイプ（Start、End、LLM、Condition Branch、Agent、Knowledge Retrieval、Connector、MCP、Human Intervention）を持つビジュアルDAGエディタで、固定プロセスの自動化に使用します。柔軟で探索的なタスクにはAgentを使用し、決定論的で反復可能なプロセスにはWorkflowを使用します。詳細は[Execution Modes](/concepts/execution-modes)を参照してください。
+
+この2つは**双方向で構成**されますが、各方向は単一のランタイム（エージェントループ）を通じてルーティングされ、第2の実行エンジンを通じてはルーティングされません。
+
+- **Workflow → Agent。** WorkflowのAGENTノードは、1つの決定論的なステップとしてエージェントを実行します。
+- **Agent → Workflow。** エージェント（またはそれが従っているSkill）は`run_workflow`を呼び出して、決定論的に実行する必要があるサブタスクを委譲します。
+
+これは明らかなサイクルの懸念を解決するものです。**エージェントループだけがランタイム**です。SkillsとWorkflowsは、それが読み込む不活性なレシピであり、相互に実行されることはありません。「SkillがWorkflowを呼び出す」は物理的には、エージェントがSkillのSOPに従いながら`run_workflow`を呼び出すことを意味します。すべての呼び出しはエージェントを通じて渡されるため、呼び出しグラフは**スター**であり、メッシュではありません。また、バックエッジは制限されています（`read_skill`はテキストのみを返し、`call_agent`と`run_workflow`は深さキャップと再入性ガードを持ちます）。
+
+```mermaid
+flowchart TD
+    U["User message / conversation"] --> RT
+
+    subgraph RT["Agent Loop = the only runtime"]
+      direction TB
+      note["System prompt carries a stub catalog + a set of tools.<br/><b>The LLM pulls what it needs — nothing is auto-pushed.</b>"]
+    end
+
+    RT -.->|pull| BT["Built-in tools<br/>(calculator, web_search, file_ops…)"]
+    RT -.->|pull| RS["read_skill → <b>Skill</b><br/>(dynamic recipe) · returns text only"]
+    RT -.->|pull| RW["run_workflow → <b>Workflow</b><br/>(static recipe) · depth-capped"]
+    RT -.->|pull| CA["call_agent → another Agent<br/>· excludes itself, depth-capped"]
+    RT -.->|pull| RES["Connectors / MCP / KB<br/>(SQL lives here)"]
+
+    RW -. "AGENT node" .-> RT
+    CA -. delegate .-> RT
+```
+
+同じ図の2つの読み方：**ツールはプッシュされるのではなくプルされます**（LLMが選択しないSkillまたはWorkflowは単に発火しません。これが動的機能がクエリが1つにマッチするまで見えない可能性がある理由です）。また、**SkillsとWorkflowsはピア**であり、相互にネストされるのではなく1つのランタイムを通じてルーティングされます。
 
 ## ライフサイクル概要
 

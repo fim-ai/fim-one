@@ -307,10 +307,11 @@ Durcissement différé — non bloquant ; à traiter uniquement si le scénario 
 
 #### Connecteur + outillage
 
-- [ ] **Phase 3-4 de divulgation progressive du connecteur** — `ConnectorExecutor` unifié (API/DB/MCP) ; validation d'action `jsonschema` ; découverte/exécution agnostique du protocole
+- [ ] **Phase 3-4 de divulgation progressive du connecteur** — `ConnectorExecutor` unifié (API/DB/MCP) ; validation d'action `jsonschema` ; découverte/exécution agnostiques au protocole
 - [ ] **Configuration du connecteur YAML/JSON** — la plateforme génère automatiquement le serveur MCP
 - [ ] **Connecteurs de base de données Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo livrés en v0.8.5
 - [ ] **Mise en pool des connexions MCP** — pool STDIO avec isolation d'environnement par utilisateur ; partage de `httpx.AsyncClient` pour SSE/HTTP. Cible ≤100 ms de démarrage à chaud, connexions HTTP O(1) par serveur
+- [x] ~~Les agents peuvent extraire `run_workflow` pour exécuter un workflow déterministe en tant qu'étape secondaire (recette statique ↔ recette dynamique de Skill) ; les workflows contrôlés par l'homme restent déclenchement uniquement, les exécutions sont auditées, profondeur/réentrance gardée~~
 
 #### Garde-fous de contenu {/* dev: dev/archive/openai-agents-insights.md */}
 
