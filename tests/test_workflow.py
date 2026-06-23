@@ -3031,3 +3031,136 @@ class TestValidateAndDryRunSchemas:
             assert d["valid"] is False
             assert len(d["errors"]) == 1
             assert "cycle" in d["errors"][0].lower()
+
+
+class TestAgentExecutorBindings:
+    """A workflow AGENT node must run the agent's FULL bound runtime — its
+    model AND its connectors/KB/MCP tools — not a stripped instructions-only
+    agent on a default toolset."""
+
+    def _patch_runtime(
+        self, monkeypatch: pytest.MonkeyPatch, agent_cfg: Any, captured: dict[str, Any]
+    ) -> None:
+        from unittest.mock import AsyncMock, MagicMock
+
+        async def _fake_resolve_agent_config(
+            aid: Any, conversation_id: Any = None, user_id: Any = None
+        ) -> Any:
+            captured["cfg_args"] = (aid, conversation_id, user_id)
+            return agent_cfg
+
+        async def _fake_resolve_llm(cfg: Any, db: Any) -> str:
+            captured["llm_cfg"] = cfg
+            return "AGENT_LLM"
+
+        async def _fake_resolve_tools(
+            cfg: Any, conversation_id: Any = None, user_id: Any = None
+        ) -> str:
+            captured["tools_cfg"] = cfg
+            captured["tools_user"] = user_id
+            return "AGENT_TOOLS"
+
+        def _fake_get_tools(*_a: Any, **_k: Any) -> str:
+            captured["used_default_tools"] = True
+            return "DEFAULT_TOOLS"
+
+        async def _fake_get_fast_llm(_db: Any) -> str:
+            captured["used_default_llm"] = True
+            return "DEFAULT_LLM"
+
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=MagicMock())
+        cm.__aexit__ = AsyncMock(return_value=False)
+
+        class _FakeReActAgent:
+            def __init__(self, **kwargs: Any) -> None:
+                captured["react_kwargs"] = kwargs
+
+            async def run(self, query: str) -> Any:
+                from types import SimpleNamespace
+
+                captured["query"] = query
+                return SimpleNamespace(answer="done", usage=None)
+
+        monkeypatch.setattr(
+            "fim_one.web.api.chat._resolve_agent_config", _fake_resolve_agent_config
+        )
+        monkeypatch.setattr("fim_one.web.api.chat._resolve_llm", _fake_resolve_llm)
+        monkeypatch.setattr("fim_one.web.api.chat._resolve_tools", _fake_resolve_tools)
+        monkeypatch.setattr("fim_one.web.deps.get_tools", _fake_get_tools)
+        monkeypatch.setattr(
+            "fim_one.web.deps.get_effective_fast_llm", _fake_get_fast_llm
+        )
+        monkeypatch.setattr(
+            "fim_one.db.create_session", MagicMock(return_value=cm)
+        )
+        monkeypatch.setattr("fim_one.core.agent.ReActAgent", _FakeReActAgent)
+
+    @pytest.mark.asyncio
+    async def test_bound_agent_uses_resolved_tools_and_llm(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.core.workflow.nodes import AgentExecutor
+
+        agent_cfg = {
+            "agent_id": "a1",
+            "instructions": "be precise",
+            "connector_ids": ["c1"],
+            "kb_ids": ["k1"],
+            "owner_user_id": "owner1",
+        }
+        captured: dict[str, Any] = {}
+        self._patch_runtime(monkeypatch, agent_cfg, captured)
+
+        node = WorkflowNodeDef(
+            id="agent1",
+            type=NodeType.AGENT,
+            data={"type": "AGENT", "agent_id": "a1", "query": "summarize {{input.x}}"},
+        )
+        store = VariableStore()
+        await store.set("input.x", "the report")
+        ctx = ExecutionContext(run_id="r", user_id="owner1", workflow_id="w")
+
+        result = await AgentExecutor().execute(node, store, ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        kw = captured["react_kwargs"]
+        # The agent's bound tools + model were used — not the defaults.
+        assert kw["tools"] == "AGENT_TOOLS"
+        assert kw["llm"] == "AGENT_LLM"
+        assert kw["extra_instructions"] == "be precise"
+        assert kw["agent_id"] == "a1"
+        assert kw["user_id"] == "owner1"
+        # Tools resolved against the agent_cfg, attributed to the workflow owner.
+        assert captured["tools_cfg"] is agent_cfg
+        assert captured["tools_user"] == "owner1"
+        assert "used_default_tools" not in captured
+        assert "used_default_llm" not in captured
+        # Query template interpolated from the store.
+        assert captured["query"] == "summarize the report"
+
+    @pytest.mark.asyncio
+    async def test_bare_node_without_agent_id_falls_back_to_defaults(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fim_one.core.workflow.nodes import AgentExecutor
+
+        captured: dict[str, Any] = {}
+        self._patch_runtime(monkeypatch, None, captured)
+
+        node = WorkflowNodeDef(
+            id="agent2",
+            type=NodeType.AGENT,
+            data={"type": "AGENT", "query": "just answer"},
+        )
+        ctx = ExecutionContext(run_id="r", user_id="owner1", workflow_id="w")
+
+        result = await AgentExecutor().execute(node, VariableStore(), ctx)
+
+        assert result.status == NodeStatus.COMPLETED
+        kw = captured["react_kwargs"]
+        assert kw["tools"] == "DEFAULT_TOOLS"
+        assert kw["llm"] == "DEFAULT_LLM"
+        assert kw["extra_instructions"] is None
+        # The agent resolvers were never consulted for a bare node.
+        assert "tools_cfg" not in captured

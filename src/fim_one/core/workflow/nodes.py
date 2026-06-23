@@ -549,7 +549,6 @@ class AgentExecutor:
         t0 = time.time()
         try:
             from fim_one.core.agent import ReActAgent
-            from fim_one.core.tool import ToolRegistry
             from fim_one.db import create_session
             from fim_one.web.deps import get_effective_fast_llm, get_tools
 
@@ -566,29 +565,49 @@ class AgentExecutor:
                     duration_ms=_ms_since(t0),
                 )
 
-            # Resolve LLM and tools
+            # Resolve the agent's FULL runtime — its model, instructions, AND its
+            # bound tools (connectors / KB / MCP / categories).  Previously this
+            # node ran a stripped agent (instructions + a default toolset only),
+            # so a workflow's AGENT node silently dropped the agent's connectors,
+            # KB and MCP servers.  Route through the same resolvers chat.py uses,
+            # which also enforce the agent is visible to the workflow owner.
+            from fim_one.web.api.chat import (
+                _resolve_agent_config,
+                _resolve_llm,
+                _resolve_tools,
+            )
+
+            agent_cfg = (
+                await _resolve_agent_config(
+                    agent_id, conversation_id=None, user_id=context.user_id
+                )
+                if agent_id
+                else None
+            )
+            instructions: str | None = (
+                agent_cfg.get("instructions") if agent_cfg else None
+            )
+
             async with create_session() as db:
-                llm = await get_effective_fast_llm(db)
+                if agent_cfg is not None:
+                    llm = await _resolve_llm(agent_cfg, db)
+                else:
+                    llm = await get_effective_fast_llm(db)
 
-                # If agent_id specified, load agent config
-                instructions: str | None = None
-                if agent_id:
-                    from fim_one.db.models import Agent
-                    from sqlalchemy import select
+            if agent_cfg is not None:
+                tools = await _resolve_tools(
+                    agent_cfg, conversation_id=None, user_id=context.user_id
+                )
+            else:
+                tools = get_tools()
 
-                    result = await db.execute(
-                        select(Agent).where(Agent.id == agent_id)
-                    )
-                    agent_model = result.scalar_one_or_none()
-                    if agent_model:
-                        instructions = agent_model.instructions
-
-            tools = get_tools()
             agent = ReActAgent(
                 llm=llm,
                 tools=tools,
                 extra_instructions=instructions,
                 max_iterations=10,
+                agent_id=agent_id or None,
+                user_id=context.user_id or None,
             )
 
             agent_result = await agent.run(query)
