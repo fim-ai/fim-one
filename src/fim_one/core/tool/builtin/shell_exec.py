@@ -260,6 +260,11 @@ class ShellExecTool(BaseTool):
         return "computation"
 
     @property
+    def supports_background(self) -> bool:
+        # Sandboxed execution can run long — allow background dispatch.
+        return True
+
+    @property
     def description(self) -> str:
         return (
             "Execute shell commands in a sandboxed environment. "

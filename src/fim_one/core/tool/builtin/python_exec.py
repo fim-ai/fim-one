@@ -59,6 +59,11 @@ class PythonExecTool(BaseTool):
         return "computation"
 
     @property
+    def supports_background(self) -> bool:
+        # Sandboxed execution can run long — allow background dispatch.
+        return True
+
+    @property
     def description(self) -> str:
         return (
             "Execute Python code and return the output. "

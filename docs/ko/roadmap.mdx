@@ -386,8 +386,8 @@ flowchart LR
 - [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~
 - [x] ~~LLM-call resilience: output-truncation continuation + 529/504 retry with Retry-After (overload model fallback already shipped as `FallbackLLM`)~~
 - [x] ~~Budget-truncated tool results persist to workspace before cutting; full transcript snapshot before lossy compaction~~
-- [ ] ReAct에서 백그라운드 도구 실행 — 느린 도구는 플레이스홀더를 반환하고 완료 시 알림
-- [ ] 증분 DAG 재계획: 재계획 라운드 전체에서 완료된 단계 유지; 중간 DAG 재개를 위해 단계 상태 유지 {/* dev: dev/incremental-dag.md */}
+- [x] ~~Background tool execution in ReAct — whitelisted slow tools return a task id and notify on completion~~
+- [ ] Incremental DAG replan: 완료된 단계를 replan 라운드 전체에서 유지하고, mid-DAG 재개를 위해 단계 상태를 유지합니다 {/* dev: dev/incremental-dag.md */}
 
 #### 에코시스템 + 확장
 

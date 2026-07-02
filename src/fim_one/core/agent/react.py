@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import time
+import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -88,6 +89,32 @@ _CYCLE_WARNING_TEMPLATE = (
     "{count} times and received the same result. "
     "Please try a different approach or tool."
 )
+
+# Background tool execution: whitelisted slow tools (supports_background)
+# get an extra ``run_in_background`` boolean in their advertised schema.
+# When set, the tool runs as an asyncio task, the model immediately gets a
+# placeholder with a task id, and the result is injected later as a
+# <task_notification> user message (native mode only).
+_BACKGROUND_TOOLS_ENABLED = os.getenv(
+    "REACT_BACKGROUND_TOOLS_ENABLED", "true"
+).strip().lower() in ("1", "true", "yes")
+
+# Max seconds to wait for pending background tasks when the model wants to
+# finalize while tasks are still running.
+_BG_WAIT_TIMEOUT = float(os.getenv("REACT_BG_WAIT_TIMEOUT", "300"))
+
+_BG_PARAM = "run_in_background"
+
+_BG_PARAM_SCHEMA = {
+    "type": "boolean",
+    "description": (
+        "Set true to run this call in the background: you immediately get "
+        "a task id and can continue with other work; the result arrives "
+        "later as a <task_notification> message. Use for slow operations "
+        "(long computations, builds, batch jobs). Do not re-issue the same "
+        "call while its background task is pending."
+    ),
+}
 
 # Output-truncation continuation: when the assistant's final answer is cut
 # off by the provider's output token limit (finish_reason == "length"), a
@@ -581,14 +608,21 @@ class ReActAgent:
                     self._tools.register(request_tools_tool)
 
         if self._native_mode_active:
-            result = await self._run_native(
-                query,
-                on_iteration,
-                image_urls=image_urls,
-                interrupt_queue=interrupt_queue,
-                effective_tools=effective_tools,
-                on_thinking_delta=on_thinking_delta,
-            )
+            # Background tool tasks live here so they are always cancelled
+            # when the run ends — normally, early, or via exception.
+            background: dict[str, dict[str, Any]] = {}
+            try:
+                result = await self._run_native(
+                    query,
+                    on_iteration,
+                    image_urls=image_urls,
+                    interrupt_queue=interrupt_queue,
+                    effective_tools=effective_tools,
+                    on_thinking_delta=on_thinking_delta,
+                    background=background,
+                )
+            finally:
+                self._cancel_background(background)
         else:
             result = await self._run_json(
                 query,
@@ -1676,6 +1710,7 @@ class ReActAgent:
         interrupt_queue: Any | None = None,
         effective_tools: ToolRegistry | None = None,
         on_thinking_delta: Callable[[str], None] | None = None,
+        background: dict[str, dict[str, Any]] | None = None,
     ) -> AgentResult:
         """Execute the native function-calling loop.
 
@@ -1786,6 +1821,12 @@ class ReActAgent:
                     None,
                 )
 
+            # --- Background task notifications (non-blocking drain) ---
+            # Completed background tools surface as <task_notification>
+            # user messages so the model consumes them naturally.
+            if background:
+                messages.extend(self._drain_background_notifications(background))
+
             with profiler.phase("compact"):
                 messages = micro_compact(messages)
                 if self._context_guard is not None:
@@ -1856,6 +1897,7 @@ class ReActAgent:
                     steps,
                     on_iteration,
                     reasoning=assistant_msg.reasoning_content or "",
+                    background=background,
                 )
                 profiler.add("tool_exec", time.perf_counter() - _tool_start)
 
@@ -2040,6 +2082,29 @@ class ReActAgent:
                 # the completion checklist) must not get them re-prepended.
                 answer_parts = []
 
+            # --- Pending background tasks gate ---
+            # The model wants to finalize while background tools are still
+            # running.  Wait for them (bounded), inject their results, and
+            # loop once more so the answer can incorporate them.
+            if background and iteration < self._max_iterations:
+                logger.info(
+                    "Final answer deferred — %d background task(s) pending",
+                    len(background),
+                )
+                await asyncio.wait(
+                    {info["task"] for info in background.values()},
+                    timeout=_BG_WAIT_TIMEOUT,
+                    return_when=asyncio.ALL_COMPLETED,
+                )
+                notes = self._drain_background_notifications(background)
+                if background:
+                    # Still pending after the wait window — cancel with an
+                    # explicit timeout notification.
+                    notes.extend(self._cancel_background(background, notify=True))
+                messages.extend(notes)
+                profiler.emit(self._profiler_conversation_id())
+                continue
+
             if (
                 self._completion_check
                 and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
@@ -2184,6 +2249,7 @@ class ReActAgent:
         steps: list[StepResult],
         on_iteration: IterationCallback | None,
         reasoning: str = "",
+        background: dict[str, dict[str, Any]] | None = None,
     ) -> list[ChatMessage]:
         """Execute one or more native tool calls in parallel.
 
@@ -2193,6 +2259,10 @@ class ReActAgent:
             steps: The running list of step results (mutated in-place).
             on_iteration: Optional callback.
             reasoning: LLM reasoning/thinking content for this turn.
+            background: Registry of running background tool tasks.  When
+                provided and the model set ``run_in_background`` on a
+                whitelisted tool, the call is dispatched as an asyncio task
+                and a placeholder result is returned immediately.
 
         Returns:
             A list of ``ChatMessage`` objects with role ``"tool"`` to append
@@ -2203,6 +2273,9 @@ class ReActAgent:
             from fim_one.core.tool.base import ToolResult
 
             tool_args = dict(tc.arguments)
+            # The background flag is loop infrastructure, not a tool arg —
+            # strip it before hooks and execution see the arguments.
+            run_bg = bool(tool_args.pop(_BG_PARAM, False))
             action = Action(
                 type="tool_call",
                 reasoning="",
@@ -2246,6 +2319,35 @@ class ReActAgent:
                 msg = ChatMessage(
                     role="tool",
                     content=f"Error: {error_msg}",
+                    tool_call_id=tc.id,
+                )
+                return step, msg
+
+            # --- Background dispatch ---
+            if (
+                run_bg
+                and _BACKGROUND_TOOLS_ENABLED
+                and background is not None
+                and getattr(tool, "supports_background", False)
+            ):
+                bg_id = f"bg_{uuid.uuid4().hex[:8]}"
+                bg_task = asyncio.create_task(
+                    self._run_tool_in_background(tool, tc.name, dict(tool_args), tc.id),
+                )
+                background[bg_id] = {"task": bg_task, "tool": tc.name}
+                placeholder = (
+                    f"[Background task {bg_id} started for tool '{tc.name}'.] "
+                    "The result will arrive as a <task_notification> message "
+                    "when it completes. Continue with other work; do not "
+                    "re-issue this call while the task is pending."
+                )
+                logger.info(
+                    "Dispatched tool '%s' to background as %s", tc.name, bg_id,
+                )
+                step = StepResult(action=action, observation=placeholder)
+                msg = ChatMessage(
+                    role="tool",
+                    content=placeholder,
                     tool_call_id=tc.id,
                 )
                 return step, msg
@@ -2385,6 +2487,134 @@ class ReActAgent:
                 )
 
         return tool_messages
+
+    # ------------------------------------------------------------------
+    # Background tool execution
+    # ------------------------------------------------------------------
+
+    async def _run_tool_in_background(
+        self,
+        tool: Any,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        tool_call_id: str | None,
+    ) -> str:
+        """Run a tool as a background task, returning its text result.
+
+        Mirrors the foreground path's POST-hook and workspace-offload
+        handling; errors become an ``Error: ...`` string (data, not an
+        exception) so the notification is always deliverable.  PRE hooks
+        already ran before dispatch.
+        """
+        from fim_one.core.tool.base import ToolResult
+
+        try:
+            raw: str | ToolResult = await tool.run(**tool_args)
+            observation = raw.content if isinstance(raw, ToolResult) else raw
+
+            if self._hook_registry is not None:
+                post_ctx = HookContext(
+                    hook_point=HookPoint.POST_TOOL_USE,
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    tool_result=observation,
+                    agent_id=self._agent_id,
+                    user_id=self._user_id,
+                    metadata=self._build_hook_metadata(
+                        tool_name, tool_call_id=tool_call_id, tool_args=tool_args,
+                    ),
+                )
+                post_result = await self._hook_registry.run_post_tool(post_ctx)
+                if post_result.modified_result is not None:
+                    observation = post_result.modified_result
+
+            observation = observation or (
+                f"Tool '{tool_name}' completed successfully with no output."
+            )
+            if self._workspace is not None:
+                observation = self._workspace.maybe_offload(tool_name, observation)
+            return observation
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("Background tool '%s' raised an exception", tool_name)
+            return f"Error: {type(exc).__name__}: {exc}"
+
+    @staticmethod
+    def _drain_background_notifications(
+        background: dict[str, dict[str, Any]],
+    ) -> list[ChatMessage]:
+        """Collect finished background tasks as notification messages.
+
+        Non-blocking: pending tasks stay in *background*.  Notifications
+        are user-role messages (a fresh turn), never reusing the original
+        tool_call_id — that id was already answered by the placeholder.
+        """
+        notifications: list[ChatMessage] = []
+        for bg_id, info in list(background.items()):
+            task: asyncio.Task[str] = info["task"]
+            if not task.done():
+                continue
+            try:
+                output = task.result()
+            except asyncio.CancelledError:
+                output = "Error: task was cancelled."
+            except Exception as exc:  # pragma: no cover - defensive
+                output = f"Error: {type(exc).__name__}: {exc}"
+            notifications.append(
+                ChatMessage(
+                    role="user",
+                    content=(
+                        "<task_notification>\n"
+                        f"<task_id>{bg_id}</task_id>\n"
+                        f"<tool>{info['tool']}</tool>\n"
+                        "<status>completed</status>\n"
+                        f"<result>\n{output}\n</result>\n"
+                        "</task_notification>"
+                    ),
+                ),
+            )
+            del background[bg_id]
+        return notifications
+
+    @staticmethod
+    def _cancel_background(
+        background: dict[str, dict[str, Any]],
+        notify: bool = False,
+    ) -> list[ChatMessage]:
+        """Cancel all remaining background tasks.
+
+        Args:
+            background: The background task registry (cleared in place).
+            notify: When ``True``, return timeout notifications for the
+                cancelled tasks so the model learns they did not finish.
+
+        Returns:
+            Notification messages (empty unless *notify* is set).
+        """
+        notifications: list[ChatMessage] = []
+        for bg_id, info in background.items():
+            task: asyncio.Task[str] = info["task"]
+            if not task.done():
+                task.cancel()
+            if notify:
+                notifications.append(
+                    ChatMessage(
+                        role="user",
+                        content=(
+                            "<task_notification>\n"
+                            f"<task_id>{bg_id}</task_id>\n"
+                            f"<tool>{info['tool']}</tool>\n"
+                            "<status>timeout</status>\n"
+                            "<result>\nError: the background task did not "
+                            "finish within the wait window and was "
+                            "cancelled.\n</result>\n"
+                            "</task_notification>"
+                        ),
+                    ),
+                )
+        background.clear()
+        return notifications
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -2701,13 +2931,20 @@ class ReActAgent:
 
         payload: list[dict[str, Any]] = []
         for tool in tool_list:
+            parameters = tool.parameters_schema
+            # Advertise the background option on whitelisted slow tools.
+            if _BACKGROUND_TOOLS_ENABLED and getattr(tool, "supports_background", False):
+                parameters = json.loads(json.dumps(parameters))  # deep copy
+                parameters.setdefault("properties", {})[_BG_PARAM] = dict(
+                    _BG_PARAM_SCHEMA,
+                )
             payload.append(
                 {
                     "type": "function",
                     "function": {
                         "name": tool.name,
                         "description": tool.description,
-                        "parameters": tool.parameters_schema,
+                        "parameters": parameters,
                     },
                 }
             )

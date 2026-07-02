@@ -83,6 +83,18 @@ class BaseTool:
         """
         return False
 
+    @property
+    def supports_background(self) -> bool:
+        """Whether this tool may be dispatched as a background task.
+
+        Whitelist approach: defaults to False.  Override to True in
+        potentially slow tools (sandboxed code execution, long-running
+        external calls) so the ReAct loop can offer a ``run_in_background``
+        option — the model gets a task id immediately and a notification
+        with the result when the tool finishes.
+        """
+        return False
+
     def availability(self) -> tuple[bool, str | None]:
         """Return (is_available, reason_if_not).
 

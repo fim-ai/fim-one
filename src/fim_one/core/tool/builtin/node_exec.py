@@ -55,6 +55,11 @@ class NodeExecTool(BaseTool):
     def category(self) -> str:
         return "computation"
 
+    @property
+    def supports_background(self) -> bool:
+        # Sandboxed execution can run long — allow background dispatch.
+        return True
+
     def availability(self) -> tuple[bool, str | None]:
         # Docker backend pulls its own Node image — always available.
         if os.environ.get("CODE_EXEC_BACKEND", "local").lower() == "docker":
