@@ -137,6 +137,7 @@ class DAGPlanner:
         tool_names: list[str] | None = None,
         tools: list[dict[str, str]] | None = None,
         skill_descriptions: list[dict[str, str]] | None = None,
+        completed_steps: list[PlanStep] | None = None,
     ) -> ExecutionPlan:
         """Generate an execution plan for the given goal.
 
@@ -154,20 +155,29 @@ class DAGPlanner:
                 available skills (SOPs).  When provided, the planner can
                 suggest ``tool_hint="read_skill"`` for steps that match
                 a skill's domain.
+            completed_steps: Steps already completed in previous rounds
+                (or restored from a crash checkpoint).  They are carried
+                into the returned plan unchanged — the LLM plans ONLY the
+                remaining work, and new steps may depend on their ids.
+                Design: dev/incremental-dag.md.
 
         Returns:
-            An ``ExecutionPlan`` with validated DAG structure.
+            An ``ExecutionPlan`` with validated DAG structure.  When
+            *completed_steps* is given, ``plan.steps`` is the carryover
+            followed by the newly planned steps.
 
         Raises:
             ValueError: If the LLM produces an invalid DAG (cycles or
                 dangling dependency references), or unparseable content.
         """
+        carryover = completed_steps or []
         messages = self._build_messages(
             goal,
             context,
             tool_names,
             tools,
             skill_descriptions,
+            completed_steps=carryover,
         )
 
         call_result = await structured_llm_call(
@@ -179,6 +189,8 @@ class DAGPlanner:
         )
 
         steps: list[PlanStep] = call_result.value or []
+        if carryover:
+            steps = self._merge_carryover(carryover, steps)
         self._validate_dag(steps)
 
         total_usage: UsageSummary | None = None
@@ -207,6 +219,7 @@ class DAGPlanner:
         tool_names: list[str] | None = None,
         tools: list[dict[str, str]] | None = None,
         skill_descriptions: list[dict[str, str]] | None = None,
+        completed_steps: list[PlanStep] | None = None,
     ) -> list[ChatMessage]:
         """Construct the message list for the planning LLM call.
 
@@ -264,11 +277,66 @@ class DAGPlanner:
                 'skill, then analyse ...").'
             )
 
+        # Incremental replan: surface already-completed steps so the LLM
+        # plans only the remaining work (dev/incremental-dag.md).
+        if completed_steps:
+            done_lines = []
+            for done_step in completed_steps:
+                summary = (
+                    done_step.result.summary if done_step.result else ""
+                ) or "(no output)"
+                if len(summary) > 300:
+                    summary = summary[:297] + "..."
+                done_lines.append(f"- [{done_step.id}] {done_step.task} → DONE: {summary}")
+            user_content += (
+                "\n\nAlready-completed steps from previous rounds (their "
+                "results are available to new steps):\n"
+                + "\n".join(done_lines)
+                + "\n\nPlan ONLY the remaining work — do NOT re-plan or repeat "
+                "these completed steps.  New steps MAY list completed step ids "
+                'in their "dependencies" to receive those results as context.  '
+                "Use fresh ids that do not collide with the completed ids."
+            )
+
         if context:
             user_content += f"\n\nAdditional context:\n{context}"
 
         messages.append(ChatMessage(role="user", content=user_content))
         return messages
+
+    @staticmethod
+    def _merge_carryover(
+        carryover: list[PlanStep],
+        new_steps: list[PlanStep],
+    ) -> list[PlanStep]:
+        """Combine carried-over completed steps with newly planned ones.
+
+        New steps whose ids collide with a carried id are renamed
+        deterministically (``{id}_r2``, ``{id}_r3``, ...) and every
+        dependency reference among the new steps is rewritten to match.
+        References to carried ids stay untouched — depending on a
+        completed step is the whole point.
+        """
+        taken = {s.id for s in carryover}
+        rename: dict[str, str] = {}
+        for step in new_steps:
+            if step.id in taken:
+                suffix = 2
+                while f"{step.id}_r{suffix}" in taken:
+                    suffix += 1
+                new_id = f"{step.id}_r{suffix}"
+                logger.warning(
+                    "New step id '%s' collides with a completed step — renamed to '%s'",
+                    step.id,
+                    new_id,
+                )
+                rename[step.id] = new_id
+                step.id = new_id
+            taken.add(step.id)
+        if rename:
+            for step in new_steps:
+                step.dependencies = [rename.get(d, d) for d in step.dependencies]
+        return list(carryover) + new_steps
 
     @staticmethod
     def _dict_to_steps(data: dict[str, Any]) -> list[PlanStep] | None:

@@ -128,10 +128,21 @@ class DAGExecutor:
 
         semaphore = asyncio.Semaphore(self._max_concurrency)
         step_index = {step.id: step for step in plan.steps}
-        pending_ids = {step.id for step in plan.steps}
-        completed_ids: set[str] = set()
+        # Steps arriving already completed (incremental replan carryover or
+        # a crash-checkpoint restore) are seeded as satisfied dependencies
+        # and never re-executed (dev/incremental-dag.md).
+        pending_ids = {step.id for step in plan.steps if step.status != "completed"}
+        completed_ids: set[str] = {
+            step.id for step in plan.steps if step.status == "completed"
+        }
         failed_ids: set[str] = set()
         running_tasks: dict[asyncio.Task[None], str] = {}
+        if completed_ids:
+            logger.info(
+                "DAG execute: %d carried-over completed step(s) skipped: %s",
+                len(completed_ids),
+                sorted(completed_ids),
+            )
 
         try:
             while pending_ids or running_tasks:

@@ -60,7 +60,7 @@ export interface AnswerEvent {
 
 // DAG events
 export interface DagPhaseEvent {
-  name: "planning" | "executing" | "analyzing" | "replanning"
+  name: "planning" | "executing" | "analyzing" | "replanning" | "checkpoint_resume"
   status: "start" | "done"
   round?: number
   steps?: Array<{
@@ -68,7 +68,11 @@ export interface DagPhaseEvent {
     task: string
     deps: string[]
     tool_hint?: string
+    // "completed" marks steps carried over from a previous round or a
+    // crash checkpoint — they are not re-executed this round.
+    status?: string
   }>
+  carried_steps?: Array<{ id: string; task: string }>
   results?: Array<{
     id: string
     task: string

@@ -384,10 +384,11 @@ Durcissement différé — non bloquant ; à traiter uniquement si le scénario 
 #### Durcissement de la boucle d'agent (modèles Claude Code)
 
 - [x] ~~Tableau de planification : outil `update_plan` todo + réinjection de rappel de plan obsolète maintient les exécutions ReAct longues sur objectif et survit à la compaction~~
-- [x] ~~Résilience des appels LLM : continuation de troncature de sortie + nouvelle tentative 529/504 avec Retry-After (basculement de modèle de surcharge déjà livré en tant que `FallbackLLM`)~~
-- [x] ~~Les résultats d'outils tronqués par budget persistent dans l'espace de travail avant la coupure ; snapshot de transcription complète avant compaction avec perte~~
-- [x] ~~Exécution d'outils en arrière-plan dans ReAct — les outils lents sur liste blanche retournent un identifiant de tâche et notifient à la fin~~
-- [ ] Replanification DAG incrémentale : conserver les étapes complétées entre les cycles de replanification ; persister l'état des étapes pour la reprise en milieu de DAG {/* dev: dev/incremental-dag.md */}
+- [x] ~~Résilience des appels LLM : continuation de troncature de sortie + nouvelle tentative 529/504 avec Retry-After (secours de modèle de surcharge déjà livré en tant que `FallbackLLM`)~~
+- [x] ~~Les résultats d'outils tronqués par budget persistent dans l'espace de travail avant coupure ; snapshot de transcript complet avant compaction avec perte~~ 
+- [x] ~~Exécution d'outils en arrière-plan dans ReAct — les outils lents autorisés retournent un identifiant de tâche et notifient à la fin~~
+- [x] ~~Replanification DAG incrémentale : les étapes terminées sont conservées entre les cycles de replanification ; checkpoint au niveau des étapes reprend les exécutions interrompues en cas de nouvelle tentative~~ {/* dev: dev/incremental-dag.md */}
+- [ ] Reprise DAG en direct en milieu de flux (reconnexion SSE se rattache à un tour en cours) — reprise froide par checkpoint livrée via checkpoint {/* dev: dev/incremental-dag.md */}
 
 #### Écosystème + mise à l'échelle
 

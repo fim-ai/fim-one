@@ -99,7 +99,7 @@ Current registry (search `Clean up file-system resources`):
 
 | Module | Path | Method |
 |---|---|---|
-| conversations | `data/sandbox/{conv_id}/`, `uploads/conversations/{conv_id}/` | `shutil.rmtree` |
+| conversations | `data/sandbox/{conv_id}/`, `uploads/conversations/{conv_id}/`, `data/dag_checkpoints/{conv_id}.json` | `shutil.rmtree` / `unlink` |
 | knowledge_bases | `uploads/kb/{kb_id}/`, `data/vector_store/user_{user_id}/` | `shutil.rmtree` |
 | user uploads | `uploads/user_{user_id}/` | `shutil.rmtree` |
 | avatar | `uploads/avatars/{user_id}_*` | `glob` + `unlink` |

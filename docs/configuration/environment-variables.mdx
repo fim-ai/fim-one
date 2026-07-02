@@ -164,6 +164,8 @@ For OpenAI and Gemini, the provider handles token allocation internally based on
 | `REACT_MAX_CONTINUATIONS` | No | `3` | Maximum continuation rounds when the model's answer is cut off by the provider's output-token limit (`finish_reason=length`). Truncated segments are stitched into one seamless answer, both in the agent loop and in streamed synthesis |
 | `REACT_BACKGROUND_TOOLS_ENABLED` | No | `true` | Offer a `run_in_background` option on slow tools (sandboxed python/shell/node execution). The agent gets a task id immediately and continues working; the result arrives as a `<task_notification>` message when the tool finishes |
 | `REACT_BG_WAIT_TIMEOUT` | No | `300` | Maximum seconds to wait for still-running background tools when the agent wants to finalize its answer. Tasks not finished within the window are cancelled with an explicit timeout notification |
+| `DAG_CHECKPOINT_EVIDENCE_CHARS` | No | `4000` | Per-step evidence cap in the DAG crash-resume checkpoint file (`data/dag_checkpoints/`). Step summaries are stored in full |
+| `DAG_CHECKPOINT_MAX_AGE_HOURS` | No | `24` | DAG checkpoints older than this are ignored on load, so stale crash leftovers never resume into a fresh run |
 | `LLM_RATE_LIMIT_PER_USER` | No | `true` | Use per-user keyed rate-limit buckets instead of a single process-global bucket. Prevents one noisy user from starving all others on the same worker. The underlying rate is hardcoded at 60 requests/min and 100K tokens/min per bucket — this setting only controls whether the bucket is shared (global) or partitioned (per-user). Set to `false` to revert to the legacy global bucket (not recommended) |
 
 ### DAG Planner

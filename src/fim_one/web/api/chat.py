@@ -83,7 +83,9 @@ from fim_one.core.planner import (
     DAGPlanner,
     ExecutionPlan,
     PlanAnalyzer,
+    PlanStep,
 )
+from fim_one.core.planner.checkpoint import DAGCheckpoint
 from fim_one.core.security import is_stdio_allowed
 from fim_one.core.tool import ToolRegistry
 from fim_one.core.utils import (
@@ -4238,7 +4240,16 @@ async def dag_endpoint(
                 )
             )
 
+        # Step-level checkpoint: keyed by conversation + raw query hash so a
+        # retry of the same request after a mid-execution crash resumes the
+        # completed steps instead of redoing them (dev/incremental-dag.md).
+        _dag_checkpoint = DAGCheckpoint()
+
         def on_step_progress(step_id: str, event: str, data: dict[str, Any]) -> None:
+            # Persist step state on every completion so a crash loses at
+            # most the in-flight steps.
+            if event == "completed" and conversation_id and plan is not None:
+                _dag_checkpoint.save(conversation_id, q, plan, round_num)
             # Convert raw artifact dicts (path-based) to download URLs.
             if conversation_id and "artifacts" in data and data["artifacts"]:
                 data["artifacts"] = [
@@ -4285,6 +4296,31 @@ async def dag_endpoint(
             # Accumulate (plan, analysis) from every completed round so
             # the re-planner can see the full execution history.
             round_history: list[tuple[ExecutionPlan, AnalysisResult]] = []
+
+            # -- Incremental replan carryover ---------------------------
+            # Completed steps survive replan rounds (and crashes, via the
+            # checkpoint) instead of being re-planned and re-executed.
+            carryover_steps: list[PlanStep] = []
+            if conversation_id:
+                carryover_steps = _dag_checkpoint.load_completed_steps(
+                    conversation_id, q,
+                )
+                if carryover_steps:
+                    logger.info(
+                        "Resuming DAG from checkpoint: %d completed step(s) carried",
+                        len(carryover_steps),
+                    )
+                    yield _emit(
+                        sse_events,
+                        "phase",
+                        {
+                            "name": "checkpoint_resume",
+                            "status": "done",
+                            "carried_steps": [
+                                {"id": s.id, "task": s.task} for s in carryover_steps
+                            ],
+                        },
+                    )
 
             # -- Domain detection middleware — classify query domain for
             # planner guidance.  Called once before the planning loop.
@@ -4349,8 +4385,11 @@ async def dag_endpoint(
                     context=_domain_context,
                     tools=tool_descriptors,
                     skill_descriptions=_dag_skill_descs or None,
+                    completed_steps=carryover_steps or None,
                 )
                 plan.current_round = round_num
+                if conversation_id:
+                    _dag_checkpoint.save(conversation_id, q, plan, round_num)
                 yield _emit(
                     sse_events,
                     "phase",
@@ -4364,6 +4403,9 @@ async def dag_endpoint(
                                 "task": s.task,
                                 "deps": s.dependencies,
                                 "tool_hint": s.tool_hint,
+                                # "completed" marks carried-over steps the
+                                # frontend should render as already done.
+                                "status": s.status,
                             }
                             for s in plan.steps
                         ],
@@ -4573,6 +4615,15 @@ async def dag_endpoint(
 
                 # -- Record this round for future re-planning context ------
                 round_history.append((plan, analysis))
+
+                # -- Update carryover for the next round -------------------
+                # Everything that completed (including previously carried
+                # steps) survives the next replan instead of being redone.
+                carryover_steps = [
+                    s
+                    for s in plan.steps
+                    if s.status == "completed" and s.result is not None
+                ]
 
                 # -- Check if goal achieved or confident enough ------------
                 if analysis.achieved:
@@ -4861,6 +4912,11 @@ async def dag_endpoint(
                         conversation_id,
                         exc_info=True,
                     )
+
+            # Turn finished and persisted — the checkpoint has served its
+            # purpose; drop it so a later identical query starts fresh.
+            if conversation_id:
+                _dag_checkpoint.clear(conversation_id)
 
             # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
             yield _sse("done", dag_done_payload)

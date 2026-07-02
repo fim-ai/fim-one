@@ -162,7 +162,9 @@ export function useDagSteps(messages: SSEMessage[], isRunning: boolean): DagStep
             stepMap.set(s.id, {
               step_id: s.id,
               task: s.task,
-              status: "pending",
+              // Carried-over steps arrive already completed and never emit
+              // step_progress events — seed their final state directly.
+              status: s.status === "completed" ? "completed" : "pending",
               tools_used: [],
               iterations: [],
             })
