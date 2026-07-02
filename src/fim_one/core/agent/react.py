@@ -322,6 +322,10 @@ class ReActAgent:
         # Auto-register workspace tools when a workspace is provided.
         if workspace is not None:
             self._register_workspace_tools(workspace)
+            # Snapshot full history to the workspace before any lossy
+            # compaction so the original conversation stays recoverable.
+            if context_guard is not None:
+                context_guard.set_transcript_sink(workspace.save_transcript)
 
         # Plan tool — per-agent todo board the model maintains itself.
         # ``enable_plan_tool=None`` falls back to the env default; DAG step
@@ -1529,10 +1533,22 @@ class ReActAgent:
             estimated_tokens = len(obs_content) // 4
             if tool_result_tokens + estimated_tokens > _TOOL_RESULT_BUDGET:
                 max_chars = max(0, (_TOOL_RESULT_BUDGET - tool_result_tokens) * 4)
+                # Persist the full observation before cutting it (skip when
+                # it already carries a workspace pointer from maybe_offload).
+                saved_note = ""
+                if self._workspace is not None and "workspace://" not in obs_content:
+                    uri = self._workspace.save_tool_output(
+                        action.tool_name or "tool",
+                        obs_content,
+                    )
+                    saved_note = (
+                        f" Full output saved to {uri}; "
+                        "use read_workspace_file to access it."
+                    )
                 obs_content = (
                     obs_content[:max_chars]
                     + f"\n\n[Truncated: tool result exceeded aggregate budget "
-                    f"({tool_result_tokens}/{_TOOL_RESULT_BUDGET} tokens used)]"
+                    f"({tool_result_tokens}/{_TOOL_RESULT_BUDGET} tokens used).{saved_note}]"
                 )
                 estimated_tokens = len(obs_content) // 4
                 logger.warning(
@@ -1856,11 +1872,27 @@ class ReActAgent:
                             0,
                             (_TOOL_RESULT_BUDGET - tool_result_tokens) * 4,
                         )
+                        # Persist the full result before cutting it so the
+                        # data stays recoverable (skip when it already
+                        # carries a workspace pointer from maybe_offload).
+                        saved_note = ""
+                        if (
+                            self._workspace is not None
+                            and "workspace://" not in content_str
+                        ):
+                            uri = self._workspace.save_tool_output(
+                                tr_msg.name or "tool",
+                                content_str,
+                            )
+                            saved_note = (
+                                f" Full output saved to {uri}; "
+                                "use read_workspace_file to access it."
+                            )
                         truncated = (
                             content_str[:max_chars]
                             + f"\n\n[Truncated: tool result exceeded aggregate "
                             f"budget ({tool_result_tokens}/"
-                            f"{_TOOL_RESULT_BUDGET} tokens used)]"
+                            f"{_TOOL_RESULT_BUDGET} tokens used).{saved_note}]"
                         )
                         tr_msg.content = truncated
                         estimated_tokens = len(truncated) // 4

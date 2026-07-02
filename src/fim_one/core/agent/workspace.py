@@ -15,12 +15,14 @@ from __future__ import annotations
 __fim_license__ = "FIM-SAL-1.1"
 __fim_origin__ = "https://github.com/fim-ai/fim-one"
 
+import json
 import logging
 import os
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +135,53 @@ class AgentWorkspace:
             f"[Full output saved to {uri} ({len(output)} chars). "
             f"Use read_workspace_file to access specific sections.]"
         )
+
+    # ------------------------------------------------------------------
+    # Transcript snapshots
+    # ------------------------------------------------------------------
+
+    def save_transcript(self, messages: list[Any]) -> str:
+        """Snapshot the full conversation to a JSONL file before compaction.
+
+        LLM compaction replaces history with a lossy summary; this snapshot
+        keeps the original recoverable (the agent can ``read_workspace_file``
+        it back, and operators can inspect it).  Each line is one message
+        with role, content, and tool-call names.
+
+        Args:
+            messages: The message list about to be compacted.  Items are
+                duck-typed ``ChatMessage``-likes (role/content/tool_calls).
+
+        Returns:
+            A ``workspace://`` URI pointing to the snapshot file.
+        """
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        filename = f"transcript_{ts}_{uuid.uuid4().hex[:8]}.jsonl"
+        lines: list[str] = []
+        for msg in messages:
+            content = getattr(msg, "content", None)
+            record = {
+                "role": getattr(msg, "role", "unknown"),
+                "content": content if isinstance(content, str) else "[non-text content]",
+            }
+            reasoning = getattr(msg, "reasoning_content", None)
+            if reasoning:
+                record["reasoning"] = reasoning
+            tool_calls = getattr(msg, "tool_calls", None)
+            if tool_calls:
+                record["tool_calls"] = [
+                    getattr(tc, "name", "unknown") for tc in tool_calls
+                ]
+            lines.append(json.dumps(record, ensure_ascii=False))
+        filepath = self._dir / filename
+        with self._lock:
+            filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        logger.info(
+            "Saved pre-compaction transcript (%d messages) to %s",
+            len(messages),
+            filepath,
+        )
+        return f"workspace://{filename}"
 
     # ------------------------------------------------------------------
     # File access

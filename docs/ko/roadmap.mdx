@@ -381,13 +381,13 @@ flowchart LR
 - [ ] Gemini Context Cache Adapter (Anthropic 인라인 마커 대 별도 REST 캐시 수명 주기)
 - [ ] 에이전트당 `cache_ttl` (임시 5분 대 확장 1시간)
 
-#### 에이전트 루프 강화 (Claude 코드 패턴)
+#### Agent Loop Hardening (Claude Code patterns)
 
-- [x] ~~계획 보드: `update_plan` todo 도구 + 오래된 계획 알림 재주입으로 장시간 ReAct 실행을 목표에 유지하고 압축 후에도 유지~~
-- [x] ~~LLM 호출 복원력: 출력 잘림 계속 + 529/504 재시도 및 Retry-After (오버로드 모델 폴백은 이미 `FallbackLLM`으로 배포됨)~~
-- [ ] 대용량 도구 결과를 워크스페이스 파일에 유지; 헤드 잘림 대신 LLM 압축 전 전체 트랜스크립트 스냅샷
-- [ ] ReAct의 백그라운드 도구 실행 — 느린 도구는 플레이스홀더를 반환하고 완료 시 알림
-- [ ] 증분 DAG 재계획: 재계획 라운드 전체에서 완료된 단계 유지; DAG 중간 재개를 위한 단계 상태 유지 {/* dev: dev/incremental-dag.md */}
+- [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~
+- [x] ~~LLM-call resilience: output-truncation continuation + 529/504 retry with Retry-After (overload model fallback already shipped as `FallbackLLM`)~~
+- [x] ~~Budget-truncated tool results persist to workspace before cutting; full transcript snapshot before lossy compaction~~
+- [ ] ReAct에서 백그라운드 도구 실행 — 느린 도구는 플레이스홀더를 반환하고 완료 시 알림
+- [ ] 증분 DAG 재계획: 재계획 라운드 전체에서 완료된 단계 유지; 중간 DAG 재개를 위해 단계 상태 유지 {/* dev: dev/incremental-dag.md */}
 
 #### 에코시스템 + 확장
 

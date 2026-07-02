@@ -383,11 +383,11 @@ Durcissement différé — non bloquant ; à traiter uniquement si le scénario 
 
 #### Durcissement de la boucle d'agent (modèles Claude Code)
 
-- [x] ~~Tableau de planification : outil `update_plan` todo + réinjection de rappel de plan obsolète maintient les exécutions ReAct longues sur objectif et survit à la compaction~~
-- [x] ~~Résilience des appels LLM : continuation de troncature de sortie + nouvelle tentative 529/504 avec Retry-After (secours de modèle de basculement déjà livré en tant que `FallbackLLM`)~~
-- [ ] Les résultats d'outils volumineux persistent dans les fichiers d'espace de travail au lieu de troncature de tête ; snapshot de transcript complet avant compaction LLM
+- [x] ~~Tableau de plan : outil `update_plan` todo + réinjection de rappel de plan obsolète maintient les exécutions ReAct longues sur objectif et survit à la compaction~~
+- [x] ~~Résilience des appels LLM : continuation de troncature de sortie + nouvelle tentative 529/504 avec Retry-After (basculement de modèle de surcharge déjà livré en tant que `FallbackLLM`)~~
+- [x] ~~Les résultats d'outils tronqués par budget persistent dans l'espace de travail avant la coupure ; snapshot de transcript complet avant compaction avec perte~~
 - [ ] Exécution d'outils en arrière-plan dans ReAct — les outils lents retournent un espace réservé et notifient à la fin
-- [ ] Replanification DAG incrémentale : conserver les étapes complétées entre les cycles de replanification ; persister l'état des étapes pour la reprise mid-DAG {/* dev: dev/incremental-dag.md */}
+- [ ] Replan DAG incrémental : conserver les étapes terminées entre les tours de replan ; persister l'état des étapes pour la reprise au milieu du DAG {/* dev: dev/incremental-dag.md */}
 
 #### Écosystème + mise à l'échelle
 

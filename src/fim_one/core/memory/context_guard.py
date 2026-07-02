@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from fim_one.core.model.types import ChatMessage
 
@@ -155,6 +156,12 @@ class ContextGuard:
         self.max_message_chars = max_message_chars
         self._usage_tracker = usage_tracker
         self._custom_compact_prompt = custom_compact_prompt
+        #: Optional sink invoked with the full message list right before a
+        #: lossy compaction (LLM summary or smart_truncate) replaces it.
+        #: Wired by ``ReActAgent`` to ``AgentWorkspace.save_transcript`` so
+        #: the pre-compaction history stays recoverable.  Sink errors are
+        #: swallowed — a snapshot failure must never break the loop.
+        self._transcript_sink: Callable[[list[ChatMessage]], Any] | None = None
         #: Most recent structured compact summary.  Populated after a
         #: successful ``react_iteration`` compact so subsequent rounds
         #: can merge rather than re-summarise from scratch.  See I.15
@@ -200,6 +207,13 @@ class ContextGuard:
             total, effective_budget, hint,
         )
 
+        # Snapshot the full history before it is lossily replaced.
+        if self._transcript_sink is not None:
+            try:
+                self._transcript_sink(messages)
+            except Exception:
+                logger.exception("Transcript sink failed — continuing compact")
+
         # 3. Try LLM compact with hint-specific prompt.
         if self._compact_llm is not None:
             return await self._llm_compact_with_hint(
@@ -208,6 +222,13 @@ class ContextGuard:
 
         # 4. Fallback: smart_truncate.
         return CompactUtils.smart_truncate(messages, effective_budget)
+
+    def set_transcript_sink(
+        self,
+        sink: Callable[[list[ChatMessage]], Any] | None,
+    ) -> None:
+        """Install (or clear) the pre-compaction transcript sink."""
+        self._transcript_sink = sink
 
     def _truncate_oversized(
         self, messages: list[ChatMessage],
