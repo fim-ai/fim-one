@@ -380,6 +380,14 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [ ] Gemini Context Cache Adapter (separate REST cache lifecycle vs Anthropic inline marker)
 - [ ] Per-agent `cache_ttl` (ephemeral 5min vs extended 1h)
 
+#### Agent Loop Hardening (Claude Code patterns)
+
+- [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~
+- [ ] LLM-call resilience: output-truncation continuation, 429/529 backoff with jitter, consecutive-overload model fallback
+- [ ] Large tool results persist to workspace files instead of head-truncation; full transcript snapshot before LLM compaction
+- [ ] Background tool execution in ReAct — slow tools return a placeholder and notify on completion
+- [ ] Incremental DAG replan: keep completed steps across replan rounds; persist step state for mid-DAG resume {/* dev: dev/incremental-dag.md */}
+
 #### Ecosystem + scaling
 
 - [ ] **Scheduled jobs + Event-triggered Agents** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Async sub-agent use case for Hub mode

@@ -384,6 +384,7 @@ class DAGExecutor:
                 agent_id=self._agent._agent_id,
                 org_id=self._agent._org_id,
                 user_id=self._agent._user_id,
+                enable_plan_tool=False,
             )
 
         # No registry → fall back to the constructor-provided agent.
@@ -429,6 +430,7 @@ class DAGExecutor:
             agent_id=self._agent._agent_id,
             org_id=self._agent._org_id,
             user_id=self._agent._user_id,
+            enable_plan_tool=False,
         )
 
     def _build_model_aware_guard(self, llm: BaseLLM) -> ContextGuard | None:

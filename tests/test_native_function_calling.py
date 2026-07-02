@@ -259,8 +259,9 @@ class TestNativeImmediateFinalAnswer:
         await agent.run("test")
 
         assert llm.received_tools is not None
-        assert len(llm.received_tools) == 1
-        assert llm.received_tools[0]["function"]["name"] == "echo"
+        # update_plan is auto-registered by default alongside user tools.
+        names = {t["function"]["name"] for t in llm.received_tools}
+        assert names == {"echo", "update_plan"}
 
     async def test_tool_choice_auto(self) -> None:
         """Verify tools are passed to the LLM (stream_chat uses auto by default)."""

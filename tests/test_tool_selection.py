@@ -346,7 +346,9 @@ class TestToolSelection:
         # First event should be the selecting_tools phase
         assert len(events) >= 1
         assert events[0][1] == "__selecting_tools__"
-        assert events[0][2]["total"] == TOOL_SELECTION_THRESHOLD + 1
+        # +1 for the auto-registered update_plan tool (request_tools is
+        # registered only after selection, so it is not counted here).
+        assert events[0][2]["total"] == TOOL_SELECTION_THRESHOLD + 2
 
 
 # ======================================================================

@@ -47,6 +47,7 @@ from .guardrail import (
     OutputGuardrailTripwireTriggered,
 )
 from .hooks import HookContext, HookPoint, HookRegistry
+from .plan_tool import PlanState, UpdatePlanTool, make_plan_reminder
 from .system_prompt import JSON_MODE_SYSTEM_PROMPT, NATIVE_MODE_SYSTEM_PROMPT
 from .turn_profiler import TurnProfiler, make_profiler
 from .types import Action, AgentResult, StepResult
@@ -86,6 +87,26 @@ _CYCLE_WARNING_TEMPLATE = (
     "\u26a0 You have called `{tool_name}` with identical arguments "
     "{count} times and received the same result. "
     "Please try a different approach or tool."
+)
+
+# Plan tool: when enabled, the agent gets an ``update_plan`` todo tool and
+# the loop injects a stale-plan reminder after this many consecutive
+# tool-call rounds without a plan update (Claude Code TodoWrite pattern).
+_PLAN_TOOL_ENABLED = os.getenv("REACT_PLAN_TOOL_ENABLED", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+_PLAN_REMINDER_INTERVAL = int(os.getenv("REACT_PLAN_REMINDER_INTERVAL", "3"))
+
+_PLAN_GUIDANCE = (
+    "Planning:\n"
+    "- For multi-step tasks (3+ distinct steps), FIRST call update_plan to "
+    "write down your plan as a todo list, then update statuses as you "
+    "complete each step (exactly one item in_progress at a time).\n"
+    "- Do not finish while plan items are still pending or in_progress — "
+    "either complete them or update the plan to reflect why they are no "
+    "longer needed."
 )
 
 # Completion checklist: one-time verification prompt injected before accepting
@@ -232,6 +253,10 @@ class ReActAgent:
             Unlike ``extra_instructions`` (which bundles Skills, KB hints,
             and preferences), this is injected into the **synthesis** step
             so the final answer honours the agent's identity.
+        enable_plan_tool: Whether to register the ``update_plan`` todo
+            tool and inject stale-plan reminders during the loop.  ``None``
+            (default) falls back to the ``REACT_PLAN_TOOL_ENABLED`` env
+            setting (default on).  DAG step agents pass ``False``.
     """
 
     def __init__(
@@ -255,6 +280,7 @@ class ReActAgent:
         agent_id: str | None = None,
         org_id: str | None = None,
         user_id: str | None = None,
+        enable_plan_tool: bool | None = None,
     ) -> None:
         self._llm = llm
         self._fast_llm = fast_llm
@@ -284,6 +310,20 @@ class ReActAgent:
         # Auto-register workspace tools when a workspace is provided.
         if workspace is not None:
             self._register_workspace_tools(workspace)
+
+        # Plan tool — per-agent todo board the model maintains itself.
+        # ``enable_plan_tool=None`` falls back to the env default; DAG step
+        # agents pass ``False`` (single focused sub-task, a plan board is
+        # noise there).  Chat-only agents (empty registry) skip it too:
+        # with no tools there is no multi-step tool work to track, and
+        # registering it would turn every "tools=None" call into a
+        # tool-carrying call.
+        plan_enabled = _PLAN_TOOL_ENABLED if enable_plan_tool is None else enable_plan_tool
+        if plan_enabled and len(self._tools) == 0:
+            plan_enabled = False
+        self._plan_state: PlanState | None = PlanState() if plan_enabled else None
+        if self._plan_state is not None and "update_plan" not in self._tools:
+            self._tools.register(UpdatePlanTool(self._plan_state))
 
     # ------------------------------------------------------------------
     # Public read-only properties
@@ -490,6 +530,11 @@ class ReActAgent:
         # we raise ``InputGuardrailTripwireTriggered`` and the SSE layer
         # surfaces a structured ``guardrail_tripwired`` event.
         await self._run_input_guardrails(query)
+
+        # Fresh plan board per run — plans must not leak across runs of a
+        # reused agent instance.
+        if self._plan_state is not None:
+            self._plan_state.reset()
 
         # --- Two-phase tool selection ---
         effective_tools = self._tools
@@ -1026,7 +1071,7 @@ class ReActAgent:
             filtered = self._tools.filter_by_names(keyword_result)
             if len(filtered) > 0:
                 # Apply the same pinning logic as the LLM path.
-                pin_names = {"read_skill", *self._pinned_tools}
+                pin_names = {"read_skill", "update_plan", *self._pinned_tools}
                 for pin_name in pin_names:
                     if pin_name not in [t.name for t in filtered.list_tools()]:
                         pin_tool = self._tools.get(pin_name)
@@ -1113,7 +1158,7 @@ class ReActAgent:
             # has skills configured (indicated by the tool being registered).
             # Caller-specified pinned_tools (e.g. web_search for domain
             # tasks) are also added here.
-            pin_names = {"read_skill", *self._pinned_tools}
+            pin_names = {"read_skill", "update_plan", *self._pinned_tools}
             for pin_name in pin_names:
                 if pin_name not in [t.name for t in filtered.list_tools()]:
                     pin_tool = self._tools.get(pin_name)
@@ -1194,6 +1239,7 @@ class ReActAgent:
         completion_check_done = False  # One-shot flag for completion checklist
         tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
         context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
+        rounds_since_plan = 0  # Tool rounds since the last update_plan call
 
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("ReAct iteration %d", iteration)
@@ -1473,6 +1519,27 @@ class ReActAgent:
             if cycle_warning is not None:
                 messages.append(ChatMessage(role="user", content=cycle_warning))
 
+            # --- Plan staleness reminder ---
+            # Re-inject the current plan when it has gone several tool
+            # rounds without an update (see native loop for rationale).
+            if self._plan_state is not None:
+                if action.tool_name == "update_plan":
+                    rounds_since_plan = 0
+                elif self._plan_state.has_open_items:
+                    rounds_since_plan += 1
+                    if rounds_since_plan >= _PLAN_REMINDER_INTERVAL:
+                        messages.append(
+                            ChatMessage(
+                                role="user",
+                                content=make_plan_reminder(self._plan_state),
+                            ),
+                        )
+                        logger.info(
+                            "Injected plan reminder after %d stale tool rounds",
+                            rounds_since_plan,
+                        )
+                        rounds_since_plan = 0
+
             # --- Dynamic tool reload (request_tools) ---
             # When request_tools successfully loads new tools into the
             # effective registry, rebuild the system prompt so the LLM
@@ -1613,6 +1680,7 @@ class ReActAgent:
         completion_check_done = False  # One-shot flag for completion checklist
         tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
         context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
+        rounds_since_plan = 0  # Tool rounds since the last update_plan call
 
         # Build OpenAI-format tool definitions using the effective (possibly
         # filtered) tool set for context efficiency.
@@ -1780,6 +1848,28 @@ class ReActAgent:
                         messages.append(
                             ChatMessage(role="user", content=cycle_warning),
                         )
+
+                # --- Plan staleness reminder ---
+                # Re-inject the current plan when it has gone several tool
+                # rounds without an update.  The reminder embeds the full
+                # checklist so plan state survives micro-compaction.
+                if self._plan_state is not None:
+                    if any(tc.name == "update_plan" for tc in assistant_msg.tool_calls):
+                        rounds_since_plan = 0
+                    elif self._plan_state.has_open_items:
+                        rounds_since_plan += 1
+                        if rounds_since_plan >= _PLAN_REMINDER_INTERVAL:
+                            messages.append(
+                                ChatMessage(
+                                    role="user",
+                                    content=make_plan_reminder(self._plan_state),
+                                ),
+                            )
+                            logger.info(
+                                "Injected plan reminder after %d stale tool rounds",
+                                rounds_since_plan,
+                            )
+                            rounds_since_plan = 0
 
                 # --- Dynamic tool reload (request_tools) ---
                 # If request_tools was among the tool calls and succeeded,
@@ -2347,6 +2437,8 @@ class ReActAgent:
         prefix = _SYSTEM_PROMPT_TEMPLATE.format(
             tool_descriptions=tool_descriptions,
         )
+        if self._plan_state is not None:
+            prefix += "\n\n" + _PLAN_GUIDANCE
         if self._extra_instructions:
             prefix += f"\n\nAdditional instructions:\n{self._extra_instructions}"
         prefix = self._inject_handoff_context(prefix)
@@ -2360,6 +2452,8 @@ class ReActAgent:
             return self._system_prompt_override, ""
 
         prefix = _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE
+        if self._plan_state is not None:
+            prefix += "\n\n" + _PLAN_GUIDANCE
         if self._extra_instructions:
             prefix += f"\n\nAdditional instructions:\n{self._extra_instructions}"
         prefix = self._inject_handoff_context(prefix)

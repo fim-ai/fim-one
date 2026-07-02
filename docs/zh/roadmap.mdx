@@ -383,6 +383,14 @@ flowchart LR
 - [ ] Gemini 上下文缓存适配器（独立 REST 缓存生命周期 vs Anthropic 内联标记）
 - [ ] 每个智能体的 `cache_ttl`（临时 5 分钟 vs 扩展 1 小时）
 
+#### 智能体循环强化（Claude Code 模式）
+
+- [x] ~~计划板：`update_plan` todo 工具 + 陈旧计划重新注入提醒使长 ReAct 运行保持目标并在压缩后存活~~
+- [ ] LLM 调用弹性：输出截断续接、429/529 退避带抖动、连续过载模型回退
+- [ ] 大型工具结果持久化到工作区文件而非头部截断；LLM 压缩前完整记录快照
+- [ ] ReAct 中的后台工具执行——慢速工具返回占位符并在完成时通知
+- [ ] 增量 DAG 重新规划：跨重新规划轮次保持已完成步骤；持久化步骤状态以实现 DAG 中点恢复 {/* dev: dev/incremental-dag.md */}
+
 #### 生态系统 + 扩展
 
 - [ ] **定时任务 + 事件触发智能体** — `scheduled_jobs` + `job_runs` + APScheduler；cron + webhook-inbound。Hub 模式下的异步子智能体用例

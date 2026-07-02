@@ -4418,6 +4418,9 @@ async def dag_endpoint(
                     agent_id=(agent_cfg or {}).get("agent_id"),
                     org_id=(agent_cfg or {}).get("org_id"),
                     user_id=current_user_id,
+                    # DAG steps are single focused sub-tasks — a plan board
+                    # is noise there; planning lives at the DAG level.
+                    enable_plan_tool=False,
                 )
                 from fim_one.db import create_session as _create_registry_session
 
