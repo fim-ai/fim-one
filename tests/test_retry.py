@@ -13,6 +13,7 @@ from fim_one.core.model.retry import (
     RetryConfig,
     _compute_delay,
     is_retryable_error,
+    retry_after_seconds,
     retry_async_call,
     retry_async_iterator,
 )
@@ -80,6 +81,59 @@ class TestIsRetryableError:
 
     def test_generic_runtime_error_not_retryable(self) -> None:
         assert is_retryable_error(RuntimeError("nope")) is False
+
+    def test_gateway_timeout_504_is_retryable(self) -> None:
+        assert is_retryable_error(_make_status_error(504)) is True
+
+    def test_overloaded_529_is_retryable(self) -> None:
+        assert is_retryable_error(_make_status_error(529)) is True
+
+
+# ======================================================================
+# retry_after_seconds
+# ======================================================================
+
+
+class TestRetryAfterSeconds:
+    """Verify Retry-After header extraction from exceptions."""
+
+    def _err_with_headers(self, headers: dict[str, str]) -> Exception:
+        err = Exception("HTTP 429")
+        err.headers = headers  # type: ignore[attr-defined]
+        return err
+
+    def test_direct_headers_attribute(self) -> None:
+        assert retry_after_seconds(self._err_with_headers({"retry-after": "7"})) == 7.0
+
+    def test_capitalized_header(self) -> None:
+        assert retry_after_seconds(self._err_with_headers({"Retry-After": "2.5"})) == 2.5
+
+    def test_response_headers_attribute(self) -> None:
+        err = Exception("HTTP 429")
+        response = type("Resp", (), {"headers": {"retry-after": "30"}})()
+        err.response = response  # type: ignore[attr-defined]
+        assert retry_after_seconds(err) == 30.0
+
+    def test_no_headers_returns_none(self) -> None:
+        assert retry_after_seconds(Exception("boom")) is None
+
+    def test_unparseable_value_returns_none(self) -> None:
+        # HTTP-date form is deliberately unsupported.
+        err = self._err_with_headers({"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"})
+        assert retry_after_seconds(err) is None
+
+    def test_negative_value_returns_none(self) -> None:
+        assert retry_after_seconds(self._err_with_headers({"retry-after": "-5"})) is None
+
+    def test_compute_delay_honours_retry_after(self) -> None:
+        config = RetryConfig(base_delay=1.0, max_delay=60.0)
+        err = self._err_with_headers({"retry-after": "42"})
+        assert _compute_delay(0, config, error=err) == 42.0
+
+    def test_compute_delay_caps_retry_after_at_max(self) -> None:
+        config = RetryConfig(base_delay=1.0, max_delay=10.0)
+        err = self._err_with_headers({"retry-after": "300"})
+        assert _compute_delay(0, config, error=err) == 10.0
 
 
 # ======================================================================

@@ -108,7 +108,8 @@ def is_retryable_error(error: BaseException) -> bool:
 
     Retryable conditions:
     - HTTP 429 (rate limited)
-    - HTTP 500, 502, 503 (server errors)
+    - HTTP 500, 502, 503, 504 (server errors)
+    - HTTP 529 (Anthropic "overloaded")
     - Connection / timeout errors
 
     Non-retryable:
@@ -124,7 +125,7 @@ def is_retryable_error(error: BaseException) -> bool:
     if status_code is not None:
         if status_code == 429:
             return True
-        if status_code in (500, 502, 503):
+        if status_code in (500, 502, 503, 504, 529):
             return True
         # All other HTTP errors (400, 401, 403, 404, etc.) are not retryable.
         return False
@@ -151,19 +152,66 @@ def is_retryable_error(error: BaseException) -> bool:
     return False
 
 
-def _compute_delay(attempt: int, config: RetryConfig) -> float:
+def retry_after_seconds(exc: BaseException) -> float | None:
+    """Extract a ``Retry-After`` header value (in seconds) from an exception.
+
+    Providers signal the safe retry time on 429/529 responses; honouring it
+    beats a blind exponential guess.  Checks the header locations used by
+    the openai SDK (``exc.response.headers``) and litellm (``exc.headers``).
+    Only the delta-seconds form is parsed — the HTTP-date form is rare on
+    LLM APIs and not worth a date parser here.
+
+    Args:
+        exc: The exception to inspect.
+
+    Returns:
+        The number of seconds to wait, or ``None`` when no usable header
+        is present.
+    """
+    headers: Any = getattr(exc, "headers", None)
+    if headers is None:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except (AttributeError, TypeError):
+        return None
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return seconds if seconds >= 0 else None
+
+
+def _compute_delay(
+    attempt: int,
+    config: RetryConfig,
+    error: BaseException | None = None,
+) -> float:
     """Compute the backoff delay for a given attempt number.
 
     Uses exponential backoff with full jitter:
         delay = random(0, min(max_delay, base_delay * 2^attempt))
 
+    When *error* carries a ``Retry-After`` header, that value is used
+    instead (capped at ``max_delay``).
+
     Args:
         attempt: Zero-based attempt number (0 = first retry).
         config: Retry configuration.
+        error: The exception that triggered the retry, if any.
 
     Returns:
         The delay in seconds.
     """
+    if error is not None:
+        hinted = retry_after_seconds(error)
+        if hinted is not None:
+            return min(hinted, config.max_delay)
     exp_delay = min(config.max_delay, config.base_delay * (2 ** attempt))
     return random.uniform(0, exp_delay)  # noqa: S311
 
@@ -196,7 +244,7 @@ async def retry_async_call(
             last_error = exc
             if not is_retryable_error(exc) or attempt >= config.max_retries:
                 raise
-            delay = _compute_delay(attempt, config)
+            delay = _compute_delay(attempt, config, error=exc)
             logger.warning(
                 "LLM call failed (attempt %d/%d): %s. Retrying in %.2fs ...",
                 attempt + 1,
@@ -246,7 +294,7 @@ async def retry_async_iterator(
             last_error = exc
             if not is_retryable_error(exc) or attempt >= config.max_retries:
                 raise
-            delay = _compute_delay(attempt, config)
+            delay = _compute_delay(attempt, config, error=exc)
             logger.warning(
                 "LLM stream failed (attempt %d/%d): %s. Retrying in %.2fs ...",
                 attempt + 1,

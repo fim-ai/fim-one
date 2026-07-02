@@ -89,6 +89,18 @@ _CYCLE_WARNING_TEMPLATE = (
     "Please try a different approach or tool."
 )
 
+# Output-truncation continuation: when the assistant's final answer is cut
+# off by the provider's output token limit (finish_reason == "length"), a
+# continuation prompt is injected and the loop resumes, stitching segments
+# together.  Bounded to avoid infinite continuation on degenerate outputs.
+_MAX_CONTINUATIONS = int(os.getenv("REACT_MAX_CONTINUATIONS", "3"))
+
+_CONTINUATION_PROMPT = (
+    "[Output truncated] Your previous message hit the output token limit. "
+    "Resume EXACTLY where you stopped — no apology, no recap, no repetition. "
+    "Pick up mid-sentence if necessary."
+)
+
 # Plan tool: when enabled, the agent gets an ``update_plan`` todo tool and
 # the loop injects a stale-plan reminder after this many consecutive
 # tool-call rounds without a plan update (Claude Code TodoWrite pattern).
@@ -826,9 +838,33 @@ class ReActAgent:
                 ChatMessage(role="user", content=user_content),
             ]
 
-        async for chunk in self._llm.stream_chat(messages):
-            if chunk.delta_content:
-                yield chunk.delta_content
+        # Stream the synthesis, continuing past output-token truncation:
+        # when the stream ends with finish_reason == "length", replay the
+        # partial output as an assistant turn, inject the continuation
+        # prompt, and keep streaming — the frontend sees one seamless answer.
+        for continuation in range(_MAX_CONTINUATIONS + 1):
+            finish_reason: str | None = None
+            parts: list[str] = []
+            async for chunk in self._llm.stream_chat(messages):
+                if chunk.delta_content:
+                    parts.append(chunk.delta_content)
+                    yield chunk.delta_content
+                if chunk.finish_reason:
+                    finish_reason = chunk.finish_reason
+            if finish_reason != "length" or not parts:
+                return
+            messages.append(
+                ChatMessage(role="assistant", content="".join(parts)),
+            )
+            messages.append(
+                ChatMessage(role="user", content=_CONTINUATION_PROMPT),
+            )
+            logger.warning(
+                "Synthesis output truncated (finish_reason=length), "
+                "requesting continuation %d/%d",
+                continuation + 1,
+                _MAX_CONTINUATIONS,
+            )
 
     # ------------------------------------------------------------------
     # Tool selection phase
@@ -1681,6 +1717,8 @@ class ReActAgent:
         tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
         context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
         rounds_since_plan = 0  # Tool rounds since the last update_plan call
+        continuation_count = 0  # Output-truncation continuations issued
+        answer_parts: list[str] = []  # Truncated answer segments to stitch
 
         # Build OpenAI-format tool definitions using the effective (possibly
         # filtered) tool set for context efficiency.
@@ -1940,6 +1978,36 @@ class ReActAgent:
             # and what gets persisted to memory — it must never carry raw
             # protocol noise.
             native_answer_text = strip_tool_protocol(native_answer_text)
+
+            # --- Output-truncation continuation ---
+            # The answer was cut off by the provider's output token limit.
+            # Keep the truncated segment, ask the model to resume mid-thought,
+            # and stitch the segments when the answer finally completes.
+            if (
+                result.finish_reason == "length"
+                and native_answer_text
+                and continuation_count < _MAX_CONTINUATIONS
+                and iteration < self._max_iterations
+            ):
+                continuation_count += 1
+                answer_parts.append(native_answer_text)
+                messages.append(
+                    ChatMessage(role="user", content=_CONTINUATION_PROMPT),
+                )
+                logger.warning(
+                    "Assistant output truncated (finish_reason=length), "
+                    "requesting continuation %d/%d",
+                    continuation_count,
+                    _MAX_CONTINUATIONS,
+                )
+                profiler.emit(self._profiler_conversation_id())
+                continue
+            if answer_parts:
+                native_answer_text = "".join(answer_parts) + native_answer_text
+                # Segments are consumed — a later final answer (e.g. after
+                # the completion checklist) must not get them re-prepended.
+                answer_parts = []
+
             if (
                 self._completion_check
                 and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
@@ -2032,6 +2100,7 @@ class ReActAgent:
         final_usage: dict[str, int] = {}
         first_token_recorded = False
         thinking_signature: str | None = None
+        final_finish_reason: str | None = None
 
         stream = self._tool_llm.stream_chat(
             messages,
@@ -2061,6 +2130,8 @@ class ReActAgent:
                 final_tool_calls = chunk.tool_calls
             if chunk.usage:
                 final_usage = chunk.usage
+            if chunk.finish_reason:
+                final_finish_reason = chunk.finish_reason
 
         return LLMResult(
             message=ChatMessage(
@@ -2071,6 +2142,7 @@ class ReActAgent:
                 signature=thinking_signature,
             ),
             usage=final_usage,
+            finish_reason=final_finish_reason,
         )
 
     async def _execute_native_tool_calls(

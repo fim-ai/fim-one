@@ -512,7 +512,11 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._rate_limiter is not None and usage.get("total_tokens"):
             await self._rate_limiter.report_usage(usage["total_tokens"])
 
-        return LLMResult(message=assistant_msg, usage=usage)
+        return LLMResult(
+            message=assistant_msg,
+            usage=usage,
+            finish_reason=getattr(choice, "finish_reason", None),
+        )
 
     async def stream_chat(
         self,

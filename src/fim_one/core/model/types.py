@@ -169,3 +169,7 @@ class LLMResult:
 
     message: ChatMessage
     usage: dict[str, int] = field(default_factory=dict)
+    # Provider finish reason ("stop", "length", "tool_calls", ...).
+    # "length" means the output hit the max-token limit and is truncated —
+    # callers may issue a continuation request.
+    finish_reason: str | None = None

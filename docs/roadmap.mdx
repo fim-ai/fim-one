@@ -383,7 +383,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 #### Agent Loop Hardening (Claude Code patterns)
 
 - [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~
-- [ ] LLM-call resilience: output-truncation continuation, 429/529 backoff with jitter, consecutive-overload model fallback
+- [x] ~~LLM-call resilience: output-truncation continuation + 529/504 retry with Retry-After (overload model fallback already shipped as `FallbackLLM`)~~
 - [ ] Large tool results persist to workspace files instead of head-truncation; full transcript snapshot before LLM compaction
 - [ ] Background tool execution in ReAct — slow tools return a placeholder and notify on completion
 - [ ] Incremental DAG replan: keep completed steps across replan rounds; persist step state for mid-DAG resume {/* dev: dev/incremental-dag.md */}
