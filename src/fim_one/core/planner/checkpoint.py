@@ -40,6 +40,26 @@ def _goal_hash(goal: str) -> str:
     return hashlib.sha256(goal.encode("utf-8")).hexdigest()[:16]
 
 
+def _cap_evidence(evidence: str) -> str:
+    """Cap evidence to the checkpoint budget, keeping head AND tail.
+
+    A plain head-only cut silently drops trailing data — and conclusions,
+    checksums or final rows tend to live at the END of tool output.  Keep
+    two thirds of the budget from the head and the rest from the tail,
+    with an explicit omission marker in between.
+    """
+    if len(evidence) <= _CHECKPOINT_EVIDENCE_CHARS:
+        return evidence
+    head = _CHECKPOINT_EVIDENCE_CHARS * 2 // 3
+    tail = _CHECKPOINT_EVIDENCE_CHARS - head
+    omitted = len(evidence) - head - tail
+    return (
+        evidence[:head]
+        + f"\n...[checkpoint: {omitted} chars omitted]...\n"
+        + evidence[-tail:]
+    )
+
+
 class DAGCheckpoint:
     """Save/load/clear per-conversation DAG execution checkpoints."""
 
@@ -77,7 +97,7 @@ class DAGCheckpoint:
                 if s.result is not None:
                     record["summary"] = s.result.summary
                     if s.result.evidence:
-                        record["evidence"] = s.result.evidence[:_CHECKPOINT_EVIDENCE_CHARS]
+                        record["evidence"] = _cap_evidence(s.result.evidence)
                 steps.append(record)
             payload = {
                 "goal_hash": _goal_hash(goal),

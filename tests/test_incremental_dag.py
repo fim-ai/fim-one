@@ -208,3 +208,34 @@ class TestDAGCheckpoint:
     def test_missing_checkpoint_returns_empty(self, tmp_path) -> None:
         cp = DAGCheckpoint(base_dir=str(tmp_path))
         assert cp.load_completed_steps("nope", "goal") == []
+
+    def test_long_evidence_keeps_head_and_tail(self, tmp_path) -> None:
+        """Evidence over the cap must preserve BOTH ends of the output.
+
+        Conclusions/checksums tend to live at the END of tool output; a
+        head-only cut silently loses them across crash-resume.
+        """
+        step = _completed_step("s1", "big output", "summary")
+        assert step.result is not None
+        filler = "x" * 6000
+        step.result.evidence = f"HEAD-MARKER {filler} TAIL-MARKER"
+        plan = ExecutionPlan(goal="g", steps=[step])
+
+        cp = DAGCheckpoint(base_dir=str(tmp_path))
+        cp.save("conv1", "my goal", plan, round_num=1)
+        restored = cp.load_completed_steps("conv1", "my goal")
+
+        assert len(restored) == 1
+        evidence = restored[0].result.evidence  # type: ignore[union-attr]
+        assert evidence is not None
+        assert "HEAD-MARKER" in evidence
+        assert "TAIL-MARKER" in evidence
+        assert "chars omitted" in evidence
+        # Stays within budget plus a small marker allowance.
+        assert len(evidence) < 4200
+
+    def test_short_evidence_unchanged(self, tmp_path) -> None:
+        cp = DAGCheckpoint(base_dir=str(tmp_path))
+        cp.save("conv1", "my goal", self._plan(), round_num=1)
+        restored = cp.load_completed_steps("conv1", "my goal")
+        assert restored[0].result.evidence == "evidence for s1"  # type: ignore[union-attr]
