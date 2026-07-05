@@ -150,9 +150,11 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
     uploads_base = _uploads_base()
     uploads_conversations = uploads_base / "conversations"
     dag_checkpoints_dir = _REPO_ROOT / "data" / "dag_checkpoints"
+    workspaces_dir = _REPO_ROOT / "data" / "workspaces"
     for conv_id in conv_ids:
         shutil.rmtree(_CONVERSATIONS_SANDBOX_DIR / conv_id, ignore_errors=True)
         shutil.rmtree(uploads_conversations / conv_id, ignore_errors=True)
+        shutil.rmtree(workspaces_dir / conv_id, ignore_errors=True)
         (dag_checkpoints_dir / f"{conv_id}.json").unlink(missing_ok=True)
 
     kb_ids = (

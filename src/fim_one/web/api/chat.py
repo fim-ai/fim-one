@@ -64,6 +64,7 @@ from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
+from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
     InputGuardrailResult,
     InputGuardrailTripwireTriggered,
@@ -3330,6 +3331,13 @@ async def react_endpoint(
                 agent_id=(agent_cfg or {}).get("agent_id"),
                 org_id=(agent_cfg or {}).get("org_id"),
                 user_id=current_user_id,
+                # Per-conversation workspace: enables large-output offload,
+                # budget-truncation rescue (workspace:// pointer) and the
+                # pre-compaction transcript snapshot.  Without it those
+                # recovery paths silently degrade to permanent data loss.
+                workspace=(
+                    AgentWorkspace(conversation_id) if conversation_id else None
+                ),
             )
 
             # Only send images as vision content when model supports it
@@ -4463,6 +4471,11 @@ async def dag_endpoint(
                     # DAG steps are single focused sub-tasks — a plan board
                     # is noise there; planning lives at the DAG level.
                     enable_plan_tool=False,
+                    # Same per-conversation workspace as the ReAct path so
+                    # step tool outputs get offload/rescue instead of loss.
+                    workspace=(
+                        AgentWorkspace(conversation_id) if conversation_id else None
+                    ),
                 )
                 from fim_one.db import create_session as _create_registry_session
 

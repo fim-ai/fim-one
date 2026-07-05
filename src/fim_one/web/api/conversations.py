@@ -32,6 +32,8 @@ router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _CONVERSATIONS_DIR = _PROJECT_ROOT.parent / "data" / "sandbox"
+_WORKSPACES_DIR = _PROJECT_ROOT.parent / "data" / "workspaces"
+_DAG_CHECKPOINTS_DIR = _PROJECT_ROOT.parent / "data" / "dag_checkpoints"
 _uploads_base = Path(os.environ.get("UPLOADS_DIR", "uploads"))
 _UPLOADS_CONVERSATIONS_DIR = (
     _uploads_base if _uploads_base.is_absolute() else _PROJECT_ROOT / _uploads_base
@@ -195,6 +197,13 @@ async def batch_delete_conversations(
         if uploads_dir.exists():
             await asyncio.to_thread(shutil.rmtree, uploads_dir, True)
             _logger.info("Removed uploads dir for conversation %s", conv.id)
+        workspace_dir = _WORKSPACES_DIR / conv.id
+        if workspace_dir.exists():
+            await asyncio.to_thread(shutil.rmtree, workspace_dir, True)
+            _logger.info("Removed workspace dir for conversation %s", conv.id)
+        await asyncio.to_thread(
+            (_DAG_CHECKPOINTS_DIR / f"{conv.id}.json").unlink, missing_ok=True
+        )
         count += 1
     await db.commit()
     return ApiResponse(data={"deleted": count})
@@ -291,5 +300,15 @@ async def delete_conversation(
     if uploads_dir.exists():
         await asyncio.to_thread(shutil.rmtree, uploads_dir, True)
         _logger.info("Removed uploads dir for conversation %s", conversation_id)
+
+    # Clean up the agent workspace (offloaded tool outputs, transcripts)
+    # and any leftover DAG checkpoint for this conversation.
+    workspace_dir = _WORKSPACES_DIR / conversation_id
+    if workspace_dir.exists():
+        await asyncio.to_thread(shutil.rmtree, workspace_dir, True)
+        _logger.info("Removed workspace dir for conversation %s", conversation_id)
+    await asyncio.to_thread(
+        (_DAG_CHECKPOINTS_DIR / f"{conversation_id}.json").unlink, missing_ok=True
+    )
 
     return ApiResponse(data={"deleted": conversation_id})
