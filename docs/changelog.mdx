@@ -39,6 +39,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Agent no longer generates a spurious image when asked to restyle an HTML deliverable, and never claims a file was created without actually writing it to the workspace.** Image generation is now explicitly scoped to raster pictures, and file deliverables must be written via a tool call — pasting content in chat no longer passes as "generating a file".
+- **Generated HTML pages now default to a warm Claude-inspired palette instead of the generic purple-gradient look.** When you don't specify a style, the agent uses a warm minimal baseline; your own style always wins when specified.
 - **Long tool-heavy conversations no longer break when history is compacted.** Context compaction could cut the kept window between a tool call and its results, producing a message sequence the LLM provider rejects outright (HTTP 400) — exactly on the long runs that need compaction most. The compactor now keeps each tool call together with its results on the kept side.
 - **Background tool results now show up in the step stream and in DAG evidence.** A tool run in the background used to deliver its real output only inside the agent's internal notification message — the UI's step timeline and the DAG answer-verification evidence saw nothing but the dispatch placeholder. The drained result is now emitted as a normal tool completion event under the real tool name.
 - **A rare planner output with duplicate step ids no longer fails the whole DAG turn.** Duplicate ids used to be misdiagnosed as a "circular dependency" error; they are now renamed deterministically and the plan proceeds.

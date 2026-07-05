@@ -101,6 +101,50 @@ EXIT_CODE_1 = PromptSection(
     ),
 )
 
+DELIVERABLE_FILES = PromptSection(
+    name="deliverable_files",
+    content=(
+        "- DELIVERABLES ARE FILES: When the outcome of the task is a file the "
+        "user will keep or download (an HTML page, report, document, script, "
+        "dataset), you MUST actually create or update that file in the "
+        "workspace via a tool call (file_ops write, or code execution writing "
+        "to disk). Pasting the content in chat does NOT create a file — never "
+        "claim a file was generated or updated unless a tool call actually "
+        "wrote it. When the user asks to modify a previously delivered file, "
+        "write the updated version back to the same filename so a fresh "
+        "artifact is produced."
+    ),
+)
+
+IMAGE_TOOL_SCOPE = PromptSection(
+    name="image_tool_scope",
+    content=(
+        "- IMAGE GENERATION SCOPE: generate_image produces raster pictures "
+        "(photos, illustrations, artwork) ONLY. NEVER use it to design, "
+        "restyle, or mock up HTML pages, UI, documents, slides, or any "
+        "code-based deliverable — write or edit the actual file instead. A "
+        "request to change the style, theme, or colors of an HTML/code "
+        "deliverable means editing that file, not generating an image."
+    ),
+)
+
+HTML_STYLE_BASELINE = PromptSection(
+    name="html_style_baseline",
+    content=(
+        "- HTML STYLE BASELINE: When generating a styled HTML page and the "
+        "user has not specified a visual style, use this warm minimal "
+        "baseline: page background #FAF9F5; cards/surfaces #FFFFFF with 1px "
+        "#E8E6DC borders and 12px radius; primary text #141413; secondary "
+        "text #6E6B64; accent #D97757 (terracotta) for highlights, links and "
+        "key numbers; muted support colors #7D9B76 (positive) and #C2410C "
+        "(alert); subtle shadows only; generous whitespace; system font "
+        "stack. NEVER use the generic AI-purple gradient look (e.g. "
+        "linear-gradient from #667eea to #764ba2, or any violet/purple "
+        "gradient background) unless the user explicitly asks for it. If the "
+        "user specifies a style, the user's style always wins."
+    ),
+)
+
 # Communication-tone rule borrowed in spirit (not text) from how strong
 # assistants own mistakes: acknowledge plainly, correct in place, no grovel.
 ACCOUNTABILITY = PromptSection(
@@ -118,6 +162,9 @@ ACCOUNTABILITY = PromptSection(
 # in the same order.  ACCOUNTABILITY is the final shared bullet.
 _SHARED_TRAILING = (
     FILE_INTEGRITY,
+    DELIVERABLE_FILES,
+    IMAGE_TOOL_SCOPE,
+    HTML_STYLE_BASELINE,
     DIAGNOSE_WHY,
     SAME_ARGS,
     EXIT_CODE_1,
@@ -299,10 +346,13 @@ NATIVE_MODE_SYSTEM_PROMPT = _text(IDENTITY) + "\n\n" + _NATIVE_GUIDELINES + "\n"
 
 __all__ = [
     "ACCOUNTABILITY",
+    "DELIVERABLE_FILES",
     "DIAGNOSE_WHY",
     "EXIT_CODE_1",
     "FILE_INTEGRITY",
+    "HTML_STYLE_BASELINE",
     "IDENTITY",
+    "IMAGE_TOOL_SCOPE",
     "JSON_MODE_SYSTEM_PROMPT",
     "LANGUAGE",
     "NATIVE_MODE_SYSTEM_PROMPT",

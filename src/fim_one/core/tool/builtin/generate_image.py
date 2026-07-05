@@ -44,7 +44,10 @@ class GenerateImageTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Generate an image from a text description. "
+            "Generate an image from a text description. Use ONLY for raster "
+            "pictures (photos, illustrations, artwork). Do NOT use it to "
+            "design, restyle, or mock up HTML pages, UI, documents, or any "
+            "code-based deliverable — write or edit the actual file instead. "
             "The image file is attached below automatically — do NOT mention "
             "any download link or URL in your reply. Just briefly describe "
             "what was generated. "
