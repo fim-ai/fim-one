@@ -126,6 +126,18 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+[[tool.mypy.overrides]]
+# fim_one resolves as an untyped installed package when mypy is invoked on
+# evals/ alone (src layout without py.typed), so evals imports carry
+# ignore[import-untyped] and the harness subclasses an Any-typed tool.  When
+# a src/ file shares the mypy command line, fim_one DOES resolve and those
+# ignores become unused — warn_unused_ignores stays off so the evals files
+# type-check cleanly in both regimes (the pre-commit hook checks whatever
+# happens to be staged together).
+module = "evals.*"
+warn_unused_ignores = false
+disallow_subclassing_any = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -45,8 +45,10 @@ class TestSharedSpine:
     def test_shared_sections_present_in_both_modes(self) -> None:
         rendered_json = JSON_MODE_SYSTEM_PROMPT.format(tool_descriptions="x")
         for section in _SHARED_SECTIONS:
-            assert section.content in rendered_json, f"JSON missing {section.name}"
-            assert section.content in NATIVE_MODE_SYSTEM_PROMPT, (
+            content = section.content
+            assert isinstance(content, str)  # all shared sections are static
+            assert content in rendered_json, f"JSON missing {section.name}"
+            assert content in NATIVE_MODE_SYSTEM_PROMPT, (
                 f"NATIVE missing {section.name}"
             )
 
