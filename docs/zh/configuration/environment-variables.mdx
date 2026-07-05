@@ -386,25 +386,26 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `DATABASE_URL` | 否 | `sqlite+aiosqlite:///./data/fim_one.db` | 数据库连接字符串。**SQLite**（零配置）：`sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（生产环境）：`postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Compose 自动配置 PostgreSQL。 |
-| `JWT_SECRET_KEY` | 否 | `CHANGE_ME` | JWT 令牌签名的密钥。占位符值 `CHANGE_ME`（或任何旧版默认值）会在首次启动时触发自动生成安全的 256 位随机密钥，该密钥会写回到 `.env`。在生产环境中明确设置以保持令牌在重启和副本间的有效性。 |
-| `CORS_ORIGINS` | 否 | — | 逗号分隔的额外允许 CORS 源列表，超出默认 localhost 条目。当前端在非 localhost 域上运行时需要（例如 `https://app.example.com`）。 |
+| `DATABASE_URL` | 否 | `sqlite+aiosqlite:///./data/fim_one.db` | 数据库连接字符串。**SQLite**（零配置）：`sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（生产环境）：`postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Compose自动配置PostgreSQL。 |
+| `JWT_SECRET_KEY` | 否 | `CHANGE_ME` | JWT令牌签名的密钥。占位符值`CHANGE_ME`（或任何旧版默认值）会在首次启动时触发自动生成安全的256位随机密钥，并写回`.env`。在生产环境中显式设置以保持令牌在重启和副本间的有效性。 |
+| `FIM_BCRYPT_COST` | 否 | `12` | bcrypt密码哈希的工作因子，范围限制在4-31。默认值12在现代CPU上每次哈希耗时约200ms；在弱硬件上降低该值，在安全加固的部署中提高该值。 |
+| `CORS_ORIGINS` | 否 | — | 逗号分隔的额外允许CORS源列表，超出默认localhost条目。当前端运行在非localhost域名上时必需（例如`https://app.example.com`）。 |
 | `UPLOADS_DIR` | 否 | `./uploads` | 上传文件的目录 |
-| `MAX_UPLOAD_SIZE_MB` | 否 | `50` | 最大文件上传大小（以兆字节为单位，后端强制执行） |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | 否 | `50` | 前端 UI 中显示的最大文件上传大小。**构建时变量** — 必须与 `MAX_UPLOAD_SIZE_MB` 匹配。 |
-| `MCP_SERVERS` | 否 | — | MCP 服务器配置的 JSON 数组（需要 `uv sync --extra mcp`） |
-| `ALLOW_STDIO_MCP` | 否 | `false` | 允许 stdio MCP 服务器。仅对可信的本地部署设置为 `true` |
-| `ALLOWED_STDIO_COMMANDS` | 否 | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 服务器允许的基础命令的逗号分隔列表。仅在 `ALLOW_STDIO_MCP=true` 时有效 |
+| `MAX_UPLOAD_SIZE_MB` | 否 | `50` | 最大文件上传大小（单位：MB，后端强制执行） |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | 否 | `50` | 前端UI中显示的最大文件上传大小。**构建时变量**——必须与`MAX_UPLOAD_SIZE_MB`匹配。 |
+| `MCP_SERVERS` | 否 | — | MCP服务器配置的JSON数组（需要`uv sync --extra mcp`） |
+| `ALLOW_STDIO_MCP` | 否 | `false` | 允许stdio MCP服务器。仅在可信的本地部署中设置为`true` |
+| `ALLOWED_STDIO_COMMANDS` | 否 | `npx,uvx,node,python,python3,deno,bun` | stdio MCP服务器允许的基础命令的逗号分隔列表。仅在`ALLOW_STDIO_MCP=true`时生效 |
 | `LOG_LEVEL` | 否 | `INFO` | 日志级别：`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | 否 | — | Redis 连接 URL，用于跨工作进程中断中继。**当 `WORKERS>1` 时必需** — 没有它，中途中断/注入请求可能会命中不同的工作进程并无声地失败。由 Docker Compose 自动配置。 |
-| `WORKERS` | 否 | `1` | Uvicorn 工作进程数。`1` 是安全的，不需要外部服务。对于生产多工作进程，使用 PostgreSQL（SQLite 是单写入器）。SQLite 适用于轻负载的本地开发。身份验证、OAuth 和文件操作完全支持多工作进程（基于 JWT）。Docker Compose 自动配置 PostgreSQL 和 Redis。 |
+| `REDIS_URL` | 否 | — | Redis连接URL，用于跨工作进程中断中继。**当`WORKERS>1`时必需**——没有它，中途中断/注入请求可能会命中不同的工作进程并无声地失败。由Docker Compose自动配置。 |
+| `WORKERS` | 否 | `1` | Uvicorn工作进程数。`1`是安全的，不需要外部服务。对于生产环境多工作进程，使用PostgreSQL（SQLite是单写入器）。SQLite在轻负载下适合本地开发。身份验证、OAuth和文件操作完全支持多工作进程（基于JWT）。Docker Compose自动配置PostgreSQL和Redis。 |
 
 <Warning>
 **多工作进程检查清单**（`WORKERS>1`）：
-- **停止（中止流）** — 始终有效，无需额外配置（信号在同一 TCP 连接上传输）。
-- **注入（中途跟进）** — **需要 `REDIS_URL`**。没有 Redis，注入请求可能会落在没有正在运行的执行知识的不同工作进程上，导致无声失败。
-- **生产环境**：使用 PostgreSQL（`DATABASE_URL`）。SQLite 的单写入器锁在并发写入下可能导致争用。
-- **本地开发**：SQLite + 多工作进程对于轻度使用是可以的；如果使用注入功能，只需添加 `REDIS_URL`。
+- **停止（中止流式传输）**——总是有效的，无需额外配置（信号在同一TCP连接上传输）。
+- **注入（中途后续操作）**——**需要`REDIS_URL`**。没有Redis，注入请求可能会落在不同的工作进程上，该进程对运行中的执行一无所知，导致无声地失败。
+- **生产环境**：使用PostgreSQL（`DATABASE_URL`）。SQLite的单写入器锁在并发写入下可能导致争用。
+- **本地开发**：SQLite+多工作进程在轻度使用下是可以的；如果使用注入功能，只需添加`REDIS_URL`。
 </Warning>
 
 ## 工作流运行保留

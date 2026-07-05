@@ -614,7 +614,7 @@ async def _resolve_user(
         from fim_one.web.auth import _authenticate_api_key
 
         async with create_session() as session:
-            user = await _authenticate_api_key(token, session)
+            user, _scopes = await _authenticate_api_key(token, session)
             return (
                 user.id,
                 user.system_instructions,

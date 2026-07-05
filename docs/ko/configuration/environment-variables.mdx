@@ -389,24 +389,25 @@ Reranker는 검색된 문서를 다시 점수 매겨 관련성을 개선합니�
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | 데이터베이스 연결 문자열. **SQLite** (설정 불필요): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (프로덕션): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose는 PostgreSQL을 자동으로 설정합니다. |
-| `JWT_SECRET_KEY` | No | `CHANGE_ME` | JWT 토큰 서명용 비밀 키. 플레이스홀더 값 `CHANGE_ME` (또는 기타 레거시 기본값)는 첫 시작 시 보안 256비트 난수 키를 자동 생성하고 `.env`에 기록합니다. 프로덕션에서는 재시작 및 복제본 간에 토큰이 유효하게 유지되도록 명시적으로 설정하세요. |
-| `CORS_ORIGINS` | No | — | localhost 항목 이외의 추가 허용 CORS 원본의 쉼표 구분 목록. 프론트엔드가 비localhost 도메인에서 실행될 때 필수입니다 (예: `https://app.example.com`). |
-| `UPLOADS_DIR` | No | `./uploads` | 업로드된 파일의 디렉토리 |
-| `MAX_UPLOAD_SIZE_MB` | No | `50` | 최대 파일 업로드 크기(메가바이트, 백엔드 강제) |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | 프론트엔드 UI에 표시되는 최대 파일 업로드 크기. **빌드 시간 변수** — `MAX_UPLOAD_SIZE_MB`와 일치해야 합니다. |
-| `MCP_SERVERS` | No | — | MCP 서버 구성의 JSON 배열 (`uv sync --extra mcp` 필요) |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | JWT 토큰 서명용 비밀 키. 플레이스홀더 값 `CHANGE_ME` (또는 기타 레거시 기본값)는 첫 시작 시 안전한 256비트 난수 키를 자동 생성하고 `.env`에 기록합니다. 프로덕션에서는 명시적으로 설정하여 재시작 및 복제본 간에 토큰이 유효하게 유지되도록 하세요. |
+| `FIM_BCRYPT_COST` | No | `12` | 비밀번호 해싱을 위한 bcrypt 작업 계수(4-31로 제한됨). 기본값 12는 최신 CPU에서 해시당 약 200ms 소요됩니다. 약한 하드웨어에서는 낮추고, 보안 강화 배포에서는 높이세요. |
+| `CORS_ORIGINS` | No | — | 기본 localhost 항목 외에 허용되는 추가 CORS 원본의 쉼표 구분 목록. 프론트엔드가 비localhost 도메인에서 실행될 때 필수입니다(예: `https://app.example.com`). |
+| `UPLOADS_DIR` | No | `./uploads` | 업로드된 파일을 위한 디렉토리 |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | 최대 파일 업로드 크기(메가바이트 단위, 백엔드 적용) |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | 프론트엔드 UI에 표시되는 최대 파일 업로드 크기. **빌드 타임 변수** — `MAX_UPLOAD_SIZE_MB`와 일치해야 합니다. |
+| `MCP_SERVERS` | No | — | MCP 서버 설정의 JSON 배열(`uv sync --extra mcp` 필요) |
 | `ALLOW_STDIO_MCP` | No | `false` | stdio MCP 서버 허용. 신뢰할 수 있는 로컬 배포에서만 `true`로 설정하세요 |
-| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 서버에 허용되는 기본 명령의 쉼표 구분 목록. `ALLOW_STDIO_MCP=true`일 때만 유효합니다 |
-| `LOG_LEVEL` | No | `INFO` | 로깅 수준: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | No | — | 워커 간 인터럽트 릴레이용 Redis 연결 URL. **`WORKERS>1`일 때 필수** — 없으면 스트림 중 인터럽트/주입 요청이 다른 워커에 도달하여 자동으로 실패할 수 있습니다. Docker Compose에서 자동으로 구성됩니다. |
-| `WORKERS` | No | `1` | Uvicorn 워커 프로세스. `1`은 안전하며 외부 서비스가 필요하지 않습니다. 프로덕션 다중 워커의 경우 PostgreSQL을 사용하세요 (SQLite는 단일 쓰기). SQLite는 가벼운 로드 하에서 로컬 개발에 적합합니다. 인증, OAuth 및 파일 작업은 완전히 다중 워커 안전입니다 (JWT 기반). Docker Compose는 PostgreSQL과 Redis를 자동으로 구성합니다. |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 서버에 허용되는 기본 명령어의 쉼표 구분 목록. `ALLOW_STDIO_MCP=true`일 때만 적용됩니다 |
+| `LOG_LEVEL` | No | `INFO` | 로깅 레벨: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | No | — | 워커 간 인터럽트 릴레이를 위한 Redis 연결 URL. **`WORKERS>1`일 때 필수** — 없으면 스트림 중 인터럽트/주입 요청이 다른 워커에 도달하여 자동으로 실패할 수 있습니다. Docker Compose에서 자동 설정됩니다. |
+| `WORKERS` | No | `1` | Uvicorn 워커 프로세스. `1`은 안전하며 외부 서비스가 필요 없습니다. 프로덕션 멀티워커의 경우 PostgreSQL을 사용하세요(SQLite는 단일 쓰기). SQLite는 가벼운 로드 하에서 로컬 개발에 적합합니다. 인증, OAuth, 파일 작업은 완전히 멀티워커 안전합니다(JWT 기반). Docker Compose는 PostgreSQL과 Redis를 자동으로 설정합니다. |
 
 <Warning>
-**다중 워커 체크리스트** (`WORKERS>1`):
-- **중지 (스트림 중단)** — 항상 작동하며 추가 구성이 필요하지 않습니다 (신호는 동일한 TCP 연결을 통해 전달됨).
-- **주입 (스트림 중 후속)** — **`REDIS_URL` 필수**. Redis 없으면 주입 요청이 실행 중인 실행에 대한 지식이 없는 다른 워커에 도달하여 자동으로 실패할 수 있습니다.
-- **프로덕션**: PostgreSQL (`DATABASE_URL`) 사용. SQLite의 단일 쓰기 잠금은 동시 쓰기 시 경합을 유발할 수 있습니다.
-- **로컬 개발**: SQLite + 다중 워커는 가벼운 사용에 적합합니다. 주입 기능을 사용하는 경우 `REDIS_URL`을 추가하세요.
+**멀티워커 체크리스트** (`WORKERS>1`):
+- **중지(스트림 중단)** — 항상 작동하며, 추가 설정이 필요 없습니다(신호는 동일한 TCP 연결을 통해 이동).
+- **주입(스트림 중 후속)** — **`REDIS_URL` 필수**. Redis 없으면 주입 요청이 실행 중인 실행에 대한 지식이 없는 다른 워커에 도달하여 자동으로 실패합니다.
+- **프로덕션**: PostgreSQL(`DATABASE_URL`) 사용. SQLite의 단일 쓰기 잠금은 동시 쓰기 시 경합을 유발할 수 있습니다.
+- **로컬 개발**: SQLite + 멀티워커는 가벼운 사용에 적합합니다. 주입 기능을 사용하면 `REDIS_URL`을 추가하세요.
 </Warning>
 
 ## 워크플로우 실행 보관

@@ -378,28 +378,29 @@ Enregistre automatiquement l'outil intégré `email_send` lorsque `SMTP_HOST`, `
 
 ---
 
-## Plateforme
+## Platform
 
-| Variable | Requis | Par défaut | Description |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | Non | `sqlite+aiosqlite:///./data/fim_one.db` | Chaîne de connexion à la base de données. **SQLite** (zéro configuration) : `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (production) : `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose configure automatiquement PostgreSQL. |
-| `JWT_SECRET_KEY` | Non | `CHANGE_ME` | Clé secrète pour la signature des jetons JWT. La valeur d'espace réservé `CHANGE_ME` (ou tout autre défaut hérité) déclenche la génération automatique d'une clé aléatoire sécurisée de 256 bits au premier démarrage, qui est écrite dans `.env`. Définissez explicitement en production pour maintenir la validité des jetons lors des redémarrages et des répliques. |
-| `CORS_ORIGINS` | Non | — | Liste séparée par des virgules des origines CORS supplémentaires autorisées au-delà des entrées localhost par défaut. Requis lorsque le frontend s'exécute sur un domaine non-localhost (par exemple `https://app.example.com`). |
-| `UPLOADS_DIR` | Non | `./uploads` | Répertoire pour les fichiers téléchargés |
-| `MAX_UPLOAD_SIZE_MB` | Non | `50` | Taille maximale de téléchargement de fichier en mégaoctets (application backend) |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | Non | `50` | Taille maximale de téléchargement de fichier affichée dans l'interface utilisateur frontend. **Variable au moment de la compilation** — doit correspondre à `MAX_UPLOAD_SIZE_MB`. |
-| `MCP_SERVERS` | Non | — | Tableau JSON des configurations de serveur MCP (nécessite `uv sync --extra mcp`) |
-| `ALLOW_STDIO_MCP` | Non | `false` | Autoriser les serveurs MCP stdio. Définissez `true` uniquement pour les déploiements locaux de confiance |
-| `ALLOWED_STDIO_COMMANDS` | Non | `npx,uvx,node,python,python3,deno,bun` | Liste séparée par des virgules des commandes de base autorisées pour les serveurs MCP stdio. Effectif uniquement lorsque `ALLOW_STDIO_MCP=true` |
-| `LOG_LEVEL` | Non | `INFO` | Niveau de journalisation : `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | Non | — | URL de connexion Redis pour le relais d'interruption entre workers. **Requis lorsque `WORKERS>1`** — sans cela, les demandes d'interruption/injection en milieu de flux peuvent atteindre un worker différent et échouer silencieusement. Configuré automatiquement par Docker Compose. |
-| `WORKERS` | Non | `1` | Processus workers Uvicorn. `1` est sûr et ne nécessite aucun service externe. Pour la production multi-worker, utilisez PostgreSQL (SQLite est à écrivain unique). SQLite fonctionne pour le développement local sous charge légère. L'authentification, OAuth et les opérations sur fichiers sont entièrement sûrs pour multi-worker (basés sur JWT). Docker Compose configure automatiquement PostgreSQL et Redis. |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Chaîne de connexion à la base de données. **SQLite** (zéro configuration) : `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (production) : `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose configure automatiquement PostgreSQL. |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | Clé secrète pour la signature des jetons JWT. La valeur par défaut `CHANGE_ME` (ou tout autre défaut hérité) déclenche la génération automatique d'une clé aléatoire sécurisée de 256 bits au premier démarrage, qui est écrite dans `.env`. Définissez explicitement en production pour maintenir la validité des jetons lors des redémarrages et des répliques. |
+| `FIM_BCRYPT_COST` | No | `12` | Facteur de travail bcrypt pour le hachage des mots de passe, limité à 4-31. La valeur par défaut 12 coûte environ 200ms par hachage sur les processeurs modernes ; réduisez-la sur du matériel faible, augmentez-la pour les déploiements renforcés en sécurité. |
+| `CORS_ORIGINS` | No | — | Liste séparée par des virgules des origines CORS supplémentaires autorisées au-delà des entrées localhost par défaut. Requis lorsque le frontend s'exécute sur un domaine non-localhost (par ex. `https://app.example.com`). |
+| `UPLOADS_DIR` | No | `./uploads` | Répertoire pour les fichiers téléchargés |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | Taille maximale de téléchargement de fichier en mégaoctets (application backend) |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Taille maximale de téléchargement affichée dans l'interface utilisateur frontend. **Variable de temps de construction** — doit correspondre à `MAX_UPLOAD_SIZE_MB`. |
+| `MCP_SERVERS` | No | — | Tableau JSON des configurations de serveur MCP (nécessite `uv sync --extra mcp`) |
+| `ALLOW_STDIO_MCP` | No | `false` | Autoriser les serveurs MCP stdio. Définissez `true` uniquement pour les déploiements locaux de confiance |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | Liste séparée par des virgules des commandes de base autorisées pour les serveurs MCP stdio. Effectif uniquement lorsque `ALLOW_STDIO_MCP=true` |
+| `LOG_LEVEL` | No | `INFO` | Niveau de journalisation : `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | No | — | URL de connexion Redis pour le relais d'interruption inter-worker. **Requis lorsque `WORKERS>1`** — sans cela, les demandes d'interruption/injection en cours de flux peuvent atteindre un worker différent et échouer silencieusement. Auto-configuré par Docker Compose. |
+| `WORKERS` | No | `1` | Processus worker Uvicorn. `1` est sûr et ne nécessite aucun service externe. Pour la production multi-worker, utilisez PostgreSQL (SQLite est single-writer). SQLite fonctionne pour le développement local sous charge légère. L'authentification, OAuth et les opérations de fichiers sont entièrement multi-worker sûrs (basés sur JWT). Docker Compose configure automatiquement PostgreSQL et Redis. |
 
 <Warning>
 **Liste de contrôle multi-worker** (`WORKERS>1`) :
-- **Arrêt (interruption du streaming)** — fonctionne toujours, aucune configuration supplémentaire nécessaire (le signal voyage sur la même connexion TCP).
-- **Injection (suivi en milieu de flux)** — **nécessite `REDIS_URL`**. Sans Redis, la demande d'injection peut atterrir sur un worker différent qui n'a aucune connaissance de l'exécution en cours, ce qui provoque un échec silencieux.
-- **Production** : utilisez PostgreSQL (`DATABASE_URL`). Le verrou à écrivain unique de SQLite peut causer de la contention lors d'écritures concurrentes.
+- **Stop (arrêter le streaming)** — fonctionne toujours, aucune configuration supplémentaire nécessaire (le signal voyage sur la même connexion TCP).
+- **Inject (suivi en cours de flux)** — **nécessite `REDIS_URL`**. Sans Redis, la demande d'injection peut atterrir sur un worker différent qui n'a aucune connaissance de l'exécution en cours, ce qui provoque un échec silencieux.
+- **Production** : utilisez PostgreSQL (`DATABASE_URL`). Le verrou single-writer de SQLite peut causer de la contention lors d'écritures concurrentes.
 - **Développement local** : SQLite + multi-worker est correct pour une utilisation légère ; ajoutez simplement `REDIS_URL` si vous utilisez la fonctionnalité d'injection.
 </Warning>
 

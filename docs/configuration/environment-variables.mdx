@@ -392,6 +392,7 @@ Auto-registers the `email_send` built-in tool when `SMTP_HOST`, `SMTP_USER`, and
 |---|---|---|---|
 | `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | Database connection string. **SQLite** (zero-config): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (production): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose auto-sets PostgreSQL. |
 | `JWT_SECRET_KEY` | No | `CHANGE_ME` | Secret key for JWT token signing. Placeholder value `CHANGE_ME` (or any legacy default) triggers auto-generation of a secure 256-bit random key on first start, which is written back to `.env`. Set explicitly in production to keep tokens valid across restarts and replicas. |
+| `FIM_BCRYPT_COST` | No | `12` | bcrypt work factor for password hashing, clamped to 4-31. Default 12 costs roughly 200ms per hash on modern CPUs; lower it on weak hardware, raise it for security-hardened deployments. |
 | `CORS_ORIGINS` | No | — | Comma-separated list of extra allowed CORS origins beyond the default localhost entries. Required when the frontend runs on a non-localhost domain (e.g. `https://app.example.com`). |
 | `UPLOADS_DIR` | No | `./uploads` | Directory for uploaded files |
 | `MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size in megabytes (backend enforcement) |

@@ -18,7 +18,7 @@ import asyncio
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,7 +66,12 @@ def _resolve_secret_key() -> str:
         else:
             updated = content.rstrip("\n") + ("\n" if content else "") + new_line + "\n"
 
+        is_new_file = not env_file.exists()
         env_file.write_text(updated, encoding="utf-8")
+        if is_new_file:
+            # Freshly created .env holds a secret — don't leave it world-readable
+            # under the default umask. Pre-existing files keep operator-chosen perms.
+            env_file.chmod(0o600)
         logger.info(
             "JWT_SECRET_KEY was not set — auto-generated a secure secret and persisted it to %s. "
             "Set JWT_SECRET_KEY explicitly in your .env for production deployments.",
@@ -99,8 +104,13 @@ _bearer_scheme_optional = HTTPBearer(auto_error=False)
 # ---------------------------------------------------------------------------
 
 
+# bcrypt work factor. Default 12 ≈ 200ms per hash on modern CPUs; operators can
+# tune via FIM_BCRYPT_COST (clamped to bcrypt's valid 4–31 range).
+_BCRYPT_COST = min(max(int(os.environ.get("FIM_BCRYPT_COST", "12")), 4), 31)
+
+
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(_BCRYPT_COST)).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
@@ -247,12 +257,17 @@ def _as_utc(value: datetime) -> datetime:
 # ---------------------------------------------------------------------------
 
 
-async def _authenticate_api_key(raw_key: str, db: AsyncSession) -> User:
+async def _authenticate_api_key(
+    raw_key: str, db: AsyncSession
+) -> tuple[User, set[str] | None]:
     """Authenticate a request using an API key (``fim_``-prefixed Bearer token).
 
     Validates the key, checks expiry and active status, updates usage stats,
-    and returns the associated :class:`User` with a transient
-    ``_api_key_scopes`` attribute attached.
+    and returns ``(user, scopes)`` where ``scopes`` is the key's scope set or
+    ``None`` for an unrestricted key. Scopes are returned separately instead of
+    being attached to the ORM instance: SQLAlchemy's identity map (and any
+    future user cache) can hand the same ``User`` object to a different auth
+    context, where a stale transient attribute would silently widen access.
 
     Raises :class:`HTTPException` (401/403) on any failure.
     """
@@ -331,11 +346,9 @@ async def _authenticate_api_key(raw_key: str, db: AsyncSession) -> User:
     finally:
         await stats_session.close()
 
-    # Attach scopes as a transient attribute (None = unrestricted)
-    user._api_key_scopes = (  # type: ignore[attr-defined]
-        set(api_key.scopes.split(",")) if api_key.scopes else None
-    )
-    return user
+    # None = unrestricted key
+    scopes = set(api_key.scopes.split(",")) if api_key.scopes else None
+    return user, scopes
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +357,7 @@ async def _authenticate_api_key(raw_key: str, db: AsyncSession) -> User:
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> User:
@@ -351,7 +365,12 @@ async def get_current_user(
 
     # API key authentication (fim_-prefixed tokens)
     if token.startswith("fim_"):
-        return await _authenticate_api_key(token, db)
+        api_user, scopes = await _authenticate_api_key(token, db)
+        # Scope state lives on request.state — request-scoped by construction —
+        # rather than as a transient attribute on the ORM User, which could leak
+        # across auth contexts via the identity map or a future user cache.
+        request.state.api_key_scopes = scopes
+        return api_user
 
     # JWT authentication
     payload = decode_token(token)
@@ -400,11 +419,12 @@ async def get_current_user(
                 detail="Session invalidated",
             )
     # JWT users are unrestricted (no scope limitations)
-    user._api_key_scopes = None  # type: ignore[attr-defined]
+    request.state.api_key_scopes = None
     return user
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(  # noqa: B008
         _bearer_scheme_optional
     ),
@@ -418,9 +438,11 @@ async def get_current_user_optional(
     # API key authentication (fim_-prefixed tokens)
     if token.startswith("fim_"):
         try:
-            return await _authenticate_api_key(token, db)
+            api_user, scopes = await _authenticate_api_key(token, db)
         except HTTPException:
             return None
+        request.state.api_key_scopes = scopes
+        return api_user
 
     # JWT authentication
     try:
@@ -447,7 +469,7 @@ async def get_current_user_optional(
         if token_issued <= _as_utc(user.tokens_invalidated_at):
             return None
     if user is not None:
-        user._api_key_scopes = None  # type: ignore[attr-defined]
+        request.state.api_key_scopes = None
     return user
 
 
@@ -549,8 +571,11 @@ async def require_org_owner(
 def require_scope(scope: str) -> Any:
     """Dependency factory: rejects API key requests missing the given scope."""
 
-    async def _check(user: User = Depends(get_current_user)) -> User:  # noqa: B008
-        scopes = getattr(user, "_api_key_scopes", None)
+    async def _check(
+        request: Request,
+        user: User = Depends(get_current_user),  # noqa: B008
+    ) -> User:
+        scopes: set[str] | None = getattr(request.state, "api_key_scopes", None)
         if scopes is not None and scope not in scopes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

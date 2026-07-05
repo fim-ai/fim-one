@@ -114,7 +114,7 @@ async def test_read_only_endpoint_persists_usage_stats(db_env: None) -> None:
     # committing — exactly what a read-only endpoint leaves behind.
     agen = get_session()
     db = await agen.__anext__()
-    user = await _authenticate_api_key(raw_key, db)
+    user, _scopes = await _authenticate_api_key(raw_key, db)
     assert user.id == uid
     await agen.aclose()  # request session closed → uncommitted work rolled back
 

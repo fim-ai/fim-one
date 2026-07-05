@@ -386,25 +386,26 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 
 | 変数 | 必須 | デフォルト | 説明 |
 |---|---|---|---|
-| `DATABASE_URL` | いいえ | `sqlite+aiosqlite:///./data/fim_one.db` | データベース接続文字列。**SQLite**（ゼロ設定）: `sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（本番環境）: `postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Composeは自動的にPostgreSQLを設定します。 |
-| `JWT_SECRET_KEY` | いいえ | `CHANGE_ME` | JWTトークン署名用の秘密鍵。プレースホルダー値`CHANGE_ME`（またはその他のレガシーデフォルト）は、初回起動時にセキュアな256ビットランダムキーの自動生成をトリガーし、`.env`に書き込まれます。本番環境では、トークンが再起動とレプリカ間で有効なままになるように明示的に設定してください。 |
+| `DATABASE_URL` | いいえ | `sqlite+aiosqlite:///./data/fim_one.db` | データベース接続文字列。**SQLite**（ゼロコンフィグ）: `sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（本番環境）: `postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Composeは自動的にPostgreSQLを設定します。 |
+| `JWT_SECRET_KEY` | いいえ | `CHANGE_ME` | JWTトークン署名用の秘密鍵。プレースホルダー値`CHANGE_ME`（またはその他のレガシーデフォルト）は、初回起動時にセキュアな256ビットランダムキーの自動生成をトリガーし、`.env`に書き込まれます。本番環境では明示的に設定して、再起動とレプリカ間でトークンを有効に保ちます。 |
+| `FIM_BCRYPT_COST` | いいえ | `12` | パスワードハッシング用のbcryptワークファクター、4～31の範囲に制限されます。デフォルト12は最新のCPUで約200msのコストがかかります。弱いハードウェアでは低くし、セキュリティ強化デプロイメントでは高くしてください。 |
 | `CORS_ORIGINS` | いいえ | — | デフォルトのlocalhostエントリを超えて許可する追加のCORSオリジンのカンマ区切りリスト。フロントエンドが非localhostドメイン（例：`https://app.example.com`）で実行される場合に必須です。 |
-| `UPLOADS_DIR` | いいえ | `./uploads` | アップロードされたファイル用のディレクトリ |
-| `MAX_UPLOAD_SIZE_MB` | いいえ | `50` | 最大ファイルアップロードサイズ（メガバイト単位、バックエンド実装） |
+| `UPLOADS_DIR` | いいえ | `./uploads` | アップロードされたファイルのディレクトリ |
+| `MAX_UPLOAD_SIZE_MB` | いいえ | `50` | 最大ファイルアップロードサイズ（メガバイト単位、バックエンド強制） |
 | `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | いいえ | `50` | フロントエンドUIに表示される最大ファイルアップロードサイズ。**ビルド時変数** — `MAX_UPLOAD_SIZE_MB`と一致する必要があります。 |
 | `MCP_SERVERS` | いいえ | — | MCPサーバー設定のJSONアレイ（`uv sync --extra mcp`が必要） |
 | `ALLOW_STDIO_MCP` | いいえ | `false` | stdio MCPサーバーを許可します。信頼できるローカルデプロイメントの場合のみ`true`に設定してください |
-| `ALLOWED_STDIO_COMMANDS` | いいえ | `npx,uvx,node,python,python3,deno,bun` | stdio MCPサーバーで許可されたベースコマンドのカンマ区切りリスト。`ALLOW_STDIO_MCP=true`の場合のみ有効です |
-| `LOG_LEVEL` | いいえ | `INFO` | ログレベル: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | いいえ | — | ワーカー間割り込みリレー用のRedis接続URL。**`WORKERS>1`の場合は必須** — これがないと、ストリーム中の割り込み/注入リクエストが別のワーカーにヒットして暗黙的に失敗する可能性があります。Docker Composeで自動設定されます。 |
-| `WORKERS` | いいえ | `1` | Uvicornワーカープロセス。`1`は安全で外部サービスは不要です。本番環境のマルチワーカーの場合、PostgreSQLを使用してください（SQLiteはシングルライター）。SQLiteはローカル開発で軽い負荷下で動作します。認証、OAuth、ファイル操作は完全にマルチワーカー対応です（JWTベース）。Docker Composeは自動的にPostgreSQLとRedisの両方を設定します。 |
+| `ALLOWED_STDIO_COMMANDS` | いいえ | `npx,uvx,node,python,python3,deno,bun` | stdio MCPサーバーで許可する基本コマンドのカンマ区切りリスト。`ALLOW_STDIO_MCP=true`の場合のみ有効です |
+| `LOG_LEVEL` | いいえ | `INFO` | ログレベル：`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | いいえ | — | ワーカー間割り込みリレー用のRedis接続URL。**`WORKERS>1`の場合は必須** — これがないと、ストリーム中の割り込み/注入リクエストが別のワーカーにヒットして、サイレントに失敗する可能性があります。Docker Composeで自動設定されます。 |
+| `WORKERS` | いいえ | `1` | Uvicornワーカープロセス。`1`は安全で外部サービスは不要です。本番環境のマルチワーカーの場合、PostgreSQLを使用してください（SQLiteはシングルライター）。SQLiteはライト負荷下でのローカル開発に適しています。認証、OAuth、ファイル操作は完全にマルチワーカー対応です（JWTベース）。Docker Composeは自動的にPostgreSQLとRedisの両方を設定します。 |
 
 <Warning>
-**マルチワーカーチェックリスト**（`WORKERS>1`）:
-- **停止（ストリーミング中止）** — 常に動作します。追加設定は不要です（シグナルは同じTCP接続で送信されます）。
-- **注入（ストリーム中のフォローアップ）** — **`REDIS_URL`が必須です**。Redisがないと、注入リクエストが実行中の実行について知識のない別のワーカーにランディングし、暗黙的に失敗する可能性があります。
-- **本番環境**: PostgreSQL（`DATABASE_URL`）を使用してください。SQLiteのシングルライターロックは同時書き込み時に競合を引き起こす可能性があります。
-- **ローカル開発**: SQLite + マルチワーカーは軽い使用量であれば問題ありません。注入機能を使用する場合は`REDIS_URL`を追加してください。
+**マルチワーカーチェックリスト**（`WORKERS>1`）：
+- **停止（ストリーミング中止）** — 常に機能し、追加設定は不要です（シグナルは同じTCP接続上を移動します）。
+- **注入（ストリーム中のフォローアップ）** — **`REDIS_URL`が必須**。Redisがないと、注入リクエストが実行中の知識を持たない別のワーカーにランディングし、サイレント失敗を引き起こす可能性があります。
+- **本番環境**：PostgreSQL（`DATABASE_URL`）を使用してください。SQLiteのシングルライターロックは、同時書き込み時に競合を引き起こす可能性があります。
+- **ローカル開発**：SQLite+マルチワーカーはライト使用で問題ありません。注入機能を使用する場合は`REDIS_URL`を追加してください。
 </Warning>
 
 ## ワークフロー実行の保持

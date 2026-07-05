@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -38,6 +38,11 @@ from fim_one.db.models import User
 
 def _creds(token: str) -> HTTPAuthorizationCredentials:
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+
+def _request() -> Request:
+    """Bare HTTP request with a working ``.state`` for direct dependency calls."""
+    return Request(scope={"type": "http"})
 
 
 def _non_access_tokens(user_id: str) -> dict[str, str]:
@@ -80,7 +85,7 @@ class TestGetCurrentUserTokenType:
         db = MagicMock()
         db.execute = AsyncMock()
         with pytest.raises(HTTPException) as exc:
-            await get_current_user(credentials=_creds(token), db=db)
+            await get_current_user(_request(), credentials=_creds(token), db=db)
         assert exc.value.status_code == 401
         assert "type" in str(exc.value.detail).lower()
         # The type check must precede any DB lookup.
@@ -90,7 +95,7 @@ class TestGetCurrentUserTokenType:
         self, session: AsyncSession, active_user: User
     ) -> None:
         token = create_access_token(active_user.id, active_user.email)
-        user = await get_current_user(credentials=_creds(token), db=session)
+        user = await get_current_user(_request(), credentials=_creds(token), db=session)
         assert user.id == active_user.id
 
 
@@ -100,7 +105,7 @@ class TestGetCurrentUserOptionalTokenType:
         token = _non_access_tokens("user-123")[kind]
         db = MagicMock()
         db.execute = AsyncMock()
-        result = await get_current_user_optional(credentials=_creds(token), db=db)
+        result = await get_current_user_optional(_request(), credentials=_creds(token), db=db)
         assert result is None
         db.execute.assert_not_called()
 
@@ -108,7 +113,7 @@ class TestGetCurrentUserOptionalTokenType:
         self, session: AsyncSession, active_user: User
     ) -> None:
         token = create_access_token(active_user.id, active_user.email)
-        user = await get_current_user_optional(credentials=_creds(token), db=session)
+        user = await get_current_user_optional(_request(), credentials=_creds(token), db=session)
         assert user is not None
         assert user.id == active_user.id
 

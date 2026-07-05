@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -28,6 +28,11 @@ from fim_one.web.auth import _as_utc, create_access_token, get_current_user
 
 def _creds(token: str) -> HTTPAuthorizationCredentials:
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+
+def _request() -> Request:
+    """Bare HTTP request with a working ``.state`` for direct dependency calls."""
+    return Request(scope={"type": "http"})
 
 
 class TestAsUtc:
@@ -82,7 +87,7 @@ class TestForceLogoutComparison:
         user = await _make_user(session, future)
         token = create_access_token(user.id, user.email)
         with pytest.raises(HTTPException) as exc:
-            await get_current_user(credentials=_creds(token), db=session)
+            await get_current_user(_request(), credentials=_creds(token), db=session)
         assert exc.value.status_code == 401
         assert "invalidated" in str(exc.value.detail).lower()
 
@@ -92,11 +97,11 @@ class TestForceLogoutComparison:
         past = datetime.now(UTC) - timedelta(hours=1)
         user = await _make_user(session, past)
         token = create_access_token(user.id, user.email)
-        result = await get_current_user(credentials=_creds(token), db=session)
+        result = await get_current_user(_request(), credentials=_creds(token), db=session)
         assert result.id == user.id
 
     async def test_no_invalidation_accepts(self, session: AsyncSession) -> None:
         user = await _make_user(session, None)
         token = create_access_token(user.id, user.email)
-        result = await get_current_user(credentials=_creds(token), db=session)
+        result = await get_current_user(_request(), credentials=_creds(token), db=session)
         assert result.id == user.id
