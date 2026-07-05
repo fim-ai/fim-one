@@ -196,9 +196,12 @@ _JSON_GUIDELINES = "Guidelines:\n" + _bullets(
     PromptSection(
         "json_efficient",
         "- Be EFFICIENT: try to accomplish as much as possible in each tool "
-        "call. Write a single comprehensive script rather than making many "
-        "small calls. For example, generate data AND analyse it in one script "
-        "when feasible.",
+        "call. When a task genuinely requires code execution, write a single "
+        "comprehensive script rather than making many small calls — for "
+        "example, generate data AND analyse it in one script when feasible. "
+        "But do NOT use code execution for knowledge, comparisons, or "
+        "analysis you can produce directly: printing your own notes from a "
+        "script adds no information.",
     ),
     PromptSection(
         "json_synthesis",
@@ -250,8 +253,11 @@ _NATIVE_GUIDELINES = "Guidelines:\n" + _bullets(
     PromptSection(
         "native_efficient",
         "- Be EFFICIENT: try to accomplish as much as possible in each tool "
-        "call. Write a single comprehensive script rather than making many "
-        "small calls.",
+        "call. When a task genuinely requires code execution, write a single "
+        "comprehensive script rather than making many small calls. But do "
+        "NOT use code execution for knowledge, comparisons, or analysis you "
+        "can produce directly: printing your own notes from a script adds "
+        "no information.",
     ),
     PromptSection(
         "native_tool_fail",
