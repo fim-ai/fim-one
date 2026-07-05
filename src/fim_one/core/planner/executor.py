@@ -227,11 +227,23 @@ class DAGExecutor:
                             "(dependencies never completed)",
                             sorted(pending_ids),
                         )
-                        for sid in pending_ids:
-                            step_index[sid].status = "failed"
-                            step_index[sid].result = StepOutput(
+                        for sid in sorted(pending_ids):
+                            step = step_index[sid]
+                            step.status = "failed"
+                            step.result = StepOutput(
                                 summary="Step could not run: one or more dependencies failed."
                             )
+                            step.completed_at = time.time()
+                            completed_ids.add(sid)
+                            failed_ids.add(sid)
+                            # Emit the terminal event — without it the SSE
+                            # stream / UI never sees these steps finish and
+                            # the step-completion checkpoint save never fires.
+                            self._notify(sid, "completed", {
+                                "task": step.task,
+                                "status": "failed",
+                                "result": step.result.summary,
+                            })
                         pending_ids.clear()
                     break
 

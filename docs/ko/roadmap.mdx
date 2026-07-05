@@ -388,6 +388,7 @@ flowchart LR
 - [x] ~~Budget-truncated tool results persist to workspace before cutting; full transcript snapshot before lossy compaction~~
 - [x] ~~Background tool execution in ReAct — whitelisted slow tools return a task id and notify on completion~~
 - [x] ~~Incremental DAG replan: completed steps carry across replan rounds; step-level checkpoint resumes interrupted runs on retry~~ {/* dev: dev/incremental-dag.md */}
+- [x] ~~Compaction preserves tool_use/tool_result pairing — long tool-heavy runs no longer die on provider 400 after compact; background tool results reach the step stream + DAG evidence~~
 - [ ] Hot mid-stream DAG resume (SSE reconnect re-attaches to a running turn) — cold retry-resume shipped via checkpoint {/* dev: dev/incremental-dag.md */}
 
 #### 에코시스템 + 확장

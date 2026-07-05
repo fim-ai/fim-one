@@ -344,3 +344,58 @@ class TestLlmCompact:
         result = await CompactUtils.llm_compact([], llm=llm, max_tokens=8000)
         assert result == []
         assert llm.call_count == 0
+
+
+class TestSmartTruncateToolPairing:
+    """smart_truncate must not leave orphan role="tool" messages at the
+    head of the kept window (providers reject them with HTTP 400)."""
+
+    def test_orphan_leading_tools_are_dropped(self):
+        from fim_one.core.model.types import ToolCallRequest
+
+        big = ChatMessage(role="user", content="q " + "x" * 2000, pinned=True)
+        assistant = ChatMessage(
+            role="assistant",
+            content="calling " + "a" * 1200,
+            tool_calls=[ToolCallRequest(id="t1", name="search", arguments={})],
+        )
+        tool = ChatMessage(role="tool", content="r" * 200, tool_call_id="t1")
+        follow_up = ChatMessage(role="user", content="continue " + "u" * 200)
+        msgs = [big, assistant, tool, follow_up]
+
+        # Budget fits pinned + follow_up + tool, but NOT the assistant turn
+        # that owns the tool result — the orphan tool must be dropped.
+        budget = 4 + CompactUtils.estimate_tokens(big.content)
+        budget += 4 + CompactUtils.estimate_tokens(follow_up.content)
+        budget += 4 + CompactUtils.estimate_tokens(tool.content)
+
+        result = CompactUtils.smart_truncate(msgs, budget)
+
+        assert all(m.role != "tool" for m in result)
+        assert result[0] is big
+        assert result[-1] is follow_up
+
+    def test_leading_assistant_with_tool_calls_drops_its_results_too(self):
+        from fim_one.core.model.types import ToolCallRequest
+
+        assistant = ChatMessage(
+            role="assistant",
+            content="c" * 40,
+            tool_calls=[ToolCallRequest(id="t1", name="search", arguments={})],
+        )
+        tool = ChatMessage(role="tool", content="r" * 40, tool_call_id="t1")
+        user = ChatMessage(role="user", content="next question " + "q" * 40)
+        old_user = ChatMessage(role="user", content="old " + "o" * 4000)
+        msgs = [old_user, assistant, tool, user]
+
+        budget = 4 + CompactUtils.estimate_tokens(user.content)
+        budget += 4 + CompactUtils.estimate_tokens(tool.content)
+        budget += 4 + CompactUtils.estimate_tokens(assistant.content)
+
+        result = CompactUtils.smart_truncate(msgs, budget)
+
+        # The kept window starts at the assistant turn (no pinned messages),
+        # which must be pruned — and pruning it must also remove its tool
+        # results instead of exposing them as orphans.
+        assert all(m.role != "tool" for m in result)
+        assert result == [user]

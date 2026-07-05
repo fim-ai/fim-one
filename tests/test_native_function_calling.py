@@ -775,3 +775,36 @@ class TestBackwardCompatibility:
         assert result.iterations == 2
         assert result.steps[0].action.type == "tool_call"
         assert result.steps[0].observation == "hello"
+
+
+class TestEmptyToolOutputWithWorkspace:
+    async def test_fallback_text_survives_workspace_offload(
+        self, tmp_path: Any
+    ) -> None:
+        """A tool returning "" must yield the 'no output' fallback in the
+        tool message even when a workspace is configured — the offload pass
+        previously overwrote the fallback with the raw empty string."""
+        from fim_one.core.agent.workspace import AgentWorkspace
+
+        llm = NativeToolFakeLLM(
+            responses=[
+                _native_tool_call([("call-1", "echo", {"text": ""})]),
+                _native_final_answer("done"),
+            ]
+        )
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=llm,
+            tools=registry,
+            completion_check=False,
+            workspace=AgentWorkspace("conv-empty", base_dir=str(tmp_path)),
+        )
+
+        result = await agent.run("q")
+
+        tool_msgs = [m for m in result.messages if m.role == "tool"]
+        assert len(tool_msgs) == 1
+        assert isinstance(tool_msgs[0].content, str)
+        assert tool_msgs[0].content != ""
+        assert "completed successfully with no output" in tool_msgs[0].content

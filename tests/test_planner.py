@@ -915,3 +915,98 @@ class TestModelHintParsing:
         ]["model_hint"]
         assert "enum" in model_hint_schema
         assert set(model_hint_schema["enum"]) == {"fast", "reasoning", None}
+
+
+# ======================================================================
+# Duplicate step id handling
+# ======================================================================
+
+
+class TestDedupeStepIds:
+    """Duplicate ids from the planner LLM must be renamed, not misdiagnosed.
+
+    Without dedupe, duplicate ids collapse in _validate_dag's id-keyed maps
+    and raise a bogus "Circular dependency" ValueError that fails the whole
+    DAG turn.
+    """
+
+    def test_duplicates_renamed_deterministically(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        steps = [
+            PlanStep(id="s1", task="first"),
+            PlanStep(id="s1", task="second"),
+            PlanStep(id="s1", task="third"),
+        ]
+        with caplog.at_level(logging.WARNING, logger="fim_one.core.planner.planner"):
+            DAGPlanner._dedupe_step_ids(steps)
+
+        assert [s.id for s in steps] == ["s1", "s1_dup2", "s1_dup3"]
+        assert any("Duplicate step id" in r.message for r in caplog.records)
+
+    def test_unique_ids_untouched(self) -> None:
+        steps = [
+            PlanStep(id="s1", task="a"),
+            PlanStep(id="s2", task="b", dependencies=["s1"]),
+        ]
+        DAGPlanner._dedupe_step_ids(steps)
+        assert [s.id for s in steps] == ["s1", "s2"]
+        assert steps[1].dependencies == ["s1"]
+
+    def test_validate_passes_after_dedupe(self) -> None:
+        """The former failure mode: duplicates → false 'Circular dependency'."""
+        llm = FakeLLM(responses=[])
+        planner = DAGPlanner(llm=llm)
+        steps = [
+            PlanStep(id="s1", task="a"),
+            PlanStep(id="s1", task="b"),
+            PlanStep(id="s2", task="c", dependencies=["s1"]),
+        ]
+        DAGPlanner._dedupe_step_ids(steps)
+        planner._validate_dag(steps)  # must not raise
+
+
+# ======================================================================
+# Executor deadlock branch — terminal notifications
+# ======================================================================
+
+
+class _NoopAgent:
+    """Fake agent for executor tests that never actually runs."""
+
+    def __init__(self) -> None:
+        from unittest.mock import MagicMock
+
+        self.tools = MagicMock()
+
+    async def run(self, query: str, **kwargs: Any) -> Any:
+        from fim_one.core.agent.types import AgentResult
+
+        return AgentResult(answer="done", iterations=1)
+
+
+class TestDAGExecutorDeadlockNotification:
+    async def test_unrunnable_steps_emit_completed_events(self) -> None:
+        """Steps blocked by unsatisfiable deps must still emit a terminal
+        'completed' event (status=failed) and be book-kept as failed."""
+        executor = DAGExecutor(
+            agent=_NoopAgent(),  # type: ignore[arg-type]
+            enable_tool_cache=False,
+            enable_citation_verification=False,
+        )
+        # 'ghost' never exists → the step can never launch → deadlock branch.
+        blocked = PlanStep(id="s1", task="blocked", dependencies=["ghost"])
+        plan = ExecutionPlan(goal="g", steps=[blocked])
+
+        events: list[tuple[str, str, dict[str, Any]]] = []
+
+        def on_progress(step_id: str, event: str, data: dict[str, Any]) -> None:
+            events.append((step_id, event, data))
+
+        result = await executor.execute(plan, on_progress=on_progress)
+
+        assert result.steps[0].status == "failed"
+        assert result.steps[0].completed_at is not None
+        terminal = [e for e in events if e[0] == "s1" and e[1] == "completed"]
+        assert len(terminal) == 1
+        assert terminal[0][2]["status"] == "failed"

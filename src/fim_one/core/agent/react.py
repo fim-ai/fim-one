@@ -622,7 +622,7 @@ class ReActAgent:
                     background=background,
                 )
             finally:
-                self._cancel_background(background)
+                await self._cancel_background(background)
         else:
             result = await self._run_json(
                 query,
@@ -795,6 +795,17 @@ class ReActAgent:
                 # Truncate very long tool results to keep the synthesis
                 # prompt within reasonable token limits while preserving
                 # enough content for structured data (JSON, tables, code).
+                if len(obs) > _TOOL_OBS_TRUNCATION:
+                    obs = obs[:_TOOL_OBS_TRUNCATION] + "... (truncated)"
+                context_parts.append(f"Tool result: {obs}")
+            elif msg.role == "user" and isinstance(msg.content, str) and (
+                msg.content.startswith("Observation: ")
+            ):
+                # JSON-mode ReAct feeds tool results back as user-role
+                # "Observation: ..." messages — without this branch the
+                # synthesis fallback would see the tool calls but none of
+                # their results for non-native-tool models.
+                obs = msg.content[len("Observation: "):]
                 if len(obs) > _TOOL_OBS_TRUNCATION:
                     obs = obs[:_TOOL_OBS_TRUNCATION] + "... (truncated)"
                 context_parts.append(f"Tool result: {obs}")
@@ -1825,7 +1836,13 @@ class ReActAgent:
             # Completed background tools surface as <task_notification>
             # user messages so the model consumes them naturally.
             if background:
-                messages.extend(self._drain_background_notifications(background))
+                messages.extend(
+                    self._drain_background_notifications(
+                        background,
+                        on_iteration=on_iteration,
+                        iteration=iteration,
+                    ),
+                )
 
             with profiler.phase("compact"):
                 messages = micro_compact(messages)
@@ -2096,11 +2113,17 @@ class ReActAgent:
                     timeout=_BG_WAIT_TIMEOUT,
                     return_when=asyncio.ALL_COMPLETED,
                 )
-                notes = self._drain_background_notifications(background)
+                notes = self._drain_background_notifications(
+                    background,
+                    on_iteration=on_iteration,
+                    iteration=iteration,
+                )
                 if background:
                     # Still pending after the wait window — cancel with an
                     # explicit timeout notification.
-                    notes.extend(self._cancel_background(background, notify=True))
+                    notes.extend(
+                        await self._cancel_background(background, notify=True),
+                    )
                 messages.extend(notes)
                 profiler.emit(self._profiler_conversation_id())
                 continue
@@ -2439,7 +2462,7 @@ class ReActAgent:
                 if self._workspace is not None:
                     llm_result = self._workspace.maybe_offload(
                         tc.name,
-                        raw_result,
+                        llm_result,
                     )
                 step = StepResult(action=action, observation=raw_result)
                 msg = ChatMessage(
@@ -2543,12 +2566,22 @@ class ReActAgent:
     @staticmethod
     def _drain_background_notifications(
         background: dict[str, dict[str, Any]],
+        on_iteration: IterationCallback | None = None,
+        iteration: int = 0,
     ) -> list[ChatMessage]:
         """Collect finished background tasks as notification messages.
 
         Non-blocking: pending tasks stay in *background*.  Notifications
         are user-role messages (a fresh turn), never reusing the original
         tool_call_id — that id was already answered by the placeholder.
+
+        When *on_iteration* is given, each drained result is also emitted
+        as a standard tool start/done event pair under the real tool name
+        (``tool_args`` carries ``background: True`` and the task id).
+        Without this, the real output would only exist inside the
+        ``<task_notification>`` user message — invisible to the SSE stream
+        and to the DAG executor's evidence collection, which would then
+        hold nothing but the dispatch placeholder.
         """
         notifications: list[ChatMessage] = []
         for bg_id, info in list(background.items()):
@@ -2575,14 +2608,30 @@ class ReActAgent:
                 ),
             )
             del background[bg_id]
+            if on_iteration is not None:
+                bg_action = Action(
+                    type="tool_call",
+                    reasoning="",
+                    tool_name=info["tool"],
+                    tool_args={"background": True, "task_id": bg_id},
+                )
+                on_iteration(iteration, bg_action, None, None, None)
+                error = output if output.startswith("Error: ") else None
+                observation = None if error else output
+                on_iteration(iteration, bg_action, observation, error, None)
         return notifications
 
     @staticmethod
-    def _cancel_background(
+    async def _cancel_background(
         background: dict[str, dict[str, Any]],
         notify: bool = False,
     ) -> list[ChatMessage]:
-        """Cancel all remaining background tasks.
+        """Cancel all remaining background tasks and await their exit.
+
+        Awaiting the cancelled tasks (with exceptions swallowed) ensures
+        cancellation has actually taken effect before the caller moves on,
+        and retrieves any stored exception so asyncio never logs
+        "Task exception was never retrieved" for an undrained failure.
 
         Args:
             background: The background task registry (cleared in place).
@@ -2613,7 +2662,10 @@ class ReActAgent:
                         ),
                     ),
                 )
+        tasks = [info["task"] for info in background.values()]
         background.clear()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         return notifications
 
     # ------------------------------------------------------------------
@@ -3031,6 +3083,10 @@ class ReActAgent:
 
         tool_name = action.tool_name or ""
         tool_args = dict(action.tool_args or {})
+        # JSON mode never advertises the background option, but a model may
+        # still hallucinate the flag — strip it so ``tool.run(**args)``
+        # doesn't blow up on an unexpected keyword argument.
+        tool_args.pop(_BG_PARAM, None)
 
         # --- PRE_TOOL_USE hooks ---
         if self._hook_registry is not None:

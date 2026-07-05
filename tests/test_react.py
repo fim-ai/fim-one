@@ -546,3 +546,48 @@ class TestStreamAnswer:
             if isinstance(m.content, str)
         )
         assert "HHAI_2026_CLUE" in joined
+
+
+class TestStreamAnswerJsonModeObservations:
+    """JSON-mode tool results (user "Observation: ..." messages) must reach
+    the synthesis fallback — without this, non-native-tool models get an
+    answer synthesised from tool calls with none of their results."""
+
+    async def test_observation_messages_reach_synthesis_context(self) -> None:
+        llm = _CapturingLLM(
+            responses=[LLMResult(message=ChatMessage(role="assistant", content="ok"))]
+        )
+        agent = ReActAgent(llm=llm, tools=ToolRegistry())
+        result = AgentResult(
+            answer="",
+            steps=[],
+            messages=[
+                ChatMessage(role="assistant", content='{"type": "tool_call"}'),
+                ChatMessage(role="user", content="Observation: JSON_OBS_CLUE_42"),
+            ],
+        )
+
+        _ = "".join([t async for t in agent.stream_answer("q", result)])
+
+        joined = "\n".join(
+            m.content for m in llm.captured_messages if isinstance(m.content, str)
+        )
+        assert "JSON_OBS_CLUE_42" in joined
+
+    async def test_plain_user_messages_not_treated_as_observations(self) -> None:
+        llm = _CapturingLLM(
+            responses=[LLMResult(message=ChatMessage(role="assistant", content="ok"))]
+        )
+        agent = ReActAgent(llm=llm, tools=ToolRegistry())
+        result = AgentResult(
+            answer="",
+            steps=[],
+            messages=[ChatMessage(role="user", content="ORIGINAL_QUERY_TEXT")],
+        )
+
+        _ = "".join([t async for t in agent.stream_answer("q", result)])
+
+        joined = "\n".join(
+            m.content for m in llm.captured_messages if isinstance(m.content, str)
+        )
+        assert "Tool result: ORIGINAL_QUERY_TEXT" not in joined

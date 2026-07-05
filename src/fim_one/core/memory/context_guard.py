@@ -267,6 +267,27 @@ class ContextGuard:
                 result.append(msg)
         return result
 
+    @staticmethod
+    def _split_on_tool_boundary(
+        compactable: list[ChatMessage],
+        keep_recent: int,
+    ) -> tuple[list[ChatMessage], list[ChatMessage]]:
+        """Split *compactable* into ``(old, recent)`` without orphaning tools.
+
+        A naive ``[-keep_recent:]`` slice can land between an assistant
+        ``tool_calls`` message and its ``role="tool"`` results.  Summarising
+        the assistant turn away while keeping the tool results produces a
+        conversation that starts with orphan tool messages — OpenAI and
+        Anthropic both reject that with HTTP 400.  Walk the boundary left
+        until the recent slice no longer starts with a tool message, so the
+        tool_use/tool_result pair stays intact on the kept side.
+        """
+        old = compactable[:-keep_recent]
+        recent = compactable[-keep_recent:]
+        while recent and recent[0].role == "tool" and old:
+            recent.insert(0, old.pop())
+        return old, recent
+
     async def _llm_compact_with_hint(
         self,
         messages: list[ChatMessage],
@@ -291,8 +312,9 @@ class ContextGuard:
             # Not enough to split — fall back to heuristic truncation.
             return CompactUtils.smart_truncate(messages, budget)
 
-        old_messages = compactable[:-keep_recent]
-        recent_messages = compactable[-keep_recent:]
+        old_messages, recent_messages = self._split_on_tool_boundary(
+            compactable, keep_recent,
+        )
 
         # Unpin oldest inject messages if pinned tokens exceed 50% of budget.
         pinned_tokens = CompactUtils.estimate_messages_tokens(pinned_msgs)
@@ -312,8 +334,9 @@ class ContextGuard:
             for msg in overflow:
                 msg.pinned = False
             compactable = overflow + compactable
-            old_messages = compactable[:-keep_recent]
-            recent_messages = compactable[-keep_recent:]
+            old_messages, recent_messages = self._split_on_tool_boundary(
+                compactable, keep_recent,
+            )
 
         # Build the text block to summarise.  Include extended-thinking so a
         # clue the model surfaced only in a reasoning block survives the

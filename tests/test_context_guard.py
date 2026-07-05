@@ -441,3 +441,77 @@ class TestCompactionSummariserSeesThinking:
         await guard.check_and_compact(msgs)
         assert llm.captured_user is not None
         assert "REASON_CLUE_XYZ" in llm.captured_user
+
+
+class TestCompactPreservesToolPairing:
+    """The recent-window boundary must never orphan role="tool" messages.
+
+    A naive ``[-keep_recent:]`` slice can summarise away the assistant
+    ``tool_calls`` turn while keeping its tool results — OpenAI and
+    Anthropic both reject a conversation whose tool results have no
+    preceding tool_calls message (HTTP 400).
+    """
+
+    def test_split_walks_boundary_back_to_assistant(self) -> None:
+        from fim_one.core.model.types import ToolCallRequest
+
+        assistant = ChatMessage(
+            role="assistant",
+            content=None,
+            tool_calls=[
+                ToolCallRequest(id=f"t{i}", name="tool", arguments={})
+                for i in range(4)
+            ],
+        )
+        tools = [
+            ChatMessage(role="tool", content=f"r{i}", tool_call_id=f"t{i}")
+            for i in range(4)
+        ]
+        filler = [
+            ChatMessage(role="user", content="u"),
+            ChatMessage(role="assistant", content="a"),
+        ]
+        compactable = filler + [assistant, *tools]
+
+        old, recent = ContextGuard._split_on_tool_boundary(compactable, 4)
+
+        # Naive slice would be [tool r0..r3] — the fix pulls the assistant in.
+        assert recent[0] is assistant
+        assert [m.content for m in recent[1:]] == ["r0", "r1", "r2", "r3"]
+        assert old == filler
+
+    def test_split_without_tools_is_plain_slice(self) -> None:
+        msgs = _make_messages(8)
+        old, recent = ContextGuard._split_on_tool_boundary(msgs, 4)
+        assert old == msgs[:4]
+        assert recent == msgs[4:]
+
+    async def test_compact_keeps_tool_calls_turn_with_its_results(self) -> None:
+        from fim_one.core.model.types import ToolCallRequest
+
+        llm = _MockLLM(response_content="Summary of old conversation.")
+        guard = ContextGuard(compact_llm=llm, default_budget=300)
+        msgs = _make_messages(8, content_len=200)
+        msgs.append(
+            ChatMessage(
+                role="assistant",
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(id=f"t{i}", name="search", arguments={})
+                    for i in range(4)
+                ],
+            )
+        )
+        for i in range(4):
+            msgs.append(
+                ChatMessage(role="tool", content=f"result-{i}", tool_call_id=f"t{i}")
+            )
+
+        result = await guard.check_and_compact(msgs)
+
+        tool_positions = [i for i, m in enumerate(result) if m.role == "tool"]
+        assert tool_positions, "tool results should survive in the recent window"
+        first_tool = tool_positions[0]
+        assert any(
+            m.role == "assistant" and m.tool_calls for m in result[:first_tool]
+        ), "kept tool results must be preceded by their assistant tool_calls turn"

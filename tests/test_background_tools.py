@@ -198,3 +198,94 @@ class TestBackgroundDispatch:
             isinstance(m.content, str) and "RuntimeError: boom" in m.content
             for m in second_call_msgs
         )
+
+
+class TestBackgroundResultVisibility:
+    async def test_drained_result_emitted_via_on_iteration(self) -> None:
+        """The real background output must reach on_iteration (SSE stream /
+        DAG evidence), not just the <task_notification> user message."""
+        llm = NativeToolFakeLLM(
+            responses=[
+                _tool_call("slow_tool", {"run_in_background": True}, "tc1"),
+                _tool_call("echo", {"text": "hi"}, "tc2"),
+                _final("done"),
+            ]
+        )
+        agent = _make_agent(llm, SlowTool(delay=0.01), EchoTool())
+
+        events: list[tuple[int, Any, str | None, str | None]] = []
+
+        def on_iteration(
+            iteration: int,
+            action: Any,
+            observation: str | None,
+            error: str | None,
+            step_result: Any = None,
+        ) -> None:
+            events.append((iteration, action, observation, error))
+
+        result = await agent.run("q", on_iteration=on_iteration)
+
+        assert result.answer == "done"
+        bg_events = [
+            e
+            for e in events
+            if getattr(e[1], "tool_args", None)
+            and e[1].tool_args.get("background") is True
+        ]
+        # Standard lifecycle: one start (no observation) + one done.
+        assert len(bg_events) == 2
+        start, done = bg_events
+        assert start[1].tool_name == "slow_tool"
+        assert start[2] is None and start[3] is None
+        assert done[2] == "slow done"
+        assert done[3] is None
+        assert done[1].tool_args["task_id"].startswith("bg_")
+
+    async def test_cancelled_background_task_reports_error_event(self) -> None:
+        """A background task that errors surfaces via the error field so
+        evidence collection never records the failure text as source data."""
+        llm = NativeToolFakeLLM(
+            responses=[
+                _tool_call("boom_tool", {"run_in_background": True}, "tc1"),
+                _tool_call("echo", {"text": "hi"}, "tc2"),
+                _final("done"),
+            ]
+        )
+
+        class BoomTool(SlowTool):
+            @property
+            def name(self) -> str:
+                return "boom_tool"
+
+            async def run(self, **kwargs: Any) -> str:
+                await asyncio.sleep(0.01)
+                raise RuntimeError("kaput")
+
+        agent = _make_agent(llm, BoomTool(), EchoTool())
+
+        events: list[tuple[Any, str | None, str | None]] = []
+
+        def on_iteration(
+            iteration: int,
+            action: Any,
+            observation: str | None,
+            error: str | None,
+            step_result: Any = None,
+        ) -> None:
+            events.append((action, observation, error))
+
+        result = await agent.run("q", on_iteration=on_iteration)
+
+        assert result.answer == "done"
+        done_events = [
+            e
+            for e in events
+            if getattr(e[0], "tool_args", None)
+            and e[0].tool_args.get("background") is True
+            and (e[1] is not None or e[2] is not None)
+        ]
+        assert len(done_events) == 1
+        assert done_events[0][1] is None  # no observation
+        assert done_events[0][2] is not None
+        assert "kaput" in done_events[0][2]

@@ -164,11 +164,21 @@ class CompactUtils:
 
         recent.reverse()
 
+        # Orphan tool results at the head of the kept window (their
+        # assistant tool_calls turn fell outside the budget) would be
+        # rejected with HTTP 400 by OpenAI and Anthropic.  Prune them
+        # BEFORE prepending pinned messages — pinned user messages would
+        # otherwise mask the orphans from the leading-role check below.
+        while recent and recent[0].role == "tool":
+            recent.pop(0)
+
         result = pinned + recent
 
         # Drop leading assistant messages — the history must start with a
         # user message so the LLM doesn't see a context-free assistant turn.
-        while result and result[0].role == "assistant":
+        # Popping an assistant turn that carried tool_calls exposes its tool
+        # results, which the "tool" case then removes as well.
+        while result and result[0].role in ("assistant", "tool"):
             result.pop(0)
 
         return result

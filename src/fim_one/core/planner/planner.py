@@ -189,6 +189,7 @@ class DAGPlanner:
         )
 
         steps: list[PlanStep] = call_result.value or []
+        self._dedupe_step_ids(steps)
         if carryover:
             steps = self._merge_carryover(carryover, steps)
         self._validate_dag(steps)
@@ -303,6 +304,32 @@ class DAGPlanner:
 
         messages.append(ChatMessage(role="user", content=user_content))
         return messages
+
+    @staticmethod
+    def _dedupe_step_ids(steps: list[PlanStep]) -> None:
+        """Rename duplicate step ids in-place (``{id}_dup2``, ``_dup3``, ...).
+
+        Duplicate ids collapse in the id-keyed maps used by
+        :meth:`_validate_dag` (making ``visited_count != len(steps)`` and
+        raising a bogus "Circular dependency" error) and by the executor's
+        step index.  The first occurrence keeps the original id, so
+        dependency references — which cannot distinguish duplicates anyway —
+        deterministically resolve to it.
+        """
+        seen: set[str] = set()
+        for step in steps:
+            if step.id in seen:
+                suffix = 2
+                while f"{step.id}_dup{suffix}" in seen:
+                    suffix += 1
+                new_id = f"{step.id}_dup{suffix}"
+                logger.warning(
+                    "Duplicate step id '%s' from planner LLM — renamed to '%s'",
+                    step.id,
+                    new_id,
+                )
+                step.id = new_id
+            seen.add(step.id)
 
     @staticmethod
     def _merge_carryover(
