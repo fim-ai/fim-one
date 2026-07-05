@@ -278,7 +278,8 @@
     "dataExportButton": "Meine Daten exportieren",
     "dataExportDownloading": "Export wird vorbereitet...",
     "dataExportSuccess": "Datenexport gestartet",
-    "dataExportFailed": "Fehler beim Exportieren von Daten"
+    "dataExportFailed": "Fehler beim Exportieren von Daten",
+    "bindErrorTimeout": "Der Anbieter hat zu lange zum Antworten benötigt. Bitte versuchen Sie es erneut."
   },
   "appearance": {
     "title": "Erscheinungsbild",

@@ -223,6 +223,7 @@ export function AccountSettings() {
     already_bound: t("bindErrorAlreadyBound"),
     already_connected: t("bindErrorAlreadyConnected"),
     feishu_email_required: t("bindErrorFeishuEmailRequired"),
+    oauth_timeout: t("bindErrorTimeout"),
   }
 
   const refreshUser = useCallback(async () => {

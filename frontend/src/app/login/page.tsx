@@ -172,6 +172,8 @@ function LoginPageInner() {
     _oauthErrorHandled.current = true
     if (error === "oauth_failed") {
       toast.error(t("oauthFailed"))
+    } else if (error === "oauth_timeout") {
+      toast.error(t("oauthTimeout"))
     } else if (error === "registration_disabled") {
       toast.error(t("oauthRegistrationDisabled"))
     } else if (error === "feishu_email_required") {

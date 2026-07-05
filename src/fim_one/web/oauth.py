@@ -12,6 +12,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Explicit timeout for all provider HTTP calls. The Feishu path makes two
+# sequential requests, so a slow provider leg must fail fast instead of holding
+# the user's sign-in until the library default expires twice.
+_HTTP_TIMEOUT = httpx.Timeout(8.0, connect=3.0)
+
 
 @dataclass
 class OAuthProvider:
@@ -132,7 +137,7 @@ def build_authorize_url(provider: OAuthProvider, state: str, redirect_uri: str) 
 
 async def exchange_code(provider: OAuthProvider, code: str, redirect_uri: str) -> str:
     """Exchange authorization code for access token. Returns the access token."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         if provider.name == "feishu":
             # Step 1: Get a short-lived app access token using app credentials.
             app_token_resp = await client.post(
@@ -177,7 +182,7 @@ async def exchange_code(provider: OAuthProvider, code: str, redirect_uri: str) -
 
 async def fetch_user_info(provider: OAuthProvider, access_token: str) -> OAuthUserInfo:
     """Fetch user profile from the OAuth provider."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
         headers = {"Authorization": f"Bearer {access_token}"}
         if provider.name == "github":
             headers["Accept"] = "application/vnd.github+json"

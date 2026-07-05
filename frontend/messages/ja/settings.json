@@ -278,7 +278,8 @@
     "dataExportButton": "データをエクスポート",
     "dataExportDownloading": "エクスポートを準備中...",
     "dataExportSuccess": "データエクスポートが開始されました",
-    "dataExportFailed": "データのエクスポートに失敗しました"
+    "dataExportFailed": "データのエクスポートに失敗しました",
+    "bindErrorTimeout": "プロバイダーの応答に時間がかかりすぎました。もう一度お試しください。"
   },
   "appearance": {
     "title": "外観",

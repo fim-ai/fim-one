@@ -10,6 +10,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
@@ -171,6 +172,11 @@ async def callback(
 
         # Fetch user info
         user_info = await fetch_user_info(provider, access_token)
+    except httpx.TimeoutException:
+        # Distinct code: the provider is slow, not misconfigured — the user
+        # should simply retry rather than suspect their account.
+        logger.warning("OAuth provider %s timed out during exchange/fetch", provider_name)
+        return _error_redirect("oauth_timeout")
     except Exception:
         logger.exception("OAuth exchange/fetch failed for %s", provider_name)
         return _error_redirect()

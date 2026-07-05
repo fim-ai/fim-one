@@ -278,7 +278,8 @@
     "dataExportButton": "내 데이터 내보내기",
     "dataExportDownloading": "내보내기 준비 중...",
     "dataExportSuccess": "데이터 내보내기가 시작되었습니다",
-    "dataExportFailed": "데이터 내보내기에 실패했습니다"
+    "dataExportFailed": "데이터 내보내기에 실패했습니다",
+    "bindErrorTimeout": "제공자의 응답이 너무 오래 걸렸습니다. 다시 시도해주세요."
   },
   "appearance": {
     "title": "모양",

@@ -177,6 +177,7 @@
     "bindErrorAlreadyBound": "This OAuth account is already bound to another user.",
     "bindErrorAlreadyConnected": "You already have a connection for this provider.",
     "bindErrorFeishuEmailRequired": "Your Feishu account has no verified email. Please add one in Feishu settings before linking.",
+    "bindErrorTimeout": "The provider took too long to respond. Please try again.",
     "bindErrorGeneric": "Failed to connect account: {error}",
 
     "emailTitle": "Email",

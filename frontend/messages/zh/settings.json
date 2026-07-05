@@ -278,7 +278,8 @@
     "dataExportButton": "导出我的数据",
     "dataExportDownloading": "准备导出中...",
     "dataExportSuccess": "数据导出已启动",
-    "dataExportFailed": "导出数据失败"
+    "dataExportFailed": "导出数据失败",
+    "bindErrorTimeout": "提供商响应超时。请重试。"
   },
   "appearance": {
     "title": "外观",

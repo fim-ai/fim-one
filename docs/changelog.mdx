@@ -34,11 +34,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Security
 
+- **API-key scopes are now carried per-request instead of being attached to the user object.** This closes a latent scope-confusion path where a cached or identity-map-shared user could inherit another auth context's scope set.
+- **An auto-created `.env` holding the generated JWT secret is now written with owner-only (0600) permissions.** Pre-existing `.env` files keep their permissions.
+- **Password hashing cost is now tunable via `FIM_BCRYPT_COST`** (default 12, clamped to bcrypt's 4–31 range) for operators balancing hardware and hardening needs.
 - **Database connectors can no longer be shared, and their raw-SQL tool is owner-only.** Publishing a database connector to an organization or globally is now rejected, and the arbitrary-SQL database tool is only ever offered to the connector's owner — never to a subscriber, regardless of the owner-credential fallback setting. Previously a shared database connector exposed unrestricted SQL over the owner's (typically high-privilege) database account to anyone who subscribed, with no per-caller scoping. Per-user scoped database access will return through a future declarative-action layer.
 - **Webhook- and cron-triggered workflows now count against the owner's token quota.** An unattended workflow run — triggered through its public API key or on a schedule — used to execute LLM and agent steps without checking or recording any token usage, an unmetered free-LLM path that bypassed quotas entirely. Such runs are now gated on the workflow owner's quota up front (a public trigger is refused, and a scheduled run is skipped, when the owner is already over quota) and their token usage is recorded per run and counted toward the same monthly quota as chat.
 
 ### Fixed
 
+- **OAuth sign-in now fails fast with a clear "provider took too long" message when GitHub/Google/Discord/Feishu are slow**, instead of hanging on library-default timeouts and surfacing a generic failure.
 - **Agent no longer generates a spurious image when asked to restyle an HTML deliverable, and never claims a file was created without actually writing it to the workspace.** Image generation is now explicitly scoped to raster pictures, and file deliverables must be written via a tool call — pasting content in chat no longer passes as "generating a file".
 - **Generated HTML pages now default to a warm Claude-inspired palette instead of the generic purple-gradient look.** When you don't specify a style, the agent uses a warm minimal baseline; your own style always wins when specified.
 - **Long tool-heavy conversations no longer break when history is compacted.** Context compaction could cut the kept window between a tool call and its results, producing a message sequence the LLM provider rejects outright (HTTP 400) — exactly on the long runs that need compaction most. The compactor now keeps each tool call together with its results on the kept side.

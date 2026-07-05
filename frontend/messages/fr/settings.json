@@ -278,7 +278,8 @@
     "dataExportButton": "Exporter mes données",
     "dataExportDownloading": "Préparation de l'export...",
     "dataExportSuccess": "Export de données lancé",
-    "dataExportFailed": "Échec de l'export de données"
+    "dataExportFailed": "Échec de l'export de données",
+    "bindErrorTimeout": "Le fournisseur a mis trop de temps à répondre. Veuillez réessayer."
   },
   "appearance": {
     "title": "Apparence",
