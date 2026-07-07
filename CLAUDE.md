@@ -117,6 +117,7 @@ If your module writes under `uploads/` or `data/`, add cleanup.
 - Type checks pass: `uv run mypy <changed_files>` (strict=true; fix types, never `type: ignore`).
 - No external services — mock DB/MCP/HTTP/LLM via `unittest.mock` / `AsyncMock`.
 - Naming: `tests/test_{module}.py` · `Test{Feature}` · `test_{behavior}`.
+- **Behavioral evals**: changing `core/agent/system_prompt.py`, `core/agent/react.py`, or `core/tool/builtin/*` → run `uv run pytest evals/ -q` (~2 min, real LLM) BEFORE commit. Pre-commit enforces via `evals/.eval-stamp` fingerprint (watch list: `scripts/eval_stamp.py`). Agent worktrees: `SKIP_EVALS=1 git commit`; orchestrator runs evals after merge-back.
 
 ## Task Completion Report (MANDATORY)
 

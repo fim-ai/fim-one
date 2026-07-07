@@ -10,6 +10,8 @@ without credentials stays green.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -32,3 +34,33 @@ def pytest_collection_modifyitems(
     )
     for item in items:
         item.add_marker(skip)
+
+
+# ---------------------------------------------------------------------------
+# Eval freshness stamp (consumed by the pre-commit hook)
+#
+# A green run writes evals/.eval-stamp — a fingerprint of the
+# behavior-sensitive files (system prompt, tool descriptions, ReAct loop;
+# list lives in scripts/eval_stamp.py). The pre-commit hook rejects
+# commits that change those files without a matching stamp, so "changed
+# the prompt, forgot to run the evals" can't slip through.
+# ---------------------------------------------------------------------------
+
+_passed_count = 0
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    global _passed_count
+    if report.when == "call" and report.passed:
+        _passed_count += 1
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    # Stamp only a genuinely green run with at least one real pass —
+    # an all-skipped run (no LLM_API_KEY) proves nothing.
+    if exitstatus != 0 or _passed_count == 0:
+        return
+    subprocess.run(
+        [sys.executable, str(_PROJECT_ROOT / "scripts" / "eval_stamp.py"), "--write"],
+        check=False,
+    )

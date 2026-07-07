@@ -150,6 +150,22 @@ if [ -n "$STAGED_PY" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Behavioral-eval freshness guard
+#
+# Changes to agent-behavior files (system prompt, builtin tool
+# descriptions, ReAct loop — watch list in scripts/eval_stamp.py) require
+# a fresh green `uv run pytest evals/ -q` run. The eval run stamps
+# evals/.eval-stamp; here we only compare fingerprints (instant, no LLM
+# calls). Bypass: SKIP_EVALS=1 git commit ...
+# ---------------------------------------------------------------------------
+if [ -n "$STAGED_PY" ] && [ -z "$SKIP_EVALS" ]; then
+  cd "$ROOT"
+  if ! uv run python scripts/eval_stamp.py --check-staged; then
+    exit 1
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Validate MDX files (catches JSX parse errors before Mintlify)
 # ---------------------------------------------------------------------------
 # Collect all staged .mdx files (including newly translated ones)

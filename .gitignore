@@ -39,3 +39,6 @@ uploads/
 dev/
 # Local translation cache (superseded by committed .translation-hashes.json)
 .translation-cache.json
+
+# Behavioral-eval freshness stamp (written by a green `pytest evals/` run)
+evals/.eval-stamp

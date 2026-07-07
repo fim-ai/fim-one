@@ -24,6 +24,18 @@ Run once, manually, before committing a change to any of:
 - any builtin tool's `description` / `parameters_schema`
 - the ReAct loop's tool-selection / final-answer paths
 
+**Enforced by pre-commit.** A green run stamps `evals/.eval-stamp` with a
+fingerprint of the watched files (list in `scripts/eval_stamp.py`); the
+pre-commit hook rejects a commit that stages changes to those files
+without a matching stamp. The check itself is instant and free — only
+the eval run costs tokens. Escape hatches:
+
+- `SKIP_EVALS=1 git commit ...` — emergencies, machines without
+  `LLM_API_KEY`, and agent worktrees (the orchestrator runs evals after
+  merge-back).
+- An all-skipped run (no `LLM_API_KEY`) does **not** stamp — a skip
+  proves nothing.
+
 ## Handling non-determinism
 
 Model behavior is stochastic — a single failure is a signal, not a verdict.
