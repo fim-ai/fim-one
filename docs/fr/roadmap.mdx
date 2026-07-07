@@ -279,6 +279,15 @@ Durcissement différé — non bloquant ; à traiter uniquement si le scénario 
 - [x] `PreToolUse` enforcement hooks fail closed on error — a crashing approval gate no longer silently allows the call; non-enforcement hooks keep fail-open via `fail_open`
 - [x] Force-logout timestamp comparison normalized to UTC by conversion + Docker Compose `POSTGRES_*` credential override (no shipped `fim:fim` default)
 
+### v0.8.9 (2026-07-08) — Module Slim-down + Sharing Convergence + Approval Hardening
+- [x] Skills & Workflows soft-shelved behind admin module flags (default off) — core-only boot; nothing deleted, reversible from Admin → Settings → Modules
+- [x] Sharing converged — KB sharing removed (KBs reach others only via shared Agents), DB connectors unshareable + raw SQL owner-only, workflow builder trimmed to 9 reference-only nodes
+- [x] Feishu approval hardening — card clicks enforce approver identity, callback signatures fail closed + encrypted envelopes decrypted, approvals never routed to an unintended chat
+- [x] Use-time access re-checks — shared MCP servers and bound KBs re-verified per run; leaving an org revokes subscriptions and saved credentials immediately
+- [x] Agent loop hardening — plan board, background tools, incremental DAG replan + checkpoint resume, compaction keeps tool pairing, truncation continuation, 529/504 retry
+- [x] `run_workflow` agent tool + workflow correctness — Agent node runs the full agent, confirmation gates fail closed, connector calls access-checked and audit-logged
+- [x] Account deletion unified — admin and self-serve funnel through one purge routine covering every record and on-disk file; org owners must transfer ownership first
+
 # Versions Planifiées
 
 ### v0.9 — Observabilité + Durcissement pour la production
@@ -287,27 +296,27 @@ Durcissement différé — non bloquant ; à traiter uniquement si le scénario 
 
 #### Durcissement de l'authentification et de la sécurité
 
-- [x] ~~Confinement du type de jeton JWT (contournement 2FA) + correctifs de prise de compte OAuth et de session~~ *(livré dans v0.8.7)*
-- [x] ~~Horodatages PostgreSQL sensibles au fuseau horaire~~ *(livré dans v0.8.6)*
-- [x] ~~La comparaison d'horodatage de déconnexion forcée normalise les valeurs sensibles/non sensibles au fuseau horaire en UTC par conversion — les jetons révoqués sont fiablement rejetés sur SQLite et PostgreSQL~~ *(livré dans v0.8.8)*
-- [x] ~~Les identifiants PostgreSQL Docker Compose sont remplaçables via les variables d'environnement `POSTGRES_*` (source unique dans la chaîne de connexion) — plus de défaut `fim:fim` accidentellement expédié sur les déploiements exposés~~ *(livré dans v0.8.8)*
-- [x] ~~La liste de blocage SSRF ferme le contournement IPv6 mappé IPv4 (`::ffff:` métadonnées d'instance) ; les URL du serveur MCP SSE/Streamable-HTTP sont validées SSRF à la création et à la connexion~~ *(livré dans v0.8.8)*
-- [x] ~~Le secours aux identifiants du propriétaire est optionnel : les connecteurs/serveurs MCP désactivent par défaut `allow_fallback` (les lignes existantes sont inversées) ; une ressource sans secours pour laquelle vous n'avez pas d'identifiants est masquée de l'ensemble d'outils au lieu d'échouer au moment de l'appel~~
-- [x] ~~L'accès aux ressources unifié sur la visibilité (propre + abonné) : les connecteurs/KB/serveurs MCP abonnés sont liables aux agents (plus de 403 « non possédé »), et les étapes du connecteur de flux de travail appliquent l'accès du runner au lieu d'exécuter n'importe quel connecteur par id~~
-- [x] ~~Les exécutions de flux de travail webhook/cron sont mesurées par rapport au quota de jetons du propriétaire — les étapes LLM/agent sans surveillance sont contrôlées à l'avance et leur utilisation compte vers le même quota que le chat, fermant le chemin LLM gratuit non mesuré~~
+- [x] ~~Confinement du type de jeton JWT (contournement 2FA) + corrections de prise de compte OAuth et de session~~ *(livré en v0.8.7)*
+- [x] ~~Horodatages PostgreSQL sensibles au fuseau horaire~~ *(livré en v0.8.6)*
+- [x] ~~La comparaison d'horodatage de déconnexion forcée normalise les valeurs sensibles/naïves au fuseau horaire en UTC par conversion — les jetons révoqués sont fiablement rejetés sur SQLite et PostgreSQL~~ *(livré en v0.8.8)*
+- [x] ~~Les identifiants PostgreSQL Docker Compose sont remplaçables via les variables d'environnement `POSTGRES_*` (source unique dans la chaîne de connexion) — plus de défaut `fim:fim` accidentellement livré sur les déploiements exposés~~ *(livré en v0.8.8)*
+- [x] ~~La liste de blocage SSRF ferme le contournement IPv6 mappé IPv4 (`::ffff:` métadonnées d'instance) ; les URL du serveur MCP SSE/Streamable-HTTP sont validées SSRF à la création et à la connexion~~ *(livré en v0.8.8)*
+- [x] ~~Le recours aux identifiants du propriétaire est optionnel : les connecteurs/serveurs MCP ont par défaut `allow_fallback` désactivé (les lignes existantes sont inversées) ; une ressource sans recours pour laquelle vous n'avez pas d'identifiants est masquée de l'ensemble d'outils au lieu d'échouer au moment de l'appel~~ *(livré en v0.8.9)*
+- [x] ~~L'accès aux ressources est unifié sur la visibilité (propre + abonné) : les connecteurs/KB/serveurs MCP abonnés sont liables aux agents (plus de 403 « non possédé »), et les étapes du connecteur de flux de travail appliquent l'accès du responsable de l'exécution au lieu d'exécuter n'importe quel connecteur par id~~ *(livré en v0.8.9)*
+- [x] ~~Les exécutions de flux de travail webhook/cron sont mesurées par rapport au quota de jetons du propriétaire — les étapes LLM/agent sans surveillance sont fermées à l'avance et leur utilisation compte pour le même quota que le chat, fermant le chemin LLM gratuit non mesuré~~ *(livré en v0.8.9)*
 
 #### Compatibilité des modèles et fournisseurs
 
 - [x] ~~Protocole de réflexion adaptative Anthropic pour Opus 4.6+/Sonnet 4.6/Fable 5 — la réflexion étendue fonctionne sur les modèles qui ont rejeté l'ancien paramètre de budget fixe (400 sur 4.7/4.8) ; avertit en cas de mauvais routage du proxy OpenAI~~ *(livré dans v0.8.8)*
 - [x] ~~Le pool HTTP LLM partagé s'auto-répare après une éviction du cache client LiteLLM qui le ferme — les appels recréent le pool de manière transparente au lieu d'échouer indéfiniment jusqu'au redémarrage~~ *(livré dans v0.8.8)*
 
-#### Connecteur + outillage
+#### Connector + tooling
 
-- [ ] **Phase 3-4 de divulgation progressive du connecteur** — `ConnectorExecutor` unifié (API/DB/MCP) ; validation d'action `jsonschema` ; découverte/exécution agnostiques au protocole
-- [ ] **Configuration du connecteur YAML/JSON** — la plateforme génère automatiquement le serveur MCP
-- [ ] **Connecteurs de base de données Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo livrés en v0.8.5
-- [ ] **Mise en pool des connexions MCP** — pool STDIO avec isolation d'environnement par utilisateur ; partage de `httpx.AsyncClient` pour SSE/HTTP. Cible ≤100 ms de démarrage à chaud, connexions HTTP O(1) par serveur
-- [x] ~~Les agents peuvent extraire `run_workflow` pour exécuter un workflow déterministe en tant qu'étape secondaire (recette statique ↔ recette dynamique de Skill) ; les workflows contrôlés par l'homme restent déclenchement uniquement, les exécutions sont auditées, profondeur/réentrance gardée~~
+- [ ] **Connector Progressive Disclosure Phase 3-4** — unified `ConnectorExecutor` (API/DB/MCP); `jsonschema` action validation; protocol-agnostic discover/execute
+- [ ] **YAML/JSON connector config** — platform auto-generates MCP server
+- [ ] **Database connectors Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo shipped in v0.8.5
+- [ ] **MCP Connection Pooling** — pool STDIO with per-user env isolation; share `httpx.AsyncClient` for SSE/HTTP. Target ≤100 ms warm-start, O(1) HTTP connections per server
+- [x] ~~Agents can pull `run_workflow` to run a deterministic workflow as a sub-step (static recipe ↔ Skill's dynamic recipe); human-gated workflows stay trigger-only, runs are audited, depth/re-entrancy guarded~~ *(shipped in v0.8.9)*
 
 #### Garde-fous de contenu {/* dev: dev/archive/openai-agents-insights.md */}
 
@@ -377,15 +386,15 @@ Durcissement différé — non bloquant ; à traiter uniquement si le scénario 
 - [ ] Adaptateur Gemini Context Cache (cycle de vie du cache REST séparé vs marqueur en ligne Anthropic)
 - [ ] `cache_ttl` par agent (5min éphémère vs 1h étendu)
 
-#### Durcissement de la boucle d'agent (modèles Claude Code)
+#### Renforcement de la boucle d'agent (modèles Claude Code)
 
-- [x] ~~Tableau de plan : outil `update_plan` todo + réinjection de rappel de plan obsolète maintient les exécutions ReAct longues sur objectif et survit à la compaction~~
-- [x] ~~Résilience des appels LLM : continuation de troncature de sortie + nouvelle tentative 529/504 avec Retry-After (secours de modèle de fallback déjà livré en tant que `FallbackLLM`)~~
-- [x] ~~Les résultats d'outils tronqués par budget persistent dans l'espace de travail avant la coupure ; snapshot de transcript complet avant compaction avec perte~~
-- [x] ~~Exécution d'outils en arrière-plan dans ReAct — les outils lents autorisés retournent un identifiant de tâche et notifient à la fin~~
-- [x] ~~Replan DAG incrémental : les étapes complétées sont conservées entre les cycles de replan ; checkpoint au niveau des étapes reprend les exécutions interrompues en cas de nouvelle tentative~~ {/* dev: dev/incremental-dag.md */}
-- [x] ~~La compaction préserve l'appairage tool_use/tool_result — les exécutions longues chargées d'outils ne meurent plus sur erreur 400 du fournisseur après compaction ; les résultats d'outils en arrière-plan atteignent le flux d'étapes + preuve DAG~~
-- [ ] Reprise DAG en direct en milieu de flux (reconnexion SSE se rattache à un tour en cours) — reprise froide par checkpoint livrée {/* dev: dev/incremental-dag.md */}
+- [x] ~~Tableau de plan : outil `update_plan` todo + réinjection de rappel de plan obsolète maintient les exécutions ReAct longues sur objectif et survit à la compaction~~ *(livré en v0.8.9)*
+- [x] ~~Résilience des appels LLM : continuation de troncature de sortie + nouvelle tentative 529/504 avec Retry-After (secours de modèle de fallback déjà livré en tant que `FallbackLLM`)~~ *(livré en v0.8.9)*
+- [x] ~~Les résultats d'outils tronqués par budget persistent dans l'espace de travail avant la coupure ; snapshot de transcript complet avant compaction avec perte~~ *(livré en v0.8.9)*
+- [x] ~~Exécution d'outils en arrière-plan dans ReAct — les outils lents en liste blanche retournent un identifiant de tâche et notifient à la fin~~ *(livré en v0.8.9)*
+- [x] ~~Replan DAG incrémental : les étapes complétées sont conservées entre les rounds de replan ; checkpoint au niveau des étapes reprend les exécutions interrompues en cas de nouvelle tentative~~ *(livré en v0.8.9)* {/* dev: dev/incremental-dag.md */}
+- [x] ~~La compaction préserve l'appairage tool_use/tool_result — les exécutions longues avec beaucoup d'outils ne meurent plus sur erreur 400 du fournisseur après compaction ; les résultats d'outils en arrière-plan atteignent le flux d'étapes + preuve DAG~~ *(livré en v0.8.9)*
+- [ ] Reprise DAG à chaud en mid-stream (reconnexion SSE se réattache à un tour en cours) — reprise à froid par retry-resume livrée via checkpoint {/* dev: dev/incremental-dag.md */}
 
 #### Écosystème + mise à l'échelle
 

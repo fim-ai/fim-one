@@ -281,6 +281,15 @@ flowchart LR
 - [x] PreToolUse 执行钩子在错误时故障关闭——崩溃的确认闸门不再默认允许调用；非执行钩子通过 `fail_open` 保持故障开放
 - [x] 强制登出时间戳比较通过转换为 UTC 进行规范化 + Docker Compose `POSTGRES_*` 凭证覆盖（无附带的 `fim:fim` 默认值）
 
+### v0.8.9 (2026-07-08) — 模块精简 + 共享收敛 + 审批加固
+- [x] 技能与工作流在管理员模块标志后软搁置（默认关闭）——仅核心启动；无内容删除，可从管理员 → 设置 → 模块恢复
+- [x] 共享收敛——移除知识库共享（知识库仅通过共享智能体到达他人），数据库连接器不可共享 + 原始SQL仅所有者可用，工作流构建器精简至9个仅参考节点
+- [x] Feishu审批加固——卡片点击强制审批人身份验证，回调签名失败关闭 + 加密信封解密，审批永不路由至意外的聊天
+- [x] 使用时访问重新检查——共享MCP服务器和绑定知识库每次运行时重新验证；离开组织立即撤销订阅和已保存凭证
+- [x] 智能体循环加固——计划板、后台工具、增量DAG重新规划 + 检查点恢复、压缩保持工具配对、截断继续、529/504重试
+- [x] `run_workflow`智能体工具 + 工作流正确性——智能体节点运行完整智能体，确认闸门失败关闭，连接器调用访问检查和审计日志
+- [x] 账户删除统一——管理员和自助服务通过一个清除例程，涵盖每条记录和磁盘文件；组织所有者必须先转移所有权
+
 ## 计划版本
 
 ### v0.9 — 可观测性 + 生产级加固
@@ -289,14 +298,14 @@ flowchart LR
 
 #### 身份验证与安全加固
 
-- [x] ~~JWT令牌类型限制（2FA绕过）+ OAuth账户接管与会话修复~~ *(在v0.8.7中发布)*
-- [x] ~~PostgreSQL时区感知时间戳~~ *(在v0.8.6中发布)*
-- [x] ~~强制登出时间戳比较通过转换将时区感知/朴素值规范化为UTC——撤销的令牌在SQLite和PostgreSQL上都能可靠地被拒绝~~ *(在v0.8.8中发布)*
-- [x] ~~Docker Compose PostgreSQL凭证可通过`POSTGRES_*`环境变量覆盖（单一来源进入连接字符串）——不再意外发布暴露部署上的`fim:fim`默认值~~ *(在v0.8.8中发布)*
-- [x] ~~SSRF阻止列表关闭IPv4映射IPv6绕过（`::ffff:`实例元数据）；MCP SSE/Streamable-HTTP服务器URL在创建+连接时进行SSRF验证~~ *(在v0.8.8中发布)*
-- [x] ~~所有者凭证回退是可选的：连接器/MCP服务器默认`allow_fallback`关闭（现有行已翻转）；你缺少凭证的无回退资源从工具集中隐藏，而不是在调用时失败~~
-- [x] ~~资源访问统一于可见性（自有+已订阅）：已订阅的连接器/知识库/MCP服务器可绑定到智能体（不再出现"未拥有"403），工作流连接器步骤强制执行运行者的访问权限，而不是按id运行任何连接器~~
-- [x] ~~Webhook/定时工作流运行按所有者的令牌配额计量——无人值守的LLM/智能体步骤被提前限制，其使用情况计入与聊天相同的配额，关闭无计量的免费LLM路径~~
+- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
+- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
+- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
+- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
+- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
+- [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~ *(shipped in v0.8.9)*
+- [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~ *(shipped in v0.8.9)*
+- [x] ~~Webhook/cron workflow runs are metered to the owner's token quota — unattended LLM/agent steps are gated up-front and their usage counts toward the same quota as chat, closing the unmetered free-LLM path~~ *(shipped in v0.8.9)*
 
 #### 模型与提供商兼容性
 
@@ -308,8 +317,8 @@ flowchart LR
 - [ ] **连接器渐进式披露第3-4阶段** — 统一的 `ConnectorExecutor`（API/DB/MCP）；`jsonschema` 操作验证；协议无关的发现/执行
 - [ ] **YAML/JSON 连接器配置** — 平台自动生成 MCP 服务器
 - [ ] **数据库连接器第4阶段** — Oracle（`oracledb`）、SQL Server（`aioodbc`）、GBase（`aioodbc` + GBase ODBC）。DM8 / KingbaseES / HighGo 已在 v0.8.5 中发布
-- [ ] **MCP 连接池** — 使用按用户环境隔离的 STDIO 池；为 SSE/HTTP 共享 `httpx.AsyncClient`。目标 ≤100 ms 热启动，每个服务器 O(1) HTTP 连接
-- [x] ~~智能体可以拉取 `run_workflow` 来运行确定性工作流作为子步骤（静态配方 ↔ 技能的动态配方）；人工门控工作流保持仅触发状态，运行被审计，深度/重入性受保护~~
+- [ ] **MCP 连接池** — 使用每用户环境隔离的 STDIO 池；为 SSE/HTTP 共享 `httpx.AsyncClient`。目标 ≤100 ms 热启动，每个服务器 O(1) HTTP 连接
+- [x] ~~智能体可以拉取 `run_workflow` 来运行确定性工作流作为子步骤（静态配方 ↔ 技能的动态配方）；人工门控工作流保持仅触发，运行被审计，深度/重入性受保护~~ *（已在 v0.8.9 中发布）*
 
 #### 内容护栏 {/* dev: dev/archive/openai-agents-insights.md */}
 
@@ -381,13 +390,13 @@ flowchart LR
 
 #### 智能体循环强化（Claude Code 模式）
 
-- [x] ~~计划板：`update_plan` todo 工具 + 陈旧计划重新注入提醒使长 ReAct 运行保持目标并在压缩后存活~~
-- [x] ~~LLM 调用弹性：输出截断续接 + 529/504 重试与 Retry-After（过载模型回退已作为 `FallbackLLM` 发布）~~
-- [x] ~~预算截断的工具结果在切割前持久化到工作区；完整压缩前的完整记录快照~~
-- [x] ~~ReAct 中的后台工具执行——白名单慢工具返回任务 id 并在完成时通知~~
-- [x] ~~增量 DAG 重新规划：已完成的步骤跨重新规划轮次保留；步骤级检查点在重试时恢复中断的运行~~ {/* dev: dev/incremental-dag.md */}
-- [x] ~~压缩保留 tool_use/tool_result 配对——长工具密集型运行在压缩后不再因提供商 400 而失败；后台工具结果到达步骤流 + DAG 证据~~
-- [ ] 热中流 DAG 恢复（SSE 重新连接重新附加到运行中的轮次）——冷重试恢复已通过检查点发布 {/* dev: dev/incremental-dag.md */}
+- [x] ~~计划板：`update_plan` todo 工具 + 陈旧计划重新注入提醒使长 ReAct 运行保持目标并在压缩后存活~~ *(v0.8.9 中已发布)*
+- [x] ~~LLM 调用弹性：输出截断续接 + 529/504 重试与 Retry-After（过载模型回退已作为 `FallbackLLM` 发布）~~ *(v0.8.9 中已发布)*
+- [x] ~~预算截断的工具结果在切割前持久化到工作区；有损压缩前的完整记录快照~~ *(v0.8.9 中已发布)*
+- [x] ~~ReAct 中的后台工具执行——白名单慢工具返回任务 id 并在完成时通知~~ *(v0.8.9 中已发布)*
+- [x] ~~增量 DAG 重新规划：已完成的步骤跨越重新规划轮次；步骤级检查点在重试时恢复中断的运行~~ *(v0.8.9 中已发布)* {/* dev: dev/incremental-dag.md */}
+- [x] ~~压缩保留 tool_use/tool_result 配对——长工具密集型运行不再在压缩后因提供商 400 而失败；后台工具结果到达步骤流 + DAG 证据~~ *(v0.8.9 中已发布)*
+- [ ] 热中流 DAG 恢复（SSE 重新连接重新附加到运行中的轮次）——冷重试恢复通过检查点发布 {/* dev: dev/incremental-dag.md */}
 
 #### 生态系统 + 扩展
 

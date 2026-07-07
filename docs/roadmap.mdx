@@ -279,6 +279,15 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] PreToolUse enforcement hooks fail closed on error — a crashing approval gate no longer silently allows the call; non-enforcement hooks keep fail-open via `fail_open`
 - [x] Force-logout timestamp comparison normalized to UTC by conversion + Docker Compose `POSTGRES_*` credential override (no shipped `fim:fim` default)
 
+### v0.8.9 (2026-07-08) — Module Slim-down + Sharing Convergence + Approval Hardening
+- [x] Skills & Workflows soft-shelved behind admin module flags (default off) — core-only boot; nothing deleted, reversible from Admin → Settings → Modules
+- [x] Sharing converged — KB sharing removed (KBs reach others only via shared Agents), DB connectors unshareable + raw SQL owner-only, workflow builder trimmed to 9 reference-only nodes
+- [x] Feishu approval hardening — card clicks enforce approver identity, callback signatures fail closed + encrypted envelopes decrypted, approvals never routed to an unintended chat
+- [x] Use-time access re-checks — shared MCP servers and bound KBs re-verified per run; leaving an org revokes subscriptions and saved credentials immediately
+- [x] Agent loop hardening — plan board, background tools, incremental DAG replan + checkpoint resume, compaction keeps tool pairing, truncation continuation, 529/504 retry
+- [x] `run_workflow` agent tool + workflow correctness — Agent node runs the full agent, confirmation gates fail closed, connector calls access-checked and audit-logged
+- [x] Account deletion unified — admin and self-serve funnel through one purge routine covering every record and on-disk file; org owners must transfer ownership first
+
 ## Planned Versions
 
 ### v0.9 — Observability + Production Hardening
@@ -292,9 +301,9 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
 - [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
 - [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
-- [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~
-- [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~
-- [x] ~~Webhook/cron workflow runs are metered to the owner's token quota — unattended LLM/agent steps are gated up-front and their usage counts toward the same quota as chat, closing the unmetered free-LLM path~~
+- [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~ *(shipped in v0.8.9)*
+- [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~ *(shipped in v0.8.9)*
+- [x] ~~Webhook/cron workflow runs are metered to the owner's token quota — unattended LLM/agent steps are gated up-front and their usage counts toward the same quota as chat, closing the unmetered free-LLM path~~ *(shipped in v0.8.9)*
 
 #### Model & Provider Compatibility
 
@@ -307,7 +316,7 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [ ] **YAML/JSON connector config** — platform auto-generates MCP server
 - [ ] **Database connectors Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo shipped in v0.8.5
 - [ ] **MCP Connection Pooling** — pool STDIO with per-user env isolation; share `httpx.AsyncClient` for SSE/HTTP. Target ≤100 ms warm-start, O(1) HTTP connections per server
-- [x] ~~Agents can pull `run_workflow` to run a deterministic workflow as a sub-step (static recipe ↔ Skill's dynamic recipe); human-gated workflows stay trigger-only, runs are audited, depth/re-entrancy guarded~~
+- [x] ~~Agents can pull `run_workflow` to run a deterministic workflow as a sub-step (static recipe ↔ Skill's dynamic recipe); human-gated workflows stay trigger-only, runs are audited, depth/re-entrancy guarded~~ *(shipped in v0.8.9)*
 
 #### Content Guardrails {/* dev: dev/archive/openai-agents-insights.md */}
 
@@ -379,12 +388,12 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 
 #### Agent Loop Hardening (Claude Code patterns)
 
-- [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~
-- [x] ~~LLM-call resilience: output-truncation continuation + 529/504 retry with Retry-After (overload model fallback already shipped as `FallbackLLM`)~~
-- [x] ~~Budget-truncated tool results persist to workspace before cutting; full transcript snapshot before lossy compaction~~
-- [x] ~~Background tool execution in ReAct — whitelisted slow tools return a task id and notify on completion~~
-- [x] ~~Incremental DAG replan: completed steps carry across replan rounds; step-level checkpoint resumes interrupted runs on retry~~ {/* dev: dev/incremental-dag.md */}
-- [x] ~~Compaction preserves tool_use/tool_result pairing — long tool-heavy runs no longer die on provider 400 after compact; background tool results reach the step stream + DAG evidence~~
+- [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~ *(shipped in v0.8.9)*
+- [x] ~~LLM-call resilience: output-truncation continuation + 529/504 retry with Retry-After (overload model fallback already shipped as `FallbackLLM`)~~ *(shipped in v0.8.9)*
+- [x] ~~Budget-truncated tool results persist to workspace before cutting; full transcript snapshot before lossy compaction~~ *(shipped in v0.8.9)*
+- [x] ~~Background tool execution in ReAct — whitelisted slow tools return a task id and notify on completion~~ *(shipped in v0.8.9)*
+- [x] ~~Incremental DAG replan: completed steps carry across replan rounds; step-level checkpoint resumes interrupted runs on retry~~ *(shipped in v0.8.9)* {/* dev: dev/incremental-dag.md */}
+- [x] ~~Compaction preserves tool_use/tool_result pairing — long tool-heavy runs no longer die on provider 400 after compact; background tool results reach the step stream + DAG evidence~~ *(shipped in v0.8.9)*
 - [ ] Hot mid-stream DAG resume (SSE reconnect re-attaches to a running turn) — cold retry-resume shipped via checkpoint {/* dev: dev/incremental-dag.md */}
 
 #### Ecosystem + scaling
