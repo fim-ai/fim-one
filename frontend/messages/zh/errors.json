@@ -82,5 +82,6 @@
   "someFilesFailedUpload": "某些文件上传失败。请删除它们或在发送前重试。",
   "model_provider_name_taken": "已存在同名的提供商。",
   "model_name_taken": "此提供商下已存在该模型ID。",
-  "cannot_delete_org_owner": "该用户拥有一个或多个组织。请先转移所有权或删除这些组织。"
+  "cannot_delete_org_owner": "该用户拥有一个或多个组织。请先转移所有权或删除这些组织。",
+  "feishu_channel_requires_encrypt_key": "Feishu通道需要加密密钥——没有它，无法验证回调签名。"
 }

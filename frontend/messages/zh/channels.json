@@ -61,13 +61,14 @@
     "chat_id_required": "Chat ID 为必填项。",
     "verification_token_edit_placeholder": "已配置 - 留空以保持不变",
     "verification_token_required": "验证 Token 为必填项。",
-    "encrypt_key": "加密密钥（可选）",
-    "encrypt_key_placeholder": "仅在启用事件加密时需要",
+    "encrypt_key": "加密密钥",
+    "encrypt_key_placeholder": "粘贴加密密钥（回调安全性所需）",
     "encrypt_key_edit_placeholder": "已配置 - 留空以保持不变",
     "pickChat": "从群组列表中选择",
     "verification_token": "验证 Token",
     "verification_token_placeholder": "粘贴验证 Token",
-    "verification_token_hint": "在飞书开放平台 -> 事件与回调 -> 加密策略选项卡 -> 验证 Token 字段中找到。点击眼睛图标以显示。"
+    "verification_token_hint": "在飞书开放平台 -> 事件与回调 -> 加密策略选项卡 -> 验证 Token 字段中找到。点击眼睛图标以显示。",
+    "encrypt_key_required": "加密密钥为必需项。请在Feishu Open Platform → Events & Callbacks → Encryption Strategy中启用加密，然后将密钥粘贴到此处。"
   },
   "discard": {
     "title": "放弃未保存的更改？",

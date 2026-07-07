@@ -77,6 +77,24 @@ def _build_callback_url(channel_id: str) -> str:
     return f"{base}{path}" if base else path
 
 
+def _require_feishu_encrypt_key(
+    channel_type: str, config: dict[str, Any]
+) -> None:
+    """Reject Feishu channel configs without an ``encrypt_key``.
+
+    Callback signature verification fails closed without the key, so a
+    keyless channel would accept sends but silently reject every card
+    click — better to refuse the config up front.
+    """
+    if channel_type.lower() != "feishu":
+        return
+    if not str(config.get("encrypt_key") or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="feishu_channel_requires_encrypt_key",
+        )
+
+
 async def _load_channel_or_404(
     db: AsyncSession, channel_id: str
 ) -> Channel:
@@ -104,6 +122,7 @@ async def create_channel(
 ) -> ChannelResponse:
     """Create a new channel.  Requires org admin (or org owner)."""
     await require_org_admin(body.org_id, user, db)
+    _require_feishu_encrypt_key(body.type, body.config or {})
 
     ch = Channel(
         id=str(uuid.uuid4()),
@@ -184,6 +203,7 @@ async def update_channel(
         # can PATCH just the chat_id without re-sending app_secret).
         merged = dict(channel.config or {})
         merged.update(body.config)
+        _require_feishu_encrypt_key(channel.type, merged)
         channel.config = merged
 
     await db.commit()
@@ -626,9 +646,11 @@ async def channel_callback(
             detail="Invalid callback signature",
         )
 
-    # 2. Dispatch to adapter's handle_callback().
+    # 2. Decrypt (Feishu wraps pushes in an AES envelope when an Encrypt
+    #    Key is configured), then dispatch to adapter's handle_callback().
     if not isinstance(parsed, dict):
         parsed = {}
+    parsed = adapter.decrypt_callback(parsed)
     result = await adapter.handle_callback(parsed, headers)
 
     event = result.get("event") if isinstance(result, dict) else None
@@ -649,34 +671,61 @@ async def channel_callback(
         if confirmation_id and decision in ("approve", "reject"):
             open_id_raw = event.get("open_id")
             open_id = str(open_id_raw) if open_id_raw else None
-            final_status, newly_applied, payload = await _record_decision(
-                db,
-                confirmation_id=str(confirmation_id),
-                decision=str(decision),
-                open_id=open_id,
+            # Approver-scope enforcement: the clicker must map to a FIM
+            # user who is eligible per the agent's
+            # confirmation_approver_scope.  Anyone else in the chat gets
+            # a toast, and the card stays pending.
+            allowed, approver_user_id, deny_reason = (
+                await _authorize_feishu_click(
+                    db,
+                    confirmation_id=str(confirmation_id),
+                    open_id=open_id,
+                )
             )
-            if final_status is None:
-                # Confirmation row gone (deleted / expired sweep).  Return
-                # a benign toast so Feishu doesn't show 200340.
+            if not allowed:
+                logger.warning(
+                    "channel_callback: click denied (channel=%s, "
+                    "confirmation=%s, open_id=%s): %s",
+                    channel_id,
+                    confirmation_id,
+                    open_id,
+                    deny_reason,
+                )
+                # Card intentionally NOT replaced — it must stay pending
+                # so an eligible approver can still decide.
                 response_body = {
-                    "toast": {
-                        "type": "error",
-                        "content": "Confirmation request not found.",
-                    }
+                    "toast": {"type": "error", "content": deny_reason}
                 }
             else:
-                tool_name: str | None = None
-                if isinstance(payload, dict):
-                    raw_tool = payload.get("tool_name")
-                    if raw_tool:
-                        tool_name = str(raw_tool)
-                response_body = _build_card_action_response(
-                    final_status=final_status,
-                    newly_applied=newly_applied,
+                final_status, newly_applied, payload = await _record_decision(
+                    db,
                     confirmation_id=str(confirmation_id),
-                    tool_name=tool_name,
-                    decided_by=open_id,
+                    decision=str(decision),
+                    open_id=open_id,
+                    approver_user_id=approver_user_id,
                 )
+                if final_status is None:
+                    # Confirmation row gone (deleted / expired sweep).
+                    # Return a benign toast so Feishu doesn't show 200340.
+                    response_body = {
+                        "toast": {
+                            "type": "error",
+                            "content": "Confirmation request not found.",
+                        }
+                    }
+                else:
+                    tool_name: str | None = None
+                    if isinstance(payload, dict):
+                        raw_tool = payload.get("tool_name")
+                        if raw_tool:
+                            tool_name = str(raw_tool)
+                    response_body = _build_card_action_response(
+                        final_status=final_status,
+                        newly_applied=newly_applied,
+                        confirmation_id=str(confirmation_id),
+                        tool_name=tool_name,
+                        decided_by=open_id,
+                    )
         else:
             # Unknown / malformed payload — still return a well-formed
             # toast so Feishu doesn't flash 200340.
@@ -751,12 +800,89 @@ def _build_card_action_response(
     }
 
 
+async def _authorize_feishu_click(
+    db: AsyncSession,
+    *,
+    confirmation_id: str,
+    open_id: str | None,
+) -> tuple[bool, str | None, str]:
+    """Authorize a Feishu card click against the agent's approver scope.
+
+    The clicker is identified by the app-scoped Feishu ``open_id``; it maps
+    to a FIM user via the ``feishu`` OAuth binding (which requires the login
+    and channel integrations to share one Feishu app).  Unmappable clickers
+    are denied — chat membership alone must never satisfy the scope, or any
+    member of the target group could approve (the portal path enforces the
+    same rules via ``user_may_decide``).
+
+    Returns ``(allowed, approver_user_id, deny_reason)``.  A missing
+    confirmation row returns ``(True, None, "")`` so the caller's existing
+    not-found handling produces the benign toast.
+    """
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.oauth_binding import UserOAuthBinding
+    from fim_one.web.api.confirmations import user_may_decide
+
+    row = (
+        await db.execute(
+            select(ConfirmationRequest).where(
+                ConfirmationRequest.id == confirmation_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return (True, None, "")
+
+    if not row.agent_id:
+        return (False, None, "Cannot resolve the approver scope for this request.")
+
+    agent = (
+        await db.execute(select(Agent).where(Agent.id == row.agent_id))
+    ).scalar_one_or_none()
+    if agent is None:
+        return (False, None, "Cannot resolve the approver scope for this request.")
+
+    if not open_id:
+        return (False, None, "Unable to identify who clicked this card.")
+
+    binding = (
+        await db.execute(
+            select(UserOAuthBinding).where(
+                UserOAuthBinding.provider == "feishu",
+                UserOAuthBinding.oauth_id == open_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if binding is None:
+        return (
+            False,
+            None,
+            "Your Feishu account is not linked to FIM One — link it "
+            "(or decide in the portal) to respond to approvals.",
+        )
+
+    user = (
+        await db.execute(select(User).where(User.id == binding.user_id))
+    ).scalar_one_or_none()
+    if user is None:
+        return (False, None, "Your linked FIM One account no longer exists.")
+
+    if await user_may_decide(db, request=row, agent=agent, user=user):
+        return (True, user.id, "")
+    return (
+        False,
+        None,
+        "You are not authorised to respond to this confirmation.",
+    )
+
+
 async def _record_decision(
     db: AsyncSession,
     *,
     confirmation_id: str,
     decision: str,
     open_id: str | None,
+    approver_user_id: str | None = None,
 ) -> tuple[str | None, bool, dict[str, Any] | None]:
     """Flip the ConfirmationRequest status via the shared helper.
 
@@ -765,10 +891,9 @@ async def _record_decision(
     stamp the same fields (``status`` / ``responded_at`` / optionally
     ``approver_user_id`` / ``responded_by_open_id``) consistently.
 
-    For the Feishu path we only have an ``open_id``; ``approver_user_id``
-    stays NULL because the platform user has not mapped back to a FIM One
-    ``User`` row.  A future enhancement (task #6) can resolve open_id →
-    user_id on the way in.
+    ``approver_user_id`` is the FIM user resolved by
+    :func:`_authorize_feishu_click`, so Feishu decisions carry the same
+    audit identity as portal decisions.
 
     Returns ``(final_status, newly_applied, payload)`` — see helper.
     """
@@ -783,7 +908,7 @@ async def _record_decision(
         db,
         confirmation_id=confirmation_id,
         decision=decision,  # type: ignore[arg-type]
-        approver_user_id=None,
+        approver_user_id=approver_user_id,
         responded_by_open_id=open_id,
     )
 

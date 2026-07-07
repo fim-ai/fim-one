@@ -63,11 +63,12 @@
     "verification_token_placeholder": "Fügen Sie das Verifizierungstoken ein",
     "verification_token_edit_placeholder": "Konfiguriert - lassen Sie leer, um beizubehalten",
     "verification_token_required": "Verifizierungstoken ist erforderlich.",
-    "encrypt_key": "Verschlüsselungsschlüssel (optional)",
-    "encrypt_key_placeholder": "Nur erforderlich, wenn Ereignisverschlüsselung aktiviert ist",
+    "encrypt_key": "Verschlüsselungsschlüssel",
+    "encrypt_key_placeholder": "Verschlüsselungsschlüssel einfügen (erforderlich für Callback-Sicherheit)",
     "encrypt_key_edit_placeholder": "Konfiguriert - lassen Sie leer, um beizubehalten",
     "pickChat": "Aus Gruppenliste auswählen",
-    "verification_token_hint": "Finden Sie es in der Feishu Open Platform -> Events & Callbacks -> Registerkarte Encryption Strategy -> Feld Verification Token. Klicken Sie auf das Augensymbol, um es anzuzeigen."
+    "verification_token_hint": "Finden Sie es in der Feishu Open Platform -> Events & Callbacks -> Registerkarte Encryption Strategy -> Feld Verification Token. Klicken Sie auf das Augensymbol, um es anzuzeigen.",
+    "encrypt_key_required": "Verschlüsselungsschlüssel ist erforderlich. Aktivieren Sie die Verschlüsselung in Feishu Open Platform -> Events & Callbacks -> Encryption Strategy und fügen Sie den Schlüssel hier ein."
   },
   "discard": {
     "title": "Ungespeicherte Änderungen verwerfen?",

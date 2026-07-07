@@ -384,10 +384,11 @@ class TestHandleCallback:
 
 class TestVerifySignature:
     @pytest.mark.asyncio
-    async def test_no_key_means_no_verification(self) -> None:
+    async def test_no_key_fails_closed(self) -> None:
         channel = FeishuChannel({"app_id": "x", "app_secret": "y"})
-        # No encrypt_key configured -> returns True regardless.
-        assert await channel.verify_signature(b"anything", {}) is True
+        # No encrypt_key configured -> verification fails closed; an
+        # unsigned endpoint would accept forged card-action approvals.
+        assert await channel.verify_signature(b"anything", {}) is False
 
     @pytest.mark.asyncio
     async def test_valid_signature(self) -> None:
@@ -430,6 +431,56 @@ class TestVerifySignature:
             {"app_id": "x", "app_secret": "y", "encrypt_key": "secret"}
         )
         assert await channel.verify_signature(b"x", {}) is False
+
+
+# ---------------------------------------------------------------------------
+# decrypt_callback
+# ---------------------------------------------------------------------------
+
+
+def _feishu_encrypt(encrypt_key: str, payload: dict[str, Any]) -> str:
+    """Encrypt a payload the way Feishu does: base64(iv + AES-256-CBC),
+    key = sha256(encrypt_key), PKCS7 padding."""
+    import base64
+    import json as _json
+
+    from cryptography.hazmat.primitives.ciphers import (
+        Cipher,
+        algorithms,
+        modes,
+    )
+
+    key = hashlib.sha256(encrypt_key.encode("utf-8")).digest()
+    iv = b"\x01" * 16
+    plaintext = _json.dumps(payload).encode("utf-8")
+    pad_len = 16 - (len(plaintext) % 16)
+    padded = plaintext + bytes([pad_len]) * pad_len
+    encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+    return base64.b64encode(iv + ciphertext).decode("ascii")
+
+
+class TestDecryptCallback:
+    def test_plaintext_passes_through(self) -> None:
+        channel = FeishuChannel({"encrypt_key": "secret"})
+        body = {"type": "url_verification", "challenge": "xyz"}
+        assert channel.decrypt_callback(body) == body
+
+    def test_encrypted_envelope_is_decrypted(self) -> None:
+        channel = FeishuChannel({"encrypt_key": "secret"})
+        inner = {"type": "url_verification", "challenge": "xyz"}
+        body = {"encrypt": _feishu_encrypt("secret", inner)}
+        assert channel.decrypt_callback(body) == inner
+
+    def test_wrong_key_yields_empty_dict(self) -> None:
+        channel = FeishuChannel({"encrypt_key": "other-key"})
+        body = {"encrypt": _feishu_encrypt("secret", {"a": 1})}
+        assert channel.decrypt_callback(body) == {}
+
+    def test_envelope_without_key_yields_empty_dict(self) -> None:
+        channel = FeishuChannel({"app_id": "x"})
+        body = {"encrypt": _feishu_encrypt("secret", {"a": 1})}
+        assert channel.decrypt_callback(body) == {}
 
 
 # ---------------------------------------------------------------------------

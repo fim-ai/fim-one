@@ -14,6 +14,10 @@ accordingly:
 * ``auto`` (default) — prefer the channel if one is resolvable, else
   fall back to inline.
 
+Channel resolution honors only the agent's explicit
+``approval_channel_id`` — approvals never borrow the notification
+channel or an arbitrary org channel.
+
 The class name is retained for backward compatibility with existing
 registrations (``feishu_gate``), tests, and ``model_config_json`` values
 in production agent rows.  A rename would churn every downstream config
@@ -27,7 +31,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable
 
 from sqlalchemy import select
@@ -384,19 +388,15 @@ class FeishuGateHook(PreToolUseHook):
     ) -> Any:
         """Resolve the channel to use for a channel-mode confirmation.
 
-        Resolution order:
-
-        1. ``agent.approval_channel_id`` (if active).
-        2. ``agent.model_config_json.on_complete.channel_id`` (completion
-           notification channel, if active) — reuses the notification
-           channel when no dedicated approval channel is bound.
-        3. First active channel in the same org (``ORDER BY created_at``).
-
-        Returns ``None`` if nothing resolvable.
+        Only the agent's explicit ``approval_channel_id`` qualifies. An
+        approval is a security decision: it must never silently borrow the
+        completion-notification channel or "the first active channel in
+        the org" — that routes approval cards to chats whose members were
+        never chosen as approvers. No explicit binding → ``None`` (auto
+        mode then degrades to inline; channel_only fails closed).
         """
         from fim_one.db.models.channel import Channel
 
-        # 1. Explicit approval channel.
         approval_id = getattr(agent_row, "approval_channel_id", None)
         if approval_id:
             stmt = (
@@ -408,50 +408,6 @@ class FeishuGateHook(PreToolUseHook):
             if row is not None:
                 return row
 
-        # 2. Completion-notification channel (from model_config_json).
-        completion_id = self._completion_channel_id(agent_row)
-        if completion_id:
-            stmt = (
-                select(Channel)
-                .where(Channel.id == completion_id, Channel.is_active.is_(True))
-                .limit(1)
-            )
-            row = (await session.execute(stmt)).scalar_one_or_none()
-            if row is not None:
-                return row
-
-        # 3. First active channel in org.
-        if org_id:
-            stmt = (
-                select(Channel)
-                .where(
-                    Channel.org_id == org_id,
-                    Channel.is_active.is_(True),
-                )
-                .order_by(Channel.created_at)
-                .limit(1)
-            )
-            row = (await session.execute(stmt)).scalar_one_or_none()
-            if row is not None:
-                return row
-
-        return None
-
-    @staticmethod
-    def _completion_channel_id(agent_row: Any) -> str | None:
-        """Dig the optional completion-notification channel id out of
-        ``model_config_json.on_complete.channel_id``."""
-        cfg = getattr(agent_row, "model_config_json", None)
-        if not isinstance(cfg, dict):
-            return None
-        on_complete = cfg.get("on_complete")
-        if not isinstance(on_complete, dict):
-            return None
-        if not on_complete.get("enabled"):
-            return None
-        cid = on_complete.get("channel_id")
-        if isinstance(cid, str) and cid:
-            return cid
         return None
 
     @staticmethod
@@ -562,7 +518,7 @@ class FeishuGateHook(PreToolUseHook):
                 row = result.scalar_one_or_none()
                 if row is not None and row.status == "pending":
                     row.status = "expired"
-                    row.responded_at = datetime.utcnow()
+                    row.responded_at = datetime.now(UTC)
                     await session.commit()
         except Exception:  # pragma: no cover - defensive
             logger.exception(

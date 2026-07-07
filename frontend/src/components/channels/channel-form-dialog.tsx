@@ -57,6 +57,7 @@ type FieldErrors = Partial<{
   app_secret: string
   chat_id: string
   verification_token: string
+  encrypt_key: string
 }>
 
 export function ChannelFormDialog({
@@ -168,6 +169,14 @@ export function ChannelFormDialog({
       }
       if (!isEditing && !verificationToken) {
         errors.verification_token = t("form.verification_token_required")
+      }
+      // Callback signature verification fails closed without the key, so
+      // it is required: on create always, on edit when not yet configured.
+      if (
+        !encryptKey &&
+        !(isEditing && channel?.config.encrypt_key_configured)
+      ) {
+        errors.encrypt_key = t("form.encrypt_key_required")
       }
     }
     return errors
@@ -462,13 +471,22 @@ export function ChannelFormDialog({
                     type="password"
                     autoComplete="new-password"
                     value={encryptKey}
-                    onChange={(e) => setEncryptKey(e.target.value)}
+                    onChange={(e) => {
+                      setEncryptKey(e.target.value)
+                      clearFieldError("encrypt_key")
+                    }}
                     placeholder={
                       isEditing && channel?.config.encrypt_key_configured
                         ? t("form.encrypt_key_edit_placeholder")
                         : t("form.encrypt_key_placeholder")
                     }
+                    aria-invalid={fieldErrors.encrypt_key ? true : undefined}
                   />
+                  {fieldErrors.encrypt_key && (
+                    <p className="text-sm text-destructive">
+                      {fieldErrors.encrypt_key}
+                    </p>
+                  )}
                 </div>
               </fieldset>
             )}

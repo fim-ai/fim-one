@@ -82,5 +82,6 @@
   "someFilesFailedUpload": "Certains fichiers n'ont pas pu être téléchargés. Supprimez-les ou réessayez avant d'envoyer.",
   "model_provider_name_taken": "Un fournisseur avec ce nom existe déjà.",
   "model_name_taken": "Cet ID de modèle existe déjà sous ce fournisseur.",
-  "cannot_delete_org_owner": "Cet utilisateur est propriétaire d'une ou plusieurs organisations. Transférez la propriété ou supprimez d'abord ces organisations."
+  "cannot_delete_org_owner": "Cet utilisateur est propriétaire d'une ou plusieurs organisations. Transférez la propriété ou supprimez d'abord ces organisations.",
+  "feishu_channel_requires_encrypt_key": "Les canaux Feishu nécessitent une clé de chiffrement (Encrypt Key) — sans elle, les signatures de rappel ne peuvent pas être vérifiées."
 }

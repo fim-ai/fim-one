@@ -70,9 +70,10 @@
     "verification_token_edit_placeholder": "Configured - leave blank to keep",
     "verification_token_required": "Verification Token is required.",
     "verification_token_hint": "Find it in the Feishu Open Platform -> Events & Callbacks -> Encryption Strategy tab -> Verification Token field. Click the eye icon to reveal it.",
-    "encrypt_key": "Encrypt Key (optional)",
-    "encrypt_key_placeholder": "Only required if event encryption is enabled",
+    "encrypt_key": "Encrypt Key",
+    "encrypt_key_placeholder": "Paste the Encrypt Key (required for callback security)",
     "encrypt_key_edit_placeholder": "Configured - leave blank to keep",
+    "encrypt_key_required": "Encrypt Key is required. Enable encryption in Feishu Open Platform -> Events & Callbacks -> Encryption Strategy, and paste the key here.",
     "pickChat": "Pick from group list"
   },
 

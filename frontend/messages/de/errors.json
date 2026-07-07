@@ -82,5 +82,6 @@
   "someFilesFailedUpload": "Einige Dateien konnten nicht hochgeladen werden. Entfernen Sie diese oder versuchen Sie es erneut, bevor Sie senden.",
   "model_provider_name_taken": "Ein Anbieter mit diesem Namen existiert bereits.",
   "model_name_taken": "Diese Modell-ID existiert bereits unter diesem Anbieter.",
-  "cannot_delete_org_owner": "Dieser Benutzer ist Eigentümer einer oder mehrerer Organisationen. Übertragen Sie zunächst die Eigentümerschaft oder löschen Sie diese Organisationen."
+  "cannot_delete_org_owner": "Dieser Benutzer ist Eigentümer einer oder mehrerer Organisationen. Übertragen Sie zunächst die Eigentümerschaft oder löschen Sie diese Organisationen.",
+  "feishu_channel_requires_encrypt_key": "Feishu-Kanäle erfordern einen Encrypt Key — ohne diesen können Callback-Signaturen nicht verifiziert werden."
 }

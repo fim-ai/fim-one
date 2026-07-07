@@ -41,6 +41,7 @@
   "no_active_execution": "No active execution to cancel.",
   "conversation_not_found": "Conversation not found.",
   "agent_config_error": "Agent configuration error: {reason}.",
+  "feishu_channel_requires_encrypt_key": "Feishu channels require an Encrypt Key — without it, callback signatures cannot be verified.",
 
   "connector_not_found": "Connector not found.",
   "action_not_found": "Action not found.",

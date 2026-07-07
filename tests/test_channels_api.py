@@ -156,6 +156,7 @@ class TestCreateChannel:
                 "app_id": "cli_x",
                 "app_secret": "shh",
                 "chat_id": "oc_1",
+                "encrypt_key": "sign-me",
             },
             "is_active": True,
         }
@@ -170,6 +171,28 @@ class TestCreateChannel:
         assert body["config"]["app_secret"] == "***"
         assert body["config"]["app_id"] == "cli_x"
         assert body["callback_url"].endswith(f"/api/channels/{body['id']}/callback")
+
+    @pytest.mark.asyncio
+    async def test_create_without_encrypt_key_rejected(
+        self, client: AsyncClient, seed: dict[str, Any]
+    ) -> None:
+        """Feishu channels require an encrypt_key — callback signature
+        verification fails closed without one."""
+        payload = {
+            "name": "Keyless",
+            "type": "feishu",
+            "org_id": seed["org_id"],
+            "config": {
+                "app_id": "cli_x",
+                "app_secret": "shh",
+                "chat_id": "oc_1",
+            },
+        }
+        resp = await client.post(
+            "/api/channels", json=payload, headers=seed["headers"]
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "feishu_channel_requires_encrypt_key"
 
     @pytest.mark.asyncio
     async def test_outsider_cannot_create(
@@ -291,6 +314,7 @@ class TestUpdateAndDelete:
                     "app_id": "cli_x",
                     "app_secret": "orig-secret",
                     "chat_id": "oc_old",
+                    "encrypt_key": "orig-key",
                 },
             )
             db.add(ch)
@@ -310,6 +334,44 @@ class TestUpdateAndDelete:
             assert refreshed.config["chat_id"] == "oc_new"
             assert refreshed.config["app_secret"] == "orig-secret"
             assert refreshed.config["app_id"] == "cli_x"
+            assert refreshed.config["encrypt_key"] == "orig-key"
+
+    @pytest.mark.asyncio
+    async def test_patch_keyless_feishu_requires_encrypt_key(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A legacy Feishu channel without encrypt_key can't be updated
+        without supplying one."""
+        async with session_factory() as db:
+            ch = Channel(
+                id=str(uuid.uuid4()),
+                name="Legacy",
+                type="feishu",
+                org_id=seed["org_id"],
+                created_by=seed["user_id"],
+                config={"app_id": "cli_x", "app_secret": "s"},
+            )
+            db.add(ch)
+            await db.commit()
+
+        resp = await client.patch(
+            f"/api/channels/{ch.id}",
+            json={"config": {"chat_id": "oc_new"}},
+            headers=seed["headers"],
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "feishu_channel_requires_encrypt_key"
+
+        # Supplying the key alongside the change succeeds.
+        resp = await client.patch(
+            f"/api/channels/{ch.id}",
+            json={"config": {"chat_id": "oc_new", "encrypt_key": "k"}},
+            headers=seed["headers"],
+        )
+        assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_delete(
@@ -855,7 +917,141 @@ class TestDiscoverChats:
 # ---------------------------------------------------------------------------
 
 
+SIGNING_KEY = "signing-key"
+
+
+def _sign_body(payload: dict[str, Any]) -> tuple[bytes, dict[str, str]]:
+    """Serialize + sign a callback payload the way Feishu does."""
+    import hashlib
+
+    body = json.dumps(payload).encode("utf-8")
+    ts, nonce = "1700000000", "n0nce"
+    m = hashlib.sha256()
+    m.update(ts.encode())
+    m.update(nonce.encode())
+    m.update(SIGNING_KEY.encode())
+    m.update(body)
+    return body, {
+        "X-Lark-Request-Timestamp": ts,
+        "X-Lark-Request-Nonce": nonce,
+        "X-Lark-Signature": m.hexdigest(),
+        "Content-Type": "application/json",
+    }
+
+
+def _feishu_encrypt(payload: dict[str, Any]) -> str:
+    """AES-encrypt a payload into Feishu's ``encrypt`` envelope value."""
+    import base64
+    import hashlib
+
+    from cryptography.hazmat.primitives.ciphers import (
+        Cipher,
+        algorithms,
+        modes,
+    )
+
+    key = hashlib.sha256(SIGNING_KEY.encode("utf-8")).digest()
+    iv = b"\x02" * 16
+    plaintext = json.dumps(payload).encode("utf-8")
+    pad_len = 16 - (len(plaintext) % 16)
+    padded = plaintext + bytes([pad_len]) * pad_len
+    encryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+    return base64.b64encode(
+        iv + encryptor.update(padded) + encryptor.finalize()
+    ).decode("ascii")
+
+
 class TestFeishuCallback:
+    """Callback flow under the hardened rules: signed requests only
+    (``encrypt_key`` fails closed) and card clicks authorized against the
+    agent's ``confirmation_approver_scope`` via the feishu OAuth binding.
+    """
+
+    async def _post(
+        self, client: AsyncClient, channel_id: str, payload: dict[str, Any]
+    ) -> Any:
+        body, headers = _sign_body(payload)
+        return await client.post(
+            f"/api/channels/{channel_id}/callback",
+            content=body,
+            headers=headers,
+        )
+
+    async def _seed_callback(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+        *,
+        name: str,
+        approver_scope: str = "initiator",
+        bind_open_id: str | None = "ou_operator",
+        bind_to_user_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> tuple[Channel, ConfirmationRequest]:
+        """Channel (with encrypt_key) + agent + pending confirmation, and
+        optionally a feishu OAuth binding mapping ``bind_open_id`` to
+        ``bind_to_user_id`` (default: the seed user)."""
+        from fim_one.db.models.agent import Agent
+        from fim_one.db.models.oauth_binding import UserOAuthBinding
+
+        async with session_factory() as db:
+            ch = Channel(
+                id=str(uuid.uuid4()),
+                name=name,
+                type="feishu",
+                org_id=seed["org_id"],
+                created_by=seed["user_id"],
+                config={
+                    "app_id": "cli_x",
+                    "app_secret": "s",
+                    "encrypt_key": SIGNING_KEY,
+                },
+            )
+            db.add(ch)
+            agent = Agent(
+                id=str(uuid.uuid4()),
+                user_id=seed["user_id"],
+                org_id=seed["org_id"],
+                name=f"Agent {name}",
+                confirmation_approver_scope=approver_scope,
+            )
+            db.add(agent)
+            req = ConfirmationRequest(
+                id=str(uuid.uuid4()),
+                tool_call_id="tc",
+                agent_id=agent.id,
+                user_id=seed["user_id"],
+                org_id=seed["org_id"],
+                channel_id=ch.id,
+                status="pending",
+                payload=payload or {"tool_name": "x"},
+            )
+            db.add(req)
+            if bind_open_id:
+                db.add(
+                    UserOAuthBinding(
+                        user_id=bind_to_user_id or seed["user_id"],
+                        provider="feishu",
+                        oauth_id=bind_open_id,
+                    )
+                )
+            await db.commit()
+        return ch, req
+
+    async def _fetch(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        req_id: str,
+    ) -> ConfirmationRequest:
+        async with session_factory() as db:
+            return (
+                await db.execute(
+                    select(ConfirmationRequest).where(
+                        ConfirmationRequest.id == req_id
+                    )
+                )
+            ).scalar_one()
+
     @pytest.mark.asyncio
     async def test_url_verification_echoes_challenge(
         self,
@@ -870,18 +1066,82 @@ class TestFeishuCallback:
                 type="feishu",
                 org_id=seed["org_id"],
                 created_by=seed["user_id"],
+                config={
+                    "app_id": "cli_x",
+                    "app_secret": "s",
+                    "encrypt_key": SIGNING_KEY,
+                },
+            )
+            db.add(ch)
+            await db.commit()
+
+        # No auth header — callback is public but must be signed.
+        resp = await self._post(
+            client, ch.id, {"type": "url_verification", "challenge": "xyz"}
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"challenge": "xyz"}
+
+    @pytest.mark.asyncio
+    async def test_encrypted_envelope_handshake(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """With encryption enabled, Feishu wraps the handshake in an AES
+        envelope — it must decrypt and echo the challenge."""
+        async with session_factory() as db:
+            ch = Channel(
+                id=str(uuid.uuid4()),
+                name="CB-Enc",
+                type="feishu",
+                org_id=seed["org_id"],
+                created_by=seed["user_id"],
+                config={
+                    "app_id": "cli_x",
+                    "app_secret": "s",
+                    "encrypt_key": SIGNING_KEY,
+                },
+            )
+            db.add(ch)
+            await db.commit()
+
+        envelope = {
+            "encrypt": _feishu_encrypt(
+                {"type": "url_verification", "challenge": "enc-xyz"}
+            )
+        }
+        resp = await self._post(client, ch.id, envelope)
+        assert resp.status_code == 200
+        assert resp.json() == {"challenge": "enc-xyz"}
+
+    @pytest.mark.asyncio
+    async def test_keyless_channel_rejects_callbacks(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Legacy channel row without encrypt_key → signature verification
+        fails closed, every callback is 401."""
+        async with session_factory() as db:
+            ch = Channel(
+                id=str(uuid.uuid4()),
+                name="Keyless",
+                type="feishu",
+                org_id=seed["org_id"],
+                created_by=seed["user_id"],
                 config={"app_id": "cli_x", "app_secret": "s"},
             )
             db.add(ch)
             await db.commit()
 
-        # No auth header — callback is public.
         resp = await client.post(
             f"/api/channels/{ch.id}/callback",
             json={"type": "url_verification", "challenge": "xyz"},
         )
-        assert resp.status_code == 200
-        assert resp.json() == {"challenge": "xyz"}
+        assert resp.status_code == 401
 
     @pytest.mark.asyncio
     async def test_approve_flips_pending_row(
@@ -890,54 +1150,31 @@ class TestFeishuCallback:
         seed: dict[str, Any],
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        async with session_factory() as db:
-            ch = Channel(
-                id=str(uuid.uuid4()),
-                name="CB2",
-                type="feishu",
-                org_id=seed["org_id"],
-                created_by=seed["user_id"],
-                config={"app_id": "cli_x", "app_secret": "s"},
-            )
-            db.add(ch)
-            req = ConfirmationRequest(
-                id=str(uuid.uuid4()),
-                tool_call_id="tc",
-                agent_id=None,
-                user_id=seed["user_id"],
-                org_id=seed["org_id"],
-                channel_id=ch.id,
-                status="pending",
-                payload={"tool_name": "x"},
-            )
-            db.add(req)
-            await db.commit()
-
-        payload = {
-            "action": {
-                "value": {
-                    "confirmation_id": req.id,
-                    "decision": "approve",
-                }
+        ch, req = await self._seed_callback(
+            session_factory, seed, name="CB2"
+        )
+        resp = await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {
+                        "confirmation_id": req.id,
+                        "decision": "approve",
+                    }
+                },
+                "open_id": "ou_operator",
             },
-            "open_id": "ou_operator",
-        }
-        resp = await client.post(
-            f"/api/channels/{ch.id}/callback", json=payload
         )
         assert resp.status_code == 200
 
-        async with session_factory() as db:
-            row = (
-                await db.execute(
-                    select(ConfirmationRequest).where(
-                        ConfirmationRequest.id == req.id
-                    )
-                )
-            ).scalar_one()
-            assert row.status == "approved"
-            assert row.responded_by_open_id == "ou_operator"
-            assert row.responded_at is not None
+        row = await self._fetch(session_factory, req.id)
+        assert row.status == "approved"
+        assert row.responded_by_open_id == "ou_operator"
+        assert row.responded_at is not None
+        # The mapped FIM user is stamped — Feishu decisions carry the
+        # same audit identity as portal decisions.
+        assert row.approver_user_id == seed["user_id"]
 
     @pytest.mark.asyncio
     async def test_reject_flips_pending_row(
@@ -946,51 +1183,145 @@ class TestFeishuCallback:
         seed: dict[str, Any],
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        async with session_factory() as db:
-            ch = Channel(
-                id=str(uuid.uuid4()),
-                name="CB3",
-                type="feishu",
-                org_id=seed["org_id"],
-                created_by=seed["user_id"],
-                config={"app_id": "cli_x", "app_secret": "s"},
-            )
-            db.add(ch)
-            req = ConfirmationRequest(
-                id=str(uuid.uuid4()),
-                tool_call_id="tc2",
-                agent_id=None,
-                user_id=seed["user_id"],
-                org_id=seed["org_id"],
-                channel_id=ch.id,
-                status="pending",
-                payload={"tool_name": "x"},
-            )
-            db.add(req)
-            await db.commit()
-
-        payload = {
-            "action": {
-                "value": {
-                    "confirmation_id": req.id,
-                    "decision": "reject",
-                }
+        ch, req = await self._seed_callback(
+            session_factory, seed, name="CB3"
+        )
+        resp = await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {
+                        "confirmation_id": req.id,
+                        "decision": "reject",
+                    }
+                },
+                "open_id": "ou_operator",
             },
-            "open_id": "ou_x",
-        }
-        resp = await client.post(
-            f"/api/channels/{ch.id}/callback", json=payload
         )
         assert resp.status_code == 200
+        row = await self._fetch(session_factory, req.id)
+        assert row.status == "rejected"
+
+    @pytest.mark.asyncio
+    async def test_unlinked_clicker_denied(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """An open_id with no feishu OAuth binding cannot decide — the
+        row stays pending and no decided card is returned."""
+        ch, req = await self._seed_callback(
+            session_factory, seed, name="CB-Unlinked", bind_open_id=None
+        )
+        resp = await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {
+                        "confirmation_id": req.id,
+                        "decision": "approve",
+                    }
+                },
+                "open_id": "ou_stranger",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["toast"]["type"] == "error"
+        assert "card" not in body  # card stays pending / clickable
+        row = await self._fetch(session_factory, req.id)
+        assert row.status == "pending"
+        assert row.approver_user_id is None
+
+    @pytest.mark.asyncio
+    async def test_out_of_scope_user_denied(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        outsider: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """scope=initiator: a mapped user who is NOT the initiator is
+        denied even though their Feishu account is linked."""
+        ch, req = await self._seed_callback(
+            session_factory,
+            seed,
+            name="CB-Scope",
+            bind_open_id="ou_other",
+            bind_to_user_id=outsider["user_id"],
+        )
+        resp = await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {
+                        "confirmation_id": req.id,
+                        "decision": "approve",
+                    }
+                },
+                "open_id": "ou_other",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["toast"]["type"] == "error"
+        row = await self._fetch(session_factory, req.id)
+        assert row.status == "pending"
+
+    @pytest.mark.asyncio
+    async def test_org_member_allowed_under_org_members_scope(
+        self,
+        client: AsyncClient,
+        seed: dict[str, Any],
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        # A second user who IS an org member, linked to ou_member.
         async with session_factory() as db:
-            row = (
-                await db.execute(
-                    select(ConfirmationRequest).where(
-                        ConfirmationRequest.id == req.id
-                    )
+            member = User(
+                id=str(uuid.uuid4()),
+                username="member",
+                email="m@test.com",
+                is_admin=False,
+            )
+            db.add(member)
+            db.add(
+                OrgMembership(
+                    id=str(uuid.uuid4()),
+                    org_id=seed["org_id"],
+                    user_id=member.id,
+                    role="member",
                 )
-            ).scalar_one()
-            assert row.status == "rejected"
+            )
+            await db.commit()
+
+        ch, req = await self._seed_callback(
+            session_factory,
+            seed,
+            name="CB-OrgScope",
+            approver_scope="org_members",
+            bind_open_id="ou_member",
+            bind_to_user_id=member.id,
+        )
+        resp = await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {
+                        "confirmation_id": req.id,
+                        "decision": "approve",
+                    }
+                },
+                "open_id": "ou_member",
+            },
+        )
+        assert resp.status_code == 200
+        row = await self._fetch(session_factory, req.id)
+        assert row.status == "approved"
+        assert row.approver_user_id == member.id
 
     @pytest.mark.asyncio
     async def test_double_click_is_idempotent(
@@ -999,59 +1330,34 @@ class TestFeishuCallback:
         seed: dict[str, Any],
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        async with session_factory() as db:
-            ch = Channel(
-                id=str(uuid.uuid4()),
-                name="CB4",
-                type="feishu",
-                org_id=seed["org_id"],
-                created_by=seed["user_id"],
-                config={"app_id": "cli_x", "app_secret": "s"},
-            )
-            db.add(ch)
-            req = ConfirmationRequest(
-                id=str(uuid.uuid4()),
-                tool_call_id="tc3",
-                agent_id=None,
-                user_id=seed["user_id"],
-                org_id=seed["org_id"],
-                channel_id=ch.id,
-                status="pending",
-                payload={},
-            )
-            db.add(req)
-            await db.commit()
-
-        # First click: approve
-        payload_approve = {
-            "action": {
-                "value": {"confirmation_id": req.id, "decision": "approve"}
+        ch, req = await self._seed_callback(
+            session_factory, seed, name="CB4", payload={}
+        )
+        # First click: approve.
+        await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {"confirmation_id": req.id, "decision": "approve"}
+                },
+                "open_id": "ou_operator",
             },
-            "open_id": "ou_a",
-        }
-        await client.post(
-            f"/api/channels/{ch.id}/callback", json=payload_approve
         )
         # Second click: reject should be ignored (already terminal).
-        payload_reject = {
-            "action": {
-                "value": {"confirmation_id": req.id, "decision": "reject"}
+        await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {"confirmation_id": req.id, "decision": "reject"}
+                },
+                "open_id": "ou_operator",
             },
-            "open_id": "ou_b",
-        }
-        await client.post(
-            f"/api/channels/{ch.id}/callback", json=payload_reject
         )
-        async with session_factory() as db:
-            row = (
-                await db.execute(
-                    select(ConfirmationRequest).where(
-                        ConfirmationRequest.id == req.id
-                    )
-                )
-            ).scalar_one()
-            assert row.status == "approved"
-            assert row.responded_by_open_id == "ou_a"
+        row = await self._fetch(session_factory, req.id)
+        assert row.status == "approved"
+        assert row.responded_by_open_id == "ou_operator"
 
     @pytest.mark.asyncio
     async def test_first_click_returns_decided_card(
@@ -1064,37 +1370,21 @@ class TestFeishuCallback:
         card on the first approve — this is what disables the buttons
         client-side so the user can't click again.
         """
-        async with session_factory() as db:
-            ch = Channel(
-                id=str(uuid.uuid4()),
-                name="CB-Decided-1",
-                type="feishu",
-                org_id=seed["org_id"],
-                created_by=seed["user_id"],
-                config={"app_id": "cli_x", "app_secret": "s"},
-            )
-            db.add(ch)
-            req = ConfirmationRequest(
-                id=str(uuid.uuid4()),
-                tool_call_id="tc-decided-1",
-                agent_id=None,
-                user_id=seed["user_id"],
-                org_id=seed["org_id"],
-                channel_id=ch.id,
-                status="pending",
-                payload={"tool_name": "send_email"},
-            )
-            db.add(req)
-            await db.commit()
-
-        payload = {
-            "action": {
-                "value": {"confirmation_id": req.id, "decision": "approve"}
+        ch, req = await self._seed_callback(
+            session_factory,
+            seed,
+            name="CB-Decided-1",
+            payload={"tool_name": "send_email"},
+        )
+        resp = await self._post(
+            client,
+            ch.id,
+            {
+                "action": {
+                    "value": {"confirmation_id": req.id, "decision": "approve"}
+                },
+                "open_id": "ou_operator",
             },
-            "open_id": "ou_first",
-        }
-        resp = await client.post(
-            f"/api/channels/{ch.id}/callback", json=payload
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -1121,46 +1411,25 @@ class TestFeishuCallback:
         toast and still return the decided card — the DB stays
         unchanged.
         """
-        async with session_factory() as db:
-            ch = Channel(
-                id=str(uuid.uuid4()),
-                name="CB-Decided-2",
-                type="feishu",
-                org_id=seed["org_id"],
-                created_by=seed["user_id"],
-                config={"app_id": "cli_x", "app_secret": "s"},
-            )
-            db.add(ch)
-            req = ConfirmationRequest(
-                id=str(uuid.uuid4()),
-                tool_call_id="tc-decided-2",
-                agent_id=None,
-                user_id=seed["user_id"],
-                org_id=seed["org_id"],
-                channel_id=ch.id,
-                status="pending",
-                payload={"tool_name": "ship_it"},
-            )
-            db.add(req)
-            await db.commit()
-
+        ch, req = await self._seed_callback(
+            session_factory,
+            seed,
+            name="CB-Decided-2",
+            payload={"tool_name": "ship_it"},
+        )
         payload = {
             "action": {
                 "value": {"confirmation_id": req.id, "decision": "approve"}
             },
-            "open_id": "ou_first",
+            "open_id": "ou_operator",
         }
         # First click — terminal approved.
-        first = await client.post(
-            f"/api/channels/{ch.id}/callback", json=payload
-        )
+        first = await self._post(client, ch.id, payload)
         assert first.status_code == 200
         assert first.json()["toast"]["content"] == "Approval recorded."
 
         # Second click — must tell the clicker it's already approved.
-        second = await client.post(
-            f"/api/channels/{ch.id}/callback", json=payload
-        )
+        second = await self._post(client, ch.id, payload)
         assert second.status_code == 200
         sbody = second.json()
         assert sbody["toast"]["type"] == "success"
@@ -1188,7 +1457,7 @@ class TestFeishuCallback:
                 config={
                     "app_id": "cli_x",
                     "app_secret": "s",
-                    "encrypt_key": "signing-key",
+                    "encrypt_key": SIGNING_KEY,
                 },
             )
             db.add(ch)

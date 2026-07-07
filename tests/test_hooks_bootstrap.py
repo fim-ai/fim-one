@@ -326,6 +326,9 @@ async def test_integration_feishu_gate_blocks_then_approves(
                 org_id=seed["org_id"],
                 name="Integration Agent",
                 confirmation_mode="auto",
+                # Channel routing requires an explicit binding — approvals
+                # never borrow "the first active channel in the org".
+                approval_channel_id=seed["channel_id"],
             )
         )
         await db.commit()

@@ -159,14 +159,14 @@ async def _user_in_org(
     return (await db.execute(stmt)).scalar_one_or_none() is not None
 
 
-async def _check_scope_or_403(
+async def user_may_decide(
     db: AsyncSession,
     *,
     request: ConfirmationRequest,
     agent: Agent,
-    current_user: User,
-) -> None:
-    """Raise 403 if *current_user* may not decide this confirmation.
+    user: User,
+) -> bool:
+    """Return True if *user* may decide this confirmation.
 
     Rules driven by ``agent.confirmation_approver_scope``:
 
@@ -176,9 +176,12 @@ async def _check_scope_or_403(
 
     Platform admins (``User.is_admin``) bypass the scope check; they can
     always approve (helps on-call break glass).
+
+    Shared by the portal respond endpoint and the Feishu callback path so
+    both surfaces enforce the same eligibility.
     """
-    if getattr(current_user, "is_admin", False):
-        return
+    if getattr(user, "is_admin", False):
+        return True
 
     scope = str(
         getattr(agent, "confirmation_approver_scope", "initiator")
@@ -186,25 +189,35 @@ async def _check_scope_or_403(
     ).lower()
 
     if scope == "initiator":
-        if current_user.id == request.user_id:
-            return
-    elif scope == "agent_owner":
-        if current_user.id == agent.user_id:
-            return
-    elif scope == "org_members":
-        if agent.org_id and await _user_in_org(
-            db, user_id=current_user.id, org_id=agent.org_id
-        ):
-            return
-    else:
-        # Unknown scope — log and deny.  A strict default is safer than
-        # silently granting access when config drifts.
-        logger.warning(
-            "confirmations.respond: unknown approver scope %r on agent %s",
-            scope,
-            agent.id,
-        )
+        return user.id == request.user_id
+    if scope == "agent_owner":
+        return user.id == agent.user_id
+    if scope == "org_members":
+        org_id = agent.org_id
+        if not org_id:
+            return False
+        return await _user_in_org(db, user_id=user.id, org_id=org_id)
 
+    # Unknown scope — log and deny.  A strict default is safer than
+    # silently granting access when config drifts.
+    logger.warning(
+        "confirmations: unknown approver scope %r on agent %s",
+        scope,
+        agent.id,
+    )
+    return False
+
+
+async def _check_scope_or_403(
+    db: AsyncSession,
+    *,
+    request: ConfirmationRequest,
+    agent: Agent,
+    current_user: User,
+) -> None:
+    """Raise 403 if *current_user* may not decide this confirmation."""
+    if await user_may_decide(db, request=request, agent=agent, user=current_user):
+        return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="You are not authorised to respond to this confirmation.",
@@ -381,4 +394,4 @@ async def get_confirmation(
     )
 
 
-__all__ = ["router", "apply_confirmation_decision"]
+__all__ = ["router", "apply_confirmation_decision", "user_may_decide"]

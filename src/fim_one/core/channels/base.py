@@ -78,6 +78,14 @@ class BaseChannel(abc.ABC):
 
     # -- Inbound (callbacks) --
 
+    def decrypt_callback(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Decrypt an encrypted callback envelope, if the platform uses one.
+
+        Default: passthrough.  Platforms that wrap event pushes in an
+        encrypted envelope (Feishu ``{"encrypt": ...}``) override this.
+        """
+        return body
+
     async def verify_signature(
         self,
         body: bytes,

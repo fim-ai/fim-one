@@ -63,11 +63,12 @@
     "verification_token_placeholder": "検証トークンを貼り付けます",
     "verification_token_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
     "verification_token_required": "検証トークンは必須です。",
-    "encrypt_key": "暗号化キー（オプション）",
-    "encrypt_key_placeholder": "イベント暗号化が有効な場合のみ必須",
+    "encrypt_key": "暗号化キー",
+    "encrypt_key_placeholder": "暗号化キーを貼り付けてください（コールバックセキュリティに必須）",
     "encrypt_key_edit_placeholder": "設定済み - 保持するには空白のままにしてください",
     "pickChat": "グループリストから選択",
-    "verification_token_hint": "Feishu Open Platform -> Events & Callbacks -> Encryption Strategy タブ -> Verification Token フィールドで見つけることができます。目のアイコンをクリックして表示します。"
+    "verification_token_hint": "Feishu Open Platform -> Events & Callbacks -> Encryption Strategy タブ -> Verification Token フィールドで見つけることができます。目のアイコンをクリックして表示します。",
+    "encrypt_key_required": "暗号化キーが必須です。Feishu Open Platform → Events & Callbacks → Encryption Strategy で暗号化を有効にし、キーをここに貼り付けてください。"
   },
   "discard": {
     "title": "保存されていない変更を破棄しますか？",

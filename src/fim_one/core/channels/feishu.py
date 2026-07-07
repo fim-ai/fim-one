@@ -280,17 +280,17 @@ class FeishuChannel(BaseChannel):
 
             signature = sha256(timestamp + nonce + encrypt_key + body)
 
-        If ``encrypt_key`` is not configured, no signature is verified
-        (returns ``True``) — this is safe only when the callback URL is
-        secret / unguessable.  Recommended for production: always set
-        ``encrypt_key``.
+        If ``encrypt_key`` is not configured, verification **fails closed**
+        (returns ``False``): an unsigned callback endpoint would let anyone
+        who learns the channel id forge card-action approvals.  Channel
+        create/update requires the key for Feishu channels; this guard
+        covers legacy rows that predate that requirement.
 
         Header names are matched case-insensitively.
         """
         encrypt_key = str(self.config.get("encrypt_key") or "").strip()
         if not encrypt_key:
-            # No key configured — nothing to verify.
-            return True
+            return False
 
         lower_headers = {k.lower(): v for k, v in headers.items()}
         timestamp = lower_headers.get("x-lark-request-timestamp")
@@ -306,6 +306,55 @@ class FeishuChannel(BaseChannel):
         m.update(body)
         expected = m.hexdigest()
         return _constant_time_eq(expected, provided)
+
+    def decrypt_callback(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Decrypt Feishu's encrypted event envelope.
+
+        With an Encrypt Key configured in the Feishu console, every push
+        (including ``url_verification`` and card actions) arrives as
+        ``{"encrypt": "<base64(iv + AES-256-CBC ciphertext)>"}`` where the
+        AES key is ``sha256(encrypt_key)``.  Plaintext bodies pass through
+        unchanged.  An undecryptable envelope returns ``{}`` so downstream
+        parsing treats it as an unknown event rather than acting on
+        attacker-shaped plaintext.
+        """
+        encrypted = body.get("encrypt")
+        if not isinstance(encrypted, str) or not encrypted:
+            return body
+
+        encrypt_key = str(self.config.get("encrypt_key") or "").strip()
+        if not encrypt_key:
+            logger.warning(
+                "feishu: encrypted callback received but no encrypt_key "
+                "configured — dropping event"
+            )
+            return {}
+
+        try:
+            import base64
+
+            from cryptography.hazmat.primitives.ciphers import (
+                Cipher,
+                algorithms,
+                modes,
+            )
+
+            data = base64.b64decode(encrypted)
+            key = hashlib.sha256(encrypt_key.encode("utf-8")).digest()
+            iv, ciphertext = data[:16], data[16:]
+            decryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
+            padded = decryptor.update(ciphertext) + decryptor.finalize()
+            pad_len = padded[-1] if padded else 0
+            plaintext = (
+                padded[:-pad_len] if 0 < pad_len <= 16 else padded
+            )
+            parsed = json.loads(plaintext.decode("utf-8"))
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            logger.warning(
+                "feishu: failed to decrypt callback envelope", exc_info=True
+            )
+            return {}
 
     async def handle_callback(
         self,

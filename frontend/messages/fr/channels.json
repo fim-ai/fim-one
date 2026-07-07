@@ -63,11 +63,12 @@
     "verification_token_placeholder": "De la page Feishu 'Événements et Rappels'",
     "verification_token_edit_placeholder": "Configuré - laissez vide pour conserver",
     "verification_token_required": "Le jeton de vérification est requis.",
-    "encrypt_key": "Clé de Chiffrement (optionnel)",
-    "encrypt_key_placeholder": "Requis uniquement si le chiffrement des événements est activé",
+    "encrypt_key": "Clé de chiffrement",
+    "encrypt_key_placeholder": "Collez la clé de chiffrement (requise pour la sécurité des rappels)",
     "encrypt_key_edit_placeholder": "Configuré - laissez vide pour conserver",
     "pickChat": "Sélectionner dans la liste des groupes",
-    "verification_token_hint": "Trouvez-le dans Feishu Open Platform -> Events & Callbacks -> onglet Encryption Strategy -> champ Verification Token. Cliquez sur l'icône en forme d'œil pour le révéler."
+    "verification_token_hint": "Trouvez-le dans Feishu Open Platform -> Events & Callbacks -> onglet Encryption Strategy -> champ Verification Token. Cliquez sur l'icône en forme d'œil pour le révéler.",
+    "encrypt_key_required": "La clé de chiffrement est requise. Activez le chiffrement dans Feishu Open Platform -> Events & Callbacks -> Encryption Strategy, et collez la clé ici."
   },
   "discard": {
     "title": "Abandonner les modifications non enregistrées ?",

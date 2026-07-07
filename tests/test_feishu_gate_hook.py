@@ -115,7 +115,12 @@ async def seed(
         await db.commit()
 
     agent_id = await _seed_agent(
-        session_factory, user_id=user.id, org_id=org.id
+        session_factory,
+        user_id=user.id,
+        org_id=org.id,
+        # Channel routing requires an explicit binding — approvals never
+        # borrow the notification channel or "first channel in org".
+        approval_channel_id=channel.id,
     )
     return {
         "user_id": user.id,
@@ -476,6 +481,66 @@ class TestInlineMode:
             assert row.status == "approved"
             # Approver scope defaults to "initiator" → user_id stamped.
             assert row.approver_user_id == user.id
+
+    @pytest.mark.asyncio
+    async def test_auto_without_explicit_binding_goes_inline(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        """auto mode + org HAS an active channel but the agent has no
+        approval_channel_id → must go inline, never borrow the org channel.
+        """
+        await _seed_agent(
+            session_factory,
+            user_id=seed["user_id"],
+            org_id=seed["org_id"],
+            agent_id="agent-unbound",
+            confirmation_mode="auto",
+            approval_channel_id=None,
+        )
+        hook = create_feishu_gate_hook(
+            session_factory=session_factory,
+            timeout_seconds=5,
+            poll_interval_seconds=0.02,
+        )
+        ctx = _make_context(
+            org_id=seed["org_id"],
+            user_id=seed["user_id"],
+            agent_id="agent-unbound",
+        )
+        send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
+
+        async def _approve_after_delay() -> None:
+            for _ in range(200):
+                await asyncio.sleep(0.02)
+                async with session_factory() as db:
+                    row = (
+                        await db.execute(
+                            select(ConfirmationRequest).where(
+                                ConfirmationRequest.status == "pending"
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if row is not None:
+                        row.status = "approved"
+                        await db.commit()
+                        return
+
+        with patch(
+            "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
+            new=send_mock,
+        ):
+            approver = asyncio.create_task(_approve_after_delay())
+            result = await hook.execute(ctx)
+            await approver
+
+        assert result.allow is True
+        send_mock.assert_not_awaited()
+        async with session_factory() as db:
+            row = (await db.execute(select(ConfirmationRequest))).scalar_one()
+            assert row.mode == "inline"
+            assert row.channel_id is None
 
     @pytest.mark.asyncio
     async def test_channel_only_fails_without_channel(
