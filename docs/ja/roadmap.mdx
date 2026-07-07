@@ -279,143 +279,87 @@ flowchart LR
 - [x] PreToolUse強制フック — エラー時にフェイルクローズ；クラッシュした確認闸門は呼び出しを暗黙的に許可しなくなる；非強制フックは`fail_open`経由でフェイルオープンを維持
 - [x] Force-logoutタイムスタンプ比較をUTC変換で正規化 + Docker Compose `POSTGRES_*` 認証情報オーバーライド（出荷時の`fim:fim`デフォルトなし）
 
-### v0.8.9 (2026-07-08) — モジュール最適化 + 共有の統合 + 承認の強化
-- [x] スキルとワークフローは管理者モジュールフラグの背後にソフトシェルフ化（デフォルトオフ）— コアのみブート；何も削除されず、管理者 → 設定 → モジュールから復元可能
-- [x] 共有を統合 — KB共有を削除（KBは共有エージェント経由でのみ他者に到達）、DBコネクタは共有不可 + 生SQL所有者のみ、ワークフロービルダーを参照のみの9ノードに削減
-- [x] Feishu承認の強化 — カードクリックは承認者の身元を強制、コールバック署名は失敗時にクローズ + 暗号化エンベロープを復号化、承認は意図しないチャットにルーティングされない
-- [x] 使用時アクセス再確認 — 共有MCP サーバーとバインドされたKBは実行ごとに再検証；組織を離れるとサブスクリプションと保存された認証情報は即座に取り消される
-- [x] エージェントループの強化 — プランボード、バックグラウンドツール、段階的DAG再計画 + チェックポイント再開、圧縮はツールペアリングを保持、切り詰め継続、529/504リトライ
-- [x] `run_workflow` エージェントツール + ワークフロー正確性 — エージェントノードは完全なエージェントを実行、確認ゲートは失敗時にクローズ、コネクタ呼び出しはアクセス確認と監査ログ
-- [x] アカウント削除の統合 — 管理者とセルフサービスは1つのパージルーチンを通じて、すべてのレコードとディスク上のファイルをカバー；組織所有者は最初に所有権を譲渡する必要がある
+### v0.8.9 (2026-07-08) — モジュール縮小 + 共有の統合 + 承認の強化
+- [x] スキルとワークフロー — 管理者モジュールフラグの背後にソフトシェルフ化（デフォルト無効）、コアのみブート、削除なし、管理者 → 設定 → モジュールから復元可能
+- [x] 共有の統合 — KB共有を廃止（KBは共有エージェント経由でのみ他者に到達）、DBコネクタは共有不可 + 生SQL所有者のみ、ワークフロービルダーは参照のみの9ノードに縮小
+- [x] Feishu承認の強化 — カードクリックで承認者の身元を確認、コールバック署名は失敗時にクローズ + 暗号化エンベロープを復号化、承認は意図しないチャットにルーティングされない
+- [x] 使用時のアクセス再確認 — 共有MCP サーバーとバインドされたKBは実行ごとに再検証、組織を離脱するとサブスクリプションと保存済み認証情報が即座に取り消される
+- [x] エージェントループの強化 — プランボード、バックグラウンドツール、段階的DAG再計画 + チェックポイント再開、圧縮はツールペアリングを維持、切り詰め継続、529/504リトライ
+- [x] `run_workflow` エージェントツール + ワークフロー正確性 — エージェントノードは完全なエージェントを実行、確認ゲートは失敗時にクローズ、コネクタ呼び出しはアクセスチェック済みで監査ログ記録
+- [x] アカウント削除の統一 — 管理者とセルフサービスは1つのパージルーチンを通じて、すべてのレコードとディスク上のファイルをカバー、組織所有者は最初に所有権を譲渡する必要がある
+- [x] 所有者認証情報フォールバックはオプトイン化（破壊的変更） — コネクタ/MCP サーバーはデフォルトで `allow_fallback` オフ、既存行は反転、認証情報がないフォールバックなしリソースはツールセットから非表示
+- [x] Webhook/cronワークフロー実行は所有者のトークンクォータに制限 — 無制限の無料LLMトリガーパスは閉鎖
+- [x] リソースバインディングを可視性で統一 — サブスクライブされたコネクタ/KB/MCP サーバーはエージェントにバインド可能、ワークフローコネクタステップは実行者のアクセスを強制
+- [x] 会話ワークスペースをチャットに接続 — `workspace://` オーバーサイズツール結果のオフロード、予算切り詰め救済、圧縮前トランスクリプトスナップショット
 
-# 計画されたバージョン
+## 計画されたバージョン
 
-### v0.9 — 可観測性 + 本番環境対応
+2026-07-08に再計画: FIM One はエージェントランタイムです——1つのカーネル（ReAct エンジン、認証情報、確認ゲート、監査、マルチテナント組織）が複数の配信サーフェスの背後にあります: Web UI、API、JS embed、MCP 出力。すべてのサーフェスは認証、認証情報、確認、メータリング用の同じアセンブリレイヤーを再利用します: より多くのフロントエンド、ロジックは増えません。短期的な方向性はデータ Q&A（ChatBI）スライスへの収束であり、プラットフォームではなくシナリオを販売することです。{/* dev: dev/replan-2026-07.md */}
 
-**目標**: 本番環境レベルの運用 + 4つの柱で「エージェントが従うかもしれない指示」と「システムが強制する保証」のギャップを埋める — トレースレイヤー（何が起きたかを確認） · フックシステム（必ず実行されるべきことを強制） · エージェントワークスペース（永続ファイル + ハンドオフ） · IMチャネル（エージェントがユーザーの作業場所に存在）。
+### v0.9 — Connector Fences + Scenario Onboarding
 
-#### 認証とセキュリティ強化
+**目標**: ポスト削減アセットが完全なデータQ&A製品に組み立てられます——読み取り専用DBコネクタ + フェンス + 承認ゲート + IM エントリ。Tier-1フェンスがセキュリティ債務を製品機能に変えます。
 
-- [x] ~~JWTトークンタイプの制限（2FAバイパス）+ OAuthアカウント乗っ取り＆セッション修正~~ *(v0.8.7でリリース)*
-- [x] ~~PostgreSQLタイムゾーン対応タイムスタンプ~~ *(v0.8.6でリリース)*
-- [x] ~~ログアウト強制タイムスタンプ比較がタイムゾーン対応/非対応値をUTCに正規化——失効トークンはSQLiteとPostgreSQL両方で確実に拒否~~ *(v0.8.8でリリース)*
-- [x] ~~Docker Compose PostgreSQL認証情報が`POSTGRES_*`環境変数でオーバーライド可能（接続文字列に単一ソース化）——公開デプロイメントで誤ってデフォルトの`fim:fim`がシップされることはない~~ *(v0.8.8でリリース)*
-- [x] ~~SSRFブロックリストがIPv4マップIPv6バイパス（`::ffff:`インスタンスメタデータ）を閉塞；MCP SSE/Streamable-HTTPサーバーURLはSSRF検証を作成時+接続時に実施~~ *(v0.8.8でリリース)*
-- [x] ~~所有者認証情報フォールバックはオプトイン：コネクタ/MCPサーバーはデフォルト`allow_fallback`オフ（既存行は反転）；フォールバックなしリソースで認証情報がない場合は呼び出し時に失敗する代わりにツールセットから非表示~~ *(v0.8.9でリリース)*
-- [x] ~~リソースアクセスが可視性で統一（所有+購読）：購読コネクタ/KB/MCPサーバーはエージェントにバインド可能（「所有していない」403なし）、ワークフローコネクタステップはランナーのアクセスを強制（IDで任意のコネクタを実行しない）~~ *(v0.8.9でリリース)*
-- [x] ~~Webhook/cronワークフロー実行は所有者のトークンクォータに計測——無人LLM/エージェントステップは事前にゲート、使用量はチャットと同じクォータにカウント、無計測フリーLLMパスを閉塞~~ *(v0.8.9でリリース)*
+#### DB Connector Fences — Tier 1, 3つのPR {/* dev: dev/connector-rbac/00-overview.md */}
 
-#### モデル & プロバイダー互換性
+- [ ] PII列のマスキング（`ConnectorScopeGuard` PreToolUse hook）
+- [ ] スキーマ可視性——テーブル/列の許可リスト・拒否リスト + 動詞ブロッキング（読み取り専用の強制）
+- [ ] Fence監査可能性——`ConnectorCallLog`内の`caller_user_id`、`effective_credential_source`、`scope_rules_applied`
+- [ ] フック単位の設定パススルー（`{"name", "config"}`スキーマ）——ScopeGuardルールのキャリア {/* dev: dev/hook-system.md */}
 
-- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute~~ *(v0.8.8でリリース)*
-- [x] ~~Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart~~ *(v0.8.8でリリース)*
+#### シナリオオンボーディング
 
-#### コネクタ + ツーリング
+- [ ] 初回実行は空のワークベンチではなく、シナリオテンプレート（solution_seeds）から開始される
+- [ ] ドキュメントランディングページは、モジュールリファレンスではなく3つの縦型シナリオストーリーで始まる
+- [ ] 配信されたエンゲージメントごとに1つのシナリオテンプレートを抽出——競争優位性はシナリオアセット×配信速度である
 
-- [ ] **Connector Progressive Disclosure Phase 3-4** — 統一された `ConnectorExecutor` (API/DB/MCP); `jsonschema` アクション検証; プロトコル非依存の discover/execute
-- [ ] **YAML/JSON コネクタ設定** — プラットフォームが自動生成する MCP サーバー
-- [ ] **データベースコネクタ Phase 4** — Oracle (`oracledb`)、SQL Server (`aioodbc`)、GBase (`aioodbc` + GBase ODBC)。DM8 / KingbaseES / HighGo は v0.8.5 で提供
-- [ ] **MCP コネクションプーリング** — STDIO をプール化し、ユーザーごとの環境分離を実現; `httpx.AsyncClient` を SSE/HTTP で共有。ウォームスタート ≤100 ms、HTTP サーバーあたり O(1) 接続を目標
-- [x] ~~エージェントが `run_workflow` をプルして、決定論的ワークフローをサブステップとして実行 (静的レシピ ↔ Skill の動的レシピ); 人間がゲートするワークフローはトリガーのみ、実行は監査対象、深さ/再入性はガード~~ *(v0.8.9 で提供)*
+### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-#### コンテンツガードレール {/* dev: dev/archive/openai-agents-insights.md */}
+**Goal**: 最も売上につながる2つの配信サーフェス、同じカーネルとアセンブリレイヤー上で実現。
 
-- [x] ~~コンテンツガードレール v0 (入力/出力トリップワイヤー、ジェイルブレイク検出器、環境変数設定、`guardrail_tripwired` SSE イベント)~~ *(v0.8.7 でリリース)*
-- [ ] オフトピックフィルター (分類器ベースの入力ガードレール) — 正規表現で十分な場合は v0.5 に延期
-- [ ] PII リダクター出力ガードレール (正規表現 + 分類器ハイブリッド)
-- [ ] エージェント単位のガードレール設定 UI (管理パネル)
+- [ ] JS bubble / iframe embed — ホストシステムへの単一スニペット挿入；匿名訪問者のアイデンティティと課金属性はビルド前に決定
+- [ ] Feishu inbound @mention — エージェントがグループ内に存在：データクエリ、ファイル承認、フロー追跡
+- [ ] アウトバウンドパターン：障害アラート、予算警告、スケジュール配信、エスカレーション、監査レシート
+- [ ] Feishuに続くWeCom / DingTalkチャネル
 
-#### フック システム {/* dev: dev/hook-system.md */}
+### 保留中 — 信号门控
 
-- [ ] フックごとの設定パススルー（`{"name": ..., "config": {...}}` スキーマ）
-- [ ] `CallAgentTool` + ワークフロー `AGENT` ノードのフック継承（セキュリティデフォルト vs 柔軟性デフォルト）
-- [ ] 組み込みフック：`ConnectorCallLog` 自動記録、読み取り専用モードブロック、DB結果切り詰め、コネクタごとのレート制限
-- [ ] `SessionStart` フックポイント + ユーザー定義 YAML フック
-- [x] ~~PreToolUse 強制フックはエラー時に失敗クローズ — クラッシュした承認ゲートはもはや呼び出しを静かに許可しない；非強制フックは `fail_open` 経由でフェイルオープンを保持~~ *(v0.8.8 でリリース)*
-- [x] ~~スケルトン + FeishuGateHook + 承認プレイグラウンド + ReAct/DAG ランタイム~~ *(v0.8.5 でリリース)*
+不要在没有触发器的情况下启动这些功能（参见重新规划 §3）：MCP 网关等待 ≥2 个主动的"在我的智能体中挂载你的工具"请求；通道化等待实现者询问许可证问题；IdP/OrgSync 等待客户拉取；其余的等待需要它们的已交付参与。
 
-#### IM チャネル統合 {/* dev: dev/im-channels.md */}
+- [ ] MCP 网关输出 — 反向暴露连接器发现/执行作为 MCP 工具供下游智能体使用
+- [ ] 通道化 / 白标启用 — 商业许可证路径已就位
+- [ ] 身份提供商模块 + 通道精简 — Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] 连接器授权第 2 层（要求每用户凭证、密钥绑定健康检查）+ 第 3 层（登录票证交换）{/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] 公共 API 第 2 阶段 — 每密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
+- [ ] 可观测性 — 智能体追踪层（追踪/跨度模型、时间线查看器、OTel 导出）+ 指标仪表板 {/* dev: dev/agent-trace-layer.md */}
+- [ ] 智能体工作区剩余部分 — 交接备注、工作区文件浏览器 UI、跨会话对话回忆 {/* dev: dev/agent-workspace.md */}
+- [ ] 护栏 v1 — 离题过滤、PII 编辑器输出护栏、每个智能体护栏配置 UI
+- [ ] 钩子系统扩展 — `CallAgentTool` / 工作流 `AGENT` 节点的钩子继承、内置钩子、`SessionStart` + 用户 YAML 钩子 {/* dev: dev/hook-system.md */}
+- [ ] 连接器平台深度 — 渐进式披露第 3-4 阶段、YAML/JSON 连接器配置、数据库连接器第 4 阶段（Oracle / SQL Server / GBase）、MCP 连接池
+- [ ] 提示缓存后续 — Gemini 上下文缓存适配器、每个智能体 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] 热中流 DAG 恢复 — SSE 重新连接重新附加到运行中的轮次（冷重试-恢复已发货）{/* dev: dev/incremental-dag.md */}
+- [ ] 生态系统 — 计划/事件触发的智能体、工作流触发身份可观测性、每个工作流 `credential_policy`、数据库架构高级构建器、沙箱加固 v2
 
-- [ ] チャネル: WeCom、Slack、Email、Teams アウトバウンド
-- [ ] アウトバウンドパターン: 障害アラート、予算警告、スケジュール済みダイジェスト、エスカレーション、監査レシート、承認エスカレーション
-- [ ] フェーズ 2 — インバウンドトリガー (IM グループで @mention エージェント)
-- [x] ~~Feishu チャネル (フェーズ 1 サブセット) + タスク完了通知~~ *(v0.8.5 でリリース)*
+### v0.9プリプラン出荷済み
 
-#### コネクタ認可レイヤー {/* dev: dev/connector-rbac/00-overview.md */}
+- [x] ~~認証とセキュリティ: JWTトークンタイプ制限 + OAuth修正 (v0.8.7); PGタイムゾーン対応タイムスタンプ (v0.8.6); 強制ログアウトUTC + `POSTGRES_*`オーバーライド + SSRF IPv6マップ修正 (v0.8.8); オーナーフォールバックオプトイン + 可視性統一バインディング + webhook/cronメータリング (v0.8.9)~~
+- [x] ~~プロバイダー互換性: Anthropic適応推論 + 共有LLMプール自己修復 (v0.8.8)~~
+- [x] ~~コンテンツガードレール v0: トリップワイヤーレイヤー + ジェイルブレイク検出器 (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
+- [x] ~~フックシステム: スケルトン + FeishuGateHook + 承認演練場 + ReAct/DAGランタイム (v0.8.5); PreToolUse強制フェイルクローズ (v0.8.8)~~
+- [x] ~~Feishu通道フェーズ1 + タスク完了通知 (v0.8.5)~~
+- [x] ~~`run_workflow`智能体ツール (v0.8.9); 推論詳細エンドツーエンド保持 (v0.8.8); ワークスペースツール出力オフロード チャット統合 (v0.8.9)~~
+- [x] ~~智能体ループ強化: プランボード、LLM呼び出し復元力、バックグラウンドツール、段階的DAG再プラン + チェックポイント再開、圧縮ツールペアリング (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
 
-- [ ] Tier 1 — DBモード（`ConnectorScopeGuard` PreToolUseフック：動詞ブロッキング、テーブル許可/拒否、列の難読化、スコープ述語注入）
-- [ ] Tier 2 — Open APIモード（管理UIでユーザーごとの認証情報を要求；キーバインディングヘルスダッシュボード）
-- [ ] Tier 3 — ログインチケット交換（フロントエンド/バックエンド分割システム用の`LoginTicketCredential`、ユーザースコープAPIキーなし）
-- [ ] クロスティア監査可能性（`ConnectorCallLog`内の`caller_user_id`、`effective_credential_source`、`scope_rules_applied`）
-
-#### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
-
-- [ ] `identity_providers` + `user_identity_map` モデル — ENV レベルのサードパーティログインに代わる DB レベルの組織ごとの SSO/OAuth 設定
-- [ ] Feishu SSO via IdP ("Login with Feishu" は FIM セッション + アップストリームトークンを生成し、Tier-2 のユーザーごとの API キーの摩擦を排除)
-- [ ] IdP 経由の組織グラフ同期 (Feishu 部門 → FIM 組織ツリー); WeCom + DingTalk は次
-- [ ] Channel は Delivery + Gate にスリム化; ID 機能 (SSO / OrgSync) は IdP のみに存在
-
-#### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
-
-- [ ] キーごとのレート制限（`X-RateLimit-*` ヘッダー、429）
-- [ ] キーごとの使用量クォータ（月間トークン/リクエスト予算）
-- [ ] エンドポイントごとのスコープ強制
-- [ ] API バージョニング（`/v1/...`）+ 廃止予定ヘッダー
-- [ ] Webhook コールバック（キーごと）
-- [ ] SDK 生成（Python + TypeScript）
-- [ ] Developer Portal（Try-it パネル + キーごとの分析）
-- [ ] API キーローテーション（24時間の猶予期間）
-- [ ] バッチ / 非同期 API（`POST /api/batch`）
-- [ ] 外部依存ごとのサーキットブレーカー
-
-#### 可観測性 {/* dev: dev/agent-trace-layer.md */}
-
-- [ ] **Agent Trace Layer** — Trace/Span モデル、フロントエンドタイムラインビューア、OTel エクスポート（LangSmith スタイルのアプリケーションレベルの run/trace/thread）
-- [ ] **Metrics dashboard** — レイテンシ、成功率、トークン使用量、コネクタ分析（エージェント / ユーザー / 組織ごと）
-
-#### エージェント ワークスペース {/* dev: dev/agent-workspace.md */}
-
-- [ ] ツール出力オフロード — >8K レスポンス用の `workspace://` URI と `read/list/write_workspace_file` ツール
-- [ ] ハンドオフノート — `write_handoff(summary)` はコンパクション後も保持される
-- [ ] ワークスペース UI — 会話ごとのファイルブラウザ、セッション間の保持、ユーザーごとのストレージクォータ
-- [ ] セッション間会話リコール — `list_conversations`、`search_conversations`、`read_conversation` ツール
-
-#### プロンプトキャッシュ + 推論フォローアップ {/* dev: dev/prompt-cache-followups.md */}
-
-- [x] ~~推論詳細がエンドツーエンドで保持される — ループがその真の最終回答をストリーミング（ロスレスな再合成なし）；推論がコンパクション、コンテキスト再構築、およびサブエージェントステップを通じて保持される~~ *(v0.8.8で出荷)*
-- [ ] Gemini Context Cache Adapter（REST キャッシュライフサイクルと Anthropic インラインマーカーの分離）
-- [ ] エージェントごとの `cache_ttl`（一時的な5分対拡張1時間）
-
-#### エージェントループの堅牢化（Claude Codeパターン）
-
-- [x] ~~計画ボード：`update_plan` todoツール＋古い計画の再注入リマインダーにより、長いReAct実行が目標を維持し、圧縮後も継続~~ *(v0.8.9で実装)*
-- [x] ~~LLM呼び出しの耐性：出力切り詰め継続＋529/504リトライ（Retry-After付き）、オーバーロードモデルフォールバック（`FallbackLLM`として既に実装）~~ *(v0.8.9で実装)*
-- [x] ~~予算切り詰めツール結果はワークスペースに永続化してから削除；ロッシー圧縮前に完全なトランスクリプトスナップショットを保存~~ *(v0.8.9で実装)*
-- [x] ~~ReAct内のバックグラウンドツール実行——ホワイトリスト登録された遅いツールはタスクIDを返し、完了時に通知~~ *(v0.8.9で実装)*
-- [x] ~~段階的DAG再計画：完了したステップは再計画ラウンド間で保持；ステップレベルのチェックポイントは中断された実行をリトライで再開~~ *(v0.8.9で実装)* {/* dev: dev/incremental-dag.md */}
-- [x] ~~圧縮はtool_use/tool_resultペアリングを保持——ツール多用の長い実行はコンパクト後のプロバイダー400で失敗しなくなり、バックグラウンドツール結果はステップストリーム＋DAG証拠に到達~~ *(v0.8.9で実装)*
-- [ ] ホットミッドストリームDAG再開（SSE再接続は実行中のターンに再接続）——コールドリトライ再開はチェックポイント経由で実装済み {/* dev: dev/incremental-dag.md */}
-
-#### エコシステム + スケーリング
-
-- [ ] **スケジュール済みジョブ + イベントトリガー型エージェント** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound。Hub モード用の非同期サブエージェント ユースケース
-- [ ] **ワークフロートリガー ID 可観測性** — `ExecutionContext.trigger_source`（`webhook | cron | manual | batch | sub`）が 5 つすべての WorkflowEngine サイトで入力され、実行パネルとコネクタログに表示
-- [ ] **ワークフロー単位の `credential_policy` オーバーライド**（`owner` / `caller` / `auto`）— デフォルトの `trigger_source → identity` マッピングをオーバーライド
-- [ ] **DB スキーマ高度なビルダー** — 1K～7K+ テーブルデプロイメント用の AI 駆動アノテーション（選択性 + ビジネスコンテキスト推論）
-- [ ] サンドボックス強化（v2 コード実行分離）
-
-#### 既に早期にリリース済み
-
-- [x] ~~Circuit breaker、Workflow run retention cleanup、Workflow version diff summaries~~ *(v0.8 / v0.8.1)*
-- [x] ~~DAG quality overhaul、Domain model escalation、Per-model NFC toggle~~ *(v0.8.1)*
-- [x] ~~DatabaseMetaTool、MCPServerMetaTool、On-demand `request_tools`~~ *(v0.8.1)*
-- [x] ~~Workflow Connection Dep Auto-Subscribe、Workflow real executors~~ *(v0.8.1)*
-- [x] ~~ReAct Cycle Detection、Completion Checklist~~ *(v0.8.1)*
-- [x] ~~Prebuilt Solution Templates（8 vertical bundles）、Resource Fork（MCP/Skill/Agent/Connector/Workflow）~~ *(v0.8.1)*
-- [x] ~~Vision document processing（PDF / DOCX / PPTX）、MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
-- [x] ~~Smart File Content Injection + `read_uploaded_file`~~ *(v0.8)*
-- [x] ~~Agent Core Phase 3: Conversation Recovery MVP、Compact Work Card、Turn Profiler、Per-user Rate Limiting~~ *(v0.8.3)*
-- [x] ~~Conversation resume MVP、System prompt registry + cache、Thinking-block persistence、Reasoning replay policy、Cache observability~~ *(v0.8.4)*
+- [x] ~~サーキットブレーカー、ワークフロー実行保持クリーンアップ、ワークフローバージョン差分サマリー~~ *(v0.8 / v0.8.1)*
+- [x] ~~DAG品質オーバーホール、ドメインモデルエスカレーション、モデルごとのNFCトグル~~ *(v0.8.1)*
+- [x] ~~DatabaseMetaTool、MCPServerMetaTool、オンデマンド`request_tools`~~ *(v0.8.1)*
+- [x] ~~ワークフロー接続依存関係自動サブスクライブ、ワークフロー実行エグゼキューター~~ *(v0.8.1)*
+- [x] ~~ReAct循環検出、完了チェックリスト~~ *(v0.8.1)*
+- [x] ~~プリビルトソリューションテンプレート (8垂直バンドル)、リソースフォーク (MCP/スキル/智能体/連接器/ワークフロー)~~ *(v0.8.1)*
+- [x] ~~ビジョンドキュメント処理 (PDF / DOCX / PPTX)、MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
+- [x] ~~スマートファイルコンテンツインジェクション + `read_uploaded_file`~~ *(v0.8)*
+- [x] ~~智能体コアフェーズ3: 会話復復MVP、コンパクトワークカード、ターンプロファイラー、ユーザーごとのレート制限~~ *(v0.8.3)*
+- [x] ~~会話再開MVP、システムプロンプトレジストリ + キャッシュ、思考ブロック永続化、推論リプレイポリシー、キャッシュ可観測性~~ *(v0.8.4)*
 
 ### v1.0 — ホットプラグ + 埋め込み可能
 

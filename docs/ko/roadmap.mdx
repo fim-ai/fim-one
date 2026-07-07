@@ -280,142 +280,86 @@ flowchart LR
 - [x] 강제 로그아웃 타임스탬프 비교가 UTC 변환으로 정규화되고 Docker Compose `POSTGRES_*` 자격 증명 재정의(배송된 `fim:fim` 기본값 없음)
 
 ### v0.8.9 (2026-07-08) — 모듈 슬림화 + 공유 수렴 + 승인 강화
-- [x] 스킬 및 워크플로우가 관리자 모듈 플래그 뒤에 소프트 셸프됨 (기본값 꺼짐) — 코어 전용 부팅; 삭제된 항목 없음, 관리자 → 설정 → 모듈에서 복구 가능
-- [x] 공유 수렴 — KB 공유 제거됨 (KB는 공유된 에이전트를 통해서만 다른 사용자에게 도달), DB 커넥터는 공유 불가 + 원본 SQL은 소유자 전용, 워크플로우 빌더는 9개 참조 전용 노드로 축소
-- [x] Feishu 승인 강화 — 카드 클릭이 승인자 신원을 강제, 콜백 서명은 폐쇄 실패 + 암호화된 봉투 해독, 승인이 의도하지 않은 채팅으로 라우팅되지 않음
-- [x] 사용 시간 액세스 재확인 — 공유된 MCP 서버 및 바인딩된 KB는 실행당 재검증; 조직 탈퇴 시 구독 및 저장된 자격증명 즉시 취소
-- [x] 에이전트 루프 강화 — 계획 보드, 백그라운드 도구, 증분 DAG 재계획 + 체크포인트 재개, 압축은 도구 페어링 유지, 절단 계속, 529/504 재시도
-- [x] `run_workflow` 에이전트 도구 + 워크플로우 정확성 — 에이전트 노드가 전체 에이전트 실행, 확인 게이트는 폐쇄 실패, 커넥터 호출은 액세스 확인 및 감사 로깅됨
-- [x] 계정 삭제 통합 — 관리자 및 셀프 서비스가 모든 레코드 및 온디스크 파일을 포함하는 하나의 제거 루틴을 통해 흐름; 조직 소유자는 먼저 소유권을 이전해야 함
+- [x] 스킬 및 워크플로우는 관리자 모듈 플래그 뒤에 소프트 셀프(기본값 꺼짐) — 코어 전용 부팅; 삭제된 항목 없음, 관리자 → 설정 → 모듈에서 되돌릴 수 있음
+- [x] 공유 수렴 — KB 공유 제거(KB는 공유된 에이전트를 통해서만 다른 사용자에게 도달), DB 커넥터는 공유 불가 + 원본 SQL은 소유자 전용, 워크플로우 빌더는 9개 참조 전용 노드로 축소
+- [x] Feishu 승인 강화 — 카드 클릭은 승인자 신원 강제, 콜백 서명은 폐쇄 실패 + 암호화된 봉투 복호화, 승인은 의도하지 않은 채팅으로 라우팅되지 않음
+- [x] 사용 시간 액세스 재확인 — 공유된 MCP 서버 및 바인딩된 KB는 실행당 재검증; 조직 탈퇴 시 구독 및 저장된 자격 증명 즉시 취소
+- [x] 에이전트 루프 강화 — 계획 보드, 백그라운드 도구, 증분 DAG 재계획 + 체크포인트 재개, 압축은 도구 쌍 유지, 절단 계속, 529/504 재시도
+- [x] `run_workflow` 에이전트 도구 + 워크플로우 정확성 — 에이전트 노드는 전체 에이전트 실행, 확인 게이트는 폐쇄 실패, 커넥터 호출은 액세스 확인 및 감사 로깅
+- [x] 계정 삭제 통합 — 관리자 및 셀프 서비스는 모든 레코드 및 디스크 상 파일을 포함하는 하나의 제거 루틴을 통해 진행; 조직 소유자는 먼저 소유권 이전 필요
+- [x] 소유자 자격 증명 폴백은 이제 옵트인(주요 변경) — 커넥터/MCP 서버는 기본값 `allow_fallback` 꺼짐, 기존 행 전환; 자격 증명이 없는 폴백 불가 리소스는 도구 세트에서 숨겨짐
+- [x] Webhook/cron 워크플로우 실행은 소유자의 토큰 할당량으로 측정 — 측정되지 않은 무료 LLM 트리거 경로는 폐쇄됨
+- [x] 리소스 바인딩은 가시성에서 통합 — 구독된 커넥터/KB/MCP 서버는 에이전트에 바인딩 가능; 워크플로우 커넥터 단계는 실행자의 액세스 강제
+- [x] 대화 워크스페이스는 채팅에 연결 — `workspace://` 초과 크기 도구 결과 오프로드, 예산 절단 구조, 사전 압축 트랜스크립트 스냅샷
 
-# 계획된 버전
+## 계획된 버전
 
-### v0.9 — 관찰성 + 프로덕션 강화
+2026-07-08 재계획: FIM One은 에이전트 런타임입니다 — 하나의 커널(ReAct 엔진, 자격증명, 승인 게이트, 감사, 멀티테넌트 조직)이 여러 전달 표면 뒤에 있습니다: Web UI, API, JS embed, MCP output. 모든 표면은 인증, 자격증명, 승인 및 미터링을 위한 동일한 어셈블리 레이어를 재사용합니다: 더 많은 프론트엔드, 절대 더 많은 로직은 아닙니다. 단기 방향은 데이터-Q&A(ChatBI) 슬라이스로의 수렴이며, 플랫폼이 아닌 시나리오를 판매합니다. {/* dev: dev/replan-2026-07.md */}
 
-**목표**: 프로덕션 등급 운영 + "에이전트가 따를 수 있는 지침"과 "시스템이 적용하는 보장" 사이의 격차를 해소하는 네 가지 기둥 — 추적 계층(무엇이 일어났는지 확인) · 훅 시스템(반드시 일어나야 할 일 적용) · 에이전트 워크스페이스(지속적 파일 + 인수인계) · IM 채널(에이전트가 사용자가 일하는 곳에 존재).
+### v0.9 — Connector Fences + Scenario Onboarding
 
-#### 인증 및 보안 강화
+**목표**: 사후 처리 자산이 완전한 데이터 Q&A 제품으로 조립됨 — 읽기 전용 DB 연결기 + 펜스 + 승인 게이트 + IM 진입점. Tier-1 펜스가 보안 부채를 제품 기능으로 전환함.
 
-- [x] ~~JWT 토큰 타입 격리 (2FA 우회) + OAuth 계정 탈취 및 세션 수정~~ *(v0.8.7에서 출시)*
-- [x] ~~PostgreSQL 타임존 인식 타임스탬프~~ *(v0.8.6에서 출시)*
-- [x] ~~강제 로그아웃 타임스탬프 비교는 tz-aware/naive 값을 UTC로 정규화 — 취소된 토큰이 SQLite 및 PostgreSQL 모두에서 안정적으로 거부됨~~ *(v0.8.8에서 출시)*
-- [x] ~~Docker Compose PostgreSQL 자격증명을 `POSTGRES_*` env를 통해 재정의 가능 (연결 문자열로 단일 소싱) — 노출된 배포에서 실수로 배포된 `fim:fim` 기본값 제거~~ *(v0.8.8에서 출시)*
-- [x] ~~SSRF 차단 목록이 IPv4-매핑 IPv6 우회(`::ffff:` 인스턴스 메타데이터) 종료; MCP SSE/Streamable-HTTP 서버 URL이 생성 + 연결 시 SSRF 검증됨~~ *(v0.8.8에서 출시)*
-- [x] ~~소유자 자격증명 폴백은 선택 사항: 커넥터/MCP 서버는 기본적으로 `allow_fallback` 비활성화 (기존 행 전환); 자격증명이 없는 폴백 없는 리소스는 호출 시 실패하는 대신 도구 집합에서 숨겨짐~~ *(v0.8.9에서 출시)*
-- [x] ~~리소스 접근이 가시성으로 통합됨 (소유 + 구독): 구독된 커넥터/KB/MCP 서버는 에이전트에 바인딩 가능 (더 이상 "소유하지 않음" 403 없음), 워크플로우 커넥터 단계는 실행자의 접근을 적용하는 대신 ID로 모든 커넥터 실행~~ *(v0.8.9에서 출시)*
-- [x] ~~웹훅/크론 워크플로우 실행은 소유자의 토큰 할당량으로 측정됨 — 무인 LLM/에이전트 단계는 미리 제어되고 사용량은 채팅과 동일한 할당량으로 계산되어 무계량 무료 LLM 경로 종료~~ *(v0.8.9에서 출시)*
+#### DB Connector Fences — Tier 1, 세 개의 PR {/* dev: dev/connector-rbac/00-overview.md */}
 
-#### 모델 및 제공자 호환성
+- [ ] PII 열 마스킹 (`ConnectorScopeGuard` PreToolUse hook)
+- [ ] 스키마 가시성 — 테이블/열 허용-거부 + 동사 차단 (읽기 전용 적용)
+- [ ] Fence 감사 가능성 — `ConnectorCallLog`의 `caller_user_id`, `effective_credential_source`, `scope_rules_applied`
+- [ ] 훅별 구성 전달 (`{"name", "config"}` 스키마) — ScopeGuard 규칙의 캐리어 {/* dev: dev/hook-system.md */}
 
-- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — 이전의 고정 예산 매개변수(4.7/4.8에서 400)를 거부한 모델에서 확장 사고가 작동하며, OpenAI 프록시 오류 라우팅에 대해 경고함~~ *(v0.8.8에서 배포됨)*
-- [x] ~~공유 LLM HTTP 풀이 LiteLLM 클라이언트 캐시 제거 후 자동으로 복구됨 — 재시작할 때까지 무한정 실패하는 대신 호출이 풀을 투명하게 재생성함~~ *(v0.8.8에서 배포됨)*
+#### 시나리오 온보딩
 
-#### 연결기 + 도구
+- [ ] 첫 실행이 빈 워크벤치 대신 시나리오 템플릿(solution_seeds)에서 시작됨
+- [ ] 문서 랜딩 페이지가 모듈 참조 대신 세 개의 수직 시나리오 스토리로 시작됨
+- [ ] 전달된 각 참여당 하나의 시나리오 템플릿 추출 — 경쟁력은 시나리오 자산 × 전달 속도
 
-- [ ] **연결기 점진적 공개 Phase 3-4** — 통합 `ConnectorExecutor` (API/DB/MCP); `jsonschema` 작업 검증; 프로토콜 무관 발견/실행
-- [ ] **YAML/JSON 연결기 구성** — 플랫폼 자동 생성 MCP 서버
-- [ ] **데이터베이스 연결기 Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo v0.8.5에서 출시
-- [ ] **MCP 연결 풀링** — STDIO 풀 사용자별 환경 격리; `httpx.AsyncClient` SSE/HTTP 공유. 목표 ≤100 ms 웜 스타트, 서버당 O(1) HTTP 연결
-- [x] ~~智能体可以拉取 `run_workflow` 以运行确定性工作流作为子步骤（静态配方 ↔ 技能的动态配方）；人工门控工作流保持仅触发状态，运行被审计，深度/重入性受保护~~ *(v0.8.9에서 출시)*
+### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-#### 콘텐츠 가드레일 {/* dev: dev/archive/openai-agents-insights.md */}
+**Goal**: 두 가지 가장 판매 가능한 전달 표면, 모두 동일한 커널 및 어셈블리 레이어 위에 구현.
 
-- [x] ~~콘텐츠 가드레일 v0 (입력/출력 트립와이어, 탈옥 감지기, 환경 변수 설정, `guardrail_tripwired` SSE 이벤트)~~ *(v0.8.7에서 출시됨)*
-- [ ] 주제 벗어남 필터 (분류기 기반 입력 가드레일) — 정규식이 충분하면 v0.5로 연기
-- [ ] PII 편집기 출력 가드레일 (정규식 + 분류기 하이브리드)
-- [ ] 에이전트별 가드레일 설정 UI (관리자 패널)
+- [ ] JS bubble / iframe embed — 호스트 시스템에 하나의 스니펫 삽입; 익명 방문자 신원 + 빌링 속성은 빌드 전에 결정
+- [ ] Feishu inbound @mention — 에이전트가 그룹에 상주: 데이터 쿼리, 파일 승인, 흐름 추적
+- [ ] Outbound patterns: 실패 알림, 예산 경고, 예약된 다이제스트, 에스컬레이션, 감사 영수증
+- [ ] WeCom / DingTalk 채널이 Feishu를 따름
 
-#### Hook System {/* dev: dev/hook-system.md */}
+### 보류 중 — 신호 게이트
 
-- [ ] Hook별 설정 통과 (`{"name": ..., "config": {...}}` 스키마)
-- [ ] `CallAgentTool` + Workflow `AGENT` 노드에 대한 Hook 상속 (보안 기본값 vs 유연성 기본값)
-- [ ] 기본 제공 Hook: `ConnectorCallLog` 자동 기록, 읽기 전용 모드 차단, DB 결과 잘라내기, 커넥터별 속도 제한
-- [ ] `SessionStart` Hook 포인트 + 사용자 정의 YAML Hook
-- [x] ~~PreToolUse 강제 Hook은 오류 시 닫혀서 실패 — 충돌하는 승인 게이트가 더 이상 호출을 자동으로 허용하지 않음; 비강제 Hook은 `fail_open`을 통해 열려서 실패 유지~~ *(v0.8.8에서 출시)*
-- [x] ~~스켈레톤 + FeishuGateHook + 승인 연습장 + ReAct/DAG 런타임~~ *(v0.8.5에서 출시)*
+다음 트리거 없이는 시작하지 마세요 (재계획 §3 참조): MCP 게이트웨이는 ≥2건의 미청청 "내 에이전트에 도구를 마운트하세요" 요청을 기다리고 있습니다. 채널화는 라이선싱에 대해 질문하는 구현자를 기다리고 있습니다. IdP/OrgSync는 고객 풀을 기다리고 있습니다. 나머지는 이들이 필요한 전달된 참여를 기다리고 있습니다.
 
-#### IM 채널 통합 {/* dev: dev/im-channels.md */}
+- [ ] MCP 게이트웨이 출력 — 커넥터 발견/실행을 다운스트림 에이전트용 MCP 도구로 역노출
+- [ ] 채널화 / 화이트라벨 활성화 — 상용 라이선스 경로 이미 준비됨
+- [ ] Identity Provider 모듈 + Channel 슬림다운 — Feishu SSO, 조직 그래프 동기화 {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] 커넥터 권한 부여 Tier 2 (사용자별 자격증명 필요, 키 바인딩 상태) + Tier 3 (로그인 티켓 교환) {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] Public API Phase 2 — 키별 속도 제한/할당량, 버전 관리, SDK, 개발자 포털 {/* dev: dev/public-api-phase2.md */}
+- [ ] 관찰성 — Agent Trace Layer (Trace/Span 모델, 타임라인 뷰어, OTel 내보내기) + 메트릭 대시보드 {/* dev: dev/agent-trace-layer.md */}
+- [ ] Agent Workspace 나머지 — 인계 노트, 워크스페이스 파일 브라우저 UI, 세션 간 대화 회상 {/* dev: dev/agent-workspace.md */}
+- [ ] Guardrails v1 — 주제 벗어남 필터, PII 편집기 출력 가드레일, 에이전트별 가드레일 구성 UI
+- [ ] Hook System 추가 기능 — `CallAgentTool` / 워크플로우 `AGENT` 노드용 훅 상속, 기본 제공 훅, `SessionStart` + 사용자 YAML 훅 {/* dev: dev/hook-system.md */}
+- [ ] 커넥터 플랫폼 심화 — Progressive Disclosure Phase 3-4, YAML/JSON 커넥터 구성, DB 커넥터 Phase 4 (Oracle / SQL Server / GBase), MCP 연결 풀링
+- [ ] Prompt 캐시 후속 조치 — Gemini 컨텍스트 캐시 어댑터, 에이전트별 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] Hot 중간 스트림 DAG 재개 — SSE 재연결이 실행 중인 턴에 다시 연결됨 (콜드 재시도-재개는 이미 배포됨) {/* dev: dev/incremental-dag.md */}
+- [ ] 에코시스템 — 예약된/이벤트 트리거 에이전트, 워크플로우 트리거 ID 관찰성, 워크플로우별 `credential_policy`, DB Schema Advanced Builder, 샌드박스 강화 v2
 
-- [ ] 채널: WeCom, Slack, Email, Teams 아웃바운드
-- [ ] 아웃바운드 패턴: 실패 알림, 예산 경고, 예약된 다이제스트, 에스컬레이션, 감사 영수증, 승인 에스컬레이션
-- [ ] Phase 2 — 인바운드 트리거 (IM 그룹에서 @mention 에이전트)
-- [x] ~~Feishu 채널 (Phase 1 부분집합) + 작업 완료 알림~~ *(v0.8.5에서 출시됨)*
+### v0.9 사전 계획에서 배포됨
 
-#### 커넥터 인증 계층 {/* dev: dev/connector-rbac/00-overview.md */}
+- [x] ~~인증 및 보안: JWT 토큰 타입 제한 + OAuth 수정 (v0.8.7); PG 시간대 인식 타임스탬프 (v0.8.6); 강제 로그아웃 UTC + `POSTGRES_*` 오버라이드 + SSRF IPv6 매핑 수정 (v0.8.8); 소유자 폴백 옵트인 + 가시성 통합 바인딩 + 웹훅/크론 미터링 (v0.8.9)~~
+- [x] ~~공급자 호환성: Anthropic 적응형 추론 + 공유 LLM 풀 자가 치유 (v0.8.8)~~
+- [x] ~~콘텐츠 가드레일 v0: 트립와이어 레이어 + 탈옥 감지기 (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
+- [x] ~~훅 시스템: 스켈레톤 + FeishuGateHook + 승인 연습장 + ReAct/DAG 런타임 (v0.8.5); PreToolUse 강제 실패 폐쇄 (v0.8.8)~~
+- [x] ~~Feishu 통로 1단계 + 작업 완료 알림 (v0.8.5)~~
+- [x] ~~`run_workflow` 에이전트 도구 (v0.8.9); 추론 세부 정보 엔드투엔드 보존 (v0.8.8); 워크스페이스 도구 출력 오프로딩 채팅에 연결 (v0.8.9)~~
+- [x] ~~에이전트 루프 강화: 계획 보드, LLM 호출 복원력, 백그라운드 도구, 증분 DAG 재계획 + 체크포인트 재개, 압축 도구 페어링 (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
 
-- [ ] Tier 1 — DB 모드 (`ConnectorScopeGuard` PreToolUse 훅: 동사 차단, 테이블 허용/거부, 열 마스킹, 범위 술어 주입)
-- [ ] Tier 2 — Open API 모드 (사용자별 자격증명 요구 관리자 UI; 키 바인딩 상태 대시보드)
-- [ ] Tier 3 — 로그인 티켓 교환 (`LoginTicketCredential` 사용자 범위 API 키가 없는 프론트엔드/백엔드 분할 시스템용)
-- [ ] 계층 간 감사 가능성 (`caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`)
-
-#### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
-
-- [ ] `identity_providers` + `user_identity_map` 모델 — DB 수준의 조직별 SSO/OAuth 설정으로 ENV 수준의 제3자 로그인 대체
-- [ ] Feishu SSO via IdP ("Feishu로 로그인"은 FIM 세션 + 업스트림 토큰 생성, Tier-2의 사용자별 API 키 마찰 제거)
-- [ ] IdP를 통한 조직 그래프 동기화 (Feishu 부서 → FIM 조직 트리); WeCom + DingTalk 다음 예정
-- [ ] Channel은 Delivery + Gate로 축소; 신원 기능 (SSO / OrgSync)은 IdP에만 존재
-
-#### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
-
-- [ ] 키별 속도 제한 (`X-RateLimit-*` 헤더, 429)
-- [ ] 키별 사용량 할당 (월간 토큰/요청 예산)
-- [ ] 엔드포인트별 범위 적용
-- [ ] API 버전 관리 (`/v1/...`) + 지원 중단 헤더
-- [ ] Webhook 콜백 (키별)
-- [ ] SDK 생성 (Python + TypeScript)
-- [ ] 개발자 포털 (Try-it 패널 + 키별 분석)
-- [ ] API 키 로테이션 (24시간 유예)
-- [ ] 배치 / 비동기 API (`POST /api/batch`)
-- [ ] 외부 종속성별 서킷 브레이커
-
-#### 관찰성 {/* dev: dev/agent-trace-layer.md */}
-
-- [ ] **Agent Trace Layer** — Trace/Span 모델, 프론트엔드 타임라인 뷰어, OTel 내보내기 (LangSmith 스타일 애플리케이션 수준 run/trace/thread)
-- [ ] **Metrics dashboard** — 지연시간, 성공률, 토큰 사용량, 커넥터 분석 (에이전트별 / 사용자별 / 조직별)
-
-#### Agent Workspace {/* dev: dev/agent-workspace.md */}
-
-- [ ] Tool Output Offloading — `workspace://` URI를 사용한 8K 이상 응답 + `read/list/write_workspace_file` 도구
-- [ ] Handoff Notes — `write_handoff(summary)`는 압축 후에도 유지됨
-- [ ] Workspace UI — 대화별 파일 브라우저, 세션 간 보존, 사용자별 저장소 할당량
-- [ ] Cross-session conversation recall — `list_conversations`, `search_conversations`, `read_conversation` 도구
-
-#### 프롬프트 캐시 + 추론 후속 조치 {/* dev: dev/prompt-cache-followups.md */}
-
-- [x] ~~추론 세부 정보가 종단 간 보존됨 — 루프가 진정한 최종 답변을 스트리밍함(손실 없는 재합성 없음); 추론이 압축, 컨텍스트 재구성 및 하위 에이전트 단계를 거쳐 유지됨~~ *(v0.8.8에서 출시됨)*
-- [ ] Gemini Context Cache Adapter (Anthropic 인라인 마커 대 별도 REST 캐시 수명 주기)
-- [ ] 에이전트당 `cache_ttl` (임시 5분 대 확장 1시간)
-
-#### Agent Loop Hardening (Claude Code patterns)
-
-- [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~ *(v0.8.9에서 출시됨)*
-- [x] ~~LLM-call resilience: output-truncation continuation + 529/504 retry with Retry-After (overload model fallback already shipped as `FallbackLLM`)~~ *(v0.8.9에서 출시됨)*
-- [x] ~~Budget-truncated tool results persist to workspace before cutting; full transcript snapshot before lossy compaction~~ *(v0.8.9에서 출시됨)*
-- [x] ~~Background tool execution in ReAct — whitelisted slow tools return a task id and notify on completion~~ *(v0.8.9에서 출시됨)*
-- [x] ~~Incremental DAG replan: completed steps carry across replan rounds; step-level checkpoint resumes interrupted runs on retry~~ *(v0.8.9에서 출시됨)* {/* dev: dev/incremental-dag.md */}
-- [x] ~~Compaction preserves tool_use/tool_result pairing — long tool-heavy runs no longer die on provider 400 after compact; background tool results reach the step stream + DAG evidence~~ *(v0.8.9에서 출시됨)*
-- [ ] Hot mid-stream DAG resume (SSE reconnect re-attaches to a running turn) — cold retry-resume shipped via checkpoint {/* dev: dev/incremental-dag.md */}
-
-#### 에코시스템 + 확장
-
-- [ ] **예약된 작업 + 이벤트 트리거 에이전트** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Hub 모드를 위한 비동기 하위 에이전트 사용 사례
-- [ ] **워크플로우 트리거 ID 관찰성** — `ExecutionContext.trigger_source` (`webhook | cron | manual | batch | sub`)이 모든 5개 WorkflowEngine 사이트에서 채워짐; 실행 패널 및 커넥터 로그에 표시됨
-- [ ] **워크플로우별 `credential_policy` 오버라이드** (`owner` / `caller` / `auto`) — 기본 `trigger_source → identity` 매핑 오버라이드
-- [ ] **DB 스키마 고급 빌더** — 1K-7K+ 테이블 배포를 위한 AI 기반 주석 (선택성 + 비즈니스 컨텍스트 추론)
-- [ ] 샌드박스 강화 (v2 코드 실행 격리)
-
-#### 이미 조기 배포됨
-
-- [x] ~~Circuit breaker, Workflow run retention cleanup, Workflow version diff summaries~~ *(v0.8 / v0.8.1)*
-- [x] ~~DAG quality overhaul, Domain model escalation, Per-model NFC toggle~~ *(v0.8.1)*
-- [x] ~~DatabaseMetaTool, MCPServerMetaTool, On-demand `request_tools`~~ *(v0.8.1)*
-- [x] ~~Workflow Connection Dep Auto-Subscribe, Workflow real executors~~ *(v0.8.1)*
-- [x] ~~ReAct Cycle Detection, Completion Checklist~~ *(v0.8.1)*
-- [x] ~~Prebuilt Solution Templates (8 vertical bundles), Resource Fork (MCP/Skill/Agent/Connector/Workflow)~~ *(v0.8.1)*
-- [x] ~~Vision document processing (PDF / DOCX / PPTX), MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
-- [x] ~~Smart File Content Injection + `read_uploaded_file`~~ *(v0.8)*
-- [x] ~~Agent Core Phase 3: Conversation Recovery MVP, Compact Work Card, Turn Profiler, Per-user Rate Limiting~~ *(v0.8.3)*
-- [x] ~~Conversation resume MVP, System prompt registry + cache, Thinking-block persistence, Reasoning replay policy, Cache observability~~ *(v0.8.4)*
+- [x] ~~서킷 브레이커, 워크플로우 실행 보존 정리, 워크플로우 버전 차이 요약~~ *(v0.8 / v0.8.1)*
+- [x] ~~DAG 품질 개선, 도메인 모델 에스컬레이션, 모델별 NFC 토글~~ *(v0.8.1)*
+- [x] ~~DatabaseMetaTool, MCPServerMetaTool, 온디맨드 `request_tools`~~ *(v0.8.1)*
+- [x] ~~워크플로우 연결 종속성 자동 구독, 워크플로우 실제 실행기~~ *(v0.8.1)*
+- [x] ~~ReAct 사이클 감지, 완료 체크리스트~~ *(v0.8.1)*
+- [x] ~~사전 구축 솔루션 템플릿 (8개 수직 번들), 리소스 포크 (MCP/Skill/Agent/Connector/Workflow)~~ *(v0.8.1)*
+- [x] ~~비전 문서 처리 (PDF / DOCX / PPTX), MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
+- [x] ~~스마트 파일 콘텐츠 주입 + `read_uploaded_file`~~ *(v0.8)*
+- [x] ~~에이전트 코어 3단계: 대화 복구 MVP, 컴팩트 작업 카드, 턴 프로파일러, 사용자별 속도 제한~~ *(v0.8.3)*
+- [x] ~~대화 재개 MVP, 시스템 프롬프트 레지스트리 + 캐시, 생각 블록 지속성, 추론 재생 정책, 캐시 관찰성~~ *(v0.8.4)*
 
 ### v1.0 — Hot-Plug + Embeddable
 

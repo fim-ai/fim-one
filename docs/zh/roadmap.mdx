@@ -281,143 +281,87 @@ flowchart LR
 - [x] PreToolUse 执行钩子在错误时故障关闭——崩溃的确认闸门不再默认允许调用；非执行钩子通过 `fail_open` 保持故障开放
 - [x] 强制登出时间戳比较通过转换为 UTC 进行规范化 + Docker Compose `POSTGRES_*` 凭证覆盖（无附带的 `fim:fim` 默认值）
 
-### v0.8.9 (2026-07-08) — 模块精简 + 共享收敛 + 审批加固
-- [x] 技能与工作流在管理员模块标志后软搁置（默认关闭）——仅核心启动；无内容删除，可从管理员 → 设置 → 模块恢复
+### v0.8.9 (2026-07-08) — 模块精简 + 共享收敛 + 审批强化
+- [x] 技能与工作流通过管理员模块标志软隐藏（默认关闭）——仅核心启动；无任何删除，可从管理员 → 设置 → 模块恢复
 - [x] 共享收敛——移除知识库共享（知识库仅通过共享智能体到达他人），数据库连接器不可共享 + 原始SQL仅所有者可用，工作流构建器精简至9个仅参考节点
-- [x] Feishu审批加固——卡片点击强制审批人身份验证，回调签名失败关闭 + 加密信封解密，审批永不路由至意外的聊天
-- [x] 使用时访问重新检查——共享MCP服务器和绑定知识库每次运行时重新验证；离开组织立即撤销订阅和已保存凭证
-- [x] 智能体循环加固——计划板、后台工具、增量DAG重新规划 + 检查点恢复、压缩保持工具配对、截断继续、529/504重试
+- [x] Feishu审批强化——卡片点击强制审批人身份验证，回调签名失败关闭 + 加密信封解密，审批绝不路由至无关聊天
+- [x] 使用时访问重新检查——共享MCP服务器和绑定知识库每次运行时重新验证；离开组织立即撤销订阅和保存的凭证
+- [x] 智能体循环强化——计划板、后台工具、增量DAG重新规划 + 检查点恢复、压缩保持工具配对、截断继续、529/504重试
 - [x] `run_workflow`智能体工具 + 工作流正确性——智能体节点运行完整智能体，确认闸门失败关闭，连接器调用访问检查和审计日志
-- [x] 账户删除统一——管理员和自助服务通过一个清除例程，涵盖每条记录和磁盘文件；组织所有者必须先转移所有权
+- [x] 账户删除统一——管理员和自助服务通过一个清除例程，覆盖每条记录和磁盘文件；组织所有者必须先转移所有权
+- [x] 所有者凭证回退现为可选（破坏性变更）——连接器/MCP服务器默认`allow_fallback`关闭，现有行已翻转；缺少凭证的无回退资源从工具集中隐藏
+- [x] Webhook/cron工作流运行按所有者令牌配额计量——无计量免费LLM触发路径已关闭
+- [x] 资源绑定统一于可见性——已订阅连接器/知识库/MCP服务器可绑定至智能体；工作流连接器步骤强制运行者访问权限
+- [x] 对话工作区接入聊天——`workspace://`卸载超大工具结果、预算截断救援、预压缩记录快照
 
 ## 计划版本
 
-### v0.9 — 可观测性 + 生产级加固
+重新规划于2026-07-08：FIM One是一个智能体运行时——一个内核（ReAct引擎、凭证、确认闸门、审计、多租户组织）支持多个交付界面：Web UI、API、JS嵌入、MCP输出。每个界面都复用同一个程序集层来处理身份验证、凭证、审批和计量：更多前端，永不增加逻辑。近期方向是聚焦于数据问答（ChatBI）切片，销售场景而非平台。{/* dev: dev/replan-2026-07.md */}
 
-**目标**：生产级运维 + 四大支柱缩小"智能体可能遵循的指令"与"系统强制执行的保证"之间的差距——追踪层（查看发生了什么）· 钩子系统（强制执行必须发生的事）· 智能体工作区（持久化文件 + 交接）· IM通道（智能体存在于用户工作的地方）。
+### v0.9 — 连接器围栏 + 场景入门
 
-#### 身份验证与安全加固
+**目标**：后期化简资产组装成完整的数据问答产品——只读数据库连接器 + 围栏 + 审批闸门 + IM入口。一级围栏将安全债务转化为产品特性。
 
-- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
-- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
-- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
-- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
-- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
-- [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~ *(shipped in v0.8.9)*
-- [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~ *(shipped in v0.8.9)*
-- [x] ~~Webhook/cron workflow runs are metered to the owner's token quota — unattended LLM/agent steps are gated up-front and their usage counts toward the same quota as chat, closing the unmetered free-LLM path~~ *(shipped in v0.8.9)*
+#### DB Connector Fences — Tier 1，三个PR {/* dev: dev/connector-rbac/00-overview.md */}
 
-#### 模型与提供商兼容性
+- [ ] PII列脱敏（`ConnectorScopeGuard` PreToolUse钩子）
+- [ ] 模式可见性——表/列允许-拒绝+动词阻止（只读强制执行）
+- [ ] Fence可审计性——`ConnectorCallLog`中的`caller_user_id`、`effective_credential_source`、`scope_rules_applied`
+- [ ] 每个钩子配置传递（`{"name", "config"}`模式）——ScopeGuard规则的载体 {/* dev: dev/hook-system.md */}
 
-- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute~~ *(shipped in v0.8.8)*
-- [x] ~~Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart~~ *(shipped in v0.8.8)*
+#### 场景入门
 
-#### 连接器 + 工具
+- [ ] 首次运行从场景模板（solution_seeds）开始，而不是从空工作台开始
+- [ ] 文档登陆页面以三个垂直场景故事开头，而不是模块参考
+- [ ] 每个已交付的参与项目提炼一个场景模板——竞争优势在于场景资产×交付速度
 
-- [ ] **连接器渐进式披露第3-4阶段** — 统一的 `ConnectorExecutor`（API/DB/MCP）；`jsonschema` 操作验证；协议无关的发现/执行
-- [ ] **YAML/JSON 连接器配置** — 平台自动生成 MCP 服务器
-- [ ] **数据库连接器第4阶段** — Oracle（`oracledb`）、SQL Server（`aioodbc`）、GBase（`aioodbc` + GBase ODBC）。DM8 / KingbaseES / HighGo 已在 v0.8.5 中发布
-- [ ] **MCP 连接池** — 使用每用户环境隔离的 STDIO 池；为 SSE/HTTP 共享 `httpx.AsyncClient`。目标 ≤100 ms 热启动，每个服务器 O(1) HTTP 连接
-- [x] ~~智能体可以拉取 `run_workflow` 来运行确定性工作流作为子步骤（静态配方 ↔ 技能的动态配方）；人工门控工作流保持仅触发，运行被审计，深度/重入性受保护~~ *（已在 v0.8.9 中发布）*
+### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-#### 内容护栏 {/* dev: dev/archive/openai-agents-insights.md */}
+**目标**：两个最具商业价值的交付表面，都基于同一内核和装配层。
 
-- [x] ~~内容护栏 v0（输入/输出触发器、越狱检测器、环境变量配置、`guardrail_tripwired` SSE 事件）~~ *（已在 v0.8.7 中发布）*
-- [ ] 离题过滤器（分类器支持的输入护栏）— 如果正则表达式保持足够，则延迟到 v0.5
-- [ ] PII 编辑器输出护栏（正则表达式 + 分类器混合）
-- [ ] 每个智能体的护栏配置 UI（管理面板）
+- [ ] JS 气泡 / iframe 嵌入——一个代码片段集成到宿主系统；匿名访客身份 + 计费归属在构建前确定
+- [ ] Feishu 入站 @mention——智能体存在于群组中：查询数据、文件审批、追踪流程
+- [ ] 出站模式：故障告警、预算警告、定时摘要、升级、审计收据
+- [ ] WeCom / DingTalk 通道跟进 Feishu
 
-#### 钩子系统 {/* dev: dev/hook-system.md */}
+### 已停泊——信号门控
 
-- [ ] 按钩子配置传递（`{"name": ..., "config": {...}}`架构）
-- [ ] `CallAgentTool` + 工作流 `AGENT` 节点的钩子继承（安全默认值与灵活性默认值）
-- [ ] 内置钩子：`ConnectorCallLog` 自动记录、只读模式阻止、数据库结果截断、按连接器速率限制
-- [ ] `SessionStart` 钩子点 + 用户定义的 YAML 钩子
-- [x] ~~PreToolUse 强制钩子在出错时失败关闭——崩溃的审批闸门不再无声地允许调用；非强制钩子通过 `fail_open` 保持失败开放~~ *（在 v0.8.8 中发布）*
-- [x] ~~骨架 + FeishuGateHook + 审批演练场 + ReAct/DAG 运行时~~ *（在 v0.8.5 中发布）*
+不要在没有触发器的情况下启动这些（见重新规划§3）：MCP网关等待≥2个主动的"在我的智能体中挂载你的工具"请求；通道化等待实现者询问许可证问题；IdP/OrgSync等待客户拉取；其余的等待需要它们的已交付参与。
 
-#### IM 通道集成 {/* dev: dev/im-channels.md */}
+- [ ] MCP网关输出——反向暴露连接器发现/执行为下游智能体的MCP工具
+- [ ] 通道化/白标启用——商业许可证路径已就位
+- [ ] 身份提供商模块+通道精简版——Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] 连接器授权第2层（需要按用户凭证、密钥绑定健康检查）+第3层（登录票证交换） {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] 公共API第2阶段——按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
+- [ ] 可观测性——智能体追踪层（追踪/跨度模型、时间线查看器、OTel导出）+指标仪表板 {/* dev: dev/agent-trace-layer.md */}
+- [ ] 智能体工作区剩余部分——交接备注、工作区文件浏览器UI、跨会话对话回忆 {/* dev: dev/agent-workspace.md */}
+- [ ] 护栏v1——离题过滤、PII编辑器输出护栏、按智能体护栏配置UI
+- [ ] 钩子系统扩展——`CallAgentTool`/工作流`AGENT`节点的钩子继承、内置钩子、`SessionStart`+用户YAML钩子 {/* dev: dev/hook-system.md */}
+- [ ] 连接器平台深度——渐进式披露第3-4阶段、YAML/JSON连接器配置、数据库连接器第4阶段（Oracle/SQL Server/GBase）、MCP连接池
+- [ ] 提示缓存后续——Gemini上下文缓存适配器、按智能体`cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] 热中流DAG恢复——SSE重新连接重新附加到运行中的轮次（冷重试-恢复已发布） {/* dev: dev/incremental-dag.md */}
+- [ ] 生态系统——计划/事件触发的智能体、工作流触发器-身份可观测性、按工作流`credential_policy`、数据库架构高级构建器、沙箱加固v2
 
-- [ ] 通道：WeCom、Slack、Email、Teams 出站
-- [ ] 出站模式：失败告警、预算警告、定时摘要、升级、审计收据、审批升级
-- [ ] 第 2 阶段——入站触发（在 IM 群组中 @提及智能体）
-- [x] ~~Feishu 通道（第 1 阶段子集）+ 任务完成通知~~ *(在 v0.8.5 中发布)*
+### 从pre-replan v0.9计划中已交付
 
-#### 连接器授权层 {/* dev: dev/connector-rbac/00-overview.md */}
+- [x] ~~Auth & security: JWT token-type confinement + OAuth fixes (v0.8.7); PG tz-aware timestamps (v0.8.6); force-logout UTC + `POSTGRES_*` override + SSRF IPv6-mapped fix (v0.8.8); owner-fallback opt-in + visibility-unified binding + webhook/cron metering (v0.8.9)~~
+- [x] ~~Provider compat: Anthropic adaptive thinking + shared LLM pool self-heal (v0.8.8)~~
+- [x] ~~Content guardrails v0: tripwire layer + jailbreak detector (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
+- [x] ~~Hook system: skeleton + FeishuGateHook + Approval Playground + ReAct/DAG runtime (v0.8.5); PreToolUse enforcement fail-closed (v0.8.8)~~
+- [x] ~~Feishu channel Phase 1 + task completion notification (v0.8.5)~~
+- [x] ~~`run_workflow` agent tool (v0.8.9); reasoning detail preserved end-to-end (v0.8.8); workspace tool-output offloading wired into chat (v0.8.9)~~
+- [x] ~~Agent loop hardening: plan board, LLM-call resilience, background tools, incremental DAG replan + checkpoint resume, compaction tool-pairing (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
 
-- [ ] 第1层——数据库模式（`ConnectorScopeGuard` PreToolUse 钩子：动词阻止、表格允许/拒绝、列编辑、作用域谓词注入）
-- [ ] 第2层——开放API模式（管理员UI要求按用户凭证；密钥绑定健康仪表板）
-- [ ] 第3层——登录票证交换（`LoginTicketCredential` 用于前后端分离系统，无用户范围API密钥）
-- [ ] 跨层可审计性（`ConnectorCallLog` 中的 `caller_user_id`、`effective_credential_source`、`scope_rules_applied`）
-
-#### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
-
-- [ ] `identity_providers` + `user_identity_map` 模型——数据库级别的按组织SSO/OAuth配置，替代ENV级别的第三方登录
-- [ ] 通过IdP的Feishu SSO（"使用Feishu登录"生成FIM会话+上游令牌，消除Tier-2的按用户API密钥摩擦）
-- [ ] 通过IdP的组织图同步（Feishu部门→FIM组织树）；WeCom+DingTalk接下来
-- [ ] 通道精简为Delivery+Gate；身份功能（SSO/OrgSync）仅存在于IdP中
-
-#### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
-
-- [ ] 按密钥速率限制（`X-RateLimit-*` 头部、429）
-- [ ] 按密钥使用配额（月度令牌/请求预算）
-- [ ] 按端点的作用域强制执行
-- [ ] API 版本控制（`/v1/...`）+ 弃用头部
-- [ ] Webhook 回调（按密钥）
-- [ ] SDK 生成（Python + TypeScript）
-- [ ] 开发者门户（试用面板 + 按密钥分析）
-- [ ] API 密钥轮换（24小时宽限期）
-- [ ] 批量/异步 API（`POST /api/batch`）
-- [ ] 按外部依赖断路器
-
-#### 可观测性 {/* dev: dev/agent-trace-layer.md */}
-
-- [ ] **智能体追踪层** — 追踪/跨度模型、前端时间线查看器、OTel导出（LangSmith风格的应用级运行/追踪/线程）
-- [ ] **指标仪表板** — 延迟、成功率、令牌使用量、连接器分析（按智能体/用户/组织）
-
-#### Agent Workspace {/* dev: dev/agent-workspace.md */}
-
-- [ ] 工具输出卸载——用于 >8K 响应的 `workspace://` URI 和 `read/list/write_workspace_file` 工具
-- [ ] 交接笔记——`write_handoff(summary)` 在压缩后保留
-- [ ] Workspace UI——每个对话的文件浏览器；跨会话保留；按用户存储配额
-- [ ] 跨会话对话回忆——`list_conversations`、`search_conversations`、`read_conversation` 工具
-
-#### 提示词缓存 + 推理后续步骤 {/* dev: dev/prompt-cache-followups.md */}
-
-- [x] ~~推理细节端到端保留——循环流式传输其真实最终答案（无损耗重新合成）；推理在压缩、上下文重建和子智能体步骤中保留~~ *(在 v0.8.8 中发布)*
-- [ ] Gemini 上下文缓存适配器（独立 REST 缓存生命周期 vs Anthropic 内联标记）
-- [ ] 每个智能体的 `cache_ttl`（临时 5 分钟 vs 扩展 1 小时）
-
-#### 智能体循环强化（Claude Code 模式）
-
-- [x] ~~计划板：`update_plan` todo 工具 + 陈旧计划重新注入提醒使长 ReAct 运行保持目标并在压缩后存活~~ *(v0.8.9 中已发布)*
-- [x] ~~LLM 调用弹性：输出截断续接 + 529/504 重试与 Retry-After（过载模型回退已作为 `FallbackLLM` 发布）~~ *(v0.8.9 中已发布)*
-- [x] ~~预算截断的工具结果在切割前持久化到工作区；有损压缩前的完整记录快照~~ *(v0.8.9 中已发布)*
-- [x] ~~ReAct 中的后台工具执行——白名单慢工具返回任务 id 并在完成时通知~~ *(v0.8.9 中已发布)*
-- [x] ~~增量 DAG 重新规划：已完成的步骤跨越重新规划轮次；步骤级检查点在重试时恢复中断的运行~~ *(v0.8.9 中已发布)* {/* dev: dev/incremental-dag.md */}
-- [x] ~~压缩保留 tool_use/tool_result 配对——长工具密集型运行不再在压缩后因提供商 400 而失败；后台工具结果到达步骤流 + DAG 证据~~ *(v0.8.9 中已发布)*
-- [ ] 热中流 DAG 恢复（SSE 重新连接重新附加到运行中的轮次）——冷重试恢复通过检查点发布 {/* dev: dev/incremental-dag.md */}
-
-#### 生态系统 + 扩展
-
-- [ ] **定时任务 + 事件触发智能体** — `scheduled_jobs` + `job_runs` + APScheduler；cron + webhook-inbound。Hub 模式下的异步子智能体用例
-- [ ] **工作流触发身份可观测性** — `ExecutionContext.trigger_source`（`webhook | cron | manual | batch | sub`）在全部 5 个 WorkflowEngine 站点填充；在运行面板和连接器日志中展示
-- [ ] **按工作流 `credential_policy` 覆盖** （`owner` / `caller` / `auto`） — 覆盖默认的 `trigger_source → identity` 映射
-- [ ] **数据库架构高级构建器** — 用于 1K-7K+ 表部署的 AI 驱动标注（选择性 + 业务上下文推理）
-- [ ] 沙箱加固（v2 代码执行隔离）
-
-#### 已提前发布
-
-- [x] ~~断路器、工作流运行保留清理、工作流版本差异摘要~~ *(v0.8 / v0.8.1)*
-- [x] ~~DAG质量改进、域模型升级、按模型NFC切换~~ *(v0.8.1)*
-- [x] ~~DatabaseMetaTool、MCPServerMetaTool、按需`request_tools`~~ *(v0.8.1)*
-- [x] ~~工作流连接依赖自动订阅、工作流真实执行器~~ *(v0.8.1)*
-- [x] ~~ReAct循环检测、完成清单~~ *(v0.8.1)*
-- [x] ~~预构建解决方案模板（8个垂直套餐）、资源分支（MCP/技能/智能体/连接器/工作流）~~ *(v0.8.1)*
-- [x] ~~视觉文档处理（PDF / DOCX / PPTX）、MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
-- [x] ~~智能文件内容注入 + `read_uploaded_file`~~ *(v0.8)*
-- [x] ~~智能体核心第3阶段：对话恢复MVP、紧凑工作卡、轮次分析器、按用户速率限制~~ *(v0.8.3)*
-- [x] ~~对话恢复MVP、系统提示注册表 + 缓存、思维块持久化、推理重放策略、缓存可观测性~~ *(v0.8.4)*
+- [x] ~~Circuit breaker, Workflow run retention cleanup, Workflow version diff summaries~~ *(v0.8 / v0.8.1)*
+- [x] ~~DAG quality overhaul, Domain model escalation, Per-model NFC toggle~~ *(v0.8.1)*
+- [x] ~~DatabaseMetaTool, MCPServerMetaTool, On-demand `request_tools`~~ *(v0.8.1)*
+- [x] ~~Workflow Connection Dep Auto-Subscribe, Workflow real executors~~ *(v0.8.1)*
+- [x] ~~ReAct Cycle Detection, Completion Checklist~~ *(v0.8.1)*
+- [x] ~~Prebuilt Solution Templates (8 vertical bundles), Resource Fork (MCP/Skill/Agent/Connector/Workflow)~~ *(v0.8.1)*
+- [x] ~~Vision document processing (PDF / DOCX / PPTX), MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
+- [x] ~~Smart File Content Injection + `read_uploaded_file`~~ *(v0.8)*
+- [x] ~~Agent Core Phase 3: Conversation Recovery MVP, Compact Work Card, Turn Profiler, Per-user Rate Limiting~~ *(v0.8.3)*
+- [x] ~~Conversation resume MVP, System prompt registry + cache, Thinking-block persistence, Reasoning replay policy, Cache observability~~ *(v0.8.4)*
 
 ### v1.0 — 热插拔 + 可嵌入
 

@@ -287,124 +287,68 @@ Aufgeschobene Härtung — nicht blockierend; nur aufgreifen, wenn das entsprech
 - [x] Agent loop hardening — plan board, background tools, incremental DAG replan + checkpoint resume, compaction keeps tool pairing, truncation continuation, 529/504 retry
 - [x] `run_workflow` agent tool + workflow correctness — Agent node runs the full agent, confirmation gates fail closed, connector calls access-checked and audit-logged
 - [x] Account deletion unified — admin and self-serve funnel through one purge routine covering every record and on-disk file; org owners must transfer ownership first
+- [x] Owner-credential fallback now opt-in (breaking) — connectors/MCP servers default `allow_fallback` off, existing rows flipped; no-fallback resources you lack credentials for are hidden from the toolset
+- [x] Webhook/cron workflow runs metered to the owner's token quota — the unmetered free-LLM trigger path is closed
+- [x] Resource binding unified on visibility — subscribed connectors/KBs/MCP servers bindable to agents; workflow connector steps enforce the runner's access
+- [x] Conversation workspace wired into chat — `workspace://` offload of oversized tool results, budget-truncation rescue, pre-compaction transcript snapshots
 
-# Geplante Versionen
+## Geplante Versionen
 
-### v0.9 — Observability + Production Hardening
+Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Engine, Anmeldedaten, Approval Gate, Audit, Multi-Tenant-Orgs) hinter mehreren Delivery-Oberflächen: Web UI, API, JS Embed, MCP Output. Jede Oberfläche nutzt dieselbe Assembly-Schicht für Auth, Anmeldedaten, Approval und Metering: mehr Frontends, nie mehr Logik. Die kurzfristige Richtung ist Konvergenz auf den Data-Q&A-Slice (ChatBI), Verkauf von Szenarien statt einer Plattform. {/* dev: dev/replan-2026-07.md */}
 
-**Ziel**: Produktionsreife Operationen + vier Säulen schließen die Lücke zwischen „Anweisungen, die der Agent möglicherweise befolgt" und „Garantien, die das System erzwingt" — Trace Layer (sehen, was passiert ist) · Hook System (erzwingen, was passieren muss) · Agent Workspace (persistente Dateien + Handoff) · IM Channel (Agenten leben dort, wo Benutzer arbeiten).
+### v0.9 — Connector Fences + Scenario Onboarding
 
-#### Auth & Security Hardening
+**Ziel**: Die nach der Reduktion zusammengestellten Assets bilden ein vollständiges Daten-Q&A-Produkt — Read-only-DB-Konnektoren + Fences + Approval Gate + IM-Eintrag. Tier-1-Fences wandeln Sicherheitsschulden in Produktfunktionen um.
 
-- [x] ~~JWT token-type confinement (2FA bypass) + OAuth account-takeover & session fixes~~ *(shipped in v0.8.7)*
-- [x] ~~PostgreSQL timezone-aware timestamps~~ *(shipped in v0.8.6)*
-- [x] ~~Force-logout timestamp comparison normalizes tz-aware/naive values to UTC by conversion — revoked tokens reliably rejected on both SQLite and PostgreSQL~~ *(shipped in v0.8.8)*
-- [x] ~~Docker Compose PostgreSQL credentials overridable via `POSTGRES_*` env (single-sourced into the connection string) — no more accidentally-shipped `fim:fim` default on exposed deployments~~ *(shipped in v0.8.8)*
-- [x] ~~SSRF blocklist closes the IPv4-mapped IPv6 bypass (`::ffff:` instance-metadata); MCP SSE/Streamable-HTTP server URLs SSRF-validated on create + connect~~ *(shipped in v0.8.8)*
-- [x] ~~Owner-credential fallback is opt-in: connectors/MCP servers default `allow_fallback` off (existing rows flipped); a no-fallback resource you lack credentials for is hidden from the toolset instead of failing at call time~~ *(shipped in v0.8.9)*
-- [x] ~~Resource access unified on visibility (own + subscribed): subscribed connectors/KBs/MCP servers are bindable to agents (no more "not owned" 403), and workflow connector steps enforce the runner's access instead of running any connector by id~~ *(shipped in v0.8.9)*
-- [x] ~~Webhook/cron workflow runs are metered to the owner's token quota — unattended LLM/agent steps are gated up-front and their usage counts toward the same quota as chat, closing the unmetered free-LLM path~~ *(shipped in v0.8.9)*
+#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
 
-#### Model & Provider Compatibility
+- [ ] PII column redaction (`ConnectorScopeGuard` PreToolUse hook)
+- [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
+- [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
+- [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
 
-- [x] ~~Anthropic adaptive-thinking protocol for Opus 4.6+/Sonnet 4.6/Fable 5 — extended thinking works on models that rejected the old fixed-budget param (400 on 4.7/4.8); warns on OpenAI-proxy misroute~~ *(shipped in v0.8.8)*
-- [x] ~~Shared LLM HTTP pool self-heals after a LiteLLM client-cache eviction closes it — calls recreate the pool transparently instead of failing indefinitely until restart~~ *(shipped in v0.8.8)*
+#### Szenario-Onboarding
 
-#### Connector + Tooling
+- [ ] Der erste Start beginnt mit einer Szenariovorlage (solution_seeds) statt einer leeren Workbench
+- [ ] Die Docs-Landingpage führt mit drei vertikalen Szenariogeschichten statt einer Modulreferenz an
+- [ ] Eine Szenariovorlage pro abgeschlossenem Engagement destilliert — der Wettbewerbsvorteil liegt in Szenario-Assets × Liefergeschwindigkeit
 
-- [ ] **Connector Progressive Disclosure Phase 3-4** — unified `ConnectorExecutor` (API/DB/MCP); `jsonschema` action validation; protocol-agnostic discover/execute
-- [ ] **YAML/JSON connector config** — platform auto-generates MCP server
-- [ ] **Database connectors Phase 4** — Oracle (`oracledb`), SQL Server (`aioodbc`), GBase (`aioodbc` + GBase ODBC). DM8 / KingbaseES / HighGo shipped in v0.8.5
-- [ ] **MCP Connection Pooling** — pool STDIO with per-user env isolation; share `httpx.AsyncClient` for SSE/HTTP. Target ≤100 ms warm-start, O(1) HTTP connections per server
-- [x] ~~Agents can pull `run_workflow` to run a deterministic workflow as a sub-step (static recipe ↔ Skill's dynamic recipe); human-gated workflows stay trigger-only, runs are audited, depth/re-entrancy guarded~~ *(shipped in v0.8.9)*
+### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-#### Content Guardrails {/* dev: dev/archive/openai-agents-insights.md */}
+**Ziel**: Die zwei verkaufbarsten Lieferflächen, beide auf demselben Kernel und der gleichen Assembly-Schicht.
 
-- [x] ~~Content Guardrails v0 (Input/Output-Tripwire, Jailbreak-Detektor, Umgebungsvariablen-Konfiguration, `guardrail_tripwired` SSE-Event)~~ *(in v0.8.7 ausgeliefert)*
-- [ ] Off-Topic-Filter (Klassifizierer-gestützter Input-Guardrail) — auf v0.5 verschieben, wenn Regex ausreichend bleibt
-- [ ] PII-Redaktor-Output-Guardrail (Regex + Klassifizierer-Hybrid)
-- [ ] Pro-Agent-Guardrail-Konfiguration UI (Admin-Panel)
+- [ ] JS bubble / iframe embed — ein Snippet in ein Host-System; anonyme Besucher-Identität + Abrechnungszuordnung vor dem Build entschieden
+- [ ] Feishu inbound @mention — Agenten leben in der Gruppe: Daten abfragen, Datei-Genehmigungen, Verfolgungsflows
+- [ ] Outbound-Muster: Fehlerwarnungen, Budgetwarnungen, geplante Digests, Eskalation, Audit-Quittungen
+- [ ] WeCom / DingTalk channels nach Feishu
 
-#### Hook System {/* dev: dev/hook-system.md */}
+### Geparkt — signalgesteuert
 
-- [ ] Per-Hook-Konfiguration Pass-Through (`{"name": ..., "config": {...}}` Schema)
-- [ ] Hook-Vererbung für `CallAgentTool` + Workflow `AGENT` Knoten (Sicherheitsstandard vs. Flexibilitätsstandard)
-- [ ] Integrierte Hooks: `ConnectorCallLog` Autoaufzeichnung, Read-Only-Modus-Blockierung, DB-Ergebnistrunkierung, Pro-Connector-Ratenlimit
-- [ ] `SessionStart` Hook-Punkt + benutzerdefinierte YAML-Hooks
-- [x] ~~PreToolUse Enforcement Hooks schlagen bei Fehler fehl geschlossen — ein abstürzender Approval Gate erlaubt den Aufruf nicht mehr stillschweigend; Nicht-Enforcement-Hooks behalten Fail-Open über `fail_open`~~ *(in v0.8.8 ausgeliefert)*
-- [x] ~~Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG Runtime~~ *(in v0.8.5 ausgeliefert)*
+Starten Sie diese nicht ohne ihren Auslöser (siehe Neuplanung §3): Das MCP-Gateway wartet auf ≥2 unaufgeforderte „Mount your tools in my agent"-Anfragen; Kanalisierung wartet auf eine Implementiererfrage zur Lizenzierung; IdP/OrgSync wartet auf Kundenpull; der Rest wartet auf ein ausgeliefertes Engagement, das sie benötigt.
 
-#### IM Channel Integration {/* dev: dev/im-channels.md */}
+- [ ] MCP gateway output — reverse-expose connector discover/execute as MCP tools for downstream agents
+- [ ] Channelization / white-label enablement — commercial-license path already in place
+- [ ] Identity Provider module + Channel slim-down — Feishu SSO, org graph sync {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] Connector authorization Tier 2 (require per-user credentials, key-binding health) + Tier 3 (login-ticket exchange) {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] Public API Phase 2 — per-key rate limits/quotas, versioning, SDKs, developer portal {/* dev: dev/public-api-phase2.md */}
+- [ ] Observability — Agent Trace Layer (Trace/Span model, timeline viewer, OTel export) + metrics dashboard {/* dev: dev/agent-trace-layer.md */}
+- [ ] Agent Workspace remainder — handoff notes, workspace file browser UI, cross-session conversation recall {/* dev: dev/agent-workspace.md */}
+- [ ] Guardrails v1 — off-topic filter, PII redactor output guardrail, per-agent guardrail config UI
+- [ ] Hook System extras — hook inheritance for `CallAgentTool` / workflow `AGENT` nodes, built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
+- [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
+- [ ] Prompt cache follow-ups — Gemini context cache adapter, per-agent `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/incremental-dag.md */}
+- [ ] Ecosystem — scheduled/event-triggered agents, workflow trigger-identity observability, per-workflow `credential_policy`, DB Schema Advanced Builder, sandbox hardening v2
 
-- [ ] Channels: WeCom, Slack, Email, Teams outbound
-- [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts, approval escalation
-- [ ] Phase 2 — Inbound trigger (@mention agent in IM group)
-- [x] ~~Feishu Channel (Phase 1 subset) + Task completion notification~~ *(shipped in v0.8.5)*
+### Aus dem Pre-Replan v0.9 Plan ausgeliefert
 
-#### Connector-Autorisierungsebenen {/* dev: dev/connector-rbac/00-overview.md */}
-
-- [ ] Ebene 1 — DB-Modus (`ConnectorScopeGuard` PreToolUse Hook: Verb-Blocking, Tabellen-Whitelist/Blacklist, Spalten-Redaktion, Scope-Prädikat-Injektion)
-- [ ] Ebene 2 — Open API-Modus (Admin-UI zur Anforderung von Benutzer-Anmeldedaten; Key-Binding-Health-Dashboard)
-- [ ] Ebene 3 — Login-Ticket-Austausch (`LoginTicketCredential` für Frontend/Backend-Split-Systeme ohne benutzergebundene API-Schlüssel)
-- [ ] Ebenenübergreifende Nachverfolgbarkeit (`caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`)
-
-#### Identity Provider Module + Channel Slim-down {/* dev: dev/connector-rbac/07-identity-providers.md */}
-
-- [ ] `identity_providers` + `user_identity_map` Modelle — DB-Level Pro-Org SSO/OAuth-Konfiguration ersetzt ENV-Level Third-Party-Login
-- [ ] Feishu SSO via IdP ("Login with Feishu" ergibt FIM-Sitzung + Upstream-Token, entfernt Pro-Benutzer API-Key-Reibung für Tier-2)
-- [ ] Org-Graph-Synchronisierung via IdP (Feishu-Abteilungen → FIM-Org-Baum); WeCom + DingTalk folgen
-- [ ] Channel reduziert sich auf Delivery + Gate; Identity-Funktionen (SSO / OrgSync) leben nur in IdP
-
-#### Public API Phase 2 {/* dev: dev/public-api-phase2.md */}
-
-- [ ] Pro-Schlüssel-Ratenbegrenzung (`X-RateLimit-*` Header, 429)
-- [ ] Pro-Schlüssel-Nutzungskontingent (monatliches Token-/Request-Budget)
-- [ ] Scope-Durchsetzung pro Endpunkt
-- [ ] API-Versionierung (`/v1/...`) + Deprecation-Header
-- [ ] Webhook-Callbacks (pro Schlüssel)
-- [ ] SDK-Generierung (Python + TypeScript)
-- [ ] Developer Portal (Try-it-Panels + Pro-Schlüssel-Analytik)
-- [ ] API-Schlüsselrotation (24h Kulanzfrist)
-- [ ] Batch-/Async-API (`POST /api/batch`)
-- [ ] Pro-externe-Abhängigkeit Circuit Breaker
-
-#### Observability {/* dev: dev/agent-trace-layer.md */}
-
-- [ ] **Agent Trace Layer** — Trace/Span model, frontend timeline viewer, OTel export (LangSmith-style application-level run/trace/thread)
-- [ ] **Metrics dashboard** — latency, success rate, token usage, connector analytics (per-agent / user / org)
-
-#### Agent Workspace {/* dev: dev/agent-workspace.md */}
-
-- [ ] Tool Output Offloading — `workspace://` URIs für >8K Antworten + `read/list/write_workspace_file` Tools
-- [ ] Handoff Notes — `write_handoff(summary)` bleibt bei Komprimierung erhalten
-- [ ] Workspace UI — Dateibrowser pro Konversation; konversationsübergreifende Beibehaltung; Speicherkontingent pro Benutzer
-- [ ] Cross-session conversation recall — `list_conversations`, `search_conversations`, `read_conversation` Tools
-
-#### Prompt Cache + Reasoning Follow-ups {/* dev: dev/prompt-cache-followups.md */}
-
-- [x] ~~Reasoning-Details end-to-end beibehalten — Loop streamt seine echte finale Antwort (keine verlustbehaftete Neusynthese); Reasoning bleibt bei Komprimierung, Kontext-Wiederherstellung und Sub-Agent-Schritten erhalten~~ *(ausgeliefert in v0.8.8)*
-- [ ] Gemini Context Cache Adapter (separater REST-Cache-Lebenszyklus vs. Anthropic Inline-Marker)
-- [ ] Pro-Agent `cache_ttl` (kurzlebig 5min vs. erweitert 1h)
-
-#### Agent Loop Hardening (Claude Code patterns)
-
-- [x] ~~Plan board: `update_plan` todo tool + stale-plan reminder re-injection keeps long ReAct runs on-goal and survives compaction~~ *(shipped in v0.8.9)*
-- [x] ~~LLM-call resilience: output-truncation continuation + 529/504 retry with Retry-After (overload model fallback already shipped as `FallbackLLM`)~~ *(shipped in v0.8.9)*
-- [x] ~~Budget-truncated tool results persist to workspace before cutting; full transcript snapshot before lossy compaction~~ *(shipped in v0.8.9)*
-- [x] ~~Background tool execution in ReAct — whitelisted slow tools return a task id and notify on completion~~ *(shipped in v0.8.9)*
-- [x] ~~Incremental DAG replan: completed steps carry across replan rounds; step-level checkpoint resumes interrupted runs on retry~~ *(shipped in v0.8.9)* {/* dev: dev/incremental-dag.md */}
-- [x] ~~Compaction preserves tool_use/tool_result pairing — long tool-heavy runs no longer die on provider 400 after compact; background tool results reach the step stream + DAG evidence~~ *(shipped in v0.8.9)*
-- [ ] Hot mid-stream DAG resume (SSE reconnect re-attaches to a running turn) — cold retry-resume shipped via checkpoint {/* dev: dev/incremental-dag.md */}
-
-#### Ökosystem + Skalierung
-
-- [ ] **Geplante Jobs + ereignisgesteuerte Agents** — `scheduled_jobs` + `job_runs` + APScheduler; cron + webhook-inbound. Async Sub-Agent-Anwendungsfall für Hub-Modus
-- [ ] **Workflow-Trigger-Identitätsobservabilität** — `ExecutionContext.trigger_source` (`webhook | cron | manual | batch | sub`) an allen 5 WorkflowEngine-Standorten gefüllt; in Run-Panel und Connector-Logs angezeigt
-- [ ] **Pro-Workflow `credential_policy` Override** (`owner` / `caller` / `auto`) — überschreibt Standard-`trigger_source → identity`-Zuordnung
-- [ ] **DB Schema Advanced Builder** — KI-gesteuerte Annotation für 1K-7K+ Tabellenbereitstellungen (Selektivität + geschäftlicher Kontext-Reasoning)
-- [ ] Sandbox-Härtung (v2 Code-Execution-Isolation)
-
-#### Bereits früh ausgeliefert
+- [x] ~~Auth & security: JWT token-type confinement + OAuth fixes (v0.8.7); PG tz-aware timestamps (v0.8.6); force-logout UTC + `POSTGRES_*` override + SSRF IPv6-mapped fix (v0.8.8); owner-fallback opt-in + visibility-unified binding + webhook/cron metering (v0.8.9)~~
+- [x] ~~Provider compat: Anthropic adaptive thinking + shared LLM pool self-heal (v0.8.8)~~
+- [x] ~~Content guardrails v0: tripwire layer + jailbreak detector (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
+- [x] ~~Hook system: skeleton + FeishuGateHook + Approval Playground + ReAct/DAG runtime (v0.8.5); PreToolUse enforcement fail-closed (v0.8.8)~~
+- [x] ~~Feishu channel Phase 1 + task completion notification (v0.8.5)~~
+- [x] ~~`run_workflow` agent tool (v0.8.9); reasoning detail preserved end-to-end (v0.8.8); workspace tool-output offloading wired into chat (v0.8.9)~~
+- [x] ~~Agent loop hardening: plan board, LLM-call resilience, background tools, incremental DAG replan + checkpoint resume, compaction tool-pairing (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
 
 - [x] ~~Circuit breaker, Workflow run retention cleanup, Workflow version diff summaries~~ *(v0.8 / v0.8.1)*
 - [x] ~~DAG quality overhaul, Domain model escalation, Per-model NFC toggle~~ *(v0.8.1)*
