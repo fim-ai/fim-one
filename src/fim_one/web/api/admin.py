@@ -826,6 +826,10 @@ class SystemSettingsResponse(BaseModel):
     # UI uses this to enable / explain the toggle button in the System
     # Settings page.
     stripe_configured: bool = False
+    # Soft-shelvable modules (off by default). Short keys: "skills",
+    # "workflows". Admin toggles these in the Modules card; the frontend
+    # hides nav + routes for disabled modules.
+    modules: dict[str, bool] = {}
 
 
 class UpdateSystemSettingsRequest(BaseModel):
@@ -837,6 +841,8 @@ class UpdateSystemSettingsRequest(BaseModel):
     default_token_quota: int | None = None
     email_verification_enabled: bool | None = None
     disabled_builtin_tools: list[str] | None = None
+    # Per-module enable flags — only the keys present are updated.
+    modules: dict[str, bool] | None = None
 
 
 class BillingActivationResponse(BaseModel):
@@ -880,6 +886,9 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
     from fim_one.web.services.billing_flag import _stripe_env_configured
     stripe_ok, _ = _stripe_env_configured()
 
+    from fim_one.web.services.feature_flags import are_features_enabled
+    modules = await are_features_enabled(db)
+
     return SystemSettingsResponse(
         registration_enabled=reg.lower() != "false",
         registration_mode=reg_mode,
@@ -892,6 +901,7 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
         disabled_builtin_tools=disabled_tools,
         billing_enabled=billing_flag,
         stripe_configured=stripe_ok,
+        modules=modules,
     )
 
 
@@ -954,6 +964,26 @@ async def update_system_settings(
     if body.disabled_builtin_tools is not None:
         await set_setting(db, SETTING_DISABLED_BUILTIN_TOOLS, json.dumps(body.disabled_builtin_tools))
         changed.append(f"disabled_builtin_tools={body.disabled_builtin_tools}")
+    if body.modules is not None:
+        from fim_one.web.services.feature_flags import (
+            SETTING_FEATURE_SKILLS,
+            SETTING_FEATURE_WORKFLOWS,
+        )
+
+        _module_keys = {
+            "skills": SETTING_FEATURE_SKILLS,
+            "workflows": SETTING_FEATURE_WORKFLOWS,
+        }
+        for _mod_name, _enabled in body.modules.items():
+            _setting_key = _module_keys.get(_mod_name)
+            if _setting_key is None:
+                raise AppError(
+                    "invalid_module",
+                    detail=f"Unknown module: {_mod_name}",
+                    detail_args={"module": _mod_name},
+                )
+            await set_setting(db, _setting_key, "true" if _enabled else "false")
+            changed.append(f"module.{_mod_name}={_enabled}")
     if changed:
         await write_audit(db, current_user, "settings.update", detail="; ".join(changed))
     return await _load_all_settings(db)

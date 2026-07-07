@@ -18,10 +18,17 @@ from fim_one.web.schemas.common import PaginatedResponse
 from fim_one.web.schemas.workflow import BatchOperationResponse
 
 from fim_one.web.api.admin_utils import write_audit
+from fim_one.web.services.feature_flags import require_skills_enabled
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+# Admin skill-review endpoints are part of the soft-shelvable Skills module;
+# they 404 in lock-step with the user-facing router when it is disabled.
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_skills_enabled)],
+)
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -33,21 +34,23 @@ _SERVER_START_TIME = datetime.now(UTC).isoformat()
 @router.get("/version")
 async def get_version(
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> dict[str, str | bool]:
+) -> dict[str, Any]:
     """Return application version metadata.
 
     This is a public endpoint — no authentication required. The
-    ``billing_enabled`` field is read from ``system_settings`` so the
-    frontend can decide whether to render the Plan & Billing tab + the
-    admin billing nav group on initial mount.
+    ``billing_enabled`` flag and the ``modules`` map (soft-shelvable
+    Skills / Workflows) are read from ``system_settings`` so the frontend
+    can decide what nav and routes to render on initial mount.
     """
     from fim_one.web.services.billing_flag import is_billing_enabled
+    from fim_one.web.services.feature_flags import are_features_enabled
 
     return {
         "version": __version__,
         "build_time": _SERVER_START_TIME,
         "app_name": "FIM One",
         "billing_enabled": await is_billing_enabled(db),
+        "modules": await are_features_enabled(db),
     }
 
 

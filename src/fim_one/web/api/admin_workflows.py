@@ -24,10 +24,17 @@ from fim_one.web.schemas.workflow import (
 )
 
 from fim_one.web.api.admin_utils import write_audit
+from fim_one.web.services.feature_flags import require_workflows_enabled
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+# Admin workflow-review endpoints are part of the soft-shelvable Workflows
+# module; they 404 in lock-step with the user-facing router when disabled.
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_workflows_enabled)],
+)
 
 
 # ---------------------------------------------------------------------------

@@ -19,8 +19,16 @@ from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.skill import SkillCreate, SkillForkRequest, SkillResponse, SkillUpdate
 from fim_one.web.visibility import build_visibility_filter
+from fim_one.web.services.feature_flags import require_skills_enabled
 
-router = APIRouter(prefix="/api/skills", tags=["skills"])
+# The whole Skills module is soft-shelvable (off by default). Gating at the
+# router level means every endpoint 404s in lock-step when an admin has not
+# enabled the module — no per-handler drift.
+router = APIRouter(
+    prefix="/api/skills",
+    tags=["skills"],
+    dependencies=[Depends(require_skills_enabled)],
+)
 
 
 # ---------------------------------------------------------------------------

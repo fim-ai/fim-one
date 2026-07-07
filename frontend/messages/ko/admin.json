@@ -630,7 +630,15 @@
     "billingStripeMissing": ".env에서 먼저 STRIPE_SECRET_KEY와 STRIPE_WEBHOOK_SECRET을 구성하세요.",
     "billingEnabled": "Stripe 결제 활성화됨",
     "billingDisabled": "Stripe 결제 비활성화됨 — 데이터 보존됨",
-    "billingActivatedSeeded": "Stripe 결제 활성화됨 · {plans, plural, one {# 요금제} other {# 요금제}} 초기화됨 · {users, plural, one {# 사용자} other {# 사용자}} 역채움됨"
+    "billingActivatedSeeded": "Stripe 결제 활성화됨 · {plans, plural, one {# 요금제} other {# 요금제}} 초기화됨 · {users, plural, one {# 사용자} other {# 사용자}} 역채움됨",
+    "modulesTitle": "모듈",
+    "modulesDesc": "선택적 모듈을 켜거나 끕니다. 비활성화된 모듈은 네비게이션에서 숨겨지며 해당 페이지와 API를 사용할 수 없습니다. 데이터는 삭제되지 않으며 모듈을 다시 활성화하면 기존 데이터가 복구됩니다.",
+    "moduleSkills": "기술",
+    "moduleSkillsDesc": "지능체가 필요에 따라 로드할 수 있는 재사용 가능한 SOP입니다. 기본적으로 비활성화되어 있습니다.",
+    "moduleWorkflows": "워크플로우",
+    "moduleWorkflowsDesc": "웹훅 및 예약된 트리거가 있는 시각적 다단계 자동화입니다. 기본적으로 비활성화되어 있습니다.",
+    "moduleEnabled": "모듈 활성화됨",
+    "moduleDisabled": "모듈 비활성화됨"
   },
   "security": {
     "title": "보안",

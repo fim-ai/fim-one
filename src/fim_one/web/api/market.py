@@ -207,6 +207,24 @@ async def browse_market(
         # Org scope: include all types (KB stays visible in org scope)
         types_to_query = _ALL_RESOURCE_TYPES
 
+    # Drop soft-shelved modules from the Market so their published rows are
+    # unreachable while the module is disabled (matches the router-level
+    # 404 on the modules' own endpoints).
+    from fim_one.web.services.feature_flags import (
+        is_feature_enabled,
+        SETTING_FEATURE_SKILLS,
+        SETTING_FEATURE_WORKFLOWS,
+    )
+
+    if "skill" in types_to_query and not await is_feature_enabled(
+        db, SETTING_FEATURE_SKILLS
+    ):
+        types_to_query = [t for t in types_to_query if t != "skill"]
+    if "workflow" in types_to_query and not await is_feature_enabled(
+        db, SETTING_FEATURE_WORKFLOWS
+    ):
+        types_to_query = [t for t in types_to_query if t != "workflow"]
+
     model_map: dict[str, tuple[Any, ...]] = {
         "agent": (Agent, _agent_market_info, "published"),
         "connector": (Connector, _connector_market_info, "published"),

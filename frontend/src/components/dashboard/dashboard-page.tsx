@@ -27,6 +27,7 @@ import { dashboardApi, workflowApi, type DashboardStats } from "@/lib/api"
 import type { WorkflowResponse } from "@/types/workflow"
 import { cn, formatTokens } from "@/lib/utils"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
+import { useModuleFlags } from "@/lib/module-flags"
 
 const TICK_STYLE = { fill: "currentColor", fontSize: 11 } as const
 
@@ -149,6 +150,7 @@ export function DashboardPage() {
   const { formatRelativeTime, formatDateLabel, timezone } = useDateFormatter()
   const { user, isLoading: authLoading } = useAuth()
   const { conversations } = useConversation()
+  const modules = useModuleFlags()
   const router = useRouter()
 
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -163,21 +165,22 @@ export function DashboardPage() {
     }
   }, [authLoading, user, router])
 
-  // Fetch dashboard stats + workflows
+  // Fetch dashboard stats (+ workflows only when the module is enabled —
+  // the endpoint 404s while Workflows is shelved).
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    Promise.all([
-      dashboardApi.stats(),
-      workflowApi.list(1, 10),
-    ])
+    const workflowsPromise = modules.workflows
+      ? workflowApi.list(1, 10)
+      : Promise.resolve({ items: [] as WorkflowResponse[] })
+    Promise.all([dashboardApi.stats(), workflowsPromise])
       .then(([statsData, workflowsData]) => {
         setStats(statsData)
         setWorkflows(workflowsData.items)
       })
       .catch((err) => setError(err instanceof Error ? err.message : t("error")))
       .finally(() => setLoading(false))
-  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, modules.workflows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // My Agents (by usage)
   const sortedAgents = useMemo(
@@ -785,7 +788,8 @@ export function DashboardPage() {
                 </CardContent>
               </Card>
 
-              {/* Workflows */}
+              {/* Workflows — only when the module is enabled */}
+              {modules.workflows && (
               <Card className="gap-0 py-2">
                 <CardHeader className="px-5 py-3">
                   <Link href="/workflows" className="group flex items-center justify-between rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
@@ -843,6 +847,7 @@ export function DashboardPage() {
                   )}
                 </CardContent>
               </Card>
+              )}
             </div>
           </>
         )}

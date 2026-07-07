@@ -69,10 +69,18 @@ from fim_one.web.schemas.workflow import (
     _compute_next_run,
 )
 from fim_one.web.visibility import build_visibility_filter
+from fim_one.web.services.feature_flags import require_workflows_enabled
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+# The whole Workflows module is soft-shelvable (off by default). Gating at
+# the router level 404s every endpoint — including webhook/API-key triggers
+# — in lock-step when an admin has not enabled the module.
+router = APIRouter(
+    prefix="/api/workflows",
+    tags=["workflows"],
+    dependencies=[Depends(require_workflows_enabled)],
+)
 
 # Module-level rate limiter shared across all workflow run endpoints
 _rate_limiter = WorkflowRateLimiter()

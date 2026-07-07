@@ -1761,32 +1761,45 @@ async def _resolve_tools(
             logger.warning("Failed to auto-discover connectors", exc_info=True)
 
     # Skills are global SOPs — always loaded regardless of agent selection.
+    # Skipped entirely when the Skills module is soft-shelved (off by default).
     if user_id:
-        _all_skill_ids = await _resolve_user_skill_ids(user_id)
-        if _all_skill_ids and get_skill_tool_mode(agent_cfg) != "inline":
-            from fim_one.core.tool.builtin.read_skill import ReadSkillTool
+        from fim_one.db import create_session as _feat_cs
+        from fim_one.web.services.feature_flags import (
+            is_feature_enabled as _is_feat,
+            SETTING_FEATURE_SKILLS as _SK,
+            SETTING_FEATURE_WORKFLOWS as _WF,
+        )
 
-            tools.register(
-                ReadSkillTool(
-                    skill_ids=_all_skill_ids,
-                    user_id=user_id,
+        async with _feat_cs() as _feat_db:
+            _skills_on = await _is_feat(_feat_db, _SK)
+            _workflows_on = await _is_feat(_feat_db, _WF)
+
+        if _skills_on:
+            _all_skill_ids = await _resolve_user_skill_ids(user_id)
+            if _all_skill_ids and get_skill_tool_mode(agent_cfg) != "inline":
+                from fim_one.core.tool.builtin.read_skill import ReadSkillTool
+
+                tools.register(
+                    ReadSkillTool(
+                        skill_ids=_all_skill_ids,
+                        user_id=user_id,
+                    )
                 )
-            )
 
-    # Workflows are static recipes — the deterministic twin of skills.  Exposed
-    # the same way (global, pull-on-demand via run_workflow), regardless of
-    # agent selection.
-    if user_id:
-        _all_workflow_ids = await _resolve_user_workflow_ids(user_id)
-        if _all_workflow_ids:
-            from fim_one.core.tool.builtin.run_workflow import RunWorkflowTool
+        # Workflows are static recipes — the deterministic twin of skills.
+        # Exposed the same way (global, pull-on-demand via run_workflow),
+        # regardless of agent selection. Skipped when the module is shelved.
+        if _workflows_on:
+            _all_workflow_ids = await _resolve_user_workflow_ids(user_id)
+            if _all_workflow_ids:
+                from fim_one.core.tool.builtin.run_workflow import RunWorkflowTool
 
-            tools.register(
-                RunWorkflowTool(
-                    workflow_ids=_all_workflow_ids,
-                    user_id=user_id,
+                tools.register(
+                    RunWorkflowTool(
+                        workflow_ids=_all_workflow_ids,
+                        user_id=user_id,
+                    )
                 )
-            )
 
     # File tools — always register when user is authenticated
     if user_id:

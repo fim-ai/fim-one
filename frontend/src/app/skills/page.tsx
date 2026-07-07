@@ -34,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PublishDialog } from "@/components/shared/publish-dialog"
 import type { SkillResponse, SkillCreate } from "@/types/skill"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
+import { useModuleGuard } from "@/lib/module-flags"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SkillTemplateGallery } from "@/components/skills/skill-template-gallery"
@@ -46,6 +47,8 @@ function SkillsPageInner() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { scope, setScope, filterByScope } = useScopeFilter()
+  // Redirect to dashboard when the Skills module is soft-shelved.
+  const moduleOk = useModuleGuard("skills")
 
   const [skills, setSkills] = useState<SkillResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -239,7 +242,7 @@ function SkillsPageInner() {
     return searchedSkills.slice(start, start + PAGE_SIZE)
   }, [searchedSkills, currentPage])
 
-  if (authLoading || !user) return null
+  if (authLoading || !user || !moduleOk) return null
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

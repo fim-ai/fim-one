@@ -25,6 +25,7 @@ import { ChatSearchDialog } from "@/components/layout/chat-search-dialog"
 import { UserMenu } from "@/components/layout/user-menu"
 import { NavigationProgress } from "@/components/layout/navigation-progress"
 import { GettingStartedCard } from "@/components/layout/getting-started-card"
+import { useModuleFlags } from "@/lib/module-flags"
 
 /** Wraps children in a right-side tooltip when the sidebar is collapsed. */
 function SidebarTooltip({
@@ -352,6 +353,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
   const t = useTranslations("layout")
   const pathname = usePathname()
   const { activeId, clearActive } = useConversation()
+  const modules = useModuleFlags()
 
   const navLink = (href: string, active: boolean, icon: React.ReactNode, label: string, onClick?: () => void) => (
     <Link
@@ -393,12 +395,16 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
       <SidebarTooltip label={t("agents")} collapsed={collapsed}>
         {navLink("/agents", pathname === "/agents" || pathname.startsWith("/agents/"), <Bot className="h-4 w-4" />, t("agents"))}
       </SidebarTooltip>
-      <SidebarTooltip label={t("skills")} collapsed={collapsed}>
-        {navLink("/skills", pathname === "/skills" || pathname.startsWith("/skills/"), <BookOpen className="h-4 w-4" />, t("skills"))}
-      </SidebarTooltip>
-      <SidebarTooltip label={t("workflows")} collapsed={collapsed}>
-        {navLink("/workflows", pathname === "/workflows" || pathname.startsWith("/workflows/"), <GitBranch className="h-4 w-4" />, t("workflows"))}
-      </SidebarTooltip>
+      {modules.skills && (
+        <SidebarTooltip label={t("skills")} collapsed={collapsed}>
+          {navLink("/skills", pathname === "/skills" || pathname.startsWith("/skills/"), <BookOpen className="h-4 w-4" />, t("skills"))}
+        </SidebarTooltip>
+      )}
+      {modules.workflows && (
+        <SidebarTooltip label={t("workflows")} collapsed={collapsed}>
+          {navLink("/workflows", pathname === "/workflows" || pathname.startsWith("/workflows/"), <GitBranch className="h-4 w-4" />, t("workflows"))}
+        </SidebarTooltip>
+      )}
       {/* Resources section */}
       {sectionLabel(t("sectionResources"))}
       <SidebarTooltip label={t("knowledge")} collapsed={collapsed}>

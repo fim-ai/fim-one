@@ -120,7 +120,17 @@ class WorkflowScheduler:
 
         from sqlalchemy import select
 
+        # The Workflows module is soft-shelvable (off by default). While it
+        # is disabled, cron-triggered runs do not fire — the scheduler tick
+        # is a no-op, matching the router-level gate on manual/API triggers.
+        from fim_one.web.services.feature_flags import (
+            is_feature_enabled,
+            SETTING_FEATURE_WORKFLOWS,
+        )
+
         async with create_session() as db:
+            if not await is_feature_enabled(db, SETTING_FEATURE_WORKFLOWS):
+                return
             result = await db.execute(
                 select(Workflow).where(
                     Workflow.schedule_enabled == True,  # noqa: E712

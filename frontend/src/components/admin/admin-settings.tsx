@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, ShieldOff, ShieldCheck, Megaphone, Wrench, LogOut, AlertTriangle, Zap, Plus, Ticket, Copy, X, Eye, CreditCard } from "lucide-react"
+import { Loader2, ShieldOff, ShieldCheck, Megaphone, Wrench, LogOut, AlertTriangle, Zap, Plus, Ticket, Copy, X, Eye, CreditCard, Blocks } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -38,6 +38,7 @@ import {
 import { apiFetch, adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { setBillingEnabled as setBillingEnabledApi } from "@/lib/billing-flag"
+import { MODULE_FLAGS_CHANGED_EVENT } from "@/lib/module-flags"
 import { toast } from "sonner"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
 import type { InviteCode } from "@/types/admin"
@@ -55,6 +56,8 @@ interface SystemSettings {
   billing_enabled: boolean
   /** True when STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET are present. */
   stripe_configured: boolean
+  /** Soft-shelvable modules (off by default): skills, workflows. */
+  modules: { skills: boolean; workflows: boolean }
 }
 
 export function AdminSettings() {
@@ -327,6 +330,67 @@ export function AdminSettings() {
             }}
             disabled={isSaving}
           />
+        </div>
+      </SettingSection>
+
+      <Separator />
+
+      {/* -- Modules (soft-shelve) -- */}
+      <SettingSection
+        icon={Blocks}
+        iconColor="text-muted-foreground"
+        title={t("modulesTitle")}
+        description={t("modulesDesc")}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="module-skills-toggle" className="text-sm font-medium cursor-pointer">
+                {t("moduleSkills")}
+              </Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t("moduleSkillsDesc")}
+              </p>
+            </div>
+            <Switch
+              id="module-skills-toggle"
+              checked={settings?.modules?.skills ?? false}
+              onCheckedChange={async (v) => {
+                const updated = await patch({
+                  modules: { ...(settings?.modules ?? { skills: false, workflows: false }), skills: v },
+                } as Partial<SystemSettings>)
+                if (updated) {
+                  window.dispatchEvent(new CustomEvent(MODULE_FLAGS_CHANGED_EVENT))
+                  toast.success(v ? t("moduleEnabled") : t("moduleDisabled"))
+                }
+              }}
+              disabled={isSaving}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="module-workflows-toggle" className="text-sm font-medium cursor-pointer">
+                {t("moduleWorkflows")}
+              </Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t("moduleWorkflowsDesc")}
+              </p>
+            </div>
+            <Switch
+              id="module-workflows-toggle"
+              checked={settings?.modules?.workflows ?? false}
+              onCheckedChange={async (v) => {
+                const updated = await patch({
+                  modules: { ...(settings?.modules ?? { skills: false, workflows: false }), workflows: v },
+                } as Partial<SystemSettings>)
+                if (updated) {
+                  window.dispatchEvent(new CustomEvent(MODULE_FLAGS_CHANGED_EVENT))
+                  toast.success(v ? t("moduleEnabled") : t("moduleDisabled"))
+                }
+              }}
+              disabled={isSaving}
+            />
+          </div>
         </div>
       </SettingSection>
 

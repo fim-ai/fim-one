@@ -34,6 +34,7 @@ import { WorkflowCard } from "@/components/workflows/workflow-card"
 import { TemplateGalleryDialog } from "@/components/workflows/template-gallery-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
+import { useModuleGuard } from "@/lib/module-flags"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import type { WorkflowResponse } from "@/types/workflow"
@@ -45,6 +46,8 @@ function WorkflowsPageInner() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const { scope, setScope, filterByScope } = useScopeFilter()
+  // Redirect to dashboard when the Workflows module is soft-shelved.
+  const moduleOk = useModuleGuard("workflows")
 
   const [workflows, setWorkflows] = useState<WorkflowResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -274,7 +277,7 @@ function WorkflowsPageInner() {
     return filteredWorkflows.slice(start, start + PAGE_SIZE)
   }, [filteredWorkflows, currentPage])
 
-  if (authLoading || !user) return null
+  if (authLoading || !user || !moduleOk) return null
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

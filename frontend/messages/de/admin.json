@@ -630,7 +630,15 @@
     "billingDisabled": "Stripe-Abrechnung deaktiviert — Daten beibehalten",
     "billingActivatedSeeded": "Stripe-Abrechnung aktiviert · {plans, plural, one {# Plan} other {# Pläne}} initialisiert · {users, plural, one {# Benutzer} other {# Benutzer}} rückwirkend gefüllt",
     "billingToggleHelper": "When enabled, users see a Plan & Billing tab with subscription plans and Stripe Checkout integration. Disable to hide all billing UI without deleting any data.",
-    "billingStripeMissing": "Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in .env first."
+    "billingStripeMissing": "Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in .env first.",
+    "modulesTitle": "Module",
+    "modulesDesc": "Schalten Sie optionale Module ein oder aus. Deaktivierte Module sind in der Navigation verborgen und ihre Seiten sowie APIs sind nicht verfügbar. Nichts wird gelöscht — vorhandene Daten werden wiederhergestellt, wenn das Modul erneut aktiviert wird.",
+    "moduleSkills": "Skills",
+    "moduleSkillsDesc": "Wiederverwendbare SOPs, die ein Agent bei Bedarf laden kann. Standardmäßig deaktiviert.",
+    "moduleWorkflows": "Workflows",
+    "moduleWorkflowsDesc": "Visuelle mehrstufige Automatisierungen mit Webhook- und geplanten Triggern. Standardmäßig deaktiviert.",
+    "moduleEnabled": "Modul aktiviert",
+    "moduleDisabled": "Modul deaktiviert"
   },
   "security": {
     "title": "Sicherheit",

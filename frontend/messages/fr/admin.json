@@ -630,7 +630,15 @@
     "billingStripeMissing": "Configurez d'abord STRIPE_SECRET_KEY et STRIPE_WEBHOOK_SECRET dans .env.",
     "billingEnabled": "Facturation Stripe activée",
     "billingDisabled": "Facturation Stripe désactivée — données conservées",
-    "billingActivatedSeeded": "Facturation Stripe activée · {plans, plural, one {# plan} other {# plans}} initialisé(s) · {users, plural, one {# utilisateur} other {# utilisateurs}} rétroactivement rempli(s)"
+    "billingActivatedSeeded": "Facturation Stripe activée · {plans, plural, one {# plan} other {# plans}} initialisé(s) · {users, plural, one {# utilisateur} other {# utilisateurs}} rétroactivement rempli(s)",
+    "modulesTitle": "Modules",
+    "modulesDesc": "Activez ou désactivez les modules optionnels. Les modules désactivés sont masqués de la navigation et leurs pages et APIs deviennent indisponibles. Aucune donnée n'est supprimée — les données existantes réapparaissent quand le module est réactivé.",
+    "moduleSkills": "Compétences",
+    "moduleSkillsDesc": "Procédures opératoires réutilisables qu'un agent peut charger à la demande. Désactivé par défaut.",
+    "moduleWorkflows": "Flux de travail",
+    "moduleWorkflowsDesc": "Automations visuelles multi-étapes avec déclencheurs webhook et programmés. Désactivé par défaut.",
+    "moduleEnabled": "Module activé",
+    "moduleDisabled": "Module désactivé"
   },
   "security": {
     "title": "Sécurité",

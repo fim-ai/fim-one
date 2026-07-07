@@ -630,7 +630,15 @@
     "billingStripeMissing": "まず.envでSTRIPE_SECRET_KEYとSTRIPE_WEBHOOK_SECRETを設定してください。",
     "billingEnabled": "Stripe課金が有効です",
     "billingDisabled": "Stripe課金が無効です — データは保持されます",
-    "billingActivatedSeeded": "Stripe課金が有効です · {plans, plural, one {# プラン} other {# プラン}}をシード · {users, plural, one {# ユーザー} other {# ユーザー}}をバックフィル"
+    "billingActivatedSeeded": "Stripe課金が有効です · {plans, plural, one {# プラン} other {# プラン}}をシード · {users, plural, one {# ユーザー} other {# ユーザー}}をバックフィル",
+    "modulesTitle": "モジュール",
+    "modulesDesc": "オプションモジュールのオン/オフを切り替えます。無効なモジュールはナビゲーションから非表示になり、ページとAPIは利用できなくなります。データは削除されず、モジュールを再度有効にすると既存データが復元されます。",
+    "moduleSkills": "スキル",
+    "moduleSkillsDesc": "エージェントがオンデマンドで読み込める再利用可能なSOP。デフォルトではオフです。",
+    "moduleWorkflows": "ワークフロー",
+    "moduleWorkflowsDesc": "Webhookとスケジュール済みトリガーを備えた視覚的な複数ステップの自動化。デフォルトではオフです。",
+    "moduleEnabled": "モジュール有効",
+    "moduleDisabled": "モジュール無効"
   },
   "security": {
     "title": "セキュリティ",
