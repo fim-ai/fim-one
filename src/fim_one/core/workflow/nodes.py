@@ -1211,16 +1211,31 @@ class MCPExecutor:
             from sqlalchemy import select
 
             async with create_session() as db:
-                result = await db.execute(
-                    select(MCPServer).where(MCPServer.id == server_id)
-                )
+                # Enforce visibility against the run's identity, mirroring the
+                # connector node above: only MCP servers the runner owns or
+                # has subscribed to are usable — not any server that merely
+                # exists by id (previously existence-only, so a workflow
+                # referencing a foreign server_id could ride the owner's
+                # env/headers whenever allow_fallback was on).
+                server_stmt = select(MCPServer).where(MCPServer.id == server_id)
+                if context.user_id:
+                    from fim_one.web.visibility import resolve_visibility
+
+                    _vis_clause, _, _ = await resolve_visibility(
+                        MCPServer, context.user_id, "mcp_server", db
+                    )
+                    server_stmt = server_stmt.where(_vis_clause)
+                result = await db.execute(server_stmt)
                 server = result.scalar_one_or_none()
 
                 if not server:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=f"MCP server '{server_id}' not found",
+                        error=(
+                            f"MCP server '{server_id}' not found or not "
+                            "accessible to you"
+                        ),
                         duration_ms=_ms_since(t0),
                     )
 

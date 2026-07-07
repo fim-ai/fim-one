@@ -1233,6 +1233,38 @@ def _conversation_sandbox_root(conversation_id: str | None) -> Path | None:
     return _PROJECT_ROOT.parent / "data" / "sandbox" / conversation_id
 
 
+async def _resolve_bound_kb_owner_map(
+    kb_ids: list[str], agent_owner_id: str | None
+) -> dict[str, str]:
+    """Map bound KB ids to their owners, gated by agent-owner visibility.
+
+    A bound KB delegates its content to whoever runs the agent, but the
+    delegation is only valid while the AGENT OWNER can currently see the KB
+    (own + subscribed). Bindings are validated at bind time, but
+    subscriptions can be reclaimed later (org exit), so the reference must
+    be re-checked at use time. KBs that fail the check are simply absent
+    from the returned map.
+    """
+    from fim_one.db import create_session as _kb_cs
+    from fim_one.db.models.knowledge_base import KnowledgeBase as _KBModel
+    from fim_one.web.visibility import resolve_visibility as _kb_resolve
+
+    kb_owner_map: dict[str, str] = {}
+    async with _kb_cs() as _kb_db:
+        _kb_stmt = sa_select(_KBModel.id, _KBModel.user_id).where(
+            _KBModel.id.in_(kb_ids)
+        )
+        if agent_owner_id:
+            _kb_vis, _, _ = await _kb_resolve(
+                _KBModel, agent_owner_id, "knowledge_base", _kb_db
+            )
+            _kb_stmt = _kb_stmt.where(_kb_vis)
+        _kb_result = await _kb_db.execute(_kb_stmt)
+        for row in _kb_result.all():
+            kb_owner_map[row[0]] = row[1]
+    return kb_owner_map
+
+
 async def _resolve_tools(
     agent_cfg: dict[str, Any] | None,
     conversation_id: str | None = None,
@@ -1291,17 +1323,28 @@ async def _resolve_tools(
         # Resolve per-KB owner for vector store path lookup.
         # Each KB's data lives under user_{owner}/kb_{id}/, so we need
         # the actual KB owner, not the agent owner or current user.
+        # The map is visibility-gated against the agent owner (see
+        # _resolve_bound_kb_owner_map); KBs that fail the check are dropped
+        # from kb_ids too — retrieval must not fall back to resolving them
+        # under the caller's namespace.
         kb_owner_map: dict[str, str] = {}
         try:
-            from fim_one.db import create_session as _kb_cs
-            from fim_one.db.models.knowledge_base import KnowledgeBase as _KBModel
-
-            async with _kb_cs() as _kb_db:
-                _kb_result = await _kb_db.execute(
-                    sa_select(_KBModel.id, _KBModel.user_id).where(_KBModel.id.in_(kb_ids))
+            _kb_owner_user = (
+                (agent_cfg.get("owner_user_id") or user_id) if agent_cfg else user_id
+            )
+            kb_owner_map = await _resolve_bound_kb_owner_map(
+                kb_ids, _kb_owner_user
+            )
+            _dropped_kbs = [k for k in kb_ids if k not in kb_owner_map]
+            if _dropped_kbs:
+                logger.info(
+                    "Dropping %d bound KB(s) no longer visible to agent "
+                    "owner %s: %s",
+                    len(_dropped_kbs),
+                    _kb_owner_user,
+                    _dropped_kbs,
                 )
-                for row in _kb_result.all():
-                    kb_owner_map[row[0]] = row[1]
+                kb_ids = [k for k in kb_ids if k in kb_owner_map]
         except Exception:
             logger.warning("Failed to resolve KB owners", exc_info=True)
 
@@ -1886,9 +1929,32 @@ async def _resolve_tools(
         else:
             async with _create_session() as _mcp_db:
                 if _agent_mcp_ids:
-                    # Agent mode: load only the specified MCP servers
+                    # Agent mode: load only the specified MCP servers, and
+                    # only those the AGENT OWNER can currently see (own +
+                    # subscribed) — mirrors the connector path's
+                    # _conn_user_id. Binding is validated at bind time, but
+                    # subscriptions can be reclaimed later (org exit), so the
+                    # reference must be re-checked at use time. Credentials
+                    # still resolve against the CALLER via _mcp_user_id +
+                    # the allow_fallback gate at connect time.
+                    from fim_one.web.visibility import (
+                        resolve_visibility as _resolve_vis_agent,
+                    )
+
+                    _mcp_owner_id = (
+                        agent_cfg.get("owner_user_id") or user_id
+                        if agent_cfg
+                        else user_id
+                    )
+                    if _mcp_owner_id:
+                        _owner_vis, _, _ = await _resolve_vis_agent(
+                            _MCPServerModel, _mcp_owner_id, "mcp_server", _mcp_db
+                        )
+                    else:
+                        _owner_vis = _sa_false()
                     _stmt = sa_select(_MCPServerModel).where(
                         _MCPServerModel.id.in_(_agent_mcp_ids),
+                        _owner_vis,
                         _MCPServerModel.is_active == _true(),
                     )
                 else:

@@ -91,6 +91,22 @@ class FakeMCPToolAdapter:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _passthrough_visibility(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The node's use-time visibility gate calls resolve_visibility, which
+    issues its own DB queries — irrelevant to these mock-session tests (and
+    it would shift the mocked execute() call ordering). Replace it with a
+    passthrough clause, mirroring test_workflow_connector_audit.py."""
+    from sqlalchemy import true as _sa_true
+
+    async def _fake_resolve(*args: Any, **kwargs: Any) -> tuple[Any, list[str], list[str]]:
+        return _sa_true(), [], []
+
+    monkeypatch.setattr(
+        "fim_one.web.visibility.resolve_visibility", _fake_resolve
+    )
+
+
 @pytest.fixture()
 def context() -> ExecutionContext:
     return ExecutionContext(
@@ -211,6 +227,29 @@ class TestMCPExecutor:
 
         assert result.status == NodeStatus.FAILED
         assert "not found" in (result.error or "")
+
+    async def test_server_not_visible_to_runner_is_blocked(
+        self, executor: MCPExecutor, store: VariableStore, context: ExecutionContext
+    ) -> None:
+        """The server query is filtered by the runner's visibility (own +
+        subscribed), mirroring the connector node. A foreign server_id that
+        the visibility filter excludes returns no row → not-accessible
+        failure, so a workflow can't ride the owner's env/headers just by
+        hardcoding a server id."""
+        node = _make_node({
+            "server_id": "srv-foreign",
+            "tool_name": "read_file",
+            "parameters": {},
+        })
+
+        # Visibility filter excluded the row → query returns None.
+        mock_cm = _mock_db_session(server=None)
+
+        with patch("fim_one.db.create_session", return_value=mock_cm):
+            result = await executor.execute(node, store, context)
+
+        assert result.status == NodeStatus.FAILED
+        assert "not accessible" in (result.error or "")
 
     async def test_server_disabled(
         self, executor: MCPExecutor, store: VariableStore, context: ExecutionContext
