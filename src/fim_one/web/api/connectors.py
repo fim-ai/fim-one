@@ -770,11 +770,6 @@ async def publish_connector(
             action="submitted",
             actor=current_user,
         )
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        connector.visibility = "global"
-        connector.org_id = None
     else:
         raise AppError("invalid_scope", status_code=400)
 

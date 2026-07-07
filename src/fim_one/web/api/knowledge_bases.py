@@ -24,7 +24,7 @@ from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.web.deps import get_embedding, get_kb_manager
 from fim_one.db.models import KBDocument, KnowledgeBase, User
 from fim_one.db.models.resource_subscription import ResourceSubscription
-from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
+from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.knowledge_base import (
     ChunkResponse,
     ChunkUpdate,
@@ -275,80 +275,11 @@ async def delete_kb(
 # ── Publish / Unpublish ───────────────────────────────────────────
 
 
-@router.post("/{kb_id}/publish", response_model=ApiResponse)
-async def publish_kb(
-    kb_id: str,
-    body: PublishRequest,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """Publish knowledge base to org or global scope."""
-    kb = await _get_owned_kb(kb_id, current_user.id, db)
-
-    if body.scope == "org":
-        if not body.org_id:
-            raise AppError("org_id_required", status_code=400)
-        from fim_one.web.auth import require_org_member
-        if not is_market_org(body.org_id):
-            await require_org_member(body.org_id, current_user, db)
-        kb.visibility = "org"
-        kb.org_id = body.org_id
-        from fim_one.web.publish_review import apply_publish_status
-        await apply_publish_status(kb, body.org_id, db, resource_type="knowledge_base", publisher_id=current_user.id)
-
-        from fim_one.web.api.reviews import log_review_event
-        await log_review_event(
-            db=db,
-            org_id=body.org_id,
-            resource_type="knowledge_base",
-            resource_id=kb.id,
-            resource_name=kb.name,
-            action="submitted",
-            actor=current_user,
-        )
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        kb.visibility = "global"
-        kb.org_id = None
-    else:
-        raise AppError("invalid_scope", status_code=400)
-
-    await db.commit()
-    await db.refresh(kb)
-    return ApiResponse(data=_kb_to_response(kb).model_dump())
-
-
-@router.post("/{kb_id}/resubmit", response_model=ApiResponse)
-async def resubmit_kb(
-    kb_id: str,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """Resubmit a rejected knowledge base for review."""
-    kb = await _get_owned_kb(kb_id, current_user.id, db)
-    if kb.publish_status != "rejected":
-        raise AppError("not_rejected", status_code=400)
-    kb.publish_status = "pending_review"
-    kb.reviewed_by = None
-    kb.reviewed_at = None
-    kb.review_note = None
-
-    if kb.org_id:
-        from fim_one.web.api.reviews import log_review_event
-        await log_review_event(
-            db=db,
-            org_id=kb.org_id or "",
-            resource_type="knowledge_base",
-            resource_id=kb.id,
-            resource_name=kb.name,
-            action="resubmitted",
-            actor=current_user,
-        )
-
-    await db.commit()
-    await db.refresh(kb)
-    return ApiResponse(data=_kb_to_response(kb).model_dump())
+# Knowledge bases are no longer shareable (Reduce Feature): the publish /
+# resubmit endpoints were removed. A KB reaches other users only by being
+# bound to a shared Agent, which delegates the owner's content at run time
+# (access-checked against the agent owner's visibility). ``unpublish`` is
+# kept so any pre-existing org-published KB row can be reverted to personal.
 
 
 @router.post("/{kb_id}/unpublish", response_model=ApiResponse)

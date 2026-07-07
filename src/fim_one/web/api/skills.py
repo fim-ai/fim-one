@@ -327,11 +327,6 @@ async def publish_skill(
         from fim_one.web.publish_review import apply_publish_status
 
         await apply_publish_status(skill, body.org_id, db, resource_type="skill", publisher_id=current_user.id)
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        skill.visibility = "global"
-        skill.org_id = None
     else:
         raise AppError("invalid_scope", status_code=400)
 

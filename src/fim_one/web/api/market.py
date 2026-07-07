@@ -734,29 +734,3 @@ async def _cascade_clean_connection_deps(
                     MCPServerCredential.user_id == user_id,
                 )
             )
-
-
-@router.get("/subscriptions", response_model=ApiResponse)
-async def list_subscriptions(
-    resource_type: str | None = Query(None),
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """List current user's subscriptions."""
-    q = select(ResourceSubscription).where(
-        ResourceSubscription.user_id == current_user.id
-    )
-    if resource_type:
-        q = q.where(ResourceSubscription.resource_type == resource_type)
-    result = await db.execute(q)
-    subs = result.scalars().all()
-    return ApiResponse(data=[
-        {
-            "id": s.id,
-            "resource_type": s.resource_type,
-            "resource_id": s.resource_id,
-            "org_id": s.org_id,
-            "created_at": s.created_at.isoformat() if s.created_at else None,
-        }
-        for s in subs
-    ])

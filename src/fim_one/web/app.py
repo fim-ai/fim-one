@@ -45,7 +45,7 @@ from .api.admin_utils import get_setting
 from .api.admin_security import router as admin_security_router
 from .api.admin_api_keys import router as admin_api_keys_router
 from .api.admin_resources import router as admin_resources_router
-from .api.admin_templates import router as admin_templates_router
+from .api.admin_sensitive_words import router as admin_sensitive_words_router
 from .api.admin_extra import router as admin_extra_router
 from .api.admin_workflows import router as admin_workflows_router
 from .api.admin_skills import router as admin_skills_router
@@ -374,7 +374,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_security_router)
     app.include_router(admin_api_keys_router)
     app.include_router(admin_resources_router)
-    app.include_router(admin_templates_router)
+    app.include_router(admin_sensitive_words_router)
     app.include_router(admin_extra_router)
     app.include_router(admin_workflows_router)
     app.include_router(admin_skills_router)

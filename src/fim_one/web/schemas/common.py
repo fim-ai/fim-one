@@ -22,8 +22,14 @@ class PaginatedResponse(BaseModel):
 
 
 class PublishRequest(BaseModel):
-    """Request body for publish endpoints (agents, connectors, KBs, MCP servers)."""
+    """Request body for publish endpoints (agents, connectors, MCP servers).
 
-    scope: str  # "org" or "global"
+    Publishing is org-scoped. The Market is the shadow "market" org, so
+    publishing to it is just ``scope="org"`` with its org id. (The old
+    ``"global"`` scope wrote a visibility no reader ever queried and has
+    been removed.)
+    """
+
+    scope: str  # "org"
     org_id: str | None = None
     allow_fallback: bool = True

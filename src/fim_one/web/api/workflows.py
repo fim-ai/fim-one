@@ -1056,11 +1056,6 @@ async def publish_workflow(
         wf.org_id = body.org_id
         from fim_one.web.publish_review import apply_publish_status
         await apply_publish_status(wf, body.org_id, db, resource_type="workflow", publisher_id=current_user.id)
-    elif body.scope == "global":
-        if not current_user.is_admin:
-            raise AppError("admin_required_for_global", status_code=403)
-        wf.visibility = "global"
-        wf.org_id = None
     else:
         raise AppError("invalid_scope", status_code=400)
 

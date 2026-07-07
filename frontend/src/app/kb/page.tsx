@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, Library, Trash2, Loader2, Clock, Search } from "lucide-react"
+import { Plus, Library, Trash2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -25,17 +25,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
 import { useAuth } from "@/contexts/auth-context"
 import { kbApi, marketApi } from "@/lib/api"
-import type { UserOrg } from "@/lib/api"
 import { KBCard } from "@/components/kb/kb-card"
 import { EmptyState } from "@/components/shared/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -49,7 +40,6 @@ function KBPageInner() {
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const t = useTranslations("kb")
-  const to = useTranslations("organizations")
   const tc = useTranslations("common")
   const { scope, setScope, filterByScope } = useScopeFilter()
 
@@ -60,13 +50,7 @@ function KBPageInner() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [pendingUninstallId, setPendingUninstallId] = useState<string | null>(null)
-  const [pendingPublishId, setPendingPublishId] = useState<string | null>(null)
   const [pendingUnpublishId, setPendingUnpublishId] = useState<string | null>(null)
-  const [publishOrgId, setPublishOrgId] = useState<string>("")
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [orgsLoading, setOrgsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -151,22 +135,9 @@ function KBPageInner() {
     }
   }
 
-  const confirmPublish = async () => {
-    if (!pendingPublishId) return
-    const id = pendingPublishId
-    setPendingPublishId(null)
-    try {
-      const updated = await kbApi.publish(id, {
-        scope: "org",
-        org_id: publishOrgId,
-      })
-      setKnowledgeBases((prev) => prev.map((kb) => (kb.id === id ? updated : kb)))
-      toast.success(t("publishSuccess"))
-    } catch {
-      toast.error(t("publishError"))
-    }
-  }
-
+  // Knowledge bases are no longer shareable (Reduce Feature): the publish
+  // flow was removed. Unpublish is kept as the escape hatch for reverting
+  // any pre-existing org-published KB back to personal.
   const confirmUnpublish = async () => {
     if (!pendingUnpublishId) return
     const id = pendingUnpublishId
@@ -179,11 +150,6 @@ function KBPageInner() {
       toast.error(t("unpublishError"))
     }
   }
-
-  // Find selected org for review notice
-  const selectedOrg = publishOrgId
-    ? userOrgs.find((o) => o.id === publishOrgId)
-    : null
 
   const filteredKBs = useMemo(
     () => (user ? filterByScope(knowledgeBases, user.id) : knowledgeBases),
@@ -321,61 +287,6 @@ function KBPageInner() {
           <DialogFooter>
             <Button variant="ghost" className="px-6" onClick={() => setPendingDeleteId(null)}>{tc("cancel")}</Button>
             <Button variant="destructive" className="px-6" onClick={confirmDelete}>{tc("delete")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Publish Dialog */}
-      <Dialog open={pendingPublishId !== null} onOpenChange={(open) => { if (!open) setPendingPublishId(null) }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("publishTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("publishDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">{t("publishSelectOrg")}</Label>
-              {orgsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                </div>
-              ) : userOrgs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{to("noOrgs")}</p>
-              ) : (
-                <>
-                  <Select value={publishOrgId} onValueChange={setPublishOrgId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t("publishSelectOrg")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {userOrgs.map((org) => (
-                        <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {/* Review notice */}
-                  {selectedOrg?.review_kbs && (
-                    <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
-                      <Clock className="h-4 w-4 shrink-0" />
-                      <span>{t("publishReviewWarning")}</span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setPendingPublishId(null)}>{tc("cancel")}</Button>
-            <Button
-              className="px-6"
-              onClick={confirmPublish}
-              disabled={orgsLoading || userOrgs.length === 0 || !publishOrgId}
-            >
-              {tc("publish")}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

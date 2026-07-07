@@ -495,7 +495,7 @@ export const agentApi = {
       method: "DELETE",
     }),
 
-  publish: (id: string, body: { scope: "personal" | "org" | "global"; org_id?: string }) =>
+  publish: (id: string, body: { scope: "org"; org_id?: string }) =>
     apiFetch<ApiResponse<AgentResponse>>(`/api/agents/${id}/publish`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -719,19 +719,11 @@ export const kbApi = {
       },
     ),
 
-  publish: (id: string, body: { scope: string; org_id?: string }) =>
-    apiFetch<ApiResponse<KBResponse>>(`/api/knowledge-bases/${id}/publish`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }).then((r) => r.data),
-
+  // Knowledge bases are no longer shareable (Reduce Feature): publish /
+  // resubmit were removed. unpublish is kept to revert any pre-existing
+  // org-published KB back to personal.
   unpublish: (id: string) =>
     apiFetch<ApiResponse<KBResponse>>(`/api/knowledge-bases/${id}/unpublish`, {
-      method: "POST",
-    }).then((r) => r.data),
-
-  resubmit: (id: string) =>
-    apiFetch<ApiResponse<KBResponse>>(`/api/knowledge-bases/${id}/resubmit`, {
       method: "POST",
     }).then((r) => r.data),
 
@@ -1081,7 +1073,7 @@ export const workflowApi = {
       body: JSON.stringify(fileData),
     }).then((r) => r.data),
 
-  publish: (id: string, body: { scope: "org" | "global"; org_id?: string }) =>
+  publish: (id: string, body: { scope: "org"; org_id?: string }) =>
     apiFetch<ApiResponse<WorkflowResponse>>(`/api/workflows/${id}/publish`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -1241,7 +1233,7 @@ export const skillApi = {
     apiFetch<ApiResponse<{ deleted: string }>>(`/api/skills/${id}`, {
       method: "DELETE",
     }),
-  publish: (id: string, body: { scope: "org" | "global"; org_id?: string }) =>
+  publish: (id: string, body: { scope: "org"; org_id?: string }) =>
     apiFetch<ApiResponse<SkillResponse>>(`/api/skills/${id}/publish`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -2417,12 +2409,6 @@ export interface MarketItem {
   created_at: string | null
 }
 
-export interface MarketSubscription {
-  resource_type: string
-  resource_id: string
-  org_id: string
-}
-
 export interface DependencyManifest {
   content_deps: Array<{ resource_type: string; resource_id: string; resource_name: string }>
   connection_deps: Array<{ resource_type: string; resource_id: string; resource_name: string; credential_schema: Record<string, unknown>; allow_fallback: boolean }>
@@ -2453,11 +2439,6 @@ export const marketApi = {
       body: JSON.stringify({ ...body, org_id: body.org_id ?? MARKET_ORG_ID }),
     }),
 
-  listSubscriptions: (resource_type?: string) => {
-    const sp = resource_type ? `?resource_type=${resource_type}` : ''
-    return apiFetch<ApiResponse<MarketSubscription[]>>(`/api/market/subscriptions${sp}`)
-  },
-
   dependencies: (params: { resource_type: string; resource_id: string }) => {
     const sp = new URLSearchParams()
     sp.set('resource_type', params.resource_type)
@@ -2471,7 +2452,6 @@ export const api = {
   browseMarket: marketApi.browse,
   subscribeResource: marketApi.subscribe,
   unsubscribeResource: marketApi.unsubscribe,
-  listSubscriptions: marketApi.listSubscriptions,
   getResourceDependencies: marketApi.dependencies,
 
   setMcpMyCredentials: (serverId: string, body: { env?: Record<string, string>; headers?: Record<string, string> }) =>
