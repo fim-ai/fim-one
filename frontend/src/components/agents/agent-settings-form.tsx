@@ -37,6 +37,31 @@ const TOOL_CATEGORY_KEYS: Record<string, { label: string; description: string; t
   general: { label: "toolCategoryGeneral", description: "toolCategoryGeneralDesc", tools: "toolCategoryGeneralTools" },
 }
 
+type ApproverScope = "initiator" | "agent_owner" | "org_members"
+const APPROVER_SCOPES: readonly ApproverScope[] = [
+  "initiator",
+  "agent_owner",
+  "org_members",
+]
+
+// Normalize a stored approver scope to a valid literal. A legacy/import
+// value outside the enum would otherwise be loaded verbatim and echoed
+// back on save, where Pydantic rejects it (Known Issue: approver-scope
+// 400). Falling back to "initiator" also keeps the dirty check symmetric.
+function normalizeApproverScope(raw: unknown): ApproverScope {
+  return APPROVER_SCOPES.includes(raw as ApproverScope)
+    ? (raw as ApproverScope)
+    : "initiator"
+}
+
+// Normalize a stored temperature to number | null. State init and the
+// dirty comparison MUST use the same rule, or a non-number stored value
+// (e.g. "0.5") reads as null on init but non-null in the compare, which
+// flags the form permanently dirty (Known Issue: phantom unsaved-changes).
+function normalizeTemperature(raw: unknown): number | null {
+  return typeof raw === "number" ? raw : null
+}
+
 interface AgentSettingsFormProps {
   agent: AgentResponse | null // null = create mode
   onSaved: (agent: AgentResponse) => void
@@ -78,9 +103,8 @@ export function AgentSettingsForm({
   const [confirmationMode, setConfirmationMode] = useState<
     "auto" | "inline_only" | "channel_only"
   >("auto")
-  const [confirmationApproverScope, setConfirmationApproverScope] = useState<
-    "initiator" | "agent_owner" | "org_members"
-  >("initiator")
+  const [confirmationApproverScope, setConfirmationApproverScope] =
+    useState<ApproverScope>("initiator")
   const [requireConfirmationForAll, setRequireConfirmationForAll] = useState<boolean>(false)
   const [approvalChannelId, setApprovalChannelId] = useState<string>("")
   // Follow-up suggestions toggle (default OFF)
@@ -124,8 +148,7 @@ export function AgentSettingsForm({
       setExecutionMode(agent.execution_mode || "react")
       const ct = agent.grounding_config?.confidence_threshold
       setConfidenceThreshold(typeof ct === "number" ? ct : null)
-      const rawTemp = agent.model_config_json?.temperature
-      setTemperature(typeof rawTemp === "number" ? rawTemp : null)
+      setTemperature(normalizeTemperature(agent.model_config_json?.temperature))
       setSandboxMemory(agent.sandbox_config?.memory ?? "")
       setSandboxCpu(agent.sandbox_config?.cpu != null ? String(agent.sandbox_config.cpu) : "")
       setSandboxTimeout(agent.sandbox_config?.timeout != null ? String(agent.sandbox_config.timeout) : "")
@@ -142,10 +165,7 @@ export function AgentSettingsForm({
         (agent.confirmation_mode as "auto" | "inline_only" | "channel_only") || "auto"
       )
       setConfirmationApproverScope(
-        (agent.confirmation_approver_scope as
-          | "initiator"
-          | "agent_owner"
-          | "org_members") || "initiator"
+        normalizeApproverScope(agent.confirmation_approver_scope)
       )
       setRequireConfirmationForAll(agent.require_confirmation_for_all === true)
       setApprovalChannelId(
@@ -259,7 +279,7 @@ export function AgentSettingsForm({
         const origCt = typeof ct === "number" ? ct : null
         return confidenceThreshold !== origCt
       })() ||
-      temperature !== (agent.model_config_json?.temperature ?? null) ||
+      temperature !== normalizeTemperature(agent.model_config_json?.temperature) ||
       sandboxMemory !== (agent.sandbox_config?.memory ?? "") ||
       sandboxCpu !== (agent.sandbox_config?.cpu != null ? String(agent.sandbox_config.cpu) : "") ||
       sandboxTimeout !== (agent.sandbox_config?.timeout != null ? String(agent.sandbox_config.timeout) : "") ||
@@ -269,7 +289,7 @@ export function AgentSettingsForm({
       notifyOnComplete !== origNotifyEnabled ||
       notifyChannelId !== origNotifyChannelId ||
       confirmationMode !== (agent.confirmation_mode || "auto") ||
-      confirmationApproverScope !== (agent.confirmation_approver_scope || "initiator") ||
+      confirmationApproverScope !== normalizeApproverScope(agent.confirmation_approver_scope) ||
       requireConfirmationForAll !== (agent.require_confirmation_for_all === true) ||
       approvalChannelId !== (agent.approval_channel_id || "") ||
       suggestFollowups !== (agent.suggest_followups === true)
@@ -1098,9 +1118,7 @@ export function AgentSettingsForm({
               <Select
                 value={confirmationApproverScope}
                 onValueChange={(v) =>
-                  setConfirmationApproverScope(
-                    v as "initiator" | "agent_owner" | "org_members"
-                  )
+                  setConfirmationApproverScope(normalizeApproverScope(v))
                 }
               >
                 <SelectTrigger className="w-full">
