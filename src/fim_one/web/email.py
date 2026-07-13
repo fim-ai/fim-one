@@ -10,6 +10,8 @@ import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from fim_one.core.notification.smtp import resolve_ssl_mode, warn_plaintext
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +24,7 @@ def _send_email(to: str, subject: str, body_html: str) -> None:
     """Send an HTML email via SMTP. Raises on failure."""
     host = os.environ["SMTP_HOST"]
     port = int(os.getenv("SMTP_PORT", "465"))
-    ssl_mode = os.getenv("SMTP_SSL", "ssl").lower()
+    ssl_mode = resolve_ssl_mode()
     user = os.environ["SMTP_USER"]
     password = os.environ["SMTP_PASS"]
     from_addr = os.getenv("SMTP_FROM") or user
@@ -49,6 +51,7 @@ def _send_email(to: str, subject: str, body_html: str) -> None:
             server.login(user, password)
             server.sendmail(from_addr, [to], msg.as_string())
     else:
+        warn_plaintext(host, port)
         with smtplib.SMTP(host, port) as server:
             server.login(user, password)
             server.sendmail(from_addr, [to], msg.as_string())

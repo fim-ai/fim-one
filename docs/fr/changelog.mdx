@@ -10,6 +10,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+### Corrigé
+
+- **Une typo dans `SMTP_SSL` n'envoie plus silencieusement votre mot de passe SMTP en clair.** Auparavant, toute valeur autre que `ssl` ou `tls` (par exemple `SMTP_SSL=true`) basculait vers une connexion non chiffrée sans avertissement, tant pour les e-mails système que pour les notifications par e-mail. Les valeurs non reconnues sont maintenant rejetées catégoriquement, et la livraison non chiffrée doit être demandée explicitement en tant que `SMTP_SSL=none`, ce qui enregistre un avertissement à chaque envoi.
+
 ## [v0.8.9] - 2026-07-08
 
 ### Ajouts

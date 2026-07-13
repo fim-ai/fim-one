@@ -348,22 +348,22 @@ Steuert, wie hochgeladene PDF-/DOCX-Dateien für die LLM-Verarbeitung verarbeite
 
 ---
 
-## E-Mail (SMTP) (Empfohlen)
+## Email (SMTP) (Empfohlen)
 
 Registriert das `email_send` Built-in-Tool automatisch, wenn `SMTP_HOST`, `SMTP_USER` und `SMTP_PASS` alle gesetzt sind.
 
 | Variable | Erforderlich | Standard | Beschreibung |
 |---|---|---|---|
-| `SMTP_HOST` | Bed. | — | SMTP-Server-Hostname |
+| `SMTP_HOST` | Bed. | — | SMTP-Serverhostname |
 | `SMTP_PORT` | Nein | `465` | SMTP-Port |
-| `SMTP_SSL` | Nein | `ssl` | TLS-Modus: `ssl` (Port 465) / `tls` (STARTTLS, Port 587) / `""` (unverschlüsselt) |
-| `SMTP_USER` | Bed. | — | SMTP-Benutzername |
-| `SMTP_PASS` | Bed. | — | SMTP-Passwort |
+| `SMTP_SSL` | Nein | `ssl` | TLS-Modus: `ssl` (Port 465) / `tls` (STARTTLS, Port 587) / `none` oder `""` (unverschlüsselt, Anmeldedaten im Klartext). Jeder andere Wert wird abgelehnt, anstatt stillschweigend auf unverschlüsselt zurückzufallen. |
+| `SMTP_USER` | Bed. | — | SMTP-Anmeldebenutzername |
+| `SMTP_PASS` | Bed. | — | SMTP-Anmeldepasswort |
 | `SMTP_FROM` | Nein | *(verwendet `SMTP_USER`)* | Absenderadresse im From-Header |
 | `SMTP_FROM_NAME` | Nein | — | Anzeigename im From-Header |
-| `SMTP_REPLY_TO` | Nein | — | Reply-To-Adresse; Antworten gehen hierher statt zu `SMTP_FROM` |
+| `SMTP_REPLY_TO` | Nein | — | Reply-To-Adresse; Antworten gehen hier statt an `SMTP_FROM` |
 | `SMTP_ALLOWED_DOMAINS` | Nein | — | Kommagetrennte Domain-Allowlist (z. B. `example.com,corp.io`); blockiert Empfänger außerhalb der aufgelisteten Domains |
-| `SMTP_ALLOWED_ADDRESSES` | Nein | — | Kommagetrennte Exact-Address-Allowlist; kombiniert mit `SMTP_ALLOWED_DOMAINS`; beide nicht gesetzt, um jeden Empfänger zuzulassen (nicht empfohlen für gemeinsame Postfächer) |
+| `SMTP_ALLOWED_ADDRESSES` | Nein | — | Kommagetrennte Allowlist für genaue Adressen; kombiniert mit `SMTP_ALLOWED_DOMAINS`; beide nicht gesetzt lassen, um jeden Empfänger zuzulassen (nicht empfohlen für gemeinsame Postfächer) |
 
 ---
 

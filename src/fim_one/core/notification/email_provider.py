@@ -20,6 +20,8 @@ from email.mime.text import MIMEText
 
 from typing import Any
 
+from fim_one.core.notification.smtp import resolve_ssl_mode, warn_plaintext
+
 from .base import NotificationMessage, NotificationProvider
 
 logger = logging.getLogger(__name__)
@@ -71,7 +73,7 @@ class EmailNotificationProvider(NotificationProvider):
     def _send_sync(*, to: str, subject: str, body: str) -> None:
         host = os.environ["SMTP_HOST"]
         port = int(os.getenv("SMTP_PORT", "465"))
-        ssl_mode = os.getenv("SMTP_SSL", "ssl").lower()
+        ssl_mode = resolve_ssl_mode()
         user = os.environ["SMTP_USER"]
         password = os.environ["SMTP_PASS"]
         from_addr = os.getenv("SMTP_FROM") or user
@@ -101,6 +103,7 @@ class EmailNotificationProvider(NotificationProvider):
                 server.login(user, password)
                 server.sendmail(from_addr, recipients, msg.as_string())
         else:
+            warn_plaintext(host, port)
             with smtplib.SMTP(host, port) as server:
                 server.login(user, password)
                 server.sendmail(from_addr, recipients, msg.as_string())

@@ -350,22 +350,22 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 
 ---
 
-## メール (SMTP) (推奨)
+## Email (SMTP) (推奨)
 
-`SMTP_HOST`、`SMTP_USER`、`SMTP_PASS` がすべて設定されている場合、`email_send` ビルトインツールを自動登録します。
+`SMTP_HOST`、`SMTP_USER`、`SMTP_PASS` がすべて設定されている場合、`email_send` ビルトインツールが自動的に登録されます。
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `SMTP_HOST` | 条件付き | — | SMTP サーバーのホスト名 |
-| `SMTP_PORT` | いいえ | `465` | SMTP ポート |
-| `SMTP_SSL` | いいえ | `ssl` | TLS モード: `ssl` (ポート 465) / `tls` (STARTTLS、ポート 587) / `""` (プレーン) |
-| `SMTP_USER` | 条件付き | — | SMTP ログインユーザー名 |
-| `SMTP_PASS` | 条件付き | — | SMTP ログインパスワード |
-| `SMTP_FROM` | いいえ | *(`SMTP_USER` を使用)* | From ヘッダーに表示される送信者アドレス |
-| `SMTP_FROM_NAME` | いいえ | — | From ヘッダーに表示される表示名 |
-| `SMTP_REPLY_TO` | いいえ | — | Reply-To アドレス。返信はここに送信されます (`SMTP_FROM` の代わりに) |
-| `SMTP_ALLOWED_DOMAINS` | いいえ | — | カンマ区切りのドメイン許可リスト (例: `example.com,corp.io`)。リストに含まれていないドメインの受信者をブロックします |
-| `SMTP_ALLOWED_ADDRESSES` | いいえ | — | カンマ区切りの正確なアドレス許可リスト。`SMTP_ALLOWED_DOMAINS` と組み合わせて使用します。両方を未設定のままにすると、すべての受信者を許可します (共有メールボックスの場合は非推奨) |
+| `SMTP_HOST` | Cond. | — | SMTP サーバーホスト名 |
+| `SMTP_PORT` | No | `465` | SMTP ポート |
+| `SMTP_SSL` | No | `ssl` | TLS モード: `ssl` (ポート 465) / `tls` (STARTTLS、ポート 587) / `none` または `""` (プレーン、認証情報が平文で送信される)。その他の値は拒否され、プレーンモードへの暗黙的なフォールバックは行われません。 |
+| `SMTP_USER` | Cond. | — | SMTP ログインユーザー名 |
+| `SMTP_PASS` | Cond. | — | SMTP ログインパスワード |
+| `SMTP_FROM` | No | *(uses `SMTP_USER`)* | From ヘッダーに表示される送信者アドレス |
+| `SMTP_FROM_NAME` | No | — | From ヘッダーに表示される表示名 |
+| `SMTP_REPLY_TO` | No | — | Reply-To アドレス。返信はここに送信されます (`SMTP_FROM` の代わりに) |
+| `SMTP_ALLOWED_DOMAINS` | No | — | カンマ区切りのドメイン許可リスト (例: `example.com,corp.io`)。リストに含まれていないドメインの受信者をブロックします |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | カンマ区切りの完全一致アドレス許可リスト。`SMTP_ALLOWED_DOMAINS` と組み合わせて使用されます。両方を未設定のままにすると、すべての受信者を許可します (共有メールボックスの場合は推奨されません) |
 
 ---
 

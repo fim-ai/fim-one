@@ -352,22 +352,22 @@ Reranker는 검색된 문서를 다시 점수 매겨 관련성을 개선합니�
 
 ---
 
-## 이메일 (SMTP) (권장)
+## Email (SMTP) (권장)
 
-`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`가 모두 설정되면 `email_send` 기본 제공 도구를 자동으로 등록합니다.
+`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`가 모두 설정되면 `email_send` 내장 도구를 자동으로 등록합니다.
 
-| 변수 | 필수 | 기본값 | 설명 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `SMTP_HOST` | 조건부 | — | SMTP 서버 호스트명 |
-| `SMTP_PORT` | 아니오 | `465` | SMTP 포트 |
-| `SMTP_SSL` | 아니오 | `ssl` | TLS 모드: `ssl` (포트 465) / `tls` (STARTTLS, 포트 587) / `""` (평문) |
-| `SMTP_USER` | 조건부 | — | SMTP 로그인 사용자명 |
-| `SMTP_PASS` | 조건부 | — | SMTP 로그인 비밀번호 |
-| `SMTP_FROM` | 아니오 | *(uses `SMTP_USER`)* | From 헤더에 표시되는 발신자 주소 |
-| `SMTP_FROM_NAME` | 아니오 | — | From 헤더에 표시되는 표시 이름 |
-| `SMTP_REPLY_TO` | 아니오 | — | Reply-To 주소; 회신이 `SMTP_FROM` 대신 여기로 전송됨 |
-| `SMTP_ALLOWED_DOMAINS` | 아니오 | — | 쉼표로 구분된 도메인 허용 목록 (예: `example.com,corp.io`); 나열된 도메인 외의 수신자 차단 |
-| `SMTP_ALLOWED_ADDRESSES` | 아니오 | — | 쉼표로 구분된 정확한 주소 허용 목록; `SMTP_ALLOWED_DOMAINS`과 함께 사용; 모든 수신자를 허용하려면 둘 다 설정하지 않음 (공유 사서함의 경우 권장하지 않음) |
+| `SMTP_HOST` | Cond. | — | SMTP 서버 호스트명 |
+| `SMTP_PORT` | No | `465` | SMTP 포트 |
+| `SMTP_SSL` | No | `ssl` | TLS 모드: `ssl` (포트 465) / `tls` (STARTTLS, 포트 587) / `none` 또는 `""` (평문, 자격증명이 평문으로 전송됨). 다른 값은 평문으로 자동 폴백되지 않고 거부됩니다. |
+| `SMTP_USER` | Cond. | — | SMTP 로그인 사용자명 |
+| `SMTP_PASS` | Cond. | — | SMTP 로그인 비밀번호 |
+| `SMTP_FROM` | No | *(uses `SMTP_USER`)* | From 헤더에 표시되는 발신자 주소 |
+| `SMTP_FROM_NAME` | No | — | From 헤더에 표시되는 표시 이름 |
+| `SMTP_REPLY_TO` | No | — | Reply-To 주소; 회신이 `SMTP_FROM` 대신 여기로 전송됨 |
+| `SMTP_ALLOWED_DOMAINS` | No | — | 쉼표로 구분된 도메인 허용 목록 (예: `example.com,corp.io`); 나열된 도메인 외의 수신자를 차단함 |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | 쉼표로 구분된 정확한 주소 허용 목록; `SMTP_ALLOWED_DOMAINS`과 함께 적용됨; 모든 수신자를 허용하려면 둘 다 설정하지 않음 (공유 메일박스의 경우 권장하지 않음) |
 
 ---
 

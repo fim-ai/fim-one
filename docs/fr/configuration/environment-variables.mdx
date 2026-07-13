@@ -354,7 +354,7 @@ Enregistre automatiquement l'outil intégré `email_send` lorsque `SMTP_HOST`, `
 |---|---|---|---|
 | `SMTP_HOST` | Cond. | — | Nom d'hôte du serveur SMTP |
 | `SMTP_PORT` | Non | `465` | Port SMTP |
-| `SMTP_SSL` | Non | `ssl` | Mode TLS : `ssl` (port 465) / `tls` (STARTTLS, port 587) / `""` (plain) |
+| `SMTP_SSL` | Non | `ssl` | Mode TLS : `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` ou `""` (plain, identifiants envoyés en clair). Toute autre valeur est rejetée plutôt que de revenir silencieusement au mode plain. |
 | `SMTP_USER` | Cond. | — | Nom d'utilisateur de connexion SMTP |
 | `SMTP_PASS` | Cond. | — | Mot de passe de connexion SMTP |
 | `SMTP_FROM` | Non | *(utilise `SMTP_USER`)* | Adresse de l'expéditeur affichée dans l'en-tête From |

@@ -10,6 +10,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
+### Behoben
+
+- **Ein Tippfehler in `SMTP_SSL` sendet Ihr SMTP-Passwort nicht mehr stillschweigend unverschlüsselt.** Zuvor führte jeder Wert außer `ssl` oder `tls` (zum Beispiel `SMTP_SSL=true`) zu einer unverschlüsselten Verbindung ohne Warnung, sowohl bei System-E-Mails als auch bei E-Mail-Benachrichtigungen. Unbekannte Werte werden nun abgelehnt, und unverschlüsselte Zustellung muss explizit als `SMTP_SSL=none` angefordert werden, was bei jedem Versand eine Warnung protokolliert.
+
 ## [v0.8.9] - 2026-07-08
 
 ### Hinzugefügt

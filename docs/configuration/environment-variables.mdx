@@ -362,7 +362,7 @@ Auto-registers the `email_send` built-in tool when `SMTP_HOST`, `SMTP_USER`, and
 |---|---|---|---|
 | `SMTP_HOST` | Cond. | — | SMTP server hostname |
 | `SMTP_PORT` | No | `465` | SMTP port |
-| `SMTP_SSL` | No | `ssl` | TLS mode: `ssl` (port 465) / `tls` (STARTTLS, port 587) / `""` (plain) |
+| `SMTP_SSL` | No | `ssl` | TLS mode: `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` or `""` (plain, credentials sent in cleartext). Any other value is rejected rather than silently falling back to plain. |
 | `SMTP_USER` | Cond. | — | SMTP login username |
 | `SMTP_PASS` | Cond. | — | SMTP login password |
 | `SMTP_FROM` | No | *(uses `SMTP_USER`)* | Sender address shown in From header |

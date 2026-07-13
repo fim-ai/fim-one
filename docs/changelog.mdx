@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Fixed
+
+- **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
+
 ## [v0.8.9] - 2026-07-08
 
 ### Added

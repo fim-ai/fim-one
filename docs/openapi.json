@@ -3,7 +3,7 @@
   "info": {
     "title": "FIM One API",
     "description": "All-in-one agent platform for Global × China enterprises — programmatic access to agents, conversations, knowledge bases, and more.",
-    "version": "0.8.8"
+    "version": "0.8.9"
   },
   "paths": {
     "/api/chat/inject": {

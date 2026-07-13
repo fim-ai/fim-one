@@ -350,22 +350,22 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 ---
 
-## 电子邮件 (SMTP) (推荐)
+## 电子邮件（SMTP）（推荐）
 
-当 `SMTP_HOST`、`SMTP_USER` 和 `SMTP_PASS` 都设置时，自动注册 `email_send` 内置工具。
+当设置了 `SMTP_HOST`、`SMTP_USER` 和 `SMTP_PASS` 时，自动注册 `email_send` 内置工具。
 
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
 | `SMTP_HOST` | 条件 | — | SMTP 服务器主机名 |
 | `SMTP_PORT` | 否 | `465` | SMTP 端口 |
-| `SMTP_SSL` | 否 | `ssl` | TLS 模式：`ssl` (端口 465) / `tls` (STARTTLS，端口 587) / `""` (纯文本) |
+| `SMTP_SSL` | 否 | `ssl` | TLS 模式：`ssl`（端口 465）/ `tls`（STARTTLS，端口 587）/ `none` 或 `""`（明文，凭证以明文发送）。任何其他值都会被拒绝，而不是静默回退到明文。 |
 | `SMTP_USER` | 条件 | — | SMTP 登录用户名 |
 | `SMTP_PASS` | 条件 | — | SMTP 登录密码 |
-| `SMTP_FROM` | 否 | *(使用 `SMTP_USER`)* | From 头中显示的发件人地址 |
-| `SMTP_FROM_NAME` | 否 | — | From 头中显示的显示名称 |
+| `SMTP_FROM` | 否 | *（使用 `SMTP_USER`）* | From 标头中显示的发件人地址 |
+| `SMTP_FROM_NAME` | 否 | — | From 标头中显示的显示名称 |
 | `SMTP_REPLY_TO` | 否 | — | Reply-To 地址；回复将发送到此处而不是 `SMTP_FROM` |
-| `SMTP_ALLOWED_DOMAINS` | 否 | — | 逗号分隔的域名白名单 (例如 `example.com,corp.io`)；阻止列出域名之外的收件人 |
-| `SMTP_ALLOWED_ADDRESSES` | 否 | — | 逗号分隔的精确地址白名单；与 `SMTP_ALLOWED_DOMAINS` 结合使用；两者都未设置时允许任何收件人 (不推荐用于共享邮箱) |
+| `SMTP_ALLOWED_DOMAINS` | 否 | — | 逗号分隔的域名允许列表（例如 `example.com,corp.io`）；阻止列表外域名的收件人 |
+| `SMTP_ALLOWED_ADDRESSES` | 否 | — | 逗号分隔的精确地址允许列表；与 `SMTP_ALLOWED_DOMAINS` 结合使用；两者都不设置时允许任何收件人（不建议用于共享邮箱） |
 
 ---
 
