@@ -161,17 +161,19 @@ Hooks는 Channels를 사용합니다 — 외부 세계와 통신해야 하는 ho
 
 다르게 말하면: **Channels는 "인간과 어떻게 통신할 것인가"라는 인프라이고, Hooks는 "언제 인간과 통신해야 하는가"라는 정책입니다**. 프로덕션 인간-루프 워크플로우에는 둘 다 필요합니다.
 
-## 현재 상태 (v0.8.4)
+## Current state (v0.8.4)
 
-출시된 기능과 향후 계획의 스냅샷:
+Shipped된 것과 앞으로 진행할 것의 스냅샷:
 
-- ✅ `HookRegistry`, `HookContext`, `HookResult` 기본 요소가 ReAct 및 DAG 모두에 연결됨
+- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives가 ReAct와 DAG 모두에 연결됨
 - ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 추상 기본 클래스
 - ✅ `FeishuGateHook` — 완성됨. `ConfirmationRequest` 테이블, 폴링 루프, 타임아웃/만료, 콜백 기반 상태 전환 포함
-- ✅ Feishu 채널 콜백 엔드포인트가 `card.action.trigger`를 디코딩하고 대기 중인 행 업데이트
-- ✅ 에이전트 수준 훅 선언: `agent.model_config_json.hooks.class_hooks`가 모든 ReAct/DAG 세션에서 인스턴스화된 `HookRegistry`로 해석됨
-- 🟡 **실행 표면 전반의 훅 상속** (v0.8.5): 주요 채팅 경로(Portal, API, DAG)가 훅을 실행합니다. 평가 센터는 의도적으로 **훅을 우회**합니다(자동화된 평가는 인간의 승인을 기다려서는 안 됨). 위임된 하위 에이전트(`CallAgentTool`)와 워크플로우 `AGENT` 노드는 현재 부모 훅을 상속하지 않습니다 — 상속 정책은 v0.8.5의 결정 사항입니다.
-- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (v0.9)
-- ❌ 사용자 정의 YAML 훅 선언 (v0.9)
+- ✅ Feishu 채널 콜백 엔드포인트가 `card.action.trigger`를 디코딩하고 pending 행을 업데이트함
+- ✅ Agent 레벨 hook 선언: `agent.model_config_json.hooks.class_hooks`가 모든 ReAct/DAG 세션에서 인스턴스화된 `HookRegistry`로 해석됨
+- ✅ **Hooks가 모든 실행 표면에서 작동**: 메인 채팅 경로(Portal, API, DAG), 위임된 sub-agent(`CallAgentTool`), Workflow `AGENT` 노드. Eval Center는 의도적으로 **hooks를 우회**함 (자동화된 평가는 인간 승인에서 차단되면 안 됨).
 
-훅 시스템은 v0.9 프로덕션 강화를 위한 **핵심 기반**입니다. 첫 번째 사용자(`FeishuGateHook`)는 그 자체로도 프로덕션 기능이므로, 전체 훅 카탈로그를 기다리지 않고 2026-04-24 로드쇼를 위해 스켈레톤을 먼저 출시했습니다.
+  위임된 agent는 호출자의 registry를 상속하지 않음 — 자신의 `model_config_json`에서 자신의 것을 빌드함. 확인 闸门이 모든 agent에 자동으로 첨부되므로, 재구축은 상속의 상위 집합임: delegate는 闸门 *plus* 자신이 선언한 것을 얻고, 闸门은 호출자의 `require_confirmation_for_all`이 아닌 delegate의 것을 해석함. 두 표면 모두 **closed fail**: hooks를 빌드할 수 없는 agent는 실행되지 않음.
+- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (v0.9)
+- ❌ 사용자 정의 YAML hook 선언 (v0.9)
+
+Hook System은 v0.9 프로덕션 강화를 위한 **하중을 지탱하는 기초**임. 첫 번째 사용자(`FeishuGateHook`)는 또한 자체적으로 프로덕션 기능이므로, 전체 hook 카탈로그를 기다리지 않고 2026-04-24 roadshow를 위해 스켈레톤이 조기에 shipped됨.

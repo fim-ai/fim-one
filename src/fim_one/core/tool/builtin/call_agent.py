@@ -5,6 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from fim_one.core.agent.hooks import HookRegistry
 from fim_one.core.model.base import BaseLLM
 from fim_one.core.tool.base import BaseTool
 
@@ -14,6 +15,14 @@ logger = logging.getLogger(__name__)
 # Signature: (agent_cfg) -> BaseLLM
 # The callback implements the full 3-tier resolution logic with DB access.
 LLMResolver = Callable[[dict[str, Any]], Awaitable[BaseLLM]]
+
+# Type alias for the hook resolver callback.
+# Signature: (agent_cfg) -> HookRegistry
+# Builds the *delegate's own* registry rather than inheriting the caller's.
+# ``build_hook_registry_for_agent`` auto-attaches the confirmation gate to
+# every agent, so rebuilding from the delegate's config is a superset of
+# inheritance: it yields the gate plus any hooks the delegate declares.
+HookResolver = Callable[[dict[str, Any]], Awaitable[HookRegistry]]
 
 
 class CallAgentTool(BaseTool):
@@ -29,6 +38,7 @@ class CallAgentTool(BaseTool):
         calling_user_id: str,
         tool_resolver: Callable[[dict[str, Any], str | None], Awaitable[Any]] | None = None,
         llm_resolver: LLMResolver | None = None,
+        hook_resolver: HookResolver | None = None,
     ):
         """
         Parameters
@@ -43,11 +53,19 @@ class CallAgentTool(BaseTool):
             optional async callback ``(agent_cfg) -> BaseLLM`` that resolves
             the LLM for a delegated agent using the full 3-tier fallback
             (config_id -> inline config -> system default).
+        hook_resolver:
+            optional async callback ``(agent_cfg) -> HookRegistry`` building
+            the delegate's enforcement hooks.  When omitted, the delegate
+            runs with no hooks — acceptable only for callers that have no
+            hooks to enforce (core-level tests, offline eval).  Web call
+            sites MUST wire this: without it a delegated connector write
+            skips the confirmation gate the same call would hit inline.
         """
         self._agents = {a["id"]: a for a in available_agents}
         self._calling_user_id = calling_user_id
         self._tool_resolver = tool_resolver
         self._llm_resolver = llm_resolver
+        self._hook_resolver = hook_resolver
         agent_list = "\n".join(
             f"  - {a['name']} (id={a['id']}): {a.get('description', '')}"
             for a in available_agents
@@ -148,13 +166,41 @@ class CallAgentTool(BaseTool):
             )
             return f"Error: could not load model for agent {agent_id}"
 
+        # Resolve the delegate's own enforcement hooks.  Fail CLOSED: a
+        # delegate that cannot build its hooks would run its tools past an
+        # approval gate that the same call would hit when made inline, so
+        # abort the delegation instead of silently running it unguarded.
+        hook_registry: HookRegistry | None = None
+        if self._hook_resolver is not None:
+            try:
+                hook_registry = await self._hook_resolver(agent_cfg)
+            except Exception:
+                logger.error(
+                    "Failed to resolve hooks for agent %s — refusing to "
+                    "delegate unguarded",
+                    agent_id,
+                    exc_info=True,
+                )
+                return (
+                    f"Error: could not load enforcement hooks for agent "
+                    f"{agent_id}; delegation aborted"
+                )
+
         instructions = agent_cfg.get("instructions") or ""
 
+        # ``agent_id``/``user_id`` are what make the hooks above effective:
+        # FeishuGateHook keys off ``HookContext.agent_id`` to load the
+        # delegate's row (and its ``require_confirmation_for_all``), and
+        # bows out entirely when it is absent.  Passing the registry without
+        # these would leave the gate a no-op.
         delegate = ReActAgent(
             llm=llm,
             tools=delegate_tools,
             extra_instructions=instructions,
             max_iterations=5,
+            hook_registry=hook_registry,
+            agent_id=agent_id,
+            user_id=self._calling_user_id or None,
         )
 
         try:

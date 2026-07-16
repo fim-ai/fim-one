@@ -2050,6 +2050,25 @@ async def _resolve_tools(
                     async with _cs_llm() as _llm_db:
                         return await _resolve_llm(sub_cfg, _llm_db)
 
+                async def _sub_agent_hook_resolver(
+                    sub_cfg: dict[str, Any],
+                ) -> Any:
+                    """Build a delegated agent's own enforcement registry.
+
+                    Without this the delegate ran with an empty registry, so
+                    a sensitive connector call skipped the confirmation gate
+                    purely by being reached through ``call_agent``.
+                    """
+                    from fim_one.db import create_session as _cs_hook
+                    from fim_one.web.hooks_bootstrap import (
+                        build_hook_registry_for_agent,
+                    )
+
+                    _sub_shim = SimpleNamespace(
+                        model_config_json=sub_cfg.get("model_config_json")
+                    )
+                    return await build_hook_registry_for_agent(_sub_shim, _cs_hook)
+
                 from fim_one.core.tool.builtin.call_agent import CallAgentTool
 
                 tools.register(
@@ -2058,6 +2077,7 @@ async def _resolve_tools(
                         calling_user_id=user_id,
                         tool_resolver=_sub_agent_tool_resolver,
                         llm_resolver=_sub_agent_llm_resolver,
+                        hook_resolver=_sub_agent_hook_resolver,
                     )
                 )
         except Exception:

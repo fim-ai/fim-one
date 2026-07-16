@@ -601,6 +601,42 @@ class AgentExecutor:
             else:
                 tools = get_tools()
 
+            # Build the agent's own enforcement hooks.  An AGENT node runs a
+            # real agent, so it must hit the same gates that agent hits in
+            # chat — otherwise wrapping a sensitive call in a workflow is a
+            # way to skip confirmation.  Fail closed: no hooks, no run.
+            _hook_registry = None
+            if agent_cfg is not None:
+                from types import SimpleNamespace
+
+                from fim_one.web.hooks_bootstrap import (
+                    build_hook_registry_for_agent,
+                )
+
+                try:
+                    _hook_registry = await build_hook_registry_for_agent(
+                        SimpleNamespace(
+                            model_config_json=agent_cfg.get("model_config_json")
+                        ),
+                        create_session,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to build hooks for agent node %s: %s",
+                        node.id,
+                        exc,
+                        exc_info=True,
+                    )
+                    return NodeResult(
+                        node_id=node.id,
+                        status=NodeStatus.FAILED,
+                        error=(
+                            "Could not load enforcement hooks for agent "
+                            f"{agent_id!r}; refusing to run unguarded"
+                        ),
+                        duration_ms=_ms_since(t0),
+                    )
+
             agent = ReActAgent(
                 llm=llm,
                 tools=tools,
@@ -608,6 +644,7 @@ class AgentExecutor:
                 max_iterations=10,
                 agent_id=agent_id or None,
                 user_id=context.user_id or None,
+                hook_registry=_hook_registry,
             )
 
             agent_result = await agent.run(query)

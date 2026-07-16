@@ -302,12 +302,13 @@ flowchart LR
 
 **目标**：后期化简资产组装成完整的数据问答产品——只读数据库连接器 + 围栏 + 审批闸门 + IM入口。一级围栏将安全债务转化为产品特性。
 
-#### DB Connector Fences — Tier 1，三个PR {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII列脱敏（`ConnectorScopeGuard` PreToolUse钩子）
-- [ ] 模式可见性——表/列允许-拒绝+动词阻止（只读强制执行）
-- [ ] Fence可审计性——`ConnectorCallLog`中的`caller_user_id`、`effective_credential_source`、`scope_rules_applied`
-- [ ] 每个钩子配置传递（`{"name", "config"}`模式）——ScopeGuard规则的载体 {/* dev: dev/hook-system.md */}
+- [ ] PII 列脱敏（`ConnectorScopeGuard` PreToolUse 钩子）
+- [ ] 模式可见性——表/列允许拒绝 + 动词阻止（只读强制执行）
+- [ ] Fence 可审计性——`ConnectorCallLog` 中的 `caller_user_id`、`effective_credential_source`、`scope_rules_applied`
+- [ ] 每个钩子配置传递（`{"name", "config"}` 模式）——ScopeGuard 规则的载体 {/* dev: dev/hook-system.md */}
+- [x] 审批闸门在委托中保持——`call_agent` 和工作流 `AGENT` 节点运行智能体自己的钩子而不是无
 
 #### 场景入门
 
@@ -326,21 +327,21 @@ flowchart LR
 
 ### 已停泊——信号门控
 
-不要在没有触发器的情况下启动这些（见重新规划§3）：MCP网关等待≥2个主动的"在我的智能体中挂载你的工具"请求；通道化等待实现者询问许可证问题；IdP/OrgSync等待客户拉取；其余的等待需要它们的已交付参与。
+不要在没有触发器的情况下启动这些功能（参见重新规划 §3）：MCP 网关等待 ≥2 个主动的"在我的智能体中挂载你的工具"请求；通道化等待实现者提出许可问题；IdP/OrgSync 等待客户拉取；其余的等待需要它们的已交付参与。
 
-- [ ] MCP网关输出——反向暴露连接器发现/执行为下游智能体的MCP工具
-- [ ] 通道化/白标启用——商业许可证路径已就位
-- [ ] 身份提供商模块+通道精简版——Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] 连接器授权第2层（需要按用户凭证、密钥绑定健康检查）+第3层（登录票证交换） {/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] 公共API第2阶段——按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
-- [ ] 可观测性——智能体追踪层（追踪/跨度模型、时间线查看器、OTel导出）+指标仪表板 {/* dev: dev/agent-trace-layer.md */}
-- [ ] 智能体工作区剩余部分——交接备注、工作区文件浏览器UI、跨会话对话回忆 {/* dev: dev/agent-workspace.md */}
-- [ ] 护栏v1——离题过滤、PII编辑器输出护栏、按智能体护栏配置UI
-- [ ] 钩子系统扩展——`CallAgentTool`/工作流`AGENT`节点的钩子继承、内置钩子、`SessionStart`+用户YAML钩子 {/* dev: dev/hook-system.md */}
-- [ ] 连接器平台深度——渐进式披露第3-4阶段、YAML/JSON连接器配置、数据库连接器第4阶段（Oracle/SQL Server/GBase）、MCP连接池
-- [ ] 提示缓存后续——Gemini上下文缓存适配器、按智能体`cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] 热中流DAG恢复——SSE重新连接重新附加到运行中的轮次（冷重试-恢复已发布） {/* dev: dev/incremental-dag.md */}
-- [ ] 生态系统——计划/事件触发的智能体、工作流触发器-身份可观测性、按工作流`credential_policy`、数据库架构高级构建器、沙箱加固v2
+- [ ] MCP 网关输出——反向暴露连接器发现/执行为下游智能体的 MCP 工具
+- [ ] 通道化/白标启用——商业许可路径已就位
+- [ ] 身份提供商模块 + 通道精简——Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] 连接器授权第 2 层（要求按用户凭证、密钥绑定健康检查）+ 第 3 层（登录票证交换） {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] 公共 API 第 2 阶段——按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
+- [ ] 可观测性——智能体追踪层（追踪/跨度模型、时间线查看器、OTel 导出）+ 指标仪表板 {/* dev: dev/agent-trace-layer.md */}
+- [ ] 智能体工作区剩余部分——交接笔记、工作区文件浏览器 UI、跨会话对话回忆 {/* dev: dev/agent-workspace.md */}
+- [ ] 护栏 v1——离题过滤、PII 编辑器输出护栏、按智能体护栏配置 UI
+- [ ] 钩子系统扩展——内置钩子、`SessionStart` + 用户 YAML 钩子 {/* dev: dev/hook-system.md */}
+- [ ] 连接器平台深度——渐进式披露第 3-4 阶段、YAML/JSON 连接器配置、数据库连接器第 4 阶段（Oracle / SQL Server / GBase）、MCP 连接池
+- [ ] 提示词缓存后续——Gemini 上下文缓存适配器、按智能体 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] 热中流 DAG 恢复——SSE 重新连接重新附加到正在运行的轮次（冷重试-恢复已发布） {/* dev: dev/incremental-dag.md */}
+- [ ] 生态系统——计划/事件触发的智能体、工作流触发身份可观测性、按工作流 `credential_policy`、数据库架构高级构建器、沙箱加固 v2
 
 ### 从pre-replan v0.9计划中已交付
 

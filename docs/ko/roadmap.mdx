@@ -300,12 +300,13 @@ flowchart LR
 
 **목표**: 사후 처리 자산이 완전한 데이터 Q&A 제품으로 조립됨 — 읽기 전용 DB 연결기 + 펜스 + 승인 게이트 + IM 진입점. Tier-1 펜스가 보안 부채를 제품 기능으로 전환함.
 
-#### DB Connector Fences — Tier 1, 세 개의 PR {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
 
 - [ ] PII 열 마스킹 (`ConnectorScopeGuard` PreToolUse hook)
 - [ ] 스키마 가시성 — 테이블/열 허용-거부 + 동사 차단 (읽기 전용 적용)
 - [ ] Fence 감사 가능성 — `ConnectorCallLog`의 `caller_user_id`, `effective_credential_source`, `scope_rules_applied`
-- [ ] 훅별 구성 전달 (`{"name", "config"}` 스키마) — ScopeGuard 규칙의 캐리어 {/* dev: dev/hook-system.md */}
+- [ ] 훅별 설정 전달 (`{"name", "config"}` 스키마) — ScopeGuard 규칙의 캐리어 {/* dev: dev/hook-system.md */}
+- [x] 승인 게이트는 위임 전체에서 유지 — `call_agent` 및 워크플로우 `AGENT` 노드는 에이전트 자체 훅을 실행하며 아무것도 실행하지 않음
 
 #### 시나리오 온보딩
 
@@ -322,23 +323,23 @@ flowchart LR
 - [ ] Outbound patterns: 실패 알림, 예산 경고, 예약된 다이제스트, 에스컬레이션, 감사 영수증
 - [ ] WeCom / DingTalk 채널이 Feishu를 따름
 
-### 보류 중 — 신호 게이트
+### 보류 중 — 신호 게이트됨
 
-다음 트리거 없이는 시작하지 마세요 (재계획 §3 참조): MCP 게이트웨이는 ≥2건의 미청청 "내 에이전트에 도구를 마운트하세요" 요청을 기다리고 있습니다. 채널화는 라이선싱에 대해 질문하는 구현자를 기다리고 있습니다. IdP/OrgSync는 고객 풀을 기다리고 있습니다. 나머지는 이들이 필요한 전달된 참여를 기다리고 있습니다.
+이들을 시작하지 마세요. 트리거가 필요합니다 (replan §3 참조): MCP 게이트웨이는 ≥2건의 자발적인 "내 에이전트에 도구를 마운트하세요" 요청을 기다립니다. 채널화는 라이선싱에 대해 질문하는 구현자를 기다립니다. IdP/OrgSync는 고객 풀을 기다립니다. 나머지는 이들이 필요한 전달된 engagement를 기다립니다.
 
-- [ ] MCP 게이트웨이 출력 — 커넥터 발견/실행을 다운스트림 에이전트용 MCP 도구로 역노출
-- [ ] 채널화 / 화이트라벨 활성화 — 상용 라이선스 경로 이미 준비됨
-- [ ] Identity Provider 모듈 + Channel 슬림다운 — Feishu SSO, 조직 그래프 동기화 {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] 커넥터 권한 부여 Tier 2 (사용자별 자격증명 필요, 키 바인딩 상태) + Tier 3 (로그인 티켓 교환) {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] MCP gateway output — 커넥터 discover/execute를 다운스트림 에이전트용 MCP 도구로 역노출
+- [ ] Channelization / white-label enablement — 상용 라이선스 경로가 이미 준비됨
+- [ ] Identity Provider module + Channel slim-down — Feishu SSO, org graph sync {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] Connector authorization Tier 2 (사용자별 자격증명 필요, 키 바인딩 상태) + Tier 3 (로그인 티켓 교환) {/* dev: dev/connector-rbac/00-overview.md */}
 - [ ] Public API Phase 2 — 키별 속도 제한/할당량, 버전 관리, SDK, 개발자 포털 {/* dev: dev/public-api-phase2.md */}
-- [ ] 관찰성 — Agent Trace Layer (Trace/Span 모델, 타임라인 뷰어, OTel 내보내기) + 메트릭 대시보드 {/* dev: dev/agent-trace-layer.md */}
-- [ ] Agent Workspace 나머지 — 인계 노트, 워크스페이스 파일 브라우저 UI, 세션 간 대화 회상 {/* dev: dev/agent-workspace.md */}
-- [ ] Guardrails v1 — 주제 벗어남 필터, PII 편집기 출력 가드레일, 에이전트별 가드레일 구성 UI
-- [ ] Hook System 추가 기능 — `CallAgentTool` / 워크플로우 `AGENT` 노드용 훅 상속, 기본 제공 훅, `SessionStart` + 사용자 YAML 훅 {/* dev: dev/hook-system.md */}
-- [ ] 커넥터 플랫폼 심화 — Progressive Disclosure Phase 3-4, YAML/JSON 커넥터 구성, DB 커넥터 Phase 4 (Oracle / SQL Server / GBase), MCP 연결 풀링
-- [ ] Prompt 캐시 후속 조치 — Gemini 컨텍스트 캐시 어댑터, 에이전트별 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] Hot 중간 스트림 DAG 재개 — SSE 재연결이 실행 중인 턴에 다시 연결됨 (콜드 재시도-재개는 이미 배포됨) {/* dev: dev/incremental-dag.md */}
-- [ ] 에코시스템 — 예약된/이벤트 트리거 에이전트, 워크플로우 트리거 ID 관찰성, 워크플로우별 `credential_policy`, DB Schema Advanced Builder, 샌드박스 강화 v2
+- [ ] Observability — Agent Trace Layer (Trace/Span 모델, 타임라인 뷰어, OTel 내보내기) + 메트릭 대시보드 {/* dev: dev/agent-trace-layer.md */}
+- [ ] Agent Workspace remainder — 인수 노트, 워크스페이스 파일 브라우저 UI, 크로스 세션 대화 회상 {/* dev: dev/agent-workspace.md */}
+- [ ] Guardrails v1 — 주제 벗어남 필터, PII 편집기 출력 가드레일, 에이전트별 가드레일 설정 UI
+- [ ] Hook System extras — 내장 훅, `SessionStart` + 사용자 YAML 훅 {/* dev: dev/hook-system.md */}
+- [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON 커넥터 설정, DB 커넥터 Phase 4 (Oracle / SQL Server / GBase), MCP 연결 풀링
+- [ ] Prompt cache follow-ups — Gemini context cache 어댑터, 에이전트별 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] Hot mid-stream DAG resume — SSE 재연결이 실행 중인 턴에 재연결 (콜드 재시도-재개는 이미 배포됨) {/* dev: dev/incremental-dag.md */}
+- [ ] Ecosystem — 예약된/이벤트 트리거 에이전트, 워크플로우 트리거 ID 관찰성, 워크플로우별 `credential_policy`, DB Schema Advanced Builder, sandbox hardening v2
 
 ### v0.9 사전 계획에서 배포됨
 

@@ -165,13 +165,15 @@ Autrement dit : **Les Channels sont la « plomberie » pour « où parler aux hu
 
 Snapshot de ce qui a été livré et ce qui est encore à venir :
 
-- ✅ Primitives `HookRegistry`, `HookContext`, `HookResult` intégrées dans ReAct et DAG
-- ✅ Bases abstraites `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook`
+- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives intégrées dans ReAct et DAG
+- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` classes de base abstraites
 - ✅ `FeishuGateHook` — complet, incluant la table `ConfirmationRequest`, la boucle de polling, le timeout/expiration et les changements d'état pilotés par callback
 - ✅ Point de terminaison de callback du canal Feishu qui décode `card.action.trigger` et met à jour la ligne en attente
-- ✅ Déclarations de hook au niveau de l'agent : `agent.model_config_json.hooks.class_hooks` se résout en une `HookRegistry` instanciée à chaque session ReAct/DAG
-- 🟡 **Héritage des hooks entre les surfaces d'exécution** (v0.8.5) : le chemin de chat principal (Portal, API, DAG) déclenche les hooks. Eval Center contourne intentionnellement les hooks (l'évaluation automatisée ne doit pas être bloquée par une approbation humaine). Les sous-agents délégués (`CallAgentTool`) et les nœuds Workflow `AGENT` n'héritent actuellement pas des hooks parents — la politique d'héritage est un point de décision pour v0.8.5.
+- ✅ Déclarations de hook au niveau de l'agent : `agent.model_config_json.hooks.class_hooks` se résout en un `HookRegistry` instancié sur chaque session ReAct/DAG
+- ✅ **Les hooks se déclenchent sur chaque surface d'exécution** : le chemin de chat principal (Portal, API, DAG), les sous-agents délégués (`CallAgentTool`) et les nœuds `AGENT` du Workflow. L'Eval Center contourne intentionnellement **les hooks** (l'évaluation automatisée ne doit pas être bloquée par une approbation humaine).
+
+  Un agent délégué n'hérite pas du registre de son appelant — il construit **le sien** à partir de son propre `model_config_json`. Comme la porte de confirmation est automatiquement attachée à chaque agent, la reconstruction est un sur-ensemble de l'héritage : le délégué obtient la porte *plus* tout ce qu'il déclare pour lui-même, et la porte résout le `require_confirmation_for_all` du délégué plutôt que celui de son appelant. Les deux surfaces échouent **en fermé** : un agent dont les hooks ne peuvent pas être construits n'est pas exécuté.
 - ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (v0.9)
 - ❌ Déclarations de hook YAML définies par l'utilisateur (v0.9)
 
-Le Hook System est une **fondation porteuse** pour le durcissement de production v0.9. Son premier utilisateur (`FeishuGateHook`) est également une fonctionnalité de production à part entière, c'est pourquoi le squelette a été livré tôt pour la démonstration du 2026-04-24 plutôt que d'attendre le catalogue complet des hooks.
+Le Hook System est une **fondation porteuse** pour le durcissement de production v0.9. Son premier utilisateur (`FeishuGateHook`) est également une fonctionnalité de production à part entière, c'est pourquoi le squelette a été livré tôt pour la roadshow du 2026-04-24 plutôt que d'attendre le catalogue complet des hooks.

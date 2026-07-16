@@ -170,7 +170,9 @@ Snapshot of what shipped and what is still ahead:
 - ✅ `FeishuGateHook` — complete, including `ConfirmationRequest` table, polling loop, timeout/expire, and callback-driven state flips
 - ✅ Feishu channel callback endpoint that decodes `card.action.trigger` and updates the pending row
 - ✅ Agent-level hook declarations: `agent.model_config_json.hooks.class_hooks` resolves to an instantiated `HookRegistry` on every ReAct/DAG session
-- 🟡 **Hook inheritance across execution surfaces** (v0.8.5): the main chat path (Portal, API, DAG) fires hooks. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval). Delegated sub-agents (`CallAgentTool`) and Workflow `AGENT` nodes currently do not inherit parent hooks — inheritance policy is a v0.8.5 decision point.
+- ✅ **Hooks fire on every execution surface**: the main chat path (Portal, API, DAG), delegated sub-agents (`CallAgentTool`), and Workflow `AGENT` nodes. Eval Center runs intentionally **bypass** hooks (automated evaluation must not block on human approval).
+
+  A delegated agent does not inherit its caller's registry — it builds **its own** from its own `model_config_json`. Because the confirmation gate is auto-attached to every agent, rebuilding is a superset of inheriting: the delegate gets the gate *plus* whatever it declares for itself, and the gate resolves the delegate's `require_confirmation_for_all` rather than its caller's. Both surfaces fail **closed**: an agent whose hooks cannot be built is not run.
 - ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (v0.9)
 - ❌ User-defined YAML hook declarations (v0.9)
 

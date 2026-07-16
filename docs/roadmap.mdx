@@ -306,6 +306,7 @@ Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, 
 - [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
 - [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
 - [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
+- [x] Approval gates hold across delegation — `call_agent` and workflow `AGENT` nodes run the agent's own hooks instead of none
 
 #### Scenario Onboarding
 
@@ -334,7 +335,7 @@ Do not start these without their trigger (see the replan §3): the MCP gateway w
 - [ ] Observability — Agent Trace Layer (Trace/Span model, timeline viewer, OTel export) + metrics dashboard {/* dev: dev/agent-trace-layer.md */}
 - [ ] Agent Workspace remainder — handoff notes, workspace file browser UI, cross-session conversation recall {/* dev: dev/agent-workspace.md */}
 - [ ] Guardrails v1 — off-topic filter, PII redactor output guardrail, per-agent guardrail config UI
-- [ ] Hook System extras — hook inheritance for `CallAgentTool` / workflow `AGENT` nodes, built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
+- [ ] Hook System extras — built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
 - [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
 - [ ] Prompt cache follow-ups — Gemini context cache adapter, per-agent `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
 - [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/incremental-dag.md */}

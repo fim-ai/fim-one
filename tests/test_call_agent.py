@@ -7,7 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from fim_one.core.agent.hooks import (
+    Hook,
+    HookContext,
+    HookPoint,
+    HookRegistry,
+    HookResult,
+)
 from fim_one.core.model import ChatMessage, LLMResult
+from fim_one.core.tool.base import BaseTool
 from fim_one.core.tool.builtin.call_agent import CallAgentTool
 from fim_one.core.tool.registry import ToolRegistry
 
@@ -319,3 +327,190 @@ class TestCallAgentRun:
             result = await tool.run(agent_id="agent-1", task="test")
 
         assert "env fallback result" in result
+
+
+# ---------------------------------------------------------------------------
+# Hook inheritance tests
+# ---------------------------------------------------------------------------
+
+
+class _RecordingTool(BaseTool):
+    """A tool that records whether it was ever executed."""
+
+    def __init__(self) -> None:
+        self.ran = False
+
+    @property
+    def name(self) -> str:
+        return "danger"
+
+    @property
+    def description(self) -> str:
+        return "A sensitive action"
+
+    @property
+    def parameters_schema(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}}
+
+    async def run(self, **kwargs: Any) -> str:
+        self.ran = True
+        return "executed"
+
+
+def _delegate_llm_calling(tool_name: str) -> FakeLLM:
+    """A FakeLLM that calls ``tool_name`` once, then answers."""
+    return FakeLLM(
+        responses=[
+            LLMResult(
+                message=ChatMessage(
+                    role="assistant",
+                    content=json.dumps(
+                        {
+                            "type": "tool_call",
+                            "reasoning": "Do the thing",
+                            "tool_name": tool_name,
+                            "tool_args": {},
+                        }
+                    ),
+                ),
+                usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            ),
+            LLMResult(
+                message=ChatMessage(
+                    role="assistant",
+                    content=json.dumps(
+                        {
+                            "type": "final_answer",
+                            "reasoning": "Done",
+                            "answer": "finished",
+                        }
+                    ),
+                ),
+                usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            ),
+        ]
+    )
+
+
+class TestHookInheritance:
+    """A delegated agent must run its own enforcement hooks.
+
+    Regression cover for the gap documented in ``dev/hook-system.md``: a
+    delegate spun up with an empty registry (and no ``agent_id``) let a
+    sensitive call skip the confirmation gate purely by being reached
+    through ``call_agent``.
+    """
+
+    @pytest.mark.asyncio
+    async def test_pre_hook_blocks_delegated_tool_call(self) -> None:
+        """A deny hook from the resolver blocks the delegate's tool call."""
+        danger = _RecordingTool()
+        delegate_tools = ToolRegistry()
+        delegate_tools.register(danger)
+
+        registry = HookRegistry()
+
+        async def _deny(_ctx: HookContext) -> HookResult:
+            return HookResult(allow=False, error="blocked by gate")
+
+        registry.register(Hook("gate", HookPoint.PRE_TOOL_USE, _deny))
+
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(),
+            calling_user_id="user-1",
+            tool_resolver=AsyncMock(return_value=delegate_tools),
+            llm_resolver=AsyncMock(return_value=_delegate_llm_calling("danger")),
+            hook_resolver=AsyncMock(return_value=registry),
+        )
+
+        result = await tool.run(agent_id="agent-1", task="do it")
+
+        assert danger.ran is False, "hook did not block the delegated tool call"
+        assert "finished" in result
+
+    @pytest.mark.asyncio
+    async def test_delegate_receives_agent_and_user_context(self) -> None:
+        """agent_id/user_id reach the hook — without them the gate bows out."""
+        seen: list[HookContext] = []
+
+        async def _observe(ctx: HookContext) -> HookResult:
+            seen.append(ctx)
+            return HookResult()
+
+        registry = HookRegistry()
+        registry.register(Hook("observer", HookPoint.PRE_TOOL_USE, _observe))
+
+        delegate_tools = ToolRegistry()
+        delegate_tools.register(_RecordingTool())
+
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(agent_id="agent-42"),
+            calling_user_id="user-7",
+            tool_resolver=AsyncMock(return_value=delegate_tools),
+            llm_resolver=AsyncMock(return_value=_delegate_llm_calling("danger")),
+            hook_resolver=AsyncMock(return_value=registry),
+        )
+
+        await tool.run(agent_id="agent-42", task="do it")
+
+        assert len(seen) == 1
+        assert seen[0].agent_id == "agent-42", "gate would skip without agent_id"
+        assert seen[0].user_id == "user-7"
+
+    @pytest.mark.asyncio
+    async def test_hook_resolver_receives_delegate_config(self) -> None:
+        """The registry is built from the delegate's config, not the caller's."""
+        resolver = AsyncMock(return_value=HookRegistry())
+
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(
+                model_config_json={"hooks": {"class_hooks": ["feishu_gate"]}}
+            ),
+            calling_user_id="user-1",
+            tool_resolver=AsyncMock(return_value=ToolRegistry()),
+            llm_resolver=AsyncMock(return_value=_make_fake_llm()),
+            hook_resolver=resolver,
+        )
+
+        await tool.run(agent_id="agent-1", task="test")
+
+        resolver.assert_awaited_once()
+        passed_cfg = resolver.await_args.args[0]
+        assert passed_cfg["id"] == "agent-1"
+        assert passed_cfg["model_config_json"] == {
+            "hooks": {"class_hooks": ["feishu_gate"]}
+        }
+
+    @pytest.mark.asyncio
+    async def test_resolver_failure_aborts_delegation(self) -> None:
+        """Fail closed: no hooks means no run, not an unguarded run."""
+        danger = _RecordingTool()
+        delegate_tools = ToolRegistry()
+        delegate_tools.register(danger)
+
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(),
+            calling_user_id="user-1",
+            tool_resolver=AsyncMock(return_value=delegate_tools),
+            llm_resolver=AsyncMock(return_value=_delegate_llm_calling("danger")),
+            hook_resolver=AsyncMock(side_effect=RuntimeError("db down")),
+        )
+
+        result = await tool.run(agent_id="agent-1", task="do it")
+
+        assert danger.ran is False, "delegate ran unguarded after hook failure"
+        assert "delegation aborted" in result
+
+    @pytest.mark.asyncio
+    async def test_no_resolver_still_delegates(self) -> None:
+        """Callers with no hooks to enforce keep working unchanged."""
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(),
+            calling_user_id="user-1",
+            tool_resolver=AsyncMock(return_value=ToolRegistry()),
+            llm_resolver=AsyncMock(return_value=_make_fake_llm("plain reply")),
+        )
+
+        result = await tool.run(agent_id="agent-1", task="test")
+
+        assert "plain reply" in result

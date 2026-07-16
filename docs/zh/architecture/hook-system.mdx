@@ -161,17 +161,19 @@ Hooks 消费 Channels — 需要与外部世界通信的 hook（发送卡片、�
 
 换句话说：**Channels 是"我在哪里与人类交谈"的管道，Hooks 是"我何时必须与人类交谈"的策略**。生产环境中的人机协作工作流需要两者。
 
-## 当前状态 (v0.8.4)
+## 当前状态（v0.8.4）
 
-已发布内容和后续计划的快照：
+已发布功能和后续计划的快照：
 
 - ✅ `HookRegistry`、`HookContext`、`HookResult` 原语已集成到 ReAct 和 DAG 中
 - ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 抽象基类
-- ✅ `FeishuGateHook` — 完整实现，包括 `ConfirmationRequest` 表、轮询循环、超时/过期和回调驱动的状态转换
-- ✅ Feishu 频道回调端点，解码 `card.action.trigger` 并更新待处理行
-- ✅ 智能体级别的 hook 声明：`agent.model_config_json.hooks.class_hooks` 在每个 ReAct/DAG 会话上解析为实例化的 `HookRegistry`
-- 🟡 **跨执行表面的 Hook 继承** (v0.8.5)：主聊天路径（Portal、API、DAG）触发 hooks。评估中心有意**绕过** hooks（自动化评估不能阻塞人工审批）。委派的子智能体（`CallAgentTool`）和工作流 `AGENT` 节点目前不继承父 hooks — 继承策略是 v0.8.5 的决策点。
-- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook` (v0.9)
-- ❌ 用户定义的 YAML hook 声明 (v0.9)
+- ✅ `FeishuGateHook` ——完整实现，包括 `ConfirmationRequest` 表、轮询循环、超时/过期和回调驱动的状态转换
+- ✅ Feishu 通道回调端点，解码 `card.action.trigger` 并更新待处理行
+- ✅ 智能体级钩子声明：`agent.model_config_json.hooks.class_hooks` 在每个 ReAct/DAG 会话中解析为实例化的 `HookRegistry`
+- ✅ **钩子在每个执行表面触发**：主聊天路径（门户、API、DAG）、委托的子智能体（`CallAgentTool`）和工作流 `AGENT` 节点。评估中心运行**有意绕过**钩子（自动化评估不得阻塞于人工审批）。
 
-Hook 系统是 v0.9 生产强化的**承重基础**。其第一个用户（`FeishuGateHook`）本身也是一个生产特性，这就是为什么该框架在 2026-04-24 路演中提前发布，而不是等待完整的 hook 目录。
+  委托的智能体不继承调用者的注册表——它从自己的 `model_config_json` 构建**自己的**注册表。由于确认闸门自动附加到每个智能体，重新构建是继承的超集：委托获得闸门*加上*它为自己声明的任何内容，闸门解析委托的 `require_confirmation_for_all` 而非调用者的。两个表面都**安全失败**：无法构建钩子的智能体不会运行。
+- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（v0.9）
+- ❌ 用户定义的 YAML 钩子声明（v0.9）
+
+钩子系统是 **v0.9 生产加固的承重基础**。它的第一个用户（`FeishuGateHook`）本身也是一个生产特性，这就是为什么骨架在 2026-04-24 路演而不是等待完整钩子目录时提前发布。

@@ -302,10 +302,11 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 #### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] Redaction de colonnes PII (`ConnectorScopeGuard` PreToolUse hook)
-- [ ] Visibilité du schéma — allow-deny table/colonne + blocage de verbe (application de lecture seule)
+- [ ] Masquage des colonnes PII (`ConnectorScopeGuard` PreToolUse hook)
+- [ ] Visibilité du schéma — allow-deny table/colonne + blocage des verbes (application read-only)
 - [ ] Auditabilité des clôtures — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` dans `ConnectorCallLog`
-- [ ] Configuration par hook (`{"name", "config"}` schéma) — le vecteur pour les règles ScopeGuard {/* dev: dev/hook-system.md */}
+- [ ] Configuration par hook (`{"name", "config"}` schéma) — le vecteur des règles ScopeGuard {/* dev: dev/hook-system.md */}
+- [x] Les portes d'approbation persistent à travers la délégation — les nœuds `call_agent` et workflow `AGENT` exécutent les propres hooks de l'agent au lieu d'aucun
 
 #### Intégration de scénarios
 
@@ -322,9 +323,9 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 - [ ] Modèles sortants : alertes d'échec, avertissements de budget, digests programmés, escalade, reçus d'audit
 - [ ] Canaux WeCom / DingTalk suivant Feishu
 
-### Parqué — signal-gated
+### Parked — signal-gated
 
-Ne commencez pas ces éléments sans leur déclencheur (voir la replan §3) : la passerelle MCP attend ≥2 demandes non sollicitées « montez vos outils dans mon agent » ; la canalisation attend qu'un implémenteur pose des questions sur les licences ; IdP/OrgSync attend un tirage client ; le reste attend un engagement livré qui en a besoin.
+Do not start these without their trigger (see the replan §3): the MCP gateway waits for ≥2 unsolicited "mount your tools in my agent" asks; channelization waits for an implementor asking about licensing; IdP/OrgSync waits for customer pull; the rest wait for a delivered engagement that needs them.
 
 - [ ] MCP gateway output — reverse-expose connector discover/execute as MCP tools for downstream agents
 - [ ] Channelization / white-label enablement — commercial-license path already in place
@@ -334,7 +335,7 @@ Ne commencez pas ces éléments sans leur déclencheur (voir la replan §3) : la
 - [ ] Observability — Agent Trace Layer (Trace/Span model, timeline viewer, OTel export) + metrics dashboard {/* dev: dev/agent-trace-layer.md */}
 - [ ] Agent Workspace remainder — handoff notes, workspace file browser UI, cross-session conversation recall {/* dev: dev/agent-workspace.md */}
 - [ ] Guardrails v1 — off-topic filter, PII redactor output guardrail, per-agent guardrail config UI
-- [ ] Hook System extras — hook inheritance for `CallAgentTool` / workflow `AGENT` nodes, built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
+- [ ] Hook System extras — built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
 - [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
 - [ ] Prompt cache follow-ups — Gemini context cache adapter, per-agent `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
 - [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/incremental-dag.md */}

@@ -161,17 +161,19 @@ Hooks は Channels を消費します — 外部世界と通信する必要が�
 
 別の言い方をすると：**Channels は「人間と通信する場所」のプラミング、Hooks は「人間と通信する必要がある時」のポリシーです**。本番環境の人間参加型ワークフローには両方が必要です。
 
-## 現在の状態 (v0.8.4)
+## Current state (v0.8.4)
 
-リリース済みおよび今後予定されている機能のスナップショット:
+Snapshot of what shipped and what is still ahead:
 
 - ✅ `HookRegistry`、`HookContext`、`HookResult` プリミティブが ReAct と DAG の両方に統合
 - ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 抽象基底クラス
 - ✅ `FeishuGateHook` — 完全実装。`ConfirmationRequest` テーブル、ポーリングループ、タイムアウト/有効期限、コールバック駆動の状態遷移を含む
 - ✅ Feishu チャネルコールバックエンドポイント。`card.action.trigger` をデコードして保留中の行を更新
-- ✅ エージェントレベルのフック宣言: `agent.model_config_json.hooks.class_hooks` は ReAct/DAG セッションごとにインスタンス化された `HookRegistry` に解決
-- 🟡 **実行サーフェス間のフック継承** (v0.8.5): メインチャットパス (Portal、API、DAG) がフックを発火。Eval Center は意図的に**フックをバイパス** (自動評価は人間の承認でブロックされてはいけない)。委譲されたサブエージェント (`CallAgentTool`) と Workflow `AGENT` ノードは現在、親フックを継承しない — 継承ポリシーは v0.8.5 の決定ポイント
-- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook` (v0.9)
-- ❌ ユーザー定義 YAML フック宣言 (v0.9)
+- ✅ エージェントレベルのフック宣言：`agent.model_config_json.hooks.class_hooks` が ReAct/DAG セッションごとにインスタンス化された `HookRegistry` に解決
+- ✅ **すべての実行サーフェスでフックが発火**：メインチャットパス（Portal、API、DAG）、委譲されたサブエージェント（`CallAgentTool`）、Workflow `AGENT` ノード。Eval Center は意図的に**フックをバイパス**（自動評価は人間の承認でブロックされてはいけない）。
 
-フックシステムは v0.9 本番環境強化のための**負荷を支える基盤**です。その最初のユーザー (`FeishuGateHook`) はそれ自体が本番機能でもあるため、フックカタログ全体の完成を待つのではなく、2026-04-24 ロードショーのために早期にスケルトンをリリースしました。
+  委譲されたエージェントは呼び出し元のレジストリを継承しない——自身の `model_config_json` から**独自の**レジストリを構築する。確認ゲートはすべてのエージェントに自動的に付加されるため、再構築は継承のスーパーセット：委譲先はゲート*プラス*自身が宣言したもの を取得し、ゲートは呼び出し元の `require_confirmation_for_all` ではなく委譲先の `require_confirmation_for_all` を解決する。両方のサーフェスは**安全側で失敗**：フックを構築できないエージェントは実行されない。
+- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（v0.9）
+- ❌ ユーザー定義 YAML フック宣言（v0.9）
+
+Hook System は v0.9 本番環境対応の**基盤となるシステム**。その最初のユーザー（`FeishuGateHook`）も本番機能そのもの。そのため、フック全体カタログを待つのではなく、2026-04-24 路演のために早期にスケルトンをリリースした。
