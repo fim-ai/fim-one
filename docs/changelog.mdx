@@ -12,7 +12,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
+
 - **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
+
+### Removed
+
+- **Knowledge bases previously shared to an organization are recalled on upgrade.** The v0.8.9 carve-out that kept already-published KBs reachable to their subscribers is gone: every shared KB reverts to personal, its subscriptions are removed, and the leftover unpublish action and subscriber-facing KB badges disappear. A knowledge base now reaches other users only through a shared Agent, which delegates the owner's content at run time.
 
 ## [v0.8.9] - 2026-07-08
 

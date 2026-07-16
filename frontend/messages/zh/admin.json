@@ -1157,7 +1157,6 @@
     "typeConnector": "连接器",
     "typeMcpServer": "MCP 服务器",
     "typeWorkflow": "工作流",
-    "typeKnowledgeBase": "知识库",
     "takeDown": "下架",
     "takeDownSuccess": "资源已从市场下架"
   },

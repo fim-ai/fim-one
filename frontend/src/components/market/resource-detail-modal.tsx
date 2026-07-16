@@ -34,7 +34,6 @@ import { useDateFormatter } from '@/hooks/use-date-formatter'
 const RESOURCE_ROUTES: Record<string, string> = {
   agent: '/agents',
   connector: '/connectors',
-  knowledge_base: '/kb',
   mcp_server: '/mcp',
   skill: '/skills',
   workflow: '/workflows',

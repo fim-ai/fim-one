@@ -17,7 +17,6 @@ from fim_one.web.exceptions import AppError
 from fim_one.db.models import User
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector
-from fim_one.db.models.knowledge_base import KnowledgeBase
 from fim_one.db.models.mcp_server import MCPServer
 from fim_one.db.models.skill import Skill
 from fim_one.db.models.workflow import Workflow
@@ -32,17 +31,18 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # Resource type → ORM model mapping
 # ---------------------------------------------------------------------------
 
+# Knowledge bases are not shareable and can never exist in the Market org
+# (all previously published KBs were recalled by migration f7h9j1l3n567).
 _RESOURCE_MODELS: dict[str, type[Any]] = {
     "agent": Agent,
     "skill": Skill,
     "connector": Connector,
     "mcp_server": MCPServer,
     "workflow": Workflow,
-    "knowledge_base": KnowledgeBase,
 }
 
 # Models that support publish/unpublish via a `status` column
-_PUBLISHABLE_TYPES = {"agent", "skill", "connector", "workflow", "knowledge_base"}
+_PUBLISHABLE_TYPES = {"agent", "skill", "connector", "workflow"}
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ async def list_market_resources(
     resource_type: str | None = Query(None),
     db: AsyncSession = Depends(get_session),
     admin: User = Depends(get_current_admin),
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """List published resources owned by the Market organisation.
 
     Only returns resources with ``status == "published"`` (for models

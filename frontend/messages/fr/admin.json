@@ -1157,7 +1157,6 @@
     "typeConnector": "Connecteur",
     "typeMcpServer": "Serveur MCP",
     "typeWorkflow": "Flux de Travail",
-    "typeKnowledgeBase": "Base de Connaissances",
     "takeDown": "Retirer",
     "takeDownSuccess": "Ressource retirée de la marketplace"
   },

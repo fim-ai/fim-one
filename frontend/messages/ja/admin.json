@@ -1157,7 +1157,6 @@
     "typeConnector": "コネクタ",
     "typeMcpServer": "MCPサーバー",
     "typeWorkflow": "ワークフロー",
-    "typeKnowledgeBase": "ナレッジベース",
     "takeDown": "削除",
     "takeDownSuccess": "リソースがマーケットプレイスから削除されました"
   },

@@ -132,15 +132,6 @@ async def get_dashboard_stats(
     )
     subscribed_connector_ids = list(conn_sub_result.scalars().all())
 
-    # Fetch subscribed KB IDs for visibility filter
-    kb_sub_result = await db.execute(
-        select(ResourceSubscription.resource_id).where(
-            ResourceSubscription.user_id == current_user.id,
-            ResourceSubscription.resource_type == "knowledge_base",
-        )
-    )
-    subscribed_kb_ids = list(kb_sub_result.scalars().all())
-
     # ------------------------------------------------------------------
     # 1. Aggregate totals (individual scalar queries for clarity)
     # ------------------------------------------------------------------
@@ -339,7 +330,7 @@ async def get_dashboard_stats(
     ]
 
     # ------------------------------------------------------------------
-    # 5. Top KBs (top 3 by document_count, accessible to user)
+    # 5. Top KBs (top 3 by document_count, owned-only — KBs are not shareable)
     # ------------------------------------------------------------------
 
     top_kbs_rows = await db.execute(
@@ -349,7 +340,7 @@ async def get_dashboard_stats(
             KnowledgeBase.document_count,
             KnowledgeBase.total_chunks,
         )
-        .where(build_visibility_filter(KnowledgeBase, current_user.id, user_org_ids, subscribed_ids=subscribed_kb_ids))
+        .where(KnowledgeBase.user_id == current_user.id)
         .order_by(KnowledgeBase.document_count.desc())
         .limit(3)
     )

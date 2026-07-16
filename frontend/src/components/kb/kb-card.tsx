@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { Building2, Eye, MoreHorizontal, PackageMinus, Pencil, ShoppingBag, Trash2 } from "lucide-react"
+import { Eye, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MARKET_ORG_ID } from "@/lib/constants"
 import type { KBResponse } from "@/types/kb"
 
 interface KBCardProps {
@@ -21,7 +20,6 @@ interface KBCardProps {
   currentUserId?: string
   onEdit: (kb: KBResponse) => void
   onDelete: (id: string) => void
-  onUninstall?: (id: string) => void
 }
 
 export function KBCard({
@@ -29,17 +27,12 @@ export function KBCard({
   currentUserId,
   onEdit,
   onDelete,
-  onUninstall,
 }: KBCardProps) {
   const t = useTranslations("kb")
   const tc = useTranslations("common")
+  // Knowledge bases are not shareable: the list is owned-only, so every
+  // card is an owner card.
   const isOwner = !currentUserId || kb.user_id === currentUserId
-  const isOrgResource = kb.visibility === "org" || kb.visibility === "global"
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const source = (kb as any).source as string | undefined
-  const isFromMarket = source === "market"
-  const isFromOrg = source === "org"
-  const isSubscribed = isFromMarket || isFromOrg
   return (
     <div className="group flex flex-col rounded-lg border border-border bg-card p-4 transition-colors hover:border-ring/40 hover:bg-accent/10">
       {/* Header: name + hover menu */}
@@ -47,7 +40,7 @@ export function KBCard({
         <h3 className="flex-1 min-w-0 text-sm font-medium truncate text-card-foreground">
           {kb.name}
         </h3>
-        {isOwner ? (
+        {isOwner && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -76,77 +69,8 @@ export function KBCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : !isOwner && isSubscribed && onUninstall ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem variant="destructive" onClick={() => onUninstall(kb.id)}>
-                <PackageMinus className="h-4 w-4" />
-                {tc("uninstall")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
+        )}
       </div>
-
-      {/* Subscriber badge — Market */}
-      {isFromMarket && (
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <Badge
-            variant="secondary"
-            className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-          >
-            <ShoppingBag className="h-2.5 w-2.5 mr-0.5" />
-            {tc("subscribedMarket")}
-          </Badge>
-        </div>
-      )}
-      {/* Subscriber badge — Organization */}
-      {isFromOrg && (
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <Badge
-            variant="secondary"
-            className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
-          >
-            <Building2 className="h-2.5 w-2.5 mr-0.5" />
-            {tc("subscribedOrg")}
-          </Badge>
-        </div>
-      )}
-
-      {/* Owner visibility badge — Market */}
-      {isOwner && isOrgResource && kb.org_id === MARKET_ORG_ID && (
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <Badge
-            variant="secondary"
-            className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-          >
-            <ShoppingBag className="h-2.5 w-2.5 mr-0.5" />
-            {tc("publishedMarket")}
-          </Badge>
-        </div>
-      )}
-
-      {/* Owner visibility badge — Organization */}
-      {isOwner && isOrgResource && kb.org_id && kb.org_id !== MARKET_ORG_ID && (
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <Badge
-            variant="secondary"
-            className="text-[10px] px-1.5 py-0 h-5 bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/20"
-          >
-            <Building2 className="h-2.5 w-2.5 mr-0.5" />
-            {tc("publishedOrg")}
-          </Badge>
-        </div>
-      )}
 
       {/* Badges */}
       <div className="flex items-center gap-1.5 mb-2">

@@ -173,14 +173,20 @@ class TestGetMarketResource:
 
 class TestConstants:
     def test_resource_models_contains_all_types(self) -> None:
-        expected = {"agent", "skill", "connector", "mcp_server", "workflow", "knowledge_base"}
+        expected = {"agent", "skill", "connector", "mcp_server", "workflow"}
         assert set(_RESOURCE_MODELS.keys()) == expected
 
     def test_mcp_server_not_publishable(self) -> None:
         assert "mcp_server" not in _PUBLISHABLE_TYPES
 
+    def test_knowledge_base_not_a_market_resource(self) -> None:
+        # KBs are not shareable: they can neither be listed nor published
+        # through the admin Market surface.
+        assert "knowledge_base" not in _RESOURCE_MODELS
+        assert "knowledge_base" not in _PUBLISHABLE_TYPES
+
     def test_publishable_types(self) -> None:
-        assert _PUBLISHABLE_TYPES == {"agent", "skill", "connector", "workflow", "knowledge_base"}
+        assert _PUBLISHABLE_TYPES == {"agent", "skill", "connector", "workflow"}
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +207,7 @@ class TestListMarketResources:
         mock_user.id = owner_id
         mock_user.username = "testadmin"
 
-        # 6 resource queries + 1 user query = 7 calls
+        # 5 resource queries + 1 user query = 6 calls
         call_count = 0
         results_by_call = [
             [agent],      # agent (published)
@@ -209,7 +215,6 @@ class TestListMarketResources:
             [],           # connector
             [],           # mcp_server
             [],           # workflow
-            [],           # knowledge_base
             [mock_user],  # user lookup
         ]
 
@@ -320,8 +325,8 @@ class TestListMarketResources:
         )
 
         assert result["total"] == 0
-        # Should have queried all 6 types
-        assert db.execute.call_count == 6
+        # Should have queried all 5 types
+        assert db.execute.call_count == 5
 
 
 # ---------------------------------------------------------------------------

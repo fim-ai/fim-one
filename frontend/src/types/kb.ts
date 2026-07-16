@@ -11,7 +11,7 @@ export interface KBResponse {
   total_chunks: number
   status: string
   is_active: boolean
-  visibility?: string // "personal" | "org" | "global"
+  visibility?: string // always "personal" — KBs are not shareable
   org_id?: string | null
   publish_status: string | null
   reviewed_by: string | null

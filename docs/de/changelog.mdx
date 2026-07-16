@@ -12,7 +12,13 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Ein Tippfehler in `SMTP_SSL` sendet Ihr SMTP-Passwort nicht mehr stillschweigend unverschlüsselt.** Zuvor führte jeder Wert außer `ssl` oder `tls` (zum Beispiel `SMTP_SSL=true`) zu einer unverschlüsselten Verbindung ohne Warnung, sowohl bei System-E-Mails als auch bei E-Mail-Benachrichtigungen. Unbekannte Werte werden nun abgelehnt, und unverschlüsselte Zustellung muss explizit als `SMTP_SSL=none` angefordert werden, was bei jedem Versand eine Warnung protokolliert.
+- **Approval Gates halten jetzt an, wenn ein Agent über einen anderen Agent oder einen Workflow erreicht wird.** Ein sensitiver Connector-Aufruf, der normalerweise eine Bestätigung im Chat anfordern würde, lief zuvor ungeprüft ab, sobald er über `call_agent` delegiert oder in einen Workflow `AGENT` Node eingebunden wurde – diese Pfade starteten den Agent ohne Hooks. Beide führen jetzt die eigenen Gates des Agents aus, verwenden die Bestätigungseinstellungen dieses Agents und weigern sich, ihn auszuführen, wenn seine Hooks nicht geladen werden können.
+
+- **Ein Tippfehler in `SMTP_SSL` sendet Ihr SMTP-Passwort nicht mehr stillschweigend im Klartext.** Zuvor führte jeder Wert außer `ssl` oder `tls` (zum Beispiel `SMTP_SSL=true`) zu einer unverschlüsselten Verbindung ohne Warnung, sowohl bei System-E-Mails als auch bei E-Mail-Benachrichtigungen. Nicht erkannte Werte werden jetzt abgelehnt, und unverschlüsselte Zustellung muss explizit als `SMTP_SSL=none` angefordert werden, was bei jedem Versand eine Warnung protokolliert.
+
+### Entfernt
+
+- **Wissensdatenbanken, die zuvor für eine Organisation freigegeben waren, werden beim Upgrade zurückgerufen.** Die Ausnahmeregelung aus v0.8.9, die bereits veröffentlichte Wissensdatenbanken für ihre Abonnenten erreichbar hielt, entfällt: Jede freigegebene Wissensdatenbank wird auf persönlich zurückgesetzt, ihre Abonnements werden entfernt, und die verbleibende Aktion zum Aufheben der Veröffentlichung sowie die Wissensdatenbank-Badges für Abonnenten verschwinden. Eine Wissensdatenbank erreicht andere Benutzer jetzt nur noch über einen freigegebenen Agent, der den Inhalt des Eigentümers zur Laufzeit delegiert.
 
 ## [v0.8.9] - 2026-07-08
 

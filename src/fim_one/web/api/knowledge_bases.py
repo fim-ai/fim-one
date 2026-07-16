@@ -18,12 +18,10 @@ from sqlalchemy.orm import selectinload
 
 from fim_one.db import get_session
 from fim_one.core.utils import spawn_background
-from fim_one.web.auth import get_current_user, get_user_org_ids
+from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
-from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.web.deps import get_embedding, get_kb_manager
 from fim_one.db.models import KBDocument, KnowledgeBase, User
-from fim_one.db.models.resource_subscription import ResourceSubscription
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse
 from fim_one.web.schemas.knowledge_base import (
     ChunkResponse,
@@ -145,22 +143,9 @@ async def list_kbs(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    from fim_one.web.visibility import build_visibility_filter
-    user_org_ids = await get_user_org_ids(current_user.id, db)
-
-    # Get subscribed knowledge base IDs with org_id for source tagging
-    sub_result = await db.execute(
-        select(ResourceSubscription.resource_id, ResourceSubscription.org_id).where(
-            ResourceSubscription.user_id == current_user.id,
-            ResourceSubscription.resource_type == "knowledge_base",
-        )
-    )
-    sub_rows = sub_result.all()
-    subscribed_kb_ids = [r.resource_id for r in sub_rows]
-    sub_org_map = {r.resource_id: r.org_id for r in sub_rows}
-
+    # Knowledge bases are not shareable: the list is owned-only.
     base = select(KnowledgeBase).where(
-        build_visibility_filter(KnowledgeBase, current_user.id, user_org_ids, subscribed_ids=subscribed_kb_ids)
+        KnowledgeBase.user_id == current_user.id
     )
 
     count_result = await db.execute(
@@ -175,18 +160,7 @@ async def list_kbs(
     )
     kbs = result.scalars().all()
 
-    subscribed_kb_ids_set = set(subscribed_kb_ids)
-    items = []
-    for k in kbs:
-        resp = _kb_to_response(k)
-        if k.user_id == current_user.id:
-            resp.source = "own"
-        elif k.id in subscribed_kb_ids_set:
-            sub_org_id = sub_org_map.get(k.id)
-            resp.source = "market" if sub_org_id == MARKET_ORG_ID else "org"
-        else:
-            resp.source = "org"  # fallback, should not be reached
-        items.append(resp.model_dump())
+    items = [_kb_to_response(k).model_dump() for k in kbs]
 
     return PaginatedResponse(
         items=items,
@@ -219,23 +193,12 @@ async def update_kb(
     for field, value in update_data.items():
         setattr(kb, field, value)
 
-    content_changed = bool(update_data.keys() - {"is_active"})
-    if content_changed:
-        from fim_one.web.publish_review import check_edit_revert
-
-        reverted = await check_edit_revert(kb, db)
-    else:
-        reverted = False
-
     await db.commit()
     result = await db.execute(
         select(KnowledgeBase).where(KnowledgeBase.id == kb.id)
     )
     kb = result.scalar_one()
-    data = _kb_to_response(kb).model_dump()
-    if reverted:
-        data["publish_status_reverted"] = True
-    return ApiResponse(data=data)
+    return ApiResponse(data=_kb_to_response(kb).model_dump())
 
 
 @router.delete("/{kb_id}", response_model=ApiResponse)
@@ -272,65 +235,12 @@ async def delete_kb(
     return ApiResponse(data={"deleted": kb_id})
 
 
-# ── Publish / Unpublish ───────────────────────────────────────────
-
-
-# Knowledge bases are no longer shareable (Reduce Feature): the publish /
-# resubmit endpoints were removed. A KB reaches other users only by being
-# bound to a shared Agent, which delegates the owner's content at run time
-# (access-checked against the agent owner's visibility). ``unpublish`` is
-# kept so any pre-existing org-published KB row can be reverted to personal.
-
-
-@router.post("/{kb_id}/unpublish", response_model=ApiResponse)
-async def unpublish_kb(
-    kb_id: str,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """Revert knowledge base to personal visibility."""
-    result = await db.execute(
-        select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
-    )
-    kb = result.scalar_one_or_none()
-    if kb is None:
-        raise AppError("kb_not_found", status_code=404)
-
-    is_owner = kb.user_id == current_user.id
-    is_admin = current_user.is_admin
-    is_org_admin = False
-
-    if getattr(kb, "visibility", "personal") == "org" and kb.org_id and not is_owner:
-        try:
-            from fim_one.web.auth import require_org_admin
-            await require_org_admin(kb.org_id, current_user, db)
-            is_org_admin = True
-        except Exception:
-            pass
-
-    if not (is_owner or is_admin or is_org_admin):
-        raise AppError("unpublish_denied", status_code=403)
-
-    # Log BEFORE clearing org_id
-    if getattr(kb, "org_id", None):
-        from fim_one.web.api.reviews import log_review_event
-        await log_review_event(
-            db=db,
-            org_id=kb.org_id or "",
-            resource_type="knowledge_base",
-            resource_id=kb.id,
-            resource_name=kb.name,
-            action="unpublished",
-            actor=current_user,
-        )
-
-    kb.visibility = "personal"
-    kb.org_id = None
-    kb.publish_status = None
-
-    await db.commit()
-    await db.refresh(kb)
-    return ApiResponse(data=_kb_to_response(kb).model_dump())
+# Knowledge bases are not shareable (Reduce Feature): the publish /
+# resubmit / unpublish endpoints were removed and all previously shared
+# KBs were recalled to personal (migration f7h9j1l3n567). A KB reaches
+# other users only by being bound to a shared Agent, which delegates the
+# owner's content at run time (access-checked against the agent owner's
+# visibility).
 
 
 # ── Documents ────────────────────────────────────────────────────

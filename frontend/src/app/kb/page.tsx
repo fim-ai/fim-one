@@ -15,24 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { kbApi, marketApi } from "@/lib/api"
+import { kbApi } from "@/lib/api"
 import { KBCard } from "@/components/kb/kb-card"
 import { EmptyState } from "@/components/shared/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KBFormDialog } from "@/components/kb/kb-form-dialog"
-import { useScopeFilter } from "@/hooks/use-scope-filter"
-import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import type { KBResponse, KBCreate } from "@/types/kb"
 
@@ -41,7 +29,6 @@ function KBPageInner() {
   const router = useRouter()
   const t = useTranslations("kb")
   const tc = useTranslations("common")
-  const { scope, setScope, filterByScope } = useScopeFilter()
 
   const [knowledgeBases, setKnowledgeBases] = useState<KBResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -49,8 +36,6 @@ function KBPageInner() {
   const [editingKB, setEditingKB] = useState<KBResponse | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
-  const [pendingUninstallId, setPendingUninstallId] = useState<string | null>(null)
-  const [pendingUnpublishId, setPendingUnpublishId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -107,21 +92,6 @@ function KBPageInner() {
 
   const handleDelete = (id: string) => setPendingDeleteId(id)
 
-  const handleUninstall = (id: string) => setPendingUninstallId(id)
-
-  const confirmUninstall = async () => {
-    if (!pendingUninstallId) return
-    const id = pendingUninstallId
-    setPendingUninstallId(null)
-    try {
-      await marketApi.unsubscribe({ resource_type: "knowledge_base", resource_id: id })
-      setKnowledgeBases((prev) => prev.filter((kb) => kb.id !== id))
-      toast.success(tc("uninstalled"))
-    } catch {
-      toast.error(tc("error"))
-    }
-  }
-
   const confirmDelete = async () => {
     if (!pendingDeleteId) return
     const id = pendingDeleteId
@@ -135,36 +105,16 @@ function KBPageInner() {
     }
   }
 
-  // Knowledge bases are no longer shareable (Reduce Feature): the publish
-  // flow was removed. Unpublish is kept as the escape hatch for reverting
-  // any pre-existing org-published KB back to personal.
-  const confirmUnpublish = async () => {
-    if (!pendingUnpublishId) return
-    const id = pendingUnpublishId
-    setPendingUnpublishId(null)
-    try {
-      const updated = await kbApi.unpublish(id)
-      setKnowledgeBases((prev) => prev.map((kb) => (kb.id === id ? updated : kb)))
-      toast.success(t("unpublishSuccess"))
-    } catch {
-      toast.error(t("unpublishError"))
-    }
-  }
-
-  const filteredKBs = useMemo(
-    () => (user ? filterByScope(knowledgeBases, user.id) : knowledgeBases),
-    [knowledgeBases, user, filterByScope],
-  )
-
+  // The KB list is owned-only (KBs are not shareable), so no scope filter.
   const searchedKBs = useMemo(() => {
-    if (!searchQuery.trim()) return filteredKBs
+    if (!searchQuery.trim()) return knowledgeBases
     const q = searchQuery.toLowerCase()
-    return filteredKBs.filter(
+    return knowledgeBases.filter(
       (kb) =>
         kb.name.toLowerCase().includes(q) ||
         (kb.description ?? "").toLowerCase().includes(q),
     )
-  }, [filteredKBs, searchQuery])
+  }, [knowledgeBases, searchQuery])
 
   const totalPages = Math.ceil(searchedKBs.length / PAGE_SIZE)
   const paginatedKBs = useMemo(() => {
@@ -173,7 +123,7 @@ function KBPageInner() {
   }, [searchedKBs, currentPage])
 
   // Reset pagination when filters change
-  useEffect(() => { setCurrentPage(1) }, [searchQuery, scope])
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
 
   if (authLoading || !user) return null
 
@@ -198,10 +148,9 @@ function KBPageInner() {
         </div>
       </div>
 
-      {/* Search + Filter bar */}
+      {/* Search bar */}
       {!isLoading && knowledgeBases.length > 0 && (
         <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border/20 shrink-0">
-          <ScopeFilter value={scope} onChange={setScope} />
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
@@ -250,7 +199,6 @@ function KBPageInner() {
                   currentUserId={user.id}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  onUninstall={handleUninstall}
                 />
               ))}
             </div>
@@ -290,43 +238,6 @@ function KBPageInner() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Unpublish Confirmation */}
-      <AlertDialog open={pendingUnpublishId !== null} onOpenChange={(open) => { if (!open) setPendingUnpublishId(null) }}>
-        <AlertDialogContent className="sm:max-w-sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("unpublishTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("unpublishDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmUnpublish}>{tc("confirm")}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Uninstall Confirmation */}
-      <AlertDialog open={pendingUninstallId !== null} onOpenChange={(open) => { if (!open) setPendingUninstallId(null) }}>
-        <AlertDialogContent className="sm:max-w-sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tc("uninstallConfirmTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {tc("uninstallConfirmDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={confirmUninstall}
-            >
-              {tc("uninstall")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

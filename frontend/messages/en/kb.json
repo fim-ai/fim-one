@@ -138,22 +138,5 @@
   "disableOrgKbDescription": "This will immediately stop all org members from using this knowledge base. You can re-enable it at any time.",
   "kbEnabled": "Knowledge base enabled",
   "kbDisabled": "Knowledge base disabled",
-  "kbToggleFailed": "Failed to update knowledge base status",
-
-  "publishTitle": "Publish Knowledge Base",
-  "publishDescription": "Publish this knowledge base to your organization so other members can use it",
-  "publishSelectOrg": "Select Organization",
-  "publishReviewWarning": "This organization requires review. Your knowledge base will be pending approval after publishing.",
-  "publishSuccess": "Knowledge base published successfully",
-  "publishError": "Failed to publish knowledge base",
-  "unpublishTitle": "Revert to Personal",
-  "unpublishDescription": "This will make the knowledge base private. Organization members will no longer be able to use it.",
-  "unpublishSuccess": "Knowledge base reverted to personal",
-  "unpublishError": "Failed to revert knowledge base",
-  "resubmitSuccess": "Knowledge base resubmitted for review",
-  "resubmitError": "Failed to resubmit knowledge base",
-  "publish": "Publish to Organization",
-  "unpublish": "Revert to Personal",
-  "resubmit": "Resubmit for Review",
-  "orgBadge": "Organization"
+  "kbToggleFailed": "Failed to update knowledge base status"
 }

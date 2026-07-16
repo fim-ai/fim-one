@@ -539,13 +539,13 @@ async def _resolve_resource_name(
     from typing import Any
 
     from fim_one.db.models.connector import Connector
-    from fim_one.db.models.knowledge_base import KnowledgeBase
     from fim_one.db.models.mcp_server import MCPServer
 
+    # knowledge_base is absent: KBs are not shareable, so no KB
+    # subscription rows can exist.
     model_map: dict[str, Any] = {
         "agent": Agent,
         "connector": Connector,
-        "knowledge_base": KnowledgeBase,
         "mcp_server": MCPServer,
     }
     model = model_map.get(resource_type)

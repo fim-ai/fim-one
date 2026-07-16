@@ -93,7 +93,6 @@ function resourceTypeLabel(type: string, t: (key: string) => string): string {
   switch (type) {
     case "agent": return t("resourceTypeAgent")
     case "connector": return t("resourceTypeConnector")
-    case "knowledge_base": return t("resourceTypeKb")
     case "mcp_server": return t("resourceTypeMcpServer")
     case "workflow": return t("resourceTypeWorkflow")
     default: return type
@@ -121,7 +120,6 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
   const [icon, setIcon] = useState<string | null>(null)
   const [reviewAgents, setReviewAgents] = useState(false)
   const [reviewConnectors, setReviewConnectors] = useState(false)
-  const [reviewKbs, setReviewKbs] = useState(false)
   const [reviewMcpServers, setReviewMcpServers] = useState(false)
   const [reviewWorkflows, setReviewWorkflows] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -137,7 +135,6 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
       setIcon(initial?.icon ?? null)
       setReviewAgents(initial?.review_agents ?? false)
       setReviewConnectors(initial?.review_connectors ?? false)
-      setReviewKbs(initial?.review_kbs ?? false)
       setReviewMcpServers(initial?.review_mcp_servers ?? false)
       setReviewWorkflows(initial?.review_workflows ?? false)
       setNameError("")
@@ -174,7 +171,6 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
           icon: icon || null,
           review_agents: reviewAgents,
           review_connectors: reviewConnectors,
-          review_kbs: reviewKbs,
           review_mcp_servers: reviewMcpServers,
           review_workflows: reviewWorkflows,
         })
@@ -186,7 +182,6 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
           icon: icon || null,
           review_agents: reviewAgents,
           review_connectors: reviewConnectors,
-          review_kbs: reviewKbs,
           review_mcp_servers: reviewMcpServers,
           review_workflows: reviewWorkflows,
         })
@@ -286,14 +281,6 @@ function OrgFormDialog({ open, onOpenChange, initial, onSaved }: OrgFormDialogPr
                   <Switch
                     checked={isMarketOrg ? true : reviewConnectors}
                     onCheckedChange={(v) => { setReviewConnectors(v); setDirty(true) }}
-                    disabled={isMarketOrg}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <label className="text-sm">{t("reviewKbsLabel")}</label>
-                  <Switch
-                    checked={isMarketOrg ? true : reviewKbs}
-                    onCheckedChange={(v) => { setReviewKbs(v); setDirty(true) }}
                     disabled={isMarketOrg}
                   />
                 </div>
@@ -729,7 +716,6 @@ function ReviewsSheet({ open, onOpenChange, org }: ReviewsSheetProps) {
                   <SelectItem value="__default__">{t("filterAll")}</SelectItem>
                   <SelectItem value="agent">{t("filterAgents")}</SelectItem>
                   <SelectItem value="connector">{t("filterConnectors")}</SelectItem>
-                  <SelectItem value="knowledge_base">{t("filterKBs")}</SelectItem>
                   <SelectItem value="mcp_server">{t("filterMcpServers")}</SelectItem>
                   <SelectItem value="workflow">{t("filterWorkflows")}</SelectItem>
                 </SelectContent>
@@ -1189,7 +1175,7 @@ function OrgCard({ org, onEdit, onDelete, onLeave, onManageMembers, onManageRevi
                 <Users className="mr-2 h-4 w-4" />
                 {t("manageMembers")}
               </DropdownMenuItem>
-              {(org.review_agents || org.review_connectors || org.review_kbs || org.review_mcp_servers || org.review_workflows) && (
+              {(org.review_agents || org.review_connectors || org.review_mcp_servers || org.review_workflows) && (
                 <DropdownMenuItem onClick={() => onManageReviews(org)}>
                   <ClipboardCheck className="mr-2 h-4 w-4" />
                   {t("reviewManagement")}
@@ -1222,10 +1208,10 @@ function OrgCard({ org, onEdit, onDelete, onLeave, onManageMembers, onManageRevi
             <Badge variant="outline" className={roleBadgeClass(org.role)}>
               {t(`role${org.role.charAt(0).toUpperCase()}${org.role.slice(1)}` as "roleOwner" | "roleAdmin" | "roleMember")}
             </Badge>
-            {(org.review_agents || org.review_connectors || org.review_kbs || org.review_mcp_servers || org.review_workflows) && (
+            {(org.review_agents || org.review_connectors || org.review_mcp_servers || org.review_workflows) && (
               <Badge variant="outline" className="border-amber-400/40 text-amber-600 dark:text-amber-400 text-[10px] px-1.5 py-0 h-5 gap-0.5">
                 <ShieldCheck className="h-3 w-3" />
-                {[org.review_agents, org.review_connectors, org.review_kbs, org.review_mcp_servers, org.review_workflows].filter(Boolean).length}
+                {[org.review_agents, org.review_connectors, org.review_mcp_servers, org.review_workflows].filter(Boolean).length}
               </Badge>
             )}
           </div>
@@ -1257,7 +1243,7 @@ function OrgCard({ org, onEdit, onDelete, onLeave, onManageMembers, onManageRevi
               {t("manageMembers")}
             </DropdownMenuItem>
           )}
-          {isAdminOrOwner && (org.review_agents || org.review_connectors || org.review_kbs || org.review_mcp_servers || org.review_workflows) && (
+          {isAdminOrOwner && (org.review_agents || org.review_connectors || org.review_mcp_servers || org.review_workflows) && (
             <DropdownMenuItem onClick={() => onManageReviews(org)}>
               <ClipboardCheck className="mr-2 h-4 w-4" />
               {t("reviewManagement")}

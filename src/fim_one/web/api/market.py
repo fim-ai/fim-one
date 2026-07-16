@@ -23,7 +23,6 @@ from fim_one.web.exceptions import AppError
 from fim_one.db.models.agent import Agent
 from fim_one.db.models.connector import Connector
 from fim_one.db.models.connector_credential import ConnectorCredential
-from fim_one.db.models.knowledge_base import KnowledgeBase
 from fim_one.db.models.mcp_server import MCPServer
 from fim_one.db.models.mcp_server_credential import MCPServerCredential
 from fim_one.db.models.organization import OrgMembership, Organization
@@ -40,7 +39,7 @@ router = APIRouter(prefix="/api/market", tags=["market"])
 
 
 class SubscribeRequest(BaseModel):
-    resource_type: str  # agent | connector | knowledge_base | mcp_server | skill | workflow
+    resource_type: str  # agent | connector | mcp_server | skill | workflow
     resource_id: str
     org_id: str = Field(default=MARKET_ORG_ID)
 
@@ -78,19 +77,6 @@ def _connector_market_info(c: Connector) -> dict[str, Any]:
         "org_id": c.org_id,
         "user_id": c.user_id,
         "created_at": c.created_at.isoformat() if c.created_at else None,
-    }
-
-
-def _kb_market_info(kb: KnowledgeBase) -> dict[str, Any]:
-    return {
-        "id": kb.id,
-        "resource_type": "knowledge_base",
-        "name": kb.name,
-        "description": kb.description,
-        "document_count": kb.document_count,
-        "org_id": kb.org_id,
-        "user_id": kb.user_id,
-        "created_at": kb.created_at.isoformat() if kb.created_at else None,
     }
 
 
@@ -144,9 +130,10 @@ SOLUTION_TYPES = ["agent", "skill", "workflow"]
 COMPONENT_TYPES = ["connector", "mcp_server"]
 MARKET_RESOURCE_TYPES = SOLUTION_TYPES + COMPONENT_TYPES
 
-# All supported resource types and their (model, info_fn, active_status) tuples
+# All supported resource types (knowledge bases are not shareable and can
+# never appear in the Market or an org catalog)
 _ALL_RESOURCE_TYPES = [
-    "agent", "connector", "knowledge_base", "mcp_server", "skill", "workflow",
+    "agent", "connector", "mcp_server", "skill", "workflow",
 ]
 
 
@@ -204,7 +191,7 @@ async def browse_market(
     elif browse_org_id == MARKET_ORG_ID:
         types_to_query = MARKET_RESOURCE_TYPES
     else:
-        # Org scope: include all types (KB stays visible in org scope)
+        # Org scope: include all shareable types
         types_to_query = _ALL_RESOURCE_TYPES
 
     # Drop soft-shelved modules from the Market so their published rows are
@@ -228,7 +215,6 @@ async def browse_market(
     model_map: dict[str, tuple[Any, ...]] = {
         "agent": (Agent, _agent_market_info, "published"),
         "connector": (Connector, _connector_market_info, "published"),
-        "knowledge_base": (KnowledgeBase, _kb_market_info, "active"),
         "mcp_server": (MCPServer, _mcp_market_info, None),
         "skill": (Skill, _skill_market_info, "published"),
         "workflow": (Workflow, _workflow_market_info, "published"),
@@ -332,11 +318,11 @@ async def get_resource_dependencies(
 # Subscribe / Unsubscribe
 # ---------------------------------------------------------------------------
 
-# Model lookup for resource validation
+# Model lookup for resource validation (knowledge bases are not shareable
+# and cannot be subscribed to)
 _RESOURCE_MODELS: dict[str, Any] = {
     "agent": Agent,
     "connector": Connector,
-    "knowledge_base": KnowledgeBase,
     "mcp_server": MCPServer,
     "skill": Skill,
     "workflow": Workflow,

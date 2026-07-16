@@ -141,16 +141,17 @@ class KnowledgeBaseManager:
         its own; the previous behaviour silently used the caller's id and so
         returned nothing for any KB the caller didn't personally own.
 
-        Returns the owner id when the caller may read the KB (owner, an explicit
-        subscriber, or a trusted system caller with ``caller_user_id is None``),
-        otherwise ``None`` — signalling "not visible", which the caller should
-        treat as an empty result rather than a wrong-path lookup.
+        Returns the owner id when the caller may read the KB (the owner, or a
+        trusted system caller with ``caller_user_id is None`` — e.g. the chat
+        path delegating a shared Agent's bound KB to its owner), otherwise
+        ``None`` — signalling "not visible", which the caller should treat as
+        an empty result rather than a wrong-path lookup. Knowledge bases are
+        not shareable, so no other caller is ever granted access.
         """
         from sqlalchemy import select
 
         from fim_one.db import create_session
         from fim_one.db.models.knowledge_base import KnowledgeBase
-        from fim_one.db.models.resource_subscription import ResourceSubscription
 
         async with create_session() as db:
             owner_id = (
@@ -162,18 +163,7 @@ class KnowledgeBaseManager:
                 return None  # KB does not exist
             if caller_user_id is None or owner_id == caller_user_id:
                 return owner_id  # system caller or owner
-            # Non-owner: require an explicit subscription (own + subscribed is
-            # the same visibility model chat assembly and binding already use).
-            sub = (
-                await db.execute(
-                    select(ResourceSubscription.id).where(
-                        ResourceSubscription.user_id == caller_user_id,
-                        ResourceSubscription.resource_type == "knowledge_base",
-                        ResourceSubscription.resource_id == kb_id,
-                    )
-                )
-            ).scalar_one_or_none()
-            return owner_id if sub is not None else None
+            return None  # KBs are not shareable — strangers get nothing
 
     async def retrieve(
         self,
@@ -191,7 +181,7 @@ class KnowledgeBaseManager:
             kb_id: Knowledge base ID.
             user_id: The *calling* user's id. The owner whose vector store is
                 read is resolved from ``kb_id`` internally and gated by this
-                caller's access (owner or subscriber).
+                caller's access (owner only — KBs are not shareable).
             top_k: Number of results.
             mode: Retrieval mode ("hybrid", "dense", or "fts").
 

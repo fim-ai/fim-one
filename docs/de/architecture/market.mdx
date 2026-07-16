@@ -37,12 +37,12 @@ Komponenten sind **wiederverwendbare Bausteine** für Entwickler. Sie stellen Fu
 
 Komponenten sind einfacher zu abonnieren – sie haben keine internen Abhängigkeiten, nur Anforderungen an Anmeldedaten.
 
-### Warum Wissensdatenbanken nicht unabhängig aufgelistet werden
+### Warum Knowledge Bases nicht unabhängig aufgelistet werden
 
-Wissensdatenbanken werden nicht als eigenständige Marktressourcen veröffentlicht. Sie sind interne Abhängigkeiten von Lösungen — eine Agenten-Abruf-Pipeline oder Referenzmaterial einer Fähigkeit. Wenn ein Benutzer eine Lösung abonniert, die von einer Wissensdatenbank abhängt, wird die KB automatisch als schreibgeschützte Referenz eingebunden. Der Abonnent muss Wissensdatenbanken nie separat suchen, bewerten oder verwalten.
+Knowledge Bases sind überhaupt nicht teilbar — weder im Market noch für eine Organisation. Eine KB erreicht andere Benutzer nur als interne Abhängigkeit eines gemeinsam genutzten Agent: Zur Laufzeit delegiert der Agent die Inhalte des Eigentümers, sodass der Abonnent niemals ein KB-Abonnement hält und KBs nie separat suchen, bewerten oder verwalten muss.
 
 <Info>
-Die zweistufige Klassifizierung (Lösungen vs. Komponenten) ist ein **Anzeigeschicht-Konzept**. Sie wird zur Abfragezeit aus `resource_type` abgeleitet, nicht als separates Feld gespeichert. Der zugrunde liegende Abonnementmechanismus, der Sichtbarkeitsfilter und der Überprüfungsprozess sind für alle Ressourcentypen identisch.
+Die zweigeteilte Klassifizierung (Solutions vs. Components) ist ein **Anzeigeschicht-Konzept**. Sie wird zur Abfragezeit aus `resource_type` abgeleitet, nicht als separates Feld gespeichert. Der zugrunde liegende Abonnementmechanismus, der Sichtbarkeitsfilter und der Überprüfungsprozess sind für alle Ressourcentypen identisch.
 </Info>
 
 ## Einheitliche Architektur
@@ -191,13 +191,14 @@ Das Abmelden entfernt den `ResourceSubscription`-Datensatz. Die Ressource versch
 
 Wenn eine Lösung veröffentlicht oder abonniert wird, analysiert das System ihren Abhängigkeitsbaum. Abhängigkeiten fallen in zwei Kategorien mit unterschiedlichen Behandlungsstrategien.
 
-### Content-type-Abhängigkeiten
+### Content-Type-Abhängigkeiten
 
-**Wissensdatenbanken** und **Fähigkeiten**, auf die eine Lösung verweist, sind Content-type-Abhängigkeiten. Sie stellen schreibgeschützte Daten bereit — Abrufdokumente, SOP-Verfahren — die die Lösung nutzt.
+**Knowledge Bases** und **Skills**, auf die eine Solution verweist, sind Content-Type-Abhängigkeiten. Sie stellen schreibgeschützte Daten bereit — Abrufdokumente, SOP-Verfahren — die die Solution nutzt.
 
-- **Bei Abonnement:** automatisch stillschweigend abonniert. Der Benutzer sieht keinen separaten Abonnementschritt für jede KB oder Fähigkeit.
+- **Skills — im Abonnement:** automatisch stillschweigend abonniert. Der Benutzer sieht keinen separaten Abonnementschritt.
+- **Knowledge Bases:** nie abonniert. Eine gebundene KB wird zur Laufzeit vom besitzenden Agent delegiert (Owner-Delegation), daher gibt es auf der Seite des Abonnenten nichts bereitzustellen oder zu bereinigen.
 - **Zugriffsmodell:** schreibgeschützter Verweis auf die Ressource des ursprünglichen Autors. Der Abonnent kann den Inhalt nicht ändern.
-- **Bei Kündigung:** automatisch bereinigt, wenn die übergeordnete Lösung gekündigt wird.
+- **Bei Abmeldung:** automatisch abonnierte Abhängigkeiten werden automatisch bereinigt, wenn die übergeordnete Solution abgemeldet wird.
 
 ### Verbindungstyp-Abhängigkeiten
 
@@ -275,11 +276,11 @@ Die `ResourceSubscription`-Tabelle ist die zentrale Datenstruktur für den Marke
 | Column | Purpose |
 |---|---|
 | `user_id` | Der Abonnent |
-| `resource_type` | `agent`, `connector`, `knowledge_base`, `mcp_server`, `skill` oder `workflow` |
+| `resource_type` | `agent`, `connector`, `mcp_server`, `skill` oder `workflow` (Wissensdatenbanken werden nie abonniert — sie basieren auf Agent-Eigentümer-Delegation) |
 | `resource_id` | Die ID der abonnierten Ressource |
 | `org_id` | Die Quellorganisation (Marketplace-Organisations-ID oder eine reguläre Organisations-ID) |
 
-Eine eindeutige Einschränkung auf `(user_id, resource_type, resource_id)` verhindert doppelte Abonnements. Die `org_id`-Spalte verfolgt, woher das Abonnement stammt, und ermöglicht bereichsbewusstes Abmelden.
+Eine eindeutige Einschränkung auf `(user_id, resource_type, resource_id)` verhindert doppelte Abonnements. Die `org_id`-Spalte verfolgt, woher das Abonnement stammt, und ermöglicht eine bereichsabhängige Abmeldung.
 
 ### Visibility-Filter-Integration
 

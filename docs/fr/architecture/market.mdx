@@ -39,10 +39,10 @@ Les composants sont plus simples à s'abonner — ils n'ont pas de dépendances 
 
 ### Pourquoi les bases de connaissances ne sont pas listées indépendamment
 
-Les bases de connaissances ne sont pas publiées en tant que ressources Market autonomes. Ce sont des dépendances internes des Solutions — le pipeline de récupération d'un agent ou le matériel de référence d'une compétence. Lorsqu'un utilisateur s'abonne à une Solution qui dépend d'une base de connaissances, la KB est automatiquement incluse en tant que référence en lecture seule. L'abonné n'a jamais besoin de trouver, d'évaluer ou de gérer les KB séparément.
+Les bases de connaissances ne sont pas partageables du tout — ni sur le Marché, ni avec une organisation. Une base de connaissances n'atteint d'autres utilisateurs que comme dépendance interne d'un Agent partagé : à l'exécution, l'Agent délègue le contenu du propriétaire, de sorte que l'abonné ne détient jamais d'abonnement à une base de connaissances et n'a jamais besoin de trouver, évaluer ou gérer les bases de connaissances séparément.
 
 <Info>
-La classification à deux niveaux (Solutions vs. Composants) est un **concept de couche d'affichage**. Elle est dérivée de `resource_type` au moment de la requête, et non stockée en tant que champ distinct. Le mécanisme d'abonnement sous-jacent, le filtre de visibilité et le processus d'examen sont identiques pour tous les types de ressources.
+La classification à deux niveaux (Solutions vs. Composants) est un **concept de couche d'affichage**. Elle est dérivée de `resource_type` au moment de la requête, et non stockée comme un champ séparé. Le mécanisme d'abonnement sous-jacent, le filtre de visibilité et le processus d'examen sont identiques pour tous les types de ressources.
 </Info>
 
 ## Architecture unifiée
@@ -195,9 +195,10 @@ Lorsqu'une Solution est publiée ou souscrite, le système analyse son arboresce
 
 Les **Bases de connaissances** et les **Compétences** référencées par une Solution sont des dépendances de type de contenu. Elles fournissent des données en lecture seule — documents de récupération, procédures opérationnelles — que la Solution consomme.
 
-- **À l'abonnement :** abonnement automatique silencieux. L'utilisateur ne voit pas d'étape d'abonnement séparée pour chaque Base de connaissances ou Compétence.
+- **Compétences — en abonnement :** auto-abonnées silencieusement. L'utilisateur ne voit pas d'étape d'abonnement séparée.
+- **Bases de connaissances :** jamais abonnées. Une KB liée est déléguée par l'Agent propriétaire au moment de l'exécution (owner-delegation), donc il n'y a rien à provisionner ou nettoyer du côté de l'abonné.
 - **Modèle d'accès :** référence en lecture seule à la ressource de l'auteur original. L'abonné ne peut pas modifier le contenu.
-- **À la désinscription :** nettoyage automatique lors de la désinscription de la Solution parent.
+- **À la désinscription :** les dépendances auto-abonnées sont nettoyées automatiquement lorsque la Solution parente est désinscrite.
 
 ### Dépendances de type connexion
 
@@ -270,16 +271,16 @@ L'organisation Market possède un ID fixe bien connu (`00000000-0000-0000-0000-0
 
 ### ResourceSubscription
 
-La table `ResourceSubscription` est la structure de données centrale pour l'accès au Marché :
+La table `ResourceSubscription` est la structure de données centrale pour l'accès au Market :
 
 | Colonne | Objectif |
 |---|---|
 | `user_id` | L'abonné |
-| `resource_type` | `agent`, `connecteur`, `base de connaissances`, `mcp_server`, `compétence` ou `workflow` |
+| `resource_type` | `agent`, `connector`, `mcp_server`, `skill`, ou `workflow` (les bases de connaissances ne sont jamais abonnées — elles fonctionnent via la délégation du propriétaire d'Agent) |
 | `resource_id` | L'ID de la ressource abonnée |
-| `org_id` | L'org source (ID org du Marché ou un ID org régulier) |
+| `org_id` | L'org source (ID org Market ou un ID org régulier) |
 
-Une contrainte d'unicité sur `(user_id, resource_type, resource_id)` prévient les abonnements en doublon. La colonne `org_id` suit l'origine de l'abonnement, permettant une désinscription consciente du contexte.
+Une contrainte d'unicité sur `(user_id, resource_type, resource_id)` empêche les abonnements en doublon. La colonne `org_id` suit l'origine de l'abonnement, permettant une désinscription consciente du périmètre.
 
 ### Intégration du filtre de visibilité
 

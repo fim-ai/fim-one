@@ -719,14 +719,6 @@ export const kbApi = {
       },
     ),
 
-  // Knowledge bases are no longer shareable (Reduce Feature): publish /
-  // resubmit were removed. unpublish is kept to revert any pre-existing
-  // org-published KB back to personal.
-  unpublish: (id: string) =>
-    apiFetch<ApiResponse<KBResponse>>(`/api/knowledge-bases/${id}/unpublish`, {
-      method: "POST",
-    }).then((r) => r.data),
-
   toggleActive: (id: string, isActive: boolean) =>
     apiFetch<ApiResponse<KBResponse>>(`/api/knowledge-bases/${id}`, {
       method: "PUT",

@@ -1157,7 +1157,6 @@
     "typeConnector": "커넥터",
     "typeMcpServer": "MCP Server",
     "typeWorkflow": "워크플로우",
-    "typeKnowledgeBase": "지식 베이스",
     "takeDown": "내리기",
     "takeDownSuccess": "리소스가 마켓플레이스에서 내려졌습니다"
   },

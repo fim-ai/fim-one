@@ -6,8 +6,10 @@ pass that caller id straight through as the path owner, so a KB the caller
 didn't personally own produced the wrong path and silently returned nothing.
 
 Owner resolution now lives in ``KnowledgeBaseManager`` and is access-checked:
-the owner is returned for the owner, an explicit subscriber, or a trusted
-system caller; otherwise ``None`` (→ empty result, not a wrong-path lookup).
+the owner is returned for the owner or a trusted system caller (the agent
+delegation path); otherwise ``None`` (→ empty result, not a wrong-path
+lookup). Knowledge bases are not shareable, so a ResourceSubscription row —
+which can no longer be created for KBs — grants nothing.
 """
 
 from __future__ import annotations
@@ -63,10 +65,11 @@ class TestResolveOwner:
         assert owner == OWNER
 
     @pytest.mark.asyncio
-    async def test_subscriber_resolves_to_owner(self) -> None:
-        # The fix: a subscriber gets the owner's path, not their own.
+    async def test_subscription_row_grants_nothing(self) -> None:
+        # KBs are not shareable: even a (stale) ResourceSubscription row
+        # no longer grants access — the subscriber is denied like a stranger.
         owner = await KnowledgeBaseManager._resolve_owner_for_caller(KID, SUBSCRIBER)
-        assert owner == OWNER
+        assert owner is None
 
     @pytest.mark.asyncio
     async def test_stranger_is_denied(self) -> None:

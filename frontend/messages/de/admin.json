@@ -1157,7 +1157,6 @@
     "typeConnector": "Konnektor",
     "typeMcpServer": "MCP Server",
     "typeWorkflow": "Workflow",
-    "typeKnowledgeBase": "Wissensdatenbank",
     "takeDown": "Entfernen",
     "takeDownSuccess": "Ressource aus dem Marktplatz entfernt"
   },

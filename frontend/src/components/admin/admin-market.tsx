@@ -37,7 +37,6 @@ const RESOURCE_TYPE_KEYS: Record<string, string> = {
   connector: "typeConnector",
   mcp_server: "typeMcpServer",
   workflow: "typeWorkflow",
-  knowledge_base: "typeKnowledgeBase",
 }
 
 const FILTER_TYPES = [
@@ -47,7 +46,6 @@ const FILTER_TYPES = [
   { key: "connector", labelKey: "typeConnector" },
   { key: "mcp_server", labelKey: "typeMcpServer" },
   { key: "workflow", labelKey: "typeWorkflow" },
-  { key: "knowledge_base", labelKey: "typeKnowledgeBase" },
 ] as const
 
 // ---------------------------------------------------------------------------

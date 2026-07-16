@@ -39,7 +39,7 @@ Components are simpler to subscribe to — they have no internal dependencies, o
 
 ### Why Knowledge Bases are not listed independently
 
-Knowledge Bases are not published as standalone Market resources. They are internal dependencies of Solutions — an Agent's retrieval pipeline or a Skill's reference material. When a user subscribes to a Solution that depends on a Knowledge Base, the KB is auto-included as a read-only reference. The subscriber never needs to find, evaluate, or manage KBs separately.
+Knowledge Bases are not shareable at all — not in the Market, not to an organization. A KB reaches other users only as an internal dependency of a shared Agent: at run time the Agent delegates the owner's content, so the subscriber never holds a KB subscription and never needs to find, evaluate, or manage KBs separately.
 
 <Info>
 The two-tier classification (Solutions vs. Components) is a **display-layer concept**. It is derived from `resource_type` at query time, not stored as a separate field. The underlying subscription mechanism, visibility filter, and review process are identical for all resource types.
@@ -195,9 +195,10 @@ When a Solution is published or subscribed to, the system analyzes its dependenc
 
 **Knowledge Bases** and **Skills** referenced by a Solution are content-type dependencies. They provide read-only data — retrieval documents, SOP procedures — that the Solution consumes.
 
-- **On subscription:** auto-subscribed silently. The user does not see a separate subscription step for each KB or Skill.
+- **Skills — on subscription:** auto-subscribed silently. The user does not see a separate subscription step.
+- **Knowledge Bases:** never subscribed. A bound KB is delegated by the owning Agent at run time (owner-delegation), so there is nothing to provision or clean up on the subscriber's side.
 - **Access model:** read-only reference to the original author's resource. The subscriber cannot modify the content.
-- **On unsubscription:** cleaned up automatically when the parent Solution is unsubscribed.
+- **On unsubscription:** auto-subscribed dependencies are cleaned up automatically when the parent Solution is unsubscribed.
 
 ### Connection-type dependencies
 
@@ -275,7 +276,7 @@ The `ResourceSubscription` table is the core data structure for Market access:
 | Column | Purpose |
 |---|---|
 | `user_id` | The subscriber |
-| `resource_type` | `agent`, `connector`, `knowledge_base`, `mcp_server`, `skill`, or `workflow` |
+| `resource_type` | `agent`, `connector`, `mcp_server`, `skill`, or `workflow` (knowledge bases are never subscribed — they ride on Agent owner-delegation) |
 | `resource_id` | The subscribed resource's ID |
 | `org_id` | The source org (Market org ID or a regular org ID) |
 

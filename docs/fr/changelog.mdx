@@ -10,9 +10,15 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
-### Corrigé
+### Corrections
 
-- **Une typo dans `SMTP_SSL` n'envoie plus silencieusement votre mot de passe SMTP en clair.** Auparavant, toute valeur autre que `ssl` ou `tls` (par exemple `SMTP_SSL=true`) basculait vers une connexion non chiffrée sans avertissement, tant pour les e-mails système que pour les notifications par e-mail. Les valeurs non reconnues sont maintenant rejetées catégoriquement, et la livraison non chiffrée doit être demandée explicitement en tant que `SMTP_SSL=none`, ce qui enregistre un avertissement à chaque envoi.
+- **Les portes d'approbation se bloquent désormais quand un agent est atteint via un autre agent ou un workflow.** Un appel de connecteur sensible qui demandait une confirmation en chat s'exécutait précédemment sans vérification une fois délégué via `call_agent` ou enveloppé dans un nœud workflow `AGENT` — ces chemins démarraient l'agent sans aucun hook. Les deux exécutent maintenant les portes propres de l'agent, en utilisant les paramètres de confirmation de cet agent, et refusent de l'exécuter si ses hooks ne peuvent pas être chargés.
+
+- **Une faute de frappe dans `SMTP_SSL` n'envoie plus silencieusement votre mot de passe SMTP en clair.** Précédemment, toute valeur autre que `ssl` ou `tls` (par exemple `SMTP_SSL=true`) basculait vers une connexion non chiffrée sans avertissement, dans les e-mails système et les notifications par e-mail. Les valeurs non reconnues sont désormais rejetées catégoriquement, et la livraison non chiffrée doit être demandée explicitement comme `SMTP_SSL=none`, ce qui enregistre un avertissement à chaque envoi.
+
+### Supprimé
+
+- **Les bases de connaissances précédemment partagées avec une organisation sont rappelées lors de la mise à niveau.** L'exception v0.8.9 qui maintenait les KBs déjà publiées accessibles à leurs abonnés a disparu : chaque KB partagée revient à l'état personnel, ses abonnements sont supprimés, et l'action de dépublication restante ainsi que les badges KB visibles par les abonnés disparaissent. Une base de connaissances n'atteint désormais d'autres utilisateurs que par le biais d'un Agent partagé, qui délègue le contenu du propriétaire au moment de l'exécution.
 
 ## [v0.8.9] - 2026-07-08
 
