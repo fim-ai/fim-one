@@ -92,3 +92,97 @@ class TestSectionReuseIsContentAddressed:
         assert len(calls) == 1
         assert "gamma prose" in calls[0]
         assert "阿尔法" in result and "贝塔" in result
+
+
+class TestPlaceholderIntegrity:
+    """Cover the JSX/CODE_BLOCK shield-restore contract.
+
+    Restore is positional: it swaps `<!--JSX_6-->` for `comments[6]` wherever
+    that token landed. If the model moved the token, restore lands the right
+    content on the wrong line and still emits valid MDX — nothing downstream
+    catches it. `_check_placeholders` is the only guard against that, and it
+    only works on the raw model output, before restore.
+    """
+
+    def test_faithful_output_passes(self) -> None:
+        text = "- a <!--JSX_0-->\n- b <!--JSX_1-->\n"
+        assert translate._check_placeholders(text, "JSX", 2) is None
+
+    def test_no_placeholders_expected_is_noop(self) -> None:
+        assert translate._check_placeholders("plain prose", "JSX", 0) is None
+
+    def test_dropped_placeholder_is_caught(self) -> None:
+        # Silent in the old code: the comment was simply lost.
+        issue = translate._check_placeholders("- a <!--JSX_0-->\n- b\n", "JSX", 2)
+        assert issue is not None and "dropped [1]" in issue
+
+    def test_reordered_placeholders_are_caught(self) -> None:
+        # THE silent-corruption case: same multiset, wrong lines. Valid MDX,
+        # so MDX validation never sees it — this check is the only line of
+        # defence.
+        issue = translate._check_placeholders(
+            "- a <!--JSX_1-->\n- b <!--JSX_0-->\n", "JSX", 2
+        )
+        assert issue is not None and "reordered" in issue
+
+    def test_duplicated_placeholder_is_caught(self) -> None:
+        issue = translate._check_placeholders(
+            "- a <!--JSX_0-->\n- b <!--JSX_0-->\n", "JSX", 2
+        )
+        assert issue is not None
+        assert "duplicated [0]" in issue and "dropped [1]" in issue
+
+    def test_invented_placeholder_is_caught(self) -> None:
+        issue = translate._check_placeholders(
+            "- a <!--JSX_0-->\n- b <!--JSX_7-->\n", "JSX", 2
+        )
+        assert issue is not None
+        assert "invented [7]" in issue and "dropped [1]" in issue
+
+    def test_whitespace_variants_are_tolerated(self) -> None:
+        # The model likes to pad the comment; that's cosmetic, not corruption.
+        text = "- a <!-- JSX_0 -->\n- b <!--JSX_1 -->\n"
+        assert translate._check_placeholders(text, "JSX", 2) is None
+
+    def test_kinds_are_scored_independently(self) -> None:
+        text = "<!--CODE_BLOCK_0-->\n- a <!--JSX_0-->\n"
+        assert translate._check_placeholders(text, "JSX", 1) is None
+        assert translate._check_placeholders(text, "CODE_BLOCK", 1) is None
+
+
+class TestShieldRestoreRoundTrip:
+    def test_jsx_round_trip_preserves_pointers(self) -> None:
+        src = (
+            "- [ ] Hook System extras {/* dev: dev/hook-system.md */}\n"
+            "- [ ] Agent Workspace {/* dev: dev/agent-workspace.md */}\n"
+        )
+        shielded, comments = translate._shield_jsx_comments(src)
+        assert "{/*" not in shielded
+        assert len(comments) == 2
+        assert translate._restore_jsx_comments(shielded, comments) == src
+
+    def test_restore_honours_whitespace_variants(self) -> None:
+        _, comments = translate._shield_jsx_comments("a {/* dev: x.md */}\n")
+        out = translate._restore_jsx_comments("a <!-- JSX_0 -->\n", comments)
+        assert out == "a {/* dev: x.md */}\n"
+
+    def test_restore_leaves_out_of_range_token_alone(self) -> None:
+        # Better a visible bare token (MDX validation trips) than an
+        # IndexError crashing the whole translation run.
+        _, comments = translate._shield_jsx_comments("a {/* dev: x.md */}\n")
+        out = translate._restore_jsx_comments("a <!--JSX_9-->\n", comments)
+        assert out == "a <!--JSX_9-->\n"
+
+    def test_code_block_round_trip(self) -> None:
+        src = "before\n```bash\n# Configure\nls\n```\nafter\n"
+        shielded, blocks = translate._shield_code_blocks(src)
+        assert "```" not in shielded
+        assert len(blocks) == 1
+        assert translate._restore_code_blocks(shielded, blocks) == src
+
+    def test_restore_does_not_cross_families(self) -> None:
+        # A JSX restore must not consume a CODE_BLOCK token, or the two
+        # restores would fight over the same text.
+        _, comments = translate._shield_jsx_comments("a {/* dev: x.md */}\n")
+        out = translate._restore_jsx_comments("<!--CODE_BLOCK_0-->\n", comments)
+        assert out == "<!--CODE_BLOCK_0-->\n"

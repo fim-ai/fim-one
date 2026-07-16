@@ -186,24 +186,69 @@ def _shield_code_blocks(text: str) -> tuple[str, list[str]]:
     return "".join(result), blocks
 
 
+#: Matches a shielded placeholder in either family, tolerating the whitespace
+#: the LLM likes to add inside the comment (``<!-- JSX_3 -->``).
+_PLACEHOLDER_RE = re.compile(r"<!--\s*(JSX|CODE_BLOCK)_(\d+)\s*-->")
+
+
+def _check_placeholders(text: str, kind: str, expected: int) -> str | None:
+    """Verify the model returned every shielded placeholder once, in order.
+
+    Must run on the RAW model output, before any restore: once restore has
+    run the evidence is gone.
+
+    Shielding numbers placeholders in document order, so a faithful
+    translation carries ``0..expected-1`` exactly once and still ascending.
+    Any other shape means the model dropped, invented, duplicated, or MOVED
+    a placeholder.
+
+    Reordering is the dangerous one and the reason this check exists at all.
+    Restore is positional — it swaps ``<!--JSX_6-->`` for ``comments[6]``
+    wherever that token now sits. If the model moved the token to another
+    line, restore cheerfully lands the right content in the wrong place: a
+    dev/ pointer ends up on a bullet it does not belong to. That output is
+    still valid MDX, so nothing downstream catches it. Only a dropped or
+    invented token leaves a bare ``<!--JSX_N-->`` for MDX validation to trip
+    over, which is why the silent half of this bug survived so long.
+
+    Returns None when sound, else a human-readable reason.
+    """
+    if expected == 0:
+        return None
+    found = [
+        int(m.group(2)) for m in _PLACEHOLDER_RE.finditer(text) if m.group(1) == kind
+    ]
+    if found == list(range(expected)):
+        return None
+
+    reasons: list[str] = []
+    missing = sorted(set(range(expected)) - set(found))
+    invented = sorted({n for n in found if n >= expected})
+    duped = sorted({n for n in found if found.count(n) > 1})
+    if missing:
+        reasons.append(f"{kind} dropped {missing}")
+    if invented:
+        reasons.append(f"{kind} invented {invented}")
+    if duped:
+        reasons.append(f"{kind} duplicated {duped}")
+    if not reasons:
+        # Same multiset, different order — the silent-corruption case.
+        reasons.append(f"{kind} reordered ({found} != {list(range(expected))})")
+    return "; ".join(reasons)
+
+
 def _restore_code_blocks(text: str, blocks: list[str]) -> str:
     """Re-insert original code blocks from placeholders."""
-    for i, block in enumerate(blocks):
-        placeholder = f"<!--CODE_BLOCK_{i}-->"
-        restored = block.rstrip("\n")
-        if placeholder in text:
-            text = text.replace(placeholder, restored, 1)
-            continue
-        # Try common LLM mutations (added spaces inside HTML comment)
-        for variant in [
-            f"<!-- CODE_BLOCK_{i} -->",
-            f"<!--CODE_BLOCK_{i} -->",
-            f"<!-- CODE_BLOCK_{i}-->",
-        ]:
-            if variant in text:
-                text = text.replace(variant, restored, 1)
-                break
-    return text
+
+    def _sub(match: re.Match[str]) -> str:
+        if match.group(1) != "CODE_BLOCK":
+            return match.group(0)
+        idx = int(match.group(2))
+        if idx >= len(blocks):
+            return match.group(0)
+        return blocks[idx].rstrip("\n")
+
+    return _PLACEHOLDER_RE.sub(_sub, text)
 
 
 _JSX_COMMENT_RE = re.compile(r"\{/\*.*?\*/\}", flags=re.DOTALL)
@@ -231,21 +276,22 @@ def _shield_jsx_comments(text: str) -> tuple[str, list[str]]:
 
 
 def _restore_jsx_comments(text: str, comments: list[str]) -> str:
-    """Re-insert original JSX comments from placeholders."""
-    for i, comment in enumerate(comments):
-        placeholder = f"<!--JSX_{i}-->"
-        if placeholder in text:
-            text = text.replace(placeholder, comment, 1)
-            continue
-        for variant in [
-            f"<!-- JSX_{i} -->",
-            f"<!--JSX_{i} -->",
-            f"<!-- JSX_{i}-->",
-        ]:
-            if variant in text:
-                text = text.replace(variant, comment, 1)
-                break
-    return text
+    """Re-insert original JSX comments from placeholders.
+
+    Restores by the index carried in the token, wherever it sits. Pair with
+    :func:`_check_placeholders` on the raw model output — this function
+    cannot tell a correctly-placed token from a moved one.
+    """
+
+    def _sub(match: re.Match[str]) -> str:
+        if match.group(1) != "JSX":
+            return match.group(0)
+        idx = int(match.group(2))
+        if idx >= len(comments):
+            return match.group(0)
+        return comments[idx]
+
+    return _PLACEHOLDER_RE.sub(_sub, text)
 
 
 # ---------------------------------------------------------------------------
@@ -926,7 +972,14 @@ def _translate_sections(
                     + shielded
                 )
 
-            for attempt in range(max_attempts):
+            # Shielded sections always earn retries: a mangled placeholder is
+            # recoverable by re-asking, and the alternative (silently landing a
+            # dev/ pointer on the wrong line) is worse than a second call.
+            attempts_allowed = max_attempts
+            if jsx_comments or code_blocks:
+                attempts_allowed = max(attempts_allowed, 3)
+
+            for attempt in range(attempts_allowed):
                 try:
                     # On retry after untranslated detection, prepend a stronger hint
                     prompt_for_attempt = content_to_translate
@@ -939,6 +992,20 @@ def _translate_sections(
                             + content_to_translate
                         )
                     translated = llm_chat(config, system_prompt, prompt_for_attempt)
+                    # Placeholder integrity MUST be checked before restoring —
+                    # restore is positional and destroys the evidence, turning a
+                    # moved token into a wrong-line pointer that still parses.
+                    ph_issue = _check_placeholders(
+                        translated, "JSX", len(jsx_comments)
+                    ) or _check_placeholders(
+                        translated, "CODE_BLOCK", len(code_blocks)
+                    )
+                    if ph_issue:
+                        if attempt < attempts_allowed - 1:
+                            tprint(f"  [{locale}] {src_path.name}: section {idx} placeholder integrity failed (attempt {attempt + 1}/{attempts_allowed}): {ph_issue} — retrying")
+                            continue
+                        tprint(f"  [{locale}] {src_path.name}: WARNING section {idx} placeholder integrity failed after {attempts_allowed} attempts: {ph_issue} — using EN fallback")
+                        return idx, None
                     # Restore in reverse shield order: JSX comments first, then code blocks
                     if jsx_comments:
                         translated = _restore_jsx_comments(translated, jsx_comments)
@@ -954,20 +1021,20 @@ def _translate_sections(
                     # Check if the LLM returned the English source untranslated
                     # (common with CJK locales on technical-term-dense sections)
                     if _check_untranslated(translated, locale):
-                        if attempt < max_attempts - 1:
-                            tprint(f"  [{locale}] {src_path.name}: section {idx} returned untranslated (attempt {attempt + 1}/{max_attempts}) — retrying")
+                        if attempt < attempts_allowed - 1:
+                            tprint(f"  [{locale}] {src_path.name}: section {idx} returned untranslated (attempt {attempt + 1}/{attempts_allowed}) — retrying")
                             continue
-                        tprint(f"  [{locale}] {src_path.name}: WARNING section {idx} returned untranslated after {max_attempts} attempts — using EN fallback")
+                        tprint(f"  [{locale}] {src_path.name}: WARNING section {idx} returned untranslated after {attempts_allowed} attempts — using EN fallback")
                         return idx, None
                     # Validate structural integrity if validator provided
                     if validate_fn:
                         issues = validate_fn(section, translated)
                         if issues:
                             detail = "; ".join(issues)
-                            if attempt < max_attempts - 1:
-                                tprint(f"  [{locale}] {src_path.name}: section {idx} validation failed (attempt {attempt + 1}/{max_attempts}): {detail} — retrying")
+                            if attempt < attempts_allowed - 1:
+                                tprint(f"  [{locale}] {src_path.name}: section {idx} validation failed (attempt {attempt + 1}/{attempts_allowed}): {detail} — retrying")
                                 continue
-                            tprint(f"  [{locale}] {src_path.name}: WARNING section {idx} failed validation after {max_attempts} attempts: {detail} — using EN fallback")
+                            tprint(f"  [{locale}] {src_path.name}: WARNING section {idx} failed validation after {attempts_allowed} attempts: {detail} — using EN fallback")
                             return idx, None
                     return idx, translated
                 except Exception as exc:
