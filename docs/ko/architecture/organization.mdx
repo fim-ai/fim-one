@@ -6,9 +6,9 @@ description: "역할 기반 액세스, 선택적 검토 및 자격증명 폴백�
 
 ## 개요
 
-조직은 FIM One의 팀 협업 단위입니다. 사용자 그룹이 에이전트, 커넥터, 지식 베이스, MCP 서버, 워크플로우 및 스킬과 같은 리소스를 신뢰할 수 있는 범위 내에서 공유할 수 있게 해줍니다.
+조직은 FIM One의 팀 협업 단위입니다. 사용자 그룹이 신뢰할 수 있는 범위 내에서 리소스(智能体, 연결기, MCP 서버, 워크플로우, 스킬)를 공유할 수 있게 해줍니다. 지식 베이스는 한 가지 예외입니다. 지식 베이스는 절대 공유할 수 없으며, 다른 멤버에게는 공유된 智能体의 내부 종속성으로만 도달합니다([공유 및 자격증명](/architecture/sharing-and-credentials) 참조).
 
-FIM One의 모든 리소스는 **개인용**으로 시작됩니다(생성자에게만 표시됨). 리소스를 조직에 게시하면 마켓의 조직 범위를 통해 다른 조직 구성원이 **검색 가능**하게 됩니다. 구성원은 조직의 공유 리소스를 탐색하고 필요한 리소스를 구독합니다.
+FIM One의 모든 리소스는 **개인용**으로 시작됩니다(생성자에게만 표시됨). 리소스를 조직에 게시하면 마켓의 조직 범위를 통해 다른 조직 멤버가 **발견할 수 있게** 됩니다. 멤버는 조직의 공유 리소스를 탐색하고 필요한 것을 구독합니다.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     O -.->|"visible but not subscribed"| M3
 ```
 
-조직과 글로벌 마켓은 동일한 구독 기반 액세스 모델을 공유합니다. 주요 차이점은 신뢰입니다. 조직은 구성원이 서로를 알고 신뢰하는 팀 또는 회사를 나타내므로 검토는 선택 사항이며 자격증명 공유는 간단합니다.
+조직과 글로벌 마켓은 동일한 구독 기반 액세스 모델을 공유합니다. 핵심 차이점은 신뢰입니다. 조직은 멤버가 서로를 알고 신뢰하는 팀 또는 회사를 나타내므로 검토는 선택사항이고 자격증명 공유는 간단합니다.
 
 ## 조직 생성 및 관리
 
@@ -141,15 +141,15 @@ A resource is available in your workspace if:
 조직에 리소스를 게시해도 자동으로 접근 권한이 부여되지 않습니다. 구성원은 마켓의 조직 범위를 통해 구독하여 리소스를 자신의 워크스페이스에 추가해야 합니다.
 </Warning>
 
-## 인프라 리소스 (조직 전체, 구독 불필요)
+## Infrastructure Resources (org-wide, no subscription)
 
-두 번째 클래스의 조직 범위 리소스는 위의 개인 → 게시 → 구독 라이프사이클을 **따르지 않습니다**. 이러한 리소스는 **조직 소유자 또는 관리자가 한 번 구성**한 후 조직의 모든 에이전트에서 투명하게 사용 가능합니다:
+두 번째 클래스의 org 범위 리소스는 위의 personal → publish → subscribe 라이프사이클을 따르지 **않습니다**. 이러한 리소스는 **Org Owner 또는 Admin이 한 번 구성**한 후 org의 모든 에이전트에서 투명하게 사용 가능합니다:
 
-| 리소스 | 목적 | 구성자 | 사용자 |
+| Resource | Purpose | Configured by | Consumed by |
 |---|---|---|---|
-| **채널** | IM 플랫폼으로의 아웃바운드 브릿지 (현재 Feishu; Slack / WeCom / Teams 계획 중) | 조직 소유자 / 관리자 | 모든 에이전트의 [Hook System](/architecture/hook-system) 및 사전 알림 도구 |
-| **OAuth 제공자** | 소셜 로그인 자격증명 (GitHub, Google, Feishu, Discord) | 시스템 관리자 (환경 변수) | 로그인 페이지 |
-| **API 키** | 헤드리스 클라이언트를 위한 프로그래밍 방식 액세스 토큰 | 각 사용자, 조직 범위 | 외부 통합 |
+| **Channels** | IM 플랫폼으로의 아웃바운드 브리지 (현재 Feishu; Slack / WeCom / Teams 계획 중) | Org Owner / Admin | 모든 에이전트의 [Hook System](/architecture/hook-system) 및 proactive-notification 도구 |
+| **OAuth Providers** | 소셜 로그인 자격증명 (GitHub, Google, Feishu, Discord) | System admin (env vars) | 로그인 페이지 |
+| **API Keys** | 헤드리스 클라이언트를 위한 프로그래밍 방식 액세스 토큰 | 각 사용자, org 범위 | 외부 통합 |
 
 ```mermaid
 flowchart LR
@@ -166,9 +166,9 @@ flowchart LR
     A3 -. "uses for approval cards" .-> Ch
 ```
 
-핵심 구분: **게시 가능한 리소스**(에이전트, 커넥터, KB, …)는 명시적 멤버 구독이 필요한 사용자별 아티팩트이고, **인프라 리소스**(채널, OAuth, API 키)는 모든 에이전트가 암묵적으로 공유하는 플랫폼 수준의 배선입니다. 채널은 특히 전체 조직의 IM 핫라인입니다 — 잘 유지된 하나의 Feishu 채널이 모든 에이전트의 승인 게이트, 모든 예약된 보고서, 모든 에스컬레이션 이벤트를 지원합니다.
+핵심 구분: **publishable resources** (Agents, Connectors, Skills, …)는 명시적 멤버 구독이 필요한 사용자별 아티팩트입니다; **infrastructure resources** (Channels, OAuth, API keys)는 모든 에이전트가 암묵적으로 공유하는 플랫폼 수준의 배선입니다. 특히 Channels는 전체 org를 위한 IM 핫라인입니다 — 잘 유지된 하나의 Feishu 채널이 모든 에이전트의 approval gate, 모든 예약된 보고서, 모든 escalation 이벤트를 지원합니다.
 
-채널 라이프사이클 및 지원되는 플랫폼에 대해서는 [채널 개요](/configuration/channels/overview)를 참조하세요.
+채널 라이프사이클 및 지원되는 플랫폼에 대해서는 [Channels overview](/configuration/channels/overview)를 참조하세요.
 
 ## 실제 시나리오
 

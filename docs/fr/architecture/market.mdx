@@ -135,7 +135,7 @@ Les utilisateurs parcourent le Marché via un catalogue paginé. Chaque ressourc
 
 ### S'abonner à une Solution
 
-S'abonner à une Solution (Agent, Compétence ou Flux de travail) implique une analyse des dépendances :
+S'abonner à une Solution (Agent, Skill ou Workflow) implique une analyse des dépendances :
 
 ```mermaid
 sequenceDiagram
@@ -147,8 +147,12 @@ sequenceDiagram
     M->>DA: Analyze dependencies
     DA-->>M: Requires: ERP Connector, Legal KB
 
+    alt Content dependency (Skill)
+        M->>M: Auto-subscribe to Skill (silent)
+    end
+
     alt Content dependency (KB)
-        M->>M: Auto-subscribe to Legal KB (silent)
+        M->>M: No subscription — Agent delegates the owner's KB at run time
     end
 
     alt Connection dependency (Connector)
@@ -160,9 +164,9 @@ sequenceDiagram
     M-->>U: Agent appears in workspace
 ```
 
-1. Le système analyse les dépendances de la Solution — quels Connecteurs, Bases de connaissances, Serveurs MCP et Compétences elle nécessite.
-2. **Les dépendances de type contenu** (Base de connaissances, Compétence) sont auto-abonnées silencieusement. L'utilisateur ne les voit pas ou ne les gère pas.
-3. **Les dépendances de type connexion** (Connecteur, Serveur MCP) sont listées comme exigences. Un assistant d'intégration collecte les identifiants.
+1. Le système analyse les dépendances de la Solution — quels Connectors, Knowledge Bases, MCP Servers et Skills elle nécessite.
+2. **Les dépendances de type contenu** sont traitées sans demander à l'utilisateur. Un Skill est auto-abonné silencieusement. Un Knowledge Base n'est jamais abonné — l'Agent délègue le KB de son propriétaire à l'exécution, donc l'abonné n'a rien à provisionner.
+3. **Les dépendances de type connexion** (Connector, MCP Server) sont listées comme exigences. Un assistant d'intégration collecte les identifiants.
 4. L'enregistrement `ResourceSubscription` est créé, et la ressource apparaît dans le filtre de visibilité de l'utilisateur.
 
 ### S'abonner à un composant

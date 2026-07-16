@@ -88,7 +88,7 @@ description: "Häufig gestellte Fragen zu FIM One — Setup, Funktionen, Lizenzi
     |----------|-------------|
     | **Python** | 3.11+ |
     | **RAM** | Mindestens 2 GB |
-    | **Festplatte** | 1 GB frei (plus Speicherplatz für hochgeladene Dokumente und Vektorspeicher) |
+    | **Festplatte** | 1 GB frei (plus Speicherplatz für hochgeladene Dokumente und Vector Store) |
     | **Node.js** | 18+ (für lokale Entwicklung) |
 
     **Empfohlen für Produktion:**
@@ -99,23 +99,23 @@ description: "Häufig gestellte Fragen zu FIM One — Setup, Funktionen, Lizenzi
     | **CPU** | 2+ Kerne |
     | **Datenbank** | PostgreSQL für Multi-Worker-Bereitstellungen |
 
-    **Docker-Alternative:** Docker 20+ und Docker Compose v2. Kein lokales Python oder Node.js erforderlich – alles wird im Container erstellt.
+    **Docker-Alternative:** Docker 20+ und Docker Compose v2. Kein lokales Python oder Node.js erforderlich — alles wird im Container erstellt.
   </Accordion>
 
   <Accordion title="Funktioniert FIM One auf ARM / Apple Silicon?">
-    Ja. Sowohl Docker als auch die lokale Entwicklung funktionieren auf ARM-Architekturen, einschließlich Apple Silicon (M1/M2/M3/M4) Macs. Das Docker-Image wird nativ für `linux/arm64` erstellt, und alle Python- und Node.js-Abhängigkeiten haben ARM-kompatible Wheels oder Fallbacks.
+    Ja. Sowohl Docker als auch lokale Entwicklung funktionieren auf ARM-Architekturen, einschließlich Apple Silicon (M1/M2/M3/M4) Macs. Das Docker-Image wird nativ für `linux/arm64` erstellt, und alle Python- und Node.js-Abhängigkeiten haben ARM-kompatible Wheels oder Fallbacks.
   </Accordion>
 
   <Accordion title="Welche Datenbanken werden unterstützt?">
     FIM One nutzt Datenbanken auf zwei unterschiedliche Arten:
 
     **1. Interne Datenbank (FIM Ones eigene Daten):**
-    - **SQLite** – konfigurationsfreier Standard, ideal für Entwicklung und Single-Worker-Bereitstellungen.
-    - **PostgreSQL** – empfohlen für Produktion, erforderlich für Multi-Worker-Setups (`WORKERS > 1`).
+    - **SQLite** — konfigurationslos Standard, ideal für Entwicklung und Single-Worker-Bereitstellungen.
+    - **PostgreSQL** — empfohlen für Produktion, erforderlich für Multi-Worker-Setups (`WORKERS > 1`).
 
     **2. Connector-Ziele (Systeme, mit denen Sie sich verbinden):**
 
-    FIM One kann sich über Datenbank-Konnektoren mit externen Datenbanken als Datenquellen verbinden:
+    FIM One kann sich über Database Connectors mit externen Datenbanken als Datenquellen verbinden:
 
     | Datenbank | Status |
     |----------|--------|
@@ -128,18 +128,18 @@ description: "Häufig gestellte Fragen zu FIM One — Setup, Funktionen, Lizenzi
     | GBase | Unterstützt |
     | Highgo | Unterstützt |
 
-    Jeder Datenbank-Konnektor generiert automatisch drei Tools: `list_tables`, `describe_table` und `query`. Schema-Introspection, KI-gestützte Annotation und schreibgeschützte Abfrageausführung sind standardmäßig enthalten.
+    Jeder Database Connector generiert automatisch drei Tools: `list_tables`, `describe_table` und `query`. Schema-Introspection, KI-gestützte Annotation und schreibgeschützte Query-Ausführung sind standardmäßig enthalten.
   </Accordion>
 
   <Accordion title="Können mehrere Benutzer dieselbe Instanz gemeinsam nutzen?">
     Ja. FIM One ist von Grund auf für Multi-Tenant-Bereitstellungen konzipiert:
 
-    - **JWT-Authentifizierung** – tokenbasierte Authentifizierung mit Sitzungsisolation pro Benutzer.
-    - **Organisationsisolation** – Ressourcen (Agenten, Konnektoren, Wissensdatenbanken) sind auf Organisationen beschränkt.
-    - **Rollenbasierter Zugriff** – Admin- und Benutzerrollen mit angemessenen Berechtigungsgrenzen.
-    - **Ressourceneigentum** – Konversationen und Konfigurationen sind pro Benutzer isoliert.
+    - **JWT-Authentifizierung** — tokenbasierte Authentifizierung mit Sitzungsisolation pro Benutzer.
+    - **Organisationsisolation** — Ressourcen (Agenten, Connectors, MCP-Server) sind auf Organisationen beschränkt. Wissensdatenbanken bleiben privat für ihren Besitzer und werden nie direkt geteilt.
+    - **Rollenbasierter Zugriff** — Admin- und Benutzerrollen mit angemessenen Berechtigungsgrenzen.
+    - **Ressourceneigentum** — Konversationen und Konfigurationen sind pro Benutzer isoliert.
 
-    Verwenden Sie für Multi-User-Produktionsbereitstellungen PostgreSQL als interne Datenbank und setzen Sie `WORKERS` auf Ihre erwartete Parallelität.
+    Für Multi-User-Produktionsbereitstellungen verwenden Sie PostgreSQL als interne Datenbank und setzen Sie `WORKERS` auf Ihre erwartete Parallelität.
   </Accordion>
 </AccordionGroup>
 

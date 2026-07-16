@@ -4,11 +4,11 @@ icon: "building"
 description: "Ressourcenteilung auf Teamebene mit rollenbasiertem Zugriff, optionaler Überprüfung und Credential-Fallback."
 ---
 
-## Überblick
+## Übersicht
 
-Organisationen sind FIM One's Einheit für Teamzusammenarbeit. Sie ermöglichen es Benutzergruppen, Ressourcen — Agenten, Konnektoren, Wissensdatenbanken, MCP-Server, Workflows und Skills — innerhalb eines vertrauenswürdigen Bereichs gemeinsam zu nutzen.
+Organisationen sind FIM Ones Einheit für Teamzusammenarbeit. Sie ermöglichen es Benutzergruppen, Ressourcen — Agents, Connectors, MCP Servers, Workflows und Skills — innerhalb eines vertrauenswürdigen Bereichs zu teilen. Knowledge Bases sind die eine Ausnahme: Sie sind niemals teilbar und erreichen andere Mitglieder nur als interne Abhängigkeit eines freigegebenen Agents (siehe [Sharing and credentials](/architecture/sharing-and-credentials)).
 
-Jede Ressource in FIM One beginnt als **persönlich** (nur für ihren Ersteller sichtbar). Wenn Sie eine Ressource in einer Organisation veröffentlichen, wird sie **auffindbar** für andere Organisationsmitglieder über den Marktplatz im Organisationsbereich. Mitglieder durchsuchen die gemeinsamen Ressourcen der Organisation und abonnieren die, die sie benötigen.
+Jede Ressource in FIM One beginnt als **persönlich** (nur für ihren Ersteller sichtbar). Wenn Sie eine Ressource in einer Organisation veröffentlichen, wird sie **auffindbar** für andere Organisationsmitglieder über den Marktplatz im Organisationsbereich. Mitglieder durchsuchen die freigegebenen Ressourcen der Organisation und abonnieren die, die sie benötigen.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     O -.->|"visible but not subscribed"| M3
 ```
 
-Organisationen und der globale Marktplatz nutzen das gleiche abonnementbasierte Zugangsmodell. Der Hauptunterschied ist Vertrauen: Organisationen stellen ein Team oder Unternehmen dar, in dem sich Mitglieder kennen und vertrauen, daher ist eine Überprüfung optional und die gemeinsame Nutzung von Anmeldedaten ist unkompliziert.
+Organisationen und der globale Marktplatz nutzen das gleiche abonnementbasierte Zugriffsmodell. Der Hauptunterschied ist Vertrauen: Organisationen stellen ein Team oder Unternehmen dar, in dem sich Mitglieder kennen und vertrauen, daher ist eine Überprüfung optional und die Anmeldedatenverwaltung ist unkompliziert.
 
 ## Erstellen und Verwalten von Organisationen
 
@@ -141,13 +141,13 @@ A resource is available in your workspace if:
 Das Veröffentlichen einer Ressource in einer Organisation gewährt keinen automatischen Zugriff. Mitglieder müssen sich über den Markt im Org-Geltungsbereich anmelden, um die Ressource zu ihrem Arbeitsbereich hinzuzufügen.
 </Warning>
 
-## Infrastruktur-Ressourcen (organisationsweit, kein Abonnement)
+## Infrastructure-Ressourcen (organisationsweit, kein Abonnement)
 
-Eine zweite Klasse von organisationsweit geltenden Ressourcen folgt **nicht** dem oben beschriebenen Lebenszyklus „persönlich → veröffentlichen → abonnieren". Diese werden **einmalig von einem Org-Besitzer oder Admin konfiguriert** und sind dann transparent für jeden Agenten in der Organisation verfügbar:
+Eine zweite Klasse von organisationsweit geltenden Ressourcen folgt **nicht** dem oben beschriebenen Lebenszyklus „persönlich → veröffentlichen → abonnieren". Diese werden **einmalig von einem Org-Eigentümer oder Admin konfiguriert** und sind dann transparent für jeden Agenten in der Organisation verfügbar:
 
-| Ressource | Zweck | Konfiguriert von | Verbraucht von |
+| Ressource | Zweck | Konfiguriert von | Verwendet von |
 |---|---|---|---|
-| **Channels** | Ausgehende Brücke zu einer IM-Plattform (heute Feishu; Slack / WeCom / Teams geplant) | Org-Besitzer / Admin | Hook-System jedes Agenten (/architecture/hook-system) und proaktive Benachrichtigungstools |
+| **Channels** | Ausgehende Verbindung zu einer IM-Plattform (derzeit Feishu; Slack / WeCom / Teams geplant) | Org-Eigentümer / Admin | [Hook-System](/architecture/hook-system) jedes Agenten und proaktive Benachrichtigungswerkzeuge |
 | **OAuth-Anbieter** | Social-Login-Anmeldedaten (GitHub, Google, Feishu, Discord) | Systemadministrator (Umgebungsvariablen) | Anmeldeseite |
 | **API-Schlüssel** | Programmatische Zugriffstokens für Headless-Clients | Jeder Benutzer, organisationsweit | Externe Integrationen |
 
@@ -166,7 +166,7 @@ flowchart LR
     A3 -. "uses for approval cards" .-> Ch
 ```
 
-Die Schlüsseldifferenzierung: **veröffentlichbare Ressourcen** (Agenten, Connectors, KBs, …) sind benutzerspezifische Artefakte, die ein explizites Mitgliedsabonnement erfordern; **Infrastruktur-Ressourcen** (Channels, OAuth, API-Schlüssel) sind Plattform-Level-Verdrahtung, die alle Agenten implizit gemeinsam nutzen. Channels sind speziell die IM-Hotline für die gesamte Organisation – ein gut gepflegter Feishu-Channel unterstützt jedes Genehmigungstor eines Agenten, jeden geplanten Bericht, jedes Eskalationsereignis.
+Der Schlüsseunterschied: **veröffentlichbare Ressourcen** (Agenten, Connectoren, Skills, …) sind benutzerbasierte Artefakte, die ein explizites Mitgliederabonnement erfordern; **Infrastruktur-Ressourcen** (Channels, OAuth, API-Schlüssel) sind Plattform-Level-Verkabelung, die alle Agenten implizit gemeinsam nutzen. Channels sind speziell die IM-Hotline für die gesamte Organisation — ein gut gepflegter Feishu-Channel unterstützt jedes Approval Gate eines Agenten, jeden geplanten Bericht, jedes Eskalationsereignis.
 
 Siehe [Channels-Übersicht](/configuration/channels/overview) für den Channel-Lebenszyklus und unterstützte Plattformen.
 

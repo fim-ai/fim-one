@@ -147,8 +147,12 @@ sequenceDiagram
     M->>DA: Analyze dependencies
     DA-->>M: Requires: ERP Connector, Legal KB
 
+    alt Content dependency (Skill)
+        M->>M: Auto-subscribe to Skill (silent)
+    end
+
     alt Content dependency (KB)
-        M->>M: Auto-subscribe to Legal KB (silent)
+        M->>M: No subscription — Agent delegates the owner's KB at run time
     end
 
     alt Connection dependency (Connector)
@@ -161,7 +165,7 @@ sequenceDiagram
 ```
 
 1. The system analyzes the Solution's dependencies — which Connectors, Knowledge Bases, MCP Servers, and Skills it requires.
-2. **Content-type dependencies** (KB, Skill) are auto-subscribed silently. The user does not see or manage these.
+2. **Content-type dependencies** are handled without asking the user. A Skill is auto-subscribed silently. A Knowledge Base is never subscribed at all — the Agent delegates its owner's KB at run time, so the subscriber has nothing to provision.
 3. **Connection-type dependencies** (Connector, MCP Server) are listed as requirements. An onboarding wizard collects credentials.
 4. The `ResourceSubscription` record is created, and the resource appears in the user's visibility filter.
 

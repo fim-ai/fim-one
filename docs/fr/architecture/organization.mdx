@@ -6,9 +6,9 @@ description: "Partage de ressources au niveau de l'équipe avec accès basé sur
 
 ## Aperçu
 
-Les organisations sont l'unité de collaboration d'équipe de FIM One. Elles permettent aux groupes d'utilisateurs de partager des ressources — Agents, Connecteurs, Bases de connaissances, Serveurs MCP, Workflows et Compétences — dans un périmètre de confiance.
+Les organisations sont l'unité de collaboration en équipe de FIM One. Elles permettent aux groupes d'utilisateurs de partager des ressources — Agents, Connecteurs, Serveurs MCP, Workflows et Skills — dans un périmètre de confiance. Les Knowledge Bases constituent l'une exception : elles ne sont jamais partageables et ne sont accessibles aux autres membres que comme dépendance interne d'un Agent partagé (voir [Partage et identifiants](/architecture/sharing-and-credentials)).
 
-Chaque ressource dans FIM One commence comme **personnelle** (visible uniquement pour son créateur). Lorsque vous publiez une ressource dans une organisation, elle devient **découvrable** par les autres membres de l'organisation via le périmètre d'organisation du Marché. Les membres parcourent les ressources partagées de l'organisation et s'abonnent à celles dont ils ont besoin.
+Chaque ressource dans FIM One commence comme **personnelle** (visible uniquement pour son créateur). Lorsque vous publiez une ressource dans une organisation, elle devient **découvrable** par les autres membres de l'organisation via le périmètre organisation du Market. Les membres parcourent les ressources partagées de l'organisation et s'abonnent à celles dont ils ont besoin.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
     O -.->|"visible but not subscribed"| M3
 ```
 
-Les organisations et le Marché mondial partagent le même modèle d'accès basé sur l'abonnement. La différence clé est la confiance : les organisations représentent une équipe ou une entreprise où les membres se connaissent et se font confiance, donc l'examen est facultatif et le partage des identifiants est simple.
+Les organisations et le Market global partagent le même modèle d'accès basé sur l'abonnement. La différence clé est la confiance : les organisations représentent une équipe ou une entreprise où les membres se connaissent et se font confiance mutuellement, donc l'examen est optionnel et le partage d'identifiants est direct.
 
 ## Création et gestion des organisations
 
@@ -141,15 +141,15 @@ A resource is available in your workspace if:
 Publier une ressource dans une organisation n'accorde pas d'accès automatique. Les membres doivent s'abonner via la portée org du Marché pour ajouter la ressource à leur espace de travail.
 </Warning>
 
-## Ressources d'infrastructure (à l'échelle de l'organisation, sans abonnement)
+## Infrastructure Resources (org-wide, no subscription)
 
-Une deuxième classe de ressource à l'échelle de l'organisation ne suit **pas** le cycle de vie personnel → publier → s'abonner décrit ci-dessus. Ces ressources sont **configurées une seule fois par un propriétaire d'organisation ou un administrateur** et ensuite disponibles de manière transparente pour chaque agent de l'organisation :
+Une deuxième classe de ressources au niveau de l'org ne suit **pas** le cycle de vie personnel → publier → s'abonner décrit ci-dessus. Il s'agit de ressources **configurées une seule fois par un propriétaire d'Org ou un administrateur** et ensuite transparemment disponibles pour chaque agent de l'org :
 
-| Ressource | Objectif | Configurée par | Consommée par |
+| Resource | Purpose | Configured by | Consumed by |
 |---|---|---|---|
-| **Channels** | Pont sortant vers une plateforme de messagerie instantanée (Feishu aujourd'hui ; Slack / WeCom / Teams prévus) | Propriétaire d'organisation / Administrateur | [Système de Hook](/architecture/hook-system) de chaque agent et outils de notification proactive |
-| **Fournisseurs OAuth** | Identifiants de connexion sociale (GitHub, Google, Feishu, Discord) | Administrateur système (variables d'environnement) | Page de connexion |
-| **Clés API** | Jetons d'accès programmatique pour les clients sans interface | Chaque utilisateur, à l'échelle de l'organisation | Intégrations externes |
+| **Channels** | Pont sortant vers une plateforme IM (Feishu aujourd'hui ; Slack / WeCom / Teams prévus) | Org Owner / Admin | Le [Hook System](/architecture/hook-system) de chaque agent et les outils de notification proactive |
+| **OAuth Providers** | Identifiants de connexion sociale (GitHub, Google, Feishu, Discord) | System admin (env vars) | Page de connexion |
+| **API Keys** | Jetons d'accès programmatique pour les clients sans interface | Chaque utilisateur, au niveau de l'org | Intégrations externes |
 
 ```mermaid
 flowchart LR
@@ -166,9 +166,9 @@ flowchart LR
     A3 -. "uses for approval cards" .-> Ch
 ```
 
-La distinction clé : les **ressources publiables** (Agents, Connecteurs, BCs, …) sont des artefacts par utilisateur qui nécessitent un abonnement explicite des membres ; les **ressources d'infrastructure** (Channels, OAuth, clés API) sont le câblage au niveau de la plateforme que tous les agents partagent implicitement. Les Channels en particulier sont la ligne directe de messagerie instantanée pour toute l'organisation — un seul channel Feishu bien maintenu soutient la porte d'approbation de chaque agent, chaque rapport planifié, chaque événement d'escalade.
+La distinction clé : les **ressources publiables** (Agents, Connectors, Skills, …) sont des artefacts par utilisateur qui nécessitent un abonnement explicite des membres ; les **ressources d'infrastructure** (Channels, OAuth, clés API) sont le câblage au niveau de la plateforme que tous les agents partagent implicitement. Les Channels en particulier sont la ligne directe IM pour l'ensemble de l'org — un canal Feishu bien maintenu soutient la porte d'approbation de chaque agent, chaque rapport planifié, chaque événement d'escalade.
 
-Consultez [Aperçu des Channels](/configuration/channels/overview) pour le cycle de vie des channels et les plateformes prises en charge.
+Voir [Channels overview](/configuration/channels/overview) pour le cycle de vie des canaux et les plateformes supportées.
 
 ## Scénarios Pratiques
 

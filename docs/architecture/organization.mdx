@@ -6,7 +6,7 @@ description: "Team-level resource sharing with role-based access, optional revie
 
 ## Overview
 
-Organizations are FIM One's unit for team collaboration. They let groups of users share resources — Agents, Connectors, Knowledge Bases, MCP Servers, Workflows, and Skills — within a trusted scope.
+Organizations are FIM One's unit for team collaboration. They let groups of users share resources — Agents, Connectors, MCP Servers, Workflows, and Skills — within a trusted scope. Knowledge Bases are the one exception: they are never shareable, and reach other members only as an internal dependency of a shared Agent (see [Sharing and credentials](/architecture/sharing-and-credentials)).
 
 Every resource in FIM One starts as **personal** (visible only to its creator). When you publish a resource to an organization, it becomes **discoverable** by other org members through the Market's organization scope. Members browse the org's shared resources and subscribe to the ones they need.
 
@@ -166,7 +166,7 @@ flowchart LR
     A3 -. "uses for approval cards" .-> Ch
 ```
 
-The key distinction: **publishable resources** (Agents, Connectors, KBs, …) are per-user artifacts that need explicit member subscription; **infrastructure resources** (Channels, OAuth, API keys) are platform-level wiring that all agents share implicitly. Channels specifically are the IM hotline for the whole org — one well-maintained Feishu channel backs every agent's approval gate, every scheduled report, every escalation event.
+The key distinction: **publishable resources** (Agents, Connectors, Skills, …) are per-user artifacts that need explicit member subscription; **infrastructure resources** (Channels, OAuth, API keys) are platform-level wiring that all agents share implicitly. Channels specifically are the IM hotline for the whole org — one well-maintained Feishu channel backs every agent's approval gate, every scheduled report, every escalation event.
 
 See [Channels overview](/configuration/channels/overview) for the channel lifecycle and supported platforms.
 

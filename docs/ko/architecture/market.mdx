@@ -135,7 +135,7 @@ Market 페이지는 두 가지 탐색 컨텍스트 간에 전환하는 **범위 
 
 ### 솔루션 구독
 
-솔루션(에이전트, 스킬 또는 워크플로우)을 구독하는 것은 종속성 분석을 포함합니다:
+솔루션(Agent, Skill, 또는 Workflow) 구독에는 종속성 분석이 포함됩니다:
 
 ```mermaid
 sequenceDiagram
@@ -147,8 +147,12 @@ sequenceDiagram
     M->>DA: Analyze dependencies
     DA-->>M: Requires: ERP Connector, Legal KB
 
+    alt Content dependency (Skill)
+        M->>M: Auto-subscribe to Skill (silent)
+    end
+
     alt Content dependency (KB)
-        M->>M: Auto-subscribe to Legal KB (silent)
+        M->>M: No subscription — Agent delegates the owner's KB at run time
     end
 
     alt Connection dependency (Connector)
@@ -160,9 +164,9 @@ sequenceDiagram
     M-->>U: Agent appears in workspace
 ```
 
-1. 시스템은 솔루션의 종속성(필요한 커넥터, 지식 베이스, MCP 서버 및 스킬)을 분석합니다.
-2. **콘텐츠 유형 종속성**(KB, 스킬)은 자동으로 자동 구독됩니다. 사용자는 이를 보거나 관리하지 않습니다.
-3. **연결 유형 종속성**(커넥터, MCP 서버)은 요구사항으로 나열됩니다. 온보딩 마법사가 자격 증명을 수집합니다.
+1. 시스템은 솔루션의 종속성(필요한 Connectors, Knowledge Bases, MCP Servers, Skills)을 분석합니다.
+2. **콘텐츠 유형 종속성**은 사용자에게 묻지 않고 처리됩니다. Skill은 자동으로 조용히 구독됩니다. Knowledge Base는 절대 구독되지 않습니다. Agent가 런타임에 소유자의 KB를 위임하므로 구독자는 프로비저닝할 것이 없습니다.
+3. **연결 유형 종속성**(Connector, MCP Server)은 요구사항으로 나열됩니다. 온보딩 마법사가 자격증명을 수집합니다.
 4. `ResourceSubscription` 레코드가 생성되고 리소스가 사용자의 가시성 필터에 나타납니다.
 
 ### 컴포넌트 구독

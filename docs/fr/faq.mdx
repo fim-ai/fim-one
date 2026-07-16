@@ -82,13 +82,13 @@ description: "Questions fréquemment posées sur FIM One — configuration, fonc
 
 <AccordionGroup>
   <Accordion title="Quelles sont les exigences système ?">
-    **Exigences minimales :**
+    **Configuration minimale :**
 
     | Ressource | Exigence |
     |----------|---------|
     | **Python** | 3.11+ |
     | **RAM** | 2 GB minimum |
-    | **Disque** | 1 GB libre (plus d'espace pour les documents téléchargés et le magasin vectoriel) |
+    | **Disque** | 1 GB libre (plus l'espace pour les documents téléchargés et le magasin vectoriel) |
     | **Node.js** | 18+ (pour le développement local) |
 
     **Recommandé pour la production :**
@@ -103,19 +103,19 @@ description: "Questions fréquemment posées sur FIM One — configuration, fonc
   </Accordion>
 
   <Accordion title="FIM One fonctionne-t-il sur ARM / Apple Silicon ?">
-    Oui. Docker et le développement local fonctionnent tous deux sur les architectures ARM, y compris Apple Silicon (M1/M2/M3/M4) Macs. L'image Docker se construit nativement pour `linux/arm64`, et toutes les dépendances Python et Node.js disposent de wheels compatibles ARM ou de solutions de secours.
+    Oui. Docker et le développement local fonctionnent tous deux sur les architectures ARM, y compris les Macs Apple Silicon (M1/M2/M3/M4). L'image Docker se construit nativement pour `linux/arm64`, et toutes les dépendances Python et Node.js disposent de wheels compatibles ARM ou de solutions de secours.
   </Accordion>
 
   <Accordion title="Quelles bases de données sont supportées ?">
     FIM One utilise les bases de données de deux façons distinctes :
 
-    **1. Base de données interne (données propres de FIM One) :**
-    - **SQLite** — zéro configuration par défaut, idéal pour le développement et les déploiements single-worker.
+    **1. Base de données interne (données propres à FIM One) :**
+    - **SQLite** — configuration zéro, idéale pour le développement et les déploiements single-worker.
     - **PostgreSQL** — recommandé pour la production, requis pour les configurations multi-workers (`WORKERS > 1`).
 
-    **2. Cibles des connecteurs (systèmes auxquels vous vous connectez) :**
+    **2. Cibles de connecteur (systèmes auxquels vous vous connectez) :**
 
-    FIM One peut se connecter à des bases de données externes en tant que sources de données via des Connecteurs de Base de Données :
+    FIM One peut se connecter à des bases de données externes en tant que sources de données via des connecteurs de base de données :
 
     | Base de données | Statut |
     |----------|--------|
@@ -132,12 +132,12 @@ description: "Questions fréquemment posées sur FIM One — configuration, fonc
   </Accordion>
 
   <Accordion title="Plusieurs utilisateurs peuvent-ils partager la même instance ?">
-    Oui. FIM One est construit pour les déploiements multi-locataires dès le départ :
+    Oui. FIM One est conçu pour les déploiements multi-locataires dès le départ :
 
     - **Authentification JWT** — authentification basée sur les jetons avec isolation de session par utilisateur.
-    - **Isolation organisationnelle** — les ressources (agents, connecteurs, bases de connaissances) sont limitées aux organisations.
+    - **Isolation organisationnelle** — les ressources (agents, connecteurs, serveurs MCP) sont limitées aux organisations. Les bases de connaissances restent privées pour leur propriétaire et ne sont jamais partagées directement.
     - **Accès basé sur les rôles** — rôles administrateur et utilisateur avec des limites de permissions appropriées.
-    - **Propriété des ressources** — les conversations et configurations sont isolées par utilisateur.
+    - **Propriété des ressources** — les conversations et les configurations sont isolées par utilisateur.
 
     Pour les déploiements multi-utilisateurs en production, utilisez PostgreSQL comme base de données interne et définissez `WORKERS` pour correspondre à votre concurrence attendue.
   </Accordion>

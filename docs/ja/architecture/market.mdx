@@ -133,9 +133,9 @@ Market ページは、2 つのブラウジング コンテキスト間を切り�
 
 ユーザーはページネーション付きカタログを通じてマーケットをブラウジングします。各リソースには、名前、説明、アイコン、パブリッシャーのユーザー名、および購読ボタンが表示されます。ユーザーが既に購読しているリソースは、それに応じてマークされます。ブラウズAPI（`GET /api/market`）はユーザー自身のリソースを除外します。公開したものは購読できません。
 
-### ソリューションへのサブスクライブ
+### ソリューションへのサブスクリプション
 
-ソリューション（エージェント、スキル、またはワークフロー）へのサブスクライブには、依存関係の分析が含まれます：
+ソリューション（Agent、Skill、または Workflow）へのサブスクリプションには、依存関係の分析が含まれます：
 
 ```mermaid
 sequenceDiagram
@@ -147,8 +147,12 @@ sequenceDiagram
     M->>DA: Analyze dependencies
     DA-->>M: Requires: ERP Connector, Legal KB
 
+    alt Content dependency (Skill)
+        M->>M: Auto-subscribe to Skill (silent)
+    end
+
     alt Content dependency (KB)
-        M->>M: Auto-subscribe to Legal KB (silent)
+        M->>M: No subscription — Agent delegates the owner's KB at run time
     end
 
     alt Connection dependency (Connector)
@@ -160,10 +164,10 @@ sequenceDiagram
     M-->>U: Agent appears in workspace
 ```
 
-1. システムはソリューションの依存関係を分析します — 必要なコネクタ、ナレッジベース、MCP サーバー、およびスキルを特定します。
-2. **コンテンツタイプの依存関係**（KB、スキル）は自動的にサイレントにサブスクライブされます。ユーザーはこれらを表示または管理しません。
-3. **接続タイプの依存関係**（コネクタ、MCP サーバー）は要件として表示されます。オンボーディングウィザードが認証情報を収集します。
-4. `ResourceSubscription` レコードが作成され、リソースがユーザーの可視性フィルターに表示されます。
+1. システムはソリューションの依存関係を分析します——どの Connector、Knowledge Base、MCP Server、および Skill が必要かを確認します。
+2. **コンテンツタイプの依存関係**はユーザーに確認することなく処理されます。Skill は自動的にサイレントでサブスクライブされます。Knowledge Base は決してサブスクライブされません——Agent は実行時に所有者の KB を委譲するため、サブスクライバーはプロビジョニングする必要がありません。
+3. **接続タイプの依存関係**（Connector、MCP Server）は要件として一覧表示されます。オンボーディングウィザードが認証情報を収集します。
+4. `ResourceSubscription` レコードが作成され、リソースはユーザーの表示フィルターに表示されます。
 
 ### コンポーネントへのサブスクライブ
 

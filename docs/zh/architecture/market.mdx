@@ -135,7 +135,7 @@ Market 页面提供了一个**范围选择器**，可在两个浏览上下文之
 
 ### 订阅解决方案
 
-订阅解决方案（智能体、技能或工作流）涉及依赖项分析：
+订阅解决方案（智能体、技能或工作流）涉及依赖分析：
 
 ```mermaid
 sequenceDiagram
@@ -147,8 +147,12 @@ sequenceDiagram
     M->>DA: Analyze dependencies
     DA-->>M: Requires: ERP Connector, Legal KB
 
+    alt Content dependency (Skill)
+        M->>M: Auto-subscribe to Skill (silent)
+    end
+
     alt Content dependency (KB)
-        M->>M: Auto-subscribe to Legal KB (silent)
+        M->>M: No subscription — Agent delegates the owner's KB at run time
     end
 
     alt Connection dependency (Connector)
@@ -160,10 +164,10 @@ sequenceDiagram
     M-->>U: Agent appears in workspace
 ```
 
-1. 系统分析解决方案的依赖项 — 它需要哪些连接器、知识库、MCP 服务器和技能。
-2. **内容类型依赖项**（知识库、技能）会自动静默订阅。用户看不到或管理这些。
-3. **连接类型依赖项**（连接器、MCP 服务器）被列为需求。入职向导收集凭据。
-4. 创建 `ResourceSubscription` 记录，资源出现在用户的可见性筛选器中。
+1. 系统分析解决方案的依赖——它需要哪些连接器、知识库、MCP 服务器和技能。
+2. **内容类型依赖**无需询问用户即可处理。技能会自动静默订阅。知识库永远不会被订阅——智能体在运行时委托其所有者的知识库，因此订阅者无需配置任何内容。
+3. **连接类型依赖**（连接器、MCP 服务器）被列为需求。入职向导收集凭证。
+4. 创建`ResourceSubscription`记录，资源出现在用户的可见性筛选器中。
 
 ### 订阅组件
 

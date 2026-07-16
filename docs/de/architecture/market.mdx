@@ -133,9 +133,9 @@ Die gleiche Benutzeroberfläche, die gleichen Registerkarten (Solutions / Compon
 
 Benutzer durchsuchen den Marktplatz über einen paginierten Katalog. Jede Ressource zeigt ihren Namen, eine Beschreibung, ein Symbol, den Benutzernamen des Herausgebers und eine Abonnieren-Schaltfläche an. Ressourcen, die der Benutzer bereits abonniert hat, werden entsprechend gekennzeichnet. Die Browse-API (`GET /api/market`) schließt die eigenen Ressourcen des Benutzers aus — Sie können sich nicht für etwas anmelden, das Sie veröffentlicht haben.
 
-### Eine Lösung abonnieren
+### Abonnieren einer Lösung
 
-Das Abonnieren einer Lösung (Agent, Skill oder Workflow) beinhaltet eine Abhängigkeitsanalyse:
+Das Abonnieren einer Lösung (Agent, Skill oder Workflow) umfasst eine Abhängigkeitsanalyse:
 
 ```mermaid
 sequenceDiagram
@@ -147,8 +147,12 @@ sequenceDiagram
     M->>DA: Analyze dependencies
     DA-->>M: Requires: ERP Connector, Legal KB
 
+    alt Content dependency (Skill)
+        M->>M: Auto-subscribe to Skill (silent)
+    end
+
     alt Content dependency (KB)
-        M->>M: Auto-subscribe to Legal KB (silent)
+        M->>M: No subscription — Agent delegates the owner's KB at run time
     end
 
     alt Connection dependency (Connector)
@@ -160,10 +164,10 @@ sequenceDiagram
     M-->>U: Agent appears in workspace
 ```
 
-1. Das System analysiert die Abhängigkeiten der Lösung — welche Konnektoren, Wissensdatenbanken, MCP-Server und Skills sie benötigt.
-2. **Inhaltstyp-Abhängigkeiten** (KB, Skill) werden automatisch und stillschweigend abonniert. Der Benutzer sieht oder verwaltet diese nicht.
-3. **Verbindungstyp-Abhängigkeiten** (Konnektor, MCP-Server) werden als Anforderungen aufgelistet. Ein Onboarding-Assistent erfasst Anmeldedaten.
-4. Der `ResourceSubscription`-Datensatz wird erstellt, und die Ressource erscheint im Sichtbarkeitsfilter des Benutzers.
+1. Das System analysiert die Abhängigkeiten der Lösung — welche Connectors, Knowledge Bases, MCP Servers und Skills erforderlich sind.
+2. **Content-type-Abhängigkeiten** werden ohne Benutzerabfrage behandelt. Ein Skill wird automatisch stillschweigend abonniert. Eine Knowledge Base wird nie abonniert — der Agent delegiert die KB des Eigentümers zur Laufzeit, sodass der Abonnent nichts bereitstellen muss.
+3. **Connection-type-Abhängigkeiten** (Connector, MCP Server) werden als Anforderungen aufgelistet. Ein Onboarding-Assistent erfasst Anmeldedaten.
+4. Der `ResourceSubscription`-Datensatz wird erstellt, und die Ressource wird im Sichtbarkeitsfilter des Benutzers angezeigt.
 
 ### Abonnement für eine Komponente
 
