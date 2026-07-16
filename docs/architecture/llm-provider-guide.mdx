@@ -106,6 +106,10 @@ This error occurs only when **all three conditions** are met simultaneously:
 2. `response_format={"type":"json_object"}` is passed (the json_mode code path in `structured_llm_call`).
 3. The actual backend is AWS Bedrock (which rejects prefill).
 
+<Tip>
+**Bedrock via OpenAI-compatible endpoint?** If your Bedrock relay exposes an OpenAI-compatible `/v1/chat/completions` endpoint (either AWS's own OpenAI-compatible gateway or a third-party proxy), and the URL path does **not** contain `/claude` or `/anthropic`, FIM One resolves it with the `openai/` prefix. LiteLLM then treats the backend as a standard OpenAI-compatible server, passes `response_format` directly without injecting any prefill, and the server handles JSON constraining natively. **The prefill trap does not apply** — you do not need to set `json_mode_enabled=false`.
+</Tip>
+
 <Warning>
 This does NOT affect native tool calling (`tool_choice="auto"` with `tools=` parameter). The prefill injection only happens for `response_format`. ReAct agent execution is completely unaffected.
 </Warning>
@@ -167,6 +171,7 @@ Do NOT set `abilities["tool_call"] = False` to avoid this constraint. That would
 | Anthropic + thinking | `_run_native` | native_fc (thinking auto-disabled) | Thinking disabled for structured output only |
 | Bedrock relay (no thinking) | `_run_native` | native_fc | Full support |
 | Bedrock relay + thinking | `_run_native` | native_fc (thinking auto-disabled) | Thinking disabled for structured output only |
+| Bedrock via OpenAI-compatible endpoint | `_run_native` | native_fc | Full support — no prefill issue; see tip above |
 | Gemini | `_run_native` | native_fc | Full support |
 | DeepSeek (non-thinking) | `_run_native` | native_fc | Full support |
 | DeepSeek R1 (thinking) | `_run_native` | json_mode (set `tool_choice_enabled=false`) | Thinking always-on; skip native_fc |
@@ -331,7 +336,7 @@ Both feature and bug behavior is automatic — you don't need to configure anyth
 ## Troubleshooting
 
 **"This model does not support assistant message prefill"**
-Bedrock + json_mode. Set `LLM_JSON_MODE_ENABLED=false` or disable JSON Mode in the admin model settings.
+Bedrock + json_mode. Two fixes: (1) set `LLM_JSON_MODE_ENABLED=false` or disable JSON Mode in the admin model settings; or (2) if your Bedrock provider offers an OpenAI-compatible `/v1/chat/completions` endpoint, switch to that — FIM One resolves it as `openai/` and the prefill injection never occurs.
 
 **"Thinking may not be enabled when tool_choice forces tool use"** / **"tool_choice 'specified' is incompatible with thinking enabled"**
 For Anthropic models, `structured_llm_call` disables thinking for native_fc calls automatically. For other providers with always-on thinking (e.g. Kimi K2.5), disable "Native Function Calling" in the model's Advanced settings, or set `LLM_TOOL_CHOICE_ENABLED=false` globally. The degradation chain will skip native_fc and extract structured output via json_mode or plain_text instead.

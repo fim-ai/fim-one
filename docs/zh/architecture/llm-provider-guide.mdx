@@ -85,32 +85,36 @@ flowchart TD
 
 关键设计差异：`structured_llm_call` 的回退是**运行时**——它动态尝试每个级别并捕获异常以进行回退。ReAct 引擎的模式选择是**构建时**——它在开始时检查一次 `_native_mode_active` 并为整个循环提交到一种模式。这意味着 `structured_llm_call` 可以透明地从提供商特定的 400 错误中恢复，而 ReAct 依赖于模式在前期被正确选择。
 
-## Bedrock 预填陷阱
+## Bedrock预填陷阱
 
-当为使用 `anthropic/` 前缀解析的模型传递 `response_format={"type":"json_object"}` 时，LiteLLM 会在内部注入一条助手预填消息来模拟 JSON 模式。Anthropic Messages API 没有原生的 `response_format` 参数，所以 LiteLLM 通过在助手内容前面添加一个开括号来近似实现：
+当为使用`anthropic/`前缀解析的模型传递`response_format={"type":"json_object"}`时，LiteLLM会在内部注入一条助手预填消息来模拟JSON模式。Anthropic Messages API没有原生的`response_format`参数，所以LiteLLM通过在助手内容前加一个开括号来近似实现：
 
 ```json
 {"role": "assistant", "content": "{"}
 ```
 
-这在 Anthropic 的直接 API 上可以正常工作。但是，较新的 AWS Bedrock 模型版本会拒绝任何最后一条消息具有 `role: "assistant"` 的对话——他们称之为"助手消息预填"并抛出：
+这在Anthropic的直接API上可以正常工作。但是，较新的AWS Bedrock模型版本会拒绝任何最后一条消息具有`role: "assistant"`的对话——他们称之为"助手消息预填"并抛出错误：
 
 ```
 ValidationException: This model does not support assistant message prefill.
 The conversation must end with a user message.
 ```
 
-此错误仅在**同时满足以下三个条件**时发生：
+仅当**同时满足以下三个条件**时才会出现此错误：
 
-1. 模型使用 `anthropic/` 前缀解析（通过域名匹配或 URL 路径提示）。
-2. 传递了 `response_format={"type":"json_object"}`（`structured_llm_call` 中的 json_mode 代码路径）。
-3. 实际后端是 AWS Bedrock（拒绝预填）。
+1. 模型使用`anthropic/`前缀解析（通过域名匹配或URL路径提示）。
+2. 传递了`response_format={"type":"json_object"}`（`structured_llm_call`中的json_mode代码路径）。
+3. 实际后端是AWS Bedrock（拒绝预填）。
+
+<Tip>
+**通过OpenAI兼容端点的Bedrock？** 如果你的Bedrock中继暴露了OpenAI兼容的`/v1/chat/completions`端点（AWS自己的OpenAI兼容网关或第三方代理），且URL路径**不**包含`/claude`或`/anthropic`，FIM One会使用`openai/`前缀解析。LiteLLM随后将后端视为标准OpenAI兼容服务器，直接传递`response_format`而不注入任何预填，服务器原生处理JSON约束。**预填陷阱不适用**——你无需设置`json_mode_enabled=false`。
+</Tip>
 
 <Warning>
-这**不**影响原生工具调用（带有 `tools=` 参数的 `tool_choice="auto"`）。预填注入仅在 `response_format` 时发生。ReAct 智能体执行完全不受影响。
+这**不**影响原生工具调用（`tool_choice="auto"`配合`tools=`参数）。预填注入仅在`response_format`时发生。ReAct智能体执行完全不受影响。
 </Warning>
 
-如果 Level 1（native_fc）和 Level 2（json_mode）在 Bedrock 上都失败，系统会在 Level 3（plain_text）恢复。下面描述的 `json_mode_enabled` 标志消除了浪费的 Level 2 调用。
+如果第1级（native_fc）和第2级（json_mode）在Bedrock上都失败，系统会在第3级（plain_text）恢复。下面描述的`json_mode_enabled`标志消除了浪费的第2级调用。
 
 ### 修复方案：json_mode_enabled
 
@@ -167,11 +171,12 @@ Anthropic 在协议级别强制执行此约束，某些其他提供商（例如 
 | Anthropic + 思考 | `_run_native` | native_fc（思考自动禁用） | 仅对结构化输出禁用思考 |
 | Bedrock 中继（无思考） | `_run_native` | native_fc | 完全支持 |
 | Bedrock 中继 + 思考 | `_run_native` | native_fc（思考自动禁用） | 仅对结构化输出禁用思考 |
+| Bedrock 通过 OpenAI 兼容端点 | `_run_native` | native_fc | 完全支持——无预填充问题；见上面的提示 |
 | Gemini | `_run_native` | native_fc | 完全支持 |
 | DeepSeek（非思考） | `_run_native` | native_fc | 完全支持 |
-| DeepSeek R1（思考） | `_run_native` | json_mode（设置 `tool_choice_enabled=false`） | 思考始终启用；跳过 native_fc |
+| DeepSeek R1（思考） | `_run_native` | json_mode（设置 `tool_choice_enabled=false`） | 思考始终开启；跳过 native_fc |
 | Kimi K2（非思考） | `_run_native` | native_fc | 完全支持 |
-| Kimi K2.5（思考） | `_run_native` | json_mode（设置 `tool_choice_enabled=false`） | 思考始终启用；跳过 native_fc |
+| Kimi K2.5（思考） | `_run_native` | json_mode（设置 `tool_choice_enabled=false`） | 思考始终开启；跳过 native_fc |
 | 通用 OpenAI 兼容 | `_run_native` | native_fc | 完全支持 |
 | 任何 `tool_call=false` 的模型 | `_run_json` | json_mode 或 plain_text | 不支持工具调用的模型的备选方案 |
 
@@ -331,16 +336,16 @@ LLM 层不返回美元估计 — 定价和中继加价在上层应用，因此 L
 ## 故障排除
 
 **"This model does not support assistant message prefill"**
-Bedrock + json_mode。设置 `LLM_JSON_MODE_ENABLED=false` 或在管理员模型设置中禁用 JSON Mode。
+Bedrock + json_mode。两种修复方法：（1）设置 `LLM_JSON_MODE_ENABLED=false` 或在管理员模型设置中禁用 JSON Mode；或（2）如果你的 Bedrock 提供商提供 OpenAI 兼容的 `/v1/chat/completions` 端点，切换到该端点——FIM One 将其解析为 `openai/`，预填充注入永远不会发生。
 
 **"Thinking may not be enabled when tool_choice forces tool use"** / **"tool_choice 'specified' is incompatible with thinking enabled"**
-对于 Anthropic 模型，`structured_llm_call` 会自动为 native_fc 调用禁用思考。对于具有始终启用思考的其他提供商（例如 Kimi K2.5），在模型的高级设置中禁用"Native Function Calling"，或全局设置 `LLM_TOOL_CHOICE_ENABLED=false`。降级链将跳过 native_fc 并改为通过 json_mode 或 plain_text 提取结构化输出。
+对于 Anthropic 模型，`structured_llm_call` 会自动为 native_fc 调用禁用思考。对于其他始终启用思考的提供商（例如 Kimi K2.5），在模型的高级设置中禁用"Native Function Calling"，或全局设置 `LLM_TOOL_CHOICE_ENABLED=false`。降级链将跳过 native_fc，改为通过 json_mode 或 plain_text 提取结构化输出。
 
 **"DAG pipeline failed: LLM 'steps' is not an array"**
-LLM 将 `steps` 字段返回为字符串或单个对象，而不是数组。这通常意味着结构化输出降级到了 json_mode（缺乏模式强制）。检查日志中的 `structured_llm_call: level=xxx` — 如果显示 `json_mode` 而不是 `native_fc`，则 native_fc 正在静默失败。如果使用自定义 `BaseLLM` 子类，请验证它接受 `reasoning_effort` 关键字参数。
+LLM 将 `steps` 字段返回为字符串或单个对象，而不是数组。这通常意味着结构化输出降级到了 json_mode（缺乏模式强制）。检查日志中的 `structured_llm_call: level=xxx`——如果显示 `json_mode` 而不是 `native_fc`，则 native_fc 正在无声地失败。如果使用自定义 `BaseLLM` 子类，请验证它接受 `reasoning_effort` 关键字参数。
 
 **ReAct 意外降级到 JSON mode**
 检查模型的 `abilities["tool_call"]` 是否为 `True`。对于 `OpenAICompatibleLLM`，这始终为 `True`，但自定义 `BaseLLM` 子类可能会覆盖它。使用管理员 API 中的模型详情端点进行验证。
 
 **structured_llm_call 耗尽所有级别并抛出 StructuredOutputError**
-模型在任何级别都无法生成可解析的 JSON。这在现代模型中很少见。检查：(1) 模式是否为有效的 JSON Schema，(2) 模型是否有足够的 `max_tokens` 来生成完整响应，(3) 系统提示是否与模式指令相矛盾。DAG 规划器和分析器都提供 `default_value` 回退，因此此错误仅从显式省略默认值的调用站点传播。
+模型在任何级别都无法生成可解析的 JSON。这在现代模型中很少见。检查：（1）模式是有效的 JSON Schema，（2）模型有足够的 `max_tokens` 来生成完整响应，（3）系统提示没有与模式指令相冲突。DAG 规划器和分析器都提供 `default_value` 回退，因此此错误仅从显式省略默认值的调用站点传播。

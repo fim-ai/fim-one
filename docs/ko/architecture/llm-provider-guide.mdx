@@ -87,13 +87,13 @@ flowchart TD
 
 ## Bedrock prefill 함정
 
-`response_format={"type":"json_object"}`이 `anthropic/` 접두사로 확인된 모델에 전달되면, LiteLLM은 JSON 모드를 시뮬레이션하기 위해 내부적으로 어시스턴트 프리필 메시지를 주입합니다. Anthropic Messages API에는 기본 `response_format` 매개변수가 없으므로, LiteLLM은 어시스턴트 콘텐츠로 여는 중괄호를 앞에 붙여서 근사합니다:
+`response_format={"type":"json_object"}`이 `anthropic/` 접두사로 해석된 모델에 전달되면, LiteLLM은 JSON 모드를 시뮬레이션하기 위해 내부적으로 어시스턴트 프리필 메시지를 주입합니다. Anthropic Messages API는 기본 `response_format` 매개변수가 없으므로, LiteLLM은 어시스턴트 콘텐츠로 여는 중괄호를 앞에 붙여서 근사합니다:
 
 ```json
 {"role": "assistant", "content": "{"}
 ```
 
-이는 Anthropic의 직접 API에서 작동합니다. 그러나 최신 AWS Bedrock 모델 버전은 마지막 메시지가 `role: "assistant"`인 대화를 거부합니다 — 이를 "어시스턴트 메시지 프리필"이라고 부르며 다음을 throw합니다:
+이는 Anthropic의 직접 API에서 작동합니다. 그러나 최신 AWS Bedrock 모델 버전은 마지막 메시지가 `role: "assistant"`인 대화를 거부합니다 — 이를 "어시스턴트 메시지 프리필"이라고 부르며 다음을 발생시킵니다:
 
 ```
 ValidationException: This model does not support assistant message prefill.
@@ -102,9 +102,13 @@ The conversation must end with a user message.
 
 이 오류는 **세 가지 조건이 모두 동시에 충족될 때만** 발생합니다:
 
-1. 모델이 `anthropic/` 접두사로 확인됩니다(도메인 일치 또는 URL 경로 힌트를 통해).
+1. 모델이 `anthropic/` 접두사로 해석됩니다(도메인 일치 또는 URL 경로 힌트를 통해).
 2. `response_format={"type":"json_object"}`이 전달됩니다(`structured_llm_call`의 json_mode 코드 경로).
 3. 실제 백엔드는 AWS Bedrock입니다(프리필을 거부함).
+
+<Tip>
+**OpenAI 호환 엔드포인트를 통한 Bedrock?** Bedrock 릴레이가 OpenAI 호환 `/v1/chat/completions` 엔드포인트를 노출하고(AWS의 자체 OpenAI 호환 게이트웨이 또는 제3자 프록시), URL 경로에 `/claude` 또는 `/anthropic`이 **포함되지 않으면**, FIM One은 이를 `openai/` 접두사로 해석합니다. LiteLLM은 백엔드를 표준 OpenAI 호환 서버로 취급하고, 프리필 주입 없이 `response_format`을 직접 전달하며, 서버가 JSON 제약을 기본적으로 처리합니다. **프리필 함정이 적용되지 않습니다** — `json_mode_enabled=false`를 설정할 필요가 없습니다.
+</Tip>
 
 <Warning>
 이는 기본 도구 호출(`tool_choice="auto"`과 `tools=` 매개변수 포함)에 영향을 주지 않습니다. 프리필 주입은 `response_format`에만 발생합니다. ReAct 에이전트 실행은 완전히 영향을 받지 않습니다.
@@ -158,15 +162,16 @@ Anthropic 모델의 경우, `structured_llm_call`은 native_fc를 호출할 때 
 **제공자 마이그레이션 참고:** 일부 타사 릴레이는 `reasoning_effort` (`drop_params=True`)와 같은 지원되지 않는 매개변수를 자동으로 삭제하므로, 구성된 경우에도 사고가 활성화되지 않습니다. 사고를 적절히 지원하는 제공자 (Bedrock, 직접 Anthropic API)로 마이그레이션할 때, native_fc의 `reasoning_effort=None`은 일관된 동작을 보장합니다. 사용자 조치가 필요하지 않습니다 — 구조화된 출력은 모든 제공자에서 동일하게 작동합니다.
 </Note>
 
-## 빠른 참조: 어디서 작동하는가
+## 빠른 참조: 어디서 작동하는지
 
 | 시나리오 | ReAct 모드 | structured_llm_call 경로 | 참고 |
 |---|---|---|---|
 | OpenAI (모든 모델) | `_run_native` | native_fc | 완전 지원 |
 | Anthropic (thinking 없음) | `_run_native` | native_fc | 완전 지원 |
-| Anthropic + thinking | `_run_native` | native_fc (thinking 자동 비활성화) | 구조화된 출력에만 thinking 비활성화 |
+| Anthropic + thinking | `_run_native` | native_fc (thinking 자동 비활성화) | 구조화된 출력의 경우에만 thinking 비활성화 |
 | Bedrock relay (thinking 없음) | `_run_native` | native_fc | 완전 지원 |
-| Bedrock relay + thinking | `_run_native` | native_fc (thinking 자동 비활성화) | 구조화된 출력에만 thinking 비활성화 |
+| Bedrock relay + thinking | `_run_native` | native_fc (thinking 자동 비활성화) | 구조화된 출력의 경우에만 thinking 비활성화 |
+| OpenAI 호환 엔드포인트를 통한 Bedrock | `_run_native` | native_fc | 완전 지원 — prefill 문제 없음; 위의 팁 참고 |
 | Gemini | `_run_native` | native_fc | 완전 지원 |
 | DeepSeek (thinking 없음) | `_run_native` | native_fc | 완전 지원 |
 | DeepSeek R1 (thinking) | `_run_native` | json_mode (`tool_choice_enabled=false` 설정) | Thinking 항상 활성화; native_fc 건너뛰기 |
@@ -331,16 +336,16 @@ Claude 4 ReAct 턴에서 기본 에이전트 프롬프트로 측정:
 ## 문제 해결
 
 **"This model does not support assistant message prefill"**
-Bedrock + json_mode. `LLM_JSON_MODE_ENABLED=false`를 설정하거나 관리자 모델 설정에서 JSON Mode를 비활성화하세요.
+Bedrock + json_mode. 두 가지 해결책: (1) `LLM_JSON_MODE_ENABLED=false`를 설정하거나 관리자 모델 설정에서 JSON Mode를 비활성화; 또는 (2) Bedrock 제공자가 OpenAI 호환 `/v1/chat/completions` 엔드포인트를 제공하는 경우, 해당 엔드포인트로 전환 — FIM One이 `openai/`로 해석하며 prefill 주입이 발생하지 않습니다.
 
 **"Thinking may not be enabled when tool_choice forces tool use"** / **"tool_choice 'specified' is incompatible with thinking enabled"**
-Anthropic 모델의 경우, `structured_llm_call`은 native_fc 호출에 대해 자동으로 thinking을 비활성화합니다. 항상 활성화된 thinking을 지원하는 다른 제공자(예: Kimi K2.5)의 경우, 모델의 고급 설정에서 "Native Function Calling"을 비활성화하거나 전역적으로 `LLM_TOOL_CHOICE_ENABLED=false`를 설정하세요. 성능 저하 체인은 native_fc를 건너뛰고 대신 json_mode 또는 plain_text를 통해 구조화된 출력을 추출합니다.
+Anthropic 모델의 경우, `structured_llm_call`이 native_fc 호출에 대해 자동으로 thinking을 비활성화합니다. 항상 활성화된 thinking을 지원하는 다른 제공자(예: Kimi K2.5)의 경우, 모델의 고급 설정에서 "Native Function Calling"을 비활성화하거나 전역적으로 `LLM_TOOL_CHOICE_ENABLED=false`를 설정하세요. 성능 저하 체인은 native_fc를 건너뛰고 대신 json_mode 또는 plain_text를 통해 구조화된 출력을 추출합니다.
 
 **"DAG pipeline failed: LLM 'steps' is not an array"**
-LLM이 `steps` 필드를 문자열 또는 단일 객체로 반환했습니다. 이는 일반적으로 구조화된 출력이 json_mode로 폴백되었음을 의미합니다(스키마 강제가 없음). 로그에서 `structured_llm_call: level=xxx`를 확인하세요. `native_fc` 대신 `json_mode`를 표시하면 native_fc가 조용히 실패하고 있습니다. 사용자 정의 `BaseLLM` 서브클래스를 사용하는 경우, `reasoning_effort` kwarg를 허용하는지 확인하세요.
+LLM이 `steps` 필드를 문자열 또는 단일 객체로 반환했습니다. 이는 일반적으로 구조화된 출력이 json_mode로 폴백되었음을 의미합니다(스키마 강제가 없음). 로그에서 `structured_llm_call: level=xxx`를 확인하세요 — `native_fc` 대신 `json_mode`를 표시하면 native_fc가 자동으로 실패하고 있습니다. 사용자 정의 `BaseLLM` 서브클래스를 사용하는 경우, `reasoning_effort` kwarg를 수용하는지 확인하세요.
 
-**ReAct가 예상치 않게 JSON mode로 폴백됨**
-모델의 `abilities["tool_call"]`이 `True`인지 확인하세요. `OpenAICompatibleLLM`의 경우 항상 `True`이지만, 사용자 정의 `BaseLLM` 서브클래스는 이를 재정의할 수 있습니다. 관리자 API의 모델 상세 엔드포인트로 확인하세요.
+**ReAct가 예기치 않게 JSON mode로 폴백**
+모델의 `abilities["tool_call"]`이 `True`인지 확인하세요. 이는 `OpenAICompatibleLLM`의 경우 항상 `True`이지만, 사용자 정의 `BaseLLM` 서브클래스는 이를 재정의할 수 있습니다. 관리자 API의 모델 상세 엔드포인트로 확인하세요.
 
 **structured_llm_call이 모든 레벨을 소진하고 StructuredOutputError 발생**
-모델이 어떤 레벨에서도 파싱 가능한 JSON을 생성하지 못했습니다. 최신 모델에서는 드문 경우입니다. 다음을 확인하세요: (1) 스키마가 유효한 JSON Schema인지, (2) 모델이 전체 응답을 생성할 충분한 `max_tokens`를 가지고 있는지, (3) 시스템 프롬프트가 스키마 지침과 모순되지 않는지. DAG 플래너와 분석기 모두 `default_value` 폴백을 제공하므로, 이 오류는 명시적으로 기본값을 생략하는 호출 사이트에서만 전파됩니다.
+모델이 어떤 레벨에서도 파싱 가능한 JSON을 생성하지 못했습니다. 최신 모델에서는 드문 경우입니다. 확인 사항: (1) 스키마가 유효한 JSON Schema인지, (2) 모델이 전체 응답을 생성할 충분한 `max_tokens`를 가지고 있는지, (3) 시스템 프롬프트가 스키마 지침과 모순되지 않는지. DAG 플래너와 분석기 모두 `default_value` 폴백을 제공하므로, 이 오류는 명시적으로 기본값을 생략하는 호출 사이트에서만 전파됩니다.
