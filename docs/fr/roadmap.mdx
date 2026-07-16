@@ -323,23 +323,23 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 - [ ] Modèles sortants : alertes d'échec, avertissements de budget, digests programmés, escalade, reçus d'audit
 - [ ] Canaux WeCom / DingTalk suivant Feishu
 
-### Parked — signal-gated
+### Parqué — signal-gated
 
-Do not start these without their trigger (see the replan §3): the MCP gateway waits for ≥2 unsolicited "mount your tools in my agent" asks; channelization waits for an implementor asking about licensing; IdP/OrgSync waits for customer pull; the rest wait for a delivered engagement that needs them.
+Ne commencez pas ces éléments sans leur déclencheur (voir replan §3) : la passerelle MCP attend ≥2 demandes non sollicitées « montez vos outils dans mon agent » ; la canalisation attend un implémenteur posant des questions sur les licences ; IdP/OrgSync attend un tirage client ; le reste attend un engagement livré qui en a besoin.
 
-- [ ] MCP gateway output — reverse-expose connector discover/execute as MCP tools for downstream agents
-- [ ] Channelization / white-label enablement — commercial-license path already in place
-- [ ] Identity Provider module + Channel slim-down — Feishu SSO, org graph sync {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] Connector authorization Tier 2 (require per-user credentials, key-binding health) + Tier 3 (login-ticket exchange) {/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] Public API Phase 2 — per-key rate limits/quotas, versioning, SDKs, developer portal {/* dev: dev/public-api-phase2.md */}
-- [ ] Observability — Agent Trace Layer (Trace/Span model, timeline viewer, OTel export) + metrics dashboard {/* dev: dev/agent-trace-layer.md */}
-- [ ] Agent Workspace remainder — handoff notes, workspace file browser UI, cross-session conversation recall {/* dev: dev/agent-workspace.md */}
-- [ ] Guardrails v1 — off-topic filter, PII redactor output guardrail, per-agent guardrail config UI
-- [ ] Hook System extras — built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
-- [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
-- [ ] Prompt cache follow-ups — Gemini context cache adapter, per-agent `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/incremental-dag.md */}
-- [ ] Ecosystem — scheduled/event-triggered agents, workflow trigger-identity observability, per-workflow `credential_policy`, DB Schema Advanced Builder, sandbox hardening v2
+- [ ] Sortie de passerelle MCP — exposer inversement la découverte/exécution du connecteur en tant qu'outils MCP pour les agents en aval
+- [ ] Canalisation / activation white-label — chemin de licence commerciale déjà en place
+- [ ] Module Identity Provider + réduction de canal — SSO Feishu, synchronisation du graphe org {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] Autorisation du connecteur Tier 2 (exiger des identifiants par utilisateur, santé de la liaison de clé) + Tier 3 (échange de ticket de connexion) {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] API publique Phase 2 — limites de débit par clé/quotas, versioning, SDK, portail développeur {/* dev: dev/public-api-phase2.md */}
+- [ ] Observabilité — Couche de trace d'agent (modèle Trace/Span, visionneuse chronologique, export OTel) + tableau de bord des métriques {/* dev: dev/agent-trace-layer.md */}
+- [ ] Reste de l'espace de travail d'agent — notes de transfert, interface de navigateur de fichiers, rappel inter-sessions, segments de compaction (résumé lisible sur disque que l'agent relit) {/* dev: dev/agent-workspace.md */}
+- [ ] Guardrails v1 — filtre hors sujet, garde-fou de sortie de rédacteur PII, interface de configuration de garde-fou par agent
+- [ ] Extras du système de crochet — crochets intégrés, `SessionStart` + crochets YAML utilisateur {/* dev: dev/hook-system.md */}
+- [ ] Profondeur de plateforme de connecteur — Phase de divulgation progressive 3-4, configuration de connecteur YAML/JSON, connecteurs DB Phase 4 (Oracle / SQL Server / GBase), mise en commun de connexions MCP
+- [ ] Suites de cache de prompt — adaptateur de cache de contexte Gemini, `cache_ttl` par agent {/* dev: dev/prompt-cache-followups.md */}
+- [ ] Reprise DAG en milieu de flux à chaud — la reconnexion SSE se rattache à un tour en cours (reprise de nouvelle tentative à froid déjà expédiée) {/* dev: dev/incremental-dag.md */}
+- [ ] Écosystème — agents déclenchés par planification/événement, observabilité d'identité de déclencheur de flux de travail, `credential_policy` par flux de travail, générateur avancé de schéma DB, durcissement de bac à sable v2
 
 ### Livré du plan de pré-replan v0.9
 

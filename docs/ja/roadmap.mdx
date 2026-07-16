@@ -325,20 +325,20 @@ flowchart LR
 
 ### 保留中 — 信号门控
 
-不要在没有触发器的情况下启动这些功能（参见重新规划 §3）：MCP 网关等待 ≥2 个主动的"在我的智能体中挂载你的工具"请求；通道化等待实现者询问许可问题；IdP/OrgSync 等待客户拉取；其余的等待需要它们的已交付参与。
+不要在没有触发器的情况下启动这些功能（见重新规划 §3）：MCP 网关等待 ≥2 个主动的"在我的智能体中挂载你的工具"请求；通道化等待实现者提出许可问题；IdP/OrgSync 等待客户拉取；其余的等待需要它们的已交付参与。
 
 - [ ] MCP 网关输出 — 反向暴露连接器发现/执行为下游智能体的 MCP 工具
-- [ ] 通道化 / 白标启用 — 商业许可路径已就位
+- [ ] 通道化 / 白标启用 — 商业许可证路径已就位
 - [ ] 身份提供商模块 + 通道精简 — Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] 连接器授权第 2 层（要求按用户凭证、密钥绑定健康检查）+ 第 3 层（登录票据交换）{/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] 公开 API 第 2 阶段 — 按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
+- [ ] 连接器授权第 2 层（要求按用户凭证、密钥绑定健康检查）+ 第 3 层（登录票证交换） {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] 公共 API 第 2 阶段 — 按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
 - [ ] 可观测性 — 智能体追踪层（追踪/跨度模型、时间线查看器、OTel 导出）+ 指标仪表板 {/* dev: dev/agent-trace-layer.md */}
-- [ ] 智能体工作区剩余部分 — 交接笔记、工作区文件浏览器 UI、跨会话对话回忆 {/* dev: dev/agent-workspace.md */}
-- [ ] 护栏 v1 — 离题过滤器、PII 编辑器输出护栏、按智能体护栏配置 UI
+- [ ] 智能体工作区剩余部分 — 交接笔记、文件浏览器 UI、跨会话回忆、压缩段（智能体读回的可搜索磁盘摘要） {/* dev: dev/agent-workspace.md */}
+- [ ] 护栏 v1 — 离题过滤、PII 编辑器输出护栏、按智能体护栏配置 UI
 - [ ] 钩子系统扩展 — 内置钩子、`SessionStart` + 用户 YAML 钩子 {/* dev: dev/hook-system.md */}
 - [ ] 连接器平台深度 — 渐进式披露第 3-4 阶段、YAML/JSON 连接器配置、数据库连接器第 4 阶段（Oracle / SQL Server / GBase）、MCP 连接池
 - [ ] 提示词缓存后续 — Gemini 上下文缓存适配器、按智能体 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] 热中流 DAG 恢复 — SSE 重连重新附加到运行中的轮次（冷重试-恢复已发布）{/* dev: dev/incremental-dag.md */}
+- [ ] 热中流 DAG 恢复 — SSE 重新连接重新附加到运行中的轮次（冷重试-恢复已发布） {/* dev: dev/incremental-dag.md */}
 - [ ] 生态系统 — 计划/事件触发的智能体、工作流触发身份可观测性、按工作流 `credential_policy`、数据库架构高级构建器、沙箱加固 v2
 
 ### v0.9 プリプラン出荷済み

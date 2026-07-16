@@ -323,9 +323,9 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 - [ ] Outbound-Muster: Fehlerwarnungen, Budgetwarnungen, geplante Digests, Eskalation, Audit-Quittungen
 - [ ] WeCom / DingTalk channels nach Feishu
 
-### Parked — signal-gated
+### Geparkt — signalgesteuert
 
-Do not start these without their trigger (see the replan §3): the MCP gateway waits for ≥2 unsolicited "mount your tools in my agent" asks; channelization waits for an implementor asking about licensing; IdP/OrgSync waits for customer pull; the rest wait for a delivered engagement that needs them.
+Starten Sie diese nicht ohne ihren Auslöser (siehe Neuplanung §3): Das MCP-Gateway wartet auf ≥2 unaufgeforderte „Mount your tools in my agent"-Anfragen; Kanalisierung wartet auf eine Implementiererfrage zur Lizenzierung; IdP/OrgSync wartet auf Kundenpull; der Rest wartet auf ein geliefertes Engagement, das sie benötigt.
 
 - [ ] MCP gateway output — reverse-expose connector discover/execute as MCP tools for downstream agents
 - [ ] Channelization / white-label enablement — commercial-license path already in place
@@ -333,7 +333,7 @@ Do not start these without their trigger (see the replan §3): the MCP gateway w
 - [ ] Connector authorization Tier 2 (require per-user credentials, key-binding health) + Tier 3 (login-ticket exchange) {/* dev: dev/connector-rbac/00-overview.md */}
 - [ ] Public API Phase 2 — per-key rate limits/quotas, versioning, SDKs, developer portal {/* dev: dev/public-api-phase2.md */}
 - [ ] Observability — Agent Trace Layer (Trace/Span model, timeline viewer, OTel export) + metrics dashboard {/* dev: dev/agent-trace-layer.md */}
-- [ ] Agent Workspace remainder — handoff notes, workspace file browser UI, cross-session conversation recall {/* dev: dev/agent-workspace.md */}
+- [ ] Agent Workspace remainder — handoff notes, file browser UI, cross-session recall, compaction segments (grep-able on-disk summary the agent reads back) {/* dev: dev/agent-workspace.md */}
 - [ ] Guardrails v1 — off-topic filter, PII redactor output guardrail, per-agent guardrail config UI
 - [ ] Hook System extras — built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
 - [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
