@@ -248,14 +248,10 @@ Wir freuen uns über Beiträge aller Art — Code, Dokumentation, Übersetzungen
 
 **Sicherheit:** Um eine Sicherheitslücke zu melden, öffnen Sie bitte ein [GitHub Issue](https://github.com/fim-ai/fim-one/issues) mit dem Tag `[SECURITY]`. Für vertrauliche Meldungen kontaktieren Sie uns über Discord DM.
 
-## Star-Verlauf
+## Stern-Verlauf
 
 <a href="https://www.star-history.com/?type=date&repos=fim-ai%2Ffim-one">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&theme=dark&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
-  </picture>
+  <img alt="Star History Chart" src="./assets/star-history.svg" />
 </a>
 
 ## Aktivität
