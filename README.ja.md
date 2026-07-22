@@ -250,13 +250,11 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 ## スター履歴
 
-<a href="https://www.star-history.com/?type=date&repos=fim-ai%2Ffim-one">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
-    <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
-    <img alt="スター履歴チャート" src="./assets/star-history.svg" />
-  </picture>
-</a>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
+  <img alt="Star History Chart" src="./assets/star-history.svg" />
+</picture>
 
 ## アクティビティ
 
