@@ -12,9 +12,11 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Approval Gates halten jetzt an, wenn ein Agent über einen anderen Agent oder einen Workflow erreicht wird.** Ein sensitiver Connector-Aufruf, der normalerweise eine Bestätigung im Chat anfordern würde, lief zuvor ungeprüft ab, sobald er über `call_agent` delegiert oder in einen Workflow `AGENT` Node eingebunden wurde – diese Pfade starteten den Agent ohne Hooks. Beide führen jetzt die eigenen Gates des Agents aus, verwenden die Bestätigungseinstellungen dieses Agents und weigern sich, ihn auszuführen, wenn seine Hooks nicht geladen werden können.
+- **Refresh-Token-Rotation invalidiert jetzt tatsächlich das vorherige Token.** JWT `exp` hat nur Sekundengenauigkeit, daher codierten zwei Refresh-Tokens, die in derselben Sekunde für denselben Benutzer ausgegeben wurden, früher identisch — die Rotation schrieb dann den gespeicherten Hash mit demselben Wert um, und ein gestohlenes Refresh-Token konnte auf unbestimmte Zeit erneuert werden. Jedes Refresh-Token trägt jetzt eine eindeutige `jti`, sodass sich das rotierte Token unterscheidet und das alte sofort nicht mehr funktioniert.
 
-- **Ein Tippfehler in `SMTP_SSL` sendet Ihr SMTP-Passwort nicht mehr stillschweigend im Klartext.** Zuvor führte jeder Wert außer `ssl` oder `tls` (zum Beispiel `SMTP_SSL=true`) zu einer unverschlüsselten Verbindung ohne Warnung, sowohl bei System-E-Mails als auch bei E-Mail-Benachrichtigungen. Nicht erkannte Werte werden jetzt abgelehnt, und unverschlüsselte Zustellung muss explizit als `SMTP_SSL=none` angefordert werden, was bei jedem Versand eine Warnung protokolliert.
+- **Approval Gates halten jetzt an, wenn ein Agent über einen anderen Agent oder einen Workflow erreicht wird.** Ein sensitiver Connector-Aufruf, der in Chat um Bestätigung fragen würde, lief zuvor ungeprüft ab, sobald er über `call_agent` delegiert oder in einen Workflow-`AGENT`-Knoten eingebunden wurde — diese Pfade starteten den Agent ohne Hooks. Beide führen jetzt die eigenen Gates des Agents aus, verwenden die Bestätigungseinstellungen dieses Agents und weigern sich, ihn auszuführen, wenn seine Hooks nicht geladen werden können.
+
+- **Ein Tippfehler in `SMTP_SSL` sendet Ihr SMTP-Passwort nicht mehr stillschweigend im Klartext.** Zuvor führte jeder Wert außer `ssl` oder `tls` (beispielsweise `SMTP_SSL=true`) zu einer unverschlüsselten Verbindung ohne Warnung, sowohl bei System-E-Mails als auch bei E-Mail-Benachrichtigungen. Nicht erkannte Werte werden jetzt direkt abgelehnt, und unverschlüsselte Zustellung muss explizit als `SMTP_SSL=none` angefordert werden, was bei jedem Versand eine Warnung protokolliert.
 
 ### Entfernt
 

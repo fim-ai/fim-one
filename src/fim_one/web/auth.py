@@ -157,6 +157,12 @@ def create_refresh_token(user_id: str, email: str) -> str:
         "email": email,
         "type": "refresh",
         "exp": expires,
+        # jti 是必需的，不是装饰。exp 只精确到秒，同一秒内为同一用户签发的
+        # refresh token 载荷完全一致，编码出来逐字节相同。于是 /refresh 的
+        # 「轮转 + 旧 token 立即作废」静默失效：新旧 token 是同一个，
+        # user.refresh_token 存的哈希也一样，本该作废的旧 token 照样能用，
+        # 被偷走的 refresh token 因此可以无限续期。
+        "jti": secrets.token_urlsafe(8),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
