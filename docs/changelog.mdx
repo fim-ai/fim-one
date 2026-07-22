@@ -12,7 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
-- **README Star History chart renders again.** Third-party live embeds (`api.star-history.com`, starchart.cc, …) break after GitHub restricted the stargazers API (Jul 2026). The chart is now a self-owned SVG in-repo, auto-refreshed twice daily by GitHub Actions (`scripts/gen_star_history.py`).
+- **README Star History chart renders again.** Third-party live embeds (`api.star-history.com`, starchart.cc, …) break after GitHub restricted the stargazers API (Jul 2026). The chart is now a self-owned light/dark SVG pair in-repo (follows GitHub’s color scheme), auto-refreshed twice daily by GitHub Actions (`scripts/gen_star_history.py`).
 
 - **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
 

@@ -248,10 +248,14 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 **安全性：** 要报告漏洞，请打开一个带有 `[SECURITY]` 标签的 [GitHub issue](https://github.com/fim-ai/fim-one/issues)。对于敏感披露，请通过 Discord DM 与我们联系。
 
-## 星历
+## Star 历史
 
 <a href="https://www.star-history.com/?type=date&repos=fim-ai%2Ffim-one">
-  <img alt="Star History Chart" src="./assets/star-history.svg" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
+    <img alt="Star 历史图表" src="./assets/star-history.svg" />
+  </picture>
 </a>
 
 ## 活动

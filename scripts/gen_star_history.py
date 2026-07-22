@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Generate star-history SVG for README (assets/star-history.svg).
+"""Generate star-history SVGs for README (light + dark, GitHub themes).
 
 Self-owned replacement for api.star-history.com embeds, which break after
 GitHub's Jul 2026 stargazer restriction (server-side token pools get rate
 limited; their /chart hard-timeouts at 10s).
+
+Writes two files for <picture prefers-color-scheme> embeds:
+  assets/star-history.svg       (light — default <img> fallback)
+  assets/star-history-dark.svg  (dark)
 
 Auth (first match wins):
   1. GITHUB_TOKEN / GH_TOKEN env (GitHub Actions, or a fine-grained PAT)
@@ -26,6 +30,37 @@ import urllib.request
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import TypedDict
+
+
+class Theme(TypedDict):
+    line: str
+    fill: str
+    grid: str
+    text: str
+    title: str
+    bg: str
+
+
+# GitHub Primer-ish palette so charts match the site chrome in each mode.
+THEMES: dict[str, Theme] = {
+    "light": {
+        "line": "#0969da",
+        "fill": "#0969da33",
+        "grid": "#d0d7de",
+        "text": "#656d76",
+        "title": "#1f2328",
+        "bg": "#ffffff",
+    },
+    "dark": {
+        "line": "#4493f8",
+        "fill": "#4493f833",
+        "grid": "#30363d",
+        "text": "#8b949e",
+        "title": "#e6edf3",
+        "bg": "#0d1117",
+    },
+}
 
 
 def _token() -> str | None:
@@ -140,7 +175,12 @@ def downsample(
     return [days[i] for i in idxs], [cum[i] for i in idxs]
 
 
-def render_svg(repo: str, xs: list[date], ys: list[int]) -> str:
+def render_svg(
+    repo: str,
+    xs: list[date],
+    ys: list[int],
+    theme: Theme,
+) -> str:
     w, h = 900, 360
     ml, mr, mt, mb = 56, 24, 36, 48
     pw, ph = w - ml - mr, h - mt - mb
@@ -166,8 +206,8 @@ def render_svg(repo: str, xs: list[date], ys: list[int]) -> str:
         [round(k * (len(xs) - 1) / (nt - 1)) for k in range(nt)] if nt > 1 else [0]
     )
 
-    line, fill, grid = "#0969da", "#0969da33", "#d0d7de"
-    text, title_c, bg = "#656d76", "#1f2328", "#ffffff"
+    line, fill, grid = theme["line"], theme["fill"], theme["grid"]
+    text, title_c, bg = theme["text"], theme["title"], theme["bg"]
     font = "-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"
 
     parts = [
@@ -217,19 +257,36 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default="fim-ai/fim-one")
     parser.add_argument(
-        "--out",
+        "--out-dir",
         type=Path,
-        default=Path("assets/star-history.svg"),
+        default=Path("assets"),
+        help="Directory for star-history.svg and star-history-dark.svg",
+    )
+    parser.add_argument(
+        "--theme",
+        choices=(*THEMES.keys(), "all"),
+        default="all",
+        help="Which theme(s) to write (default: all)",
     )
     args = parser.parse_args()
 
     times = fetch_star_times(args.repo)
     days, cum = build_series(times)
     xs, ys = downsample(days, cum)
-    svg = render_svg(args.repo, xs, ys)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(svg)
-    print(f"wrote {args.out} ({args.out.stat().st_size} bytes, {ys[-1]} stars)")
+
+    # light → star-history.svg (default fallback); dark → star-history-dark.svg
+    out_names = {
+        "light": "star-history.svg",
+        "dark": "star-history-dark.svg",
+    }
+    themes = THEMES.keys() if args.theme == "all" else (args.theme,)
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for name in themes:
+        path = args.out_dir / out_names[name]
+        svg = render_svg(args.repo, xs, ys, THEMES[name])
+        path.write_text(svg)
+        print(f"wrote {path} ({path.stat().st_size} bytes, {ys[-1]} stars, {name})")
 
 
 if __name__ == "__main__":

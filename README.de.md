@@ -248,10 +248,14 @@ Wir freuen uns über Beiträge aller Art — Code, Dokumentation, Übersetzungen
 
 **Sicherheit:** Um eine Sicherheitslücke zu melden, öffnen Sie bitte ein [GitHub Issue](https://github.com/fim-ai/fim-one/issues) mit dem Tag `[SECURITY]`. Für vertrauliche Meldungen kontaktieren Sie uns über Discord DM.
 
-## Stern-Verlauf
+## Star History
 
 <a href="https://www.star-history.com/?type=date&repos=fim-ai%2Ffim-one">
-  <img alt="Star History Chart" src="./assets/star-history.svg" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
+    <img alt="Star History Chart" src="./assets/star-history.svg" />
+  </picture>
 </a>
 
 ## Aktivität

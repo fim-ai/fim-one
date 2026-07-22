@@ -251,7 +251,11 @@ Nous accueillons les contributions de toutes sortes — code, documentation, tra
 ## Historique des étoiles
 
 <a href="https://www.star-history.com/?type=date&repos=fim-ai%2Ffim-one">
-  <img alt="Star History Chart" src="./assets/star-history.svg" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
+    <img alt="Star History Chart" src="./assets/star-history.svg" />
+  </picture>
 </a>
 
 ## Activité
