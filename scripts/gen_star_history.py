@@ -1,28 +1,84 @@
 #!/usr/bin/env python3
-"""Generate a static star-history SVG for README (assets/star-history.svg).
+"""Generate star-history SVG for README (assets/star-history.svg).
 
-Why static: api.star-history.com times out after GitHub restricted the
-stargazers endpoint (Jul 2026) — their server hard-caps at 10s, and paging
-~1.3k+ stars already takes ~10s even with an authenticated token.
+Self-owned replacement for api.star-history.com embeds, which break after
+GitHub's Jul 2026 stargazer restriction (server-side token pools get rate
+limited; their /chart hard-timeouts at 10s).
 
-Requires: `gh` CLI authenticated with access to the repo.
+Auth (first match wins):
+  1. GITHUB_TOKEN / GH_TOKEN env (GitHub Actions, or a fine-grained PAT)
+  2. `gh` CLI (local dev)
 
 Usage:
     python3 scripts/gen_star_history.py
-    python3 scripts/gen_star_history.py --repo owner/name --out path.svg
+    GITHUB_TOKEN=ghp_xxx python3 scripts/gen_star_history.py --repo owner/name
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import math
+import os
 import subprocess
+import urllib.error
+import urllib.request
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 
-def fetch_star_times(repo: str) -> list[datetime]:
+def _token() -> str | None:
+    return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or None
+
+
+def fetch_star_times_http(repo: str, token: str) -> list[datetime]:
+    """Page stargazers via REST with Accept: application/vnd.github.star+json."""
+    times: list[datetime] = []
+    page = 1
+    per_page = 100
+    while True:
+        url = (
+            f"https://api.github.com/repos/{repo}/stargazers"
+            f"?per_page={per_page}&page={page}"
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/vnd.github.star+json",
+                "Authorization": f"Bearer {token}",
+                "User-Agent": "fim-one-star-history",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                body = resp.read()
+                link = resp.headers.get("Link", "")
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")[:300]
+            raise SystemExit(
+                f"GitHub API {e.code} for {repo} page={page}: {detail}"
+            ) from e
+
+        rows = json.loads(body)
+        if not isinstance(rows, list) or not rows:
+            break
+        for row in rows:
+            starred = row.get("starred_at")
+            if starred:
+                times.append(
+                    datetime.fromisoformat(starred.replace("Z", "+00:00"))
+                )
+        if 'rel="next"' not in link:
+            break
+        page += 1
+        if page > 500:  # safety
+            break
+    return times
+
+
+def fetch_star_times_gh(repo: str) -> list[datetime]:
     out = subprocess.check_output(
         [
             "gh",
@@ -41,6 +97,15 @@ def fetch_star_times(repo: str) -> list[datetime]:
         if not line:
             continue
         times.append(datetime.fromisoformat(line.replace("Z", "+00:00")))
+    return times
+
+
+def fetch_star_times(repo: str) -> list[datetime]:
+    token = _token()
+    if token:
+        times = fetch_star_times_http(repo, token)
+    else:
+        times = fetch_star_times_gh(repo)
     times.sort()
     if not times:
         raise SystemExit(f"no stargazers returned for {repo}")
@@ -63,7 +128,9 @@ def build_series(times: list[datetime]) -> tuple[list[date], list[int]]:
     return days, cum
 
 
-def downsample(days: list[date], cum: list[int], max_pts: int = 200) -> tuple[list[date], list[int]]:
+def downsample(
+    days: list[date], cum: list[int], max_pts: int = 200
+) -> tuple[list[date], list[int]]:
     if len(days) <= max_pts:
         return days, cum
     step = math.ceil(len(days) / max_pts)
