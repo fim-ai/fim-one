@@ -4,8 +4,9 @@ name: Star History
 # Replaces the broken api.star-history.com live embed after GitHub's Jul 2026
 # stargazer API restriction drained third-party token pools.
 #
-# Uses the workflow GITHUB_TOKEN (repo collaborator) to page stargazers,
-# regenerates both theme SVGs, and commits only when files actually change.
+# Generate step uses STAR_HISTORY_TOKEN (user fine-grained PAT): the default
+# Actions GITHUB_TOKEN gets 403 on /stargazers after GitHub's Jul 2026
+# restriction. Checkout/push still use GITHUB_TOKEN (contents: write).
 # README uses <picture prefers-color-scheme> so the chart matches GitHub UI.
 
 on:
@@ -45,7 +46,10 @@ jobs:
 
       - name: Generate star-history SVG
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # User PAT in repo secret STAR_HISTORY_TOKEN (no "Stargazers"
+          # permission exists on fine-grained PATs; Metadata + repo access
+          # is enough for public repos). Do not use secrets.GITHUB_TOKEN here.
+          GITHUB_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
         run: python3 scripts/gen_star_history.py --repo "${{ github.repository }}"
 
       - name: Commit if changed
