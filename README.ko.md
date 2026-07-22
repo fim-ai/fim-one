@@ -248,13 +248,13 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 **보안:** 취약점을 보고하려면 `[SECURITY]` 태그와 함께 [GitHub issue](https://github.com/fim-ai/fim-one/issues)를 열어주세요. 민감한 공개의 경우, Discord DM을 통해 저희에게 연락해주세요.
 
-## Star History
+## 스타 히스토리
 
-<a href="https://star-history.com/#fim-ai/fim-one&Date">
+<a href="https://www.star-history.com/?type=date&repos=fim-ai%2Ffim-one">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&theme=dark&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
   </picture>
 </a>
 

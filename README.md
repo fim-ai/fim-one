@@ -250,11 +250,11 @@ We welcome contributions of all kinds — code, docs, translations, bug reports,
 
 ## Star History
 
-<a href="https://star-history.com/#fim-ai/fim-one&Date">
+<a href="https://www.star-history.com/?type=date&repos=fim-ai%2Ffim-one">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=fim-ai/fim-one&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&theme=dark&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=fim-ai/fim-one&type=date&legend=top-left&sealed_token=0xSammARGkNEvau7uPZBM7DEDgspJO2VOEpHsZMOETJe7s69_iMihDP9QYw4MTv7D_FUpUqnpgTxw5RrOhCrK6s63y8zedJP7XAKQp33RXozObKbXB4R7QgTVY6R_cHNFHaMQlAzMDKK3w4aK7k" />
   </picture>
 </a>
 
