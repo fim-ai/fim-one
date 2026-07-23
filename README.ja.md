@@ -248,14 +248,6 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 **セキュリティ:** 脆弱性を報告する場合は、`[SECURITY]`タグを付けて[GitHubの問題](https://github.com/fim-ai/fim-one/issues)を開いてください。機密の報告については、Discord DMで私たちに連絡してください。
 
-## スター履歴
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
-  <img alt="Star History Chart" src="./assets/star-history.svg" />
-</picture>
-
 ## アクティビティ
 
 ![Alt](https://repobeats.axiom.co/api/embed/49402c7d85e343e9cb5909da7b48db1930c76554.svg "Repobeats analytics image")

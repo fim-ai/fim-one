@@ -248,14 +248,6 @@ We welcome contributions of all kinds — code, docs, translations, bug reports,
 
 **Security:** To report a vulnerability, please open a [GitHub issue](https://github.com/fim-ai/fim-one/issues) with the `[SECURITY]` tag. For sensitive disclosures, contact us via Discord DM.
 
-## Star History
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
-  <img alt="Star History Chart" src="./assets/star-history.svg" />
-</picture>
-
 ## Activity
 
 ![Alt](https://repobeats.axiom.co/api/embed/49402c7d85e343e9cb5909da7b48db1930c76554.svg "Repobeats analytics image")

@@ -12,8 +12,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
-- **README Star History chart renders again.** Third-party live embeds (`api.star-history.com`, starchart.cc, …) break after GitHub restricted the stargazers API (Jul 2026). The chart is now a self-owned light/dark SVG pair in-repo (follows GitHub’s color scheme), auto-refreshed twice daily by GitHub Actions (`scripts/gen_star_history.py`).
-
 - **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
 
 - **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
@@ -21,6 +19,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
 
 ### Removed
+
+- **README Star History chart and its refresh workflow.** After GitHub restricted the stargazers API (Jul 2026), keeping a self-owned chart required a long-lived admin PAT that kept expiring and failing the scheduled job. The chart, SVG assets, generator script, and `Star History` GitHub Actions workflow are gone.
 
 - **Knowledge bases previously shared to an organization are recalled on upgrade.** The v0.8.9 carve-out that kept already-published KBs reachable to their subscribers is gone: every shared KB reverts to personal, its subscriptions are removed, and the leftover unpublish action and subscriber-facing KB badges disappear. A knowledge base now reaches other users only through a shared Agent, which delegates the owner's content at run time.
 

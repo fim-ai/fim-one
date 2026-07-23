@@ -248,14 +248,6 @@ Wir freuen uns über Beiträge aller Art — Code, Dokumentation, Übersetzungen
 
 **Sicherheit:** Um eine Sicherheitslücke zu melden, öffnen Sie bitte ein [GitHub Issue](https://github.com/fim-ai/fim-one/issues) mit dem Tag `[SECURITY]`. Für vertrauliche Meldungen kontaktieren Sie uns über Discord DM.
 
-## Stern-Verlauf
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/star-history-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="./assets/star-history.svg" />
-  <img alt="Star History Chart" src="./assets/star-history.svg" />
-</picture>
-
 ## Aktivität
 
 ![Alt](https://repobeats.axiom.co/api/embed/49402c7d85e343e9cb5909da7b48db1930c76554.svg "Repobeats analytics image")
