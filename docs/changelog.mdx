@@ -12,6 +12,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
+
+- **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.
+
 - **The agent's self-check no longer shows up as the answer.** After using several tools, the agent runs a one-time internal verification before replying; that verification was being streamed to you verbatim, so answers arrived as "Let me verify: 1. Fully addressed? ✅ …" instead of the answer itself. The check is now internal, and the reply you see is written as its own step.
 
 - **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.

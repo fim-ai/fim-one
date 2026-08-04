@@ -347,3 +347,54 @@ class TestFlushToolCalls:
         result = OpenAICompatibleLLM._flush_tool_calls(pending)
         assert len(result) == 1
         assert result[0].arguments == {"_raw": "{invalid json"}
+
+
+class TestOutputLimitDuringToolCall:
+    """A tool call cut off mid-arguments by ``finish_reason="length"``."""
+
+    @pytest.mark.asyncio
+    async def test_truncated_tool_call_is_dropped_and_reported(self) -> None:
+        """The half-written call is dropped; the truncation is surfaced."""
+        chunks = [
+            _tc_chunk(index=0, tc_id="call_1", name="file_ops", arguments='{"content": "<html'),
+            _tc_chunk(index=0, arguments="><body>lots of markup"),
+            _finish_chunk("length"),
+        ]
+        result = await _run_stream(chunks)
+
+        # No tool call escapes with half a JSON payload.
+        assert not any(c.tool_calls for c in result)
+        # ...and the finish reason is not swallowed on the way out.
+        final = [c for c in result if c.finish_reason]
+        assert final, "finish_reason must reach the caller"
+        assert final[-1].finish_reason == "length"
+        assert final[-1].truncated_tool_call is True
+
+    @pytest.mark.asyncio
+    async def test_complete_call_survives_length_finish(self) -> None:
+        """Arguments that did finish are still dispatched under "length"."""
+        chunks = [
+            _tc_chunk(index=0, tc_id="call_1", name="echo", arguments='{"text": "hi"}'),
+            _finish_chunk("length"),
+        ]
+        result = await _run_stream(chunks)
+
+        tc_chunks = [c for c in result if c.tool_calls]
+        assert len(tc_chunks) == 1
+        tool_calls = tc_chunks[0].tool_calls
+        assert tool_calls is not None
+        assert tool_calls[0].arguments == {"text": "hi"}
+        assert tc_chunks[0].truncated_tool_call is False
+
+    @pytest.mark.asyncio
+    async def test_unknown_finish_reason_still_flushes(self) -> None:
+        """A provider-specific terminal reason must not strand the call."""
+        chunks = [
+            _tc_chunk(index=0, tc_id="call_1", name="echo", arguments='{"text": "hi"}'),
+            _finish_chunk("end_turn"),
+        ]
+        result = await _run_stream(chunks)
+
+        tc_chunks = [c for c in result if c.tool_calls]
+        assert len(tc_chunks) == 1
+        assert tc_chunks[0].finish_reason == "end_turn"

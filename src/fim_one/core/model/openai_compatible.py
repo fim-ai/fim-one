@@ -129,6 +129,22 @@ litellm.suppress_debug_info = True
 _SHARED_HTTP_CLIENT: httpx.AsyncClient | None = None
 
 
+def _incomplete_arguments(raw: str | None) -> bool:
+    """Return True when a tool call's argument JSON never finished arriving.
+
+    Used to tell a genuinely complete call apart from one the output limit
+    cut in half.  An empty payload counts as complete — some providers send
+    argument-less calls.
+    """
+    if not raw:
+        return False
+    try:
+        json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return True
+    return False
+
+
 def _pool_int(key: str, default: int) -> int:
     raw = os.environ.get(key)
     return int(raw) if raw else default
@@ -499,6 +515,25 @@ class OpenAICompatibleLLM(BaseLLM):
         choice = response.choices[0]
         assistant_msg = self._parse_choice_message(choice)
 
+        # Same truncation guard as the streaming path: a call whose arguments
+        # were cut in half by the output limit must not be dispatched.
+        finish_reason = getattr(choice, "finish_reason", None)
+        truncated_tool_call = False
+        if finish_reason == "length" and assistant_msg.tool_calls:
+            raw_calls = getattr(choice.message, "tool_calls", None) or []
+            if any(
+                _incomplete_arguments(getattr(tc.function, "arguments", None))
+                for tc in raw_calls
+            ):
+                logger.warning(
+                    "Tool call truncated by the output limit (%s), "
+                    "dropping %d partial call(s)",
+                    self._model,
+                    len(assistant_msg.tool_calls),
+                )
+                assistant_msg.tool_calls = None
+                truncated_tool_call = True
+
         usage: dict[str, int] = {}
         if response.usage is not None:
             usage = {
@@ -515,7 +550,8 @@ class OpenAICompatibleLLM(BaseLLM):
         return LLMResult(
             message=assistant_msg,
             usage=usage,
-            finish_reason=getattr(choice, "finish_reason", None),
+            finish_reason=finish_reason,
+            truncated_tool_call=truncated_tool_call,
         )
 
     async def stream_chat(
@@ -673,17 +709,41 @@ class OpenAICompatibleLLM(BaseLLM):
                     )
 
                 # When the stream finishes, flush any accumulated tool calls.
-                if finish_reason in ("tool_calls", "stop") and pending_tool_calls:
-                    completed = self._flush_tool_calls(pending_tool_calls)
-                    yield StreamChunk(
-                        finish_reason=finish_reason,
-                        tool_calls=completed,
-                        usage=stream_usage,
+                # Every terminal reason must be forwarded, including "length"
+                # and provider-specific ones — swallowing it here strands the
+                # caller with a truncated turn it cannot detect.
+                if finish_reason and pending_tool_calls:
+                    truncated = finish_reason == "length" and any(
+                        _incomplete_arguments(p.arguments)
+                        for p in pending_tool_calls.values()
                     )
+                    if truncated:
+                        # The output limit landed inside the arguments, so the
+                        # JSON is half-written.  Dispatching it would run a
+                        # tool with garbage input; report the truncation and
+                        # let the caller ask the model to retry smaller.
+                        logger.warning(
+                            "Tool call truncated by the output limit (%s), "
+                            "dropping %d partial call(s)",
+                            self._model,
+                            len(pending_tool_calls),
+                        )
+                        yield StreamChunk(
+                            finish_reason=finish_reason,
+                            usage=stream_usage,
+                            truncated_tool_call=True,
+                        )
+                    else:
+                        completed = self._flush_tool_calls(pending_tool_calls)
+                        yield StreamChunk(
+                            finish_reason=finish_reason,
+                            tool_calls=completed,
+                            usage=stream_usage,
+                        )
                     usage_yielded = stream_usage is not None
                     pending_tool_calls.clear()
                     index_remap.clear()
-                elif finish_reason and not pending_tool_calls:
+                elif finish_reason:
                     # Final chunk with no tool calls (normal stop).
                     yield StreamChunk(finish_reason=finish_reason, usage=stream_usage)
                     usage_yielded = stream_usage is not None

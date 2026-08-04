@@ -10,15 +10,19 @@ description: "FIM One的所有重要更新。"
 
 ## [未发布]
 
-### 已修复
+### Fixed
 
-- **智能体的自检不再显示为答案。** 使用多个工具后，智能体会运行一次内部验证后再回复；该验证之前会原文流式传输给你，导致答案显示为"让我验证：1. 已完全解决？✅ ……"而不是实际答案。现在检查是内部进行的，你看到的回复是作为独立步骤编写的。
+- **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
 
-- **刷新令牌轮换现在确实会使前一个令牌失效。** JWT `exp` 仅精确到秒，因此同一用户在同一秒内签发的两个刷新令牌之前编码相同——轮换会用相同值重写存储的哈希，被盗的刷新令牌可以永远续期。现在每个刷新令牌都携带唯一的 `jti`，因此轮换后的令牌不同，旧令牌立即停止工作。
+- **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.
 
-- **当智能体通过另一个智能体或工作流到达时，审批闸门现在会保持。** 在聊天中会要求确认的敏感连接器调用，一旦通过 `call_agent` 委派或包装在工作流 `AGENT` 节点中，之前会无检查地运行——这些路径启动智能体时完全没有钩子。现在两者都会运行智能体自己的闸门，使用该智能体的确认设置，如果其钩子无法加载则拒绝运行。
+- **The agent's self-check no longer shows up as the answer.** After using several tools, the agent runs a one-time internal verification before replying; that verification was being streamed to you verbatim, so answers arrived as "Let me verify: 1. Fully addressed? ✅ …" instead of the answer itself. The check is now internal, and the reply you see is written as its own step.
 
-- **`SMTP_SSL` 中的拼写错误不再默认以明文发送你的 SMTP 密码。** 之前任何不是 `ssl` 或 `tls` 的值（例如 `SMTP_SSL=true`）都会无警告地转向未加密连接，在系统邮件和电子邮件通知中都是如此。现在无法识别的值会被直接拒绝，未加密传输必须显式请求为 `SMTP_SSL=none`，这会在每次发送时记录警告。
+- **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
+
+- **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
+
+- **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
 
 ### 已移除
 

@@ -168,20 +168,20 @@ OpenAIとGeminiの場合、プロバイダーは`reasoning_effort`レベルに�
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MAX_CONCURRENCY` | No | `5` | DAG エグゼキューターにおける最大並列ステップ数 |
-| `DAG_STEP_MAX_ITERATIONS` | No | `15` | 各 DAG ステップ内での最大ツール呼び出し反復回数 |
-| `DAG_STEP_TIMEOUT` | No | `600` | ステップ実行タイムアウト（秒単位）。このタイムアウトを超過したステップは失敗とマークされ、依存するステップはカスケードスキップされます |
-| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | 目標が達成されない場合の最大自律再計画試行回数。ユーザーの割り込み（インジェクト）は無制限で、この予算にはカウントされません |
-| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | 目標が達成不可能であるというエージェントの確信度がこのしきい値を超えた場合に再試行を停止します（`0.0` = 早期停止しない、`1.0` = 任意の失敗で停止） |
-| `DAG_VERIFY_TRUNCATION` | No | `2000` | ステップ品質判定のためにステップ検証器 LLM に送信されるステップ出力の最大文字数 |
-| `DAG_ANALYZER_TRUNCATION` | No | `10000` | 実行後アナライザーのフォーマット時における、ステップ結果あたりの最大文字数 |
-| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | ステップごとに保持される生のツール出力（ウェブ取得、検索結果、ファイル読み込み）の最大文字数。これは権威的な「ソース証拠」として、ステップの要約とともにアナライザーと最終合成に提供されるため、回答の事実的主張（合計、列挙、重大度）は要約が無言で項目を削除または誤ラベル付けした可能性があるのではなく、ソースに対して検証できます。`0` に設定すると証拠キャプチャを無効にします |
-| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | 再計画コンテキスト構築時における最新ラウンドからのステップ結果あたりの最大文字数 |
-| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | 再計画コンテキスト構築時における古いラウンドからのステップ結果あたりの最大文字数。古いラウンドはコンテキスト節約のためより積極的に切り詰められます |
-| `DAG_TOOL_CACHE` | No | `true` | 単一 DAG 実行内での同一ツール呼び出しをキャッシュします。`cacheable` として明示的にマークされたツール（検索、知識検索などの読み取り専用ツール）のみがキャッシュされます。キャッシュを完全に無効にするには `false` に設定します |
-| `DAG_STEP_VERIFICATION` | No | `false` | 各 DAG ステップ後の汎用 LLM ベースの品質チェック。失敗時、ステップはフィードバック付きで 1 回再試行されます。**デフォルトはオフ** — すべてのステップに遅延を追加し、ほとんど必要ありません。ステップ出力の大部分は再チェックなしで許容可能です。ステップ結果の品質が低いことが頻繁に観察される場合にのみ使用してください |
-| `DAG_CITATION_VERIFICATION` | No | `true` | 専門分野ステップの引用精度チェック。**前提条件**：クエリは最初に LLM ドメイン分類器によって専門分野として分類される必要があります（`ESCALATION_DOMAINS` を参照）。ドメインが検出され、このフラグが `true` の場合、完了した各ステップは法律・医療・金融の引用についてスキャンされ、精度が検証されます — 幻覚の記事番号、捏造された判例参照、および不正な規制引用を検出します。ドメイン分類が `null`（一般的なクエリ）を返す場合、この設定に関わらず引用検証は実行されません |
-| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | 引用検証プロンプトに送信されるステップ結果の最大文字数 |
+| `MAX_CONCURRENCY` | No | `5` | Max parallel steps in DAG executor |
+| `DAG_STEP_MAX_ITERATIONS` | No | `15` | Max tool-call iterations within each DAG step |
+| `DAG_STEP_TIMEOUT` | No | `600` | Step execution timeout in seconds. Steps exceeding this are marked as failed and their dependents are cascade-skipped |
+| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | Max autonomous re-plan attempts when goal is not achieved. User interrupts (inject) are unlimited and do not count against this budget |
+| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | Applies only when the agent judges the goal **unreachable** (impossible request, missing capability, dead resource): stop retrying at or above this certainty. A missing or half-finished deliverable is always re-planned regardless of confidence — only `DAG_MAX_REPLAN_ROUNDS` bounds those retries |
+| `DAG_VERIFY_TRUNCATION` | No | `2000` | Max characters of step output sent to the step verifier LLM for quality judgment |
+| `DAG_ANALYZER_TRUNCATION` | No | `10000` | Max characters per step result when formatting for the post-execution analyzer |
+| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | Max characters of raw tool output (web fetches, search results, file reads) retained per step as authoritative "source evidence". This is fed to the analyzer and final synthesis alongside the step's own summary, so the answer's factual claims (totals, enumerations, severities) can be verified against the source instead of trusting a summary that may have silently dropped or mislabelled items. Set to `0` to disable evidence capture |
+| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | Max characters per step result from the most recent round when building re-plan context |
+| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | Max characters per step result from older rounds when building re-plan context. Older rounds are more aggressively truncated to save context |
+| `DAG_TOOL_CACHE` | No | `true` | Cache identical tool calls within a single DAG execution. Only tools explicitly marked as `cacheable` (read-only tools like search, knowledge retrieval) are cached. Set to `false` to disable caching entirely |
+| `DAG_STEP_VERIFICATION` | No | `false` | Generic LLM-based quality check after each DAG step. On failure, the step retries once with feedback. **Default off** — adds latency on every step and is rarely needed; most step outputs are acceptable without re-checking. Use only when you observe frequent low-quality step results |
+| `DAG_CITATION_VERIFICATION` | No | `true` | Citation-accuracy check for specialist-domain steps. **Prerequisite**: the query must first be classified as a specialist domain by the LLM domain classifier (see `ESCALATION_DOMAINS`). When the domain is detected AND this flag is `true`, each completed step is scanned for legal/medical/financial citations and verified for accuracy — catching hallucinated article numbers, fabricated case references, and incorrect regulatory citations. If domain classification returns `null` (general query), citation verification does not run regardless of this setting |
+| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | Max characters of step result sent to the citation verification prompt |
 
 ### ドメイン分類
 

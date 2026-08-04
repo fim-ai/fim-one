@@ -176,7 +176,7 @@ For OpenAI and Gemini, the provider handles token allocation internally based on
 | `DAG_STEP_MAX_ITERATIONS` | No | `15` | Max tool-call iterations within each DAG step |
 | `DAG_STEP_TIMEOUT` | No | `600` | Step execution timeout in seconds. Steps exceeding this are marked as failed and their dependents are cascade-skipped |
 | `DAG_MAX_REPLAN_ROUNDS` | No | `3` | Max autonomous re-plan attempts when goal is not achieved. User interrupts (inject) are unlimited and do not count against this budget |
-| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | Stop retrying when agent confidence that goal is unachievable exceeds this threshold (`0.0` = never stop early, `1.0` = stop on any failure) |
+| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | Applies only when the agent judges the goal **unreachable** (impossible request, missing capability, dead resource): stop retrying at or above this certainty. A missing or half-finished deliverable is always re-planned regardless of confidence — only `DAG_MAX_REPLAN_ROUNDS` bounds those retries |
 | `DAG_VERIFY_TRUNCATION` | No | `2000` | Max characters of step output sent to the step verifier LLM for quality judgment |
 | `DAG_ANALYZER_TRUNCATION` | No | `10000` | Max characters per step result when formatting for the post-execution analyzer |
 | `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | Max characters of raw tool output (web fetches, search results, file reads) retained per step as authoritative "source evidence". This is fed to the analyzer and final synthesis alongside the step's own summary, so the answer's factual claims (totals, enumerations, severities) can be verified against the source instead of trusting a summary that may have silently dropped or mislabelled items. Set to `0` to disable evidence capture |

@@ -8,7 +8,7 @@ from fim_one.core.planner.types import (
     PlanStep,
     StepOutput,
 )
-from fim_one.web.api.chat import _format_replan_context
+from fim_one.web.api.chat import _format_replan_context, _should_stop_replanning
 
 
 class TestFormatReplanContext:
@@ -189,3 +189,40 @@ class TestFormatReplanContext:
         """Empty round history returns empty string."""
         text = _format_replan_context([])
         assert text == ""
+
+
+class TestShouldStopReplanning:
+    """The gate that decides whether an unachieved goal gets another round."""
+
+    def test_missing_deliverable_is_retried_however_confident(self) -> None:
+        """A confident "the HTML card is missing" must NOT end the run."""
+        analysis = AnalysisResult(
+            achieved=False,
+            confidence=0.8,
+            unrecoverable=False,
+            reasoning="The scores were computed but the HTML card was never written.",
+        )
+
+        assert _should_stop_replanning(analysis, 0.8) is False
+
+    def test_unreachable_goal_stops_at_threshold(self) -> None:
+        """A confident "this cannot be done" stops burning rounds."""
+        analysis = AnalysisResult(
+            achieved=False,
+            confidence=0.9,
+            unrecoverable=True,
+            reasoning="The requested API was retired and has no replacement.",
+        )
+
+        assert _should_stop_replanning(analysis, 0.8) is True
+
+    def test_unreachable_but_unsure_still_retries(self) -> None:
+        """A shaky "probably impossible" verdict is not enough to give up."""
+        analysis = AnalysisResult(
+            achieved=False,
+            confidence=0.4,
+            unrecoverable=True,
+            reasoning="The endpoint might be gone, but the errors were ambiguous.",
+        )
+
+        assert _should_stop_replanning(analysis, 0.8) is False

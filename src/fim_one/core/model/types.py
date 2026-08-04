@@ -161,6 +161,10 @@ class StreamChunk:
     # must forward it onto the reconstructed assistant ChatMessage so
     # multi-turn replay stays valid.
     signature: str | None = None
+    # The output limit cut the model off mid tool-call, so its arguments
+    # never arrived complete.  The call is dropped rather than dispatched
+    # with half a JSON payload; callers see this flag instead.
+    truncated_tool_call: bool = False
 
 
 @dataclass
@@ -173,3 +177,5 @@ class LLMResult:
     # "length" means the output hit the max-token limit and is truncated —
     # callers may issue a continuation request.
     finish_reason: str | None = None
+    # A tool call was cut off mid-arguments by the output limit and dropped.
+    truncated_tool_call: bool = False

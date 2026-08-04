@@ -30,6 +30,7 @@ _ANALYSIS_SCHEMA = {
     "properties": {
         "achieved": {"type": "boolean"},
         "confidence": {"type": "number"},
+        "unrecoverable": {"type": "boolean"},
         "final_answer": {"type": ["string", "null"]},
         "reasoning": {"type": "string"},
     },
@@ -45,6 +46,7 @@ Respond with a single JSON object:
 {{
   "achieved": true or false,
   "confidence": <float between 0.0 and 1.0>,
+  "unrecoverable": true or false,
   "final_answer": "<synthesised answer based on all step results, or null if not achieved>",
   "reasoning": "<explain your assessment>"
 }}
@@ -53,6 +55,14 @@ Guidelines:
 - Set "achieved" to true only if the goal has been fully accomplished.
 - "confidence" should reflect how certain you are (1.0 = absolutely certain, \
 0.0 = no confidence at all).
+- "unrecoverable" answers a separate question: could ANOTHER round of \
+planning and execution still reach the goal? Set it to true only when \
+nothing further would help — the request is impossible or self-contradictory, \
+a required capability or tool does not exist, or an external resource is \
+permanently unavailable. A deliverable that is merely missing, incomplete, \
+or was cut off partway is recoverable: set "unrecoverable" to false so the \
+remaining work can be re-planned. When "achieved" is true, "unrecoverable" \
+is ignored — omit it or set it to false.
 - If achieved, provide a clear "final_answer" that synthesises the step \
 results into a coherent response to the original goal.
 - If not achieved, set "final_answer" to null and explain in "reasoning" \
@@ -330,6 +340,7 @@ class PlanAnalyzer:
         return AnalysisResult(
             achieved=achieved,
             confidence=confidence,
+            unrecoverable=bool(data.get("unrecoverable", False)),
             final_answer=final_answer,
             reasoning=reasoning,
         )
@@ -348,6 +359,9 @@ def _regex_extract_analysis(content: str) -> dict[str, Any] | None:
     data: dict[str, Any] = {
         "achieved": achieved_m.group(1).lower() == "true",
     }
+    unrec_m = re.search(r'"unrecoverable"\s*:\s*(true|false)', content, re.IGNORECASE)
+    if unrec_m:
+        data["unrecoverable"] = unrec_m.group(1).lower() == "true"
     if conf_m:
         try:
             data["confidence"] = float(conf_m.group(1))

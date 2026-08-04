@@ -347,6 +347,28 @@ _REPLAN_OLDER_TRUNCATION = int(os.getenv("DAG_REPLAN_OLDER_TRUNCATION", "200"))
 _SKILL_STUB_DESC_LEN = int(os.getenv("SKILL_STUB_DESC_LENGTH", "120"))
 
 
+def _should_stop_replanning(
+    analysis: AnalysisResult,
+    stop_confidence: float,
+) -> bool:
+    """Decide whether an unachieved goal is worth another autonomous round.
+
+    Stop only when the analyzer judged the goal unreachable and is confident
+    about that.  Confidence on its own is the wrong signal: it scores how
+    sure the analyzer is of its verdict, so a confident "the deliverable is
+    missing" — precisely the case re-planning exists to fix — would end the
+    run instead of retrying it.
+
+    Args:
+        analysis: The analyzer's verdict for the round that just finished.
+        stop_confidence: Minimum certainty required to give up.
+
+    Returns:
+        ``True`` when re-planning should stop.
+    """
+    return analysis.unrecoverable and analysis.confidence >= stop_confidence
+
+
 def _format_replan_context(
     round_history: list[tuple[ExecutionPlan, AnalysisResult]],
 ) -> str:
@@ -4759,10 +4781,10 @@ async def dag_endpoint(
                             max_replan_rounds - 1,
                         )
                         break
-                    if analysis.confidence >= replan_stop_confidence:
+                    if _should_stop_replanning(analysis, replan_stop_confidence):
                         logger.info(
-                            "DAG round %d: goal not achieved with high confidence (%.1f), "
-                            "stopping re-planning",
+                            "DAG round %d: goal judged unreachable with high "
+                            "confidence (%.1f), stopping re-planning",
                             round_num,
                             analysis.confidence,
                         )

@@ -128,6 +128,17 @@ _CONTINUATION_PROMPT = (
     "Pick up mid-sentence if necessary."
 )
 
+# A tool call cut off mid-arguments cannot be resumed token-by-token the way
+# prose can — the call never reached the tool at all.  Tell the model what
+# happened so it retries with a payload that fits the budget.
+_TOOL_CALL_TRUNCATED_PROMPT = (
+    "[Tool call truncated] Your last tool call hit the output token limit "
+    "while its arguments were still being written, so it never ran and "
+    "nothing was saved. Do not repeat it unchanged. Split the work to fit: "
+    "write long content in several smaller calls (create the file with the "
+    "first part, then append the rest), or shorten the payload."
+)
+
 # Plan tool: when enabled, the agent gets an ``update_plan`` todo tool and
 # the loop injects a stale-plan reminder after this many consecutive
 # tool-call rounds without a plan update (Claude Code TodoWrite pattern).
@@ -2118,6 +2129,31 @@ class ReActAgent:
             # protocol noise.
             native_answer_text = strip_tool_protocol(native_answer_text)
 
+            # --- Truncated tool call ---
+            # The output limit landed inside a tool call's arguments, so the
+            # call was dropped before it could run.  Whatever text arrived is
+            # only the preamble the model wrote before it started the call —
+            # accepting it as the answer would report work that never
+            # happened.  Tell the model and let it retry with a smaller call.
+            if (
+                result.truncated_tool_call
+                and continuation_count < _MAX_CONTINUATIONS
+                and iteration < self._max_iterations
+            ):
+                continuation_count += 1
+                messages.append(
+                    ChatMessage(role="user", content=_TOOL_CALL_TRUNCATED_PROMPT),
+                )
+                logger.warning(
+                    "Tool call truncated by the output limit, "
+                    "requesting a smaller retry %d/%d (iteration %d)",
+                    continuation_count,
+                    _MAX_CONTINUATIONS,
+                    iteration,
+                )
+                profiler.emit(self._profiler_conversation_id())
+                continue
+
             # --- Output-truncation continuation ---
             # The answer was cut off by the provider's output token limit.
             # Keep the truncated segment, ask the model to resume mid-thought,
@@ -2295,6 +2331,7 @@ class ReActAgent:
         first_token_recorded = False
         thinking_signature: str | None = None
         final_finish_reason: str | None = None
+        truncated_tool_call = False
 
         stream = self._tool_llm.stream_chat(
             messages,
@@ -2326,6 +2363,8 @@ class ReActAgent:
                 final_usage = chunk.usage
             if chunk.finish_reason:
                 final_finish_reason = chunk.finish_reason
+            if chunk.truncated_tool_call:
+                truncated_tool_call = True
 
         return LLMResult(
             message=ChatMessage(
@@ -2337,6 +2376,7 @@ class ReActAgent:
             ),
             usage=final_usage,
             finish_reason=final_finish_reason,
+            truncated_tool_call=truncated_tool_call,
         )
 
     async def _execute_native_tool_calls(

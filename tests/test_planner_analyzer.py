@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fim_one.core.planner.analyzer import PlanAnalyzer
+from fim_one.core.planner.analyzer import PlanAnalyzer, _regex_extract_analysis
 from fim_one.core.planner.types import (
     ExecutionPlan,
     PlanStep,
@@ -67,3 +67,39 @@ class TestFormatStepResultsEvidence:
         plan = _plan_with_evidence(evidence="X" * 50)
         formatted = PlanAnalyzer._format_step_results(plan, max_result_chars=10)
         assert "[Evidence truncated]" in formatted
+
+
+class TestUnrecoverableField:
+    """The analyzer's separate "another round cannot help" verdict."""
+
+    def test_defaults_to_recoverable(self) -> None:
+        """An analyzer that omits the field leaves the goal retryable."""
+        result = PlanAnalyzer._dict_to_analysis_result(
+            {"achieved": False, "confidence": 0.9, "reasoning": "deliverable missing"},
+        )
+
+        assert result.unrecoverable is False
+
+    def test_parsed_when_present(self) -> None:
+        result = PlanAnalyzer._dict_to_analysis_result(
+            {
+                "achieved": False,
+                "confidence": 0.9,
+                "unrecoverable": True,
+                "reasoning": "the API no longer exists",
+            },
+        )
+
+        assert result.unrecoverable is True
+
+    def test_regex_fallback_extracts_unrecoverable(self) -> None:
+        """The malformed-JSON path must not silently drop the field."""
+        content = (
+            'here you go: {"achieved": false, "confidence": 0.9, '
+            '"unrecoverable": true, "reasoning": "impossible"'
+        )
+
+        data = _regex_extract_analysis(content)
+
+        assert data is not None
+        assert data["unrecoverable"] is True

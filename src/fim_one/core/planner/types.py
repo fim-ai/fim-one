@@ -98,12 +98,18 @@ class AnalysisResult:
         achieved: Whether the goal was fully accomplished.
         confidence: A score between 0.0 and 1.0 indicating confidence in
             the assessment.
+        unrecoverable: Whether another round of planning could still reach
+            the goal.  ``True`` means no — the request is impossible, a
+            required capability is missing, or a resource is permanently
+            unavailable.  A merely missing or half-finished deliverable is
+            recoverable and leaves this ``False``.
         final_answer: A synthesised answer if the goal was achieved.
         reasoning: The LLM's chain-of-thought reasoning behind the verdict.
     """
 
     achieved: bool
     confidence: float
+    unrecoverable: bool = False
     final_answer: str | None = None
     reasoning: str = ""
     usage: UsageSummary | None = None

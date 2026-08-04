@@ -10,15 +10,19 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unreleased]
 
-### Behoben
+### Fixed
 
-- **Die Selbstprüfung des Agenten wird nicht mehr als Antwort angezeigt.** Nach der Verwendung mehrerer Tools führt der Agent eine einmalige interne Verifizierung durch, bevor er antwortet; diese Verifizierung wurde bisher wörtlich an Sie gestreamt, sodass Antworten als "Let me verify: 1. Fully addressed? ✅ …" ankamen, statt als die eigentliche Antwort. Die Prüfung ist nun intern, und die Antwort, die Sie sehen, wird als eigener Schritt formuliert.
+- **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
 
-- **Die Rotation von Refresh-Tokens invalidiert nun tatsächlich das vorherige Token.** JWT `exp` hat nur Sekundenpräzision, daher codierten zwei Refresh-Tokens, die für denselben Benutzer in derselben Sekunde ausgegeben wurden, früher identisch — die Rotation schrieb dann den gespeicherten Hash mit demselben Wert um, und ein gestohlenes Refresh-Token konnte auf unbestimmte Zeit erneuert werden. Jedes Refresh-Token trägt nun eine eindeutige `jti`, sodass das rotierte Token sich unterscheidet und das alte sofort nicht mehr funktioniert.
+- **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.
 
-- **Approval Gates halten nun an, wenn ein Agent über einen anderen Agent oder einen Workflow erreicht wird.** Ein sensitiver Connector-Aufruf, der in einem Chat um Bestätigung fragen würde, lief bisher ungeprüft ab, sobald er über `call_agent` delegiert oder in einen Workflow-`AGENT`-Knoten eingebunden wurde — diese Pfade starteten den Agent ohne Hooks. Beide führen nun die Hooks des Agenten aus, verwenden die Bestätigungseinstellungen dieses Agenten und weigern sich, ihn auszuführen, wenn seine Hooks nicht geladen werden können.
+- **The agent's self-check no longer shows up as the answer.** After using several tools, the agent runs a one-time internal verification before replying; that verification was being streamed to you verbatim, so answers arrived as "Let me verify: 1. Fully addressed? ✅ …" instead of the answer itself. The check is now internal, and the reply you see is written as its own step.
 
-- **Ein Tippfehler in `SMTP_SSL` sendet Ihr SMTP-Passwort nicht mehr stillschweigend unverschlüsselt.** Bisher führte jeder Wert außer `ssl` oder `tls` (zum Beispiel `SMTP_SSL=true`) zu einer unverschlüsselten Verbindung ohne Warnung, sowohl bei System-E-Mails als auch bei E-Mail-Benachrichtigungen. Nicht erkannte Werte werden nun abgelehnt, und unverschlüsselte Zustellung muss explizit als `SMTP_SSL=none` angefordert werden, was bei jedem Versand eine Warnung protokolliert.
+- **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
+
+- **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
+
+- **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
 
 ### Entfernt
 
