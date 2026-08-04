@@ -14,6 +14,14 @@ from .base import Artifact
 MAX_ARTIFACT_SIZE = int(os.environ.get("MAX_ARTIFACT_SIZE", str(10 * 1024 * 1024)))  # 10 MB
 MAX_ARTIFACTS_TOTAL = int(os.environ.get("MAX_ARTIFACTS_TOTAL", str(50 * 1024 * 1024)))  # 50 MB
 
+# Runtime bookkeeping files that share the execution directory but are never
+# deliverables.  The AgentWorkspace offloads large tool outputs into the same
+# shared sandbox dir the exec tools scan (``tool_result_*`` — see
+# ``AgentWorkspace.save_tool_output``); a concurrent offload landing during an
+# exec run would otherwise be diff-detected as a "new file" and surface as a
+# bogus download card.
+_NON_ARTIFACT_PREFIXES = ("tool_result_", "transcript_", "HANDOFF_")
+
 
 _FALLBACK_MIMES: dict[str, str] = {
     ".md": "text/markdown",
@@ -53,6 +61,8 @@ def scan_new_files(directory: Path, before: set[str], artifacts_dir: Path) -> li
     new_files = after - before
 
     for filename in sorted(new_files):
+        if filename.startswith(_NON_ARTIFACT_PREFIXES):
+            continue
         src = directory / filename
         if not src.is_file():
             continue

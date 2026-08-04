@@ -10,25 +10,27 @@ description: "FIM Oneの全ての注目すべき変更。"
 
 ## [未リリース]
 
-### 修复
+### Fixed
 
-- **会话中的每个工具现在在一个共享文件系统上工作。** 之前卸载的大型输出会存放在仅工作区读取工具可以访问的目录中，而 `file_ops`、`shell_exec` 和 `python_exec` 在其他地方运行——智能体会列出一个文件，然后被告知它不存在，浪费迭代预算来寻找它。卸载的文件现在存放在每个工具（包括执行容器）都挂载的会话沙箱中；来自较早会话的文件仍然可读。
+- **Internal offload files can no longer appear as downloadable deliverables.** With tools sharing one filesystem, a large tool output offloaded during a code-execution run could be picked up by the artifact scan and surface as a bogus download card. Runtime bookkeeping files are now excluded from artifact detection.
 
-- **读取大型卸载文件不再产生无尽的指针文件链。** 工作区读取的输出本身可能超过卸载阈值，并被保存为指向磁盘上已有内容的新文件，使智能体陷入循环。工作区读取现在使用精确的恢复行进行限制，而不是被重新卸载。
+- **Every tool in a conversation now works on one shared filesystem.** Offloaded large outputs used to land in a directory only the workspace-reading tools could see, while `file_ops`, `shell_exec` and `python_exec` operated elsewhere — the agent would list a file, then be told it doesn't exist, and burn its iteration budget hunting for it. Offloaded files now live in the conversation sandbox that every tool (including exec containers) mounts; files from older conversations remain readable.
 
-- **DeepSeek 即兴创作的工具调用文本不再泄露到答案中。** 当 DeepSeek 模型将工具调用写成纯文本 `<｜｜DSML｜｜Tool call: ...` 而不是使用函数调用通道时，原始标记会逐字出现在聊天中。现在它会像其他工具调用伪协议一样被剥离。
+- **Reading a large offloaded file no longer spawns an endless chain of pointer files.** The output of a workspace read could itself exceed the offload threshold and get saved as a new file pointing back at content that was already on disk, sending the agent in circles. Workspace reads are now clamped with an exact resume line instead of being re-offloaded.
 
-- **被模型输出限制截断的工具调用不再作为完成的工作通过。** 当长有效负载（例如写入完整 HTML 页面）在调用中途耗尽输出预算时，半写的调用会被静默丢弃，智能体的引导文本——"现在我将保存文件"——成为步骤结果，所以产生任何内容的步骤被报告为已完成。截断现在被检测到，智能体被告知重试并将工作分成更小的调用。
+- **DeepSeek's improvised tool-call text no longer leaks into answers.** When a DeepSeek model wrote a tool invocation as plain `<｜｜DSML｜｜Tool call: ...` text instead of using the function-calling channel, the raw markup reached the chat verbatim. It is now stripped like other tool-call pseudo-protocols.
 
-- **智能体确信错过的目标现在会重试而不是结束运行。** 重新规划在分析器确信时停止，这将确信"可交付成果缺失"解读为放弃的理由——这正是重新规划存在的情况。运行现在仅在目标被判断为真正无法达到时才提前停止，`DAG_MAX_REPLAN_ROUNDS` 限制其余部分。
+- **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
 
-- **智能体的自检不再显示为答案。** 使用多个工具后，智能体在回复前运行一次性内部验证；该验证曾被逐字流式传输给您，所以答案会显示为"让我验证：1. 完全解决？✅ ……"而不是答案本身。检查现在是内部的，您看到的回复是作为其自己的步骤编写的。
+- **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.
 
-- **刷新令牌轮换现在实际上会使前一个令牌失效。** JWT `exp` 仅精确到秒，所以在同一秒内为同一用户发出的两个刷新令牌曾编码相同——轮换然后用相同值重写存储的哈希，被盗的刷新令牌可以永远续期。每个刷新令牌现在携带唯一的 `jti`，所以轮换的令牌不同，旧令牌立即停止工作。
+- **The agent's self-check no longer shows up as the answer.** After using several tools, the agent runs a one-time internal verification before replying; that verification was being streamed to you verbatim, so answers arrived as "Let me verify: 1. Fully addressed? ✅ …" instead of the answer itself. The check is now internal, and the reply you see is written as its own step.
 
-- **当通过另一个智能体或工作流到达智能体时，审批闸门现在保持有效。** 在聊天中会要求确认的敏感连接器调用以前在通过 `call_agent` 委派或包装在工作流 `AGENT` 节点中时无检查地运行——这些路径启动智能体时没有任何钩子。现在两者都运行智能体自己的闸门，使用该智能体的确认设置，如果其钩子无法加载则拒绝运行它。
+- **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
 
-- **`SMTP_SSL` 中的拼写错误不再静默地以明文发送您的 SMTP 密码。** 以前任何不是 `ssl` 或 `tls` 的值（例如 `SMTP_SSL=true`）都会导致未加密的连接而不发出警告，在系统电子邮件和电子邮件通知中都是如此。无法识别的值现在被完全拒绝，未加密的传递必须明确请求为 `SMTP_SSL=none`，这会在每次发送时记录警告。
+- **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
+
+- **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
 
 ### 削除
 

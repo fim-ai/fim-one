@@ -12,6 +12,8 @@ description: "FIM One의 모든 주목할 만한 변경 사항입니다."
 
 ### Fixed
 
+- **Internal offload files can no longer appear as downloadable deliverables.** With tools sharing one filesystem, a large tool output offloaded during a code-execution run could be picked up by the artifact scan and surface as a bogus download card. Runtime bookkeeping files are now excluded from artifact detection.
+
 - **Every tool in a conversation now works on one shared filesystem.** Offloaded large outputs used to land in a directory only the workspace-reading tools could see, while `file_ops`, `shell_exec` and `python_exec` operated elsewhere — the agent would list a file, then be told it doesn't exist, and burn its iteration budget hunting for it. Offloaded files now live in the conversation sandbox that every tool (including exec containers) mounts; files from older conversations remain readable.
 
 - **Reading a large offloaded file no longer spawns an endless chain of pointer files.** The output of a workspace read could itself exceed the offload threshold and get saved as a new file pointing back at content that was already on disk, sending the agent in circles. Workspace reads are now clamped with an exact resume line instead of being re-offloaded.
