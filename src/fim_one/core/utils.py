@@ -256,6 +256,24 @@ _TOOL_PROTOCOL_DANGLING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# DeepSeek's DSML dialect: tool calls improvised as plain text look like
+# ``<｜｜DSML｜｜Tool call: name({...})`` — fullwidth bars, no closing tag,
+# always followed only by the would-be invocation.  Strip from the marker to
+# the end of the text.  Bar count and ASCII-pipe fallbacks vary between
+# checkpoints, so both are accepted.
+_DSML_MARKER_RE = re.compile(
+    r"<?[｜|]{1,2}\s*DSML\s*[｜|]{1,2}.*\Z",
+    re.DOTALL | re.IGNORECASE,
+)
+# DeepSeek special-token remnants (``<｜tool▁calls▁begin｜>`` etc.) that
+# occasionally survive detokenization.  A block between begin/end tokens is
+# dropped whole; stray single tokens are dropped individually.
+_DS_TOKEN_BLOCK_RE = re.compile(
+    r"<｜tool▁[a-z▁]*begin｜>.*?(?:<｜tool▁[a-z▁]*end｜>|\Z)",
+    re.DOTALL,
+)
+_DS_TOKEN_DANGLING_RE = re.compile(r"<｜[^｜<>]{1,60}｜>")
+
 
 def strip_tool_protocol(text: str) -> str:
     """Remove model-emitted tool-call pseudo-protocol blocks from *text*.
@@ -276,12 +294,22 @@ def strip_tool_protocol(text: str) -> str:
     lowered = text.lower()
     if not any(
         marker in lowered
-        for marker in ("<tool_", "</tool_", "<function_call", "</function_call")
+        for marker in (
+            "<tool_",
+            "</tool_",
+            "<function_call",
+            "</function_call",
+            "dsml",
+            "<｜",
+        )
     ):
         return text
     cleaned = _TOOL_PROTOCOL_BLOCK_RE.sub("", text)
     cleaned = _TOOL_PROTOCOL_UNCLOSED_RE.sub("", cleaned)
     cleaned = _TOOL_PROTOCOL_DANGLING_RE.sub("", cleaned)
+    cleaned = _DSML_MARKER_RE.sub("", cleaned)
+    cleaned = _DS_TOKEN_BLOCK_RE.sub("", cleaned)
+    cleaned = _DS_TOKEN_DANGLING_RE.sub("", cleaned)
     # Collapse the blank lines left behind by removed blocks.
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()

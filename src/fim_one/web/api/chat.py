@@ -1255,6 +1255,24 @@ def _conversation_sandbox_root(conversation_id: str | None) -> Path | None:
     return _PROJECT_ROOT.parent / "data" / "sandbox" / conversation_id
 
 
+def _conversation_workspace(conversation_id: str | None) -> AgentWorkspace | None:
+    """Build the conversation's AgentWorkspace on the SHARED sandbox directory.
+
+    The sandboxed tools (file_ops, shell_exec, python_exec, node_exec) all
+    operate on ``{sandbox_root}/workspace`` — see ``discover_builtin_tools``.
+    The workspace must sit on the same directory: it is where large tool
+    outputs get offloaded, and a file the model was just told about must be
+    visible to every tool that could read it (including inside exec
+    containers, which mount this directory as ``/workspace``).  Splitting
+    the two produced "list shows it, file_ops can't find it" dead ends.
+    """
+    if not conversation_id:
+        return None
+    sandbox_root = _conversation_sandbox_root(conversation_id)
+    assert sandbox_root is not None  # conversation_id was checked above
+    return AgentWorkspace(conversation_id, directory=sandbox_root / "workspace")
+
+
 async def _resolve_bound_kb_owner_map(
     kb_ids: list[str], agent_owner_id: str | None
 ) -> dict[str, str]:
@@ -3456,9 +3474,7 @@ async def react_endpoint(
                 # budget-truncation rescue (workspace:// pointer) and the
                 # pre-compaction transcript snapshot.  Without it those
                 # recovery paths silently degrade to permanent data loss.
-                workspace=(
-                    AgentWorkspace(conversation_id) if conversation_id else None
-                ),
+                workspace=_conversation_workspace(conversation_id),
             )
 
             # Only send images as vision content when model supports it
@@ -4594,9 +4610,7 @@ async def dag_endpoint(
                     enable_plan_tool=False,
                     # Same per-conversation workspace as the ReAct path so
                     # step tool outputs get offload/rescue instead of loss.
-                    workspace=(
-                        AgentWorkspace(conversation_id) if conversation_id else None
-                    ),
+                    workspace=_conversation_workspace(conversation_id),
                 )
                 from fim_one.db import create_session as _create_registry_session
 

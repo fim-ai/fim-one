@@ -548,3 +548,137 @@ class TestAgentWorkspaceIntegration:
         llm = FakeLLM(responses=[_final_answer_response("done")])
         agent = ReActAgent(llm=llm, tools=registry)
         assert agent.workspace is None
+
+
+# ======================================================================
+# Shared-directory merge (workspace == sandbox workspace dir)
+# ======================================================================
+
+
+class TestSharedDirectory:
+    """The workspace can sit directly on the sandbox's shared directory."""
+
+    def test_explicit_directory_wins_over_base_dir(self, tmp_path: Path) -> None:
+        shared = tmp_path / "sandbox" / "conv-1" / "workspace"
+        ws = AgentWorkspace(
+            "conv-1", base_dir=str(tmp_path / "workspaces"), directory=shared,
+        )
+
+        uri = ws.save_tool_output("http_request", "payload")
+        filename = uri[len("workspace://"):]
+
+        # The file lands where file_ops / shell_exec / python_exec look.
+        assert (shared / filename).exists()
+        assert not (tmp_path / "workspaces" / "conv-1" / filename).exists()
+
+    def test_legacy_files_stay_readable(self, tmp_path: Path) -> None:
+        # A conversation that offloaded files before the merge keeps access
+        # to them through the old dedicated directory.
+        legacy = tmp_path / "workspaces" / "conv-2"
+        legacy.mkdir(parents=True)
+        (legacy / "old_result.txt").write_text("from before the merge")
+
+        ws = AgentWorkspace(
+            "conv-2",
+            base_dir=str(tmp_path / "workspaces"),
+            directory=tmp_path / "sandbox" / "conv-2" / "workspace",
+        )
+
+        assert ws.read_file("old_result.txt") == "from before the merge"
+
+    def test_internal_files_hidden_from_listing_but_readable(
+        self, tmp_path: Path,
+    ) -> None:
+        ws = AgentWorkspace(
+            "conv-3",
+            base_dir=str(tmp_path / "workspaces"),
+            directory=tmp_path / "sandbox" / "conv-3" / "workspace",
+        )
+        handoff_uri = ws.write_handoff("# Findings\nkey point")
+        transcript_uri = ws.save_transcript(
+            [ChatMessage(role="user", content="hello")],
+        )
+
+        # Neither runtime file clutters the shared tool view...
+        names = {f["name"] for f in ws.list_files()}
+        assert names == set()
+
+        # ...but both stay readable through their workspace:// URIs.
+        for uri in (handoff_uri, transcript_uri):
+            filename = uri[len("workspace://"):]
+            assert ws.read_file(filename)
+        assert ws.read_latest_handoff() == "# Findings\nkey point"
+
+
+class TestNoOffloadLoop:
+    """Workspace reads must never be re-offloaded into fresh pointer files."""
+
+    def test_read_tool_output_is_clamped_not_offloaded(
+        self, workspace_small_threshold: AgentWorkspace,
+    ) -> None:
+        ws = workspace_small_threshold
+        big = "x" * 500
+
+        result = ws.maybe_offload("read_workspace_file", big)
+
+        # Clamped with guidance, and — critically — no new file appeared.
+        assert "Output clamped" in result
+        assert "workspace://" not in result
+        assert ws.list_files() == []
+
+    def test_list_tool_output_is_clamped_not_offloaded(
+        self, workspace_small_threshold: AgentWorkspace,
+    ) -> None:
+        ws = workspace_small_threshold
+
+        result = ws.maybe_offload("list_workspace_files", "y" * 500)
+
+        assert "Output clamped" in result
+        assert ws.list_files() == []
+
+    def test_other_tools_still_offload(
+        self, workspace_small_threshold: AgentWorkspace,
+    ) -> None:
+        ws = workspace_small_threshold
+
+        result = ws.maybe_offload("http_request", "z" * 500)
+
+        assert "workspace://" in result
+        assert len(ws.list_files()) == 1
+
+
+class TestReadToolSelfClamp:
+    """ReadWorkspaceFileTool pages instead of returning unbounded content."""
+
+    async def test_oversized_read_reports_resume_point(
+        self, tmp_path: Path,
+    ) -> None:
+        ws = AgentWorkspace(
+            "conv-4",
+            base_dir=str(tmp_path / "workspaces"),
+            offload_threshold=100,
+        )
+        content = "\n".join(f"line {i:03d} " + "-" * 20 for i in range(50))
+        uri = ws.save_tool_output("http_request", content)
+        filename = uri[len("workspace://"):]
+
+        tool = ReadWorkspaceFileTool(ws)
+        result = await tool.run(filename=filename)
+
+        assert "Read clamped" in result
+        assert "start_line=" in result
+        # The clamped body respects the budget (plus the guidance note).
+        body = result.split("\n\n[Read clamped")[0]
+        assert len(body) <= 100
+
+    async def test_small_read_returned_whole(self, tmp_path: Path) -> None:
+        ws = AgentWorkspace(
+            "conv-5",
+            base_dir=str(tmp_path / "workspaces"),
+            offload_threshold=100,
+        )
+        uri = ws.save_tool_output("http_request", "short content")
+        filename = uri[len("workspace://"):]
+
+        tool = ReadWorkspaceFileTool(ws)
+        assert await tool.run(filename=filename) == "short content"

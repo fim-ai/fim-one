@@ -29,7 +29,15 @@ class TestSaveTranscript:
 
         assert uri.startswith("workspace://transcript_")
         filename = uri[len("workspace://"):]
-        lines = (tmp_path / "conv1" / filename).read_text().strip().splitlines()
+        # Transcripts are runtime-internal — they live in the hidden subdir
+        # (kept out of the shared tool view) but stay readable by filename.
+        assert ws.read_file(filename)
+        lines = (
+            (tmp_path / "conv1" / ".fim_internal" / filename)
+            .read_text()
+            .strip()
+            .splitlines()
+        )
         assert len(lines) == 4
         records = [json.loads(line) for line in lines]
         assert records[1] == {"role": "user", "content": "hello"}

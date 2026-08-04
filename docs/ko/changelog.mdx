@@ -10,19 +10,25 @@ description: "FIM One의 모든 주목할 만한 변경 사항입니다."
 
 ## [미출시]
 
-### 수정됨
+### Fixed
 
-- **모델의 출력 제한으로 인해 잘린 도구 호출은 더 이상 완료된 작업으로 처리되지 않습니다.** 긴 페이로드(예: 전체 HTML 페이지 작성)가 호출 중간에 출력 예산을 소진했을 때, 반쯤 작성된 호출이 자동으로 삭제되고 에이전트의 도입부 텍스트("이제 파일을 저장하겠습니다")가 단계 결과가 되어 아무것도 생성하지 않은 단계가 완료된 것으로 보고되었습니다. 이제 잘림이 감지되고 에이전트는 작업을 더 작은 호출로 분할하여 재시도하도록 지시받습니다.
+- **Every tool in a conversation now works on one shared filesystem.** Offloaded large outputs used to land in a directory only the workspace-reading tools could see, while `file_ops`, `shell_exec` and `python_exec` operated elsewhere — the agent would list a file, then be told it doesn't exist, and burn its iteration budget hunting for it. Offloaded files now live in the conversation sandbox that every tool (including exec containers) mounts; files from older conversations remain readable.
 
-- **에이전트가 놓친 것으로 확신하는 목표는 이제 실행을 종료하는 대신 재시도됩니다.** 분석기가 확신할 때마다 재계획이 중단되었는데, 이는 "결과물이 누락되었습니다"라는 확신 있는 판단을 포기 이유로 읽었습니다 — 재계획이 존재하는 정확한 경우입니다. 이제 실행은 목표가 진정으로 도달 불가능하다고 판단될 때만 조기에 중단되며, `DAG_MAX_REPLAN_ROUNDS`가 나머지를 제한합니다.
+- **Reading a large offloaded file no longer spawns an endless chain of pointer files.** The output of a workspace read could itself exceed the offload threshold and get saved as a new file pointing back at content that was already on disk, sending the agent in circles. Workspace reads are now clamped with an exact resume line instead of being re-offloaded.
 
-- **에이전트의 자체 검사는 더 이상 답변으로 표시되지 않습니다.** 여러 도구를 사용한 후 에이전트는 응답하기 전에 일회성 내부 검증을 실행합니다. 이 검증이 이전에는 그대로 스트리밍되어 답변이 "확인해보겠습니다: 1. 완전히 해결됨? ✅ …" 형태로 도착했습니다. 이제 검사는 내부적으로 수행되며, 표시되는 응답은 자체 단계로 작성됩니다.
+- **DeepSeek's improvised tool-call text no longer leaks into answers.** When a DeepSeek model wrote a tool invocation as plain `<｜｜DSML｜｜Tool call: ...` text instead of using the function-calling channel, the raw markup reached the chat verbatim. It is now stripped like other tool-call pseudo-protocols.
 
-- **새로고침 토큰 로테이션은 이제 실제로 이전 토큰을 무효화합니다.** JWT `exp`는 초 단위 정밀도만 가지므로, 같은 초에 같은 사용자를 위해 발급된 두 개의 새로고침 토큰은 동일하게 인코딩되었습니다 — 로테이션은 저장된 해시를 같은 값으로 덮어썼고, 도난당한 새로고침 토큰은 영구적으로 갱신될 수 있었습니다. 이제 각 새로고침 토큰은 고유한 `jti`를 포함하므로 로테이션된 토큰이 달라지고 이전 토큰은 즉시 작동을 중지합니다.
+- **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
 
-- **승인 게이트는 이제 에이전트가 다른 에이전트나 워크플로우를 통해 도달할 때 유지됩니다.** 채팅에서 확인을 요청하는 민감한 커넥터 호출은 이전에 `call_agent`를 통해 위임되거나 워크플로우 `AGENT` 노드에 래핑되면 훅 없이 실행되었습니다 — 이러한 경로는 에이전트를 훅 없이 시작했습니다. 이제 둘 다 에이전트 자체의 게이트를 실행하여 해당 에이전트의 확인 설정을 사용하며, 훅을 로드할 수 없으면 실행을 거부합니다.
+- **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.
 
-- **`SMTP_SSL`의 오타는 더 이상 SMTP 비밀번호를 암호화되지 않은 상태로 자동으로 전송하지 않습니다.** 이전에는 `ssl` 또는 `tls` 이외의 값(예: `SMTP_SSL=true`)이 경고 없이 암호화되지 않은 연결로 폴스루되었으며, 이는 시스템 이메일과 이메일 알림 모두에 적용되었습니다. 이제 인식되지 않은 값은 완전히 거부되며, 암호화되지 않은 전달은 `SMTP_SSL=none`으로 명시적으로 요청되어야 하며, 이는 모든 전송에서 경고를 기록합니다.
+- **The agent's self-check no longer shows up as the answer.** After using several tools, the agent runs a one-time internal verification before replying; that verification was being streamed to you verbatim, so answers arrived as "Let me verify: 1. Fully addressed? ✅ …" instead of the answer itself. The check is now internal, and the reply you see is written as its own step.
+
+- **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
+
+- **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
+
+- **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
 
 ### 제거됨
 

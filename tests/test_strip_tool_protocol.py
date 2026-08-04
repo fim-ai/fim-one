@@ -81,3 +81,48 @@ class TestStripToolProtocol:
         # Bare mentions without an opening tag pattern are left alone.
         text = "The tool_call concept is explained here."
         assert strip_tool_protocol(text) == text
+
+
+class TestDeepSeekDSML:
+    """DeepSeek's DSML dialect and special-token remnants."""
+
+    def test_dsml_tool_call_stripped_from_marker_to_end(self) -> None:
+        # The literal observed in production: fullwidth double bars, no
+        # closing tag, invocation trails to the end of the message.
+        text = (
+            "让我分段读取保存的完整响应，获取前 5 名仓库信息：\n\n"
+            "<｜｜DSML｜｜Tool call: read_workspace_file("
+            '{"filename": "tool_result_read_workspace_file_f28743d4.txt", '
+            '"start_line": 380, "end_line": 520})'
+        )
+        cleaned = strip_tool_protocol(text)
+        assert cleaned == "让我分段读取保存的完整响应，获取前 5 名仓库信息："
+        assert "DSML" not in cleaned
+
+    def test_single_bar_and_ascii_pipe_variants(self) -> None:
+        for marker in ("<｜DSML｜", "<||DSML||", "||DSML||"):
+            text = f"Answer first. {marker}Tool call: foo({{}})"
+            cleaned = strip_tool_protocol(text)
+            assert "DSML" not in cleaned, marker
+            assert cleaned.startswith("Answer first."), marker
+
+    def test_entirely_dsml_returns_empty(self) -> None:
+        text = '<｜｜DSML｜｜Tool call: list_workspace_files({})'
+        assert strip_tool_protocol(text) == ""
+
+    def test_ds_special_token_block_stripped(self) -> None:
+        text = (
+            "结论：仓库排名第一。\n"
+            "<｜tool▁calls▁begin｜>read stuff<｜tool▁calls▁end｜>"
+        )
+        cleaned = strip_tool_protocol(text)
+        assert cleaned == "结论：仓库排名第一。"
+
+    def test_dangling_ds_token_stripped(self) -> None:
+        text = "Answer<｜end▁of▁sentence｜>"
+        assert strip_tool_protocol(text) == "Answer"
+
+    def test_plain_dsml_mention_untouched(self) -> None:
+        # Talking ABOUT the dialect is not emitting it.
+        text = "DSML is DeepSeek's tool-call markup dialect."
+        assert strip_tool_protocol(text) == text

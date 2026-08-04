@@ -37,6 +37,19 @@ _PREVIEW_CHARS = int(os.getenv("WORKSPACE_PREVIEW_CHARS", "2000"))
 # Max age in hours before workspace cleanup deletes files.
 _CLEANUP_MAX_HOURS = int(os.getenv("WORKSPACE_CLEANUP_MAX_HOURS", "72"))
 
+# Tools whose output is already workspace content.  Offloading it again
+# would loop: read a big file → the excerpt exceeds the threshold → it is
+# saved as a NEW workspace file → the model is told to read THAT file →
+# repeat until the iteration budget burns out.  Their output is clamped
+# instead (see ``maybe_offload``).  Public: the ReAct budget-truncation
+# rescue consults it too — re-saving a workspace read is the same loop.
+NO_OFFLOAD_TOOLS = frozenset({"read_workspace_file", "list_workspace_files"})
+
+# Subdirectory for files the runtime writes for itself (pre-compaction
+# transcripts, handoff notes).  Kept out of the shared tool view so
+# file_ops / shell_exec listings only show actual working files.
+_INTERNAL_SUBDIR = ".fim_internal"
+
 
 class AgentWorkspace:
     """Per-conversation workspace for storing large tool outputs and handoff notes.
@@ -44,10 +57,20 @@ class AgentWorkspace:
     All file I/O is protected by a threading lock so that concurrent tool
     executions (e.g. parallel native tool calls) do not race on writes.
 
+    The directory is shared with the sandboxed tools (file_ops, shell_exec,
+    python_exec) when the caller passes the sandbox's shared ``workspace/``
+    directory — one conversation, one filesystem, every tool sees the same
+    files (offloaded outputs included).
+
     Args:
         conversation_id: Unique identifier for the conversation.
-        base_dir: Root directory under which per-conversation workspaces live.
+        base_dir: Root directory under which per-conversation workspaces
+            live.  Ignored when *directory* is given.
         offload_threshold: Character count above which tool output is offloaded.
+        directory: Explicit workspace directory.  Pass the conversation's
+            shared sandbox ``workspace/`` dir so offloaded files are visible
+            to file_ops / shell_exec / python_exec (and inside their Docker
+            containers, which mount that dir as ``/workspace``).
     """
 
     def __init__(
@@ -55,16 +78,27 @@ class AgentWorkspace:
         conversation_id: str,
         base_dir: str = "data/workspaces",
         offload_threshold: int | None = None,
+        directory: Path | None = None,
     ) -> None:
         self._conversation_id = conversation_id
-        self._dir = Path(base_dir) / conversation_id
+        self._dir = directory if directory is not None else Path(base_dir) / conversation_id
         self._dir.mkdir(parents=True, exist_ok=True)
+        # Read-only fallback for conversations whose files were offloaded
+        # before the workspace moved into the sandbox directory.
+        self._legacy_dir = Path(base_dir) / conversation_id
         self._offload_threshold = (
             offload_threshold
             if offload_threshold is not None
             else DEFAULT_OFFLOAD_THRESHOLD
         )
         self._lock = threading.Lock()
+
+    @property
+    def _internal_dir(self) -> Path:
+        """Directory for runtime-internal files (transcripts, handoffs)."""
+        path = self._dir / _INTERNAL_SUBDIR
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     # ------------------------------------------------------------------
     # Properties
@@ -123,10 +157,24 @@ class AgentWorkspace:
 
         Returns:
             Either the original output (if short) or a preview with a
-            ``workspace://`` URI reference.
+            ``workspace://`` URI reference.  Output from workspace-reading
+            tools is clamped instead of re-offloaded — saving it would spawn
+            a fresh file pointing back at content that already lives in one,
+            and the model would chase that chain forever.
         """
         if len(output) <= self._offload_threshold:
             return output
+
+        if tool_name in NO_OFFLOAD_TOOLS:
+            clamped = output[: self._offload_threshold]
+            return (
+                f"{clamped}\n\n"
+                f"[Output clamped — showing {len(clamped)} of {len(output)} "
+                "chars. The full content is ALREADY in the workspace file "
+                "you just read: call read_workspace_file again with a "
+                "narrower start_line/end_line range instead of re-reading "
+                "the whole file.]"
+            )
 
         uri = self.save_tool_output(tool_name, output)
         preview = output[:_PREVIEW_CHARS]
@@ -173,7 +221,7 @@ class AgentWorkspace:
                     getattr(tc, "name", "unknown") for tc in tool_calls
                 ]
             lines.append(json.dumps(record, ensure_ascii=False))
-        filepath = self._dir / filename
+        filepath = self._internal_dir / filename
         with self._lock:
             filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
         logger.info(
@@ -211,7 +259,17 @@ class AgentWorkspace:
         self._validate_filename(filename)
         filepath = self._dir / filename
         if not filepath.exists():
-            raise FileNotFoundError(f"Workspace file not found: {filename}")
+            # Runtime-internal files (transcripts, handoffs) live in a
+            # subdirectory but are addressed by bare filename in their
+            # workspace:// URIs; legacy conversations may still hold files
+            # at the pre-merge location.
+            for fallback_dir in (self._internal_dir, self._legacy_dir):
+                candidate = fallback_dir / filename
+                if candidate.exists():
+                    filepath = candidate
+                    break
+            else:
+                raise FileNotFoundError(f"Workspace file not found: {filename}")
         with self._lock:
             lines = filepath.read_text(encoding="utf-8").splitlines()
         if end_line is not None:
@@ -258,7 +316,7 @@ class AgentWorkspace:
             A ``workspace://`` URI pointing to the handoff file.
         """
         filename = f"HANDOFF_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.md"
-        filepath = self._dir / filename
+        filepath = self._internal_dir / filename
         with self._lock:
             filepath.write_text(summary, encoding="utf-8")
         logger.debug("Wrote handoff note: %s", filepath)
@@ -272,7 +330,14 @@ class AgentWorkspace:
             notes exist in this workspace.
         """
         with self._lock:
-            handoffs = sorted(self._dir.glob("HANDOFF_*.md"), reverse=True)
+            handoffs = sorted(self._internal_dir.glob("HANDOFF_*.md"), reverse=True)
+            if not handoffs:
+                # Pre-merge conversations wrote handoffs at the workspace
+                # root (old dedicated dir); keep them readable.
+                for legacy in (self._dir, self._legacy_dir):
+                    handoffs = sorted(legacy.glob("HANDOFF_*.md"), reverse=True)
+                    if handoffs:
+                        break
             if not handoffs:
                 return None
             return handoffs[0].read_text(encoding="utf-8")
@@ -295,7 +360,11 @@ class AgentWorkspace:
         cutoff = time.time() - max_age_hours * 3600
         deleted = 0
         with self._lock:
-            for f in list(self._dir.iterdir()):
+            candidates = list(self._dir.iterdir())
+            internal = self._dir / _INTERNAL_SUBDIR
+            if internal.is_dir():
+                candidates.extend(internal.iterdir())
+            for f in candidates:
                 if f.is_file() and f.stat().st_mtime < cutoff:
                     f.unlink()
                     deleted += 1

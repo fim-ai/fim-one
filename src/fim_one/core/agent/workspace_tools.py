@@ -95,6 +95,32 @@ class ReadWorkspaceFileTool(BaseTool):
         except ValueError as exc:
             return f"[Error] {exc}"
 
+        # Self-limiting read: never return more than the offload threshold.
+        # Cutting on a line boundary lets the note give an exact resume
+        # point, so the model pages through the file instead of re-reading
+        # it whole (which used to trigger another offload of this very
+        # output — a pointer-chasing loop).
+        budget = self._workspace.offload_threshold
+        if len(content) > budget:
+            lines = content.splitlines()
+            kept: list[str] = []
+            used = 0
+            for line in lines:
+                cost = len(line) + 1  # + newline
+                if used + cost > budget and kept:
+                    break
+                kept.append(line)
+                used += cost
+            next_line = start_line + len(kept)
+            requested_end = end_line if end_line is not None else "end of file"
+            return (
+                "\n".join(kept)
+                + "\n\n[Read clamped at the size limit: returned lines "
+                f"{start_line}-{next_line - 1} of the requested range "
+                f"({start_line}..{requested_end}). Continue with "
+                f"start_line={next_line}, or use a narrower end_line.]"
+            )
+
         return content
 
 

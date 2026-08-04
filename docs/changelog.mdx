@@ -12,6 +12,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Every tool in a conversation now works on one shared filesystem.** Offloaded large outputs used to land in a directory only the workspace-reading tools could see, while `file_ops`, `shell_exec` and `python_exec` operated elsewhere — the agent would list a file, then be told it doesn't exist, and burn its iteration budget hunting for it. Offloaded files now live in the conversation sandbox that every tool (including exec containers) mounts; files from older conversations remain readable.
+
+- **Reading a large offloaded file no longer spawns an endless chain of pointer files.** The output of a workspace read could itself exceed the offload threshold and get saved as a new file pointing back at content that was already on disk, sending the agent in circles. Workspace reads are now clamped with an exact resume line instead of being re-offloaded.
+
+- **DeepSeek's improvised tool-call text no longer leaks into answers.** When a DeepSeek model wrote a tool invocation as plain `<｜｜DSML｜｜Tool call: ...` text instead of using the function-calling channel, the raw markup reached the chat verbatim. It is now stripped like other tool-call pseudo-protocols.
+
 - **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
 
 - **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.

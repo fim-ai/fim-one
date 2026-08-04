@@ -52,7 +52,7 @@ from .plan_tool import PlanState, UpdatePlanTool, make_plan_reminder
 from .system_prompt import JSON_MODE_SYSTEM_PROMPT, NATIVE_MODE_SYSTEM_PROMPT
 from .turn_profiler import TurnProfiler, make_profiler
 from .types import Action, AgentResult, StepResult
-from .workspace import AgentWorkspace
+from .workspace import NO_OFFLOAD_TOOLS, AgentWorkspace
 
 # Callback invoked after each ReAct iteration.
 # Signature: (iteration, action, observation, error, step_result)
@@ -1634,9 +1634,16 @@ class ReActAgent:
             if tool_result_tokens + estimated_tokens > _TOOL_RESULT_BUDGET:
                 max_chars = max(0, (_TOOL_RESULT_BUDGET - tool_result_tokens) * 4)
                 # Persist the full observation before cutting it (skip when
-                # it already carries a workspace pointer from maybe_offload).
+                # it already carries a workspace pointer from maybe_offload,
+                # and for workspace reads — re-saving content that already
+                # lives in a workspace file would send the model chasing an
+                # endless chain of pointer files).
                 saved_note = ""
-                if self._workspace is not None and "workspace://" not in obs_content:
+                if (
+                    self._workspace is not None
+                    and "workspace://" not in obs_content
+                    and (action.tool_name or "") not in NO_OFFLOAD_TOOLS
+                ):
                     uri = self._workspace.save_tool_output(
                         action.tool_name or "tool",
                         obs_content,
@@ -1977,6 +1984,12 @@ class ReActAgent:
                 )
                 profiler.add("tool_exec", time.perf_counter() - _tool_start)
 
+                # Tool result messages carry only tool_call_id — recover the
+                # tool name for the budget-rescue exemption below.
+                tool_name_by_call_id = {
+                    tc.id: tc.name for tc in assistant_msg.tool_calls
+                }
+
                 # --- Tool result aggregate budget (I.8) ---
                 for tr_msg in tool_results:
                     raw_content = tr_msg.content
@@ -1992,14 +2005,20 @@ class ReActAgent:
                         )
                         # Persist the full result before cutting it so the
                         # data stays recoverable (skip when it already
-                        # carries a workspace pointer from maybe_offload).
+                        # carries a workspace pointer from maybe_offload,
+                        # and for workspace reads — re-saving those spawns
+                        # an endless chain of pointer files).
                         saved_note = ""
+                        tr_tool_name = tool_name_by_call_id.get(
+                            tr_msg.tool_call_id or "", "tool",
+                        )
                         if (
                             self._workspace is not None
                             and "workspace://" not in content_str
+                            and tr_tool_name not in NO_OFFLOAD_TOOLS
                         ):
                             uri = self._workspace.save_tool_output(
-                                tr_msg.name or "tool",
+                                tr_tool_name,
                                 content_str,
                             )
                             saved_note = (
