@@ -166,24 +166,24 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 | `DAG_CHECKPOINT_MAX_AGE_HOURS` | 否 | `24` | 超过此时间的 DAG 检查点在加载时被忽略，因此陈旧的崩溃遗留物永远不会恢复到新运行中 |
 | `LLM_RATE_LIMIT_PER_USER` | 否 | `true` | 使用按用户键控的速率限制桶而不是单个进程全局桶。防止一个嘈杂的用户在同一工作线程上饿死所有其他用户。底层速率硬编码为每个桶 60 请求/分钟和 100K 令牌/分钟——此设置仅控制桶是共享（全局）还是分区（按用户）。设置为 `false` 以恢复到旧版全局桶（不推荐） |
 
-### DAG Planner
+### DAG 规划器
 
-| Variable | Required | Default | Description |
+| 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `MAX_CONCURRENCY` | No | `5` | Max parallel steps in DAG executor |
-| `DAG_STEP_MAX_ITERATIONS` | No | `15` | Max tool-call iterations within each DAG step |
-| `DAG_STEP_TIMEOUT` | No | `600` | Step execution timeout in seconds. Steps exceeding this are marked as failed and their dependents are cascade-skipped |
-| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | Max autonomous re-plan attempts when goal is not achieved. User interrupts (inject) are unlimited and do not count against this budget |
-| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | Applies only when the agent judges the goal **unreachable** (impossible request, missing capability, dead resource): stop retrying at or above this certainty. A missing or half-finished deliverable is always re-planned regardless of confidence — only `DAG_MAX_REPLAN_ROUNDS` bounds those retries |
-| `DAG_VERIFY_TRUNCATION` | No | `2000` | Max characters of step output sent to the step verifier LLM for quality judgment |
-| `DAG_ANALYZER_TRUNCATION` | No | `10000` | Max characters per step result when formatting for the post-execution analyzer |
-| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | Max characters of raw tool output (web fetches, search results, file reads) retained per step as authoritative "source evidence". This is fed to the analyzer and final synthesis alongside the step's own summary, so the answer's factual claims (totals, enumerations, severities) can be verified against the source instead of trusting a summary that may have silently dropped or mislabelled items. Set to `0` to disable evidence capture |
-| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | Max characters per step result from the most recent round when building re-plan context |
-| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | Max characters per step result from older rounds when building re-plan context. Older rounds are more aggressively truncated to save context |
-| `DAG_TOOL_CACHE` | No | `true` | Cache identical tool calls within a single DAG execution. Only tools explicitly marked as `cacheable` (read-only tools like search, knowledge retrieval) are cached. Set to `false` to disable caching entirely |
-| `DAG_STEP_VERIFICATION` | No | `false` | Generic LLM-based quality check after each DAG step. On failure, the step retries once with feedback. **Default off** — adds latency on every step and is rarely needed; most step outputs are acceptable without re-checking. Use only when you observe frequent low-quality step results |
-| `DAG_CITATION_VERIFICATION` | No | `true` | Citation-accuracy check for specialist-domain steps. **Prerequisite**: the query must first be classified as a specialist domain by the LLM domain classifier (see `ESCALATION_DOMAINS`). When the domain is detected AND this flag is `true`, each completed step is scanned for legal/medical/financial citations and verified for accuracy — catching hallucinated article numbers, fabricated case references, and incorrect regulatory citations. If domain classification returns `null` (general query), citation verification does not run regardless of this setting |
-| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | Max characters of step result sent to the citation verification prompt |
+| `MAX_CONCURRENCY` | 否 | `5` | DAG 执行器中最大并行步骤数 |
+| `DAG_STEP_MAX_ITERATIONS` | 否 | `15` | 每个 DAG 步骤内最大工具调用迭代次数 |
+| `DAG_STEP_TIMEOUT` | 否 | `600` | 步骤执行超时时间（秒）。超过此时间的步骤被标记为失败，其依赖步骤级联跳过 |
+| `DAG_MAX_REPLAN_ROUNDS` | 否 | `3` | 目标未达成时最大自主重新规划尝试次数。用户中断（注入）次数不限，不计入此预算 |
+| `DAG_REPLAN_STOP_CONFIDENCE` | 否 | `0.8` | 仅当智能体判断目标**不可达成**（不可能的请求、缺少能力、资源失效）时适用：在此确定度或以上时停止重试。缺失或未完成的交付物始终会重新规划，无论置信度如何——仅 `DAG_MAX_REPLAN_ROUNDS` 限制这些重试 |
+| `DAG_VERIFY_TRUNCATION` | 否 | `2000` | 发送给步骤验证器 LLM 进行质量判断的步骤输出最大字符数 |
+| `DAG_ANALYZER_TRUNCATION` | 否 | `10000` | 格式化用于执行后分析器的每个步骤结果的最大字符数 |
+| `DAG_STEP_EVIDENCE_CHARS` | 否 | `16000` | 每个步骤保留的原始工具输出（网页获取、搜索结果、文件读取）最大字符数，作为权威"源证据"。这些数据连同步骤自身的摘要一起提供给分析器和最终合成，以便答案的事实声明（总数、枚举、严重程度）可以针对源进行验证，而不是信任可能静默丢弃或误标记项目的摘要。设置为 `0` 禁用证据捕获 |
+| `DAG_REPLAN_RECENT_TRUNCATION` | 否 | `500` | 构建重新规划上下文时来自最近一轮的每个步骤结果最大字符数 |
+| `DAG_REPLAN_OLDER_TRUNCATION` | 否 | `200` | 构建重新规划上下文时来自较早轮次的每个步骤结果最大字符数。较早轮次会更激进地截断以节省上下文 |
+| `DAG_TOOL_CACHE` | 否 | `true` | 在单个 DAG 执行中缓存相同的工具调用。仅显式标记为 `cacheable` 的工具（搜索、知识检索等只读工具）会被缓存。设置为 `false` 完全禁用缓存 |
+| `DAG_STEP_VERIFICATION` | 否 | `false` | 每个 DAG 步骤后的通用 LLM 质量检查。失败时，步骤使用反馈重试一次。**默认关闭**——在每个步骤上增加延迟，很少需要；大多数步骤输出无需重新检查即可接受。仅在观察到频繁的低质量步骤结果时使用 |
+| `DAG_CITATION_VERIFICATION` | 否 | `true` | 专业领域步骤的引用准确性检查。**前置条件**：查询必须首先由 LLM 领域分类器分类为专业领域（参见 `ESCALATION_DOMAINS`）。当检测到该领域且此标志为 `true` 时，每个已完成步骤会被扫描以查找法律/医学/财务引用并验证准确性——捕捉幻觉的文章编号、虚构的案例参考和不正确的监管引用。如果领域分类返回 `null`（通用查询），则无论此设置如何，引用验证都不会运行 |
+| `DAG_CITATION_VERIFY_TRUNCATION` | 否 | `6000` | 发送给引用验证提示的步骤结果最大字符数 |
 
 ### 领域分类
 

@@ -10,19 +10,19 @@ description: "FIM One的所有重要更新。"
 
 ## [未发布]
 
-### Fixed
+### 已修复
 
-- **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
+- **工具调用因模型输出限制而被截断时，不再被视为已完成。** 当长负载（例如编写完整HTML页面）耗尽了调用中途的输出预算时，半写的调用被静默丢弃，智能体的引导文本——"现在我将保存文件"——成为步骤结果，导致未产生任何内容的步骤被报告为已完成。现在截断会被检测到，智能体会被告知重试并将工作分成更小的调用。
 
-- **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.
+- **智能体确信遗漏的目标现在会重试，而不是结束运行。** 当分析器有把握时，重新规划会停止，这将有把握的"可交付物缺失"解读为放弃的理由——这正是重新规划存在的情况。现在仅当目标被判定为真正无法达成时才会提前停止运行，`DAG_MAX_REPLAN_ROUNDS`限制其余情况。
 
-- **The agent's self-check no longer shows up as the answer.** After using several tools, the agent runs a one-time internal verification before replying; that verification was being streamed to you verbatim, so answers arrived as "Let me verify: 1. Fully addressed? ✅ …" instead of the answer itself. The check is now internal, and the reply you see is written as its own step.
+- **智能体的自检不再显示为答案。** 使用多个工具后，智能体在回复前运行一次性内部验证；该验证之前被逐字流式传输给您，所以答案显示为"让我验证：1. 完全解决？✅ ……"而不是答案本身。现在检查是内部的，您看到的回复作为其自己的步骤编写。
 
-- **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
+- **刷新令牌轮换现在实际上会使前一个令牌失效。** JWT `exp`仅精确到秒，所以在同一秒内为同一用户发放的两个刷新令牌用来编码时是相同的——轮换随后用相同值重写存储的哈希，被盗的刷新令牌可以永远被续期。每个刷新令牌现在都携带唯一的`jti`，所以轮换后的令牌不同，旧令牌立即停止工作。
 
-- **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
+- **当智能体通过另一个智能体或工作流到达时，审批闸门现在会保持。** 在聊天中会要求确认的敏感连接器调用，一旦通过`call_agent`委托或包装在工作流`AGENT`节点中，之前会无检查地运行——这些路径启动智能体时完全没有钩子。现在两者都运行智能体自己的闸门，使用该智能体的确认设置，如果无法加载其钩子则拒绝运行。
 
-- **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
+- **`SMTP_SSL`中的拼写错误不再静默地以明文发送您的SMTP密码。** 之前任何不是`ssl`或`tls`的值（例如`SMTP_SSL=true`）都会无警告地转向未加密连接，在系统邮件和邮件通知中都是如此。现在无法识别的值会被直接拒绝，未加密传递必须显式请求为`SMTP_SSL=none`，这会在每次发送时记录警告。
 
 ### 已移除
 
