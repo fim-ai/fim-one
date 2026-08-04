@@ -210,11 +210,13 @@ Wenn der Agent mindestens `_COMPLETION_CHECK_MIN_TOOLS` Tools verwendet hat (Sta
 2. Wurden Schlüsselfakten aus Tool-Ergebnissen überprüft?
 3. Gibt es Widersprüche in den gesammelten Informationen?
 
-Wenn der Agent bestätigt, wird die endgültige Antwort gegeben. Wenn er entscheidet, dass etwas fehlt, wird die Tool-Call-Schleife fortgesetzt. Die Checkliste wird höchstens einmal pro Durchlauf ausgelöst und wird nicht für einfache Konversationsantworten aktiviert (keine Tools verwendet).
+Die Checkliste ist ein interner Austausch. Der Turn, der sie beantwortet, ist Verifizierung, nicht die Antwort — die wörtliche Annahme würde „Lassen Sie mich überprüfen: 1. ... ✓" in den Chat durchsickern lassen. Dieser Turn wird daher intern verbraucht und der Agent wird erneut aufgefordert, die benutzerfreundliche Antwort zu geben, die `stream_answer()` streamt. Wenn der Agent stattdessen entscheidet, dass etwas fehlt, setzt er die Tool-Call-Schleife fort und seine spätere Antwort wird unverändert übernommen.
 
-Der Schwellenwert verhindert unnötige Latenz bei einfachen Aufgaben – ein einzelner Tool-Aufruf (z. B. eine schnelle Berechnung) rechtfertigt keine Verifizierung, während eine Multi-Tool-Untersuchung von einer abschließenden Plausibilitätsprüfung profitiert. Setzen Sie `REACT_COMPLETION_CHECK_MIN_TOOLS=1` für immer aktivierte Verifizierung.
+Die Checkliste wird höchstens einmal pro Durchlauf ausgelöst, wird nicht für einfache Konversationsantworten ausgelöst (keine Tools verwendet) und wird übersprungen, wenn das verbleibende Iterations-Budget nicht sowohl den Verifizierungs-Turn als auch den Antwort-Turn abdecken kann.
 
-Die Funktion ist standardmäßig aktiviert (`completion_check=True` auf `ReActAgent`) und kann pro Agent-Instanz deaktiviert werden. DAG-Schritte erben den Standard – jeder Schritt erhält seine eigene einmalige Checkliste.
+Der Schwellenwert verhindert unnötige Latenz bei einfachen Aufgaben — ein einzelner Tool-Aufruf (z. B. eine schnelle Berechnung) rechtfertigt keine Verifizierung, während eine Multi-Tool-Untersuchung von einer abschließenden Plausibilitätsprüfung profitiert. Setzen Sie `REACT_COMPLETION_CHECK_MIN_TOOLS=1` für ständig aktivierte Verifizierung.
+
+Die Funktion ist standardmäßig aktiviert (`completion_check=True` auf `ReActAgent`) und kann pro Agent-Instanz deaktiviert werden. DAG-Schritte erben den Standard — jeder Schritt erhält seine eigene einmalige Checkliste.
 
 ## Antwortsynthese (stream_answer)
 

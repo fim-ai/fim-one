@@ -230,7 +230,16 @@ def _find_completion_checks(messages: list[ChatMessage]) -> list[ChatMessage]:
     return [
         m for m in messages
         if m.role == "user" and m.content
-        and "Before finalizing your answer" in str(m.content)
+        and "Before your answer is delivered" in str(m.content)
+    ]
+
+
+def _find_answer_requests(messages: list[ChatMessage]) -> list[ChatMessage]:
+    """Return all user messages asking for the post-check user-facing answer."""
+    return [
+        m for m in messages
+        if m.role == "user" and m.content
+        and "Now write the final answer for the user" in str(m.content)
     ]
 
 
@@ -442,12 +451,14 @@ class TestCompletionChecklistJsonMode:
     async def test_checklist_triggers_when_tools_used(self) -> None:
         """Completion checklist should trigger when tool_call_count >= threshold."""
         # 3 tool calls (meets default threshold), then final answer
-        # (which triggers checklist), then another final answer (accepted).
+        # (which triggers checklist), then the verification turn, then the
+        # real user-facing answer.
         responses: list[LLMResult] = [
             _json_tool_call("echo", {"text": "a"}),
             _json_tool_call("echo", {"text": "b"}),
             _json_tool_call("echo", {"text": "c"}),
             _json_final_answer("first attempt"),
+            _json_final_answer("Let me verify: 1. yes 2. yes 3. no contradictions"),
             _json_final_answer("verified answer"),
         ]
 
@@ -461,13 +472,71 @@ class TestCompletionChecklistJsonMode:
 
         result = await agent.run("test completion check")
 
+        # The verification turn is internal — it must never surface as the
+        # user-facing answer.
         assert result.answer == "verified answer"
 
-        # 3 tool calls + final answer + checklist re-eval = 5 LLM calls.
-        assert llm.call_count == 5
-        fifth_call_messages = llm.all_messages[4]
-        checks = _find_completion_checks(fifth_call_messages)
-        assert len(checks) == 1
+        # 3 tool calls + final answer + checklist + answer round = 6 calls.
+        assert llm.call_count == 6
+        assert len(_find_completion_checks(llm.all_messages[4])) == 1
+        assert len(_find_answer_requests(llm.all_messages[4])) == 0
+        assert len(_find_answer_requests(llm.all_messages[5])) == 1
+
+    async def test_verification_turn_never_becomes_the_answer(self) -> None:
+        """A checklist-narrating turn must not be returned to the user."""
+        narration = (
+            "Let me verify:\n1. Fully addressed? Yes\n"
+            "2. Facts verified? Yes\n3. Contradictions? None\n"
+            "Final answer verified. ✓"
+        )
+        responses: list[LLMResult] = [
+            _json_tool_call("echo", {"text": "a"}),
+            _json_tool_call("echo", {"text": "b"}),
+            _json_tool_call("echo", {"text": "c"}),
+            _json_final_answer("there are 5 admins"),
+            _json_final_answer(narration),
+            _json_final_answer("There are 5 admins."),
+        ]
+
+        llm = CapturingFakeLLM(responses)
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=llm, tools=registry, max_iterations=20,
+            completion_check=True,
+        )
+
+        result = await agent.run("how many admins")
+
+        assert result.answer == "There are 5 admins."
+        assert "Let me verify" not in result.answer
+
+    async def test_checklist_skipped_without_room_for_answer_round(self) -> None:
+        """No checklist when the budget cannot also cover the answer round."""
+        # max_iterations=5: iteration 4 is the final answer; injecting the
+        # checklist would leave only iteration 5 for the verification turn
+        # and none for the real answer, so the check must not fire.
+        responses: list[LLMResult] = [
+            _json_tool_call("echo", {"text": "a"}),
+            _json_tool_call("echo", {"text": "b"}),
+            _json_tool_call("echo", {"text": "c"}),
+            _json_final_answer("answer without check"),
+        ]
+
+        llm = CapturingFakeLLM(responses)
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=llm, tools=registry, max_iterations=5,
+            completion_check=True,
+        )
+
+        result = await agent.run("tight budget")
+
+        assert result.answer == "answer without check"
+        assert llm.call_count == 4
+        for call_messages in llm.all_messages:
+            assert len(_find_completion_checks(call_messages)) == 0
 
     async def test_checklist_not_triggered_below_threshold(self) -> None:
         """No checklist when tool_call_count is below the min threshold."""
@@ -596,6 +665,7 @@ class TestCompletionChecklistNativeMode:
             _native_tool_call([("c2", "echo", {"text": "b"})]),
             _native_tool_call([("c3", "echo", {"text": "c"})]),
             _native_final_answer("first attempt"),
+            _native_final_answer("Let me verify: 1. yes 2. yes 3. none"),
             _native_final_answer("verified answer"),
         ]
 
@@ -609,12 +679,12 @@ class TestCompletionChecklistNativeMode:
 
         result = await agent.run("test native completion check")
 
+        # The verification turn is consumed internally.
         assert result.answer == "verified answer"
-        assert llm.call_count == 5
+        assert llm.call_count == 6
 
-        fifth_call_messages = llm.all_messages[4]
-        checks = _find_completion_checks(fifth_call_messages)
-        assert len(checks) == 1
+        assert len(_find_completion_checks(llm.all_messages[4])) == 1
+        assert len(_find_answer_requests(llm.all_messages[5])) == 1
 
     async def test_checklist_not_triggered_no_tools_native(self) -> None:
         """No checklist in native mode when no tools were used."""

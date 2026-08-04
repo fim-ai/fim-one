@@ -210,7 +210,9 @@ When the agent has used at least `_COMPLETION_CHECK_MIN_TOOLS` tools (default: *
 2. Were key facts verified from tool results?
 3. Are there contradictions in the gathered information?
 
-If the agent confirms, it proceeds to final answer. If it decides something is missing, it resumes the tool-call loop. The checklist fires at most once per run and does not trigger for simple conversational responses (no tools used).
+The checklist is an internal exchange. The turn that answers it is verification, not the answer — accepting it verbatim is what leaks "Let me verify: 1. ... ✓" into the chat. So that turn is consumed internally and the agent is asked once more for the user-facing answer, which is what `stream_answer()` streams. If the agent instead decides something is missing, it resumes the tool-call loop and its later answer is taken as-is.
+
+The checklist fires at most once per run, does not trigger for simple conversational responses (no tools used), and is skipped when the remaining iteration budget cannot cover both the verification turn and the answer turn.
 
 The threshold prevents unnecessary latency on simple tasks — a single tool call (e.g., running a quick calculation) does not warrant verification, while a multi-tool investigation benefits from a final sanity check. Set `REACT_COMPLETION_CHECK_MIN_TOOLS=1` for always-on verification.
 

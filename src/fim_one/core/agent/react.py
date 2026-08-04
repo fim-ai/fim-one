@@ -162,12 +162,26 @@ _COMPLETION_CHECK_SKIP_CHARS = int(
 )
 
 _COMPLETION_CHECK_PROMPT = (
-    "Before finalizing your answer, verify:\n"
+    "[Internal check — this exchange is never shown to the user.]\n"
+    "Before your answer is delivered, verify:\n"
     "1. Does your answer fully address the original question?\n"
     "2. Did you verify key facts from tool results?\n"
     "3. Are there any contradictions in the information gathered?\n"
-    "If everything checks out, proceed with your final answer. "
-    "If not, continue investigating."
+    "If something is missing or wrong, keep investigating (call tools). "
+    "Otherwise reply with a short confirmation only — do NOT write the "
+    "answer itself here; you will be asked for it in the next message."
+)
+
+# Follow-up to the checklist: the verification turn is internal, so the
+# user-facing answer is always produced by its own dedicated turn.
+_POST_CHECK_ANSWER_PROMPT = (
+    "[Internal] Verification is done. Now write the final answer for the "
+    "user.\n"
+    "- Answer the original question directly and completely.\n"
+    "- Do not mention this check, the verification steps, or your own "
+    "process — no 'let me verify', no checklist, no '✓ verified'.\n"
+    "- The user has seen none of the messages above, so the answer must "
+    "stand on its own."
 )
 
 _SELF_REFLECTION_PROMPT = (
@@ -1322,6 +1336,7 @@ class ReActAgent:
         tool_call_count = 0  # Track actual tool-call iterations for self-reflection
         cycle_tracker: dict[tuple[str, str], int] = {}  # (tool_name, args_hash) -> count
         completion_check_done = False  # One-shot flag for completion checklist
+        verification_pending = False  # Next final answer is the internal check
         tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
         context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
         rounds_since_plan = 0  # Tool rounds since the last update_plan call
@@ -1505,10 +1520,11 @@ class ReActAgent:
                     self._completion_check
                     and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                     and not completion_check_done
-                    and iteration < self._max_iterations
+                    and iteration < self._max_iterations - 1
                     and len(final_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
                 ):
                     completion_check_done = True
+                    verification_pending = True
                     messages.append(
                         ChatMessage(role="user", content=_COMPLETION_CHECK_PROMPT),
                     )
@@ -1521,6 +1537,31 @@ class ReActAgent:
                     )
                     profiler.emit(self._profiler_conversation_id())
                     continue
+
+                # The turn right after the checklist is the verification
+                # itself — meta-commentary about the answer, not the answer.
+                # Consume it internally and spend one more turn on the real
+                # user-facing answer.
+                if verification_pending:
+                    verification_pending = False
+                    if iteration < self._max_iterations:
+                        messages.append(
+                            ChatMessage(
+                                role="user",
+                                content=_POST_CHECK_ANSWER_PROMPT,
+                            ),
+                        )
+                        logger.info(
+                            "Consumed verification turn at iteration %d, "
+                            "requesting the user-facing answer",
+                            iteration,
+                        )
+                        profiler.emit(self._profiler_conversation_id())
+                        continue
+                    logger.warning(
+                        "No iteration left for the post-check answer — "
+                        "falling back to the verification turn's text",
+                    )
 
                 if (
                     self._completion_check
@@ -1557,6 +1598,9 @@ class ReActAgent:
             profiler.add("tool_exec", time.perf_counter() - _tool_start)
             steps.append(step)
             tool_call_count += 1
+            # The check sent the agent back to work; whatever it answers
+            # after this is a genuine answer, not the verification turn.
+            verification_pending = False
 
             # Feed the tool result/error back into the conversation so the LLM
             # can observe and adapt on the next iteration (Observe step of ReAct).
@@ -1776,6 +1820,7 @@ class ReActAgent:
         tool_call_count = 0  # Track actual tool-call iterations for self-reflection
         cycle_tracker: dict[tuple[str, str], int] = {}  # (tool_name, args_hash) -> count
         completion_check_done = False  # One-shot flag for completion checklist
+        verification_pending = False  # Next final answer is the internal check
         tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
         context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
         rounds_since_plan = 0  # Tool rounds since the last update_plan call
@@ -1907,6 +1952,9 @@ class ReActAgent:
             # assistant's tool_use blocks.  Drain the interrupt queue only
             # AFTER tool results are appended to preserve this ordering.
             if assistant_msg.tool_calls:
+                # The check sent the agent back to work; whatever it answers
+                # after this is a genuine answer, not the verification turn.
+                verification_pending = False
                 _tool_start = time.perf_counter()
                 tool_results = await self._execute_native_tool_calls(
                     assistant_msg.tool_calls,
@@ -2132,10 +2180,11 @@ class ReActAgent:
                 self._completion_check
                 and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                 and not completion_check_done
-                and iteration < self._max_iterations
+                and iteration < self._max_iterations - 1
                 and len(native_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
             ):
                 completion_check_done = True
+                verification_pending = True
                 messages.append(
                     ChatMessage(role="user", content=_COMPLETION_CHECK_PROMPT),
                 )
@@ -2148,6 +2197,31 @@ class ReActAgent:
                 )
                 profiler.emit(self._profiler_conversation_id())
                 continue
+
+            # The turn right after the checklist is the verification itself —
+            # meta-commentary about the answer, not the answer.  Consume it
+            # internally and spend one more turn on the real user-facing
+            # answer (stream_answer streams result.answer verbatim).
+            if verification_pending:
+                verification_pending = False
+                if iteration < self._max_iterations:
+                    messages.append(
+                        ChatMessage(
+                            role="user",
+                            content=_POST_CHECK_ANSWER_PROMPT,
+                        ),
+                    )
+                    logger.info(
+                        "Consumed verification turn at iteration %d, "
+                        "requesting the user-facing answer",
+                        iteration,
+                    )
+                    profiler.emit(self._profiler_conversation_id())
+                    continue
+                logger.warning(
+                    "No iteration left for the post-check answer — "
+                    "falling back to the verification turn's text",
+                )
 
             if (
                 self._completion_check
