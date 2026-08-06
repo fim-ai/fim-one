@@ -130,7 +130,7 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     clearActive,
   } = useConversation()
 
-  const [mode, setMode] = useState<AgentMode>("auto")
+  const [mode, setMode] = useState<AgentMode>("react")
   const [selectedAgent, setSelectedAgent] = useState<AgentResponse | null>(null)
   const [query, setQuery] = useState("")
   const [sourceMode, setSourceMode] = useState<AgentMode | null>(null)
@@ -193,13 +193,18 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     if (messages.length <= lastQuotaCheckIdxRef.current) return
     for (let i = lastQuotaCheckIdxRef.current; i < messages.length; i++) {
       const msg = messages[i]
-      if (msg.event === "error" && isQuotaExceededPayload(msg.data)) {
+      if (msg.event !== "error") continue
+      if (isQuotaExceededPayload(msg.data)) {
         setQuotaPayload(msg.data)
         break
       }
+      // Any other typed error terminates the turn. Without this the event
+      // was dropped and a crashed run just stopped, giving no reason.
+      const data = msg.data as { message?: string } | null
+      toast.error(data?.message || tError("_fallback"))
     }
     lastQuotaCheckIdxRef.current = messages.length
-  }, [messages])
+  }, [messages, tError])
   // When the SSE stream resets (new chat, conversation switch), reset
   // the cursor so the same `error` index can re-fire on a fresh stream.
   useEffect(() => {
@@ -286,7 +291,7 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
         prevActiveIdRef.current = activeConversation.id
         return
       }
-      setMode("auto")
+      setMode("react")
       reset()
       setQuery("")
       setSourceMode(null)
