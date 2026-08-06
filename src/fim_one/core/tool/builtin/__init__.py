@@ -138,6 +138,7 @@ _SANDBOX_KWARGS: dict[type, str] = {
     NodeExecTool: "exec_dir",
     ShellExecTool: "sandbox_dir",
     PythonExecTool: "exec_dir",
+    TemplateRenderTool: "workspace_dir",
 }
 
 # Mapping from tool class to the keyword argument name for uploads paths.

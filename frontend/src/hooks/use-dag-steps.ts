@@ -28,7 +28,7 @@ export interface StepState {
     timestamp?: number
     duration?: number
     content_type?: string
-    artifacts?: Array<{ name: string; url: string; mime_type: string; size: number }>
+    artifacts?: Array<{ name: string; url: string; mime_type: string; size: number; sha256?: string }>
     /** Thinking text for __thinking__ entries (interleaved with tool calls). */
     thinkingText?: string
   }>

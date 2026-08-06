@@ -203,7 +203,7 @@ class FileOpsTool(BaseTool):
         ):
             return result
 
-        from ..artifact_utils import save_content_artifact, MAX_ARTIFACT_SIZE, _guess_mime
+        from ..artifact_utils import MAX_ARTIFACT_SIZE, _guess_mime, file_sha256
 
         size = file_path.stat().st_size
         if size > MAX_ARTIFACT_SIZE:
@@ -228,6 +228,7 @@ class FileOpsTool(BaseTool):
             path=rel_path,
             mime_type=_guess_mime(file_path),
             size=size,
+            sha256=file_sha256(dest),
         )
         return ToolResult(content=result, artifacts=[artifact])
 

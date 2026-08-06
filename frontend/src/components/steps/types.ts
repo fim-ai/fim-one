@@ -3,6 +3,8 @@ export interface ArtifactInfo {
   url: string
   mime_type: string
   size: number
+  /** Content hash — used to hide step artifacts that duplicate a deliverable. */
+  sha256?: string
 }
 
 export interface IterationData {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import mimetypes
 import os
 import shutil
@@ -30,6 +31,17 @@ _FALLBACK_MIMES: dict[str, str] = {
     ".toml": "application/toml",
     ".csv": "text/csv",
 }
+
+
+def file_sha256(path: Path) -> str:
+    """Content hash of a file — used to collapse duplicate registrations
+    of the same output (e.g. template_render's ``rendered.html`` plus an
+    explicit file save of the identical HTML)."""
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 16), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _guess_mime(path: Path) -> str:
@@ -87,6 +99,7 @@ def scan_new_files(directory: Path, before: set[str], artifacts_dir: Path) -> li
             path=rel_path,
             mime_type=_guess_mime(src),
             size=size,
+            sha256=file_sha256(dest),
         ))
 
     return artifacts
@@ -126,4 +139,5 @@ def save_content_artifact(
         path=rel_path,
         mime_type=mime_type,
         size=size,
+        sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
     )

@@ -27,6 +27,7 @@ export interface ReactStepEvent {
     url: string
     mime_type: string
     size: number
+    sha256?: string
   }>
 }
 
@@ -48,6 +49,7 @@ export interface ReactDoneEvent {
     url: string
     mime_type: string
     size: number
+    sha256?: string
   }>
 }
 
@@ -113,6 +115,7 @@ export interface DagStepProgressEvent {
     url: string
     mime_type: string
     size: number
+    sha256?: string
   }>
 }
 
@@ -154,5 +157,6 @@ export interface DagDoneEvent {
     url: string
     mime_type: string
     size: number
+    sha256?: string
   }>
 }

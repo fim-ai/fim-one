@@ -21,8 +21,14 @@ except ImportError:
 class TemplateRenderTool(BaseTool):
     """Render Jinja2 templates with a provided context of variables."""
 
-    def __init__(self, *, artifacts_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        artifacts_dir: Path | None = None,
+        workspace_dir: Path | None = None,
+    ) -> None:
         self._artifacts_dir = artifacts_dir
+        self._workspace_dir = workspace_dir
 
     @property
     def name(self) -> str:
@@ -48,13 +54,19 @@ class TemplateRenderTool(BaseTool):
                 "Supports {{ variable }}, {% if %}...{% endif %}, "
                 "{% for item in list %}...{% endfor %}, and Jinja2 filters ({{ text | upper }}). "
                 "Parameters: template (Jinja2 template string), "
-                "context (a JSON object whose keys become template variables)."
+                "context (a JSON object whose keys become template variables), "
+                "filename (optional output filename, e.g. 'report.html'). "
+                "HTML output is saved to the workspace under that filename and "
+                "offered for download — do NOT re-save or rewrite it with other tools."
             )
         return (
             "Render a template with $variable substitution (Python string.Template). "
             "Use $key or ${key} syntax. "
             "Parameters: template (template string), "
-            "context (a JSON object whose keys become template variables)."
+            "context (a JSON object whose keys become template variables), "
+            "filename (optional output filename, e.g. 'report.html'). "
+            "HTML output is saved to the workspace under that filename and "
+            "offered for download — do NOT re-save or rewrite it with other tools."
         )
 
     @property
@@ -71,6 +83,15 @@ class TemplateRenderTool(BaseTool):
                     "description": (
                         "A JSON object of variables to inject into the template. "
                         'Example: {"name": "Alice", "order_id": "ORD-123"}'
+                    ),
+                },
+                "filename": {
+                    "type": "string",
+                    "description": (
+                        "Output filename for the rendered result (e.g. "
+                        "'report.html'). HTML output is saved to the workspace "
+                        "under this name and offered for download. "
+                        "Defaults to 'rendered.html'."
                     ),
                 },
             },
@@ -106,12 +127,44 @@ class TemplateRenderTool(BaseTool):
         if self._artifacts_dir and self._looks_like_html(result):
             from ..artifact_utils import save_content_artifact
 
-            artifact = save_content_artifact(result, "rendered.html", self._artifacts_dir)
+            filename = self._sanitize_filename(kwargs.get("filename"))
+            # Also materialise the output in the shared workspace so the
+            # agent can treat it as a real file (list/copy/deliver) instead
+            # of regenerating the content by hand — the regenerated copy is
+            # never byte-identical and used to surface as a duplicate
+            # deliverable card.
+            if self._workspace_dir is not None:
+                try:
+                    self._workspace_dir.mkdir(parents=True, exist_ok=True)
+                    (self._workspace_dir / filename).write_text(
+                        result, encoding="utf-8",
+                    )
+                except OSError:
+                    pass  # workspace write is best-effort; the artifact still exists
+
+            artifact = save_content_artifact(result, filename, self._artifacts_dir)
             return ToolResult(content=result, content_type="html", artifacts=[artifact])
 
         # Everything else → markdown (GFM is a superset of plain text,
         # so tables, JSON code blocks, lists, and raw text all render correctly)
         return ToolResult(content=result, content_type="markdown")
+
+    @staticmethod
+    def _sanitize_filename(raw: Any) -> str:
+        """Reduce a model-supplied filename to a safe basename.
+
+        Falls back to ``rendered.html`` for empty, hidden, or path-like
+        values.  The extension is normalised to ``.html`` since this path
+        only runs for HTML output.
+        """
+        if not isinstance(raw, str) or not raw.strip():
+            return "rendered.html"
+        name = Path(raw.strip()).name
+        if not name or name.startswith("."):
+            return "rendered.html"
+        if not name.lower().endswith((".html", ".htm")):
+            name = f"{name}.html"
+        return name
 
     # Block-level HTML tags that strongly signal renderable HTML content
     _BLOCK_TAG_RE = re.compile(

@@ -849,10 +849,14 @@ function DagDoneCard({ done, stepStates, suggestions, onSuggestionSelect, isPost
     state.iterations.flatMap(iter => iter.artifacts ?? [])
   )
 
-  // Compute deliverables and other artifacts
+  // Compute deliverables and other artifacts. Match by URL, and by content
+  // hash so a duplicate registration of the same output (different name,
+  // identical bytes) doesn't resurface under "generated files".
   const deliverables = done.deliverables ?? []
   const otherArtifacts = deliverables.length > 0
-    ? allArtifacts.filter(a => !deliverables.some(d => d.url === a.url))
+    ? allArtifacts.filter(a => !deliverables.some(d =>
+        d.url === a.url || (!!a.sha256 && d.sha256 === a.sha256)
+      ))
     : []
 
   return (

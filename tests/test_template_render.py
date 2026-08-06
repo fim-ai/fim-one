@@ -311,3 +311,91 @@ class TestMalformedTemplate:
         content = _content(result)
         assert content == "value: {{ 7 * 7 }}"
         assert "49" not in content
+
+
+# ======================================================================
+# HTML output: artifact naming + workspace materialisation
+# ======================================================================
+
+_HTML_TEMPLATE = "<html><body><div>{{ title }}</div></body></html>"
+
+
+class TestHtmlOutputFile:
+    async def test_custom_filename_names_artifact_and_workspace_file(
+        self, tmp_path
+    ) -> None:
+        tool = TemplateRenderTool(
+            artifacts_dir=tmp_path / "artifacts",
+            workspace_dir=tmp_path / "workspace",
+        )
+        result = await tool.run(
+            template=_HTML_TEMPLATE, context='{"title": "Hi"}',
+            filename="algorithm_report.html",
+        )
+
+        assert isinstance(result, ToolResult)
+        assert result.content_type == "html"
+        assert [a.name for a in result.artifacts] == ["algorithm_report.html"]
+        ws_file = tmp_path / "workspace" / "algorithm_report.html"
+        assert ws_file.read_text() == result.content
+
+    async def test_default_filename_is_rendered_html(self, tmp_path) -> None:
+        tool = TemplateRenderTool(
+            artifacts_dir=tmp_path / "artifacts",
+            workspace_dir=tmp_path / "workspace",
+        )
+        result = await tool.run(template=_HTML_TEMPLATE, context='{"title": "x"}')
+
+        assert [a.name for a in result.artifacts] == ["rendered.html"]
+        assert (tmp_path / "workspace" / "rendered.html").exists()
+
+    async def test_filename_path_traversal_reduced_to_basename(
+        self, tmp_path
+    ) -> None:
+        tool = TemplateRenderTool(
+            artifacts_dir=tmp_path / "artifacts",
+            workspace_dir=tmp_path / "workspace",
+        )
+        result = await tool.run(
+            template=_HTML_TEMPLATE, context='{"title": "x"}',
+            filename="../../etc/evil.html",
+        )
+
+        assert [a.name for a in result.artifacts] == ["evil.html"]
+        assert (tmp_path / "workspace" / "evil.html").exists()
+        assert not (tmp_path / "etc").exists()
+
+    async def test_filename_extension_normalised(self, tmp_path) -> None:
+        tool = TemplateRenderTool(
+            artifacts_dir=tmp_path / "artifacts",
+            workspace_dir=tmp_path / "workspace",
+        )
+        result = await tool.run(
+            template=_HTML_TEMPLATE, context='{"title": "x"}',
+            filename="report",
+        )
+
+        assert [a.name for a in result.artifacts] == ["report.html"]
+
+    async def test_hidden_filename_falls_back_to_default(self, tmp_path) -> None:
+        tool = TemplateRenderTool(
+            artifacts_dir=tmp_path / "artifacts",
+            workspace_dir=tmp_path / "workspace",
+        )
+        result = await tool.run(
+            template=_HTML_TEMPLATE, context='{"title": "x"}',
+            filename=".hidden",
+        )
+
+        assert [a.name for a in result.artifacts] == ["rendered.html"]
+
+    async def test_no_workspace_dir_still_registers_artifact(
+        self, tmp_path
+    ) -> None:
+        tool = TemplateRenderTool(artifacts_dir=tmp_path / "artifacts")
+        result = await tool.run(
+            template=_HTML_TEMPLATE, context='{"title": "x"}',
+            filename="report.html",
+        )
+
+        assert [a.name for a in result.artifacts] == ["report.html"]
