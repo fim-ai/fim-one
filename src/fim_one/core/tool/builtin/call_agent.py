@@ -205,7 +205,17 @@ class CallAgentTool(BaseTool):
 
         try:
             result = await delegate.run(task)
-            return str(result)
+            # Return the delegate's answer, never the ``AgentResult`` itself.
+            # It is a plain dataclass, so ``str()`` renders its whole repr —
+            # every StepResult, observation and message — which buries the
+            # answer in kilobytes of trace and blows the caller's context.
+            answer = (result.answer or "").strip()
+            if not answer:
+                return (
+                    f"Agent {agent_id} finished after {result.iterations} "
+                    "iteration(s) without producing a textual answer."
+                )
+            return answer
         except Exception as e:
             logger.error(
                 "Delegated agent %s failed: %s", agent_id, e,

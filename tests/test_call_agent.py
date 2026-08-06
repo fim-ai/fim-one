@@ -514,3 +514,52 @@ class TestHookInheritance:
         result = await tool.run(agent_id="agent-1", task="test")
 
         assert "plain reply" in result
+
+
+class TestDelegateResultShape:
+    """The caller gets the delegate's answer, never its ``AgentResult`` repr.
+
+    ``return str(result)`` on a dataclass renders the entire trajectory —
+    every StepResult, observation, and message — so the caller's context
+    filled with trace instead of the answer.  Substring assertions could
+    not catch it: the answer is inside the repr too.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_exactly_the_answer(self) -> None:
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(),
+            calling_user_id="user-1",
+            llm_resolver=AsyncMock(return_value=_make_fake_llm("the answer")),
+        )
+
+        result = await tool.run(agent_id="agent-1", task="test")
+
+        assert result == "the answer"
+
+    @pytest.mark.asyncio
+    async def test_no_dataclass_repr_leaks(self) -> None:
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(),
+            calling_user_id="user-1",
+            llm_resolver=AsyncMock(return_value=_make_fake_llm("clean")),
+        )
+
+        result = await tool.run(agent_id="agent-1", task="test")
+
+        for marker in ("AgentResult(", "StepResult(", "Action(", "steps=", "messages="):
+            assert marker not in result
+
+    @pytest.mark.asyncio
+    async def test_empty_answer_reports_instead_of_returning_blank(self) -> None:
+        """An answerless run must say so, not hand back an empty string."""
+        tool = CallAgentTool(
+            available_agents=_make_agent_catalog(),
+            calling_user_id="user-1",
+            llm_resolver=AsyncMock(return_value=_make_fake_llm("")),
+        )
+
+        result = await tool.run(agent_id="agent-1", task="test")
+
+        assert result.strip()
+        assert "without producing a textual answer" in result
