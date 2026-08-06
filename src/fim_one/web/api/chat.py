@@ -226,9 +226,17 @@ def _append_event(
 
 
 def _emit(sse_events: list[dict[str, Any]], event: str, data: Any) -> str:
-    """Accumulate event for persistence and return SSE frame for streaming."""
-    _append_event(sse_events, event, data)
-    return _sse(event, data)
+    """Persist an event and return the SSE frame to stream.
+
+    The frame carries its cursor in the same ``{"cursor", "data"}``
+    envelope ``/chat/resume`` replays, so a client tracks its position
+    identically on both paths.  Emitting the bare payload here left the
+    cursor only in the persisted copy: the client never saw one, kept
+    ``lastCursor`` at its initial ``-1``, and a resume therefore matched
+    every stored event and replayed the whole turn.
+    """
+    entry = _append_event(sse_events, event, data)
+    return _sse(event, {"cursor": entry["cursor"], "data": data})
 
 
 async def _pump_inline_confirmations(
@@ -541,6 +549,39 @@ async def _generate_title(
 # Deliverable classification helper
 # ---------------------------------------------------------------------------
 
+# Tool default filenames that carry no information about the content.  When a
+# content-duplicate exists under a real name, the generic one is the copy to drop.
+_GENERIC_ARTIFACT_NAMES = frozenset({"rendered.html"})
+
+
+def _dedupe_artifacts(artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse content-identical artifacts registered more than once.
+
+    The same output is often registered twice in one run — e.g.
+    ``template_render`` registers ``rendered.html`` and the agent then saves
+    the identical HTML via file_ops under a real filename.  Group by content
+    hash and keep one per group, preferring a specifically named file over a
+    tool's generic default.  Artifacts without a hash (pre-upgrade history)
+    are always kept.
+    """
+    kept_index_by_sha: dict[str, int] = {}
+    result: list[dict[str, Any]] = []
+    for a in artifacts:
+        sha = a.get("sha256") or ""
+        if not sha or sha not in kept_index_by_sha:
+            if sha:
+                kept_index_by_sha[sha] = len(result)
+            result.append(a)
+            continue
+        idx = kept_index_by_sha[sha]
+        kept = result[idx]
+        if (
+            kept.get("name") in _GENERIC_ARTIFACT_NAMES
+            and a.get("name") not in _GENERIC_ARTIFACT_NAMES
+        ):
+            result[idx] = a
+    return result
+
 
 async def _classify_deliverables(
     fast_llm: BaseLLM,
@@ -568,6 +609,10 @@ async def _classify_deliverables(
             "You classify which artifacts from an AI agent execution are final "
             "deliverables (outputs the user actually wants) vs intermediate outputs "
             "(search results, intermediate computations, drafts that were superseded).\n\n"
+            "Watch for the same deliverable registered twice: a template renderer's "
+            "generic output (e.g. 'rendered.html') next to a specifically named file "
+            "of the same type and similar size is one deliverable, not two — include "
+            "only the specifically named one.\n\n"
             "Return ONLY a JSON array of the artifact indices that are deliverables.\n"
             "Example: [0, 3] means artifacts 0 and 3 are deliverables.\n"
             "If ALL artifacts are deliverables, return all indices.\n"
@@ -579,7 +624,8 @@ async def _classify_deliverables(
             name = a.get("name", "untitled")
             mime = a.get("mime_type", "unknown")
             tool = a.get("tool_name", "")
-            artifact_lines.append(f"[{i}] {name} ({mime}, from {tool})")
+            size = a.get("size", 0)
+            artifact_lines.append(f"[{i}] {name} ({mime}, {size} bytes, from {tool})")
 
         truncated_answer = answer[:2000]
         user_content = f"Agent answer (truncated):\n{truncated_answer}\n\nArtifacts:\n" + "\n".join(
@@ -905,6 +951,29 @@ def _build_quota_terminator_payload(
         "quota": user_quota,
         "reset_at": reset_at,
         "plan_slug": "free",
+    }
+
+
+def _run_failed_payload(exc: BaseException, elapsed: float) -> dict[str, Any]:
+    """Construct the ``error`` event payload for a crashed run.
+
+    A crash used to be delivered as a ``done`` event whose ``answer`` read
+    ``"Agent error: ..."``.  The frontend renders ``done`` with a green
+    check under a "Result" heading, so a failed turn was indistinguishable
+    from a successful one and the raw exception text was presented as the
+    agent's answer.  Routing it to the typed ``error`` channel instead
+    keeps the two apart.
+
+    ``message`` is what the user is shown; ``detail`` carries the
+    exception for the developer-facing view.  The traceback stays in the
+    server log.
+    """
+    return {
+        "type": "error",
+        "code": "AGENT_ERROR",
+        "message": "The agent stopped because of an internal error.",
+        "detail": f"{type(exc).__name__}: {exc}",
+        "elapsed": elapsed,
     }
 
 
@@ -3379,6 +3448,7 @@ async def react_endpoint(
                                         "url": f"/api/conversations/{conversation_id}/artifacts/{a['path'].split('/')[-1].split('_', 1)[0]}",
                                         "mime_type": a["mime_type"],
                                         "size": a["size"],
+                                        "sha256": a.get("sha256", ""),
                                     }
                                     for a in step_result.artifacts
                                 ]
@@ -3685,6 +3755,8 @@ async def react_endpoint(
                                 }
                             )
 
+            all_artifacts_with_context = _dedupe_artifacts(all_artifacts_with_context)
+
             deliverables: list[dict[str, Any]] = []
             if all_artifacts_with_context and fast_llm:
                 deliverables = await _classify_deliverables(
@@ -3728,7 +3800,11 @@ async def react_endpoint(
                 if remaining:
                     done_payload["pending_injections"] = [m.content for m in remaining]
 
-            _append_event(sse_events, "done", done_payload)
+            # Appended here rather than at the yield below because the
+            # assistant row (which stores ``sse_events``) is written in
+            # between.  The cursor is kept so the wire frame can carry the
+            # same one the persisted copy got.
+            _done_entry = _append_event(sse_events, "done", done_payload)
 
             # -- Re-open a fresh DB session for persistence ----------------
             # The original session was closed right after saving the user
@@ -3782,7 +3858,10 @@ async def react_endpoint(
                     )
 
             # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
-            yield _sse("done", done_payload)
+            yield _sse(
+                "done",
+                {"cursor": _done_entry["cursor"], "data": done_payload},
+            )
 
             # -- Fire per-agent completion notification (if configured) ----
             # Fire-and-forget: the notifier ALWAYS catches its own errors
@@ -4014,14 +4093,7 @@ async def react_endpoint(
         except Exception as exc:
             logger.exception("ReAct agent failed")
             elapsed = round(time.time() - t0, 2)
-            yield _sse(
-                "done",
-                {
-                    "answer": f"Agent error: {type(exc).__name__}: {exc}",
-                    "iterations": 0,
-                    "elapsed": elapsed,
-                },
-            )
+            yield _emit(sse_events, "error", _run_failed_payload(exc, elapsed))
             yield _sse("end", {})
         finally:
             if _confirmation_pump_task is not None:
@@ -4403,6 +4475,7 @@ async def dag_endpoint(
                         "url": f"/api/conversations/{conversation_id}/artifacts/{a['path'].split('/')[-1].split('_', 1)[0]}",
                         "mime_type": a["mime_type"],
                         "size": a["size"],
+                        "sha256": a.get("sha256", ""),
                     }
                     for a in data["artifacts"]
                 ]
@@ -4944,6 +5017,8 @@ async def dag_endpoint(
                                 }
                             )
 
+            dag_all_artifacts = _dedupe_artifacts(dag_all_artifacts)
+
             dag_deliverables: list[dict[str, Any]] = []
             if dag_all_artifacts:
                 # Terminal steps = steps that no other step depends on (DAG sinks)
@@ -4959,6 +5034,18 @@ async def dag_endpoint(
                 # Fallback: if terminal steps produced no artifacts, use all
                 if not dag_deliverables:
                     dag_deliverables = dag_all_artifacts
+                # Let the fast LLM drop intermediates and near-duplicate
+                # registrations of the same deliverable (e.g. a generic
+                # 'rendered.html' next to the specifically named save) that
+                # the exact-hash dedup above cannot catch.  Falls back to
+                # the full list on any failure.
+                if len(dag_deliverables) > 1 and fast_llm:
+                    dag_deliverables = await _classify_deliverables(
+                        fast_llm,
+                        answer,
+                        dag_deliverables,
+                        usage_tracker=fast_usage_tracker,
+                    )
 
             dag_done_payload: dict[str, Any] = {
                 "answer": answer,
@@ -5002,7 +5089,7 @@ async def dag_endpoint(
                 if remaining:
                     dag_done_payload["pending_injections"] = [m.content for m in remaining]
 
-            _append_event(sse_events, "done", dag_done_payload)
+            _dag_done_entry = _append_event(sse_events, "done", dag_done_payload)
 
             # -- Re-open a fresh DB session for persistence ----------------
             # The original session was closed right after saving the user
@@ -5067,7 +5154,10 @@ async def dag_endpoint(
                 _dag_checkpoint.clear(conversation_id)
 
             # -- Yield done IMMEDIATELY (no suggestions/title yet) ------
-            yield _sse("done", dag_done_payload)
+            yield _sse(
+                "done",
+                {"cursor": _dag_done_entry["cursor"], "data": dag_done_payload},
+            )
 
             # -- Fire per-agent completion notification (if configured) ----
             # See the ReAct handler above for the full rationale.  For
@@ -5316,15 +5406,7 @@ async def dag_endpoint(
         except Exception as exc:
             logger.exception("DAG pipeline failed")
             elapsed = round(time.time() - t0, 2)
-            yield _sse(
-                "done",
-                {
-                    "answer": f"Pipeline error: {type(exc).__name__}: {exc}",
-                    "achieved": False,
-                    "confidence": 0.0,
-                    "elapsed": elapsed,
-                },
-            )
+            yield _emit(sse_events, "error", _run_failed_payload(exc, elapsed))
             yield _sse("end", {})
         finally:
             if _dag_confirmation_pump_task is not None:

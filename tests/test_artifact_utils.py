@@ -1,10 +1,12 @@
-"""Tests for tool artifact scanning (``scan_new_files``)."""
+"""Tests for tool artifact scanning (``scan_new_files``) and dedup."""
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
-from fim_one.core.tool.artifact_utils import scan_new_files
+from fim_one.core.tool.artifact_utils import save_content_artifact, scan_new_files
+from fim_one.web.api.chat import _dedupe_artifacts
 
 
 class TestScanNewFiles:
@@ -21,6 +23,8 @@ class TestScanNewFiles:
         assert [a.name for a in artifacts] == ["report.html"]
         copies = list(artifacts_dir.iterdir())
         assert len(copies) == 1
+        expected_sha = hashlib.sha256(b"<html>hi</html>").hexdigest()
+        assert artifacts[0].sha256 == expected_sha
 
     def test_preexisting_files_ignored(self, tmp_path: Path) -> None:
         exec_dir = tmp_path / "workspace"
@@ -53,3 +57,52 @@ class TestScanNewFiles:
         assert [a.name for a in artifacts] == ["real_output.csv"]
         copied = {f.name for f in artifacts_dir.iterdir()}
         assert not any("tool_result_" in n for n in copied)
+
+
+class TestContentHashDedup:
+    def test_save_content_artifact_sets_sha(self, tmp_path: Path) -> None:
+        artifact = save_content_artifact("<html>x</html>", "rendered.html", tmp_path)
+        assert artifact.sha256 == hashlib.sha256(b"<html>x</html>").hexdigest()
+
+    def test_duplicate_content_collapses_to_real_filename(self) -> None:
+        # template_render registers the generic "rendered.html" first, then
+        # the agent saves the identical HTML under a real name via file_ops.
+        # Only the real-named copy should survive.
+        sha = "a" * 64
+        artifacts = [
+            {"name": "rendered.html", "path": "p1", "size": 5154, "sha256": sha},
+            {"name": "framework_scorecard.html", "path": "p2", "size": 5154, "sha256": sha},
+        ]
+
+        deduped = _dedupe_artifacts(artifacts)
+
+        assert [a["name"] for a in deduped] == ["framework_scorecard.html"]
+
+    def test_generic_name_wins_only_against_itself(self) -> None:
+        # Real name registered first stays; the later generic copy is dropped.
+        sha = "b" * 64
+        artifacts = [
+            {"name": "scorecard.html", "path": "p1", "size": 100, "sha256": sha},
+            {"name": "rendered.html", "path": "p2", "size": 100, "sha256": sha},
+        ]
+
+        deduped = _dedupe_artifacts(artifacts)
+
+        assert [a["name"] for a in deduped] == ["scorecard.html"]
+
+    def test_distinct_content_untouched(self) -> None:
+        artifacts = [
+            {"name": "a.html", "path": "p1", "size": 10, "sha256": "c" * 64},
+            {"name": "b.html", "path": "p2", "size": 10, "sha256": "d" * 64},
+        ]
+
+        assert _dedupe_artifacts(artifacts) == artifacts
+
+    def test_missing_sha_always_kept(self) -> None:
+        # Pre-upgrade artifacts have no hash — never drop them.
+        artifacts = [
+            {"name": "old1.html", "path": "p1", "size": 10},
+            {"name": "old2.html", "path": "p2", "size": 10, "sha256": ""},
+        ]
+
+        assert _dedupe_artifacts(artifacts) == artifacts

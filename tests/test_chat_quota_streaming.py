@@ -363,3 +363,47 @@ class TestMidStreamGuardComposition:
         # cap == 0 short-circuits the guard regardless of usage.
         triggered = cap > 0 and used + 50 >= cap
         assert triggered is False
+
+
+class TestRunFailedPayload:
+    """A crashed run must not be delivered as a successful one.
+
+    The handler used to emit a ``done`` event whose ``answer`` was
+    ``"Agent error: ..."``.  The frontend renders ``done`` with a green
+    check under a "Result" heading, so a crash looked exactly like a
+    success and the raw exception was shown as the agent's answer.
+    """
+
+    def test_uses_the_typed_error_channel(self) -> None:
+        from fim_one.web.api.chat import _run_failed_payload
+
+        payload = _run_failed_payload(ValueError("boom"), 1.5)
+
+        assert payload["type"] == "error"
+        assert payload["code"] == "AGENT_ERROR"
+
+    def test_carries_no_answer_field(self) -> None:
+        """An ``answer`` key is what let a failure masquerade as a result."""
+        from fim_one.web.api.chat import _run_failed_payload
+
+        assert "answer" not in _run_failed_payload(ValueError("boom"), 1.0)
+
+    def test_user_message_is_prose_not_a_python_repr(self) -> None:
+        from fim_one.web.api.chat import _run_failed_payload
+
+        payload = _run_failed_payload(ValueError("boom"), 1.0)
+
+        assert "ValueError" not in payload["message"]
+        assert payload["message"].endswith(".")
+
+    def test_detail_keeps_the_exception_for_developers(self) -> None:
+        from fim_one.web.api.chat import _run_failed_payload
+
+        payload = _run_failed_payload(ValueError("boom"), 1.0)
+
+        assert payload["detail"] == "ValueError: boom"
+
+    def test_elapsed_is_preserved(self) -> None:
+        from fim_one.web.api.chat import _run_failed_payload
+
+        assert _run_failed_payload(RuntimeError("x"), 2.25)["elapsed"] == 2.25

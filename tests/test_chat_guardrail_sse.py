@@ -173,19 +173,26 @@ async def test_input_tripwire_emits_guardrail_event_and_clean_done() -> None:
     # No `answer` event was ever emitted (LLM was bypassed).
     assert "answer" not in event_names
 
+    # ``_emit`` wraps its payload in the ``{cursor, data}`` envelope that
+    # ``/chat/resume`` also replays, so a client tracks its position the
+    # same way on either path.  Clients unwrap before reading the payload.
+    guardrail_frame = parsed[0]
+    assert guardrail_frame["data"]["cursor"] == 0
+    guardrail_payload = guardrail_frame["data"]["data"]
+
     # Verify the guardrail event payload schema the frontend depends on.
-    guardrail_event = parsed[0]
-    assert guardrail_event["data"]["kind"] == "input"
-    assert guardrail_event["data"]["guardrail_name"] == "jailbreak_detector"
-    assert "reason" in guardrail_event["data"]
-    assert "output_info" in guardrail_event["data"]
-    assert guardrail_event["data"]["output_info"] == output.output_info
+    assert guardrail_payload["kind"] == "input"
+    assert guardrail_payload["guardrail_name"] == "jailbreak_detector"
+    assert "reason" in guardrail_payload
+    assert "output_info" in guardrail_payload
+    assert guardrail_payload["output_info"] == output.output_info
 
     # The ``done`` event signals the tripwire and reuses the reason as
     # the displayed answer so users always see why the turn stopped.
+    # It goes out via ``_sse``, so it carries no envelope here.
     done_event = parsed[1]
     assert done_event["data"]["guardrail_tripwired"] is True
-    assert done_event["data"]["answer"] == guardrail_event["data"]["reason"]
+    assert done_event["data"]["answer"] == guardrail_payload["reason"]
 
     # Sanity: the persisted SSE event list captures the guardrail event
     # so ``/chat/resume`` can replay it.
