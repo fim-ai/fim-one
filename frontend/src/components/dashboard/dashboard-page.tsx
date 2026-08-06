@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useTranslations, useLocale } from "next-intl"
-import { MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, Activity, Library, Clock, ChevronRight, GitBranch } from "lucide-react"
+import { MessageSquare, Bot, Database, Plug, TrendingUp, TrendingDown, Minus, Activity, Library, ChevronRight, GitBranch } from "lucide-react"
 import {
   ResponsiveContainer,
   BarChart,
@@ -21,7 +21,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/contexts/auth-context"
-import { useConversation } from "@/contexts/conversation-context"
 import { UserAvatar as SharedUserAvatar } from "@/components/shared/user-avatar"
 import { dashboardApi, workflowApi, type DashboardStats } from "@/lib/api"
 import type { WorkflowResponse } from "@/types/workflow"
@@ -149,7 +148,6 @@ export function DashboardPage() {
   const locale = useLocale()
   const { formatRelativeTime, formatDateLabel, timezone } = useDateFormatter()
   const { user, isLoading: authLoading } = useAuth()
-  const { conversations } = useConversation()
   const modules = useModuleFlags()
   const router = useRouter()
 
@@ -543,38 +541,24 @@ export function DashboardPage() {
         {/* ---- 4. Content Cards ---- */}
         {loading ? (
           <>
-            {/* Row A skeleton: My Agents + Recent Conversations */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {/* My Agents skeleton */}
-              <Card className="gap-0 py-2">
-                <CardHeader className="px-5 py-3">
-                  <Skeleton className="h-5 w-28" />
-                </CardHeader>
-                <CardContent className="px-5 pb-4 pt-1">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {Array.from({ length: 4 }).map((_, i) => <Skeleton.AgentCard key={i} />)}
-                  </div>
-                </CardContent>
-              </Card>
+            {/* Row A skeleton: My Agents (full width) */}
+            <Card className="gap-0 py-2">
+              <CardHeader className="px-5 py-3">
+                <Skeleton className="h-5 w-28" />
+              </CardHeader>
+              <CardContent className="px-5 pb-4 pt-1">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {Array.from({ length: 4 }).map((_, i) => <Skeleton.AgentCard key={i} />)}
+                </div>
+              </CardContent>
+            </Card>
 
-              {/* Recent Conversations skeleton */}
-              <Card className="gap-0 py-2">
-                <CardHeader className="px-5 py-3">
-                  <Skeleton className="h-5 w-40" />
-                </CardHeader>
-                <CardContent className="px-0 pb-1">
-                  <ul className="divide-y divide-border/50">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <li key={i}><Skeleton.ListRow /></li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Row B skeleton: KB + Connectors + Workflows */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, i) => (
+            {/* Row B skeleton: KB + Connectors (+ Workflows when enabled) */}
+            <div className={cn(
+              "grid grid-cols-1 gap-4",
+              modules.workflows ? "md:grid-cols-3" : "md:grid-cols-2"
+            )}>
+              {Array.from({ length: modules.workflows ? 3 : 2 }).map((_, i) => (
                 <Card key={i} className="gap-0 py-2">
                   <CardHeader className="px-5 py-3">
                     <Skeleton className="h-5 w-28" />
@@ -592,96 +576,54 @@ export function DashboardPage() {
           </>
         ) : (
           <>
-            {/* Row A: My Agents + Recent Conversations */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Row A: My Agents (full width — recent conversations live in the sidebar) */}
+            <Card className="gap-0 py-2">
+              <CardHeader className="px-5 py-3">
+                <Link href="/agents" className="group flex items-center justify-between rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                  <CardTitle className="flex items-center gap-2 text-base font-medium">
+                    <Bot className="h-4 w-4 text-muted-foreground" />
+                    {t("agentsTitle")}
+                  </CardTitle>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </Link>
+              </CardHeader>
+              <CardContent className="px-5 pb-4 pt-1">
+                {!sortedAgents.length ? (
+                  <div className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
+                    <p>{t("agentsEmpty")}</p>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link href="/agents/new">{t("agentsCreate")}</Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {sortedAgents.map((agent) => (
+                      <Link
+                        key={agent.id}
+                        href={`/agents/${agent.id}`}
+                        className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 p-3 transition-all hover:border-border hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                      >
+                        <AgentIcon icon={agent.icon} name={agent.name} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {agent.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground/80 mt-0.5">
+                            {t("agentsConvCount", { count: agent.conversation_count })}
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-              {/* My Agents */}
-              <Card className="gap-0 py-2">
-                <CardHeader className="px-5 py-3">
-                  <Link href="/agents" className="group flex items-center justify-between rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-                    <CardTitle className="flex items-center gap-2 text-base font-medium">
-                      <Bot className="h-4 w-4 text-muted-foreground" />
-                      {t("agentsTitle")}
-                    </CardTitle>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                  </Link>
-                </CardHeader>
-                <CardContent className="px-5 pb-4 pt-1">
-                  {!sortedAgents.length ? (
-                    <div className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
-                      <p>{t("agentsEmpty")}</p>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/agents/new">{t("agentsCreate")}</Link>
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {sortedAgents.map((agent) => (
-                        <Link
-                          key={agent.id}
-                          href={`/agents/${agent.id}`}
-                          className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 p-3 transition-all hover:border-border hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          <AgentIcon icon={agent.icon} name={agent.name} />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">
-                              {agent.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground/80 mt-0.5">
-                              {t("agentsConvCount", { count: agent.conversation_count })}
-                            </p>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Recent Conversations */}
-              <Card className="gap-0 py-2">
-                <CardHeader className="px-5 py-3">
-                  <Link href="/chats" className="group flex items-center justify-between rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-                    <CardTitle className="flex items-center gap-2 text-base font-medium">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      {t("recentTitle")}
-                    </CardTitle>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                  </Link>
-                </CardHeader>
-                <CardContent className="px-0 pb-1">
-                  {!conversations.length ? (
-                    <div className="flex flex-col items-center gap-3 px-6 py-8 text-sm text-muted-foreground">
-                      <p>{t("recentEmpty")}</p>
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href="/new">{t("recentEmptyCta")}</Link>
-                      </Button>
-                    </div>
-                  ) : (
-                    <ul className="divide-y divide-border/50">
-                      {conversations.slice(0, 5).map((conv) => (
-                        <li key={conv.id}>
-                          <Link
-                            href={`/?c=${conv.id}`}
-                            className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                          >
-                            <p className="flex-1 min-w-0 truncate text-sm font-medium text-foreground/90">
-                              {conv.title || t("untitled")}
-                            </p>
-                            <span className="shrink-0 text-xs text-muted-foreground/70 tabular-nums">
-                              {formatRelativeTime(conv.updated_at ?? conv.created_at)}
-                            </span>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Row B: Knowledge Bases + Connectors + Workflows */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Row B: Knowledge Bases + Connectors (+ Workflows when enabled) */}
+            <div className={cn(
+              "grid grid-cols-1 gap-4",
+              modules.workflows ? "md:grid-cols-3" : "md:grid-cols-2"
+            )}>
 
               {/* Knowledge Bases */}
               <Card className="gap-0 py-2">
