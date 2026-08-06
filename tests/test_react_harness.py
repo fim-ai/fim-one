@@ -22,6 +22,7 @@ from fim_one.core.agent.react import (
     _CYCLE_DETECTION_THRESHOLD,
     _CYCLE_WARNING_TEMPLATE,
 )
+from fim_one.core.memory.compact import SUMMARY_PREFIX
 from fim_one.core.model import BaseLLM, ChatMessage, LLMResult, StreamChunk
 from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.tool import BaseTool, ToolRegistry
@@ -511,6 +512,42 @@ class TestCompletionChecklistJsonMode:
         assert result.answer == "There are 5 admins."
         assert "Let me verify" not in result.answer
 
+    async def test_verification_with_tool_calls_still_consumed(self) -> None:
+        """A verify turn that re-runs tools is still the verify turn.
+
+        Prod bug 2026-08-04: the verification turn re-called a tool to
+        double-check a fact; the tool-call path used to clear
+        verification_pending, so the following narration ("核查完成…
+        可以交付最终答案") leaked to the user as the final answer.
+        """
+        responses: list[LLMResult] = [
+            _json_tool_call("echo", {"text": "a"}),
+            _json_tool_call("echo", {"text": "b"}),
+            _json_tool_call("echo", {"text": "c"}),
+            _json_final_answer("first attempt"),
+            # Verification turn double-checks a fact with a tool call...
+            _json_tool_call("echo", {"text": "double-check"}),
+            # ...then narrates the verification outcome.
+            _json_final_answer("核查完成，所有关键事实均已验证。可以交付最终答案。"),
+            _json_final_answer("The top repo is build-your-own-x with 535,848 stars."),
+        ]
+
+        llm = CapturingFakeLLM(responses)
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=llm, tools=registry, max_iterations=20,
+            completion_check=True,
+        )
+
+        result = await agent.run("top starred repo")
+
+        assert result.answer == "The top repo is build-your-own-x with 535,848 stars."
+        assert "核查完成" not in result.answer
+        assert llm.call_count == 7
+        # The answer request lands right after the narration turn.
+        assert len(_find_answer_requests(llm.all_messages[6])) == 1
+
     async def test_checklist_skipped_without_room_for_answer_round(self) -> None:
         """No checklist when the budget cannot also cover the answer round."""
         # max_iterations=5: iteration 4 is the final answer; injecting the
@@ -590,7 +627,9 @@ class TestCompletionChecklistJsonMode:
     async def test_checklist_only_triggers_once(self) -> None:
         """Completion checklist should only trigger once per run."""
         # 3 tool calls, final answer (triggers checklist), tool call
-        # (agent decided to continue after checklist), final answer (accepted).
+        # (agent decided to continue after checklist), text turn (still
+        # consumed as the verification — the flag survives tool calls),
+        # then the real user-facing answer.
         responses: list[LLMResult] = [
             _json_tool_call("echo", {"text": "a"}),
             _json_tool_call("echo", {"text": "b"}),
@@ -598,6 +637,7 @@ class TestCompletionChecklistJsonMode:
             _json_final_answer("first attempt"),
             # After checklist, LLM continues investigating
             _json_tool_call("echo", {"text": "more data"}),
+            _json_final_answer("verification summary after investigation"),
             _json_final_answer("final answer after investigation"),
         ]
 
@@ -686,6 +726,35 @@ class TestCompletionChecklistNativeMode:
         assert len(_find_completion_checks(llm.all_messages[4])) == 1
         assert len(_find_answer_requests(llm.all_messages[5])) == 1
 
+    async def test_verification_with_tool_calls_still_consumed_native(self) -> None:
+        """Native mode: verify turn re-running tools stays internal (prod 2026-08-04)."""
+        responses: list[LLMResult] = [
+            _native_tool_call([("c1", "echo", {"text": "a"})]),
+            _native_tool_call([("c2", "echo", {"text": "b"})]),
+            _native_tool_call([("c3", "echo", {"text": "c"})]),
+            _native_final_answer("first attempt"),
+            # Verification turn double-checks with a tool call...
+            _native_tool_call([("c4", "echo", {"text": "double-check"})]),
+            # ...then narrates the verification outcome.
+            _native_final_answer("核查完成，可以交付最终答案。"),
+            _native_final_answer("The top repo has 535,848 stars."),
+        ]
+
+        llm = CapturingNativeFakeLLM(responses)
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=llm, tools=registry, use_native_tools=True,
+            max_iterations=20, completion_check=True,
+        )
+
+        result = await agent.run("top starred repo native")
+
+        assert result.answer == "The top repo has 535,848 stars."
+        assert "核查完成" not in result.answer
+        assert llm.call_count == 7
+        assert len(_find_answer_requests(llm.all_messages[6])) == 1
+
     async def test_checklist_not_triggered_no_tools_native(self) -> None:
         """No checklist in native mode when no tools were used."""
         responses: list[LLMResult] = [
@@ -715,8 +784,10 @@ class TestCompletionChecklistNativeMode:
             _native_tool_call([("c2", "echo", {"text": "b"})]),
             _native_tool_call([("c3", "echo", {"text": "c"})]),
             _native_final_answer("first attempt"),
-            # After checklist, agent continues investigating
+            # After checklist, agent continues investigating; the next text
+            # turn is still consumed as the verification.
             _native_tool_call([("c4", "echo", {"text": "more"})]),
+            _native_final_answer("verification summary"),
             _native_final_answer("final"),
         ]
 
@@ -787,3 +858,52 @@ class TestHarnessConstants:
         h1 = ReActAgent._compute_args_hash(None)
         h2 = ReActAgent._compute_args_hash({})
         assert h1 == h2
+
+
+class TestHistoryReplay:
+    """History replayed from memory keeps carried context, drops stale prompts.
+
+    A compaction summary is emitted with ``role="system"``.  Replaying
+    history with a blanket ``role != "system"`` filter threw it away every
+    turn, so long conversations paid for a summarization call whose output
+    never reached the model.
+    """
+
+    def test_stale_system_prompt_is_dropped(self) -> None:
+        history = [ChatMessage(role="system", content="You are a pirate.")]
+        assert ReActAgent._history_to_replay(history) == []
+
+    def test_compaction_summary_survives(self) -> None:
+        summary = ChatMessage(
+            role="system",
+            content=f"{SUMMARY_PREFIX}user wants the Q2 report translated",
+        )
+        assert ReActAgent._history_to_replay([summary]) == [summary]
+
+    def test_conversation_turns_pass_through(self) -> None:
+        history = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(role="assistant", content="hello"),
+            ChatMessage(role="tool", content="result", tool_call_id="c1"),
+        ]
+        assert ReActAgent._history_to_replay(history) == history
+
+    def test_order_is_preserved_in_a_mixed_history(self) -> None:
+        summary = ChatMessage(role="system", content=f"{SUMMARY_PREFIX}earlier work")
+        history = [
+            ChatMessage(role="system", content="stale prompt"),
+            summary,
+            ChatMessage(role="user", content="continue"),
+        ]
+        replayed = ReActAgent._history_to_replay(history)
+        assert [m.content for m in replayed] == [summary.content, "continue"]
+
+    def test_non_string_system_content_is_not_mistaken_for_a_summary(self) -> None:
+        """Vision arrays must not crash the ``startswith`` check."""
+        history = [
+            ChatMessage(
+                role="system",
+                content=[{"type": "text", "text": SUMMARY_PREFIX}],
+            ),
+        ]
+        assert ReActAgent._history_to_replay(history) == []

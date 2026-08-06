@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fim_one.core.memory.base import BaseMemory
+from fim_one.core.memory.compact import CompactUtils, is_summary_message
 from fim_one.core.memory.context_guard import ContextGuard
 from fim_one.core.memory.microcompact import micro_compact
 from fim_one.core.model import BaseLLM, ChatMessage, LLMResult
@@ -80,6 +81,35 @@ _TOOL_OBS_TRUNCATION = int(os.getenv("REACT_TOOL_OBS_TRUNCATION", "8000"))
 # Tool results exceeding this cumulative budget are truncated.
 _TOOL_RESULT_BUDGET = int(os.getenv("REACT_TOOL_RESULT_BUDGET", "40000"))
 
+# Floor on what a single tool result keeps once the aggregate budget is
+# spent.  Without it the remaining allowance clamps to zero and every later
+# result collapses to a bare truncation note, so the model keeps calling
+# tools and sees nothing come back — blind for the rest of the run.  The
+# full text still goes to the workspace, so this only sizes the inline
+# window, not what is recoverable.
+_TOOL_RESULT_MIN_TOKENS = int(os.getenv("REACT_TOOL_RESULT_MIN_TOKENS", "400"))
+
+# Cap on a single mid-run user interrupt as the model sees it.  The SSE
+# event still carries the full text for the UI; this only stops a very
+# long paste from displacing the in-flight work in the context window.
+_MAX_INJECT_CHARS = int(os.getenv("REACT_MAX_INJECT_CHARS", "25000"))
+
+# Wall-clock backstop around a single tool call.  Deliberately above every
+# builtin's own internal limit (the longest is 120s) so it never preempts a
+# tool's finer-grained timeout — it exists to stop a tool with NO timeout of
+# its own (a hung MCP server, a stalled connector) from wedging the turn
+# forever.  A server-side loop has no human to abort it, and a stuck call
+# holds a worker and keeps billing, so the bound matters more here than in
+# an interactive CLI.  Set to 0 to disable.
+_TOOL_TIMEOUT_SECONDS = float(os.getenv("REACT_TOOL_TIMEOUT", "180"))
+
+_TOOL_TIMEOUT_TEMPLATE = (
+    "Tool '{tool_name}' exceeded its {timeout:.0f}s time limit and was "
+    "cancelled, so it returned nothing. Do not retry it unchanged — narrow "
+    "the work (a smaller range, a more specific query, fewer items) or use "
+    "a different tool."
+)
+
 # Cycle detection: when the same (tool_name, args_hash) pair appears this many
 # times, inject a deterministic warning message.
 _CYCLE_DETECTION_THRESHOLD = int(os.getenv("REACT_CYCLE_DETECTION_THRESHOLD", "2"))
@@ -88,6 +118,20 @@ _CYCLE_WARNING_TEMPLATE = (
     "\u26a0 You have called `{tool_name}` with identical arguments "
     "{count} times and received the same result. "
     "Please try a different approach or tool."
+)
+
+# Repeats at which the loop stops advising and starts refusing.  Warning
+# alone never broke a loop: the call still ran, burning an iteration and a
+# tool invocation each time, and the only real bound was max_iterations.
+# Refusing also caps how many warnings can pile up per (tool, args) pair.
+_CYCLE_BLOCK_THRESHOLD = int(os.getenv("REACT_CYCLE_BLOCK_THRESHOLD", "3"))
+
+_CYCLE_BLOCKED_TEMPLATE = (
+    "\u26a0 Refused: `{tool_name}` has already been called {count} times "
+    "with these exact arguments and returned the same result each time, so "
+    "it was not run again. Repeating it cannot produce new information. "
+    "Change the arguments, use a different tool, or proceed with what you "
+    "already have."
 )
 
 # Background tool execution: whitelisted slow tools (supports_background)
@@ -528,11 +572,17 @@ class ReActAgent:
         tool_name: str,
         tool_args: dict[str, Any] | None,
         cycle_tracker: dict[tuple[str, str], int],
-    ) -> str | None:
-        """Check for repeated identical tool calls and return a warning if needed.
+    ) -> tuple[str | None, bool]:
+        """Record a tool call and decide whether to warn about or refuse it.
 
-        Increments the count for ``(tool_name, args_hash)`` and returns a
-        warning message when the count reaches ``_CYCLE_DETECTION_THRESHOLD``.
+        Must be called **before** the tool runs.  Checking afterwards let
+        the duplicate execute first, so the guard only ever commented on
+        work it had already paid for.
+
+        The response is graduated: the first repeat still runs (a retry is
+        sometimes legitimate — a flaky endpoint, a file that changed) but
+        earns a warning; past ``_CYCLE_BLOCK_THRESHOLD`` the call is
+        refused outright.
 
         Args:
             tool_name: The name of the tool being called.
@@ -541,24 +591,39 @@ class ReActAgent:
                 ``(tool_name, args_hash)`` pair.
 
         Returns:
-            A warning message string if the threshold is reached, else ``None``.
+            ``(message, blocked)``.  *message* is the text to surface, or
+            ``None`` when the call is unremarkable.  *blocked* is ``True``
+            when the caller must skip execution and report *message* as
+            the tool's result.
         """
         args_hash = self._compute_args_hash(tool_args)
         key = (tool_name, args_hash)
-        cycle_tracker[key] = cycle_tracker.get(key, 0) + 1
-        count = cycle_tracker[key]
-        if count >= _CYCLE_DETECTION_THRESHOLD:
-            warning = _CYCLE_WARNING_TEMPLATE.format(
-                tool_name=tool_name,
-                count=count,
+        count = cycle_tracker.get(key, 0) + 1
+        cycle_tracker[key] = count
+
+        if count >= _CYCLE_BLOCK_THRESHOLD:
+            logger.warning(
+                "Cycle blocked: %s called %d times with identical args — refusing",
+                tool_name,
+                count,
             )
+            return (
+                _CYCLE_BLOCKED_TEMPLATE.format(tool_name=tool_name, count=count),
+                True,
+            )
+
+        if count >= _CYCLE_DETECTION_THRESHOLD:
             logger.warning(
                 "Cycle detected: %s called %d times with identical args",
                 tool_name,
                 count,
             )
-            return warning
-        return None
+            return (
+                _CYCLE_WARNING_TEMPLATE.format(tool_name=tool_name, count=count),
+                False,
+            )
+
+        return None, False
 
     # ------------------------------------------------------------------
     # Public API
@@ -1332,9 +1397,7 @@ class ReActAgent:
             _mem_start = time.perf_counter()
             history = await self._memory.get_messages()
             _initial_memory_load = time.perf_counter() - _mem_start
-            for msg in history:
-                if msg.role != "system":
-                    messages.append(msg)
+            messages.extend(self._history_to_replay(history))
 
         # Build user message -- use vision content array when images are attached.
         user_content: str | list[dict[str, Any]] = query
@@ -1604,14 +1667,27 @@ class ReActAgent:
             if on_iteration is not None:
                 on_iteration(iteration, action, None, None, None)
 
-            _tool_start = time.perf_counter()
-            step = await self._execute_tool_call(action)
-            profiler.add("tool_exec", time.perf_counter() - _tool_start)
+            # --- Cycle detection (before execution) ---
+            # Counting here rather than after the call is what lets a
+            # refusal actually prevent the work.
+            cycle_message, cycle_blocked = self._check_cycle(
+                action.tool_name or "",
+                action.tool_args,
+                cycle_tracker,
+            )
+
+            if cycle_blocked:
+                step = StepResult(action=action, error=cycle_message)
+            else:
+                _tool_start = time.perf_counter()
+                step = await self._execute_tool_call(action)
+                profiler.add("tool_exec", time.perf_counter() - _tool_start)
             steps.append(step)
             tool_call_count += 1
-            # The check sent the agent back to work; whatever it answers
-            # after this is a genuine answer, not the verification turn.
-            verification_pending = False
+            # NOTE: verification_pending deliberately survives tool calls.
+            # The verification turn often re-runs tools to double-check
+            # facts; the next text-only turn is still the verification
+            # summary, not the user-facing answer (prod bug 2026-08-04).
 
             # Feed the tool result/error back into the conversation so the LLM
             # can observe and adapt on the next iteration (Observe step of ReAct).
@@ -1630,9 +1706,12 @@ class ReActAgent:
             )
 
             # --- Tool result aggregate budget (I.8) ---
-            estimated_tokens = len(obs_content) // 4
+            estimated_tokens = CompactUtils.estimate_tokens(obs_content)
             if tool_result_tokens + estimated_tokens > _TOOL_RESULT_BUDGET:
-                max_chars = max(0, (_TOOL_RESULT_BUDGET - tool_result_tokens) * 4)
+                remaining_tokens = max(
+                    _TOOL_RESULT_MIN_TOKENS,
+                    _TOOL_RESULT_BUDGET - tool_result_tokens,
+                )
                 # Persist the full observation before cutting it (skip when
                 # it already carries a workspace pointer from maybe_offload,
                 # and for workspace reads — re-saving content that already
@@ -1653,11 +1732,11 @@ class ReActAgent:
                         "use read_workspace_file to access it."
                     )
                 obs_content = (
-                    obs_content[:max_chars]
+                    CompactUtils.truncate_head_tail(obs_content, remaining_tokens)
                     + f"\n\n[Truncated: tool result exceeded aggregate budget "
                     f"({tool_result_tokens}/{_TOOL_RESULT_BUDGET} tokens used).{saved_note}]"
                 )
-                estimated_tokens = len(obs_content) // 4
+                estimated_tokens = CompactUtils.estimate_tokens(obs_content)
                 logger.warning(
                     "Tool result budget exceeded: %d/%d tokens after truncation",
                     tool_result_tokens + estimated_tokens,
@@ -1667,16 +1746,10 @@ class ReActAgent:
 
             messages.append(ChatMessage(role="user", content=obs_content))
 
-            # --- Cycle detection ---
-            # Track identical (tool_name, args) calls and inject a warning
-            # when the threshold is reached.
-            cycle_warning = self._check_cycle(
-                action.tool_name or "",
-                action.tool_args,
-                cycle_tracker,
-            )
-            if cycle_warning is not None:
-                messages.append(ChatMessage(role="user", content=cycle_warning))
+            # A refusal is already carried by the observation above; only a
+            # warning (the call still ran) needs its own message.
+            if cycle_message is not None and not cycle_blocked:
+                messages.append(ChatMessage(role="user", content=cycle_message))
 
             # --- Plan staleness reminder ---
             # Re-inject the current plan when it has gone several tool
@@ -1824,9 +1897,7 @@ class ReActAgent:
             _mem_start = time.perf_counter()
             history = await self._memory.get_messages()
             _initial_memory_load = time.perf_counter() - _mem_start
-            for msg in history:
-                if msg.role != "system":
-                    messages.append(msg)
+            messages.extend(self._history_to_replay(history))
 
         # Build user message -- use vision content array when images are attached.
         user_content: str | list[dict[str, Any]] = query
@@ -1970,9 +2041,28 @@ class ReActAgent:
             # assistant's tool_use blocks.  Drain the interrupt queue only
             # AFTER tool results are appended to preserve this ordering.
             if assistant_msg.tool_calls:
-                # The check sent the agent back to work; whatever it answers
-                # after this is a genuine answer, not the verification turn.
-                verification_pending = False
+                # NOTE: verification_pending deliberately survives tool calls.
+                # The verification turn often re-runs tools to double-check
+                # facts; the next text-only turn is still the verification
+                # summary, not the user-facing answer (prod bug 2026-08-04).
+                # --- Cycle detection (before execution) ---
+                # Count the whole batch up front so a refusal can stop the
+                # call from running, rather than commenting on work already
+                # done.  Warnings are collected and appended after the
+                # tool_use/tool_result pairing is complete.
+                cycle_warnings: list[str] = []
+                blocked_call_ids: set[str] = set()
+                for tc in assistant_msg.tool_calls:
+                    cycle_message, cycle_blocked = self._check_cycle(
+                        tc.name,
+                        dict(tc.arguments),
+                        cycle_tracker,
+                    )
+                    if cycle_blocked:
+                        blocked_call_ids.add(tc.id)
+                    elif cycle_message is not None:
+                        cycle_warnings.append(cycle_message)
+
                 _tool_start = time.perf_counter()
                 tool_results = await self._execute_native_tool_calls(
                     assistant_msg.tool_calls,
@@ -1981,6 +2071,7 @@ class ReActAgent:
                     on_iteration,
                     reasoning=assistant_msg.reasoning_content or "",
                     background=background,
+                    blocked_call_ids=blocked_call_ids,
                 )
                 profiler.add("tool_exec", time.perf_counter() - _tool_start)
 
@@ -1997,11 +2088,11 @@ class ReActAgent:
                     if not isinstance(raw_content, str):
                         continue
                     content_str: str = raw_content or ""
-                    estimated_tokens = len(content_str) // 4
+                    estimated_tokens = CompactUtils.estimate_tokens(content_str)
                     if tool_result_tokens + estimated_tokens > _TOOL_RESULT_BUDGET:
-                        max_chars = max(
-                            0,
-                            (_TOOL_RESULT_BUDGET - tool_result_tokens) * 4,
+                        remaining_tokens = max(
+                            _TOOL_RESULT_MIN_TOKENS,
+                            _TOOL_RESULT_BUDGET - tool_result_tokens,
                         )
                         # Persist the full result before cutting it so the
                         # data stays recoverable (skip when it already
@@ -2026,13 +2117,15 @@ class ReActAgent:
                                 "use read_workspace_file to access it."
                             )
                         truncated = (
-                            content_str[:max_chars]
+                            CompactUtils.truncate_head_tail(
+                                content_str, remaining_tokens,
+                            )
                             + f"\n\n[Truncated: tool result exceeded aggregate "
                             f"budget ({tool_result_tokens}/"
                             f"{_TOOL_RESULT_BUDGET} tokens used).{saved_note}]"
                         )
                         tr_msg.content = truncated
-                        estimated_tokens = len(truncated) // 4
+                        estimated_tokens = CompactUtils.estimate_tokens(truncated)
                         logger.warning(
                             "Tool result budget exceeded: %d/%d tokens after truncation",
                             tool_result_tokens + estimated_tokens,
@@ -2043,18 +2136,10 @@ class ReActAgent:
                 messages.extend(tool_results)
                 tool_call_count += 1
 
-                # --- Cycle detection ---
-                # Check each tool call in this batch for repetition.
-                for tc in assistant_msg.tool_calls:
-                    cycle_warning = self._check_cycle(
-                        tc.name,
-                        dict(tc.arguments),
-                        cycle_tracker,
-                    )
-                    if cycle_warning is not None:
-                        messages.append(
-                            ChatMessage(role="user", content=cycle_warning),
-                        )
+                # Refusals already reached the model as tool results; only
+                # warnings (whose calls did run) need their own message.
+                for warning in cycle_warnings:
+                    messages.append(ChatMessage(role="user", content=warning))
 
                 # --- Plan staleness reminder ---
                 # Re-inject the current plan when it has gone several tool
@@ -2406,6 +2491,7 @@ class ReActAgent:
         on_iteration: IterationCallback | None,
         reasoning: str = "",
         background: dict[str, dict[str, Any]] | None = None,
+        blocked_call_ids: set[str] | None = None,
     ) -> list[ChatMessage]:
         """Execute one or more native tool calls in parallel.
 
@@ -2419,11 +2505,16 @@ class ReActAgent:
                 provided and the model set ``run_in_background`` on a
                 whitelisted tool, the call is dispatched as an asyncio task
                 and a placeholder result is returned immediately.
+            blocked_call_ids: Ids the cycle guard refused.  Each still gets
+                a ``role="tool"`` reply — the API requires one per
+                ``tool_use`` block — carrying the refusal instead of a
+                result, and its tool is never invoked.
 
         Returns:
             A list of ``ChatMessage`` objects with role ``"tool"`` to append
             to the conversation.
         """
+        blocked = blocked_call_ids or set()
 
         async def _run_single(tc: ToolCallRequest) -> tuple[StepResult, ChatMessage]:
             from fim_one.core.tool.base import ToolResult
@@ -2438,6 +2529,24 @@ class ReActAgent:
                 tool_name=tc.name,
                 tool_args=tool_args,
             )
+
+            # --- Cycle guard refusal ---
+            # Short-circuit ahead of the hooks: the point of refusing is
+            # that nothing runs, and a PRE hook could have side effects
+            # (an approval prompt, an audit row) for a call that will not
+            # happen.
+            if tc.id in blocked:
+                refusal = _CYCLE_BLOCKED_TEMPLATE.format(
+                    tool_name=tc.name,
+                    count=_CYCLE_BLOCK_THRESHOLD,
+                )
+                step = StepResult(action=action, error=refusal)
+                msg = ChatMessage(
+                    role="tool",
+                    content=f"Error: {refusal}",
+                    tool_call_id=tc.id,
+                )
+                return step, msg
 
             # --- PRE_TOOL_USE hooks ---
             if self._hook_registry is not None:
@@ -2509,7 +2618,9 @@ class ReActAgent:
                 return step, msg
 
             try:
-                raw_result: str | ToolResult = await tool.run(**tool_args)
+                raw_result: str | ToolResult = await self._run_tool_guarded(
+                    tool, tc.name, tool_args,
+                )
 
                 # Determine observation for POST hooks.
                 if isinstance(raw_result, ToolResult):
@@ -2553,6 +2664,7 @@ class ReActAgent:
                                 "path": a.path,
                                 "mime_type": a.mime_type,
                                 "size": a.size,
+                                "sha256": a.sha256,
                             }
                             for a in raw_result.artifacts
                         ]
@@ -2571,9 +2683,12 @@ class ReActAgent:
                         names = ", ".join(a.name for a in raw_result.artifacts)
                         llm_content = (
                             f"[Artifact generated: {names}] "
-                            "The content is rendered as a preview in the UI "
-                            "and available for download. "
-                            "Do NOT paste the raw source in your answer."
+                            "The content is rendered as a preview in the UI, "
+                            "available for download, and saved to the workspace "
+                            "under the same filename. "
+                            "Do NOT paste the raw source in your answer, and do "
+                            "NOT re-save or rewrite this content with other tools "
+                            "— that would produce a duplicate deliverable."
                         )
                     # Offload large ToolResult content to workspace.
                     if self._workspace is not None:
@@ -2601,6 +2716,15 @@ class ReActAgent:
                 msg = ChatMessage(
                     role="tool",
                     content=llm_result,
+                    tool_call_id=tc.id,
+                )
+                return step, msg
+            except TimeoutError:
+                error_msg = self._timeout_message(tool, tc.name)
+                step = StepResult(action=action, error=error_msg)
+                msg = ChatMessage(
+                    role="tool",
+                    content=f"Error: {error_msg}",
                     tool_call_id=tc.id,
                 )
                 return step, msg
@@ -2665,7 +2789,9 @@ class ReActAgent:
         from fim_one.core.tool.base import ToolResult
 
         try:
-            raw: str | ToolResult = await tool.run(**tool_args)
+            raw: str | ToolResult = await self._run_tool_guarded(
+                tool, tool_name, tool_args,
+            )
             observation = raw.content if isinstance(raw, ToolResult) else raw
 
             if self._hook_registry is not None:
@@ -2692,6 +2818,8 @@ class ReActAgent:
             return observation
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            return f"Error: {self._timeout_message(tool, tool_name)}"
         except Exception as exc:
             logger.exception("Background tool '%s' raised an exception", tool_name)
             return f"Error: {type(exc).__name__}: {exc}"
@@ -2806,6 +2934,60 @@ class ReActAgent:
     # ------------------------------------------------------------------
 
     @staticmethod
+    async def _run_tool_guarded(tool: Any, tool_name: str, tool_args: dict[str, Any]) -> Any:
+        """Execute *tool* under a wall-clock backstop.
+
+        Raises :class:`TimeoutError` when the tool overruns its budget, so
+        callers can report the overrun distinctly from a tool that raised.
+
+        Args:
+            tool: The resolved tool instance.
+            tool_name: Name used for logging.
+            tool_args: Keyword arguments forwarded to ``tool.run``.
+
+        Returns:
+            Whatever ``tool.run`` returned (``str`` or ``ToolResult``).
+        """
+        timeout = getattr(tool, "timeout_seconds", None)
+        if timeout is None:
+            timeout = _TOOL_TIMEOUT_SECONDS
+        if not timeout or timeout <= 0:
+            return await tool.run(**tool_args)
+        try:
+            # ``asyncio.timeout`` bounds the *current* task rather than
+            # wrapping the call in a new one, the way ``wait_for`` does.
+            # That extra task costs a scheduling hop, which is enough to
+            # push an instantly-finishing background tool past the point
+            # where the loop drains its notifications.
+            async with asyncio.timeout(timeout):
+                return await tool.run(**tool_args)
+        except TimeoutError:
+            logger.warning(
+                "Tool '%s' timed out after %.0fs", tool_name, timeout,
+            )
+            raise
+
+    @staticmethod
+    def _timeout_message(tool: Any, tool_name: str) -> str:
+        """Render the observation shown to the model after a tool timeout."""
+        timeout = getattr(tool, "timeout_seconds", None)
+        if timeout is None:
+            timeout = _TOOL_TIMEOUT_SECONDS
+        return _TOOL_TIMEOUT_TEMPLATE.format(tool_name=tool_name, timeout=timeout)
+
+    @staticmethod
+    def _history_to_replay(history: list[ChatMessage]) -> list[ChatMessage]:
+        """Select the history messages worth replaying into a fresh run.
+
+        System messages are dropped because the agent builds its own system
+        prompt on every run and a stale one from history would fight it.
+        A compaction summary is the exception: it is carried *context*, not
+        instructions, so dropping it throws away both the earlier
+        conversation and the fast-LLM call that condensed it.
+        """
+        return [msg for msg in history if msg.role != "system" or is_summary_message(msg)]
+
+    @staticmethod
     def _emit_and_append_injections(
         injected_msgs: list[Any],
         messages: list[ChatMessage],
@@ -2849,7 +3031,16 @@ class ReActAgent:
         # repeated N times.
         last_idx = len(injected_msgs) - 1
         for idx, injected in enumerate(injected_msgs):
-            content = f"[USER INTERRUPT]: {injected.content}"
+            # Bound what reaches the context.  The SSE event above still
+            # carries the full text, so the UI shows exactly what was
+            # typed; only the model's copy is capped, so a long paste
+            # cannot crowd out the work already in flight.
+            injected_text = str(injected.content or "")
+            if len(injected_text) > _MAX_INJECT_CHARS:
+                injected_text = (
+                    injected_text[:_MAX_INJECT_CHARS] + "... [truncated]"
+                )
+            content = f"[USER INTERRUPT]: {injected_text}"
             if idx == last_idx:
                 if last_idx == 0:
                     content += "\n\nAcknowledge and adjust if needed."
@@ -3250,7 +3441,9 @@ class ReActAgent:
             return StepResult(action=action, error=error_msg)
 
         try:
-            raw_result: str | ToolResult = await tool.run(**tool_args)
+            raw_result: str | ToolResult = await self._run_tool_guarded(
+                tool, tool_name, tool_args,
+            )
 
             # Determine the observation string for POST hooks.
             if isinstance(raw_result, ToolResult):
@@ -3287,7 +3480,13 @@ class ReActAgent:
                     observation=raw_result.content,
                     content_type=raw_result.content_type,
                     artifacts=[
-                        {"name": a.name, "path": a.path, "mime_type": a.mime_type, "size": a.size}
+                        {
+                            "name": a.name,
+                            "path": a.path,
+                            "mime_type": a.mime_type,
+                            "size": a.size,
+                            "sha256": a.sha256,
+                        }
                         for a in raw_result.artifacts
                     ]
                     if raw_result.artifacts
@@ -3296,6 +3495,8 @@ class ReActAgent:
             return StepResult(action=action, observation=raw_result)
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            return StepResult(action=action, error=self._timeout_message(tool, tool_name))
         except Exception as exc:
             error_msg = f"{type(exc).__name__}: {exc}"
             logger.exception("Tool '%s' raised an exception", tool_name)
@@ -3350,8 +3551,6 @@ class ReActAgent:
         Returns:
             A compacted message list.
         """
-        from fim_one.core.memory.compact import CompactUtils
-
         if self._context_guard is not None:
             target_budget = int(self._context_guard._default_budget * target_ratio)
             return await self._context_guard.check_and_compact(

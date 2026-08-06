@@ -46,6 +46,14 @@ class Tool(Protocol):
         """
         ...
 
+    @property
+    def timeout_seconds(self) -> float | None:
+        """Wall-clock limit the agent loop enforces around :meth:`run`.
+
+        ``None`` defers to the loop's own backstop.
+        """
+        ...
+
     async def run(self, **kwargs: Any) -> str:
         """Execute the tool and return string result."""
         ...
@@ -95,6 +103,21 @@ class BaseTool:
         """
         return False
 
+    @property
+    def timeout_seconds(self) -> float | None:
+        """Wall-clock limit the agent loop enforces around :meth:`run`.
+
+        ``None`` (the default) means the loop applies its own backstop.
+        Override with a larger value in tools that legitimately run longer
+        than it; the loop's default sits above every builtin's internal
+        limit so it never preempts a tool's own, finer-grained timeout.
+
+        Note this bounds how long the *loop* waits, which is what keeps a
+        turn from wedging.  A tool doing blocking work in a worker thread
+        may keep that thread busy after the wait is abandoned.
+        """
+        return None
+
     def availability(self) -> tuple[bool, str | None]:
         """Return (is_available, reason_if_not).
 
@@ -116,6 +139,7 @@ class Artifact:
     path: str       # server-relative path under uploads root
     mime_type: str   # e.g. "text/html"
     size: int        # bytes
+    sha256: str = ""  # content hash — lets the UI collapse duplicate registrations
 
 
 @dataclass

@@ -8,6 +8,7 @@ from fim_one.core.model.base import BaseLLM
 from fim_one.core.model.types import ChatMessage
 
 from .base import BaseMemory
+from .compact import SUMMARY_PREFIX
 
 _SUMMARY_PROMPT = (
     "Summarize the key points of this conversation so far. "
@@ -102,7 +103,7 @@ class SummaryMemory(BaseMemory):
 
         summary_msg = ChatMessage(
             role="system",
-            content=f"[Conversation summary]: {summary_text}",
+            content=f"{SUMMARY_PREFIX}{summary_text}",
         )
 
         # Rebuild: original system messages + summary + recent messages.

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from fim_one.core.memory.compact import CompactUtils
+from fim_one.core.memory.compact import TRUNCATION_MARKER, CompactUtils
 from fim_one.core.model import BaseLLM, ChatMessage, LLMResult, StreamChunk
 
 
@@ -66,6 +66,100 @@ class TestEstimateTokens:
         assert tokens == 66
         # Old heuristic would give 100/4 = 25, which is way too low
         assert tokens > 50
+
+
+class TestTruncateToTokens:
+    """``truncate_to_tokens`` is the inverse of ``estimate_tokens``."""
+
+    def test_non_positive_budget_yields_empty(self):
+        assert CompactUtils.truncate_to_tokens("hello", 0) == ""
+        assert CompactUtils.truncate_to_tokens("hello", -5) == ""
+
+    def test_empty_text_passthrough(self):
+        assert CompactUtils.truncate_to_tokens("", 10) == ""
+
+    def test_text_within_budget_is_untouched(self):
+        text = "short"
+        assert CompactUtils.truncate_to_tokens(text, 1000) == text
+
+    def test_result_is_a_prefix(self):
+        text = "abcdefghij" * 20
+        out = CompactUtils.truncate_to_tokens(text, 10)
+        assert text.startswith(out)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "中" * 500,
+            "hello world " * 200,
+            "混合 mixed 内容 content " * 100,
+        ],
+    )
+    @pytest.mark.parametrize("budget", [1, 10, 50, 200])
+    def test_result_fits_the_budget(self, text: str, budget: int):
+        """The trimmed prefix must not cost more than the budget allowed.
+
+        ``estimate_tokens`` floors to int and has a ``max(1, ...)`` floor,
+        so allow one token of slack.
+        """
+        out = CompactUtils.truncate_to_tokens(text, budget)
+        assert CompactUtils.estimate_tokens(out) <= budget + 1
+
+    def test_cjk_gets_fewer_chars_than_ascii_for_equal_budget(self):
+        """A CJK char costs ~2.7x an ASCII char, so it earns fewer chars.
+
+        The old ``max_chars = tokens * 4`` arithmetic handed both the same
+        character allowance, overshooting the budget on Chinese text.
+        """
+        budget = 50
+        cjk = CompactUtils.truncate_to_tokens("中" * 500, budget)
+        ascii_text = CompactUtils.truncate_to_tokens("a" * 500, budget)
+        assert len(cjk) < len(ascii_text)
+        # The naive inverse would have granted 200 chars to both.
+        assert len(ascii_text) == budget * 4
+        assert len(cjk) < budget * 4
+
+
+class TestTruncateHeadTail:
+    """Head+tail truncation keeps the conclusion, which trails the output."""
+
+    def test_text_within_budget_is_untouched(self):
+        assert CompactUtils.truncate_head_tail("short", 1000) == "short"
+
+    def test_non_positive_budget_yields_empty(self):
+        assert CompactUtils.truncate_head_tail("hello", 0) == ""
+
+    def test_empty_text_passthrough(self):
+        assert CompactUtils.truncate_head_tail("", 100) == ""
+
+    def test_both_ends_survive(self):
+        text = "HEAD " + ("filler " * 3000) + " TAIL"
+        out = CompactUtils.truncate_head_tail(text, 400)
+        assert out.startswith("HEAD")
+        assert out.endswith("TAIL")
+        assert TRUNCATION_MARKER in out
+
+    def test_head_only_truncation_would_lose_the_tail(self):
+        """Contrast with the prefix cut this replaced."""
+        text = "HEAD " + ("filler " * 3000) + " TAIL"
+        assert not CompactUtils.truncate_to_tokens(text, 400).endswith("TAIL")
+
+    def test_result_fits_the_budget(self):
+        text = "x" * 40_000
+        out = CompactUtils.truncate_head_tail(text, 500)
+        assert CompactUtils.estimate_tokens(out) <= 501
+
+    def test_cjk_result_fits_the_budget(self):
+        text = "中" * 10_000
+        out = CompactUtils.truncate_head_tail(text, 300)
+        assert CompactUtils.estimate_tokens(out) <= 301
+
+    def test_tiny_budget_degrades_to_a_prefix_without_overlapping(self):
+        """A budget too small for both ends must not duplicate content."""
+        text = "abcdefghij" * 50
+        out = CompactUtils.truncate_head_tail(text, 2)
+        assert len(out) <= len(text)
+        assert text.startswith(out.split(TRUNCATION_MARKER)[0])
 
 
 class TestEstimateMessagesTokens:

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from fim_one.core.model.types import ChatMessage
 
-from .compact import CompactUtils
+from .compact import SUMMARY_PREFIX, CompactUtils
 from .work_card import WorkCard
 
 if TYPE_CHECKING:
@@ -401,7 +401,7 @@ class ContextGuard:
             *pinned_msgs,
             ChatMessage(
                 role="system",
-                content=f"[Conversation summary]: {summary}",
+                content=f"{SUMMARY_PREFIX}{summary}",
             ),
             *recent_messages,
         ]

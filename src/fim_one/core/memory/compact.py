@@ -19,6 +19,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Prefix marking a system message that carries compacted conversation
+# context rather than agent instructions.  Agents rebuild their own system
+# prompt each run and therefore drop system messages loaded from history —
+# this marker is how a summary survives that filter, so every producer must
+# use it and :func:`is_summary_message` must be the only test for it.
+SUMMARY_PREFIX = "[Conversation summary]: "
+
+# Elision notice placed between the kept ends of a head+tail truncation.
+TRUNCATION_MARKER = "\n\n... (output truncated) ...\n\n"
+
+
+def is_summary_message(message: ChatMessage) -> bool:
+    """Return ``True`` when *message* carries a compaction summary.
+
+    Used by agent loops to tell carried-over context apart from a stale
+    system prompt when replaying history from memory.
+    """
+    if message.role != "system":
+        return False
+    content = message.content
+    return isinstance(content, str) and content.startswith(SUMMARY_PREFIX)
+
+
 _COMPACT_PROMPT = """\
 Summarise the following conversation history into a concise paragraph.
 Preserve key facts, decisions, tool results, and any data the user or
@@ -100,6 +123,94 @@ class CompactUtils:
         # ASCII: ~4 chars per token; CJK/non-ASCII: ~1.5 chars per token
         tokens = ascii_chars / 4.0 + non_ascii_chars / 1.5
         return max(1, int(tokens))
+
+    @staticmethod
+    def truncate_to_tokens(text: str, max_tokens: int) -> str:
+        """Return the longest prefix of *text* costing at most *max_tokens*.
+
+        The inverse of :meth:`estimate_tokens`.  A plain ``tokens * 4``
+        character budget is only correct for ASCII: it hands a CJK string
+        roughly 2.7x more characters than the estimator will later charge
+        for, so a caller trimming to that budget still overshoots.  This
+        walks the string accumulating the same per-character cost the
+        estimator uses and cuts where the budget runs out.
+
+        Args:
+            text: The string to trim.
+            max_tokens: Token budget for the returned prefix.
+
+        Returns:
+            A prefix of *text*, or ``""`` when the budget is non-positive.
+        """
+        if max_tokens <= 0:
+            return ""
+        if not text:
+            return text
+
+        ascii_chars = 0
+        non_ascii_chars = 0
+        for idx, ch in enumerate(text):
+            if ord(ch) < 128:
+                ascii_chars += 1
+            else:
+                non_ascii_chars += 1
+            if ascii_chars / 4.0 + non_ascii_chars / 1.5 > max_tokens:
+                return text[:idx]
+        return text
+
+    @staticmethod
+    def _tail_within_tokens(text: str, max_tokens: int) -> str:
+        """Return the longest *suffix* of *text* costing at most *max_tokens*."""
+        if max_tokens <= 0 or not text:
+            return ""
+        ascii_chars = 0
+        non_ascii_chars = 0
+        for idx in range(len(text) - 1, -1, -1):
+            if ord(text[idx]) < 128:
+                ascii_chars += 1
+            else:
+                non_ascii_chars += 1
+            if ascii_chars / 4.0 + non_ascii_chars / 1.5 > max_tokens:
+                return text[idx + 1 :]
+        return text
+
+    @classmethod
+    def truncate_head_tail(
+        cls,
+        text: str,
+        max_tokens: int,
+        marker: str = TRUNCATION_MARKER,
+    ) -> str:
+        """Trim *text* to *max_tokens*, keeping both ends and eliding the middle.
+
+        Tool output routinely puts its conclusion last — an exit status, a
+        final row, the error that explains the run — so a head-only cut
+        drops precisely the part the model needs.  Splitting the budget
+        between the two ends keeps the setup and the outcome.
+
+        Args:
+            text: The string to trim.
+            max_tokens: Token budget for the result, marker included.
+            marker: Elision notice placed between the kept ends.
+
+        Returns:
+            *text* unchanged when it already fits, else ``head + marker + tail``.
+        """
+        if max_tokens <= 0:
+            return ""
+        if not text or cls.estimate_tokens(text) <= max_tokens:
+            return text
+
+        budget = max_tokens - cls.estimate_tokens(marker)
+        if budget <= 0:
+            return cls.truncate_to_tokens(text, max_tokens)
+
+        head = cls.truncate_to_tokens(text, budget // 2)
+        tail = cls._tail_within_tokens(text, budget - budget // 2)
+        # A tiny budget can make the two ends overlap; prefer the head then.
+        if len(head) + len(tail) >= len(text):
+            return cls.truncate_to_tokens(text, max_tokens)
+        return f"{head}{marker}{tail}"
 
     @classmethod
     def estimate_messages_tokens(cls, messages: list[ChatMessage]) -> int:
@@ -257,7 +368,7 @@ class CompactUtils:
         compacted = [
             *system_msgs,
             *pinned_msgs,
-            ChatMessage(role="system", content=f"[Conversation summary]: {summary}"),
+            ChatMessage(role="system", content=f"{SUMMARY_PREFIX}{summary}"),
             *recent_messages,
         ]
 
