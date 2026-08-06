@@ -90,8 +90,24 @@ class TestMaybeOffload:
         long_output = "x" * 200
         result = ws.maybe_offload("tool", long_output)
         assert "workspace://" in result
-        assert "Use read_workspace_file" in result
+        assert "read_workspace_file" in result
         assert "200 chars" in result
+
+    def test_offload_notice_leads_and_is_imperative(
+        self, workspace_small_threshold: AgentWorkspace,
+    ) -> None:
+        """The pointer banner must come BEFORE the preview and forbid re-fetching.
+
+        A trailing "was saved" note got skimmed past: an observed run
+        re-fetched the same endpoint ~50 times instead of reading the file.
+        """
+        ws = workspace_small_threshold
+        result = ws.maybe_offload("tool", "x" * 200)
+        banner, _, preview = result.partition("\n\n")
+        assert "workspace://" in banner
+        assert "Do NOT" in banner
+        assert "read_workspace_file" in banner
+        assert preview.startswith("x")
 
     def test_exactly_at_threshold_not_offloaded(
         self, workspace_small_threshold: AgentWorkspace,

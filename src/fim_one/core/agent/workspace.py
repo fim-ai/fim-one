@@ -178,10 +178,15 @@ class AgentWorkspace:
 
         uri = self.save_tool_output(tool_name, output)
         preview = output[:_PREVIEW_CHARS]
+        # The banner leads and is imperative on purpose: weaker models kept
+        # ignoring a trailing "was saved" note and re-fetched the same data
+        # page by page for a dozen iterations instead of reading the file.
         return (
-            f"{preview}\n\n"
-            f"[Full output saved to {uri} ({len(output)} chars). "
-            f"Use read_workspace_file to access specific sections.]"
+            f"[TRUNCATED PREVIEW — the COMPLETE output ({len(output)} chars) "
+            f"is already saved to {uri}. Do NOT re-run this call and do NOT "
+            "re-fetch the same data in smaller pieces; call "
+            f"read_workspace_file on {uri} to get the rest.]\n\n"
+            f"{preview}"
         )
 
     # ------------------------------------------------------------------

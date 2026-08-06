@@ -22,6 +22,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from fim_one.core.memory.base import BaseMemory
 from fim_one.core.memory.compact import CompactUtils, is_summary_message
@@ -132,6 +133,32 @@ _CYCLE_BLOCKED_TEMPLATE = (
     "it was not run again. Repeating it cannot produce new information. "
     "Change the arguments, use a different tool, or proceed with what you "
     "already have."
+)
+
+# Endpoint-level near-duplicate guard: the exact-args guard above is blind
+# to a model that tweaks a query parameter each round (pagination thrash:
+# one observed run re-fetched the same 100-item endpoint ~50 times with
+# varying _start/_limit while the full result already sat in a workspace
+# file).  For tools whose args carry a ``url``, also count calls per
+# (tool, host+path) \u2014 ignoring the query string \u2014 and escalate on the same
+# warn-then-refuse ladder.  Thresholds are deliberately loose so legitimate
+# pagination (a 10-page sweep) never trips them.
+_ENDPOINT_WARN_THRESHOLD = int(os.getenv("REACT_ENDPOINT_WARN_THRESHOLD", "8"))
+_ENDPOINT_BLOCK_THRESHOLD = int(os.getenv("REACT_ENDPOINT_BLOCK_THRESHOLD", "15"))
+
+_ENDPOINT_WARNING_TEMPLATE = (
+    "\u26a0 You have called `{tool_name}` against `{endpoint}` {count} times "
+    "with varying parameters. If you are re-fetching because earlier "
+    "results were truncated: STOP \u2014 every truncated result was saved in "
+    "full to a workspace file (tool_result_*.txt); call "
+    "read_workspace_file to read it instead of fetching again."
+)
+
+_ENDPOINT_BLOCKED_TEMPLATE = (
+    "\u26a0 Refused: `{tool_name}` has hit `{endpoint}` {count} times this "
+    "run, so this call was not executed. The data is already in your "
+    "earlier results or their workspace files (tool_result_*.txt \u2014 read "
+    "them with read_workspace_file). Proceed with what you have."
 )
 
 # Background tool execution: whitelisted slow tools (supports_background)
@@ -567,6 +594,23 @@ class ReActAgent:
         serialised = json.dumps(args or {}, sort_keys=True, ensure_ascii=False)
         return hashlib.md5(serialised.encode()).hexdigest()
 
+    @staticmethod
+    def _endpoint_signature(args: dict[str, Any] | None) -> str | None:
+        """Extract a query-string-blind endpoint key from URL-bearing args.
+
+        Returns ``host/path`` for args carrying a parseable http(s) ``url``,
+        else ``None`` (non-URL tools get no endpoint tracking — repeating
+        e.g. ``read_file`` with different offsets is normal work, and the
+        exact-args guard already covers true repeats).
+        """
+        url = (args or {}).get("url")
+        if not isinstance(url, str) or not url.strip():
+            return None
+        parsed = urlparse(url.strip())
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return None
+        return f"{parsed.hostname}{parsed.path or '/'}"
+
     def _check_cycle(
         self,
         tool_name: str,
@@ -583,6 +627,11 @@ class ReActAgent:
         sometimes legitimate — a flaky endpoint, a file that changed) but
         earns a warning; past ``_CYCLE_BLOCK_THRESHOLD`` the call is
         refused outright.
+
+        URL-bearing calls climb a second, looser ladder keyed on the
+        query-string-blind endpoint (``host/path``), catching pagination
+        thrash the exact-args guard cannot see.  The exact-args ladder
+        wins when both fire on the same call.
 
         Args:
             tool_name: The name of the tool being called.
@@ -601,6 +650,18 @@ class ReActAgent:
         count = cycle_tracker.get(key, 0) + 1
         cycle_tracker[key] = count
 
+        # Endpoint counting happens unconditionally (even for calls the
+        # exact-args guard goes on to refuse): a blocked repeat is still
+        # pressure on the same endpoint and must advance the ladder.
+        endpoint = self._endpoint_signature(tool_args)
+        endpoint_count = 0
+        if endpoint is not None:
+            # Keyed disjointly from args hashes via the "endpoint:" prefix
+            # so both ladders share one tracker dict.
+            endpoint_key = (tool_name, f"endpoint:{endpoint}")
+            endpoint_count = cycle_tracker.get(endpoint_key, 0) + 1
+            cycle_tracker[endpoint_key] = endpoint_count
+
         if count >= _CYCLE_BLOCK_THRESHOLD:
             logger.warning(
                 "Cycle blocked: %s called %d times with identical args — refusing",
@@ -612,6 +673,20 @@ class ReActAgent:
                 True,
             )
 
+        if endpoint is not None and endpoint_count >= _ENDPOINT_BLOCK_THRESHOLD:
+            logger.warning(
+                "Endpoint cycle blocked: %s hit %s %d times — refusing",
+                tool_name,
+                endpoint,
+                endpoint_count,
+            )
+            return (
+                _ENDPOINT_BLOCKED_TEMPLATE.format(
+                    tool_name=tool_name, endpoint=endpoint, count=endpoint_count
+                ),
+                True,
+            )
+
         if count >= _CYCLE_DETECTION_THRESHOLD:
             logger.warning(
                 "Cycle detected: %s called %d times with identical args",
@@ -620,6 +695,20 @@ class ReActAgent:
             )
             return (
                 _CYCLE_WARNING_TEMPLATE.format(tool_name=tool_name, count=count),
+                False,
+            )
+
+        if endpoint is not None and endpoint_count >= _ENDPOINT_WARN_THRESHOLD:
+            logger.warning(
+                "Endpoint cycle detected: %s hit %s %d times",
+                tool_name,
+                endpoint,
+                endpoint_count,
+            )
+            return (
+                _ENDPOINT_WARNING_TEMPLATE.format(
+                    tool_name=tool_name, endpoint=endpoint, count=endpoint_count
+                ),
                 False,
             )
 
@@ -1728,13 +1817,17 @@ class ReActAgent:
                         obs_content,
                     )
                     saved_note = (
-                        f" Full output saved to {uri}; "
-                        "use read_workspace_file to access it."
+                        f" The COMPLETE output is already saved to {uri} — "
+                        "do NOT re-run the call or re-fetch the data; "
+                        f"call read_workspace_file on {uri} instead."
                     )
+                # Banner leads: a trailing note gets skimmed past; weaker
+                # models re-fetched for a dozen iterations before reading it.
                 obs_content = (
-                    CompactUtils.truncate_head_tail(obs_content, remaining_tokens)
-                    + f"\n\n[Truncated: tool result exceeded aggregate budget "
+                    f"[Truncated: tool result exceeded aggregate budget "
                     f"({tool_result_tokens}/{_TOOL_RESULT_BUDGET} tokens used).{saved_note}]"
+                    + "\n\n"
+                    + CompactUtils.truncate_head_tail(obs_content, remaining_tokens)
                 )
                 estimated_tokens = CompactUtils.estimate_tokens(obs_content)
                 logger.warning(
@@ -2113,16 +2206,21 @@ class ReActAgent:
                                 content_str,
                             )
                             saved_note = (
-                                f" Full output saved to {uri}; "
-                                "use read_workspace_file to access it."
+                                f" The COMPLETE output is already saved to "
+                                f"{uri} — do NOT re-run the call or re-fetch "
+                                "the data; call read_workspace_file on "
+                                f"{uri} instead."
                             )
+                        # Banner leads: a trailing note gets skimmed past
+                        # (see text-mode loop for the failure this fixes).
                         truncated = (
-                            CompactUtils.truncate_head_tail(
-                                content_str, remaining_tokens,
-                            )
-                            + f"\n\n[Truncated: tool result exceeded aggregate "
+                            f"[Truncated: tool result exceeded aggregate "
                             f"budget ({tool_result_tokens}/"
                             f"{_TOOL_RESULT_BUDGET} tokens used).{saved_note}]"
+                            + "\n\n"
+                            + CompactUtils.truncate_head_tail(
+                                content_str, remaining_tokens,
+                            )
                         )
                         tr_msg.content = truncated
                         estimated_tokens = CompactUtils.estimate_tokens(truncated)

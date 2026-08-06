@@ -18,6 +18,8 @@ from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.react import (
     _CYCLE_BLOCK_THRESHOLD,
     _CYCLE_DETECTION_THRESHOLD,
+    _ENDPOINT_BLOCK_THRESHOLD,
+    _ENDPOINT_WARN_THRESHOLD,
 )
 from fim_one.core.model import ChatMessage, LLMResult
 from fim_one.core.model.types import ToolCallRequest
@@ -276,3 +278,156 @@ class TestCheckCycleContract:
             message, blocked = agent._check_cycle("echo", {"text": str(i)}, tracker)
             assert message is None
             assert blocked is False
+
+
+class TestEndpointGuard:
+    """The query-string-blind ladder for URL-bearing tools.
+
+    The exact-args guard is blind to pagination thrash: a model tweaking
+    ``_start`` each round re-fetched one endpoint ~50 times in an observed
+    run while the full result sat in a workspace file.  These tests pin
+    the looser (tool, host/path) ladder that catches it.
+    """
+
+    def _agent(self) -> ReActAgent:
+        return ReActAgent(
+            llm=CapturingFakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
+        )
+
+    @staticmethod
+    def _paged_args(i: int) -> dict[str, Any]:
+        return {"url": f"https://api.example.com/posts?_start={i * 10}&_limit=10"}
+
+    def test_legitimate_pagination_stays_silent(self) -> None:
+        """Calls below the warn threshold stay silent — a normal paged sweep passes."""
+        agent = self._agent()
+        tracker: dict[tuple[str, str], int] = {}
+        for i in range(_ENDPOINT_WARN_THRESHOLD - 1):
+            message, blocked = agent._check_cycle(
+                "http_request", self._paged_args(i), tracker,
+            )
+            assert message is None
+            assert blocked is False
+
+    def test_warns_once_thrash_is_established(self) -> None:
+        agent = self._agent()
+        tracker: dict[tuple[str, str], int] = {}
+        outcomes = [
+            agent._check_cycle("http_request", self._paged_args(i), tracker)
+            for i in range(_ENDPOINT_WARN_THRESHOLD)
+        ]
+        message, blocked = outcomes[-1]
+        assert message is not None
+        assert blocked is False
+        # The warning must redirect to the workspace copies, not just scold.
+        assert "read_workspace_file" in message
+
+    def test_blocks_past_the_hard_threshold(self) -> None:
+        agent = self._agent()
+        tracker: dict[tuple[str, str], int] = {}
+        outcomes = [
+            agent._check_cycle("http_request", self._paged_args(i), tracker)
+            for i in range(_ENDPOINT_BLOCK_THRESHOLD)
+        ]
+        message, blocked = outcomes[-1]
+        assert blocked is True
+        assert message is not None
+        assert "Refused" in message
+        assert "read_workspace_file" in message
+
+    def test_query_string_is_ignored_but_path_is_not(self) -> None:
+        """Same path + different query → one bucket; different path → fresh bucket."""
+        agent = self._agent()
+        tracker: dict[tuple[str, str], int] = {}
+        for i in range(_ENDPOINT_WARN_THRESHOLD - 1):
+            agent._check_cycle("http_request", self._paged_args(i), tracker)
+        # Different path on the same host starts from zero: silent.
+        message, blocked = agent._check_cycle(
+            "http_request", {"url": "https://api.example.com/users?page=1"}, tracker,
+        )
+        assert message is None
+        assert blocked is False
+        # One more hit on the original path crosses the warn threshold.
+        message, _ = agent._check_cycle(
+            "http_request", self._paged_args(99), tracker,
+        )
+        assert message is not None
+
+    def test_exact_duplicate_ladder_takes_precedence(self) -> None:
+        """Identical repeats hit the strict ladder first, with its message."""
+        agent = self._agent()
+        tracker: dict[tuple[str, str], int] = {}
+        same = {"url": "https://api.example.com/posts?_start=0"}
+        outcomes = [
+            agent._check_cycle("http_request", same, tracker)
+            for _ in range(_CYCLE_BLOCK_THRESHOLD)
+        ]
+        message, blocked = outcomes[-1]
+        assert blocked is True
+        assert message is not None
+        assert "exact arguments" in message
+
+    def test_tools_without_url_never_climb_the_ladder(self) -> None:
+        agent = self._agent()
+        tracker: dict[tuple[str, str], int] = {}
+        for i in range(_ENDPOINT_BLOCK_THRESHOLD + 5):
+            message, blocked = agent._check_cycle(
+                "read_file", {"path": "big.txt", "offset": i}, tracker,
+            )
+            assert message is None
+            assert blocked is False
+
+
+class TestEndpointGuardInLoop:
+    """Loop-level: execution actually stops at the endpoint block threshold."""
+
+    @pytest.mark.asyncio
+    async def test_paginating_tool_stops_executing_when_blocked(self) -> None:
+        class UrlTool(BaseTool):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            @property
+            def name(self) -> str:
+                return "http_request"
+
+            @property
+            def description(self) -> str:
+                return "Fake HTTP tool."
+
+            @property
+            def parameters_schema(self) -> dict[str, Any]:
+                return {
+                    "type": "object",
+                    "properties": {"url": {"type": "string"}},
+                }
+
+            async def run(self, **kwargs: Any) -> str:
+                self.calls += 1
+                return json.dumps([{"id": self.calls}])
+
+        repeats = _ENDPOINT_BLOCK_THRESHOLD + 3
+        responses = [
+            _json_tool_call(
+                "http_request",
+                {"url": f"https://api.example.com/posts?_start={i}"},
+            )
+            for i in range(repeats)
+        ]
+        responses.append(_json_final_answer())
+
+        tool = UrlTool()
+        registry = ToolRegistry()
+        registry.register(tool)
+        agent = ReActAgent(
+            llm=CapturingFakeLLM(responses),
+            tools=registry,
+            max_iterations=repeats + 5,
+            completion_check=False,
+            enable_plan_tool=False,
+        )
+
+        await agent.run("fetch everything, one page at a time, forever")
+
+        assert tool.calls == _ENDPOINT_BLOCK_THRESHOLD - 1
+        assert tool.calls < repeats
