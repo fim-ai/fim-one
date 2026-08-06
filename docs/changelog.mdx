@@ -12,6 +12,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **A crashed run now reports an error instead of a green "done".** When the agent stopped because of an internal failure, the raw exception text was delivered as the answer under a success checkmark; failures now go through the error channel and surface as an error notification.
+
+- **Reconnecting to a stream no longer replays output you already saw.** The live stream now carries the same position cursor as the resume endpoint, so after a dropped connection only the missed events are replayed instead of the whole turn.
+
+- **Streamed events split across network chunks are no longer lost.** A resumed stream could drop an event whose frame arrived in two pieces; both stream paths now share one parser that handles arbitrary chunk boundaries.
+
+- **Calling another agent returns its actual answer.** The sub-agent's reply used to arrive buried inside a raw execution trace, flooding the calling agent's context; it now receives just the answer.
+
+- **A hung tool can no longer stall a run indefinitely.** Every tool call now has a wall-clock time limit (default 180s), so a stalled connector or unresponsive server ends the step with a clear message instead of wedging the turn.
+
+- **An agent stuck repeating the same tool call is now stopped early.** Identical repeated calls are refused after a couple of attempts instead of burning the whole iteration budget.
+
+- **Long conversations no longer lose their earlier context after compaction.** The summary that condenses older turns was being silently dropped on the next run; it is now carried forward, so the agent keeps what was discussed before.
+
+- **Large tool results keep their ending as well as their beginning.** When a long result is trimmed to fit the context window, both ends are now kept (the conclusion of a command's output usually matters most), trimming accounts correctly for non-Latin text, and later results are guaranteed a minimum window instead of being blanked entirely.
+
+- **The same generated file no longer shows up as two downloads.** A rendered HTML output saved again under a real filename used to produce two deliverable cards with identical content; duplicates are now detected by content and collapsed into the specifically named file.
+
 - **Internal offload files can no longer appear as downloadable deliverables.** With tools sharing one filesystem, a large tool output offloaded during a code-execution run could be picked up by the artifact scan and surface as a bogus download card. Runtime bookkeeping files are now excluded from artifact detection.
 
 - **Every tool in a conversation now works on one shared filesystem.** Offloaded large outputs used to land in a directory only the workspace-reading tools could see, while `file_ops`, `shell_exec` and `python_exec` operated elsewhere — the agent would list a file, then be told it doesn't exist, and burn its iteration budget hunting for it. Offloaded files now live in the conversation sandbox that every tool (including exec containers) mounts; files from older conversations remain readable.
