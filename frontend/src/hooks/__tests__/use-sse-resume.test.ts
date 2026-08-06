@@ -457,4 +457,55 @@ describe("useSseResume", () => {
       expect(result.current.resumeState).toBe("failed")
     })
   })
+
+  it("keeps a frame's event name when the chunk boundary splits it", async () => {
+    // The resume parser used to reset its frame state on every chunk, so a
+    // frame whose `event:` and `data:` lines arrived separately lost its
+    // name and was dispatched as "message", then dropped downstream.
+    const live = makeSseStream()
+    const replay = makeSseStream()
+    const fetchMock = vi.fn().mockResolvedValue(replay.response)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const { result } = renderHook(() =>
+      useSseResume({
+        conversationId: "conv-split",
+        apiBaseUrl: "http://test",
+        getAccessToken: () => "tok",
+      }),
+    )
+
+    act(() => {
+      result.current.start("http://test/api/chat/react")
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    act(() => {
+      live.error(new Error("boom"))
+    })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+
+    // Split the replayed frame across two reads, mid-frame.
+    act(() => {
+      replay.push("event: step\n")
+    })
+    // Let the reader consume that chunk on its own before the rest of the
+    // frame arrives — otherwise both land in a single read and the split
+    // never happens.
+    await new Promise((r) => setTimeout(r, 20))
+    act(() => {
+      replay.push(`data: ${JSON.stringify({ cursor: 7, data: { type: "tool_call" } })}\n\n`)
+    })
+    await new Promise((r) => setTimeout(r, 20))
+    act(() => {
+      replay.push(frame("resume_done", { replayed: 1, last_cursor: 7 }))
+      replay.close()
+    })
+
+    await waitFor(() => {
+      expect(result.current.messages.some((m) => m.event === "step")).toBe(true)
+    })
+    const step = result.current.messages.find((m) => m.event === "step")
+    expect(step?.cursor).toBe(7)
+    expect(result.current.messages.some((m) => m.event === "message")).toBe(false)
+  })
 })

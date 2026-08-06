@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSSE, type SSEMessage, type StartOptions } from "@/hooks/use-sse"
 import { getApiDirectUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
+import { createSseParser, unwrapPayload, type SseFrame } from "@/lib/sse-parser"
 
 /**
  * High-level state of the auto-resume machinery.
@@ -115,66 +116,36 @@ export function useSseResume(
   }, [cancelResume])
 
   /**
-   * Parse a full SSE payload text into individual frames. Used while
-   * streaming the resume response body.
+   * Turn parsed frames into appended messages.
+   *
+   * Frame splitting itself lives in the shared parser: this hook and the
+   * live-stream hook used to each carry their own copy of that logic,
+   * which is how one of them ended up resetting frame state per chunk.
+   *
+   * Returns true when a ``resume_done`` frame was seen.
    */
-  const parseAndAppend = useCallback(
-    (buffer: string, leftover: { value: string }): boolean => {
-      // Returns true if a ``resume_done`` frame was observed.
-      const full = leftover.value + buffer
-      const lines = full.split("\n")
-      leftover.value = lines.pop() ?? ""
-
-      let currentEvent = "message"
-      let currentData = ""
+  const appendFrames = useCallback(
+    (frames: SseFrame[]): boolean => {
       const appended: SSEMessage[] = []
       let sawResumeDone = false
 
-      for (const line of lines) {
-        if (line.startsWith("event:")) {
-          currentEvent = line.slice(6).trim()
-        } else if (line.startsWith("data:")) {
-          currentData = line.slice(5).trim()
-        } else if (line === "") {
-          if (currentData) {
-            try {
-              const parsed: unknown = JSON.parse(currentData)
-              let cursor: number | undefined
-              let unwrapped: unknown = parsed
-              if (parsed && typeof parsed === "object") {
-                const maybe = parsed as { cursor?: unknown; data?: unknown }
-                if (typeof maybe.cursor === "number") {
-                  cursor = maybe.cursor
-                  if ("data" in maybe) {
-                    unwrapped = maybe.data
-                  }
-                }
-              }
-              if (currentEvent === "resume_done") {
-                sawResumeDone = true
-                // Still surface the resume_done marker so consumers may
-                // inspect it (e.g. telemetry). It's not a data event.
-                appended.push({
-                  event: "resume_done",
-                  data: unwrapped,
-                  timestamp: Date.now(),
-                  cursor,
-                })
-              } else {
-                appended.push({
-                  event: currentEvent,
-                  data: unwrapped,
-                  timestamp: Date.now(),
-                  cursor,
-                })
-              }
-            } catch {
-              // ignore malformed frames
-            }
-          }
-          currentEvent = "message"
-          currentData = ""
+      for (const { event, data } of frames) {
+        let unwrapped
+        try {
+          unwrapped = unwrapPayload(data)
+        } catch {
+          continue // ignore malformed frames
         }
+        if (event === "resume_done") {
+          // Surfaced too, so consumers may inspect it (e.g. telemetry).
+          sawResumeDone = true
+        }
+        appended.push({
+          event,
+          data: unwrapped.data,
+          timestamp: Date.now(),
+          cursor: unwrapped.cursor,
+        })
       }
 
       if (appended.length > 0) {
@@ -220,7 +191,7 @@ export function useSseResume(
 
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
-        const leftover = { value: "" }
+        const parser = createSseParser()
         let sawResumeDone = false
 
         while (true) {
@@ -235,17 +206,15 @@ export function useSseResume(
           const { done, value } = await reader.read()
           if (done) break
           const chunk = decoder.decode(value, { stream: true })
-          if (parseAndAppend(chunk, leftover)) {
+          if (appendFrames(parser.push(chunk))) {
             sawResumeDone = true
           }
         }
 
-        // Flush any trailing buffered line (shouldn't happen with a
-        // well-formed SSE stream, but be defensive).
-        if (leftover.value.length > 0) {
-          if (parseAndAppend("\n\n", leftover)) {
-            sawResumeDone = true
-          }
+        // Complete a trailing frame that never got its blank line
+        // (shouldn't happen on a well-formed stream, but be defensive).
+        if (appendFrames(parser.flush())) {
+          sawResumeDone = true
         }
 
         // If the server produced no events and no resume_done marker
@@ -262,7 +231,7 @@ export function useSseResume(
         }
       }
     },
-    [apiBaseUrl, conversationId, fetchFn, getAccessToken, lastCursorRef, parseAndAppend],
+    [apiBaseUrl, conversationId, fetchFn, getAccessToken, lastCursorRef, appendFrames],
   )
 
   const scheduleResume = useCallback(

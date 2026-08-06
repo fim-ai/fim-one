@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import { ApiError } from "@/lib/api"
+import { createSseParser, unwrapPayload } from "@/lib/sse-parser"
 
 export interface SSEMessage {
   event: string
@@ -141,29 +142,15 @@ export function useSSE() {
 
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
-        let buffer = ""
-        let currentEvent = "message"
-        let currentData = ""
+        const parser = createSseParser()
 
         const dispatch = (eventType: string, rawData: string) => {
           try {
-            const data: unknown = JSON.parse(rawData)
-            // If the payload carries a cursor (either at the top level or
-            // wrapped as {cursor, data} by the resume endpoint), advance
-            // the lastCursor tracker and unwrap to the inner payload.
-            let cursor: number | undefined
-            let unwrapped: unknown = data
-            if (data && typeof data === "object") {
-              const maybe = data as { cursor?: unknown; data?: unknown }
-              if (typeof maybe.cursor === "number") {
-                cursor = maybe.cursor
-                if (cursor > lastCursorRef.current) {
-                  lastCursorRef.current = cursor
-                }
-                if ("data" in maybe) {
-                  unwrapped = maybe.data
-                }
-              }
+            // Both the live stream and /chat/resume wrap payloads as
+            // {cursor, data}, so position tracking is identical on either.
+            const { cursor, data: unwrapped } = unwrapPayload(rawData)
+            if (cursor !== undefined && cursor > lastCursorRef.current) {
+              lastCursorRef.current = cursor
             }
             pendingMessagesRef.current.push({
               event: eventType,
@@ -202,23 +189,10 @@ export function useSSE() {
             break
           }
 
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split("\n")
-          buffer = lines.pop() ?? "" // keep incomplete last line
-
-          for (const line of lines) {
-            if (line.startsWith("event:")) {
-              currentEvent = line.slice(6).trim()
-            } else if (line.startsWith("data:")) {
-              currentData = line.slice(5).trim()
-            } else if (line === "") {
-              // Empty line = end of event
-              if (currentData) {
-                dispatch(currentEvent, currentData)
-              }
-              currentEvent = "message"
-              currentData = ""
-            }
+          for (const { event, data } of parser.push(
+            decoder.decode(value, { stream: true }),
+          )) {
+            dispatch(event, data)
           }
         }
       } catch (err: unknown) {
