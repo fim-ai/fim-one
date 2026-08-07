@@ -30,19 +30,21 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Modifications
 
-- **Les blocs de raisonnement restent repliés pendant l'exécution d'un tour.** Le raisonnement dans les sorties ReAct et DAG affiche désormais un aperçu d'une ligne par défaut au lieu de se développer au fur et à mesure du flux, ce qui maintient le résultat en vue ; cliquez sur n'importe quel bloc pour lire la trace complète.
+- **Un message nouvellement envoyé commence en haut de l'écran.** La transcription conserve juste assez d'espace sous le tour actuel pour que sa première ligne atteigne le haut, de sorte que la question reste visible et la réponse se développe dans l'espace ci-dessous au lieu que le tour entier soit collé au bord inférieur. L'espace disparaît une fois que le tour dépasse un écran.
 
-- **Les fichiers PDF et Word exportés sont correctement mis en forme pour le chinois.** L'export PDF intègre désormais une véritable police CJK au lieu de la référencer, ce qui corrige l'espacement réduit dans le texte anglais et les puces qui s'affichaient sous forme de caractères chinois sans rapport, et le gras fonctionne maintenant. Les exports Word déclarent une police d'Asie de l'Est afin que le texte gras mixte chinois/anglais ne soit plus à moitié gras, et les deux formats utilisent une échelle de taille à cinq niveaux qui maintient les en-têtes d'une réponse subordonnés à la structure propre de la transcription.
+- **Les blocs de raisonnement restent repliés pendant l'exécution d'un tour.** Le raisonnement dans la sortie ReAct et DAG affiche maintenant un aperçu d'une ligne par défaut au lieu de se développer au fur et à mesure du streaming, gardant le résultat visible ; cliquez sur n'importe quel bloc pour lire la trace complète.
 
-- **Les agents restent sur le plan pendant les tâches longues.** L'agent est maintenant rappelé de changer d'approche lorsqu'il répète le même outil sans succès, incité à rédiger un plan lorsqu'il travaille sans en avoir un, et ne peut plus fournir une réponse finale tant que les éléments du plan sont toujours ouverts sans une étape de vérification explicite.
+- **Les fichiers PDF et Word exportés sont correctement mis en page pour le chinois.** L'export PDF intègre maintenant une véritable police CJK au lieu d'en référencer une, corrigeant l'espacement effondré dans le texte anglais et les puces qui s'affichaient comme des caractères chinois sans rapport, et le gras fonctionne maintenant. Les exports Word déclarent une police d'Asie de l'Est pour que le texte gras mixte chinois/anglais ne sorte plus à moitié gras, et les deux formats utilisent une échelle de taille à cinq niveaux qui garde les titres subordonnés à la structure propre de la transcription.
 
-- **Les réponses en flux s'estompent au lieu d'apparaître soudainement.** Les blocs nouvellement arrivés s'estompent brièvement au fur et à mesure du flux, en respectant la préférence de mouvement réduit du lecteur. Les longs tableaux mettent également en évidence la ligne sous le curseur, et les puces de liste se situent derrière le texte au lieu de rivaliser avec lui.
+- **Les agents restent sur le plan lors de tâches longues.** L'agent est maintenant rappelé de changer d'approche lorsqu'il répète le même outil sans succès, encouragé à écrire un plan lorsqu'il travaille sans en avoir un, et ne peut plus fournir une réponse finale tant que des éléments du plan sont encore ouverts sans une passe de vérification explicite.
+
+- **Les réponses en streaming s'estompent progressivement au lieu d'apparaître brusquement.** Les blocs nouvellement arrivés s'estompent brièvement au fur et à mesure du streaming, en respectant la préférence de mouvement réduit du lecteur. Les longs tableaux mettent également en surbrillance la ligne sous le curseur, et les puces de liste se situent derrière le texte au lieu de rivaliser avec lui.
 
 - **Les actions de bloc restent discrètes jusqu'à ce que vous les utilisiez.** Les boutons Copier et Exporter sur les réponses, les blocs de code, les diagrammes et les tableaux sont révélés au survol et partagent un traitement cohérent ; ils restent accessibles au clavier.
 
-- **La barre latérale garde maintenant la conversation ensemble.** La liste de conversations se trouve directement sous Nouvelle conversation et Recherche, et la navigation des modules s'est déplacée dans un dock teinté compact au-dessus de la zone utilisateur, donnant plus d'espace à la liste et une hiérarchie claire de haut en bas à la barre latérale.
+- **La barre latérale garde maintenant la conversation ensemble.** La liste de conversation se trouve directement sous Nouvelle conversation et Recherche, et la navigation du module s'est déplacée dans un dock teinté compact au-dessus de la zone utilisateur, donnant plus d'espace à la liste et une hiérarchie claire de haut en bas à la barre latérale.
 
-- **Le raisonnement est réduit par défaut.** Les sections de réflexion dans les exécutions en direct et les conversations passées se replient en un aperçu d'une ligne et se développent au clic ; le raisonnement continue de s'afficher en flux ouvert pendant sa génération, puis se replie à la fin de l'étape.
+- **Le raisonnement est réduit par défaut.** Les sections de réflexion dans les exécutions en direct et les conversations passées se replient en un aperçu d'une ligne et se développent au clic ; le raisonnement continue de streamer en direct pendant qu'il est généré, puis se replie lorsque l'étape se termine.
 
 ### Sécurité
 

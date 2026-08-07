@@ -30,6 +30,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **A newly sent message starts at the top of the screen.** The transcript keeps just enough room below the current turn for its first line to reach the top, so the question stays in view and the answer grows into the space below instead of the whole turn hugging the bottom edge. The room disappears once the turn outgrows one screen.
+
 - **Reasoning blocks stay folded while a turn runs.** Reasoning in both ReAct and DAG output now shows a one-line preview by default instead of expanding as it streams, keeping the result in view; click any block to read the full trace.
 
 - **Exported PDFs and Word files are properly typeset for Chinese.** PDF export now embeds a real CJK font instead of referencing one, fixing collapsed spacing in English text and bullets that rendered as unrelated Chinese characters, and bold now works. Word exports declare an East Asian font so mixed Chinese/English bold text no longer comes out half-bold, and both formats use a five-tier size scale that keeps headings inside a reply subordinate to the transcript's own structure.

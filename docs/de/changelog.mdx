@@ -30,19 +30,21 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Geändert
 
-- **Reasoning-Blöcke bleiben während einer Ausführung eingeklappt.** Reasoning in ReAct- und DAG-Ausgaben zeigt nun standardmäßig eine einzeilige Vorschau statt sich beim Streaming zu erweitern, wodurch das Ergebnis sichtbar bleibt; klicken Sie auf einen beliebigen Block, um die vollständige Trace zu lesen.
+- **Eine neu gesendete Nachricht wird oben auf dem Bildschirm angezeigt.** Das Transkript behält gerade genug Platz unter dem aktuellen Turn, damit seine erste Zeile oben ankommt, sodass die Frage sichtbar bleibt und die Antwort in den Platz darunter wächst, anstatt dass der gesamte Turn an der unteren Kante klebt. Der Platz verschwindet, sobald der Turn größer als ein Bildschirm wird.
 
-- **Exportierte PDFs und Word-Dateien sind für Chinesisch korrekt formatiert.** Der PDF-Export bettet nun eine echte CJK-Schriftart ein, statt auf eine zu verweisen, was den zusammengefallenen Abstand in englischem Text und Aufzählungszeichen behebt, die als unzusammenhängende chinesische Zeichen dargestellt wurden, und Fettdruck funktioniert nun. Word-Exporte deklarieren eine ostasiatische Schriftart, sodass gemischter chinesisch/englischer Fettdruck nicht mehr halb-fett aussieht, und beide Formate verwenden eine fünfstufige Größenskala, die Überschriften innerhalb einer Antwort der Struktur des Transkripts unterordnet.
+- **Reasoning-Blöcke bleiben während eines Turns eingeklappt.** Reasoning in ReAct- und DAG-Ausgaben zeigt jetzt standardmäßig eine einzeilige Vorschau an, anstatt sich beim Streaming zu erweitern, wodurch das Ergebnis sichtbar bleibt. Klicken Sie auf einen beliebigen Block, um die vollständige Trace zu lesen.
 
-- **Agenten bleiben bei langen Aufgaben im Plan.** Der Agent wird nun daran erinnert, seinen Ansatz zu ändern, wenn er dasselbe Tool fruchtlos wiederholt, wird ermutigt, einen Plan zu schreiben, wenn er ohne einen arbeitet, und kann keine endgültige Antwort liefern, während noch Planelemente offen sind, ohne einen expliziten Verifizierungsdurchlauf.
+- **Exportierte PDF- und Word-Dateien sind korrekt für Chinesisch formatiert.** Der PDF-Export bettet jetzt eine echte CJK-Schriftart ein, anstatt eine zu referenzieren, was den zusammengefallenen Abstand in englischem Text und Aufzählungszeichen behebt, die als nicht verwandte chinesische Zeichen dargestellt wurden, und Fettdruck funktioniert jetzt. Word-Exporte deklarieren eine ostasiatische Schriftart, sodass gemischter chinesisch/englischer Fetttext nicht mehr halb-fett aussieht, und beide Formate verwenden eine fünfstufige Größenskala, die Überschriften innerhalb einer Antwort der Struktur des Transkripts unterordnet.
 
-- **Gestreamte Antworten werden sanft eingeblendet statt zu erscheinen.** Neu angekommene Blöcke werden beim Streaming kurz eingeblendet, wobei die Einstellung für reduzierte Bewegung des Lesers berücksichtigt wird. Lange Tabellen heben auch die Zeile unter dem Cursor hervor, und Aufzählungszeichen sitzen hinter dem Text statt mit ihm zu konkurrieren.
+- **Agenten bleiben bei langen Aufgaben im Plan.** Der Agent wird jetzt daran erinnert, seinen Ansatz zu ändern, wenn er dasselbe Tool erfolglos wiederholt, wird angestoßen, einen Plan zu schreiben, wenn er ohne einen arbeitet, und kann keine endgültige Antwort liefern, während noch Planelemente offen sind, ohne einen expliziten Verifizierungsdurchgang.
 
-- **Block-Aktionen bleiben verborgen, bis Sie danach greifen.** Kopier- und Exportschaltflächen auf Antworten, Code-Blöcken, Diagrammen und Tabellen werden beim Hover angezeigt und haben eine konsistente Behandlung; sie bleiben über die Tastatur erreichbar.
+- **Gestreamte Antworten werden sanft eingeblendet, anstatt zu erscheinen.** Neu angekommene Blöcke werden beim Streaming kurz eingeblendet und respektieren die Voreinstellung für reduzierte Bewegung. Lange Tabellen heben auch die Zeile unter dem Cursor hervor, und Aufzählungszeichen sitzen hinter dem Text, anstatt damit zu konkurrieren.
 
-- **Die Seitenleiste hält Chats nun zusammen.** Die Gesprächsliste sitzt direkt unter Neuer Chat und Suche, und die Modulnavigation wurde in ein kompaktes getöntes Dock über dem Benutzerbereich verschoben, was der Liste mehr Platz gibt und der Seitenleiste eine klare Hierarchie von oben nach unten.
+- **Block-Aktionen bleiben aus dem Weg, bis Sie danach greifen.** Kopier- und Exportschaltflächen auf Antworten, Code-Blöcken, Diagrammen und Tabellen werden beim Hover angezeigt und haben eine konsistente Behandlung. Sie bleiben über die Tastatur erreichbar.
 
-- **Reasoning ist standardmäßig eingeklappt.** Thinking-Abschnitte in Live-Ausführungen und früheren Gesprächen werden zu einer einzeiligen Vorschau eingeklappt und beim Klick erweitert; Reasoning wird beim Streaming weiterhin offen gestreamt, während es generiert wird, und wird dann eingeklappt, wenn der Schritt abgeschlossen ist.
+- **Die Seitenleiste behält den Chat zusammen.** Die Gesprächsliste sitzt direkt unter Neuer Chat und Suche, und die Modulnavigation wurde in ein kompaktes getöntes Dock über dem Benutzerbereich verschoben, was der Liste mehr Platz gibt und der Seitenleiste eine klare Hierarchie von oben nach unten.
+
+- **Reasoning ist standardmäßig eingeklappt.** Thinking-Abschnitte in Live-Läufen und früheren Gesprächen werden zu einer einzeiligen Vorschau eingeklappt und werden beim Klick erweitert. Reasoning wird beim Generieren weiterhin offen gestreamt und wird dann eingeklappt, wenn der Schritt abgeschlossen ist.
 
 ### Sicherheit
 

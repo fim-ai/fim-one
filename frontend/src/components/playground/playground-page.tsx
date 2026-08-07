@@ -794,6 +794,8 @@ function PlaygroundContent({
   const hasLiveMessages = modeMatches && messages.length > 0
   const hasHistory = !!(activeConversation?.messages && activeConversation.messages.length > 0)
   const hasMessages = hasLiveMessages || hasHistory || !!pendingQuery
+  // The turn currently at the end of the transcript — what the tail spacer sizes against.
+  const hasCurrentTurn = hasLiveMessages || !!pendingQuery || injectedMessages.length > 0
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dagOutputRef = useRef<DagOutputHandle>(null)
@@ -970,6 +972,18 @@ function PlaygroundContent({
     return root.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]")
   }, [])
 
+  // Tail spacer under the current turn, so a freshly sent message lands at the
+  // top of the viewport with the answer growing into the space below it.
+  const currentTurnRef = useRef<HTMLDivElement>(null)
+  const [spacerPx, setSpacerPx] = useState(0)
+  const spacerPxRef = useRef(0)
+  // Breathing room kept above the current turn once it is lifted to the top.
+  const TURN_TOP_OFFSET = 16
+  // While set, the follow logic hands the viewport to one smooth scroll so the
+  // lift reads as motion instead of a jump.
+  const smoothPinUntilRef = useRef(0)
+  const smoothPinIssuedRef = useRef(false)
+
   // Scroll the ScrollArea viewport to bottom (avoids scrollIntoView cascading to parent containers)
   const scrollViewportToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const viewport = getViewport()
@@ -1109,8 +1123,18 @@ function PlaygroundContent({
           stickToBottomRef.current = true
         }
         if (stickToBottomRef.current) {
-          // Instant, never smooth: a smooth animation restarted on every token
-          // never reaches the target, and the viewport looks frozen.
+          // Right after a turn starts, hand the viewport to a single smooth
+          // scroll so the question visibly rises to the top. Issue it once —
+          // re-targeting a smooth animation every frame is what made the view
+          // look frozen during token streaming.
+          if (performance.now() < smoothPinUntilRef.current) {
+            if (!smoothPinIssuedRef.current) {
+              smoothPinIssuedRef.current = true
+              viewport.scrollTo({ top: height, behavior: "smooth" })
+            }
+            return
+          }
+          // Instant from here on, for the same reason.
           viewport.scrollTop = height
         } else if (performance.now() > quietGrowthUntilRef.current) {
           setShowScrollBtn(true)
@@ -1141,6 +1165,44 @@ function PlaygroundContent({
     }
   }, [hasMessages, getViewport])
 
+  // Size the tail spacer to whatever is left of the viewport under the current
+  // turn. Bottom-pinning then puts the turn's first line at the top of the
+  // screen; once the turn is taller than one screen the spacer is gone and
+  // following behaves normally.
+  useEffect(() => {
+    const viewport = getViewport()
+    const turn = currentTurnRef.current
+    if (!viewport || !turn || !hasCurrentTurn) {
+      spacerPxRef.current = 0
+      setSpacerPx(0)
+      return
+    }
+    const content = viewport.firstElementChild
+    const update = () => {
+      const turnRect = turn.getBoundingClientRect()
+      // Everything laid out below the turn minus the spacer itself — the
+      // spacer's own `space-y` margin lives in here, and missing it is what
+      // pushed the turn 16px past the top edge.
+      const tail = content
+        ? content.getBoundingClientRect().bottom - turnRect.bottom - spacerPxRef.current
+        : 0
+      const next = Math.max(
+        0,
+        viewport.clientHeight - TURN_TOP_OFFSET - turnRect.height - tail,
+      )
+      setSpacerPx((prev) => {
+        if (Math.abs(prev - next) < 1) return prev
+        spacerPxRef.current = next
+        return next
+      })
+    }
+    const observer = new ResizeObserver(update)
+    observer.observe(turn)
+    observer.observe(viewport)
+    update()
+    return () => observer.disconnect()
+  }, [getViewport, hasCurrentTurn])
+
   // Park at the head of the result card when a turn completes. The final answer
   // often lands in a single burst (the last reasoning pass is promoted straight
   // to the answer), so following it to the bottom would drop the reader at the
@@ -1152,14 +1214,33 @@ function PlaygroundContent({
     turnDoneRef.current = isDone
     if (!isDone) {
       // A new turn started — follow it again, whatever the previous turn left
-      // the viewport doing.
+      // the viewport doing, and snap down so the tail spacer carries the new
+      // question up to the top of the screen.
       stickToBottomRef.current = true
       quietGrowthUntilRef.current = 0
       setShowScrollBtn(false)
+      // Open a short window in which the follow logic animates instead of
+      // snapping, so the new question glides up rather than teleporting.
+      smoothPinUntilRef.current = performance.now() + 500
+      smoothPinIssuedRef.current = false
+      // Safety net: if the spacer replaces exactly as much height as the
+      // finished turn gave up, no growth fires and the lift would be skipped.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (!stickToBottomRef.current || smoothPinIssuedRef.current) return
+          smoothPinIssuedRef.current = true
+          scrollViewportToBottom("smooth")
+        })
+      )
       return
     }
     // User scrolled away on purpose — leave the viewport where they put it.
     if (!stickToBottomRef.current) return
+    // The whole turn fits on one screen — the tail spacer already holds it at
+    // the top, and parking on the answer would push the question off-screen.
+    const viewport = getViewport()
+    const turn = currentTurnRef.current
+    if (viewport && turn && turn.getBoundingClientRect().height <= viewport.clientHeight) return
     // Two frames: one for React to commit the result card, one for layout.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
@@ -1171,7 +1252,7 @@ function PlaygroundContent({
         setShowScrollBtn(false)
       })
     )
-  }, [messages, modeMatches, scrollInViewport])
+  }, [messages, modeMatches, scrollInViewport, getViewport, scrollViewportToBottom])
 
   // Reset scroll state on clear
   useEffect(() => {
@@ -1737,7 +1818,9 @@ function PlaygroundContent({
                       keptCount={compactEvent.kept_messages}
                     />
                   )}
-                  {/* Current turn: user message + live output */}
+                  {/* Current turn: user message + live output. Wrapped so its
+                      height can be measured for the tail spacer below. */}
+                  <div ref={currentTurnRef} className={cn("space-y-4", !hasCurrentTurn && "hidden")}>
                   {pendingQuery && (
                     <div className={cn("flex gap-3", !pendingClipMetadata && !pendingFilesMetadata && "items-center")}>
                       <UserAvatar avatar={user?.avatar} userId={user?.id} fallback={userFallback} className="h-7 w-7 shrink-0" iconClassName="h-3.5 w-3.5" />
@@ -1823,6 +1906,13 @@ function PlaygroundContent({
                       </div>
                     </div>
                   ))}
+                  </div>
+                  {/* Tail spacer: leaves just enough room below the current
+                      turn for its first line to reach the top of the viewport,
+                      so a freshly sent message starts at the top instead of
+                      being pinned to the bottom edge. Shrinks to nothing once
+                      the turn outgrows one screen. */}
+                  {spacerPx > 0 && <div aria-hidden style={{ height: spacerPx }} />}
                 </div>
               </ScrollArea>
               {showScrollBtn && (
