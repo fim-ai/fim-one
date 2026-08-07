@@ -52,6 +52,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **The execution-mode selector stays shut while a turn is running.** The chip was greyed out but still opened its menu on click, unlike the agent selector next to it; both are now inert until the run finishes.
+
 - **Reasoning streams live again on newer models.** Live reasoning was wired up from a hard-coded list of model names, so anything released after that list was written showed a spinner and then dumped the whole reasoning block at once. Any model that emits reasoning now streams it.
 
 - **The chat view keeps up with fast output and lands on the answer.** It no longer stalls mid-reasoning and falsely reports new content below, it follows content that grows without new events, and when a turn finishes it settles at the top of the result instead of the bottom of it. Scrolling away still hands control back, and returning to the bottom resumes following.

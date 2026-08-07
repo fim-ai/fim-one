@@ -2170,7 +2170,7 @@ function PlaygroundContent({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
+                  <DropdownMenuTrigger asChild disabled={isRunning}>
                     <button
                       type="button"
                       disabled={isRunning}
