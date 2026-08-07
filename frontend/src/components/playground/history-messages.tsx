@@ -10,6 +10,7 @@ import { UserAvatar } from "@/components/shared/user-avatar"
 import { CollapsibleText } from "@/components/playground/collapsible-text"
 import { ClipMessageContent } from "@/components/playground/clip-message-content"
 import type { ClipMessageMetadata } from "@/components/playground/clip-message-content"
+import { CopyButton } from "@/components/ui/copy-button"
 import { FileMessageContent } from "@/components/playground/file-message-content"
 import type { FileMessageMetadata } from "@/components/playground/file-message-content"
 import type { MessageResponse } from "@/types/conversation"
@@ -88,10 +89,14 @@ const AssistantMessage = React.memo(function AssistantMessage({
   const achieved = metadata?.achieved as boolean | undefined
   const confidence = metadata?.confidence as number | undefined
 
-  const hasStats = elapsed != null || iterations != null || usage != null
+  // Every chip that can appear in the bar counts: when none of them do, the bar
+  // is dropped and the copy affordance floats over the answer instead, so a
+  // stat-less reply doesn't carry an empty row.
+  const hasStats =
+    achieved != null || confidence != null || elapsed != null || iterations != null || usage != null
 
   return (
-    <div className="flex gap-3">
+    <div className="group/answer flex gap-3">
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/10">
         <Bot className="h-3.5 w-3.5 text-emerald-500" />
       </div>
@@ -129,12 +134,22 @@ const AssistantMessage = React.memo(function AssistantMessage({
                 {t("tokenIn", { value: (usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (usage.completion_tokens / 1000).toFixed(1) })}
               </span>
             )}
+            {content && (
+              <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/answer:opacity-100">
+                <CopyButton text={content} title={t("copyAnswer")} className="-mx-1.5 py-0.5" iconClassName="h-3 w-3" />
+              </span>
+            )}
           </div>
         )}
 
         {/* Answer content */}
         {content ? (
-          <div className="text-sm">
+          <div className="relative text-sm">
+            {!hasStats && (
+              <span className="absolute -top-1 right-0 z-10 rounded-md border border-border/60 bg-background/90 p-0.5 opacity-0 shadow-sm backdrop-blur transition-opacity focus-within:opacity-100 group-hover/answer:opacity-100">
+                <CopyButton text={content} title={t("copyAnswer")} className="py-0.5" iconClassName="h-3 w-3" />
+              </span>
+            )}
             <MarkdownContent content={content} />
           </div>
         ) : (

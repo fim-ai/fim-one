@@ -112,7 +112,8 @@
     "newDesc": "开始新的对话",
     "agentDesc": "按名称快速选择代理",
     "modeDesc": "在自动、标准和规划器模式之间切换",
-    "noMatch": "没有匹配的项目"
+    "noMatch": "没有匹配的项目",
+    "clearDesc": "清空当前对话并开始新的对话"
   },
   "examples": {
     "auto": [
@@ -177,5 +178,11 @@
     "inputBlocked": "输入被护栏阻止",
     "outputBlocked": "响应被护栏阻止",
     "detailsLabel": "详情"
-  }
+  },
+  "copyAnswer": "复制答案为 Markdown",
+  "copyTableMarkdown": "复制表格为 Markdown",
+  "downloadTableCsv": "下载表格为 CSV",
+  "viewSource": "查看源代码",
+  "viewPreview": "查看预览",
+  "downloadSvg": "下载 SVG"
 }

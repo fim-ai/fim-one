@@ -112,7 +112,8 @@
     "newDesc": "Starten Sie eine neue Unterhaltung",
     "agentDesc": "Wählen Sie schnell einen Agenten nach Name",
     "modeDesc": "Wechseln Sie zwischen Auto-, Standard- und Planner-Modus",
-    "noMatch": "Keine übereinstimmenden Elemente"
+    "noMatch": "Keine übereinstimmenden Elemente",
+    "clearDesc": "Löschen Sie den aktuellen Chat und starten Sie einen neuen"
   },
   "examples": {
     "react": [
@@ -177,5 +178,11 @@
     "inputBlocked": "Eingabe durch Schutzmaßnahme blockiert",
     "outputBlocked": "Antwort durch Schutzmaßnahme blockiert",
     "detailsLabel": "Details"
-  }
+  },
+  "copyAnswer": "Antwort als Markdown kopieren",
+  "copyTableMarkdown": "Tabelle als Markdown kopieren",
+  "downloadTableCsv": "Tabelle als CSV herunterladen",
+  "viewSource": "Quelle anzeigen",
+  "viewPreview": "Vorschau anzeigen",
+  "downloadSvg": "SVG herunterladen"
 }

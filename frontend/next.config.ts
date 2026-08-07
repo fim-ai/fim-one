@@ -15,6 +15,9 @@ const nextConfig: NextConfig = {
   // Standalone output for Docker — produces a minimal self-contained server.
   // Set NEXT_OUTPUT=standalone in Dockerfile; unset locally to keep `next start` working.
   output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
+  // Pin the tracing root. Next.js otherwise infers it by walking up for a
+  // lockfile, which can escape the repo and trace an unrelated tree.
+  outputFileTracingRoot: __dirname,
   // Ensure next-intl message files are included in standalone output.
   // They are read at runtime via fs.readdirSync() and cannot be statically traced.
   outputFileTracingIncludes: {

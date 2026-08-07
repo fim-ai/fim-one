@@ -112,7 +112,8 @@
     "newDesc": "새로운 대화 시작",
     "agentDesc": "이름으로 에이전트 빠르게 선택",
     "modeDesc": "자동, 표준, 플래너 모드 간 전환",
-    "noMatch": "일치하는 항목 없음"
+    "noMatch": "일치하는 항목 없음",
+    "clearDesc": "현재 채팅을 지우고 새로 시작"
   },
   "examples": {
     "react": [
@@ -177,5 +178,11 @@
     "inputBlocked": "가드레일에 의해 입력이 차단됨",
     "outputBlocked": "가드레일에 의해 응답이 차단됨",
     "detailsLabel": "세부 정보"
-  }
+  },
+  "copyAnswer": "답변을 Markdown으로 복사",
+  "copyTableMarkdown": "표를 Markdown으로 복사",
+  "downloadTableCsv": "표를 CSV로 다운로드",
+  "viewSource": "소스 보기",
+  "viewPreview": "미리보기",
+  "downloadSvg": "SVG 다운로드"
 }

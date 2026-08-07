@@ -565,6 +565,25 @@ pre code.hljs {
   animation: cursor-dot-pulse 0.8s ease-in-out infinite;
 }
 
+/* Streaming fade-in: each newly appended block eases in instead of popping.
+   Scoped to direct block-level children only. Inline nodes are destroyed and
+   recreated on every re-tokenization pass, so animating them would strobe. */
+@keyframes streaming-block-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.streaming-fade > :is(p, ul, ol, pre, blockquote, table, div, hr, h1, h2, h3, h4, h5, h6) {
+  animation: streaming-block-in var(--streaming-fade-duration, 180ms) ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Collapse the fade to a no-op; other animations are left untouched. */
+  .streaming-fade {
+    --streaming-fade-duration: 0ms;
+  }
+}
+
 .nav-bar-loading {
   height: 2px;
   background: var(--primary);

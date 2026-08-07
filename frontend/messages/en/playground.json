@@ -55,6 +55,12 @@
   "achieved": "Achieved",
   "partial": "Partial",
   "noContent": "No content",
+  "copyAnswer": "Copy answer as Markdown",
+  "copyTableMarkdown": "Copy table as Markdown",
+  "downloadTableCsv": "Download table as CSV",
+  "viewSource": "View source",
+  "viewPreview": "View preview",
+  "downloadSvg": "Download SVG",
   "iterationLabel": "Iteration {n}",
   "iterationCount": "{count} iteration",
   "iterationCountPlural": "{count} iterations",
@@ -122,7 +128,8 @@
   "loadingNextRound": "Preparing next round...",
   "slash": {
     "newDesc": "Start a fresh conversation",
-"agentDesc": "Quick-select an agent by name",
+    "clearDesc": "Clear the current chat and start a new one",
+    "agentDesc": "Quick-select an agent by name",
     "modeDesc": "Switch between Auto, Standard, and Planner mode",
     "noMatch": "No matching items"
   },

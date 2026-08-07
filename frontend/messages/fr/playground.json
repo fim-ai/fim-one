@@ -112,7 +112,8 @@
     "newDesc": "Commencer une nouvelle conversation",
     "agentDesc": "Sélectionner rapidement un agent par nom",
     "modeDesc": "Basculer entre les modes Auto, Standard et Planner",
-    "noMatch": "Aucun élément correspondant"
+    "noMatch": "Aucun élément correspondant",
+    "clearDesc": "Effacer la conversation actuelle et en commencer une nouvelle"
   },
   "examples": {
     "react": [
@@ -177,5 +178,11 @@
     "inputBlocked": "Entrée bloquée par la barrière de sécurité",
     "outputBlocked": "Réponse bloquée par la barrière de sécurité",
     "detailsLabel": "Détails"
-  }
+  },
+  "copyAnswer": "Copier la réponse en Markdown",
+  "copyTableMarkdown": "Copier le tableau en Markdown",
+  "downloadTableCsv": "Télécharger le tableau en CSV",
+  "viewSource": "Afficher la source",
+  "viewPreview": "Afficher l'aperçu",
+  "downloadSvg": "Télécharger SVG"
 }

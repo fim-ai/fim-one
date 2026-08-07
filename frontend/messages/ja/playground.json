@@ -112,7 +112,8 @@
     "newDesc": "新しい会話を開始",
     "agentDesc": "名前でエージェントをクイック選択",
     "modeDesc": "オート、標準、プランナーモード間で切り替え",
-    "noMatch": "一致するアイテムがありません"
+    "noMatch": "一致するアイテムがありません",
+    "clearDesc": "現在のチャットをクリアして新しいチャットを開始"
   },
   "examples": {
     "react": [
@@ -177,5 +178,11 @@
     "inputBlocked": "入力がガードレールによってブロックされました",
     "outputBlocked": "応答がガードレールによってブロックされました",
     "detailsLabel": "詳細"
-  }
+  },
+  "copyAnswer": "回答をMarkdownとしてコピー",
+  "copyTableMarkdown": "テーブルをMarkdownとしてコピー",
+  "downloadTableCsv": "テーブルをCSVとしてダウンロード",
+  "viewSource": "ソースを表示",
+  "viewPreview": "プレビューを表示",
+  "downloadSvg": "SVGをダウンロード"
 }
