@@ -174,7 +174,7 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     return postProcessing
   }, [messages])
 
-  // Animate the favicon into a cycling moon while the turn is streaming or
+  // Swap the favicon to a busy glyph while the turn is streaming or
   // post-processing, so a backgrounded tab still shows progress.
   useFaviconLoading(isRunning || isPostProcessing)
 
