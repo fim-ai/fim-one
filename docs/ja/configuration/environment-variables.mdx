@@ -140,48 +140,50 @@ OpenAIとGeminiの場合、プロバイダーは`reasoning_effort`レベルに�
 
 ## エージェント実行
 
-### ReAct エージェント
-
-| 変数 | 必須 | デフォルト | 説明 |
-|---|---|---|---|
-| `REACT_MAX_ITERATIONS` | いいえ | `20` | ReAct リクエストあたりの最大ツール呼び出し反復回数。高いほど徹底的ですが、遅く、コストがかかります |
-| `REACT_MAX_TURN_TOKENS` | いいえ | `0` | 緊急遮断装置：単一の ReAct ターンあたりの最大累積トークン数（すべての反復にわたるプロンプト + 完了）。デフォルト `0` = 無制限。**これは日次トークン制御用ではありません** — そのためには per-user `token_quota` を使用してください。これは、エージェントが無限ツール呼び出しループに陥るなどの極端なシナリオに対する最後の手段の安全弁です。この制限に達すると、タスクは実行途中で中止され、消費されたすべてのトークンが無駄になり、不完全な結果が返されます。暴走エージェント問題を抑制する必要がある場合を除き、`0` のままにしてください |
-| `REACT_TOOL_SELECTION_THRESHOLD` | いいえ | `12` | 登録されたツールの総数がこのしきい値を超える場合、軽量な LLM 呼び出しが各リクエストの前に最も関連性の高いサブセットを選択します |
-| `REACT_TOOL_SELECTION_MAX` | いいえ | `6` | スマート選択後に保持する最大ツール数（ツール数が `REACT_TOOL_SELECTION_THRESHOLD` を超える場合のみ有効） |
-| `REACT_SELF_REFLECTION_INTERVAL` | いいえ | `6` | N 回のツール呼び出しごとに自己反省プロンプトを挿入して、エージェントが軌道修正し、ループを回避するのに役立ちます |
-| `REACT_TOOL_OBS_TRUNCATION` | いいえ | `8000` | 最終回答を合成する際のツール観測あたりの最大文字数。値が高いほど、より多くの構造化データ（JSON、テーブル）が保持されますが、トークンコストが増加します |
-| `REACT_TOOL_RESULT_BUDGET` | いいえ | `40000` | 単一セッション内のすべてのツール結果の集計トークン予算。ツール結果トークンの合計がこの上限を超える場合、新しい結果は通知付きで切り詰められます。大規模な API レスポンス（例：5 つのコネクタ呼び出しが各 8K を返す）からのコンテキスト肥大化を防ぎます。`0` に設定して上限を無効にします |
-| `REACT_COMPLETION_CHECK_SKIP_CHARS` | いいえ | `800` | エージェントの最終回答がこの文字数を超える場合、事後完了チェック LLM 呼び出しをスキップします。長い詳細な回答は「何か見落としたか？」検証ラウンドトリップを必要としません。より積極的にスキップするには低く設定し、常にチェックを実行するには非常に大きな値に設定します |
-| `REACT_CYCLE_DETECTION_THRESHOLD` | いいえ | `2` | 同じツールが同じ引数で連続してこの回数呼び出される場合、エージェントに別のアプローチを試すよう指示する決定論的警告が挿入されます。自己反省（LLM がループに気付くことに依存）とは異なり、これはバイパスできないハッシュベースのチェックです。DAG ステップにも適用されます |
-| `REACT_COMPLETION_CHECK_MIN_TOOLS` | いいえ | `3` | 完了チェックリストが発火する前の最小ツール呼び出し数。シンプルなタスク（1～2 ツール呼び出し）は不要なレイテンシを回避するため検証をスキップします。常時検証を行うには `1` に設定します。DAG ステップにも適用されます |
-| `REACT_TURN_PROFILE_ENABLED` | いいえ | `true` | ターンあたりのフェーズレベルのタイミングログ（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）を出力します。ターンあたり 1 行の構造化ログ。プロファイリング全体を無効にするには `false` に設定します（ゼロオーバーヘッド） |
-| `REACT_PLAN_TOOL_ENABLED` | いいえ | `true` | `update_plan` todo ツールを登録して、エージェントが複数ステップのタスク中に計画チェックリストを書き込み、維持できるようにします。DAG ステップエージェントとツールなしのエージェントでは自動的にスキップされます |
-| `REACT_PLAN_REMINDER_INTERVAL` | いいえ | `3` | `update_plan` 呼び出しなしのツールラウンド数。その後、古い計画リマインダー（完全なチェックリストを埋め込む）が会話に再挿入されるため、計画はコンテキスト圧縮を生き残ります |
-| `REACT_MAX_CONTINUATIONS` | いいえ | `3` | モデルの回答がプロバイダーの出力トークン制限（`finish_reason=length`）で切り詰められる場合の最大継続ラウンド数。切り詰められたセグメントは、エージェントループとストリーム合成の両方で 1 つのシームレスな回答に結合されます |
-| `REACT_BACKGROUND_TOOLS_ENABLED` | いいえ | `true` | 遅いツール（サンドボックス化された python/shell/node 実行）に `run_in_background` オプションを提供します。エージェントはタスク ID をすぐに取得して作業を続行し、ツールが完了すると結果が `<task_notification>` メッセージとして到着します |
-| `REACT_BG_WAIT_TIMEOUT` | いいえ | `300` | エージェントが回答を最終化したいときに、まだ実行中のバックグラウンドツールを待機する最大秒数。ウィンドウ内に完了しないタスクは、明示的なタイムアウト通知でキャンセルされます |
-| `DAG_CHECKPOINT_EVIDENCE_CHARS` | いいえ | `4000` | DAG クラッシュ再開チェックポイントファイル（`data/dag_checkpoints/`）内のステップあたりの証拠上限。ステップサマリーは完全に保存されます |
-| `DAG_CHECKPOINT_MAX_AGE_HOURS` | いいえ | `24` | このより古い DAG チェックポイントは読み込み時に無視されるため、古いクラッシュ残骸は新しい実行に再開されません |
-| `LLM_RATE_LIMIT_PER_USER` | いいえ | `true` | 単一のプロセスグローバルバケットの代わりに、per-user キー付きレート制限バケットを使用します。1 つのうるさいユーザーが同じワーカー上の他のすべてのユーザーを飢えさせるのを防ぎます。基盤となるレートはバケットあたり 60 リクエスト/分および 100K トークン/分でハードコードされています — この設定は、バケットが共有（グローバル）か分割（per-user）かのみを制御します。レガシーグローバルバケットに戻すには `false` に設定します（推奨されません） |
-
-### DAG Planner
+### ReAct Agent
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `MAX_CONCURRENCY` | No | `5` | Max parallel steps in DAG executor |
-| `DAG_STEP_MAX_ITERATIONS` | No | `15` | Max tool-call iterations within each DAG step |
-| `DAG_STEP_TIMEOUT` | No | `600` | Step execution timeout in seconds. Steps exceeding this are marked as failed and their dependents are cascade-skipped |
-| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | Max autonomous re-plan attempts when goal is not achieved. User interrupts (inject) are unlimited and do not count against this budget |
-| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | Applies only when the agent judges the goal **unreachable** (impossible request, missing capability, dead resource): stop retrying at or above this certainty. A missing or half-finished deliverable is always re-planned regardless of confidence — only `DAG_MAX_REPLAN_ROUNDS` bounds those retries |
-| `DAG_VERIFY_TRUNCATION` | No | `2000` | Max characters of step output sent to the step verifier LLM for quality judgment |
-| `DAG_ANALYZER_TRUNCATION` | No | `10000` | Max characters per step result when formatting for the post-execution analyzer |
-| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | Max characters of raw tool output (web fetches, search results, file reads) retained per step as authoritative "source evidence". This is fed to the analyzer and final synthesis alongside the step's own summary, so the answer's factual claims (totals, enumerations, severities) can be verified against the source instead of trusting a summary that may have silently dropped or mislabelled items. Set to `0` to disable evidence capture |
-| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | Max characters per step result from the most recent round when building re-plan context |
-| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | Max characters per step result from older rounds when building re-plan context. Older rounds are more aggressively truncated to save context |
-| `DAG_TOOL_CACHE` | No | `true` | Cache identical tool calls within a single DAG execution. Only tools explicitly marked as `cacheable` (read-only tools like search, knowledge retrieval) are cached. Set to `false` to disable caching entirely |
-| `DAG_STEP_VERIFICATION` | No | `false` | Generic LLM-based quality check after each DAG step. On failure, the step retries once with feedback. **Default off** — adds latency on every step and is rarely needed; most step outputs are acceptable without re-checking. Use only when you observe frequent low-quality step results |
-| `DAG_CITATION_VERIFICATION` | No | `true` | Citation-accuracy check for specialist-domain steps. **Prerequisite**: the query must first be classified as a specialist domain by the LLM domain classifier (see `ESCALATION_DOMAINS`). When the domain is detected AND this flag is `true`, each completed step is scanned for legal/medical/financial citations and verified for accuracy — catching hallucinated article numbers, fabricated case references, and incorrect regulatory citations. If domain classification returns `null` (general query), citation verification does not run regardless of this setting |
-| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | Max characters of step result sent to the citation verification prompt |
+| `REACT_MAX_ITERATIONS` | No | `20` | ReAct リクエストあたりの最大ツール呼び出し反復回数。高いほどより徹底的ですが、遅くなり、コストが増加します |
+| `REACT_MAX_TURN_TOKENS` | No | `0` | 緊急遮断装置：単一の ReAct ターンあたりの最大累積トークン数（すべての反復にわたるプロンプト＋完了）。デフォルト `0` = 無制限。**これは日次トークン制御用ではありません** — 日次制御には `token_quota` を使用してください。これは、エージェントが無限ツール呼び出しループに陥った場合など、極端なシナリオに対する最後の手段のセーフティバルブです。この制限に達すると、タスクは実行途中で中止され、消費されたすべてのトークンが無駄になり、不完全な結果が返されます。特定のランアウェイエージェント問題を抑制する必要がない限り、`0` のままにしておいてください |
+| `REACT_TOOL_SELECTION_THRESHOLD` | No | `12` | 登録されたツールの総数がこのしきい値を超える場合、軽量な LLM 呼び出しが各リクエストの前に最も関連性の高いサブセットを選択します |
+| `REACT_TOOL_SELECTION_MAX` | No | `6` | スマート選択後に保持する最大ツール数（ツール数が `REACT_TOOL_SELECTION_THRESHOLD` を超える場合のみ有効） |
+| `REACT_SELF_REFLECTION_INTERVAL` | No | `6` | N 回のツール呼び出しごとに自己反省プロンプトを挿入して、エージェントがコース修正し、ループを回避するのを支援します |
+| `REACT_TOOL_OBS_TRUNCATION` | No | `8000` | 最終回答を合成する際のツール観測あたりの最大文字数。値が高いほど、より多くの構造化データ（JSON、テーブル）が保持されますが、トークン数が増加します |
+| `REACT_TOOL_RESULT_BUDGET` | No | `40000` | 単一セッション内のすべてのツール結果の集計トークン予算。ツール結果トークンの合計がこの上限を超える場合、新しい結果は通知付きで切り詰められます。大規模な API レスポンス（例：5 つのコネクタ呼び出しが各 8K を返す）からのコンテキスト肥大化を防ぎます。`0` に設定するとキャップが無効になります |
+| `REACT_COMPLETION_CHECK_SKIP_CHARS` | No | `800` | エージェントの最終回答がこの多くの文字を超える場合、事後完了チェック LLM 呼び出しをスキップします。長い詳細な回答は「何か見落としましたか？」という検証ラウンドトリップを必要としません。より積極的にスキップするには低く設定し、常にチェックを実行するには非常に大きな値に設定します |
+| `REACT_CYCLE_DETECTION_THRESHOLD` | No | `2` | 同じツールが同じ引数で連続してこの回数呼び出される場合、エージェントに別のアプローチを試すよう指示する決定論的警告が挿入されます。自己反省（LLM がループに気付くことに依存）とは異なり、これはバイパスできないハッシュベースのチェックです。DAG ステップにも適用されます |
+| `REACT_COMPLETION_CHECK_MIN_TOOLS` | No | `3` | 完了チェックリストが発火する前の最小ツール呼び出し数。シンプルなタスク（1～2 ツール呼び出し）は不要なレイテンシを回避するため検証をスキップします。常時検証の場合は `1` に設定します。DAG ステップにも適用されます |
+| `REACT_TURN_PROFILE_ENABLED` | No | `true` | ターンごとのフェーズレベルのタイミングログ（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）を発行します。ターンあたり 1 行の構造化ログ。プロファイリング全体を無効にするには `false` に設定します（オーバーヘッドなし） |
+| `REACT_PLAN_TOOL_ENABLED` | No | `true` | `update_plan` todo ツールを登録して、エージェントが複数ステップのタスク中にプランチェックリストを書き込んで維持できるようにします。DAG ステップエージェントとツールがないエージェントは自動的にスキップされます |
+| `REACT_PLAN_REMINDER_INTERVAL` | No | `3` | `update_plan` 呼び出しなしのツールラウンド数。古いプランリマインダー（完全なチェックリストを埋め込む）が会話に再挿入されるため、プランはコンテキスト圧縮を生き残ります |
+| `REACT_PLAN_REPEAT_THRESHOLD` | No | `4` | 同じツール（異なる引数で）を連続して呼び出すラウンド数。エージェントに実りのない呼び出しを繰り返す代わりにアプローチを変更するよう指示するリマインダーが表示されます。完全に同じ呼び出しは周期検出によって個別に処理されます |
+| `REACT_PLAN_NUDGE_AFTER` | No | `5` | プランが記録されていないツールラウンド数。プランを書き込むことを提案する 1 回限りのナッジが表示されます。プランツールが有効な場合のみ適用されます |
+| `REACT_MAX_CONTINUATIONS` | No | `3` | モデルの回答がプロバイダーの出力トークン制限（`finish_reason=length`）によって切り詰められた場合の最大継続ラウンド数。切り詰められたセグメントは、エージェントループとストリーム合成の両方で 1 つのシームレスな回答に結合されます |
+| `REACT_BACKGROUND_TOOLS_ENABLED` | No | `true` | 遅いツール（サンドボックス化された python/shell/node 実行）に `run_in_background` オプションを提供します。エージェントはすぐにタスク ID を取得し、作業を続行します。結果はツールが完了したときに `<task_notification>` メッセージとして到着します |
+| `REACT_BG_WAIT_TIMEOUT` | No | `300` | エージェントが回答を最終化したいときに、まだ実行中のバックグラウンドツールを待つ最大秒数。ウィンドウ内に完了しないタスクは明示的なタイムアウト通知でキャンセルされます |
+| `DAG_CHECKPOINT_EVIDENCE_CHARS` | No | `4000` | DAG クラッシュ再開チェックポイントファイル（`data/dag_checkpoints/`）内のステップあたりの証拠キャップ。ステップサマリーは完全に保存されます |
+| `DAG_CHECKPOINT_MAX_AGE_HOURS` | No | `24` | このより古い DAG チェックポイントは読み込み時に無視されるため、古いクラッシュ残骸は新しい実行に再開されません |
+| `LLM_RATE_LIMIT_PER_USER` | No | `true` | 単一のプロセスグローバルバケットの代わりに、ユーザーごとのキー付きレート制限バケットを使用します。1 つのうるさいユーザーが同じワーカー上の他のすべてのユーザーを飢えさせるのを防ぎます。基盤となるレートはバケットあたり 60 リクエスト/分と 100K トークン/分でハードコードされています — この設定はバケットが共有（グローバル）か分割（ユーザーごと）かのみを制御します。レガシーグローバルバケットに戻すには `false` に設定します（推奨されません） |
+
+### DAG プランナー
+
+| 変数 | 必須 | デフォルト | 説明 |
+|---|---|---|---|
+| `MAX_CONCURRENCY` | いいえ | `5` | DAG エグゼキューターの最大並列ステップ数 |
+| `DAG_STEP_MAX_ITERATIONS` | いいえ | `15` | 各 DAG ステップ内の最大ツール呼び出し反復回数 |
+| `DAG_STEP_TIMEOUT` | いいえ | `600` | ステップ実行のタイムアウト（秒単位）。このタイムアウトを超えたステップは失敗としてマークされ、依存するステップはカスケードスキップされます |
+| `DAG_MAX_REPLAN_ROUNDS` | いいえ | `3` | 目標が達成されない場合の最大自動再計画試行回数。ユーザー割り込み（注入）は無制限で、この予算にはカウントされません |
+| `DAG_REPLAN_STOP_CONFIDENCE` | いいえ | `0.8` | エージェントが目標が**到達不可能**と判断した場合のみ適用（不可能なリクエスト、機能不足、リソース不可用）：この確実性以上で再試行を停止します。不完全な成果物は信頼度に関わらず常に再計画されます——`DAG_MAX_REPLAN_ROUNDS` のみがそれらの再試行を制限します |
+| `DAG_VERIFY_TRUNCATION` | いいえ | `2000` | ステップ出力品質判定用のステップ検証 LLM に送信される最大文字数 |
+| `DAG_ANALYZER_TRUNCATION` | いいえ | `10000` | 実行後アナライザーのフォーマット時のステップ結果あたりの最大文字数 |
+| `DAG_STEP_EVIDENCE_CHARS` | いいえ | `16000` | ステップあたりで保持される生のツール出力（ウェブ取得、検索結果、ファイル読み込み）の最大文字数。これはアナライザーと最終合成に、ステップ自体のサマリーと共に供給されるため、回答の事実的主張（合計、列挙、重大度）をサマリーが無言で削除または誤ラベル付けした可能性があるソースに対して検証できます。`0` に設定するとエビデンス取得を無効にします |
+| `DAG_REPLAN_RECENT_TRUNCATION` | いいえ | `500` | 再計画コンテキスト構築時の最新ラウンドからのステップ結果あたりの最大文字数 |
+| `DAG_REPLAN_OLDER_TRUNCATION` | いいえ | `200` | 再計画コンテキスト構築時の古いラウンドからのステップ結果あたりの最大文字数。古いラウンドはコンテキスト節約のためより積極的に切り詰められます |
+| `DAG_TOOL_CACHE` | いいえ | `true` | 単一 DAG 実行内での同一ツール呼び出しをキャッシュします。`cacheable` として明示的にマークされたツール（検索、知識検索などの読み取り専用ツール）のみがキャッシュされます。キャッシュを完全に無効にするには `false` に設定します |
+| `DAG_STEP_VERIFICATION` | いいえ | `false` | 各 DAG ステップ後の汎用 LLM ベースの品質チェック。失敗時、ステップはフィードバック付きで 1 回再試行されます。**デフォルトはオフ**——すべてのステップに遅延を追加し、ほとんど必要ありません。低品質なステップ結果が頻繁に観察される場合のみ使用してください |
+| `DAG_CITATION_VERIFICATION` | いいえ | `true` | 専門領域ステップの引用精度チェック。**前提条件**：クエリは最初に LLM ドメイン分類器によって専門領域として分類される必要があります（`ESCALATION_DOMAINS` を参照）。ドメインが検出され、このフラグが `true` の場合、完了した各ステップは法律・医療・財務引用についてスキャンされ、精度が検証されます——幻覚記事番号、捏造判例参照、不正な規制引用を検出します。ドメイン分類が `null`（一般クエリ）を返す場合、この設定に関わらず引用検証は実行されません |
+| `DAG_CITATION_VERIFY_TRUNCATION` | いいえ | `6000` | 引用検証プロンプトに送信されるステップ結果の最大文字数 |
 
 ### ドメイン分類
 
@@ -219,13 +221,11 @@ ReAct と DAG 実行の**前に**実行される独立した LLM ベースのド
 | `WORKSPACE_PREVIEW_CHARS` | いいえ | `2000` | 切り詰められたワークスペース参照に含めるプレビュー文字数 |
 | `WORKSPACE_CLEANUP_MAX_HOURS` | いいえ | `72` | この時間数より古いワークスペース ファイルは自動クリーンアップの対象になります |
 
-### システム
+### System
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **削除されました。** 以前はコンテキスト予算からシステムプロンプト用に固定の4K予約を差し引いていました。ContextGuardはメッセージリストトークンを推定する際にシステムプロンプトを既に含めているため、二重計算が発生していました。予算計算式は現在単純に `context_size - max_output_tokens` となり、システムプロンプトの実際のサイズは動的に考慮されます |
-
----
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **削除されました。** 以前はコンテキスト予算からシステムプロンプト用に固定の4K予約を差し引いていました。ContextGuardがメッセージリストトークンを推定する際にシステムプロンプトを既に含めているため、二重計算が発生していました。予算計算式は現在`(context_size - max_output_tokens) × 0.92`です（マージンはトークン推定エラーを吸収します）。システムプロンプトの実際のサイズは動的に考慮されます |
 
 ## Webツール（オプション）
 
@@ -382,30 +382,31 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 
 ---
 
-## プラットフォーム
+## Platform
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `DATABASE_URL` | いいえ | `sqlite+aiosqlite:///./data/fim_one.db` | データベース接続文字列。**SQLite**（ゼロコンフィグ）: `sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（本番環境）: `postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Composeは自動的にPostgreSQLを設定します。 |
-| `JWT_SECRET_KEY` | いいえ | `CHANGE_ME` | JWTトークン署名用の秘密鍵。プレースホルダー値`CHANGE_ME`（またはその他のレガシーデフォルト）は、初回起動時にセキュアな256ビットランダムキーの自動生成をトリガーし、`.env`に書き込まれます。本番環境では明示的に設定して、再起動とレプリカ間でトークンを有効に保ちます。 |
-| `FIM_BCRYPT_COST` | いいえ | `12` | パスワードハッシング用のbcryptワークファクター、4～31の範囲に制限されます。デフォルト12は最新のCPUで約200msのコストがかかります。弱いハードウェアでは低くし、セキュリティ強化デプロイメントでは高くしてください。 |
-| `CORS_ORIGINS` | いいえ | — | デフォルトのlocalhostエントリを超えて許可する追加のCORSオリジンのカンマ区切りリスト。フロントエンドが非localhostドメイン（例：`https://app.example.com`）で実行される場合に必須です。 |
-| `UPLOADS_DIR` | いいえ | `./uploads` | アップロードされたファイルのディレクトリ |
-| `MAX_UPLOAD_SIZE_MB` | いいえ | `50` | 最大ファイルアップロードサイズ（メガバイト単位、バックエンド強制） |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | いいえ | `50` | フロントエンドUIに表示される最大ファイルアップロードサイズ。**ビルド時変数** — `MAX_UPLOAD_SIZE_MB`と一致する必要があります。 |
-| `MCP_SERVERS` | いいえ | — | MCPサーバー設定のJSONアレイ（`uv sync --extra mcp`が必要） |
-| `ALLOW_STDIO_MCP` | いいえ | `false` | stdio MCPサーバーを許可します。信頼できるローカルデプロイメントの場合のみ`true`に設定してください |
-| `ALLOWED_STDIO_COMMANDS` | いいえ | `npx,uvx,node,python,python3,deno,bun` | stdio MCPサーバーで許可する基本コマンドのカンマ区切りリスト。`ALLOW_STDIO_MCP=true`の場合のみ有効です |
-| `LOG_LEVEL` | いいえ | `INFO` | ログレベル：`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | いいえ | — | ワーカー間割り込みリレー用のRedis接続URL。**`WORKERS>1`の場合は必須** — これがないと、ストリーム中の割り込み/注入リクエストが別のワーカーにヒットして、サイレントに失敗する可能性があります。Docker Composeで自動設定されます。 |
-| `WORKERS` | いいえ | `1` | Uvicornワーカープロセス。`1`は安全で外部サービスは不要です。本番環境のマルチワーカーの場合、PostgreSQLを使用してください（SQLiteはシングルライター）。SQLiteはライト負荷下でのローカル開発に適しています。認証、OAuth、ファイル操作は完全にマルチワーカー対応です（JWTベース）。Docker Composeは自動的にPostgreSQLとRedisの両方を設定します。 |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | データベース接続文字列。**SQLite**（ゼロコンフィグ）: `sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（本番環境）: `postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Composeは自動的にPostgreSQLを設定します。 |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | JWTトークン署名用の秘密鍵。プレースホルダー値`CHANGE_ME`（またはその他のレガシーデフォルト）は、初回起動時に安全な256ビットランダムキーの自動生成をトリガーし、`.env`に書き込まれます。本番環境では明示的に設定して、トークンの有効性を再起動とレプリカ間で保つようにしてください。 |
+| `FIM_BCRYPT_COST` | No | `12` | パスワードハッシング用のbcryptワークファクター（4～31にクランプ）。デフォルト12は最新のCPUで約200msのコストがかかります。弱いハードウェアではこれを下げ、セキュリティ強化デプロイメントでは上げてください。 |
+| `CORS_ORIGINS` | No | — | デフォルトのlocalhostエントリを超えて許可する追加のCORSオリジンのカンマ区切りリスト。フロントエンドが非localhostドメイン（例：`https://app.example.com`）で実行される場合に必須です。 |
+| `UPLOADS_DIR` | No | `./uploads` | アップロードされたファイルのディレクトリ |
+| `EXPORT_FONT_DIR` | No | *（自動検出）* | PDF エクスポート用の `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` を保持するディレクトリ。`python scripts/fetch_export_fonts.py` で取得します。Docker イメージにはすでにバンドルされています。埋め込み可能な TrueType CJK フォントがない場合、PDF エクスポートは埋め込まれていない CID フォントにフォールバックし、スペーシングが低下し、太字がありません。 |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | 最大ファイルアップロードサイズ（メガバイト、バックエンド強制） |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | フロントエンド UI に表示される最大ファイルアップロードサイズ。**ビルド時変数** — `MAX_UPLOAD_SIZE_MB` と一致する必要があります。 |
+| `MCP_SERVERS` | No | — | MCP サーバー設定の JSON 配列（`uv sync --extra mcp` が必要） |
+| `ALLOW_STDIO_MCP` | No | `false` | stdio MCP サーバーを許可します。信頼できるローカルデプロイメントの場合のみ `true` に設定してください |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | stdio MCP サーバーで許可されるベースコマンドのカンマ区切りリスト。`ALLOW_STDIO_MCP=true` の場合のみ有効です |
+| `LOG_LEVEL` | No | `INFO` | ログレベル: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | No | — | クロスワーカー割り込みリレー用の Redis 接続 URL。**`WORKERS>1` の場合は必須** — これがないと、ストリーム中の割り込み/注入リクエストが別のワーカーにヒットして、サイレントに失敗する可能性があります。Docker Compose で自動設定されます。 |
+| `WORKERS` | No | `1` | Uvicorn ワーカープロセス。`1` は安全で、外部サービスは不要です。本番環境のマルチワーカーの場合は PostgreSQL を使用してください（SQLite はシングルライター）。SQLite は軽い負荷の下でのローカル開発に対応しています。認証、OAuth、ファイル操作は完全にマルチワーカー対応です（JWT ベース）。Docker Compose は PostgreSQL と Redis の両方を自動設定します。 |
 
 <Warning>
-**マルチワーカーチェックリスト**（`WORKERS>1`）：
-- **停止（ストリーミング中止）** — 常に機能し、追加設定は不要です（シグナルは同じTCP接続上を移動します）。
-- **注入（ストリーム中のフォローアップ）** — **`REDIS_URL`が必須**。Redisがないと、注入リクエストが実行中の知識を持たない別のワーカーにランディングし、サイレント失敗を引き起こす可能性があります。
-- **本番環境**：PostgreSQL（`DATABASE_URL`）を使用してください。SQLiteのシングルライターロックは、同時書き込み時に競合を引き起こす可能性があります。
-- **ローカル開発**：SQLite+マルチワーカーはライト使用で問題ありません。注入機能を使用する場合は`REDIS_URL`を追加してください。
+**マルチワーカーチェックリスト**（`WORKERS>1`）:
+- **停止（ストリーミング中止）** — 常に機能します。追加設定は不要です（シグナルは同じ TCP 接続で移動します）。
+- **注入（ストリーム中のフォローアップ）** — **`REDIS_URL` が必須です**。Redis がない場合、注入リクエストが実行中の知識を持たない別のワーカーにランディングし、サイレント失敗を引き起こす可能性があります。
+- **本番環境**: PostgreSQL（`DATABASE_URL`）を使用してください。SQLite のシングルライターロックは、同時書き込みの下で競合を引き起こす可能性があります。
+- **ローカル開発**: SQLite + マルチワーカーは軽い使用には問題ありません。注入機能を使用する場合は `REDIS_URL` を追加してください。
 </Warning>
 
 ## ワークフロー実行の保持

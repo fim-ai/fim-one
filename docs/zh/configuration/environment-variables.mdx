@@ -146,43 +146,45 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `REACT_MAX_ITERATIONS` | 否 | `20` | 每个 ReAct 请求的最大工具调用迭代次数。值越高越彻底，但速度越慢且成本越高 |
-| `REACT_MAX_TURN_TOKENS` | 否 | `0` | 紧急断路器：单个 ReAct 轮次的最大累积令牌数（所有迭代的提示词 + 完成）。默认 `0` = 无限制。**这不是用于日常令牌控制的**——请使用按用户的 `token_quota`。这是针对极端场景（如智能体陷入无限工具调用循环）的最后手段安全阀。达到此限制会中止任务执行，浪费所有已消耗的令牌并返回不完整结果。除非您有特定的失控智能体问题需要控制，否则保持为 `0` |
-| `REACT_TOOL_SELECTION_THRESHOLD` | 否 | `12` | 当注册的工具总数超过此阈值时，轻量级 LLM 调用会在每个请求前选择最相关的子集 |
+| `REACT_MAX_ITERATIONS` | 否 | `20` | 每个 ReAct 请求的最大工具调用迭代次数。更高的值 = 更彻底但速度更慢且成本更高 |
+| `REACT_MAX_TURN_TOKENS` | 否 | `0` | 紧急断路器：单个 ReAct 轮次的最大累积令牌数（所有迭代中的提示词 + 完成）。默认 `0` = 无限制。**这不是用于日常令牌控制的**——请使用按用户的 `token_quota`。这是针对极端场景（如智能体陷入无限工具调用循环）的最后手段安全阀。达到此限制会中止任务执行，浪费所有已消耗的令牌并返回不完整的结果。除非您有特定的失控智能体问题需要控制，否则保持为 `0` |
+| `REACT_TOOL_SELECTION_THRESHOLD` | 否 | `12` | 当注册工具的总数超过此阈值时，轻量级 LLM 调用会在每个请求前选择最相关的子集 |
 | `REACT_TOOL_SELECTION_MAX` | 否 | `6` | 智能选择后保留的最大工具数（仅当工具数超过 `REACT_TOOL_SELECTION_THRESHOLD` 时有效） |
 | `REACT_SELF_REFLECTION_INTERVAL` | 否 | `6` | 每 N 次工具调用后注入一次自我反思提示词，帮助智能体纠正方向并避免循环 |
-| `REACT_TOOL_OBS_TRUNCATION` | 否 | `8000` | 综合最终答案时每个工具观察的最大字符数。较高的值会保留更多结构化数据（JSON、表格），但会消耗更多令牌 |
-| `REACT_TOOL_RESULT_BUDGET` | 否 | `40000` | 单个会话中所有工具结果的聚合令牌预算。当工具结果令牌总数超过此上限时，新结果会被截断并显示通知。防止大型 API 响应（例如 5 个连接器调用各返回 8K）导致的上下文膨胀。设置为 `0` 禁用上限 |
-| `REACT_COMPLETION_CHECK_SKIP_CHARS` | 否 | `800` | 当智能体的最终答案超过此字符数时，跳过答案后的完成检查 LLM 调用。长详细答案不需要"我是否遗漏了什么？"验证往返。设置较低值以更积极地跳过；设置为非常大的值以始终运行检查 |
-| `REACT_CYCLE_DETECTION_THRESHOLD` | 否 | `2` | 当同一工具连续使用相同参数被调用此次数时，会注入确定性警告，告诉智能体尝试不同的方法。与依赖 LLM 注意到循环的自我反思不同，这是基于哈希的检查，无法被绕过。也适用于 DAG 步骤 |
-| `REACT_COMPLETION_CHECK_MIN_TOOLS` | 否 | `3` | 完成检查清单触发前的最小工具调用数。简单任务（1-2 次工具调用）会跳过验证以避免不必要的延迟。设置为 `1` 以启用始终开启的验证。也适用于 DAG 步骤 |
-| `REACT_TURN_PROFILE_ENABLED` | 否 | `true` | 发出按轮次的阶段级别计时日志（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）。每轮一行结构化日志。设置为 `false` 禁用分析（零开销） |
-| `REACT_PLAN_TOOL_ENABLED` | 否 | `true` | 注册 `update_plan` 待办工具，以便智能体在多步骤任务中写下并维护计划检查清单。对于 DAG 步骤智能体和无工具的智能体会自动跳过 |
-| `REACT_PLAN_REMINDER_INTERVAL` | 否 | `3` | 在重新注入陈旧计划提醒前，未调用 `update_plan` 的工具轮次数（嵌入完整检查清单），以便计划在上下文压缩中保留 |
-| `REACT_MAX_CONTINUATIONS` | 否 | `3` | 当模型答案被提供商的输出令牌限制截断时的最大续接轮次（`finish_reason=length`）。截断的片段会被拼接成一个无缝答案，包括在智能体循环和流式合成中 |
-| `REACT_BACKGROUND_TOOLS_ENABLED` | 否 | `true` | 在慢速工具（沙箱化 python/shell/node 执行）上提供 `run_in_background` 选项。智能体立即获得任务 id 并继续工作；工具完成时结果作为 `<task_notification>` 消息到达 |
-| `REACT_BG_WAIT_TIMEOUT` | 否 | `300` | 当智能体想要最终确定答案时，等待仍在运行的后台工具的最大秒数。窗口内未完成的任务会被取消并显示明确的超时通知 |
-| `DAG_CHECKPOINT_EVIDENCE_CHARS` | 否 | `4000` | DAG 崩溃恢复检查点文件（`data/dag_checkpoints/`）中的每步证据上限。步骤摘要以完整形式存储 |
-| `DAG_CHECKPOINT_MAX_AGE_HOURS` | 否 | `24` | 超过此时间的 DAG 检查点在加载时被忽略，因此陈旧的崩溃遗留物永远不会恢复到新运行中 |
-| `LLM_RATE_LIMIT_PER_USER` | 否 | `true` | 使用按用户键控的速率限制桶而不是单个进程全局桶。防止一个嘈杂的用户在同一工作线程上饿死所有其他用户。底层速率硬编码为每个桶 60 请求/分钟和 100K 令牌/分钟——此设置仅控制桶是共享（全局）还是分区（按用户）。设置为 `false` 以恢复到旧版全局桶（不推荐） |
+| `REACT_TOOL_OBS_TRUNCATION` | 否 | `8000` | 综合最终答案时每个工具观察的最大字符数。更高的值会保留更多结构化数据（JSON、表格），但会消耗更多令牌 |
+| `REACT_TOOL_RESULT_BUDGET` | 否 | `40000` | 单个会话中所有工具结果的聚合令牌预算。当工具结果令牌总数超过此上限时，新结果会被截断并附加通知。防止来自大型 API 响应（例如 5 个连接器调用各返回 8K）的上下文膨胀。设置为 `0` 可禁用上限 |
+| `REACT_COMPLETION_CHECK_SKIP_CHARS` | 否 | `800` | 当智能体的最终答案超过此字符数时，跳过答后完成检查 LLM 调用。长详细答案不需要"我是否遗漏了什么？"验证往返。设置更低的值可更激进地跳过；设置为非常大的值可始终运行检查 |
+| `REACT_CYCLE_DETECTION_THRESHOLD` | 否 | `2` | 当同一工具连续使用相同参数调用此次数时，会注入确定性警告，告诉智能体尝试不同的方法。与依赖 LLM 注意循环的自我反思不同，这是基于哈希的检查，无法绕过。也适用于 DAG 步骤 |
+| `REACT_COMPLETION_CHECK_MIN_TOOLS` | 否 | `3` | 完成检查清单触发前的最小工具调用次数。简单任务（1-2 次工具调用）会跳过验证以避免不必要的延迟。设置为 `1` 可始终启用验证。也适用于 DAG 步骤 |
+| `REACT_TURN_PROFILE_ENABLED` | 否 | `true` | 发出按轮次的阶段级计时日志（`memory_load`、`compact`、`tool_schema_build`、`llm_first_token`、`llm_total`、`tool_exec`）。每轮一行结构化日志。设置为 `false` 可完全禁用分析（零开销） |
+| `REACT_PLAN_TOOL_ENABLED` | 否 | `true` | 注册 `update_plan` 待办工具，以便智能体在多步任务期间写下并维护计划检查清单。对于 DAG 步骤智能体和无工具的智能体会自动跳过 |
+| `REACT_PLAN_REMINDER_INTERVAL` | 否 | `3` | 在重新注入陈旧计划提醒（嵌入完整检查清单）之前，没有 `update_plan` 调用的工具轮次，以便计划在上下文压缩中保留 |
+| `REACT_PLAN_REPEAT_THRESHOLD` | 否 | `4` | 连续轮次调用同一工具（使用不同参数）的次数，在此之后提醒会告诉智能体改变方法而不是重复无效调用。完全相同的调用由循环检测单独处理 |
+| `REACT_PLAN_NUDGE_AFTER` | 否 | `5` | 没有记录计划的工具轮次数，在此之后一次性提示建议写下计划。仅在计划工具启用时适用 |
+| `REACT_MAX_CONTINUATIONS` | 否 | `3` | 当模型的答案被提供商的输出令牌限制（`finish_reason=length`）截断时的最大继续轮次。截断的段落在智能体循环和流式合成中都被拼接成一个无缝答案 |
+| `REACT_BACKGROUND_TOOLS_ENABLED` | 否 | `true` | 在慢速工具（沙箱 python/shell/node 执行）上提供 `run_in_background` 选项。智能体立即获得任务 id 并继续工作；工具完成时结果作为 `<task_notification>` 消息到达 |
+| `REACT_BG_WAIT_TIMEOUT` | 否 | `300` | 当智能体想要最终确定答案时等待仍在运行的后台工具的最大秒数。在时间窗口内未完成的任务会被取消并显示明确的超时通知 |
+| `DAG_CHECKPOINT_EVIDENCE_CHARS` | 否 | `4000` | DAG 崩溃恢复检查点文件（`data/dag_checkpoints/`）中每步的证据上限。步骤摘要完整存储 |
+| `DAG_CHECKPOINT_MAX_AGE_HOURS` | 否 | `24` | 早于此时间的 DAG 检查点在加载时被忽略，因此陈旧的崩溃遗留物永远不会恢复到新运行中 |
+| `LLM_RATE_LIMIT_PER_USER` | 否 | `true` | 使用按用户键控的速率限制桶而不是单个进程全局桶。防止一个嘈杂的用户在同一工作进程上饿死所有其他用户。底层速率硬编码为每个桶每分钟 60 个请求和每分钟 100K 个令牌——此设置仅控制桶是共享（全局）还是分区（按用户）。设置为 `false` 可恢复到旧版全局桶（不推荐） |
 
 ### DAG 规划器
 
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `MAX_CONCURRENCY` | 否 | `5` | DAG 执行器中最大并行步骤数 |
-| `DAG_STEP_MAX_ITERATIONS` | 否 | `15` | 每个 DAG 步骤内最大工具调用迭代次数 |
-| `DAG_STEP_TIMEOUT` | 否 | `600` | 步骤执行超时时间（秒）。超过此时间的步骤被标记为失败，其依赖步骤级联跳过 |
-| `DAG_MAX_REPLAN_ROUNDS` | 否 | `3` | 目标未达成时最大自主重新规划尝试次数。用户中断（注入）次数不限，不计入此预算 |
-| `DAG_REPLAN_STOP_CONFIDENCE` | 否 | `0.8` | 仅当智能体判断目标**不可达成**（不可能的请求、缺少能力、资源失效）时适用：在此确定度或以上时停止重试。缺失或未完成的交付物始终会重新规划，无论置信度如何——仅 `DAG_MAX_REPLAN_ROUNDS` 限制这些重试 |
+| `MAX_CONCURRENCY` | 否 | `5` | DAG 执行器中的最大并行步骤数 |
+| `DAG_STEP_MAX_ITERATIONS` | 否 | `15` | 每个 DAG 步骤内的最大工具调用迭代次数 |
+| `DAG_STEP_TIMEOUT` | 否 | `600` | 步骤执行超时时间（秒）。超过此时间的步骤被标记为失败，其依赖步骤会级联跳过 |
+| `DAG_MAX_REPLAN_ROUNDS` | 否 | `3` | 当目标未达成时的最大自主重新规划尝试次数。用户中断（注入）次数不限，不计入此预算 |
+| `DAG_REPLAN_STOP_CONFIDENCE` | 否 | `0.8` | 仅在智能体判断目标**不可达成**（不可能的请求、缺少能力、资源失效）时适用：在此确定度或以上时停止重试。缺失或未完成的交付物始终会重新规划，无论确定度如何——仅 `DAG_MAX_REPLAN_ROUNDS` 限制这些重试 |
 | `DAG_VERIFY_TRUNCATION` | 否 | `2000` | 发送给步骤验证器 LLM 进行质量判断的步骤输出最大字符数 |
 | `DAG_ANALYZER_TRUNCATION` | 否 | `10000` | 格式化用于执行后分析器的每个步骤结果的最大字符数 |
-| `DAG_STEP_EVIDENCE_CHARS` | 否 | `16000` | 每个步骤保留的原始工具输出（网页获取、搜索结果、文件读取）最大字符数，作为权威"源证据"。这些数据连同步骤自身的摘要一起提供给分析器和最终合成，以便答案的事实声明（总数、枚举、严重程度）可以针对源进行验证，而不是信任可能静默丢弃或误标记项目的摘要。设置为 `0` 禁用证据捕获 |
+| `DAG_STEP_EVIDENCE_CHARS` | 否 | `16000` | 每个步骤保留的原始工具输出（网页获取、搜索结果、文件读取）最大字符数，作为权威"源证据"。这些内容会连同步骤自身的摘要一起提供给分析器和最终合成，以便答案的事实声明（总计、枚举、严重程度）可以对照源进行验证，而不是依赖可能已无声地丢弃或误标记项目的摘要。设置为 `0` 以禁用证据捕获 |
 | `DAG_REPLAN_RECENT_TRUNCATION` | 否 | `500` | 构建重新规划上下文时来自最近一轮的每个步骤结果最大字符数 |
 | `DAG_REPLAN_OLDER_TRUNCATION` | 否 | `200` | 构建重新规划上下文时来自较早轮次的每个步骤结果最大字符数。较早轮次会更激进地截断以节省上下文 |
-| `DAG_TOOL_CACHE` | 否 | `true` | 在单个 DAG 执行中缓存相同的工具调用。仅显式标记为 `cacheable` 的工具（搜索、知识检索等只读工具）会被缓存。设置为 `false` 完全禁用缓存 |
-| `DAG_STEP_VERIFICATION` | 否 | `false` | 每个 DAG 步骤后的通用 LLM 质量检查。失败时，步骤使用反馈重试一次。**默认关闭**——在每个步骤上增加延迟，很少需要；大多数步骤输出无需重新检查即可接受。仅在观察到频繁的低质量步骤结果时使用 |
-| `DAG_CITATION_VERIFICATION` | 否 | `true` | 专业领域步骤的引用准确性检查。**前置条件**：查询必须首先由 LLM 领域分类器分类为专业领域（参见 `ESCALATION_DOMAINS`）。当检测到该领域且此标志为 `true` 时，每个已完成步骤会被扫描以查找法律/医学/财务引用并验证准确性——捕捉幻觉的文章编号、虚构的案例参考和不正确的监管引用。如果领域分类返回 `null`（通用查询），则无论此设置如何，引用验证都不会运行 |
+| `DAG_TOOL_CACHE` | 否 | `true` | 在单个 DAG 执行中缓存相同的工具调用。仅显式标记为 `cacheable` 的工具（搜索、知识检索等只读工具）会被缓存。设置为 `false` 以完全禁用缓存 |
+| `DAG_STEP_VERIFICATION` | 否 | `false` | 每个 DAG 步骤后的通用 LLM 质量检查。失败时，步骤会根据反馈重试一次。**默认关闭**——会在每个步骤增加延迟，很少需要；大多数步骤输出无需重新检查即可接受。仅在观察到频繁的低质量步骤结果时使用 |
+| `DAG_CITATION_VERIFICATION` | 否 | `true` | 专业领域步骤的引用准确性检查。**前置条件**：查询必须首先由 LLM 领域分类器分类为专业领域（参见 `ESCALATION_DOMAINS`）。当检测到该领域且此标志为 `true` 时，每个完成的步骤会被扫描以查找法律/医学/财务引用，并验证其准确性——捕获幻觉的条款号、虚构的案例参考和不正确的监管引用。如果领域分类返回 `null`（通用查询），则无论此设置如何，引用验证都不会运行 |
 | `DAG_CITATION_VERIFY_TRUNCATION` | 否 | `6000` | 发送给引用验证提示的步骤结果最大字符数 |
 
 ### 领域分类
@@ -221,11 +223,11 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 | `WORKSPACE_PREVIEW_CHARS` | 否 | `2000` | 截断的工作区引用中包含的预览字符数 |
 | `WORKSPACE_CLEANUP_MAX_HOURS` | 否 | `72` | 超过这么多小时的工作区文件符合自动清理的条件 |
 
-### 系统
+### System
 
-| 变量 | 必需 | 默认值 | 描述 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **已移除。** 之前从上下文预算中减去固定的 4K 保留用于系统提示。这导致了重复计算，因为 ContextGuard 在估计消息列表令牌时已经包含了系统提示。预算公式现在简单为 `context_size - max_output_tokens`，系统提示的实际大小动态计算 |
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **已移除。** 之前从上下文预算中减去固定的4K预留用于系统提示词。这导致了重复计算，因为ContextGuard在估计消息列表令牌时已经包含了系统提示词。预算公式现在是`(context_size - max_output_tokens) × 0.92`（该边距吸收令牌估计误差），系统提示词的实际大小是动态计算的 |
 
 ---
 
@@ -387,25 +389,26 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
 | `DATABASE_URL` | 否 | `sqlite+aiosqlite:///./data/fim_one.db` | 数据库连接字符串。**SQLite**（零配置）：`sqlite+aiosqlite:///./data/fim_one.db`。**PostgreSQL**（生产环境）：`postgresql+asyncpg://user:pass@localhost:5432/fim_one`。Docker Compose自动配置PostgreSQL。 |
-| `JWT_SECRET_KEY` | 否 | `CHANGE_ME` | JWT令牌签名的密钥。占位符值`CHANGE_ME`（或任何旧版默认值）会在首次启动时触发自动生成安全的256位随机密钥，并写回`.env`。在生产环境中显式设置以保持令牌在重启和副本间的有效性。 |
-| `FIM_BCRYPT_COST` | 否 | `12` | bcrypt密码哈希的工作因子，范围限制在4-31。默认值12在现代CPU上每次哈希耗时约200ms；在弱硬件上降低该值，在安全加固的部署中提高该值。 |
-| `CORS_ORIGINS` | 否 | — | 逗号分隔的额外允许CORS源列表，超出默认localhost条目。当前端运行在非localhost域名上时必需（例如`https://app.example.com`）。 |
+| `JWT_SECRET_KEY` | 否 | `CHANGE_ME` | JWT令牌签名的密钥。占位符值`CHANGE_ME`（或任何旧版默认值）会在首次启动时触发生成安全的256位随机密钥，并写回`.env`。在生产环境中显式设置以保持令牌在重启和副本间的有效性。 |
+| `FIM_BCRYPT_COST` | 否 | `12` | bcrypt工作因子，用于密码哈希，范围限制在4-31。默认值12在现代CPU上每次哈希耗时约200ms；在弱硬件上降低该值，在安全加固的部署中提高该值。 |
+| `CORS_ORIGINS` | 否 | — | 逗号分隔的额外允许CORS源列表，超出默认localhost条目。当前端运行在非localhost域上时必需（例如`https://app.example.com`）。 |
 | `UPLOADS_DIR` | 否 | `./uploads` | 上传文件的目录 |
-| `MAX_UPLOAD_SIZE_MB` | 否 | `50` | 最大文件上传大小（单位：MB，后端强制执行） |
-| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | 否 | `50` | 前端UI中显示的最大文件上传大小。**构建时变量**——必须与`MAX_UPLOAD_SIZE_MB`匹配。 |
+| `EXPORT_FONT_DIR` | 否 | *（自动检测）* | 存放`NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf`的目录，用于PDF导出。使用`python scripts/fetch_export_fonts.py`获取；Docker镜像已预装。没有可嵌入的TrueType CJK字体时，PDF导出会回退到非嵌入式CID字体，导致间距降级且无粗体。 |
+| `MAX_UPLOAD_SIZE_MB` | 否 | `50` | 最大文件上传大小（单位：MB，后端强制） |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | 否 | `50` | 前端UI显示的最大文件上传大小。**构建时变量**——必须与`MAX_UPLOAD_SIZE_MB`匹配。 |
 | `MCP_SERVERS` | 否 | — | MCP服务器配置的JSON数组（需要`uv sync --extra mcp`） |
-| `ALLOW_STDIO_MCP` | 否 | `false` | 允许stdio MCP服务器。仅在可信的本地部署中设置为`true` |
+| `ALLOW_STDIO_MCP` | 否 | `false` | 允许stdio MCP服务器。仅在受信任的本地部署中设置为`true` |
 | `ALLOWED_STDIO_COMMANDS` | 否 | `npx,uvx,node,python,python3,deno,bun` | stdio MCP服务器允许的基础命令的逗号分隔列表。仅在`ALLOW_STDIO_MCP=true`时生效 |
 | `LOG_LEVEL` | 否 | `INFO` | 日志级别：`DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | 否 | — | Redis连接URL，用于跨工作进程中断中继。**当`WORKERS>1`时必需**——没有它，中途中断/注入请求可能会命中不同的工作进程并无声地失败。由Docker Compose自动配置。 |
-| `WORKERS` | 否 | `1` | Uvicorn工作进程数。`1`是安全的，不需要外部服务。对于生产环境多工作进程，使用PostgreSQL（SQLite是单写入器）。SQLite在轻负载下适合本地开发。身份验证、OAuth和文件操作完全支持多工作进程（基于JWT）。Docker Compose自动配置PostgreSQL和Redis。 |
+| `REDIS_URL` | 否 | — | Redis连接URL，用于跨工作进程中断中继。**当`WORKERS>1`时必需**——没有它，流中断/注入请求可能会命中不同的工作进程而无声地失败。由Docker Compose自动配置。 |
+| `WORKERS` | 否 | `1` | Uvicorn工作进程数。`1`是安全的，不需要外部服务。对于生产多工作进程，使用PostgreSQL（SQLite是单写入器）。SQLite在轻负载下适合本地开发。身份验证、OAuth和文件操作完全支持多工作进程（基于JWT）。Docker Compose自动配置PostgreSQL和Redis。 |
 
 <Warning>
 **多工作进程检查清单**（`WORKERS>1`）：
 - **停止（中止流式传输）**——总是有效的，无需额外配置（信号在同一TCP连接上传输）。
-- **注入（中途后续操作）**——**需要`REDIS_URL`**。没有Redis，注入请求可能会落在不同的工作进程上，该进程对运行中的执行一无所知，导致无声地失败。
+- **注入（流中跟进）**——**需要`REDIS_URL`**。没有Redis，注入请求可能会落在不同的工作进程上，该进程对运行中的执行一无所知，导致无声失败。
 - **生产环境**：使用PostgreSQL（`DATABASE_URL`）。SQLite的单写入器锁在并发写入下可能导致争用。
-- **本地开发**：SQLite+多工作进程在轻度使用下是可以的；如果使用注入功能，只需添加`REDIS_URL`。
+- **本地开发**：SQLite+多工作进程在轻度使用下没问题；如果使用注入功能，只需添加`REDIS_URL`。
 </Warning>
 
 ## 工作流运行保留

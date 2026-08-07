@@ -24,6 +24,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: Fraction of the raw model window (``context_size - max_output_tokens``)
+#: actually budgeted for input.  Token counts are estimated with a character
+#: heuristic (:meth:`CompactUtils.estimate_tokens`) that can under-estimate
+#: real tokenizer counts by ~10%; without headroom the compaction trigger
+#: sits exactly on the API hard limit and any under-estimate becomes an
+#: HTTP 400 rescued only by the one-shot overflow retry.
+BUDGET_SAFETY_FACTOR = 0.92
+
+
+def compute_input_budget(context_size: int, max_output: int) -> int:
+    """Usable input token budget for a model window.
+
+    ``(context_size - max_output) * BUDGET_SAFETY_FACTOR``, floored at
+    4 000 tokens.  The system prompt is NOT subtracted — ContextGuard
+    estimates the full message list (system prompt included) dynamically,
+    so a static reserve would double-count it.
+    """
+    budget = int((context_size - max_output) * BUDGET_SAFETY_FACTOR)
+    return max(budget, 4_000)
+
+
 # ---------------------------------------------------------------------------
 # Hint-specific compact prompts
 # ---------------------------------------------------------------------------

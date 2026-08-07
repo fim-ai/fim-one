@@ -146,23 +146,25 @@ OpenAI 및 Gemini의 경우, 제공자가 `reasoning_effort` 수준에 따라 �
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `REACT_MAX_ITERATIONS` | No | `20` | ReAct 요청당 최대 도구 호출 반복 횟수입니다. 높을수록 더 철저하지만 느리고 비용이 많이 듭니다 |
-| `REACT_MAX_TURN_TOKENS` | No | `0` | 긴급 차단 장치: 단일 ReAct 턴당 누적 토큰의 최대값(모든 반복에 걸친 프롬프트 + 완료). 기본값 `0` = 무제한. **이것은 일일 토큰 제어용이 아닙니다** — 그 목적으로는 사용자별 `token_quota`를 사용하세요. 이것은 무한 도구 호출 루프에 갇힌 에이전트 같은 극단적인 상황에 대한 최후의 안전 장치입니다. 이 한계에 도달하면 작업이 중간에 중단되어 지금까지 소비한 모든 토큰이 낭비되고 불완전한 결과가 반환됩니다. 특정 폭주 에이전트 문제를 해결해야 하는 경우가 아니면 `0`으로 유지하세요 |
+| `REACT_MAX_ITERATIONS` | No | `20` | ReAct 요청당 최대 도구 호출 반복 횟수입니다. 높을수록 더 철저하지만 느리고 비용이 더 듭니다 |
+| `REACT_MAX_TURN_TOKENS` | No | `0` | 긴급 차단기: 단일 ReAct 턴당 최대 누적 토큰(모든 반복에 걸친 프롬프트 + 완료). 기본값 `0` = 무제한. **이것은 일일 토큰 제어용이 아닙니다** — 그 목적으로는 사용자별 `token_quota`를 사용하세요. 이것은 무한 도구 호출 루프에 갇힌 에이전트 같은 극단적인 시나리오에 대한 최후의 안전 장치입니다. 이 한계에 도달하면 작업이 중간에 중단되어 지금까지 소비된 모든 토큰이 낭비되고 불완전한 결과가 반환됩니다. 특정 폭주 에이전트 문제가 있을 때만 `0`이 아닌 값으로 설정하세요 |
 | `REACT_TOOL_SELECTION_THRESHOLD` | No | `12` | 등록된 도구의 총 개수가 이 임계값을 초과하면 각 요청 전에 경량 LLM 호출이 가장 관련성 높은 부분 집합을 선택합니다 |
-| `REACT_TOOL_SELECTION_MAX` | No | `6` | 스마트 선택 후 유지할 최대 도구 개수(`REACT_TOOL_SELECTION_THRESHOLD`를 초과할 때만 적용) |
-| `REACT_SELF_REFLECTION_INTERVAL` | No | `6` | N번의 도구 호출마다 자체 반성 프롬프트를 주입하여 에이전트가 방향을 수정하고 루프를 피하도록 돕습니다 |
-| `REACT_TOOL_OBS_TRUNCATION` | No | `8000` | 최종 답변을 종합할 때 도구 관찰당 최대 문자 수입니다. 더 높은 값은 더 많은 구조화된 데이터(JSON, 테이블)를 보존하지만 더 많은 토큰을 소비합니다 |
-| `REACT_TOOL_RESULT_BUDGET` | No | `40000` | 단일 세션의 모든 도구 결과에 대한 집계 토큰 예산입니다. 도구 결과 토큰의 총합이 이 한계를 초과하면 새 결과는 알림과 함께 잘립니다. 대규모 API 응답(예: 각각 8K를 반환하는 5개 연결기 호출)으로 인한 컨텍스트 팽창을 방지합니다. 한계를 비활성화하려면 `0`으로 설정하세요 |
-| `REACT_COMPLETION_CHECK_SKIP_CHARS` | No | `800` | 에이전트의 최종 답변이 이 많은 문자를 초과할 때 사후 답변 완료 확인 LLM 호출을 건너뜁니다. 길고 상세한 답변은 "뭔가 놓친 게 없나?" 검증 왕복이 필요하지 않습니다. 더 적극적으로 건너뛰려면 낮게 설정하고, 항상 확인을 실행하려면 매우 큰 값으로 설정하세요 |
-| `REACT_CYCLE_DETECTION_THRESHOLD` | No | `2` | 동일한 인수로 같은 도구가 이 횟수만큼 연속으로 호출될 때 결정론적 경고가 주입되어 에이전트에게 다른 접근 방식을 시도하도록 지시합니다. 자체 반성(LLM이 루프를 인식하는 데 의존)과 달리 이것은 우회할 수 없는 해시 기반 확인입니다. DAG 단계에도 적용됩니다 |
-| `REACT_COMPLETION_CHECK_MIN_TOOLS` | No | `3` | 완료 체크리스트가 작동하기 전의 최소 도구 호출 수입니다. 간단한 작업(1-2개 도구 호출)은 불필요한 지연을 피하기 위해 검증을 건너뜁니다. 항상 켜진 검증을 원하면 `1`로 설정하세요. DAG 단계에도 적용됩니다 |
-| `REACT_TURN_PROFILE_ENABLED` | No | `true` | 턴별 단계 수준 타이밍 로그(`memory_load`, `compact`, `tool_schema_build`, `llm_first_token`, `llm_total`, `tool_exec`)를 내보냅니다. 턴당 하나의 구조화된 로그 라인입니다. 프로파일링을 완전히 비활성화하려면(오버헤드 없음) `false`로 설정하세요 |
-| `REACT_PLAN_TOOL_ENABLED` | No | `true` | `update_plan` 할일 도구를 등록하여 에이전트가 다단계 작업 중에 계획 체크리스트를 작성하고 유지하도록 합니다. DAG 단계 에이전트 및 도구가 없는 에이전트의 경우 자동으로 건너뜁니다 |
-| `REACT_PLAN_REMINDER_INTERVAL` | No | `3` | `update_plan` 호출 없이 도구 라운드가 진행되다가 오래된 계획 미리 알림(전체 체크리스트 포함)이 대화에 다시 주입되어 컨텍스트 압축을 거쳐도 계획이 유지되는 횟수입니다 |
-| `REACT_MAX_CONTINUATIONS` | No | `3` | 모델의 답변이 제공자의 출력 토큰 한계(`finish_reason=length`)로 잘릴 때의 최대 연속 라운드 수입니다. 잘린 세그먼트는 에이전트 루프와 스트리밍된 종합 모두에서 하나의 매끄러운 답변으로 연결됩니다 |
-| `REACT_BACKGROUND_TOOLS_ENABLED` | No | `true` | 느린 도구(샌드박스된 python/shell/node 실행)에 `run_in_background` 옵션을 제공합니다. 에이전트는 즉시 작업 ID를 받고 계속 작업하며, 도구가 완료되면 결과가 `<task_notification>` 메시지로 도착합니다 |
-| `REACT_BG_WAIT_TIMEOUT` | No | `300` | 에이전트가 답변을 최종화하려고 할 때 여전히 실행 중인 백그라운드 도구를 기다릴 최대 초 단위 시간입니다. 이 기간 내에 완료되지 않은 작업은 명시적 타임아웃 알림과 함께 취소됩니다 |
-| `DAG_CHECKPOINT_EVIDENCE_CHARS` | No | `4000` | DAG 충돌 복구 체크포인트 파일(`data/dag_checkpoints/`)의 단계별 증거 한계입니다. 단계 요약은 전체 형태로 저장됩니다 |
+| `REACT_TOOL_SELECTION_MAX` | No | `6` | 스마트 선택 후 유지할 최대 도구 개수(도구 개수가 `REACT_TOOL_SELECTION_THRESHOLD`를 초과할 때만 적용) |
+| `REACT_SELF_REFLECTION_INTERVAL` | No | `6` | N개의 도구 호출마다 자기 성찰 프롬프트를 주입하여 에이전트가 방향을 수정하고 루프를 피하도록 돕습니다 |
+| `REACT_TOOL_OBS_TRUNCATION` | No | `8000` | 최종 답변을 종합할 때 도구 관찰당 최대 문자 수입니다. 값이 높을수록 더 많은 구조화된 데이터(JSON, 테이블)를 보존하지만 더 많은 토큰을 사용합니다 |
+| `REACT_TOOL_RESULT_BUDGET` | No | `40000` | 단일 세션의 모든 도구 결과에 대한 집계 토큰 예산입니다. 도구 결과 토큰의 총합이 이 한계를 초과하면 새 결과는 알림과 함께 잘립니다. 대규모 API 응답(예: 각각 8K를 반환하는 5개의 연결기 호출)으로 인한 컨텍스트 팽창을 방지합니다. `0`으로 설정하면 한계를 비활성화합니다 |
+| `REACT_COMPLETION_CHECK_SKIP_CHARS` | No | `800` | 에이전트의 최종 답변이 이 많은 문자를 초과할 때 사후 답변 완료 확인 LLM 호출을 건너뜁니다. 긴 상세 답변은 "뭔가 놓친 게 있나?" 검증 왕복이 필요하지 않습니다. 더 공격적으로 건너뛰려면 낮게 설정하고, 항상 확인을 실행하려면 매우 큰 값으로 설정하세요 |
+| `REACT_CYCLE_DETECTION_THRESHOLD` | No | `2` | 동일한 인수로 같은 도구가 이 횟수만큼 연속으로 호출되면 결정론적 경고가 주입되어 에이전트에게 다른 접근 방식을 시도하도록 지시합니다. 자기 성찰(LLM이 루프를 인식하는 데 의존)과 달리 이것은 우회할 수 없는 해시 기반 확인입니다. DAG 단계에도 적용됩니다 |
+| `REACT_COMPLETION_CHECK_MIN_TOOLS` | No | `3` | 완료 체크리스트가 실행되기 전의 최소 도구 호출 수입니다. 간단한 작업(1-2개 도구 호출)은 불필요한 지연을 피하기 위해 검증을 건너뜁니다. 항상 검증을 실행하려면 `1`로 설정하세요. DAG 단계에도 적용됩니다 |
+| `REACT_TURN_PROFILE_ENABLED` | No | `true` | 턴별 단계 수준 타이밍 로그(`memory_load`, `compact`, `tool_schema_build`, `llm_first_token`, `llm_total`, `tool_exec`)를 내보냅니다. 턴당 하나의 구조화된 로그 라인입니다. 프로파일링을 완전히 비활성화하려면 `false`로 설정하세요(오버헤드 없음) |
+| `REACT_PLAN_TOOL_ENABLED` | No | `true` | 에이전트가 다단계 작업 중에 계획 체크리스트를 작성하고 유지할 수 있도록 `update_plan` 할일 도구를 등록합니다. DAG 단계 에이전트 및 도구가 없는 에이전트의 경우 자동으로 건너뜁니다 |
+| `REACT_PLAN_REMINDER_INTERVAL` | No | `3` | `update_plan` 호출 없이 도구 라운드가 진행되면 오래된 계획 미리 알림(전체 체크리스트 포함)이 대화에 다시 주입되어 컨텍스트 압축을 거쳐도 계획이 유지됩니다 |
+| `REACT_PLAN_REPEAT_THRESHOLD` | No | `4` | 같은 도구를 연속으로 호출하는 라운드(다른 인수 사용) 수가 이에 도달하면 미리 알림이 에이전트에게 무익한 호출을 반복하는 대신 접근 방식을 변경하도록 지시합니다. 정확히 중복된 호출은 순환 감지에 의해 별도로 처리됩니다 |
+| `REACT_PLAN_NUDGE_AFTER` | No | `5` | 계획이 기록되지 않은 도구 라운드 수가 이에 도달하면 일회성 제안이 계획을 작성하도록 제안합니다. 계획 도구가 활성화되어 있을 때만 적용됩니다 |
+| `REACT_MAX_CONTINUATIONS` | No | `3` | 모델의 답변이 제공자의 출력 토큰 한계(`finish_reason=length`)에 의해 잘릴 때의 최대 연속 라운드 수입니다. 잘린 세그먼트는 에이전트 루프와 스트리밍된 종합 모두에서 하나의 매끄러운 답변으로 연결됩니다 |
+| `REACT_BACKGROUND_TOOLS_ENABLED` | No | `true` | 느린 도구(샌드박스 python/shell/node 실행)에 `run_in_background` 옵션을 제공합니다. 에이전트는 즉시 작업 ID를 받고 계속 작업하며, 결과는 도구가 완료될 때 `<task_notification>` 메시지로 도착합니다 |
+| `REACT_BG_WAIT_TIMEOUT` | No | `300` | 에이전트가 답변을 최종화하려고 할 때 여전히 실행 중인 백그라운드 도구를 기다릴 최대 시간(초)입니다. 이 기간 내에 완료되지 않은 작업은 명시적 타임아웃 알림과 함께 취소됩니다 |
+| `DAG_CHECKPOINT_EVIDENCE_CHARS` | No | `4000` | DAG 충돌 복구 체크포인트 파일(`data/dag_checkpoints/`)의 단계별 증거 상한입니다. 단계 요약은 전체적으로 저장됩니다 |
 | `DAG_CHECKPOINT_MAX_AGE_HOURS` | No | `24` | 이보다 오래된 DAG 체크포인트는 로드 시 무시되므로 오래된 충돌 잔여물이 새로운 실행으로 복구되지 않습니다 |
 | `LLM_RATE_LIMIT_PER_USER` | No | `true` | 단일 프로세스 전역 버킷 대신 사용자별 키 지정 속도 제한 버킷을 사용합니다. 한 명의 시끄러운 사용자가 같은 워커의 다른 모든 사용자를 굶주리게 하는 것을 방지합니다. 기본 속도는 버킷당 분당 60개 요청 및 분당 100K 토큰으로 하드코딩되어 있습니다 — 이 설정은 버킷이 공유(전역)인지 분할(사용자별)인지만 제어합니다. 레거시 전역 버킷으로 되돌리려면 `false`로 설정하세요(권장하지 않음) |
 
@@ -172,18 +174,18 @@ OpenAI 및 Gemini의 경우, 제공자가 `reasoning_effort` 수준에 따라 �
 |---|---|---|---|
 | `MAX_CONCURRENCY` | No | `5` | DAG 실행기에서 병렬 처리할 수 있는 최대 단계 수 |
 | `DAG_STEP_MAX_ITERATIONS` | No | `15` | 각 DAG 단계 내에서 도구 호출의 최대 반복 횟수 |
-| `DAG_STEP_TIMEOUT` | No | `600` | 단계 실행 타임아웃(초). 이를 초과하는 단계는 실패로 표시되고 종속 단계는 연쇄적으로 건너뜀 |
-| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | 목표 달성 실패 시 자동 재계획 시도의 최대 횟수. 사용자 중단(주입)은 무제한이며 이 예산에 포함되지 않음 |
-| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | 에이전트가 목표를 **도달 불가능**하다고 판단할 때만 적용됨(불가능한 요청, 누락된 기능, 사용 불가능한 리소스): 이 확실성 이상에서 재시도 중단. 미완성 또는 절반만 완성된 결과물은 항상 신뢰도와 관계없이 재계획되며, `DAG_MAX_REPLAN_ROUNDS`만 이러한 재시도를 제한함 |
-| `DAG_VERIFY_TRUNCATION` | No | `2000` | 단계 검증 LLM에 전송되는 단계 출력의 최대 문자 수(품질 판단용) |
-| `DAG_ANALYZER_TRUNCATION` | No | `10000` | 실행 후 분석기 형식 지정 시 단계 결과당 최대 문자 수 |
-| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | 단계당 보존되는 원본 도구 출력(웹 페칭, 검색 결과, 파일 읽기)의 최대 문자 수로, 권위 있는 "소스 증거"로 사용됨. 이는 분석기 및 최종 합성에 단계의 요약과 함께 제공되므로 답변의 사실적 주장(합계, 열거, 심각도)을 요약이 자동으로 삭제하거나 잘못 표시했을 수 있는 항목 대신 소스에 대해 검증할 수 있음. 증거 캡처를 비활성화하려면 `0`으로 설정 |
-| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | 재계획 컨텍스트 구축 시 가장 최근 라운드의 단계 결과당 최대 문자 수 |
-| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | 재계획 컨텍스트 구축 시 이전 라운드의 단계 결과당 최대 문자 수. 이전 라운드는 컨텍스트 절약을 위해 더 적극적으로 잘림 |
+| `DAG_STEP_TIMEOUT` | No | `600` | 단계 실행 타임아웃(초). 이를 초과하는 단계는 실패로 표시되고 종속 단계는 계단식으로 건너뜀 |
+| `DAG_MAX_REPLAN_ROUNDS` | No | `3` | 목표를 달성하지 못했을 때 자동 재계획 시도의 최대 횟수. 사용자 중단(주입)은 무제한이며 이 예산에 포함되지 않음 |
+| `DAG_REPLAN_STOP_CONFIDENCE` | No | `0.8` | 에이전트가 목표를 **도달 불가능**하다고 판단할 때만 적용됨(불가능한 요청, 기능 부족, 리소스 손상): 이 확실성 이상에서 재시도 중단. 미완성 또는 부분 완성된 결과물은 신뢰도와 관계없이 항상 재계획됨 — `DAG_MAX_REPLAN_ROUNDS`만 이러한 재시도를 제한함 |
+| `DAG_VERIFY_TRUNCATION` | No | `2000` | 단계 검증 LLM으로 전송되는 단계 출력의 최대 문자 수(품질 판단용) |
+| `DAG_ANALYZER_TRUNCATION` | No | `10000` | 실행 후 분석기로 형식화할 때 단계 결과당 최대 문자 수 |
+| `DAG_STEP_EVIDENCE_CHARS` | No | `16000` | 단계당 보유되는 원본 도구 출력(웹 페칭, 검색 결과, 파일 읽기)의 최대 문자 수로서 권위 있는 "원본 증거". 이는 분석기 및 최종 합성과 함께 단계의 자체 요약으로 공급되므로 답변의 사실적 주장(합계, 열거, 심각도)을 요약이 자동으로 삭제하거나 잘못 표시했을 수 있는 항목 대신 원본에 대해 검증할 수 있음. 증거 캡처를 비활성화하려면 `0`으로 설정 |
+| `DAG_REPLAN_RECENT_TRUNCATION` | No | `500` | 재계획 컨텍스트를 구축할 때 가장 최근 라운드의 단계 결과당 최대 문자 수 |
+| `DAG_REPLAN_OLDER_TRUNCATION` | No | `200` | 재계획 컨텍스트를 구축할 때 이전 라운드의 단계 결과당 최대 문자 수. 이전 라운드는 컨텍스트를 절약하기 위해 더 적극적으로 잘림 |
 | `DAG_TOOL_CACHE` | No | `true` | 단일 DAG 실행 내에서 동일한 도구 호출 캐싱. `cacheable`로 명시적으로 표시된 도구(검색, 지식 검색 같은 읽기 전용 도구)만 캐시됨. 캐싱을 완전히 비활성화하려면 `false`로 설정 |
-| `DAG_STEP_VERIFICATION` | No | `false` | 각 DAG 단계 후 일반적인 LLM 기반 품질 검사. 실패 시 단계가 피드백과 함께 한 번 재시도됨. **기본값 해제** — 모든 단계에서 지연 시간을 추가하며 거의 필요하지 않음. 대부분의 단계 출력은 재검사 없이 허용됨. 단계 결과 품질이 낮은 경우가 자주 관찰될 때만 사용 |
-| `DAG_CITATION_VERIFICATION` | No | `true` | 전문 분야 단계에 대한 인용 정확성 검사. **전제 조건**: 쿼리가 먼저 LLM 도메인 분류기에 의해 전문 분야로 분류되어야 함(`ESCALATION_DOMAINS` 참조). 도메인이 감지되고 이 플래그가 `true`일 때, 완료된 각 단계는 법률/의료/금융 인용에 대해 스캔되고 정확성이 검증됨 — 할루시네이션된 문서 번호, 위조된 사건 참조, 잘못된 규제 인용을 포착함. 도메인 분류가 `null`을 반환하면(일반 쿼리) 이 설정과 관계없이 인용 검증이 실행되지 않음 |
-| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | 인용 검증 프롬프트에 전송되는 단계 결과의 최대 문자 수 |
+| `DAG_STEP_VERIFICATION` | No | `false` | 각 DAG 단계 후 일반 LLM 기반 품질 검사. 실패 시 단계는 피드백과 함께 한 번 재시도됨. **기본값 해제** — 모든 단계에서 지연을 추가하며 거의 필요하지 않음. 대부분의 단계 출력은 재검사 없이 허용됨. 단계 결과 품질이 낮은 경우가 자주 관찰될 때만 사용 |
+| `DAG_CITATION_VERIFICATION` | No | `true` | 전문 분야 단계를 위한 인용 정확성 검사. **전제 조건**: 쿼리는 먼저 LLM 도메인 분류기에 의해 전문 분야로 분류되어야 함(`ESCALATION_DOMAINS` 참조). 도메인이 감지되고 이 플래그가 `true`일 때, 완료된 각 단계는 법률/의료/금융 인용에 대해 스캔되고 정확성이 검증됨 — 환각된 기사 번호, 위조된 사건 참조, 잘못된 규제 인용을 포착함. 도메인 분류가 `null`을 반환하면(일반 쿼리), 이 설정과 관계없이 인용 검증이 실행되지 않음 |
+| `DAG_CITATION_VERIFY_TRUNCATION` | No | `6000` | 인용 검증 프롬프트로 전송되는 단계 결과의 최대 문자 수 |
 
 ### 도메인 분류
 
@@ -221,13 +223,11 @@ ReAct 및 DAG 실행 **이전**에 실행되는 독립적인 LLM 기반 도메�
 | `WORKSPACE_PREVIEW_CHARS` | 아니오 | `2000` | 잘린 워크스페이스 참조에 포함할 미리보기 문자 수 |
 | `WORKSPACE_CLEANUP_MAX_HOURS` | 아니오 | `72` | 이 시간보다 오래된 워크스페이스 파일은 자동 정리 대상입니다 |
 
-### 시스템
+### System
 
-| 변수 | 필수 | 기본값 | 설명 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **제거됨.** 이전에는 시스템 프롬프트에 대한 컨텍스트 예산에서 고정 4K 예약을 뺐습니다. ContextGuard가 이미 메시지 목록 토큰을 추정할 때 시스템 프롬프트를 포함하기 때문에 이중 계산이 발생했습니다. 이제 예산 공식은 단순히 `context_size - max_output_tokens`이며, 시스템 프롬프트의 실제 크기는 동적으로 계산됩니다 |
-
----
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **제거됨.** 이전에는 시스템 프롬프트를 위해 컨텍스트 예산에서 고정 4K를 차감했습니다. ContextGuard가 메시지 목록 토큰을 추정할 때 이미 시스템 프롬프트를 포함하므로 이중 계산이 발생했습니다. 이제 예산 공식은 `(context_size - max_output_tokens) × 0.92`입니다(여백은 토큰 추정 오류를 흡수함). 시스템 프롬프트의 실제 크기는 동적으로 계산됩니다 |
 
 ## 웹 도구 (선택사항)
 
@@ -389,25 +389,26 @@ Reranker는 검색된 문서를 다시 점수 매겨 관련성을 개선합니�
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | No | `sqlite+aiosqlite:///./data/fim_one.db` | 데이터베이스 연결 문자열. **SQLite** (설정 불필요): `sqlite+aiosqlite:///./data/fim_one.db`. **PostgreSQL** (프로덕션): `postgresql+asyncpg://user:pass@localhost:5432/fim_one`. Docker Compose는 PostgreSQL을 자동으로 설정합니다. |
-| `JWT_SECRET_KEY` | No | `CHANGE_ME` | JWT 토큰 서명용 비밀 키. 플레이스홀더 값 `CHANGE_ME` (또는 기타 레거시 기본값)는 첫 시작 시 안전한 256비트 난수 키를 자동 생성하고 `.env`에 기록합니다. 프로덕션에서는 명시적으로 설정하여 재시작 및 복제본 간에 토큰이 유효하게 유지되도록 하세요. |
-| `FIM_BCRYPT_COST` | No | `12` | 비밀번호 해싱을 위한 bcrypt 작업 계수(4-31로 제한됨). 기본값 12는 최신 CPU에서 해시당 약 200ms 소요됩니다. 약한 하드웨어에서는 낮추고, 보안 강화 배포에서는 높이세요. |
-| `CORS_ORIGINS` | No | — | 기본 localhost 항목 외에 허용되는 추가 CORS 원본의 쉼표 구분 목록. 프론트엔드가 비localhost 도메인에서 실행될 때 필수입니다(예: `https://app.example.com`). |
+| `JWT_SECRET_KEY` | No | `CHANGE_ME` | JWT 토큰 서명용 비밀 키. 플레이스홀더 값 `CHANGE_ME` (또는 기타 레거시 기본값)는 첫 시작 시 안전한 256비트 난수 키를 자동으로 생성하고 `.env`에 기록합니다. 프로덕션에서는 명시적으로 설정하여 재시작 및 복제본 간에 토큰이 유효하게 유지되도록 하세요. |
+| `FIM_BCRYPT_COST` | No | `12` | 비밀번호 해싱을 위한 bcrypt 작업 계수, 4-31로 제한됩니다. 기본값 12는 최신 CPU에서 해시당 약 200ms가 소요됩니다. 약한 하드웨어에서는 낮추고, 보안 강화 배포에서는 높이세요. |
+| `CORS_ORIGINS` | No | — | 기본 localhost 항목 외에 허용되는 추가 CORS 원본의 쉼표 구분 목록. 프론트엔드가 비localhost 도메인에서 실행될 때 필수입니다 (예: `https://app.example.com`). |
 | `UPLOADS_DIR` | No | `./uploads` | 업로드된 파일을 위한 디렉토리 |
-| `MAX_UPLOAD_SIZE_MB` | No | `50` | 최대 파일 업로드 크기(메가바이트 단위, 백엔드 적용) |
+| `EXPORT_FONT_DIR` | No | *(자동 감지)* | PDF 내보내기용 `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf`를 포함하는 디렉토리. `python scripts/fetch_export_fonts.py`로 가져오세요. Docker 이미지에는 이미 포함되어 있습니다. 임베드 가능한 TrueType CJK 글꼴이 없으면 PDF 내보내기는 임베드되지 않은 CID 글꼴로 폴백되어 간격이 저하되고 굵게 표시가 없습니다. |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | 최대 파일 업로드 크기(메가바이트 단위, 백엔드 강제 적용) |
 | `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | 프론트엔드 UI에 표시되는 최대 파일 업로드 크기. **빌드 타임 변수** — `MAX_UPLOAD_SIZE_MB`와 일치해야 합니다. |
-| `MCP_SERVERS` | No | — | MCP 서버 설정의 JSON 배열(`uv sync --extra mcp` 필요) |
+| `MCP_SERVERS` | No | — | MCP 서버 구성의 JSON 배열 (`uv sync --extra mcp` 필요) |
 | `ALLOW_STDIO_MCP` | No | `false` | stdio MCP 서버 허용. 신뢰할 수 있는 로컬 배포에서만 `true`로 설정하세요 |
-| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 서버에 허용되는 기본 명령어의 쉼표 구분 목록. `ALLOW_STDIO_MCP=true`일 때만 적용됩니다 |
-| `LOG_LEVEL` | No | `INFO` | 로깅 레벨: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `REDIS_URL` | No | — | 워커 간 인터럽트 릴레이를 위한 Redis 연결 URL. **`WORKERS>1`일 때 필수** — 없으면 스트림 중 인터럽트/주입 요청이 다른 워커에 도달하여 자동으로 실패할 수 있습니다. Docker Compose에서 자동 설정됩니다. |
-| `WORKERS` | No | `1` | Uvicorn 워커 프로세스. `1`은 안전하며 외부 서비스가 필요 없습니다. 프로덕션 멀티워커의 경우 PostgreSQL을 사용하세요(SQLite는 단일 쓰기). SQLite는 가벼운 로드 하에서 로컬 개발에 적합합니다. 인증, OAuth, 파일 작업은 완전히 멀티워커 안전합니다(JWT 기반). Docker Compose는 PostgreSQL과 Redis를 자동으로 설정합니다. |
+| `ALLOWED_STDIO_COMMANDS` | No | `npx,uvx,node,python,python3,deno,bun` | stdio MCP 서버에 허용되는 기본 명령의 쉼표 구분 목록. `ALLOW_STDIO_MCP=true`일 때만 유효합니다 |
+| `LOG_LEVEL` | No | `INFO` | 로깅 수준: `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
+| `REDIS_URL` | No | — | 크로스 워커 인터럽트 릴레이용 Redis 연결 URL. **`WORKERS>1`일 때 필수** — 없으면 스트림 중 인터럽트/주입 요청이 다른 워커에 도달하여 자동으로 실패할 수 있습니다. Docker Compose에서 자동으로 구성됩니다. |
+| `WORKERS` | No | `1` | Uvicorn 워커 프로세스. `1`은 안전하며 외부 서비스가 필요하지 않습니다. 프로덕션 멀티 워커의 경우 PostgreSQL을 사용하세요 (SQLite는 단일 쓰기). SQLite는 가벼운 부하 하에서 로컬 개발에 적합합니다. 인증, OAuth 및 파일 작업은 완전히 멀티 워커 안전합니다 (JWT 기반). Docker Compose는 PostgreSQL과 Redis를 자동으로 구성합니다. |
 
 <Warning>
-**멀티워커 체크리스트** (`WORKERS>1`):
-- **중지(스트림 중단)** — 항상 작동하며, 추가 설정이 필요 없습니다(신호는 동일한 TCP 연결을 통해 이동).
-- **주입(스트림 중 후속)** — **`REDIS_URL` 필수**. Redis 없으면 주입 요청이 실행 중인 실행에 대한 지식이 없는 다른 워커에 도달하여 자동으로 실패합니다.
-- **프로덕션**: PostgreSQL(`DATABASE_URL`) 사용. SQLite의 단일 쓰기 잠금은 동시 쓰기 시 경합을 유발할 수 있습니다.
-- **로컬 개발**: SQLite + 멀티워커는 가벼운 사용에 적합합니다. 주입 기능을 사용하면 `REDIS_URL`을 추가하세요.
+**멀티 워커 체크리스트** (`WORKERS>1`):
+- **중지 (스트림 중단)** — 항상 작동하며 추가 구성이 필요하지 않습니다 (신호는 동일한 TCP 연결을 통해 이동).
+- **주입 (스트림 중 후속)** — **`REDIS_URL` 필수**. Redis 없으면 주입 요청이 실행 중인 실행에 대한 지식이 없는 다른 워커에 도달하여 자동으로 실패할 수 있습니다.
+- **프로덕션**: PostgreSQL (`DATABASE_URL`)을 사용하세요. SQLite의 단일 쓰기 잠금은 동시 쓰기 시 경합을 유발할 수 있습니다.
+- **로컬 개발**: SQLite + 멀티 워커는 가벼운 사용에 적합합니다. 주입 기능을 사용하면 `REDIS_URL`을 추가하세요.
 </Warning>
 
 ## 워크플로우 실행 보관

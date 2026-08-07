@@ -242,13 +242,14 @@ def get_react_max_turn_tokens() -> int:
 def _compute_input_budget(context_size: int, max_output: int) -> int:
     """Compute usable input token budget from model specs.
 
-    Formula: ``context_size - max_output_tokens``.
-    The system prompt is NOT subtracted here — ContextGuard accounts for
-    it dynamically when estimating message list tokens.
-    Ensures the budget is at least 4 000 tokens.
+    Delegates to :func:`fim_one.core.memory.context_guard.compute_input_budget`
+    (the single authority for the budget formula, shared with the DAG
+    executor's model-aware guard): ``(context_size - max_output) * 0.92``
+    with a 4 000-token floor.
     """
-    budget = context_size - max_output
-    return max(budget, 4_000)
+    from fim_one.core.memory.context_guard import compute_input_budget
+
+    return compute_input_budget(context_size, max_output)
 
 
 def get_context_budget() -> int:
@@ -742,6 +743,68 @@ async def _get_context_budget_for_role(
 async def get_effective_context_budget(db: "AsyncSession") -> int:
     """Input token budget for the general model: DB context_size -> ENV."""
     return await _get_context_budget_for_role(db, "general", get_context_budget)
+
+
+async def _fast_input_capacity(db: "AsyncSession") -> int:
+    """Raw input capacity of the fast tier: ``context_size - max_output``.
+
+    Unlike the budget helpers this applies NO safety factor — it is the
+    hard API limit used by :func:`warn_on_context_budget_mismatch` to
+    validate configuration.  Resolution order mirrors
+    :func:`get_effective_fast_context_budget`: DB role=fast → DB
+    role=general → ENV.
+    """
+    from sqlalchemy import select
+    from fim_one.db.models.model_config import ModelConfig as ModelConfigORM
+
+    for role in ("fast", "general"):
+        stmt = (
+            select(ModelConfigORM)
+            .where(
+                ModelConfigORM.user_id == None,  # noqa: E711
+                ModelConfigORM.role == role,
+                ModelConfigORM.is_active == True,  # noqa: E712
+            )
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        cfg = result.scalar_one_or_none()
+        if cfg is not None and cfg.context_size is not None:
+            max_out = cfg.max_output_tokens or _main_max_output()
+            return int(cfg.context_size) - int(max_out)
+    ctx_raw = (
+        os.environ.get("FAST_LLM_CONTEXT_SIZE", "")
+        or os.environ.get("LLM_CONTEXT_SIZE", "128000")
+    )
+    return int(ctx_raw) - _fast_max_output()
+
+
+async def warn_on_context_budget_mismatch(db: "AsyncSession") -> None:
+    """Warn when the fast model cannot hold the general input budget.
+
+    The ReAct loop sends the SAME message list — compacted against the
+    general model's input budget — to the fast tool/compaction model.
+    When the fast model's raw input capacity (``context_size -
+    max_output_tokens``) is smaller than that budget, long conversations
+    that pass the ContextGuard check still overflow the fast model with
+    an HTTP 400, and the compaction summariser itself degrades to lossy
+    truncation.  Called once at app startup; logging only, never raises.
+    """
+    general_budget = await get_effective_context_budget(db)
+    fast_capacity = await _fast_input_capacity(db)
+    if fast_capacity < general_budget:
+        logger.warning(
+            "Model window misconfiguration: fast model input capacity "
+            "(%d tokens = context_size - max_output_tokens) is smaller "
+            "than the general model's input budget (%d tokens). "
+            "Conversations that fit the general budget will overflow the "
+            "fast tool/compaction model with context-length errors, and "
+            "LLM compaction will degrade to lossy truncation. Raise the "
+            "fast model's context_size (or lower the general model's) in "
+            "Settings → Models so that fast capacity >= general budget.",
+            fast_capacity,
+            general_budget,
+        )
 
 
 async def get_effective_fast_context_budget(db: "AsyncSession") -> int:

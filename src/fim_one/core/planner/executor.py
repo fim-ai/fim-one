@@ -16,7 +16,7 @@ from typing import Any
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.types import Action
-from fim_one.core.memory.context_guard import ContextGuard
+from fim_one.core.memory.context_guard import ContextGuard, compute_input_budget
 from fim_one.core.model.base import BaseLLM
 from fim_one.core.model.registry import ModelRegistry
 from fim_one.core.model.usage import UsageSummary
@@ -462,11 +462,11 @@ class DAGExecutor:
         If the LLM does not expose ``context_size``, falls back to the
         existing global ``ContextGuard`` passed at construction time.
 
-        The budget formula mirrors ``_compute_input_budget`` from
-        ``fim_one.web.deps``:
-        ``context_size - max_output_tokens``.
-        No static system_prompt_reserve is subtracted — ContextGuard
-        accounts for the system prompt dynamically when estimating tokens.
+        Uses the shared :func:`compute_input_budget` formula (also behind
+        ``fim_one.web.deps._compute_input_budget``), which applies a safety
+        margin below the API hard limit.  No static system_prompt_reserve
+        is subtracted — ContextGuard accounts for the system prompt
+        dynamically when estimating tokens.
         """
         if self._context_guard is None:
             return None
@@ -480,8 +480,7 @@ class DAGExecutor:
         raw_max_output = getattr(llm, "_default_max_tokens", None)
         max_output = raw_max_output if isinstance(raw_max_output, int) else 64000
 
-        budget = model_ctx - max_output
-        budget = max(budget, 4000)
+        budget = compute_input_budget(model_ctx, max_output)
 
         # If the computed budget matches the existing guard's default, reuse it.
         if budget == self._context_guard._default_budget:

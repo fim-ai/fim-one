@@ -127,6 +127,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
 
     await init_db()
 
+    # Config sanity check (non-fatal): the fast tool/compaction model must
+    # be able to hold a message list compacted against the general input
+    # budget, or long conversations overflow it with HTTP 400s.
+    from fim_one.db import create_session
+    from fim_one.web.deps import warn_on_context_budget_mismatch
+
+    try:
+        _budget_db = create_session()
+        try:
+            await warn_on_context_budget_mismatch(_budget_db)
+        finally:
+            await _budget_db.close()
+    except Exception:
+        logger.exception("Context budget sanity check failed (non-fatal)")
+
     # Bridge the core ``emit_inline_confirmation`` hook to the chat SSE
     # stream.  Must run before any agent turn — any tool flagged
     # requires_confirmation would otherwise skip the inline push.
