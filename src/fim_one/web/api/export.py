@@ -22,6 +22,13 @@ from sqlalchemy.orm import selectinload
 from fim_one.db import get_session
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
+from fim_one.web.export_fonts import (
+    DOCX_LATIN_FONT,
+    DOCX_MONO_FONT,
+    PdfFonts,
+    docx_east_asian_font,
+    resolve_pdf_fonts,
+)
 from fim_one.db.models import Conversation, Message, User
 
 router = APIRouter(prefix="/api/conversations", tags=["export"])
@@ -748,6 +755,31 @@ def _render_txt_dag_details(
 
 
 # ---------------------------------------------------------------------------
+# Shared typography constants
+# ---------------------------------------------------------------------------
+
+#: Scripts whose text has no inter-word spaces and therefore needs ReportLab's
+#: character-level ``wordWrap="CJK"``. Latin-only paragraphs keep the default
+#: word-level wrapping so English is not broken mid-word.
+_CJK_RE = re.compile(
+    "[ᄀ-ᇿ⺀-〿぀-ヿ㄰-㆏㐀-䶿"
+    "一-鿿가-힯豈-﫿︰-﹏＀-￯]"
+)
+
+
+def _has_cjk(text: str) -> bool:
+    return bool(_CJK_RE.search(text))
+
+
+# Palette shared by the PDF and DOCX renderers (matches the portal's amber UI).
+_INK = "#1F1B16"
+_MUTED = "#6B5D4F"
+_ACCENT = "#946B2D"
+_RULE = "#C8B898"
+_CODE_BG = "#F8F4ED"
+
+
+# ---------------------------------------------------------------------------
 # Markdown -> HTML helper (shared by DOCX and PDF renderers)
 # ---------------------------------------------------------------------------
 
@@ -760,6 +792,143 @@ def _md_to_html(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# DOCX styling
+# ---------------------------------------------------------------------------
+
+#: Paragraph style carrying the "User" / "Assistant" role labels. Kept out of
+#: the Heading ladder so that headings written by the assistant have room
+#: beneath it without inverting the hierarchy.
+_DOCX_ROLE_STYLE = "FIM Role"
+
+#: Heading level the assistant's own markdown headings start at. Levels 1-2 are
+#: reserved for the document title and the turn separators.
+_DOCX_CONTENT_HEADING_OFFSET = 2
+
+#: ``(point size, colour)`` per Word Heading level, 1-6.
+_DOCX_HEADING_SCALE: dict[int, tuple[float, str]] = {
+    1: (20, _ACCENT),
+    2: (15, _ACCENT),
+    3: (13.5, _INK),
+    4: (12, _INK),
+    5: (11.5, _INK),
+    6: (11, _INK),
+}
+
+
+#: Header-row fill for DOCX tables, matching the PDF renderer.
+_TABLE_HEADER_BG = "F5EDDE"
+
+
+def _shade_cell(cell: Any, hex_fill: str) -> None:
+    """Apply a solid background fill to a table cell."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hex_fill)
+    cell._tc.get_or_add_tcPr().append(shd)
+
+
+def _hex_to_rgb(value: str) -> Any:
+    from docx.shared import RGBColor
+
+    return RGBColor.from_string(value.lstrip("#").upper())
+
+
+def _apply_rpr_fonts(rpr: Any, latin: str, east_asian: str) -> None:
+    """Stamp both the Latin and the East Asian font slot on an ``rPr``.
+
+    Word keeps separate font slots per script.  python-docx writes only the
+    Latin ones, so CJK text silently falls through to the theme font — a
+    family that often has no bold face, which is why mixed Latin/CJK bold runs
+    come out half-bold.
+    """
+    from docx.oxml.ns import qn
+
+    rfonts = rpr.get_or_add_rFonts()
+    rfonts.set(qn("w:ascii"), latin)
+    rfonts.set(qn("w:hAnsi"), latin)
+    rfonts.set(qn("w:eastAsia"), east_asian)
+    rfonts.set(qn("w:cs"), latin)
+
+
+def _set_docx_default_fonts(doc: Any, latin: str, east_asian: str) -> None:
+    """Set the document-wide default fonts (``w:docDefaults``)."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    element = doc.styles.element
+    doc_defaults = element.find(qn("w:docDefaults"))
+    if doc_defaults is None:
+        doc_defaults = OxmlElement("w:docDefaults")
+        element.insert(0, doc_defaults)
+    rpr_default = doc_defaults.find(qn("w:rPrDefault"))
+    if rpr_default is None:
+        rpr_default = OxmlElement("w:rPrDefault")
+        doc_defaults.append(rpr_default)
+    rpr = rpr_default.find(qn("w:rPr"))
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+        rpr_default.append(rpr)
+    _apply_rpr_fonts(rpr, latin, east_asian)
+
+
+def _configure_docx_styles(doc: Any, locale: str) -> None:
+    """Install the export's typographic scale on a fresh document.
+
+    python-docx starts from Word's default template: 11pt Calibri body, a
+    Heading ladder whose sizes barely separate (16/13/12pt) and no East Asian
+    font anywhere.  This replaces it with an explicit five-tier scale and
+    pins both font slots on every style the exporter uses.
+    """
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.shared import Pt
+
+    east_asian = docx_east_asian_font(locale)
+
+    _set_docx_default_fonts(doc, DOCX_LATIN_FONT, east_asian)
+
+    normal = doc.styles["Normal"]
+    normal.font.size = Pt(10.5)
+    normal.font.color.rgb = _hex_to_rgb(_INK)
+    _apply_rpr_fonts(normal.element.get_or_add_rPr(), DOCX_LATIN_FONT, east_asian)
+    fmt = normal.paragraph_format
+    fmt.line_spacing = 1.4
+    fmt.space_after = Pt(6)
+
+    for level, (size, color) in _DOCX_HEADING_SCALE.items():
+        style = doc.styles[f"Heading {level}"]
+        style.font.size = Pt(size)
+        style.font.bold = True
+        # Word's built-in Heading 4 is italic, which reads as a slanted synthetic
+        # face for CJK. Weight and size carry the hierarchy instead.
+        style.font.italic = False
+        style.font.color.rgb = _hex_to_rgb(color)
+        _apply_rpr_fonts(style.element.get_or_add_rPr(), DOCX_LATIN_FONT, east_asian)
+        style.paragraph_format.space_before = Pt(max(6.0, size * 0.8))
+        style.paragraph_format.space_after = Pt(max(4.0, size * 0.35))
+
+    try:
+        role = doc.styles[_DOCX_ROLE_STYLE]
+    except KeyError:
+        role = doc.styles.add_style(_DOCX_ROLE_STYLE, WD_STYLE_TYPE.PARAGRAPH)
+    role.base_style = doc.styles["Normal"]
+    role.font.size = Pt(10)
+    role.font.bold = True
+    role.font.color.rgb = _hex_to_rgb(_ACCENT)
+    _apply_rpr_fonts(role.element.get_or_add_rPr(), DOCX_LATIN_FONT, east_asian)
+    role.paragraph_format.space_before = Pt(10)
+    role.paragraph_format.space_after = Pt(2)
+
+
+def _docx_content_heading_level(markdown_level: int) -> int:
+    """Map an ``<h1>``-``<h6>`` from message content onto a Word heading level."""
+    return min(markdown_level + _DOCX_CONTENT_HEADING_OFFSET, 6)
+
+
+# ---------------------------------------------------------------------------
 # DOCX markdown renderer
 # ---------------------------------------------------------------------------
 
@@ -767,9 +936,10 @@ def _md_to_html(text: str) -> str:
 class _DocxMarkdownRenderer(HTMLParser):
     """Parse HTML (converted from Markdown) and emit python-docx elements."""
 
-    def __init__(self, doc: Any) -> None:
+    def __init__(self, doc: Any, east_asian_font: str) -> None:
         super().__init__()
         self._doc = doc
+        self._east_asian_font = east_asian_font
         self._paragraph: Any | None = None
         self._bold = False
         self._italic = False
@@ -806,9 +976,14 @@ class _DocxMarkdownRenderer(HTMLParser):
             run.bold = True
         if self._italic:
             run.italic = True
+        if self._in_blockquote:
+            # Colour, not italics: synthetic obliques look wrong on CJK glyphs.
+            run.font.color.rgb = RGBColor.from_string(_MUTED.lstrip("#").upper())
         if self._code_inline:
-            run.font.name = "Courier New"
-            run.font.size = Pt(9)
+            run.font.size = Pt(9.5)
+            _apply_rpr_fonts(
+                run._element.get_or_add_rPr(), DOCX_MONO_FONT, self._east_asian_font
+            )
         if self._href:
             run.underline = True
             run.font.color.rgb = RGBColor(0x94, 0x6B, 0x2D)
@@ -827,8 +1002,7 @@ class _DocxMarkdownRenderer(HTMLParser):
             if self._in_blockquote:
                 from docx.shared import Inches
 
-                self._paragraph.paragraph_format.left_indent = Inches(0.5)
-                self._italic = True
+                self._paragraph.paragraph_format.left_indent = Inches(0.3)
         elif tag in ("strong", "b"):
             self._bold = True
         elif tag in ("em", "i"):
@@ -886,12 +1060,13 @@ class _DocxMarkdownRenderer(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
-            self._doc.add_heading(self._heading_text, level=self._heading_level)
+            self._doc.add_heading(
+                self._heading_text,
+                level=_docx_content_heading_level(self._heading_level),
+            )
             self._heading_level = 0
             self._heading_text = ""
         elif tag == "p":
-            if self._in_blockquote:
-                self._italic = False
             self._finish_paragraph()
         elif tag in ("strong", "b"):
             self._bold = False
@@ -902,7 +1077,7 @@ class _DocxMarkdownRenderer(HTMLParser):
                 self._code_inline = False
         elif tag == "pre":
             self._in_pre = False
-            _add_monospace_paragraph(self._doc, self._pre_text)
+            _add_monospace_paragraph(self._doc, self._pre_text, self._east_asian_font)
             self._pre_text = ""
         elif tag == "ul":
             if self._list_stack:
@@ -953,6 +1128,8 @@ class _DocxMarkdownRenderer(HTMLParser):
                 self._add_run(data)
 
     def _emit_table(self) -> None:
+        from docx.shared import Pt
+
         if not self._table_rows:
             return
         n_cols = max(len(r) for r in self._table_rows) if self._table_rows else 1
@@ -967,6 +1144,7 @@ class _DocxMarkdownRenderer(HTMLParser):
                 cell.text = ""
                 run = cell.paragraphs[0].add_run(cell_text)
                 run.bold = True
+                _shade_cell(cell, _TABLE_HEADER_BG)
 
         # Data rows
         for r_idx, row in enumerate(self._table_rows[1:], 1):
@@ -974,11 +1152,20 @@ class _DocxMarkdownRenderer(HTMLParser):
                 if c_idx < n_cols:
                     table.rows[r_idx].cells[c_idx].text = cell_text
 
+        # The body line spacing is tuned for prose; inside cells it just makes
+        # rows tall and ragged.
+        for row_cells in table.rows:
+            for cell in row_cells.cells:
+                for para in cell.paragraphs:
+                    para.paragraph_format.line_spacing = 1.15
+                    para.paragraph_format.space_after = Pt(2)
+                    para.paragraph_format.space_before = Pt(2)
 
-def _md_to_docx(doc: Any, text: str) -> None:
+
+def _md_to_docx(doc: Any, text: str, east_asian_font: str = "") -> None:
     """Convert markdown text to DOCX elements via HTML intermediate."""
     html = _md_to_html(text)
-    renderer = _DocxMarkdownRenderer(doc)
+    renderer = _DocxMarkdownRenderer(doc, east_asian_font or docx_east_asian_font("en"))
     renderer.feed(html)
     renderer.close()
 
@@ -1005,12 +1192,8 @@ def _render_docx(conv: Conversation, messages: list[Message], detail: DetailLeve
     doc = Document()
     effective_mode = _resolve_effective_mode(conv, messages)
 
-    # Override default blue heading theme to match amber UI palette
-    from docx.shared import RGBColor as _RGB
-    _heading_color = _RGB(0x94, 0x6B, 0x2D)  # amber, matches UI primary
-    for level in range(1, 7):
-        style = doc.styles[f"Heading {level}"]
-        style.font.color.rgb = _heading_color
+    _configure_docx_styles(doc, locale)
+    east_asian = docx_east_asian_font(locale)
 
     title = _strip_emoji(conv.title or _t("untitled", locale))
 
@@ -1022,7 +1205,9 @@ def _render_docx(conv: Conversation, messages: list[Message], detail: DetailLeve
     meta_text += f"  |  {_t('created', locale)}: {_format_date(conv.created_at, tz_name)}"
     if detail == DetailLevel.FULL and conv.total_tokens:
         meta_text += f"  |  {_t('total_tokens', locale)}: {conv.total_tokens:,}"
-    doc.add_paragraph(meta_text)
+    meta_para = doc.add_paragraph(meta_text)
+    meta_para.runs[0].font.size = Pt(9)
+    meta_para.runs[0].font.color.rgb = _hex_to_rgb(_MUTED)
 
     # Turns
     turns = _pair_messages(messages)
@@ -1031,14 +1216,14 @@ def _render_docx(conv: Conversation, messages: list[Message], detail: DetailLeve
 
         user_msg: Message | None = turn.get("user")
         if user_msg:
-            doc.add_heading(_t("user", locale), level=3)
+            doc.add_paragraph(_t("user", locale), style=_DOCX_ROLE_STYLE)
             doc.add_paragraph(_strip_emoji(_strip_attachments(user_msg.content or "")))
 
         asst_msg: Message | None = turn.get("assistant")
         if asst_msg is None:
             continue
 
-        doc.add_heading(_t("assistant", locale), level=3)
+        doc.add_paragraph(_t("assistant", locale), style=_DOCX_ROLE_STYLE)
 
         if detail == DetailLevel.FULL:
             events = _extract_sse_events(asst_msg)
@@ -1054,14 +1239,14 @@ def _render_docx(conv: Conversation, messages: list[Message], detail: DetailLeve
         if not answer and asst_msg.metadata_:
             answer = asst_msg.metadata_.get("answer", "")
         if answer:
-            _md_to_docx(doc, answer)
+            _md_to_docx(doc, answer, east_asian)
 
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
 
 
-def _add_monospace_paragraph(doc: Any, text: str) -> None:
+def _add_monospace_paragraph(doc: Any, text: str, east_asian_font: str = "") -> None:
     """Add a paragraph with monospace font for code-like content."""
     try:
         from docx.shared import Pt
@@ -1070,9 +1255,14 @@ def _add_monospace_paragraph(doc: Any, text: str) -> None:
         return
 
     para = doc.add_paragraph()
+    para.paragraph_format.line_spacing = 1.15
     run = para.add_run(text)
-    run.font.name = "Courier New"
     run.font.size = Pt(9)
+    _apply_rpr_fonts(
+        run._element.get_or_add_rPr(),
+        DOCX_MONO_FONT,
+        east_asian_font or docx_east_asian_font("en"),
+    )
 
 
 def _render_docx_react_details(
@@ -1181,81 +1371,96 @@ def _render_docx_dag_details(
 # ---------------------------------------------------------------------------
 
 
-def _register_cjk_font() -> str:
-    """Register a CJK font for ReportLab and return the font name.
+def _build_pdf_styles(fonts: PdfFonts) -> dict[str, Any]:
+    """Build the ReportLab paragraph styles for the PDF export.
 
-    Tries STSong-Light (Adobe CID font shipped with ReportLab);
-    falls back to Helvetica if registration fails.
+    Every style is created twice: ``key`` wraps character-by-character for CJK
+    text, ``key_ltr`` keeps word-level wrapping for Latin-only text.  Callers
+    pick between them with :func:`_pdf_style`.
+
+    The size scale is deliberately five-tiered — document title, turn, role
+    label, content headings, body — so headings written by the assistant stay
+    visually subordinate to the transcript's own structure.
     """
-    try:
-        from reportlab.pdfbase import pdfmetrics  # type: ignore[import-untyped]
-        from reportlab.pdfbase.cidfonts import UnicodeCIDFont  # type: ignore[import-untyped]
-
-        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
-        return "STSong-Light"
-    except Exception:
-        logger.warning("CJK font STSong-Light unavailable, falling back to Helvetica")
-        return "Helvetica"
-
-
-def _build_pdf_styles(font_name: str) -> dict[str, Any]:
-    """Build a dict of ReportLab paragraph styles for the PDF export."""
     from reportlab.lib.enums import TA_LEFT  # type: ignore[import-untyped]
     from reportlab.lib.styles import ParagraphStyle  # type: ignore[import-untyped]
     from reportlab.lib.units import inch  # type: ignore[import-untyped]
 
-    base = {
-        "fontName": font_name,
-        "wordWrap": "CJK",
-        "alignment": TA_LEFT,
-    }
+    styles: dict[str, Any] = {}
 
-    return {
-        "title": ParagraphStyle(
-            "pdf_title", fontSize=18, leading=28, spaceAfter=14,
-            **base,
-        ),
-        "heading2": ParagraphStyle(
-            "pdf_h2", fontSize=14, leading=22, spaceAfter=10, spaceBefore=18,
-            **base,
-        ),
-        "heading3": ParagraphStyle(
-            "pdf_h3", fontSize=12, leading=18, spaceAfter=8, spaceBefore=14,
-            **base,
-        ),
-        "body": ParagraphStyle(
-            "pdf_body", fontSize=10, leading=17, spaceAfter=8,
-            **base,
-        ),
-        "code": ParagraphStyle(
-            "pdf_code", fontName="Courier", fontSize=8, leading=12,
-            spaceAfter=8, leftIndent=0.3 * inch,
-            backColor="#F8F4ED", wordWrap="CJK",
-        ),
-        "meta": ParagraphStyle(
-            "pdf_meta", fontSize=9, leading=14, spaceAfter=6,
-            textColor="#6B5D4F", **base,
-        ),
-        "bullet": ParagraphStyle(
-            "pdf_bullet", fontSize=10, leading=17, spaceAfter=5,
-            leftIndent=0.4 * inch, bulletIndent=0.2 * inch,
-            **base,
-        ),
-        "quote": ParagraphStyle(
-            "pdf_quote", fontSize=10, leading=17, spaceAfter=8,
-            leftIndent=0.4 * inch, textColor="#6B5D4F",
-            fontName=font_name, wordWrap="CJK",
-        ),
-    }
+    def add(key: str, **kwargs: Any) -> None:
+        kwargs.setdefault("fontName", fonts.regular)
+        kwargs.setdefault("alignment", TA_LEFT)
+        kwargs.setdefault("textColor", _INK)
+        styles[key] = ParagraphStyle(f"pdf_{key}", wordWrap="CJK", **kwargs)
+        styles[f"{key}_ltr"] = ParagraphStyle(f"pdf_{key}_ltr", **kwargs)
+
+    # --- document structure -------------------------------------------------
+    add("title", fontName=fonts.bold, fontSize=20, leading=29, spaceAfter=6)
+    add("meta", fontSize=8.5, leading=13, spaceAfter=4, textColor=_MUTED)
+    add(
+        "heading2",  # "Turn N"
+        fontName=fonts.bold, fontSize=15, leading=22,
+        spaceBefore=20, spaceAfter=9, textColor=_ACCENT,
+    )
+    add(
+        "heading3",  # "User" / "Assistant"
+        fontName=fonts.bold, fontSize=10, leading=15,
+        spaceBefore=13, spaceAfter=5, textColor=_ACCENT,
+    )
+
+    # --- headings inside the assistant's markdown ---------------------------
+    add("content_h1", fontName=fonts.bold, fontSize=13.5, leading=20, spaceBefore=14, spaceAfter=7)
+    add("content_h2", fontName=fonts.bold, fontSize=12, leading=18, spaceBefore=12, spaceAfter=6)
+    add("content_h3", fontName=fonts.bold, fontSize=11.5, leading=17, spaceBefore=10, spaceAfter=5)
+    add("content_h4", fontName=fonts.bold, fontSize=11, leading=16, spaceBefore=9, spaceAfter=4)
+
+    # --- body ---------------------------------------------------------------
+    add("body", fontSize=10.5, leading=18, spaceAfter=8)
+    add(
+        "bullet", fontSize=10.5, leading=18, spaceAfter=4,
+        leftIndent=0.32 * inch, bulletIndent=0.12 * inch,
+    )
+    add(
+        "quote", fontSize=10, leading=17, spaceAfter=8,
+        leftIndent=0.3 * inch, textColor=_MUTED,
+    )
+    # Sub-lines of a tool-call step, indented under their bullet.
+    add(
+        "detail", fontSize=9.5, leading=15, spaceAfter=4,
+        leftIndent=0.62 * inch, textColor=_MUTED,
+    )
+    # Code blocks come in two indents: flush with body prose, and nested under a
+    # tool-call bullet. Each needs a CJK variant because Courier has no CJK
+    # coverage and would render Chinese source comments as blanks.
+    for suffix, indent in (("", 0.25), ("_detail", 0.62)):
+        add(
+            f"code_cjk{suffix}", fontSize=9, leading=14, spaceAfter=8,
+            leftIndent=indent * inch, backColor=_CODE_BG, textColor=_INK,
+        )
+        add(
+            f"code{suffix}", fontName=fonts.mono, fontSize=8.5, leading=13, spaceAfter=8,
+            leftIndent=indent * inch, backColor=_CODE_BG, textColor=_INK,
+        )
+
+    return styles
+
+
+def _pdf_style(styles: dict[str, Any], key: str, text: str) -> Any:
+    """Pick the CJK-wrapping or Latin-wrapping variant of a style."""
+    if _has_cjk(text):
+        return styles[key]
+    return styles.get(f"{key}_ltr", styles[key])
 
 
 class _PdfMarkdownRenderer(HTMLParser):
     """Parse HTML (converted from Markdown) and emit ReportLab flowables."""
 
-    def __init__(self, styles: dict[str, Any], font_name: str) -> None:
+    def __init__(self, styles: dict[str, Any], fonts: PdfFonts) -> None:
         super().__init__()
         self._styles = styles
-        self._font_name = font_name
+        self._fonts = fonts
+        self._font_name = fonts.regular
         self.flowables: list[Any] = []
 
         self._text_buf = ""
@@ -1286,9 +1491,8 @@ class _PdfMarkdownRenderer(HTMLParser):
 
         from reportlab.platypus import Paragraph  # type: ignore[import-untyped]
 
-        style = self._styles["body"]
-        if self._in_blockquote:
-            style = self._styles["quote"]
+        key = "quote" if self._in_blockquote else "body"
+        style = _pdf_style(self._styles, key, self._text_buf)
         self.flowables.append(Paragraph(self._text_buf, style))
         self._text_buf = ""
 
@@ -1301,7 +1505,10 @@ class _PdfMarkdownRenderer(HTMLParser):
         if self._italic:
             text = f"<i>{text}</i>"
         if self._code_inline:
-            text = f'<font name="Courier" size="9">{text}</font>'
+            # Courier has no CJK coverage — inline code containing Chinese has to
+            # stay in the body face or it renders as blanks.
+            face = self._fonts.mono if not _has_cjk(text) else self._fonts.regular
+            text = f'<font name="{face}" size="9.5">{text}</font>'
         if self._href:
             text = f'<u><font color="#946B2D">{text}</font></u>'
         return text
@@ -1363,11 +1570,13 @@ class _PdfMarkdownRenderer(HTMLParser):
         from reportlab.platypus import Paragraph, Preformatted, Spacer
 
         if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
-            level = self._heading_level
-            style_key = "title" if level == 1 else ("heading2" if level <= 3 else "heading3")
+            # Headings written by the assistant sit *below* the transcript's own
+            # turn/role headings, so h1 maps to the first content tier rather
+            # than competing with the document title.
+            style_key = f"content_h{min(self._heading_level, 4)}"
             # Escape XML entities in heading text
             safe = self._heading_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            self.flowables.append(Paragraph(safe, self._styles[style_key]))
+            self.flowables.append(Paragraph(safe, _pdf_style(self._styles, style_key, safe)))
             self._heading_level = 0
             self._heading_text = ""
         elif tag == "p":
@@ -1382,7 +1591,8 @@ class _PdfMarkdownRenderer(HTMLParser):
         elif tag == "pre":
             self._in_pre = False
             safe = self._pre_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            self.flowables.append(Preformatted(safe, self._styles["code"]))
+            code_key = "code_cjk" if _has_cjk(safe) else "code"
+            self.flowables.append(Preformatted(safe, self._styles[code_key]))
             self._pre_text = ""
         elif tag == "ul":
             if self._list_stack:
@@ -1402,7 +1612,9 @@ class _PdfMarkdownRenderer(HTMLParser):
                     if self._ol_counters:
                         self._ol_counters[-1] += 1
                         prefix = f"{self._ol_counters[-1]}. "
-                self.flowables.append(Paragraph(f"{prefix}{text}", self._styles["bullet"]))
+                self.flowables.append(
+                    Paragraph(f"{prefix}{text}", _pdf_style(self._styles, "bullet", text))
+                )
         elif tag in ("td", "th"):
             self._current_row.append(self._current_cell_text.strip())
             self._in_td = False
@@ -1469,7 +1681,7 @@ class _PdfMarkdownRenderer(HTMLParser):
                 # Bold header row
                 if r_idx == 0:
                     safe = f"<b>{safe}</b>"
-                cells.append(Paragraph(safe, self._styles["body"]))
+                cells.append(Paragraph(safe, _pdf_style(self._styles, "body", safe)))
             table_data.append(cells)
 
         if not table_data:
@@ -1479,7 +1691,8 @@ class _PdfMarkdownRenderer(HTMLParser):
         table.setStyle(TableStyle([
             ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.78, 0.72, 0.60)),
             ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.96, 0.93, 0.87)),
-            ("FONTNAME", (0, 0), (-1, -1), self._font_name),
+            ("FONTNAME", (0, 0), (-1, -1), self._fonts.regular),
+            ("FONTNAME", (0, 0), (-1, 0), self._fonts.bold),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("LEADING", (0, 0), (-1, -1), 14),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -1491,10 +1704,10 @@ class _PdfMarkdownRenderer(HTMLParser):
         self.flowables.append(table)
 
 
-def _md_to_pdf_flowables(text: str, styles: dict[str, Any], font_name: str) -> list[Any]:
+def _md_to_pdf_flowables(text: str, styles: dict[str, Any], fonts: PdfFonts) -> list[Any]:
     """Convert markdown text to a list of ReportLab flowables via HTML intermediate."""
     html = _md_to_html(text)
-    renderer = _PdfMarkdownRenderer(styles, font_name)
+    renderer = _PdfMarkdownRenderer(styles, fonts)
     renderer.feed(html)
     renderer.close()
     # Flush any remaining text
@@ -1517,8 +1730,8 @@ def _render_pdf(conv: Conversation, messages: list[Message], detail: DetailLevel
             "Install with: uv pip install reportlab",
         )
 
-    font_name = _register_cjk_font()
-    styles = _build_pdf_styles(font_name)
+    fonts = resolve_pdf_fonts()
+    styles = _build_pdf_styles(fonts)
     effective_mode = _resolve_effective_mode(conv, messages)
 
     buf = io.BytesIO()
@@ -1536,7 +1749,7 @@ def _render_pdf(conv: Conversation, messages: list[Message], detail: DetailLevel
 
     # Title
     safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    flowables.append(Paragraph(safe_title, styles["title"]))
+    flowables.append(Paragraph(safe_title, _pdf_style(styles, "title", safe_title)))
 
     # Metadata
     meta_text = f"{_t('mode', locale)}: {_mode_label(effective_mode, locale)}"
@@ -1544,56 +1757,57 @@ def _render_pdf(conv: Conversation, messages: list[Message], detail: DetailLevel
     if detail == DetailLevel.FULL and conv.total_tokens:
         meta_text += f"  |  {_t('total_tokens', locale)}: {conv.total_tokens:,}"
     safe_meta = meta_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    flowables.append(Paragraph(safe_meta, styles["meta"]))
-    flowables.append(Spacer(1, 12))
-    flowables.append(HRFlowable(width="100%", thickness=1, color="#946B2D"))
-    flowables.append(Spacer(1, 12))
+    flowables.append(Paragraph(safe_meta, _pdf_style(styles, "meta", safe_meta)))
+    flowables.append(Spacer(1, 10))
+    flowables.append(HRFlowable(width="100%", thickness=1, color=_ACCENT))
 
     # Turns
     turns = _pair_messages(messages)
     for idx, turn in enumerate(turns, 1):
-        flowables.append(Paragraph(f"{_t('turn', locale)} {idx}", styles["heading2"]))
+        turn_label = f"{_t('turn', locale)} {idx}"
+        flowables.append(Paragraph(turn_label, _pdf_style(styles, "heading2", turn_label)))
 
         user_msg: Message | None = turn.get("user")
         if user_msg:
-            flowables.append(Paragraph(_t("user", locale), styles["heading3"]))
+            role = _t("user", locale)
+            flowables.append(Paragraph(role, _pdf_style(styles, "heading3", role)))
             user_text = _strip_emoji(_strip_attachments(user_msg.content or ""))
             safe_user = user_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            flowables.append(Paragraph(safe_user, styles["body"]))
-            flowables.append(Spacer(1, 6))
+            flowables.append(Paragraph(safe_user, _pdf_style(styles, "body", safe_user)))
 
         asst_msg: Message | None = turn.get("assistant")
         if asst_msg is None:
-            flowables.append(HRFlowable(width="100%", thickness=0.5, color="#C8B898"))
-            flowables.append(Spacer(1, 8))
+            flowables.append(Spacer(1, 6))
+            flowables.append(HRFlowable(width="100%", thickness=0.5, color=_RULE))
             continue
 
-        flowables.append(Paragraph(_t("assistant", locale), styles["heading3"]))
+        role = _t("assistant", locale)
+        flowables.append(Paragraph(role, _pdf_style(styles, "heading3", role)))
 
         if detail == DetailLevel.FULL:
             events = _extract_sse_events(asst_msg)
             done = _extract_done_event(events)
 
             if effective_mode == "dag":
-                _render_pdf_dag_details(flowables, events, done, styles, font_name, locale)
+                _render_pdf_dag_details(flowables, events, done, styles, fonts, locale)
             else:
-                _render_pdf_react_details(flowables, events, done, styles, font_name, locale)
+                _render_pdf_react_details(flowables, events, done, styles, fonts, locale)
 
         # Final answer
         answer = asst_msg.content or ""
         if not answer and asst_msg.metadata_:
             answer = asst_msg.metadata_.get("answer", "")
         if answer:
-            answer_flowables = _md_to_pdf_flowables(answer, styles, font_name)
+            answer_flowables = _md_to_pdf_flowables(answer, styles, fonts)
             flowables.extend(answer_flowables)
 
-        flowables.append(Spacer(1, 6))
-        flowables.append(HRFlowable(width="100%", thickness=0.5, color="#C8B898"))
         flowables.append(Spacer(1, 8))
+        flowables.append(HRFlowable(width="100%", thickness=0.5, color=_RULE))
 
     # Guard against empty document (ReportLab raises on no flowables)
     if not flowables:
-        flowables.append(Paragraph(_t("empty_conversation", locale), styles["body"]))
+        empty = _t("empty_conversation", locale)
+        flowables.append(Paragraph(empty, _pdf_style(styles, "body", empty)))
 
     doc.build(flowables)
     return buf.getvalue()
@@ -1604,7 +1818,7 @@ def _render_pdf_react_details(
     events: list[dict[str, Any]],
     done: dict[str, Any] | None,
     styles: dict[str, Any],
-    font_name: str,
+    fonts: PdfFonts,
     locale: str = "en",
 ) -> None:
     """Add ReAct execution details as PDF flowables."""
@@ -1618,37 +1832,36 @@ def _render_pdf_react_details(
     elapsed = done.get("elapsed", 0) if done else 0
 
     iter_label = _t("iteration" if iterations == 1 else "iterations", locale)
-    flowables.append(Paragraph(
-        f"<b>{_t('execution_details', locale)}:</b> {iterations} {iter_label}, {elapsed:.1f}s",
-        styles["meta"],
-    ))
+    summary = f"<b>{_t('execution_details', locale)}:</b> {iterations} {iter_label}, {elapsed:.1f}s"
+    flowables.append(Paragraph(summary, _pdf_style(styles, "meta", summary)))
 
     for i, step in enumerate(steps, 1):
         tool = _strip_emoji(step.get("tool_name", "unknown"))
         dur = step.get("iter_elapsed", 0)
         safe_tool = tool.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-        flowables.append(Paragraph(
-            f"\u2022 {_t('step', locale)} {i}: <b>{safe_tool}</b> ({dur:.1f}s)",
-            styles["bullet"],
-        ))
+        line = f"\u2022 {_t('step', locale)} {i}: <b>{safe_tool}</b> ({dur:.1f}s)"
+        flowables.append(Paragraph(line, _pdf_style(styles, "bullet", line)))
 
         reasoning = step.get("reasoning")
         if reasoning:
             safe_r = _strip_emoji(str(reasoning)).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            flowables.append(Paragraph(f"{_t('reasoning', locale)}: {safe_r}", styles["quote"]))
+            line = f"{_t('reasoning', locale)}: {safe_r}"
+            flowables.append(Paragraph(line, _pdf_style(styles, "detail", line)))
 
         args = step.get("tool_args")
         if args:
             args_text = _strip_emoji(json.dumps(args, indent=2, ensure_ascii=False))
             safe_args = args_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            flowables.append(Preformatted(safe_args, styles["code"]))
+            code_key = "code_cjk_detail" if _has_cjk(safe_args) else "code_detail"
+            flowables.append(Preformatted(safe_args, styles[code_key]))
 
         observation = step.get("observation")
         if observation:
             obs_text = _strip_emoji(str(observation)[:500])
             safe_obs = obs_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            flowables.append(Paragraph(f"{_t('result', locale)}: {safe_obs}", styles["quote"]))
+            line = f"{_t('result', locale)}: {safe_obs}"
+            flowables.append(Paragraph(line, _pdf_style(styles, "detail", line)))
 
     flowables.append(Spacer(1, 8))
 
@@ -1658,7 +1871,7 @@ def _render_pdf_dag_details(
     events: list[dict[str, Any]],
     done: dict[str, Any] | None,
     styles: dict[str, Any],
-    font_name: str,
+    fonts: PdfFonts,
     locale: str = "en",
 ) -> None:
     """Add DAG execution details as PDF flowables."""
@@ -1671,8 +1884,9 @@ def _render_pdf_dag_details(
     for rnd in rounds:
         plan_steps = _extract_dag_plan(events, rnd)
         if plan_steps:
+            plan_label = f"<b>{_t('plan', locale)} ({_t('round', locale)} {rnd}):</b>"
             flowables.append(Paragraph(
-                f"<b>{_t('plan', locale)} ({_t('round', locale)} {rnd}):</b>", styles["meta"]
+                plan_label, _pdf_style(styles, "meta", plan_label)
             ))
 
             # Build table: Step | Task | Dependencies
@@ -1690,9 +1904,9 @@ def _render_pdf_dag_details(
                 safe_task = task.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 safe_deps = deps.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 table_data.append([
-                    Paragraph(safe_sid, styles["body"]),
-                    Paragraph(safe_task, styles["body"]),
-                    Paragraph(safe_deps, styles["body"]),
+                    Paragraph(safe_sid, _pdf_style(styles, "body", safe_sid)),
+                    Paragraph(safe_task, _pdf_style(styles, "body", safe_task)),
+                    Paragraph(safe_deps, _pdf_style(styles, "body", safe_deps)),
                 ])
 
             # Weighted column widths: Step narrow, Task wide, Dependencies medium
@@ -1703,7 +1917,8 @@ def _render_pdf_dag_details(
             table.setStyle(TableStyle([
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.Color(0.78, 0.72, 0.60)),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.96, 0.93, 0.87)),
-                ("FONTNAME", (0, 0), (-1, -1), font_name),
+                ("FONTNAME", (0, 0), (-1, -1), fonts.regular),
+                ("FONTNAME", (0, 0), (-1, 0), fonts.bold),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
@@ -1724,10 +1939,8 @@ def _render_pdf_dag_details(
         safe_task = task.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         safe_status = status.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-        flowables.append(Paragraph(
-            f"<b>{safe_sid}:</b> {safe_task} ({safe_status}, {duration:.1f}s)",
-            styles["body"],
-        ))
+        line = f"<b>{safe_sid}:</b> {safe_task} ({safe_status}, {duration:.1f}s)"
+        flowables.append(Paragraph(line, _pdf_style(styles, "body", line)))
 
         for it in info.get("iterations", []):
             it_num = it.get("iteration", "?")
@@ -1738,20 +1951,23 @@ def _render_pdf_dag_details(
             safe_tool = str(tool).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             safe_reason = str(reasoning).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-            flowables.append(Paragraph(
-                f"\u2022 {_t('iteration_label', locale)} {it_num}: <b>{safe_tool}</b> ({dur:.1f}s) \u2014 {safe_reason}",
-                styles["bullet"],
-            ))
+            line = (
+                f"\u2022 {_t('iteration_label', locale)} {it_num}: "
+                f"<b>{safe_tool}</b> ({dur:.1f}s) \u2014 {safe_reason}"
+            )
+            flowables.append(Paragraph(line, _pdf_style(styles, "bullet", line)))
 
             if observation:
                 obs_text = _strip_emoji(str(observation)[:500])
                 safe_obs = obs_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                flowables.append(Paragraph(f"{_t('result', locale)}: {safe_obs}", styles["quote"]))
+                obs_line = f"{_t('result', locale)}: {safe_obs}"
+                flowables.append(Paragraph(obs_line, _pdf_style(styles, "detail", obs_line)))
 
         result = completed.get("result", "") if completed else ""
         if result:
             safe_result = _strip_emoji(str(result)).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            flowables.append(Paragraph(f"{_t('step_result', locale)}: {safe_result}", styles["bullet"]))
+            res_line = f"{_t('step_result', locale)}: {safe_result}"
+            flowables.append(Paragraph(res_line, _pdf_style(styles, "bullet", res_line)))
         flowables.append(Spacer(1, 4))
 
     analysis = _extract_dag_analysis(events)
@@ -1760,13 +1976,11 @@ def _render_pdf_dag_details(
         confidence = analysis.get("confidence", 0)
         reasoning = _strip_emoji(analysis.get("reasoning", ""))
         label = _t("goal_achieved", locale) if achieved else _t("goal_not_achieved", locale)
-        flowables.append(Paragraph(
-            f"<b>{_t('analysis', locale)}:</b> {label} ({confidence * 100:.0f}% {_t('confidence', locale)})",
-            styles["meta"],
-        ))
+        line = f"<b>{_t('analysis', locale)}:</b> {label} ({confidence * 100:.0f}% {_t('confidence', locale)})"
+        flowables.append(Paragraph(line, _pdf_style(styles, "meta", line)))
         if reasoning:
             safe_reason = str(reasoning).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            flowables.append(Paragraph(safe_reason, styles["quote"]))
+            flowables.append(Paragraph(safe_reason, _pdf_style(styles, "quote", safe_reason)))
         flowables.append(Spacer(1, 8))
 
 

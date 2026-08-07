@@ -983,3 +983,166 @@ class TestDocxHeadingColor:
         expected = RGBColor(0x94, 0x6B, 0x2D)
         style = doc.styles["Heading 1"]
         assert style.font.color.rgb == expected
+
+
+# ===================================================================
+# Integration tests: typographic hierarchy
+# ===================================================================
+
+
+def _docx_east_asian(style) -> str | None:
+    """Read the ``w:eastAsia`` font slot off a python-docx style."""
+    from docx.oxml.ns import qn
+
+    rpr = style.element.rPr
+    if rpr is None or rpr.rFonts is None:
+        return None
+    return rpr.rFonts.get(qn("w:eastAsia"))
+
+
+class TestDocxTypography:
+    def _render(self, answer: str = "Hello", locale: str = "zh"):
+        from docx import Document
+
+        conv = _make_conv()
+        msgs = [
+            _make_msg("user", "Hi", created_at=datetime(2026, 1, 1, 0, 0)),
+            _make_msg("assistant", answer, created_at=datetime(2026, 1, 1, 0, 1)),
+        ]
+        return Document(io.BytesIO(_render_docx(conv, msgs, DetailLevel.SUMMARY, locale)))
+
+    def test_normal_style_declares_an_east_asian_font(self):
+        """Without w:eastAsia, Word renders CJK with a fallback that has no bold."""
+        doc = self._render()
+        assert _docx_east_asian(doc.styles["Normal"]) == "Microsoft YaHei"
+
+    def test_heading_styles_declare_an_east_asian_font(self):
+        doc = self._render()
+        for level in range(1, 7):
+            assert _docx_east_asian(doc.styles[f"Heading {level}"]) == "Microsoft YaHei"
+
+    def test_east_asian_font_follows_locale(self):
+        doc = self._render(locale="ja")
+        assert _docx_east_asian(doc.styles["Normal"]) == "Yu Gothic"
+
+    def test_heading_sizes_strictly_descend(self):
+        doc = self._render()
+        sizes = [doc.styles[f"Heading {lvl}"].font.size.pt for lvl in range(1, 7)]
+        assert sizes == sorted(sizes, reverse=True)
+        assert len(set(sizes)) == len(sizes)
+        # Every heading outranks body text.
+        assert min(sizes) > doc.styles["Normal"].font.size.pt
+
+    def test_headings_are_not_italic(self):
+        """Word's built-in Heading 4 is italic, which slants CJK synthetically."""
+        doc = self._render()
+        for level in range(1, 7):
+            assert doc.styles[f"Heading {level}"].font.italic is False
+
+    def test_role_labels_use_their_own_style(self):
+        """User/Assistant labels must not consume a Heading level."""
+        from fim_one.web.api.export import _DOCX_ROLE_STYLE
+
+        doc = self._render()
+        role_paragraphs = [
+            p.text for p in doc.paragraphs if p.style.name == _DOCX_ROLE_STYLE
+        ]
+        assert role_paragraphs == ["用户", "助手"]
+
+    def test_content_headings_sit_below_the_structural_ones(self):
+        """An `#` in message content must not compete with the document title."""
+        doc = self._render(answer="# Content Title\n\nBody text.")
+        levels = {p.style.name: p.text for p in doc.paragraphs if "Heading" in p.style.name}
+        assert levels.get("Heading 3") == "Content Title"
+        assert levels.get("Heading 1") == "Test Conversation"
+
+    def test_deep_content_headings_clamp_to_heading_6(self):
+        from fim_one.web.api.export import _docx_content_heading_level
+
+        assert _docx_content_heading_level(1) == 3
+        assert _docx_content_heading_level(5) == 6
+        assert _docx_content_heading_level(6) == 6
+
+
+class TestPdfTypography:
+    def test_has_cjk(self):
+        from fim_one.web.api.export import _has_cjk
+
+        assert _has_cjk("企业级 AI")
+        assert _has_cjk("こんにちは")
+        assert not _has_cjk("plain ASCII text")
+
+    def test_latin_paragraphs_keep_word_wrapping(self):
+        """CJK wrapping breaks English mid-word, so Latin text opts out."""
+        from fim_one.web.api.export import _build_pdf_styles, _pdf_style
+        from fim_one.web.export_fonts import resolve_pdf_fonts
+
+        styles = _build_pdf_styles(resolve_pdf_fonts())
+
+        assert _pdf_style(styles, "body", "English only").wordWrap is None
+        assert _pdf_style(styles, "body", "中文段落").wordWrap == "CJK"
+
+    def test_style_scale_descends(self):
+        from fim_one.web.api.export import _build_pdf_styles
+        from fim_one.web.export_fonts import resolve_pdf_fonts
+
+        styles = _build_pdf_styles(resolve_pdf_fonts())
+        scale = [
+            styles["title"].fontSize,
+            styles["heading2"].fontSize,
+            styles["content_h1"].fontSize,
+            styles["content_h2"].fontSize,
+            styles["content_h3"].fontSize,
+            styles["body"].fontSize,
+        ]
+        assert scale == sorted(scale, reverse=True)
+
+    def test_headings_use_the_bold_face(self):
+        from fim_one.web.api.export import _build_pdf_styles
+        from fim_one.web.export_fonts import resolve_pdf_fonts
+
+        fonts = resolve_pdf_fonts()
+        styles = _build_pdf_styles(fonts)
+        for key in ("title", "heading2", "heading3", "content_h1"):
+            assert styles[key].fontName == fonts.bold
+
+    def test_content_headings_do_not_reuse_the_title_style(self):
+        from fim_one.web.api.export import (
+            _build_pdf_styles,
+            _md_to_pdf_flowables,
+        )
+        from fim_one.web.export_fonts import resolve_pdf_fonts
+
+        fonts = resolve_pdf_fonts()
+        styles = _build_pdf_styles(fonts)
+        flowables = _md_to_pdf_flowables("# Heading\n\nBody", styles, fonts)
+
+        heading = flowables[0]
+        assert heading.style.fontSize == styles["content_h1"].fontSize
+        assert heading.style.fontSize < styles["title"].fontSize
+
+    def test_bullet_glyph_survives_a_round_trip(self):
+        """The old CID font mapped U+2022 to an unrelated CJK glyph."""
+        conv = _make_conv(title="项目概览")
+        msgs = [
+            _make_msg("user", "列举", created_at=datetime(2026, 1, 1, 0, 0)),
+            _make_msg("assistant", "- 第一项\n- 第二项", created_at=datetime(2026, 1, 1, 0, 1)),
+        ]
+        pdf_bytes = _render_pdf(conv, msgs, DetailLevel.SUMMARY, "zh")
+        assert pdf_bytes.startswith(b"%PDF")
+
+    def test_embedded_font_is_subset_into_the_pdf(self):
+        from fim_one.web.export_fonts import resolve_pdf_fonts
+
+        if not resolve_pdf_fonts().embedded:
+            pytest.skip("no embeddable TrueType CJK font on this machine")
+
+        conv = _make_conv(title="中文标题")
+        msgs = [
+            _make_msg("user", "你好", created_at=datetime(2026, 1, 1, 0, 0)),
+            _make_msg("assistant", "**加粗**中文", created_at=datetime(2026, 1, 1, 0, 1)),
+        ]
+        pdf_bytes = _render_pdf(conv, msgs, DetailLevel.SUMMARY, "zh")
+
+        # A referenced-but-not-embedded CID font produces no FontFile entry.
+        assert b"/FontFile2" in pdf_bytes

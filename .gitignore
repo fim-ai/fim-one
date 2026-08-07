@@ -42,3 +42,6 @@ dev/
 
 # Behavioral-eval freshness stamp (written by a green `pytest evals/` run)
 evals/.eval-stamp
+
+# PDF-export CJK font, fetched by scripts/fetch_export_fonts.py
+assets/fonts/

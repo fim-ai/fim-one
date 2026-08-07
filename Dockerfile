@@ -72,6 +72,13 @@ COPY --from=frontend-build /app/frontend/public /app/frontend/public
 # not statically traced by Next.js standalone bundler
 COPY --from=frontend-build /app/frontend/messages /app/frontend/messages
 
+# CJK font embedded into PDF exports. The slim base ships no fonts at all, and
+# Debian's Noto CJK packages are OpenType/CFF, which ReportLab cannot embed.
+# A failed download only degrades export typography, so it never fails the build.
+COPY scripts/fetch_export_fonts.py /tmp/fetch_export_fonts.py
+RUN python /tmp/fetch_export_fonts.py /usr/share/fonts/truetype/fim-one \
+    && rm /tmp/fetch_export_fonts.py
+
 # Copy entrypoint
 COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh

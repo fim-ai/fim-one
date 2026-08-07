@@ -397,6 +397,7 @@ Auto-registers the `email_send` built-in tool when `SMTP_HOST`, `SMTP_USER`, and
 | `FIM_BCRYPT_COST` | No | `12` | bcrypt work factor for password hashing, clamped to 4-31. Default 12 costs roughly 200ms per hash on modern CPUs; lower it on weak hardware, raise it for security-hardened deployments. |
 | `CORS_ORIGINS` | No | — | Comma-separated list of extra allowed CORS origins beyond the default localhost entries. Required when the frontend runs on a non-localhost domain (e.g. `https://app.example.com`). |
 | `UPLOADS_DIR` | No | `./uploads` | Directory for uploaded files |
+| `EXPORT_FONT_DIR` | No | *(auto-detected)* | Directory holding `NotoSansSC-Regular.ttf` / `NotoSansSC-Bold.ttf` for PDF export. Fetch with `python scripts/fetch_export_fonts.py`; Docker images already bundle it. Without an embeddable TrueType CJK font, PDF export falls back to a non-embedded CID font with degraded spacing and no bold. |
 | `MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size in megabytes (backend enforcement) |
 | `NEXT_PUBLIC_MAX_UPLOAD_SIZE_MB` | No | `50` | Max file upload size shown in frontend UI. **Build-time variable** — must match `MAX_UPLOAD_SIZE_MB`. |
 | `MCP_SERVERS` | No | — | JSON array of MCP server configs (requires `uv sync --extra mcp`) |
