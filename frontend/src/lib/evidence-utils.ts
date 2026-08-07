@@ -72,17 +72,21 @@ export function parseEvidence(content: string): ParsedEvidence | null {
  *   Another chunk...
  */
 export function parseSimpleEvidence(content: string): ParsedEvidence | null {
-  const sourceRegex = /\[(\d+)\]\s*\(score:\s*([\d.]+)\)\s*\n([\s\S]*?)(?=\n\n---|\n*$)/g
+  // `Source: <name>` is optional: conversations recorded before kb_retrieve
+  // started emitting the origin filename replay without it.
+  const sourceRegex =
+    /\[(\d+)\]\s*(?:Source:\s*(.*?)\s*)?\(score:\s*([\d.]+)\)\s*\n([\s\S]*?)(?=\n\n---|\n*$)/g
   const sources: ParsedSource[] = []
   let match
   while ((match = sourceRegex.exec(content)) !== null) {
-    const text = match[3].trim()
+    const text = match[4].trim()
     const preview = text.length > 200 ? text.slice(0, 200) + "..." : text
+    const origin = (match[2] ?? "").trim()
     sources.push({
       index: parseInt(match[1]),
-      name: "knowledge base",
-      displayName: "Knowledge Base",
-      relevance: parseFloat(match[2]),
+      name: origin || "knowledge base",
+      displayName: origin ? extractDisplayName(origin) : "Knowledge Base",
+      relevance: parseFloat(match[3]),
       quote: preview,
     })
   }

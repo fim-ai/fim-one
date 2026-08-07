@@ -8,6 +8,19 @@ from typing import Any
 from fim_one.core.tool.base import BaseTool
 
 
+def _source_name(doc: Any) -> str:
+    """Human-readable origin of a retrieved chunk.
+
+    Loaders record the ingest path under ``metadata["source"]``; the grounding
+    pipeline already surfaces it, so emitting it here keeps ``simple`` retrieval
+    mode at parity and lets the UI name each citation instead of labelling every
+    one of them "Knowledge Base".
+    """
+    metadata = getattr(doc, "metadata", None) or {}
+    raw = metadata.get("source") or metadata.get("filename") or ""
+    return os.path.basename(str(raw)) or "unknown"
+
+
 class KBRetrieveTool(BaseTool):
     """Retrieve relevant documents from a knowledge base.
 
@@ -120,7 +133,8 @@ class KBRetrieveTool(BaseTool):
             parts: list[str] = []
             for i, doc in enumerate(all_docs, start=1):
                 score = f"{doc.score:.3f}" if doc.score is not None else "N/A"
-                parts.append(f"[{i}] (score: {score})\n{doc.content}")
+                source = _source_name(doc)
+                parts.append(f"[{i}] Source: {source} (score: {score})\n{doc.content}")
 
             return "\n\n---\n\n".join(parts)
 
