@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -1080,6 +1081,7 @@ interface ProviderCardProps {
   onEditModel: (model: ModelProviderModelResponse) => void
   onToggleModelActive: (model: ModelProviderModelResponse) => void
   onDeleteModel: (model: ModelProviderModelResponse) => void
+  onBatchDeleteModels: (ids: string[]) => Promise<boolean>
 }
 
 function ProviderCard({
@@ -1091,10 +1093,68 @@ function ProviderCard({
   onEditModel,
   onToggleModelActive,
   onDeleteModel,
+  onBatchDeleteModels,
 }: ProviderCardProps) {
   const t = useTranslations("admin.models")
   const tc = useTranslations("common")
   const [isExpanded, setIsExpanded] = useState(true)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false)
+  // Anchor row for shift-click range selection, held by id so it survives reloads
+  const anchorId = useRef<string | null>(null)
+  const shiftHeld = useRef(false)
+
+  const models = provider.models
+  const selectedCount = selectedIds.size
+  const allSelected = models.length > 0 && selectedCount === models.length
+
+  // Drop ids that no longer exist after a reload
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev
+      const alive = new Set(models.map((m) => m.id))
+      const next = new Set([...prev].filter((id) => alive.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [models])
+
+  const toggleModel = (index: number, checked: boolean, withShift: boolean) => {
+    const anchorIndex = anchorId.current
+      ? models.findIndex((m) => m.id === anchorId.current)
+      : -1
+    const useRange = withShift && anchorIndex >= 0
+    const from = useRange ? Math.min(anchorIndex, index) : index
+    const to = useRange ? Math.max(anchorIndex, index) : index
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (let i = from; i <= to; i++) {
+        const id = models[i]?.id
+        if (!id) continue
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+    anchorId.current = models[index]?.id ?? null
+  }
+
+  const toggleAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(models.map((m) => m.id)))
+    anchorId.current = null
+  }
+
+  const handleBatchDelete = async () => {
+    setIsBatchDeleting(true)
+    const ok = await onBatchDeleteModels([...selectedIds])
+    setIsBatchDeleting(false)
+    if (ok) {
+      setSelectedIds(new Set())
+      anchorId.current = null
+      setBatchDeleteOpen(false)
+    }
+  }
 
   return (
     <div className="rounded-lg border bg-card">
@@ -1159,10 +1219,28 @@ function ProviderCard({
               {t("models")} ({provider.models.length})
             </button>
           </CollapsibleTrigger>
-          <Button size="sm" variant="ghost" onClick={onAddModel} className="h-7 gap-1 text-xs">
-            <Plus className="h-3.5 w-3.5" />
-            {t("addModelUnder")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedCount > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {t("modelsSelected", { count: selectedCount })}
+                </span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setBatchDeleteOpen(true)}
+                  className="h-7 gap-1 text-xs"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t("batchDeleteModels")}
+                </Button>
+              </>
+            )}
+            <Button size="sm" variant="ghost" onClick={onAddModel} className="h-7 gap-1 text-xs">
+              <Plus className="h-3.5 w-3.5" />
+              {t("addModelUnder")}
+            </Button>
+          </div>
         </div>
         <CollapsibleContent>
           {provider.models.length === 0 ? (
@@ -1174,6 +1252,13 @@ function ProviderCard({
               <table className="w-full min-w-max text-sm">
                 <thead>
                   <tr className="border-b border-border/50 bg-muted/10">
+                    <th className="pl-4 pr-2 py-2 text-left w-0 select-none">
+                      <Checkbox
+                        checked={allSelected ? true : selectedCount > 0 ? "indeterminate" : false}
+                        onCheckedChange={toggleAll}
+                        aria-label={tc("selectAll")}
+                      />
+                    </th>
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">{t("name")}</th>
                     <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">{t("modelName")}</th>
                     <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">{t("contextSize")}</th>
@@ -1187,8 +1272,26 @@ function ProviderCard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
-                  {provider.models.map((m) => (
-                    <tr key={m.id} className="hover:bg-muted/10 transition-colors">
+                  {models.map((m, index) => (
+                    <tr
+                      key={m.id}
+                      className={cn(
+                        "transition-colors",
+                        selectedIds.has(m.id) ? "bg-muted/30" : "hover:bg-muted/10"
+                      )}
+                    >
+                      <td className="pl-4 pr-2 py-2.5 select-none">
+                        <Checkbox
+                          checked={selectedIds.has(m.id)}
+                          onClick={(e) => {
+                            shiftHeld.current = e.shiftKey
+                          }}
+                          onCheckedChange={(checked) =>
+                            toggleModel(index, checked === true, shiftHeld.current)
+                          }
+                          aria-label={m.name}
+                        />
+                      </td>
                       <td className="px-4 py-2.5 font-medium">{m.name}</td>
                       <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{m.model_name}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{m.context_size ? `${m.context_size / 1000}K` : "—"}</td>
@@ -1252,6 +1355,29 @@ function ProviderCard({
           )}
         </CollapsibleContent>
       </Collapsible>
+
+      <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("batchDeleteModelsConfirm", { count: selectedCount })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("batchDeleteModelsConfirmDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBatchDeleting}>{tc("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleBatchDelete()
+              }}
+              disabled={isBatchDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isBatchDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {tc("delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -1682,6 +1808,19 @@ export function AdminModels() {
     }
   }
 
+  const handleBatchDeleteModels = async (ids: string[]): Promise<boolean> => {
+    if (ids.length === 0) return false
+    try {
+      const result = await adminApi.batchDeleteProviderModels(ids)
+      toast.success(t("modelsBatchDeleted", { count: result.deleted }))
+      await loadAll()
+      return true
+    } catch (err) {
+      toast.error(getErrorMessage(err, tError))
+      return false
+    }
+  }
+
   // Group actions
   const handleActivateGroup = async (group: ModelGroupResponse) => {
     setIsSwitching(true)
@@ -1876,6 +2015,7 @@ export function AdminModels() {
                     onEditModel={(m) => setEditModelTarget({ providerId: p.id, model: m })}
                     onToggleModelActive={handleToggleModelActive}
                     onDeleteModel={(m) => setDeleteModelTarget(m)}
+                    onBatchDeleteModels={handleBatchDeleteModels}
                   />
                 ))}
               </div>

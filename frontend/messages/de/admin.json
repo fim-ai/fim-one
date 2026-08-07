@@ -399,7 +399,12 @@
     "importApiKeyPlaceholderExisting": "Leer lassen, um den vorhandenen Schlüssel zu behalten",
     "importProviderExisting": "vorhanden — behält aktuellen Schlüssel",
     "importProviderNew": "neuer Anbieter",
-    "importUpdated": "Aktualisiert: {providers} Anbieter, {models} Modelle, {groups} Gruppen"
+    "importUpdated": "Aktualisiert: {providers} Anbieter, {models} Modelle, {groups} Gruppen",
+    "batchDeleteModels": "Ausgewählte löschen",
+    "batchDeleteModelsConfirm": "{count} Modelle löschen?",
+    "batchDeleteModelsConfirmDesc": "Die ausgewählten Modelle werden dauerhaft entfernt. Alle Modellgruppen-Slots, die auf sie verweisen, fallen auf die Umgebungsstandard zurück. Dies kann nicht rückgängig gemacht werden.",
+    "modelsSelected": "{count} ausgewählt",
+    "modelsBatchDeleted": "{count} Modelle gelöscht"
   },
   "tools": {
     "title": "Integrierte Tools",

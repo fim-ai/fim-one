@@ -1619,6 +1619,11 @@ export const adminApi = {
     }),
   deleteProviderModel: (id: string) =>
     apiFetch<{ success: boolean }>(`/api/admin/model-provider-models/${id}`, { method: 'DELETE' }),
+  batchDeleteProviderModels: (ids: string[]) =>
+    apiFetch<{ deleted: number; not_found: string[] }>(
+      '/api/admin/model-provider-models/batch-delete',
+      { method: 'POST', body: JSON.stringify({ ids }) },
+    ),
 
   // --- Model Groups ---
   listModelGroups: () =>

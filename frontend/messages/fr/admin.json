@@ -399,7 +399,12 @@
     "importApiKeyPlaceholderExisting": "Laissez vide pour conserver la clé existante",
     "importProviderExisting": "existant — conservera la clé actuelle",
     "importProviderNew": "nouveau fournisseur",
-    "importUpdated": "Mis à jour : {providers} fournisseurs, {models} modèles, {groups} groupes"
+    "importUpdated": "Mis à jour : {providers} fournisseurs, {models} modèles, {groups} groupes",
+    "batchDeleteModels": "Supprimer la sélection",
+    "batchDeleteModelsConfirm": "Supprimer {count} modèles ?",
+    "batchDeleteModelsConfirmDesc": "Les modèles sélectionnés seront supprimés définitivement. Tout emplacement de groupe de modèles les pointant reviendra à la valeur par défaut de l'environnement. Cette action ne peut pas être annulée.",
+    "modelsSelected": "{count} sélectionnés",
+    "modelsBatchDeleted": "{count} modèles supprimés"
   },
   "tools": {
     "title": "Outils intégrés",

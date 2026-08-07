@@ -399,7 +399,12 @@
     "importApiKeyPlaceholderExisting": "既存のキーを保持するには空白のままにしてください",
     "importProviderExisting": "既存 — 現在のキーを保持します",
     "importProviderNew": "新しいプロバイダー",
-    "importUpdated": "更新完了: {providers}個のプロバイダー、{models}個のモデル、{groups}個のグループ"
+    "importUpdated": "更新完了: {providers}個のプロバイダー、{models}個のモデル、{groups}個のグループ",
+    "batchDeleteModels": "選択したものを削除",
+    "batchDeleteModelsConfirm": "{count}個のモデルを削除しますか?",
+    "batchDeleteModelsConfirmDesc": "選択したモデルは永久に削除されます。これらを指すモデルグループスロットは環境のデフォルトにフォールバックします。この操作は取り消せません。",
+    "modelsSelected": "{count}個選択",
+    "modelsBatchDeleted": "{count}個のモデルが削除されました"
   },
   "tools": {
     "title": "組み込みツール",

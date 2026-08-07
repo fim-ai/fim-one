@@ -88,6 +88,15 @@ class ProviderModelUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class ProviderModelBatchDeleteRequest(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class ProviderModelBatchDeleteResponse(BaseModel):
+    deleted: int
+    not_found: list[str] = Field(default_factory=list)
+
+
 class ProviderModelFullResponse(BaseModel):
     """A model entry with its provider info included."""
 

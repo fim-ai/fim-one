@@ -207,7 +207,7 @@
     "conversationDeleted": "对话已删除",
     "view": "查看",
     "viewTitle": "对话消息",
-    "viewSubtitle": "{title} —— {username}",
+    "viewSubtitle": "{title} -- {username}",
     "messageRole": {
       "user": "用户",
       "assistant": "助手",
@@ -399,7 +399,12 @@
     "importApiKeyPlaceholderExisting": "留空以保留现有密钥",
     "importProviderExisting": "现有 — 将保留当前密钥",
     "importProviderNew": "新提供商",
-    "importUpdated": "已更新：{providers} 个提供商、{models} 个模型、{groups} 个组"
+    "importUpdated": "已更新：{providers} 个提供商、{models} 个模型、{groups} 个组",
+    "batchDeleteModels": "删除选中项",
+    "batchDeleteModelsConfirm": "删除 {count} 个模型？",
+    "batchDeleteModelsConfirmDesc": "选中的模型将被永久删除。任何指向这些模型的模型组槽位将回退到环境默认值。此操作无法撤销。",
+    "modelsSelected": "已选中 {count} 个",
+    "modelsBatchDeleted": "{count} 个模型已删除"
   },
   "tools": {
     "title": "内置工具",

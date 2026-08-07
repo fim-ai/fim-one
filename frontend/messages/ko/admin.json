@@ -399,7 +399,12 @@
     "importApiKeyPlaceholderExisting": "기존 키를 유지하려면 비워두세요",
     "importProviderExisting": "기존 — 현재 키 유지",
     "importProviderNew": "새 제공자",
-    "importUpdated": "업데이트됨: {providers}개 제공자, {models}개 모델, {groups}개 그룹"
+    "importUpdated": "업데이트됨: {providers}개 제공자, {models}개 모델, {groups}개 그룹",
+    "batchDeleteModels": "선택 항목 삭제",
+    "batchDeleteModelsConfirm": "{count}개 모델을 삭제하시겠습니까?",
+    "batchDeleteModelsConfirmDesc": "선택한 모델이 영구적으로 제거됩니다. 이들을 가리키는 모든 모델 그룹 슬롯은 환경 기본값으로 폴백됩니다. 이 작업은 취소할 수 없습니다.",
+    "modelsSelected": "{count}개 선택됨",
+    "modelsBatchDeleted": "{count}개 모델 삭제됨"
   },
   "tools": {
     "title": "기본 제공 도구",

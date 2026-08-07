@@ -2433,6 +2433,8 @@ from fim_one.web.schemas.model_provider import (
     ProviderCreate,
     ProviderExportData,
     ProviderListResponse,
+    ProviderModelBatchDeleteRequest,
+    ProviderModelBatchDeleteResponse,
     ProviderModelCreate,
     ProviderModelFullResponse,
     ProviderModelResponse,
@@ -2826,6 +2828,48 @@ async def admin_delete_provider_model(
         target_type="model_provider_model",
         target_id=model_id,
         target_label=label,
+    )
+
+
+@router.post(
+    "/model-provider-models/batch-delete",
+    response_model=ProviderModelBatchDeleteResponse,
+)
+async def admin_batch_delete_provider_models(
+    body: ProviderModelBatchDeleteRequest,
+    current_user: User = Depends(get_current_admin),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ProviderModelBatchDeleteResponse:
+    """Delete several provider models at once.
+
+    Groups referencing a deleted model get NULL for that slot, same as the
+    single-model delete.
+    """
+    result = await db.execute(
+        select(ModelProviderModel).where(ModelProviderModel.id.in_(body.ids))
+    )
+    models = list(result.scalars().all())
+    not_found = sorted(set(body.ids) - {m.id for m in models})
+
+    labels = [
+        f"{m.provider.name}/{m.name}" if m.provider else m.name for m in models
+    ]
+    for model in models:
+        await db.delete(model)
+    await db.commit()
+
+    if models:
+        _invalidate_model_group_cache()
+        await write_audit(
+            db,
+            current_user,
+            "model_provider_model.batch_delete",
+            target_type="model_provider_model",
+            detail=f"Deleted {len(models)} model(s): {', '.join(labels[:10])}",
+        )
+
+    return ProviderModelBatchDeleteResponse(
+        deleted=len(models), not_found=not_found
     )
 
 
