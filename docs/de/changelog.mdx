@@ -12,33 +12,37 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **Modelle eines Anbieters können in Massen gelöscht werden.** Jede Modellzeile in Admin → Models trägt ein Kontrollkästchen, der Header wählt die ganze Liste aus, und das Halten von Shift beim Klicken erweitert die Auswahl über einen Bereich von Zeilen. Das Löschen der Auswahl entfernt jedes gewählte Modell in einer Anfrage, nach einer Bestätigung, die die Anzahl nennt.
+- **Agent-Schritte tragen Live-Einzeilentitel.** Während ein Agent arbeitet, erhält jede Iteration ein kurz generiertes Label („Preisdaten werden überprüft…"), das in einem einzelnen eingeklappten Header angezeigt wird, der zum neuesten Schritt wechselt; beim Erweitern wird die vollständige Schritt-Zeitleiste angezeigt, und die Labels bleiben in der Gesprächshistorie erhalten.
 
-- **Kleine Vergleichstabellen in Chat-Antworten werden nun als Kartenlayouts dargestellt.** Eine 2–3-spaltige Tabelle, deren erste Spalte Attributbezeichnungen enthält, zeigt jedes Attribut in seiner Wertzelle an (passend zum Vergleichskartenstil, der von KI-Chat-UIs populär gemacht wurde); größere Tabellen behalten das klassische Gitter.
+- **Modelle eines Anbieters können in Massen gelöscht werden.** Jede Modellzeile in Admin → Models trägt ein Kontrollkästchen, der Header wählt die gesamte Liste aus, und das Halten von Shift beim Klicken erweitert die Auswahl über mehrere Zeilen. Das Löschen der Auswahl entfernt jedes ausgewählte Modell in einer Anfrage, nach einer Bestätigung, die die Anzahl angibt.
 
-- **Chat-Antworten rendern nun Mermaid-Diagramme und SVG-Abbildungen.** Ein `mermaid`-Codeblock wird zu einem thematisierten Diagramm und ein `svg`-Block wird zu einem Bild mit einem Quellumschalter und Download; beide fallen auf einfachen Code zurück, wenn die Quelle unvollständig ist oder nicht geparst wird, sodass ein halb gestreamtes Diagramm niemals einen Fehler anzeigt.
+- **Kleine Vergleichstabellen in Chat-Antworten werden nun als kartenähnliche Layouts dargestellt.** Eine Tabelle mit 2–3 Spalten, deren erste Spalte Attributbezeichnungen enthält, zeigt jedes Attribut in seiner Wertzelle an (im Stil der Vergleichskarten, die von KI-Chat-UIs populär gemacht wurden); größere Tabellen behalten das klassische Gitter.
 
-- **Antworten, Codeblöcke und Tabellen können kopiert werden.** Jede Antwort hat eine Aktion zum Kopieren als Markdown, Codeblöcke tragen einen Header mit ihrer Sprache, und Tabellen bieten Kopieren als Markdown plus einen CSV-Download (UTF-8, öffnet sich sauber in Excel).
+- **Chat-Antworten rendern nun Mermaid-Diagramme und SVG-Abbildungen.** Ein `mermaid`-Codeblock wird zu einem thematisierten Diagramm und ein `svg`-Block wird zu einem Bild mit einem Quellumschalter und Download; beide fallen auf einfachen Code zurück, wenn die Quelle unvollständig ist oder nicht analysiert wird, sodass ein halb gestreamtes Diagramm niemals einen Fehler anzeigt.
 
-- **Zitate zeigen, aus welchem Dokument sie stammen.** Ein Zitiermarker wird nun als Pille mit dem Namen des Quelldokuments dargestellt, wobei benachbarte Marker in einer Pille zusammengefasst und gezählt werden; das Popover listet jede Quelle dahinter auf.
+- **Antworten, Codeblöcke und Tabellen können kopiert werden.** Jede Antwort hat eine Aktion zum Kopieren als Markdown, Codeblöcke tragen einen Header mit ihrer Sprache, und Tabellen bieten Kopieren als Markdown sowie einen CSV-Download (UTF-8, öffnet sich sauber in Excel).
 
-- **`/clear` funktioniert in der Chat-Eingabe.** Die Eingabe von `/clear` startet eine neue Konversation, identisch mit dem Klick auf Neuer Chat; ein laufender Zug wird zuerst gestoppt.
+- **Zitate zeigen, aus welchem Dokument sie stammen.** Ein Zitiermarker wird nun als Pille dargestellt, die den Namen des Quelldokuments trägt, wobei benachbarte Marker in einer Pille zusammengefasst und gezählt werden; das Popover listet jede Quelle dahinter auf.
+
+- **`/clear` funktioniert in der Chat-Eingabe.** Das Eingeben von `/clear` startet ein neues Gespräch, identisch mit dem Klicken auf „Neuer Chat"; ein laufender Zug wird zuerst gestoppt.
 
 - **Diagramme und Codeblöcke können heruntergeladen werden, nicht nur kopiert.** Mermaid-Diagramme exportieren das gerenderte SVG, und jeder Codeblock wird mit einem Dateinamen heruntergeladen, der seiner Sprache entspricht; ein `csv`-Block wird als UTF-8-Datei heruntergeladen, die sich sauber in Excel öffnet.
 
 ### Geändert
 
-- **Exportierte PDFs und Word-Dateien sind für Chinesisch korrekt formatiert.** Der PDF-Export bettet jetzt eine echte CJK-Schriftart ein, statt nur auf eine zu verweisen, was den Abstand in englischem Text behebt und Aufzählungszeichen, die als unzusammenhängende chinesische Zeichen dargestellt wurden, korrigiert. Fettdruck funktioniert jetzt. Word-Exporte deklarieren eine ostasiatische Schriftart, sodass gemischter chinesisch/englischer Fettdruck nicht mehr halb-fett wirkt. Beide Formate verwenden eine fünfstufige Größenskala, die Überschriften in einer Antwort der Struktur des Transkripts unterordnet.
+- **Reasoning-Blöcke bleiben während einer Ausführung eingeklappt.** Reasoning in ReAct- und DAG-Ausgaben zeigt nun standardmäßig eine einzeilige Vorschau statt sich beim Streaming zu erweitern, wodurch das Ergebnis sichtbar bleibt; klicken Sie auf einen beliebigen Block, um die vollständige Trace zu lesen.
 
-- **Agenten bleiben bei langen Aufgaben im Plan.** Der Agent wird jetzt daran erinnert, seinen Ansatz zu ändern, wenn er dasselbe Tool erfolglos wiederholt, wird ermutigt, einen Plan zu schreiben, wenn er ohne arbeitet, und kann keine endgültige Antwort liefern, während noch Planpunkte offen sind, ohne einen expliziten Verifizierungsdurchlauf.
+- **Exportierte PDFs und Word-Dateien sind für Chinesisch korrekt formatiert.** Der PDF-Export bettet nun eine echte CJK-Schriftart ein, statt auf eine zu verweisen, was den zusammengefallenen Abstand in englischem Text und Aufzählungszeichen behebt, die als unzusammenhängende chinesische Zeichen dargestellt wurden, und Fettdruck funktioniert nun. Word-Exporte deklarieren eine ostasiatische Schriftart, sodass gemischter chinesisch/englischer Fettdruck nicht mehr halb-fett aussieht, und beide Formate verwenden eine fünfstufige Größenskala, die Überschriften innerhalb einer Antwort der Struktur des Transkripts unterordnet.
 
-- **Gestreamte Antworten blenden sich ein statt zu erscheinen.** Neu angekommene Blöcke blenden sich kurz ein, während sie streamen, wobei die Einstellung für reduzierte Bewegung des Lesers berücksichtigt wird. Lange Tabellen heben auch die Zeile unter dem Cursor hervor, und Aufzählungszeichen sitzen hinter dem Text statt mit ihm zu konkurrieren.
+- **Agenten bleiben bei langen Aufgaben im Plan.** Der Agent wird nun daran erinnert, seinen Ansatz zu ändern, wenn er dasselbe Tool fruchtlos wiederholt, wird ermutigt, einen Plan zu schreiben, wenn er ohne einen arbeitet, und kann keine endgültige Antwort liefern, während noch Planelemente offen sind, ohne einen expliziten Verifizierungsdurchlauf.
 
-- **Block-Aktionen bleiben verborgen, bis Sie danach greifen.** Kopier- und Exportschaltflächen auf Antworten, Code-Blöcken, Diagrammen und Tabellen werden beim Überfahren mit der Maus angezeigt und verwenden eine konsistente Behandlung; sie bleiben über die Tastatur erreichbar.
+- **Gestreamte Antworten werden sanft eingeblendet statt zu erscheinen.** Neu angekommene Blöcke werden beim Streaming kurz eingeblendet, wobei die Einstellung für reduzierte Bewegung des Lesers berücksichtigt wird. Lange Tabellen heben auch die Zeile unter dem Cursor hervor, und Aufzählungszeichen sitzen hinter dem Text statt mit ihm zu konkurrieren.
 
-- **Die Seitenleiste hält Chats jetzt zusammen.** Die Gesprächsliste sitzt direkt unter „Neuer Chat" und „Suchen", und die Modulnavigation wurde in ein kompaktes getöntes Dock über dem Benutzerbereich verschoben, was der Liste mehr Platz gibt und der Seitenleiste eine klare von oben nach unten verlaufende Hierarchie.
+- **Block-Aktionen bleiben verborgen, bis Sie danach greifen.** Kopier- und Exportschaltflächen auf Antworten, Code-Blöcken, Diagrammen und Tabellen werden beim Hover angezeigt und haben eine konsistente Behandlung; sie bleiben über die Tastatur erreichbar.
 
-- **Reasoning ist standardmäßig eingeklappt.** Thinking-Abschnitte in Live-Läufen und früheren Gesprächen werden zu einer einzeiligen Vorschau zusammengeklappt und erweitern sich beim Anklicken; Reasoning streamt während der Generierung offen, wird dann eingeklappt, wenn der Schritt abgeschlossen ist.
+- **Die Seitenleiste hält Chats nun zusammen.** Die Gesprächsliste sitzt direkt unter Neuer Chat und Suche, und die Modulnavigation wurde in ein kompaktes getöntes Dock über dem Benutzerbereich verschoben, was der Liste mehr Platz gibt und der Seitenleiste eine klare Hierarchie von oben nach unten.
+
+- **Reasoning ist standardmäßig eingeklappt.** Thinking-Abschnitte in Live-Ausführungen und früheren Gesprächen werden zu einer einzeiligen Vorschau eingeklappt und beim Klick erweitert; Reasoning wird beim Streaming weiterhin offen gestreamt, während es generiert wird, und wird dann eingeklappt, wenn der Schritt abgeschlossen ist.
 
 ### Sicherheit
 

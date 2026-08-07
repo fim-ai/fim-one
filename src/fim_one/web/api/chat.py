@@ -3,6 +3,9 @@
 Both endpoints stream Server-Sent Events with the following event names:
 
 - ``step``           – ReAct iteration progress (tool calls, thinking).
+- ``step_title``     – Async fast-LLM label for a ReAct iteration
+  (``{"iteration", "title"}``).  Shown in the live step timeline; arrival
+  order is not guaranteed relative to the iteration's own step events.
 - ``step_progress``  – DAG per-step progress (started / iteration / completed).
 - ``phase``          – Pipeline phase transitions (selecting_tools / planning / executing / analyzing).
 - ``compact``        – Context compaction occurred (original_messages, kept_messages).
@@ -542,6 +545,78 @@ async def _generate_title(
         return None
     except Exception:
         logger.debug("_generate_title failed", exc_info=True)
+        return None
+
+
+async def _generate_step_title(
+    fast_llm: BaseLLM,
+    query: str,
+    reasoning: str,
+    tool_name: str,
+    *,
+    tool_args: str = "",
+    prev_titles: list[str] | None = None,
+    preferred_language: str | None = None,
+) -> str | None:
+    """Generate a one-line label for a ReAct iteration.
+
+    Shown in the step timeline while the agent works (and kept for history),
+    e.g. "核实定价数据并准备比较分析". Uses the fast LLM; on any failure
+    returns ``None`` so the run is never disturbed.
+
+    ``tool_args`` and ``prev_titles`` exist to keep consecutive labels
+    distinct: the arguments (search query, URL, …) are what actually differ
+    between look-alike iterations, and earlier labels are provided so the
+    model describes what THIS step adds instead of re-paraphrasing the task.
+    """
+    try:
+        lang_directive = get_language_directive(preferred_language)
+        lang_rule = (
+            f"- {lang_directive}\n"
+            if lang_directive
+            else "- Match the language of the user query.\n"
+        )
+        system_prompt = (
+            "Label one step of an AI assistant's multi-step work. You get "
+            "the assistant's reasoning for this step, the tool it is about "
+            "to use with its arguments, and the labels of earlier steps.\n\n"
+            "Rules:\n"
+            "- One short sentence describing THIS step's specific action — "
+            "lean on the tool arguments (what is being searched, fetched, "
+            "run), not the overall task.\n"
+            "- Do NOT repeat or paraphrase an earlier label. If this step "
+            "retries a similar action, say what changed (narrower query, "
+            "different source, next data set).\n"
+            "- Under 40 characters. No quotes, no markdown, no trailing "
+            "period.\n"
+            f"{lang_rule}"
+            "- Return ONLY the label text, nothing else."
+        )
+        prev_block = (
+            "\n\nEarlier step labels:\n"
+            + "\n".join(f"{i + 1}. {t}" for i, t in enumerate(prev_titles))
+            if prev_titles
+            else ""
+        )
+        user_content = (
+            f"User query: {query[:300]}{prev_block}\n\n"
+            f"Step reasoning: {reasoning[:600]}\n\n"
+            f"Tool about to run: {tool_name or '(none)'}\n"
+            f"Tool arguments: {tool_args[:300] or '(none)'}"
+        )
+        result = await fast_llm.chat(
+            [
+                ChatMessage(role="system", content=system_prompt),
+                ChatMessage(role="user", content=user_content),
+            ]
+        )
+        raw = str(result.message.content or "").strip().strip("\"'")
+        # A label that ballooned into a paragraph is worse than none.
+        if raw and len(raw) <= 80 and "\n" not in raw:
+            return raw
+        return None
+    except Exception:
+        logger.debug("_generate_step_title failed", exc_info=True)
         return None
 
 
@@ -3325,6 +3400,36 @@ async def react_endpoint(
         thinking_done_iter = 0  # track which iteration's thinking-done was emitted
         current_iteration = 1  # track the current iteration for _on_answer_token
         answer_started = False
+        # Fire-and-forget fast-LLM labels for the step timeline. Awaited (with
+        # a short timeout) before ``sse_events`` is persisted so a late task
+        # can't mutate the list mid-serialization.
+        step_title_tasks: set[asyncio.Task[None]] = set()
+
+        async def _emit_step_title(iteration_no: int, reasoning: str, tool_name: str) -> None:
+            title = await _generate_step_title(
+                fast_llm,
+                q,
+                reasoning,
+                tool_name,
+                preferred_language=preferred_language,
+            )
+            if not title:
+                return
+            payload = {"iteration": iteration_no, "title": title}
+            _append_event(sse_events, "step_title", payload)
+            try:
+                progress_queue.put_nowait(_sse("step_title", payload))
+            except asyncio.QueueFull:
+                logger.warning("SSE progress queue full, dropping step_title")
+
+        def _spawn_step_title(iteration_no: int, reasoning: str, tool_name: str) -> None:
+            if fast_llm is None:
+                return
+            task = asyncio.create_task(
+                _emit_step_title(iteration_no, reasoning, tool_name)
+            )
+            step_title_tasks.add(task)
+            task.add_done_callback(step_title_tasks.discard)
         # Track unique tool names invoked this run — surfaced in the
         # per-agent completion notification (see
         # ``fim_one.web.notifications.notify_agent_completion``).
@@ -3405,6 +3510,12 @@ async def react_endpoint(
                             }
                         )
                         thinking_done_iter = iteration
+                        # Label the step off the loop's critical path.
+                        _spawn_step_title(
+                            iteration,
+                            action.reasoning or "",
+                            action.tool_name or "",
+                        )
 
                     # Emit iteration start
                     iter_start = time.time()
@@ -3470,6 +3581,15 @@ async def react_endpoint(
                         }
                     )
                     thinking_done_iter = iteration
+                    # Label the concluding iteration too — without this the
+                    # final timeline node falls back to a raw reasoning
+                    # excerpt while every tool iteration shows a clean title.
+                    if iteration > 1 and action.reasoning:
+                        _spawn_step_title(
+                            iteration,
+                            action.reasoning,
+                            "final_answer",
+                        )
 
                 iter_start = time.time()
                 _emit_step({"type": "answer", "status": "start"})
@@ -3799,6 +3919,18 @@ async def react_endpoint(
                 remaining = await interrupt_queue.drain()
                 if remaining:
                     done_payload["pending_injections"] = [m.content for m in remaining]
+
+            # Settle outstanding step-title tasks before ``sse_events`` is
+            # serialized below; anything still running after the grace period
+            # is cancelled (a late label is decoration, not data).
+            if step_title_tasks:
+                _, _pending_titles = await asyncio.wait(
+                    step_title_tasks, timeout=2.0
+                )
+                for _pt in _pending_titles:
+                    _pt.cancel()
+                while not progress_queue.empty():
+                    yield progress_queue.get_nowait()
 
             # Appended here rather than at the yield below because the
             # assistant row (which stores ``sse_events``) is written in

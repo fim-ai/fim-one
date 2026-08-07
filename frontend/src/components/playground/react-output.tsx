@@ -154,7 +154,7 @@ function groupStepsByIteration(
 /*  ReactIterationTimeline — collapsible timeline for completed view   */
 /* ------------------------------------------------------------------ */
 
-function ReactIterationTimeline({ stepItems, allItems }: { stepItems: StepItem[]; allItems: StepItem[] }) {
+function ReactIterationTimeline({ stepItems, allItems, stepTitles }: { stepItems: StepItem[]; allItems: StepItem[]; stepTitles?: Record<number, string> }) {
   const { data: catalog } = useToolCatalog()
   const groups = useMemo(
     () => groupStepsByIteration(stepItems, allItems, catalog?.tools),
@@ -168,34 +168,37 @@ function ReactIterationTimeline({ stepItems, allItems }: { stepItems: StepItem[]
           {idx < groups.length - 1 && (
             <div className="absolute left-[10px] top-[22px] bottom-0 w-px bg-border/30" />
           )}
-          <ReactIterationNode group={group} />
+          <ReactIterationNode group={group} stepTitle={stepTitles?.[group.iteration]} />
         </div>
       ))}
     </div>
   )
 }
 
-function ReactIterationNode({ group }: { group: ReactIterGroup }) {
+function ReactIterationNode({ group, stepTitle }: { group: ReactIterGroup; stepTitle?: string }) {
   const t = useTranslations("playground")
   const { data: catalog } = useToolCatalog()
   const [expanded, setExpanded] = useState(false)
 
-  // Title cascade: reasoning first sentence → tool summary → "Iteration N"
+  // Title cascade: fast-LLM label → reasoning first sentence → tool summary
   const title = useMemo(() => {
-    // 1. Try reasoning from the thinking step
+    // 1. Async label generated for this iteration (best quality)
+    if (stepTitle) return stepTitle
+
+    // 2. Try reasoning from the thinking step
     const thinkingStep = group.stepItems
       .map(s => s.item.data as ReactStepEvent)
       .find(s => s.type === "thinking")
     const reasoningTitle = extractReasoningTitle(thinkingStep?.reasoning)
     if (reasoningTitle) return reasoningTitle
 
-    // 2. Try tool name summary
+    // 3. Try tool name summary
     const toolTitle = generateGroupToolTitle(group, catalog?.tools)
     if (toolTitle) return toolTitle
 
-    // 3. Fallback
+    // 4. Fallback
     return null
-  }, [group, catalog?.tools])
+  }, [group, catalog?.tools, stepTitle])
 
   return (
     <div className="pl-8 pb-3 relative">
@@ -252,7 +255,7 @@ function ReactIterationNode({ group }: { group: ReactIterGroup }) {
             const step = item.data as ReactStepEvent
             return (
               <div key={originalIdx} data-react-idx={originalIdx}>
-                <StepCard step={step} duration={item.duration} displayIteration={item.displayIteration} />
+                <StepCard step={step} duration={item.duration} displayIteration={item.displayIteration} stepTitle={stepTitle} />
               </div>
             )
           })}
@@ -271,9 +274,11 @@ interface ReactOutputProps {
   suggestions?: string[]
   onSuggestionSelect?: (query: string) => void
   isPostProcessing?: boolean
+  /** Async fast-LLM labels per iteration (from `step_title` events). */
+  stepTitles?: Record<number, string>
 }
 
-export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, onSuggestionSelect, isPostProcessing }: ReactOutputProps) {
+export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, onSuggestionSelect, isPostProcessing, stepTitles }: ReactOutputProps) {
   const t = useTranslations("playground")
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
@@ -321,7 +326,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
 
           {stepsExpanded && (
             <div className="px-4 pt-1 pb-3">
-              <ReactIterationTimeline stepItems={stepItems} allItems={items} />
+              <ReactIterationTimeline stepItems={stepItems} allItems={items} stepTitles={stepTitles} />
             </div>
           )}
         </div>
@@ -398,6 +403,22 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
   const showStreamingAnswer = !hasDone && (hasAnswerStep || (isAnswerStreaming && displayAnswer))
   const isAborted = !isStreaming && !hasDone
 
+  // Latest per-iteration label for the live group header — newest wins, with
+  // the reasoning first sentence as a stopgap until the async label arrives.
+  const liveStepItems = items.filter((i) => i.event === "step" && (i.data as ReactStepEvent).type !== "answer")
+  const liveTitle = (() => {
+    const iters = Object.keys(stepTitles ?? {}).map(Number)
+    if (stepTitles && iters.length > 0) return stepTitles[Math.max(...iters)]
+    for (let i = liveStepItems.length - 1; i >= 0; i--) {
+      const step = liveStepItems[i].data as ReactStepEvent
+      if (step.type === "thinking" && step.reasoning) {
+        const extracted = extractReasoningTitle(step.reasoning)
+        if (extracted) return extracted
+      }
+    }
+    return null
+  })()
+
   // Streaming (no done yet) or direct answer (no steps): render as before
   return (
     <div className="space-y-3 min-w-0 w-full">
@@ -410,14 +431,57 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
           </div>
         </div>
       )}
+      {/* Live step group — folded by default; header cycles the newest step
+          label so the run stays legible without unrolling every card. */}
+      {liveStepItems.length > 0 && (
+        <div className="rounded-lg border border-border/40 bg-muted/20">
+          <button
+            type="button"
+            onClick={() => setStepsExpanded((v) => !v)}
+            className="flex w-full items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors text-xs rounded-lg min-w-0"
+          >
+            {isStreaming ? (
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-500" />
+            ) : (
+              <Wrench className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            )}
+            <span
+              key={liveTitle ?? "processing"}
+              className={`truncate min-w-0 text-left step-title-in ${isStreaming ? "text-shimmer" : "text-muted-foreground"}`}
+            >
+              {liveTitle ?? t("statusProcessing")}
+            </span>
+            {toolCallCount > 0 && (
+              <span className="ml-auto tabular-nums text-muted-foreground shrink-0">
+                {toolCallCount !== 1 ? t("toolCallCountPlural", { count: toolCallCount }) : t("toolCallCount", { count: toolCallCount })}
+              </span>
+            )}
+            {stepsExpanded ? (
+              <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-muted-foreground${toolCallCount > 0 ? "" : " ml-auto"}`} />
+            ) : (
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground${toolCallCount > 0 ? "" : " ml-auto"}`} />
+            )}
+          </button>
+          {stepsExpanded && (
+            <div className="px-4 pt-1 pb-3 space-y-2">
+              {liveStepItems.map((item) => {
+                const idx = items.indexOf(item)
+                const step = item.data as ReactStepEvent
+                const iter = item.displayIteration ?? (step.iteration ?? 0) + 1
+                return (
+                  <div key={idx} data-react-idx={idx}>
+                    <StepCard step={step} duration={item.duration} displayIteration={item.displayIteration} stepTitle={stepTitles?.[iter]} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
       {items.map((item, idx) => {
         if (item.event === "step") {
-          const step = item.data as ReactStepEvent
-          return (
-            <div key={idx} data-react-idx={idx}>
-              <StepCard step={step} duration={item.duration} displayIteration={item.displayIteration} />
-            </div>
-          )
+          // Rendered inside the folded live group above.
+          return null
         }
         if (item.event === "inject") {
           const injectData = item.data as { content: string }
@@ -506,16 +570,16 @@ function StreamingAnswerCard({ content, aborted }: { content: string; aborted?: 
   )
 }
 
-function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; duration?: number; reasoning?: string }) {
+function ThinkingCard({ iterLabel, duration, reasoning, titleOverride }: { iterLabel: number; duration?: number; reasoning?: string; titleOverride?: string }) {
   const t = useTranslations("playground")
   const isWaiting = !reasoning && duration == null
-  // `duration == null` is the existing "still streaming" signal (drives the
-  // caret below). Streamed reasoning stays open while it arrives, then folds
-  // when the step completes; a manual toggle wins over both, so history —
-  // which mounts with a duration — starts collapsed but stays expandable.
-  const streaming = duration == null
+  // `duration == null` is the "still streaming" signal (drives the caret
+  // below). Reasoning stays folded to its one-line preview by default,
+  // streaming or not — it is context, not the answer, and an open block
+  // pushes the result the reader is waiting for off-screen. A manual toggle
+  // wins, so any round can still be opened.
   const [manual, setManual] = useState<boolean | null>(null)
-  const expanded = manual ?? (streaming && !isWaiting)
+  const expanded = manual ?? false
   const collapsible = !!reasoning
 
   return (
@@ -539,7 +603,7 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
           </span>
           {!expanded && reasoning && (
             <span className="min-w-0 flex-1 truncate text-xs italic text-muted-foreground/60">
-              {extractReasoningTitle(reasoning)}
+              {titleOverride ?? extractReasoningTitle(reasoning)}
             </span>
           )}
           {duration != null && (
@@ -572,13 +636,13 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
   )
 }
 
-function StepCard({ step, duration, displayIteration }: { step: ReactStepEvent; duration?: number; displayIteration?: number }) {
+function StepCard({ step, duration, displayIteration, stepTitle }: { step: ReactStepEvent; duration?: number; displayIteration?: number; stepTitle?: string }) {
   const iterLabel = displayIteration ?? (step.iteration ?? 0) + 1
 
   if (step.type === "thinking") {
     // Skip empty thinking rounds (final iteration that went straight to answer)
     if (!step.reasoning && step.status === "done") return null
-    return <ThinkingCard iterLabel={iterLabel} duration={duration} reasoning={step.reasoning} />
+    return <ThinkingCard iterLabel={iterLabel} duration={duration} reasoning={step.reasoning} titleOverride={stepTitle} />
   }
 
   // "answer" step is merged into StreamingAnswerCard — skip standalone rendering

@@ -627,7 +627,7 @@ const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orpha
 }) {
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
-  const { items: reactItems, streamingAnswer: reactStreamingAnswer, suggestions: reactSuggestions } = useReactSteps(sseMessages, false)
+  const { items: reactItems, streamingAnswer: reactStreamingAnswer, suggestions: reactSuggestions, stepTitles: reactStepTitles } = useReactSteps(sseMessages, false)
   const dagData = useDagSteps(sseMessages, false)
 
   // Per-turn mode detection:
@@ -694,7 +694,7 @@ const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orpha
         </div>
       )}
       {resolvedMode === "react" ? (
-        <ReactOutput items={reactItems} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} />
+        <ReactOutput items={reactItems} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} stepTitles={reactStepTitles} />
       ) : (
         <DagOutput
           planSteps={dagData.planSteps}
@@ -878,7 +878,7 @@ function PlaygroundContent({
 
   // Parse data at this level via hooks
   const dagData = useDagSteps(messages, isRunning)
-  const { items: reactItems, streamingAnswer: reactStreamingAnswer, suggestions: reactSuggestions } = useReactSteps(messages, isRunning)
+  const { items: reactItems, streamingAnswer: reactStreamingAnswer, suggestions: reactSuggestions, stepTitles: reactStepTitles } = useReactSteps(messages, isRunning)
 
   // For auto mode: detect which backend mode was chosen via routing SSE event
   const routingEvent = useMemo(() => {
@@ -1762,7 +1762,7 @@ function PlaygroundContent({
                   {(hasLiveMessages || (isRunning && pendingQuery && resolvedLiveMode === "react")) && (
                     <div data-live-output>
                       {resolvedLiveMode === "react" ? (
-                        <ReactOutput key={activeConversation?.id ?? "new"} items={reactItems} isStreaming={isRunning && modeMatches} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} onSuggestionSelect={handleSuggestionSelect} isPostProcessing={isPostProcessing} />
+                        <ReactOutput key={activeConversation?.id ?? "new"} items={reactItems} isStreaming={isRunning && modeMatches} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} onSuggestionSelect={handleSuggestionSelect} isPostProcessing={isPostProcessing} stepTitles={reactStepTitles} />
                       ) : (
                         <DagOutput
                           key={activeConversation?.id ?? "new"}

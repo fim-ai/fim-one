@@ -584,6 +584,19 @@ pre code.hljs {
   }
 }
 
+/* Rotating step title in the live step-group header: each new label eases in.
+   Applied to the element itself (remounted via key), unlike .streaming-fade
+   which only animates block-level children. */
+.step-title-in {
+  animation: streaming-block-in 240ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-title-in {
+    animation: none;
+  }
+}
+
 .nav-bar-loading {
   height: 2px;
   background: var(--primary);

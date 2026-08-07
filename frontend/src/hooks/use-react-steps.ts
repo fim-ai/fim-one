@@ -22,6 +22,8 @@ export interface ReactStepsResult {
   title: string | null
   /** True when post_processing event has been received but end event has not yet arrived. */
   isPostProcessing: boolean
+  /** Async fast-LLM labels per iteration (from `step_title` events). */
+  stepTitles: Record<number, string>
 }
 
 /** Normalize V1/V2 legacy event formats to V3 (type + status). */
@@ -50,6 +52,7 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
     let suggestions: string[] = []
     let title: string | null = null
     let isPostProcessing = false
+    const stepTitles: Record<number, string> = {}
 
     for (const msg of messages) {
       // Handle answer events (streamed before done)
@@ -68,6 +71,12 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
       // Handle suggestions event (new async flow)
       if (msg.event === "suggestions") {
         suggestions = (msg.data as { items: string[] }).items
+        continue
+      }
+      // Handle per-iteration step labels (async fast-LLM flow)
+      if (msg.event === "step_title") {
+        const ev = msg.data as { iteration: number; title: string }
+        if (ev?.title) stepTitles[ev.iteration] = ev.title
         continue
       }
       // Handle title event (new async flow)
@@ -226,7 +235,7 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
           }
           return item
         })
-      return { items, streamingAnswer, answerDone, suggestions, title, isPostProcessing }
+      return { items, streamingAnswer, answerDone, suggestions, title, isPostProcessing, stepTitles }
     }
 
     // After completion: drop transient items but keep thinking-done (has reasoning)
@@ -254,9 +263,9 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
         }
         return true
       })
-      return { items, streamingAnswer, answerDone, suggestions, title, isPostProcessing }
+      return { items, streamingAnswer, answerDone, suggestions, title, isPostProcessing, stepTitles }
     }
 
-    return { items: result, streamingAnswer, answerDone, suggestions, title, isPostProcessing }
+    return { items: result, streamingAnswer, answerDone, suggestions, title, isPostProcessing, stepTitles }
   }, [messages, isRunning])
 }

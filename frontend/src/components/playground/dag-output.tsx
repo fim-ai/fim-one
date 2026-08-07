@@ -532,12 +532,10 @@ function CollapsedIterationGroup({ group }: { group: IterationGroupData }) {
 function StepProgressCard({ state }: { state: StepState }) {
   const tDag = useTranslations("dag")
   const { data: catalog } = useToolCatalog()
-  const [expanded, setExpanded] = useState(state.status === "running")
-
-  // Auto-expand when step transitions to running
-  useEffect(() => {
-    if (state.status === "running") setExpanded(true)
-  }, [state.status])
+  // Folded by default, running or not — aligned with the ReAct live group.
+  // The collapsed header keeps a live activity line instead, so unrolling
+  // every thinking/tool card is opt-in rather than the ambient state.
+  const [expanded, setExpanded] = useState(false)
 
   const StatusIcon =
     state.status === "failed"
@@ -597,6 +595,25 @@ function StepProgressCard({ state }: { state: StepState }) {
 
   const hasContent = state.iterations.length > 0 || !!state.result
 
+  // Latest activity for the collapsed running view: the newest thinking
+  // snippet, or the tool currently executing. Mirrors the rotating title in
+  // the ReAct live group so a folded step still shows what it is doing.
+  const liveActivity = useMemo(() => {
+    if (state.status !== "running") return null
+    for (let i = state.iterations.length - 1; i >= 0; i--) {
+      const iter = state.iterations[i]
+      if (iter.tool_name && iter.loading) {
+        return getToolDisplayName(iter.tool_name, catalog?.tools)
+      }
+      const text = iter.thinkingText || iter.reasoning
+      if (text) {
+        const line = stripInlineMarkdown(text.split("\n")[0] ?? "")
+        if (line) return line
+      }
+    }
+    return null
+  }, [state.status, state.iterations, catalog?.tools])
+
   return (
     <div className={`pl-8 pb-3 relative${state.status === "skipped" ? " opacity-50" : ""}`}>
       {/* Timeline dot */}
@@ -647,6 +664,14 @@ function StepProgressCard({ state }: { state: StepState }) {
               </span>
             </div>
           )}
+          {!expanded && liveActivity && (
+            <p
+              key={liveActivity}
+              className="truncate text-xs italic text-muted-foreground/70 step-title-in text-shimmer"
+            >
+              {liveActivity}
+            </p>
+          )}
         </div>
 
         {/* Collapsed: tool summary badges */}
@@ -696,13 +721,14 @@ function StepProgressCard({ state }: { state: StepState }) {
 }
 
 /**
- * A single reasoning burst inside an expanded DAG step. Open while it streams,
- * folded to a one-line preview once complete; a manual toggle wins over both.
+ * A single reasoning burst inside an expanded DAG step. Folded to a one-line
+ * preview by default, streaming or not — reasoning is context, not the answer,
+ * and an open block pushes the output the reader is waiting for off-screen.
  */
 function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
   const tDag = useTranslations("dag")
   const [manual, setManual] = useState<boolean | null>(null)
-  const expanded = manual ?? streaming
+  const expanded = manual ?? false
 
   return (
     <div className="rounded-md border border-border/30 bg-muted/10 px-2.5 py-2">

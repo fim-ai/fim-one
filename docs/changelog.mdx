@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Agent steps carry live one-line titles.** While an agent works, each iteration gets a short generated label ("Verifying pricing data…"), shown in a single folded header that cycles to the newest step; expanding it reveals the full step timeline, and the labels persist into conversation history.
+
 - **A provider's models can be deleted in bulk.** Each model row in Admin → Models carries a checkbox, the header selects the whole list, and holding Shift while clicking extends the selection across a range of rows. Deleting the selection removes every chosen model in one request, after a confirmation naming the count.
 
 - **Small comparison tables in chat replies now render as card-style layouts.** A 2-3 column table whose first column holds attribute labels shows each attribute inside its value cell (matching the comparison-card style popularized by AI chat UIs); larger tables keep the classic grid.
@@ -27,6 +29,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Diagrams and code blocks can be downloaded, not just copied.** Mermaid diagrams export the rendered SVG, and every code block downloads with a filename matching its language; a `csv` block downloads as a UTF-8 file that opens cleanly in Excel.
 
 ### Changed
+
+- **Reasoning blocks stay folded while a turn runs.** Reasoning in both ReAct and DAG output now shows a one-line preview by default instead of expanding as it streams, keeping the result in view; click any block to read the full trace.
 
 - **Exported PDFs and Word files are properly typeset for Chinese.** PDF export now embeds a real CJK font instead of referencing one, fixing collapsed spacing in English text and bullets that rendered as unrelated Chinese characters, and bold now works. Word exports declare an East Asian font so mixed Chinese/English bold text no longer comes out half-bold, and both formats use a five-tier size scale that keeps headings inside a reply subordinate to the transcript's own structure.
 
