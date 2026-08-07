@@ -30,6 +30,7 @@ import { parseEvidence, parseSimpleEvidence, mergeEvidence, type ParsedEvidence 
 import { EvidenceProvider } from "@/contexts/evidence-context"
 import { ConfirmationCard } from "@/components/chat/confirmation-card"
 import { GuardrailBlockedCard } from "@/components/chat/guardrail-blocked-card"
+import { CopyButton } from "@/components/ui/copy-button"
 import type { GuardrailTripwiredEvent } from "@/types/api"
 
 /**
@@ -497,7 +498,7 @@ function StreamingAnswerCard({ content, aborted }: { content: string; aborted?: 
         <CardContent>
           <MarkdownContent
             content={content}
-            className={`prose-sm text-sm text-foreground/90${aborted ? "" : " streaming-cursor"}`}
+            className={`prose-sm text-sm text-foreground/90 streaming-fade${aborted ? "" : " streaming-cursor"}`}
           />
         </CardContent>
       )}
@@ -508,11 +509,24 @@ function StreamingAnswerCard({ content, aborted }: { content: string; aborted?: 
 function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; duration?: number; reasoning?: string }) {
   const t = useTranslations("playground")
   const isWaiting = !reasoning && duration == null
+  // `duration == null` is the existing "still streaming" signal (drives the
+  // caret below). Streamed reasoning stays open while it arrives, then folds
+  // when the step completes; a manual toggle wins over both, so history —
+  // which mounts with a duration — starts collapsed but stays expandable.
+  const streaming = duration == null
+  const [manual, setManual] = useState<boolean | null>(null)
+  const expanded = manual ?? (streaming && !isWaiting)
+  const collapsible = !!reasoning
 
   return (
     <Card className="border-border py-4">
       <CardContent className="space-y-2">
-        <div className="flex items-center gap-3">
+        <div
+          className={`flex items-center gap-3${collapsible ? " cursor-pointer" : ""}`}
+          role={collapsible ? "button" : undefined}
+          aria-expanded={collapsible ? expanded : undefined}
+          onClick={collapsible ? () => setManual(!expanded) : undefined}
+        >
           <Badge
             variant="outline"
             className="border-muted-foreground/30 text-muted-foreground text-[10px] uppercase tracking-wider gap-1"
@@ -523,11 +537,21 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
           <span className="text-xs text-muted-foreground">
             {t("iterationLabel", { n: iterLabel })}
           </span>
+          {!expanded && reasoning && (
+            <span className="min-w-0 flex-1 truncate text-xs italic text-muted-foreground/60">
+              {extractReasoningTitle(reasoning)}
+            </span>
+          )}
           {duration != null && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums">
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground tabular-nums shrink-0">
               <Clock className="h-2.5 w-2.5" />
               {fmtDuration(duration)}
             </span>
+          )}
+          {collapsible && (
+            expanded
+              ? <ChevronUp className={`h-3.5 w-3.5 text-muted-foreground shrink-0${duration != null ? "" : " ml-auto"}`} />
+              : <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground shrink-0${duration != null ? "" : " ml-auto"}`} />
           )}
         </div>
         {isWaiting && (
@@ -538,7 +562,7 @@ function ThinkingCard({ iterLabel, duration, reasoning }: { iterLabel: number; d
             </p>
           </div>
         )}
-        {reasoning && (
+        {reasoning && expanded && (
           <div className="text-xs italic text-muted-foreground leading-relaxed">
             <MarkdownContent content={reasoning} className={`prose-xs text-xs text-muted-foreground${duration == null ? " streaming-cursor" : ""}`} />
           </div>
@@ -626,7 +650,7 @@ function DoneCard({ done, items, suggestions, onSuggestionSelect, isPostProcessi
   }, [items])
 
   return (
-    <Card className="py-4">
+    <Card className="group/answer py-4">
       <CardHeader className="pb-0">
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/10">
@@ -648,6 +672,9 @@ function DoneCard({ done, items, suggestions, onSuggestionSelect, isPostProcessi
                 {t("tokenIn", { value: (done.usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (done.usage.completion_tokens / 1000).toFixed(1) })}
               </span>
             )}
+            <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/answer:opacity-100">
+              <CopyButton text={done.answer} title={t("copyAnswer")} className="-mr-1.5 py-0.5" iconClassName="h-3 w-3" />
+            </span>
           </div>
         </div>
       </CardHeader>

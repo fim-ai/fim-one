@@ -38,6 +38,7 @@ import type {
   GuardrailTripwiredEvent,
 } from "@/types/api"
 import { GuardrailBlockedCard } from "@/components/chat/guardrail-blocked-card"
+import { CopyButton } from "@/components/ui/copy-button"
 import type { StepState, RoundSnapshot } from "@/hooks/use-dag-steps"
 import { DagFlowGraph } from "@/components/dag/dag-flow-graph"
 import { IterationCard, ArtifactChips } from "@/components/steps"
@@ -358,7 +359,7 @@ function DagStreamingAnswerCard({ content, aborted }: { content: string; aborted
       <CardContent>
         <MarkdownContent
           content={stripCitations(content)}
-          className={`prose-sm text-sm text-foreground/90${aborted ? "" : " streaming-cursor"}`}
+          className={`prose-sm text-sm text-foreground/90 streaming-fade${aborted ? "" : " streaming-cursor"}`}
         />
       </CardContent>
     </Card>
@@ -664,25 +665,9 @@ function StepProgressCard({ state }: { state: StepState }) {
         <div className="mt-1.5 space-y-1.5 pl-2">
           {iterGroups.map((group, gIdx) =>
             group.toolName === "__thinking__" ? (
-              group.items.map(({ data, index }) => {
-                const isStreaming = !!data.loading
-                return (
-                  <div key={index} className="rounded-md border border-border/30 bg-muted/10 px-2.5 py-2">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Brain className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                        {tDag("thinking")}
-                      </span>
-                    </div>
-                    <div className="text-xs italic text-muted-foreground leading-relaxed">
-                      <MarkdownContent
-                        content={data.thinkingText ?? ""}
-                        className={`prose-xs text-xs text-muted-foreground${isStreaming ? " streaming-cursor" : ""}`}
-                      />
-                    </div>
-                  </div>
-                )
-              })
+              group.items.map(({ data, index }) => (
+                <ThinkingBlock key={index} text={data.thinkingText ?? ""} streaming={!!data.loading} />
+              ))
             ) : group.items.length >= 3 ? (
               <CollapsedIterationGroup key={gIdx} group={group} />
             ) : (
@@ -698,6 +683,48 @@ function StepProgressCard({ state }: { state: StepState }) {
             )
           )}
           {state.result && <ResultBlock content={state.result} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A single reasoning burst inside an expanded DAG step. Open while it streams,
+ * folded to a one-line preview once complete; a manual toggle wins over both.
+ */
+function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }) {
+  const tDag = useTranslations("dag")
+  const [manual, setManual] = useState<boolean | null>(null)
+  const expanded = manual ?? streaming
+
+  return (
+    <div className="rounded-md border border-border/30 bg-muted/10 px-2.5 py-2">
+      <div
+        className="flex items-center gap-1.5 cursor-pointer"
+        role="button"
+        aria-expanded={expanded}
+        onClick={(e) => { e.stopPropagation(); setManual(!expanded) }}
+      >
+        <Brain className="h-3 w-3 text-muted-foreground shrink-0" />
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider shrink-0">
+          {tDag("thinking")}
+        </span>
+        {!expanded && (
+          <span className="min-w-0 flex-1 truncate text-[11px] italic text-muted-foreground/60">
+            {stripInlineMarkdown(text.split("\n")[0] ?? "")}
+          </span>
+        )}
+        {expanded
+          ? <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0 ml-auto" />
+          : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 ml-auto" />}
+      </div>
+      {expanded && (
+        <div className="mt-1 text-xs italic text-muted-foreground leading-relaxed">
+          <MarkdownContent
+            content={text}
+            className={`prose-xs text-xs text-muted-foreground${streaming ? " streaming-cursor" : ""}`}
+          />
         </div>
       )}
     </div>
@@ -801,6 +828,8 @@ function ResultDetailDrawer({ content, onClose }: { content: string | null; onCl
 
 function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
   const t = useTranslations("playground")
+  const [expanded, setExpanded] = useState(false)
+  const collapsible = !!phase.reasoning
   return (
     <Card className="border-purple-500/20 py-4">
       <CardContent className="flex items-start gap-3">
@@ -808,7 +837,12 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
           <BarChart3 className="h-3.5 w-3.5 text-purple-500" />
         </div>
         <div className="space-y-2 min-w-0 flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
+          <div
+            className={`flex items-center gap-3 flex-wrap${collapsible ? " cursor-pointer" : ""}`}
+            role={collapsible ? "button" : undefined}
+            aria-expanded={collapsible ? expanded : undefined}
+            onClick={collapsible ? () => setExpanded((v) => !v) : undefined}
+          >
             <Badge
               variant="outline"
               className="border-purple-500/30 text-purple-500 text-[10px] uppercase tracking-wider"
@@ -827,8 +861,18 @@ function AnalysisCard({ phase }: { phase: DagPhaseEvent }) {
                 {t("confidenceLabel", { value: (phase.confidence * 100).toFixed(0) })}
               </span>
             )}
+            {collapsible && !expanded && (
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground/60">
+                {stripInlineMarkdown(phase.reasoning!.split("\n")[0] ?? "")}
+              </span>
+            )}
+            {collapsible && (
+              expanded
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-auto" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-auto" />
+            )}
           </div>
-          {phase.reasoning && (
+          {phase.reasoning && expanded && (
             <MarkdownContent
               content={phase.reasoning}
               className="prose-sm text-sm text-muted-foreground"
@@ -860,7 +904,7 @@ function DagDoneCard({ done, stepStates, suggestions, onSuggestionSelect, isPost
     : []
 
   return (
-    <Card className={done.achieved === false ? "border-destructive/20 py-4" : "border-green-500/20 py-4"}>
+    <Card className={done.achieved === false ? "group/answer border-destructive/20 py-4" : "group/answer border-green-500/20 py-4"}>
       <CardHeader className="pb-0">
         <div className="flex items-center gap-2">
           <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${done.achieved === false ? "bg-destructive/10" : "bg-green-500/10"}`}>
@@ -887,6 +931,9 @@ function DagDoneCard({ done, stepStates, suggestions, onSuggestionSelect, isPost
                 {t("tokenIn", { value: (done.usage.prompt_tokens / 1000).toFixed(1) })} · {t("tokenOut", { value: (done.usage.completion_tokens / 1000).toFixed(1) })}
               </span>
             )}
+            <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/answer:opacity-100">
+              <CopyButton text={done.answer} title={t("copyAnswer")} className="-mr-1.5 py-0.5" iconClassName="h-3 w-3" />
+            </span>
           </div>
         </div>
       </CardHeader>
