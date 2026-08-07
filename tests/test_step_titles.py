@@ -59,6 +59,24 @@ class TestGenerateStepTitle:
         assert await _generate_step_title(llm, "q", "r", "t") is None
 
     @pytest.mark.asyncio
+    async def test_prompt_carries_args_and_prev_titles(self) -> None:
+        """Tool arguments and earlier labels reach the prompt — they are what
+        keeps consecutive look-alike iterations from getting identical labels."""
+        llm = _llm_returning("Fetching 100 posts from JSONPlaceholder")
+        title = await _generate_step_title(
+            llm,
+            "find a fake-posts REST API",
+            "I found the API, now fetching data",
+            "http_request",
+            tool_args='{"url": "https://jsonplaceholder.typicode.com/posts"}',
+            prev_titles=["Searching for fake-post REST APIs"],
+        )
+        assert title == "Fetching 100 posts from JSONPlaceholder"
+        user_msg = llm.chat.call_args.args[0][1].content
+        assert "jsonplaceholder.typicode.com" in user_msg
+        assert "Searching for fake-post REST APIs" in user_msg
+
+    @pytest.mark.asyncio
     async def test_truncates_inputs_not_output(self) -> None:
         """Long reasoning is clipped in the prompt, not fatal."""
         llm = _llm_returning("A label")

@@ -403,19 +403,32 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
   const showStreamingAnswer = !hasDone && (hasAnswerStep || (isAnswerStreaming && displayAnswer))
   const isAborted = !isStreaming && !hasDone
 
-  // Latest per-iteration label for the live group header — newest wins, with
-  // the reasoning first sentence as a stopgap until the async label arrives.
+  // Label for the live group header. Priority is anchored on the CURRENT
+  // iteration, not on whichever label happens to be newest — generated labels
+  // arrive after the iteration's tool has started, so "newest label wins"
+  // permanently trails one iteration behind:
+  //   1. the current iteration's generated label,
+  //   2. its streaming reasoning (first sentence) while the label is pending,
+  //   3. the previous iteration's label as continuity filler.
   const liveStepItems = items.filter((i) => i.event === "step" && (i.data as ReactStepEvent).type !== "answer")
   const liveTitle = (() => {
-    const iters = Object.keys(stepTitles ?? {}).map(Number)
-    if (stepTitles && iters.length > 0) return stepTitles[Math.max(...iters)]
+    let currentIter = 0
+    for (const item of liveStepItems) {
+      const n = item.displayIteration ?? 0
+      if (n > currentIter) currentIter = n
+    }
+    if (stepTitles?.[currentIter]) return stepTitles[currentIter]
     for (let i = liveStepItems.length - 1; i >= 0; i--) {
-      const step = liveStepItems[i].data as ReactStepEvent
+      const item = liveStepItems[i]
+      if ((item.displayIteration ?? 0) !== currentIter) break
+      const step = item.data as ReactStepEvent
       if (step.type === "thinking" && step.reasoning) {
         const extracted = extractReasoningTitle(step.reasoning)
         if (extracted) return extracted
       }
     }
+    const iters = Object.keys(stepTitles ?? {}).map(Number)
+    if (stepTitles && iters.length > 0) return stepTitles[Math.max(...iters)]
     return null
   })()
 

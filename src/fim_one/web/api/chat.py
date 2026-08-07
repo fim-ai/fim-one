@@ -3404,17 +3404,25 @@ async def react_endpoint(
         # a short timeout) before ``sse_events`` is persisted so a late task
         # can't mutate the list mid-serialization.
         step_title_tasks: set[asyncio.Task[None]] = set()
+        # Labels already produced, oldest first — fed back into the prompt so
+        # consecutive look-alike iterations get distinct labels.
+        step_title_history: list[str] = []
 
-        async def _emit_step_title(iteration_no: int, reasoning: str, tool_name: str) -> None:
+        async def _emit_step_title(
+            iteration_no: int, reasoning: str, tool_name: str, tool_args: str
+        ) -> None:
             title = await _generate_step_title(
                 fast_llm,
                 q,
                 reasoning,
                 tool_name,
+                tool_args=tool_args,
+                prev_titles=list(step_title_history[-5:]),
                 preferred_language=preferred_language,
             )
             if not title:
                 return
+            step_title_history.append(title)
             payload = {"iteration": iteration_no, "title": title}
             _append_event(sse_events, "step_title", payload)
             try:
@@ -3422,11 +3430,22 @@ async def react_endpoint(
             except asyncio.QueueFull:
                 logger.warning("SSE progress queue full, dropping step_title")
 
-        def _spawn_step_title(iteration_no: int, reasoning: str, tool_name: str) -> None:
+        def _spawn_step_title(
+            iteration_no: int,
+            reasoning: str,
+            tool_name: str,
+            tool_args: dict[str, Any] | None = None,
+        ) -> None:
             if fast_llm is None:
                 return
+            args_snip = ""
+            if tool_args:
+                try:
+                    args_snip = json.dumps(tool_args, ensure_ascii=False, default=str)
+                except (TypeError, ValueError):
+                    args_snip = str(tool_args)
             task = asyncio.create_task(
-                _emit_step_title(iteration_no, reasoning, tool_name)
+                _emit_step_title(iteration_no, reasoning, tool_name, args_snip)
             )
             step_title_tasks.add(task)
             task.add_done_callback(step_title_tasks.discard)
@@ -3515,6 +3534,7 @@ async def react_endpoint(
                             iteration,
                             action.reasoning or "",
                             action.tool_name or "",
+                            action.tool_args,
                         )
 
                     # Emit iteration start
