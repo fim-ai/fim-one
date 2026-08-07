@@ -10,47 +10,51 @@ description: "FIM One의 모든 주목할 만한 변경 사항입니다."
 
 ## [미출시]
 
-### Fixed
+### 추가됨
 
-- **Agents no longer re-fetch an endpoint dozens of times after a truncated result.** Truncation notices now lead with an imperative pointer to the saved full copy, and an agent that keeps hammering the same endpoint with varying parameters is warned and then hard-stopped.
+- **채팅 답변의 작은 비교 테이블이 이제 카드 스타일 레이아웃으로 렌더링됩니다.** 첫 번째 열에 속성 레이블이 있는 2-3개 열의 테이블은 각 속성을 값 셀 내에 표시합니다(AI 채팅 UI에서 대중화된 비교 카드 스타일과 일치). 더 큰 테이블은 클래식 그리드를 유지합니다.
 
-- **A crashed run now reports an error instead of a green "done".** When the agent stopped because of an internal failure, the raw exception text was delivered as the answer under a success checkmark; failures now go through the error channel and surface as an error notification.
+### 수정됨
 
-- **Reconnecting to a stream no longer replays output you already saw.** The live stream now carries the same position cursor as the resume endpoint, so after a dropped connection only the missed events are replayed instead of the whole turn.
+- **에이전트가 잘린 결과 후 엔드포인트를 수십 번 다시 가져오지 않습니다.** 잘림 알림이 이제 저장된 전체 복사본에 대한 명령형 포인터로 시작하며, 같은 엔드포인트를 다양한 매개변수로 계속 요청하는 에이전트는 경고를 받은 후 강제로 중지됩니다.
 
-- **Streamed events split across network chunks are no longer lost.** A resumed stream could drop an event whose frame arrived in two pieces; both stream paths now share one parser that handles arbitrary chunk boundaries.
+- **충돌한 실행이 이제 녹색 "완료" 대신 오류를 보고합니다.** 에이전트가 내부 오류로 인해 중지되었을 때, 원본 예외 텍스트가 성공 체크마크 아래 답변으로 전달되었습니다. 이제 오류는 오류 채널을 통해 전달되고 오류 알림으로 표시됩니다.
 
-- **Calling another agent returns its actual answer.** The sub-agent's reply used to arrive buried inside a raw execution trace, flooding the calling agent's context; it now receives just the answer.
+- **스트림에 다시 연결해도 이미 본 출력이 재생되지 않습니다.** 라이브 스트림이 이제 재개 엔드포인트와 동일한 위치 커서를 전달하므로, 연결이 끊긴 후에는 전체 턴 대신 놓친 이벤트만 재생됩니다.
 
-- **A hung tool can no longer stall a run indefinitely.** Every tool call now has a wall-clock time limit (default 180s), so a stalled connector or unresponsive server ends the step with a clear message instead of wedging the turn.
+- **네트워크 청크로 분할된 스트림 이벤트가 더 이상 손실되지 않습니다.** 재개된 스트림이 두 부분으로 도착한 프레임의 이벤트를 손실할 수 있었습니다. 이제 두 스트림 경로 모두 임의의 청크 경계를 처리하는 하나의 파서를 공유합니다.
 
-- **An agent stuck repeating the same tool call is now stopped early.** Identical repeated calls are refused after a couple of attempts instead of burning the whole iteration budget.
+- **다른 에이전트를 호출하면 실제 답변이 반환됩니다.** 하위 에이전트의 응답이 원본 실행 추적 내에 묻혀 있어서 호출 에이전트의 컨텍스트를 넘쳤습니다. 이제 답변만 받습니다.
 
-- **Long conversations no longer lose their earlier context after compaction.** The summary that condenses older turns was being silently dropped on the next run; it is now carried forward, so the agent keeps what was discussed before.
+- **중단된 도구가 더 이상 실행을 무한정 정지시킬 수 없습니다.** 모든 도구 호출에는 이제 벽시계 시간 제한(기본값 180초)이 있으므로, 정지된 연결기나 응답하지 않는 서버는 턴을 막는 대신 명확한 메시지로 단계를 종료합니다.
 
-- **Large tool results keep their ending as well as their beginning.** When a long result is trimmed to fit the context window, both ends are now kept (the conclusion of a command's output usually matters most), trimming accounts correctly for non-Latin text, and later results are guaranteed a minimum window instead of being blanked entirely.
+- **같은 도구 호출을 반복하는 에이전트가 이제 조기에 중지됩니다.** 동일한 반복 호출은 전체 반복 예산을 소모하는 대신 몇 번의 시도 후 거부됩니다.
 
-- **The same generated file no longer shows up as two downloads.** A rendered HTML output saved again under a real filename used to produce two deliverable cards with identical content; duplicates are now detected by content and collapsed into the specifically named file.
+- **긴 대화가 압축 후 이전 컨텍스트를 더 이상 잃지 않습니다.** 이전 턴을 압축하는 요약이 다음 실행에서 자동으로 삭제되었습니다. 이제 전달되므로 에이전트는 이전에 논의한 내용을 유지합니다.
 
-- **Internal offload files can no longer appear as downloadable deliverables.** With tools sharing one filesystem, a large tool output offloaded during a code-execution run could be picked up by the artifact scan and surface as a bogus download card. Runtime bookkeeping files are now excluded from artifact detection.
+- **큰 도구 결과가 시작뿐만 아니라 끝도 유지합니다.** 긴 결과가 컨텍스트 윈도우에 맞게 잘릴 때, 이제 양쪽 끝이 유지되고(명령 출력의 결론이 가장 중요함), 잘림이 비라틴 텍스트에 대해 올바르게 계산되며, 나중의 결과는 완전히 공백이 되는 대신 최소 윈도우가 보장됩니다.
 
-- **Every tool in a conversation now works on one shared filesystem.** Offloaded large outputs used to land in a directory only the workspace-reading tools could see, while `file_ops`, `shell_exec` and `python_exec` operated elsewhere — the agent would list a file, then be told it doesn't exist, and burn its iteration budget hunting for it. Offloaded files now live in the conversation sandbox that every tool (including exec containers) mounts; files from older conversations remain readable.
+- **같은 생성 파일이 더 이상 두 개의 다운로드로 표시되지 않습니다.** 렌더링된 HTML 출력이 실제 파일명으로 다시 저장되었을 때 동일한 콘텐츠를 가진 두 개의 배달 카드가 생성되었습니다. 이제 콘텐츠로 중복이 감지되고 특정 이름의 파일로 축소됩니다.
 
-- **Reading a large offloaded file no longer spawns an endless chain of pointer files.** The output of a workspace read could itself exceed the offload threshold and get saved as a new file pointing back at content that was already on disk, sending the agent in circles. Workspace reads are now clamped with an exact resume line instead of being re-offloaded.
+- **내부 오프로드 파일이 더 이상 다운로드 가능한 배달물로 표시될 수 없습니다.** 도구가 하나의 파일 시스템을 공유하면서, 코드 실행 중에 오프로드된 큰 도구 출력이 아티팩트 스캔에 의해 선택되어 가짜 다운로드 카드로 표시될 수 있었습니다. 런타임 기록 파일이 이제 아티팩트 감지에서 제외됩니다.
 
-- **DeepSeek's improvised tool-call text no longer leaks into answers.** When a DeepSeek model wrote a tool invocation as plain `<｜｜DSML｜｜Tool call: ...` text instead of using the function-calling channel, the raw markup reached the chat verbatim. It is now stripped like other tool-call pseudo-protocols.
+- **대화의 모든 도구가 이제 하나의 공유 파일 시스템에서 작동합니다.** 오프로드된 큰 출력이 이전에는 워크스페이스 읽기 도구만 볼 수 있는 디렉토리에 저장되었고, `file_ops`, `shell_exec`, `python_exec`은 다른 곳에서 작동했습니다. 에이전트는 파일을 나열한 후 존재하지 않는다는 메시지를 받고 반복 예산을 소모하며 파일을 찾았습니다. 오프로드된 파일이 이제 모든 도구(실행 컨테이너 포함)가 마운트하는 대화 샌드박스에 있습니다. 이전 대화의 파일은 계속 읽을 수 있습니다.
 
-- **A tool call cut off by the model's output limit no longer passes as finished work.** When a long payload (writing a full HTML page, for example) exhausted the output budget mid-call, the half-written call was dropped silently and the agent's lead-in text — "now I'll save the file" — became the step result, so a step that produced nothing was reported as completed. The truncation is now detected, and the agent is told to retry with the work split into smaller calls.
+- **큰 오프로드 파일을 읽어도 더 이상 끝없는 포인터 파일 체인이 생성되지 않습니다.** 워크스페이스 읽기의 출력이 오프로드 임계값을 초과할 수 있었고 이미 디스크에 있는 콘텐츠를 가리키는 새 파일로 저장되어 에이전트를 순환시켰습니다. 워크스페이스 읽기가 이제 다시 오프로드되는 대신 정확한 재개 줄로 제한됩니다.
 
-- **A goal the agent is sure it missed now gets retried instead of ending the run.** Re-planning stopped whenever the analyzer was confident, which read a confident "the deliverable is missing" as a reason to give up — the exact case re-planning exists for. Runs now stop early only when the goal is judged genuinely unreachable, and `DAG_MAX_REPLAN_ROUNDS` bounds the rest.
+- **DeepSeek의 즉흥적인 도구 호출 텍스트가 더 이상 답변으로 유출되지 않습니다.** DeepSeek 모델이 함수 호출 채널을 사용하는 대신 도구 호출을 일반 `<｜｜DSML｜｜Tool call: ...` 텍스트로 작성했을 때, 원본 마크업이 채팅에 그대로 도달했습니다. 이제 다른 도구 호출 의사 프로토콜처럼 제거됩니다.
 
-- **The agent's self-check no longer shows up as the answer.** After using several tools, the agent runs a one-time internal verification before replying; that verification was being streamed to you verbatim, so answers arrived as "Let me verify: 1. Fully addressed? ✅ …" instead of the answer itself. The check is now internal, and the reply you see is written as its own step.
+- **모델의 출력 제한으로 잘린 도구 호출이 더 이상 완료된 작업으로 전달되지 않습니다.** 긴 페이로드(예: 전체 HTML 페이지 작성)가 호출 중간에 출력 예산을 소모했을 때, 반쯤 작성된 호출이 자동으로 삭제되고 에이전트의 도입 텍스트("이제 파일을 저장하겠습니다")가 단계 결과가 되었으므로 아무것도 생성하지 않은 단계가 완료된 것으로 보고되었습니다. 이제 잘림이 감지되고 에이전트는 작업을 더 작은 호출로 분할하여 다시 시도하도록 지시됩니다.
 
-- **Refresh-token rotation now actually invalidates the previous token.** JWT `exp` is only second-precision, so two refresh tokens issued for the same user in the same second used to encode identically — rotation then rewrote the stored hash with the same value, and a stolen refresh token could be renewed forever. Each refresh token now carries a unique `jti`, so the rotated token differs and the old one stops working immediately.
+- **에이전트가 놓친 목표가 이제 실행을 종료하는 대신 다시 시도됩니다.** 재계획이 분석기가 확신할 때마다 중지되었으며, 이는 확신 있는 "배달물이 누락됨"을 포기 이유로 읽었습니다. 이는 재계획이 존재하는 정확한 경우입니다. 이제 실행은 목표가 진정으로 도달 불가능하다고 판단될 때만 조기에 중지되고, `DAG_MAX_REPLAN_ROUNDS`가 나머지를 제한합니다.
 
-- **Approval gates now hold when an agent is reached through another agent or a workflow.** A sensitive connector call that would ask for confirmation in chat previously ran unchecked once it was delegated via `call_agent` or wrapped in a workflow `AGENT` node — those paths started the agent with no hooks at all. Both now run the agent's own gates, using that agent's confirmation settings, and refuse to run it if its hooks can't be loaded.
+- **에이전트의 자체 검사가 더 이상 답변으로 표시되지 않습니다.** 여러 도구를 사용한 후 에이전트는 응답하기 전에 일회성 내부 검증을 실행합니다. 해당 검증이 그대로 스트림되었으므로 답변이 "확인해보겠습니다: 1. 완전히 해결됨? ✅ …" 대신 답변 자체로 도착했습니다. 이제 검사는 내부이고, 보이는 응답은 자체 단계로 작성됩니다.
 
-- **A typo in `SMTP_SSL` no longer silently sends your SMTP password in cleartext.** Previously any value other than `ssl` or `tls` (for example `SMTP_SSL=true`) fell through to an unencrypted connection without warning, in both system emails and email notifications. Unrecognized values are now rejected outright, and unencrypted delivery must be requested explicitly as `SMTP_SSL=none`, which logs a warning on every send.
+- **새로 고침 토큰 회전이 이제 실제로 이전 토큰을 무효화합니다.** JWT `exp`는 초 단위 정밀도만 있으므로, 같은 초에 같은 사용자에 대해 발급된 두 개의 새로 고침 토큰이 동일하게 인코딩되었습니다. 회전이 저장된 해시를 같은 값으로 다시 작성했고, 도난당한 새로 고침 토큰을 영구적으로 갱신할 수 있었습니다. 이제 각 새로 고침 토큰이 고유한 `jti`를 전달하므로 회전된 토큰이 다르고 이전 토큰이 즉시 작동을 중지합니다.
+
+- **승인 게이트가 다른 에이전트나 워크플로우를 통해 도달한 에이전트에 대해 이제 유지됩니다.** 채팅에서 확인을 요청하는 민감한 연결기 호출이 `call_agent`를 통해 위임되거나 워크플로우 `AGENT` 노드에 래핑되면 이전에 확인 없이 실행되었습니다. 이러한 경로는 후크 없이 에이전트를 시작했습니다. 이제 둘 다 에이전트의 자체 게이트를 실행하고, 해당 에이전트의 확인 설정을 사용하며, 후크를 로드할 수 없으면 실행을 거부합니다.
+
+- **`SMTP_SSL`의 오타가 더 이상 SMTP 암호를 일반 텍스트로 자동 전송하지 않습니다.** 이전에 `ssl` 또는 `tls` 이외의 값(예: `SMTP_SSL=true`)이 시스템 이메일과 이메일 알림 모두에서 경고 없이 암호화되지 않은 연결로 통과했습니다. 인식되지 않은 값이 이제 완전히 거부되고, 암호화되지 않은 배달은 `SMTP_SSL=none`으로 명시적으로 요청되어야 하며, 모든 전송에서 경고를 기록합니다.
 
 ### 제거됨
 

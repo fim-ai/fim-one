@@ -164,6 +164,83 @@ function CodeBlock({ children, ...props }: React.ComponentProps<"pre">) {
 const remarkPlugins = [remarkCjkFriendly, remarkCjkFriendlyGfmStrikethrough, remarkGfm, remarkMath]
 const rehypePlugins = [rehypeRaw, rehypeKatex, rehypeHighlight]
 
+/* ---- Card-style comparison table ---- */
+
+interface ComparisonTable {
+  /** Data column headers (first header cell — the attribute-column title — is dropped) */
+  header: React.ReactNode[]
+  rows: { label: React.ReactNode; values: React.ReactNode[] }[]
+}
+
+const CARD_TABLE_MAX_ROWS = 10
+const CARD_TABLE_MAX_LABEL_CHARS = 30
+
+type ElementWithChildren = React.ReactElement<{ children?: React.ReactNode }>
+
+/** Valid element children of a rendered thead/tbody/tr element */
+function elementChildren(el: React.ReactNode): ElementWithChildren[] {
+  const kids = React.isValidElement<{ children?: React.ReactNode }>(el)
+    ? el.props.children
+    : undefined
+  return React.Children.toArray(kids).filter((c): c is ElementWithChildren =>
+    React.isValidElement(c)
+  )
+}
+
+/**
+ * Detect a small "attribute comparison" table: 2-3 columns whose first column
+ * holds short attribute labels, 2-10 body rows. Those render as a card layout
+ * (label repeated inside each value cell); anything else falls back to the
+ * classic grid table.
+ */
+function extractComparisonTable(children: React.ReactNode): ComparisonTable | null {
+  const sections = React.Children.toArray(children).filter(React.isValidElement)
+  if (sections.length !== 2) return null
+  const [thead, tbody] = sections
+  const headRows = elementChildren(thead)
+  if (headRows.length !== 1) return null
+  const headerCells = elementChildren(headRows[0]).map((c) => c.props.children)
+  if (headerCells.length < 2 || headerCells.length > 3) return null
+  const trs = elementChildren(tbody)
+  if (trs.length < 2 || trs.length > CARD_TABLE_MAX_ROWS) return null
+  const rows: ComparisonTable["rows"] = []
+  for (const tr of trs) {
+    const cells = elementChildren(tr).map((c) => c.props.children)
+    if (cells.length !== headerCells.length) return null
+    const labelText = extractText(cells[0]).trim()
+    if (!labelText || labelText.length > CARD_TABLE_MAX_LABEL_CHARS) return null
+    rows.push({ label: cells[0], values: cells.slice(1) })
+  }
+  return { header: headerCells.slice(1), rows }
+}
+
+function CardTable({ table }: { table: ComparisonTable }) {
+  const gridCols = table.header.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
+  return (
+    <div className="my-3 overflow-hidden rounded-xl border border-border">
+      <div className={`grid ${gridCols} gap-x-6 gap-y-1 border-b border-border bg-muted/40 px-4 py-3`}>
+        {table.header.map((cell, i) => (
+          <div key={i} className="text-sm font-semibold">
+            {cell}
+          </div>
+        ))}
+      </div>
+      <div className="divide-y divide-border/50">
+        {table.rows.map((row, ri) => (
+          <div key={ri} className={`grid ${gridCols} gap-x-6 gap-y-3 px-4 py-3`}>
+            {row.values.map((value, vi) => (
+              <div key={vi}>
+                <div className="mb-0.5 text-xs text-muted-foreground">{row.label}</div>
+                <div className="text-sm leading-relaxed">{processCitations(value)}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
  * Stable component overrides for react-markdown.
  * Hoisted to module scope so the object reference never changes between renders,
@@ -240,6 +317,8 @@ const markdownComponents = {
     )
   },
   table({ children, ...props }: React.ComponentProps<"table">) {
+    const comparison = extractComparisonTable(children)
+    if (comparison) return <CardTable table={comparison} />
     return (
       <div className="my-3 overflow-x-auto rounded-lg border border-border">
         <table

@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Added
+
+- **Small comparison tables in chat replies now render as card-style layouts.** A 2-3 column table whose first column holds attribute labels shows each attribute inside its value cell (matching the comparison-card style popularized by AI chat UIs); larger tables keep the classic grid.
+
 ### Fixed
 
 - **Agents no longer re-fetch an endpoint dozens of times after a truncated result.** Truncation notices now lead with an imperative pointer to the saved full copy, and an agent that keeps hammering the same endpoint with varying parameters is warned and then hard-stopped.
