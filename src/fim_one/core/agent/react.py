@@ -50,7 +50,12 @@ from .guardrail import (
     OutputGuardrailTripwireTriggered,
 )
 from .hooks import HookContext, HookPoint, HookRegistry
-from .plan_tool import PlanState, UpdatePlanTool, make_plan_reminder
+from .plan_tool import (
+    PlanReminderTracker,
+    PlanState,
+    UpdatePlanTool,
+    make_open_plan_note,
+)
 from .system_prompt import JSON_MODE_SYSTEM_PROMPT, NATIVE_MODE_SYSTEM_PROMPT
 from .turn_profiler import TurnProfiler, make_profiler
 from .types import Action, AgentResult, StepResult
@@ -219,6 +224,15 @@ _PLAN_TOOL_ENABLED = os.getenv("REACT_PLAN_TOOL_ENABLED", "true").strip().lower(
     "yes",
 )
 _PLAN_REMINDER_INTERVAL = int(os.getenv("REACT_PLAN_REMINDER_INTERVAL", "3"))
+
+# Repetition escalation: same tool called this many consecutive rounds
+# (different args — exact duplicates are cycle detection's job) → the
+# reminder tells the model to change approach instead of grinding.
+_PLAN_REPEAT_THRESHOLD = int(os.getenv("REACT_PLAN_REPEAT_THRESHOLD", "4"))
+
+# No-plan nudge: this many tool rounds with an empty plan board → a
+# one-shot suggestion to write the plan down.
+_PLAN_NUDGE_AFTER = int(os.getenv("REACT_PLAN_NUDGE_AFTER", "5"))
 
 _PLAN_GUIDANCE = (
     "Planning:\n"
@@ -1502,7 +1516,16 @@ class ReActAgent:
         verification_pending = False  # Next final answer is the internal check
         tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
         context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
-        rounds_since_plan = 0  # Tool rounds since the last update_plan call
+        plan_tracker = (
+            PlanReminderTracker(
+                self._plan_state,
+                stale_interval=_PLAN_REMINDER_INTERVAL,
+                repeat_threshold=_PLAN_REPEAT_THRESHOLD,
+                no_plan_after=_PLAN_NUDGE_AFTER,
+            )
+            if self._plan_state is not None
+            else None
+        )
 
         for iteration in range(1, self._max_iterations + 1):
             logger.debug("ReAct iteration %d", iteration)
@@ -1679,24 +1702,42 @@ class ReActAgent:
                 # Long answers (> ~200 tokens) are almost always substantive
                 # enough to skip this extra round-trip.
                 final_answer_text = action.answer or ""
+                # An open plan is a strong "not actually done" signal: it
+                # forces the check regardless of the answer-length skip
+                # (and of the min-tools floor — a plan implies tool use).
+                open_plan = (
+                    self._plan_state
+                    if self._plan_state is not None
+                    and self._plan_state.has_open_items
+                    else None
+                )
                 if (
                     self._completion_check
-                    and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                     and not completion_check_done
                     and iteration < self._max_iterations - 1
-                    and len(final_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
+                    and (
+                        open_plan is not None
+                        or (
+                            tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
+                            and len(final_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
+                        )
+                    )
                 ):
                     completion_check_done = True
                     verification_pending = True
+                    check_prompt = _COMPLETION_CHECK_PROMPT
+                    if open_plan is not None:
+                        check_prompt += "\n" + make_open_plan_note(open_plan)
                     messages.append(
-                        ChatMessage(role="user", content=_COMPLETION_CHECK_PROMPT),
+                        ChatMessage(role="user", content=check_prompt),
                     )
                     logger.info(
                         "Injected completion checklist at iteration %d "
-                        "(tool_call_count=%d, answer_len=%d)",
+                        "(tool_call_count=%d, answer_len=%d, open_plan=%s)",
                         iteration,
                         tool_call_count,
                         len(final_answer_text),
+                        open_plan is not None,
                     )
                     profiler.emit(self._profiler_conversation_id())
                     continue
@@ -1844,26 +1885,22 @@ class ReActAgent:
             if cycle_message is not None and not cycle_blocked:
                 messages.append(ChatMessage(role="user", content=cycle_message))
 
-            # --- Plan staleness reminder ---
-            # Re-inject the current plan when it has gone several tool
-            # rounds without an update (see native loop for rationale).
-            if self._plan_state is not None:
-                if action.tool_name == "update_plan":
-                    rounds_since_plan = 0
-                elif self._plan_state.has_open_items:
-                    rounds_since_plan += 1
-                    if rounds_since_plan >= _PLAN_REMINDER_INTERVAL:
-                        messages.append(
-                            ChatMessage(
-                                role="user",
-                                content=make_plan_reminder(self._plan_state),
-                            ),
-                        )
-                        logger.info(
-                            "Injected plan reminder after %d stale tool rounds",
-                            rounds_since_plan,
-                        )
-                        rounds_since_plan = 0
+            # --- Plan reminders (stale / repetition / no-plan) ---
+            # The tracker owns the counters; see PlanReminderTracker for
+            # when each reminder fires.
+            if plan_tracker is not None:
+                plan_reminder = plan_tracker.observe_round(
+                    [action.tool_name or ""],
+                )
+                if plan_reminder is not None:
+                    messages.append(
+                        ChatMessage(role="user", content=plan_reminder.message),
+                    )
+                    logger.info(
+                        "Injected %s plan reminder at iteration %d",
+                        plan_reminder.kind,
+                        iteration,
+                    )
 
             # --- Dynamic tool reload (request_tools) ---
             # When request_tools successfully loads new tools into the
@@ -2005,7 +2042,16 @@ class ReActAgent:
         verification_pending = False  # Next final answer is the internal check
         tool_result_tokens = 0  # Cumulative token estimate for tool results (I.8)
         context_overflow_recovered = False  # One-shot flag for I.9 reactive compact
-        rounds_since_plan = 0  # Tool rounds since the last update_plan call
+        plan_tracker = (
+            PlanReminderTracker(
+                self._plan_state,
+                stale_interval=_PLAN_REMINDER_INTERVAL,
+                repeat_threshold=_PLAN_REPEAT_THRESHOLD,
+                no_plan_after=_PLAN_NUDGE_AFTER,
+            )
+            if self._plan_state is not None
+            else None
+        )
         continuation_count = 0  # Output-truncation continuations issued
         answer_parts: list[str] = []  # Truncated answer segments to stitch
 
@@ -2239,27 +2285,25 @@ class ReActAgent:
                 for warning in cycle_warnings:
                     messages.append(ChatMessage(role="user", content=warning))
 
-                # --- Plan staleness reminder ---
-                # Re-inject the current plan when it has gone several tool
-                # rounds without an update.  The reminder embeds the full
-                # checklist so plan state survives micro-compaction.
-                if self._plan_state is not None:
-                    if any(tc.name == "update_plan" for tc in assistant_msg.tool_calls):
-                        rounds_since_plan = 0
-                    elif self._plan_state.has_open_items:
-                        rounds_since_plan += 1
-                        if rounds_since_plan >= _PLAN_REMINDER_INTERVAL:
-                            messages.append(
-                                ChatMessage(
-                                    role="user",
-                                    content=make_plan_reminder(self._plan_state),
-                                ),
-                            )
-                            logger.info(
-                                "Injected plan reminder after %d stale tool rounds",
-                                rounds_since_plan,
-                            )
-                            rounds_since_plan = 0
+                # --- Plan reminders (stale / repetition / no-plan) ---
+                # The tracker owns the counters; see PlanReminderTracker
+                # for when each reminder fires.
+                if plan_tracker is not None:
+                    plan_reminder = plan_tracker.observe_round(
+                        [tc.name for tc in assistant_msg.tool_calls],
+                    )
+                    if plan_reminder is not None:
+                        messages.append(
+                            ChatMessage(
+                                role="user",
+                                content=plan_reminder.message,
+                            ),
+                        )
+                        logger.info(
+                            "Injected %s plan reminder at iteration %d",
+                            plan_reminder.kind,
+                            iteration,
+                        )
 
                 # --- Dynamic tool reload (request_tools) ---
                 # If request_tools was among the tool calls and succeeded,
@@ -2414,24 +2458,41 @@ class ReActAgent:
                 profiler.emit(self._profiler_conversation_id())
                 continue
 
+            # An open plan is a strong "not actually done" signal: it
+            # forces the check regardless of the answer-length skip (and
+            # of the min-tools floor — a plan implies tool use).
+            open_plan = (
+                self._plan_state
+                if self._plan_state is not None and self._plan_state.has_open_items
+                else None
+            )
             if (
                 self._completion_check
-                and tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
                 and not completion_check_done
                 and iteration < self._max_iterations - 1
-                and len(native_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
+                and (
+                    open_plan is not None
+                    or (
+                        tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
+                        and len(native_answer_text) <= _COMPLETION_CHECK_SKIP_CHARS
+                    )
+                )
             ):
                 completion_check_done = True
                 verification_pending = True
+                check_prompt = _COMPLETION_CHECK_PROMPT
+                if open_plan is not None:
+                    check_prompt += "\n" + make_open_plan_note(open_plan)
                 messages.append(
-                    ChatMessage(role="user", content=_COMPLETION_CHECK_PROMPT),
+                    ChatMessage(role="user", content=check_prompt),
                 )
                 logger.info(
                     "Injected completion checklist at iteration %d "
-                    "(tool_call_count=%d, answer_len=%d)",
+                    "(tool_call_count=%d, answer_len=%d, open_plan=%s)",
                     iteration,
                     tool_call_count,
                     len(native_answer_text),
+                    open_plan is not None,
                 )
                 profiler.emit(self._profiler_conversation_id())
                 continue

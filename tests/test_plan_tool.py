@@ -9,8 +9,10 @@ import pytest
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.plan_tool import (
+    PlanReminderTracker,
     PlanState,
     UpdatePlanTool,
+    make_open_plan_note,
     make_plan_reminder,
     normalize_todos,
 )
@@ -153,6 +155,90 @@ class TestMakePlanReminder:
         assert "update_plan" in reminder
 
 
+class TestPlanReminderTracker:
+    def _tracker(self, state: PlanState | None = None) -> PlanReminderTracker:
+        return PlanReminderTracker(
+            state or PlanState(),
+            stale_interval=3,
+            repeat_threshold=4,
+            no_plan_after=5,
+        )
+
+    def test_stale_fires_after_interval(self) -> None:
+        state = PlanState()
+        state.replace(normalize_todos(_TODOS))
+        tracker = self._tracker(state)
+        assert tracker.observe_round(["a"]) is None
+        assert tracker.observe_round(["b"]) is None
+        reminder = tracker.observe_round(["c"])
+        assert reminder is not None and reminder.kind == "stale"
+
+    def test_update_plan_resets_all_counters(self) -> None:
+        state = PlanState()
+        state.replace(normalize_todos(_TODOS))
+        tracker = self._tracker(state)
+        tracker.observe_round(["search"])
+        tracker.observe_round(["search"])
+        assert tracker.observe_round(["update_plan"]) is None
+        # Counters restarted: two more rounds stay silent.
+        assert tracker.observe_round(["search"]) is None
+        assert tracker.observe_round(["search"]) is None
+
+    def test_repetition_fires_at_threshold_and_multiples(self) -> None:
+        tracker = self._tracker()
+        kinds = []
+        for _ in range(8):
+            r = tracker.observe_round(["web_search"])
+            kinds.append(r.kind if r else None)
+        assert kinds[3] == "repetition"
+        assert kinds[7] == "repetition"
+        assert kinds[4] is None  # no spam between multiples
+
+    def test_mixed_round_breaks_streak(self) -> None:
+        # Completed plan keeps the stale/no-plan branches quiet so only
+        # the repetition streak is under test.
+        state = PlanState()
+        state.replace([{"content": "x", "status": "completed"}])
+        tracker = self._tracker(state)
+        for _ in range(3):
+            tracker.observe_round(["web_search"])
+        tracker.observe_round(["web_search", "web_fetch"])  # mixed round
+        # Streak restarted — the 4th consecutive single-tool round after
+        # the break is round 4 of a new streak.
+        assert tracker.observe_round(["web_search"]) is None
+
+    def test_no_plan_nudge_is_one_shot(self) -> None:
+        tracker = self._tracker()
+        results = [
+            # Alternate tools so the repetition streak never forms.
+            tracker.observe_round(["a" if i % 2 else "b"])
+            for i in range(12)
+        ]
+        nudges = [r for r in results if r is not None]
+        assert len(nudges) == 1
+        assert nudges[0].kind == "no_plan"
+        assert results[4] is not None  # fired exactly at round 5
+
+    def test_quiet_when_plan_fully_completed(self) -> None:
+        state = PlanState()
+        state.replace([{"content": "x", "status": "completed"}])
+        tracker = self._tracker(state)
+        results = [
+            tracker.observe_round(["a" if i % 2 else "b"]) for i in range(10)
+        ]
+        assert all(r is None for r in results)
+
+
+class TestMakeOpenPlanNote:
+    def test_embeds_checklist(self) -> None:
+        state = PlanState()
+        state.replace(normalize_todos(_TODOS))
+        note = make_open_plan_note(state)
+        assert "unfinished items" in note
+        assert "[~] step two" in note
+        assert "update_plan" in note
+
+
 class TestAgentIntegration:
     def _make_agent(self, responses: list[Any], **kwargs: Any) -> ReActAgent:
         registry = ToolRegistry()
@@ -206,7 +292,26 @@ class TestAgentIntegration:
         assert "[~] step two" in reminders[0].content
 
     async def test_no_reminder_without_plan(self) -> None:
+        # 3 rounds: below both the repetition threshold (4) and the
+        # no-plan nudge threshold (5) — the loop must stay quiet.
         responses = [
+            _tool_call("echo", {"text": "a"}),
+            _tool_call("echo", {"text": "b"}),
+            _tool_call("echo", {"text": "c"}),
+            _final("done"),
+        ]
+        agent = self._make_agent(responses)
+        result = await agent.run("simple task")
+        assert not any(
+            isinstance(m.content, str) and m.content.startswith("<plan-reminder>")
+            for m in result.messages
+        )
+
+    async def test_repetition_reminder_after_grinding(self) -> None:
+        # update_plan → 4 same-tool rounds: stale fires after round 3,
+        # repetition escalation fires at round 4.
+        responses = [
+            _tool_call("update_plan", {"todos": _TODOS}),
             _tool_call("echo", {"text": "a"}),
             _tool_call("echo", {"text": "b"}),
             _tool_call("echo", {"text": "c"}),
@@ -214,9 +319,71 @@ class TestAgentIntegration:
             _final("done"),
         ]
         agent = self._make_agent(responses)
-        result = await agent.run("simple task")
+        result = await agent.run("grinding task")
+        reminders = [
+            m.content
+            for m in result.messages
+            if m.role == "user"
+            and isinstance(m.content, str)
+            and m.content.startswith("<plan-reminder>")
+        ]
+        assert len(reminders) == 2
+        assert "has not been updated" in reminders[0]
+        assert "4 rounds in a row" in reminders[1]
+        assert "'echo'" in reminders[1]
+
+    async def test_open_plan_forces_completion_check(self) -> None:
+        # A long answer normally skips the completion check; open plan
+        # items must force it anyway, with the checklist embedded.
+        long_answer = "x" * 900
+        responses = [
+            _tool_call("update_plan", {"todos": _TODOS}),
+            _final(long_answer),
+            _final("verified, step two was not actually needed"),
+            _final("real answer"),
+        ]
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=FakeLLM(responses),
+            tools=registry,
+            use_native_tools=False,
+            completion_check=True,
+            max_iterations=20,
+        )
+        result = await agent.run("task with open plan")
+        assert result.answer == "real answer"
+        check_msgs = [
+            m.content
+            for m in result.messages
+            if m.role == "user"
+            and isinstance(m.content, str)
+            and "unfinished items" in m.content
+        ]
+        assert len(check_msgs) == 1
+        assert "[~] step two" in check_msgs[0]
+
+    async def test_completed_plan_does_not_force_check(self) -> None:
+        # All items completed → the long-answer skip applies as before.
+        done_todos = [{"content": "only step", "status": "completed"}]
+        long_answer = "y" * 900
+        responses = [
+            _tool_call("update_plan", {"todos": done_todos}),
+            _final(long_answer),
+        ]
+        registry = ToolRegistry()
+        registry.register(EchoTool())
+        agent = ReActAgent(
+            llm=FakeLLM(responses),
+            tools=registry,
+            use_native_tools=False,
+            completion_check=True,
+            max_iterations=20,
+        )
+        result = await agent.run("task fully done")
+        assert result.answer == long_answer
         assert not any(
-            isinstance(m.content, str) and m.content.startswith("<plan-reminder>")
+            isinstance(m.content, str) and "unfinished items" in m.content
             for m in result.messages
         )
 

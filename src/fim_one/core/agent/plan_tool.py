@@ -9,10 +9,21 @@ Claude Code's TodoWrite) is a *plan board* the model maintains itself:
   update item statuses as it progresses.
 - :class:`PlanState` — the per-run mutable state shared between the tool
   and the ReAct loop.
-- :func:`make_plan_reminder` — a reminder message the loop injects when
-  the plan has gone stale (several tool rounds without an update).  The
-  reminder embeds the full current checklist, so plan state survives
-  micro-compaction of older tool results.
+- :class:`PlanReminderTracker` — the per-run reminder state machine both
+  ReAct loops (JSON and native) feed with one call per tool round.  It
+  decides when to inject which reminder:
+
+  * stale — the plan has open items but no ``update_plan`` call for
+    several rounds; re-embeds the full checklist so plan state survives
+    micro-compaction of older tool results.
+  * repetition — the same tool has been called many rounds in a row
+    (typically fruitless searches); tells the model to change approach
+    instead of grinding.
+  * no-plan — sustained tool activity with an empty plan board; a
+    one-shot nudge to write the plan down.
+
+- :func:`make_open_plan_note` — appended to the completion checklist
+  when the model tries to finalise with unfinished plan items.
 
 The tool is registered by ``ReActAgent.__init__`` (like the workspace
 tools) and must NOT be part of the builtin auto-discovery — it depends on
@@ -25,7 +36,8 @@ __fim_license__ = "FIM-SAL-1.1"
 __fim_origin__ = "https://github.com/fim-ai/fim-one"
 
 import json
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Sequence
 
 from fim_one.core.tool.base import BaseTool
 
@@ -139,8 +151,10 @@ class UpdatePlanTool(BaseTool):
             "distinct steps) to write down the steps, then call it again "
             "whenever you complete a step to update statuses. Full-replace "
             "semantics: always pass the complete list. Keep exactly one "
-            "item in_progress at a time. This tool only records state — "
-            "it performs no action."
+            "item in_progress at a time, and batch status changes: mark "
+            "the finished step completed AND set the next step in_progress "
+            "in the same call. This tool only records state — it performs "
+            "no action."
         )
 
     @property
@@ -201,3 +215,142 @@ def make_plan_reminder(state: PlanState) -> str:
         "direct next step.\n"
         "</plan-reminder>"
     )
+
+
+def make_repetition_reminder(state: PlanState, tool_name: str, streak: int) -> str:
+    """Reminder for a model grinding the same tool round after round.
+
+    Fires on same-tool-different-args streaks (e.g. a dozen search
+    queries that all come back empty) — the exact-duplicate case is
+    already handled by the loop's cycle detection.
+    """
+    return (
+        "<plan-reminder>\n"
+        f"You have called the tool '{tool_name}' {streak} rounds in a row. "
+        "If those calls keep failing or returning nothing useful, more of "
+        "the same is unlikely to help — step back and try a different "
+        "approach (a different tool, a different source, or a direct "
+        "route to the goal). Current plan state:\n"
+        f"{state.render()}\n"
+        "Call update_plan to record the adjusted approach, then continue.\n"
+        "</plan-reminder>"
+    )
+
+
+def make_no_plan_nudge() -> str:
+    """One-shot nudge for sustained tool activity with no plan recorded."""
+    return (
+        "<plan-reminder>\n"
+        "You have made several tool calls without recording a plan. If "
+        "this task has multiple remaining steps, call update_plan now to "
+        "write them down as a todo checklist — it keeps long tasks on "
+        "track. If only one step remains, skip the plan and finish "
+        "directly.\n"
+        "</plan-reminder>"
+    )
+
+
+def make_open_plan_note(state: PlanState) -> str:
+    """Completion-checklist addendum when finalising with open plan items."""
+    return (
+        "Additionally, your plan still has unfinished items:\n"
+        f"{state.render()}\n"
+        "Before finalising, either complete them (call tools), or call "
+        "update_plan to mark them completed / record why they are no "
+        "longer needed."
+    )
+
+
+@dataclass
+class PlanReminder:
+    """A reminder the loop should inject after the current tool round."""
+
+    kind: str  # "stale" | "repetition" | "no_plan"
+    message: str
+
+
+class PlanReminderTracker:
+    """Per-run reminder state machine shared by both ReAct loops.
+
+    The loop calls :meth:`observe_round` exactly once per completed tool
+    round (a round = one JSON-mode tool call, or one native-mode tool
+    batch) and injects the returned message, if any.  Keeping the
+    counters here rather than as loose loop locals means the JSON and
+    native loops cannot drift apart.
+    """
+
+    def __init__(
+        self,
+        state: PlanState,
+        *,
+        stale_interval: int = 3,
+        repeat_threshold: int = 4,
+        no_plan_after: int = 5,
+    ) -> None:
+        self._state = state
+        self._stale_interval = max(1, stale_interval)
+        self._repeat_threshold = max(2, repeat_threshold)
+        self._no_plan_after = max(1, no_plan_after)
+        self._rounds_since_plan = 0
+        self._repeat_tool: str | None = None
+        self._repeat_streak = 0
+        self._rounds_without_plan = 0
+        self._no_plan_nudged = False
+
+    def observe_round(self, tool_names: Sequence[str]) -> PlanReminder | None:
+        """Record one tool round; return the reminder to inject, if any."""
+        names = [n for n in tool_names if n]
+
+        if "update_plan" in names:
+            # The model just (re)planned — every nudge is moot for now.
+            self._rounds_since_plan = 0
+            self._repeat_tool = None
+            self._repeat_streak = 0
+            self._rounds_without_plan = 0
+            return None
+
+        # Repetition streak: consecutive rounds whose only tool is the
+        # same one.  Mixed-tool rounds break the streak.
+        distinct = set(names)
+        if len(distinct) == 1:
+            tool = next(iter(distinct))
+            if tool == self._repeat_tool:
+                self._repeat_streak += 1
+            else:
+                self._repeat_tool = tool
+                self._repeat_streak = 1
+        else:
+            self._repeat_tool = None
+            self._repeat_streak = 0
+
+        # Fires at the threshold and every multiple of it, so an ignored
+        # reminder comes back rather than going silent forever.
+        if (
+            self._repeat_tool is not None
+            and self._repeat_streak >= self._repeat_threshold
+            and self._repeat_streak % self._repeat_threshold == 0
+        ):
+            self._rounds_since_plan = 0
+            return PlanReminder(
+                kind="repetition",
+                message=make_repetition_reminder(
+                    self._state, self._repeat_tool, self._repeat_streak,
+                ),
+            )
+
+        if self._state.has_open_items:
+            self._rounds_since_plan += 1
+            if self._rounds_since_plan >= self._stale_interval:
+                self._rounds_since_plan = 0
+                return PlanReminder(
+                    kind="stale",
+                    message=make_plan_reminder(self._state),
+                )
+            return None
+
+        if not self._state.todos and not self._no_plan_nudged:
+            self._rounds_without_plan += 1
+            if self._rounds_without_plan >= self._no_plan_after:
+                self._no_plan_nudged = True
+                return PlanReminder(kind="no_plan", message=make_no_plan_nudge())
+        return None
