@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **A provider's models can be deleted in bulk.** Each model row in Admin → Models carries a checkbox, the header selects the whole list, and holding Shift while clicking extends the selection across a range of rows. Deleting the selection removes every chosen model in one request, after a confirmation naming the count.
+
 - **Small comparison tables in chat replies now render as card-style layouts.** A 2-3 column table whose first column holds attribute labels shows each attribute inside its value cell (matching the comparison-card style popularized by AI chat UIs); larger tables keep the classic grid.
 
 - **Chat replies now render Mermaid diagrams and SVG figures.** A `mermaid` code block becomes a themed diagram and an `svg` block becomes an image with a source toggle and download; both fall back to plain code if the source is incomplete or does not parse, so a half-streamed diagram never flashes an error.
