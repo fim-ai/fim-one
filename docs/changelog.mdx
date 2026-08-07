@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **The browser-tab busy indicator no longer disappears mid-turn.** The favicon now shows a steady busy glyph for the whole run and reliably restores the real icon when the turn ends, even after in-app navigation.
+
 - **Agents no longer re-fetch an endpoint dozens of times after a truncated result.** Truncation notices now lead with an imperative pointer to the saved full copy, and an agent that keeps hammering the same endpoint with varying parameters is warned and then hard-stopped.
 
 - **A crashed run now reports an error instead of a green "done".** When the agent stopped because of an internal failure, the raw exception text was delivered as the answer under a success checkmark; failures now go through the error channel and surface as an error notification.
