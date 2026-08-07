@@ -227,9 +227,7 @@ ReAct 및 DAG 실행 **이전**에 실행되는 독립적인 LLM 기반 도메�
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **제거됨.** 이전에는 시스템 프롬프트를 위해 컨텍스트 예산에서 고정 4K를 차감했습니다. ContextGuard가 메시지 목록 토큰을 추정할 때 이미 시스템 프롬프트를 포함하므로 이중 계산이 발생했습니다. 이제 예산 공식은 단순히 `context_size - max_output_tokens`이며, 시스템 프롬프트의 실제 크기는 동적으로 계산됩니다 |
-
----
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **제거됨.** 이전에는 시스템 프롬프트를 위해 컨텍스트 예산에서 고정 4K를 차감했습니다. ContextGuard가 이미 메시지 목록 토큰을 추정할 때 시스템 프롬프트를 포함하므로 이중 계산이 발생했습니다. 예산 공식은 이제 `(context_size - max_output_tokens) × 0.92`입니다(여백은 토큰 추정 오류를 흡수함). 시스템 프롬프트의 실제 크기는 동적으로 계산됩니다 |
 
 ## 웹 도구 (선택사항)
 

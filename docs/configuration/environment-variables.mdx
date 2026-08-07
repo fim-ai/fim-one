@@ -229,7 +229,7 @@ Comma-separated names of guardrails that inspect the *content* of input or outpu
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **Removed.** Previously subtracted a fixed 4K reserve from the context budget for system prompts. This caused double-counting because ContextGuard already includes the system prompt when estimating message list tokens. The budget formula is now simply `context_size - max_output_tokens`, and the system prompt's actual size is accounted for dynamically |
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **Removed.** Previously subtracted a fixed 4K reserve from the context budget for system prompts. This caused double-counting because ContextGuard already includes the system prompt when estimating message list tokens. The budget formula is now `(context_size - max_output_tokens) × 0.92` (the margin absorbs token-estimation error), and the system prompt's actual size is accounted for dynamically |
 
 ---
 

@@ -227,7 +227,7 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **已移除。** 之前从上下文预算中减去固定的4K预留用于系统提示词。这导致了重复计算，因为ContextGuard在估计消息列表令牌时已经包含了系统提示词。预算公式现在简化为`context_size - max_output_tokens`，系统提示词的实际大小动态计算 |
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **已移除。** 之前从上下文预算中减去固定的4K预留用于系统提示词。这导致了重复计算，因为ContextGuard在估计消息列表令牌时已经包含了系统提示词。预算公式现在为`(context_size - max_output_tokens) × 0.92`（该边际吸收令牌估计误差），系统提示词的实际大小动态计算 |
 
 ---
 

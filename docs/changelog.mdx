@@ -50,6 +50,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **Citations name the document they came from again.** In simple retrieval mode every source was labelled "Knowledge Base" because the retrieval tool dropped the origin filename; it now reports the source, matching what the grounding pipeline already did.
 
+- **Long conversations are less likely to hit hard context-overflow errors.** Compaction now triggers with a safety margin below the model's input limit instead of exactly on it, and startup logs a warning when the fast model's window is too small to hold the general model's context budget.
+
 - **SVG figures stay readable in dark mode.** Model-authored SVG assumes a light canvas, so figures are drawn on a fixed light surface instead of turning dark-on-dark.
 
 - **The browser-tab busy indicator no longer disappears mid-turn.** The favicon now shows a steady busy glyph for the whole run and reliably restores the real icon when the turn ends, even after in-app navigation.

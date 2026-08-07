@@ -221,11 +221,11 @@ Noms de garde-fous séparés par des virgules qui inspectent le *contenu* des en
 | `WORKSPACE_PREVIEW_CHARS` | Non | `2000` | Nombre de caractères d'aperçu à inclure dans les références d'espace de travail tronquées |
 | `WORKSPACE_CLEANUP_MAX_HOURS` | Non | `72` | Les fichiers d'espace de travail plus anciens que ce nombre d'heures sont éligibles au nettoyage automatique |
 
-### System
+### Système
 
-| Variable | Required | Default | Description |
+| Variable | Requise | Par défaut | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **Supprimé.** Précédemment, il soustrayait une réserve fixe de 4K du budget de contexte pour les invites système. Cela causait un double comptage car ContextGuard inclut déjà l'invite système lors de l'estimation des tokens de la liste de messages. La formule de budget est maintenant simplement `context_size - max_output_tokens`, et la taille réelle de l'invite système est comptabilisée dynamiquement |
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **Supprimée.** Précédemment, elle soustrayait une réserve fixe de 4K du budget de contexte pour les invites système. Cela causait un double comptage car ContextGuard inclut déjà l'invite système lors de l'estimation des jetons de la liste de messages. La formule du budget est maintenant `(context_size - max_output_tokens) × 0.92` (la marge absorbe l'erreur d'estimation des jetons), et la taille réelle de l'invite système est comptabilisée dynamiquement |
 
 ## Outils Web (Optionnel)
 

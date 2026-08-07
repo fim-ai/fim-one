@@ -227,7 +227,7 @@ Kommagetrennte Namen von Guardrails, die den *Inhalt* von Ein- oder Ausgabe übe
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **Entfernt.** Subtrahierte zuvor einen festen 4K-Reserve vom Kontext-Budget für System-Prompts. Dies führte zu Doppelzählungen, da ContextGuard die System-Prompt bereits bei der Schätzung der Token der Nachrichtenliste berücksichtigt. Die Budget-Formel ist nun einfach `context_size - max_output_tokens`, und die tatsächliche Größe der System-Prompt wird dynamisch berücksichtigt |
+| ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **Entfernt.** Subtrahierte zuvor einen festen 4K-Reserve vom Kontext-Budget für Systemprompts. Dies führte zu Doppelzählungen, da ContextGuard die Systemprompt bereits bei der Schätzung der Token der Nachrichtenliste berücksichtigt. Die Budget-Formel lautet jetzt `(context_size - max_output_tokens) × 0.92` (die Marge absorbiert Token-Schätzungsfehler), und die tatsächliche Größe der Systemprompt wird dynamisch berücksichtigt |
 
 ## Web-Tools (Optional)
 
