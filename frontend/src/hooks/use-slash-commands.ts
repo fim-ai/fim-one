@@ -27,7 +27,7 @@ interface UseSlashCommandsOptions {
   onAbort?: () => void
 }
 
-type CommandId = "new" | "agent" | "mode"
+type CommandId = "new" | "clear" | "agent" | "mode"
 
 export function useSlashCommands({
   query,
@@ -63,7 +63,7 @@ export function useSlashCommands({
 
   // Build available commands (filter out /agent if no agents)
   const availableCommands = useMemo<CommandId[]>(() => {
-    const cmds: CommandId[] = ["new"]
+    const cmds: CommandId[] = ["new", "clear"]
     if (agents.length > 0) cmds.push("agent")
     cmds.push("mode")
     return cmds
@@ -137,6 +137,7 @@ export function useSlashCommands({
     (commandId: string, subValue?: string) => {
       switch (commandId) {
         case "new":
+        case "clear": // alias — identical to clicking "New chat"
           if (isRunning && onAbort) onAbort()
           onNewChat()
           break

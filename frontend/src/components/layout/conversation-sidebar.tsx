@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Plus, Trash2, Loader2, Search, Star, MoreHorizontal, Pencil, MessagesSquare } from "lucide-react"
+import { Trash2, Loader2, Star, MoreHorizontal, Pencil, MessagesSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,7 +32,6 @@ import type { ConversationResponse } from "@/types/conversation"
 
 interface ConversationSidebarProps {
   collapsed: boolean
-  hideHeader?: boolean
 }
 
 function groupByDate(
@@ -83,10 +82,9 @@ function groupByDate(
   return groups
 }
 
-export function ConversationSidebar({ collapsed, hideHeader }: ConversationSidebarProps) {
+export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const isNewChat = pathname === "/new"
   const t = useTranslations("layout")
   const tc = useTranslations("common")
   const { timezone } = useDateFormatter()
@@ -95,7 +93,6 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
     activeId,
     isLoadingList,
     selectConversation,
-    clearActive,
     deleteConversation,
     updateTitle,
     typingTitles,
@@ -118,10 +115,6 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [])
 
-  const handleNewChat = useCallback(() => {
-    clearActive()
-  }, [clearActive])
-
   const confirmDelete = async () => {
     if (!pendingDeleteId) return
     const id = pendingDeleteId
@@ -143,32 +136,8 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
   }
 
   if (collapsed) {
-    if (hideHeader) return null
-    return (
-      <div className="flex flex-col items-center gap-2 py-2">
-        <Link
-          href="/new"
-          onClick={handleNewChat}
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
-            isNewChat
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          )}
-          title={t("newChat")}
-        >
-          <Plus className="h-4 w-4" />
-        </Link>
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-          title={tc("search")}
-        >
-          <Search className="h-4 w-4" />
-        </button>
-        <ChatSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
-      </div>
-    )
+    // Keep the dialog mounted so the global Cmd+K shortcut works while collapsed
+    return <ChatSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
   }
 
   const groups = groupByDate(conversations, {
@@ -181,32 +150,6 @@ export function ConversationSidebar({ collapsed, hideHeader }: ConversationSideb
 
   return (
     <div className="flex flex-col h-full">
-      {/* New Chat + Search row */}
-      {!hideHeader && (
-        <div className="flex items-center gap-1.5 px-2 pb-2">
-          <Button
-            variant={isNewChat ? "default" : "outline"}
-            size="sm"
-            className="flex-1 justify-start gap-2"
-            asChild
-          >
-            <Link href="/new" onClick={handleNewChat}>
-              <Plus className="h-4 w-4" />
-              {t("newChat")}
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0 px-2"
-            onClick={() => setSearchOpen(true)}
-            title={t("searchTooltipMac", { shortcut: "⌘K" })}
-          >
-            <Search className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
       {/* Conversation list + All chats (scrollable) */}
       <div className="flex-1 min-h-0">
         <ScrollArea className="h-full">

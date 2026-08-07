@@ -360,7 +360,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
       href={href}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+        "flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
@@ -372,15 +372,9 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
     </Link>
   )
 
-  const sectionLabel = (label: string) => {
+  const groupGap = () => {
     if (collapsed) return <Separator className="my-0.5 w-6" />
-    return (
-      <div className="px-2 pt-1.5 pb-0.5">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-          {label}
-        </span>
-      </div>
-    )
+    return <div className="h-1.5" aria-hidden />
   }
 
   return (
@@ -390,8 +384,8 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         {navLink("/", pathname === "/" && !activeId, <LayoutDashboard className="h-4 w-4" />, t("dashboard"), clearActive)}
       </SidebarTooltip>
 
-      {/* Build section */}
-      {sectionLabel(t("sectionBuild"))}
+      {/* Build */}
+      {groupGap()}
       <SidebarTooltip label={t("agents")} collapsed={collapsed}>
         {navLink("/agents", pathname === "/agents" || pathname.startsWith("/agents/"), <Bot className="h-4 w-4" />, t("agents"))}
       </SidebarTooltip>
@@ -405,8 +399,8 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
           {navLink("/workflows", pathname === "/workflows" || pathname.startsWith("/workflows/"), <GitBranch className="h-4 w-4" />, t("workflows"))}
         </SidebarTooltip>
       )}
-      {/* Resources section */}
-      {sectionLabel(t("sectionResources"))}
+      {/* Resources */}
+      {groupGap()}
       <SidebarTooltip label={t("knowledge")} collapsed={collapsed}>
         {navLink("/kb", pathname === "/kb" || pathname.startsWith("/kb/"), <Library className="h-4 w-4" />, t("knowledge"))}
       </SidebarTooltip>
@@ -417,8 +411,8 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         {navLink("/artifacts", pathname === "/artifacts", <Layers className="h-4 w-4" />, t("artifacts"))}
       </SidebarTooltip>
 
-      {/* Operate section */}
-      {sectionLabel(t("sectionOperate"))}
+      {/* Operate */}
+      {groupGap()}
       <SidebarTooltip label={t("eval")} collapsed={collapsed}>
         {navLink("/eval", pathname === "/eval" || pathname.startsWith("/eval/"), <FlaskConical className="h-4 w-4" />, t("eval"))}
       </SidebarTooltip>
@@ -568,24 +562,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <Separator />
 
-          {/* Navigation */}
-          <SidebarNav collapsed={collapsed} />
-
-          <Separator />
-
-          {/* Conversation list */}
+          {/* Conversation list — directly below the chat actions it belongs to */}
           <div className="flex-1 min-h-0 py-2 overflow-hidden">
-            <ConversationSidebar collapsed={collapsed} hideHeader />
+            <ConversationSidebar collapsed={collapsed} />
           </div>
 
-          {/* Bottom area */}
-          <div className={cn("shrink-0 pb-3", collapsed ? "px-2" : "px-3")}>
-            {/* Getting Started checklist */}
-            <div className={cn("mb-2", collapsed ? "flex justify-center" : "")}>
-              <GettingStartedCard collapsed={collapsed} />
+          {/* Pinned bottom dock: module nav + getting started + user area.
+              A tinted surface, not a hairline, marks where the scrollable
+              conversation list ends. */}
+          <div className="shrink-0 border-t border-border/60 bg-muted/30">
+            <SidebarNav collapsed={collapsed} />
+            <div className={cn("pb-3", collapsed ? "px-2" : "px-3")}>
+              {/* Getting Started checklist */}
+              <div className={cn("mb-2", collapsed ? "flex justify-center" : "")}>
+                <GettingStartedCard collapsed={collapsed} />
+              </div>
+              <Separator className="mb-2" />
+              <SidebarFooter collapsed={collapsed} />
             </div>
-            <Separator className="mb-2" />
-            <SidebarFooter collapsed={collapsed} />
           </div>
         </aside>
 

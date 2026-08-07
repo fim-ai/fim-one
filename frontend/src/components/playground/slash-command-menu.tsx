@@ -1,5 +1,5 @@
 import { useTranslations } from "next-intl"
-import { Plus, Bot, GitBranch } from "lucide-react"
+import { Plus, Bot, Eraser, GitBranch } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface SlashSubItem {
@@ -21,6 +21,7 @@ interface SlashCommandMenuProps {
 
 const COMMAND_ICONS: Record<string, React.ReactNode> = {
   new: <Plus className="h-4 w-4" />,
+  clear: <Eraser className="h-4 w-4" />,
   agent: <Bot className="h-4 w-4" />,
   mode: <GitBranch className="h-4 w-4" />,
 }
