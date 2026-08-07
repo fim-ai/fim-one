@@ -113,16 +113,24 @@ function LoginPageInner() {
   // Redirect if already logged in (also fires after login/register when user state updates)
   useEffect(() => {
     if (!authLoading && user) {
-      if (!user.onboarding_completed) {
-        router.replace("/onboarding")
+      // Redirect to the original page if ?redirect= is present, otherwise go home
+      const redirect = searchParams.get("redirect")
+      const target = !user.onboarding_completed
+        ? "/onboarding"
+        : redirect && redirect.startsWith("/")
+          ? redirect
+          : "/"
+      const preferred = user.preferred_language
+      if (preferred && preferred !== "auto" && preferred !== locale) {
+        // Account locale differs from the one this page was server-rendered with.
+        // The NEXT_LOCALE cookie was just synced on login; a soft navigation would
+        // keep the stale messages, so force a full load to apply it.
+        window.location.replace(target)
       } else {
-        // Redirect to the original page if ?redirect= is present, otherwise go home
-        const redirect = searchParams.get("redirect")
-        const target = redirect && redirect.startsWith("/") ? redirect : "/"
         router.replace(target)
       }
     }
-  }, [authLoading, user, router, searchParams])
+  }, [authLoading, user, router, searchParams, locale])
 
   // Check if system needs first-time setup, and fetch registration status
   useEffect(() => {

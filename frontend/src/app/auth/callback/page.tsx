@@ -32,6 +32,13 @@ function CallbackHandler() {
         localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
         localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
         localStorage.setItem(USER_KEY, JSON.stringify(user))
+        // Sync NEXT_LOCALE before the full-page redirect below so the next
+        // server render already uses the account's preferred language.
+        const lang = user.preferred_language
+        document.cookie =
+          lang && lang !== "auto"
+            ? `NEXT_LOCALE=${lang}; path=/; max-age=${60 * 60 * 24 * 365}`
+            : "NEXT_LOCALE=; path=/; max-age=0"
         // Restore redirect URL saved before OAuth navigation, then clean up
         const redirect = sessionStorage.getItem("fim_oauth_redirect")
         sessionStorage.removeItem("fim_oauth_redirect")
