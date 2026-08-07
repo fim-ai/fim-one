@@ -308,6 +308,17 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 - [ ] Configuration par hook (`{"name", "config"}` schéma) — le vecteur des règles ScopeGuard {/* dev: dev/hook-system.md */}
 - [x] Les portes d'approbation persistent à travers la délégation — les nœuds `call_agent` et workflow `AGENT` exécutent les propres hooks de l'agent au lieu d'aucun
 
+#### Rendu des réponses
+
+- [x] Les réponses affichent les diagrammes Mermaid, les figures SVG et les tableaux de comparaison de style carte, avec copie/export sur les réponses, les blocs de code et les tableaux
+- [x] Le markdown rendu est désinfecté, fermant l'injection HTML brut de la sortie du modèle et des fichiers téléchargés
+- [x] Les diagrammes et les blocs de code se téléchargent en tant que fichiers ; le raisonnement se replie en aperçus d'une ligne par défaut dans les conversations en direct et passées
+
+#### Workbench UX
+
+- [x] Barre latérale réorganisée autour du cluster de chat — conversations directement sous Nouveau chat/Recherche, navigation des modules dans un dock inférieur compact
+- [x] Commande slash `/clear` démarre une nouvelle conversation à partir de la zone de saisie
+
 #### Intégration de scénarios
 
 - [ ] Le premier lancement démarre à partir d'un modèle de scénario (solution_seeds) au lieu d'un établi vide

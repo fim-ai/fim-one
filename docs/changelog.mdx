@@ -14,7 +14,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **Small comparison tables in chat replies now render as card-style layouts.** A 2-3 column table whose first column holds attribute labels shows each attribute inside its value cell (matching the comparison-card style popularized by AI chat UIs); larger tables keep the classic grid.
 
+- **Chat replies now render Mermaid diagrams and SVG figures.** A `mermaid` code block becomes a themed diagram and an `svg` block becomes an image with a source toggle and download; both fall back to plain code if the source is incomplete or does not parse, so a half-streamed diagram never flashes an error.
+
+- **Answers, code blocks, and tables can be copied out.** Every reply has a copy-as-Markdown action, code blocks carry a header naming their language, and tables offer copy-as-Markdown plus a CSV download (UTF-8, opens cleanly in Excel).
+
+- **Citations show which document they came from.** A citation marker now renders as a pill carrying the source's document name, with adjacent markers collapsed into one pill and a count; the popover lists every source behind it.
+
+- **`/clear` works in the chat input.** Typing `/clear` starts a fresh conversation, identical to clicking New chat; a running turn is stopped first.
+
+- **Diagrams and code blocks can be downloaded, not just copied.** Mermaid diagrams export the rendered SVG, and every code block downloads with a filename matching its language; a `csv` block downloads as a UTF-8 file that opens cleanly in Excel.
+
+### Changed
+
+- **Streamed answers ease in instead of popping.** Newly arrived blocks fade in briefly as they stream, honouring the reader's reduced-motion preference. Long tables also highlight the row under the cursor, and list bullets sit behind the text instead of competing with it.
+
+- **Block actions stay out of the way until you reach for them.** Copy and export buttons on answers, code blocks, diagrams and tables are revealed on hover and share one consistent treatment; they remain reachable by keyboard.
+
+- **The sidebar now keeps chat together.** The conversation list sits directly under New chat and Search, and the module navigation moved into a compact tinted dock above the user area, giving the list more room and the sidebar a clear top-to-bottom hierarchy.
+
+- **Reasoning is collapsed by default.** Thinking sections in both live runs and past conversations fold to a one-line preview and expand on click; reasoning still streams open while it is being generated, then folds when the step completes.
+
+### Security
+
+- **Raw HTML in rendered markdown is now sanitized.** Model output and uploaded markdown files are scrubbed before display, so injected scripts, event handlers, iframes, forms and style overrides can no longer reach the page. Math, syntax highlighting, tables, task lists and disclosure blocks are unaffected. Raw inline `<svg>` is no longer rendered; use an `svg` code block instead.
+
 ### Fixed
+
+- **Cmd+K opens search even when the sidebar is collapsed.** The shortcut listener stayed active but its dialog was never mounted in the collapsed state, so the shortcut silently did nothing.
+
+- **Citations name the document they came from again.** In simple retrieval mode every source was labelled "Knowledge Base" because the retrieval tool dropped the origin filename; it now reports the source, matching what the grounding pipeline already did.
+
+- **SVG figures stay readable in dark mode.** Model-authored SVG assumes a light canvas, so figures are drawn on a fixed light surface instead of turning dark-on-dark.
 
 - **The browser-tab busy indicator no longer disappears mid-turn.** The favicon now shows a steady busy glyph for the whole run and reliably restores the real icon when the turn ends, even after in-app navigation.
 

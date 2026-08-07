@@ -10,53 +10,83 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
-### Ajouté
+### Ajouts
 
-- **Les petits tableaux de comparaison dans les réponses de chat s'affichent désormais sous forme de mises en page de type carte.** Un tableau de 2-3 colonnes dont la première colonne contient des étiquettes d'attributs affiche chaque attribut à l'intérieur de sa cellule de valeur (correspondant au style de carte de comparaison popularisé par les interfaces de chat IA) ; les tableaux plus grands conservent la grille classique.
+- **Les petits tableaux de comparaison dans les réponses de chat s'affichent désormais en mise en page de style carte.** Un tableau à 2-3 colonnes dont la première colonne contient des étiquettes d'attributs affiche chaque attribut dans sa cellule de valeur (correspondant au style de carte de comparaison popularisé par les interfaces de chat IA) ; les tableaux plus grands conservent la grille classique.
 
-### Corrigé
+- **Les réponses de chat affichent désormais les diagrammes Mermaid et les figures SVG.** Un bloc de code `mermaid` devient un diagramme thématisé et un bloc `svg` devient une image avec un bouton bascule de source et un téléchargement ; les deux reviennent au code brut si la source est incomplète ou ne s'analyse pas, de sorte qu'un diagramme partiellement diffusé n'affiche jamais d'erreur.
 
-- **L'indicateur d'activité de l'onglet du navigateur ne disparaît plus en cours d'exécution.** Le favicon affiche désormais un glyphe d'activité constant pendant toute l'exécution et restaure de manière fiable l'icône réelle à la fin du tour, même après une navigation dans l'application.
+- **Les réponses, blocs de code et tableaux peuvent être copiés.** Chaque réponse dispose d'une action de copie au format Markdown, les blocs de code portent un en-tête nommant leur langage, et les tableaux offrent une copie au format Markdown plus un téléchargement CSV (UTF-8, s'ouvre correctement dans Excel).
 
-- **Les agents ne récupèrent plus un endpoint des dizaines de fois après un résultat tronqué.** Les avis de troncature commencent maintenant par un pointeur impératif vers la copie complète sauvegardée, et un agent qui continue à frapper le même endpoint avec des paramètres variables est averti puis arrêté définitivement.
+- **Les citations indiquent le document dont elles proviennent.** Un marqueur de citation s'affiche désormais sous forme de pastille portant le nom du document source, les marqueurs adjacents étant regroupés dans une seule pastille avec un compteur ; le popover liste chaque source derrière.
 
-- **Une exécution plantée signale maintenant une erreur au lieu d'un « terminé » vert.** Quand l'agent s'arrêtait en raison d'une défaillance interne, le texte d'exception brut était livré comme réponse sous une coche de succès ; les défaillances passent maintenant par le canal d'erreur et s'affichent comme une notification d'erreur.
+- **`/clear` fonctionne dans l'entrée de chat.** Taper `/clear` démarre une nouvelle conversation, identique à cliquer sur Nouveau chat ; un tour en cours est d'abord arrêté.
 
-- **La reconnexion à un flux ne rejoue plus la sortie que vous aviez déjà vue.** Le flux en direct porte maintenant le même curseur de position que l'endpoint de reprise, donc après une connexion interrompue seuls les événements manqués sont rejoués au lieu de tout le tour.
+- **Les diagrammes et blocs de code peuvent être téléchargés, pas seulement copiés.** Les diagrammes Mermaid exportent le SVG rendu, et chaque bloc de code se télécharge avec un nom de fichier correspondant à son langage ; un bloc `csv` se télécharge en tant que fichier UTF-8 qui s'ouvre correctement dans Excel.
+
+### Modifications
+
+- **Les réponses en flux s'affichent progressivement au lieu d'apparaître brutalement.** Les blocs nouvellement arrivés s'estompent brièvement lors du flux, en respectant la préférence de mouvement réduit de l'utilisateur. Les longs tableaux mettent également en surbrillance la ligne sous le curseur, et les puces de liste se placent derrière le texte au lieu de rivaliser avec lui.
+
+- **Les actions de bloc restent discrètes jusqu'à ce que vous les utilisiez.** Les boutons de copie et d'export sur les réponses, les blocs de code, les diagrammes et les tableaux s'affichent au survol et partagent un traitement cohérent ; ils restent accessibles au clavier.
+
+- **La barre latérale conserve désormais la conversation ensemble.** La liste de conversation se trouve directement sous Nouvelle conversation et Recherche, et la navigation du module s'est déplacée dans un dock teinté compact au-dessus de la zone utilisateur, donnant plus d'espace à la liste et une hiérarchie claire de haut en bas à la barre latérale.
+
+- **Le raisonnement est réduit par défaut.** Les sections de réflexion dans les exécutions en direct et les conversations passées se replient en un aperçu d'une ligne et se développent au clic ; le raisonnement continue à s'afficher en flux pendant sa génération, puis se replie à la fin de l'étape.
+
+### Sécurité
+
+- **Le HTML brut dans le markdown rendu est désormais désinfecté.** Les sorties de modèle et les fichiers markdown téléchargés sont nettoyés avant l'affichage, de sorte que les scripts injectés, les gestionnaires d'événements, les iframes, les formulaires et les remplacements de style ne peuvent plus atteindre la page. Les formules mathématiques, la coloration syntaxique, les tableaux, les listes de tâches et les blocs de divulgation ne sont pas affectés. Le `<svg>` inline brut n'est plus rendu ; utilisez un bloc de code `svg` à la place.
+
+### Corrections
+
+- **Cmd+K ouvre la recherche même quand la barre latérale est réduite.** L'écouteur de raccourci restait actif mais sa boîte de dialogue n'était jamais montée dans l'état réduit, donc le raccourci ne faisait silencieusement rien.
+
+- **Les citations nomment à nouveau le document dont elles proviennent.** En mode de récupération simple, chaque source était étiquetée « Knowledge Base » car l'outil de récupération supprimait le nom de fichier d'origine ; il rapporte maintenant la source, correspondant à ce que le pipeline de grounding faisait déjà.
+
+- **Les figures SVG restent lisibles en mode sombre.** Les SVG créés par le modèle supposent un canevas clair, donc les figures sont dessinées sur une surface claire fixe au lieu de devenir sombre sur sombre.
+
+- **L'indicateur d'activité de l'onglet du navigateur ne disparaît plus en cours de tour.** La favicon affiche maintenant un glyphe d'activité constant pendant toute l'exécution et restaure de manière fiable l'icône réelle quand le tour se termine, même après la navigation dans l'application.
+
+- **Les agents ne récupètent plus un endpoint des dizaines de fois après un résultat tronqué.** Les avis de troncature commencent maintenant par un pointeur impératif vers la copie complète enregistrée, et un agent qui continue à frapper le même endpoint avec des paramètres variables est averti puis arrêté définitivement.
+
+- **Une exécution plantée rapporte maintenant une erreur au lieu d'un « terminé » vert.** Quand l'agent s'arrêtait en raison d'une défaillance interne, le texte d'exception brut était livré comme réponse sous une coche de succès ; les défaillances passent maintenant par le canal d'erreur et s'affichent comme une notification d'erreur.
+
+- **La reconnexion à un flux ne rejoue plus la sortie que vous avez déjà vue.** Le flux en direct porte maintenant le même curseur de position que l'endpoint de reprise, donc après une connexion interrompue seuls les événements manqués sont rejoués au lieu de tout le tour.
 
 - **Les événements en flux divisés sur plusieurs chunks réseau ne sont plus perdus.** Un flux repris pouvait perdre un événement dont la trame arrivait en deux morceaux ; les deux chemins de flux partagent maintenant un seul analyseur qui gère les limites de chunks arbitraires.
 
-- **L'appel d'un autre agent retourne maintenant sa réponse réelle.** La réponse du sous-agent arrivait autrefois enfouie dans une trace d'exécution brute, inondant le contexte de l'agent appelant ; elle reçoit maintenant juste la réponse.
+- **Appeler un autre agent retourne sa réponse réelle.** La réponse du sous-agent arrivait autrefois enfouie dans une trace d'exécution brute, inondant le contexte de l'agent appelant ; elle reçoit maintenant juste la réponse.
 
-- **Un outil suspendu ne peut plus bloquer une exécution indéfiniment.** Chaque appel d'outil a maintenant une limite de temps réel (180s par défaut), donc un connecteur bloqué ou un serveur qui ne répond pas termine l'étape avec un message clair au lieu de bloquer le tour.
+- **Un outil suspendu ne peut plus bloquer une exécution indéfiniment.** Chaque appel d'outil a maintenant une limite de temps réelle (180s par défaut), donc un connecteur bloqué ou un serveur qui ne répond pas termine l'étape avec un message clair au lieu de bloquer le tour.
 
-- **Un agent coincé à répéter le même appel d'outil est maintenant arrêté tôt.** Les appels identiques répétés sont refusés après quelques tentatives au lieu de consommer tout le budget d'itération.
+- **Un agent coincé à répéter le même appel d'outil est maintenant arrêté tôt.** Les appels répétés identiques sont refusés après quelques tentatives au lieu de consommer tout le budget d'itération.
 
-- **Les longues conversations ne perdent plus leur contexte antérieur après compaction.** Le résumé qui condense les tours antérieurs était silencieusement supprimé à la prochaine exécution ; il est maintenant conservé, donc l'agent garde ce qui a été discuté avant.
+- **Les longues conversations ne perdent plus leur contexte antérieur après compaction.** Le résumé qui condense les tours plus anciens était silencieusement supprimé à la prochaine exécution ; il est maintenant conservé, donc l'agent garde ce qui a été discuté avant.
 
-- **Les longs résultats d'outils conservent maintenant leur fin ainsi que leur début.** Quand un long résultat est réduit pour tenir dans la fenêtre de contexte, les deux extrémités sont maintenant conservées (la conclusion de la sortie d'une commande importe généralement le plus), la réduction tient correctement compte du texte non-latin, et les résultats ultérieurs sont garantis une fenêtre minimale au lieu d'être complètement effacés.
+- **Les longs résultats d'outils conservent leur fin ainsi que leur début.** Quand un long résultat est tronqué pour tenir dans la fenêtre de contexte, les deux extrémités sont maintenant conservées (la conclusion de la sortie d'une commande importe généralement le plus), la troncature tient correctement compte du texte non-latin, et les résultats ultérieurs sont garantis d'une fenêtre minimale au lieu d'être complètement supprimés.
 
-- **Le même fichier généré n'apparaît plus comme deux téléchargements.** Une sortie HTML rendue sauvegardée à nouveau sous un vrai nom de fichier produisait autrefois deux cartes de livrable avec un contenu identique ; les doublons sont maintenant détectés par contenu et fusionnés dans le fichier spécifiquement nommé.
+- **Le même fichier généré n'apparaît plus comme deux téléchargements.** Une sortie HTML rendue enregistrée à nouveau sous un vrai nom de fichier produisait autrefois deux cartes de livrable avec un contenu identique ; les doublons sont maintenant détectés par contenu et réduits au fichier spécifiquement nommé.
 
-- **Les fichiers de déchargement interne ne peuvent plus apparaître comme des livrables téléchargeables.** Avec les outils partageant un système de fichiers, une grande sortie d'outil déchargée lors d'une exécution de code pouvait être récupérée par l'analyse d'artefacts et s'afficher comme une fausse carte de téléchargement. Les fichiers de comptabilité du runtime sont maintenant exclus de la détection d'artefacts.
+- **Les fichiers de déchargement interne ne peuvent plus apparaître comme des livrables téléchargeables.** Avec les outils partageant un système de fichiers, une grande sortie d'outil déchargée lors d'une exécution de code pouvait être reprise par l'analyse d'artefacts et apparaître comme une fausse carte de téléchargement. Les fichiers de comptabilité du runtime sont maintenant exclus de la détection d'artefacts.
 
-- **Chaque outil dans une conversation fonctionne maintenant sur un système de fichiers partagé unique.** Les grandes sorties déchargées atterrissaient autrefois dans un répertoire que seuls les outils de lecture d'espace de travail pouvaient voir, tandis que `file_ops`, `shell_exec` et `python_exec` opéraient ailleurs — l'agent listait un fichier, puis on lui disait qu'il n'existe pas, et brûlait son budget d'itération à le chercher. Les fichiers déchargés vivent maintenant dans le sandbox de conversation que chaque outil (y compris les conteneurs exec) monte ; les fichiers des conversations antérieures restent lisibles.
+- **Chaque outil dans une conversation fonctionne maintenant sur un système de fichiers partagé.** Les grandes sorties déchargées atterrissaient autrefois dans un répertoire que seuls les outils de lecture d'espace de travail pouvaient voir, tandis que `file_ops`, `shell_exec` et `python_exec` opéraient ailleurs — l'agent listerait un fichier, puis on lui dirait qu'il n'existe pas, et consommerait son budget d'itération à le chercher. Les fichiers déchargés vivent maintenant dans le sandbox de conversation que chaque outil (y compris les conteneurs exec) monte ; les fichiers des conversations plus anciennes restent lisibles.
 
-- **La lecture d'un grand fichier déchargé ne génère plus une chaîne infinie de fichiers pointeurs.** La sortie d'une lecture d'espace de travail pouvait elle-même dépasser le seuil de déchargement et être sauvegardée comme un nouveau fichier pointant vers du contenu déjà sur disque, envoyant l'agent en boucles. Les lectures d'espace de travail sont maintenant plafonnées avec une ligne de reprise exacte au lieu d'être re-déchargées.
+- **La lecture d'un grand fichier déchargé ne génère plus une chaîne infinie de fichiers pointeurs.** La sortie d'une lecture d'espace de travail pouvait elle-même dépasser le seuil de déchargement et être enregistrée comme un nouveau fichier pointant vers du contenu déjà sur disque, envoyant l'agent en boucles. Les lectures d'espace de travail sont maintenant limitées avec une ligne de reprise exacte au lieu d'être à nouveau déchargées.
 
 - **Le texte d'appel d'outil improvisé de DeepSeek ne fuit plus dans les réponses.** Quand un modèle DeepSeek écrivait une invocation d'outil en tant que texte brut `<｜｜DSML｜｜Tool call: ...` au lieu d'utiliser le canal d'appel de fonction, le balisage brut atteignait le chat verbatim. Il est maintenant supprimé comme les autres pseudo-protocoles d'appel d'outil.
 
-- **Un appel d'outil coupé par la limite de sortie du modèle ne passe plus comme travail terminé.** Quand une longue charge utile (écrire une page HTML complète, par exemple) épuisait le budget de sortie en cours d'appel, l'appel à moitié écrit était silencieusement supprimé et le texte d'introduction de l'agent — « maintenant je vais sauvegarder le fichier » — devenait le résultat de l'étape, donc une étape qui ne produisait rien était signalée comme complétée. La troncature est maintenant détectée, et l'agent est invité à réessayer avec le travail divisé en appels plus petits.
+- **Un appel d'outil coupé par la limite de sortie du modèle ne passe plus comme travail terminé.** Quand une longue charge utile (écrire une page HTML complète, par exemple) épuisait le budget de sortie en cours d'appel, l'appel à moitié écrit était silencieusement supprimé et le texte d'introduction de l'agent — « maintenant je vais enregistrer le fichier » — devenait le résultat de l'étape, donc une étape qui ne produisait rien était signalée comme terminée. La troncature est maintenant détectée, et l'agent est invité à réessayer avec le travail divisé en appels plus petits.
 
-- **Un objectif que l'agent est sûr d'avoir manqué est maintenant réessayé au lieu de terminer l'exécution.** La re-planification s'arrêtait chaque fois que l'analyseur était confiant, ce qui lisait un « le livrable est manquant » confiant comme une raison d'abandonner — exactement le cas pour lequel la re-planification existe. Les exécutions s'arrêtent maintenant tôt seulement quand l'objectif est jugé véritablement inatteignable, et `DAG_MAX_REPLAN_ROUNDS` limite le reste.
+- **Un objectif que l'agent est sûr d'avoir manqué est maintenant réessayé au lieu de terminer l'exécution.** La replanification s'arrêtait chaque fois que l'analyseur était confiant, ce qui lisait un « le livrable est manquant » confiant comme une raison d'abandonner — exactement le cas pour lequel la replanification existe. Les exécutions s'arrêtent maintenant tôt uniquement quand l'objectif est jugé véritablement inatteignable, et `DAG_MAX_REPLAN_ROUNDS` limite le reste.
 
-- **L'auto-vérification de l'agent n'apparaît plus comme la réponse.** Après avoir utilisé plusieurs outils, l'agent exécute une vérification interne unique avant de répondre ; cette vérification était diffusée verbatim, donc les réponses arrivaient comme « Laissez-moi vérifier : 1. Entièrement adressé ? ✅ … » au lieu de la réponse elle-même. La vérification est maintenant interne, et la réponse que vous voyez est écrite comme sa propre étape.
+- **L'auto-vérification de l'agent n'apparaît plus comme la réponse.** Après avoir utilisé plusieurs outils, l'agent exécute une vérification interne unique avant de répondre ; cette vérification était diffusée à vous verbatim, donc les réponses arrivaient comme « Laissez-moi vérifier : 1. Entièrement traité ? ✅ … » au lieu de la réponse elle-même. La vérification est maintenant interne, et la réponse que vous voyez est écrite comme sa propre étape.
 
-- **La rotation du jeton d'actualisation invalide maintenant réellement le jeton précédent.** JWT `exp` n'a qu'une précision à la seconde, donc deux jetons d'actualisation émis pour le même utilisateur à la même seconde codaient autrefois de manière identique — la rotation réécrivait alors le hash stocké avec la même valeur, et un jeton d'actualisation volé pouvait être renouvelé indéfiniment. Chaque jeton d'actualisation porte maintenant un `jti` unique, donc le jeton roté diffère et l'ancien cesse de fonctionner immédiatement.
+- **La rotation du token de rafraîchissement invalide maintenant réellement le token précédent.** JWT `exp` n'a que la précision à la seconde, donc deux tokens de rafraîchissement émis pour le même utilisateur à la même seconde codaient autrefois de manière identique — la rotation réécrivait alors le hash stocké avec la même valeur, et un token de rafraîchissement volé pouvait être renouvelé indéfiniment. Chaque token de rafraîchissement porte maintenant un `jti` unique, donc le token pivoté diffère et l'ancien cesse de fonctionner immédiatement.
 
 - **Les portes d'approbation se maintiennent maintenant quand un agent est atteint via un autre agent ou un workflow.** Un appel de connecteur sensible qui demanderait une confirmation en chat s'exécutait autrefois sans vérification une fois délégué via `call_agent` ou enveloppé dans un nœud `AGENT` de workflow — ces chemins démarraient l'agent sans aucun hook. Les deux exécutent maintenant les portes de l'agent, en utilisant les paramètres de confirmation de cet agent, et refusent de l'exécuter si ses hooks ne peuvent pas être chargés.
 
-- **Une typo dans `SMTP_SSL` n'envoie plus silencieusement votre mot de passe SMTP en clair.** Auparavant, toute valeur autre que `ssl` ou `tls` (par exemple `SMTP_SSL=true`) tombait dans une connexion non chiffrée sans avertissement, dans les e-mails système et les notifications par e-mail. Les valeurs non reconnues sont maintenant rejetées catégoriquement, et la livraison non chiffrée doit être demandée explicitement comme `SMTP_SSL=none`, qui enregistre un avertissement à chaque envoi.
+- **Une faute de frappe dans `SMTP_SSL` n'envoie plus silencieusement votre mot de passe SMTP en clair.** Auparavant, toute valeur autre que `ssl` ou `tls` (par exemple `SMTP_SSL=true`) tombait dans une connexion non chiffrée sans avertissement, dans les e-mails système et les notifications par e-mail. Les valeurs non reconnues sont maintenant rejetées catégoriquement, et la livraison non chiffrée doit être demandée explicitement comme `SMTP_SSL=none`, qui enregistre un avertissement à chaque envoi.
 
 ### Supprimé
 

@@ -308,6 +308,17 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 - [ ] Pro-Hook-Konfigurationsweiterleitung (`{"name", "config"}` Schema) — der Träger für ScopeGuard-Regeln {/* dev: dev/hook-system.md */}
 - [x] Genehmigungsgates bleiben über Delegation erhalten — `call_agent` und Workflow-`AGENT`-Knoten führen die eigenen Hooks des Agenten aus, anstatt keine auszuführen
 
+#### Antwort-Rendering
+
+- [x] Antworten rendern Mermaid-Diagramme, SVG-Figuren und kartenförmige Vergleichstabellen mit Kopier-/Exportfunktion für Antworten, Code-Blöcke und Tabellen
+- [x] Gerendertes Markdown wird bereinigt, wodurch Raw-HTML-Injection aus Modellausgaben und hochgeladenen Dateien verhindert wird
+- [x] Diagramme und Code-Blöcke können als Dateien heruntergeladen werden; Reasoning wird standardmäßig in Live- und früheren Gesprächen zu einseitigen Vorschauen eingeklappt
+
+#### Workbench UX
+
+- [x] Sidebar reorganized around the chat cluster — conversations directly under New chat/Search, module nav in a compact bottom dock
+- [x] `/clear` slash command starts a fresh conversation from the input box
+
 #### Szenario-Onboarding
 
 - [ ] Der erste Start beginnt mit einer Szenariovorlage (solution_seeds) statt einer leeren Workbench
