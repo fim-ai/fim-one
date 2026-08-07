@@ -194,7 +194,9 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
         )}
 
         {/* Done card — always visible */}
-        <DagDoneCard done={doneEvent} stepStates={stepStates} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} isPostProcessing={isPostProcessing} />
+        <div data-answer-card="">
+          <DagDoneCard done={doneEvent} stepStates={stepStates} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} isPostProcessing={isPostProcessing} />
+        </div>
       </div>
     )
   }
@@ -283,7 +285,11 @@ export const DagOutput = forwardRef<DagOutputHandle, DagOutputProps>(function Da
       )}
 
       {/* Done card */}
-      {doneEvent && <DagDoneCard done={doneEvent} stepStates={stepStates} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} isPostProcessing={isPostProcessing} />}
+      {doneEvent && (
+        <div data-answer-card="">
+          <DagDoneCard done={doneEvent} stepStates={stepStates} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} isPostProcessing={isPostProcessing} />
+        </div>
+      )}
 
       {/* Streaming answer — shown before done arrives */}
       {isAnswerStreaming && displayAnswer && (

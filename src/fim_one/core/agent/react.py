@@ -2001,16 +2001,14 @@ class ReActAgent:
         """
         usage_tracker = UsageTracker()
 
-        # Thinking-block constraint: only subscribe to thinking deltas when
-        # the underlying tool-decision model actually emits them.  Models
-        # without the capability (most OpenAI, DeepSeek, Gemini, older
-        # Claude) would still stream empty thinking events and waste UI
-        # state on the client.
-        if on_thinking_delta is not None and not self._tool_llm.abilities.get(
-            "thinking",
-            False,
-        ):
-            on_thinking_delta = None
+        # NOTE: the thinking-delta subscription is deliberately unconditional.
+        # It used to be gated on ``abilities["thinking"]``, which resolves from
+        # a hard-coded model-name allowlist — every model released after that
+        # list was written (deepseek-v4, glm-5, kimi-k2-thinking, …) silently
+        # lost live reasoning and dumped the whole block at the end of the
+        # iteration instead.  The callback only fires on a non-empty delta
+        # (see ``_stream_tool_decision``), so a model that emits no reasoning
+        # simply never triggers it; there are no empty events to guard against.
 
         # Measure the one-time pre-loop setup costs (I.16).
         _schema_start = time.perf_counter()

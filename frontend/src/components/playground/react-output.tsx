@@ -381,7 +381,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
 
         {/* Answer card — shown during streaming or after done */}
         {(displayAnswer || isAnswerStreaming) && (
-          <div data-react-idx={doneItem ? items.indexOf(doneItem) : undefined}>
+          <div data-react-idx={doneItem ? items.indexOf(doneItem) : undefined} data-answer-card={done ? "" : undefined}>
             {done ? (
               <DoneCard done={done} items={items} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} isPostProcessing={isPostProcessing} />
             ) : (
@@ -433,7 +433,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
         if (item.event === "done") {
           const done = item.data as ReactDoneEvent
           return (
-            <div key={idx} data-react-idx={idx}>
+            <div key={idx} data-react-idx={idx} data-answer-card="">
               <DoneCard done={done} items={items} suggestions={suggestions} onSuggestionSelect={onSuggestionSelect} isPostProcessing={isPostProcessing} />
             </div>
           )

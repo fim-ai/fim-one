@@ -796,7 +796,6 @@ function PlaygroundContent({
   const hasMessages = hasLiveMessages || hasHistory || !!pendingQuery
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const isNearBottomRef = useRef(true)
   const dagOutputRef = useRef<DagOutputHandle>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const composingRef = useRef(false)
@@ -952,27 +951,46 @@ function PlaygroundContent({
   // Sidebar only shown during live DAG streaming (React mode no longer uses sidebar)
   const showSidebar = hasLiveMessages && sidebarOpen && isWideScreen && resolvedLiveMode === "dag"
 
-  // Scroll the ScrollArea viewport to bottom (avoids scrollIntoView cascading to parent containers)
-  const scrollViewportToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+  // --- Auto-scroll state -------------------------------------------------
+  // True while the viewport should follow new content. Only a real user
+  // gesture clears it. A geometry measurement taken during streaming must
+  // never clear it: scroll events are dispatched a frame late, so a position
+  // sampled while the content is still growing reads as "user scrolled up".
+  const stickToBottomRef = useRef(true)
+  const userGestureRef = useRef(false)
+  const pointerDownRef = useRef(false)
+  const gestureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Content growth before this timestamp does not raise the "new updates"
+  // pill — used for the post-processing reflow that follows a finished turn.
+  const quietGrowthUntilRef = useRef(0)
+
+  const getViewport = useCallback(() => {
     const root = scrollAreaRef.current
-    if (!root) return
-    const viewport = root.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]")
-    if (!viewport) return
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior })
+    if (!root) return null
+    return root.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]")
   }, [])
 
-  const scrollInViewport = useCallback((selector: string) => {
-    const root = scrollAreaRef.current
-    if (!root) return
-    const viewport = root.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]")
+  // Scroll the ScrollArea viewport to bottom (avoids scrollIntoView cascading to parent containers)
+  const scrollViewportToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const viewport = getViewport()
     if (!viewport) return
-    const el = viewport.querySelector<HTMLElement>(selector)
-    if (!el) return
+    stickToBottomRef.current = true
+    quietGrowthUntilRef.current = 0
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior })
+  }, [getViewport])
+
+  const scrollInViewport = useCallback((selector: string, options?: { last?: boolean }) => {
+    const viewport = getViewport()
+    if (!viewport) return false
+    const matches = viewport.querySelectorAll<HTMLElement>(selector)
+    const el = options?.last ? matches[matches.length - 1] : matches[0]
+    if (!el) return false
     const elRect = el.getBoundingClientRect()
     const viewportRect = viewport.getBoundingClientRect()
     const scrollOffset = elRect.top - viewportRect.top + viewport.scrollTop
     viewport.scrollTo({ top: Math.max(0, scrollOffset - 16), behavior: "smooth" })
-  }, [])
+    return true
+  }, [getViewport])
 
   const handleSuggestionSelect = useCallback((q: string) => {
     // Clear any pending files/images/clips so they don't show up as "still attached"
@@ -1028,46 +1046,138 @@ function PlaygroundContent({
     document.addEventListener("mouseup", onMouseUp)
   }, [setCustomRatio])
 
-  // Track scroll position -- only auto-scroll when user is near bottom
+  // Follow streamed output: pin the viewport to the bottom on every content
+  // growth, and hand control back to the user on a real scroll gesture.
   useEffect(() => {
     const root = scrollAreaRef.current
-    if (!root) return
-    const viewport = root.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]")
-    if (!viewport) return
+    const viewport = getViewport()
+    if (!root || !viewport) return
+
+    const NEAR_BOTTOM_PX = 80
+
+    const markGesture = () => {
+      userGestureRef.current = true
+      if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current)
+      gestureTimerRef.current = setTimeout(() => {
+        userGestureRef.current = false
+      }, 600)
+    }
+    const onPointerDown = () => {
+      pointerDownRef.current = true
+      markGesture()
+    }
+    const onPointerUp = () => {
+      pointerDownRef.current = false
+      markGesture()
+    }
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = viewport
-      const nearBottom = scrollHeight - scrollTop - clientHeight < 80
-      isNearBottomRef.current = nearBottom
-      if (nearBottom) setShowScrollBtn(false)
+      const nearBottom = scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_PX
+      if (nearBottom) {
+        stickToBottomRef.current = true
+        quietGrowthUntilRef.current = 0
+        setShowScrollBtn(false)
+      } else if (userGestureRef.current || pointerDownRef.current) {
+        stickToBottomRef.current = false
+      }
     }
+
+    // Height changes on every streamed token, and markdown/images can reflow
+    // without a React commit, so observe the content box rather than state.
+    const content = viewport.firstElementChild
+    let frame = 0
+    let lastHeight = viewport.scrollHeight
+    const onGrow = () => {
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        const prevHeight = lastHeight
+        const height = viewport.scrollHeight
+        const grew = height > prevHeight
+        lastHeight = height
+        if (!grew) return
+        // The viewport can sit at the bottom without a scroll event ever
+        // firing — content shorter than the viewport, or a programmatic park.
+        // Re-derive stickiness from the geometry *before* this growth, which
+        // is the only measurement streaming cannot skew.
+        if (
+          !stickToBottomRef.current
+          && performance.now() > quietGrowthUntilRef.current
+          && prevHeight - viewport.scrollTop - viewport.clientHeight < NEAR_BOTTOM_PX
+        ) {
+          stickToBottomRef.current = true
+        }
+        if (stickToBottomRef.current) {
+          // Instant, never smooth: a smooth animation restarted on every token
+          // never reaches the target, and the viewport looks frozen.
+          viewport.scrollTop = height
+        } else if (performance.now() > quietGrowthUntilRef.current) {
+          setShowScrollBtn(true)
+        }
+      })
+    }
+    const observer = new ResizeObserver(onGrow)
+    if (content) observer.observe(content)
+    observer.observe(viewport)
 
     viewport.addEventListener("scroll", handleScroll, { passive: true })
-    return () => viewport.removeEventListener("scroll", handleScroll)
-  }, [hasMessages])
+    root.addEventListener("wheel", markGesture, { passive: true })
+    root.addEventListener("touchmove", markGesture, { passive: true })
+    root.addEventListener("keydown", markGesture)
+    root.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("pointerup", onPointerUp)
 
-  // Auto-scroll only when user is already near bottom.
-  const msgCountRef = useRef(messages.length)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      if (gestureTimerRef.current) clearTimeout(gestureTimerRef.current)
+      observer.disconnect()
+      viewport.removeEventListener("scroll", handleScroll)
+      root.removeEventListener("wheel", markGesture)
+      root.removeEventListener("touchmove", markGesture)
+      root.removeEventListener("keydown", markGesture)
+      root.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("pointerup", onPointerUp)
+    }
+  }, [hasMessages, getViewport])
+
+  // Park at the head of the result card when a turn completes. The final answer
+  // often lands in a single burst (the last reasoning pass is promoted straight
+  // to the answer), so following it to the bottom would drop the reader at the
+  // tail of text they have not read yet.
+  const turnDoneRef = useRef(false)
   useEffect(() => {
-    if (messages.length <= msgCountRef.current) {
-      msgCountRef.current = messages.length
+    const isDone = modeMatches && messages.some((m) => m.event === "done")
+    if (isDone === turnDoneRef.current) return
+    turnDoneRef.current = isDone
+    if (!isDone) {
+      // A new turn started — follow it again, whatever the previous turn left
+      // the viewport doing.
+      stickToBottomRef.current = true
+      quietGrowthUntilRef.current = 0
+      setShowScrollBtn(false)
       return
     }
-    msgCountRef.current = messages.length
-    if (isNearBottomRef.current) {
-      scrollViewportToBottom()
-    } else {
-      setShowScrollBtn(true)
-    }
-  }, [messages, scrollViewportToBottom])
-
-  // Streaming answer now pushes content naturally — no need to snap-scroll
-  // to the result block on completion.
+    // User scrolled away on purpose — leave the viewport where they put it.
+    if (!stickToBottomRef.current) return
+    // Two frames: one for React to commit the result card, one for layout.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (!scrollInViewport("[data-live-output] [data-answer-card]", { last: true })) return
+        // Stop following: suggestions and title arrive after `done` and would
+        // otherwise drag the viewport back down past the answer head.
+        stickToBottomRef.current = false
+        quietGrowthUntilRef.current = performance.now() + 2000
+        setShowScrollBtn(false)
+      })
+    )
+  }, [messages, modeMatches, scrollInViewport])
 
   // Reset scroll state on clear
   useEffect(() => {
     if (!hasMessages) {
-      isNearBottomRef.current = true
+      stickToBottomRef.current = true
+      quietGrowthUntilRef.current = 0
       setShowScrollBtn(false)
     }
   }, [hasMessages])
