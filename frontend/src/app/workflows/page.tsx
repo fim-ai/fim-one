@@ -37,6 +37,7 @@ import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { useModuleGuard } from "@/lib/module-flags"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 import type { WorkflowResponse } from "@/types/workflow"
 
 function WorkflowsPageInner() {
@@ -361,22 +362,23 @@ function WorkflowsPageInner() {
           />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <StaggerOnce className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {paginatedWorkflows.map((workflow) => (
-                <WorkflowCard
-                  key={workflow.id}
-                  workflow={workflow}
-                  currentUserId={user.id}
-                  onDelete={handleDelete}
-                  onExport={handleExport}
-                  onDuplicate={handleDuplicate}
-                  onPublish={handlePublish}
-                  onUnpublish={handleUnpublish}
-                  onUninstall={handleUninstall}
-                  onResubmit={handleResubmit}
-                />
+                <StaggerItem key={workflow.id} className="grid">
+                  <WorkflowCard
+                    workflow={workflow}
+                    currentUserId={user.id}
+                    onDelete={handleDelete}
+                    onExport={handleExport}
+                    onDuplicate={handleDuplicate}
+                    onPublish={handlePublish}
+                    onUnpublish={handleUnpublish}
+                    onUninstall={handleUninstall}
+                    onResubmit={handleResubmit}
+                  />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerOnce>
             <ListPagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
           </>
         )}

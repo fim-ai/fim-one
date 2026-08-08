@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/shared/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KBFormDialog } from "@/components/kb/kb-form-dialog"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 import type { KBResponse, KBCreate } from "@/types/kb"
 
 function KBPageInner() {
@@ -191,17 +192,18 @@ function KBPageInner() {
           />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <StaggerOnce className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {paginatedKBs.map((kb) => (
-                <KBCard
-                  key={kb.id}
-                  kb={kb}
-                  currentUserId={user.id}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
+                <StaggerItem key={kb.id} className="grid">
+                  <KBCard
+                    kb={kb}
+                    currentUserId={user.id}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerOnce>
             <ListPagination
               currentPage={currentPage}
               totalPages={totalPages}

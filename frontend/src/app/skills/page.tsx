@@ -39,6 +39,7 @@ import { ScopeFilter } from "@/components/shared/scope-filter"
 import { EmptyState } from "@/components/shared/empty-state"
 import { SkillTemplateGallery } from "@/components/skills/skill-template-gallery"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 
 function SkillsPageInner() {
   const t = useTranslations("skills")
@@ -318,22 +319,23 @@ function SkillsPageInner() {
           />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <StaggerOnce className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {paginatedSkills.map((skill) => (
-                <SkillCard
-                  key={skill.id}
-                  skill={skill}
-                  currentUserId={user.id}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onPublish={handlePublish}
-                  onUnpublish={handleUnpublish}
-                  onFork={handleFork}
-                  onUninstall={handleUninstall}
-                  onResubmit={handleResubmit}
-                />
+                <StaggerItem key={skill.id} className="grid">
+                  <SkillCard
+                    skill={skill}
+                    currentUserId={user.id}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onPublish={handlePublish}
+                    onUnpublish={handleUnpublish}
+                    onFork={handleFork}
+                    onUninstall={handleUninstall}
+                    onResubmit={handleResubmit}
+                  />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerOnce>
             <ListPagination
               currentPage={currentPage}
               totalPages={totalPages}

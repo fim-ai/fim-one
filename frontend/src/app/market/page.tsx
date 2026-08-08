@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import { ShoppingBag, Globe, Building2, Layers, Puzzle, Search } from 'lucide-react'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ListPagination, PAGE_SIZE } from '@/components/shared/list-pagination'
+import { StaggerOnce, StaggerItem } from '@/components/ui/fade-in'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
@@ -224,9 +225,9 @@ function MarketContent() {
           />
         ) : (
           <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <StaggerOnce className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {paginatedItems.map((item) => (
-              <div
+              <StaggerItem
                 key={item.id}
                 className="border rounded-lg p-4 space-y-3 bg-card cursor-pointer hover:border-foreground/20 transition-colors"
                 onClick={() => setSelectedItem(item)}
@@ -261,9 +262,9 @@ function MarketContent() {
                     {item.owner_username}{item.org_name ? ` / ${item.org_name}` : ''}
                   </p>
                 )}
-              </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerOnce>
           <ListPagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
           </>
         )}

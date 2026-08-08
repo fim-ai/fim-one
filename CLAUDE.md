@@ -36,6 +36,9 @@ frontend/            # Next.js portal (shadcn/ui)
 - **No `pl-*`/`pr-*` on form wrappers** with `<Input>`/`<Textarea>` (clips `shadow-xs`). Use `px-*` or `gap-*`.
 - **No native `<select>`** — use shadcn `<Select>` with `<SelectTrigger className="w-full">`. Empty default → `__default__` sentinel (Radix treats `""` as unset).
 - **Tab/filter state → URL query**: sync to `?tab=xxx` via `useSearchParams` + `router.replace`. Default tab = no param. Wrap in `<Suspense>`. Ref: `admin/page.tsx`.
+- **Motion timing → tokens**, never ad-hoc: `lib/motion.ts` (Motion components) or `--motion-duration-*` / `--motion-ease-*` (CSS keyframes). The two sets mirror each other; change both together.
+- **Card grids/lists → `<StaggerOnce>` + `<StaggerItem>`** (`ui/fade-in.tsx`). Inside a grid, `StaggerItem` needs `className="grid"` or same-row cards lose equal height. `StaggerOnce` animates on first mount only, so search/pagination must not replay it. Ref: `kb/page.tsx`.
+- **New CSS keyframes → add a `prefers-reduced-motion` rule** in the consolidated block at the end of `globals.css`. Animations that start from `opacity: 0` with `forwards` must land in the finished state there, not just `animation: none`, or the content stays invisible. Motion components are covered globally by `MotionProvider`; leave indicators that signal work in flight (spinners, progress) animating.
 
 ## Admin List Page Actions (MANDATORY)
 

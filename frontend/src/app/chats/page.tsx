@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 import { conversationApi } from "@/lib/api"
 import { useConversation } from "@/contexts/conversation-context"
 import type { ConversationResponse } from "@/types/conversation"
@@ -293,97 +294,98 @@ export default function ChatsPage() {
           />
         )
       ) : (
-        <div className="space-y-1">
+        <StaggerOnce className="space-y-1">
           {sorted.map((conv) => (
-            <Link
-              key={conv.id}
-              href={`/?c=${conv.id}`}
-              onClick={(e) => {
-                if (selectMode) {
-                  e.preventDefault()
-                  setSelectedIds((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(conv.id)) next.delete(conv.id)
-                    else next.add(conv.id)
-                    return next
-                  })
-                }
-              }}
-              className={cn(
-                "group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors cursor-pointer",
-                selectedIds.has(conv.id)
-                  ? "bg-accent"
-                  : "hover:bg-accent/50",
-              )}
-            >
-              {selectMode && (
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(conv.id)}
-                  readOnly
-                  className="h-4 w-4 shrink-0 rounded border-border accent-primary pointer-events-none"
-                />
-              )}
-              {conv.starred && (
-                <Star className="h-4 w-4 shrink-0 fill-current text-yellow-500" />
-              )}
-              <span className="flex-1 truncate text-sm">
-                {conv.title || t("untitled")}
-              </span>
-              <span className="text-xs text-muted-foreground shrink-0">
-                {formatRelativeTime(conv.created_at, t)}
-              </span>
-              {!selectMode && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <button className="shrink-0 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent transition-opacity text-muted-foreground">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-40">
-                    <DropdownMenuItem onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectMode(true)
-                      setSelectedIds(new Set([conv.id]))
-                    }}>
-                      <Check className="h-4 w-4 mr-2" />
-                      {t("select")}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={(e) => {
-                      e.stopPropagation()
-                      handleStarToggle(e as unknown as React.MouseEvent, conv)
-                    }}>
-                      <Star className={cn("h-4 w-4 mr-2", conv.starred && "fill-current text-yellow-500")} />
-                      {conv.starred ? t("unstar") : t("star")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => {
-                      e.stopPropagation()
-                      setRenamingId(conv.id)
-                      setRenameValue(conv.title || "")
-                      setRenameDialogOpen(true)
-                    }}>
-                      <Pencil className="h-4 w-4 mr-2" />
-                      {t("rename")}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={(e) => {
+            <StaggerItem key={conv.id}>
+              <Link
+                href={`/?c=${conv.id}`}
+                onClick={(e) => {
+                  if (selectMode) {
+                    e.preventDefault()
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(conv.id)) next.delete(conv.id)
+                      else next.add(conv.id)
+                      return next
+                    })
+                  }
+                }}
+                className={cn(
+                  "group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors cursor-pointer",
+                  selectedIds.has(conv.id)
+                    ? "bg-accent"
+                    : "hover:bg-accent/50",
+                )}
+              >
+                {selectMode && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(conv.id)}
+                    readOnly
+                    className="h-4 w-4 shrink-0 rounded border-border accent-primary pointer-events-none"
+                  />
+                )}
+                {conv.starred && (
+                  <Star className="h-4 w-4 shrink-0 fill-current text-yellow-500" />
+                )}
+                <span className="flex-1 truncate text-sm">
+                  {conv.title || t("untitled")}
+                </span>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  {formatRelativeTime(conv.created_at, t)}
+                </span>
+                {!selectMode && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <button className="shrink-0 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent transition-opacity text-muted-foreground">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={(e) => {
                         e.stopPropagation()
-                        setSingleDeleteId(conv.id)
-                        setDeleteDialogOpen(true)
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      {tc("delete")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </Link>
+                        setSelectMode(true)
+                        setSelectedIds(new Set([conv.id]))
+                      }}>
+                        <Check className="h-4 w-4 mr-2" />
+                        {t("select")}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation()
+                        handleStarToggle(e as unknown as React.MouseEvent, conv)
+                      }}>
+                        <Star className={cn("h-4 w-4 mr-2", conv.starred && "fill-current text-yellow-500")} />
+                        {conv.starred ? t("unstar") : t("star")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation()
+                        setRenamingId(conv.id)
+                        setRenameValue(conv.title || "")
+                        setRenameDialogOpen(true)
+                      }}>
+                        <Pencil className="h-4 w-4 mr-2" />
+                        {t("rename")}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSingleDeleteId(conv.id)
+                          setDeleteDialogOpen(true)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {tc("delete")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </Link>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerOnce>
       )}
 
       {/* Show more */}

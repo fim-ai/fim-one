@@ -46,6 +46,7 @@ import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 import { ConnectorTemplateGallery } from "@/components/connectors/connector-template-gallery"
 
 function ConnectorsPageInner() {
@@ -407,22 +408,23 @@ function ConnectorsPageInner() {
             />
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <StaggerOnce className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {paginatedConnectors.map((connector) => (
-                  <ConnectorCard
-                    key={connector.id}
-                    connector={connector}
-                    currentUserId={user.id}
-                    onDelete={handleDelete}
-                    onPublish={handlePublish}
-                    onUnpublish={handleUnpublish}
-                    onUninstall={handleUninstall}
-                    onResubmit={handleResubmit}
-                    onExport={handleExport}
-                    onFork={handleFork}
-                  />
+                  <StaggerItem key={connector.id} className="grid">
+                    <ConnectorCard
+                      connector={connector}
+                      currentUserId={user.id}
+                      onDelete={handleDelete}
+                      onPublish={handlePublish}
+                      onUnpublish={handleUnpublish}
+                      onUninstall={handleUninstall}
+                      onResubmit={handleResubmit}
+                      onExport={handleExport}
+                      onFork={handleFork}
+                    />
+                  </StaggerItem>
                 ))}
-              </div>
+              </StaggerOnce>
               <ListPagination currentPage={currentPage} totalPages={connectorTotalPages} onPageChange={setCurrentPage} />
             </>
           )}

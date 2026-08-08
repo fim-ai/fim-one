@@ -33,6 +33,7 @@ import { AgentCard } from "@/components/agents/agent-card"
 import { PublishDialog } from "@/components/shared/publish-dialog"
 import { EmptyState } from "@/components/shared/empty-state"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { AgentResponse } from "@/types/agent"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
@@ -278,21 +279,22 @@ function AgentsPageInner() {
           />
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <StaggerOnce className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {paginatedAgents.map((agent) => (
-                <AgentCard
-                  key={agent.id}
-                  agent={agent}
-                  currentUserId={user.id}
-                  onDelete={handleDelete}
-                  onPublish={handlePublish}
-                  onUnpublish={handleUnpublish}
-                  onFork={handleFork}
-                  onUninstall={handleUninstall}
-                  onResubmit={handleResubmit}
-                />
+                <StaggerItem key={agent.id} className="grid">
+                  <AgentCard
+                    agent={agent}
+                    currentUserId={user.id}
+                    onDelete={handleDelete}
+                    onPublish={handlePublish}
+                    onUnpublish={handleUnpublish}
+                    onFork={handleFork}
+                    onUninstall={handleUninstall}
+                    onResubmit={handleResubmit}
+                  />
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerOnce>
             <ListPagination
               currentPage={currentPage}
               totalPages={totalPages}

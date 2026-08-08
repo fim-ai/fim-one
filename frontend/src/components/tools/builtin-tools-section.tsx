@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useTranslations, useMessages } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 import {
   Zap,
   Code2,
@@ -280,21 +281,32 @@ export function BuiltinToolsSection() {
 
       {/* Tool cards grid */}
       {!isLoading && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <StaggerOnce className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filteredTools.map((tool) => (
-            <ToolCard
-              key={tool.name}
-              tool={tool}
-              notConfiguredLabel={t("notConfigured")}
-              toolName={getToolName(tool)}
-              toolDesc={getToolDesc(tool)}
-              categoryLabel={getCategoryLabel(tool.category)}
-              isDisabled={disabledToolNames.has(tool.name)}
-            />
+            <StaggerItem key={tool.name} className="grid">
+              <ToolCard
+                tool={tool}
+                notConfiguredLabel={t("notConfigured")}
+                toolName={getToolName(tool)}
+                toolDesc={getToolDesc(tool)}
+                categoryLabel={getCategoryLabel(tool.category)}
+                isDisabled={disabledToolNames.has(tool.name)}
+              />
+            </StaggerItem>
           ))}
-          {showConnector && <ConnectorLinkCard label={t("connectorLabel")} description={t("connectorDescription")} />}
-          {showMCP && <MCPLinkCard label={t("mcpServersLinkLabel")} description={t("mcpServersLinkDescription")} />}
-        </div>
+          {/* Wrapped too, so the two trailing link cards join the same run
+              instead of popping in ahead of the staggered tool cards. */}
+          {showConnector && (
+            <StaggerItem className="grid">
+              <ConnectorLinkCard label={t("connectorLabel")} description={t("connectorDescription")} />
+            </StaggerItem>
+          )}
+          {showMCP && (
+            <StaggerItem className="grid">
+              <MCPLinkCard label={t("mcpServersLinkLabel")} description={t("mcpServersLinkDescription")} />
+            </StaggerItem>
+          )}
+        </StaggerOnce>
       )}
     </div>
   )

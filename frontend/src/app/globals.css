@@ -54,6 +54,17 @@
   --radius: 0.625rem;
   --card-shadow: 0 1px 3px -1px oklch(0.40 0.02 70 / 0.06);
   --card-shadow-hover: 0 4px 12px -3px oklch(0.35 0.02 70 / 0.10);
+
+  /* Motion scale — theme-independent, so no .dark override.
+     Mirrored in src/lib/motion.ts for Motion (framer) components; change both
+     together. Keyframe rules below should reference these rather than
+     hard-coding their own timing. */
+  --motion-duration-fast: 150ms;
+  --motion-duration-base: 240ms;
+  --motion-duration-slow: 400ms;
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
   --background: oklch(0.98 0.005 80);
   --foreground: oklch(0.18 0.01 60);
   --card: oklch(0.98 0.005 80);
@@ -362,7 +373,7 @@ input:-webkit-autofill:focus {
   display: block;
   opacity: 0;
   will-change: transform, opacity, filter;
-  animation: hero-fade-up 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: hero-fade-up 0.9s var(--motion-ease-out) forwards;
 }
 
 .hero-title-line:nth-child(1) { animation-delay: 0.10s; }
@@ -373,7 +384,7 @@ input:-webkit-autofill:focus {
   display: block;
   opacity: 0;
   will-change: transform, opacity, filter;
-  animation: hero-fade-up 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: hero-fade-up 0.75s var(--motion-ease-out) forwards;
 }
 
 .hero-line:nth-child(1) { animation-delay: 0.50s; }
@@ -591,9 +602,23 @@ pre code.hljs {
   animation: streaming-block-in 240ms ease-out;
 }
 
+/* When the rotating title also shimmers, both classes set the `animation`
+   shorthand and the later rule would cancel the shimmer loop — run both. */
+.step-title-in.text-shimmer {
+  animation:
+    streaming-block-in 240ms ease-out,
+    shimmer var(--shimmer-duration) var(--shimmer-timing) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .step-title-in {
     animation: none;
+  }
+
+  /* Keep the shimmer loop (consistent with bare .text-shimmer, which is not
+     reduced) but drop the entrance motion. */
+  .step-title-in.text-shimmer {
+    animation: shimmer var(--shimmer-duration) var(--shimmer-timing) infinite;
   }
 }
 
@@ -649,4 +674,59 @@ pre code.hljs {
 
 .react-flow__controls button svg {
   fill: currentColor;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────────
+   Consolidated overrides for the decorative animations declared above. The
+   rules that carry their own handling (.streaming-fade, .step-title-in) are
+   deliberately not repeated here.
+
+   Three things stay animated on purpose, because each is the only signal that
+   work is in flight and suppressing it would leave the UI looking stalled:
+   .text-shimmer, Tailwind's .animate-spin, and the navigation bar (kept, but
+   as a static fill rather than an 8s crawl). .animate-caret-blink also stays,
+   matching the native text cursor, which the OS setting does not suppress. */
+@media (prefers-reduced-motion: reduce) {
+  /* Login and brand panel background: four blurred orbs on 18-26s infinite
+     loops. The gradient is kept; only the drifting stops. */
+  .login-mesh-bg::before,
+  .login-mesh-bg::after,
+  .login-mesh-bg .mesh-orb,
+  .login-mesh-bg .mesh-orb::after {
+    animation: none;
+  }
+
+  /* Hero copy starts at opacity:0 and relies on `forwards` to become visible,
+     so cancelling the animation alone would leave the text permanently
+     invisible. Land it in the finished state explicitly. */
+  .hero-title-line,
+  .hero-line {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  /* 2.4s infinite opacity pulse — hold at the midpoint of its range. */
+  .inject-breathe {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  /* Streaming caret dot: hold visible instead of pulsing. */
+  .streaming-cursor > :last-child::after {
+    animation: none;
+    opacity: 0.8;
+  }
+
+  /* Show progress without travelling across the viewport for 8s. */
+  .nav-bar-loading {
+    animation: none;
+    width: 82%;
+  }
+
+  .nav-bar-done {
+    animation: none;
+    opacity: 0;
+  }
 }

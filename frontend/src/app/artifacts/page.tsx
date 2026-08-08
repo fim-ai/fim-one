@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
 import { apiFetch } from "@/lib/api"
 import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
@@ -484,13 +485,13 @@ function ArtifactsContent() {
               <p className="text-sm text-muted-foreground">{t("noResults")}</p>
             </div>
           ) : (
-            <div className={cn("grid gap-4", selected ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-4" : "grid-cols-2 md:grid-cols-4 lg:grid-cols-6")}>
+            <StaggerOnce className={cn("grid gap-4", selected ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-4" : "grid-cols-2 md:grid-cols-4 lg:grid-cols-6")}>
               {filtered.map((artifact) => {
                 const isActive =
                   selected?.id === artifact.id &&
                   selected?.conversation_id === artifact.conversation_id
                 return (
-                  <div
+                  <StaggerItem
                     key={`${artifact.conversation_id}-${artifact.id}`}
                     onClick={() => setSelected(isActive ? null : artifact)}
                     className={cn(
@@ -535,10 +536,10 @@ function ArtifactsContent() {
                         {formatSize(artifact.size)} · {formatRelativeTime(artifact.created_at, tLayout)}
                       </p>
                     </div>
-                  </div>
+                  </StaggerItem>
                 )
               })}
-            </div>
+            </StaggerOnce>
           )}
 
           {/* Pagination */}

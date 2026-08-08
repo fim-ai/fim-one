@@ -8,6 +8,7 @@ import "./globals.css"
 import { APP_NAME } from "@/lib/constants"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AppShell } from "@/components/layout/app-shell"
+import { MotionProvider } from "@/components/layout/motion-provider"
 import { AuthProvider } from "@/contexts/auth-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { ThemedToaster } from "@/components/themed-toaster"
@@ -90,7 +91,9 @@ export default async function RootLayout({
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             <AuthProvider>
               <TooltipProvider>
-                <AppShell>{children}</AppShell>
+                <MotionProvider>
+                  <AppShell>{children}</AppShell>
+                </MotionProvider>
                 <ThemedToaster />
               </TooltipProvider>
             </AuthProvider>
