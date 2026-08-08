@@ -68,7 +68,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **SVG figures stay readable in dark mode.** Model-authored SVG assumes a light canvas, so figures are drawn on a fixed light surface instead of turning dark-on-dark.
 
-- **The browser-tab busy indicator no longer disappears mid-turn.** The favicon now shows a steady busy glyph for the whole run and reliably restores the real icon when the turn ends, even after in-app navigation.
+- **The browser-tab busy indicator no longer disappears mid-turn.** While a turn runs the tab icon keeps the app mark and pulses it between full colour and grey, holding for the whole run and reliably restoring the real icon when the turn ends, even after in-app navigation. With reduced motion enabled it holds a static grey mark instead of animating.
 
 - **Agents no longer re-fetch an endpoint dozens of times after a truncated result.** Truncation notices now lead with an imperative pointer to the saved full copy, and an agent that keeps hammering the same endpoint with varying parameters is warned and then hard-stopped.
 

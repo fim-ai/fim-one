@@ -174,8 +174,8 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
     return postProcessing
   }, [messages])
 
-  // Swap the favicon to a busy glyph while the turn is streaming or
-  // post-processing, so a backgrounded tab still shows progress.
+  // Pulse the favicon while the turn is streaming or post-processing, so a
+  // backgrounded tab still shows progress.
   useFaviconLoading(isRunning || isPostProcessing)
 
   // Mid-stream quota terminator — surface the structured `error` event
