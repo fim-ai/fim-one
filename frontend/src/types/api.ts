@@ -17,6 +17,13 @@ export interface ReactStepEvent {
   tool_name?: string
   tool_args?: Record<string, unknown>
   reasoning?: string
+  /**
+   * Where `reasoning` text actually came from. Set client-side by the merge in
+   * use-react-steps: "content" marks a round whose model emitted no separate
+   * chain-of-thought — the accumulated text is ordinary output, so the UI
+   * labels the card "Output" instead of "Reasoning". Absent = true reasoning.
+   */
+  reasoning_source?: "content"
   observation?: string
   error?: string
   /** Server-side iteration elapsed (LLM thinking + tool execution). */

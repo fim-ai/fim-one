@@ -403,50 +403,30 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
   const showStreamingAnswer = !hasDone && (hasAnswerStep || (isAnswerStreaming && displayAnswer))
   const isAborted = !isStreaming && !hasDone
 
-  // Label for the live group header. Priority is anchored on the CURRENT
-  // iteration, not on whichever label happens to be newest — generated labels
-  // arrive after the iteration's tool has started, so "newest label wins"
-  // permanently trails one iteration behind:
-  //   1. the current iteration's generated label,
-  //   2. its streaming reasoning (first sentence) while the label is pending,
-  //   3. the previous iteration's label as continuity filler.
+  // Label for the live group header: generated titles ONLY — raw reasoning
+  // text never surfaces here (it is exactly what the labels exist to
+  // replace). While the current iteration's label is still generating, the
+  // previous label stays up for continuity; before the first label arrives
+  // the header shows the processing shimmer.
   const liveStepItems = items.filter((i) => i.event === "step" && (i.data as ReactStepEvent).type !== "answer")
   const liveTitle = (() => {
-    let currentIter = 0
-    for (const item of liveStepItems) {
-      const n = item.displayIteration ?? 0
-      if (n > currentIter) currentIter = n
-    }
-    if (stepTitles?.[currentIter]) return stepTitles[currentIter]
-    for (let i = liveStepItems.length - 1; i >= 0; i--) {
-      const item = liveStepItems[i]
-      if ((item.displayIteration ?? 0) !== currentIter) break
-      const step = item.data as ReactStepEvent
-      if (step.type === "thinking" && step.reasoning) {
-        const extracted = extractReasoningTitle(step.reasoning)
-        if (extracted) return extracted
-      }
-    }
     const iters = Object.keys(stepTitles ?? {}).map(Number)
     if (stepTitles && iters.length > 0) return stepTitles[Math.max(...iters)]
     return null
   })()
 
   // Streaming (no done yet) or direct answer (no steps): render as before
+  // The group container doubles as the initial loading indicator: it mounts
+  // with the processing shimmer as soon as the run starts, so there is ONE
+  // continuous placeholder from send until the first label lands, instead of
+  // a bare spinner that gets replaced by a box.
+  const showLiveGroup =
+    liveStepItems.length > 0 || (isStreaming && !hasDone && !showStreamingAnswer)
   return (
     <div className="space-y-3 min-w-0 w-full">
-      {/* Initial loading indicator before any step events arrive */}
-      {isStreaming && items.length === 0 && !showStreamingAnswer && (
-        <div className="flex flex-col gap-3 px-1 py-2">
-          <div className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
-            <span className="text-sm text-shimmer">{t("statusProcessing")}</span>
-          </div>
-        </div>
-      )}
       {/* Live step group — folded by default; header cycles the newest step
           label so the run stays legible without unrolling every card. */}
-      {liveStepItems.length > 0 && (
+      {showLiveGroup && (
         <div className="rounded-lg border border-border/40 bg-muted/20">
           <button
             type="button"
@@ -469,13 +449,15 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
                 {toolCallCount !== 1 ? t("toolCallCountPlural", { count: toolCallCount }) : t("toolCallCount", { count: toolCallCount })}
               </span>
             )}
-            {stepsExpanded ? (
-              <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-muted-foreground${toolCallCount > 0 ? "" : " ml-auto"}`} />
-            ) : (
-              <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground${toolCallCount > 0 ? "" : " ml-auto"}`} />
+            {liveStepItems.length > 0 && (
+              stepsExpanded ? (
+                <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-muted-foreground${toolCallCount > 0 ? "" : " ml-auto"}`} />
+              ) : (
+                <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground${toolCallCount > 0 ? "" : " ml-auto"}`} />
+              )
             )}
           </button>
-          {stepsExpanded && (
+          {stepsExpanded && liveStepItems.length > 0 && (
             <div className="px-4 pt-1 pb-3 space-y-2">
               {liveStepItems.map((item) => {
                 const idx = items.indexOf(item)
@@ -483,7 +465,7 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
                 const iter = item.displayIteration ?? (step.iteration ?? 0) + 1
                 return (
                   <div key={idx} data-react-idx={idx}>
-                    <StepCard step={step} duration={item.duration} displayIteration={item.displayIteration} stepTitle={stepTitles?.[iter]} />
+                    <StepCard step={step} duration={item.duration} displayIteration={item.displayIteration} stepTitle={stepTitles?.[iter]} showEmptyMarker />
                   </div>
                 )
               })}
@@ -583,7 +565,7 @@ function StreamingAnswerCard({ content, aborted }: { content: string; aborted?: 
   )
 }
 
-function ThinkingCard({ iterLabel, duration, reasoning, titleOverride }: { iterLabel: number; duration?: number; reasoning?: string; titleOverride?: string }) {
+function ThinkingCard({ iterLabel, duration, reasoning, titleOverride, isContentSource }: { iterLabel: number; duration?: number; reasoning?: string; titleOverride?: string; isContentSource?: boolean }) {
   const t = useTranslations("playground")
   const isWaiting = !reasoning && duration == null
   // `duration == null` is the "still streaming" signal (drives the caret
@@ -609,7 +591,9 @@ function ThinkingCard({ iterLabel, duration, reasoning, titleOverride }: { iterL
             className="border-muted-foreground/30 text-muted-foreground text-[10px] uppercase tracking-wider gap-1"
           >
             <Brain className="h-3 w-3" />
-            {t("reasoning")}
+            {/* Models without a chain-of-thought channel stream ordinary
+                output here — calling that "Reasoning" would be a lie. */}
+            {isContentSource ? t("modelOutput") : t("reasoning")}
           </Badge>
           <span className="text-xs text-muted-foreground">
             {t("iterationLabel", { n: iterLabel })}
@@ -649,13 +633,32 @@ function ThinkingCard({ iterLabel, duration, reasoning, titleOverride }: { iterL
   )
 }
 
-function StepCard({ step, duration, displayIteration, stepTitle }: { step: ReactStepEvent; duration?: number; displayIteration?: number; stepTitle?: string }) {
+function StepCard({ step, duration, displayIteration, stepTitle, showEmptyMarker }: { step: ReactStepEvent; duration?: number; displayIteration?: number; stepTitle?: string; showEmptyMarker?: boolean }) {
+  const t = useTranslations("playground")
   const iterLabel = displayIteration ?? (step.iteration ?? 0) + 1
 
   if (step.type === "thinking") {
-    // Skip empty thinking rounds (final iteration that went straight to answer)
-    if (!step.reasoning && step.status === "done") return null
-    return <ThinkingCard iterLabel={iterLabel} duration={duration} reasoning={step.reasoning} titleOverride={stepTitle} />
+    // Empty thinking round (model went straight to tool calls without
+    // emitting reasoning). In the live list this still marks the iteration
+    // boundary — without it, tools from consecutive silent rounds fuse into
+    // one undifferentiated stream. Elsewhere (completed timeline) the node
+    // header already carries iteration + title, so render nothing.
+    if (!step.reasoning && step.status === "done") {
+      if (showEmptyMarker && stepTitle) {
+        return (
+          <div className="flex items-center gap-2 min-w-0 px-1 pt-1.5">
+            <span className="text-xs text-muted-foreground shrink-0">
+              {t("iterationLabel", { n: iterLabel })}
+            </span>
+            <span className="truncate text-xs italic text-muted-foreground/60">
+              {stepTitle}
+            </span>
+          </div>
+        )
+      }
+      return null
+    }
+    return <ThinkingCard iterLabel={iterLabel} duration={duration} reasoning={step.reasoning} titleOverride={stepTitle} isContentSource={step.reasoning_source === "content"} />
   }
 
   // "answer" step is merged into StreamingAnswerCard — skip standalone rendering

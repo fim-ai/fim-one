@@ -610,7 +610,13 @@ async def _generate_step_title(
                 ChatMessage(role="user", content=user_content),
             ]
         )
-        raw = str(result.message.content or "").strip().strip("\"'")
+        # Strip stray wrapping/quote/bracket chars the model sometimes echoes
+        # from the reasoning text (e.g. a label ending in ``"】【``).
+        raw = (
+            str(result.message.content or "")
+            .strip()
+            .strip("\"'“”‘’「」『』【】()（）[]{}<>《》:：,，。.")
+        )
         # A label that ballooned into a paragraph is worse than none.
         if raw and len(raw) <= 80 and "\n" not in raw:
             return raw
@@ -3407,9 +3413,20 @@ async def react_endpoint(
         # Labels already produced, oldest first — fed back into the prompt so
         # consecutive look-alike iterations get distinct labels.
         step_title_history: list[str] = []
+        # Two-phase labeling. An EARLY label fires mid-thinking (as soon as
+        # enough reasoning has streamed) so the header updates before the
+        # iteration's tool even starts; the DEFINITIVE label fires at tool
+        # start with full context (tool + arguments) and overwrites it.
+        early_title_spawned: set[int] = set()
+        definitive_title_done: set[int] = set()
 
         async def _emit_step_title(
-            iteration_no: int, reasoning: str, tool_name: str, tool_args: str
+            iteration_no: int,
+            reasoning: str,
+            tool_name: str,
+            tool_args: str,
+            *,
+            definitive: bool,
         ) -> None:
             title = await _generate_step_title(
                 fast_llm,
@@ -3422,6 +3439,12 @@ async def react_endpoint(
             )
             if not title:
                 return
+            # An early label must never clobber a definitive one that won the
+            # race (fast thinking → both tasks in flight simultaneously).
+            if not definitive and iteration_no in definitive_title_done:
+                return
+            if definitive:
+                definitive_title_done.add(iteration_no)
             step_title_history.append(title)
             payload = {"iteration": iteration_no, "title": title}
             _append_event(sse_events, "step_title", payload)
@@ -3435,6 +3458,8 @@ async def react_endpoint(
             reasoning: str,
             tool_name: str,
             tool_args: dict[str, Any] | None = None,
+            *,
+            definitive: bool = True,
         ) -> None:
             if fast_llm is None:
                 return
@@ -3445,7 +3470,10 @@ async def react_endpoint(
                 except (TypeError, ValueError):
                     args_snip = str(tool_args)
             task = asyncio.create_task(
-                _emit_step_title(iteration_no, reasoning, tool_name, args_snip)
+                _emit_step_title(
+                    iteration_no, reasoning, tool_name, args_snip,
+                    definitive=definitive,
+                )
             )
             step_title_tasks.add(task)
             task.add_done_callback(step_title_tasks.discard)
@@ -3696,9 +3724,45 @@ async def react_endpoint(
             if doc_vision_urls:
                 image_urls = (image_urls or []) + doc_vision_urls
 
+            # Rolling buffer of the CURRENT iteration's thinking tokens,
+            # feeding the early (mid-thinking) step label. Fires on the FIRST
+            # complete sentence — tool-decision reasoning is often a single
+            # short CJK sentence, so a large char threshold would never
+            # trigger and the label would always wait for the tool boundary.
+            _think_buf: dict[str, Any] = {"iter": 0, "chars": 0, "parts": []}
+            _EARLY_TITLE_MIN_CHARS = 12
+            _EARLY_TITLE_MAX_CHARS = 80
+            _SENTENCE_ENDS = ("。", "！", "？", "．", ".", "!", "?", "\n")
+
             def on_thinking_delta(token: str) -> None:
                 """Push reasoning/thinking tokens to the SSE stream."""
                 _emit_step({"type": "thinking", "status": "delta", "content": token})
+                # Early label: as soon as this iteration's reasoning yields a
+                # first sentence, label the step — BEFORE its tool starts.
+                # The definitive label (tool + args context) overwrites it.
+                if _think_buf["iter"] != current_iteration:
+                    _think_buf["iter"] = current_iteration
+                    _think_buf["chars"] = 0
+                    _think_buf["parts"] = []
+                if (
+                    current_iteration in early_title_spawned
+                    or current_iteration in definitive_title_done
+                ):
+                    return
+                _think_buf["parts"].append(token)
+                _think_buf["chars"] += len(token)
+                sentence_done = _think_buf["chars"] >= _EARLY_TITLE_MIN_CHARS and any(
+                    p in token for p in _SENTENCE_ENDS
+                )
+                if sentence_done or _think_buf["chars"] >= _EARLY_TITLE_MAX_CHARS:
+                    early_title_spawned.add(current_iteration)
+                    _spawn_step_title(
+                        current_iteration,
+                        "".join(_think_buf["parts"]),
+                        "",
+                        None,
+                        definitive=False,
+                    )
 
             async def _run() -> Any:
                 nonlocal image_urls

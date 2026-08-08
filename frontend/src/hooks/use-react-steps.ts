@@ -164,12 +164,15 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
           })
           if (matchIdx !== -1) {
             const clientDuration = (msg.timestamp - (result[matchIdx].timestamp ?? msg.timestamp)) / 1000
-            // For thinking-done: preserve accumulated reasoning from deltas if done has none
+            // For thinking-done: preserve accumulated reasoning from deltas if done has none.
+            // A done event without its own `reasoning` means the model has no
+            // separate chain-of-thought channel — the accumulated deltas were
+            // ordinary output text, so tag the source for honest labeling.
             let mergedData = step
             if (step.type === "thinking") {
               const accumulated = result[matchIdx].data as ReactStepEvent
               if (!step.reasoning && accumulated.reasoning) {
-                mergedData = { ...step, reasoning: accumulated.reasoning }
+                mergedData = { ...step, reasoning: accumulated.reasoning, reasoning_source: "content" }
               }
             }
             result[matchIdx] = {

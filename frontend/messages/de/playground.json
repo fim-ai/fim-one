@@ -117,26 +117,26 @@
   },
   "examples": {
     "react": [
-      "Finde die 5 am meisten mit Sternen bewerteten Repositories auf GitHub -- welches ist #1 und wie viele Sterne hat es?",
+      "Rufen Sie die aktuellen Top 5 Stories auf Hacker News über die öffentliche API ab -- zeigen Sie für jede den Titel, die Punktzahl und eine einzeilige Zusammenfassung",
       "Schlage 'Sortieralgorithmus' auf Wikipedia nach und erstelle eine Vergleichstabelle von Bubble Sort, Quick Sort und Merge Sort nach Zeitkomplexität",
       "Simuliere das Monty-Hall-Problem 10.000 Mal -- solltest du die Tür wechseln? Zeige die Gewinnquoten",
       "Schreibe Python-Code, um die ersten 30 Fibonacci-Zahlen und ihre Konvergenz zum Goldenen Schnitt zu berechnen, speichere die Ergebnisse als fibonacci.csv",
       "Wie spät ist es jetzt in New York, London und Tokio? Verwende template_render, um ein stilisiertes HTML-Dashboard mit Weltuhr zu erstellen",
-      "Finde eine öffentliche REST API mit Dummy-Posts, rufe 100 davon ab, schreibe dann Python-Code, um die 5 produktivsten Autoren und ihre durchschnittliche Post-Titel-Länge zu bewerten"
+      "Rufen Sie die heutigen USD-Wechselkurse von der Frankfurter API ab, berechnen Sie dann, was $2.500 in EUR, GBP und JPY umgerechnet sind"
     ],
     "dag": [
-      "Schlage die 3 am meisten mit Sternen bewerteten Repositories für Facebook, Google und Microsoft auf GitHub parallel nach, vergleiche dann, welcher Tech-Gigant die höchste durchschnittliche Sternzahl hat",
+      "Rufen Sie die Live-Preise von Bitcoin, Ethereum und Dogecoin von der CoinGecko API parallel ab, ordnen Sie sie dann nach 24-Stunden-Veränderung",
       "Schlage Python, Rust und Go auf Wikipedia parallel nach, erstelle dann eine Vergleichstabelle: Erstellungsjahr, Schöpfer, Typ-System und Stärke",
       "Generiere ein 20x20-Labyrinth, lass dann BFS und DFS parallel gegeneinander antreten -- welcher erkundet weniger Zellen? Visualisiere beide Lösungen in ASCII-Art",
       "Berechne die ersten 50 Fibonacci-Zahlen, die ersten 50 Primzahlen und die ersten 50 Dreieckszahlen parallel, finde dann heraus, welche Zahlen in mehreren Sequenzen vorkommen",
       "Hole die aktuelle Zeit in New York, London, Tokio, Sydney und Dubai parallel, verwende dann template_render, um ein stilisiertes HTML-Dashboard mit Weltuhr zu erstellen",
-      "Finde eine öffentliche REST API mit Posts und Todos, rufe beide parallel ab, schreibe dann Python-Code, um zu korrelieren: Sind die produktivsten Poster auch diejenigen, die die meisten Todos erledigen?"
+      "Rufen Sie Benutzer und Todos von JSONPlaceholder parallel ab, berechnen Sie dann für jeden Benutzer die Abschlussrate seiner Todos und küren Sie den diszipliniertesten Benutzer"
     ],
     "auto": [
       "Rufe das Node.js LTS-Changelog ab und fasse die 5 einflussreichsten Änderungen für einen typischen Backend-Entwickler zusammen",
       "Simuliere das Werfen von zwei Würfeln 50.000 Mal -- gib eine Häufigkeitstabelle aller möglichen Summen aus und identifiziere die häufigsten und seltensten Ergebnisse",
       "Rufe 100 Posts von JSONPlaceholder ab, bewerte die 5 aktivsten Benutzer nach Post-Anzahl, verwende template_render, um ihre Statistiken als stilisierte Leaderboard-Karte anzuzeigen",
-      "Claude Opus 4 und GPT-5 auf Wikipedia nachschlagen — Veröffentlichungsdaten, Kontextfenster und Hauptfunktionen vergleichen — dann eine saubere Markdown-Vergleichstabelle erstellen",
+      "Wo ist die Internationale Raumstation gerade? Rufen Sie ihre Live-Koordinaten ab, verwenden Sie dann Python, um herauszufinden, über welches Land oder welchen Ozean sie fliegt",
       "Recherchiere React, Vue und Svelte gleichzeitig -- rufe für jeden die wöchentlichen npm-Downloads, GitHub-Sterne und die neueste Version ab -- bewerte sie dann und erstelle eine stilisierte HTML-Scorecard mit Medaillen-Abzeichen",
       "Parallel: (1) implementiere Merge Sort und Quick Sort, benchmark beide auf 10.000 zufälligen Ganzzahlen; (2) finde alle Fibonacci-Zahlen bis Index 50, die auch Primzahlen sind; (3) löse N-Queens für N=8 und zähle alle Lösungen -- kompiliere alles in einen stilisierten HTML-Bericht"
     ]
@@ -184,5 +184,6 @@
   "downloadTableCsv": "Tabelle als CSV herunterladen",
   "viewSource": "Quelle anzeigen",
   "viewPreview": "Vorschau anzeigen",
-  "downloadSvg": "SVG herunterladen"
+  "downloadSvg": "SVG herunterladen",
+  "modelOutput": "Ausgabe"
 }

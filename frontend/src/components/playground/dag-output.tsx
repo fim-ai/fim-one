@@ -595,20 +595,15 @@ function StepProgressCard({ state }: { state: StepState }) {
 
   const hasContent = state.iterations.length > 0 || !!state.result
 
-  // Latest activity for the collapsed running view: the newest thinking
-  // snippet, or the tool currently executing. Mirrors the rotating title in
-  // the ReAct live group so a folded step still shows what it is doing.
+  // Latest activity for the collapsed running view: the tool currently
+  // executing. Deliberately NOT raw reasoning text — the step's plan task
+  // line above is the title, and raw model prose is what titles replace.
   const liveActivity = useMemo(() => {
     if (state.status !== "running") return null
     for (let i = state.iterations.length - 1; i >= 0; i--) {
       const iter = state.iterations[i]
       if (iter.tool_name && iter.loading) {
         return getToolDisplayName(iter.tool_name, catalog?.tools)
-      }
-      const text = iter.thinkingText || iter.reasoning
-      if (text) {
-        const line = stripInlineMarkdown(text.split("\n")[0] ?? "")
-        if (line) return line
       }
     }
     return null

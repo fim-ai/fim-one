@@ -117,26 +117,26 @@
   },
   "examples": {
     "react": [
-      "Trouvez les 5 dépôts les plus populaires sur GitHub -- lequel est #1 et combien d'étoiles a-t-il ?",
+      "Récupérez les 5 meilleures histoires actuelles sur Hacker News via son API publique -- affichez le titre, le score et un résumé d'une ligne pour chacune",
       "Recherchez « Sorting algorithm » sur Wikipedia et créez un tableau comparatif de Bubble Sort, Quick Sort et Merge Sort par complexité temporelle",
       "Simulez le problème de Monty Hall 10 000 fois -- devriez-vous changer de porte ? Affichez les taux de victoire",
       "Écrivez du Python pour calculer les 30 premiers nombres de Fibonacci et leur convergence du nombre d'or, enregistrez les résultats sous forme de fibonacci.csv",
       "Quelle heure est-il à New York, Londres et Tokyo en ce moment ? Utilisez template_render pour créer un tableau de bord d'horloge mondiale stylisé en HTML",
-      "Trouvez une API REST publique avec des publications fictives, récupérez-en 100, puis écrivez du Python pour classer les 5 auteurs les plus prolifiques et leur longueur moyenne de titre de publication"
+      "Récupérez les taux de change USD d'aujourd'hui depuis l'API Frankfurter, puis calculez la conversion de 2 500 $ en EUR, GBP et JPY"
     ],
     "dag": [
-      "Recherchez les 3 dépôts les plus populaires pour Facebook, Google et Microsoft sur GitHub en parallèle, puis comparez quel géant technologique a la moyenne d'étoiles la plus élevée",
+      "Récupérez les prix en direct de Bitcoin, Ethereum et Dogecoin depuis l'API CoinGecko en parallèle, puis classez-les par variation sur 24 heures",
       "Recherchez Python, Rust et Go sur Wikipedia en parallèle, puis créez un tableau comparatif : année de création, créateur, système de types et force clé",
       "Générez un labyrinthe 20x20, puis comparez BFS et DFS en parallèle -- lequel explore le moins de cellules ? Visualisez les deux solutions en art ASCII",
       "Calculez les 50 premiers nombres de Fibonacci, les 50 premiers nombres premiers et les 50 premiers nombres triangulaires en parallèle, puis trouvez les nombres qui apparaissent dans plusieurs séquences",
       "Obtenez l'heure actuelle à New York, Londres, Tokyo, Sydney et Dubaï en parallèle, puis utilisez template_render pour créer un tableau de bord d'horloge mondiale stylisé en HTML",
-      "Trouvez une API REST publique avec des publications et des tâches, récupérez les deux en parallèle, puis écrivez du Python pour corréler : les auteurs les plus prolifiques complètent-ils aussi le plus de tâches ?"
+      "Récupérez les utilisateurs et les tâches depuis JSONPlaceholder en parallèle, puis calculez le taux de réalisation des tâches de chaque utilisateur et couronnez l'utilisateur le plus discipliné"
     ],
     "auto": [
       "Récupérez le journal des modifications de Node.js LTS et résumez les 5 changements les plus impactants pour un développeur backend typique",
       "Simulez le lancer de deux dés 50 000 fois -- affichez un tableau de fréquence de chaque somme possible et identifiez les résultats les plus et les moins courants",
       "Récupérez 100 publications de JSONPlaceholder, classez les 5 utilisateurs les plus actifs par nombre de publications, et utilisez template_render pour afficher leurs statistiques sous forme de carte de classement stylisée",
-      "Recherchez Claude Opus 4 et GPT-5 sur Wikipedia — comparez leurs dates de sortie, fenêtres de contexte et capacités phares — puis produisez un tableau de comparaison markdown propre",
+      "Où se trouve la Station spatiale internationale en ce moment ? Récupérez ses coordonnées en direct, puis utilisez Python pour déterminer quel pays ou océan elle survole",
       "Recherchez React, Vue et Svelte simultanément -- pour chacun, récupérez les téléchargements hebdomadaires npm, les étoiles GitHub et la dernière version -- puis classez-les et produisez une fiche de notation HTML stylisée avec des badges de médailles",
       "En parallèle : (1) implémentez merge sort et quick sort, comparez les deux sur 10 000 entiers aléatoires ; (2) trouvez tous les nombres de Fibonacci jusqu'à l'index 50 qui sont aussi premiers ; (3) résolvez N-Queens pour N=8 et comptez toutes les solutions -- compilez tout dans un rapport HTML stylisé"
     ]
@@ -184,5 +184,6 @@
   "downloadTableCsv": "Télécharger le tableau en CSV",
   "viewSource": "Afficher la source",
   "viewPreview": "Afficher l'aperçu",
-  "downloadSvg": "Télécharger SVG"
+  "downloadSvg": "Télécharger SVG",
+  "modelOutput": "Résultat"
 }
