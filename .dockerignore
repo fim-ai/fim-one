@@ -46,3 +46,5 @@ tmp/
 wiki/
 tests/
 scripts/
+# Exception: the runtime image builds CJK export fonts from this script
+!scripts/fetch_export_fonts.py
