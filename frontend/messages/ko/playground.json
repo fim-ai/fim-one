@@ -185,5 +185,6 @@
   "viewSource": "소스 보기",
   "viewPreview": "미리보기",
   "downloadSvg": "SVG 다운로드",
-  "modelOutput": "출력"
+  "modelOutput": "출력",
+  "thoughtProcess": "생각 과정"
 }

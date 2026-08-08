@@ -185,5 +185,6 @@
   "viewSource": "ソースを表示",
   "viewPreview": "プレビューを表示",
   "downloadSvg": "SVGをダウンロード",
-  "modelOutput": "出力"
+  "modelOutput": "出力",
+  "thoughtProcess": "思考プロセス"
 }

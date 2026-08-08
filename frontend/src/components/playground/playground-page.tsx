@@ -975,6 +975,10 @@ function PlaygroundContent({
   // Tail spacer under the current turn, so a freshly sent message lands at the
   // top of the viewport with the answer growing into the space below it.
   const currentTurnRef = useRef<HTMLDivElement>(null)
+  // Once the turn folds into history, the last history turn takes over as the
+  // spacer's anchor — collapsing the spacer at that moment is what used to drop
+  // a short answer from the top of the viewport down to the input edge.
+  const lastHistoryTurnRef = useRef<HTMLDivElement>(null)
   const [spacerPx, setSpacerPx] = useState(0)
   const spacerPxRef = useRef(0)
   // Breathing room kept above the current turn once it is lifted to the top.
@@ -1165,14 +1169,17 @@ function PlaygroundContent({
     }
   }, [hasMessages, getViewport])
 
-  // Size the tail spacer to whatever is left of the viewport under the current
-  // turn. Bottom-pinning then puts the turn's first line at the top of the
-  // screen; once the turn is taller than one screen the spacer is gone and
-  // following behaves normally.
+  // Size the tail spacer to whatever is left of the viewport under the last
+  // turn — the live one while streaming, the last history turn otherwise.
+  // Bottom-pinning then puts the turn's first line at the top of the screen;
+  // once the turn is taller than one screen the spacer is gone and following
+  // behaves normally. Keeping the spacer alive across the live→history fold is
+  // what holds a short answer anchored at the top instead of letting the whole
+  // thread sag down to the input edge when the live DOM is swapped out.
   useEffect(() => {
     const viewport = getViewport()
-    const turn = currentTurnRef.current
-    if (!viewport || !turn || !hasCurrentTurn) {
+    const turn = hasCurrentTurn ? currentTurnRef.current : lastHistoryTurnRef.current
+    if (!viewport || !turn) {
       spacerPxRef.current = 0
       setSpacerPx(0)
       return
@@ -1201,7 +1208,9 @@ function PlaygroundContent({
     observer.observe(viewport)
     update()
     return () => observer.disconnect()
-  }, [getViewport, hasCurrentTurn])
+    // allHistoryTurns: the anchor element changes when a turn folds into
+    // history, and the observer must re-attach to the new node.
+  }, [getViewport, hasCurrentTurn, allHistoryTurns])
 
   // Park at the head of the result card when a turn completes. The final answer
   // often lands in a single burst (the last reasoning pass is promoted straight
@@ -1213,6 +1222,10 @@ function PlaygroundContent({
     if (isDone === turnDoneRef.current) return
     turnDoneRef.current = isDone
     if (!isDone) {
+      // The stream also empties when a finished turn folds into history —
+      // that reflow must not move the viewport. Only a turn that is actually
+      // starting (a pending question or a running stream) gets the lift.
+      if (!isRunning && !pendingQuery) return
       // A new turn started — follow it again, whatever the previous turn left
       // the viewport doing, and snap down so the tail spacer carries the new
       // question up to the top of the screen.
@@ -1252,7 +1265,7 @@ function PlaygroundContent({
         setShowScrollBtn(false)
       })
     )
-  }, [messages, modeMatches, scrollInViewport, getViewport, scrollViewportToBottom])
+  }, [messages, modeMatches, isRunning, pendingQuery, scrollInViewport, getViewport, scrollViewportToBottom])
 
   // Reset scroll state on clear
   useEffect(() => {
@@ -1783,7 +1796,7 @@ function PlaygroundContent({
               <ScrollArea ref={scrollAreaRef} className="h-full p-4">
                 <div className="min-w-0 max-w-4xl mx-auto w-full space-y-4">
                   {/* Previous turns from DB (shown during both live and history mode) */}
-                  {allHistoryTurns?.map((turn, idx) => {
+                  {allHistoryTurns?.map((turn, idx, turnsArr) => {
                     const historyCompact = turn.sseMessages.find((m) => m.event === "compact")
                     const historyCompactData = historyCompact?.data as { original_messages: number; kept_messages: number } | undefined
                     return (
@@ -1794,16 +1807,24 @@ function PlaygroundContent({
                             keptCount={historyCompactData.kept_messages}
                           />
                         )}
-                        <HistoryTurn
-                          userContent={turn.user?.content ?? null}
-                          userMetadata={turn.user?.metadata}
-                          orphanUserContents={turn.orphanUsers
-                            .map((m) => m.content)
-                            .filter((c): c is string => !!c)}
-                          assistantMetadata={turn.assistantMetadata}
-                          sseMessages={turn.sseMessages}
-                          hideDagGraph={hasLiveMessages}
-                        />
+                        {/* The last turn is the tail spacer's anchor once no
+                            live turn exists, so it needs a measurable wrapper.
+                            space-y-4 inside mirrors the outer list spacing. */}
+                        <div
+                          ref={idx === turnsArr.length - 1 ? lastHistoryTurnRef : undefined}
+                          className="space-y-4"
+                        >
+                          <HistoryTurn
+                            userContent={turn.user?.content ?? null}
+                            userMetadata={turn.user?.metadata}
+                            orphanUserContents={turn.orphanUsers
+                              .map((m) => m.content)
+                              .filter((c): c is string => !!c)}
+                            assistantMetadata={turn.assistantMetadata}
+                            sseMessages={turn.sseMessages}
+                            hideDagGraph={hasLiveMessages}
+                          />
+                        </div>
                       </Fragment>
                     )
                   })}

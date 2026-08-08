@@ -39,6 +39,7 @@
   "statusAnalyzingRound": "Analyzing (Round {round})...",
   "statusRouting": "Choosing best mode...",
   "statusProcessing": "Processing...",
+  "thoughtProcess": "Thought process",
   "answerGenerating": "Generating Answer",
   "standardMode": "Standard mode",
   "plannerMode": "Planner mode",

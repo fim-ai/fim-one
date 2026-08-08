@@ -62,6 +62,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **The chat view keeps up with fast output and lands on the answer.** It no longer stalls mid-reasoning and falsely reports new content below, it follows content that grows without new events, and when a turn finishes it settles at the top of the result instead of the bottom of it. Scrolling away still hands control back, and returning to the bottom resumes following.
 
+- **A short answer stays where you were reading it after the turn ends.** Once a turn finished, the transcript slid down so the question and its reply hugged the input box; the reply now holds its position at the top of the view until the next message is sent.
+
 - **Signing in applies the account's preferred language right away.** The locale cookie is now synced during login and OAuth callback, and the landing page is loaded fresh when the account's language differs from the one the login page was rendered in, so the destination no longer appears in the previous language until the next reload.
 
 - **Cmd+K opens search even when the sidebar is collapsed.** The shortcut listener stayed active but its dialog was never mounted in the collapsed state, so the shortcut silently did nothing.
