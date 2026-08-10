@@ -319,54 +319,79 @@ JSON_MODE_SYSTEM_PROMPT = (
 # Native tool-calling mode.
 # ----------------------------------------------------------------------
 
-_NATIVE_GUIDELINES = "Guidelines:\n" + _bullets(
-    PromptSection("native_think", "- Always think carefully before acting."),
-    USE_TOOLS_ONLY,
-    PromptSection(
-        "native_efficient",
-        "- Be EFFICIENT: try to accomplish as much as possible in each tool "
-        "call. When a task genuinely requires code execution, write a single "
-        "comprehensive script rather than making many small calls. But do "
-        "NOT use code execution for knowledge, comparisons, or analysis you "
-        "can produce directly: printing your own notes from a script adds "
-        "no information.",
-    ),
-    PromptSection(
-        "native_tool_fail",
-        "- If a tool call fails, analyse the error and decide whether to retry "
-        "with different arguments or move on with the information you have.",
-    ),
-    PromptSection(
-        "native_operator_reject",
-        '- If a tool call is rejected by an operator (error contains "rejected '
-        'by an operator" or "Tool call was rejected"), this is a human policy '
-        "decision, NOT a recoverable error. Do NOT retry the same action with "
-        "different wording, do NOT try alternative tools to achieve the same "
-        "goal. Stop calling tools and respond with a short message that "
-        "(1) acknowledges the rejection, (2) names the action that was "
-        "rejected, (3) asks the user how to proceed or suggests they approve "
-        "the pending request.",
-    ),
-    PromptSection(
-        "native_synthesis",
-        "- When you have gathered enough information to answer, STOP calling "
-        "tools and respond with a concise summary of the key findings and "
-        "results you gathered. Do NOT write the full polished answer — a "
-        "separate synthesis step handles that. Focus on facts, data points, "
-        "and conclusions. Do NOT use python_exec just to print/format results "
-        "— write the summary directly in your response instead.",
-    ),
-    PromptSection(
-        "native_request_tools",
-        "- If you need a tool that is not currently available, use request_tools "
-        "to load it (when available). The request_tools description lists all "
-        "unloaded tools.",
-    ),
-    LANGUAGE,
-    *_SHARED_TRAILING,
+# The synthesis bullet exists in two variants: the default inline-answer
+# flow, and the finish-signal (FINAL-first) flow where the model must call
+# the ``finish`` tool instead of writing the answer in the loop.  Everything
+# else in the native spine is shared — compose both templates from one list.
+_NATIVE_SYNTHESIS = PromptSection(
+    "native_synthesis",
+    "- When you have gathered enough information to answer, STOP calling "
+    "tools and respond with a concise summary of the key findings and "
+    "results you gathered. Do NOT write the full polished answer — a "
+    "separate synthesis step handles that. Focus on facts, data points, "
+    "and conclusions. Do NOT use python_exec just to print/format results "
+    "— write the summary directly in your response instead.",
 )
 
+_NATIVE_SYNTHESIS_FINISH = PromptSection(
+    "native_synthesis_finish",
+    "- FINAL ANSWER PROTOCOL: when you have gathered enough information to "
+    "answer, STOP calling tools and call the `finish` tool — by itself, "
+    "with no arguments and no answer text in the same turn. `finish` only "
+    "signals that you are ready; once it is acknowledged you will be asked "
+    "to write the full answer. NEVER deliver the final user-facing answer "
+    "as a plain message: always hand off through `finish`.",
+)
+
+
+def _native_guidelines(synthesis: PromptSection) -> str:
+    return "Guidelines:\n" + _bullets(
+        PromptSection("native_think", "- Always think carefully before acting."),
+        USE_TOOLS_ONLY,
+        PromptSection(
+            "native_efficient",
+            "- Be EFFICIENT: try to accomplish as much as possible in each tool "
+            "call. When a task genuinely requires code execution, write a single "
+            "comprehensive script rather than making many small calls. But do "
+            "NOT use code execution for knowledge, comparisons, or analysis you "
+            "can produce directly: printing your own notes from a script adds "
+            "no information.",
+        ),
+        PromptSection(
+            "native_tool_fail",
+            "- If a tool call fails, analyse the error and decide whether to retry "
+            "with different arguments or move on with the information you have.",
+        ),
+        PromptSection(
+            "native_operator_reject",
+            '- If a tool call is rejected by an operator (error contains "rejected '
+            'by an operator" or "Tool call was rejected"), this is a human policy '
+            "decision, NOT a recoverable error. Do NOT retry the same action with "
+            "different wording, do NOT try alternative tools to achieve the same "
+            "goal. Stop calling tools and respond with a short message that "
+            "(1) acknowledges the rejection, (2) names the action that was "
+            "rejected, (3) asks the user how to proceed or suggests they approve "
+            "the pending request.",
+        ),
+        synthesis,
+        PromptSection(
+            "native_request_tools",
+            "- If you need a tool that is not currently available, use request_tools "
+            "to load it (when available). The request_tools description lists all "
+            "unloaded tools.",
+        ),
+        LANGUAGE,
+        *_SHARED_TRAILING,
+    )
+
+
+_NATIVE_GUIDELINES = _native_guidelines(_NATIVE_SYNTHESIS)
+
 NATIVE_MODE_SYSTEM_PROMPT = _text(IDENTITY) + "\n\n" + _NATIVE_GUIDELINES + "\n"
+
+NATIVE_MODE_SYSTEM_PROMPT_FINISH = (
+    _text(IDENTITY) + "\n\n" + _native_guidelines(_NATIVE_SYNTHESIS_FINISH) + "\n"
+)
 
 
 __all__ = [
@@ -382,6 +407,7 @@ __all__ = [
     "JSON_MODE_SYSTEM_PROMPT",
     "LANGUAGE",
     "NATIVE_MODE_SYSTEM_PROMPT",
+    "NATIVE_MODE_SYSTEM_PROMPT_FINISH",
     "SAME_ARGS",
     "USE_TOOLS_ONLY",
 ]

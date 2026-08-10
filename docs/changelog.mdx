@@ -34,6 +34,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **Final answers stream as they are written.** The agent now signals when it is done gathering and writes the answer as a live streamed turn, so long replies arrive token by token with full detail instead of replaying after a wait. `REACT_FINISH_SIGNAL=false` restores the previous behavior.
+
 - **Architecture docs map graph engineering onto FIM One.** [Planning Landscape](/architecture/planning-landscape) explains loop vs graph engineering, how that differs from classic visual workflows, how it maps to Workflow / DAG / ReAct, and what to borrow for each engine. It also states the current fact that every DAG step is already a full ReAct agent (not a one-shot LLM call). ReAct and DAG engine pages link to it.
 
 - **Plain chats always offer follow-up suggestions.** Conversations without a bound agent get suggested next questions after each answer; agent-bound chats still require the per-agent Follow-up Suggestions toggle (default off). Closure turns such as greetings or thanks may return no chips.

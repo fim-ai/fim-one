@@ -68,6 +68,7 @@ from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.core.agent import ReActAgent
+from fim_one.core.agent.react import FINISH_SIGNAL_ENABLED
 from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
     InputGuardrailResult,
@@ -3777,6 +3778,11 @@ async def react_endpoint(
                 # pre-compaction transcript snapshot.  Without it those
                 # recovery paths silently degrade to permanent data loss.
                 workspace=_conversation_workspace(conversation_id),
+                # FINAL-first answering: the loop ends on a finish signal
+                # and stream_answer generates the answer as a genuinely
+                # streamed turn.  Safe here because this path ALWAYS calls
+                # stream_answer after run(); kill switch REACT_FINISH_SIGNAL=0.
+                finish_signal=FINISH_SIGNAL_ENABLED,
             )
 
             # Only send images as vision content when model supports it

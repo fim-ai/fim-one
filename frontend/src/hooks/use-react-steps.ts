@@ -190,6 +190,33 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
           }
         }
 
+        // A gate turn (completion check, finish signal, background wait)
+        // can end with the loop just moving on — no "done" event of its
+        // own ever arrives. Close any dangling thinking-start when the
+        // next round (or the answer) begins, so its card doesn't spin
+        // forever. Regular rounds are unaffected: their starts are merged
+        // to done before the next round starts.
+        const opensNewRound =
+          (step.type === "thinking" && step.status === "start")
+          || (step.type === "answer" && step.status === "start")
+        if (opensNewRound) {
+          const danglingIdx = result.findLastIndex(item => {
+            if (item.event !== "step") return false
+            const d = item.data as ReactStepEvent
+            return d.type === "thinking" && d.status === "start"
+          })
+          if (danglingIdx !== -1) {
+            const dangling = result[danglingIdx]
+            const d = dangling.data as ReactStepEvent
+            result[danglingIdx] = {
+              ...dangling,
+              data: { ...d, status: "done" },
+              duration:
+                (msg.timestamp - (dangling.timestamp ?? msg.timestamp)) / 1000,
+            }
+          }
+        }
+
         // Increment logical iteration counter on each thinking start
         if (step.type === "thinking" && step.status === "start") {
           iterCount++

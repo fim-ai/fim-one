@@ -975,10 +975,10 @@ function PlaygroundContent({
   // Content growth before this timestamp does not raise the "new updates"
   // pill — used for the post-processing reflow that follows a finished turn.
   const quietGrowthUntilRef = useRef(0)
-  // After a turn parks on the final-answer head, block auto re-stick. Post-done
-  // growth (follow-up chips, title) would otherwise yank the viewport to the
-  // bottom. Cleared only by a new turn, the scroll-to-bottom control, or an
-  // intentional user scroll back to the bottom.
+  // After a turn completes, block auto re-stick. Post-done growth (follow-up
+  // chips, title) would otherwise yank the viewport to the bottom. Cleared
+  // only by a new turn, the scroll-to-bottom control, or an intentional user
+  // scroll back to the bottom.
   const followSuspendedRef = useRef(false)
 
   const getViewport = useCallback(() => {
@@ -1109,10 +1109,9 @@ function PlaygroundContent({
       const { scrollTop, scrollHeight, clientHeight } = viewport
       const nearBottom = scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_PX
       if (nearBottom) {
-        // Programmatic park at the answer head can still leave the viewport
-        // geometrically "near bottom" (short answers, or chips not yet mounted).
-        // Do not re-stick from that alone while follow is suspended — only a
-        // real user gesture at the bottom resumes following.
+        // While follow is suspended after a turn ends, geometric "near bottom"
+        // alone must not re-stick (chips not yet mounted can look near-bottom).
+        // Only a real user gesture at the bottom resumes following.
         if (followSuspendedRef.current) {
           if (!(userGestureRef.current || pointerDownRef.current)) return
           followSuspendedRef.current = false
@@ -1122,8 +1121,8 @@ function PlaygroundContent({
         setShowScrollBtn(false)
       } else if (userGestureRef.current || pointerDownRef.current) {
         stickToBottomRef.current = false
-        // User took over the viewport — do not re-park on the later live→history
-        // fold (conversation refetch after post-processing / suggestions).
+        // User took over the viewport — do not re-engage follow on the later
+        // live→history fold (conversation refetch after post-processing).
         followSuspendedRef.current = false
       }
     }
@@ -1240,10 +1239,9 @@ function PlaygroundContent({
     // history, and the observer must re-attach to the new node.
   }, [getViewport, hasCurrentTurn, allHistoryTurns])
 
-  // Park at the head of the result card when a turn completes. The final answer
-  // often lands in a single burst (the last reasoning pass is promoted straight
-  // to the answer), so following it to the bottom would drop the reader at the
-  // tail of text they have not read yet.
+  // When a turn completes, stop stick-to-bottom so follow-up chips / title
+  // growth do not drag the viewport. Leave the scroll position as-is (natural
+  // follow during streaming already placed the reader at the latest content).
   const turnDoneRef = useRef(false)
   useEffect(() => {
     const isDone = modeMatches && messages.some((m) => m.event === "done")
@@ -1278,25 +1276,13 @@ function PlaygroundContent({
     }
     // User scrolled away on purpose — leave the viewport where they put it.
     if (!stickToBottomRef.current && !followSuspendedRef.current) return
-    // Stop following immediately (before any early return). Follow-up chips
-    // and title land after `done` and grow the layout; keeping stick-to-bottom
-    // on would drag the reader past the answer head down to the chips.
+    // Stop following immediately. Follow-up chips and title land after `done`
+    // and grow the layout; keeping stick-to-bottom on would yank the reader.
     followSuspendedRef.current = true
     stickToBottomRef.current = false
     quietGrowthUntilRef.current = performance.now() + 8000
     setShowScrollBtn(false)
-    // The whole turn fits on one screen — the tail spacer already holds it at
-    // the top, and parking on the answer would push the question off-screen.
-    const viewport = getViewport()
-    const turn = currentTurnRef.current
-    if (viewport && turn && turn.getBoundingClientRect().height <= viewport.clientHeight) return
-    // Two frames: one for React to commit the result card, one for layout.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        scrollInViewport("[data-live-output] [data-answer-card]", { last: true })
-      })
-    )
-  }, [messages, modeMatches, isRunning, pendingQuery, scrollInViewport, getViewport, scrollViewportToBottom])
+  }, [messages, modeMatches, isRunning, pendingQuery, scrollViewportToBottom])
 
   // Open an existing conversation (sidebar switch or ?c= refresh): land on the
   // latest messages. Sidebar already did this via leftover stick-to-bottom;
@@ -1327,11 +1313,10 @@ function PlaygroundContent({
 
   // After post-processing finishes the parent refetches the conversation
   // (GET /api/conversations/:id) and clears the live SSE buffer so the turn
-  // folds into HistoryTurn. That live→history DOM swap reflows height/spacer
-  // and used to yank the viewport to the bottom — right when follow-up chips
-  // had just appeared. Re-park at the answer head if we still own the scroll.
-  // Only for the *same* conversation: a sidebar switch also clears live, and
-  // that path must stay at the top (see open-conversation effect above).
+  // folds into HistoryTurn. Keep follow suspended across that reflow so the
+  // height/spacer swap does not re-stick to the bottom. Only for the *same*
+  // conversation: a sidebar switch also clears live (open-conversation effect
+  // handles that path).
   const prevHasLiveMessagesRef = useRef(false)
   const foldConvIdRef = useRef<string | null>(null)
   useLayoutEffect(() => {
@@ -1344,7 +1329,7 @@ function PlaygroundContent({
     }
     if (!wasLive) return
     // Live buffer cleared because the user switched away — open-conversation
-    // effect already scrolled to top; do not re-park on the new thread's tail.
+    // effect owns that path.
     if (foldConvIdRef.current !== convId) {
       foldConvIdRef.current = convId
       return
@@ -1353,20 +1338,7 @@ function PlaygroundContent({
     stickToBottomRef.current = false
     quietGrowthUntilRef.current = performance.now() + 3000
     setShowScrollBtn(false)
-    const viewport = getViewport()
-    if (!viewport) return
-    const turn = lastHistoryTurnRef.current
-    // Short turns: spacer already holds the whole turn at the top.
-    if (turn && turn.getBoundingClientRect().height <= viewport.clientHeight) return
-    const cards = viewport.querySelectorAll<HTMLElement>("[data-answer-card]")
-    const el = cards[cards.length - 1]
-    if (!el) return
-    const elRect = el.getBoundingClientRect()
-    const viewportRect = viewport.getBoundingClientRect()
-    const scrollOffset = elRect.top - viewportRect.top + viewport.scrollTop
-    // Instant — layout effect runs before paint; smooth would flash the bottom.
-    viewport.scrollTop = Math.max(0, scrollOffset - 16)
-  }, [hasLiveMessages, activeConversation?.id, getViewport])
+  }, [hasLiveMessages, activeConversation?.id])
 
   // Reset scroll state on clear
   useEffect(() => {

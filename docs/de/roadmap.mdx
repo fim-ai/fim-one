@@ -308,11 +308,12 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 - [ ] Pro-Hook-Konfigurationsübergabe (`{"name", "config"}` Schema) — der Träger für ScopeGuard-Regeln {/* dev: dev/hook-system.md */}
 - [x] Genehmigungsgates bleiben über Delegierung erhalten — `call_agent` und Workflow-`AGENT`-Knoten führen die eigenen Hooks des Agenten aus, anstatt keine
 
-#### Antwort-Rendering
+#### Answer Rendering
 
-- [x] Antworten rendern Mermaid-Diagramme, SVG-Figuren und kartenförmige Vergleichstabellen mit Kopier-/Exportfunktion für Antworten, Code-Blöcke und Tabellen
-- [x] Gerendertes Markdown wird bereinigt, wodurch Raw-HTML-Injection aus Modellausgabe und hochgeladenen Dateien verhindert wird
-- [x] Diagramme und Code-Blöcke können als Dateien heruntergeladen werden; Reasoning wird in Live- und früheren Gesprächen standardmäßig zu eizeiligen Vorschauen eingeklappt
+- [x] Endgültige Antworten werden nativ gestreamt — die Schleife übergibt über ein `finish`-Signal und die Antwort wird als live token-gestreamt Turn geschrieben
+- [x] Antworten rendern Mermaid-Diagramme, SVG-Figuren und kartenförmige Vergleichstabellen mit Kopier-/Exportfunktion auf Antworten, Code-Blöcken und Tabellen
+- [x] Gerendertes Markdown wird bereinigt, wodurch Raw-HTML-Injection aus Modellausgabe und hochgeladenen Dateien geschlossen wird
+- [x] Diagramme und Code-Blöcke können als Dateien heruntergeladen werden; Reasoning wird in Live- und früheren Gesprächen standardmäßig zu einzeiligen Vorschauen eingeklappt
 - [x] Gesprächsexporte sind für CJK gesetzt — PDF bettet eine echte Schriftart ein (korrekte Abstände, Aufzählungszeichen und Fettdruck), DOCX deklariert eine Ostasiatische Schriftart, beide auf einer Größenskala
 
 #### Workbench UX

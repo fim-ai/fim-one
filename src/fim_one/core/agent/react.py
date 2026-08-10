@@ -56,7 +56,11 @@ from .plan_tool import (
     UpdatePlanTool,
     make_open_plan_note,
 )
-from .system_prompt import JSON_MODE_SYSTEM_PROMPT, NATIVE_MODE_SYSTEM_PROMPT
+from .system_prompt import (
+    JSON_MODE_SYSTEM_PROMPT,
+    NATIVE_MODE_SYSTEM_PROMPT,
+    NATIVE_MODE_SYSTEM_PROMPT_FINISH,
+)
 from .turn_profiler import TurnProfiler, make_profiler
 from .types import Action, AgentResult, StepResult
 from .workspace import NO_OFFLOAD_TOOLS, AgentWorkspace
@@ -204,6 +208,56 @@ _CONTINUATION_PROMPT = (
     "Pick up mid-sentence if necessary."
 )
 
+# --- Finish signal (FINAL-first answering) ---
+# When enabled, a synthetic ``finish`` tool is advertised alongside the real
+# tools.  The model calls it to *announce* completion instead of writing the
+# answer inline; the loop hands off to ``stream_answer()``, which continues
+# the same native message history as a token-streamed turn.  This gives the
+# answer channel true streaming (the buffered-replay path only pseudo-streams
+# the loop's own final text) without the detail loss of the text-projection
+# synthesis fallback.
+FINISH_SIGNAL_ENABLED = os.getenv("REACT_FINISH_SIGNAL", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
+_FINISH_TOOL_NAME = "finish"
+
+_FINISH_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": _FINISH_TOOL_NAME,
+        "description": (
+            "Signal that you have everything needed to answer the user. "
+            "Call this INSTEAD of writing the final answer: once the signal "
+            "is acknowledged you will be asked to write the full answer in "
+            "your next turn. Do not write the answer in the same turn as "
+            "this call, and do not combine it with other tool calls."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+
+_FINISH_ACK_PROMPT = (
+    "Signal received. Write your complete final answer to the user now, in "
+    "natural language. Do not call any more tools and do not mention this "
+    "signal."
+)
+
+_FINISH_DEFER_PROMPT = (
+    "Finish signal noted, but other tool calls ran in this turn. Review "
+    "their results first, then call finish again on its own once you are "
+    "ready to answer."
+)
+
+_FINISH_BG_PROMPT = (
+    "Finish signal noted, but background tasks are still running. Their "
+    "results follow as task notifications — incorporate them, then call "
+    "finish again."
+)
+
 # A tool call cut off mid-arguments cannot be resumed token-by-token the way
 # prose can — the call never reached the tool at all.  Tell the model what
 # happened so it retries with a payload that fits the budget.
@@ -280,6 +334,33 @@ _POST_CHECK_ANSWER_PROMPT = (
     "stand on its own."
 )
 
+# Finish-signal variant: after verification the model must hand off via the
+# finish tool, not write the answer inline — otherwise every checklist run
+# would funnel a compliant model back onto the buffered-answer path.
+_POST_CHECK_FINISH_PROMPT = (
+    "[Internal] Verification is done. If everything checks out, call the "
+    "`finish` tool now — by itself, with no answer text. If something is "
+    "missing, keep investigating with tools first."
+)
+
+# Checklist delivered as the finish call's tool_result.  Unlike
+# _COMPLETION_CHECK_PROMPT (which requests a text confirmation turn and
+# therefore a follow-up prompt), this one asks the model to re-call finish
+# directly — collapsing the finish → check → confirm → prompt → finish
+# dance into finish → check → finish.  A text reply still lands safely in
+# the verification_pending consume path.
+_FINISH_CHECK_PROMPT = (
+    "[Internal check — this exchange is never shown to the user.]\n"
+    "Before your answer is delivered, verify:\n"
+    "1. Does the information you gathered fully address the original "
+    "question?\n"
+    "2. Did you verify key facts from tool results?\n"
+    "3. Are there any contradictions in the information gathered?\n"
+    "If something is missing or wrong, keep investigating with tools. "
+    "Otherwise call the `finish` tool again immediately — no text reply "
+    "needed."
+)
+
 _SELF_REFLECTION_PROMPT = (
     "[Self-check] You have completed {iteration} tool-call iterations. "
     "Pause and reflect:\n"
@@ -288,6 +369,13 @@ _SELF_REFLECTION_PROMPT = (
     "- Have you been repeating similar actions or going in circles?\n"
     "- What is the most direct next step to finish?\n"
     "If you have enough information, produce your final answer now."
+)
+
+# Finish-signal variant — keep in sync with _SELF_REFLECTION_PROMPT; only
+# the closing instruction differs.
+_SELF_REFLECTION_PROMPT_FINISH = _SELF_REFLECTION_PROMPT.replace(
+    "produce your final answer now.",
+    "call the `finish` tool now (by itself) to hand off to the final answer.",
 )
 
 _TOOL_SELECTION_PROMPT = """\
@@ -430,6 +518,7 @@ class ReActAgent:
         org_id: str | None = None,
         user_id: str | None = None,
         enable_plan_tool: bool | None = None,
+        finish_signal: bool = False,
     ) -> None:
         self._llm = llm
         self._fast_llm = fast_llm
@@ -450,6 +539,19 @@ class ReActAgent:
         self._workspace = workspace
         self._max_turn_tokens = max_turn_tokens
         self._completion_check = completion_check
+        # Finish-signal handoff (see the constants block).  Default off:
+        # callers that consume ``run()`` directly (DAG steps, call_agent,
+        # eval runs) rely on ``result.answer`` being the answer; only
+        # callers that always follow up with ``stream_answer()`` (the chat
+        # SSE path) should opt in.
+        self._finish_signal = finish_signal
+        # Set by _build_tools_payload: True only when the finish schema was
+        # actually advertised (feature on, tools present, no name clash).
+        self._finish_tool_active = False
+        # Stashed at finish handoff so stream_answer can replay the same
+        # tools payload with tool_choice="none" — some providers reject a
+        # history containing tool_use blocks when no tools are defined.
+        self._finish_stream_tools: list[dict[str, Any]] | None = None
         # Identity — forwarded into HookContext so hooks (e.g. FeishuGateHook)
         # can look up org-scoped resources and persist audit rows.
         self._agent_id = agent_id
@@ -932,6 +1034,89 @@ class ReActAgent:
         Yields:
             Incremental text chunks (tokens) of the synthesised answer.
         """
+        # --- Approach A0: finish-signal handoff — native streamed turn ----
+        # The loop ended on a ``finish`` tool call: the answer has NOT been
+        # generated yet.  Continue the same native message history (thinking
+        # blocks, tool results and all) as one more turn — every delta below
+        # is a genuinely streamed answer token, with none of the detail loss
+        # of the text-projection synthesis (the model still sees its full
+        # trajectory).  On any failure before the first token, fall through
+        # to the synthesis fallback.
+        if result.finish_signaled:
+            native_messages: list[ChatMessage] = list(result.messages)
+            if language_directive:
+                # Fold the directive into an explicit write-the-answer
+                # instruction.  A bare "(Language note: ...)" user message
+                # here reads as the latest user request, and the model
+                # answers IT instead of the original question ("好的，后续
+                # 我会默认使用中文回复。" — prod bug 2026-08-10).
+                native_messages.append(
+                    ChatMessage(
+                        role="user",
+                        content=(
+                            "[Internal] Now write your complete final answer "
+                            "to the user's original question. Do not reply "
+                            f"to this instruction itself. {language_directive}"
+                        ),
+                    ),
+                )
+            streamed: list[str] = []
+            try:
+                for _continuation in range(_MAX_CONTINUATIONS + 1):
+                    native_finish_reason: str | None = None
+                    segment: list[str] = []
+                    # Primary model on purpose (synthesis parity).  The
+                    # tools payload is replayed with tool_choice="none" so
+                    # providers that validate tool_use history accept the
+                    # request without letting the model call anything.
+                    async for chunk in self._llm.stream_chat(
+                        native_messages,
+                        tools=self._finish_stream_tools,
+                        tool_choice="none" if self._finish_stream_tools else None,
+                    ):
+                        if chunk.delta_content:
+                            segment.append(chunk.delta_content)
+                            streamed.append(chunk.delta_content)
+                            yield chunk.delta_content
+                        if chunk.finish_reason:
+                            native_finish_reason = chunk.finish_reason
+                    if native_finish_reason != "length" or not segment:
+                        break
+                    native_messages.append(
+                        ChatMessage(role="assistant", content="".join(segment)),
+                    )
+                    native_messages.append(
+                        ChatMessage(role="user", content=_CONTINUATION_PROMPT),
+                    )
+                    logger.warning(
+                        "Finish-signal answer truncated (finish_reason="
+                        "length), requesting continuation",
+                    )
+            except Exception:
+                if streamed:
+                    # Tokens already reached the client — a synthesis rerun
+                    # would duplicate the answer.  Propagate instead.
+                    raise
+                logger.warning(
+                    "Finish-signal answer stream failed before the first "
+                    "token — falling back to synthesis",
+                    exc_info=True,
+                )
+            else:
+                answer_text = strip_tool_protocol("".join(streamed)).strip()
+                if answer_text:
+                    # Guardrails BEFORE result.answer is set: a tripwire
+                    # must not leave the vetoed text as the fallback the
+                    # caller re-emits.
+                    await self._run_output_guardrails(answer_text)
+                    result.answer = answer_text
+                    await self._save_to_memory(query, answer_text)
+                    return
+                logger.warning(
+                    "Finish-signal answer stream produced no text — "
+                    "falling back to synthesis",
+                )
+
         # --- Approach A: stream the loop's own final answer verbatim ------
         # When the ReAct loop ended with a genuine final-answer turn (no tool
         # call on the last iteration), that text was produced by the model
@@ -1084,17 +1269,19 @@ class ReActAgent:
         # when the stream ends with finish_reason == "length", replay the
         # partial output as an assistant turn, inject the continuation
         # prompt, and keep streaming — the frontend sees one seamless answer.
+        synthesis_total: list[str] = []
         for continuation in range(_MAX_CONTINUATIONS + 1):
             finish_reason: str | None = None
             parts: list[str] = []
             async for chunk in self._llm.stream_chat(messages):
                 if chunk.delta_content:
                     parts.append(chunk.delta_content)
+                    synthesis_total.append(chunk.delta_content)
                     yield chunk.delta_content
                 if chunk.finish_reason:
                     finish_reason = chunk.finish_reason
             if finish_reason != "length" or not parts:
-                return
+                break
             messages.append(
                 ChatMessage(role="assistant", content="".join(parts)),
             )
@@ -1107,6 +1294,14 @@ class ReActAgent:
                 continuation + 1,
                 _MAX_CONTINUATIONS,
             )
+        # Finish-signal runs skip the loop's memory save (the answer did not
+        # exist yet) — persist the synthesized fallback answer here so the
+        # turn is not lost from conversation memory.
+        if result.finish_signaled:
+            fallback_text = "".join(synthesis_total).strip()
+            if fallback_text:
+                result.answer = fallback_text
+                await self._save_to_memory(query, fallback_text)
 
     # ------------------------------------------------------------------
     # Tool selection phase
@@ -2178,6 +2373,147 @@ class ReActAgent:
             # assistant's tool_use blocks.  Drain the interrupt queue only
             # AFTER tool results are appended to preserve this ordering.
             if assistant_msg.tool_calls:
+                # --- Finish signal (FINAL-first) ---
+                # The model announces completion via the ``finish`` tool
+                # instead of writing the answer inline.  A pure finish turn
+                # routes the pre-answer gates (background wait, completion
+                # checklist) through the finish tool_result, then hands off
+                # to stream_answer(), which continues this native history as
+                # a genuinely token-streamed answer turn.
+                finish_calls: list[ToolCallRequest] = (
+                    [
+                        tc
+                        for tc in assistant_msg.tool_calls
+                        if tc.name == _FINISH_TOOL_NAME
+                    ]
+                    if self._finish_tool_active
+                    else []
+                )
+                exec_calls = [
+                    tc
+                    for tc in assistant_msg.tool_calls
+                    if tc.name != _FINISH_TOOL_NAME or not self._finish_tool_active
+                ]
+                if finish_calls and not exec_calls:
+                    # Pending background tasks: wait (bounded), inject their
+                    # results, and let the model reconsider before finishing.
+                    if background and iteration < self._max_iterations:
+                        messages.extend(
+                            self._finish_tool_results(
+                                finish_calls, _FINISH_BG_PROMPT,
+                            ),
+                        )
+                        logger.info(
+                            "Finish signal deferred — %d background task(s) "
+                            "pending",
+                            len(background),
+                        )
+                        await asyncio.wait(
+                            {info["task"] for info in background.values()},
+                            timeout=_BG_WAIT_TIMEOUT,
+                            return_when=asyncio.ALL_COMPLETED,
+                        )
+                        notes = self._drain_background_notifications(
+                            background,
+                            on_iteration=on_iteration,
+                            iteration=iteration,
+                        )
+                        if background:
+                            notes.extend(
+                                await self._cancel_background(
+                                    background, notify=True,
+                                ),
+                            )
+                        messages.extend(notes)
+                        profiler.emit(self._profiler_conversation_id())
+                        continue
+
+                    # Completion checklist: same trigger conditions as the
+                    # inline-answer path, delivered as the finish result.
+                    open_plan = (
+                        self._plan_state
+                        if self._plan_state is not None
+                        and self._plan_state.has_open_items
+                        else None
+                    )
+                    if (
+                        self._completion_check
+                        and not completion_check_done
+                        and iteration < self._max_iterations - 1
+                        and (
+                            open_plan is not None
+                            or tool_call_count >= _COMPLETION_CHECK_MIN_TOOLS
+                        )
+                    ):
+                        completion_check_done = True
+                        verification_pending = True
+                        check_prompt = _FINISH_CHECK_PROMPT
+                        if open_plan is not None:
+                            check_prompt += "\n" + make_open_plan_note(open_plan)
+                        messages.extend(
+                            self._finish_tool_results(finish_calls, check_prompt),
+                        )
+                        logger.info(
+                            "Injected completion checklist via finish signal "
+                            "at iteration %d (tool_call_count=%d)",
+                            iteration,
+                            tool_call_count,
+                        )
+                        profiler.emit(self._profiler_conversation_id())
+                        continue
+
+                    # Hand off.  Pair the tool_use blocks FIRST (native
+                    # ordering), then drain injections — a mid-run user
+                    # message must be addressed before finishing.
+                    messages.extend(
+                        self._finish_tool_results(finish_calls, _FINISH_ACK_PROMPT),
+                    )
+                    injected_msgs = (
+                        (await interrupt_queue.drain())
+                        if interrupt_queue is not None
+                        else []
+                    )
+                    self._emit_and_append_injections(
+                        injected_msgs,
+                        messages,
+                        iteration,
+                        on_iteration,
+                    )
+                    if injected_msgs and iteration < self._max_iterations:
+                        profiler.emit(self._profiler_conversation_id())
+                        continue
+                    # Close this iteration's thinking card and open the
+                    # answer block — without this the finish turn's card
+                    # spins as "processing" while the answer streams.
+                    if on_iteration is not None:
+                        on_iteration(
+                            iteration,
+                            Action(
+                                type="final_answer",
+                                reasoning=assistant_msg.reasoning_content or "",
+                                answer="",
+                            ),
+                            None,
+                            None,
+                            None,
+                        )
+                    self._finish_stream_tools = tools_payload
+                    logger.info(
+                        "Finish signal accepted at iteration %d — handing "
+                        "off to stream_answer",
+                        iteration,
+                    )
+                    profiler.emit(self._profiler_conversation_id())
+                    return AgentResult(
+                        answer="",
+                        steps=steps,
+                        iterations=iteration,
+                        usage=usage_tracker.get_summary(),
+                        messages=messages,
+                        reasoning_content=assistant_msg.reasoning_content,
+                        finish_signaled=True,
+                    )
+
                 # NOTE: verification_pending deliberately survives tool calls.
                 # The verification turn often re-runs tools to double-check
                 # facts; the next text-only turn is still the verification
@@ -2189,7 +2525,7 @@ class ReActAgent:
                 # tool_use/tool_result pairing is complete.
                 cycle_warnings: list[str] = []
                 blocked_call_ids: set[str] = set()
-                for tc in assistant_msg.tool_calls:
+                for tc in exec_calls:
                     cycle_message, cycle_blocked = self._check_cycle(
                         tc.name,
                         dict(tc.arguments),
@@ -2202,7 +2538,7 @@ class ReActAgent:
 
                 _tool_start = time.perf_counter()
                 tool_results = await self._execute_native_tool_calls(
-                    assistant_msg.tool_calls,
+                    exec_calls,
                     iteration,
                     steps,
                     on_iteration,
@@ -2211,11 +2547,18 @@ class ReActAgent:
                     blocked_call_ids=blocked_call_ids,
                 )
                 profiler.add("tool_exec", time.perf_counter() - _tool_start)
+                # Mixed batch: the finish signal rode along with real tool
+                # calls.  Every tool_use still needs a result — defer the
+                # signal instead of honouring it.
+                if finish_calls:
+                    tool_results.extend(
+                        self._finish_tool_results(finish_calls, _FINISH_DEFER_PROMPT),
+                    )
 
                 # Tool result messages carry only tool_call_id — recover the
                 # tool name for the budget-rescue exemption below.
                 tool_name_by_call_id = {
-                    tc.id: tc.name for tc in assistant_msg.tool_calls
+                    tc.id: tc.name for tc in exec_calls
                 }
 
                 # --- Tool result aggregate budget (I.8) ---
@@ -2288,7 +2631,7 @@ class ReActAgent:
                 # for when each reminder fires.
                 if plan_tracker is not None:
                     plan_reminder = plan_tracker.observe_round(
-                        [tc.name for tc in assistant_msg.tool_calls],
+                        [tc.name for tc in exec_calls],
                     )
                     if plan_reminder is not None:
                         messages.append(
@@ -2332,7 +2675,12 @@ class ReActAgent:
                     tool_call_count % _SELF_REFLECTION_INTERVAL == 0
                     and iteration < self._max_iterations
                 ):
-                    reflection = _SELF_REFLECTION_PROMPT.format(
+                    reflection_template = (
+                        _SELF_REFLECTION_PROMPT_FINISH
+                        if self._finish_tool_active
+                        else _SELF_REFLECTION_PROMPT
+                    )
+                    reflection = reflection_template.format(
                         iteration=tool_call_count,
                         goal=query if isinstance(query, str) else "(see original query)",
                     )
@@ -2505,7 +2853,11 @@ class ReActAgent:
                     messages.append(
                         ChatMessage(
                             role="user",
-                            content=_POST_CHECK_ANSWER_PROMPT,
+                            content=(
+                                _POST_CHECK_FINISH_PROMPT
+                                if self._finish_tool_active
+                                else _POST_CHECK_ANSWER_PROMPT
+                            ),
                         ),
                     )
                     logger.info(
@@ -2569,6 +2921,22 @@ class ReActAgent:
             usage=usage_tracker.get_summary(),
             messages=messages,
         )
+
+    @staticmethod
+    def _finish_tool_results(
+        finish_calls: list[ToolCallRequest],
+        text: str,
+    ) -> list[ChatMessage]:
+        """Build ``role="tool"`` replies pairing each finish tool_use block.
+
+        The API requires one tool_result per tool_use; the reply text
+        doubles as the loop's instruction back to the model (acknowledge,
+        defer, or run the completion checklist).
+        """
+        return [
+            ChatMessage(role="tool", content=text, tool_call_id=tc.id)
+            for tc in finish_calls
+        ]
 
     async def _stream_tool_decision(
         self,
@@ -3318,7 +3686,19 @@ class ReActAgent:
         if self._system_prompt_override is not None:
             return self._system_prompt_override, ""
 
-        prefix = _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE
+        # FINAL-first flow swaps the synthesis bullet for the finish
+        # protocol — without this the two instructions contradict and the
+        # model keeps writing the answer inline, never calling finish.
+        use_finish_prompt = (
+            self._finish_signal
+            and bool(self._tools.list_tools())
+            and self._tools.get(_FINISH_TOOL_NAME) is None
+        )
+        prefix = (
+            NATIVE_MODE_SYSTEM_PROMPT_FINISH
+            if use_finish_prompt
+            else _NATIVE_TOOLS_SYSTEM_PROMPT_TEMPLATE
+        )
         if self._plan_state is not None:
             prefix += "\n\n" + _PLAN_GUIDANCE
         if self._extra_instructions:
@@ -3460,6 +3840,7 @@ class ReActAgent:
         registry = tools if tools is not None else self._tools
         tool_list = registry.list_tools()
         if not tool_list:
+            self._finish_tool_active = False
             return None
 
         payload: list[dict[str, Any]] = []
@@ -3481,6 +3862,14 @@ class ReActAgent:
                     },
                 }
             )
+        # Advertise the finish signal tool.  Skipped on a name clash with a
+        # real registry tool — in that case the loop must not intercept
+        # calls to that name either (_finish_tool_active gates both).
+        self._finish_tool_active = self._finish_signal and all(
+            entry["function"]["name"] != _FINISH_TOOL_NAME for entry in payload
+        )
+        if self._finish_tool_active:
+            payload.append(_FINISH_TOOL_SCHEMA)
         return payload
 
     def _json_response_format(self) -> dict[str, Any] | None:
