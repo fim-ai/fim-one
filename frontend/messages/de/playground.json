@@ -205,6 +205,8 @@
     "errorToast": "Fehler beim Absenden der Antworten",
     "questionProgress": "{current} von {total}",
     "prevButton": "Zurück",
-    "nextButton": "Weiter"
+    "nextButton": "Weiter",
+    "noteButton": "Notiz hinzufügen",
+    "notePlaceholder": "Optionale Notiz zu dieser Antwort…"
   }
 }

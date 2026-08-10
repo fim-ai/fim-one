@@ -205,6 +205,8 @@
     "errorToast": "답변 제출에 실패했습니다",
     "questionProgress": "{current}개 중 {total}개",
     "prevButton": "뒤로",
-    "nextButton": "다음"
+    "nextButton": "다음",
+    "noteButton": "노트 추가",
+    "notePlaceholder": "이 답변에 대한 선택적 노트…"
   }
 }

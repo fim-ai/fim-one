@@ -56,6 +56,7 @@ export interface ConfirmationStatusBody {
   /** kind="user_question" only. */
   questions?: UserQuestion[] | null
   answers?: Record<string, string | string[]> | null
+  notes?: Record<string, string> | null
 }
 
 export async function getConfirmationStatus(
@@ -91,18 +92,24 @@ export interface QuestionAnswerResponseBody {
 /**
  * Answer a pending `kind=user_question` request. `answers` maps each
  * question's text to the selected label, a list of labels (multi-select),
- * or the user's free "Other" text. Pass `skip=true` to dismiss instead.
+ * or the user's free "Other" text. `notes` optionally attaches a free-text
+ * addition per question ("option 1, but …"). Pass `skip: true` to dismiss.
  */
 export async function answerUserQuestion(
   id: string,
   answers: Record<string, string | string[]>,
-  skip = false,
+  opts: { skip?: boolean; notes?: Record<string, string> } = {},
 ): Promise<QuestionAnswerResponseBody> {
+  const body = opts.skip
+    ? { answers: {}, skip: true }
+    : { answers, ...(opts.notes && Object.keys(opts.notes).length > 0
+        ? { notes: opts.notes }
+        : {}) }
   return apiFetch<QuestionAnswerResponseBody>(
     `/api/confirmations/${id}/answer`,
     {
       method: "POST",
-      body: JSON.stringify(skip ? { answers: {}, skip: true } : { answers }),
+      body: JSON.stringify(body),
     },
   )
 }

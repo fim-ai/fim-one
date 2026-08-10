@@ -140,6 +140,18 @@ class TestFormatAnswers:
         text = format_answers(qs, {"Which output format?": "Summary"})
         assert '"Which sections to include?" = (not answered)' in text
 
+    def test_renders_notes(self) -> None:
+        qs = normalize_questions(QUESTIONS)
+        text = format_answers(
+            qs,
+            {"Which output format?": "Summary"},
+            {"Which output format?": "but keep tables verbose"},
+        )
+        assert (
+            '"Which output format?" = "Summary" '
+            "(user note: but keep tables verbose)" in text
+        )
+
 
 # ---------------------------------------------------------------------------
 # Tool run() against an in-memory DB
@@ -215,6 +227,21 @@ class TestAskUserQuestionTool:
         )
         result = await run_task
         assert '"Which output format?" = "Detailed"' in result
+
+    @pytest.mark.asyncio
+    async def test_answered_flow_with_notes(self, session_factory: Any) -> None:
+        tool = make_tool(session_factory)
+        run_task = asyncio.create_task(tool.run(questions=QUESTIONS))
+        await _flip_row(
+            session_factory,
+            status="answered",
+            response_payload={
+                "answers": {"Which output format?": "Summary"},
+                "notes": {"Which output format?": "shorter is fine"},
+            },
+        )
+        result = await run_task
+        assert "(user note: shorter is fine)" in result
 
     @pytest.mark.asyncio
     async def test_dismissed_flow(self, session_factory: Any) -> None:
@@ -475,6 +502,51 @@ class TestAnswerEndpoint:
             assert row.response_payload["answers"][
                 "Which sections to include?"
             ] == ["Intro", "Appendix"]
+
+    @pytest.mark.asyncio
+    async def test_answer_with_notes(
+        self, api_client: Any, session_factory: Any
+    ) -> None:
+        client, _user = api_client
+        row_id = await _seed_question_row(session_factory)
+        resp = await client.post(
+            f"/api/confirmations/{row_id}/answer",
+            json={
+                "answers": {"Which output format?": "Summary"},
+                "notes": {"Which output format?": "but bilingual please"},
+            },
+        )
+        assert resp.status_code == 200, resp.text
+
+        from sqlalchemy import select
+
+        async with session_factory() as session:
+            row = (
+                await session.execute(select(ConfirmationRequest))
+            ).scalar_one()
+            assert row.response_payload["notes"] == {
+                "Which output format?": "but bilingual please"
+            }
+
+        status_resp = await client.get(f"/api/confirmations/{row_id}")
+        assert status_resp.json()["notes"] == {
+            "Which output format?": "but bilingual please"
+        }
+
+    @pytest.mark.asyncio
+    async def test_notes_unknown_question_422(
+        self, api_client: Any, session_factory: Any
+    ) -> None:
+        client, _user = api_client
+        row_id = await _seed_question_row(session_factory)
+        resp = await client.post(
+            f"/api/confirmations/{row_id}/answer",
+            json={
+                "answers": {"Which output format?": "Summary"},
+                "notes": {"Nonexistent?": "note"},
+            },
+        )
+        assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_skip_dismisses(

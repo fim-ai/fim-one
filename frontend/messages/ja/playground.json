@@ -205,6 +205,8 @@
     "errorToast": "回答の送信に失敗しました",
     "questionProgress": "{current} / {total}",
     "prevButton": "戻る",
-    "nextButton": "次へ"
+    "nextButton": "次へ",
+    "noteButton": "メモを追加",
+    "notePlaceholder": "この回答のオプションメモ…"
   }
 }

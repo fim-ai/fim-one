@@ -70,20 +70,24 @@ class ConfirmationStatusResponse(BaseModel):
     decided_at: str | None
     approver_user_id: str | None
     # kind="user_question" only: the questions asked and (once answered)
-    # the recorded answers.
+    # the recorded answers plus optional per-question notes.
     questions: list[dict[str, Any]] | None = None
     answers: dict[str, Any] | None = None
+    notes: dict[str, str] | None = None
 
 
 class QuestionAnswerRequest(BaseModel):
     """Body for ``POST /api/confirmations/{id}/answer`` (kind=user_question).
 
     ``answers`` maps each question's text to the selected option label, a
-    list of labels (multi_select), or the user's free "Other" text.  Set
-    ``skip=true`` (with empty answers) when the user dismisses the card.
+    list of labels (multi_select), or the user's free "Other" text.
+    ``notes`` optionally maps a question's text to a free-text addition
+    qualifying the selection ("option 1, but …").  Set ``skip=true``
+    (with empty answers) when the user dismisses the card.
     """
 
     answers: dict[str, Any] = Field(default_factory=dict)
+    notes: dict[str, str] = Field(default_factory=dict)
     skip: bool = False
 
 
@@ -418,6 +422,7 @@ async def answer_user_question(
     }
 
     answers: dict[str, Any] = {}
+    notes: dict[str, str] = {}
     if not body.skip:
         for question, answer in (body.answers or {}).items():
             if question not in known_questions:
@@ -434,6 +439,15 @@ async def answer_user_question(
                 status_code=422,
                 detail="Provide at least one answer, or set skip=true.",
             )
+        for question, note in (body.notes or {}).items():
+            if question not in known_questions:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown question in notes: {question!r}",
+                )
+            note = str(note).strip()
+            if note:
+                notes[question] = note[:2000]
 
     new_status = "dismissed" if body.skip else "answered"
     now = datetime.now(timezone.utc)
@@ -443,7 +457,10 @@ async def answer_user_question(
         "approver_user_id": current_user.id,
     }
     if not body.skip:
-        values["response_payload"] = {"answers": answers}
+        response_payload: dict[str, Any] = {"answers": answers}
+        if notes:
+            response_payload["notes"] = notes
+        values["response_payload"] = response_payload
 
     # Conditional UPDATE so concurrent submissions race cleanly — same
     # pattern as apply_confirmation_decision.
@@ -538,6 +555,7 @@ async def get_confirmation(
             approver_user_id=request.approver_user_id,
             questions=payload.get("questions") or [],
             answers=response_payload.get("answers"),
+            notes=response_payload.get("notes"),
         )
 
     agent_stmt = select(Agent).where(Agent.id == request.agent_id)

@@ -132,19 +132,30 @@ def normalize_questions(raw: Any) -> list[dict[str, Any]]:
 
 
 def format_answers(
-    questions: list[dict[str, Any]], answers: dict[str, Any]
+    questions: list[dict[str, Any]],
+    answers: dict[str, Any],
+    notes: dict[str, Any] | None = None,
 ) -> str:
-    """Render the user's answers as the observation string for the model."""
+    """Render the user's answers as the observation string for the model.
+
+    ``notes`` are optional per-question free-text additions the user
+    attached to their selection ("option 1, but …") — rendered inline so
+    the model treats them as qualifying the chosen option.
+    """
     parts: list[str] = []
     for q in questions:
         text = q["question"]
         answer = answers.get(text)
+        note = str((notes or {}).get(text) or "").strip()
         if answer is None:
-            parts.append(f'"{text}" = (not answered)')
-            continue
-        if isinstance(answer, list):
-            answer = ", ".join(str(a) for a in answer)
-        parts.append(f'"{text}" = "{answer}"')
+            line = f'"{text}" = (not answered)'
+        else:
+            if isinstance(answer, list):
+                answer = ", ".join(str(a) for a in answer)
+            line = f'"{text}" = "{answer}"'
+        if note:
+            line += f" (user note: {note})"
+        parts.append(line)
     return (
         "User answered your questions: "
         + "; ".join(parts)
@@ -305,9 +316,16 @@ class AskUserQuestionTool(BaseTool):
 
         await emit_inline_confirmation(row)
 
-        outcome, answers = await self._await_answer(question_id)
+        outcome, response = await self._await_answer(question_id)
         if outcome == "answered":
-            return format_answers(questions, answers or {})
+            response = response or {}
+            answers = response.get("answers")
+            notes = response.get("notes")
+            return format_answers(
+                questions,
+                answers if isinstance(answers, dict) else {},
+                notes if isinstance(notes, dict) else None,
+            )
         if outcome == "dismissed":
             return (
                 "The user chose not to answer these questions. Do not ask "
@@ -359,7 +377,11 @@ class AskUserQuestionTool(BaseTool):
     async def _await_answer(
         self, question_id: str
     ) -> tuple[str, dict[str, Any] | None]:
-        """Poll the request row until answered / dismissed / timeout."""
+        """Poll the request row until answered / dismissed / timeout.
+
+        Returns ``(outcome, response_payload)`` — the payload carries
+        ``answers`` and optional ``notes`` dicts when answered.
+        """
         from fim_one.db.models.channel import ConfirmationRequest
 
         deadline = asyncio.get_event_loop().time() + self._timeout_seconds
@@ -375,11 +397,7 @@ class AskUserQuestionTool(BaseTool):
                         if isinstance(row.response_payload, dict)
                         else {}
                     )
-                    answers = response.get("answers")
-                    return (
-                        "answered",
-                        answers if isinstance(answers, dict) else {},
-                    )
+                    return ("answered", response)
                 if row is not None and row.status in ("dismissed", "rejected"):
                     return ("dismissed", None)
                 if row is not None and row.status == "expired":

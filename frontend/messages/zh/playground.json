@@ -203,8 +203,10 @@
     "expiredHint": "智能体已在没有答案的情况下继续。",
     "unansweredWarning": "某些问题未回答。",
     "errorToast": "提交答案失败",
-    "questionProgress": "{current} / {total}",
+    "questionProgress": "{current} of {total}",
     "prevButton": "上一步",
-    "nextButton": "下一步"
+    "nextButton": "下一步",
+    "noteButton": "添加备注",
+    "notePlaceholder": "此答案的可选备注…"
   }
 }

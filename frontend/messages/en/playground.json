@@ -205,6 +205,8 @@
     "errorToast": "Failed to submit answers",
     "questionProgress": "{current} of {total}",
     "prevButton": "Back",
-    "nextButton": "Next"
+    "nextButton": "Next",
+    "noteButton": "Add note",
+    "notePlaceholder": "Optional note for this answer…"
   }
 }

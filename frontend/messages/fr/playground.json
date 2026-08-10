@@ -205,6 +205,8 @@
     "errorToast": "Échec de la soumission des réponses",
     "questionProgress": "{current} sur {total}",
     "prevButton": "Précédent",
-    "nextButton": "Suivant"
+    "nextButton": "Suivant",
+    "noteButton": "Ajouter une note",
+    "notePlaceholder": "Note facultative pour cette réponse…"
   }
 }

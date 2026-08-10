@@ -89,6 +89,16 @@ interface QuestionDraft {
   /** Selected labels; may include OTHER_VALUE sentinel. */
   selected: string[]
   otherText: string
+  /** Optional free-text addition qualifying the selection. */
+  note: string
+  noteOpen: boolean
+}
+
+const EMPTY_DRAFT: QuestionDraft = {
+  selected: [],
+  otherText: "",
+  note: "",
+  noteOpen: false,
 }
 
 export function QuestionCard({
@@ -113,6 +123,10 @@ export function QuestionCard({
     string,
     string | string[]
   > | null>(null)
+  const [recordedNotes, setRecordedNotes] = useState<Record<
+    string,
+    string
+  > | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
   const [drafts, setDrafts] = useState<Record<number, QuestionDraft>>({})
   const [currentIdx, setCurrentIdx] = useState(0)
@@ -131,6 +145,7 @@ export function QuestionCard({
         if (row.status === "answered") {
           setDecidedAt(row.decided_at)
           setRecordedAnswers(row.answers ?? null)
+          setRecordedNotes(row.notes ?? null)
           setState("answered")
         } else if (row.status === "dismissed" || row.status === "rejected") {
           setDecidedAt(row.decided_at)
@@ -166,7 +181,7 @@ export function QuestionCard({
   const remainingLabel = formatDurationShort(Math.max(0, expiryMs - now))
 
   function draftFor(idx: number): QuestionDraft {
-    return drafts[idx] ?? { selected: [], otherText: "" }
+    return drafts[idx] ?? EMPTY_DRAFT
   }
 
   function answerFor(idx: number): string | string[] | null {
@@ -191,11 +206,18 @@ export function QuestionCard({
       })
     }
     if (Object.keys(answers).length === 0) return
+    // Notes always come from the drafts, even on the auto-submit path.
+    const notes: Record<string, string> = {}
+    questions.forEach((q, idx) => {
+      const note = draftFor(idx).note.trim()
+      if (note) notes[q.question] = note
+    })
     setState("submitting")
     try {
-      const res = await answerUserQuestion(questionId, answers)
+      const res = await answerUserQuestion(questionId, answers, { notes })
       setDecidedAt(res.decided_at)
       setRecordedAnswers(answers)
+      setRecordedNotes(Object.keys(notes).length > 0 ? notes : null)
       setState("answered")
     } catch (err) {
       toast.error(getErrorMessage(err, tError) || t("userQuestion.errorToast"))
@@ -207,7 +229,7 @@ export function QuestionCard({
     if (state === "submitting" || state === "expired") return
     setState("submitting")
     try {
-      const res = await answerUserQuestion(questionId, {}, true)
+      const res = await answerUserQuestion(questionId, {}, { skip: true })
       setDecidedAt(res.decided_at)
       setState("skipped")
     } catch (err) {
@@ -245,8 +267,11 @@ export function QuestionCard({
     }
     // Concrete single-select choice: one question auto-submits (mirrors
     // Claude Code); in a paginated card it advances to the next question.
+    // An open or filled note suppresses auto-submit so it isn't lost.
     if (!paginated) {
-      void submit({ [q.question]: label })
+      if (!draft.noteOpen && !draft.note.trim()) {
+        void submit({ [q.question]: label })
+      }
     } else {
       advanceFrom(idx)
     }
@@ -431,6 +456,43 @@ export function QuestionCard({
             />
           )}
         </div>
+
+        {/* Optional note qualifying the selection ("option 1, but …"). */}
+        {draft.noteOpen ? (
+          <Input
+            autoFocus
+            value={draft.note}
+            onChange={(e) =>
+              setDrafts((prev) => ({
+                ...prev,
+                [idx]: { ...draftFor(idx), note: e.target.value },
+              }))
+            }
+            placeholder={t("userQuestion.notePlaceholder")}
+            disabled={state === "submitting"}
+            className="mt-1"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && allAnswered) void submit()
+            }}
+          />
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={state === "submitting"}
+            onClick={() =>
+              setDrafts((prev) => ({
+                ...prev,
+                [idx]: { ...draftFor(idx), noteOpen: true },
+              }))
+            }
+            className="h-6 px-2 text-xs text-muted-foreground"
+          >
+            <PenLine className="mr-1 h-3 w-3" />
+            {t("userQuestion.noteButton")}
+          </Button>
+        )}
       </div>
     )
   }
@@ -504,6 +566,7 @@ export function QuestionCard({
         <div className="space-y-2">
           {questions.map((q) => {
             const recorded = recordedAnswers?.[q.question]
+            const note = recordedNotes?.[q.question]
             return (
               <div key={q.question} className="space-y-0.5">
                 <div className="text-sm">{q.question}</div>
@@ -512,6 +575,11 @@ export function QuestionCard({
                     ? recorded.join(", ")
                     : (recorded ?? "—")}
                 </div>
+                {note && (
+                  <div className="text-xs italic text-muted-foreground">
+                    {note}
+                  </div>
+                )}
               </div>
             )
           })}
