@@ -5,8 +5,9 @@ Covers two concerns shipped together:
 1. The Alembic migration adds the column idempotently (re-running upgrade()
    on a DB that already has the column must not raise).
 2. The chat SSE post-processing path emits ``post_processing`` and
-   ``suggestions`` events ONLY when the agent has ``suggest_followups=True``,
-   and persists the generated list onto the assistant message metadata.
+   ``suggestions`` events for plain no-agent chats (always on) and for
+   agents with ``suggest_followups=True``, and persists the generated
+   list onto the assistant message metadata.
 """
 
 from __future__ import annotations
@@ -101,6 +102,22 @@ class TestGenerateSuggestionsHelper:
         assert items == ["Why?", "How?", "What next?"]
 
     @pytest.mark.asyncio
+    async def test_returns_empty_when_llm_declines(self) -> None:
+        """The prompt allows ``[]`` for closure turns (thanks, farewells)."""
+        from fim_one.web.api.chat import _generate_suggestions
+
+        fake_llm = MagicMock()
+        fake_message = MagicMock()
+        fake_message.content = "[]"
+        fake_result = MagicMock()
+        fake_result.message = fake_message
+        fake_result.usage = None
+        fake_llm.chat = AsyncMock(return_value=fake_result)
+
+        items = await _generate_suggestions(fake_llm, "谢谢", "不客气！", count=3)
+        assert items == []
+
+    @pytest.mark.asyncio
     async def test_returns_empty_on_llm_failure(self) -> None:
         from fim_one.web.api.chat import _generate_suggestions
 
@@ -134,27 +151,30 @@ class TestGenerateSuggestionsHelper:
 def _gate(agent_cfg: dict[str, Any] | None, answer: str | None) -> bool:
     """Mirror the exact gating logic the chat generator uses.
 
-    The gate reads ``(agent_cfg or {}).get("suggest_followups")`` plus a
+    The gate combines ``_suggest_followups_enabled(agent_cfg)`` with a
     truthy answer; both must be true for ``post_processing`` /
     ``suggestions`` events to be appended to ``sse_events``.
     """
-    return bool((agent_cfg or {}).get("suggest_followups")) and bool(
-        (answer or "").strip()
-    )
+    from fim_one.web.api.chat import _suggest_followups_enabled
+
+    return _suggest_followups_enabled(agent_cfg) and bool((answer or "").strip())
 
 
 class TestInlineEmitGating:
-    def test_off_by_default(self) -> None:
-        assert _gate(None, "some answer") is False
+    def test_on_for_plain_no_agent_chat(self) -> None:
+        assert _gate(None, "some answer") is True
+
+    def test_off_by_default_for_agents(self) -> None:
         assert _gate({}, "some answer") is False
         assert _gate({"suggest_followups": False}, "some answer") is False
 
     def test_on_when_toggle_true_and_answer_nonempty(self) -> None:
         assert _gate({"suggest_followups": True}, "some answer") is True
 
-    def test_off_when_toggle_true_but_answer_empty(self) -> None:
+    def test_off_when_answer_empty(self) -> None:
         assert _gate({"suggest_followups": True}, "") is False
         assert _gate({"suggest_followups": True}, "   \n") is False
+        assert _gate(None, "") is False
 
 
 # ---------------------------------------------------------------------------

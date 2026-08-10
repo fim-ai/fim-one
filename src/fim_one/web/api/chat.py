@@ -24,8 +24,9 @@ Both endpoints stream Server-Sent Events with the following event names:
   ``guardrail_tripwired: True`` and the reason as the answer.
 - ``done``           – Final result payload (answer complete, emitted immediately).
 - ``post_processing`` – Phase marker emitted between ``done`` and ``end`` while
-  follow-up suggestions are being generated.  Only emitted when the agent has
-  ``suggest_followups=True`` (opt-in per agent, default off).
+  follow-up suggestions are being generated.  Emitted for plain no-agent
+  chats (always on) and for agents with ``suggest_followups=True``
+  (opt-in per agent, default off).
 - ``suggestions``    – Follow-up question list ``{"items": list[str]}``.
   Same gating as ``post_processing``.
 - ``end``            – Stream terminator (emitted right after the optional
@@ -428,6 +429,19 @@ def _format_replan_context(
 # ---------------------------------------------------------------------------
 
 
+def _suggest_followups_enabled(agent_cfg: dict[str, Any] | None) -> bool:
+    """Whether this turn should generate follow-up suggestions.
+
+    Plain no-agent chats are exploratory Q&A, so they always get
+    suggestions.  Agent-bound chats follow the agent's per-agent
+    ``suggest_followups`` toggle (default off — task-style agents skip
+    the extra fast-model round-trip).
+    """
+    if agent_cfg is None:
+        return True
+    return bool(agent_cfg.get("suggest_followups"))
+
+
 async def _generate_suggestions(
     fast_llm: BaseLLM,
     query: str,
@@ -460,18 +474,29 @@ async def _generate_suggestions(
             "after receiving an answer. The questions should explore different angles: "
             "deeper detail, related topics, or practical next steps.\n\n"
             "Rules:\n"
-            f"- Return EXACTLY {count} questions.\n"
+            f"- Return AT MOST {count} questions; fewer is fine.\n"
+            "- If the exchange doesn't invite further discussion (greetings, "
+            "thanks, farewells, brief acknowledgements), return an empty "
+            "JSON array [].\n"
             "- Each question must be a single sentence, under 80 characters.\n"
             f"{lang_rule}"
             "- Return ONLY a JSON array of strings, no other text."
         )
         user_content = f"User query: {query}\n\nAssistant answer (truncated): {truncated_answer}"
 
+        # This call sits inline between ``done`` and ``end``, so its latency
+        # is directly visible as the chips' load time.  Reasoning-capable
+        # fast models (GPT-5.x family) default to a mid reasoning effort on
+        # bare requests and can burn 20s+ thinking about three one-liners —
+        # pin effort low and cap output.  Non-reasoning models drop the
+        # param silently (litellm.drop_params).
         result = await fast_llm.chat(
             [
                 ChatMessage(role="system", content=system_prompt),
                 ChatMessage(role="user", content=user_content),
-            ]
+            ],
+            max_tokens=1000,
+            reasoning_effort="low",
         )
 
         raw = str(result.message.content or "").strip()
@@ -4121,15 +4146,13 @@ async def react_endpoint(
                 await get_broker().unregister(conversation_id)
                 interrupt_queue = None  # prevent double-unregister in finally
 
-            # -- Inline suggestions (opt-in per agent) ----------------------
+            # -- Inline suggestions (no-agent always on; agents opt in) -----
             # Generated synchronously between ``done`` and ``end`` so the
             # frontend can render them without a refetch round-trip.  Skipped
-            # entirely when the agent has ``suggest_followups=False`` (default)
-            # or when the answer is empty — both eliminate the extra LLM call.
+            # when the agent toggle is off or the answer is empty — both
+            # eliminate the extra LLM call.
             _suggest_usage_tracker = UsageTracker()
-            _suggest_followups_on = bool(
-                (agent_cfg or {}).get("suggest_followups")
-            )
+            _suggest_followups_on = _suggest_followups_enabled(agent_cfg)
             _react_suggestions: list[str] = []
             if _suggest_followups_on and (result.answer or "").strip():
                 yield _emit(sse_events, "post_processing", {})
@@ -5424,11 +5447,9 @@ async def dag_endpoint(
                 await get_broker().unregister(conversation_id)
                 dag_interrupt_queue = None  # prevent double-unregister in finally
 
-            # -- Inline suggestions (opt-in per agent) ----------------------
+            # -- Inline suggestions (no-agent always on; agents opt in) -----
             _dag_suggest_usage_tracker = UsageTracker()
-            _dag_suggest_followups_on = bool(
-                (agent_cfg or {}).get("suggest_followups")
-            )
+            _dag_suggest_followups_on = _suggest_followups_enabled(agent_cfg)
             _dag_suggestions: list[str] = []
             if _dag_suggest_followups_on and (answer or "").strip():
                 yield _emit(sse_events, "post_processing", {})

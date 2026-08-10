@@ -30,6 +30,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **Plain chats always offer follow-up suggestions.** Conversations without a bound agent get suggested next questions after each answer; agent-bound chats still require the per-agent Follow-up Suggestions toggle (default off). Closure turns such as greetings or thanks may return no chips.
+
 - **A newly sent message starts at the top of the screen.** The transcript keeps just enough room below the current turn for its first line to reach the top, so the question stays in view and the answer grows into the space below instead of the whole turn hugging the bottom edge. The room disappears once the turn outgrows one screen.
 
 - **Reasoning blocks stay folded while a turn runs.** Reasoning in both ReAct and DAG output now shows a one-line preview by default instead of expanding as it streams, keeping the result in view; click any block to read the full trace.
@@ -53,6 +55,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Raw HTML in rendered markdown is now sanitized.** Model output and uploaded markdown files are scrubbed before display, so injected scripts, event handlers, iframes, forms and style overrides can no longer reach the page. Math, syntax highlighting, tables, task lists and disclosure blocks are unaffected. Raw inline `<svg>` is no longer rendered; use an `svg` code block instead.
 
 ### Fixed
+
+- **Follow-up chips no longer pull the transcript past the answer.** After a turn parks on the result, later layout growth (suggestions, title) stays put, and folding the live turn into history re-parks at the answer head for the same conversation instead of jumping to the bottom.
+
+- **Opening an existing conversation lands on the latest messages.** Refreshing a chat URL now scrolls to the bottom like switching from the sidebar, instead of starting at the top of the thread.
+
+- **Quick answers no longer look stuck on "Processing…".** A finished turn without a generated step title shows the thought-process label instead of the live processing shimmer text.
 
 - **Animation now follows the system "reduce motion" setting.** The login background's drifting gradient, the hero entrance, the breathing injected-message text and the streaming caret carried on moving whatever the operating system preference said. They now hold still, while the indicators that report work in progress stay visible so the interface never looks stalled.
 

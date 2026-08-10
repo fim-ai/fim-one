@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect, useMemo, memo, Fragment } from "react"
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, memo, Fragment } from "react"
 import { useTranslations } from "next-intl"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { Textarea } from "@/components/ui/textarea"
@@ -614,7 +614,7 @@ function ImageThumbnail({ fileId, filename }: { fileId: string; filename: string
 }
 
 /** Renders a single history turn (user message + execution steps) using the same hooks as live mode. */
-const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orphanUserContents, assistantMetadata, sseMessages, hideDagGraph }: {
+const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orphanUserContents, assistantMetadata, sseMessages, hideDagGraph, onSuggestionSelect }: {
   userContent: string | null
   userMetadata?: Record<string, unknown> | null
   // Aborted user messages that precede the paired user in the same turn
@@ -624,6 +624,9 @@ const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orpha
   assistantMetadata?: Record<string, unknown> | null
   sseMessages: SSEMessage[]
   hideDagGraph: boolean
+  // Only the latest turn gets this (and only while no new turn is running),
+  // so stale follow-up chips don't pile up mid-conversation.
+  onSuggestionSelect?: (query: string) => void
 }) {
   const { user } = useAuth()
   const userFallback = (user?.display_name || user?.email || "U").charAt(0).toUpperCase()
@@ -694,7 +697,7 @@ const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orpha
         </div>
       )}
       {resolvedMode === "react" ? (
-        <ReactOutput items={reactItems} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} stepTitles={reactStepTitles} />
+        <ReactOutput items={reactItems} streamingAnswer={reactStreamingAnswer} suggestions={reactSuggestions} stepTitles={reactStepTitles} onSuggestionSelect={onSuggestionSelect} />
       ) : (
         <DagOutput
           planSteps={dagData.planSteps}
@@ -710,6 +713,7 @@ const HistoryTurn = memo(function HistoryTurn({ userContent, userMetadata, orpha
           suggestions={dagData.suggestions}
           hideDagGraph={hideDagGraph}
           guardrailEvent={dagData.guardrailEvent}
+          onSuggestionSelect={onSuggestionSelect}
         />
       )}
     </>
@@ -965,6 +969,11 @@ function PlaygroundContent({
   // Content growth before this timestamp does not raise the "new updates"
   // pill — used for the post-processing reflow that follows a finished turn.
   const quietGrowthUntilRef = useRef(0)
+  // After a turn parks on the final-answer head, block auto re-stick. Post-done
+  // growth (follow-up chips, title) would otherwise yank the viewport to the
+  // bottom. Cleared only by a new turn, the scroll-to-bottom control, or an
+  // intentional user scroll back to the bottom.
+  const followSuspendedRef = useRef(false)
 
   const getViewport = useCallback(() => {
     const root = scrollAreaRef.current
@@ -992,6 +1001,7 @@ function PlaygroundContent({
   const scrollViewportToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const viewport = getViewport()
     if (!viewport) return
+    followSuspendedRef.current = false
     stickToBottomRef.current = true
     quietGrowthUntilRef.current = 0
     viewport.scrollTo({ top: viewport.scrollHeight, behavior })
@@ -1093,11 +1103,22 @@ function PlaygroundContent({
       const { scrollTop, scrollHeight, clientHeight } = viewport
       const nearBottom = scrollHeight - scrollTop - clientHeight < NEAR_BOTTOM_PX
       if (nearBottom) {
+        // Programmatic park at the answer head can still leave the viewport
+        // geometrically "near bottom" (short answers, or chips not yet mounted).
+        // Do not re-stick from that alone while follow is suspended — only a
+        // real user gesture at the bottom resumes following.
+        if (followSuspendedRef.current) {
+          if (!(userGestureRef.current || pointerDownRef.current)) return
+          followSuspendedRef.current = false
+        }
         stickToBottomRef.current = true
         quietGrowthUntilRef.current = 0
         setShowScrollBtn(false)
       } else if (userGestureRef.current || pointerDownRef.current) {
         stickToBottomRef.current = false
+        // User took over the viewport — do not re-park on the later live→history
+        // fold (conversation refetch after post-processing / suggestions).
+        followSuspendedRef.current = false
       }
     }
 
@@ -1121,6 +1142,7 @@ function PlaygroundContent({
         // is the only measurement streaming cannot skew.
         if (
           !stickToBottomRef.current
+          && !followSuspendedRef.current
           && performance.now() > quietGrowthUntilRef.current
           && prevHeight - viewport.scrollTop - viewport.clientHeight < NEAR_BOTTOM_PX
         ) {
@@ -1229,6 +1251,7 @@ function PlaygroundContent({
       // A new turn started — follow it again, whatever the previous turn left
       // the viewport doing, and snap down so the tail spacer carries the new
       // question up to the top of the screen.
+      followSuspendedRef.current = false
       stickToBottomRef.current = true
       quietGrowthUntilRef.current = 0
       setShowScrollBtn(false)
@@ -1248,7 +1271,14 @@ function PlaygroundContent({
       return
     }
     // User scrolled away on purpose — leave the viewport where they put it.
-    if (!stickToBottomRef.current) return
+    if (!stickToBottomRef.current && !followSuspendedRef.current) return
+    // Stop following immediately (before any early return). Follow-up chips
+    // and title land after `done` and grow the layout; keeping stick-to-bottom
+    // on would drag the reader past the answer head down to the chips.
+    followSuspendedRef.current = true
+    stickToBottomRef.current = false
+    quietGrowthUntilRef.current = performance.now() + 8000
+    setShowScrollBtn(false)
     // The whole turn fits on one screen — the tail spacer already holds it at
     // the top, and parking on the answer would push the question off-screen.
     const viewport = getViewport()
@@ -1257,19 +1287,85 @@ function PlaygroundContent({
     // Two frames: one for React to commit the result card, one for layout.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        if (!scrollInViewport("[data-live-output] [data-answer-card]", { last: true })) return
-        // Stop following: suggestions and title arrive after `done` and would
-        // otherwise drag the viewport back down past the answer head.
-        stickToBottomRef.current = false
-        quietGrowthUntilRef.current = performance.now() + 2000
-        setShowScrollBtn(false)
+        scrollInViewport("[data-live-output] [data-answer-card]", { last: true })
       })
     )
   }, [messages, modeMatches, isRunning, pendingQuery, scrollInViewport, getViewport, scrollViewportToBottom])
 
+  // Open an existing conversation (sidebar switch or ?c= refresh): land on the
+  // latest messages. Sidebar already did this via leftover stick-to-bottom;
+  // a full refresh used to stay at scrollTop=0 — align refresh with sidebar.
+  // Empty brand-new chats (created mid-send) skip this so the stream can lift
+  // the question via the normal follow path.
+  const prevOpenedConvIdRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const id = activeConversation?.id ?? null
+    const prev = prevOpenedConvIdRef.current
+    prevOpenedConvIdRef.current = id
+    if (!id || id === prev) return
+    if (!activeConversation?.messages?.length) return
+    followSuspendedRef.current = false
+    stickToBottomRef.current = true
+    quietGrowthUntilRef.current = 0
+    setShowScrollBtn(false)
+    const viewport = getViewport()
+    if (viewport) viewport.scrollTop = viewport.scrollHeight
+    // History markdown/images reflow after mount — keep pinned to the bottom
+    // while that hydrate settles (same as stick-to-bottom during streaming).
+    requestAnimationFrame(() => {
+      const vp = getViewport()
+      if (!vp || !stickToBottomRef.current) return
+      vp.scrollTop = vp.scrollHeight
+    })
+  }, [activeConversation?.id, activeConversation?.messages?.length, getViewport])
+
+  // After post-processing finishes the parent refetches the conversation
+  // (GET /api/conversations/:id) and clears the live SSE buffer so the turn
+  // folds into HistoryTurn. That live→history DOM swap reflows height/spacer
+  // and used to yank the viewport to the bottom — right when follow-up chips
+  // had just appeared. Re-park at the answer head if we still own the scroll.
+  // Only for the *same* conversation: a sidebar switch also clears live, and
+  // that path must stay at the top (see open-conversation effect above).
+  const prevHasLiveMessagesRef = useRef(false)
+  const foldConvIdRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const convId = activeConversation?.id ?? null
+    const wasLive = prevHasLiveMessagesRef.current
+    prevHasLiveMessagesRef.current = hasLiveMessages
+    if (hasLiveMessages) {
+      foldConvIdRef.current = convId
+      return
+    }
+    if (!wasLive) return
+    // Live buffer cleared because the user switched away — open-conversation
+    // effect already scrolled to top; do not re-park on the new thread's tail.
+    if (foldConvIdRef.current !== convId) {
+      foldConvIdRef.current = convId
+      return
+    }
+    if (!followSuspendedRef.current) return
+    stickToBottomRef.current = false
+    quietGrowthUntilRef.current = performance.now() + 3000
+    setShowScrollBtn(false)
+    const viewport = getViewport()
+    if (!viewport) return
+    const turn = lastHistoryTurnRef.current
+    // Short turns: spacer already holds the whole turn at the top.
+    if (turn && turn.getBoundingClientRect().height <= viewport.clientHeight) return
+    const cards = viewport.querySelectorAll<HTMLElement>("[data-answer-card]")
+    const el = cards[cards.length - 1]
+    if (!el) return
+    const elRect = el.getBoundingClientRect()
+    const viewportRect = viewport.getBoundingClientRect()
+    const scrollOffset = elRect.top - viewportRect.top + viewport.scrollTop
+    // Instant — layout effect runs before paint; smooth would flash the bottom.
+    viewport.scrollTop = Math.max(0, scrollOffset - 16)
+  }, [hasLiveMessages, activeConversation?.id, getViewport])
+
   // Reset scroll state on clear
   useEffect(() => {
     if (!hasMessages) {
+      followSuspendedRef.current = false
       stickToBottomRef.current = true
       quietGrowthUntilRef.current = 0
       setShowScrollBtn(false)
@@ -1823,6 +1919,7 @@ function PlaygroundContent({
                             assistantMetadata={turn.assistantMetadata}
                             sseMessages={turn.sseMessages}
                             hideDagGraph={hasLiveMessages}
+                            onSuggestionSelect={idx === turnsArr.length - 1 && !hasCurrentTurn ? handleSuggestionSelect : undefined}
                           />
                         </div>
                       </Fragment>

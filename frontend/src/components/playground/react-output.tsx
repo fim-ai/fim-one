@@ -442,7 +442,11 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
               key={liveTitle ?? "processing"}
               className={`truncate min-w-0 text-left step-title-in ${isStreaming ? "text-shimmer" : "text-muted-foreground"}`}
             >
-              {liveTitle ?? t("statusProcessing")}
+              {/* Quick direct answers never get a generated label (the backend
+                  skips fast-LLM titling for single-iteration turns), so a
+                  finished or reloaded turn must not fall back to the live
+                  "Processing..." shimmer text — it reads as a hung run. */}
+              {liveTitle ?? (isStreaming ? t("statusProcessing") : t("thoughtProcess"))}
             </span>
             {toolCallCount > 0 && (
               <span className="ml-auto tabular-nums text-muted-foreground shrink-0">
