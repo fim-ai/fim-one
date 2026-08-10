@@ -78,6 +78,16 @@ note that sources corroborate each other. If there are contradictions \
 "final_answer" with both versions and indicate which source is likely more \
 authoritative based on recency and specificity.
 - Lower the "confidence" score when sources contradict each other.
+- ASK-FIRST GOALS: when the goal ITSELF explicitly instructs to ask the \
+user clarifying questions BEFORE delivering the final output (e.g. \
+"问清楚我再出方案", "ask me first, then propose"), the deliverable for THIS \
+turn is the question list — the user's answers arrive in a future turn.  If \
+the step results contain a complete, well-formed, ready-to-answer question \
+list covering the points the goal names, set "achieved" to true and make \
+"final_answer" that question list.  This applies ONLY when the goal \
+explicitly requests asking first: a result that merely happens to end in a \
+question, or that asks for clarification because the work could not be \
+done, is NOT achievement — judge those normally.
 - FIDELITY CHECK: A step may include "Source evidence" — the raw tool output, \
 which is authoritative. When a step's "Result" makes a factual claim drawn \
 from that evidence (a total such as "fixed 6 CVEs", an enumeration, or an \

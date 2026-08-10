@@ -36,6 +36,9 @@ subtasks with dependencies. Tasks that benefit from parallel execution.
 - "Find all customers who churned last month, analyze the reasons, and \
 draft an email campaign" -> dag
 - "Research competitor pricing in 5 markets, create comparison table" -> dag
+- "帮我规划一场活动，先用选择题问清楚我的需求再出方案" -> react (the user \
+must answer questions before the deliverable exists — interactive \
+back-and-forth, not decomposable up front)
 - "Hello" -> react
 
 ## Query

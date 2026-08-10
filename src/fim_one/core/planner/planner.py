@@ -92,6 +92,14 @@ the task field. Instead, reference it briefly (e.g. "Translate the report \
 from the previous conversation into English, preserving Markdown formatting").
 10. If a list of available tools is provided, the "tool_hint" field MUST only \
 reference tools from that list. Do NOT suggest tools that are not available.
+11. ASK-FIRST GOALS: if the goal explicitly asks to clarify requirements \
+with the user BEFORE delivering (e.g. "问清楚我再出方案", "ask me before \
+you propose"), and no available tool can pause execution to wait for user \
+input, plan EXACTLY ONE step whose deliverable IS the complete, \
+ready-to-answer question list (with the requested options).  The user's \
+answers arrive in a FUTURE turn — do NOT plan steps that depend on those \
+answers, and do NOT phrase the step as "wait for the user's reply"; this \
+turn ends once the questions are delivered.
 
 Respond with a single JSON object:
 {{

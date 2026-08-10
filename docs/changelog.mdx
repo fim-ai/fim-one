@@ -62,6 +62,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Ask-first requests complete in one round under Planner mode.** A goal that explicitly asks the agent to clarify requirements with multiple-choice questions before delivering ("问清楚我再出方案") now produces one clean questionnaire as the turn's result, instead of planning steps that wait for answers, looping through re-plans and ending with "goal not achieved" plus repeated question lists. Auto mode routes such requests to Standard mode.
+
 - **Follow-up chips no longer pull the transcript past the answer.** After a turn parks on the result, later layout growth (suggestions, title) stays put, and folding the live turn into history re-parks at the answer head for the same conversation instead of jumping to the bottom.
 
 - **Opening an existing conversation lands on the latest messages.** Refreshing a chat URL now scrolls to the bottom like switching from the sidebar, instead of starting at the top of the thread.
