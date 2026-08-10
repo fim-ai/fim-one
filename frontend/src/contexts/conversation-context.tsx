@@ -24,6 +24,11 @@ interface ConversationContextValue {
   isLoadingDetail: boolean
   /** Map of conversation IDs to partially-typed titles (typewriter animation). */
   typingTitles: Record<string, string>
+  /**
+   * Bumps when New Chat / conversation switch should focus the composer.
+   * Playground watches this; reconcile/create do not bump it.
+   */
+  composerFocusKey: number
   loadConversations: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
   /**
@@ -63,7 +68,12 @@ export function ConversationProvider({
   const [isLoadingList, setIsLoadingList] = useState(false)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [typingTitles, setTypingTitles] = useState<Record<string, string>>({})
+  const [composerFocusKey, setComposerFocusKey] = useState(0)
   const animationTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
+
+  const bumpComposerFocus = useCallback(() => {
+    setComposerFocusKey((k) => k + 1)
+  }, [])
 
   const loadConversations = useCallback(async () => {
     setIsLoadingList(true)
@@ -95,6 +105,8 @@ export function ConversationProvider({
     try {
       const detail = await conversationApi.get(id)
       setActiveConversation(detail)
+      // After a successful open/switch, ask the playground composer to focus.
+      bumpComposerFocus()
     } catch (err) {
       setActiveId(null)
       setActiveConversation(null)
@@ -108,7 +120,7 @@ export function ConversationProvider({
     } finally {
       setIsLoadingDetail(false)
     }
-  }, [])
+  }, [bumpComposerFocus])
 
   const reconcileActiveDetail = useCallback(async (id: string) => {
     try {
@@ -218,7 +230,9 @@ export function ConversationProvider({
   const clearActive = useCallback(() => {
     setActiveConversation(null)
     setActiveId(null)
-  }, [])
+    // New Chat from sidebar/shortcut/pages — playground focuses the composer.
+    bumpComposerFocus()
+  }, [bumpComposerFocus])
 
   return (
     <ConversationContext.Provider
@@ -229,6 +243,7 @@ export function ConversationProvider({
         isLoadingList,
         isLoadingDetail,
         typingTitles,
+        composerFocusKey,
         loadConversations,
         selectConversation,
         reconcileActiveDetail,

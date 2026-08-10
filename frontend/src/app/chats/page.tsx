@@ -57,7 +57,7 @@ function sortConversations(convs: ConversationResponse[]): ConversationResponse[
 export default function ChatsPage() {
   const t = useTranslations("auth")
   const tc = useTranslations("common")
-  const { loadConversations } = useConversation()
+  const { loadConversations, clearActive, selectConversation } = useConversation()
 
   const [conversations, setConversations] = useState<ConversationResponse[]>([])
   const [total, setTotal] = useState(0)
@@ -200,7 +200,7 @@ export default function ChatsPage() {
           {t("chatsTitle")}
         </h1>
         <Button size="sm" variant="outline" className="gap-2" asChild>
-          <Link href="/new">
+          <Link href="/new" onClick={clearActive}>
             <Plus className="h-4 w-4" />
             {t("newChat")}
           </Link>
@@ -308,7 +308,10 @@ export default function ChatsPage() {
                       else next.add(conv.id)
                       return next
                     })
+                    return
                   }
+                  // Preload detail so the composer can focus as soon as playground mounts.
+                  void selectConversation(conv.id)
                 }}
                 className={cn(
                   "group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors cursor-pointer",

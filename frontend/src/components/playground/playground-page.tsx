@@ -807,14 +807,20 @@ function PlaygroundContent({
   const composingRef = useRef(false)
   const [composing, setComposing] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const { composerFocusKey } = useConversation()
 
   // Clip metadata for the current pending query (cleared when pendingQuery clears)
   const [pendingClipMetadata, setPendingClipMetadata] = useState<ClipMessageMetadata | null>(null)
 
-  // Auto-focus textarea on new chat
+  // Focus composer on New Chat, conversation switch, and /new mount.
+  // preventScroll: focusing must not yank the message list (esp. after open-to-bottom).
   useEffect(() => {
-    if (isNewChat) textareaRef.current?.focus()
-  }, [isNewChat])
+    if (!isNewChat && composerFocusKey === 0) return
+    const frame = requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [composerFocusKey, isNewChat])
 
   // Sidebar state -- persisted to localStorage
   const [sidebarOpen, setSidebarOpen] = useLocalStorage("fim-sidebar-open", true)

@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/contexts/auth-context"
+import { useConversation } from "@/contexts/conversation-context"
 import { UserAvatar as SharedUserAvatar } from "@/components/shared/user-avatar"
 import { dashboardApi, workflowApi, type DashboardStats } from "@/lib/api"
 import type { WorkflowResponse } from "@/types/workflow"
@@ -148,6 +149,7 @@ export function DashboardPage() {
   const locale = useLocale()
   const { formatRelativeTime, formatDateLabel, timezone } = useDateFormatter()
   const { user, isLoading: authLoading } = useAuth()
+  const { clearActive } = useConversation()
   const modules = useModuleFlags()
   const router = useRouter()
 
@@ -327,7 +329,7 @@ export function DashboardPage() {
             </div>
             <div className="flex items-center gap-2">
               <Button asChild>
-                <Link href="/new">
+                <Link href="/new" onClick={clearActive}>
                   <MessageSquare className="mr-2 h-4 w-4" />
                   {t("newChat")}
                 </Link>
