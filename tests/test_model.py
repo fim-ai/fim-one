@@ -766,8 +766,8 @@ class TestBuildRequestKwargs:
         )
         assert kwargs["temperature"] == 0.5  # NOT forced to 1
 
-    def test_gpt5_tools_drops_reasoning(self) -> None:
-        """GPT-5 + tools → silently drop reasoning_effort."""
+    def test_gpt5_tools_forces_reasoning_none(self) -> None:
+        """GPT-5 + tools → explicit reasoning_effort="none" (omitting ≠ none)."""
         llm = OpenAICompatibleLLM(
             api_key="sk-test",
             base_url="https://api.openai.com/v1",
@@ -783,8 +783,199 @@ class TestBuildRequestKwargs:
             max_tokens=None,
             stream=False,
         )
-        assert "reasoning_effort" not in kwargs
+        assert kwargs["reasoning_effort"] == "none"
         assert "thinking" not in kwargs
+
+    def test_gpt56_tools_forces_reasoning_none_without_configured_reasoning(
+        self,
+    ) -> None:
+        """GPT-5.6 + tools with NO reasoning configured still sends an explicit
+        "none" — upstream may inject a default reasoning_effort otherwise."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-5.6-luna",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        tools = [{"type": "function", "function": {"name": "test", "parameters": {}}}]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=tools,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["reasoning_effort"] == "none"
+        assert "thinking" not in kwargs
+
+    def test_gpt5_without_tools_keeps_reasoning(self) -> None:
+        """GPT-5 with no tools → configured reasoning_effort passes through."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-5.6-sol",
+            reasoning_effort="medium",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["reasoning_effort"] == "medium"
+
+    def test_non_gpt5_tools_reasoning_untouched(self) -> None:
+        """Non-GPT-5 models with tools keep their reasoning_effort as-is."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="o3",
+            reasoning_effort="high",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        tools = [{"type": "function", "function": {"name": "test", "parameters": {}}}]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=tools,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["reasoning_effort"] == "high"
+
+
+# ======================================================================
+# /v1/responses bridge — responses-first dispatch with silent fallback
+# ======================================================================
+
+
+class TestResponsesBridgeDispatch:
+    """Responses API first for openai/-routed models, cached fallback on 404."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_bridge_cache(self) -> Any:
+        from fim_one.core.model.openai_compatible import _RESPONSES_BRIDGE_SUPPORT
+
+        _RESPONSES_BRIDGE_SUPPORT.clear()
+        yield
+        _RESPONSES_BRIDGE_SUPPORT.clear()
+
+    def _gpt56(self) -> OpenAICompatibleLLM:
+        return OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-5.6-luna",
+            reasoning_effort="medium",
+            retry_config=None,
+            rate_limit_config=None,
+        )
+
+    @staticmethod
+    def _tools() -> list[dict[str, Any]]:
+        return [{"type": "function", "function": {"name": "test", "parameters": {}}}]
+
+    async def test_bridge_first_keeps_reasoning_with_tools(self) -> None:
+        """First attempt targets responses/ with tools + reasoning together."""
+        llm = self._gpt56()
+        with patch(
+            "fim_one.core.model.openai_compatible.litellm.acompletion",
+            new=AsyncMock(return_value="ok"),
+        ) as mock_call:
+            result = await llm._dispatch_acompletion(
+                messages=[ChatMessage(role="user", content="hi")],
+                tools=self._tools(),
+                temperature=None,
+                max_tokens=None,
+                stream=False,
+            )
+        assert result == "ok"
+        assert mock_call.call_count == 1
+        kwargs = mock_call.call_args.kwargs
+        assert kwargs["model"] == "openai/responses/gpt-5.6-luna"
+        assert kwargs["reasoning_effort"] == "medium"
+        assert kwargs["tools"]
+
+    async def test_bridge_404_falls_back_to_completions_with_none(self) -> None:
+        """404 on responses → silent completions retry with explicit none."""
+        import litellm as _litellm
+
+        llm = self._gpt56()
+        err = _litellm.NotFoundError(
+            message="no route", model="gpt-5.6-luna", llm_provider="openai"
+        )
+        with patch(
+            "fim_one.core.model.openai_compatible.litellm.acompletion",
+            new=AsyncMock(side_effect=[err, "fallback-ok"]),
+        ) as mock_call:
+            result = await llm._dispatch_acompletion(
+                messages=[ChatMessage(role="user", content="hi")],
+                tools=self._tools(),
+                temperature=None,
+                max_tokens=None,
+                stream=False,
+            )
+        assert result == "fallback-ok"
+        assert mock_call.call_count == 2
+        first, second = mock_call.call_args_list
+        assert first.kwargs["model"] == "openai/responses/gpt-5.6-luna"
+        assert second.kwargs["model"] == "openai/gpt-5.6-luna"
+        assert second.kwargs["reasoning_effort"] == "none"
+
+    async def test_bridge_verdict_is_cached(self) -> None:
+        """After one 404 the endpoint is remembered — no second probe."""
+        import litellm as _litellm
+
+        llm = self._gpt56()
+        err = _litellm.NotFoundError(
+            message="no route", model="gpt-5.6-luna", llm_provider="openai"
+        )
+        with patch(
+            "fim_one.core.model.openai_compatible.litellm.acompletion",
+            new=AsyncMock(side_effect=[err, "first", "second"]),
+        ) as mock_call:
+            await llm._dispatch_acompletion(
+                messages=[ChatMessage(role="user", content="hi")],
+                tools=None,
+                temperature=None,
+                max_tokens=None,
+                stream=False,
+            )
+            await llm._dispatch_acompletion(
+                messages=[ChatMessage(role="user", content="hi")],
+                tools=None,
+                temperature=None,
+                max_tokens=None,
+                stream=False,
+            )
+        # 3 calls total: probe + fallback, then direct completions.
+        assert mock_call.call_count == 3
+        assert mock_call.call_args_list[2].kwargs["model"] == "openai/gpt-5.6-luna"
+
+    async def test_anthropic_route_never_bridges(self) -> None:
+        """Native anthropic/ models go straight to their own protocol."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1/",
+            model="claude-opus-4-8",
+            retry_config=None,
+            rate_limit_config=None,
+        )
+        with patch(
+            "fim_one.core.model.openai_compatible.litellm.acompletion",
+            new=AsyncMock(return_value="ok"),
+        ) as mock_call:
+            await llm._dispatch_acompletion(
+                messages=[ChatMessage(role="user", content="hi")],
+                tools=None,
+                temperature=None,
+                max_tokens=None,
+                stream=False,
+            )
+        assert mock_call.call_count == 1
+        assert mock_call.call_args.kwargs["model"].startswith("anthropic/")
+        assert "responses" not in mock_call.call_args.kwargs["model"]
 
     def test_no_max_completion_tokens_key(self) -> None:
         """LiteLLM handles the max_tokens → max_completion_tokens translation

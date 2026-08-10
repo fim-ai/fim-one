@@ -81,17 +81,17 @@ Level 1을 지원하는 모델(강제된 `tool_choice`를 사용한 네이티브
 
 ### 호환성 매트릭스
 
-| 제공자 | 활성화 방법 | 비활성화 가능? | 사고 출력 | 강제 FC 충돌? |
+| 제공자 | 활성화 방법 | 비활성화 가능? | 추론 출력 | 강제 FC 충돌? |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | `reasoning_effort` 매개변수 | ✅ 선택 사항 | 내부 (사용자에게 표시되지 않음) | ⚠️ API가 도구 존재 시 `reasoning_effort` 제거 |
+| **OpenAI** (GPT-5.x) | `reasoning_effort` 매개변수 | ✅ 선택 사항 | 내부 (사용자에게 표시되지 않음) | ✅ 도구 + 추론이 Responses API를 통해 함께 실행됨 (자동; chat-completions 폴백은 `reasoning_effort: "none"`을 강제함) |
 | **OpenAI** (o-series) | 항상 활성화 | ❌ | 내부 (토큰 계산됨, 반환되지 않음) | ✅ 충돌 없음 |
-| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 선택 사항 | API `reasoning_content` 필드 → 사고 패널 | ❌ 강제 FC + 사고 = **400 오류** |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 선택 사항 | API `reasoning_content` 필드 → 추론 패널 | ❌ 강제 FC + 추론 = **400 오류** |
 | **Google Gemini** (2.5/3.x) | `reasoning_effort` 매개변수 | ✅ 선택 사항 | 내부 | ✅ 충돌 없음 |
-| **DeepSeek** | 모델 변형 (`deepseek-reasoner`) | 모델 수준 | API `reasoning_content` 필드 → 사고 패널 | ⚠️ 강제 FC 신뢰성 낮음 |
+| **DeepSeek** | 모델 변형 (`deepseek-reasoner`) | 모델 수준 | API `reasoning_content` 필드 → 추론 패널 | ⚠️ 강제 FC 불안정 |
 | **Qwen** (3.x) | `enable_thinking` 매개변수 | ✅ 선택 사항 | 콘텐츠의 `<think>` 태그 | ⚠️ 부분 FC 지원 |
 | **MiniMax** (M2.7) | 항상 활성화 | ❌ | 콘텐츠의 `<think>` 태그 | ✅ 충돌 없음 |
 | **ChatGLM** (GLM-5) | 모델 변형 | 모델 수준 | 외부화되지 않음 | N/A — 강제 FC 미지원 |
-| **Kimi** (K2-thinking) | 모델 변형 | 모델 수준 | API 필드 | ❌ 강제 FC + 사고 = 충돌 |
+| **Kimi** (K2-thinking) | 모델 변형 | 모델 수준 | API 필드 | ❌ 강제 FC + 추론 = 충돌 |
 
 ### FIM One가 각 경우를 처리하는 방식
 
@@ -111,19 +111,19 @@ Level 1을 지원하는 모델(강제된 `tool_choice`를 사용한 네이티브
 
 ### OpenAI
 
-가장 검증된 옵션입니다. OpenAI 모델은 최고 수준의 네이티브 함수 호출(도구 호출) 지원을 제공하며, 이는 에이전트 안정성에 직접적인 영향을 미칩니다. GPT-5 계열(2025년 8월 이후)은 GPT-4에 비해 주요 세대 도약입니다.
+가장 검증된 옵션입니다. OpenAI 모델은 최고 수준의 네이티브 함수 호출(도구 호출) 지원을 제공하며, 이는 에이전트 신뢰성에 직접적인 영향을 미칩니다. GPT-5 패밀리(2025년 8월 이후)는 GPT-4에 비해 주요 세대 도약입니다.
 
 **권장 모델:**
-- 메인: `gpt-5.4` (최신 플래그십, 2026년 3월 — 1M+ 컨텍스트, 컴퓨터 사용) 또는 `o3` (최고의 추론 정확도)
-- 빠름: `gpt-5.4-mini` ($0.75/$4.50 per MTok) 또는 `gpt-5.4-nano` (최저가 $0.20/$1.25 per MTok)
-- 예산 빠름: `gpt-5-mini` ($0.25/$2.00) 및 `gpt-5-nano` ($0.05/$0.40)는 더 낮은 가격으로 계속 사용 가능
-- 레거시: `gpt-4.1` (여전히 API에 있음, 1M 컨텍스트, 코딩에 적합)
+- Main: `gpt-5.4` (최신 플래그십, 2026년 3월 — 1M+ 컨텍스트, 컴퓨터 사용) 또는 `o3` (최고의 추론 정확도)
+- Fast: `gpt-5.4-mini` ($0.75/$4.50 per MTok) 또는 `gpt-5.4-nano` (최저가 $0.20/$1.25 per MTok)
+- Budget Fast: `gpt-5-mini` ($0.25/$2.00) 및 `gpt-5-nano` ($0.05/$0.40)는 더 낮은 가격으로 계속 이용 가능
+- Legacy: `gpt-4.1` (여전히 API에 있음, 1M 컨텍스트, 코딩에 적합)
 
-**추론:** `LLM_REASONING_EFFORT=medium`으로 설정 — o 시리즈 및 GPT-5.x 모델과 기본적으로 작동합니다. GPT-5.4는 `reasoning_effort`를 `none`, `low`, `medium`, `high`, `xhigh` 수준으로 지원합니다. o 시리즈는 `max_tokens` 대신 `max_completion_tokens`이 필요하며, LiteLLM이 자동으로 처리합니다. 참고: GPT-5.x는 여전히 `/v1/chat/completions`에서 도구가 있을 때 `reasoning_effort`를 제거합니다 — FIM One은 에이전트 도구 사용 단계에서 자동으로 제거하여 워크플로우가 중단 없이 실행됩니다. GPT-5.4는 `temperature=1`이 필요합니다 — FIM One은 LiteLLM의 매개변수 필터링(`drop_params`)을 통해 자동으로 처리합니다.
+**추론:** `LLM_REASONING_EFFORT=medium`을 설정하세요 — o-series 및 GPT-5.x 모델과 기본적으로 작동합니다. GPT-5.4는 `reasoning_effort`를 `none`, `low`, `medium`, `high`, `xhigh` 레벨로 지원합니다. o-series는 `max_tokens` 대신 `max_completion_tokens`이 필요하며, LiteLLM이 자동으로 처리합니다. 참고: `/v1/chat/completions`는 도구와 추론을 결합한 GPT-5.x 요청을 거부합니다 — FIM One은 OpenAI 모델을 먼저 Responses API를 통해 라우팅하며(둘 다 함께 작동), `/v1/responses` 경로가 없는 엔드포인트만 에이전트 도구 사용 단계에서 명시적 `reasoning_effort: "none"`으로 채팅 완료로 폴백합니다. GPT-5.4는 `temperature=1`이 필요합니다 — FIM One은 LiteLLM의 매개변수 필터링(`drop_params`)을 통해 자동으로 처리합니다.
 
-| 모델 | 입력 $/MTok | 출력 $/MTok | 컨텍스트 |
+| Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
-| `gpt-5.4` | $2.50 | $15.00 | 1,050K (272K 초과 시 추가 요금) |
+| `gpt-5.4` | $2.50 | $15.00 | 1,050K (surcharge >272K) |
 | `gpt-5.4-mini` | $0.75 | $4.50 | 400K |
 | `gpt-5.4-nano` | $0.20 | $1.25 | 400K |
 | `o3` | $2.00 | $8.00 | 200K |
@@ -148,6 +148,8 @@ LLM_MODEL=o3
 FAST_LLM_MODEL=gpt-5.4-nano
 LLM_REASONING_EFFORT=medium
 ```
+
+---
 
 ### Anthropic (Claude)
 

@@ -15,6 +15,7 @@ from typing import Any
 
 import httpx
 import litellm
+from litellm.exceptions import BadRequestError, NotFoundError
 
 from fim_one.core.prompt.reasoning import reasoning_replay_policy
 
@@ -347,6 +348,24 @@ _ANTHROPIC_NO_SAMPLING_FRAGMENTS = (
 )
 
 
+# Endpoint capability cache for the /v1/responses bridge, keyed by
+# (api_base, litellm_model).  ``True`` = the endpoint accepted a Responses
+# request; ``False`` = it rejected one (404/400) and we stay on chat
+# completions; absent = untried.  Module-level (not per-instance) so the
+# one probe round-trip is paid once per endpoint+model per process, no
+# matter how many LLM instances are constructed.
+_RESPONSES_BRIDGE_SUPPORT: dict[tuple[str | None, str], bool] = {}
+
+# Errors that mean "this endpoint has no usable /v1/responses route" and
+# trigger the silent fallback to chat completions.  Bound at import time so
+# tests that patch the ``litellm`` module wholesale don't turn the except
+# clause into a MagicMock.
+_BRIDGE_FALLBACK_ERRORS: tuple[type[Exception], ...] = (
+    NotFoundError,
+    BadRequestError,
+)
+
+
 class OpenAICompatibleLLM(BaseLLM):
     """LLM implementation backed by LiteLLM for universal provider support.
 
@@ -496,8 +515,8 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
 
-        kwargs = self._build_request_kwargs(
-            messages,
+        response = await self._dispatch_acompletion(
+            messages=messages,
             tools=tools,
             tool_choice=tool_choice,
             temperature=temperature,
@@ -506,11 +525,6 @@ class OpenAICompatibleLLM(BaseLLM):
             stream=False,
             reasoning_effort=reasoning_effort,
         )
-        # Re-validate the shared pool before every attempt: if an idle-TTL
-        # eviction closed it, recreate it (and flush LiteLLM's stale clients)
-        # so this call uses a live session instead of a dead one.
-        _get_shared_http_client()
-        response = await litellm.acompletion(**kwargs)
 
         choice = response.choices[0]
         assistant_msg = self._parse_choice_message(choice)
@@ -599,18 +613,14 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
 
-        kwargs = self._build_request_kwargs(
-            messages,
+        stream = await self._dispatch_acompletion(
+            messages=messages,
             tools=tools,
             tool_choice=tool_choice,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
         )
-        # See ``_chat_impl``: recreate the shared pool if an idle eviction
-        # closed it, so each (re)tried stream starts from a live session.
-        _get_shared_http_client()
-        stream = await litellm.acompletion(**kwargs)
 
         async def _iterate() -> AsyncIterator[StreamChunk]:
             # Accumulate partial tool calls keyed by their index in the array.
@@ -868,6 +878,51 @@ class OpenAICompatibleLLM(BaseLLM):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    async def _dispatch_acompletion(self, **build_args: Any) -> Any:
+        """Call ``litellm.acompletion``, trying the /v1/responses bridge first.
+
+        Responses is the preferred protocol for every openai/-routed model:
+        it is the only place GPT-5.x runs function tools and reasoning
+        together, and it preserves reasoning state across tool-call rounds.
+        Endpoints without /v1/responses (third-party OpenAI-compatible
+        proxies, older gateways) reject the first probe with a 404/400; we
+        silently fall back to chat completions and remember the verdict in
+        ``_RESPONSES_BRIDGE_SUPPORT``, so the probe costs one round-trip per
+        endpoint+model per process.  A miscached ``False`` (e.g. a genuine
+        bad request blamed on the bridge) merely means that endpoint keeps
+        the pre-bridge chat-completions behaviour.
+
+        Native provider routes (anthropic/ etc.) never enter the bridge —
+        their protocol (adaptive thinking, ...) is handled in
+        ``_build_request_kwargs``.
+        """
+        key = (self._api_base, self._litellm_model)
+        if (
+            self._litellm_model.startswith("openai/")
+            and _RESPONSES_BRIDGE_SUPPORT.get(key) is not False
+        ):
+            kwargs = self._build_request_kwargs(via_responses=True, **build_args)
+            # Re-validate the shared pool before every attempt: if an
+            # idle-TTL eviction closed it, recreate it (and flush LiteLLM's
+            # stale clients) so this call uses a live session.
+            _get_shared_http_client()
+            try:
+                result = await litellm.acompletion(**kwargs)
+            except _BRIDGE_FALLBACK_ERRORS as exc:
+                _RESPONSES_BRIDGE_SUPPORT[key] = False
+                logger.info(
+                    "Responses API unavailable for %s (%s); "
+                    "falling back to chat completions",
+                    self._model,
+                    type(exc).__name__,
+                )
+            else:
+                _RESPONSES_BRIDGE_SUPPORT[key] = True
+                return result
+        kwargs = self._build_request_kwargs(via_responses=False, **build_args)
+        _get_shared_http_client()
+        return await litellm.acompletion(**kwargs)
+
     def _build_request_kwargs(
         self,
         messages: list[ChatMessage],
@@ -879,6 +934,7 @@ class OpenAICompatibleLLM(BaseLLM):
         response_format: dict[str, Any] | None = None,
         stream: bool = False,
         reasoning_effort: str | object | None = _REASONING_INHERIT,
+        via_responses: bool = False,
     ) -> dict[str, Any]:
         """Build the keyword arguments dict for ``litellm.acompletion()``.
 
@@ -886,6 +942,10 @@ class OpenAICompatibleLLM(BaseLLM):
             reasoning_effort: Per-call override.  ``_REASONING_INHERIT``
                 (default) falls back to the instance-level setting;
                 ``None`` suppresses reasoning; a string overrides the level.
+            via_responses: Route through LiteLLM's chat-completions →
+                /v1/responses bridge (``responses/`` model prefix).  On the
+                Responses API tools and reasoning may be enabled together,
+                so the GPT-5.x reasoning_effort="none" patch is skipped.
         """
         effective_temperature = (
             temperature if temperature is not None else self._default_temperature
@@ -901,8 +961,15 @@ class OpenAICompatibleLLM(BaseLLM):
         # This is the single centralised enforcement point — do not
         # replicate the policy decision elsewhere.
         policy = reasoning_replay_policy(self.model_id)
+        litellm_model = self._litellm_model
+        if via_responses:
+            # ``openai/responses/<model>`` triggers LiteLLM's bridge: the
+            # request goes to /v1/responses while the response (including
+            # streaming chunks and tool calls) keeps the chat-completions
+            # shape, so everything downstream stays unchanged.
+            litellm_model = "openai/responses/" + litellm_model.removeprefix("openai/")
         kwargs: dict[str, Any] = {
-            "model": self._litellm_model,
+            "model": litellm_model,
             "messages": [m.to_openai_dict(replay_policy=policy) for m in messages],
             "temperature": effective_temperature,
             "max_tokens": token_limit,
@@ -930,15 +997,22 @@ class OpenAICompatibleLLM(BaseLLM):
         effective_reasoning = (
             self._reasoning_effort if reasoning_effort is _REASONING_INHERIT else reasoning_effort
         )
-        if effective_reasoning:
-            # GPT-5.x /v1/chat/completions rejects reasoning_effort when
-            # tools are present.  Silently skip to keep agent workflows working.
-            if tools and self._model.lower().startswith("gpt-5"):
+        if tools and not via_responses and self._model.lower().startswith("gpt-5"):
+            # GPT-5.x /v1/chat/completions rejects function tools combined
+            # with reasoning, and OpenAI requires an explicit
+            # reasoning_effort="none" — merely omitting the field is not
+            # equivalent (the upstream default is not "none", and LiteLLM
+            # may inject one).  Tools win over reasoning on this path; the
+            # Responses bridge above is what allows both at once.
+            kwargs["reasoning_effort"] = "none"
+            if effective_reasoning:
                 logger.debug(
-                    "Dropping reasoning_effort for %s (unsupported with tools in chat completions)",
+                    "Forcing reasoning_effort='none' for %s "
+                    "(tools + reasoning unsupported in chat completions)",
                     self._model,
                 )
-            elif self._uses_adaptive_thinking():
+        elif effective_reasoning:
+            if self._uses_adaptive_thinking():
                 # Opus 4.6+/Sonnet 4.6/Fable/Mythos use the adaptive-thinking
                 # protocol.  The legacy thinking={type:"enabled", budget_tokens}
                 # form is deprecated on 4.6 and returns a 400 on 4.7/4.8/Fable,

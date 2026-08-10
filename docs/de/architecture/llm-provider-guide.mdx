@@ -212,17 +212,17 @@ LLM_JSON_MODE_ENABLED=false
 
 ## Reasoning-Aufwand und Thinking-Konfiguration
 
-FIM One stellt zwei Umgebungsvariablen zur Steuerung von erweitertem Thinking / Reasoning zur Verfügung:
+FIM One stellt zwei Umgebungsvariablen zur Steuerung von Extended Thinking / Reasoning bereit:
 
 | Variable | Werte | Effekt |
 |---|---|---|
 | `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | Wird als `reasoning_effort` an LiteLLM übergeben. Anthropic: auf `thinking`-Parameter abgebildet. OpenAI o-Serie: durchgeleitet. Andere: stillschweigend verworfen (`drop_params=True`). |
-| `LLM_REASONING_BUDGET_TOKENS` | Integer (z. B. `10000`) | Nur Anthropic: setzt eine explizite `thinking.budget_tokens`-Obergrenze und umgeht LiteLLMs automatische Abbildung. Nützlich zur Kostenkontrolle bei Claude-Modellen. |
+| `LLM_REASONING_BUDGET_TOKENS` | Ganzzahl (z. B. `10000`) | Nur Anthropic: setzt eine explizite `thinking.budget_tokens`-Obergrenze und umgeht LiteLLMs automatische Zuordnung. Nützlich zur Kostenkontrolle bei Claude-Modellen. |
 
 Wenn `reasoning_effort` gesetzt ist und das Modell als `anthropic/` aufgelöst wird, gelten zwei zusätzliche Verhaltensweisen:
 
-1. **Temperatur wird auf 1,0 erzwungen.** Bedrock lehnt `temperature != 1.0` ab, wenn Thinking aktiviert ist. FIM One handhabt dies automatisch — keine Benutzeraktion erforderlich.
-2. **GPT-5.x mit Tools**: `reasoning_effort` wird stillschweigend verworfen, wenn `tools` vorhanden sind, da der GPT-5-Endpunkt `/v1/chat/completions` die Kombination ablehnt. Dies betrifft nur die ReAct-Tool-Schleife; `structured_llm_call`-Aufrufe ohne `tools`-Parameter sind nicht betroffen.
+1. **Temperature wird auf 1.0 erzwungen.** Bedrock lehnt `temperature != 1.0` ab, wenn Thinking aktiviert ist. FIM One handhabt dies automatisch — keine Benutzeraktion erforderlich.
+2. **GPT-5.x mit Tools**: FIM One versucht zuerst die OpenAI Responses API (über LiteLLMs Chat-Completions-Bridge), wo Tools und Reasoning zusammen zulässig sind und der Reasoning-Status über Tool-Call-Runden hinweg erhalten bleibt. Wenn der Endpoint keine nutzbare `/v1/responses`-Route hat (einige OpenAI-kompatible Proxys), fällt FIM One stillschweigend auf `/v1/chat/completions` zurück und merkt sich die Entscheidung pro Endpoint; auf diesem Fallback-Pfad sendet GPT-5.x mit `tools` ein explizites `reasoning_effort: "none"`, da der Endpoint die Kombination Tools + Reasoning ablehnt und das Weglassen des Feldes nicht gleichwertig ist (der Server-Standard ist nicht `none`).
 
 ## Defensive Parsing für strukturierte Ausgabe
 

@@ -222,7 +222,7 @@ FIM One exposes two env vars for controlling extended thinking / reasoning:
 When `reasoning_effort` is set and the model is resolved as `anthropic/`, two additional behaviors apply:
 
 1. **Temperature is forced to 1.0.** Bedrock rejects `temperature != 1.0` when thinking is enabled. FIM One handles this automatically — no user action needed.
-2. **GPT-5.x with tools**: `reasoning_effort` is silently dropped when `tools` are present, because the GPT-5 `/v1/chat/completions` endpoint rejects the combination. This only affects the ReAct tool loop; `structured_llm_call` calls that lack a `tools` parameter are unaffected.
+2. **GPT-5.x with tools**: FIM One first tries the OpenAI Responses API (via LiteLLM's chat-completions bridge), where tools and reasoning are allowed together and reasoning state carries across tool-call rounds. If the endpoint has no usable `/v1/responses` route (some OpenAI-compatible proxies), FIM One silently falls back to `/v1/chat/completions` and remembers the verdict per endpoint; on that fallback path, GPT-5.x with `tools` sends an explicit `reasoning_effort: "none"`, because the endpoint rejects the tools + reasoning combination and omitting the field is not equivalent (the server default is not `none`).
 
 ## Defensive parsing for structured output
 

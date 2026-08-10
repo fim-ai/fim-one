@@ -338,6 +338,11 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 - [x] Étapes DAG typées — le planificateur marque les étapes de transformation/synthèse pures `llm_direct` (appel unique, pas de boucle d'outils) ; les résultats portent des métadonnées d'exécution typées
 - [x] Les objectifs ask-first se terminent en un seul tour — le planificateur livre le questionnaire comme étape, l'analyseur l'accepte, le routage automatique préfère Standard
 
+#### Couche Modèle
+
+- [x] Les modèles OpenAI adoptent d'abord Responses-API — GPT-5.x exécute les outils et le raisonnement ensemble ; les endpoints sans `/v1/responses` reviennent aux complétions de chat
+- [ ] Vérifier les chiffres d'utilisation du streaming Responses-bridge lors de la prochaine mise à jour de LiteLLM (mauvais mappage en amont suspecté)
+
 #### Intégration de scénarios
 
 - [ ] Le premier lancement commence à partir d'un modèle de scénario (solution_seeds) au lieu d'un établi vide

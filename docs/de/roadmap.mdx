@@ -338,6 +338,11 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 - [x] Typed DAG steps — planner marks pure transform/synthesis steps `llm_direct` (single call, no tool loop); results carry typed run metadata
 - [x] Ask-first goals finish in one round — planner delivers the questionnaire as the step, analyzer accepts it, auto-routing prefers Standard
 
+#### Model Layer
+
+- [x] OpenAI-Modelle verwenden zuerst die Responses-API — GPT-5.x führt Tools und Reasoning zusammen aus; Endpoints ohne `/v1/responses` fallen auf Chat Completions zurück
+- [ ] Responses-Bridge-Streaming-Nutzungszahlen beim nächsten LiteLLM-Upgrade überprüfen (Upstream-Fehlzuordnung vermutet)
+
 #### Szenario-Onboarding
 
 - [ ] Der erste Durchlauf startet mit einer Szenariovorlage (solution_seeds) statt einer leeren Workbench

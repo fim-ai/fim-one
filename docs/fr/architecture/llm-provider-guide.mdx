@@ -210,19 +210,19 @@ LLM_TOOL_CHOICE_ENABLED=false
 LLM_JSON_MODE_ENABLED=false
 ```
 
-## Effort de raisonnement et configuration de la réflexion
+## Configuration de l'effort de raisonnement et de la réflexion
 
 FIM One expose deux variables d'environnement pour contrôler la réflexion étendue / le raisonnement :
 
 | Variable | Valeurs | Effet |
 |---|---|---|
-| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | Passé en tant que `reasoning_effort` à LiteLLM. Anthropic : mappé au paramètre `thinking`. OpenAI o-series : passé directement. Autres : silencieusement supprimé (`drop_params=True`). |
+| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | Passé en tant que `reasoning_effort` à LiteLLM. Anthropic : mappé au paramètre `thinking`. Série o d'OpenAI : transmis directement. Autres : silencieusement ignoré (`drop_params=True`). |
 | `LLM_REASONING_BUDGET_TOKENS` | entier (ex. `10000`) | Anthropic uniquement : définit un plafond explicite `thinking.budget_tokens`, contournant le mappage automatique de LiteLLM. Utile pour contrôler les coûts sur les modèles Claude. |
 
 Lorsque `reasoning_effort` est défini et que le modèle est résolu en tant que `anthropic/`, deux comportements supplémentaires s'appliquent :
 
 1. **La température est forcée à 1.0.** Bedrock rejette `temperature != 1.0` lorsque la réflexion est activée. FIM One gère cela automatiquement — aucune action utilisateur nécessaire.
-2. **GPT-5.x avec outils** : `reasoning_effort` est silencieusement supprimé lorsque des `tools` sont présents, car le point de terminaison GPT-5 `/v1/chat/completions` rejette la combinaison. Cela n'affecte que la boucle d'outil ReAct ; les appels `structured_llm_call` qui manquent d'un paramètre `tools` ne sont pas affectés.
+2. **GPT-5.x avec outils** : FIM One essaie d'abord l'API Responses d'OpenAI (via le pont chat-completions de LiteLLM), où les outils et le raisonnement sont autorisés ensemble et l'état de raisonnement persiste entre les appels d'outils. Si le point de terminaison n'a pas de route `/v1/responses` utilisable (certains proxies compatibles OpenAI), FIM One bascule silencieusement vers `/v1/chat/completions` et mémorise le verdict par point de terminaison ; sur ce chemin de secours, GPT-5.x avec `tools` envoie un `reasoning_effort: "none"` explicite, car le point de terminaison rejette la combinaison outils + raisonnement et omettre le champ n'est pas équivalent (la valeur par défaut du serveur n'est pas `none`).
 
 ## Analyse défensive pour la sortie structurée
 

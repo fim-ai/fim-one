@@ -337,6 +337,11 @@ flowchart LR
 - [x] 타입이 지정된 DAG 단계 — 플래너가 순수 변환/합성 단계를 `llm_direct`로 표시(단일 호출, 도구 루프 없음); 결과는 타입이 지정된 실행 메타데이터를 포함
 - [x] Ask-first 목표는 한 라운드에 완료 — 플래너가 설문지를 단계로 전달하고, 분석기가 이를 수락하며, 자동 라우팅이 Standard를 선호
 
+#### Model Layer
+
+- [x] OpenAI 모델은 Responses-API-first로 진행 — GPT-5.x는 도구와 추론을 함께 실행하며, `/v1/responses` 없는 엔드포인트는 chat completions로 폴백
+- [ ] 다음 LiteLLM 업그레이드 시 Responses-bridge 스트리밍 사용량 확인 (업스트림 잘못된 매핑 의심)
+
 #### 시나리오 온보딩
 
 - [ ] 첫 실행이 빈 워크벤치 대신 시나리오 템플릿(solution_seeds)에서 시작됨

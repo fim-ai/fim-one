@@ -212,17 +212,17 @@ LLM_JSON_MODE_ENABLED=false
 
 ## 推理工作量和思考配置
 
-FIM One 公开了两个环境变量用于控制扩展思考/推理：
+FIM One公开了两个环境变量来控制扩展思考/推理：
 
 | 变量 | 值 | 效果 |
 |---|---|---|
-| `LLM_REASONING_EFFORT` | `low`、`medium`、`high` | 作为 `reasoning_effort` 传递给 LiteLLM。Anthropic：映射到 `thinking` 参数。OpenAI o 系列：直接传递。其他：静默丢弃（`drop_params=True`）。 |
-| `LLM_REASONING_BUDGET_TOKENS` | 整数（例如 `10000`） | 仅 Anthropic：设置显式的 `thinking.budget_tokens` 上限，绕过 LiteLLM 的自动映射。用于控制 Claude 模型的成本。 |
+| `LLM_REASONING_EFFORT` | `low`、`medium`、`high` | 作为`reasoning_effort`传递给LiteLLM。Anthropic：映射到`thinking`参数。OpenAI o系列：直接传递。其他：静默丢弃（`drop_params=True`）。 |
+| `LLM_REASONING_BUDGET_TOKENS` | 整数（例如`10000`） | 仅Anthropic：设置显式的`thinking.budget_tokens`上限，绕过LiteLLM的自动映射。用于控制Claude模型的成本。 |
 
-当设置了 `reasoning_effort` 且模型被解析为 `anthropic/` 时，应用以下两个额外行为：
+当设置了`reasoning_effort`且模型解析为`anthropic/`时，会应用两个额外的行为：
 
-1. **温度被强制设置为 1.0。** Bedrock 在启用思考时拒绝 `temperature != 1.0`。FIM One 会自动处理此问题 — 无需用户操作。
-2. **GPT-5.x 与工具**：当存在 `tools` 时，`reasoning_effort` 被静默丢弃，因为 GPT-5 `/v1/chat/completions` 端点拒绝此组合。这仅影响 ReAct 工具循环；缺少 `tools` 参数的 `structured_llm_call` 调用不受影响。
+1. **温度被强制设置为1.0。** Bedrock在启用思考时拒绝`temperature != 1.0`。FIM One会自动处理这个问题——无需用户操作。
+2. **GPT-5.x与工具**：FIM One首先尝试OpenAI Responses API（通过LiteLLM的chat-completions桥接），其中工具和推理可以一起使用，推理状态在工具调用轮次间保持。如果端点没有可用的`/v1/responses`路由（某些OpenAI兼容代理），FIM One会静默回退到`/v1/chat/completions`，并记住每个端点的判决；在该回退路径上，GPT-5.x与`tools`发送显式的`reasoning_effort: "none"`，因为端点拒绝工具+推理组合，且省略该字段不等同（服务器默认值不是`none`）。
 
 ## 结构化输出的防御性解析
 

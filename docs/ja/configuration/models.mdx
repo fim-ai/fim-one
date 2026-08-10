@@ -77,17 +77,17 @@ FIM Oneの DAG プランナーは、モデルが有効な構造化JSONを返す�
 
 ### 互換性マトリックス
 
-| プロバイダー | 有効にする方法 | 無効化可能？ | 思考出力 | 強制FC競合？ |
+| プロバイダー | 有効にする方法 | 無効にできる？ | 推論出力 | 強制FC競合？ |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | `reasoning_effort` パラメータ | ✅ オプトイン | 内部（ユーザーに表示されない） | ⚠️ API はツール存在時に `reasoning_effort` を削除 |
-| **OpenAI** (o-series) | 常時オン | ❌ | 内部（トークンカウント、返却なし） | ✅ 競合なし |
-| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ オプトイン | API `reasoning_content` フィールド → 推論パネル | ❌ 強制FC + 思考 = **400エラー** |
+| **OpenAI** (GPT-5.x) | `reasoning_effort` パラメータ | ✅ オプトイン | 内部（ユーザーに表示されない） | ✅ ツール + 推論は Responses API 経由で一緒に実行（自動；chat-completions フォールバックは `reasoning_effort: "none"` を強制） |
+| **OpenAI** (o-series) | 常時オン | ❌ | 内部（トークンカウント、返却されない） | ✅ 競合なし |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ オプトイン | API `reasoning_content` フィールド → 推論パネル | ❌ 強制FC + 推論 = **400エラー** |
 | **Google Gemini** (2.5/3.x) | `reasoning_effort` パラメータ | ✅ オプトイン | 内部 | ✅ 競合なし |
-| **DeepSeek** | モデルバリアント (`deepseek-reasoner`) | モデルレベル | API `reasoning_content` フィールド → 推論パネル | ⚠️ 強制FC は不安定 |
-| **Qwen** (3.x) | `enable_thinking` パラメータ | ✅ オプトイン | コンテンツ内の `<think>` タグ | ⚠️ 部分的FC サポート |
+| **DeepSeek** | モデルバリアント（`deepseek-reasoner`） | モデルレベル | API `reasoning_content` フィールド → 推論パネル | ⚠️ 強制FC不安定 |
+| **Qwen** (3.x) | `enable_thinking` パラメータ | ✅ オプトイン | コンテンツ内の `<think>` タグ | ⚠️ 部分的FC対応 |
 | **MiniMax** (M2.7) | 常時オン | ❌ | コンテンツ内の `<think>` タグ | ✅ 競合なし |
-| **ChatGLM** (GLM-5) | モデルバリアント | モデルレベル | 外部化されない | N/A — 強制FC はサポートされない |
-| **Kimi** (K2-thinking) | モデルバリアント | モデルレベル | API フィールド | ❌ 強制FC + 思考 = 競合 |
+| **ChatGLM** (GLM-5) | モデルバリアント | モデルレベル | 外部化されない | N/A — 強制FC非対応 |
+| **Kimi** (K2-thinking) | モデルバリアント | モデルレベル | API フィールド | ❌ 強制FC + 推論 = 競合 |
 
 ### FIM One が各ケースを処理する方法
 
@@ -109,19 +109,19 @@ FIM Oneの DAG プランナーは、モデルが有効な構造化JSONを返す�
 
 ### OpenAI
 
-最も実績のあるオプション。OpenAIモデルは最高のネイティブ関数呼び出し（ツール呼び出し）サポートを備えており、これはエージェントの信頼性に直接影響します。GPT-5ファミリー（2025年8月以降）はGPT-4に対する大きな世代的飛躍です。
+最も実績のあるオプションです。OpenAIのモデルは最高のネイティブ関数呼び出し（ツール呼び出し）サポートを備えており、これはエージェントの信頼性に直接影響します。GPT-5ファミリー（2025年8月以降）はGPT-4に対する大きな世代的飛躍です。
 
 **推奨モデル：**
-- メイン：`gpt-5.4`（最新フラッグシップ、2026年3月 — 1M+コンテキスト、コンピュータ使用）または`o3`（最高の推論精度）
+- メイン：`gpt-5.4`（最新フラグシップ、2026年3月——1M以上のコンテキスト、コンピュータ使用）または`o3`（最高の推論精度）
 - 高速：`gpt-5.4-mini`（$0.75/$4.50 per MTok）または`gpt-5.4-nano`（最安値 $0.20/$1.25 per MTok）
-- 予算重視の高速：`gpt-5-mini`（$0.25/$2.00）および`gpt-5-nano`（$0.05/$0.40）はより低い価格で利用可能
-- レガシー：`gpt-4.1`（API内でまだ利用可能、1Mコンテキスト、コーディングに適している）
+- 予算重視の高速：`gpt-5-mini`（$0.25/$2.00）と`gpt-5-nano`（$0.05/$0.40）はより低い価格で利用可能
+- レガシー：`gpt-4.1`（API内で利用可能、1Mコンテキスト、コーディングに適している）
 
-**推論：** `LLM_REASONING_EFFORT=medium`を設定します — o-seriesおよびGPT-5.xモデルでネイティブに動作します。GPT-5.4は`reasoning_effort`を`none`、`low`、`medium`、`high`、`xhigh`のレベルでサポートしています。o-seriesは`max_tokens`の代わりに`max_completion_tokens`が必要で、LiteLLMが自動的に処理します。注意：GPT-5.xは`/v1/chat/completions`でツールが存在する場合、`reasoning_effort`をドロップします — FIM Oneはエージェントツール使用ステップ中に静かにこれをドロップするため、ワークフローは中断なく実行されます。GPT-5.4は`temperature=1`が必要です — FIM OneはLiteLLMのパラメータフィルタリング（`drop_params`）を介してこれを自動的に処理します。
+**推論：** `LLM_REASONING_EFFORT=medium`を設定します——o-seriesおよびGPT-5.xモデルでネイティブに動作します。GPT-5.4は`reasoning_effort`を`none`、`low`、`medium`、`high`、`xhigh`のレベルでサポートしています。o-seriesは`max_tokens`の代わりに`max_completion_tokens`が必要で、LiteLLMが自動的に処理します。注：`/v1/chat/completions`はツールと推論を組み合わせたGPT-5.xリクエストを拒否します——FIM OneはOpenAIモデルをResponses API経由でルーティングします（両方が一緒に動作する場所）、`/v1/responses`ルートのないエンドポイントのみがエージェントツール使用ステップ中に明示的な`reasoning_effort: "none"`でチャット補完にフォールバックします。GPT-5.4は`temperature=1`が必要です——FIM OneはLiteLLMのパラメータフィルタリング（`drop_params`）を介して自動的に処理します。
 
 | モデル | 入力 $/MTok | 出力 $/MTok | コンテキスト |
 |---|---|---|---|
-| `gpt-5.4` | $2.50 | $15.00 | 1,050K (272K超過時追加料金) |
+| `gpt-5.4` | $2.50 | $15.00 | 1,050K (272K超過時に追加料金) |
 | `gpt-5.4-mini` | $0.75 | $4.50 | 400K |
 | `gpt-5.4-nano` | $0.20 | $1.25 | 400K |
 | `o3` | $2.00 | $8.00 | 200K |

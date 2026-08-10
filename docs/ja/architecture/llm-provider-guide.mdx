@@ -210,19 +210,19 @@ LLM_TOOL_CHOICE_ENABLED=false
 LLM_JSON_MODE_ENABLED=false
 ```
 
-## 推論努力と思考設定
+## 推理努力と思考設定
 
-FIM One は、拡張思考/推論を制御するための 2 つの環境変数を公開しています:
+FIM Oneは、拡張思考/推理を制御するための2つの環境変数を公開しています：
 
 | 変数 | 値 | 効果 |
 |---|---|---|
-| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | LiteLLM に `reasoning_effort` として渡されます。Anthropic: `thinking` パラメータにマップされます。OpenAI o シリーズ: そのまま渡されます。その他: サイレントにドロップされます (`drop_params=True`)。 |
-| `LLM_REASONING_BUDGET_TOKENS` | 整数 (例: `10000`) | Anthropic のみ: 明示的な `thinking.budget_tokens` キャップを設定し、LiteLLM の自動マッピングをバイパスします。Claude モデルのコスト制御に便利です。 |
+| `LLM_REASONING_EFFORT` | `low`、`medium`、`high` | LiteLLMに`reasoning_effort`として渡されます。Anthropic：`thinking`パラメータにマップされます。OpenAI o-series：そのまま渡されます。その他：サイレントにドロップされます（`drop_params=True`）。 |
+| `LLM_REASONING_BUDGET_TOKENS` | 整数（例：`10000`） | Anthropicのみ：LiteLLMの自動マッピングをバイパスして、明示的な`thinking.budget_tokens`上限を設定します。Claudeモデルのコスト制御に便利です。 |
 
-`reasoning_effort` が設定され、モデルが `anthropic/` として解決される場合、以下の 2 つの追加動作が適用されます:
+`reasoning_effort`が設定され、モデルが`anthropic/`として解決される場合、以下の2つの追加動作が適用されます：
 
-1. **温度は 1.0 に強制されます。** Bedrock は思考が有効な場合、`temperature != 1.0` を拒否します。FIM One はこれを自動的に処理します — ユーザーアクションは不要です。
-2. **GPT-5.x とツール**: `tools` が存在する場合、`reasoning_effort` はサイレントにドロップされます。これは GPT-5 の `/v1/chat/completions` エンドポイントがこの組み合わせを拒否するためです。これは ReAct ツールループにのみ影響します。`tools` パラメータを持たない `structured_llm_call` 呼び出しは影響を受けません。
+1. **温度は1.0に強制されます。** Bedrockは思考が有効な場合、`temperature != 1.0`を拒否します。FIM Oneはこれを自動的に処理します——ユーザーアクションは不要です。
+2. **ツール付きGPT-5.x**：FIM Oneはまず、OpenAI Responses API（LiteLLMのチャット完了ブリッジ経由）を試します。ここではツールと推理が一緒に許可され、推理状態はツール呼び出しラウンド全体で保持されます。エンドポイントに使用可能な`/v1/responses`ルートがない場合（一部のOpenAI互換プロキシ）、FIM Oneはサイレントに`/v1/chat/completions`にフォールバックし、エンドポイントごとに判定を記憶します。そのフォールバックパスでは、ツール付きGPT-5.xは明示的に`reasoning_effort: "none"`を送信します。これは、エンドポイントがツール+推理の組み合わせを拒否し、フィールドを省略することが同等ではないためです（サーバーのデフォルトは`none`ではありません）。
 
 ## 構造化出力の防御的パース
 

@@ -77,19 +77,19 @@ Les différents fournisseurs implémentent la « réflexion » (raisonnement en 
 - **Always-on** — le modèle réfléchit toujours ; aucun paramètre API pour le désactiver. Vous devriez basculer vers une variante de modèle sans réflexion pour l'éviter.
 - **Au niveau du modèle** — la réflexion est déterminée par l'ID de modèle que vous choisissez (par exemple, `deepseek-reasoner` vs `deepseek-chat`), et non par un paramètre.
 
-### Matrice de Compatibilité
+### Matrice de compatibilité
 
-| Fournisseur | Comment Activer | Peut Désactiver ? | Sortie de Réflexion | Conflit FC Forcé ? |
+| Fournisseur | Comment activer | Peut désactiver ? | Sortie de réflexion | Conflit FC forcé ? |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | paramètre `reasoning_effort` | ✅ Opt-in | Interne (non visible à l'utilisateur) | ⚠️ L'API supprime `reasoning_effort` quand des outils sont présents |
-| **OpenAI** (série o) | Toujours activé | ❌ | Interne (jetons comptabilisés, non retournés) | ✅ Pas de conflit |
-| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ Opt-in | Champ API `reasoning_content` → Panneau de Réflexion | ❌ FC forcé + réflexion = **erreur 400** |
-| **Google Gemini** (2.5/3.x) | paramètre `reasoning_effort` | ✅ Opt-in | Interne | ✅ Pas de conflit |
-| **DeepSeek** | Variante de modèle (`deepseek-reasoner`) | Niveau du modèle | Champ API `reasoning_content` → Panneau de Réflexion | ⚠️ FC forcé peu fiable |
-| **Qwen** (3.x) | paramètre `enable_thinking` | ✅ Opt-in | Balises `<think>` dans le contenu | ⚠️ Support FC partiel |
-| **MiniMax** (M2.7) | Toujours activé | ❌ | Balises `<think>` dans le contenu | ✅ Pas de conflit |
-| **ChatGLM** (GLM-5) | Variante de modèle | Niveau du modèle | Non externalisée | N/A — FC forcé non supporté |
-| **Kimi** (K2-thinking) | Variante de modèle | Niveau du modèle | Champ API | ❌ FC forcé + réflexion = conflit |
+| **OpenAI** (GPT-5.x) | Paramètre `reasoning_effort` | ✅ Opt-in | Interne (non visible pour l'utilisateur) | ✅ Les outils et la réflexion s'exécutent ensemble via l'API Responses (automatique ; le fallback chat-completions force `reasoning_effort: "none"`) |
+| **OpenAI** (série o) | Toujours activé | ❌ | Interne (tokens comptabilisés, non retournés) | ✅ Aucun conflit |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ Opt-in | Champ API `reasoning_content` → Panneau Reasoning | ❌ FC forcé + réflexion = **erreur 400** |
+| **Google Gemini** (2.5/3.x) | Paramètre `reasoning_effort` | ✅ Opt-in | Interne | ✅ Aucun conflit |
+| **DeepSeek** | Variante de modèle (`deepseek-reasoner`) | Au niveau du modèle | Champ API `reasoning_content` → Panneau Reasoning | ⚠️ FC forcé peu fiable |
+| **Qwen** (3.x) | Paramètre `enable_thinking` | ✅ Opt-in | Balises `<think>` dans le contenu | ⚠️ Support FC partiel |
+| **MiniMax** (M2.7) | Toujours activé | ❌ | Balises `<think>` dans le contenu | ✅ Aucun conflit |
+| **ChatGLM** (GLM-5) | Variante de modèle | Au niveau du modèle | Non externalisé | N/A — FC forcé non supporté |
+| **Kimi** (K2-thinking) | Variante de modèle | Au niveau du modèle | Champ API | ❌ FC forcé + réflexion = conflit |
 
 ### Comment FIM One gère chaque cas
 
@@ -109,7 +109,7 @@ Si vous utilisez un modèle qui réfléchit toujours (MiniMax M2.7, DeepSeek R1)
 
 ### OpenAI
 
-L'option la plus éprouvée. Les modèles OpenAI offrent le meilleur support natif des appels de fonction (tool-calling), ce qui impacte directement la fiabilité de l'agent. La famille GPT-5 (août 2025+) représente un saut générationnel majeur par rapport à GPT-4.
+L'option la plus éprouvée. Les modèles OpenAI offrent le meilleur support natif des appels de fonction (tool-calling), ce qui impacte directement la fiabilité des agents. La famille GPT-5 (août 2025+) représente un bond générationnel majeur par rapport à GPT-4.
 
 **Modèles recommandés :**
 - Principal : `gpt-5.4` (dernier modèle phare, mars 2026 — contexte 1M+, utilisation informatique) ou `o3` (meilleure précision de raisonnement)
@@ -117,11 +117,11 @@ L'option la plus éprouvée. Les modèles OpenAI offrent le meilleur support nat
 - Budget Rapide : `gpt-5-mini` ($0.25/$2.00) et `gpt-5-nano` ($0.05/$0.40) restent disponibles à des prix plus bas
 - Héritage : `gpt-4.1` (toujours dans l'API, contexte 1M, bon pour le codage)
 
-**Raisonnement :** Définissez `LLM_REASONING_EFFORT=medium` — fonctionne nativement avec les modèles o-series et GPT-5.x. GPT-5.4 supporte `reasoning_effort` avec les niveaux `none`, `low`, `medium`, `high`, `xhigh`. La série o-series nécessite `max_completion_tokens` au lieu de `max_tokens`, que LiteLLM gère automatiquement. Remarque : GPT-5.x supprime toujours `reasoning_effort` lorsque des outils sont présents dans `/v1/chat/completions` — FIM One le supprime silencieusement lors des étapes d'utilisation d'outils d'agent afin que les workflows s'exécutent sans interruption. GPT-5.4 nécessite `temperature=1` — FIM One gère cela automatiquement via le filtrage des paramètres de LiteLLM (`drop_params`).
+**Raisonnement :** Définissez `LLM_REASONING_EFFORT=medium` — fonctionne nativement avec les modèles o-series et GPT-5.x. GPT-5.4 supporte `reasoning_effort` avec les niveaux `none`, `low`, `medium`, `high`, `xhigh`. La série o-series nécessite `max_completion_tokens` au lieu de `max_tokens`, que LiteLLM gère automatiquement. Remarque : `/v1/chat/completions` rejette les requêtes GPT-5.x qui combinent les outils avec le raisonnement — FIM One route les modèles OpenAI via l'API Responses en premier (où les deux fonctionnent ensemble), et seuls les points de terminaison sans route `/v1/responses` reviennent aux complétions de chat avec un `reasoning_effort: "none"` explicite lors des étapes d'utilisation d'outils d'agent. GPT-5.4 nécessite `temperature=1` — FIM One gère cela automatiquement via le filtrage des paramètres de LiteLLM (`drop_params`).
 
 | Modèle | Entrée $/MTok | Sortie $/MTok | Contexte |
 |---|---|---|---|
-| `gpt-5.4` | $2.50 | $15.00 | 1,050K (surcharge >272K) |
+| `gpt-5.4` | $2.50 | $15.00 | 1 050K (surcharge >272K) |
 | `gpt-5.4-mini` | $0.75 | $4.50 | 400K |
 | `gpt-5.4-nano` | $0.20 | $1.25 | 400K |
 | `o3` | $2.00 | $8.00 | 200K |

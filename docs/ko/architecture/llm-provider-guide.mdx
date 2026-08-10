@@ -212,17 +212,17 @@ LLM_JSON_MODE_ENABLED=false
 
 ## 추론 노력 및 사고 구성
 
-FIM One은 확장된 사고 / 추론을 제어하기 위해 두 개의 환경 변수를 노출합니다:
+FIM One은 확장 사고/추론을 제어하기 위해 두 개의 환경 변수를 노출합니다:
 
 | 변수 | 값 | 효과 |
 |---|---|---|
-| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | LiteLLM에 `reasoning_effort`로 전달됩니다. Anthropic: `thinking` 매개변수로 매핑됩니다. OpenAI o-series: 통과합니다. 기타: 자동으로 삭제됩니다 (`drop_params=True`). |
-| `LLM_REASONING_BUDGET_TOKENS` | 정수 (예: `10000`) | Anthropic만 해당: LiteLLM의 자동 매핑을 우회하여 명시적 `thinking.budget_tokens` 상한을 설정합니다. Claude 모델의 비용 제어에 유용합니다. |
+| `LLM_REASONING_EFFORT` | `low`, `medium`, `high` | LiteLLM에 `reasoning_effort`로 전달됩니다. Anthropic: `thinking` 매개변수로 매핑됩니다. OpenAI o-series: 통과됩니다. 기타: 자동으로 삭제됩니다(`drop_params=True`). |
+| `LLM_REASONING_BUDGET_TOKENS` | 정수(예: `10000`) | Anthropic만 해당: LiteLLM의 자동 매핑을 우회하여 명시적 `thinking.budget_tokens` 상한을 설정합니다. Claude 모델의 비용 제어에 유용합니다. |
 
 `reasoning_effort`가 설정되고 모델이 `anthropic/`로 확인되면 두 가지 추가 동작이 적용됩니다:
 
 1. **온도가 1.0으로 강제됩니다.** Bedrock은 사고가 활성화되었을 때 `temperature != 1.0`을 거부합니다. FIM One은 이를 자동으로 처리합니다 — 사용자 조치가 필요하지 않습니다.
-2. **도구가 있는 GPT-5.x**: `tools`가 있을 때 `reasoning_effort`는 자동으로 삭제됩니다. GPT-5 `/v1/chat/completions` 엔드포인트가 이 조합을 거부하기 때문입니다. 이는 ReAct 도구 루프에만 영향을 미칩니다. `tools` 매개변수가 없는 `structured_llm_call` 호출은 영향을 받지 않습니다.
+2. **도구를 사용하는 GPT-5.x**: FIM One은 먼저 OpenAI Responses API(LiteLLM의 채팅 완료 브리지를 통해)를 시도합니다. 여기서 도구와 추론이 함께 허용되고 추론 상태가 도구 호출 라운드 전체에서 유지됩니다. 엔드포인트에 사용 가능한 `/v1/responses` 경로가 없는 경우(일부 OpenAI 호환 프록시), FIM One은 자동으로 `/v1/chat/completions`로 폴백하고 엔드포인트별 판정을 기억합니다. 해당 폴백 경로에서 도구를 사용하는 GPT-5.x는 명시적 `reasoning_effort: "none"`을 전송합니다. 엔드포인트가 도구 + 추론 조합을 거부하고 필드를 생략하는 것이 동등하지 않기 때문입니다(서버 기본값은 `none`이 아닙니다).
 
 ## 구조화된 출력을 위한 방어적 파싱
 

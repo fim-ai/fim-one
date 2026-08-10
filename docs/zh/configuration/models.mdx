@@ -77,17 +77,17 @@ FIM One 的 DAG 规划器需要模型返回有效的结构化 JSON。在内部�
 
 ### 兼容性矩阵
 
-| 提供商 | 启用方式 | 可禁用? | 思考输出 | 强制 FC 冲突? |
+| 提供商 | 如何启用 | 可禁用？ | 推理输出 | 强制FC冲突？ |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | `reasoning_effort` 参数 | ✅ 可选择启用 | 内部（用户不可见） | ⚠️ 当存在工具时 API 会丢弃 `reasoning_effort` |
-| **OpenAI** (o-series) | 始终启用 | ❌ | 内部（计数但不返回） | ✅ 无冲突 |
-| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 可选择启用 | API `reasoning_content` 字段 → 推理面板 | ❌ 强制 FC + 思考 = **400 错误** |
-| **Google Gemini** (2.5/3.x) | `reasoning_effort` 参数 | ✅ 可选择启用 | 内部 | ✅ 无冲突 |
-| **DeepSeek** | 模型变体（`deepseek-reasoner`） | 模型级别 | API `reasoning_content` 字段 → 推理面板 | ⚠️ 强制 FC 不可靠 |
-| **Qwen** (3.x) | `enable_thinking` 参数 | ✅ 可选择启用 | 内容中的 `<think>` 标签 | ⚠️ 部分 FC 支持 |
+| **OpenAI** (GPT-5.x) | `reasoning_effort` 参数 | ✅ 可选 | 内部（用户不可见） | ✅ 工具 + 推理通过 Responses API 一起运行（自动；chat-completions 回退强制 `reasoning_effort: "none"`） |
+| **OpenAI** (o-series) | 始终启用 | ❌ | 内部（计数token，不返回） | ✅ 无冲突 |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 可选 | API `reasoning_content` 字段 → 推理面板 | ❌ 强制FC + 推理 = **400错误** |
+| **Google Gemini** (2.5/3.x) | `reasoning_effort` 参数 | ✅ 可选 | 内部 | ✅ 无冲突 |
+| **DeepSeek** | 模型变体（`deepseek-reasoner`） | 模型级 | API `reasoning_content` 字段 → 推理面板 | ⚠️ 强制FC不稳定 |
+| **Qwen** (3.x) | `enable_thinking` 参数 | ✅ 可选 | 内容中的 `<think>` 标签 | ⚠️ 部分FC支持 |
 | **MiniMax** (M2.7) | 始终启用 | ❌ | 内容中的 `<think>` 标签 | ✅ 无冲突 |
-| **ChatGLM** (GLM-5) | 模型变体 | 模型级别 | 未外部化 | N/A — 不支持强制 FC |
-| **Kimi** (K2-thinking) | 模型变体 | 模型级别 | API 字段 | ❌ 强制 FC + 思考 = 冲突 |
+| **ChatGLM** (GLM-5) | 模型变体 | 模型级 | 未外部化 | N/A — 不支持强制FC |
+| **Kimi** (K2-thinking) | 模型变体 | 模型级 | API 字段 | ❌ 强制FC + 推理 = 冲突 |
 
 ### FIM One 如何处理每种情况
 
@@ -107,19 +107,19 @@ FIM One 的 DAG 规划器需要模型返回有效的结构化 JSON。在内部�
 
 ### OpenAI
 
-最经过实战检验的选项。OpenAI 模型具有最好的原生函数调用（工具调用）支持，这直接影响智能体的可靠性。GPT-5 系列（2025 年 8 月+）相比 GPT-4 是一个重大的代际飞跃。
+最经过实战检验的选项。OpenAI模型拥有最好的原生函数调用（工具调用）支持，这直接影响智能体的可靠性。GPT-5系列（2025年8月+）相比GPT-4是一个重大的代际飞跃。
 
 **推荐模型：**
-- 主力：`gpt-5.4`（最新旗舰版，2026 年 3 月 — 1M+ 上下文，计算机使用）或 `o3`（最佳推理准确度）
-- 快速：`gpt-5.4-mini`（$0.75/$4.50 每 MTok）或 `gpt-5.4-nano`（最便宜 $0.20/$1.25 每 MTok）
-- 预算快速：`gpt-5-mini`（$0.25/$2.00）和 `gpt-5-nano`（$0.05/$0.40）以更低价格继续可用
-- 遗留：`gpt-4.1`（仍在 API 中，1M 上下文，适合编码）
+- 主力：`gpt-5.4`（最新旗舰，2026年3月——100万+上下文，计算机使用）或`o3`（最佳推理准确度）
+- 快速：`gpt-5.4-mini`（$0.75/$4.50每百万token）或`gpt-5.4-nano`（最便宜，$0.20/$1.25每百万token）
+- 预算快速：`gpt-5-mini`（$0.25/$2.00）和`gpt-5-nano`（$0.05/$0.40）以更低价格继续可用
+- 旧版：`gpt-4.1`（仍在API中，100万上下文，适合编码）
 
-**推理：** 设置 `LLM_REASONING_EFFORT=medium` — 与 o 系列和 GPT-5.x 模型原生兼容。GPT-5.4 支持 `reasoning_effort`，级别为 `none`、`low`、`medium`、`high`、`xhigh`。o 系列需要 `max_completion_tokens` 而不是 `max_tokens`，LiteLLM 会自动处理。注意：当工具存在于 `/v1/chat/completions` 中时，GPT-5.x 仍会丢弃 `reasoning_effort` — FIM One 在智能体工具使用步骤中会静默丢弃它，以便工作流不中断运行。GPT-5.4 需要 `temperature=1` — FIM One 通过 LiteLLM 的参数过滤（`drop_params`）自动处理。
+**推理：** 设置`LLM_REASONING_EFFORT=medium`——与o系列和GPT-5.x模型原生兼容。GPT-5.4支持`reasoning_effort`，级别为`none`、`low`、`medium`、`high`、`xhigh`。o系列需要`max_completion_tokens`而非`max_tokens`，LiteLLM会自动处理。注意：`/v1/chat/completions`拒绝将工具与推理结合的GPT-5.x请求——FIM One先通过Responses API路由OpenAI模型（两者在那里协同工作），只有没有`/v1/responses`路由的端点才会回退到聊天完成，在智能体工具使用步骤中显式设置`reasoning_effort: "none"`。GPT-5.4需要`temperature=1`——FIM One通过LiteLLM的参数过滤（`drop_params`）自动处理。
 
-| 模型 | 输入 $/MTok | 输出 $/MTok | 上下文 |
+| 模型 | 输入$/百万token | 输出$/百万token | 上下文 |
 |---|---|---|---|
-| `gpt-5.4` | $2.50 | $15.00 | 1,050K（>272K 时收费） |
+| `gpt-5.4` | $2.50 | $15.00 | 1,050K（超过272K收费） |
 | `gpt-5.4-mini` | $0.75 | $4.50 | 400K |
 | `gpt-5.4-nano` | $0.20 | $1.25 | 400K |
 | `o3` | $2.00 | $8.00 | 200K |

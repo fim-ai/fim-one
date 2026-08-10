@@ -85,7 +85,7 @@ Different providers implement "thinking" (chain-of-thought reasoning) in fundame
 
 | Provider | How to Enable | Can Disable? | Thinking Output | Forced FC Conflict? |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | `reasoning_effort` param | ✅ Opt-in | Internal (not visible to user) | ⚠️ API drops `reasoning_effort` when tools present |
+| **OpenAI** (GPT-5.x) | `reasoning_effort` param | ✅ Opt-in | Internal (not visible to user) | ✅ Tools + reasoning run together via the Responses API (automatic; chat-completions fallback forces `reasoning_effort: "none"`) |
 | **OpenAI** (o-series) | Always-on | ❌ | Internal (tokens counted, not returned) | ✅ No conflict |
 | **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ Opt-in | API `reasoning_content` field → Reasoning panel | ❌ Forced FC + thinking = **400 error** |
 | **Google Gemini** (2.5/3.x) | `reasoning_effort` param | ✅ Opt-in | Internal | ✅ No conflict |
@@ -123,7 +123,7 @@ The most battle-tested option. OpenAI models have the best native function calli
 - Budget Fast: `gpt-5-mini` ($0.25/$2.00) and `gpt-5-nano` ($0.05/$0.40) remain available at lower prices
 - Legacy: `gpt-4.1` (still in API, 1M context, good for coding)
 
-**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: GPT-5.x still drops `reasoning_effort` when tools are present in `/v1/chat/completions` — FIM One silently drops it during agent tool-use steps so workflows run uninterrupted. GPT-5.4 requires `temperature=1` — FIM One handles this automatically via LiteLLM's parameter filtering (`drop_params`).
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: `/v1/chat/completions` rejects GPT-5.x requests that combine tools with reasoning — FIM One routes OpenAI models through the Responses API first (where both work together), and only endpoints without a `/v1/responses` route fall back to chat completions with an explicit `reasoning_effort: "none"` during agent tool-use steps. GPT-5.4 requires `temperature=1` — FIM One handles this automatically via LiteLLM's parameter filtering (`drop_params`).
 
 | Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
