@@ -243,21 +243,29 @@ FIM One은 네 가지 `tool_choice` 상태 중 세 가지를 발생시킵니다:
 
 ### Relay/proxy gotchas
 
-타사 게이트웨이는 직접 제공자와 다른 방식으로 실패하며, 대부분의 실패는 무음입니다. 아래의 각 행은 증상을 메커니즘과 FIM One이 이미 취하고 있는 조치와 연결합니다.
+타사 게이트웨이는 직접 제공자와 다른 방식으로 실패하며, 대부분의 실패는 조용합니다. 아래의 각 행은 증상을 메커니즘과 짝지으며, FIM One이 이미 이에 대해 수행하는 작업을 설명합니다.
 
-| 증상 | 메커니즘 | FIM One의 조치 |
+<Note>
+**지원 범위.** FIM One은 이 페이지에 문서화된 동작을 1차 엔드포인트에 대해 보장합니다: OpenAI의 자체 API, Anthropic, Google, 그리고 자신의 모델을 직접 제공하는 모든 공급업체. 타사 relay는 최선의 노력 기반으로 지원되며, 요청에 relay가 수행하는 작업이 우리의 제어 범위를 벗어나고 자주 자신의 문서 범위도 벗어나기 때문에 해당 보장의 적용을 받지 않습니다. Relay는 매개변수를 삭제하거나, 히스토리를 다시 쓰거나, 캐시 중단점을 제거하거나, 부분적으로만 구현하는 프로토콜에 응답할 수 있으며, 대부분의 경우 오류 대신 `200`을 반환합니다.
+
+이것은 우리가 약속하는 것에 대한 진술이지, 실행되는 것에 대한 제한이 아닙니다. FIM One은 승인된 호스트의 허용 목록을 유지하지 않으며, 여기서 아무것도 도메인에 의해 제한되지 않습니다. 기능은 엔드포인트가 실제로 수행하는 작업으로 결정됩니다: 누락된 경로는 `404`로 응답하고 기억되며, 무시된 `include`는 빈 추론 항목을 생성하고 재생은 작동 불가능해지며, 거부된 요청은 해당 호출에 대해 폴백됩니다. 엔드포인트를 조사하는 것이 호스트명에서 기능을 추론하는 것보다 더 정확하며, Azure OpenAI, 엔터프라이즈 게이트웨이, 그리고 프로토콜을 올바르게 구현하는 자체 호스팅 프록시에 대해 계속 작동하는 유일한 접근 방식입니다.
+
+Relay가 폴백이 포착하지 못하는 방식으로 오작동하는 경우, `FIM_GPT5_RESPONSES_MODE`(`bridge` 또는 `off`) 또는 모델별 `tool_choice_enabled` 및 `json_mode_enabled` 토글로 프로토콜을 직접 고정하고, FIM One 버그로 제출하기 전에 1차 엔드포인트에 대해 재현하세요.
+</Note>
+
+| 증상 | 메커니즘 | FIM One이 수행하는 작업 |
 |---|---|---|
-| 추론이 구성되었지만 나타나지 않음 | 릴레이 경로에 `/claude` 힌트가 없어서 모델이 `openai/`로 해석됩니다. Chat Completions 스키마에는 추론 개념이 없으므로 요청이 프로세스를 떠나기 전에 매개변수가 삭제됩니다 | 구성 시 모델 이름과 해석된 접두사를 지정하는 경고를 기록하고, `provider`를 설정하거나 Anthropic 기본 URL을 사용하도록 지시합니다 (`OpenAICompatibleLLM.__init__`) |
-| 매개변수가 수락되는 것으로 나타나지만 효과가 없음 | `litellm.drop_params=True`는 해석된 제공자가 선언하지 않은 모든 항목을 자동으로 제거합니다 | 의도적입니다. 이를 통해 하나의 요청 빌더가 모든 제공자에서 작동합니다. 대가는 "오류 없음"이 매개변수가 도착했다는 증거가 아니라는 것입니다 |
-| OpenAI가 아닌 모델에서 첫 토큰이 몇 분 걸리거나 에이전트가 텍스트를 반환하고 도구 호출을 하지 않음 | 릴레이가 OpenAI가 아닌 모델에 대해 `/v1/responses`를 광고하고, 요청을 수락한 후, 전체 답변을 버퍼링한 후 재생합니다. Uniapi에서 Claude로 대략 4분의 첫 토큰 지연이 관찰되었으며, 두 번째 재현에서는 호출이 정상적으로 반환되었지만 에이전트가 도구 호출을 0개 만들었습니다. 오류가 없으므로 오류 트리거 폴백이 발생하지 않습니다 | 브리지는 Responses에서 기능 이득을 얻는 유일한 제품군인 GPT-5.x로 제한됩니다. 다른 모든 것은 chat completions로 직접 이동하고 프로브하지 않습니다 (`_dispatch_acompletion`, 커밋 `137ede4c`) |
-| `ValidationException: This model does not support assistant message prefill` | `anthropic/` 라우팅된 Bedrock 릴레이의 json_mode. LiteLLM은 `response_format`을 여는 중괄호를 어시스턴트 메시지로 미리 채워서 시뮬레이션하며, 최신 Bedrock 버전은 어시스턴트 턴으로 끝나는 대화를 거부합니다 | 해당 모델에 대해 `json_mode_enabled=false`를 설정하거나, 미리 채우기가 삽입되지 않는 OpenAI 호환 게이트웨이를 통해 라우팅합니다 |
-| Zhipu 엔드포인트에 대한 모든 호출에서 `404` | 클라이언트가 이미 `/v4`로 끝나는 기본 URL에 OpenAI 스타일 `/v1`을 추가합니다 | 제공자가 문서화한 대로 정확하게 기본 URL을 구성합니다. FIM One은 `api_base`를 변경하지 않고 전달합니다 |
-| 조용한 기간 후 `APIConnectionError: Connection error` | 중개자가 FIN이나 RST를 보내지 않고 유휴 풀된 연결을 회수했으며, httpx가 다음 쓰기에서 반죽은 소켓을 반환했습니다 | Keep-alive 만료 기본값은 5초이므로 턴 간 유휴 연결이 재사용되지 않고 폐기됩니다. `LLM_HTTP_MAX_KEEPALIVE=0`을 설정하여 재사용을 완전히 비활성화합니다 (`_get_shared_http_client`) |
-| `Cannot send a request, as the client has been closed` | LiteLLM이 유휴 TTL에서 캐시된 SDK 클라이언트를 제거했으며, OpenAI SDK가 해당 클라이언트가 보유하고 있던 공유 httpx 세션을 닫았습니다 | 풀은 모든 시도 전에 재검증되고 닫혀 있을 때 재구축되며, LiteLLM의 오래된 클라이언트 캐시가 함께 플러시됩니다 (`_get_shared_http_client`, `_flush_litellm_client_cache`) |
-| 청구된 입력 토큰이 보고된 캐시 읽기와 일치하지 않음 | 릴레이가 전달하기 전에 `cache_control`을 제거하므로 응답이 여전히 캐시 카운터를 보고하는 동안 전체 가격을 지불합니다 | `TurnProfiler`는 턴당 `read_tokens`과 `create_tokens`을 기록하며, 이는 릴레이 정직성 프로브로도 작동합니다. 청구서와 비교합니다 |
-| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | 릴레이가 `reasoning_effort` 필드의 값이 아닌 존재 여부에 따라 chat completions을 보호하므로, FIM One이 추론을 비활성화하기 위해 보내는 명시적 `none`이 가드도 트립합니다. Uniapi에서 `gpt-5.6-luna`로 관찰됨 | 아무것도 없으며, Responses 경로가 작동하는 동안 아무것도 필요하지 않습니다. 해당 모델은 Responses 요청이 이미 실패한 후에만 chat completions에 도달합니다. 이를 Responses를 원하는 릴레이의 신호로 읽으며, `FIM_GPT5_RESPONSES_MODE=off`를 설정하는 이유로 읽지 마세요 |
-| GPT-5.x가 Responses를 지원하는 엔드포인트에서 chat completions에 유지됨 | `404`가 해당 엔드포인트 및 모델에 대한 부정적 판정으로 캐시되었습니다 | `404`만 캐시됩니다. 누락된 경로는 구조적이기 때문입니다. `400`은 해당 호출에 대해 폴백되고 의도적으로 캐시되지 않으므로, 단일 오래된 추론 항목이 엔드포인트를 영구적으로 블랙리스트할 수 없습니다 (`_remember_native_failure`). 캐시는 프로세스별이므로 재시작은 어느 쪽이든 다시 프로브합니다 |
-| 추론 블록이 거부되거나 접두사 캐시가 히트하지 않음 | 릴레이가 기록을 다시 작성하거나 재정렬하므로 재생된 `signature`이 더 이상 일치하지 않습니다 | 재생은 `reasoning_replay_policy`에 의해 중앙에서 결정되며, Anthropic 계열 ID만 재생됩니다. 릴레이 뒤의 Claude 모델이 인식할 수 없는 ID를 가지고 있으면 정책 테이블에 해당 조각을 추가합니다 |
+| 사고(thinking)가 구성되었지만 나타나지 않음 | Relay 경로에 `/claude` 힌트가 없어서 모델이 `openai/`로 해석됩니다. Chat Completions 스키마에는 사고 개념이 없으므로 매개변수가 프로세스를 떠나기 전에 삭제됩니다 | 구성 시 모델과 해석된 접두사를 명명하는 경고를 기록하고, `provider`를 설정하거나 Anthropic 기본 URL을 사용하도록 지시합니다 (`OpenAICompatibleLLM.__init__`) |
+| 매개변수가 수락된 것으로 나타나지만 효과가 없음 | `litellm.drop_params=True`는 해석된 제공자가 선언하지 않은 모든 항목을 매개변수별로 조용히 제거합니다 | 의도적입니다. 모든 제공자에서 작동하는 하나의 요청 빌더를 유지합니다. 비용은 "오류 없음"이 매개변수가 도착했다는 증거가 아니라는 것입니다 |
+| 첫 토큰이 비-OpenAI 모델에서 몇 분이 걸리거나, 에이전트가 텍스트를 반환하고 도구 호출을 하지 않음 | Relay가 OpenAI가 아닌 모델에 대해 `/v1/responses`를 광고하고, 요청을 수락한 다음, 전체 응답을 버퍼링한 후 재생합니다. Uniapi에서 Claude로 대략 4분의 첫 토큰으로 관찰되었으며, 두 번째 재현에서는 호출이 정상적으로 반환되었지만 에이전트는 도구 호출을 하지 않았습니다. 아무것도 오류가 발생하지 않으므로 오류 트리거 폴백이 발생하지 않습니다 | Bridge는 Responses에서 기능을 얻는 유일한 제품군인 GPT-5.x에 대해 이점 제한됩니다. 다른 모든 것은 Chat Completions로 직접 이동하고 프로브하지 않습니다 (`_dispatch_acompletion`, commit `137ede4c`) |
+| `ValidationException: This model does not support assistant message prefill` | `anthropic/`-라우팅된 Bedrock relay의 json_mode. LiteLLM은 열린 중괄호를 보조 메시지로 미리 채워 `response_format`을 시뮬레이션하고, 최신 Bedrock 버전은 보조 턴으로 끝나는 대화를 거부합니다 | 해당 모델에 대해 `json_mode_enabled=false`를 설정하거나, 미리 채우기가 주입되지 않는 OpenAI 호환 게이트웨이를 통해 라우팅하세요 |
+| Zhipu 엔드포인트에 대한 모든 호출에서 `404` | 클라이언트가 이미 `/v4`로 끝나는 기본 URL에 OpenAI 스타일 `/v1`을 추가합니다 | 제공자가 문서화한 대로 정확하게 기본 URL을 구성하세요. FIM One은 `api_base`를 변경하지 않고 전달합니다 |
+| 조용한 기간 후 `APIConnectionError: Connection error` | 중개자가 FIN 또는 RST를 보내지 않고 유휴 풀된 연결을 회수했으며, httpx가 다음 쓰기에서 반죽은 소켓을 반환했습니다 | Keep-alive 만료는 기본값 5초이므로 턴 간 유휴 연결이 재사용되지 않고 폐기됩니다. 재사용을 완전히 비활성화하려면 `LLM_HTTP_MAX_KEEPALIVE=0`을 설정하세요 (`_get_shared_http_client`) |
+| `Cannot send a request, as the client has been closed` | LiteLLM이 유휴 TTL에서 캐시된 SDK 클라이언트를 제거했으며, OpenAI SDK가 해당 클라이언트가 보유한 공유 httpx 세션을 닫았습니다 | 풀은 모든 시도 전에 재검증되고 닫혔을 때 재구축되며, LiteLLM의 오래된 클라이언트 캐시는 함께 플러시됩니다 (`_get_shared_http_client`, `_flush_litellm_client_cache`) |
+| 청구된 입력 토큰이 보고된 캐시 읽기와 일치하지 않음 | Relay가 전달하기 전에 `cache_control`을 제거하므로 응답이 여전히 캐시 카운터를 보고하는 동안 전체 가격을 지불합니다 | `TurnProfiler`는 턴별로 `read_tokens` 및 `create_tokens`를 기록하며, 이는 relay 정직성 프로브로도 작동합니다. 청구서와 비교하세요 |
+| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | Relay는 값이 아닌 `reasoning_effort` 필드의 존재 여부에 따라 Chat Completions를 보호하므로, FIM One이 추론을 비활성화하기 위해 보내는 명시적 `none`이 보호를 트립합니다. Uniapi에서 `gpt-5.6-luna`로 관찰됨 | 아무것도 없으며, Responses 경로가 작동하는 동안 아무것도 필요하지 않습니다: 해당 모델은 Responses 요청이 이미 실패한 후에만 Chat Completions에 도달합니다. Relay가 Responses를 원한다는 신호로 읽으세요, `FIM_GPT5_RESPONSES_MODE=off`를 설정하는 이유가 아닙니다 |
+| GPT-5.x가 Responses를 지원하는 엔드포인트에서 Chat Completions에 머물러 있음 | `404`가 해당 엔드포인트 및 모델에 대한 부정적 판정으로 캐시되었습니다 | `404`만 캐시됩니다. 누락된 경로는 구조적이기 때문입니다. `400`은 해당 호출에 대해 폴백하고 의도적으로 캐시되지 않으므로 단일 오래된 추론 항목이 엔드포인트를 영구적으로 블랙리스트할 수 없습니다 (`_remember_native_failure`). 캐시는 프로세스별이므로 재시작은 어느 쪽이든 재프로브합니다 |
+| 사고 블록이 거부되거나 접두사 캐시가 히트하지 않음 | Relay가 히스토리를 다시 쓰거나 재정렬하므로 재생된 `signature`가 더 이상 일치하지 않습니다 | 재생은 `reasoning_replay_policy`에 의해 중앙에서 결정되며, Anthropic 제품군 ID만 재생합니다. Relay 뒤의 Claude 모델이 인식할 수 없는 ID를 전달하는 경우, 정책 테이블에 해당 조각을 추가하세요 |
 
 ## 모델별 권장 구성
 

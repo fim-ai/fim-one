@@ -245,19 +245,27 @@ FIM One 发出四个 `tool_choice` 状态中的三个：来自 ReAct 循环的 `
 
 第三方网关的故障方式与直接提供商不同，其中大多数故障是无声的。下表将症状与其机制配对，以及FIM One已经采取的措施。
 
+<Note>
+**支持边界。** FIM One保证本页面记录的行为适用于一方端点：OpenAI自己的API、Anthropic、Google以及任何直接提供其自有模型的供应商。第三方中继以尽力而为的方式支持，不受该保证覆盖，因为中继对请求所做的操作超出我们的控制范围，通常也超出其自身文档的范围。中继可以丢弃参数、重写历史、移除缓存断点或回答其仅部分实现的协议，在大多数情况下它返回`200`而不是错误。
+
+这是关于我们承诺的陈述，而不是对运行内容的限制。FIM One不维护批准主机的允许列表，这里没有任何内容受域名限制。能力由端点实际执行的操作决定：缺失的路由返回`404`并被记住，被忽略的`include`产生空推理项且重放变为无操作，被拒绝的请求为该调用回退。探测端点比从其主机名推断其能力更准确，这是保持与Azure OpenAI、企业网关和正确实现协议的自托管代理兼容的唯一方法。
+
+如果中继的行为方式回退无法捕获，使用`FIM_GPT5_RESPONSES_MODE`（`bridge`或`off`）或按模型的`tool_choice_enabled`和`json_mode_enabled`开关固定协议，并针对一方端点重现后再将其作为FIM One错误提交。
+</Note>
+
 | 症状 | 机制 | FIM One的做法 |
 |---|---|---|
-| 推理已配置但从不出现 | 中继路径没有`/claude`提示，所以模型解析为`openai/`。Chat Completions架构没有推理概念，所以参数在请求离开进程前被丢弃 | 在构造时记录警告，命名模型和解析的前缀，并告诉你设置`provider`或使用Anthropic基础URL（`OpenAICompatibleLLM.__init__`） |
-| 参数似乎被接受但没有效果 | `litellm.drop_params=True`无声地删除已解析提供商未声明的任何内容，按参数 | 有意为之。它保持一个请求构建器在每个提供商上工作。代价是"无错误"不是参数到达的证据 |
-| 非OpenAI模型上的第一个令牌需要数分钟，或智能体返回文本但不进行工具调用 | 中继为非OpenAI的模型宣传`/v1/responses`，接受请求，然后缓冲整个答案后重放。在Uniapi上观察到Claude大约四分钟到达第一个令牌，在第二次复现中调用正常返回但智能体随后进行零次工具调用。没有错误，所以错误触发的回退永远不会触发 | 网桥受益于GPT-5.x的限制，这是从Responses获得能力的唯一系列。其他所有内容直接进入聊天完成，从不探测（`_dispatch_acompletion`，提交`137ede4c`） |
-| `ValidationException: This model does not support assistant message prefill` | 在`anthropic/`路由的Bedrock中继上使用json_mode。LiteLLM通过预填开括号作为助手消息来模拟`response_format`，较新的Bedrock版本拒绝以助手轮次结尾的对话 | 为该模型设置`json_mode_enabled=false`，或通过OpenAI兼容网关路由，其中不注入预填 |
-| 对Zhipu端点的每次调用都出现`404` | 客户端将OpenAI风格的`/v1`附加到已经以`/v4`结尾的基础URL | 完全按照提供商文档配置基础URL。FIM One原样传递`api_base` |
-| 安静期后出现`APIConnectionError: Connection error` | 中介在发送FIN或RST之前回收了空闲的池连接，httpx在下一次写入时返回了半死的套接字 | 保活过期默认为5秒，所以跨轮空闲连接被丢弃而不是重用。设置`LLM_HTTP_MAX_KEEPALIVE=0`完全禁用重用（`_get_shared_http_client`） |
-| `Cannot send a request, as the client has been closed` | LiteLLM在其空闲TTL上驱逐了缓存的SDK客户端，该客户端持有的OpenAI SDK关闭了共享httpx会话 | 池在每次尝试前重新验证，关闭时重建，LiteLLM的过期客户端缓存随之刷新（`_get_shared_http_client`、`_flush_litellm_client_cache`） |
-| 计费输入令牌与报告的缓存读取不匹配 | 中继在转发前剥离`cache_control`，所以你支付全价而响应仍报告缓存计数器 | `TurnProfiler`按轮记录`read_tokens`和`create_tokens`，这兼作中继诚实探针。将其与发票比较 |
-| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | 中继基于`reasoning_effort`字段的存在而不是其值来保护聊天完成，所以FIM One发送的显式`none`来禁用推理也会触发保护。在Uniapi上使用`gpt-5.6-luna`观察到 | 无，当Responses路径工作时无需做任何事：该模型仅在Responses请求已失败后才到达聊天完成。将其视为中继想要Responses的信号，而不是设置`FIM_GPT5_RESPONSES_MODE=off`的理由 |
-| GPT-5.x在支持Responses的端点上保持聊天完成 | `404`被缓存为该端点和模型的负面判决 | 仅缓存`404`，因为缺失路由是结构性的。`400`为该次调用回退且有意不缓存，所以单个过期推理项不能永久将端点列入黑名单（`_remember_native_failure`）。缓存是按进程的，所以重启会重新探测 |
-| 思维块被拒绝或前缀缓存从不命中 | 中继重写或重新排序历史，所以重放的`signature`不再匹配 | 重放由`reasoning_replay_policy`集中决定，仅Anthropic系列id重放。如果中继后的Claude模型携带无法识别的id，将其片段添加到策略表 |
+| 思考已配置但从不出现 | 中继路径没有`/claude`提示，所以模型解析为`openai/`。Chat Completions架构没有思考概念，所以参数在请求离开进程前被丢弃 | 在构造时记录警告，命名模型和解析的前缀，并告诉你设置`provider`或使用Anthropic基础URL（`OpenAICompatibleLLM.__init__`） |
+| 参数似乎被接受但无效 | `litellm.drop_params=True`无声地按参数移除解析的提供商未声明的任何内容 | 有意为之。它使一个请求构建器在每个提供商上工作。代价是"无错误"不是参数到达的证据 |
+| 非OpenAI模型上首个令牌需要数分钟，或智能体返回文本且不进行工具调用 | 中继为非OpenAI的模型宣传`/v1/responses`，接受请求，然后缓冲整个答案后重放。在Uniapi与Claude上观察到，大约四分钟到首个令牌，在第二次重现中调用正常返回但智能体随后进行了零次工具调用。没有错误，所以错误触发的回退从不触发 | 网桥受益于GPT-5.x，唯一从Responses获得能力的系列。其他一切直接进入聊天完成且从不探测（`_dispatch_acompletion`，提交`137ede4c`） |
+| `ValidationException: This model does not support assistant message prefill` | 在`anthropic/`路由的Bedrock中继上的json_mode。LiteLLM通过将开括号预填充为助手消息来模拟`response_format`，较新的Bedrock版本拒绝以助手轮次结尾的对话 | 为该模型设置`json_mode_enabled=false`，或通过不注入预填充的OpenAI兼容网关路由 |
+| 对Zhipu端点的每次调用都返回`404` | 客户端将OpenAI风格的`/v1`附加到已以`/v4`结尾的基础URL | 完全按照提供商文档配置基础URL。FIM One原样传递`api_base` |
+| 安静期后出现`APIConnectionError: Connection error` | 中介在不发送FIN或RST的情况下回收了空闲池连接，httpx在下一次写入时返回了半死套接字 | 保活过期默认为5秒，所以跨轮空闲连接被丢弃而不是重用。设置`LLM_HTTP_MAX_KEEPALIVE=0`完全禁用重用（`_get_shared_http_client`） |
+| `Cannot send a request, as the client has been closed` | LiteLLM在其空闲TTL上驱逐了缓存的SDK客户端，该客户端持有的OpenAI SDK关闭了共享httpx会话 | 池在每次尝试前被重新验证，关闭时重建，LiteLLM的陈旧客户端缓存随之刷新（`_get_shared_http_client`、`_flush_litellm_client_cache`） |
+| 计费输入令牌与报告的缓存读取不匹配 | 中继在转发前移除`cache_control`，所以你支付全价而响应仍报告缓存计数器 | `TurnProfiler`按轮记录`read_tokens`和`create_tokens`，这也充当中继诚实探针。将其与发票比较 |
+| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | 中继根据`reasoning_effort`字段的存在而不是其值来保护聊天完成，所以FIM One发送的显式`none`来禁用推理也触发了保护。在Uniapi与`gpt-5.6-luna`上观察到 | 无，当Responses路径工作时也不需要：该模型仅在Responses请求已失败后才到达聊天完成。将其理解为中继想要Responses的信号，而不是设置`FIM_GPT5_RESPONSES_MODE=off`的理由 |
+| GPT-5.x在支持Responses的端点上停留在聊天完成 | `404`被缓存为该端点和模型的负面判决 | 仅`404`被缓存，因为缺失的路由是结构性的。`400`为该单次调用回退且故意不缓存，所以单个陈旧推理项无法永久将端点列入黑名单（`_remember_native_failure`）。缓存是按进程的，所以重启会重新探测 |
+| 思考块被拒绝或前缀缓存从不命中 | 中继重写或重新排序历史，所以重放的`signature`不再匹配 | 重放由`reasoning_replay_policy`集中决定，仅Anthropic系列id重放。如果中继后的Claude模型携带无法识别的id，将其片段添加到策略表 |
 
 ## 推荐的按模型配置
 

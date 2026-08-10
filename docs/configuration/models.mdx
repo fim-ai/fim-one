@@ -510,6 +510,10 @@ If your relay platform uses non-standard path conventions (e.g., no `/claude` or
 
 Relays also fail in ways a direct provider does not, and most of those failures are silent: a dropped parameter, a stripped cache breakpoint, a buffered stream that never errors. The symptom-by-symptom list is in [Relay/proxy gotchas](/architecture/llm-provider-guide#relayproxy-gotchas).
 
+<Note>
+**Relays are best-effort.** FIM One's documented behaviour is guaranteed for first-party endpoints, meaning OpenAI, Anthropic, Google, and other vendors serving their own models directly. Relays work and are widely used, including for models that are only reachable that way, but what a relay does to a request is outside our control, so they carry no such guarantee. Nothing is blocked by hostname: capability is probed per endpoint, and unsupported behaviour falls back on its own. Before reporting a model-layer bug, reproduce it against the first-party endpoint.
+</Note>
+
 ---
 
 ## Configuration Strategy

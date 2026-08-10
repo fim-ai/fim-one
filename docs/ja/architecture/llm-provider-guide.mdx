@@ -241,23 +241,31 @@ FIM Oneは4つの`tool_choice`状態のうち3つを発行します：ReACtル�
 
 `unsupported`と`informational_only`はワイヤ上で同じバイトを生成します。どちらも発信履歴から`reasoning_content`と`signature`を削除します。意図が異なるため、明らかに推論するがランディングが`unsupported`のモデルは、ライブバグではなくフラグメントテーブルのギャップです。
 
-### Relay/proxy の落とし穴
+### Relay/proxy gotchas
 
-サードパーティゲートウェイは直接プロバイダとは異なる方法で失敗し、そのほとんどは静かに失敗します。以下の各行は、症状とそのメカニズム、および FIM One がすでに行っていることをペアにしています。
+Third-party gateways fail in ways a direct provider does not, and most of those failures are silent. Each row below pairs the symptom with its mechanism and with what FIM One already does about it.
 
-| 症状 | メカニズム | FIM One の対応 |
+<Note>
+**Support boundary.** FIM One guarantees the behaviour documented on this page for first-party endpoints: OpenAI's own API, Anthropic, Google, and any vendor serving its own models directly. Third-party relays are supported on a best-effort basis and are not covered by that guarantee, because what a relay does to a request is outside our control and frequently outside its own documentation. A relay can drop a parameter, rewrite history, strip a cache breakpoint, or answer a protocol it only partially implements, and in most of those cases it returns a `200` rather than an error.
+
+This is a statement about what we promise, not a restriction on what runs. FIM One does not maintain an allowlist of approved hosts, and nothing here is gated on a domain. Capability is decided by what an endpoint actually does: a missing route answers `404` and is remembered, an ignored `include` yields empty reasoning items and the replay becomes a no-op, and a rejected request falls back for that call. Probing the endpoint is more accurate than inferring its capabilities from its hostname, and it is the only approach that keeps working for Azure OpenAI, enterprise gateways, and self-hosted proxies that implement the protocol correctly.
+
+If a relay misbehaves in a way the fallbacks do not catch, pin the protocol yourself with `FIM_GPT5_RESPONSES_MODE` (`bridge` or `off`) or the per-model `tool_choice_enabled` and `json_mode_enabled` toggles, and reproduce against the first-party endpoint before filing it as a FIM One bug.
+</Note>
+
+| 症状 | メカニズム | FIM Oneの対応 |
 |---|---|---|
-| 思考が設定されているが表示されない | リレーパスに `/claude` ヒントがないため、モデルが `openai/` として解決されます。Chat Completions スキーマには思考の概念がないため、リクエストがプロセスを離れる前にパラメータが削除されます | 構築時に警告をログに記録し、モデルと解決されたプレフィックスを名前付けし、`provider` を設定するか Anthropic ベース URL を使用するよう指示します（`OpenAICompatibleLLM.__init__`） |
-| パラメータが受け入れられているように見えるが効果がない | `litellm.drop_params=True` は、解決されたプロバイダが宣言していないものをすべて削除し、パラメータごとに静かに削除します | 意図的です。これにより、1 つのリクエストビルダーがすべてのプロバイダで機能します。代償として、「エラーなし」はパラメータが到着したことの証拠ではありません |
-| 最初のトークンが非 OpenAI モデルで数分かかる、またはエージェントがテキストを返して工具呼び出しを行わない | リレーが OpenAI 以外のモデルに対して `/v1/responses` をアドバタイズし、リクエストを受け入れ、その後全体の回答をバッファリングしてから再生します。Uniapi で Claude を使用して約 4 分の最初のトークンで観察され、2 番目の再現では呼び出しは正常に返されましたが、エージェントはその後ゼロの工具呼び出しを行いました。エラーが発生しないため、エラーがトリガーされたフォールバックは発火しません | ブリッジは GPT-5.x に利益ゲートされており、Responses から機能を得る唯一のファミリです。その他はすべてチャット完了に直接進み、プローブを行いません（`_dispatch_acompletion`、コミット `137ede4c`） |
-| `ValidationException: This model does not support assistant message prefill` | `anthropic/` ルーティングされた Bedrock リレーの json_mode。LiteLLM は開き括弧をアシスタントメッセージとして事前入力することで `response_format` をシミュレートし、より新しい Bedrock バージョンはアシスタントターンで終わる会話を拒否します | そのモデルに対して `json_mode_enabled=false` を設定するか、プレフィルが挿入されない OpenAI 互換ゲートウェイを通じてルーティングします |
-| Zhipu エンドポイントへのすべての呼び出しで `404` | クライアントが OpenAI スタイルの `/v1` を既に `/v4` で終わるベース URL に追加します | プロバイダが文書化しているとおりにベース URL を正確に設定します。FIM One は `api_base` を変更せずに渡します |
-| 静かな期間後の `APIConnectionError: Connection error` | 中間者が FIN または RST を送信せずにアイドルプールされた接続を回収し、httpx が次の書き込みで半分死んだソケットを返しました | キープアライブ有効期限はデフォルトで 5 秒なので、ターン間のアイドル接続は再利用されるのではなく破棄されます。`LLM_HTTP_MAX_KEEPALIVE=0` を設定して再利用を完全に無効にします（`_get_shared_http_client`） |
-| `Cannot send a request, as the client has been closed` | LiteLLM はアイドル TTL でキャッシュされた SDK クライアントを削除し、OpenAI SDK はそのクライアントが保持していた共有 httpx セッションを閉じました | プールは試行前に再検証され、閉じられたときに再構築され、LiteLLM の古いクライアントキャッシュは一緒にフラッシュされます（`_get_shared_http_client`、`_flush_litellm_client_cache`） |
-| 請求された入力トークンが報告されたキャッシュ読み取りと一致しない | リレーが転送前に `cache_control` を削除するため、応答がキャッシュカウンタを報告している間、全額を支払います | `TurnProfiler` はターンごとに `read_tokens` と `create_tokens` をログに記録し、これはリレーの正直性プローブとしても機能します。請求書と比較してください |
-| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | リレーは `reasoning_effort` フィールドの値ではなく存在に基づいてチャット完了をガードするため、推論を無効にするために FIM One が送信する明示的な `none` がガードをトリップします。Uniapi で `gpt-5.6-luna` で観察されました | 何もありません。Responses パスが機能している間は何も必要ありません。そのモデルは Responses リクエストが既に失敗した後にのみチャット完了に到達します。これをリレーが Responses を望んでいるという兆候として読んでください。`FIM_GPT5_RESPONSES_MODE=off` を設定する理由ではありません |
-| GPT-5.x が Responses をサポートするエンドポイントでチャット完了に留まる | `404` がそのエンドポイントとモデルの負の判定としてキャッシュされました | `404` のみがキャッシュされます。なぜなら、欠落したルートは構造的だからです。`400` はその 1 つの呼び出しにフォールバックし、意図的にキャッシュされないため、単一の古い推論項目がエンドポイントを永続的にブラックリストに登録することはできません（`_remember_native_failure`）。キャッシュはプロセスごとなので、再起動はいずれにせよ再プローブします |
-| 思考ブロックが拒否されるか、プレフィックスキャッシュがヒットしない | リレーが履歴を書き直すか並べ替えるため、再生された `signature` はもはや一致しません | 再生は `reasoning_replay_policy` によって中央で決定され、Anthropic ファミリの ID のみが再生されます。リレーの背後にある Claude モデルが認識できない ID を持つ場合、そのフラグメントをポリシーテーブルに追加します |
+| Thinkingが設定されているが表示されない | リレーパスに `/claude` ヒントがないため、モデルが `openai/` として解決される。Chat Completions スキーマには thinking の概念がないため、リクエストがプロセスを離れる前にパラメータが削除される | 構築時に警告をログに記録し、モデルと解決されたプレフィックスを名前付けし、`provider` を設定するか Anthropic ベース URL を使用するよう指示する（`OpenAICompatibleLLM.__init__`） |
+| パラメータが受け入れられているように見えるが効果がない | `litellm.drop_params=True` は、解決されたプロバイダが宣言していないすべてのものをサイレントに、パラメータごとに削除する | 意図的。1つのリクエストビルダーがすべてのプロバイダで機能するようにする。代償として、「エラーなし」はパラメータが到達したことの証拠ではない |
+| 非OpenAIモデルで最初のトークンに数分かかるか、エージェントがテキストを返すがツール呼び出しを行わない | リレーが OpenAI 以外のモデルに対して `/v1/responses` をアドバタイズし、リクエストを受け入れてから、答え全体をバッファリングしてリプレイする。Uniapi で Claude を使用した場合、最初のトークンまでにおよそ4分かかることが観察されており、2番目の再現では呼び出しは正常に返されたがエージェントはその後ツール呼び出しを0回行った。何もエラーにならないため、エラーがトリガーされたフォールバックは発火しない | ブリッジは GPT-5.x にメリットゲートされており、これが Responses から機能を得る唯一のファミリーである。その他はすべてチャット補完に直接進み、プローブを行わない（`_dispatch_acompletion`、コミット `137ede4c`） |
+| `ValidationException: This model does not support assistant message prefill` | `anthropic/` ルーティングされた Bedrock リレー上の json_mode。LiteLLM は開き括弧をアシスタントメッセージとしてプリフィルすることで `response_format` をシミュレートし、より新しい Bedrock バージョンはアシスタントターンで終わる会話を拒否する | そのモデルに対して `json_mode_enabled=false` を設定するか、プリフィルが挿入されない OpenAI 互換ゲートウェイを通じてルーティングする |
+| Zhipu エンドポイントへのすべての呼び出しで `404` | クライアントが OpenAI スタイルの `/v1` を既に `/v4` で終わるベース URL に追加する | プロバイダが文書化したとおりにベース URL を正確に設定する。FIM One は `api_base` を変更せずに渡す |
+| 静かな期間後の `APIConnectionError: Connection error` | 中間者が FIN または RST を送信せずにアイドル状態のプール接続を回収し、httpx が次の書き込みで半分死んだソケットを返す | キープアライブ有効期限はデフォルトで5秒なので、ターン間のアイドル接続は再利用されるのではなく破棄される。接続の再利用を完全に無効にするには `LLM_HTTP_MAX_KEEPALIVE=0` を設定する（`_get_shared_http_client`） |
+| `Cannot send a request, as the client has been closed` | LiteLLM がアイドル TTL でキャッシュされた SDK クライアントを削除し、OpenAI SDK がそのクライアントが保持していた共有 httpx セッションを閉じた | プールは試行前に再検証され、閉じられたときに再構築され、LiteLLM の古いクライアントキャッシュは一緒にフラッシュされる（`_get_shared_http_client`、`_flush_litellm_client_cache`） |
+| 請求入力トークンが報告されたキャッシュ読み取りと一致しない | リレーが転送前に `cache_control` を削除するため、レスポンスがキャッシュカウンターを報告している間、全額を支払う | `TurnProfiler` はターンごとに `read_tokens` と `create_tokens` をログに記録し、これはリレー誠実性プローブとしても機能する。請求書と比較する |
+| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | リレーが `reasoning_effort` フィールドの値ではなく存在に基づいてチャット補完をガードするため、FIM One が推論を無効にするために送信する明示的な `none` がガードをトリップする。Uniapi で `gpt-5.6-luna` を使用した場合に観察された | 何もしない。Responses パスが機能している間は何も必要ない。そのモデルは Responses リクエストが既に失敗した後にのみチャット補完に到達する。リレーが Responses を望んでいるという兆候として読み、`FIM_GPT5_RESPONSES_MODE=off` を設定する理由ではない |
+| GPT-5.x が Responses をサポートするエンドポイント上でチャット補完に留まる | `404` がそのエンドポイントとモデルの負の判定としてキャッシュされた | 欠落しているルートは構造的であるため、`404` のみがキャッシュされる。`400` はその1つの呼び出しに対してフォールバックし、単一の古い推論項目がエンドポイントを永続的にブラックリストに登録できないように意図的にキャッシュされない（`_remember_native_failure`）。キャッシュはプロセスごとなので、再起動はどちらの方法でも再プローブする |
+| Thinking ブロックが拒否されるか、プレフィックスキャッシュがヒットしない | リレーが履歴を書き直すか並べ替えるため、リプレイされた `signature` が一致しなくなる | リプレイは `reasoning_replay_policy` によって中央で決定され、Anthropic ファミリー ID のみがすべてリプレイする。リレーの背後にある Claude モデルが認識不可能な ID を持つ場合、そのフラグメントをポリシーテーブルに追加する |
 
 ## モデルごとの推奨設定
 

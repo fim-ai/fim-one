@@ -488,17 +488,21 @@ LLM_REASONING_EFFORT=medium
 Si l'URL du relais était `https://my-relay.example.com/v1` à la place, l'indice `/claude` serait manquant — FIM One reviendrait au protocole compatible OpenAI, envoyant des requêtes `/v1/chat/completions` à un point de terminaison natif Claude, ce qui échouerait. **Le chemin URL est important.**
 </Warning>
 
-### Pourquoi c'est important
+### Pourquoi cela importe
 
-- **Point de terminaison natif Anthropic** vous donne un support approprié de `reasoning_content` (extended thinking visible dans l'UI), un format correct pour les appels d'outils, et une authentification `x-api-key` — des fonctionnalités perdues lors de l'utilisation de la traduction compatible OpenAI.
-- **Point de terminaison natif Google** vous donne les paramètres Gemini natifs et une authentification `x-goog-api-key`.
+- **Point de terminaison natif Anthropic** vous donne un support approprié de `reasoning_content` (extended thinking visible dans l'interface utilisateur), un format correct d'appel d'outils, et une authentification `x-api-key` — des fonctionnalités perdues lors de l'utilisation de la traduction compatible OpenAI.
+- **Point de terminaison natif Google** vous donne des paramètres Gemini natifs et une authentification `x-goog-api-key`.
 - **Compatible OpenAI** est le recours universel et fonctionne avec n'importe quel relais, mais les fonctionnalités spécifiques au fournisseur (comme la sortie extended thinking) peuvent ne pas être disponibles.
 
 <Note>
-Si votre plateforme de relais utilise des conventions de chemin non standard (par exemple, pas de `/claude` ou `/anthropic` dans l'URL), FIM One revient au protocole compatible OpenAI — ce qui fonctionne pour la plupart des cas d'usage. Pour un support complet du protocole natif, vous pouvez définir le champ `provider` explicitement via l'interface utilisateur de configuration du modèle d'administration.
+Si votre plateforme de relais utilise des conventions de chemin non standard (par exemple, pas de `/claude` ou `/anthropic` dans l'URL), FIM One revient au protocole compatible OpenAI — qui fonctionne pour la plupart des cas d'usage. Pour un support complet du protocole natif, vous pouvez définir explicitement le champ `provider` via l'interface utilisateur de configuration du modèle admin.
 </Note>
 
-Les relais échouent également de manières qu'un fournisseur direct ne fait pas, et la plupart de ces défaillances sont silencieuses : un paramètre supprimé, un point de rupture de cache retiré, un flux mis en mémoire tampon qui ne génère jamais d'erreur. La liste symptôme par symptôme se trouve dans [Relay/proxy gotchas](/architecture/llm-provider-guide#relayproxy-gotchas).
+Les relais échouent également de manière qu'un fournisseur direct ne le ferait pas, et la plupart de ces défaillances sont silencieuses : un paramètre supprimé, un point de rupture de cache retiré, un flux mis en mémoire tampon qui ne génère jamais d'erreur. La liste symptôme par symptôme se trouve dans [Relais/proxy gotchas](/architecture/llm-provider-guide#relayproxy-gotchas).
+
+<Note>
+**Les relais sont au mieux des efforts.** Le comportement documenté de FIM One est garanti pour les points de terminaison de première partie, c'est-à-dire OpenAI, Anthropic, Google et d'autres fournisseurs servant directement leurs propres modèles. Les relais fonctionnent et sont largement utilisés, y compris pour les modèles qui ne sont accessibles que de cette façon, mais ce qu'un relais fait à une requête échappe à notre contrôle, donc ils ne portent aucune garantie. Rien n'est bloqué par nom d'hôte : la capacité est sondée par point de terminaison, et le comportement non supporté revient de lui-même. Avant de signaler un bug au niveau du modèle, reproduisez-le par rapport au point de terminaison de première partie.
+</Note>
 
 ## Stratégie de Configuration
 

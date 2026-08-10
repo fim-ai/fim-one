@@ -492,15 +492,19 @@ Wenn die gleiche Relay-URL stattdessen `https://my-relay.example.com/v1` wäre, 
 
 ### Warum das wichtig ist
 
-- **Anthropic nativer Endpunkt** bietet dir ordnungsgemäße `reasoning_content`-Unterstützung (erweitertes Denken sichtbar in der UI), korrektes Tool-Calling-Format und `x-api-key`-Authentifizierung — Features, die bei der Verwendung von OpenAI-kompatibler Übersetzung verloren gehen.
-- **Google nativer Endpunkt** bietet native Gemini-Parameter und `x-goog-api-key`-Authentifizierung.
-- **OpenAI kompatibel** ist der universelle Fallback und funktioniert mit jedem Relay, aber anbieterspezifische Features (wie erweiterte Thinking-Ausgabe) sind möglicherweise nicht verfügbar.
+- **Anthropic nativer Endpunkt** bietet dir ordnungsgemäße `reasoning_content`-Unterstützung (erweitertes Denken sichtbar in der UI), korrektes Tool-Calling-Format und `x-api-key`-Authentifizierung — Funktionen, die bei Verwendung der OpenAI-kompatiblen Übersetzung verloren gehen.
+- **Google nativer Endpunkt** bietet dir native Gemini-Parameter und `x-goog-api-key`-Authentifizierung.
+- **OpenAI kompatibel** ist der universelle Fallback und funktioniert mit jedem Relay, aber anbieterspezifische Funktionen (wie die Ausgabe des erweiterten Denkens) sind möglicherweise nicht verfügbar.
 
 <Note>
 Wenn deine Relay-Plattform nicht standardisierte Pfadkonventionen verwendet (z. B. kein `/claude` oder `/anthropic` in der URL), greift FIM One auf das OpenAI-kompatible Protokoll zurück — das für die meisten Anwendungsfälle funktioniert. Für vollständige native Protokollunterstützung kannst du das Feld `provider` explizit über die Admin-Modellkonfiguration UI setzen.
 </Note>
 
-Relays schlagen auch auf Weise fehl, die ein direkter Anbieter nicht tut, und die meisten dieser Fehler sind stumm: ein gelöschter Parameter, ein entfernter Cache-Breakpoint, ein gepufferter Stream, der nie einen Fehler auslöst. Die symptomweise Liste findest du unter [Relay/Proxy-Fallstricke](/architecture/llm-provider-guide#relayproxy-gotchas).
+Relays schlagen auch auf Weise fehl, die ein direkter Anbieter nicht tut, und die meisten dieser Fehler sind stumm: ein gelöschter Parameter, ein entfernter Cache-Breakpoint, ein gepufferter Stream, der nie einen Fehler verursacht. Die Symptom-für-Symptom-Liste findest du unter [Relay/Proxy-Fallstricke](/architecture/llm-provider-guide#relayproxy-gotchas).
+
+<Note>
+**Relays sind Best-Effort.** Das dokumentierte Verhalten von FIM One ist für First-Party-Endpunkte garantiert, d. h. OpenAI, Anthropic, Google und andere Anbieter, die ihre eigenen Modelle direkt bereitstellen. Relays funktionieren und werden häufig verwendet, auch für Modelle, die nur auf diese Weise erreichbar sind, aber was ein Relay mit einer Anfrage tut, liegt außerhalb unserer Kontrolle, daher tragen sie keine solche Garantie. Nichts wird durch Hostnamen blockiert: Die Fähigkeit wird pro Endpunkt überprüft, und nicht unterstütztes Verhalten greift von selbst zurück. Bevor du einen Fehler auf Modellebene meldest, reproduziere ihn gegen den First-Party-Endpunkt.
+</Note>
 
 ## Konfigurationsstrategie
 

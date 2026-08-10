@@ -490,15 +490,19 @@ LLM_REASONING_EFFORT=medium
 
 ### 为什么这很重要
 
-- **Anthropic原生端点**为你提供正确的`reasoning_content`支持（扩展思考在UI中可见）、正确的工具调用格式和`x-api-key`身份验证——这些功能在使用OpenAI兼容转换时会丢失。
+- **Anthropic原生端点**为你提供适当的`reasoning_content`支持（扩展思考在UI中可见）、正确的工具调用格式和`x-api-key`身份验证——这些功能在使用OpenAI兼容翻译时会丢失。
 - **Google原生端点**提供原生Gemini参数和`x-goog-api-key`身份验证。
 - **OpenAI兼容**是通用后备方案，适用于任何中继，但提供商特定功能（如扩展思考输出）可能不可用。
 
 <Note>
-如果你的中继平台使用非标准路径约定（例如，URL中没有`/claude`或`/anthropic`），FIM One会回退到OpenAI兼容协议——这适用于大多数用例。为了获得完整的原生协议支持，你可以通过管理员模型配置UI显式设置`provider`字段。
+如果你的中继平台使用非标准路径约定（例如，URL中没有`/claude`或`/anthropic`），FIM One会回退到OpenAI兼容协议——这对大多数用例都有效。要获得完整的原生协议支持，你可以通过管理员模型配置UI显式设置`provider`字段。
 </Note>
 
-中继也会以直接提供商不会的方式失败，而且这些失败大多是无声的：丢失的参数、被剥离的缓存断点、永远不会出错的缓冲流。症状列表详见[中继/代理陷阱](/architecture/llm-provider-guide#relayproxy-gotchas)。
+中继的故障方式与直接提供商不同，其中大多数故障是无声的：丢弃的参数、被剥离的缓存断点、永远不会出错的缓冲流。症状列表详见[中继/代理陷阱](/architecture/llm-provider-guide#relayproxy-gotchas)。
+
+<Note>
+**中继是尽力而为的。** FIM One的文档化行为仅对第一方端点有保证，即OpenAI、Anthropic、Google和其他直接提供自有模型的供应商。中继可以工作且被广泛使用，包括对于只能通过这种方式访问的模型，但中继对请求的处理不在我们的控制范围内，因此它们不提供此类保证。没有任何东西被主机名阻止：能力按端点探测，不支持的行为会自行回退。在报告模型层错误之前，请针对第一方端点重现该问题。
+</Note>
 
 ## 配置策略
 
