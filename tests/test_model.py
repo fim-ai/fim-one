@@ -852,12 +852,17 @@ class TestBuildRequestKwargs:
 
 
 class TestResponsesBridgeDispatch:
-    """Responses API first for openai/-routed models, cached fallback on 404."""
+    """LiteLLM's chat→responses bridge: GPT-5.x only, cached fallback on 404.
+
+    The bridge is the rollback path now that GPT-5.x talks /v1/responses
+    natively, so every test here pins ``FIM_GPT5_RESPONSES_MODE=bridge``.
+    """
 
     @pytest.fixture(autouse=True)
-    def _clear_bridge_cache(self) -> Any:
+    def _clear_bridge_cache(self, monkeypatch: pytest.MonkeyPatch) -> Any:
         from fim_one.core.model.openai_compatible import _RESPONSES_BRIDGE_SUPPORT
 
+        monkeypatch.setenv("FIM_GPT5_RESPONSES_MODE", "bridge")
         _RESPONSES_BRIDGE_SUPPORT.clear()
         yield
         _RESPONSES_BRIDGE_SUPPORT.clear()

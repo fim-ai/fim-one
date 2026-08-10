@@ -2961,6 +2961,10 @@ class ReActAgent:
         thinking_signature: str | None = None
         final_finish_reason: str | None = None
         truncated_tool_call = False
+        # Opaque GPT-5.x reasoning items, kept in arrival order.  Replaying
+        # them on the next tool round is what stops the model re-deriving
+        # its chain of thought from scratch each time.
+        reasoning_items: list[dict[str, Any]] = []
 
         stream = self._tool_llm.stream_chat(
             messages,
@@ -2986,6 +2990,8 @@ class ReActAgent:
                     on_thinking_delta(chunk.delta_content)
             if chunk.signature:
                 thinking_signature = chunk.signature
+            if chunk.reasoning_item:
+                reasoning_items.append(chunk.reasoning_item)
             if chunk.tool_calls:
                 final_tool_calls = chunk.tool_calls
             if chunk.usage:
@@ -3002,6 +3008,7 @@ class ReActAgent:
                 tool_calls=final_tool_calls,
                 reasoning_content=("".join(reasoning_parts) if reasoning_parts else None),
                 signature=thinking_signature,
+                reasoning_items=reasoning_items or None,
             ),
             usage=final_usage,
             finish_reason=final_finish_reason,

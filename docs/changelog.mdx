@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **GPT-5.x agents keep their reasoning across tool calls.** FIM One now talks the OpenAI Responses API directly for GPT-5.x models and carries each turn's encrypted reasoning into the next one, so a multi-step agent builds on what it already worked out instead of re-deriving it at every tool round. Reasoning token counts appear in usage, and the thinking panel shows the model's own summary. Set `FIM_GPT5_RESPONSES_MODE=bridge` (or `off`) to return to the previous behavior; endpoints without a `/v1/responses` route still fall back to chat completions on their own.
+
 - **Pure transformation steps in DAG plans run as a single direct LLM call.** The planner tags merge/rewrite/summarise steps that only consume upstream outputs as direct steps, skipping the tool loop they would never use, which lowers cost and latency; every step result now also records how it ran (direct call or agent loop, iterations, tools used).
 
 - **Agents can ask clarifying multiple-choice questions mid-run.** When a task could go in materially different directions, the agent pauses and presents up to four structured questions in the chat, each with 2-4 options plus a free-text "Other"; answering resumes the run in place, and skipping or a timeout lets it continue on its own judgment.

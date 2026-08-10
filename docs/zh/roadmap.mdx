@@ -340,8 +340,10 @@ flowchart LR
 
 #### 模型层
 
-- [x] GPT-5.x 采用 Responses-API-first（工具 + 推理一起；404 回退到聊天完成）；其他系列按设计保持在完成上
+- [x] GPT-5.x 采用 Responses-API-first（工具调用 + 推理一起进行；404 回退到聊天完成）；其他系列按设计保持使用完成 API
+- [x] GPT-5.x 在工具轮次间保持其推理——原生 `/v1/responses` 带加密推理重放，`FIM_GPT5_RESPONSES_MODE` 用于回滚
 - [ ] 在下一次 LiteLLM 升级时验证 Responses-bridge 流式使用数字（怀疑上游映射错误）
+- [ ] 一旦原生 GPT-5.x 路径完成整个发布周期后，停用 LiteLLM 聊天→responses 桥接
 
 #### 场景入门
 

@@ -47,6 +47,18 @@ class ChatMessage:
     # should never receive this field (see
     # :func:`fim_one.core.prompt.is_cache_capable`).
     cache_control: dict[str, str] | None = None
+    # Raw ``reasoning`` items from the OpenAI Responses API, kept verbatim
+    # as the provider emitted them (minus volatile bookkeeping keys).  Each
+    # carries an ``encrypted_content`` blob that is opaque to us: replaying
+    # the item unchanged on the next request is what lets a GPT-5.x model
+    # keep its chain of thought across tool-call rounds instead of
+    # re-deriving it every round.  Deliberately untyped dicts — the blob has
+    # no schema we can validate, and verbatim round-tripping is the only
+    # safe contract.  Independent of ``reasoning_content``, which holds the
+    # human-readable summary for the UI and the DB.  Never serialised into
+    # the chat-completions shape (see :meth:`to_openai_dict`), so it cannot
+    # leak onto a provider that would reject it.
+    reasoning_items: list[dict[str, Any]] | None = None
 
     # ------------------------------------------------------------------
     # Vision helpers
@@ -80,7 +92,12 @@ class ChatMessage:
     def to_openai_dict(
         self,
         *,
-        replay_policy: Literal["anthropic_thinking", "informational_only", "unsupported"]
+        replay_policy: Literal[
+            "anthropic_thinking",
+            "openai_responses",
+            "informational_only",
+            "unsupported",
+        ]
         | None = None,
     ) -> dict[str, Any]:
         """Convert to OpenAI API format.
@@ -161,6 +178,12 @@ class StreamChunk:
     # must forward it onto the reconstructed assistant ChatMessage so
     # multi-turn replay stays valid.
     signature: str | None = None
+    # One complete ``reasoning`` item from the OpenAI Responses API,
+    # emitted when the item closes.  Callers accumulate these in order onto
+    # the reconstructed assistant ChatMessage (``reasoning_items``) so the
+    # next request can replay them.  The readable summary text arrives
+    # separately as ``delta_reasoning``, so UI code needs no changes.
+    reasoning_item: dict[str, Any] | None = None
     # The output limit cut the model off mid tool-call, so its arguments
     # never arrived complete.  The call is dropped rather than dispatched
     # with half a JSON payload; callers see this flag instead.

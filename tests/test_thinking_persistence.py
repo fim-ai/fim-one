@@ -367,6 +367,66 @@ class TestDbMemoryRoundTrip:
         assert assistant_msg.reasoning_content == "deliberate reasoning"
         assert assistant_msg.signature == "sig_persist_123"
 
+    async def test_reasoning_items_round_trip(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """GPT-5.x replay state survives a conversation reload."""
+        items = [{"type": "reasoning", "encrypted_content": "gAAAAA-persisted"}]
+        rows = [
+            _FakeRow("1", "user", "Hello"),
+            _FakeRow(
+                "2",
+                "assistant",
+                "Answer",
+                metadata_={
+                    "thinking": {
+                        "content": "summary",
+                        "signature": "",
+                        "encrypted_items": items,
+                    },
+                },
+            ),
+        ]
+
+        monkeypatch.setattr(
+            "fim_one.db.create_session",
+            lambda: _FakeSession(rows),
+            raising=False,
+        )
+
+        mem = DbMemory(conversation_id="conv-gpt5", max_tokens=64_000)
+        messages = await mem.get_messages()
+
+        assistant_msg = messages[-1]
+        assert assistant_msg.reasoning_items == items
+        assert assistant_msg.signature is None
+
+    async def test_malformed_items_are_ignored(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A hand-edited or legacy row must not crash the reload."""
+        rows = [
+            _FakeRow("1", "user", "Hello"),
+            _FakeRow(
+                "2",
+                "assistant",
+                "Answer",
+                metadata_={"thinking": {"encrypted_items": "not-a-list"}},
+            ),
+        ]
+
+        monkeypatch.setattr(
+            "fim_one.db.create_session",
+            lambda: _FakeSession(rows),
+            raising=False,
+        )
+
+        mem = DbMemory(conversation_id="conv-bad", max_tokens=64_000)
+        messages = await mem.get_messages()
+        assert messages[-1].reasoning_items is None
+
     async def test_missing_thinking_leaves_message_clean(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -474,6 +534,104 @@ class TestExtractFinalThinking:
         assert result is not None
         assert result["signature"] == "sig_alone"
         assert result["content"] == ""
+
+    def test_captures_reasoning_items(self) -> None:
+        """GPT-5.x encrypted items ride along under their own key."""
+        items = [{"type": "reasoning", "encrypted_content": "gAAAAA"}]
+        msgs: list[Any] = [
+            ChatMessage(
+                role="assistant",
+                content="x",
+                reasoning_content="summary",
+                reasoning_items=items,
+            ),
+        ]
+        result = _extract_final_thinking(msgs)
+        assert result is not None
+        assert result["encrypted_items"] == items
+        assert result["content"] == "summary"
+
+    def test_items_alone_are_enough_to_persist(self) -> None:
+        """A turn with items but no summary text must still be stored."""
+        msgs: list[Any] = [
+            ChatMessage(
+                role="assistant",
+                content="x",
+                reasoning_items=[{"type": "reasoning", "encrypted_content": "g"}],
+            ),
+        ]
+        assert _extract_final_thinking(msgs) is not None
+
+    def test_key_absent_when_no_items(self) -> None:
+        msgs: list[Any] = [
+            ChatMessage(role="assistant", content="x", reasoning_content="r"),
+        ]
+        result = _extract_final_thinking(msgs)
+        assert result is not None
+        assert "encrypted_items" not in result
+
+
+# ---------------------------------------------------------------------------
+# Reasoning items survive the rebuild paths
+# ---------------------------------------------------------------------------
+
+
+class TestReasoningItemsSurviveRebuilds:
+    """Compaction rebuilds must not silently drop the replay state.
+
+    Losing an item mid-conversation is worse than never having had it:
+    the model re-derives its chain of thought from a history that claims
+    it already reasoned.
+    """
+
+    @staticmethod
+    def _items() -> list[dict[str, Any]]:
+        return [{"type": "reasoning", "encrypted_content": "gAAAAA-1"}]
+
+    def test_context_guard_truncation_preserves_items(self) -> None:
+        from fim_one.core.memory.context_guard import ContextGuard
+
+        guard = ContextGuard(default_budget=50_000, max_message_chars=100)
+        messages = [
+            ChatMessage(
+                role="assistant",
+                content="x" * 5000,
+                reasoning_items=self._items(),
+            ),
+        ]
+        out = guard._truncate_oversized(messages)
+        assert out[0].content is not None
+        assert len(out[0].content) < 5000  # truncation actually happened
+        assert out[0].reasoning_items == self._items()
+
+    def test_microcompact_placeholder_preserves_items(self) -> None:
+        from fim_one.core.memory.microcompact import micro_compact
+
+        messages = [
+            ChatMessage(role="user", content="q"),
+            ChatMessage(role="assistant", content="a", reasoning_items=self._items()),
+            ChatMessage(role="tool", content="obs" * 500, tool_call_id="t1"),
+            ChatMessage(role="tool", content="obs2" * 500, tool_call_id="t2"),
+        ]
+        out = micro_compact(messages, keep_recent=0)
+        assistant = [m for m in out if m.role == "assistant"][0]
+        assert assistant.reasoning_items == self._items()
+
+    def test_normalize_merge_takes_the_tail_not_the_concatenation(self) -> None:
+        """Items are an ordered per-turn sequence; splicing invents history."""
+        from fim_one.core.model.normalize import normalize_alternating_messages
+
+        first = [{"type": "reasoning", "encrypted_content": "first"}]
+        second = [{"type": "reasoning", "encrypted_content": "second"}]
+        out = normalize_alternating_messages(
+            [
+                ChatMessage(role="user", content="q"),
+                ChatMessage(role="assistant", content="a", reasoning_items=first),
+                ChatMessage(role="assistant", content="b", reasoning_items=second),
+            ]
+        )
+        merged = [m for m in out if m.role == "assistant"][0]
+        assert merged.reasoning_items == second
 
 
 # ---------------------------------------------------------------------------

@@ -441,6 +441,14 @@ class DbMemory(BaseMemory):
                                 msg.reasoning_content = reasoning
                             if isinstance(signature, str) and signature:
                                 msg.signature = signature
+                            # GPT-5.x reasoning items, replayed verbatim on
+                            # the next turn so the model keeps its chain of
+                            # thought across the conversation.
+                            items = thinking.get("encrypted_items")
+                            if isinstance(items, list) and items:
+                                msg.reasoning_items = [
+                                    item for item in items if isinstance(item, dict)
+                                ] or None
                     # Restore tool_call_id for persisted ``role="tool"``
                     # rows so the repair pass can match them against the
                     # assistant's tool_calls.  Synthetic recovery rows

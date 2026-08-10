@@ -25,6 +25,14 @@ from .base import REASONING_INHERIT, BaseLLM
 _REASONING_INHERIT = REASONING_INHERIT
 from .normalize import normalize_alternating_messages
 from .rate_limit import RateLimitConfig, TokenBucketRateLimiter
+from .responses_adapter import (
+    build_responses_input,
+    convert_response_format,
+    convert_tool_choice,
+    convert_tools,
+    parse_response,
+    stream_to_chunks,
+)
 from .retry import RetryConfig, retry_async_call, retry_async_iterator
 from .types import ChatMessage, LLMResult, StreamChunk, ToolCallRequest
 
@@ -356,6 +364,39 @@ _ANTHROPIC_NO_SAMPLING_FRAGMENTS = (
 # matter how many LLM instances are constructed.
 _RESPONSES_BRIDGE_SUPPORT: dict[tuple[str | None, str], bool] = {}
 
+# Same shape, for the *native* /v1/responses path (``litellm.aresponses``).
+# Kept separate from the bridge cache: an endpoint can accept LiteLLM's
+# bridge translation and still choke on a request we build ourselves, and
+# vice versa, so one verdict must never stand in for the other.
+_RESPONSES_NATIVE_SUPPORT: dict[tuple[str | None, str], bool] = {}
+
+# Which protocol GPT-5.x uses, via ``FIM_GPT5_RESPONSES_MODE``:
+#   native — talk /v1/responses directly and replay reasoning items (default)
+#   bridge — LiteLLM's chat→responses translation (pre-native behaviour)
+#   off    — plain chat completions, reasoning disabled during tool use
+_GPT5_MODE_NATIVE = "native"
+_GPT5_MODE_BRIDGE = "bridge"
+_GPT5_MODE_OFF = "off"
+
+
+def _gpt5_responses_mode() -> str:
+    """Read the GPT-5.x protocol switch, defaulting to ``native``.
+
+    Read per call rather than cached at import so an operator can flip the
+    variable and restart a worker without a code change, and so tests can
+    monkeypatch it.  An unrecognised value falls back to ``native`` with a
+    warning instead of failing the request.
+    """
+    mode = (os.getenv("FIM_GPT5_RESPONSES_MODE") or _GPT5_MODE_NATIVE).strip().lower()
+    if mode not in (_GPT5_MODE_NATIVE, _GPT5_MODE_BRIDGE, _GPT5_MODE_OFF):
+        logger.warning(
+            "Unrecognised FIM_GPT5_RESPONSES_MODE=%r; using %r",
+            mode,
+            _GPT5_MODE_NATIVE,
+        )
+        return _GPT5_MODE_NATIVE
+    return mode
+
 # Errors that mean "this endpoint has no usable /v1/responses route" and
 # trigger the silent fallback to chat completions.  Bound at import time so
 # tests that patch the ``litellm`` module wholesale don't turn the except
@@ -515,6 +556,20 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
 
+        if self._should_use_native_responses(reasoning_effort=reasoning_effort):
+            native = await self._native_responses_chat(
+                messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                reasoning_effort=reasoning_effort,
+            )
+            if native is not None:
+                if self._rate_limiter is not None and native.usage.get("total_tokens"):
+                    await self._rate_limiter.report_usage(native.usage["total_tokens"])
+                return native
+
         response = await self._dispatch_acompletion(
             messages=messages,
             tools=tools,
@@ -612,6 +667,16 @@ class OpenAICompatibleLLM(BaseLLM):
         """Inner implementation of ``stream_chat()`` -- one attempt, no retry."""
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
+
+        if self._should_use_native_responses():
+            native = await self._native_responses_stream(
+                messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                max_tokens=max_tokens,
+            )
+            if native is not None:
+                return native
 
         stream = await self._dispatch_acompletion(
             messages=messages,
@@ -878,27 +943,233 @@ class OpenAICompatibleLLM(BaseLLM):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Native /v1/responses path (GPT-5.x)
+    # ------------------------------------------------------------------
+
+    def _should_use_native_responses(
+        self,
+        *,
+        reasoning_effort: str | object | None = _REASONING_INHERIT,
+    ) -> bool:
+        """Decide whether this call talks /v1/responses directly.
+
+        Four conditions, all narrow on purpose.  The native path exists to
+        keep GPT-5.x reasoning alive across tool-call rounds, so anything
+        that would not benefit stays on the protocol it already works on:
+
+        1. An ``openai/``-routed GPT-5.x model.  Other families gain
+           nothing and can be actively harmed by relay Responses shims
+           (see :meth:`_dispatch_acompletion`).
+        2. The endpoint has not already told us it has no /v1/responses
+           route.
+        3. ``FIM_GPT5_RESPONSES_MODE`` is ``native``.
+        4. The caller did not explicitly suppress reasoning.  A call that
+           passes ``reasoning_effort=None`` wants no thinking at all
+           (``structured_llm_call`` and the finish-signal probes), so
+           there is no reasoning state to preserve and the well-trodden
+           completions path is the safer choice.
+        """
+        if not self._litellm_model.startswith("openai/"):
+            return False
+        if not self._model.lower().startswith("gpt-5"):
+            return False
+        if _gpt5_responses_mode() != _GPT5_MODE_NATIVE:
+            return False
+        if reasoning_effort is not _REASONING_INHERIT and reasoning_effort is None:
+            return False
+        key = (self._api_base, self._litellm_model)
+        return _RESPONSES_NATIVE_SUPPORT.get(key) is not False
+
+    def _build_responses_kwargs(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
+        max_tokens: int | None,
+        response_format: dict[str, Any] | None = None,
+        stream: bool = False,
+        reasoning_effort: str | object | None = _REASONING_INHERIT,
+    ) -> dict[str, Any]:
+        """Build the keyword arguments for ``litellm.aresponses()``.
+
+        Two settings are what make replay work at all.  ``store=False``
+        keeps the conversation stateless on OpenAI's side, and
+        ``include=["reasoning.encrypted_content"]`` asks for the encrypted
+        payload to be handed back to us so we can replay it ourselves on
+        the next request.  Without the include, reasoning items arrive
+        empty and every tool round starts thinking from scratch.
+
+        ``temperature`` is deliberately absent: GPT-5 reasoning models
+        reject it outright.
+        """
+        effective_reasoning = (
+            self._reasoning_effort
+            if reasoning_effort is _REASONING_INHERIT
+            else reasoning_effort
+        )
+        kwargs: dict[str, Any] = {
+            # The bare model name plus an explicit provider — the
+            # ``openai/`` prefix belongs to LiteLLM's completions router
+            # and is not understood here.
+            "model": self._model,
+            "custom_llm_provider": "openai",
+            "input": build_responses_input(messages),
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+            "stream": stream,
+            "api_key": self._api_key,
+        }
+        if self._api_base is not None:
+            kwargs["api_base"] = self._api_base
+        token_limit = max_tokens if max_tokens is not None else self._default_max_tokens
+        if token_limit:
+            kwargs["max_output_tokens"] = token_limit
+        converted_tools = convert_tools(tools)
+        if converted_tools:
+            kwargs["tools"] = converted_tools
+            converted_choice = convert_tool_choice(tool_choice)
+            if converted_choice is not None:
+                kwargs["tool_choice"] = converted_choice
+        text_param = convert_response_format(response_format)
+        if text_param is not None:
+            kwargs["text"] = text_param
+        reasoning: dict[str, Any] = {"summary": "auto"}
+        if isinstance(effective_reasoning, str):
+            reasoning["effort"] = effective_reasoning
+        kwargs["reasoning"] = reasoning
+        return kwargs
+
+    def _remember_native_failure(self, exc: Exception) -> None:
+        """Record a native-path failure and decide whether to blacklist.
+
+        A ``NotFoundError`` is structural: the endpoint has no
+        /v1/responses route and never will within this process, so cache
+        the verdict and stop paying the probe.
+
+        A ``BadRequestError`` is *not* cached.  The likeliest cause is one
+        malformed request, typically a stale reasoning item replayed from
+        an older conversation, and caching that would blacklist the native
+        path permanently over a single bad turn.  This call falls back;
+        the next one tries again.
+        """
+        key = (self._api_base, self._litellm_model)
+        if isinstance(exc, NotFoundError):
+            _RESPONSES_NATIVE_SUPPORT[key] = False
+            logger.info(
+                "Native Responses API unavailable for %s (%s); "
+                "falling back to chat completions",
+                self._model,
+                type(exc).__name__,
+            )
+        else:
+            logger.warning(
+                "Native Responses request rejected for %s (%s); "
+                "falling back to chat completions for this call only",
+                self._model,
+                type(exc).__name__,
+            )
+
+    async def _native_responses_chat(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
+        max_tokens: int | None,
+        response_format: dict[str, Any] | None,
+        reasoning_effort: str | object | None,
+    ) -> LLMResult | None:
+        """Run one non-streaming /v1/responses call.
+
+        Returns ``None`` when the endpoint refused in a way that means
+        "use chat completions instead"; any other error propagates so the
+        retry layer can treat it as the transient failure it probably is.
+        """
+        kwargs = self._build_responses_kwargs(
+            messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            reasoning_effort=reasoning_effort,
+        )
+        _get_shared_http_client()
+        try:
+            response = await litellm.aresponses(**kwargs)
+        except (NotFoundError, BadRequestError) as exc:
+            self._remember_native_failure(exc)
+            return None
+        _RESPONSES_NATIVE_SUPPORT[(self._api_base, self._litellm_model)] = True
+        result = parse_response(response)
+        if result.finish_reason == "length" and result.message.tool_calls:
+            # Same guard as the completions path: arguments cut in half by
+            # the output limit must never be dispatched.
+            logger.warning(
+                "Tool call truncated by the output limit (%s), dropping %d call(s)",
+                self._model,
+                len(result.message.tool_calls),
+            )
+            result.message.tool_calls = None
+            result.truncated_tool_call = True
+        return result
+
+    async def _native_responses_stream(
+        self,
+        messages: list[ChatMessage],
+        *,
+        tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
+        max_tokens: int | None,
+    ) -> AsyncIterator[StreamChunk] | None:
+        """Open one streaming /v1/responses call.
+
+        Only failures raised while opening the stream can be recovered
+        from here.  Once events start flowing the caller is committed, the
+        same as on the completions path.
+        """
+        kwargs = self._build_responses_kwargs(
+            messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+        _get_shared_http_client()
+        try:
+            stream = await litellm.aresponses(**kwargs)
+        except (NotFoundError, BadRequestError) as exc:
+            self._remember_native_failure(exc)
+            return None
+        _RESPONSES_NATIVE_SUPPORT[(self._api_base, self._litellm_model)] = True
+        return stream_to_chunks(stream)
+
     async def _dispatch_acompletion(self, **build_args: Any) -> Any:
-        """Call ``litellm.acompletion``, trying the /v1/responses bridge first.
+        """Call ``litellm.acompletion``, optionally via the Responses bridge.
 
-        The bridge is **benefit-gated**: only GPT-5.x tries it, because that
-        is the one family that gains capability from Responses — it is the
-        only place GPT-5.x runs function tools and reasoning together.
-        Other models on openai/-compatible routes (e.g. Claude behind a
-        proxy) gain nothing and go straight to chat completions.  This is
-        deliberate: proxies advertise /v1/responses for non-OpenAI models
-        through buffering shims that accept the request but hold the whole
-        answer before replaying it (observed on Uniapi + Claude: ~4 min to
-        first token), so an error-triggered fallback never fires and the
-        user just sees a hang.
+        The bridge is LiteLLM's chat-completions → /v1/responses
+        translation.  It is now a rollback path only, reached when
+        ``FIM_GPT5_RESPONSES_MODE=bridge``: the default ``native`` mode
+        talks the Responses protocol directly (see
+        :meth:`_native_responses_chat`), which the bridge cannot do because
+        its translation drops the reasoning items that let GPT-5.x carry
+        its chain of thought across tool rounds.
 
-        For GPT-5.x, endpoints without /v1/responses (older gateways)
-        reject the first probe with a 404/400; we silently fall back to
-        chat completions and remember the verdict in
-        ``_RESPONSES_BRIDGE_SUPPORT``, so the probe costs one round-trip per
-        endpoint+model per process.  A miscached ``False`` (e.g. a genuine
-        bad request blamed on the bridge) merely means that endpoint keeps
-        the pre-bridge chat-completions behaviour.
+        The bridge stays **benefit-gated** to GPT-5.x for the same reason
+        the native path is.  Other models on openai/-compatible routes
+        (e.g. Claude behind a proxy) gain nothing, and relays advertise
+        /v1/responses for them through buffering shims that accept the
+        request but hold the whole answer before replaying it (observed on
+        Uniapi + Claude: ~4 min to first token, and in a second
+        reproduction a call that returned cleanly but produced no tool
+        calls at all).  Nothing errors, so an error-triggered fallback
+        never fires and the user just sees a hang.
+
+        Endpoints without /v1/responses reject the first probe with a
+        404/400; we silently fall back to chat completions and remember the
+        verdict in ``_RESPONSES_BRIDGE_SUPPORT``, so the probe costs one
+        round-trip per endpoint+model per process.
 
         Native provider routes (anthropic/ etc.) never enter the bridge —
         their protocol (adaptive thinking, ...) is handled in
@@ -908,6 +1179,7 @@ class OpenAICompatibleLLM(BaseLLM):
         if (
             self._litellm_model.startswith("openai/")
             and self._model.lower().startswith("gpt-5")
+            and _gpt5_responses_mode() == _GPT5_MODE_BRIDGE
             and _RESPONSES_BRIDGE_SUPPORT.get(key) is not False
         ):
             kwargs = self._build_request_kwargs(via_responses=True, **build_args)

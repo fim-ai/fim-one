@@ -90,6 +90,7 @@ def micro_compact(
                 # cache breakpoint just because a placeholder was swapped in).
                 reasoning_content=msg.reasoning_content,
                 signature=msg.signature,
+                reasoning_items=msg.reasoning_items,
                 cache_control=msg.cache_control,
             ))
             cleared += 1

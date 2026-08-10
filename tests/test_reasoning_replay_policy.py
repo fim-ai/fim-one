@@ -78,6 +78,31 @@ class TestReasoningReplayPolicy:
     @pytest.mark.parametrize(
         "model_id",
         [
+            "gpt-5",
+            "gpt-5.6-luna",
+            "gpt-5-mini",
+            "openai/gpt-5.6-luna",
+        ],
+    )
+    def test_openai_responses(self, model_id: str) -> None:
+        """GPT-5.x carries reasoning as opaque Responses items."""
+        assert reasoning_replay_policy(model_id) == "openai_responses"
+
+    def test_openai_responses_still_drops_readable_reasoning(self) -> None:
+        """The chat shape has no slot for items, so nothing is replayed there."""
+        msg = ChatMessage(
+            role="assistant",
+            content="a",
+            reasoning_content="thought",
+            reasoning_items=[{"type": "reasoning", "encrypted_content": "g"}],
+        )
+        d = msg.to_openai_dict(replay_policy="openai_responses")
+        assert "reasoning_content" not in d
+        assert "reasoning_items" not in d
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
             "gpt-4o",
             "gpt-4o-2024-08-06",
             "gpt-4-turbo",

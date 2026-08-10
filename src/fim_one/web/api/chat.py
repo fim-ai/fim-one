@@ -301,19 +301,24 @@ async def _pump_inline_confirmations(
 
 def _extract_final_thinking(
     messages: list[Any] | None,
-) -> dict[str, str] | None:
-    """Return ``{"content", "signature"}`` from the final assistant thinking.
+) -> dict[str, Any] | None:
+    """Return the final assistant turn's thinking metadata.
 
     Walks ``messages`` in reverse and returns the first assistant
-    ``ChatMessage`` whose ``reasoning_content`` or ``signature`` is
-    populated.  Used by the ReAct/DAG endpoints to persist thinking
-    metadata so subsequent turns can replay it — Anthropic rejects
-    thinking blocks whose ``signature`` is missing or altered.
+    ``ChatMessage`` carrying any thinking data.  Used by the ReAct/DAG
+    endpoints to persist that metadata so subsequent turns can replay it:
+    Anthropic rejects thinking blocks whose ``signature`` is missing or
+    altered, and GPT-5.x loses its chain of thought without its reasoning
+    items.
+
+    Only the last such turn is stored, which is all the replay contract
+    needs and keeps the row from growing with the conversation.
 
     Returns:
-        A dict with ``content`` / ``signature`` keys (either may be
-        empty string when only one side is present), or ``None`` when
-        no assistant message carries any thinking data.
+        A dict with ``content`` / ``signature`` keys (either may be an
+        empty string when only one side is present), plus
+        ``encrypted_items`` when the turn carried Responses-API reasoning
+        items.  ``None`` when no assistant message carries thinking data.
     """
     if not messages:
         return None
@@ -322,11 +327,15 @@ def _extract_final_thinking(
             continue
         reasoning = getattr(msg, "reasoning_content", None)
         signature = getattr(msg, "signature", None)
-        if reasoning or signature:
-            return {
+        items = getattr(msg, "reasoning_items", None)
+        if reasoning or signature or items:
+            thinking: dict[str, Any] = {
                 "content": reasoning or "",
                 "signature": signature or "",
             }
+            if items:
+                thinking["encrypted_items"] = items
+            return thinking
     return None
 
 

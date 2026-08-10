@@ -8,6 +8,12 @@ content on subsequent turns differ sharply across providers:
   opaque ``signature`` MUST be sent back verbatim on multi-turn replay.
   Omitting the signature causes the Messages API to reject the request.
 
+* **OpenAI GPT-5.x** — reasoning is not text at all but a sequence of
+  opaque ``reasoning`` items with encrypted payloads.  They must be
+  replayed verbatim, yet only the /v1/responses protocol has a slot for
+  them; the chat-completions shape does not, so the readable summary is
+  dropped there just as it is for the informational-only family.
+
 * **DeepSeek R1 / v3, Qwen QwQ, Gemini thinking, OpenAI o-series** —
   provider documentation explicitly says the reasoning field is
   **informational only** and MUST NOT be sent back in subsequent turns.
@@ -38,6 +44,7 @@ from typing import Literal
 
 ReasoningReplayPolicy = Literal[
     "anthropic_thinking",
+    "openai_responses",
     "informational_only",
     "unsupported",
 ]
@@ -52,6 +59,17 @@ _ANTHROPIC_THINKING_FRAGMENTS: tuple[str, ...] = (
     "bedrock/anthropic",
     "vertex_ai/claude",
 )
+
+# Fragments that identify models carrying reasoning state as opaque
+# Responses-API items rather than as a replayable text block.  GPT-5.x
+# keeps its chain of thought in ``reasoning`` items whose
+# ``encrypted_content`` must be sent back verbatim on the next request, but
+# only on the /v1/responses protocol — the chat-completions shape has no
+# slot for them, so the readable ``reasoning_content`` is still dropped
+# exactly as it is for ``informational_only``.  Checked after the Anthropic
+# fragments and before the informational ones, whose generic "reasoning"
+# entry would otherwise swallow proxy-tagged GPT-5 ids.
+_OPENAI_RESPONSES_FRAGMENTS: tuple[str, ...] = ("gpt-5",)
 
 # Fragments that identify reasoning-capable models where the reasoning
 # field is informational-only and MUST NOT be replayed to the provider.
@@ -90,6 +108,13 @@ def reasoning_replay_policy(model_id: str | None) -> ReasoningReplayPolicy:
         * ``"anthropic_thinking"`` — caller MUST replay
           ``reasoning_content`` + ``signature`` on every subsequent turn
           (Claude family, Bedrock/Vertex-hosted Claude).
+        * ``"openai_responses"`` — reasoning state lives in opaque
+          Responses-API ``reasoning`` items (GPT-5.x).  Callers on the
+          /v1/responses protocol MUST replay
+          :attr:`ChatMessage.reasoning_items` verbatim; the readable
+          ``reasoning_content`` is still dropped from outgoing requests,
+          so on the chat-completions fallback this behaves exactly like
+          ``"informational_only"``.
         * ``"informational_only"`` — caller MUST drop
           ``reasoning_content`` / ``signature`` from outgoing requests
           but MAY persist them locally for display (DeepSeek R1,
@@ -103,6 +128,8 @@ def reasoning_replay_policy(model_id: str | None) -> ReasoningReplayPolicy:
     # Anthropic first: the only policy that actually replays.
     if any(fragment in lowered for fragment in _ANTHROPIC_THINKING_FRAGMENTS):
         return "anthropic_thinking"
+    if any(fragment in lowered for fragment in _OPENAI_RESPONSES_FRAGMENTS):
+        return "openai_responses"
     if any(fragment in lowered for fragment in _INFORMATIONAL_REASONING_FRAGMENTS):
         return "informational_only"
     return "unsupported"

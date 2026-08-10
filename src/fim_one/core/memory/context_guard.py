@@ -282,6 +282,7 @@ class ContextGuard:
                     # signature).
                     reasoning_content=msg.reasoning_content,
                     signature=msg.signature,
+                    reasoning_items=msg.reasoning_items,
                     cache_control=msg.cache_control,
                 ))
             else:

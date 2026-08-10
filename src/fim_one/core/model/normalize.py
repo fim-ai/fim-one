@@ -94,6 +94,11 @@ def _merge(a: ChatMessage, b: ChatMessage) -> ChatMessage:
         # which is what the provider actually consumes.
         cache_control=b.cache_control or a.cache_control,
         signature=b.signature or a.signature,
+        # Tail wins here too, and deliberately without concatenation:
+        # reasoning items are ordered and each belongs to the turn that
+        # produced it.  Splicing two turns' items together would present
+        # the provider with a sequence it never emitted.
+        reasoning_items=b.reasoning_items or a.reasoning_items,
         pinned=a.pinned or b.pinned,
         name=b.name or a.name,
         reasoning_content=_join_optional_str(
