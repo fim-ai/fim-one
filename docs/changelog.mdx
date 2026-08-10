@@ -36,6 +36,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **The sidebar puts navigation first.** Module navigation now sits above the conversation list with labeled Build / Resources / Operate sections, instead of being tucked into a dock at the bottom of the sidebar.
+
 - **Streamed replies render steadily instead of flickering.** A growing answer now renders block by block: finished blocks stay stable rather than re-rendering on every frame, and half-arrived formatting (bold, links, math) is completed or held until it finishes streaming in.
 
 - **Final answers stream as they are written.** The agent now signals when it is done gathering and writes the answer as a live streamed turn, so long replies arrive token by token with full detail instead of replaying after a wait. `REACT_FINISH_SIGNAL=false` restores the previous behavior.
