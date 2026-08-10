@@ -147,6 +147,7 @@ Communication only — doesn't replace automated tests.
   7. **`dev/<topic>.md` is a planning-time artifact, not a per-commit artifact.** Create or extend it when **adding** a complex roadmap item (incremental planning — "let's do X in v0.9, here's the design"). When **checking off** an existing item at commit time (`[ ]` → `[x]`), do NOT touch the dev/ file. Implementation may have diverged from the design doc and that's fine — the source of truth is the code. After the version ships and the item is archived, the matching dev/ file may be moved to `dev/archive/` in a follow-up cleanup, but that's optional and never blocks a ship commit.
 - [ ] *(feat only)* **`example.env`** — new env keys with placeholder + comment; sync `docs/configuration/environment-variables.mdx` table.
 - [ ] *(feat only)* **`README.md`** — update Key Features / Project Structure if needed.
+- [ ] *(provider-behavior change)* **Provider Capability Matrix** in `docs/architecture/llm-provider-guide.mdx` — touching `_dispatch_acompletion`, `_build_request_kwargs`, `reasoning_replay_policy`, or the structured-output downgrade chain means updating the matrix in the SAME commit. It is the authoritative provider reference; other docs link to it instead of restating it.
 - [ ] **Chinese sync** — pre-commit hook handles `docs/zh/` + `README.zh.md`. Commit EN + ZH together.
 
 ## Cut Release (triggered by "what's next" / "接下来做什么")

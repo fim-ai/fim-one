@@ -127,17 +127,17 @@ The conversation must end with a user message.
 
 ## 思维模型 + 强制 tool_choice
 
-某些模型已永久启用扩展思维（思维链）。它们的 API 拒绝强制 `tool_choice`，因为强制特定函数调用与模型优先推理的自由度相矛盾：
+多个提供商在启用扩展思维时拒绝强制 `tool_choice`，理由是固定特定函数调用与模型先进行推理的自由度相矛盾：
 
 ```
 tool_choice 'specified' is incompatible with thinking enabled
 ```
 
-Anthropic 在协议级别强制执行此约束，某些其他提供商（例如 Moonshot AI / Kimi K2.5）遵循相同模式。
+**这是按提供商的规则，不是思维模型的通用法则。** Anthropic在协议级别强制执行，Moonshot（Kimi）的行为相同，但MiniMax在每次调用时都进行思维，仍然接受强制工具选择。下表B中的[提供商能力矩阵](#provider-capability-matrix)逐个提供商记录了判决结果；不要从一行推广到另一行。
 
-对于 Anthropic 模型，`structured_llm_call` 通过在调用 native_fc 时传递 `reasoning_effort=None` 来自动处理此问题，禁用该特定调用的扩展思维。结构化输出调用需要**架构合规性**，而不是深度推理——在这里禁用思维既正确又有益（更低延迟、更低成本）。
+对于Anthropic模型，`structured_llm_call`通过在原生FC级别传递`reasoning_effort=None`来自动解决冲突，这会关闭该次调用的思维功能（`structured.py::_call_llm`）。结构化输出需要**模式合规性**，而不是深度推理，因此在此处禁用思维既正确又更便宜。
 
-但是，某些模型（例如 Kimi K2.5）的思维永久启用，无法从外部禁用。对于这些模型，native_fc 总是以 400 错误失败，在结构化调用前浪费约 10 秒延迟，然后降级链才会降级到 json_mode。
+当思维无法通过API关闭时，native_fc在每次结构化调用时都会以400失败，耗时约十秒后链条才会降级到json_mode。Kimi是常见情况：启用思维时仅支持`auto`，强制工具选择需要关闭思维，而Moonshot仅通过模型id暴露此选项（`kimi-k2`已关闭，`kimi-k2.5`和`kimi-k2-thinking`已启用）。FIM One没有翻转此选项的参数，因此补救措施是下面的`tool_choice_enabled`标志。
 
 ### 修复：tool_choice_enabled
 
@@ -162,45 +162,112 @@ Anthropic 在协议级别强制执行此约束，某些其他提供商（例如 
 **提供商迁移说明：**某些第三方中继会静默丢弃不支持的参数，如 `reasoning_effort`（`drop_params=True`），因此即使配置了思考也永远不会激活。迁移到正确支持思考的提供商（Bedrock、直接 Anthropic API）时，native_fc 中的 `reasoning_effort=None` 确保一致的行为。无需用户操作 — 结构化输出在所有提供商中的工作方式相同。
 </Note>
 
-## 快速参考：什么在哪里有效
+## 提供商能力矩阵
 
-| 场景 | ReAct 模式 | structured_llm_call 路径 | 备注 |
-|---|---|---|---|
-| OpenAI（任何模型） | `_run_native` | native_fc | 完全支持 |
-| Anthropic（无思考） | `_run_native` | native_fc | 完全支持 |
-| Anthropic + 思考 | `_run_native` | native_fc（思考自动禁用） | 仅对结构化输出禁用思考 |
-| Bedrock 中继（无思考） | `_run_native` | native_fc | 完全支持 |
-| Bedrock 中继 + 思考 | `_run_native` | native_fc（思考自动禁用） | 仅对结构化输出禁用思考 |
-| Bedrock 通过 OpenAI 兼容端点 | `_run_native` | native_fc | 完全支持——无预填充问题；见上面的提示 |
-| Gemini | `_run_native` | native_fc | 完全支持 |
-| DeepSeek（非思考） | `_run_native` | native_fc | 完全支持 |
-| DeepSeek R1（思考） | `_run_native` | json_mode（设置 `tool_choice_enabled=false`） | 思考始终开启；跳过 native_fc |
-| Kimi K2（非思考） | `_run_native` | native_fc | 完全支持 |
-| Kimi K2.5（思考） | `_run_native` | json_mode（设置 `tool_choice_enabled=false`） | 思考始终开启；跳过 native_fc |
-| 通用 OpenAI 兼容 | `_run_native` | native_fc | 完全支持 |
-| 任何 `tool_call=false` 的模型 | `_run_json` | json_mode 或 plain_text | 不支持工具调用的模型的备选方案 |
+本部分是每个提供商支持的功能以及FIM One如何处理这些功能的权威记录。每一行都命名了实现该行为的函数，因此此处的任何声明都可以根据代码进行验证。其他页面链接到此处而不是重复数据；当代码更改时，本部分也会随之更改。
 
-## 推荐的每个模型配置
+一行描述的是提供商的协议，而不是单个模型。当同一系列中的模型存在差异时（DeepSeek聊天与推理器、Kimi启用思考与关闭思考），单元格会说明这一点。
 
-`tool_choice_enabled` 和 `json_mode_enabled` 都可以在管理员 → 模型 → 高级设置中按模型切换。默认值（两者都为 `TRUE`）适用于大多数提供商。仅在遇到错误或不必要的延迟时进行调整。
+### 表 A：协议路由
 
-| 模型类型 | 原生 FC | JSON 模式 | 原因 |
-|---|---|---|---|
-| OpenAI GPT 系列 | 开启 | 开启 | 完全支持 — 默认值正确 |
-| Anthropic Claude | 开启 | 开启 | 原生 FC 自动禁用思考 |
-| Google Gemini | 开启 | 开启 | 完全支持 |
-| DeepSeek V3 / Coder | 开启 | 开启 | 完全支持 |
-| **DeepSeek R1（思考）** | **关闭** | 开启 | 思考始终开启；原生 FC 被拒绝 |
-| **Kimi K2.5（思考）** | **关闭** | 开启 | 思考始终开启；原生 FC 被拒绝 |
-| Kimi K2（非思考） | 开启 | 开启 | 完全支持 |
-| **AWS Bedrock 中继** | 开启 | **关闭** | Bedrock 在 json_mode 中拒绝助手预填充 |
-| 弱小模型 | 关闭 | 关闭 | 直接进行纯文本提取 |
+配置的 `base_url` 加上 `model` 如何成为 LiteLLM 调用，以及当首选接口不可用时会发生什么。
+
+| 提供商 | 检测方式 | LiteLLM 前缀 | 接口表面 | 降级链 | 代码锚点 |
+|---|---|---|---|---|---|
+| **OpenAI** | 域名 `api.openai.com`，或模型配置中显式的 `provider` 为 `openai` | `openai/` | `completions`。GPT-5.x 使用 `responses-native`（`litellm.aresponses`），保留 `responses-bridge`（`openai/responses/<model>`）作为回退 | GPT-5.x 原生支持 Responses，在 404 时回退到 `completions`（在 `_RESPONSES_NATIVE_SUPPORT` 中按端点和模型缓存）或在 400 时回退（不缓存）。其他所有模型直接使用 `completions` | `_resolve_litellm_model`、`_should_use_native_responses`、`_dispatch_acompletion` |
+| **Anthropic**（Bedrock 注释见下） | 域名 `anthropic.com`、路径段 `/claude` 或 `/anthropic`，或模型配置中显式的 `provider` 为 `anthropic` | `anthropic/` | `anthropic messages` | 无。原生路由从不进入 Responses 桥接；其协议在 `_build_request_kwargs` 中构建 | `_resolve_litellm_model`、`_dispatch_acompletion` |
+| **Gemini** | 域名 `generativelanguage.googleapis.com`、路径段 `/gemini`，或显式的 `provider` 为 `gemini` | `gemini/` | `gemini` | 无。域名匹配也会丢弃 `api_base`，因此 OpenAI 兼容后缀（如 `/v1beta/openai/`）被忽略，调用转到原生 Gemini API | `_resolve_litellm_model` |
+| **xAI (Grok)** | 无域名或路径条目。除非在模型配置中显式设置 `provider`，否则解析为通用 OpenAI 兼容 | `openai/` 加 `api_base`，或显式提供商前缀 | `completions` | 无 | `_resolve_litellm_model` |
+| **DeepSeek** | 域名 `api.deepseek.com` | `deepseek/` | `completions` | 无 | `_resolve_litellm_model` |
+| **Qwen**（DashScope） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
+| **GLM**（Zhipu、Z.AI） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
+| **MiniMax** | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
+| **Kimi**（Moonshot） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
+| **Doubao**（Volcengine） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
+| **Mistral** | 域名 `api.mistral.ai` | `mistral/` | `completions` | 无 | `_resolve_litellm_model` |
+| **Ollama / 本地** | 通用回退，通常为 `http://localhost:11434/v1` | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
+| **Relay / 代理** | 路径提示优先，然后是通用回退。模型配置中的显式 `provider` 优先于两者 | 提示的提供商前缀，否则 `openai/`，始终加上指向中继的 `api_base` | 解析的前缀所暗示的任何内容 | 无，仅限解析的前缀。参见下面的中继陷阱 | `_resolve_litellm_model` |
+
+**GPT-5.x 如何选择协议。** `FIM_GPT5_RESPONSES_MODE` 选择它：`native`（默认值）直接通过 `litellm.aresponses` 与 `/v1/responses` 通信，`bridge` 使用 LiteLLM 的聊天补全翻译，`off` 强制使用普通聊天补全。原生路径存在是因为桥接在唯一重要的地方有损失：它丢弃推理项，所以 GPT-5.x 智能体在每个工具轮次重新推导其思维链。直接与协议通信可以重放这些项。显式传递 `reasoning_effort=None` 的调用（这是 `structured_llm_call` 和完成信号探针所做的）保留在聊天补全上，因为不需要思考的调用没有推理状态可保留。
+
+该原生请求的两个属性是承重的，容易出错：
+
+- `store=false` 保持上游对话无状态，`include=["reasoning.encrypted_content"]` 请求返回加密负载。没有 include，推理项到达时为空，重放无声地变成无操作。
+- 重放的推理项必须剥离其服务器端 `id`。使用 `store=false` 时，上游不持久化任何内容，所以将 id 回显会导致 `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false`。`encrypted_content` blob 自己携带状态，所以删除 id 没有成本（`sanitize_reasoning_item`）。
+
+**Bedrock。** Bedrock 托管的 Claude 遵循它解析到的行，而不是 Bedrock 托管它的事实。通过 `anthropic/` 路由的中继到达时，它继承 Anthropic 协议行为，包括 LiteLLM 的 json 模式助手预填充，较新的 Bedrock 版本会拒绝。通过 OpenAI 兼容网关到达时，它解析为 `openai/`，不注入预填充，`json_mode_enabled` 可以保持开启。
+
+### 表 B：冲突与解决方案
+
+FIM One 发出四个 `tool_choice` 状态中的三个：来自 ReAct 循环的 `auto`（`react.py::_run_native`）、来自结构化输出的命名函数（`structured.py::_call_llm`）以及当完成信号答案重放工具有效载荷时的 `none`。没有调用站点发出 `required`；该列记录提供商对非 `auto` 工具选择的约束，该约束同样适用于 `required` 和命名函数。
+
+| 提供商 | `auto` | `required` | 命名函数 | `none` | 启用思考时 | FIM One 的解决方案 | 代码锚点 |
+|---|---|---|---|---|---|---|---|
+| **OpenAI** | ✅ | ✅ | ✅ | ✅ | GPT-5.x 在聊天完成上拒绝工具与推理的组合 | 在 Responses 上运行 GPT-5.x，两者都允许。在聊天完成回退上，只要存在工具就发送显式的 `reasoning_effort` 为 `none` | `_should_use_native_responses`、`_build_request_kwargs` |
+| **Anthropic** | ✅ | ⚠️ | ⚠️ | ✅ | 在思考关闭时接受，在思考打开时以 400 拒绝。`auto` 不受影响 | `structured_llm_call` 在原生 FC 级别传递 `reasoning_effort=None`，因此该调用关闭思考。ReAct 保持 `auto` 并保持思考 | `structured.py::_call_llm` |
+| **Gemini** | ✅ | ✅ | ✅ | ✅ | 无冲突 | 默认值：`tool_choice_enabled` 和 `json_mode_enabled` 都打开 | `OpenAICompatibleLLM.abilities` |
+| **xAI (Grok)** | ✅ | ✅ | ✅ | ✅ | 推理变体接受工具 | 默认值，两者都打开 | `OpenAICompatibleLLM.abilities` |
+| **DeepSeek** | ✅ | ⚠️ | ⚠️ | ✅ | `deepseek-chat`（V3.2，非思考）接受强制工具选择。`deepseek-reasoner`（V3.2 思考模式）拒绝它 | 仅在 `deepseek-reasoner` 上设置 `tool_choice_enabled=false`；对 `deepseek-chat` 保持打开 | `OpenAICompatibleLLM.abilities` |
+| **Qwen** | ✅ | ✅ | ✅ | ✅ | `enable_thinking` 是 FIM One 从不发送的提供商端开关，因此思考遵循模型默认值 | 默认值，两者都打开 | `_build_request_kwargs` |
+| **GLM** | ✅ | ❌ | ❌ | ✅ | 无论模型是否思考，都不支持强制工具选择 | 设置 `tool_choice_enabled=false` | `OpenAICompatibleLLM.abilities` |
+| **MiniMax** | ✅ | ✅ | ✅ | ✅ | 思考始终打开，强制工具选择仍然有效。这是"始终打开思考拒绝强制工具"规则的反例 | 默认值，两者都打开。思考以 `<think>` 标签形式到达并被重新路由到推理流 | `_ThinkTagStreamParser` |
+| **Kimi**（Moonshot） | ✅ | ⚠️ | ⚠️ | ✅ | 仅当思考打开时支持 `auto`；强制工具选择需要关闭思考。`kimi-k2` 关闭，`kimi-k2.5` 和 `kimi-k2-thinking` 打开 | 没有 API 参数翻转 Moonshot 思考，因此在思考模型上设置 `tool_choice_enabled=false` | `OpenAICompatibleLLM.abilities` |
+| **Doubao** | ✅ | ✅ | ✅ | ✅ | 接受 `reasoning_effort` 与工具并行 | 默认值，两者都打开 | `_build_request_kwargs` |
+| **Mistral** | ✅ | ✅ | ✅ | ✅ | 无思考模式 | 默认值，两者都打开 | `OpenAICompatibleLLM.abilities` |
+| **Ollama / 本地** | ⚠️ 变化 | ⚠️ 变化 | ⚠️ 变化 | ⚠️ 变化 | 完全取决于检查点 | 14B 参数是可用工具调用的下限，32B 是实际目标。对较小的模型关闭两个标志，使结构化输出直接转为纯文本 | `OpenAICompatibleLLM.abilities` |
+| **Relay / 代理** | 继承上游 | 继承上游 | 继承上游 | 继承上游 | 继承上游，不支持的参数被丢弃而不是拒绝（`litellm.drop_params=True`） | 按模型标志，加上下面的中继注意事项 | `_build_request_kwargs` |
+
+### 表 C：思维协议
+
+`LLM_REASONING_EFFORT` 接受 `low`、`medium` 和 `high`；任何其他值都被读作未设置（`deps.py::_reasoning_effort`）。FIM One 随后在线路上放置的内容是按提供商的，这就是本表记录的内容。replay 列是 `reasoning_replay_policy` 的返回值，它是一个小的闭合集合，包含四种状态，而不是按提供商的列表。
+
+| 提供商 | 思维启用方式 | 接受的 `effort` 值 | Replay 策略 | 输出位置 | 代码锚点 |
+|---|---|---|---|---|---|
+| **OpenAI GPT-5.x** | Responses 上 `reasoning` 的 `{effort, summary: "auto"}`；聊天完成上的 `reasoning_effort` | 来自配置的 `low`、`medium`、`high`，加上聊天完成上存在工具时的强制 `none` | `openai_responses`：不透明的推理项在 Responses 上逐字重放，可读文本在聊天完成上恰好如 `informational_only` 那样被丢弃 | 加密项加可读摘要，在推理面板中呈现。聊天完成不返回推理文本 | `_build_responses_kwargs`、`reasoning_replay_policy` |
+| **OpenAI o 系列** | 始终启用 | `reasoning_effort` 原样传递 | `informational_only`，在 `o1`、`o3` 和 `o4` 片段上匹配 | 内部；令牌被计费但不返回 | `reasoning_replay_policy` |
+| **Anthropic，自适应**（Opus 4.6 / 4.7 / 4.8、Sonnet 4.6、Fable 5、Mythos 5） | `thinking` 类型为 `adaptive` 加 `output_config.effort` | `low`、`medium`、`high` | `anthropic_thinking`：块及其 `signature` 逐字重放或 API 拒绝该轮 | `reasoning_content` 加 `signature`，在推理面板中呈现 | `_uses_adaptive_thinking`、`_extract_thinking_signature` |
+| **Anthropic，遗留**（4.5 及更早版本） | `thinking` 类型为 `enabled` 加 `budget_tokens`（当设置 `LLM_REASONING_BUDGET_TOKENS` 时），否则 `reasoning_effort` 交给 LiteLLM | `low`、`medium`、`high`，或显式令牌预算（最小值为 1024） | `anthropic_thinking` | 与自适应相同 | `_build_request_kwargs` |
+| **Gemini** | 兼容性端点上的 `reasoning_effort` | `low`、`medium`、`high` | 对于携带 `flash-thinking` 片段的 id 为 `informational_only`。其他 Gemini id 解析为 `unsupported`，它同样丢弃该字段 | 内部 | `reasoning_replay_policy` |
+| **xAI（Grok）** | 通过 LiteLLM 的 `reasoning_effort` | 提供商定义 | `informational_only`，因为通用 `reasoning` 片段匹配任何包含该词的 id | 内部 | `reasoning_replay_policy` |
+| **DeepSeek** | 模型 id：V3.2 思维模式为 `deepseek-reasoner`，非思维模式为 `deepseek-chat` | 无。没有 effort 参数 | `informational_only` | `reasoning_content` 字段，在推理面板中呈现 | `_parse_choice_message` |
+| **Qwen** | `enable_thinking`，提供商端。FIM One 不发送它 | 不适用 | 对于 `qwq` id 为 `informational_only`，否则为 `unsupported` | 内容内的 `<think>` 标签，重新路由到推理流 | `_ThinkTagStreamParser` |
+| **GLM** | 内置于 `glm-5`；无 API 切换 | 不适用 | `unsupported` | 未外部化 | `reasoning_replay_policy` |
+| **MiniMax** | 始终启用；无切换 | 不适用 | `unsupported` | 内容内的 `<think>` 标签，重新路由 | `_ThinkTagStreamParser`、`_THINK_RE` |
+| **Kimi**（月之暗面） | 模型 id：`kimi-k2-thinking`，`kimi-k2.5` 默认思考 | 不适用 | `unsupported` | API 推理字段，读作 `reasoning_content` 或 `reasoning` | `_parse_choice_message` |
+| **Doubao** | `reasoning_effort` | 提供商文档记录 `minimal`、`low`、`medium` 和 `high`；FIM One 仅发出中间三个 | `unsupported` | 内部 | `_build_request_kwargs` |
+| **Mistral** | 无思维模式 | 不适用 | `unsupported` | 不适用 | `reasoning_replay_policy` |
+| **Ollama / 本地** | 模型相关 | 不适用 | 对于 `deepseek-r1` 蒸馏版和 `qwq` 构建为 `informational_only`，否则为 `unsupported` | `<think>` 标签，其中检查点发出它们 | `_ThinkTagStreamParser` |
+| **中继 / 代理** | 上游接受的任何内容 | 上游接受的任何内容 | 从模型 id 解析，完全如同直接路由 | 取决于上游。通用 `openai/` 中继后面的 Claude 自适应思维模型永远不会获得思维，构造函数记录一条警告说明这一点 | `OpenAICompatibleLLM.__init__` |
+
+`unsupported` 和 `informational_only` 在线路上产生相同的字节：两者都从传出历史中剥离 `reasoning_content` 和 `signature`。它们的意图不同，因此明确进行推理但落在 `unsupported` 中的模型是片段表中的间隙，而不是实时错误。
+
+### 中继/代理陷阱
+
+第三方网关的故障方式与直接提供商不同，其中大多数故障是无声的。下表将症状与其机制配对，以及FIM One已经采取的措施。
+
+| 症状 | 机制 | FIM One的做法 |
+|---|---|---|
+| 推理已配置但从不出现 | 中继路径没有`/claude`提示，所以模型解析为`openai/`。Chat Completions架构没有推理概念，所以参数在请求离开进程前被丢弃 | 在构造时记录警告，命名模型和解析的前缀，并告诉你设置`provider`或使用Anthropic基础URL（`OpenAICompatibleLLM.__init__`） |
+| 参数似乎被接受但没有效果 | `litellm.drop_params=True`无声地删除已解析提供商未声明的任何内容，按参数 | 有意为之。它保持一个请求构建器在每个提供商上工作。代价是"无错误"不是参数到达的证据 |
+| 非OpenAI模型上的第一个令牌需要数分钟，或智能体返回文本但不进行工具调用 | 中继为非OpenAI的模型宣传`/v1/responses`，接受请求，然后缓冲整个答案后重放。在Uniapi上观察到Claude大约四分钟到达第一个令牌，在第二次复现中调用正常返回但智能体随后进行零次工具调用。没有错误，所以错误触发的回退永远不会触发 | 网桥受益于GPT-5.x的限制，这是从Responses获得能力的唯一系列。其他所有内容直接进入聊天完成，从不探测（`_dispatch_acompletion`，提交`137ede4c`） |
+| `ValidationException: This model does not support assistant message prefill` | 在`anthropic/`路由的Bedrock中继上使用json_mode。LiteLLM通过预填开括号作为助手消息来模拟`response_format`，较新的Bedrock版本拒绝以助手轮次结尾的对话 | 为该模型设置`json_mode_enabled=false`，或通过OpenAI兼容网关路由，其中不注入预填 |
+| 对Zhipu端点的每次调用都出现`404` | 客户端将OpenAI风格的`/v1`附加到已经以`/v4`结尾的基础URL | 完全按照提供商文档配置基础URL。FIM One原样传递`api_base` |
+| 安静期后出现`APIConnectionError: Connection error` | 中介在发送FIN或RST之前回收了空闲的池连接，httpx在下一次写入时返回了半死的套接字 | 保活过期默认为5秒，所以跨轮空闲连接被丢弃而不是重用。设置`LLM_HTTP_MAX_KEEPALIVE=0`完全禁用重用（`_get_shared_http_client`） |
+| `Cannot send a request, as the client has been closed` | LiteLLM在其空闲TTL上驱逐了缓存的SDK客户端，该客户端持有的OpenAI SDK关闭了共享httpx会话 | 池在每次尝试前重新验证，关闭时重建，LiteLLM的过期客户端缓存随之刷新（`_get_shared_http_client`、`_flush_litellm_client_cache`） |
+| 计费输入令牌与报告的缓存读取不匹配 | 中继在转发前剥离`cache_control`，所以你支付全价而响应仍报告缓存计数器 | `TurnProfiler`按轮记录`read_tokens`和`create_tokens`，这兼作中继诚实探针。将其与发票比较 |
+| `Function tools with reasoning_effort are not supported ... Please use /v1/responses instead` | 中继基于`reasoning_effort`字段的存在而不是其值来保护聊天完成，所以FIM One发送的显式`none`来禁用推理也会触发保护。在Uniapi上使用`gpt-5.6-luna`观察到 | 无，当Responses路径工作时无需做任何事：该模型仅在Responses请求已失败后才到达聊天完成。将其视为中继想要Responses的信号，而不是设置`FIM_GPT5_RESPONSES_MODE=off`的理由 |
+| GPT-5.x在支持Responses的端点上保持聊天完成 | `404`被缓存为该端点和模型的负面判决 | 仅缓存`404`，因为缺失路由是结构性的。`400`为该次调用回退且有意不缓存，所以单个过期推理项不能永久将端点列入黑名单（`_remember_native_failure`）。缓存是按进程的，所以重启会重新探测 |
+| 思维块被拒绝或前缀缓存从不命中 | 中继重写或重新排序历史，所以重放的`signature`不再匹配 | 重放由`reasoning_replay_policy`集中决定，仅Anthropic系列id重放。如果中继后的Claude模型携带无法识别的id，将其片段添加到策略表 |
+
+## 推荐的按模型配置
+
+`tool_choice_enabled`和`json_mode_enabled`都可以在管理员→模型→高级设置中按模型切换。默认值都是`TRUE`，对大多数提供商都是正确的；仅在看到错误或浪费延迟时进行调整。哪些提供商需要调整已在上表B中记录，操作员填写的按模型视图位于[模型管理](/configuration/model-management#per-provider-configuration-matrix)。
 
 <Tip>
-**何时更改：** 如果在日志中看到 `structured_llm_call: native_fc call raised` 警告，随后成功进行 json_mode 提取，则该模型不受益于原生 FC。为该模型禁用"原生函数调用"以消除浪费的 API 调用（每个结构化输出请求约 10 秒）。
+**何时更改：**如果在日志中看到`structured_llm_call: native_fc call raised`警告，随后是成功的json_mode提取，则该模型不受益于native_fc。为该模型禁用"原生函数调用"以消除浪费的API调用（每个结构化输出请求约10秒）。
 </Tip>
 
-**环境变量级别的覆盖** 适用于通过环境变量配置的所有模型（不是管理员 UI）：
+**环境变量级别覆盖**适用于通过环境变量配置的所有模型（不是管理员UI）：
 
 ```bash
 # Disable native_fc globally (for thinking-model-only deployments)
@@ -210,19 +277,19 @@ LLM_TOOL_CHOICE_ENABLED=false
 LLM_JSON_MODE_ENABLED=false
 ```
 
-## 推理工作量和思考配置
+## 推理工作量和思维配置
 
-FIM One公开了两个环境变量来控制扩展思考/推理：
+FIM One 公开两个环境变量来控制扩展思维/推理：
 
 | 变量 | 值 | 效果 |
 |---|---|---|
-| `LLM_REASONING_EFFORT` | `low`、`medium`、`high` | 作为`reasoning_effort`传递给LiteLLM。Anthropic：映射到`thinking`参数。OpenAI o系列：直接传递。其他：静默丢弃（`drop_params=True`）。 |
-| `LLM_REASONING_BUDGET_TOKENS` | 整数（例如`10000`） | 仅Anthropic：设置显式的`thinking.budget_tokens`上限，绕过LiteLLM的自动映射。用于控制Claude模型的成本。 |
+| `LLM_REASONING_EFFORT` | `low`、`medium`、`high` | 启用思维。超出此集合的任何值都被读作未设置（`deps.py::_reasoning_effort`）。该级别的转换方式以及提供商本身接受的值是按提供商的：请参阅[提供商能力矩阵](#provider-capability-matrix)中的表 C。 |
+| `LLM_REASONING_BUDGET_TOKENS` | 整数（例如 `10000`） | 仅限 Anthropic 旧版路径：在仍采用 `enabled` 形式的模型上设置显式 `thinking.budget_tokens` 上限，绕过 LiteLLM 的自动映射。自适应思维模型忽略它，转而使用 `output_config.effort`。 |
 
-当设置了`reasoning_effort`且模型解析为`anthropic/`时，会应用两个额外的行为：
+启用思维后，以下两种行为会自动执行，都不需要用户配置：
 
-1. **温度被强制设置为1.0。** Bedrock在启用思考时拒绝`temperature != 1.0`。FIM One会自动处理这个问题——无需用户操作。
-2. **GPT-5.x与工具**：FIM One首先尝试OpenAI Responses API（通过LiteLLM的chat-completions桥接），其中工具和推理可以一起使用，推理状态在工具调用轮次间保持。如果端点没有可用的`/v1/responses`路由（某些OpenAI兼容代理），FIM One会静默回退到`/v1/chat/completions`，并记住每个端点的判决；在该回退路径上，GPT-5.x与`tools`发送显式的`reasoning_effort: "none"`，因为端点拒绝工具+推理组合，且省略该字段不等同（服务器默认值不是`none`）。
+1. **温度由系统处理。** 在启用思维的 `anthropic/` 路由上，`_build_request_kwargs` 将 `temperature` 固定为 1.0，这是 Bedrock 的要求。完全拒绝采样参数的模型（Opus 4.7 和 4.8、Fable 5、Mythos 5）会从请求中完全移除 `temperature`，无论是否启用思维。不要手动设置 `LLM_TEMPERATURE=1`。
+2. **GPT-5.x 在可能的情况下将工具和推理结合在一起。** FIM One 首先探测 GPT-5.x 的 Responses 桥接，因为这是两者结合的唯一表面。没有可用 `/v1/responses` 路由的端点会回退到聊天完成，判断结果按端点缓存，在该路径上携带 `tools` 的请求会发送显式 `reasoning_effort` 为 `none`。省略该字段不等同，因为服务器默认值不是 `none`。
 
 ## 结构化输出的防御性解析
 
@@ -312,15 +379,18 @@ LLM 层不返回美元估计 — 定价和中继加价在上层应用，因此 L
 
 ## 推理重放策略（无模型正确性）
 
-扩展思考/推理块在不同提供商之间的行为不同。统一的序列化策略会破坏协议契约和自动前缀缓存。`fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` 返回三个值之一，并在 `OpenAICompatibleLLM._build_request_kwargs()` 中控制 `ChatMessage.to_openai_dict(replay_policy=...)` 的行为。
+扩展思考/推理块在不同提供商之间的行为不同。统一的序列化策略会破坏协议契约和自动前缀缓存。`fim_one.core.prompt.reasoning.reasoning_replay_policy(model_id)` 返回四个值之一，并在 `OpenAICompatibleLLM._build_request_kwargs()` 中控制 `ChatMessage.to_openai_dict(replay_policy=...)` 的行为。
 
-### 三种策略
+### 四项策略
 
-- **`anthropic_thinking`** — Claude 系列（包括 `anthropic/`、`bedrock/anthropic`、`vertex_ai/claude`）。思考块必须附加 `signature` 进行重放；如果缺少或更改签名，Anthropic 会拒绝后续轮次。
-- **`informational_only`** — 发出 CoT 但不期望重放的模型：DeepSeek R1 / R1-Distill、Qwen QwQ、Gemini 2.x thinking、OpenAI o1 / o3 / o4。它们的文档明确说明"不要在消息历史中发送 `reasoning_content`"。即使发送：
+- **`anthropic_thinking`** — Claude 系列（包括 `anthropic/`、`bedrock/anthropic`、`vertex_ai/claude`）。思维块必须附带 `signature` 重放；如果缺少或修改了签名，Anthropic 会拒绝后续轮次。
+- **`informational_only`** — 发出 CoT 但不期望重放的模型：DeepSeek 推理模式（V3.2 上的 `deepseek-reasoner`，以及片段表仍匹配的较早版本 `deepseek-r1` 和 R1-Distill ID）、Qwen QwQ、Gemini flash-thinking、OpenAI o1 / o3 / o4。它们的文档明确说明"不要在消息历史中发送 `reasoning_content`"。即使发送：
   - 违反提供商合约（未来版本可能开始拒绝）
-  - **静默失效其自动前缀缓存** — 消息字节在每个轮次变化，破坏哈希
-- **`unsupported`** — 不具备推理能力的模型（GPT-4o、GPT-4 Turbo、Gemini 1.5、Mistral、Llama）。没有 CoT 可重放；字段不应出现。此策略也是未知模型 ID 的安全默认值。
+  - **无声地使其自动前缀缓存失效** — 消息字节在每个轮次变化，破坏哈希值
+- **`openai_responses`** — GPT-5.x，在 `gpt-5` 片段上匹配。其推理状态不是文本，而是携带加密负载的不透明项序列，只有 `/v1/responses` 有插槽容纳它们。在该协议上，这些项逐字重放，这是保持模型在工具轮次间思维链活跃的方式。可读摘要仍从传出请求中删除，因此在 chat-completions 回退上，其行为完全像 `informational_only`。在信息片段之前检查，其通用 `reasoning` 条目否则会吞没代理标记的 GPT-5 ID。
+- **`unsupported`** — 包罗万象：无推理能力的模型（GPT-4o、Gemini 1.5、Mistral、Llama），以及 ID 不匹配任何片段的推理模型（GLM、MiniMax、Kimi、Doubao）。无论哪种方式都不应重放任何字段，因此此策略在线路上放置与 `informational_only` 相同的字节。这也是未知模型 ID 的安全默认值。
+
+可读的 `reasoning_content` 和不透明的 `reasoning_items` 是 `ChatMessage` 上的独立字段。`to_openai_dict()` 根本不序列化这些项，因此它们在结构上无法泄漏到 chat-completions 请求，无论策略如何。
 
 ### 执行
 
@@ -336,16 +406,16 @@ LLM 层不返回美元估计 — 定价和中继加价在上层应用，因此 L
 ## 故障排除
 
 **"This model does not support assistant message prefill"**
-Bedrock + json_mode。两种修复方法：（1）设置 `LLM_JSON_MODE_ENABLED=false` 或在管理员模型设置中禁用 JSON Mode；或（2）如果你的 Bedrock 提供商提供 OpenAI 兼容的 `/v1/chat/completions` 端点，切换到该端点——FIM One 将其解析为 `openai/`，预填充注入永远不会发生。
+Bedrock + json_mode。两个解决方案：（1）设置 `LLM_JSON_MODE_ENABLED=false` 或在管理员模型设置中禁用 JSON Mode；或（2）如果你的 Bedrock 提供商提供 OpenAI 兼容的 `/v1/chat/completions` 端点，切换到该端点——FIM One 将其解析为 `openai/`，预填充注入永远不会发生。
 
 **"Thinking may not be enabled when tool_choice forces tool use"** / **"tool_choice 'specified' is incompatible with thinking enabled"**
-对于 Anthropic 模型，`structured_llm_call` 会自动为 native_fc 调用禁用思考。对于其他始终启用思考的提供商（例如 Kimi K2.5），在模型的高级设置中禁用"Native Function Calling"，或全局设置 `LLM_TOOL_CHOICE_ENABLED=false`。降级链将跳过 native_fc，改为通过 json_mode 或 plain_text 提取结构化输出。
+对于 Anthropic 模型，`structured_llm_call` 会自动为 native_fc 调用禁用推理。在无法通过 API 关闭推理的情况下，例如 `kimi-k2.5` 和 `kimi-k2-thinking` 或 `deepseek-reasoner`，在模型的高级设置中禁用"Native Function Calling"，或全局设置 `LLM_TOOL_CHOICE_ENABLED=false`。降级链将跳过 native_fc，改为通过 json_mode 或 plain_text 提取结构化输出。在假设推理模型存在此问题之前，请查看[提供商能力矩阵](#provider-capability-matrix)的表 B；MiniMax 没有此问题。
 
 **"DAG pipeline failed: LLM 'steps' is not an array"**
-LLM 将 `steps` 字段返回为字符串或单个对象，而不是数组。这通常意味着结构化输出降级到了 json_mode（缺乏模式强制）。检查日志中的 `structured_llm_call: level=xxx`——如果显示 `json_mode` 而不是 `native_fc`，则 native_fc 正在无声地失败。如果使用自定义 `BaseLLM` 子类，请验证它接受 `reasoning_effort` 关键字参数。
+LLM 返回的 `steps` 字段是字符串或单个对象，而不是数组。这通常意味着结构化输出降级到了 json_mode（缺乏模式强制）。检查日志中的 `structured_llm_call: level=xxx`——如果显示 `json_mode` 而不是 `native_fc`，则 native_fc 以静默方式失败。如果使用自定义 `BaseLLM` 子类，请验证它接受 `reasoning_effort` 关键字参数。
 
 **ReAct 意外降级到 JSON mode**
-检查模型的 `abilities["tool_call"]` 是否为 `True`。对于 `OpenAICompatibleLLM`，这始终为 `True`，但自定义 `BaseLLM` 子类可能会覆盖它。使用管理员 API 中的模型详情端点进行验证。
+检查模型的 `abilities["tool_call"]` 是否为 `True`。对于 `OpenAICompatibleLLM`，这总是 `True`，但自定义 `BaseLLM` 子类可能会覆盖它。通过管理员 API 中的模型详情端点进行验证。
 
 **structured_llm_call 耗尽所有级别并抛出 StructuredOutputError**
-模型在任何级别都无法生成可解析的 JSON。这在现代模型中很少见。检查：（1）模式是有效的 JSON Schema，（2）模型有足够的 `max_tokens` 来生成完整响应，（3）系统提示没有与模式指令相冲突。DAG 规划器和分析器都提供 `default_value` 回退，因此此错误仅从显式省略默认值的调用站点传播。
+模型在任何级别都无法生成可解析的 JSON。这在现代模型中很少见。检查：（1）模式是否为有效的 JSON Schema，（2）模型是否有足够的 `max_tokens` 来生成完整响应，（3）系统提示是否与模式指令相矛盾。DAG 规划器和分析器都提供 `default_value` 回退，因此此错误仅从显式省略默认值的调用站点传播。

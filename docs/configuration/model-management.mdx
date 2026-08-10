@@ -104,7 +104,7 @@ Each model has advanced settings that control how FIM One interacts with the pro
 Controls whether FIM One uses forced `tool_choice` for structured output extraction. This is Level 1 in the structured output degradation chain -- the most reliable method when the model supports it.
 
 **When to disable:**
-- Your model returns errors like `"tool_choice 'specified' is incompatible with thinking enabled"` -- common with always-on thinking models (DeepSeek R1, Kimi K2.5)
+- Your model returns errors like `"tool_choice 'specified' is incompatible with thinking enabled"`. This is a per-provider rule rather than a property of thinking models: `deepseek-reasoner` and the thinking Kimi models reject a forced tool choice, while MiniMax thinks on every call and accepts one. Table B of the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) has the verdict for each provider
 - Structured output requests are consistently slow with a ~10-second penalty per call, followed by a fallback to JSON Mode anyway
 
 **Effect when disabled:** FIM One skips Level 1 (native function calling) and starts from Level 2 (JSON Mode) for structured output. The ReAct agent's tool calling is completely unaffected -- it uses `tool_choice="auto"`, which works with all models regardless of this setting.
@@ -155,6 +155,8 @@ The model's context window size in tokens. Leave blank to use the system default
 Most models work correctly with the default settings (both toggles ON). Only adjust when you encounter errors or unnecessary latency.
 
 The table below covers common providers and models. Data sourced from UniAPI capability tags and verified against runtime behavior as of **2026-03-22**. Model capabilities change frequently -- if you encounter errors, check your provider's latest documentation.
+
+This is the per-model operator view: which toggles to set when you add a model. The provider-level rules it follows from, with the code anchors that implement them, are in the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix). If the two ever disagree, the matrix is authoritative and this table needs updating.
 
 ### Quick Rules
 

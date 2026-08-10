@@ -101,19 +101,19 @@ Group: "Production"
 
 **기본값:** ON
 
-FIM One이 구조화된 출력 추출을 위해 강제 `tool_choice`를 사용할지 여부를 제어합니다. 이는 구조화된 출력 저하 체인의 레벨 1입니다 -- 모델이 지원할 때 가장 신뢰할 수 있는 방법입니다.
+FIM One이 구조화된 출력 추출을 위해 강제 `tool_choice`를 사용할지 여부를 제어합니다. 이는 구조화된 출력 저하 체인의 Level 1입니다 — 모델이 지원할 때 가장 신뢰할 수 있는 방법입니다.
 
-**비활성화 시기:**
-- 모델이 `"tool_choice 'specified' is incompatible with thinking enabled"`와 같은 오류를 반환하는 경우 -- 항상 활성화된 사고 모델(DeepSeek R1, Kimi K2.5)에서 일반적
-- 구조화된 출력 요청이 호출당 약 10초의 페널티로 일관되게 느린 경우, 그 후 어쨌든 JSON Mode로 폴백
+**비활성화할 때:**
+- 모델이 `"tool_choice 'specified' is incompatible with thinking enabled"`와 같은 오류를 반환합니다. 이는 사고 모델의 속성이 아닌 제공자별 규칙입니다: `deepseek-reasoner`와 사고 기능이 있는 Kimi 모델은 강제 도구 선택을 거부하지만, MiniMax는 모든 호출에서 사고하고 이를 수락합니다. [제공자 기능 매트릭스](/architecture/llm-provider-guide#provider-capability-matrix)의 표 B에는 각 제공자에 대한 판정이 있습니다
+- 구조화된 출력 요청이 호출당 약 10초의 페널티로 일관되게 느리고, 그 후 JSON Mode로 폴백됩니다
 
-**비활성화 시 효과:** FIM One은 레벨 1(네이티브 함수 호출)을 건너뛰고 구조화된 출력에 대해 레벨 2(JSON Mode)부터 시작합니다. ReAct 에이전트의 도구 호출은 완전히 영향을 받지 않습니다 -- 이 설정과 관계없이 모든 모델에서 작동하는 `tool_choice="auto"`를 사용합니다.
+**비활성화 시 효과:** FIM One은 Level 1(네이티브 함수 호출)을 건너뛰고 구조화된 출력에 대해 Level 2(JSON Mode)부터 시작합니다. ReAct 에이전트의 도구 호출은 완전히 영향을 받지 않습니다 — 이 설정과 관계없이 모든 모델에서 작동하는 `tool_choice="auto"`를 사용합니다.
 
 <Note>
-이 설정은 구조화된 출력 추출에 사용되는 **강제** 도구 선택(DAG 계획, 스키마 주석)에만 영향을 미칩니다. ReAct 에이전트에는 영향을 미치지 **않으며**, ReAct 에이전트는 `tool_choice="auto"`를 사용하여 도구 호출 시기를 자유롭게 결정합니다.
+이 설정은 구조화된 출력 추출에 사용되는 **강제** 도구 선택(DAG 계획, 스키마 주석)에만 영향을 미칩니다. ReAct 에이전트에는 영향을 **미치지 않으며**, 이는 `tool_choice="auto"`를 사용하여 자유롭게 도구 호출 시기를 결정합니다.
 </Note>
 
-기술적 세부 사항은 [LLM 제공자 호환성 -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled)를 참조하세요.
+기술 세부 정보는 [LLM 제공자 호환성 — tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled)를 참조하세요.
 
 ### JSON Mode
 
@@ -152,9 +152,11 @@ Anthropic 모델에 대해 추론/확장 사고가 활성화되면 시스템에�
 
 ## 권장 구성
 
-대부분의 모델은 기본 설정(토글 모두 ON)에서 올바르게 작동합니다. 오류나 불필요한 지연이 발생할 때만 조정하세요.
+대부분의 모델은 기본 설정(두 토글 모두 ON)으로 올바르게 작동합니다. 오류나 불필요한 지연이 발생할 때만 조정하세요.
 
-아래 표는 일반적인 제공자와 모델을 다룹니다. 데이터는 UniAPI 기능 태그에서 소싱되었으며 **2026-03-22** 기준 런타임 동작에 대해 검증되었습니다. 모델 기능은 자주 변경됩니다 -- 오류가 발생하면 제공자의 최신 문서를 확인하세요.
+아래 표는 일반적인 제공자와 모델을 다룹니다. 데이터는 UniAPI 기능 태그에서 소싱되었으며 **2026-03-22** 기준 런타임 동작에 대해 검증되었습니다. 모델 기능은 자주 변경됩니다 — 오류가 발생하면 제공자의 최신 문서를 확인하세요.
+
+이것은 모델을 추가할 때 어떤 토글을 설정할지에 대한 모델별 운영자 보기입니다. 이것이 따르는 제공자 수준의 규칙과 이를 구현하는 코드 앵커는 [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix)에 있습니다. 둘이 불일치하는 경우 행렬이 권위 있으며 이 표를 업데이트해야 합니다.
 
 ### 빠른 규칙
 

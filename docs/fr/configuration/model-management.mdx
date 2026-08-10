@@ -95,21 +95,21 @@ Chaque modèle dispose de paramètres avancés qui contrôlent la façon dont FI
 
 **Nom du paramètre :** Native Function Calling (stocké sous `tool_choice_enabled`)
 
-**Par défaut :** ACTIVÉ
+**Valeur par défaut :** ACTIVÉ
 
-Contrôle si FIM One utilise `tool_choice` forcé pour l'extraction de sortie structurée. C'est le niveau 1 dans la chaîne de dégradation de sortie structurée -- la méthode la plus fiable quand le modèle la supporte.
+Contrôle si FIM One utilise un `tool_choice` forcé pour l'extraction de sortie structurée. Il s'agit du niveau 1 dans la chaîne de dégradation de sortie structurée — la méthode la plus fiable lorsque le modèle la supporte.
 
 **Quand désactiver :**
-- Votre modèle retourne des erreurs comme `"tool_choice 'specified' is incompatible with thinking enabled"` -- courant avec les modèles à réflexion toujours activée (DeepSeek R1, Kimi K2.5)
-- Les demandes de sortie structurée sont régulièrement lentes avec une pénalité d'environ 10 secondes par appel, suivie d'une retombée à JSON Mode de toute façon
+- Votre modèle retourne des erreurs comme `"tool_choice 'specified' is incompatible with thinking enabled"`. Il s'agit d'une règle par fournisseur plutôt qu'une propriété des modèles de réflexion : `deepseek-reasoner` et les modèles Kimi avec réflexion rejettent un choix d'outil forcé, tandis que MiniMax réfléchit à chaque appel et l'accepte. Le tableau B de la [Matrice de capacités des fournisseurs](/architecture/llm-provider-guide#provider-capability-matrix) indique le verdict pour chaque fournisseur
+- Les demandes de sortie structurée sont systématiquement lentes avec une pénalité d'environ 10 secondes par appel, suivie d'un basculement vers JSON Mode
 
-**Effet quand désactivé :** FIM One ignore le niveau 1 (appel de fonction natif) et commence au niveau 2 (JSON Mode) pour la sortie structurée. L'appel d'outil de l'agent ReAct n'est complètement pas affecté -- il utilise `tool_choice="auto"`, qui fonctionne avec tous les modèles indépendamment de ce paramètre.
+**Effet lors de la désactivation :** FIM One ignore le niveau 1 (appel de fonction natif) et commence au niveau 2 (JSON Mode) pour la sortie structurée. L'appel d'outil de l'agent ReAct n'est pas du tout affecté — il utilise `tool_choice="auto"`, qui fonctionne avec tous les modèles indépendamment de ce paramètre.
 
 <Note>
 Ce paramètre affecte uniquement la sélection d'outil **forcée** utilisée pour l'extraction de sortie structurée (planification DAG, annotation de schéma). Il n'affecte **pas** l'agent ReAct, qui décide librement quand appeler des outils en utilisant `tool_choice="auto"`.
 </Note>
 
-Pour les détails techniques, voir [Compatibilité des fournisseurs LLM -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled).
+Pour plus de détails techniques, voir [Compatibilité des fournisseurs LLM — tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled).
 
 ### Mode JSON
 
@@ -148,7 +148,9 @@ La taille de la fenêtre de contexte du modèle en tokens. Laissez vide pour uti
 
 La plupart des modèles fonctionnent correctement avec les paramètres par défaut (les deux bascules activées). Ajustez uniquement si vous rencontrez des erreurs ou une latence inutile.
 
-Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données proviennent des balises de capacité UniAPI et ont été vérifiées par rapport au comportement à l'exécution en date du **2026-03-22**. Les capacités des modèles changent fréquemment -- si vous rencontrez des erreurs, consultez la dernière documentation de votre fournisseur.
+Le tableau ci-dessous couvre les fournisseurs et modèles courants. Les données proviennent des balises de capacité UniAPI et ont été vérifiées par rapport au comportement d'exécution au **2026-03-22**. Les capacités des modèles changent fréquemment — si vous rencontrez des erreurs, consultez la dernière documentation de votre fournisseur.
+
+Ceci est la vue par modèle de l'opérateur : quels bascules définir lorsque vous ajoutez un modèle. Les règles au niveau du fournisseur qu'il suit, avec les ancres de code qui les implémentent, se trouvent dans la [Matrice de capacité des fournisseurs](/architecture/llm-provider-guide#provider-capability-matrix). Si les deux divergent, la matrice est l'autorité et ce tableau doit être mis à jour.
 
 ### Règles rapides
 

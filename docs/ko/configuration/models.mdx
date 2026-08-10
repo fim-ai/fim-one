@@ -26,47 +26,51 @@ Fast와 Reasoning이 구성되지 않으면 General로 폴백됩니다. 프로�
 
 | 제공자 | 메인 LLM | 빠른 LLM | 추론 | 비전 | 참고 |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 모두 | 최고의 네이티브 도구 호출; GPT-5.4는 최신 플래그십 (2026년 3월) |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 모두 | 최고의 네이티브 도구 호출; GPT-5.4는 최신 플래그십 (Mar 2026) |
 | **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ LiteLLM 경유 | ✅ 모두 | 네이티브 API 라우팅; 완전한 `reasoning_content` 지원; 1M 컨텍스트 GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 모두 | 2.5는 안정적 GA; 3.x는 프리뷰; `gemini-3-pro-preview` 3월 9일 종료 |
-| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 텍스트 전용; V4 (2026년 4월)에서 비전 추가 예정 |
-| **Qwen (알리바바)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max`의 `enable_thinking` | ⚠️ qwen3.5만 | 가장 강력한 중국어; qwq/추론은 텍스트 전용 |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 모두 | 2.5는 안정적 GA; 3.x는 프리뷰; `gemini-3-pro-preview` Mar 9 종료 |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 텍스트 전용; V4 (Apr 2026)에서 비전 추가 예정 |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max`의 `enable_thinking` | ⚠️ qwen3.5만 | 가장 강력한 중국어; qwq/추론은 텍스트 전용 |
 | **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 강제 FC 미지원; 비전은 별도 VLM 모델 필요 |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 텍스트 전용; M2.7 최신 (2026년 3월); SWE-Bench 80.2% |
-| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5만 | K2-thinking 텍스트 전용; 강제 FC는 thinking과 미지원 |
-| **Ollama (로컬)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 다양함 | 완전 오프라인, API 키 불필요; Llama 4는 비전 지원 |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 텍스트 전용; M2.7 최신 (Mar 2026); 80.2% SWE-Bench |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5만 | K2-thinking은 텍스트 전용; 강제 FC는 thinking과 미지원 |
+| **Ollama (로컬)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 다양함 | 완전히 오프라인, API 키 불필요; Llama 4는 비전 지원 |
 
 <Tip>
-**비전**은 모델이 이미지 입력을 수용하는지 여부를 나타냅니다. 이는 [지능형 문서 처리 (IDP)](/features/idp)에 필수적입니다 — 모델이 비전을 지원하지 않으면 IDP는 텍스트 전용 추출로 폴백됩니다. ⚠️로 표시된 제공자는 일부 모델에서만 비전을 지원합니다. 사용 중인 특정 모델을 확인하세요.
+**비전**은 모델이 이미지 입력을 수용하는지 여부를 나타냅니다. 이는 [지능형 문서 처리 (IDP)](/features/idp)에 필수입니다 — 모델이 비전을 지원하지 않으면 IDP는 텍스트 전용 추출로 폴백됩니다. ⚠️로 표시된 제공자는 일부 모델에서만 비전을 지원합니다. 사용 중인 특정 모델을 확인하세요.
 </Tip>
 
----
+이 표는 FIM One이 지원하는 전체 제공자 세트가 아니라 권장하는 조합을 나열합니다. xAI (Grok), ByteDance Doubao, Mistral 및 모든 OpenAI 호환 릴레이가 작동합니다. 전체 목록과 각 제공자의 라우팅 방식은 [제공자 기능 매트릭스](/architecture/llm-provider-guide#provider-capability-matrix)를 참조하세요.
 
 ## 구조화된 출력 호환성
 
 FIM One의 DAG 플래너는 모델이 유효한 구조화된 JSON을 반환해야 합니다. 내부적으로 다음 세 가지 추출 수준을 순서대로 시도합니다:
 
-1. **Native Function Calling** — 도구 호출 API를 통해 스키마와 일치하는 JSON 출력을 강제합니다. 가장 신뢰할 수 있습니다.
+1. **Native Function Calling** — 도구 호출 API를 통해 스키마와 일치하는 JSON 출력을 강제합니다. 가장 안정적입니다.
 2. **JSON Mode** — `response_format: json_object`를 요청합니다. 유효한 JSON을 보장하지만 스키마 준수를 강제하지는 않습니다.
-3. **Plain Text Extraction** — 최후의 수단으로 자유 형식 텍스트에서 JSON을 파싱합니다.
+3. **Plain Text Extraction** — 마지막 수단으로 자유 형식 텍스트에서 JSON을 파싱합니다.
 
-Level 1을 지원하는 모델(강제된 `tool_choice`를 사용한 네이티브 FC)이 최고의 계획 신뢰성을 제공합니다. 모델이 Level 2에만 도달하면 출력 품질은 프롬프트 지시를 얼마나 잘 따르는지에 따라 달라집니다. 약한 모델은 예상된 구조와 일치하지 않는 유효한 JSON을 생성할 수 있습니다.
+Level 1(강제 `tool_choice`를 사용한 네이티브 FC)을 지원하는 모델이 최고의 플래닝 안정성을 제공합니다. 모델이 Level 2에만 도달하면 출력 품질은 프롬프트 지시를 따르는 정도에 따라 달라집니다. 약한 모델은 예상된 구조와 일치하지 않는 유효한 JSON을 생성할 수 있습니다.
 
-| 제공자 | 강제 Function Calling | JSON Mode | 계획 신뢰성 |
+| 제공자 | 강제 Function Calling | JSON Mode | 플래닝 안정성 |
 |---|---|---|---|
 | **OpenAI** (GPT-5.x, o3) | ✅ 완전 지원 | ✅ | ⭐⭐⭐ 우수 |
 | **Anthropic** (Claude 4.x) | ⚠️ 사고 모드와 충돌 | ✅ | ⭐⭐⭐ 우수 (강력한 지시 준수로 보완) |
 | **Google Gemini** (2.5/3.x) | ✅ 완전 지원 | ✅ | ⭐⭐⭐ 우수 |
-| **Mistral** | ✅ 완전 지원 | ✅ | ⭐⭐ 좋음 |
-| **DeepSeek** (V3.2) | ⚠️ 불안정 (`tool_choice="required"`는 작동, `"auto"`는 불안정) | ✅ | ⭐⭐ 좋음 |
-| **Qwen** (3.x) | ⚠️ 부분 지원 | ✅ | ⭐⭐ 좋음 |
-| **Kimi** (K2.5) | ⚠️ 부분 지원 — 사고 활성화 시에만 `auto` | ✅ | ⭐ 보통 — 잘못된 형식의 계획 생성 가능 |
+| **Mistral** | ✅ 완전 지원 | ✅ | ⭐⭐ 양호 |
+| **xAI** (Grok 4.1) | ✅ 완전 지원 | ✅ | ⭐⭐ 양호 |
+| **DeepSeek** (V3.2) | ✅ `deepseek-chat`에서 지원; ❌ `deepseek-reasoner`에서는 사고 모드가 거부 | ✅ | ⭐⭐ 양호 |
+| **Qwen** (3.x) | ✅ 지원됨 | ✅ | ⭐⭐ 양호 |
+| **ByteDance** (Doubao Seed) | ✅ 완전 지원 | ✅ | ⭐⭐ 양호 |
+| **Kimi** (K2.5) | ⚠️ 사고 모드 사용 시 `auto`만 지원; 강제 도구 선택은 사고 비활성화 필요 (`kimi-k2`) | ✅ | ⭐ 보통 — 잘못된 플랜 생성 가능 |
 | **ChatGLM** (GLM-4.7/5) | ❌ 지원 안 함 (`auto`만 가능) | ✅ | ⭐ 보통 |
-| **MiniMax** (M2.5/M2.7) | ✅ 완전 지원 | ✅ | ⭐⭐ 좋음 |
+| **MiniMax** (M2.5/M2.7) | ✅ 완전 지원, 사고 모드 관계없이 | ✅ | ⭐⭐ 양호 |
 | **Local (Ollama)** | 모델에 따라 다름 | 모델에 따라 다름 | ⭐ 보통 — 32B 이상 권장 |
 
+이 표는 선택을 돕기 위한 것입니다. 각 제공자가 수용하는 `tool_choice` 상태와 거부될 때 FIM One이 수행하는 작업을 포함한 권위 있는 코드 기반 버전은 [제공자 기능 매트릭스](/architecture/llm-provider-guide#provider-capability-matrix)를 참조하세요.
+
 <Tip>
-"failed to generate a valid task plan" 오류가 표시되면 모델의 구조화된 출력 기능이 DAG 계획에 부족합니다. **Main LLM**을 ⭐⭐⭐ 또는 ⭐⭐ 이상으로 평가된 모델로 전환하거나, DAG 모드를 비활성화하고 더 간단한 ReAct 에이전트를 대신 사용하세요.
+"failed to generate a valid task plan" 오류가 표시되면 모델의 구조화된 출력 기능이 DAG 플래닝에 불충분합니다. **Main LLM**을 ⭐⭐⭐ 또는 ⭐⭐ 이상으로 평가된 모델로 전환하거나 DAG 모드를 비활성화하고 더 간단한 ReAct 에이전트를 대신 사용하세요.
 </Tip>
 
 ## 사고 / 추론 호환성
@@ -83,43 +87,45 @@ Level 1을 지원하는 모델(강제된 `tool_choice`를 사용한 네이티브
 
 | 제공자 | 활성화 방법 | 비활성화 가능? | 추론 출력 | 강제 FC 충돌? |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | `reasoning_effort` 매개변수 | ✅ 선택 사항 | 내부 (사용자에게 표시되지 않음) | ✅ 도구 + 추론이 Responses API를 통해 함께 실행됨 (자동; chat-completions 폴백은 `reasoning_effort: "none"`을 강제함) |
+| **OpenAI** (GPT-5.x) | `reasoning_effort` 파라미터 | ✅ 선택 가능 | 내부 (사용자에게 표시되지 않음) | ✅ 도구 + 추론이 Responses API를 통해 함께 실행됨 (자동; chat-completions 폴백은 `reasoning_effort: "none"` 강제) |
 | **OpenAI** (o-series) | 항상 활성화 | ❌ | 내부 (토큰 계산됨, 반환되지 않음) | ✅ 충돌 없음 |
-| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 선택 사항 | API `reasoning_content` 필드 → 추론 패널 | ❌ 강제 FC + 추론 = **400 오류** |
-| **Google Gemini** (2.5/3.x) | `reasoning_effort` 매개변수 | ✅ 선택 사항 | 내부 | ✅ 충돌 없음 |
-| **DeepSeek** | 모델 변형 (`deepseek-reasoner`) | 모델 수준 | API `reasoning_content` 필드 → 추론 패널 | ⚠️ 강제 FC 불안정 |
-| **Qwen** (3.x) | `enable_thinking` 매개변수 | ✅ 선택 사항 | 콘텐츠의 `<think>` 태그 | ⚠️ 부분 FC 지원 |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 선택 가능 | API `reasoning_content` 필드 → 추론 패널 | ❌ 강제 FC + 추론 = **400 오류** |
+| **Google Gemini** (2.5/3.x) | `reasoning_effort` 파라미터 | ✅ 선택 가능 | 내부 | ✅ 충돌 없음 |
+| **DeepSeek** | 모델 변형 (`deepseek-reasoner`) | 모델 수준 | API `reasoning_content` 필드 → 추론 패널 | ❌ `deepseek-reasoner`에서 거부됨, `deepseek-chat`에서 수락됨 |
+| **Qwen** (3.x) | `enable_thinking` 파라미터, 제공자 측에서 설정 | ✅ 선택 가능 | 콘텐츠의 `<think>` 태그 | ✅ 충돌 없음 |
 | **MiniMax** (M2.7) | 항상 활성화 | ❌ | 콘텐츠의 `<think>` 태그 | ✅ 충돌 없음 |
-| **ChatGLM** (GLM-5) | 모델 변형 | 모델 수준 | 외부화되지 않음 | N/A — 강제 FC 미지원 |
-| **Kimi** (K2-thinking) | 모델 변형 | 모델 수준 | API 필드 | ❌ 강제 FC + 추론 = 충돌 |
+| **ChatGLM** (GLM-5) | 모델 변형 | 모델 수준 | 외부화되지 않음 | ❌ 강제 FC 미지원, 추론 여부와 관계없음 |
+| **Kimi** (K2-thinking) | 모델 변형 | 모델 수준 | API 필드 | ❌ 추론 활성화 시 `auto`만 지원됨 |
 
-### FIM One가 각 경우를 처리하는 방식
+이 표 뒤의 제공자별 세부 정보(각 `effort` 수준이 어떻게 변환되는지 및 추론이 이후 턴에서 재생되는지 여부 포함)는 [제공자 기능 매트릭스의 표 C](/architecture/llm-provider-guide#provider-capability-matrix)에 있습니다.
 
-**API 수준 `reasoning_content`** (Claude, DeepSeek): 추론 필드는 API 응답에서 직접 읽혀 UI의 추론 패널에 표시됩니다. 후처리가 필요하지 않습니다.
+### FIM One이 각 경우를 처리하는 방식
 
-**콘텐츠의 `<think>` 태그** (MiniMax, Qwen, QwQ 및 기타 오픈소스 파생 모델): FIM One은 콘텐츠 필드에서 `<think>...</think>` 태그를 자동으로 제거하고 사고 텍스트를 추론 패널로 재라우팅합니다. 이는 스트리밍 및 비스트리밍 응답 모두에서 작동합니다.
+**API 수준 `reasoning_content`** (Claude, DeepSeek): 추론 필드는 API 응답에서 직접 읽어지며 UI의 Reasoning 패널에 표시됩니다. 후처리가 필요하지 않습니다.
 
-**강제 FC + 사고 충돌** (Claude, Kimi): FIM One이 강제 함수 호출이 필요한 경우(예: DAG 계획의 구조화된 출력 추출 중), `reasoning_effort=None`을 전달하여 해당 특정 호출에 대해 사고를 일시적으로 비활성화합니다. 이는 Claude의 사고가 선택적이기 때문에 작동합니다 — 매개변수를 보내지 않으면 사고가 없으므로 400 오류를 피합니다. 사고를 비활성화할 수 없는 공급자(MiniMax)의 경우, 이러한 공급자가 조합을 거부하지 않으므로 강제 FC가 정상적으로 작동합니다.
+**콘텐츠의 `<think>` 태그** (MiniMax, Qwen, QwQ 및 기타 오픈소스 파생 모델): FIM One은 콘텐츠 필드에서 `<think>...</think>` 태그를 자동으로 제거하고 사고 텍스트를 Reasoning 패널로 재라우팅합니다. 이는 스트리밍 및 비스트리밍 응답 모두에서 작동합니다.
 
-**폴백 체인**: 어떤 이유로든 강제 함수 호출이 실패하면 FIM One은 자동으로 폴백합니다: 기본 FC → JSON 모드 → 일반 텍스트 추출. 이 3단계 접근 방식은 도구 호출 지원이 부분적인 공급자에서도 계획이 작동하도록 보장합니다.
+**강제 FC + 사고 충돌**은 제공자별로 발생하며, 사고 모델의 일반적인 속성이 아닙니다. Claude는 이 조합을 거부하지만 사고는 선택 사항이므로, FIM One은 `reasoning_effort=None`을 전달하여 해당 호출에 대해 사고를 끄고 네이티브 함수 호출을 진행합니다. Kimi도 이를 거부하며, 사고는 매개변수가 아닌 모델 ID로 선택되므로, 여기서의 해결책은 사고 모델에 대해 Native Function Calling을 비활성화하는 것입니다. MiniMax는 모든 호출에서 사고하며 강제 함수 호출을 어쨌든 수락하므로, 이에 적용되는 해결책이 없습니다.
+
+**폴백 체인**: 강제 함수 호출이 어떤 이유로든 실패하면, FIM One은 자동으로 폴백합니다: 네이티브 FC → JSON 모드 → 일반 텍스트 추출. 이 3단계 접근 방식은 도구 호출 지원이 부분적인 제공자에서도 계획이 작동하도록 보장합니다.
 
 <Note>
-항상 사고하는 모델(MiniMax M2.7, DeepSeek R1)을 메인 LLM으로 사용하는 경우, 사고 출력이 모든 에이전트 반복의 추론 패널에 나타납니다. 이는 정상입니다 — 기능에 영향을 주지 않으며, 모델의 추론 과정을 볼 수 있습니다.
+항상 사고하는 모델(MiniMax M2.7, `deepseek-reasoner`)을 Main LLM으로 사용하는 경우, 사고 출력이 모든 에이전트 반복의 Reasoning 패널에 나타납니다. 이는 정상입니다 — 기능에 영향을 주지 않으며, 모델의 추론 과정을 볼 수 있습니다.
 </Note>
 
 ## 제공자 세부 정보
 
 ### OpenAI
 
-가장 검증된 옵션입니다. OpenAI 모델은 최고 수준의 네이티브 함수 호출(도구 호출) 지원을 제공하며, 이는 에이전트 안정성에 직접적인 영향을 미칩니다. GPT-5 계열(2025년 8월 이후)은 GPT-4 대비 주요 세대 도약입니다.
+가장 검증된 옵션입니다. OpenAI 모델은 최고 수준의 네이티브 함수 호출(도구 호출) 지원을 제공하므로 에이전트 안정성에 직접적인 영향을 미칩니다. GPT-5 패밀리(2025년 8월 이후)는 GPT-4 대비 세대 단위의 큰 도약입니다.
 
 **권장 모델:**
-- Main: `gpt-5.4`(최신 플래그십, 2026년 3월 — 1M+ 컨텍스트, 컴퓨터 사용) 또는 `o3`(최고의 추론 정확도)
-- Fast: `gpt-5.4-mini`($0.75/$4.50 per MTok) 또는 `gpt-5.4-nano`(가장 저렴 $0.20/$1.25 per MTok)
-- Budget Fast: `gpt-5-mini`($0.25/$2.00) 및 `gpt-5-nano`($0.05/$0.40)는 더 낮은 가격으로 계속 이용 가능
-- Legacy: `gpt-4.1`(API에서 계속 지원, 1M 컨텍스트, 코딩에 적합)
+- Main: `gpt-5.4` (최신 플래그십, 2026년 3월 — 1M+ 컨텍스트, 컴퓨터 사용) 또는 `o3` (최고의 추론 정확도)
+- Fast: `gpt-5.4-mini` ($0.75/$4.50 per MTok) 또는 `gpt-5.4-nano` (최저가 $0.20/$1.25 per MTok)
+- Budget Fast: `gpt-5-mini` ($0.25/$2.00) 및 `gpt-5-nano` ($0.05/$0.40)은 더 낮은 가격으로 계속 이용 가능
+- Legacy: `gpt-4.1` (여전히 API에 있음, 1M 컨텍스트, 코딩에 적합)
 
-**추론:** `LLM_REASONING_EFFORT=medium`으로 설정하세요 — o-series 및 GPT-5.x 모델과 기본 호환됩니다. GPT-5.4는 `reasoning_effort`를 `none`, `low`, `medium`, `high`, `xhigh` 레벨로 지원합니다. o-series는 `max_tokens` 대신 `max_completion_tokens`이 필요하며, LiteLLM이 자동으로 처리합니다. 참고: `/v1/chat/completions`는 도구와 추론을 결합한 GPT-5.x 요청을 거부합니다 — FIM One은 GPT-5.x 모델을 먼저 Responses API를 통해 라우팅하고(두 기능이 함께 작동), `/v1/responses` 경로가 없는 엔드포인트만 에이전트 도구 사용 단계에서 명시적 `reasoning_effort: "none"`으로 채팅 완성으로 폴백합니다. OpenAI 호환 엔드포인트의 다른 모델 계열은 채팅 완성에 유지됩니다 — Responses에서 이점을 얻지 못하며, 이에 대한 프록시 shim은 스트리밍을 심각하게 버퍼링할 수 있습니다. GPT-5.4는 `temperature=1`이 필요합니다 — FIM One은 LiteLLM의 매개변수 필터링(`drop_params`)을 통해 자동으로 처리합니다.
+**추론:** `LLM_REASONING_EFFORT=medium`을 설정하세요 — o-series 및 GPT-5.x 모델과 네이티브로 작동합니다. GPT-5.4는 `reasoning_effort`를 `none`, `low`, `medium`, `high`, `xhigh` 수준으로 지원합니다. o-series는 `max_tokens` 대신 `max_completion_tokens`이 필요하며, LiteLLM이 자동으로 처리합니다. 참고: `/v1/chat/completions`는 도구와 추론을 결합한 GPT-5.x 요청을 거부하므로, FIM One은 GPT-5.x에 대해 Responses API를 직접 사용하며, 여기서 둘 다 함께 작동합니다. 이 경로는 각 턴의 암호화된 추론을 다음 턴으로 전달하므로, 에이전트가 다단계 답변을 구축할 때 이미 작업한 내용을 유지하고 모든 도구 호출에서 다시 도출하지 않습니다. `/v1/responses` 경로가 없는 엔드포인트는 에이전트 도구 사용 단계에서 명시적 `reasoning_effort: "none"`을 사용하여 채팅 완성으로 폴백하며, `FIM_GPT5_RESPONSES_MODE`로 폴백을 수동으로 강제할 수 있습니다. OpenAI 호환 엔드포인트의 다른 모델 패밀리는 채팅 완성에 유지됩니다. Responses에서 얻을 이점이 없으며, 이에 대한 프록시 shim은 스트리밍을 심각하게 버퍼링할 수 있습니다. GPT-5.4는 `temperature=1`이 필요하며, FIM One은 LiteLLM의 매개변수 필터링(`drop_params`)을 통해 자동으로 처리합니다.
 
 | Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
@@ -153,7 +159,7 @@ LLM_REASONING_EFFORT=medium
 
 ### Anthropic (Claude)
 
-Claude는 미묘한 추론과 복잡한 다단계 작업에 뛰어납니다. FIM One은 [LiteLLM](https://github.com/BerriAI/litellm)을 통해 연결되며, Anthropic 모델을 자동으로 네이티브 API를 통해 라우팅합니다. 현재 세대는 Claude 4.6(2026년 2월)입니다.
+Claude는 미묘한 추론과 복잡한 다단계 작업에 탁월합니다. FIM One은 [LiteLLM](https://github.com/BerriAI/litellm)을 통해 연결되며, Anthropic 모델을 자동으로 네이티브 API를 통해 라우팅합니다. 현재 세대는 Claude 4.6(2026년 2월)입니다.
 
 **권장 모델:**
 - Main: `claude-sonnet-4-6` (기능과 비용의 최적 균형 — $3/$15 per MTok)
@@ -162,9 +168,9 @@ Claude는 미묘한 추론과 복잡한 다단계 작업에 뛰어납니다. FIM
 
 **Base URL:** `https://api.anthropic.com/v1/`
 
-Opus 4.6과 Sonnet 4.6은 1M 컨텍스트 윈도우를 가지고 있습니다(2026년 3월 13일부터 GA — 베타 헤더 불필요). Haiku 4.5는 200K 컨텍스트 윈도우를 가지고 있습니다.
+Opus 4.6과 Sonnet 4.6은 1M 컨텍스트 윈도우를 가지고 있습니다(2026년 3월 13일 이후 GA — 베타 헤더 불필요). Haiku 4.5는 200K 컨텍스트 윈도우를 가지고 있습니다.
 
-**추론:** `LLM_REASONING_EFFORT=medium`을 설정하세요 — LiteLLM은 Anthropic 모델을 네이티브 API를 통해 라우팅하므로, `reasoning_content`(확장 사고)가 완전히 반환되고 UI "thinking" 단계에서 볼 수 있습니다. Claude 4.6 모델은 Adaptive Thinking(`thinking: {type: "adaptive"}`)을 지원하며, 이는 수동 `budget_tokens`을 대체합니다 — LiteLLM이 자동으로 변환을 처리합니다. 확장 사고가 활성화되면 Anthropic은 `temperature=1`을 요구합니다 — `.env` 또는 모델 구성에서 `LLM_TEMPERATURE=1`을 설정하세요. 자세한 내용은 [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning)을 참조하세요.
+**추론:** `LLM_REASONING_EFFORT=medium`을 설정하세요. LiteLLM은 Anthropic 모델을 네이티브 API를 통해 라우팅하므로, `reasoning_content`(확장 사고)가 완전히 반환되고 UI의 "thinking" 단계에서 볼 수 있습니다. Claude 4.6 이상은 수동 `budget_tokens` 대신 Adaptive Thinking(`thinking: {type: "adaptive"}` 및 `output_config.effort`)을 사용하며, FIM One은 LiteLLM의 매핑에 의존하지 않고 직접 이를 내보냅니다. Anthropic은 사고가 활성화되어 있는 동안 `temperature=1`을 요구하며, 시스템이 이를 강제합니다. 요청 빌더는 Anthropic 라우트에서 값을 고정하고, 샘플링 매개변수를 완전히 거부하는 모델에서는 `temperature`를 완전히 제거합니다. `LLM_TEMPERATURE=1`을 수동으로 설정하지 마세요. 자세한 내용은 [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning)을 참조하세요.
 
 ```bash
 # .env — Anthropic Claude
@@ -488,13 +494,15 @@ LLM_REASONING_EFFORT=medium
 
 ### 왜 이것이 중요한가
 
-- **Anthropic 네이티브 엔드포인트**는 적절한 `reasoning_content` 지원(UI에서 확장 사고 가시화), 올바른 도구 호출 형식, `x-api-key` 인증을 제공합니다 — OpenAI 호환 변환을 사용할 때 손실되는 기능입니다.
-- **Google 네이티브 엔드포인트**는 네이티브 Gemini 매개변수와 `x-goog-api-key` 인증을 제공합니다.
-- **OpenAI 호환**은 범용 폴백이며 모든 릴레이에서 작동하지만, 공급자별 기능(예: 확장 사고 출력)은 사용할 수 없을 수 있습니다.
+- **Anthropic 네이티브 엔드포인트**는 적절한 `reasoning_content` 지원(UI에서 확장 사고 표시), 올바른 도구 호출 형식, `x-api-key` 인증을 제공합니다 — OpenAI 호환 변환을 사용할 때 손실되는 기능입니다.
+- **Google 네이티브 엔드포인트**는 네이티브 Gemini 파라미터와 `x-goog-api-key` 인증을 제공합니다.
+- **OpenAI 호환**은 범용 폴백이며 모든 릴레이에서 작동하지만, 공급자별 기능(확장 사고 출력 등)은 사용할 수 없을 수 있습니다.
 
 <Note>
-릴레이 플랫폼이 비표준 경로 규칙을 사용하는 경우(예: URL에 `/claude` 또는 `/anthropic`이 없음), FIM One은 OpenAI 호환 프로토콜로 폴백됩니다 — 대부분의 사용 사례에서 작동합니다. 완전한 네이티브 프로토콜 지원을 위해 관리자 모델 구성 UI를 통해 `provider` 필드를 명시적으로 설정할 수 있습니다.
+릴레이 플랫폼이 비표준 경로 규칙을 사용하는 경우(예: URL에 `/claude` 또는 `/anthropic`이 없음), FIM One은 OpenAI 호환 프로토콜로 폴백합니다 — 대부분의 사용 사례에서 작동합니다. 완전한 네이티브 프로토콜 지원을 위해 관리자 모델 구성 UI를 통해 `provider` 필드를 명시적으로 설정할 수 있습니다.
 </Note>
+
+릴레이는 직접 공급자와 다르게 실패하며, 대부분의 실패는 무음입니다: 드롭된 파라미터, 제거된 캐시 중단점, 오류가 발생하지 않는 버퍼링된 스트림. 증상별 목록은 [릴레이/프록시 주의사항](/architecture/llm-provider-guide#relayproxy-gotchas)에 있습니다.
 
 ## 구성 전략
 

@@ -49,33 +49,34 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 | 変数 | 必須 | デフォルト | 説明 |
 |---|---|---|---|
-| `LLM_API_KEY` | **はい** | — | LLM プロバイダーの API キー |
-| `LLM_BASE_URL` | いいえ | `https://api.openai.com/v1` | OpenAI 互換 API のベース URL |
-| `LLM_MODEL` | いいえ | `gpt-4o` | メインモデル — 計画、分析、ReAct 智能体に使用 |
-| `FAST_LLM_MODEL` | いいえ | *(`LLM_MODEL` にフォールバック)* | 高速モデル — DAG ステップ実行に使用 (低コスト、高速) |
+| `LLM_API_KEY` | **はい** | — | LLMプロバイダーのAPIキー |
+| `LLM_BASE_URL` | いいえ | `https://api.openai.com/v1` | OpenAI互換APIのベースURL |
+| `LLM_MODEL` | いいえ | `gpt-4o` | メインモデル——計画、分析、ReAct agentに使用 |
+| `FAST_LLM_MODEL` | いいえ | *(`LLM_MODEL`にフォールバック)* | 高速モデル——DAGステップ実行に使用（より安価で高速） |
 | `LLM_TEMPERATURE` | いいえ | `0.7` | デフォルトサンプリング温度 |
-| `LLM_CONTEXT_SIZE` | いいえ | `128000` | メイン LLM の上下文窓口サイズ |
-| `LLM_MAX_OUTPUT_TOKENS` | いいえ | `64000` | メイン LLM の呼び出しあたりの最大出力 token 数 |
-| `FAST_LLM_API_KEY` | いいえ | *(`LLM_API_KEY` にフォールバック)* | 高速モデルプロバイダーの API キー。高速モデルがメインモデルと異なるプロバイダーでホストされている場合に使用 |
-| `FAST_LLM_BASE_URL` | いいえ | *(`LLM_BASE_URL` にフォールバック)* | 高速モデルプロバイダーのベース URL |
-| `FAST_LLM_TEMPERATURE` | いいえ | *(`LLM_TEMPERATURE` にフォールバック)* | 高速モデルのサンプリング温度 |
-| `FAST_LLM_CONTEXT_SIZE` | いいえ | *(`LLM_CONTEXT_SIZE` にフォールバック)* | 高速 LLM の上下文窓口サイズ |
-| `FAST_LLM_MAX_OUTPUT_TOKENS` | いいえ | *(`LLM_MAX_OUTPUT_TOKENS` にフォールバック)* | 高速 LLM の呼び出しあたりの最大出力 token 数 |
-| `LLM_REASONING_EFFORT` | いいえ | *(無効)* | サポートされているモデルの拡張思考レベル (OpenAI o シリーズ、Gemini 2.5+、Claude)。値: `low`、`medium`、`high`。LiteLLM は各プロバイダーのネイティブ形式に自動的に変換します。モデルの思考プロセスは UI の「thinking」ステップに表示されます。 |
-| `LLM_REASONING_BUDGET_TOKENS` | いいえ | *(努力レベルから自動)* | Anthropic 思考の明示的な token 予算 (最小 1024)。OpenAI/Gemini の場合、努力レベルが直接使用されます。`LLM_REASONING_EFFORT` が設定されている場合のみ有効です。 |
-| `LLM_JSON_MODE_ENABLED` | いいえ | `true` | `response_format=json_object` のグローバルトグル。プロバイダーが LiteLLM のアシスタントプリフィル注入を拒否する場合は `false` に設定します (例: AWS Bedrock リレー → 2 回目以降の智能体反復で `ValidationException`)。無効にすると、構造化呼び出しは JSON モードをスキップし、プレーンテキスト正規表現抽出にフォールバックします — 品質低下なし。すべてのモデル (ENV 設定および Admin 設定) に適用されます。 |
-| `LLM_TOOL_CHOICE_ENABLED` | いいえ | `true` | 構造化出力抽出での強制 `tool_choice` のグローバルトグル (レベル 1 — ネイティブ関数呼び出し)。モデルが強制ツール選択でエラーを返す場合は `false` に設定します (例: `tool_choice='specified'` を拒否する思考モードモデル)。無効にすると、構造化呼び出しはネイティブ FC をスキップし、JSON モードから開始します。モデルごとのオーバーライドは Settings → Models → Advanced で利用可能です。 |
-| `REASONING_LLM_MODEL` | いいえ | *(`LLM_MODEL` にフォールバック)* | 推理層のモデル名。深い分析が必要なタスク (例: DAG 計画、計画分析) に使用 |
-| `REASONING_LLM_API_KEY` | いいえ | *(`LLM_API_KEY` にフォールバック)* | 推理モデルプロバイダーの API キー |
-| `REASONING_LLM_BASE_URL` | いいえ | *(`LLM_BASE_URL` にフォールバック)* | 推理モデルプロバイダーのベース URL |
-| `REASONING_LLM_TEMPERATURE` | いいえ | *(`LLM_TEMPERATURE` にフォールバック)* | 推理モデルのサンプリング温度 |
-| `REASONING_LLM_CONTEXT_SIZE` | いいえ | *(`LLM_CONTEXT_SIZE` にフォールバック)* | 推理モデルの上下文窓口サイズ |
-| `REASONING_LLM_MAX_OUTPUT_TOKENS` | いいえ | *(`LLM_MAX_OUTPUT_TOKENS` にフォールバック)* | 推理モデルの呼び出しあたりの最大出力 token 数 |
-| `REASONING_LLM_EFFORT` | いいえ | *(`LLM_REASONING_EFFORT` にフォールバック)* | 推理モデル層の推理努力レベル。値: `low`、`medium`、`high` |
-| `REASONING_LLM_BUDGET` | いいえ | *(`LLM_REASONING_BUDGET_TOKENS` にフォールバック)* | 推理の token 予算 (主に Anthropic)。推理層の自動計算予算をオーバーライドします |
-| `LLM_SUPPORTS_VISION` | いいえ | `true` *(楽観的)* | ENV モードドキュメント OCR (MarkItDown + `markitdown-ocr` 経由) を試みるかどうかを制御します。**Admin → Models で有効なモデルグループが設定されていない場合のみ適用** (純粋な ENV モード)。デフォルトの `true` が有効な場合、`convert_to_markdown` と RAG 取り込みは `LLM_MODEL` がビジョンをサポートしていると想定し、画像 OCR のために呼び出します — これはすべての一般的な選択肢 (`gpt-4o`、`claude-3-5-sonnet`、`gemini-1.5-pro/flash`) に対して正しい動作です。ENV 設定の `LLM_MODEL` がビジョンをサポート**していない**場合 (例: `deepseek-v3`、`qwen-chat`、`llama-3.1`、`gpt-3.5-turbo`、`o1-mini`)、このフラグを `false` に設定して失敗するビジョン呼び出しをスキップし、テキストのみの抽出に直接進みます。Admin → Models パネルに有効なモデルグループが存在する場合、このフラグは無視され、グループの `supports_vision` フラグが優先されます — admin がキュレーションした選択は常に DB モードの信頼できるソースです。 |
+| `LLM_CONTEXT_SIZE` | いいえ | `128000` | メインLLMのコンテキストウィンドウサイズ |
+| `LLM_MAX_OUTPUT_TOKENS` | いいえ | `64000` | メインLLMの呼び出しあたりの最大出力トークン数 |
+| `FAST_LLM_API_KEY` | いいえ | *(`LLM_API_KEY`にフォールバック)* | 高速モデルプロバイダーのAPIキー。高速モデルがメインモデルと異なるプロバイダーでホストされている場合に使用 |
+| `FAST_LLM_BASE_URL` | いいえ | *(`LLM_BASE_URL`にフォールバック)* | 高速モデルプロバイダーのベースURL |
+| `FAST_LLM_TEMPERATURE` | いいえ | *(`LLM_TEMPERATURE`にフォールバック)* | 高速モデルのサンプリング温度 |
+| `FAST_LLM_CONTEXT_SIZE` | いいえ | *(`LLM_CONTEXT_SIZE`にフォールバック)* | 高速LLMのコンテキストウィンドウサイズ |
+| `FAST_LLM_MAX_OUTPUT_TOKENS` | いいえ | *(`LLM_MAX_OUTPUT_TOKENS`にフォールバック)* | 高速LLMの呼び出しあたりの最大出力トークン数 |
+| `LLM_REASONING_EFFORT` | いいえ | *(無効)* | サポートされているモデル用の拡張思考レベル（OpenAI o-series、Gemini 2.5+、Claude）。値：`low`、`medium`、`high`。LiteLLMは各プロバイダーのネイティブ形式に自動的に変換します。モデルの思考プロセスはUI「thinking」ステップで表示されます。 |
+| `LLM_REASONING_BUDGET_TOKENS` | いいえ | *(effortから自動)* | Anthropic思考の明示的なトークン予算（最小1024）。OpenAI/Geminiの場合、effortレベルが直接使用されます。`LLM_REASONING_EFFORT`が設定されている場合のみ有効です。 |
+| `FIM_GPT5_RESPONSES_MODE` | いいえ | `native` | GPT-5.xモデルが使用するプロトコル。`native`はOpenAI Responses APIと直接通信し、各ターンの暗号化された推論を再生するため、モデルはツール呼び出し全体で思考を保持します。`bridge`はLiteLLMのチャット完了翻訳を使用し、機能しますが推論を毎ラウンド再導出します。`off`は通常のチャット完了を強制し、ツールが存在する場合は推論が無効になります。デバッグ中でない限り設定しないでください。`/v1/responses`ルートがないエンドポイントは独自にフォールバックします。GPT-5.xのみに適用されます。 |
+| `LLM_JSON_MODE_ENABLED` | いいえ | `true` | `response_format=json_object`のグローバルトグル。プロバイダーがLiteLLMのアシスタント先読み注入を拒否する場合は`false`に設定してください（例：AWS Bedrockリレー→2番目以降のagent反復で`ValidationException`）。無効にすると、構造化呼び出しはJSONモードをスキップし、プレーンテキスト正規表現抽出にフォールバックします——品質低下なし。すべてのモデル（ENV設定およびAdmin設定）に適用されます。 |
+| `LLM_TOOL_CHOICE_ENABLED` | いいえ | `true` | 構造化出力抽出での強制`tool_choice`のグローバルトグル（レベル1——ネイティブ関数呼び出し）。モデルが強制ツール選択でエラーを返す場合は`false`に設定してください（例：`tool_choice='specified'`を拒否する思考モードモデル）。無効にすると、構造化呼び出しはネイティブFCをスキップし、JSONモードから開始します。モデルごとのオーバーライドは設定→モデル→詳細で利用可能です。 |
+| `REASONING_LLM_MODEL` | いいえ | *(`LLM_MODEL`にフォールバック)* | 推論層のモデル名。深い分析が必要なタスク（例：DAG計画、計画分析）に使用 |
+| `REASONING_LLM_API_KEY` | いいえ | *(`LLM_API_KEY`にフォールバック)* | 推論モデルプロバイダーのAPIキー |
+| `REASONING_LLM_BASE_URL` | いいえ | *(`LLM_BASE_URL`にフォールバック)* | 推論モデルプロバイダーのベースURL |
+| `REASONING_LLM_TEMPERATURE` | いいえ | *(`LLM_TEMPERATURE`にフォールバック)* | 推論モデルのサンプリング温度 |
+| `REASONING_LLM_CONTEXT_SIZE` | いいえ | *(`LLM_CONTEXT_SIZE`にフォールバック)* | 推論モデルのコンテキストウィンドウサイズ |
+| `REASONING_LLM_MAX_OUTPUT_TOKENS` | いいえ | *(`LLM_MAX_OUTPUT_TOKENS`にフォールバック)* | 推論モデルの呼び出しあたりの最大出力トークン数 |
+| `REASONING_LLM_EFFORT` | いいえ | *(`LLM_REASONING_EFFORT`にフォールバック)* | 推論層の推論effortレベル。値：`low`、`medium`、`high` |
+| `REASONING_LLM_BUDGET` | いいえ | *(`LLM_REASONING_BUDGET_TOKENS`にフォールバック)* | 推論のトークン予算（主にAnthropicの場合）。推論層の自動計算予算をオーバーライドします |
+| `LLM_SUPPORTS_VISION` | いいえ | `true` *(楽観的)* | ENV モードドキュメント OCR（MarkItDown + `markitdown-ocr`経由）の試行を制御します。**Admin→Models でアクティブなモデルグループが設定されていない場合のみ適用**（純ENV モード）。デフォルトの`true`が有効な場合、`convert_to_markdown`と RAG 取り込みは`LLM_MODEL`がビジョンをサポートしていると想定し、画像 OCR のために呼び出します——これはすべての一般的な選択肢（`gpt-4o`、`claude-3-5-sonnet`、`gemini-1.5-pro/flash`）の正しい動作です。ENV設定の`LLM_MODEL`がビジョンをサポート**していない**場合は`false`に設定してください（例：`deepseek-v3`、`qwen-chat`、`llama-3.1`、`gpt-3.5-turbo`、`o1-mini`）。失敗するビジョン呼び出しをスキップし、テキストのみの抽出に直接進みます。Admin→Models パネルにアクティブなモデルグループが存在する場合、このフラグは無視され、グループの`supports_vision`フラグが優先されます——admin キュレーションの選択は常に DB モードの真実のソースです。 |
 
-> **解決順序**: ユーザー設定 → Admin モデル (DB) → ENV フォールバック。Admin → Models で「General」ロールのモデルが設定されている場合、これらの ENV 変数はフォールバックのみとして機能します。ヘルスチェックは両方のソースを考慮します。
+> **解決順序**：ユーザー設定→Admin モデル（DB）→ENV フォールバック。Admin→Models で「General」ロールのadminモデルが設定されている場合、これらのENV変数はフォールバックのみとして機能します。ヘルスチェックは両方のソースを考慮します。
 
 ### MarkItDown OCR 解像度
 
@@ -102,13 +103,9 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 #### サポートされているプロバイダー
 
-| プロバイダー | `LLM_BASE_URL` | 動作方法 | 推論コンテンツが返されるか? |
-|---|---|---|---|
-| **OpenAI** (o1 / o3 / o4-mini) | `https://api.openai.com/v1` | `reasoning_effort` がネイティブで送信される | はい |
-| **Anthropic** (Claude 3.7+) | `https://api.anthropic.com/v1/` | LiteLLM が `thinking` パラメータを使用してネイティブ Anthropic API 経由でルーティング | はい |
-| **Google Gemini** (2.5+) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `reasoning_effort` が互換エンドポイントで送信される | はい |
+どのプロバイダーが思考を受け入れるか、それぞれがどのように有効にされるか、どの`effort`値を取るか、推論テキストがどこに終わるかは、[プロバイダー機能マトリックスの表C](/architecture/llm-provider-guide#provider-capability-matrix)にコードアンカー付きで一度記録されます。その表が信頼できるリストです。このページは変数のみを文書化しています。
 
-LiteLLM は `LLM_BASE_URL` からプロバイダーを自動検出し、正しい API 形式にマッピングします。不明な URL は OpenAI 互換として扱われます。
+FIM Oneは`LLM_BASE_URL`からプロバイダーを解決し（1つが設定されている場合は明示的なプロバイダーフィールドを追加）、リクエストを正しいAPI形式にマップします。未知のURLはOpenAI互換として扱われます。
 
 #### 重要な注意事項
 
@@ -117,26 +114,29 @@ LiteLLM は `LLM_BASE_URL` からプロバイダーを自動検出し、正し�
 `LLM_BASE_URL` がサードパーティ API プロキシ (例: OpenRouter、one-api、カスタムゲートウェイ) を指している場合、LiteLLM は URL に基づいて正しくルーティングしようとします。ただし、プロキシが非標準形式を期待している場合、推論が期待どおりに機能しない可能性があります。プロキシのドキュメントで、期待されるパラメータ形式を確認してください。
 </Warning>
 
-#### 推論を伴う温度制約
+#### 推理時の温度制約
 
-推論がアクティブな場合、一部のプロバイダーは温度制限を課します：
+推理がアクティブな場合、一部のプロバイダーは`temperature`を制限します。**これらはすべて自動的に適用されます。`LLM_TEMPERATURE`は、ワークロードに適した値のままにしてください。**
 
-- **Anthropic**: 拡張思考が有効な場合、`temperature=1` が必須です。Anthropic と拡張思考を使用する場合、`LLM_TEMPERATURE=1` を設定する**必要があります** — 思考が有効な場合、Anthropic は他の値を拒否します。
-- **OpenAI GPT-5.x**: すべての場合において `temperature=1` のみをサポートしています。LiteLLM の `drop_params` フィルタリングはこれを自動的に処理します — サポートされていない温度値は自動的にドロップされます。GPT-5.x の場合、ユーザーアクションは不要です。
+- **Anthropic**: 拡張思考が有効な場合、`temperature=1`が必須です。リクエストビルダーはAnthropicルートで値をピン留めするため、設定された温度は拒否されるのではなく、これらの呼び出しでオーバーライドされます。
+- **Anthropic、厳密なモデル**（Opus 4.7および4.8、Fable 5、Mythos 5）: 思考の有無に関わらず、`temperature`、`top_p`、`top_k`を完全に拒否します。FIM Oneはこれらのモデルのリクエストから`temperature`を削除します。
+- **OpenAI GPT-5.x**: `temperature=1`のみをサポートします。LiteLLMの`drop_params`フィルタリングはサポートされていない値を削除します。
 
-#### `LLM_REASONING_BUDGET_TOKENS` の動作方法
+Anthropicを満たすために手動で`LLM_TEMPERATURE=1`を設定することは不要であり、思考以外のすべての呼び出しでより低い温度を実行する能力を失うコストがかかります。
 
-この変数は**主にAnthropicパスで意味があります**。設定されると、自動計算されたバジェットをオーバーライドし、LiteLLM経由で`thinking`パラメータ内の`budget_tokens`として送信されます。設定されない場合、バジェットは`LLM_MAX_OUTPUT_TOKENS` x努力比率から導出されます：
+#### `LLM_REASONING_BUDGET_TOKENS` の動作
+
+この変数は**レガシーAnthropicシンキングパス上でのみ意味があります**（Claude 4.5以前、`anthropic/`としてルーティング）。ここでは自動計算されたバジェットをオーバーライドし、`thinking`パラメータ内の`budget_tokens`として送信されます。アダプティブシンキングモデル（Opus 4.6以降、Sonnet 4.6、Fable 5、Mythos 5）はバジェットの代わりにエフォートレベルを使用し、この変数は完全に無視されます。設定されていない場合、バジェットは`LLM_MAX_OUTPUT_TOKENS` x エフォート比率から導出されます：
 
 | `LLM_REASONING_EFFORT` | バジェット比率 | 例（max_tokens = 64000） |
 |---|---|---|
-| `low` | 20% | 12,800トークン |
-| `medium` | 50% | 32,000トークン |
-| `high` | 80% | 51,200トークン |
+| `low` | 20% | 12,800 tokens |
+| `medium` | 50% | 32,000 tokens |
+| `high` | 80% | 51,200 tokens |
 
-最小バジェットは1,024トークンです（Anthropicのハード最小値）。
+最小バジェットは1,024トークン（Anthropicのハード最小値）です。
 
-OpenAIとGeminiの場合、プロバイダーは`reasoning_effort`レベルに基づいてトークン割り当てを内部的に処理します — `LLM_REASONING_BUDGET_TOKENS`は効果がありません。
+OpenAIおよびGeminiの場合、プロバイダーは`reasoning_effort`レベルに基づいて内部的にトークン割り当てを処理します——`LLM_REASONING_BUDGET_TOKENS`は効果がありません。
 
 ## エージェント実行
 

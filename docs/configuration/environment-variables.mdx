@@ -65,6 +65,7 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | No | *(falls back to `LLM_MAX_OUTPUT_TOKENS`)* | Max output tokens per call for the fast LLM |
 | `LLM_REASONING_EFFORT` | No | *(disabled)* | Extended thinking level for supported models (OpenAI o-series, Gemini 2.5+, Claude). Values: `low`, `medium`, `high`. LiteLLM translates this to each provider's native format automatically. The model's chain-of-thought is surfaced in the UI "thinking" step. |
 | `LLM_REASONING_BUDGET_TOKENS` | No | *(auto from effort)* | Explicit token budget for Anthropic thinking (minimum 1024). For OpenAI/Gemini the effort level is used directly. Only effective when `LLM_REASONING_EFFORT` is set. |
+| `FIM_GPT5_RESPONSES_MODE` | No | `native` | Which protocol GPT-5.x models use. `native` talks the OpenAI Responses API directly and replays each turn's encrypted reasoning, so the model keeps its chain of thought across tool calls. `bridge` uses LiteLLM's chat-completions translation, which works but re-derives the reasoning every round. `off` forces plain chat completions, where reasoning is disabled whenever tools are present. Leave unset unless you are debugging; endpoints without a `/v1/responses` route fall back on their own. Applies to GPT-5.x only. |
 | `LLM_JSON_MODE_ENABLED` | No | `true` | Global toggle for `response_format=json_object`. Set to `false` if your provider rejects LiteLLM's assistant prefill injection (e.g. AWS Bedrock relay → `ValidationException` on the 2nd+ agent iteration). When disabled, structured calls skip JSON mode and fall back to plain-text regex extraction — no quality loss. Applies to all models (ENV-configured and Admin-configured). |
 | `LLM_TOOL_CHOICE_ENABLED` | No | `true` | Global toggle for forced `tool_choice` in structured output extraction (Level 1 — Native Function Calling). Set to `false` if your model returns errors with forced tool selection (e.g. thinking-mode models that reject `tool_choice='specified'`). When disabled, structured calls skip native FC and start from JSON Mode. Per-model override available in Settings → Models → Advanced. |
 | `REASONING_LLM_MODEL` | No | *(falls back to `LLM_MODEL`)* | Model name for the reasoning tier. Used for tasks requiring deep analysis (e.g., DAG planning, plan analysis) |
@@ -104,13 +105,9 @@ When `LLM_REASONING_EFFORT` is set, FIM One enables the model's extended thinkin
 
 #### Supported providers
 
-| Provider | `LLM_BASE_URL` | How it works | Reasoning content returned? |
-|---|---|---|---|
-| **OpenAI** (o1 / o3 / o4-mini) | `https://api.openai.com/v1` | `reasoning_effort` sent natively | Yes |
-| **Anthropic** (Claude 3.7+) | `https://api.anthropic.com/v1/` | LiteLLM routes via native Anthropic API with `thinking` parameter | Yes |
-| **Google Gemini** (2.5+) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `reasoning_effort` sent on compat endpoint | Yes |
+Which providers accept thinking, how each one is switched on, which `effort` values it takes, and where the reasoning text ends up are recorded once, with code anchors, in [Table C of the Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix). That table is the authoritative list; this page only documents the variables.
 
-LiteLLM auto-detects the provider from `LLM_BASE_URL` and maps it to the correct API format. Unknown URLs are treated as OpenAI-compatible.
+FIM One resolves the provider from `LLM_BASE_URL` (plus an explicit provider field when one is configured) and maps the request to the correct API format. Unknown URLs are treated as OpenAI-compatible.
 
 #### Important caveats
 
@@ -121,14 +118,17 @@ If your `LLM_BASE_URL` points to a third-party API proxy (e.g., OpenRouter, one-
 
 #### Temperature constraints with reasoning
 
-Some providers impose temperature restrictions when reasoning is active:
+Some providers restrict `temperature` when reasoning is active. **All of these are enforced automatically; leave `LLM_TEMPERATURE` at whatever suits your workload.**
 
-- **Anthropic**: Requires `temperature=1` when extended thinking is enabled. If using Anthropic with extended thinking, you **must** set `LLM_TEMPERATURE=1` — Anthropic rejects other values when thinking is enabled.
-- **OpenAI GPT-5.x**: Only supports `temperature=1` at all times. LiteLLM's `drop_params` filtering handles this automatically — unsupported temperature values are silently dropped. No user action is needed for GPT-5.x.
+- **Anthropic**: requires `temperature=1` while extended thinking is enabled. The request builder pins the value on Anthropic routes, so your configured temperature is overridden for those calls rather than rejected.
+- **Anthropic, strict models** (Opus 4.7 and 4.8, Fable 5, Mythos 5): reject `temperature`, `top_p` and `top_k` outright, thinking or not. FIM One removes `temperature` from the request for these models.
+- **OpenAI GPT-5.x**: only supports `temperature=1`. LiteLLM's `drop_params` filtering removes unsupported values.
+
+Setting `LLM_TEMPERATURE=1` by hand to satisfy Anthropic is unnecessary and costs you the ability to run a lower temperature on every non-thinking call.
 
 #### How `LLM_REASONING_BUDGET_TOKENS` works
 
-This variable is **primarily meaningful for the Anthropic path**. When set, it overrides the auto-calculated budget and is sent as `budget_tokens` in the `thinking` parameter via LiteLLM. When not set, the budget is derived from `LLM_MAX_OUTPUT_TOKENS` x effort ratio:
+This variable is **meaningful only on the legacy Anthropic thinking path** (Claude 4.5 and older, routed as `anthropic/`). There it overrides the auto-calculated budget and is sent as `budget_tokens` inside the `thinking` parameter. Adaptive-thinking models (Opus 4.6 and newer, Sonnet 4.6, Fable 5, Mythos 5) take an effort level instead of a budget and ignore this variable entirely. When it is not set, the budget is derived from `LLM_MAX_OUTPUT_TOKENS` x effort ratio:
 
 | `LLM_REASONING_EFFORT` | Budget ratio | Example (max_tokens = 64000) |
 |---|---|---|

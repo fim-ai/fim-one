@@ -49,33 +49,34 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 | 변수 | 필수 | 기본값 | 설명 |
 |---|---|---|---|
-| `LLM_API_KEY` | **예** | — | LLM 제공商의 API 키 |
+| `LLM_API_KEY` | **예** | — | LLM 제공자의 API 키 |
 | `LLM_BASE_URL` | 아니오 | `https://api.openai.com/v1` | OpenAI 호환 API의 기본 URL |
-| `LLM_MODEL` | 아니오 | `gpt-4o` | 주 모델 — 계획, 분석 및 ReAct 智能体에 사용됨 |
+| `LLM_MODEL` | 아니오 | `gpt-4o` | 주 모델 — 계획, 분석, ReAct 에이전트에 사용됨 |
 | `FAST_LLM_MODEL` | 아니오 | *(`LLM_MODEL`로 폴백)* | 빠른 모델 — DAG 단계 실행에 사용됨 (더 저렴하고 빠름) |
 | `LLM_TEMPERATURE` | 아니오 | `0.7` | 기본 샘플링 온도 |
-| `LLM_CONTEXT_SIZE` | 아니오 | `128000` | 주 LLM의 상下文窗口 크기 |
+| `LLM_CONTEXT_SIZE` | 아니오 | `128000` | 주 LLM의 컨텍스트 윈도우 크기 |
 | `LLM_MAX_OUTPUT_TOKENS` | 아니오 | `64000` | 주 LLM의 호출당 최대 출력 토큰 |
-| `FAST_LLM_API_KEY` | 아니오 | *(`LLM_API_KEY`로 폴백)* | 빠른 모델 제공商의 API 키. 빠른 모델이 주 모델과 다른 제공商에서 호스팅될 때 사용 |
-| `FAST_LLM_BASE_URL` | 아니오 | *(`LLM_BASE_URL`로 폴백)* | 빠른 모델 제공商의 기본 URL |
+| `FAST_LLM_API_KEY` | 아니오 | *(`LLM_API_KEY`로 폴백)* | 빠른 모델 제공자의 API 키. 빠른 모델이 주 모델과 다른 제공자에서 호스팅될 때 사용 |
+| `FAST_LLM_BASE_URL` | 아니오 | *(`LLM_BASE_URL`로 폴백)* | 빠른 모델 제공자의 기본 URL |
 | `FAST_LLM_TEMPERATURE` | 아니오 | *(`LLM_TEMPERATURE`로 폴백)* | 빠른 모델의 샘플링 온도 |
-| `FAST_LLM_CONTEXT_SIZE` | 아니오 | *(`LLM_CONTEXT_SIZE`로 폴백)* | 빠른 LLM의 상下文窗口 크기 |
+| `FAST_LLM_CONTEXT_SIZE` | 아니오 | *(`LLM_CONTEXT_SIZE`로 폴백)* | 빠른 LLM의 컨텍스트 윈도우 크기 |
 | `FAST_LLM_MAX_OUTPUT_TOKENS` | 아니오 | *(`LLM_MAX_OUTPUT_TOKENS`로 폴백)* | 빠른 LLM의 호출당 최대 출력 토큰 |
-| `LLM_REASONING_EFFORT` | 아니오 | *(비활성화됨)* | 지원되는 모델의 확장 사고 수준 (OpenAI o-series, Gemini 2.5+, Claude). 값: `low`, `medium`, `high`. LiteLLM은 이를 각 제공商의 네이티브 형식으로 자동 변환합니다. 모델의 사고 과정은 UI "thinking" 단계에 표시됩니다. |
-| `LLM_REASONING_BUDGET_TOKENS` | 아니오 | *(노력에서 자동)* | Anthropic 사고를 위한 명시적 토큰 예산 (최소 1024). OpenAI/Gemini의 경우 노력 수준이 직접 사용됩니다. `LLM_REASONING_EFFORT`가 설정된 경우에만 효과적입니다. |
-| `LLM_JSON_MODE_ENABLED` | 아니오 | `true` | `response_format=json_object`의 전역 토글. 제공商이 LiteLLM의 어시스턴트 프리필 주입을 거부하는 경우 `false`로 설정 (예: AWS Bedrock 릴레이 → 2번째 이상 智能体 반복에서 `ValidationException`). 비활성화되면 구조화된 호출은 JSON 모드를 건너뛰고 일반 텍스트 정규식 추출로 폴백 — 품질 손실 없음. 모든 모델 (ENV 구성 및 Admin 구성)에 적용됩니다. |
-| `LLM_TOOL_CHOICE_ENABLED` | 아니오 | `true` | 구조화된 출력 추출에서 강제 `tool_choice`의 전역 토글 (Level 1 — 네이티브 함수 호출). 모델이 강제 도구 선택으로 오류를 반환하는 경우 `false`로 설정 (예: `tool_choice='specified'`를 거부하는 사고 모드 모델). 비활성화되면 구조화된 호출은 네이티브 FC를 건너뛰고 JSON 모드에서 시작합니다. Settings → Models → Advanced에서 모델별 재정의 가능. |
-| `REASONING_LLM_MODEL` | 아니오 | *(`LLM_MODEL`로 폴백)* | 추론 계층의 모델 이름. 깊이 있는 분석이 필요한 작업에 사용됨 (예: DAG 계획, 계획 분석) |
-| `REASONING_LLM_API_KEY` | 아니오 | *(`LLM_API_KEY`로 폴백)* | 추론 모델 제공商의 API 키 |
-| `REASONING_LLM_BASE_URL` | 아니오 | *(`LLM_BASE_URL`로 폴백)* | 추론 모델 제공商의 기본 URL |
+| `LLM_REASONING_EFFORT` | 아니오 | *(비활성화)* | 지원되는 모델의 확장 사고 수준 (OpenAI o-series, Gemini 2.5+, Claude). 값: `low`, `medium`, `high`. LiteLLM이 각 제공자의 네이티브 형식으로 자동 변환합니다. 모델의 사고 과정은 UI "thinking" 단계에서 표시됩니다. |
+| `LLM_REASONING_BUDGET_TOKENS` | 아니오 | *(노력에서 자동)* | Anthropic 사고를 위한 명시적 토큰 예산 (최소 1024). OpenAI/Gemini의 경우 노력 수준이 직접 사용됩니다. `LLM_REASONING_EFFORT`가 설정되었을 때만 유효합니다. |
+| `FIM_GPT5_RESPONSES_MODE` | 아니오 | `native` | GPT-5.x 모델이 사용하는 프로토콜. `native`는 OpenAI Responses API와 직접 통신하고 각 턴의 암호화된 추론을 재생하므로 모델이 도구 호출 전체에서 사고 과정을 유지합니다. `bridge`는 LiteLLM의 chat-completions 변환을 사용하며, 작동하지만 매 라운드마다 추론을 다시 도출합니다. `off`는 일반 chat completions를 강제하며, 도구가 있을 때마다 추론이 비활성화됩니다. `/v1/responses` 경로가 없는 엔드포인트는 자체적으로 폴백하지 않는 한 설정하지 마세요. GPT-5.x에만 적용됩니다. |
+| `LLM_JSON_MODE_ENABLED` | 아니오 | `true` | `response_format=json_object`의 전역 토글. 제공자가 LiteLLM의 어시스턴트 프리필 주입을 거부하는 경우 `false`로 설정하세요 (예: AWS Bedrock 릴레이 → 2번째 이상 에이전트 반복에서 `ValidationException`). 비활성화되면 구조화된 호출은 JSON 모드를 건너뛰고 일반 텍스트 정규식 추출로 폴백합니다 — 품질 손실 없음. 모든 모델 (ENV 구성 및 관리자 구성)에 적용됩니다. |
+| `LLM_TOOL_CHOICE_ENABLED` | 아니오 | `true` | 구조화된 출력 추출에서 강제 `tool_choice`의 전역 토글 (레벨 1 — 네이티브 함수 호출). 모델이 강제 도구 선택으로 오류를 반환하는 경우 `false`로 설정하세요 (예: `tool_choice='specified'`를 거부하는 사고 모드 모델). 비활성화되면 구조화된 호출은 네이티브 FC를 건너뛰고 JSON 모드에서 시작합니다. 설정 → 모델 → 고급에서 모델별 재정의 가능. |
+| `REASONING_LLM_MODEL` | 아니오 | *(`LLM_MODEL`로 폴백)* | 추론 계층의 모델 이름. 깊은 분석이 필요한 작업에 사용됨 (예: DAG 계획, 계획 분석) |
+| `REASONING_LLM_API_KEY` | 아니오 | *(`LLM_API_KEY`로 폴백)* | 추론 모델 제공자의 API 키 |
+| `REASONING_LLM_BASE_URL` | 아니오 | *(`LLM_BASE_URL`로 폴백)* | 추론 모델 제공자의 기본 URL |
 | `REASONING_LLM_TEMPERATURE` | 아니오 | *(`LLM_TEMPERATURE`로 폴백)* | 추론 모델의 샘플링 온도 |
-| `REASONING_LLM_CONTEXT_SIZE` | 아니오 | *(`LLM_CONTEXT_SIZE`로 폴백)* | 추론 모델의 상下文窗口 크기 |
+| `REASONING_LLM_CONTEXT_SIZE` | 아니오 | *(`LLM_CONTEXT_SIZE`로 폴백)* | 추론 모델의 컨텍스트 윈도우 크기 |
 | `REASONING_LLM_MAX_OUTPUT_TOKENS` | 아니오 | *(`LLM_MAX_OUTPUT_TOKENS`로 폴백)* | 추론 모델의 호출당 최대 출력 토큰 |
 | `REASONING_LLM_EFFORT` | 아니오 | *(`LLM_REASONING_EFFORT`로 폴백)* | 추론 모델 계층의 추론 노력 수준. 값: `low`, `medium`, `high` |
 | `REASONING_LLM_BUDGET` | 아니오 | *(`LLM_REASONING_BUDGET_TOKENS`로 폴백)* | 추론을 위한 토큰 예산 (주로 Anthropic). 추론 계층의 자동 계산 예산을 재정의합니다. |
-| `LLM_SUPPORTS_VISION` | 아니오 | `true` *(낙관적)* | ENV 모드 문서 OCR (MarkItDown + `markitdown-ocr`를 통해)이 시도되는지 여부를 제어합니다. **Admin → Models에서 활성 모델 그룹이 구성되지 않은 경우에만 적용됩니다** (순수 ENV 모드). 기본값 `true`가 적용되면 `convert_to_markdown` 및 RAG 수집은 `LLM_MODEL`이 비전을 지원한다고 가정하고 이미지 OCR을 위해 호출합니다 — 이는 모든 일반적인 선택에 대한 올바른 동작입니다 (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`). ENV 구성된 `LLM_MODEL`이 비전을 지원하지 않는 경우 `false`로 설정하십시오 (예: `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`) 실패한 비전 호출을 건너뛰고 텍스트 전용 추출로 직접 이동합니다. Admin → Models 패널에 활성 모델 그룹이 있으면 이 플래그는 무시되고 그룹의 `supports_vision` 플래그가 인수합니다 — 관리자가 선별한 선택은 항상 DB 모드의 신뢰할 수 있는 출처입니다. |
+| `LLM_SUPPORTS_VISION` | 아니오 | `true` *(낙관적)* | ENV 모드 문서 OCR (MarkItDown + `markitdown-ocr`를 통해) 시도 여부를 제어합니다. **관리자 → 모델에서 활성 모델 그룹이 구성되지 않은 경우에만 적용됩니다** (순수 ENV 모드). 기본값 `true`가 적용되면 `convert_to_markdown`과 RAG 수집은 `LLM_MODEL`이 비전을 지원한다고 가정하고 이미지 OCR을 위해 호출합니다 — 이는 모든 일반적인 선택 (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`)에 대한 올바른 동작입니다. ENV 구성 `LLM_MODEL`이 비전을 지원하지 않는 경우 `false`로 설정하세요 (예: `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`) 실패한 비전 호출을 건너뛰고 텍스트 전용 추출로 직접 이동합니다. 관리자 → 모델 패널에 활성 모델 그룹이 있으면 이 플래그는 무시되고 그룹의 `supports_vision` 플래그가 우선합니다 — 관리자 선택은 항상 DB 모드의 신뢰할 수 있는 소스입니다. |
 
-> **해결 순서**: 사용자 선호도 → Admin 모델 (DB) → ENV 폴백. Admin → Models에서 역할이 "General"인 관리 모델이 구성된 경우 이러한 ENV 변수는 폴백으로만 제공됩니다. 상태 확인은 두 출처를 모두 고려합니다.
+> **해석 순서**: 사용자 기본 설정 → 관리자 모델 (DB) → ENV 폴백. 관리자 → 모델에서 역할이 "General"인 관리자 모델이 구성된 경우, 이 ENV 변수는 폴백으로만 제공됩니다. 상태 확인은 두 소스를 모두 고려합니다.
 
 ### MarkItDown OCR 해상도
 
@@ -102,13 +103,9 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 #### 지원되는 제공자
 
-| 제공자 | `LLM_BASE_URL` | 작동 방식 | 추론 콘텐츠 반환? |
-|---|---|---|---|
-| **OpenAI** (o1 / o3 / o4-mini) | `https://api.openai.com/v1` | `reasoning_effort` 기본적으로 전송됨 | 예 |
-| **Anthropic** (Claude 3.7+) | `https://api.anthropic.com/v1/` | LiteLLM이 기본 Anthropic API를 통해 `thinking` 매개변수로 라우팅 | 예 |
-| **Google Gemini** (2.5+) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `reasoning_effort`를 호환성 엔드포인트로 전송 | 예 |
+어떤 제공자가 thinking을 수용하는지, 각각을 어떻게 활성화하는지, 어떤 `effort` 값을 사용하는지, 그리고 reasoning 텍스트가 어디에 끝나는지는 [Provider Capability Matrix의 표 C](/architecture/llm-provider-guide#provider-capability-matrix)에 코드 앵커와 함께 한 번만 기록됩니다. 그 표가 권위 있는 목록이며, 이 페이지는 변수만 문서화합니다.
 
-LiteLLM은 `LLM_BASE_URL`에서 제공자를 자동으로 감지하고 올바른 API 형식으로 매핑합니다. 알 수 없는 URL은 OpenAI 호환으로 처리됩니다.
+FIM One은 `LLM_BASE_URL`에서 제공자를 해석하고(구성된 경우 명시적 제공자 필드 포함) 요청을 올바른 API 형식으로 매핑합니다. 알 수 없는 URL은 OpenAI 호환으로 처리됩니다.
 
 #### 중요한 주의사항
 
@@ -117,16 +114,19 @@ LiteLLM은 `LLM_BASE_URL`에서 제공자를 자동으로 감지하고 올바른
 `LLM_BASE_URL`이 타사 API 프록시(예: OpenRouter, one-api, 사용자 정의 게이트웨이)를 가리키는 경우, LiteLLM은 URL을 기반으로 올바르게 라우팅하려고 시도합니다. 그러나 프록시가 비표준 형식을 예상하는 경우 추론이 예상대로 작동하지 않을 수 있습니다. 프록시의 예상 매개변수 형식에 대해서는 프록시의 설명서를 참조하세요.
 </Warning>
 
-#### 추론 활성화 시 온도 제약
+#### 추론을 사용할 때의 온도 제약
 
-일부 제공자는 추론이 활성화되었을 때 온도 제약을 적용합니다:
+일부 제공자는 추론이 활성화되었을 때 `temperature`를 제한합니다. **이러한 제약은 모두 자동으로 적용되므로 `LLM_TEMPERATURE`는 워크로드에 맞는 값으로 설정하면 됩니다.**
 
-- **Anthropic**: 확장 사고가 활성화되면 `temperature=1`이 필수입니다. Anthropic에서 확장 사고를 사용하는 경우 `LLM_TEMPERATURE=1`을 **반드시** 설정해야 합니다 — Anthropic은 사고가 활성화되었을 때 다른 값을 거부합니다.
-- **OpenAI GPT-5.x**: 항상 `temperature=1`만 지원합니다. LiteLLM의 `drop_params` 필터링이 이를 자동으로 처리합니다 — 지원되지 않는 온도 값은 자동으로 삭제됩니다. GPT-5.x의 경우 사용자 조치가 필요하지 않습니다.
+- **Anthropic**: 확장 사고가 활성화되어 있을 때 `temperature=1`을 요구합니다. 요청 빌더가 Anthropic 경로에서 값을 고정하므로 요청이 거부되지 않고 설정된 온도가 해당 호출에 대해 재정의됩니다.
+- **Anthropic, 엄격한 모델**(Opus 4.7 및 4.8, Fable 5, Mythos 5): 사고 여부와 관계없이 `temperature`, `top_p`, `top_k`를 완전히 거부합니다. FIM One은 이러한 모델에 대해 요청에서 `temperature`를 제거합니다.
+- **OpenAI GPT-5.x**: `temperature=1`만 지원합니다. LiteLLM의 `drop_params` 필터링이 지원되지 않는 값을 제거합니다.
+
+Anthropic을 만족시키기 위해 `LLM_TEMPERATURE=1`을 수동으로 설정하는 것은 불필요하며, 사고하지 않는 모든 호출에서 더 낮은 온도를 실행할 수 있는 능력을 잃게 됩니다.
 
 #### `LLM_REASONING_BUDGET_TOKENS` 작동 방식
 
-이 변수는 **주로 Anthropic 경로에서 의미가 있습니다**. 설정되면 자동 계산된 예산을 재정의하고 LiteLLM을 통해 `thinking` 매개변수에서 `budget_tokens`로 전송됩니다. 설정되지 않으면 예산은 `LLM_MAX_OUTPUT_TOKENS` x 노력 비율에서 파생됩니다:
+이 변수는 **레거시 Anthropic 사고 경로에서만 의미가 있습니다**(Claude 4.5 이하, `anthropic/`으로 라우팅됨). 여기서 자동 계산된 예산을 재정의하고 `thinking` 매개변수 내에서 `budget_tokens`로 전송됩니다. 적응형 사고 모델(Opus 4.6 이상, Sonnet 4.6, Fable 5, Mythos 5)은 예산 대신 노력 수준을 사용하며 이 변수를 완전히 무시합니다. 설정되지 않으면 예산은 `LLM_MAX_OUTPUT_TOKENS` x 노력 비율에서 파생됩니다:
 
 | `LLM_REASONING_EFFORT` | 예산 비율 | 예시 (max_tokens = 64000) |
 |---|---|---|
@@ -136,9 +136,7 @@ LiteLLM은 `LLM_BASE_URL`에서 제공자를 자동으로 감지하고 올바른
 
 최소 예산은 1,024 tokens입니다(Anthropic의 하드 최소값).
 
-OpenAI 및 Gemini의 경우, 제공자가 `reasoning_effort` 수준에 따라 토큰 할당을 내부적으로 처리합니다 — `LLM_REASONING_BUDGET_TOKENS`는 영향을 미치지 않습니다.
-
----
+OpenAI 및 Gemini의 경우, 제공자가 `reasoning_effort` 수준에 따라 토큰 할당을 내부적으로 처리합니다 — `LLM_REASONING_BUDGET_TOKENS`는 효과가 없습니다.
 
 ## 에이전트 실행
 

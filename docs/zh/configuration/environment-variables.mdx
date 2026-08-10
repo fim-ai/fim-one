@@ -51,29 +51,30 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 |---|---|---|---|
 | `LLM_API_KEY` | **是** | — | LLM 提供商的 API 密钥 |
 | `LLM_BASE_URL` | 否 | `https://api.openai.com/v1` | 任何 OpenAI 兼容 API 的基础 URL |
-| `LLM_MODEL` | 否 | `gpt-4o` | 主模型 — 用于规划、分析和 ReAct 智能体 |
-| `FAST_LLM_MODEL` | 否 | *（回退到 `LLM_MODEL`）* | 快速模型 — 用于 DAG 步骤执行（更便宜、更快） |
+| `LLM_MODEL` | 否 | `gpt-4o` | 主模型——用于规划、分析和 ReAct 智能体 |
+| `FAST_LLM_MODEL` | 否 | *（回退到 `LLM_MODEL`）* | 快速模型——用于 DAG 步骤执行（更便宜、更快） |
 | `LLM_TEMPERATURE` | 否 | `0.7` | 默认采样温度 |
 | `LLM_CONTEXT_SIZE` | 否 | `128000` | 主 LLM 的上下文窗口大小 |
-| `LLM_MAX_OUTPUT_TOKENS` | 否 | `64000` | 主 LLM 每次调用的最大输出 token 数 |
-| `FAST_LLM_API_KEY` | 否 | *（回退到 `LLM_API_KEY`）* | 快速模型提供商的 API 密钥。当快速模型由不同的提供商托管时使用 |
+| `LLM_MAX_OUTPUT_TOKENS` | 否 | `64000` | 主 LLM 每次调用的最大输出令牌数 |
+| `FAST_LLM_API_KEY` | 否 | *（回退到 `LLM_API_KEY`）* | 快速模型提供商的 API 密钥。当快速模型由与主模型不同的提供商托管时使用 |
 | `FAST_LLM_BASE_URL` | 否 | *（回退到 `LLM_BASE_URL`）* | 快速模型提供商的基础 URL |
 | `FAST_LLM_TEMPERATURE` | 否 | *（回退到 `LLM_TEMPERATURE`）* | 快速模型的采样温度 |
 | `FAST_LLM_CONTEXT_SIZE` | 否 | *（回退到 `LLM_CONTEXT_SIZE`）* | 快速 LLM 的上下文窗口大小 |
-| `FAST_LLM_MAX_OUTPUT_TOKENS` | 否 | *（回退到 `LLM_MAX_OUTPUT_TOKENS`）* | 快速 LLM 每次调用的最大输出 token 数 |
-| `LLM_REASONING_EFFORT` | 否 | *（禁用）* | 支持的模型的扩展思考级别（OpenAI o 系列、Gemini 2.5+、Claude）。值：`low`、`medium`、`high`。LiteLLM 会自动将其转换为每个提供商的原生格式。模型的思维链在 UI"思考"步骤中显示。 |
-| `LLM_REASONING_BUDGET_TOKENS` | 否 | *（从努力级别自动计算）* | Anthropic 思考的显式 token 预算（最少 1024）。对于 OpenAI/Gemini，直接使用努力级别。仅在设置 `LLM_REASONING_EFFORT` 时有效。 |
-| `LLM_JSON_MODE_ENABLED` | 否 | `true` | `response_format=json_object` 的全局开关。如果您的提供商拒绝 LiteLLM 的助手预填充注入（例如 AWS Bedrock 中继 → 第 2+ 个智能体迭代上的 `ValidationException`），请设置为 `false`。禁用时，结构化调用跳过 JSON 模式，回退到纯文本正则表达式提取 — 无质量损失。适用于所有模型（ENV 配置和管理员配置）。 |
-| `LLM_TOOL_CHOICE_ENABLED` | 否 | `true` | 结构化输出提取中强制 `tool_choice` 的全局开关（级别 1 — 原生函数调用）。如果您的模型在强制工具选择时返回错误（例如拒绝 `tool_choice='specified'` 的思考模式模型），请设置为 `false`。禁用时，结构化调用跳过原生 FC，从 JSON 模式开始。在设置 → 模型 → 高级中提供按模型覆盖。 |
+| `FAST_LLM_MAX_OUTPUT_TOKENS` | 否 | *（回退到 `LLM_MAX_OUTPUT_TOKENS`）* | 快速 LLM 每次调用的最大输出令牌数 |
+| `LLM_REASONING_EFFORT` | 否 | *（禁用）* | 支持的模型的扩展思考级别（OpenAI o 系列、Gemini 2.5+、Claude）。值：`low`、`medium`、`high`。LiteLLM 自动将其转换为每个提供商的原生格式。模型的思维链在 UI"思考"步骤中显示。 |
+| `LLM_REASONING_BUDGET_TOKENS` | 否 | *（从努力级别自动计算）* | Anthropic 思考的显式令牌预算（最小 1024）。对于 OpenAI/Gemini，直接使用努力级别。仅在设置 `LLM_REASONING_EFFORT` 时有效。 |
+| `FIM_GPT5_RESPONSES_MODE` | 否 | `native` | GPT-5.x 模型使用的协议。`native` 直接与 OpenAI Responses API 通信，并重放每轮的加密推理，使模型在工具调用间保持思维链。`bridge` 使用 LiteLLM 的聊天完成翻译，可行但每轮重新推导推理。`off` 强制使用普通聊天完成，当存在工具时推理被禁用。除非调试，否则不设置；没有 `/v1/responses` 路由的端点会自行回退。仅适用于 GPT-5.x。 |
+| `LLM_JSON_MODE_ENABLED` | 否 | `true` | `response_format=json_object` 的全局开关。如果您的提供商拒绝 LiteLLM 的助手前缀注入（例如 AWS Bedrock 中继 → 第 2+ 个智能体迭代上的 `ValidationException`），设置为 `false`。禁用时，结构化调用跳过 JSON 模式并回退到纯文本正则表达式提取——无质量损失。适用于所有模型（ENV 配置和管理员配置）。 |
+| `LLM_TOOL_CHOICE_ENABLED` | 否 | `true` | 结构化输出提取中强制 `tool_choice` 的全局开关（级别 1——原生函数调用）。如果您的模型在强制工具选择时返回错误（例如拒绝 `tool_choice='specified'` 的思考模式模型），设置为 `false`。禁用时，结构化调用跳过原生 FC 并从 JSON 模式开始。每个模型的覆盖可在设置 → 模型 → 高级中使用。 |
 | `REASONING_LLM_MODEL` | 否 | *（回退到 `LLM_MODEL`）* | 推理层的模型名称。用于需要深度分析的任务（例如 DAG 规划、计划分析） |
 | `REASONING_LLM_API_KEY` | 否 | *（回退到 `LLM_API_KEY`）* | 推理模型提供商的 API 密钥 |
 | `REASONING_LLM_BASE_URL` | 否 | *（回退到 `LLM_BASE_URL`）* | 推理模型提供商的基础 URL |
 | `REASONING_LLM_TEMPERATURE` | 否 | *（回退到 `LLM_TEMPERATURE`）* | 推理模型的采样温度 |
 | `REASONING_LLM_CONTEXT_SIZE` | 否 | *（回退到 `LLM_CONTEXT_SIZE`）* | 推理模型的上下文窗口大小 |
-| `REASONING_LLM_MAX_OUTPUT_TOKENS` | 否 | *（回退到 `LLM_MAX_OUTPUT_TOKENS`）* | 推理模型每次调用的最大输出 token 数 |
+| `REASONING_LLM_MAX_OUTPUT_TOKENS` | 否 | *（回退到 `LLM_MAX_OUTPUT_TOKENS`）* | 推理模型每次调用的最大输出令牌数 |
 | `REASONING_LLM_EFFORT` | 否 | *（回退到 `LLM_REASONING_EFFORT`）* | 推理模型层的推理努力级别。值：`low`、`medium`、`high` |
-| `REASONING_LLM_BUDGET` | 否 | *（回退到 `LLM_REASONING_BUDGET_TOKENS`）* | 推理的 token 预算（主要用于 Anthropic）。覆盖推理层的自动计算预算 |
-| `LLM_SUPPORTS_VISION` | 否 | `true` *（乐观）* | 控制是否尝试 ENV 模式文档 OCR（通过 MarkItDown + `markitdown-ocr`）。仅在**管理员 → 模型中未配置活跃模型组**时适用（纯 ENV 模式）。当默认 `true` 生效时，`convert_to_markdown` 和 RAG 摄取假设 `LLM_MODEL` 支持视觉并调用它进行图像 OCR — 这对所有常见选择（`gpt-4o`、`claude-3-5-sonnet`、`gemini-1.5-pro/flash`）都是正确的行为。当您的 ENV 配置的 `LLM_MODEL` **不**支持视觉时（例如 `deepseek-v3`、`qwen-chat`、`llama-3.1`、`gpt-3.5-turbo`、`o1-mini`），将其设置为 `false` 以跳过失败的视觉调用并直接进行纯文本提取。当管理员 → 模型面板中存在活跃模型组时，此标志被忽略，组的 `supports_vision` 标志接管 — 管理员策划的选择始终是数据库模式中的真实来源。 |
+| `REASONING_LLM_BUDGET` | 否 | *（回退到 `LLM_REASONING_BUDGET_TOKENS`）* | 推理的令牌预算（主要用于 Anthropic）。覆盖推理层的自动计算预算 |
+| `LLM_SUPPORTS_VISION` | 否 | `true` *（乐观）* | 控制是否尝试 ENV 模式文档 OCR（通过 MarkItDown + `markitdown-ocr`）。仅在**管理员 → 模型中未配置活跃模型组**时适用（纯 ENV 模式）。当默认 `true` 生效时，`convert_to_markdown` 和 RAG 摄取假设 `LLM_MODEL` 支持视觉并为图像 OCR 调用它——这对所有常见选择（`gpt-4o`、`claude-3-5-sonnet`、`gemini-1.5-pro/flash`）是正确的行为。当您的 ENV 配置的 `LLM_MODEL` **不**支持视觉时（例如 `deepseek-v3`、`qwen-chat`、`llama-3.1`、`gpt-3.5-turbo`、`o1-mini`），设置为 `false` 以跳过失败的视觉调用并直接进行纯文本提取。当管理员 → 模型面板中存在活跃模型组时，此标志被忽略，该组的 `supports_vision` 标志接管——管理员策划的选择始终是数据库模式中的真实来源。 |
 
 > **解析顺序**：用户偏好 → 管理员模型（数据库）→ ENV 回退。如果在管理员 → 模型中配置了角色为"通用"的管理员模型，这些 ENV 变量仅作为回退。健康检查考虑两个来源。
 
@@ -102,13 +103,9 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 #### 支持的提供商
 
-| 提供商 | `LLM_BASE_URL` | 工作原理 | 返回推理内容? |
-|---|---|---|---|
-| **OpenAI** (o1 / o3 / o4-mini) | `https://api.openai.com/v1` | `reasoning_effort` 原生发送 | 是 |
-| **Anthropic** (Claude 3.7+) | `https://api.anthropic.com/v1/` | LiteLLM 通过原生 Anthropic API 路由，使用 `thinking` 参数 | 是 |
-| **Google Gemini** (2.5+) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `reasoning_effort` 在兼容端点上发送 | 是 |
+哪些提供商接受思考、如何启用每个提供商、它采用哪些`effort`值，以及推理文本最终出现在哪里，这些信息都记录在[提供商能力矩阵的表C](/architecture/llm-provider-guide#provider-capability-matrix)中，并带有代码锚点。该表是权威列表；本页面仅记录变量。
 
-LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 API 格式。未知 URL 被视为 OpenAI 兼容。
+FIM One从`LLM_BASE_URL`解析提供商（加上配置时的显式提供商字段），并将请求映射到正确的API格式。未知的URL被视为OpenAI兼容。
 
 #### 重要注意事项
 
@@ -119,26 +116,27 @@ LiteLLM 从 `LLM_BASE_URL` 自动检测提供商，并将其映射到正确的 A
 
 #### 推理时的温度约束
 
-某些提供商在启用推理时会施加温度限制：
+某些提供商在启用推理时会限制`temperature`。**这些限制都会自动强制执行；请根据您的工作负载需求设置`LLM_TEMPERATURE`。**
 
-- **Anthropic**: 启用扩展思考时需要 `temperature=1`。如果使用 Anthropic 的扩展思考功能，你**必须**设置 `LLM_TEMPERATURE=1` — 当启用思考时，Anthropic 会拒绝其他值。
-- **OpenAI GPT-5.x**: 始终仅支持 `temperature=1`。LiteLLM 的 `drop_params` 过滤会自动处理此问题 — 不支持的温度值会被静默丢弃。对于 GPT-5.x，无需用户采取任何操作。
+- **Anthropic**：启用扩展思考时需要`temperature=1`。请求构建器会在Anthropic路由上固定该值，因此您配置的温度会被这些调用覆盖，而不是被拒绝。
+- **Anthropic、严格模型**（Opus 4.7和4.8、Fable 5、Mythos 5）：无论是否启用思考，都会直接拒绝`temperature`、`top_p`和`top_k`。FIM One会从这些模型的请求中移除`temperature`。
+- **OpenAI GPT-5.x**：仅支持`temperature=1`。LiteLLM的`drop_params`过滤会移除不支持的值。
+
+手动设置`LLM_TEMPERATURE=1`来满足Anthropic的要求是不必要的，这样做会让您无法在每个非思考调用上运行更低的温度。
 
 #### `LLM_REASONING_BUDGET_TOKENS` 的工作原理
 
-此变量**主要对 Anthropic 路径有意义**。设置时，它会覆盖自动计算的预算，并通过 LiteLLM 作为 `thinking` 参数中的 `budget_tokens` 发送。未设置时，预算从 `LLM_MAX_OUTPUT_TOKENS` x 努力比率派生：
+此变量**仅在旧版 Anthropic 思考路径上有意义**（Claude 4.5 及更早版本，路由为 `anthropic/`）。在该路径上，它会覆盖自动计算的预算，并作为 `budget_tokens` 在 `thinking` 参数内发送。自适应思考模型（Opus 4.6 及更新版本、Sonnet 4.6、Fable 5、Mythos 5）采用努力级别而非预算，完全忽略此变量。未设置时，预算从 `LLM_MAX_OUTPUT_TOKENS` × 努力比率推导：
 
-| `LLM_REASONING_EFFORT` | 预算比率 | 示例 (max_tokens = 64000) |
+| `LLM_REASONING_EFFORT` | 预算比率 | 示例（max_tokens = 64000） |
 |---|---|---|
 | `low` | 20% | 12,800 tokens |
 | `medium` | 50% | 32,000 tokens |
 | `high` | 80% | 51,200 tokens |
 
-最小预算为 1,024 tokens（Anthropic 的硬性最小值）。
+最小预算为 1,024 tokens（Anthropic 的硬性最低值）。
 
-对于 OpenAI 和 Gemini，提供商根据 `reasoning_effort` 级别在内部处理 token 分配 — `LLM_REASONING_BUDGET_TOKENS` 无效。
-
----
+对于 OpenAI 和 Gemini，提供商根据 `reasoning_effort` 级别在内部处理令牌分配——`LLM_REASONING_BUDGET_TOKENS` 无效。
 
 ## 智能体执行
 

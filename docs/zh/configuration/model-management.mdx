@@ -101,19 +101,19 @@ Group: "Production"
 
 **默认值：** 开启
 
-控制 FIM One 是否使用强制 `tool_choice` 进行结构化输出提取。这是结构化输出降级链中的第 1 级 -- 当模型支持时最可靠的方法。
+控制FIM One是否使用强制 `tool_choice` 进行结构化输出提取。这是结构化输出降级链中的第1级——当模型支持时最可靠的方法。
 
 **何时禁用：**
-- 您的模型返回错误，如 `"tool_choice 'specified' is incompatible with thinking enabled"` -- 常见于始终启用思考的模型（DeepSeek R1、Kimi K2.5）
-- 结构化输出请求持续缓慢，每次调用约有 10 秒的延迟，随后无论如何都会回退到 JSON Mode
+- 您的模型返回类似 `"tool_choice 'specified' is incompatible with thinking enabled"` 的错误。这是按提供商的规则而非思考模型的属性：`deepseek-reasoner` 和思考型Kimi模型拒绝强制工具选择，而MiniMax在每次调用时进行思考并接受强制选择。[提供商能力矩阵](/architecture/llm-provider-guide#provider-capability-matrix)的表B列出了每个提供商的判决
+- 结构化输出请求一致性地缓慢，每次调用约有10秒的延迟，随后无论如何都会回退到JSON Mode
 
-**禁用时的效果：** FIM One 跳过第 1 级（原生函数调用），从第 2 级（JSON Mode）开始进行结构化输出。ReAct 智能体的工具调用完全不受影响 -- 它使用 `tool_choice="auto"`，适用于所有模型，无论此设置如何。
+**禁用时的效果：** FIM One跳过第1级（原生函数调用），从第2级（JSON Mode）开始进行结构化输出。ReAct智能体的工具调用完全不受影响——它使用 `tool_choice="auto"`，这适用于所有模型，无论此设置如何。
 
 <Note>
-此设置仅影响用于结构化输出提取的**强制**工具选择（DAG 规划、模式注解）。它**不**影响 ReAct 智能体，后者使用 `tool_choice="auto"` 自由决定何时调用工具。
+此设置仅影响用于结构化输出提取的**强制**工具选择（DAG规划、模式标注）。它**不**影响ReAct智能体，后者使用 `tool_choice="auto"` 自由决定何时调用工具。
 </Note>
 
-有关技术详情，请参阅 [LLM 提供商兼容性 -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled)。
+有关技术细节，请参阅[LLM提供商兼容性——tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled)。
 
 ### JSON 模式
 
@@ -152,9 +152,11 @@ Group: "Production"
 
 ## 推荐配置
 
-大多数模型使用默认设置（两个开关都打开）可以正常工作。仅在遇到错误或不必要的延迟时进行调整。
+大多数模型使用默认设置（两个开关均打开）即可正常工作。仅在遇到错误或不必要的延迟时进行调整。
 
-下表涵盖常见的提供商和模型。数据来自 UniAPI 功能标签，并根据 **2026-03-22** 的运行时行为进行了验证。模型功能变化频繁——如果遇到错误，请查阅您的提供商的最新文档。
+下表涵盖常见提供商和模型。数据来源于UniAPI能力标签，并根据**2026-03-22**的运行时行为进行了验证。模型能力变化频繁——如果遇到错误，请查阅提供商的最新文档。
+
+这是按模型操作员视图：添加模型时要设置的开关。它遵循的提供商级规则及实现它们的代码锚点位于[提供商能力矩阵](/architecture/llm-provider-guide#provider-capability-matrix)。如果两者有任何不一致，矩阵是权威的，此表需要更新。
 
 ### 快速规则
 

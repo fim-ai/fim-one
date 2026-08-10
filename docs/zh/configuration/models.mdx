@@ -22,47 +22,53 @@ FIM One 有三个模型角色：
 
 ## 快速选择矩阵
 
-| 提供商 | 主要LLM | 快速LLM | 推理 | 视觉 | 备注 |
+| 提供商 | 主模型 | 快速模型 | 推理 | 视觉 | 备注 |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 全部 | 最佳原生工具调用；GPT-5.4是最新旗舰版（2026年3月） |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ 通过LiteLLM | ✅ 全部 | 原生API路由；完整`reasoning_content`支持；1M上下文GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 全部 | 2.5为稳定GA；3.x为预览版；`gemini-3-pro-preview`已于3月9日关闭 |
-| **DeepSeek** | `deepseek-chat`（V3.2） | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 仅文本；V4（2026年4月）将添加视觉功能 |
-| **Qwen（阿里巴巴）** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max`上的`enable_thinking` | ⚠️ 仅qwen3.5 | 最强中文语言能力；qwq/推理仅文本 |
-| **ChatGLM（智谱）** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 不支持强制FC；视觉需要单独的VLM模型 |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 仅文本；M2.7最新版（2026年3月）；SWE-Bench 80.2% |
-| **Kimi（月之暗面）** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ 仅K2.5 | K2-thinking仅文本；思考模式下不支持强制FC |
-| **Ollama（本地）** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 因模型而异 | 完全离线，无需API密钥；Llama 4支持视觉 |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 全部 | 最佳原生工具调用；GPT-5.4 是最新旗舰版（2026年3月） |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ 通过 LiteLLM | ✅ 全部 | 原生 API 路由；完整 `reasoning_content` 支持；1M 上下文 GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 全部 | 2.5 为稳定 GA；3.x 为预览版；`gemini-3-pro-preview` 已于3月9日关闭 |
+| **DeepSeek** | `deepseek-chat`（V3.2） | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 仅文本；V4（2026年4月）将增加视觉功能 |
+| **Qwen（阿里巴巴）** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max` 上的 `enable_thinking` | ⚠️ 仅 qwen3.5 | 中文语言能力最强；qwq/推理仅文本 |
+| **ChatGLM（智谱）** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 不支持强制函数调用；视觉需要单独的 VLM 模型 |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 仅文本；M2.7 最新版（2026年3月）；SWE-Bench 80.2% |
+| **Kimi（月之暗面）** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ 仅 K2.5 | K2-thinking 仅文本；思考模式下不支持强制函数调用 |
+| **Ollama（本地）** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 因模型而异 | 完全离线，无需 API 密钥；Llama 4 支持视觉 |
 
 <Tip>
-**视觉**表示模型是否接受图像输入。这是[智能文档处理（IDP）](/features/idp)所必需的——如果您的模型不支持视觉，IDP将回退到仅文本提取。标记为⚠️的提供商在某些模型上支持视觉但在其他模型上不支持；请检查您正在使用的特定模型。
+**视觉**表示模型是否接受图像输入。这是[智能文档处理（IDP）](/features/idp)所必需的——如果您的模型不支持视觉，IDP 将回退到仅文本提取。标记为 ⚠️ 的提供商在某些模型上支持视觉但在其他模型上不支持；请检查您正在使用的特定模型。
 </Tip>
+
+此表列出了我们推荐的组合，而非 FIM One 支持的全部提供商。xAI（Grok）、ByteDance Doubao、Mistral 以及任何 OpenAI 兼容中继都可以使用；请参阅[提供商能力矩阵](/architecture/llm-provider-guide#provider-capability-matrix)了解完整列表以及每个提供商的路由方式。
 
 ## 结构化输出兼容性
 
-FIM One 的 DAG 规划器需要模型返回有效的结构化 JSON。在内部，它按顺序尝试三个提取级别：
+FIM One的DAG规划器需要模型返回有效的结构化JSON。在内部，它按顺序尝试三个提取级别：
 
-1. **原生函数调用** — 通过工具调用 API 强制模型输出与架构匹配的 JSON。最可靠。
-2. **JSON 模式** — 请求 `response_format: json_object`。保证有效的 JSON，但不强制架构合规性。
-3. **纯文本提取** — 作为最后手段从自由格式文本中解析 JSON。
+1. **原生函数调用** — 通过工具调用API强制模型输出与模式匹配的JSON。最可靠。
+2. **JSON模式** — 请求`response_format: json_object`。保证有效的JSON，但不强制执行模式合规性。
+3. **纯文本提取** — 作为最后手段从自由格式文本中解析JSON。
 
-支持第 1 级（带强制 `tool_choice` 的原生 FC）的模型提供最佳的规划可靠性。如果模型仅达到第 2 级，其输出质量取决于它遵循提示指令的程度 — 较弱的模型可能会生成与预期结构不匹配的有效 JSON。
+支持第1级（带强制`tool_choice`的原生FC）的模型能提供最佳的规划可靠性。如果模型仅达到第2级，其输出质量取决于它遵循提示指令的程度——较弱的模型可能产生有效的JSON但不匹配预期结构。
 
-| 提供商 | 强制函数调用 | JSON 模式 | 规划可靠性 |
+| 提供商 | 强制函数调用 | JSON模式 | 规划可靠性 |
 |---|---|---|---|
 | **OpenAI** (GPT-5.x, o3) | ✅ 完全支持 | ✅ | ⭐⭐⭐ 优秀 |
-| **Anthropic** (Claude 4.x) | ⚠️ 与思考模式冲突 | ✅ | ⭐⭐⭐ 优秀（强指令遵循能力弥补） |
+| **Anthropic** (Claude 4.x) | ⚠️ 与思考模式冲突 | ✅ | ⭐⭐⭐ 优秀（强大的指令遵循能力补偿） |
 | **Google Gemini** (2.5/3.x) | ✅ 完全支持 | ✅ | ⭐⭐⭐ 优秀 |
 | **Mistral** | ✅ 完全支持 | ✅ | ⭐⭐ 良好 |
-| **DeepSeek** (V3.2) | ⚠️ 不稳定（`tool_choice="required"` 有效，`"auto"` 不可靠） | ✅ | ⭐⭐ 良好 |
-| **Qwen** (3.x) | ⚠️ 部分支持 | ✅ | ⭐⭐ 良好 |
-| **Kimi** (K2.5) | ⚠️ 部分 — 仅在启用思考时 `auto` | ✅ | ⭐ 一般 — 可能生成格式错误的计划 |
-| **ChatGLM** (GLM-4.7/5) | ❌ 不支持（仅 `auto`） | ✅ | ⭐ 一般 |
-| **MiniMax** (M2.5/M2.7) | ✅ 完全支持 | ✅ | ⭐⭐ 良好 |
-| **本地 (Ollama)** | 因模型而异 | 因模型而异 | ⭐ 一般 — 建议 32B+ |
+| **xAI** (Grok 4.1) | ✅ 完全支持 | ✅ | ⭐⭐ 良好 |
+| **DeepSeek** (V3.2) | ✅ 在`deepseek-chat`上支持；❌ 在`deepseek-reasoner`上不支持，其思考模式拒绝它 | ✅ | ⭐⭐ 良好 |
+| **Qwen** (3.x) | ✅ 支持 | ✅ | ⭐⭐ 良好 |
+| **ByteDance** (Doubao Seed) | ✅ 完全支持 | ✅ | ⭐⭐ 良好 |
+| **Kimi** (K2.5) | ⚠️ 仅在思考模式下支持`auto`；强制工具选择需要关闭思考模式（`kimi-k2`） | ✅ | ⭐ 一般 — 可能产生格式错误的计划 |
+| **ChatGLM** (GLM-4.7/5) | ❌ 不支持（仅`auto`） | ✅ | ⭐ 一般 |
+| **MiniMax** (M2.5/M2.7) | ✅ 完全支持，思考模式不影响 | ✅ | ⭐⭐ 良好 |
+| **本地 (Ollama)** | 因模型而异 | 因模型而异 | ⭐ 一般 — 推荐32B+ |
+
+此表是选择辅助工具。权威的、代码锚定的版本（包括每个提供商接受哪些`tool_choice`状态以及FIM One在被拒绝时的处理方式）在[提供商能力矩阵](/architecture/llm-provider-guide#provider-capability-matrix)中。
 
 <Tip>
-如果看到错误"failed to generate a valid task plan"，说明模型的结构化输出能力不足以进行 DAG 规划。将你的**主 LLM** 切换到评级为 ⭐⭐⭐ 或 ⭐⭐ 或更高的模型，或禁用 DAG 模式并改用更简单的 ReAct 智能体。
+如果看到错误"failed to generate a valid task plan"，说明模型的结构化输出能力不足以进行DAG规划。将**主LLM**切换到评级为⭐⭐⭐或⭐⭐及以上的模型，或禁用DAG模式并改用更简单的ReAct智能体。
 </Tip>
 
 ## 思维/推理兼容性
@@ -79,43 +85,45 @@ FIM One 的 DAG 规划器需要模型返回有效的结构化 JSON。在内部�
 
 | 提供商 | 如何启用 | 可禁用？ | 推理输出 | 强制FC冲突？ |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | `reasoning_effort` 参数 | ✅ 可选 | 内部（用户不可见） | ✅ 工具 + 推理通过 Responses API 一起运行（自动；chat-completions 回退强制 `reasoning_effort: "none"`） |
-| **OpenAI** (o-series) | 始终启用 | ❌ | 内部（计数token，不返回） | ✅ 无冲突 |
-| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 可选 | API `reasoning_content` 字段 → 推理面板 | ❌ 强制FC + 推理 = **400错误** |
+| **OpenAI** (GPT-5.x) | `reasoning_effort` 参数 | ✅ 可选 | 内部（对用户不可见） | ✅ 工具+推理通过Responses API一起运行（自动；chat-completions回退强制`reasoning_effort: "none"`） |
+| **OpenAI** (o系列) | 始终启用 | ❌ | 内部（计数但不返回） | ✅ 无冲突 |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ 可选 | API `reasoning_content` 字段 → 推理面板 | ❌ 强制FC+推理=**400错误** |
 | **Google Gemini** (2.5/3.x) | `reasoning_effort` 参数 | ✅ 可选 | 内部 | ✅ 无冲突 |
-| **DeepSeek** | 模型变体（`deepseek-reasoner`） | 模型级 | API `reasoning_content` 字段 → 推理面板 | ⚠️ 强制FC不稳定 |
-| **Qwen** (3.x) | `enable_thinking` 参数 | ✅ 可选 | 内容中的 `<think>` 标签 | ⚠️ 部分FC支持 |
-| **MiniMax** (M2.7) | 始终启用 | ❌ | 内容中的 `<think>` 标签 | ✅ 无冲突 |
-| **ChatGLM** (GLM-5) | 模型变体 | 模型级 | 未外部化 | N/A — 不支持强制FC |
-| **Kimi** (K2-thinking) | 模型变体 | 模型级 | API 字段 | ❌ 强制FC + 推理 = 冲突 |
+| **DeepSeek** | 模型变体（`deepseek-reasoner`） | 模型级 | API `reasoning_content` 字段 → 推理面板 | ❌ 在`deepseek-reasoner`上被拒绝，在`deepseek-chat`上被接受 |
+| **Qwen** (3.x) | `enable_thinking` 参数，在提供商端设置 | ✅ 可选 | 内容中的`<think>`标签 | ✅ 无冲突 |
+| **MiniMax** (M2.7) | 始终启用 | ❌ | 内容中的`<think>`标签 | ✅ 无冲突 |
+| **ChatGLM** (GLM-5) | 模型变体 | 模型级 | 未外部化 | ❌ 不支持强制FC，无论是否启用推理 |
+| **Kimi** (K2-thinking) | 模型变体 | 模型级 | API字段 | ❌ 启用推理时仅支持`auto` |
+
+此表后的各提供商详情，包括每个`effort`级别的转换方式以及推理是否在后续轮次中重放，位于[提供商能力矩阵的表C](/architecture/llm-provider-guide#provider-capability-matrix)。
 
 ### FIM One 如何处理每种情况
 
-**API 级别的 `reasoning_content`**（Claude、DeepSeek）：推理字段直接从 API 响应读取，并在 UI 推理面板中显示。无需后处理。
+**API级别的 `reasoning_content`**（Claude、DeepSeek）：推理字段直接从API响应读取并在UI的推理面板中显示。无需后处理。
 
-**内容中的 `<think>` 标签**（MiniMax、Qwen、QwQ 和其他开源衍生版本）：FIM One 自动从内容字段中剥离 `<think>...</think>` 标签，并将思考文本重新路由到推理面板。这适用于流式和非流式响应。
+**内容中的 `<think>` 标签**（MiniMax、Qwen、QwQ及其他开源衍生版本）：FIM One自动从内容字段中移除 `<think>...</think>` 标签，并将思考文本重新路由到推理面板。这对流式和非流式响应都适用。
 
-**强制 FC + 思考冲突**（Claude、Kimi）：当 FIM One 需要强制函数调用时（例如，在 DAG 规划的结构化输出提取期间），它通过传递 `reasoning_effort=None` 为该特定调用临时禁用思考。这之所以有效，是因为 Claude 的思考是可选的——不发送该参数意味着没有思考，从而避免 400 错误。对于无法禁用思考的提供商（MiniMax），强制 FC 工作正常，因为这些提供商不会拒绝该组合。
+**强制FC与思考冲突**是按提供商划分的，而不是思考模型的通用属性。Claude拒绝这种组合，但其思考是可选的，因此FIM One通过传递 `reasoning_effort=None` 为该次调用关闭思考，原生函数调用继续进行。Kimi也拒绝这种组合，其思考由模型id而非参数选择，因此解决方案是为思考模型禁用原生函数调用。MiniMax在每次调用时都进行思考，并且接受强制函数调用，这就是为什么没有解决方案适用于它。
 
-**回退链**：如果强制函数调用因任何原因失败，FIM One 会自动回退：原生 FC → JSON 模式 → 纯文本提取。这种三层方法确保规划即使在提供商工具调用支持不完整的情况下也能工作。
+**回退链**：如果强制函数调用因任何原因失败，FIM One自动回退：原生FC → JSON模式 → 纯文本提取。这种三层方法确保规划即使在工具调用支持不完整的提供商上也能工作。
 
 <Note>
-如果您使用始终进行思考的模型（MiniMax M2.7、DeepSeek R1）作为主 LLM，思考输出将出现在每个智能体迭代的推理面板中。这是正常的——它不会影响功能，您可以看到模型的推理过程。
+如果您使用始终进行思考的模型（MiniMax M2.7、`deepseek-reasoner`）作为主LLM，思考输出将出现在每个智能体迭代的推理面板中。这是正常的——它不会影响功能，您可以看到模型的推理过程。
 </Note>
 
 ## 提供商详情
 
 ### OpenAI
 
-最经过实战检验的选项。OpenAI模型具有最好的原生函数调用（工具调用）支持，这直接影响智能体的可靠性。GPT-5系列（2025年8月+）相比GPT-4是一个重大的代际飞跃。
+最经过实战检验的选择。OpenAI模型拥有最好的原生函数调用（工具调用）支持，这直接影响智能体的可靠性。GPT-5系列（2025年8月+）相比GPT-4是一个重大的代际飞跃。
 
 **推荐模型：**
 - 主力：`gpt-5.4`（最新旗舰版，2026年3月——100万+上下文，计算机使用）或`o3`（最佳推理准确度）
-- 快速：`gpt-5.4-mini`（$0.75/$4.50每百万token）或`gpt-5.4-nano`（最便宜$0.20/$1.25每百万token）
+- 快速：`gpt-5.4-mini`（$0.75/$4.50每百万token）或`gpt-5.4-nano`（最便宜，$0.20/$1.25每百万token）
 - 预算快速：`gpt-5-mini`（$0.25/$2.00）和`gpt-5-nano`（$0.05/$0.40）以更低价格继续可用
-- 遗留版本：`gpt-4.1`（仍在API中，100万上下文，适合编码）
+- 旧版：`gpt-4.1`（仍在API中，100万上下文，适合编码）
 
-**推理：** 设置`LLM_REASONING_EFFORT=medium`——与o系列和GPT-5.x模型原生兼容。GPT-5.4支持`reasoning_effort`，级别为`none`、`low`、`medium`、`high`、`xhigh`。o系列需要`max_completion_tokens`而非`max_tokens`，LiteLLM会自动处理。注意：`/v1/chat/completions`拒绝将工具与推理结合的GPT-5.x请求——FIM One先通过Responses API路由GPT-5.x模型（两者在此协同工作），只有没有`/v1/responses`路由的端点才会回退到聊天完成模式，在智能体工具使用步骤中显式设置`reasoning_effort: "none"`。OpenAI兼容端点上的其他模型系列保留在聊天完成模式——它们从Responses获益无多，代理垫片可能会严重缓冲流式传输。GPT-5.4需要`temperature=1`——FIM One通过LiteLLM的参数过滤（`drop_params`）自动处理。
+**推理：** 设置`LLM_REASONING_EFFORT=medium`——原生支持o系列和GPT-5.x模型。GPT-5.4支持`reasoning_effort`，级别为`none`、`low`、`medium`、`high`、`xhigh`。o系列需要`max_completion_tokens`而非`max_tokens`，LiteLLM会自动处理。注意：`/v1/chat/completions`拒绝将工具与推理结合的GPT-5.x请求，因此FIM One直接调用Responses API处理GPT-5.x，两者可以协同工作。该路径还会将每个回合的加密推理传递到下一个回合，因此构建多步骤答案的智能体会保留已经推导出的内容，而不是在每次工具调用时重新推导。没有`/v1/responses`路由的端点会回退到聊天完成，在智能体工具使用步骤中显式设置`reasoning_effort: "none"`，`FIM_GPT5_RESPONSES_MODE`可以手动强制任一回退。OpenAI兼容端点上的其他模型系列保持在聊天完成上：它们从Responses中获益无多，代理垫片可能会严重缓冲流式传输。GPT-5.4需要`temperature=1`，FIM One通过LiteLLM的参数过滤（`drop_params`）自动处理。
 
 | 模型 | 输入$/百万token | 输出$/百万token | 上下文 |
 |---|---|---|---|
@@ -149,18 +157,18 @@ LLM_REASONING_EFFORT=medium
 
 ### Anthropic (Claude)
 
-Claude 在细致推理和复杂多步骤任务中表现出色。FIM One 通过 [LiteLLM](https://github.com/BerriAI/litellm) 连接，自动通过其原生 API 路由 Anthropic 模型。当前版本是 Claude 4.6（2026 年 2 月）。
+Claude在细致推理和复杂多步骤任务中表现卓越。FIM One通过[LiteLLM](https://github.com/BerriAI/litellm)连接，自动通过其原生API路由Anthropic模型。当前版本为Claude 4.6（2026年2月）。
 
 **推荐模型：**
-- 主要：`claude-sonnet-4-6`（能力和成本的最佳平衡 — $3/$15 per MTok）
-- 快速：`claude-haiku-4-5`（快速且便宜 — $1/$5 per MTok）
-- 高级：`claude-opus-4-6`（最强大，128K 最大输出 — $5/$25 per MTok）
+- 主模型：`claude-sonnet-4-6`（能力与成本的最佳平衡——$3/$15 per MTok）
+- 快速模型：`claude-haiku-4-5`（快速且便宜——$1/$5 per MTok）
+- 高级模型：`claude-opus-4-6`（能力最强，最大输出128K——$5/$25 per MTok）
 
-**基础 URL：** `https://api.anthropic.com/v1/`
+**基础URL：** `https://api.anthropic.com/v1/`
 
-Opus 4.6 和 Sonnet 4.6 拥有 1M 上下文窗口（自 2026 年 3 月 13 日正式发布 — 无需 beta 标头）。Haiku 4.5 拥有 200K 上下文窗口。
+Opus 4.6和Sonnet 4.6拥有1M上下文窗口（自2026年3月13日GA——无需beta头）。Haiku 4.5拥有200K上下文窗口。
 
-**推理：** 设置 `LLM_REASONING_EFFORT=medium` — LiteLLM 通过原生 API 路由 Anthropic 模型，因此 `reasoning_content`（扩展思考）完全返回并在 UI"思考"步骤中可见。Claude 4.6 模型支持自适应思考（`thinking: {type: "adaptive"}`），替代手动 `budget_tokens` — LiteLLM 自动处理转换。启用扩展思考时，Anthropic 要求 `temperature=1` — 在 `.env` 或模型配置中设置 `LLM_TEMPERATURE=1`。详见 [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning)。
+**推理：** 设置`LLM_REASONING_EFFORT=medium`。LiteLLM通过原生API路由Anthropic模型，因此`reasoning_content`（扩展思考）完全返回并在UI"thinking"步骤中可见。Claude 4.6及更新版本使用自适应思考（`thinking: {type: "adaptive"}`加`output_config.effort`）替代手动`budget_tokens`，FIM One直接发出而不依赖LiteLLM的映射。Anthropic在思考活跃时需要`temperature=1`，系统会为你强制执行：请求构建器在Anthropic路由上固定该值，在完全拒绝采样参数的模型上则移除`temperature`。不要手动设置`LLM_TEMPERATURE=1`。详见[扩展思考](/configuration/environment-variables#extended-thinking-reasoning)。
 
 ```bash
 # .env — Anthropic Claude
@@ -482,15 +490,15 @@ LLM_REASONING_EFFORT=medium
 
 ### 为什么这很重要
 
-- **Anthropic 原生端点**为您提供适当的 `reasoning_content` 支持（UI 中可见的扩展思考）、正确的工具调用格式和 `x-api-key` 身份验证 — 使用 OpenAI 兼容转换时会丧失这些功能。
-- **Google 原生端点**为您提供原生 Gemini 参数和 `x-goog-api-key` 身份验证。
-- **OpenAI 兼容**是通用后备方案，适用于任何中继，但提供商特定功能（如扩展思考输出）可能不可用。
+- **Anthropic原生端点**为你提供正确的`reasoning_content`支持（扩展思考在UI中可见）、正确的工具调用格式和`x-api-key`身份验证——这些功能在使用OpenAI兼容转换时会丢失。
+- **Google原生端点**提供原生Gemini参数和`x-goog-api-key`身份验证。
+- **OpenAI兼容**是通用后备方案，适用于任何中继，但提供商特定功能（如扩展思考输出）可能不可用。
 
 <Note>
-如果您的中继平台使用非标准路径约定（例如，URL 中没有 `/claude` 或 `/anthropic`），FIM One 会回退到 OpenAI 兼容协议 — 这适用于大多数用例。为了获得完整的原生协议支持，您可以通过管理员模型配置 UI 显式设置 `provider` 字段。
+如果你的中继平台使用非标准路径约定（例如，URL中没有`/claude`或`/anthropic`），FIM One会回退到OpenAI兼容协议——这适用于大多数用例。为了获得完整的原生协议支持，你可以通过管理员模型配置UI显式设置`provider`字段。
 </Note>
 
----
+中继也会以直接提供商不会的方式失败，而且这些失败大多是无声的：丢失的参数、被剥离的缓存断点、永远不会出错的缓冲流。症状列表详见[中继/代理陷阱](/architecture/llm-provider-guide#relayproxy-gotchas)。
 
 ## 配置策略
 

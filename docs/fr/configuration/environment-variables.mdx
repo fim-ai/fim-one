@@ -55,27 +55,28 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 | `FAST_LLM_MODEL` | Non | *(revient à `LLM_MODEL`)* | Modèle rapide — utilisé pour l'exécution des étapes DAG (moins cher, plus rapide) |
 | `LLM_TEMPERATURE` | Non | `0.7` | Température d'échantillonnage par défaut |
 | `LLM_CONTEXT_SIZE` | Non | `128000` | Taille de la fenêtre de contexte pour le LLM principal |
-| `LLM_MAX_OUTPUT_TOKENS` | Non | `64000` | Tokens de sortie max par appel pour le LLM principal |
-| `FAST_LLM_API_KEY` | Non | *(revient à `LLM_API_KEY`)* | Clé API du fournisseur du modèle rapide. À utiliser quand le modèle rapide est hébergé par un fournisseur différent du modèle principal |
+| `LLM_MAX_OUTPUT_TOKENS` | Non | `64000` | Nombre maximum de tokens de sortie par appel pour le LLM principal |
+| `FAST_LLM_API_KEY` | Non | *(revient à `LLM_API_KEY`)* | Clé API du fournisseur du modèle rapide. À utiliser lorsque le modèle rapide est hébergé par un fournisseur différent du modèle principal |
 | `FAST_LLM_BASE_URL` | Non | *(revient à `LLM_BASE_URL`)* | URL de base du fournisseur du modèle rapide |
 | `FAST_LLM_TEMPERATURE` | Non | *(revient à `LLM_TEMPERATURE`)* | Température d'échantillonnage pour le modèle rapide |
 | `FAST_LLM_CONTEXT_SIZE` | Non | *(revient à `LLM_CONTEXT_SIZE`)* | Taille de la fenêtre de contexte pour le LLM rapide |
-| `FAST_LLM_MAX_OUTPUT_TOKENS` | Non | *(revient à `LLM_MAX_OUTPUT_TOKENS`)* | Tokens de sortie max par appel pour le LLM rapide |
-| `LLM_REASONING_EFFORT` | Non | *(désactivé)* | Niveau de réflexion étendue pour les modèles supportés (OpenAI série o, Gemini 2.5+, Claude). Valeurs : `low`, `medium`, `high`. LiteLLM traduit cela au format natif de chaque fournisseur automatiquement. La chaîne de réflexion du modèle est affichée dans l'étape « thinking » de l'interface. |
-| `LLM_REASONING_BUDGET_TOKENS` | Non | *(auto à partir de l'effort)* | Budget de tokens explicite pour la réflexion Anthropic (minimum 1024). Pour OpenAI/Gemini, le niveau d'effort est utilisé directement. Effectif uniquement quand `LLM_REASONING_EFFORT` est défini. |
-| `LLM_JSON_MODE_ENABLED` | Non | `true` | Basculement global pour `response_format=json_object`. Définir à `false` si votre fournisseur rejette l'injection de prefill assistant de LiteLLM (par ex. relais AWS Bedrock → `ValidationException` à la 2e itération d'agent+). Quand désactivé, les appels structurés ignorent le mode JSON et reviennent à l'extraction regex en texte brut — aucune perte de qualité. S'applique à tous les modèles (configurés par ENV et Admin). |
-| `LLM_TOOL_CHOICE_ENABLED` | Non | `true` | Basculement global pour `tool_choice` forcé dans l'extraction de sortie structurée (Niveau 1 — Appel de fonction natif). Définir à `false` si votre modèle retourne des erreurs avec la sélection d'outil forcée (par ex. modèles en mode réflexion qui rejettent `tool_choice='specified'`). Quand désactivé, les appels structurés ignorent le FC natif et commencent à partir du mode JSON. Remplacement par modèle disponible dans Paramètres → Modèles → Avancé. |
-| `REASONING_LLM_MODEL` | Non | *(revient à `LLM_MODEL`)* | Nom du modèle pour le tier de réflexion. Utilisé pour les tâches nécessitant une analyse approfondie (par ex., planification DAG, analyse de plan) |
+| `FAST_LLM_MAX_OUTPUT_TOKENS` | Non | *(revient à `LLM_MAX_OUTPUT_TOKENS`)* | Nombre maximum de tokens de sortie par appel pour le LLM rapide |
+| `LLM_REASONING_EFFORT` | Non | *(désactivé)* | Niveau de réflexion étendue pour les modèles supportés (série OpenAI o, Gemini 2.5+, Claude). Valeurs : `low`, `medium`, `high`. LiteLLM traduit cela automatiquement au format natif de chaque fournisseur. La chaîne de pensée du modèle est affichée dans l'étape « thinking » de l'interface utilisateur. |
+| `LLM_REASONING_BUDGET_TOKENS` | Non | *(auto à partir de l'effort)* | Budget de tokens explicite pour la réflexion Anthropic (minimum 1024). Pour OpenAI/Gemini, le niveau d'effort est utilisé directement. Effectif uniquement lorsque `LLM_REASONING_EFFORT` est défini. |
+| `FIM_GPT5_RESPONSES_MODE` | Non | `native` | Quel protocole les modèles GPT-5.x utilisent. `native` communique directement avec l'API OpenAI Responses et rejoue le raisonnement chiffré de chaque tour, de sorte que le modèle conserve sa chaîne de pensée entre les appels d'outils. `bridge` utilise la traduction chat-completions de LiteLLM, qui fonctionne mais redérive le raisonnement à chaque tour. `off` force les complétions de chat simples, où le raisonnement est désactivé chaque fois que des outils sont présents. Ne définissez que si vous déboguez ; les points de terminaison sans route `/v1/responses` se rabattent sur leur propre solution. S'applique à GPT-5.x uniquement. |
+| `LLM_JSON_MODE_ENABLED` | Non | `true` | Basculeur global pour `response_format=json_object`. Définissez à `false` si votre fournisseur rejette l'injection de préfixe assistant de LiteLLM (par exemple, relais AWS Bedrock → `ValidationException` à la 2e itération d'agent et au-delà). Lorsque désactivé, les appels structurés ignorent le mode JSON et reviennent à l'extraction regex en texte brut — aucune perte de qualité. S'applique à tous les modèles (configurés par ENV et Admin). |
+| `LLM_TOOL_CHOICE_ENABLED` | Non | `true` | Basculeur global pour `tool_choice` forcé dans l'extraction de sortie structurée (Niveau 1 — Appel de fonction natif). Définissez à `false` si votre modèle retourne des erreurs avec la sélection d'outil forcée (par exemple, les modèles en mode réflexion qui rejettent `tool_choice='specified'`). Lorsque désactivé, les appels structurés ignorent le FC natif et commencent à partir du mode JSON. Remplacement par modèle disponible dans Paramètres → Modèles → Avancé. |
+| `REASONING_LLM_MODEL` | Non | *(revient à `LLM_MODEL`)* | Nom du modèle pour le niveau de réflexion. Utilisé pour les tâches nécessitant une analyse approfondie (par exemple, planification DAG, analyse de plan) |
 | `REASONING_LLM_API_KEY` | Non | *(revient à `LLM_API_KEY`)* | Clé API du fournisseur du modèle de réflexion |
 | `REASONING_LLM_BASE_URL` | Non | *(revient à `LLM_BASE_URL`)* | URL de base du fournisseur du modèle de réflexion |
 | `REASONING_LLM_TEMPERATURE` | Non | *(revient à `LLM_TEMPERATURE`)* | Température d'échantillonnage pour le modèle de réflexion |
 | `REASONING_LLM_CONTEXT_SIZE` | Non | *(revient à `LLM_CONTEXT_SIZE`)* | Taille de la fenêtre de contexte pour le modèle de réflexion |
-| `REASONING_LLM_MAX_OUTPUT_TOKENS` | Non | *(revient à `LLM_MAX_OUTPUT_TOKENS`)* | Tokens de sortie max par appel pour le modèle de réflexion |
-| `REASONING_LLM_EFFORT` | Non | *(revient à `LLM_REASONING_EFFORT`)* | Niveau d'effort de réflexion pour le tier du modèle de réflexion. Valeurs : `low`, `medium`, `high` |
-| `REASONING_LLM_BUDGET` | Non | *(revient à `LLM_REASONING_BUDGET_TOKENS`)* | Budget de tokens pour la réflexion (principalement Anthropic). Remplace le budget auto-calculé pour le tier de réflexion |
-| `LLM_SUPPORTS_VISION` | Non | `true` *(optimiste)* | Contrôle si l'OCR de document en mode ENV (via MarkItDown + `markitdown-ocr`) est tenté. S'applique uniquement quand **aucun groupe de modèles actif n'est configuré dans Admin → Modèles** (mode ENV pur). Quand la valeur par défaut `true` est en vigueur, `convert_to_markdown` et l'ingestion RAG supposent que `LLM_MODEL` supporte la vision et l'appellent pour l'OCR d'image — c'est le comportement correct pour tous les choix courants (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`). Définir à `false` quand votre `LLM_MODEL` configuré par ENV ne supporte **pas** la vision (par ex. `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`) pour ignorer l'appel de vision défaillant et aller directement à l'extraction texte uniquement. Quand un groupe de modèles actif existe dans le panneau Admin → Modèles, ce drapeau est ignoré et les drapeaux `supports_vision` du groupe prennent le relais — le choix curé par l'admin est toujours la source de vérité en mode DB. |
+| `REASONING_LLM_MAX_OUTPUT_TOKENS` | Non | *(revient à `LLM_MAX_OUTPUT_TOKENS`)* | Nombre maximum de tokens de sortie par appel pour le modèle de réflexion |
+| `REASONING_LLM_EFFORT` | Non | *(revient à `LLM_REASONING_EFFORT`)* | Niveau d'effort de réflexion pour le niveau de modèle de réflexion. Valeurs : `low`, `medium`, `high` |
+| `REASONING_LLM_BUDGET` | Non | *(revient à `LLM_REASONING_BUDGET_TOKENS`)* | Budget de tokens pour la réflexion (principalement Anthropic). Remplace le budget calculé automatiquement pour le niveau de réflexion |
+| `LLM_SUPPORTS_VISION` | Non | `true` *(optimiste)* | Contrôle si l'OCR de document en mode ENV (via MarkItDown + `markitdown-ocr`) est tenté. S'applique uniquement lorsqu'**aucun groupe de modèles actif n'est configuré dans Admin → Modèles** (mode ENV pur). Lorsque la valeur par défaut `true` est en vigueur, `convert_to_markdown` et l'ingestion RAG supposent que `LLM_MODEL` supporte la vision et l'appellent pour l'OCR d'image — c'est le comportement correct pour tous les choix courants (`gpt-4o`, `claude-3-5-sonnet`, `gemini-1.5-pro/flash`). Définissez à `false` lorsque votre `LLM_MODEL` configuré par ENV ne supporte **pas** la vision (par exemple, `deepseek-v3`, `qwen-chat`, `llama-3.1`, `gpt-3.5-turbo`, `o1-mini`) pour ignorer l'appel de vision défaillant et passer directement à l'extraction texte uniquement. Lorsqu'un groupe de modèles actif existe dans le panneau Admin → Modèles, cet indicateur est ignoré et les indicateurs `supports_vision` du groupe prennent le relais — le choix curé par l'administrateur est toujours la source de vérité en mode DB. |
 
-> **Ordre de résolution** : Préférence utilisateur → Modèles Admin (DB) → Fallback ENV. Si un modèle admin avec le rôle « General » est configuré dans Admin → Modèles, ces variables ENV servent de fallback uniquement. La vérification de santé considère les deux sources.
+> **Ordre de résolution** : Préférence utilisateur → Modèles Admin (DB) → Secours ENV. Si un modèle admin avec le rôle « General » est configuré dans Admin → Modèles, ces variables ENV servent de secours uniquement. Le contrôle de santé considère les deux sources.
 
 ### Résolution OCR MarkItDown
 
@@ -102,13 +103,9 @@ Lorsque `LLM_REASONING_EFFORT` est défini, FIM One active la capacité de réfl
 
 #### Fournisseurs pris en charge
 
-| Fournisseur | `LLM_BASE_URL` | Fonctionnement | Contenu de raisonnement retourné ? |
-|---|---|---|---|
-| **OpenAI** (o1 / o3 / o4-mini) | `https://api.openai.com/v1` | `reasoning_effort` envoyé nativement | Oui |
-| **Anthropic** (Claude 3.7+) | `https://api.anthropic.com/v1/` | LiteLLM achemine via l'API Anthropic native avec le paramètre `thinking` | Oui |
-| **Google Gemini** (2.5+) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `reasoning_effort` envoyé sur le point de terminaison de compatibilité | Oui |
+Les fournisseurs qui acceptent la réflexion, la façon dont chacun est activé, les valeurs `effort` qu'il accepte, et l'endroit où le texte de raisonnement se termine sont enregistrés une seule fois, avec des ancres de code, dans [le tableau C de la matrice des capacités des fournisseurs](/architecture/llm-provider-guide#provider-capability-matrix). Ce tableau est la liste faisant autorité ; cette page documente uniquement les variables.
 
-LiteLLM détecte automatiquement le fournisseur à partir de `LLM_BASE_URL` et le mappe au format API correct. Les URL inconnues sont traitées comme compatibles avec OpenAI.
+FIM One résout le fournisseur à partir de `LLM_BASE_URL` (plus un champ de fournisseur explicite lorsqu'un est configuré) et mappe la demande au format API correct. Les URL inconnues sont traitées comme compatibles avec OpenAI.
 
 #### Avertissements importants
 
@@ -119,14 +116,17 @@ Si votre `LLM_BASE_URL` pointe vers un proxy API tiers (par exemple, OpenRouter,
 
 #### Contraintes de température avec le raisonnement
 
-Certains fournisseurs imposent des restrictions de température lorsque le raisonnement est actif :
+Certains fournisseurs restreignent `temperature` quand le raisonnement est actif. **Tous ces éléments sont appliqués automatiquement ; laissez `LLM_TEMPERATURE` à la valeur qui convient à votre charge de travail.**
 
-- **Anthropic** : Nécessite `temperature=1` lorsque la réflexion étendue est activée. Si vous utilisez Anthropic avec la réflexion étendue, vous **devez** définir `LLM_TEMPERATURE=1` — Anthropic rejette les autres valeurs lorsque la réflexion est activée.
-- **OpenAI GPT-5.x** : Supporte uniquement `temperature=1` à tout moment. Le filtrage `drop_params` de LiteLLM gère cela automatiquement — les valeurs de température non supportées sont silencieusement supprimées. Aucune action de l'utilisateur n'est nécessaire pour GPT-5.x.
+- **Anthropic** : nécessite `temperature=1` quand la réflexion étendue est activée. Le générateur de requêtes épingle la valeur sur les routes Anthropic, donc votre température configurée est remplacée pour ces appels plutôt que rejetée.
+- **Anthropic, modèles stricts** (Opus 4.7 et 4.8, Fable 5, Mythos 5) : rejettent `temperature`, `top_p` et `top_k` complètement, avec ou sans raisonnement. FIM One supprime `temperature` de la requête pour ces modèles.
+- **OpenAI GPT-5.x** : ne supporte que `temperature=1`. Le filtrage `drop_params` de LiteLLM supprime les valeurs non supportées.
+
+Définir `LLM_TEMPERATURE=1` manuellement pour satisfaire Anthropic est inutile et vous coûte la capacité d'exécuter une température inférieure sur chaque appel sans raisonnement.
 
 #### Comment fonctionne `LLM_REASONING_BUDGET_TOKENS`
 
-Cette variable est **principalement significative pour le chemin Anthropic**. Lorsqu'elle est définie, elle remplace le budget calculé automatiquement et est envoyée en tant que `budget_tokens` dans le paramètre `thinking` via LiteLLM. Lorsqu'elle n'est pas définie, le budget est dérivé de `LLM_MAX_OUTPUT_TOKENS` x ratio d'effort :
+Cette variable n'est **pertinente que sur le chemin de réflexion Anthropic hérité** (Claude 4.5 et versions antérieures, routées en tant que `anthropic/`). Elle y remplace le budget calculé automatiquement et est envoyée en tant que `budget_tokens` à l'intérieur du paramètre `thinking`. Les modèles à réflexion adaptative (Opus 4.6 et versions plus récentes, Sonnet 4.6, Fable 5, Mythos 5) prennent un niveau d'effort au lieu d'un budget et ignorent entièrement cette variable. Lorsqu'elle n'est pas définie, le budget est dérivé de `LLM_MAX_OUTPUT_TOKENS` x ratio d'effort :
 
 | `LLM_REASONING_EFFORT` | Ratio de budget | Exemple (max_tokens = 64000) |
 |---|---|---|

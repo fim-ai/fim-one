@@ -93,25 +93,25 @@ Sie können mehrere Anbieter für denselben Dienst erstellen. Beispielsweise zwe
 
 Jedes Modell verfügt über erweiterte Einstellungen, die steuern, wie FIM One mit der API des Anbieters für die Extraktion strukturierter Ausgaben interagiert. Diese Einstellungen finden Sie unter dem Umschalter **Erweitert** im Dialog zum Erstellen/Bearbeiten von Modellen.
 
-### Native Funktionsaufrufe
+### Native Function Calling
 
-**Einstellungsname:** Native Function Calling (gespeichert als `tool_choice_enabled`)
+**Setting name:** Native Function Calling (stored as `tool_choice_enabled`)
 
-**Standard:** AN
+**Default:** ON
 
-Steuert, ob FIM One erzwungenes `tool_choice` für die Extraktion strukturierter Ausgaben verwendet. Dies ist Stufe 1 in der Degradationskette für strukturierte Ausgaben -- die zuverlässigste Methode, wenn das Modell sie unterstützt.
+Controls whether FIM One uses forced `tool_choice` for structured output extraction. This is Level 1 in the structured output degradation chain -- the most reliable method when the model supports it.
 
-**Wann deaktivieren:**
-- Ihr Modell gibt Fehler wie `"tool_choice 'specified' is incompatible with thinking enabled"` zurück -- häufig bei Modellen mit immer aktiviertem Denken (DeepSeek R1, Kimi K2.5)
-- Anfragen für strukturierte Ausgaben sind konsistent langsam mit einer ~10-Sekunden-Strafe pro Aufruf, gefolgt von einem Fallback zu JSON Mode
+**When to disable:**
+- Your model returns errors like `"tool_choice 'specified' is incompatible with thinking enabled"`. This is a per-provider rule rather than a property of thinking models: `deepseek-reasoner` and the thinking Kimi models reject a forced tool choice, while MiniMax thinks on every call and accepts one. Table B of the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) has the verdict for each provider
+- Structured output requests are consistently slow with a ~10-second penalty per call, followed by a fallback to JSON Mode anyway
 
-**Auswirkung bei Deaktivierung:** FIM One überspringt Stufe 1 (native Funktionsaufrufe) und beginnt bei Stufe 2 (JSON Mode) für strukturierte Ausgaben. Der Funktionsaufruf des ReAct-Agenten ist völlig unbeeinträchtigt -- er verwendet `tool_choice="auto"`, das mit allen Modellen unabhängig von dieser Einstellung funktioniert.
+**Effect when disabled:** FIM One skips Level 1 (native function calling) and starts from Level 2 (JSON Mode) for structured output. The ReAct agent's tool calling is completely unaffected -- it uses `tool_choice="auto"`, which works with all models regardless of this setting.
 
 <Note>
-Diese Einstellung betrifft nur **erzwungene** Werkzeugauswahl, die für die Extraktion strukturierter Ausgaben verwendet wird (DAG-Planung, Schema-Annotation). Sie betrifft **nicht** den ReAct-Agenten, der frei entscheidet, wann Werkzeuge mit `tool_choice="auto"` aufgerufen werden.
+This setting only affects **forced** tool selection used for structured output extraction (DAG planning, schema annotation). It does **not** affect the ReAct agent, which freely decides when to call tools using `tool_choice="auto"`.
 </Note>
 
-Technische Details finden Sie unter [LLM-Anbieter-Kompatibilität -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled).
+For technical details, see [LLM Provider Compatibility -- tool_choice_enabled](/architecture/llm-provider-guide#the-fix-tool_choice_enabled).
 
 ### JSON Mode
 
@@ -148,9 +148,11 @@ Die Größe des Kontextfensters des Modells in Token. Lassen Sie dieses Feld lee
 
 ## Empfohlene Konfiguration
 
-Die meisten Modelle funktionieren mit den Standardeinstellungen korrekt (beide Schalter AN). Passen Sie die Einstellungen nur an, wenn Sie auf Fehler oder unnötige Latenz stoßen.
+Die meisten Modelle funktionieren korrekt mit den Standardeinstellungen (beide Schalter AN). Passen Sie die Einstellungen nur an, wenn Sie auf Fehler oder unnötige Latenz stoßen.
 
-Die folgende Tabelle behandelt häufige Anbieter und Modelle. Daten stammen aus UniAPI-Funktionsetiketten und wurden gegen das Laufzeitverhalten vom **2026-03-22** verifiziert. Modellfunktionen ändern sich häufig – wenn Sie auf Fehler stoßen, überprüfen Sie die neueste Dokumentation Ihres Anbieters.
+Die folgende Tabelle behandelt häufige Anbieter und Modelle. Daten stammen aus UniAPI-Funktionsetiketten und wurden gegen das Laufzeitverhalten vom **2026-03-22** überprüft. Modellfunktionen ändern sich häufig – wenn Sie auf Fehler stoßen, überprüfen Sie die neueste Dokumentation Ihres Anbieters.
+
+Dies ist die Pro-Modell-Operatoransicht: welche Schalter beim Hinzufügen eines Modells gesetzt werden sollen. Die Anbieter-Ebenen-Regeln, denen es folgt, mit den Code-Ankern, die sie implementieren, befinden sich in der [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix). Falls die beiden jemals nicht übereinstimmen, ist die Matrix maßgeblich und diese Tabelle muss aktualisiert werden.
 
 ### Schnellregeln
 

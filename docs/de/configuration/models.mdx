@@ -24,47 +24,51 @@ Diese Rollen können über Umgebungsvariablen oder über die Funktion **Model Gr
 
 | Anbieter | Haupt-LLM | Schnelles LLM | Reasoning | Vision | Hinweise |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ Alle | Beste native Tool-Aufrufe; GPT-5.4 ist neuestes Flaggschiff (März 2026) |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | ✅ Alle | Native API-Weiterleitung; vollständige `reasoning_content`-Unterstützung; 1M Kontext GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ Alle | 2.5 ist stabiles GA; 3.x ist Vorschau; `gemini-3-pro-preview` am 9. März abgeschaltet |
-| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Nur Text; V4 (Apr 2026) wird Vision hinzufügen |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ Alle | Beste native Tool-Aufrufe; GPT-5.4 ist das neueste Flaggschiff (März 2026) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ über LiteLLM | ✅ Alle | Native API-Weiterleitung; vollständige `reasoning_content`-Unterstützung; 1M-Kontext GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ Alle | 2.5 ist stabiles GA; 3.x ist Vorschau; `gemini-3-pro-preview` wurde am 9. März abgeschaltet |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Nur Text; V4 (April 2026) wird Vision hinzufügen |
 | **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` auf `qwen3-max` | ⚠️ nur qwen3.5 | Stärkste chinesische Sprache; qwq/Reasoning nur Text |
-| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Erzwungene FC nicht unterstützt; Vision erfordert separates VLM-Modell |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Erzwungenes FC nicht unterstützt; Vision erfordert separates VLM-Modell |
 | **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Nur Text; M2.7 neueste (März 2026); 80,2% SWE-Bench |
-| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ nur K2.5 | K2-thinking nur Text; erzwungene FC nicht unterstützt mit Thinking |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ nur K2.5 | K2-thinking nur Text; erzwungenes FC nicht unterstützt mit Thinking |
 | **Ollama (lokal)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Variiert | Vollständig offline, kein API-Schlüssel; Llama 4 unterstützt Vision |
 
 <Tip>
-**Vision** gibt an, ob das Modell Bildeingaben akzeptiert. Dies ist erforderlich für [Intelligente Dokumentenverarbeitung (IDP)](/features/idp) – wenn Ihr Modell Vision nicht unterstützt, greift IDP auf reine Textextraktion zurück. Anbieter mit ⚠️ haben Vision auf einigen Modellen, aber nicht auf anderen; überprüfen Sie das spezifische Modell, das Sie verwenden.
+**Vision** gibt an, ob das Modell Bildeingaben akzeptiert. Dies ist erforderlich für [Intelligent Document Processing (IDP)](/features/idp) — wenn Ihr Modell Vision nicht unterstützt, wird IDP auf reine Textextraktion zurückgreifen. Anbieter, die mit ⚠️ gekennzeichnet sind, haben Vision auf einigen Modellen, aber nicht auf anderen; überprüfen Sie das spezifische Modell, das Sie verwenden.
 </Tip>
 
----
+Diese Tabelle listet die Kombinationen auf, die wir empfehlen, nicht die vollständige Menge der Anbieter, die FIM One unterstützt. xAI (Grok), ByteDance Doubao, Mistral und alle OpenAI-kompatiblen Relays funktionieren; siehe die [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) für die vollständige Liste und wie jeder weitergeleitet wird.
 
 ## Strukturierte Ausgabekompatibilität
 
-Der DAG-Planer von FIM One benötigt, dass das Modell gültiges strukturiertes JSON zurückgibt. Intern versucht es drei Extraktionsebenen der Reihe nach:
+FIM Ones DAG-Planer benötigt, dass das Modell gültiges strukturiertes JSON zurückgibt. Intern versucht es drei Extraktionsebenen in dieser Reihenfolge:
 
 1. **Native Function Calling** — zwingt das Modell, JSON auszugeben, das einem Schema über die Tool-Call-API entspricht. Am zuverlässigsten.
 2. **JSON Mode** — fordert `response_format: json_object` an. Garantiert gültiges JSON, erzwingt aber keine Schemakonformität.
-3. **Plain Text Extraction** — analysiert JSON aus Freitext als letzter Ausweg.
+3. **Plain Text Extraction** — analysiert JSON aus Freitext als letzten Ausweg.
 
-Modelle, die Level 1 (native FC mit erzwungenem `tool_choice`) unterstützen, bieten die beste Planungszuverlässigkeit. Wenn ein Modell nur Level 2 erreicht, hängt die Ausgabequalität davon ab, wie gut es Anweisungen befolgt — schwächere Modelle können gültiges JSON produzieren, das nicht der erwarteten Struktur entspricht.
+Modelle, die Level 1 (natives FC mit erzwungenem `tool_choice`) unterstützen, bieten die beste Planungszuverlässigkeit. Wenn ein Modell nur Level 2 erreicht, hängt seine Ausgabequalität davon ab, wie gut es den Anweisungen folgt — schwächere Modelle können gültiges JSON produzieren, das nicht der erwarteten Struktur entspricht.
 
-| Anbieter | Erzwungene Function Calling | JSON Mode | Planungszuverlässigkeit |
+| Anbieter | Erzwungenes Function Calling | JSON Mode | Planungszuverlässigkeit |
 |---|---|---|---|
 | **OpenAI** (GPT-5.x, o3) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐⭐ Ausgezeichnet |
 | **Anthropic** (Claude 4.x) | ⚠️ Konflikte mit Thinking-Modus | ✅ | ⭐⭐⭐ Ausgezeichnet (starke Anweisungsbefolgung kompensiert) |
 | **Google Gemini** (2.5/3.x) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐⭐ Ausgezeichnet |
 | **Mistral** | ✅ Vollständige Unterstützung | ✅ | ⭐⭐ Gut |
-| **DeepSeek** (V3.2) | ⚠️ Instabil (`tool_choice="required"` funktioniert, `"auto"` unzuverlässig) | ✅ | ⭐⭐ Gut |
-| **Qwen** (3.x) | ⚠️ Teilweise | ✅ | ⭐⭐ Gut |
-| **Kimi** (K2.5) | ⚠️ Teilweise — `auto` nur wenn Thinking aktiviert | ✅ | ⭐ Befriedigend — kann fehlerhafte Pläne produzieren |
+| **xAI** (Grok 4.1) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐ Gut |
+| **DeepSeek** (V3.2) | ✅ auf `deepseek-chat`; ❌ auf `deepseek-reasoner`, dessen Thinking-Modus lehnt es ab | ✅ | ⭐⭐ Gut |
+| **Qwen** (3.x) | ✅ Unterstützt | ✅ | ⭐⭐ Gut |
+| **ByteDance** (Doubao Seed) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐ Gut |
+| **Kimi** (K2.5) | ⚠️ Mit Thinking nur `auto` unterstützt; erzwungene Tool-Wahl benötigt Thinking aus (`kimi-k2`) | ✅ | ⭐ Befriedigend — kann fehlerhafte Pläne produzieren |
 | **ChatGLM** (GLM-4.7/5) | ❌ Nicht unterstützt (`auto` nur) | ✅ | ⭐ Befriedigend |
-| **MiniMax** (M2.5/M2.7) | ✅ Vollständige Unterstützung | ✅ | ⭐⭐ Gut |
+| **MiniMax** (M2.5/M2.7) | ✅ Vollständige Unterstützung, Thinking zum Trotz | ✅ | ⭐⭐ Gut |
 | **Lokal (Ollama)** | Variiert je nach Modell | Variiert | ⭐ Befriedigend — 32B+ empfohlen |
 
+Diese Tabelle ist eine Entscheidungshilfe. Die autoritative, codegebundene Version, einschließlich welche `tool_choice`-Zustände jeder Anbieter akzeptiert und was FIM One tut, wenn einer abgelehnt wird, ist die [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix).
+
 <Tip>
-Wenn Sie die Fehlermeldung „failed to generate a valid task plan" sehen, ist die strukturierte Ausgabefähigkeit des Modells für DAG-Planung unzureichend. Wechseln Sie Ihr **Main LLM** zu einem Modell mit einer Bewertung von ⭐⭐⭐ oder ⭐⭐ oder höher, oder deaktivieren Sie den DAG-Modus und verwenden Sie stattdessen den einfacheren ReAct-Agenten.
+Wenn Sie den Fehler „failed to generate a valid task plan" sehen, ist die strukturierte Ausgabefähigkeit des Modells für DAG-Planung unzureichend. Wechseln Sie Ihr **Main LLM** zu einem Modell mit einer Bewertung von ⭐⭐⭐ oder ⭐⭐ oder höher, oder deaktivieren Sie den DAG-Modus und verwenden Sie stattdessen den einfacheren ReAct-Agenten.
 </Tip>
 
 ## Thinking / Reasoning Kompatibilität
@@ -81,28 +85,30 @@ Verschiedene Anbieter implementieren "Thinking" (Chain-of-Thought-Reasoning) auf
 
 | Anbieter | Aktivierung | Deaktivierbar? | Thinking-Ausgabe | Erzwungener FC-Konflikt? |
 |---|---|---|---|---|
-| **OpenAI** (GPT-5.x) | `reasoning_effort` param | ✅ Opt-in | Internal (nicht für Benutzer sichtbar) | ✅ Tools + reasoning laufen zusammen über die Responses API (automatisch; chat-completions Fallback erzwingt `reasoning_effort: "none"`) |
-| **OpenAI** (o-series) | Immer aktiviert | ❌ | Internal (Tokens gezählt, nicht zurückgegeben) | ✅ Kein Konflikt |
-| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ Opt-in | API `reasoning_content` Feld → Reasoning Panel | ❌ Erzwungener FC + thinking = **400 Fehler** |
-| **Google Gemini** (2.5/3.x) | `reasoning_effort` param | ✅ Opt-in | Internal | ✅ Kein Konflikt |
-| **DeepSeek** | Modellvariante (`deepseek-reasoner`) | Modell-Ebene | API `reasoning_content` Feld → Reasoning Panel | ⚠️ Erzwungener FC unzuverlässig |
-| **Qwen** (3.x) | `enable_thinking` param | ✅ Opt-in | `<think>` Tags im Inhalt | ⚠️ Teilweise FC-Unterstützung |
+| **OpenAI** (GPT-5.x) | `reasoning_effort` param | ✅ Opt-in | Intern (nicht für Benutzer sichtbar) | ✅ Tools + Reasoning laufen zusammen über die Responses API (automatisch; chat-completions Fallback erzwingt `reasoning_effort: "none"`) |
+| **OpenAI** (o-series) | Immer aktiviert | ❌ | Intern (Tokens gezählt, nicht zurückgegeben) | ✅ Kein Konflikt |
+| **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ Opt-in | API `reasoning_content` Feld → Reasoning-Panel | ❌ Erzwungener FC + Thinking = **400 Fehler** |
+| **Google Gemini** (2.5/3.x) | `reasoning_effort` param | ✅ Opt-in | Intern | ✅ Kein Konflikt |
+| **DeepSeek** | Modellvariante (`deepseek-reasoner`) | Auf Modellebene | API `reasoning_content` Feld → Reasoning-Panel | ❌ Bei `deepseek-reasoner` abgelehnt, bei `deepseek-chat` akzeptiert |
+| **Qwen** (3.x) | `enable_thinking` param, anbieterseitig gesetzt | ✅ Opt-in | `<think>` Tags im Inhalt | ✅ Kein Konflikt |
 | **MiniMax** (M2.7) | Immer aktiviert | ❌ | `<think>` Tags im Inhalt | ✅ Kein Konflikt |
-| **ChatGLM** (GLM-5) | Modellvariante | Modell-Ebene | Nicht externalisiert | N/A — erzwungener FC nicht unterstützt |
-| **Kimi** (K2-thinking) | Modellvariante | Modell-Ebene | API Feld | ❌ Erzwungener FC + thinking = Konflikt |
+| **ChatGLM** (GLM-5) | Modellvariante | Auf Modellebene | Nicht externalisiert | ❌ Erzwungener FC nicht unterstützt, mit oder ohne Thinking |
+| **Kimi** (K2-thinking) | Modellvariante | Auf Modellebene | API-Feld | ❌ Mit aktiviertem Thinking nur `auto` unterstützt |
+
+Die anbieterorientierte Detailinformation hinter dieser Tabelle, einschließlich der Übersetzung jeder `effort`-Stufe und ob Reasoning in späteren Durchläufen wiedergegeben wird, befindet sich in [Tabelle C der Provider-Capability-Matrix](/architecture/llm-provider-guide#provider-capability-matrix).
 
 ### Wie FIM One jeden Fall handhabt
 
-**API-Level `reasoning_content`** (Claude, DeepSeek): Das Reasoning-Feld wird direkt aus der API-Antwort gelesen und im UI-Reasoning-Panel angezeigt. Keine Nachbearbeitung erforderlich.
+**API-Level `reasoning_content`** (Claude, DeepSeek): Das Reasoning-Feld wird direkt aus der API-Antwort gelesen und im UI Reasoning-Panel angezeigt. Keine Nachbearbeitung erforderlich.
 
-**`<think>` Tags im Inhalt** (MiniMax, Qwen, QwQ und andere Open-Source-Derivate): FIM One entfernt automatisch `<think>...</think>` Tags aus dem Inhaltsfeld und leitet den Thinking-Text zum Reasoning-Panel um. Dies funktioniert sowohl für Streaming- als auch für Non-Streaming-Antworten.
+**`<think>` Tags im Content** (MiniMax, Qwen, QwQ und andere Open-Source-Derivate): FIM One entfernt automatisch `<think>...</think>` Tags aus dem Content-Feld und leitet den Thinking-Text zum Reasoning-Panel um. Dies funktioniert sowohl für Streaming- als auch für Non-Streaming-Antworten.
 
-**Erzwungene FC + Thinking-Konflikte** (Claude, Kimi): Wenn FIM One erzwungenes Function Calling benötigt (z. B. während der strukturierten Ausgabeextraktion der DAG-Planung), deaktiviert es vorübergehend das Thinking für diesen spezifischen Aufruf, indem es `reasoning_effort=None` übergibt. Dies funktioniert, weil Claudes Thinking opt-in ist — das Nichtversenden des Parameters bedeutet kein Thinking, was den 400-Fehler vermeidet. Für Anbieter, bei denen Thinking nicht deaktiviert werden kann (MiniMax), funktioniert erzwungenes FC einwandfrei, da diese Anbieter die Kombination nicht ablehnen.
+**Erzwungene FC + Thinking-Konflikte** sind pro Provider, nicht eine Eigenschaft von Thinking-Modellen im Allgemeinen. Claude lehnt die Kombination ab, aber sein Thinking ist optional, daher deaktiviert FIM One das Thinking für diesen einen Aufruf, indem es `reasoning_effort=None` übergibt und das native Function Calling fortgesetzt wird. Kimi lehnt es ebenfalls ab, und sein Thinking wird durch die Modell-ID statt durch einen Parameter ausgewählt, daher besteht die Lösung darin, Native Function Calling für die Thinking-Modelle zu deaktivieren. MiniMax denkt bei jedem Aufruf und akzeptiert erzwungenes Function Calling trotzdem, weshalb keine Problemumgehung darauf anwendbar ist.
 
-**Fallback-Kette**: Wenn erzwungenes Function Calling aus irgendeinem Grund fehlschlägt, führt FIM One automatisch einen Fallback durch: natives FC → JSON-Modus → Klartext-Extraktion. Dieser dreistufige Ansatz stellt sicher, dass die Planung auch bei Anbietern mit teilweiser Tool-Calling-Unterstützung funktioniert.
+**Fallback-Kette**: Wenn erzwungenes Function Calling aus irgendeinem Grund fehlschlägt, fällt FIM One automatisch zurück: Native FC → JSON-Modus → Plain-Text-Extraktion. Dieser dreistufige Ansatz stellt sicher, dass die Planung auch bei Providern mit teilweiser Tool-Calling-Unterstützung funktioniert.
 
 <Note>
-Wenn Sie ein Modell verwenden, das immer denkt (MiniMax M2.7, DeepSeek R1) als Ihr Haupt-LLM, wird die Thinking-Ausgabe im Reasoning-Panel jeder Agent-Iteration angezeigt. Dies ist normal — es beeinträchtigt die Funktionalität nicht, und Sie können den Reasoning-Prozess des Modells sehen.
+Wenn Sie ein Modell verwenden, das immer denkt (MiniMax M2.7, `deepseek-reasoner`) als Ihr Main LLM, wird die Thinking-Ausgabe in jedem Reasoning-Panel der Agent-Iteration angezeigt. Dies ist normal — es beeinträchtigt die Funktionalität nicht, und Sie können den Reasoning-Prozess des Modells sehen.
 </Note>
 
 ## Anbieterdetails
@@ -113,11 +119,11 @@ Die am meisten bewährte Option. OpenAI-Modelle haben die beste native Unterstü
 
 **Empfohlene Modelle:**
 - Main: `gpt-5.4` (neuestes Flaggschiff, März 2026 — 1M+ Kontext, Computer Use) oder `o3` (beste Reasoning-Genauigkeit)
-- Fast: `gpt-5.4-mini` ($0,75/$4,50 pro MTok) oder `gpt-5.4-nano` (günstigste bei $0,20/$1,25 pro MTok)
+- Fast: `gpt-5.4-mini` ($0,75/$4,50 pro MTok) oder `gpt-5.4-nano` (günstigste mit $0,20/$1,25 pro MTok)
 - Budget Fast: `gpt-5-mini` ($0,25/$2,00) und `gpt-5-nano` ($0,05/$0,40) bleiben zu niedrigeren Preisen verfügbar
 - Legacy: `gpt-4.1` (noch in der API, 1M Kontext, gut für Coding)
 
-**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — funktioniert nativ mit o-Series und GPT-5.x-Modellen. GPT-5.4 unterstützt `reasoning_effort` mit den Stufen `none`, `low`, `medium`, `high`, `xhigh`. Die o-Series erfordert `max_completion_tokens` statt `max_tokens`, was LiteLLM automatisch handhabt. Hinweis: `/v1/chat/completions` lehnt GPT-5.x-Anfragen ab, die Tools mit Reasoning kombinieren — FIM One leitet GPT-5.x-Modelle zunächst durch die Responses API (wo beide zusammen funktionieren) und fällt nur bei Endpunkten ohne `/v1/responses`-Route auf Chat Completions mit explizitem `reasoning_effort: "none"` während Agent-Tool-Use-Schritten zurück. Andere Modellfamilien auf OpenAI-kompatiblen Endpunkten bleiben bei Chat Completions — sie gewinnen nichts von Responses, und Proxy-Shims dafür können das Streaming schlecht puffern. GPT-5.4 erfordert `temperature=1` — FIM One handhabt dies automatisch über LiteLLMs Parameterfilterung (`drop_params`).
+**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — funktioniert nativ mit o-Series und GPT-5.x-Modellen. GPT-5.4 unterstützt `reasoning_effort` mit den Stufen `none`, `low`, `medium`, `high`, `xhigh`. Die o-Series erfordert `max_completion_tokens` statt `max_tokens`, was LiteLLM automatisch handhabt. Hinweis: `/v1/chat/completions` lehnt GPT-5.x-Anfragen ab, die Tools mit Reasoning kombinieren, daher spricht FIM One direkt die Responses API für GPT-5.x an, wo beide zusammen funktionieren. Dieser Pfad trägt auch das verschlüsselte Reasoning jeder Runde in die nächste, sodass ein Agent, der eine mehrstufige Antwort aufbaut, das bereits Erarbeitete behält, statt es bei jedem Tool-Aufruf neu herzuleiten. Endpunkte ohne `/v1/responses`-Route fallen auf Chat Completions mit explizitem `reasoning_effort: "none"` während der Agent-Tool-Use-Schritte zurück, und `FIM_GPT5_RESPONSES_MODE` kann entweder Fallback manuell erzwingen. Andere Modellfamilien auf OpenAI-kompatiblen Endpunkten bleiben bei Chat Completions: Sie gewinnen nichts von Responses, und Proxy-Shims dafür können das Streaming schlecht puffern. GPT-5.4 erfordert `temperature=1`, was FIM One automatisch über LiteLLMs Parameterfilterung (`drop_params`) handhabt.
 
 | Modell | Input $/MTok | Output $/MTok | Kontext |
 |---|---|---|---|
@@ -151,7 +157,7 @@ LLM_REASONING_EFFORT=medium
 
 ### Anthropic (Claude)
 
-Claude zeichnet sich durch differenziertes Denken und komplexe mehrstufige Aufgaben aus. FIM One verbindet sich über [LiteLLM](https://github.com/BerriAI/litellm), das Anthropic-Modelle automatisch über ihre native API leitet. Die aktuelle Generation ist Claude 4.6 (Februar 2026).
+Claude zeichnet sich durch differenzierte Argumentation und komplexe mehrstufige Aufgaben aus. FIM One verbindet sich über [LiteLLM](https://github.com/BerriAI/litellm), das Anthropic-Modelle automatisch über deren native API weiterleitet. Die aktuelle Generation ist Claude 4.6 (Februar 2026).
 
 **Empfohlene Modelle:**
 - Main: `claude-sonnet-4-6` (beste Balance zwischen Leistung und Kosten — $3/$15 pro MTok)
@@ -160,9 +166,9 @@ Claude zeichnet sich durch differenziertes Denken und komplexe mehrstufige Aufga
 
 **Basis-URL:** `https://api.anthropic.com/v1/`
 
-Opus 4.6 und Sonnet 4.6 haben ein Kontextfenster von 1M (GA seit 13. März 2026 — kein Beta-Header erforderlich). Haiku 4.5 hat ein Kontextfenster von 200K.
+Opus 4.6 und Sonnet 4.6 haben ein 1M-Kontextfenster (GA seit 13. März 2026 — kein Beta-Header erforderlich). Haiku 4.5 hat ein 200K-Kontextfenster.
 
-**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — LiteLLM leitet Anthropic-Modelle über die native API, daher wird `reasoning_content` (erweitertes Denken) vollständig zurückgegeben und ist im UI-Schritt „thinking" sichtbar. Claude 4.6-Modelle unterstützen Adaptive Thinking (`thinking: {type: "adaptive"}`), das manuelles `budget_tokens` ersetzt — LiteLLM handhabt die Übersetzung automatisch. Wenn erweitertes Denken aktiviert ist, erfordert Anthropic `temperature=1` — setzen Sie `LLM_TEMPERATURE=1` in Ihrer `.env` oder Modellkonfiguration. Siehe [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) für Details.
+**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium`. LiteLLM leitet Anthropic-Modelle über die native API weiter, sodass `reasoning_content` (erweitertes Denken) vollständig zurückgegeben und im UI-Schritt „thinking" sichtbar ist. Claude 4.6 und neuer verwenden Adaptive Thinking (`thinking: {type: "adaptive"}` plus `output_config.effort`) anstelle eines manuellen `budget_tokens`, das FIM One direkt ausgibt, anstatt sich auf LiteLLMs Zuordnung zu verlassen. Anthropic erfordert `temperature=1` während das Denken aktiv ist, und das System erzwingt das für Sie: der Request Builder fixiert den Wert auf Anthropic-Routen, und bei Modellen, die Sampling-Parameter ablehnen, entfernt er `temperature` vollständig. Setzen Sie nicht manuell `LLM_TEMPERATURE=1`. Weitere Informationen finden Sie unter [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning).
 
 ```bash
 # .env — Anthropic Claude
@@ -486,15 +492,15 @@ Wenn die gleiche Relay-URL stattdessen `https://my-relay.example.com/v1` wäre, 
 
 ### Warum das wichtig ist
 
-- **Anthropic nativer Endpunkt** bietet dir ordnungsgemäße `reasoning_content`-Unterstützung (erweitertes Denken sichtbar in der UI), korrektes Tool-Calling-Format und `x-api-key`-Authentifizierung — Funktionen, die bei der Verwendung von OpenAI-kompatibler Übersetzung verloren gehen.
-- **Google nativer Endpunkt** bietet dir native Gemini-Parameter und `x-goog-api-key`-Authentifizierung.
-- **OpenAI kompatibel** ist der universelle Fallback und funktioniert mit jedem Relay, aber anbietersspezifische Funktionen (wie erweiterte Thinking-Ausgabe) sind möglicherweise nicht verfügbar.
+- **Anthropic nativer Endpunkt** bietet dir ordnungsgemäße `reasoning_content`-Unterstützung (erweitertes Denken sichtbar in der UI), korrektes Tool-Calling-Format und `x-api-key`-Authentifizierung — Features, die bei der Verwendung von OpenAI-kompatibler Übersetzung verloren gehen.
+- **Google nativer Endpunkt** bietet native Gemini-Parameter und `x-goog-api-key`-Authentifizierung.
+- **OpenAI kompatibel** ist der universelle Fallback und funktioniert mit jedem Relay, aber anbieterspezifische Features (wie erweiterte Thinking-Ausgabe) sind möglicherweise nicht verfügbar.
 
 <Note>
-Wenn deine Relay-Plattform nicht standardisierte Pfadkonventionen verwendet (z. B. kein `/claude` oder `/anthropic` in der URL), greift FIM One auf das OpenAI-kompatible Protokoll zurück — was für die meisten Anwendungsfälle funktioniert. Für vollständige native Protokollunterstützung kannst du das Feld `provider` explizit über die Admin-Modellkonfiguration-UI setzen.
+Wenn deine Relay-Plattform nicht standardisierte Pfadkonventionen verwendet (z. B. kein `/claude` oder `/anthropic` in der URL), greift FIM One auf das OpenAI-kompatible Protokoll zurück — das für die meisten Anwendungsfälle funktioniert. Für vollständige native Protokollunterstützung kannst du das Feld `provider` explizit über die Admin-Modellkonfiguration UI setzen.
 </Note>
 
----
+Relays schlagen auch auf Weise fehl, die ein direkter Anbieter nicht tut, und die meisten dieser Fehler sind stumm: ein gelöschter Parameter, ein entfernter Cache-Breakpoint, ein gepufferter Stream, der nie einen Fehler auslöst. Die symptomweise Liste findest du unter [Relay/Proxy-Fallstricke](/architecture/llm-provider-guide#relayproxy-gotchas).
 
 ## Konfigurationsstrategie
 

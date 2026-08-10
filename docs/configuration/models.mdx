@@ -40,6 +40,8 @@ These roles can be configured via ENV variables or through the admin UI's **Mode
 **Vision** indicates whether the model accepts image input. This is required for [Intelligent Document Processing (IDP)](/features/idp) — if your model doesn't support vision, IDP will fall back to text-only extraction. Providers marked ⚠️ have vision on some models but not others; check the specific model you're using.
 </Tip>
 
+This table lists the combinations we recommend, not the full set of providers FIM One supports. xAI (Grok), ByteDance Doubao, Mistral and any OpenAI-compatible relay all work; see the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) for the complete list and how each one is routed.
+
 ---
 
 ## Structured Output Compatibility
@@ -58,12 +60,16 @@ Models that support Level 1 (native FC with forced `tool_choice`) give the best 
 | **Anthropic** (Claude 4.x) | ⚠️ Conflicts with thinking mode | ✅ | ⭐⭐⭐ Excellent (strong instruction following compensates) |
 | **Google Gemini** (2.5/3.x) | ✅ Full support | ✅ | ⭐⭐⭐ Excellent |
 | **Mistral** | ✅ Full support | ✅ | ⭐⭐ Good |
-| **DeepSeek** (V3.2) | ⚠️ Unstable (`tool_choice="required"` works, `"auto"` unreliable) | ✅ | ⭐⭐ Good |
-| **Qwen** (3.x) | ⚠️ Partial | ✅ | ⭐⭐ Good |
-| **Kimi** (K2.5) | ⚠️ Partial — `auto` only when thinking enabled | ✅ | ⭐ Fair — may produce malformed plans |
+| **xAI** (Grok 4.1) | ✅ Full support | ✅ | ⭐⭐ Good |
+| **DeepSeek** (V3.2) | ✅ on `deepseek-chat`; ❌ on `deepseek-reasoner`, whose thinking mode rejects it | ✅ | ⭐⭐ Good |
+| **Qwen** (3.x) | ✅ Supported | ✅ | ⭐⭐ Good |
+| **ByteDance** (Doubao Seed) | ✅ Full support | ✅ | ⭐⭐ Good |
+| **Kimi** (K2.5) | ⚠️ With thinking on only `auto` is supported; forced tool choice needs thinking off (`kimi-k2`) | ✅ | ⭐ Fair — may produce malformed plans |
 | **ChatGLM** (GLM-4.7/5) | ❌ Not supported (`auto` only) | ✅ | ⭐ Fair |
-| **MiniMax** (M2.5/M2.7) | ✅ Full support | ✅ | ⭐⭐ Good |
+| **MiniMax** (M2.5/M2.7) | ✅ Full support, thinking notwithstanding | ✅ | ⭐⭐ Good |
 | **Local (Ollama)** | Varies by model | Varies | ⭐ Fair — 32B+ recommended |
+
+This table is a selection aid. The authoritative, code-anchored version, including which `tool_choice` states each provider accepts and what FIM One does when one is rejected, is the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix).
 
 <Tip>
 If you see the error "failed to generate a valid task plan", the model's structured output capability is insufficient for DAG planning. Switch your **Main LLM** to a model rated ⭐⭐⭐ or ⭐⭐ above, or disable DAG mode and use the simpler ReAct agent instead.
@@ -89,11 +95,13 @@ Different providers implement "thinking" (chain-of-thought reasoning) in fundame
 | **OpenAI** (o-series) | Always-on | ❌ | Internal (tokens counted, not returned) | ✅ No conflict |
 | **Anthropic** (Claude 4.x) | `reasoning_effort` → `thinking` | ✅ Opt-in | API `reasoning_content` field → Reasoning panel | ❌ Forced FC + thinking = **400 error** |
 | **Google Gemini** (2.5/3.x) | `reasoning_effort` param | ✅ Opt-in | Internal | ✅ No conflict |
-| **DeepSeek** | Model variant (`deepseek-reasoner`) | Model-level | API `reasoning_content` field → Reasoning panel | ⚠️ Forced FC unreliable |
-| **Qwen** (3.x) | `enable_thinking` param | ✅ Opt-in | `<think>` tags in content | ⚠️ Partial FC support |
+| **DeepSeek** | Model variant (`deepseek-reasoner`) | Model-level | API `reasoning_content` field → Reasoning panel | ❌ Rejected on `deepseek-reasoner`, accepted on `deepseek-chat` |
+| **Qwen** (3.x) | `enable_thinking` param, set provider-side | ✅ Opt-in | `<think>` tags in content | ✅ No conflict |
 | **MiniMax** (M2.7) | Always-on | ❌ | `<think>` tags in content | ✅ No conflict |
-| **ChatGLM** (GLM-5) | Model variant | Model-level | Not externalized | N/A — forced FC not supported |
-| **Kimi** (K2-thinking) | Model variant | Model-level | API field | ❌ Forced FC + thinking = conflict |
+| **ChatGLM** (GLM-5) | Model variant | Model-level | Not externalized | ❌ Forced FC unsupported, thinking or not |
+| **Kimi** (K2-thinking) | Model variant | Model-level | API field | ❌ With thinking on only `auto` is supported |
+
+The per-provider detail behind this table, including how each `effort` level is translated and whether reasoning is replayed on later turns, lives in [Table C of the Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix).
 
 ### How FIM One Handles Each Case
 
@@ -101,12 +109,12 @@ Different providers implement "thinking" (chain-of-thought reasoning) in fundame
 
 **`<think>` tags in content** (MiniMax, Qwen, QwQ, and other open-source derivatives): FIM One automatically strips `<think>...</think>` tags from the content field and reroutes the thinking text to the Reasoning panel. This works for both streaming and non-streaming responses.
 
-**Forced FC + thinking conflicts** (Claude, Kimi): When FIM One needs forced function calling (e.g., during DAG planning's structured output extraction), it temporarily disables thinking for that specific call by passing `reasoning_effort=None`. This works because Claude's thinking is opt-in — not sending the parameter means no thinking, which avoids the 400 error. For providers where thinking cannot be disabled (MiniMax), forced FC works fine since those providers don't reject the combination.
+**Forced FC + thinking conflicts** are per-provider, not a property of thinking models in general. Claude rejects the combination but its thinking is opt-in, so FIM One turns thinking off for that one call by passing `reasoning_effort=None` and native function calling proceeds. Kimi also rejects it, and its thinking is selected by model id rather than by a parameter, so the fix there is to disable Native Function Calling for the thinking models. MiniMax thinks on every call and accepts forced function calling anyway, which is why no workaround applies to it.
 
 **Fallback chain**: If forced function calling fails for any reason, FIM One falls back automatically: native FC → JSON mode → plain text extraction. This three-tier approach ensures planning works even with providers that have partial tool-calling support.
 
 <Note>
-If you're using a model that always thinks (MiniMax M2.7, DeepSeek R1) as your Main LLM, the thinking output will appear in every agent iteration's Reasoning panel. This is normal — it doesn't affect functionality, and you get to see the model's reasoning process.
+If you're using a model that always thinks (MiniMax M2.7, `deepseek-reasoner`) as your Main LLM, the thinking output will appear in every agent iteration's Reasoning panel. This is normal — it doesn't affect functionality, and you get to see the model's reasoning process.
 </Note>
 
 ---
@@ -123,7 +131,7 @@ The most battle-tested option. OpenAI models have the best native function calli
 - Budget Fast: `gpt-5-mini` ($0.25/$2.00) and `gpt-5-nano` ($0.05/$0.40) remain available at lower prices
 - Legacy: `gpt-4.1` (still in API, 1M context, good for coding)
 
-**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: `/v1/chat/completions` rejects GPT-5.x requests that combine tools with reasoning — FIM One routes GPT-5.x models through the Responses API first (where both work together), and only endpoints without a `/v1/responses` route fall back to chat completions with an explicit `reasoning_effort: "none"` during agent tool-use steps. Other model families on OpenAI-compatible endpoints stay on chat completions — they gain nothing from Responses, and proxy shims for it can badly buffer streaming. GPT-5.4 requires `temperature=1` — FIM One handles this automatically via LiteLLM's parameter filtering (`drop_params`).
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: `/v1/chat/completions` rejects GPT-5.x requests that combine tools with reasoning, so FIM One talks the Responses API directly for GPT-5.x, where both work together. That path also carries each turn's encrypted reasoning into the next one, so an agent building a multi-step answer keeps what it already worked out instead of re-deriving it at every tool call. Endpoints without a `/v1/responses` route fall back to chat completions with an explicit `reasoning_effort: "none"` during agent tool-use steps, and `FIM_GPT5_RESPONSES_MODE` can force either fallback by hand. Other model families on OpenAI-compatible endpoints stay on chat completions: they gain nothing from Responses, and proxy shims for it can badly buffer streaming. GPT-5.4 requires `temperature=1`, which FIM One handles automatically via LiteLLM's parameter filtering (`drop_params`).
 
 | Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
@@ -168,7 +176,7 @@ Claude excels at nuanced reasoning and complex multi-step tasks. FIM One connect
 
 Opus 4.6 and Sonnet 4.6 have a 1M context window (GA since March 13, 2026 — no beta header needed). Haiku 4.5 has a 200K context window.
 
-**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — LiteLLM routes Anthropic models through the native API, so `reasoning_content` (extended thinking) is fully returned and visible in the UI "thinking" step. Claude 4.6 models support Adaptive Thinking (`thinking: {type: "adaptive"}`) which replaces manual `budget_tokens` — LiteLLM handles the translation automatically. When extended thinking is enabled, Anthropic requires `temperature=1` — set `LLM_TEMPERATURE=1` in your `.env` or model configuration. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium`. LiteLLM routes Anthropic models through the native API, so `reasoning_content` (extended thinking) is fully returned and visible in the UI "thinking" step. Claude 4.6 and newer use Adaptive Thinking (`thinking: {type: "adaptive"}` plus `output_config.effort`) in place of a manual `budget_tokens`, which FIM One emits directly rather than relying on LiteLLM's mapping. Anthropic requires `temperature=1` while thinking is active, and the system enforces that for you: the request builder pins the value on Anthropic routes, and on models that reject sampling parameters outright it removes `temperature` altogether. Do not set `LLM_TEMPERATURE=1` by hand. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
 
 ```bash
 # .env — Anthropic Claude
@@ -499,6 +507,8 @@ If the same relay URL were `https://my-relay.example.com/v1` instead, the `/clau
 <Note>
 If your relay platform uses non-standard path conventions (e.g., no `/claude` or `/anthropic` in the URL), FIM One falls back to OpenAI compatible protocol — which works for most use cases. For full native protocol support, you can set the `provider` field explicitly via the admin model configuration UI.
 </Note>
+
+Relays also fail in ways a direct provider does not, and most of those failures are silent: a dropped parameter, a stripped cache breakpoint, a buffered stream that never errors. The symptom-by-symptom list is in [Relay/proxy gotchas](/architecture/llm-provider-guide#relayproxy-gotchas).
 
 ---
 
