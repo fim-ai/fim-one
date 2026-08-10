@@ -198,14 +198,14 @@ export function QuestionCard({
 
   /**
    * Whether the note affordance applies to this question right now.
-   * Single-select with only "Other" selected hides it: the Other text is
-   * already free-form, so a second free-text box would be redundant
-   * (multi-select keeps it — there the note qualifies the whole set).
+   * Hidden whenever "Other" is the ONLY selection (single- or multi-
+   * select alike): the Other text is already free-form, so a second
+   * free-text box would be redundant. As soon as a concrete option is
+   * in the set — alone or mixed with Other — the note returns, since it
+   * then qualifies choices that aren't free-form themselves.
    */
   function noteAllowed(idx: number): boolean {
-    const q = questions[idx]
     const draft = draftFor(idx)
-    if (q.multi_select) return true
     return !(draft.selected.length === 1 && draft.selected[0] === OTHER_VALUE)
   }
 
