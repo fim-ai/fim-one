@@ -302,29 +302,34 @@ const LOGO_PARTICLES = [
 ] as const
 
 function LogoEasterEgg() {
-  const router = useRouter()
   const [popping, setPopping] = useState(false)
 
+  // Real <Link> so middle-click / cmd-click open a new tab (button + router.push cannot).
   const handleClick = () => {
-    router.push("/")
     if (popping) return
     setPopping(true)
     setTimeout(() => setPopping(false), 800)
   }
 
   return (
-    <div className="relative" onClick={handleClick}>
-      <motion.button
+    <div className="relative">
+      <Link
+        href="/"
+        onClick={handleClick}
         className="flex items-center gap-2 rounded-md px-1 -mx-1 hover:opacity-70 focus-visible:outline-none cursor-pointer"
-        animate={popping ? { y: [0, -5, 2, -2, 0] } : {}}
-        transition={{ duration: 0.45, ease: "easeInOut" }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/fim-mark-light.svg" alt="FIM" className="h-5 w-auto shrink-0 dark:hidden" />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/fim-mark.svg" alt="FIM" className="h-5 w-auto shrink-0 hidden dark:block" />
-        <span className="text-base font-bold tracking-tight text-sidebar-foreground" style={{ fontFamily: "var(--font-cabinet), sans-serif" }}>{APP_NAME}</span>
-      </motion.button>
+        <motion.span
+          className="flex items-center gap-2"
+          animate={popping ? { y: [0, -5, 2, -2, 0] } : {}}
+          transition={{ duration: 0.45, ease: "easeInOut" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/fim-mark-light.svg" alt="FIM" className="h-5 w-auto shrink-0 dark:hidden" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/fim-mark.svg" alt="FIM" className="h-5 w-auto shrink-0 hidden dark:block" />
+          <span className="text-base font-bold tracking-tight text-sidebar-foreground" style={{ fontFamily: "var(--font-cabinet), sans-serif" }}>{APP_NAME}</span>
+        </motion.span>
+      </Link>
       <AnimatePresence>
         {popping && LOGO_PARTICLES.map(({ angle, dist, color }) => {
           const rad = (angle * Math.PI) / 180
