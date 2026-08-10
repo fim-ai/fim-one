@@ -14,7 +14,11 @@ class StepOutput:
     """Structured output from a completed DAG step."""
 
     summary: str
-    data: dict[str, Any] | None = None  # reserved for future structured data
+    # Typed execution metadata for downstream consumers (analyzer, synthesis,
+    # UI):  ``step_type``, and for react steps ``iterations`` and
+    # ``tools_used``.  Lets consumers reason about HOW a result was produced
+    # (single direct call vs. multi-tool agent run) without parsing prose.
+    data: dict[str, Any] | None = None
     artifacts: list[Artifact] = field(default_factory=list)
     # Extended-thinking the step's sub-agent produced while reaching the
     # summary.  Preserved so the analyzer / synthesis stages can use a clue
@@ -49,6 +53,10 @@ class PlanStep:
         task: Human-readable description of what this step should accomplish.
         dependencies: IDs of steps that must complete first.
         tool_hint: Optional hint suggesting which tool to use.
+        step_type: How the step is executed.  ``"react"`` (default) runs a
+            full multi-iteration tool-using agent; ``"llm_direct"`` runs a
+            single tool-less LLM call — for pure transformation/synthesis
+            steps that only work on their dependencies' outputs.
         result: The output produced after execution, if any.
         status: Current lifecycle status of this step.
     """
@@ -58,6 +66,7 @@ class PlanStep:
     dependencies: list[str] = field(default_factory=list)
     tool_hint: str | None = None
     model_hint: str | None = None
+    step_type: Literal["react", "llm_direct"] = "react"
     result: StepOutput | None = None
     status: Literal["pending", "running", "completed", "failed", "skipped"] = "pending"
     started_at: float | None = None

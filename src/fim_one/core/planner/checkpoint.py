@@ -92,6 +92,7 @@ class DAGCheckpoint:
                     "dependencies": list(s.dependencies),
                     "tool_hint": s.tool_hint,
                     "model_hint": s.model_hint,
+                    "step_type": s.step_type,
                     "status": s.status,
                 }
                 if s.result is not None:
@@ -143,6 +144,11 @@ class DAGCheckpoint:
                     dependencies=list(record.get("dependencies", [])),
                     tool_hint=record.get("tool_hint"),
                     model_hint=record.get("model_hint"),
+                    step_type=(
+                        "llm_direct"
+                        if record.get("step_type") == "llm_direct"
+                        else "react"
+                    ),
                 )
                 step.status = "completed"
                 step.result = StepOutput(

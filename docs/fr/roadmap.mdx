@@ -331,6 +331,10 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 - [x] Discipline du plan-board : rappels de répétition et sans plan, et la finalisation avec des éléments de plan ouverts force désormais un passage de vérification
 - [ ] Compaction d'entrée fragmentée et budgets conscients du modèle sur le chemin de chat principal, de sorte que tout mélange de modèles reste dans la fenêtre
 
+#### Moteur DAG
+
+- [x] Étapes DAG typées — le planificateur marque les étapes de transformation/synthèse pures `llm_direct` (appel unique, pas de boucle d'outils) ; les résultats portent des métadonnées d'exécution typées
+
 #### Intégration de scénarios
 
 - [ ] Le premier lancement commence à partir d'un modèle de scénario (solution_seeds) au lieu d'un établi vide

@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Pure transformation steps in DAG plans run as a single direct LLM call.** The planner tags merge/rewrite/summarise steps that only consume upstream outputs as direct steps, skipping the tool loop they would never use, which lowers cost and latency; every step result now also records how it ran (direct call or agent loop, iterations, tools used).
+
 - **Agents can ask clarifying multiple-choice questions mid-run.** When a task could go in materially different directions, the agent pauses and presents up to four structured questions in the chat, each with 2-4 options plus a free-text "Other"; answering resumes the run in place, and skipping or a timeout lets it continue on its own judgment.
 
 - **Agent steps carry live one-line titles.** While an agent works, each iteration gets a short generated label ("Verifying pricing data…"), shown in a single folded header that cycles to the newest step; expanding it reveals the full step timeline, and the labels persist into conversation history.
@@ -31,6 +33,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Diagrams and code blocks can be downloaded, not just copied.** Mermaid diagrams export the rendered SVG, and every code block downloads with a filename matching its language; a `csv` block downloads as a UTF-8 file that opens cleanly in Excel.
 
 ### Changed
+
+- **Architecture docs map graph engineering onto FIM One.** [Planning Landscape](/architecture/planning-landscape) explains loop vs graph engineering, how that differs from classic visual workflows, how it maps to Workflow / DAG / ReAct, and what to borrow for each engine. It also states the current fact that every DAG step is already a full ReAct agent (not a one-shot LLM call). ReAct and DAG engine pages link to it.
 
 - **Plain chats always offer follow-up suggestions.** Conversations without a bound agent get suggested next questions after each answer; agent-bound chats still require the per-agent Follow-up Suggestions toggle (default off). Closure turns such as greetings or thanks may return no chips.
 

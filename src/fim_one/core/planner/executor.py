@@ -17,6 +17,7 @@ from typing import Any
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.types import Action
 from fim_one.core.memory.context_guard import ContextGuard, compute_input_budget
+from fim_one.core.model import ChatMessage
 from fim_one.core.model.base import BaseLLM
 from fim_one.core.model.registry import ModelRegistry
 from fim_one.core.model.usage import UsageSummary
@@ -36,6 +37,15 @@ logger = logging.getLogger(__name__)
 # synthesis / the analyzer can verify the answer's factual claims against the
 # source instead of trusting the sub-agent's (lossy) summary.  0 disables it.
 _STEP_EVIDENCE_CHARS = int(os.getenv("DAG_STEP_EVIDENCE_CHARS", "16000"))
+
+# System prompt for llm_direct steps: a single tool-less LLM call used for
+# pure transformation/synthesis steps that only consume dependency outputs.
+_DIRECT_STEP_PROMPT = (
+    "You are executing one step of a larger execution plan.  No tools are "
+    "available for this step: produce the step's deliverable directly from "
+    "the task description and the provided context.  Respond with the "
+    "deliverable itself, without preamble or meta-commentary."
+)
 
 
 class DAGExecutor:
@@ -209,7 +219,11 @@ class DAGExecutor:
                     step = step_index[sid]
                     step.status = "running"
                     step.started_at = time.time()
-                    self._notify(sid, "started", {"task": step.task, "started_at": step.started_at})
+                    self._notify(sid, "started", {
+                        "task": step.task,
+                        "started_at": step.started_at,
+                        "step_type": step.step_type,
+                    })
 
                     context = self._build_step_context(step, step_index, self._context_guard)
                     task = asyncio.create_task(
@@ -504,8 +518,87 @@ class DAGExecutor:
             custom_compact_prompt=self._context_guard._custom_compact_prompt,
         )
 
+    def _resolve_direct_llm(self, step: PlanStep) -> BaseLLM:
+        """Pick the LLM for an ``llm_direct`` step.
+
+        Mirrors :meth:`_resolve_agent`'s model selection (model_hint role,
+        falling back to the registry's "general" role, then to the
+        constructor agent's LLM) without building an agent.
+        """
+        if self._model_registry is not None:
+            try:
+                return self._model_registry.get_by_role(step.model_hint or "general")
+            except KeyError:
+                logger.debug(
+                    "No model registered for role '%s', using constructor LLM",
+                    step.model_hint or "general",
+                )
+        return self._agent._llm
+
+    async def _execute_direct_step(self, step: PlanStep, context: str) -> None:
+        """Execute an ``llm_direct`` step as a single tool-less LLM call.
+
+        For pure transformation/synthesis steps this skips the full ReAct
+        scaffolding (system prompt, tool schemas, iteration loop) that the
+        step would never use.  Verification and evidence capture do not
+        apply: the step has no external sources — its ground truth is the
+        dependency context, which the analyzer and synthesis already see.
+        """
+        query = self._build_step_query(step, context)
+        llm = self._resolve_direct_llm(step)
+        try:
+            llm_result = await llm.chat([
+                ChatMessage(role="system", content=_DIRECT_STEP_PROMPT),
+                ChatMessage(role="user", content=query),
+            ])
+            raw_content = llm_result.message.content
+            if isinstance(raw_content, list):
+                raw_content = "".join(
+                    part.get("text", "")
+                    for part in raw_content
+                    if isinstance(part, dict)
+                )
+            answer = (raw_content or "").strip()
+            if not answer:
+                step.status = "failed"
+                step.result = StepOutput(
+                    summary="Direct LLM call returned empty output"
+                )
+            else:
+                step.status = "completed"
+                step.result = StepOutput(
+                    summary=answer,
+                    data={"step_type": "llm_direct"},
+                )
+            step.usage = UsageSummary(
+                prompt_tokens=llm_result.usage.get("prompt_tokens", 0),
+                completion_tokens=llm_result.usage.get("completion_tokens", 0),
+                total_tokens=llm_result.usage.get("total_tokens", 0),
+                llm_calls=1,
+                cache_read_input_tokens=llm_result.usage.get(
+                    "cache_read_input_tokens", 0
+                ),
+                cache_creation_input_tokens=llm_result.usage.get(
+                    "cache_creation_input_tokens", 0
+                ),
+            )
+            logger.info("Step '%s' completed via direct LLM call", step.id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            step.status = "failed"
+            step.result = StepOutput(summary=f"{type(exc).__name__}: {exc}")
+            logger.exception("Direct step '%s' failed", step.id)
+        finally:
+            step.completed_at = time.time()
+            if step.started_at is not None:
+                step.duration = round(step.completed_at - step.started_at, 2)
+
     async def _execute_step(self, step: PlanStep, context: str) -> None:
         """Execute a single plan step via the ReAct agent.
+
+        Steps marked ``step_type="llm_direct"`` are dispatched to
+        :meth:`_execute_direct_step` instead of the ReAct loop.
 
         On success the step's status is set to ``"completed"`` and its
         ``result`` is populated.  On failure the status becomes ``"failed"``
@@ -515,6 +608,10 @@ class DAGExecutor:
             step: The plan step to execute.
             context: Contextual information from completed dependency steps.
         """
+        if step.step_type == "llm_direct":
+            await self._execute_direct_step(step, context)
+            return
+
         query = self._build_step_query(step, context)
 
         iter_start = 0.0
@@ -524,6 +621,7 @@ class DAGExecutor:
         # silently drops items or mislabels them cannot be caught or repaired
         # by the analyzer / synthesis, which would only see the summary.
         evidence_parts: list[str] = []
+        tools_used: set[str] = set()
 
         def _on_iteration(
             iteration: int,
@@ -573,6 +671,8 @@ class DAGExecutor:
             if not is_starting and observation and _STEP_EVIDENCE_CHARS > 0:
                 tool_label = action.tool_name or action.type
                 evidence_parts.append(f"[{tool_label}] {observation}")
+            if not is_starting and action.tool_name:
+                tools_used.add(action.tool_name)
             self._notify(step.id, "iteration", payload)
 
         agent = self._resolve_agent(step)
@@ -744,6 +844,16 @@ class DAGExecutor:
                                 step.id,
                                 retry_exc,
                             )
+
+            # Typed edge-state metadata: record HOW the (possibly retried)
+            # result was produced so downstream consumers don't infer it
+            # from prose.
+            if step.result is not None:
+                step.result.data = {
+                    "step_type": "react",
+                    "iterations": agent_result.iterations,
+                    "tools_used": sorted(tools_used),
+                }
 
             # Preserve the raw source material on the (possibly retried) result
             # so the analyzer and synthesis can verify factual claims against

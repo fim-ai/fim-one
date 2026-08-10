@@ -52,6 +52,13 @@ Set to null for normal steps that need a capable model.  When in doubt, use \
 null — it uses the general-purpose model which handles most tasks well.  \
 IMPORTANT: Never set "fast" for steps involving report writing, synthesis, \
 comparison, or any output that requires nuanced judgment.
+- "step_type": "react" or "llm_direct".  Use "llm_direct" ONLY for pure \
+transformation or synthesis steps that work exclusively on the outputs of \
+their dependencies — merging results into a report or table, rewriting, \
+translating, summarising, reformatting.  Such steps run as a single LLM \
+call with NO tools, which is faster and cheaper.  Any step that may need a \
+tool, fresh data, searching, file access, or code execution MUST be \
+"react" (the default).  A "llm_direct" step must never have a tool_hint.
 
 Rules:
 1. Steps MUST form a valid directed acyclic graph (DAG) -- no circular \
@@ -71,21 +78,27 @@ involve multiple independent research dimensions.
 code.  A single step can perform multiple operations (e.g. check four \
 character types in one script).  But if two tasks use DIFFERENT tools or \
 search DIFFERENT topics, they SHOULD be separate parallel steps.
-7. LANGUAGE: Write the "task" descriptions in the same language as the goal. \
+7. GRANULARITY: a step is an independently deliverable SUB-GOAL, not a \
+single tool invocation.  The executing agent runs a full multi-iteration \
+tool loop, so "research topic X and summarise the findings" is ONE step — \
+never split search / open result / extract data on the SAME topic into \
+separate sequential steps.  Sequential dependencies are only for steps \
+that genuinely need another step's OUTPUT as input.
+8. LANGUAGE: Write the "task" descriptions in the same language as the goal. \
 If the goal is in Chinese, write tasks in Chinese.
-8. IMPORTANT: Keep "task" descriptions CONCISE (1-3 sentences). Do NOT copy \
+9. IMPORTANT: Keep "task" descriptions CONCISE (1-3 sentences). Do NOT copy \
 or echo large blocks of text, conversation history, or report content into \
 the task field. Instead, reference it briefly (e.g. "Translate the report \
 from the previous conversation into English, preserving Markdown formatting").
-9. If a list of available tools is provided, the "tool_hint" field MUST only \
+10. If a list of available tools is provided, the "tool_hint" field MUST only \
 reference tools from that list. Do NOT suggest tools that are not available.
 
 Respond with a single JSON object:
 {{
   "steps": [
-    {{"id": "step_1", "task": "...", "dependencies": [], "tool_hint": null, "model_hint": null}},
-    {{"id": "step_2", "task": "...", "dependencies": ["step_1"], "tool_hint": "some_tool", "model_hint": "fast"}},
-    {{"id": "step_3", "task": "...", "dependencies": ["step_2"], "tool_hint": null, "model_hint": "reasoning"}}
+    {{"id": "step_1", "task": "...", "dependencies": [], "tool_hint": null, "model_hint": null, "step_type": "react"}},
+    {{"id": "step_2", "task": "...", "dependencies": ["step_1"], "tool_hint": "some_tool", "model_hint": "fast", "step_type": "react"}},
+    {{"id": "step_3", "task": "...", "dependencies": ["step_1", "step_2"], "tool_hint": null, "model_hint": "reasoning", "step_type": "llm_direct"}}
   ]
 }}
 """
@@ -109,6 +122,10 @@ _PLAN_SCHEMA: dict[str, Any] = {
                     "model_hint": {
                         "type": ["string", "null"],
                         "enum": ["fast", "reasoning", None],
+                    },
+                    "step_type": {
+                        "type": ["string", "null"],
+                        "enum": ["react", "llm_direct", None],
                     },
                 },
                 "required": ["id", "task"],
@@ -431,12 +448,32 @@ class DAGPlanner:
                 )
                 raw_hint = None
 
+            raw_type = raw.get("step_type")
+            if raw_type is not None and raw_type not in ("react", "llm_direct"):
+                logger.warning(
+                    "Step '%s' has unknown step_type '%s' — normalizing to 'react'",
+                    raw.get("id", "?"),
+                    raw_type,
+                )
+                raw_type = None
+            # A direct step by definition uses no tools; a tool_hint means the
+            # LLM contradicted itself — trust the tool_hint and run full ReAct.
+            if raw_type == "llm_direct" and raw.get("tool_hint"):
+                logger.warning(
+                    "Step '%s' is llm_direct but has tool_hint '%s' — "
+                    "normalizing to 'react'",
+                    raw.get("id", "?"),
+                    raw.get("tool_hint"),
+                )
+                raw_type = None
+
             step = PlanStep(
                 id=str(raw.get("id", "")),
                 task=str(raw.get("task", "")),
                 dependencies=[str(d) for d in raw.get("dependencies", [])],
                 tool_hint=raw.get("tool_hint"),
                 model_hint=raw_hint,
+                step_type=raw_type or "react",
             )
             steps.append(step)
 
