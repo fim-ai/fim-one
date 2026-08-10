@@ -196,6 +196,19 @@ export function QuestionCard({
 
   const allAnswered = questions.every((_, idx) => answerFor(idx) !== null)
 
+  /**
+   * Whether the note affordance applies to this question right now.
+   * Single-select with only "Other" selected hides it: the Other text is
+   * already free-form, so a second free-text box would be redundant
+   * (multi-select keeps it — there the note qualifies the whole set).
+   */
+  function noteAllowed(idx: number): boolean {
+    const q = questions[idx]
+    const draft = draftFor(idx)
+    if (q.multi_select) return true
+    return !(draft.selected.length === 1 && draft.selected[0] === OTHER_VALUE)
+  }
+
   async function submit(answersOverride?: Record<string, string | string[]>) {
     if (state === "submitting" || state === "expired") return
     const answers: Record<string, string | string[]> = answersOverride ?? {}
@@ -207,10 +220,12 @@ export function QuestionCard({
     }
     if (Object.keys(answers).length === 0) return
     // Notes always come from the drafts, even on the auto-submit path.
+    // A note whose affordance is currently hidden (only-Other single
+    // select) is NOT sent — the user can no longer see or edit it.
     const notes: Record<string, string> = {}
     questions.forEach((q, idx) => {
       const note = draftFor(idx).note.trim()
-      if (note) notes[q.question] = note
+      if (note && noteAllowed(idx)) notes[q.question] = note
     })
     setState("submitting")
     try {
@@ -457,8 +472,10 @@ export function QuestionCard({
           )}
         </div>
 
-        {/* Optional note qualifying the selection ("option 1, but …"). */}
-        {draft.noteOpen ? (
+        {/* Optional note qualifying the selection ("option 1, but …").
+            Hidden when only "Other" is selected on a single-select — its
+            free text already covers anything a note would say. */}
+        {!noteAllowed(idx) ? null : draft.noteOpen ? (
           <Input
             autoFocus
             value={draft.note}
