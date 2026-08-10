@@ -340,8 +340,8 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 #### Couche Modèle
 
-- [x] Les modèles OpenAI adoptent d'abord Responses-API — GPT-5.x exécute les outils et le raisonnement ensemble ; les endpoints sans `/v1/responses` reviennent aux complétions de chat
-- [ ] Vérifier les chiffres d'utilisation du streaming Responses-bridge lors de la prochaine mise à jour de LiteLLM (mauvais mappage en amont suspecté)
+- [x] GPT-5.x adopte d'abord l'API Responses (outils + raisonnement ensemble ; 404 bascule vers les complétions de chat) ; les autres familles restent sur les complétions par conception
+- [ ] Vérifier les chiffres d'utilisation du streaming Responses-bridge lors de la prochaine mise à niveau de LiteLLM (mauvais mappage en amont suspecté)
 
 #### Intégration de scénarios
 

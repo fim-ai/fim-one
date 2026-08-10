@@ -107,15 +107,15 @@ FIM One 的 DAG 规划器需要模型返回有效的结构化 JSON。在内部�
 
 ### OpenAI
 
-最经过实战检验的选项。OpenAI模型拥有最好的原生函数调用（工具调用）支持，这直接影响智能体的可靠性。GPT-5系列（2025年8月+）相比GPT-4是一个重大的代际飞跃。
+最经过实战检验的选项。OpenAI模型具有最好的原生函数调用（工具调用）支持，这直接影响智能体的可靠性。GPT-5系列（2025年8月+）相比GPT-4是一个重大的代际飞跃。
 
 **推荐模型：**
-- 主力：`gpt-5.4`（最新旗舰，2026年3月——100万+上下文，计算机使用）或`o3`（最佳推理准确度）
-- 快速：`gpt-5.4-mini`（$0.75/$4.50每百万token）或`gpt-5.4-nano`（最便宜，$0.20/$1.25每百万token）
+- 主力：`gpt-5.4`（最新旗舰版，2026年3月——100万+上下文，计算机使用）或`o3`（最佳推理准确度）
+- 快速：`gpt-5.4-mini`（$0.75/$4.50每百万token）或`gpt-5.4-nano`（最便宜$0.20/$1.25每百万token）
 - 预算快速：`gpt-5-mini`（$0.25/$2.00）和`gpt-5-nano`（$0.05/$0.40）以更低价格继续可用
-- 旧版：`gpt-4.1`（仍在API中，100万上下文，适合编码）
+- 遗留版本：`gpt-4.1`（仍在API中，100万上下文，适合编码）
 
-**推理：** 设置`LLM_REASONING_EFFORT=medium`——与o系列和GPT-5.x模型原生兼容。GPT-5.4支持`reasoning_effort`，级别为`none`、`low`、`medium`、`high`、`xhigh`。o系列需要`max_completion_tokens`而非`max_tokens`，LiteLLM会自动处理。注意：`/v1/chat/completions`拒绝将工具与推理结合的GPT-5.x请求——FIM One先通过Responses API路由OpenAI模型（两者在那里协同工作），只有没有`/v1/responses`路由的端点才会回退到聊天完成，在智能体工具使用步骤中显式设置`reasoning_effort: "none"`。GPT-5.4需要`temperature=1`——FIM One通过LiteLLM的参数过滤（`drop_params`）自动处理。
+**推理：** 设置`LLM_REASONING_EFFORT=medium`——与o系列和GPT-5.x模型原生兼容。GPT-5.4支持`reasoning_effort`，级别为`none`、`low`、`medium`、`high`、`xhigh`。o系列需要`max_completion_tokens`而非`max_tokens`，LiteLLM会自动处理。注意：`/v1/chat/completions`拒绝将工具与推理结合的GPT-5.x请求——FIM One先通过Responses API路由GPT-5.x模型（两者在此协同工作），只有没有`/v1/responses`路由的端点才会回退到聊天完成模式，在智能体工具使用步骤中显式设置`reasoning_effort: "none"`。OpenAI兼容端点上的其他模型系列保留在聊天完成模式——它们从Responses获益无多，代理垫片可能会严重缓冲流式传输。GPT-5.4需要`temperature=1`——FIM One通过LiteLLM的参数过滤（`drop_params`）自动处理。
 
 | 模型 | 输入$/百万token | 输出$/百万token | 上下文 |
 |---|---|---|---|

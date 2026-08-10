@@ -953,6 +953,32 @@ class TestResponsesBridgeDispatch:
         assert mock_call.call_count == 3
         assert mock_call.call_args_list[2].kwargs["model"] == "openai/gpt-5.6-luna"
 
+    async def test_non_gpt5_on_openai_route_never_bridges(self) -> None:
+        """Claude behind an OpenAI-compatible proxy gains nothing from
+        Responses and must not probe it — proxy responses shims for
+        non-OpenAI models buffer the whole answer (minutes to first token)
+        instead of returning a clean 404, so the fallback never fires."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://my-proxy.com/v1",
+            model="claude-opus-4-8",
+            retry_config=None,
+            rate_limit_config=None,
+        )
+        with patch(
+            "fim_one.core.model.openai_compatible.litellm.acompletion",
+            new=AsyncMock(return_value="ok"),
+        ) as mock_call:
+            await llm._dispatch_acompletion(
+                messages=[ChatMessage(role="user", content="hi")],
+                tools=None,
+                temperature=None,
+                max_tokens=None,
+                stream=False,
+            )
+        assert mock_call.call_count == 1
+        assert mock_call.call_args.kwargs["model"] == "openai/claude-opus-4-8"
+
     async def test_anthropic_route_never_bridges(self) -> None:
         """Native anthropic/ models go straight to their own protocol."""
         llm = OpenAICompatibleLLM(

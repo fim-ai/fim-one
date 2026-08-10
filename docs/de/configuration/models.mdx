@@ -109,19 +109,19 @@ Wenn Sie ein Modell verwenden, das immer denkt (MiniMax M2.7, DeepSeek R1) als I
 
 ### OpenAI
 
-Die am meisten bewährte Option. OpenAI-Modelle bieten die beste native Unterstützung für Funktionsaufrufe (Tool-Calling), was sich direkt auf die Zuverlässigkeit von Agenten auswirkt. Die GPT-5-Familie (August 2025+) stellt einen großen generationalen Sprung gegenüber GPT-4 dar.
+Die am meisten bewährte Option. OpenAI-Modelle haben die beste native Unterstützung für Funktionsaufrufe (Tool-Calling), was sich direkt auf die Zuverlässigkeit von Agenten auswirkt. Die GPT-5-Familie (August 2025+) stellt einen großen generationalen Sprung gegenüber GPT-4 dar.
 
 **Empfohlene Modelle:**
-- Main: `gpt-5.4` (neuestes Flaggschiff, März 2026 — 1M+ Kontext, Computer-Nutzung) oder `o3` (beste Reasoning-Genauigkeit)
+- Main: `gpt-5.4` (neuestes Flaggschiff, März 2026 — 1M+ Kontext, Computer Use) oder `o3` (beste Reasoning-Genauigkeit)
 - Fast: `gpt-5.4-mini` ($0,75/$4,50 pro MTok) oder `gpt-5.4-nano` (günstigste bei $0,20/$1,25 pro MTok)
 - Budget Fast: `gpt-5-mini` ($0,25/$2,00) und `gpt-5-nano` ($0,05/$0,40) bleiben zu niedrigeren Preisen verfügbar
 - Legacy: `gpt-4.1` (noch in der API, 1M Kontext, gut für Coding)
 
-**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — funktioniert nativ mit o-Series- und GPT-5.x-Modellen. GPT-5.4 unterstützt `reasoning_effort` mit den Stufen `none`, `low`, `medium`, `high`, `xhigh`. Die o-Series erfordert `max_completion_tokens` statt `max_tokens`, was LiteLLM automatisch handhabt. Hinweis: `/v1/chat/completions` lehnt GPT-5.x-Anfragen ab, die Tools mit Reasoning kombinieren — FIM One leitet OpenAI-Modelle zunächst durch die Responses API (wo beide zusammen funktionieren), und nur Endpoints ohne `/v1/responses`-Route fallen auf Chat Completions mit explizitem `reasoning_effort: "none"` während Agent-Tool-Use-Schritten zurück. GPT-5.4 erfordert `temperature=1` — FIM One handhabt dies automatisch über LiteLLMs Parameter-Filterung (`drop_params`).
+**Reasoning:** Setzen Sie `LLM_REASONING_EFFORT=medium` — funktioniert nativ mit o-Series und GPT-5.x-Modellen. GPT-5.4 unterstützt `reasoning_effort` mit den Stufen `none`, `low`, `medium`, `high`, `xhigh`. Die o-Series erfordert `max_completion_tokens` statt `max_tokens`, was LiteLLM automatisch handhabt. Hinweis: `/v1/chat/completions` lehnt GPT-5.x-Anfragen ab, die Tools mit Reasoning kombinieren — FIM One leitet GPT-5.x-Modelle zunächst durch die Responses API (wo beide zusammen funktionieren) und fällt nur bei Endpunkten ohne `/v1/responses`-Route auf Chat Completions mit explizitem `reasoning_effort: "none"` während Agent-Tool-Use-Schritten zurück. Andere Modellfamilien auf OpenAI-kompatiblen Endpunkten bleiben bei Chat Completions — sie gewinnen nichts von Responses, und Proxy-Shims dafür können das Streaming schlecht puffern. GPT-5.4 erfordert `temperature=1` — FIM One handhabt dies automatisch über LiteLLMs Parameterfilterung (`drop_params`).
 
 | Modell | Input $/MTok | Output $/MTok | Kontext |
 |---|---|---|---|
-| `gpt-5.4` | $2,50 | $15,00 | 1.050K (Zuschlag >272K) |
+| `gpt-5.4` | $2,50 | $15,00 | 1.050K (Aufschlag >272K) |
 | `gpt-5.4-mini` | $0,75 | $4,50 | 400K |
 | `gpt-5.4-nano` | $0,20 | $1,25 | 400K |
 | `o3` | $2,00 | $8,00 | 200K |

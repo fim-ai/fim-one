@@ -881,12 +881,20 @@ class OpenAICompatibleLLM(BaseLLM):
     async def _dispatch_acompletion(self, **build_args: Any) -> Any:
         """Call ``litellm.acompletion``, trying the /v1/responses bridge first.
 
-        Responses is the preferred protocol for every openai/-routed model:
-        it is the only place GPT-5.x runs function tools and reasoning
-        together, and it preserves reasoning state across tool-call rounds.
-        Endpoints without /v1/responses (third-party OpenAI-compatible
-        proxies, older gateways) reject the first probe with a 404/400; we
-        silently fall back to chat completions and remember the verdict in
+        The bridge is **benefit-gated**: only GPT-5.x tries it, because that
+        is the one family that gains capability from Responses — it is the
+        only place GPT-5.x runs function tools and reasoning together.
+        Other models on openai/-compatible routes (e.g. Claude behind a
+        proxy) gain nothing and go straight to chat completions.  This is
+        deliberate: proxies advertise /v1/responses for non-OpenAI models
+        through buffering shims that accept the request but hold the whole
+        answer before replaying it (observed on Uniapi + Claude: ~4 min to
+        first token), so an error-triggered fallback never fires and the
+        user just sees a hang.
+
+        For GPT-5.x, endpoints without /v1/responses (older gateways)
+        reject the first probe with a 404/400; we silently fall back to
+        chat completions and remember the verdict in
         ``_RESPONSES_BRIDGE_SUPPORT``, so the probe costs one round-trip per
         endpoint+model per process.  A miscached ``False`` (e.g. a genuine
         bad request blamed on the bridge) merely means that endpoint keeps
@@ -899,6 +907,7 @@ class OpenAICompatibleLLM(BaseLLM):
         key = (self._api_base, self._litellm_model)
         if (
             self._litellm_model.startswith("openai/")
+            and self._model.lower().startswith("gpt-5")
             and _RESPONSES_BRIDGE_SUPPORT.get(key) is not False
         ):
             kwargs = self._build_request_kwargs(via_responses=True, **build_args)

@@ -66,7 +66,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
-- **GPT-5.x agents run tools with reasoning enabled instead of erroring.** OpenAI models now go through the Responses API first, where function tools and reasoning work together; endpoints without a `/v1/responses` route fall back to chat completions automatically, where GPT-5.x tool calls explicitly disable reasoning as that API requires.
+- **GPT-5.x agents run tools with reasoning enabled instead of erroring.** GPT-5.x models now go through the Responses API first, where function tools and reasoning work together; endpoints without a `/v1/responses` route fall back to chat completions automatically, where GPT-5.x tool calls explicitly disable reasoning as that API requires. Other model families on OpenAI-compatible endpoints keep their existing chat-completions path.
 
 - **Ask-first requests complete in one round under Planner mode.** A goal that explicitly asks the agent to clarify requirements with multiple-choice questions before delivering ("问清楚我再出方案") now produces one clean questionnaire as the turn's result, instead of planning steps that wait for answers, looping through re-plans and ending with "goal not achieved" plus repeated question lists. Auto mode routes such requests to Standard mode.
 

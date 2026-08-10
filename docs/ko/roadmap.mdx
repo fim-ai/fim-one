@@ -339,8 +339,8 @@ flowchart LR
 
 #### Model Layer
 
-- [x] OpenAI 모델은 Responses-API-first로 진행 — GPT-5.x는 도구와 추론을 함께 실행하며, `/v1/responses` 없는 엔드포인트는 chat completions로 폴백
-- [ ] 다음 LiteLLM 업그레이드 시 Responses-bridge 스트리밍 사용량 확인 (업스트림 잘못된 매핑 의심)
+- [x] GPT-5.x는 Responses-API-first로 이동 (도구 + 추론 함께; 404는 채팅 완성으로 폴백); 다른 계열은 설계상 완성으로 유지
+- [ ] 다음 LiteLLM 업그레이드에서 Responses-bridge 스트리밍 사용량 확인 (업스트림 잘못된 매핑 의심)
 
 #### 시나리오 온보딩
 

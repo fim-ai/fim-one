@@ -340,8 +340,8 @@ flowchart LR
 
 #### 模型层
 
-- [x] OpenAI 模型优先采用 Responses API——GPT-5.x 同时运行工具和推理；不支持 `/v1/responses` 的端点回退到聊天完成
-- [ ] 在下一次 LiteLLM 升级时验证 Responses 桥接流式传输使用情况（怀疑上游映射错误）
+- [x] GPT-5.x 采用 Responses-API-first（工具 + 推理一起；404 回退到聊天完成）；其他系列按设计保持在完成上
+- [ ] 在下一次 LiteLLM 升级时验证 Responses-bridge 流式使用数字（怀疑上游映射错误）
 
 #### 场景入门
 

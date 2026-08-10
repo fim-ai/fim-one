@@ -340,8 +340,8 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 
 #### Model Layer
 
-- [x] OpenAI-Modelle verwenden zuerst die Responses-API — GPT-5.x führt Tools und Reasoning zusammen aus; Endpoints ohne `/v1/responses` fallen auf Chat Completions zurück
-- [ ] Responses-Bridge-Streaming-Nutzungszahlen beim nächsten LiteLLM-Upgrade überprüfen (Upstream-Fehlzuordnung vermutet)
+- [x] GPT-5.x goes Responses-API-first (tools + reasoning together; 404 falls back to chat completions); other families stay on completions by design
+- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
 
 #### Szenario-Onboarding
 

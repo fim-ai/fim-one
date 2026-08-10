@@ -111,15 +111,15 @@ Level 1을 지원하는 모델(강제된 `tool_choice`를 사용한 네이티브
 
 ### OpenAI
 
-가장 검증된 옵션입니다. OpenAI 모델은 최고 수준의 네이티브 함수 호출(도구 호출) 지원을 제공하며, 이는 에이전트 신뢰성에 직접적인 영향을 미칩니다. GPT-5 패밀리(2025년 8월 이후)는 GPT-4에 비해 주요 세대 도약입니다.
+가장 검증된 옵션입니다. OpenAI 모델은 최고 수준의 네이티브 함수 호출(도구 호출) 지원을 제공하며, 이는 에이전트 안정성에 직접적인 영향을 미칩니다. GPT-5 계열(2025년 8월 이후)은 GPT-4 대비 주요 세대 도약입니다.
 
 **권장 모델:**
-- Main: `gpt-5.4` (최신 플래그십, 2026년 3월 — 1M+ 컨텍스트, 컴퓨터 사용) 또는 `o3` (최고의 추론 정확도)
-- Fast: `gpt-5.4-mini` ($0.75/$4.50 per MTok) 또는 `gpt-5.4-nano` (최저가 $0.20/$1.25 per MTok)
-- Budget Fast: `gpt-5-mini` ($0.25/$2.00) 및 `gpt-5-nano` ($0.05/$0.40)는 더 낮은 가격으로 계속 이용 가능
-- Legacy: `gpt-4.1` (여전히 API에 있음, 1M 컨텍스트, 코딩에 적합)
+- Main: `gpt-5.4`(최신 플래그십, 2026년 3월 — 1M+ 컨텍스트, 컴퓨터 사용) 또는 `o3`(최고의 추론 정확도)
+- Fast: `gpt-5.4-mini`($0.75/$4.50 per MTok) 또는 `gpt-5.4-nano`(가장 저렴 $0.20/$1.25 per MTok)
+- Budget Fast: `gpt-5-mini`($0.25/$2.00) 및 `gpt-5-nano`($0.05/$0.40)는 더 낮은 가격으로 계속 이용 가능
+- Legacy: `gpt-4.1`(API에서 계속 지원, 1M 컨텍스트, 코딩에 적합)
 
-**추론:** `LLM_REASONING_EFFORT=medium`을 설정하세요 — o-series 및 GPT-5.x 모델과 기본적으로 작동합니다. GPT-5.4는 `reasoning_effort`를 `none`, `low`, `medium`, `high`, `xhigh` 레벨로 지원합니다. o-series는 `max_tokens` 대신 `max_completion_tokens`이 필요하며, LiteLLM이 자동으로 처리합니다. 참고: `/v1/chat/completions`는 도구와 추론을 결합한 GPT-5.x 요청을 거부합니다 — FIM One은 OpenAI 모델을 먼저 Responses API를 통해 라우팅하며(둘 다 함께 작동), `/v1/responses` 경로가 없는 엔드포인트만 에이전트 도구 사용 단계에서 명시적 `reasoning_effort: "none"`으로 채팅 완료로 폴백합니다. GPT-5.4는 `temperature=1`이 필요합니다 — FIM One은 LiteLLM의 매개변수 필터링(`drop_params`)을 통해 자동으로 처리합니다.
+**추론:** `LLM_REASONING_EFFORT=medium`으로 설정하세요 — o-series 및 GPT-5.x 모델과 기본 호환됩니다. GPT-5.4는 `reasoning_effort`를 `none`, `low`, `medium`, `high`, `xhigh` 레벨로 지원합니다. o-series는 `max_tokens` 대신 `max_completion_tokens`이 필요하며, LiteLLM이 자동으로 처리합니다. 참고: `/v1/chat/completions`는 도구와 추론을 결합한 GPT-5.x 요청을 거부합니다 — FIM One은 GPT-5.x 모델을 먼저 Responses API를 통해 라우팅하고(두 기능이 함께 작동), `/v1/responses` 경로가 없는 엔드포인트만 에이전트 도구 사용 단계에서 명시적 `reasoning_effort: "none"`으로 채팅 완성으로 폴백합니다. OpenAI 호환 엔드포인트의 다른 모델 계열은 채팅 완성에 유지됩니다 — Responses에서 이점을 얻지 못하며, 이에 대한 프록시 shim은 스트리밍을 심각하게 버퍼링할 수 있습니다. GPT-5.4는 `temperature=1`이 필요합니다 — FIM One은 LiteLLM의 매개변수 필터링(`drop_params`)을 통해 자동으로 처리합니다.
 
 | Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
