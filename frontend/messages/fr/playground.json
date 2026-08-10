@@ -203,6 +203,8 @@
     "expiredHint": "L'agent a continué sans réponse.",
     "unansweredWarning": "Certaines questions n'ont pas de réponse.",
     "errorToast": "Échec de la soumission des réponses",
-    "questionProgress": "{current} sur {total}"
+    "questionProgress": "{current} sur {total}",
+    "prevButton": "Précédent",
+    "nextButton": "Suivant"
   }
 }

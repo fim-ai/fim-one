@@ -203,6 +203,8 @@
     "expiredHint": "The agent continued without an answer.",
     "unansweredWarning": "Some questions are unanswered.",
     "errorToast": "Failed to submit answers",
-    "questionProgress": "{current} of {total}"
+    "questionProgress": "{current} of {total}",
+    "prevButton": "Back",
+    "nextButton": "Next"
   }
 }

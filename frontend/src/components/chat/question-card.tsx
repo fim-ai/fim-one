@@ -16,6 +16,10 @@
  *     "conversation_id": "<uuid|''>"
  *   }
  *
+ * Multi-question requests page one question at a time behind a chip
+ * navigation strip (matching Claude's question UI); a single question
+ * renders directly and auto-submits on a single-select click.
+ *
  * State machine: pending -> submitting -> {answered|skipped|expired|error},
  * mirroring ConfirmationCard. The backend row is the source of truth —
  * the card rehydrates from GET /api/confirmations/{id} on mount.
@@ -27,6 +31,8 @@ import {
   MessageCircleQuestion,
   CheckCircle2,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Loader2,
   PenLine,
@@ -109,6 +115,9 @@ export function QuestionCard({
   > | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
   const [drafts, setDrafts] = useState<Record<number, QuestionDraft>>({})
+  const [currentIdx, setCurrentIdx] = useState(0)
+
+  const paginated = questions.length > 1
 
   // Rehydrate from the backend on mount — same rationale as
   // ConfirmationCard: the card remounts when the chat page flips from
@@ -207,6 +216,16 @@ export function QuestionCard({
     }
   }
 
+  function goTo(idx: number) {
+    setCurrentIdx(Math.max(0, Math.min(questions.length - 1, idx)))
+  }
+
+  function advanceFrom(idx: number) {
+    if (paginated && idx < questions.length - 1) {
+      goTo(idx + 1)
+    }
+  }
+
   function toggleOption(idx: number, label: string) {
     if (state !== "pending" && state !== "error") return
     const q = questions[idx]
@@ -221,15 +240,15 @@ export function QuestionCard({
     }
     setDrafts((prev) => ({ ...prev, [idx]: { ...draft, selected } }))
 
-    // Single question, single select, concrete option — submit right away
-    // (mirrors Claude Code's auto-submit; "Other" still needs typing).
-    if (
-      questions.length === 1 &&
-      !q.multi_select &&
-      label !== OTHER_VALUE &&
-      selected.length === 1
-    ) {
+    if (q.multi_select || label === OTHER_VALUE || selected.length !== 1) {
+      return
+    }
+    // Concrete single-select choice: one question auto-submits (mirrors
+    // Claude Code); in a paginated card it advances to the next question.
+    if (!paginated) {
       void submit({ [q.question]: label })
+    } else {
+      advanceFrom(idx)
     }
   }
 
@@ -306,6 +325,116 @@ export function QuestionCard({
 
   const mutedText = state === "expired" || state === "skipped"
 
+  /** One interactive question page (options + Other input). */
+  function renderInteractiveQuestion(idx: number) {
+    const q = questions[idx]
+    const draft = draftFor(idx)
+    const otherSelected = draft.selected.includes(OTHER_VALUE)
+    return (
+      <div key={q.question} className="space-y-1.5">
+        <div className="text-sm">{q.question}</div>
+        {q.multi_select && (
+          <div className="text-xs text-muted-foreground">
+            {t("userQuestion.multiSelectHint")}
+          </div>
+        )}
+        <div className="space-y-1">
+          {q.options.map((opt) => {
+            const isSelected = draft.selected.includes(opt.label)
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                disabled={state === "submitting"}
+                onClick={() => toggleOption(idx, opt.label)}
+                aria-pressed={isSelected}
+                className={cn(
+                  "flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                  isSelected
+                    ? "border-sky-400 bg-sky-100/70 dark:border-sky-500/60 dark:bg-sky-900/40"
+                    : "border-border bg-background/60 hover:bg-muted/60",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border",
+                    q.multi_select ? "rounded-sm" : "rounded-full",
+                    isSelected
+                      ? "border-sky-500 bg-sky-500 text-white"
+                      : "border-muted-foreground/40",
+                  )}
+                  aria-hidden
+                >
+                  {isSelected && <Check className="h-3 w-3" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="font-medium">{opt.label}</span>
+                  {opt.description && (
+                    <span className="block text-xs text-muted-foreground">
+                      {opt.description}
+                    </span>
+                  )}
+                </span>
+              </button>
+            )
+          })}
+
+          {/* "Other" free-text choice — always offered. */}
+          <button
+            type="button"
+            disabled={state === "submitting"}
+            onClick={() => toggleOption(idx, OTHER_VALUE)}
+            aria-pressed={otherSelected}
+            className={cn(
+              "flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
+              "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+              otherSelected
+                ? "border-sky-400 bg-sky-100/70 dark:border-sky-500/60 dark:bg-sky-900/40"
+                : "border-border bg-background/60 hover:bg-muted/60",
+            )}
+          >
+            <span
+              className={cn(
+                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border",
+                q.multi_select ? "rounded-sm" : "rounded-full",
+                otherSelected
+                  ? "border-sky-500 bg-sky-500 text-white"
+                  : "border-muted-foreground/40",
+              )}
+              aria-hidden
+            >
+              {otherSelected ? (
+                <Check className="h-3 w-3" />
+              ) : (
+                <PenLine className="h-2.5 w-2.5 text-muted-foreground" />
+              )}
+            </span>
+            <span className="font-medium">{t("userQuestion.otherOption")}</span>
+          </button>
+          {otherSelected && (
+            <Input
+              autoFocus
+              value={draft.otherText}
+              onChange={(e) => setOtherText(idx, e.target.value)}
+              placeholder={t("userQuestion.otherPlaceholder")}
+              disabled={state === "submitting"}
+              className="mt-1"
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return
+                if (allAnswered) {
+                  void submit()
+                } else if (answerFor(idx) !== null) {
+                  advanceFrom(idx)
+                }
+              }}
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -326,146 +455,81 @@ export function QuestionCard({
         >
           {t("userQuestion.title")}
         </span>
-        <div className="ml-auto flex items-center gap-2">{statusBadge}</div>
+        <div className="ml-auto flex items-center gap-2">
+          {actionable && paginated && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {t("userQuestion.questionProgress", {
+                current: currentIdx + 1,
+                total: questions.length,
+              })}
+            </span>
+          )}
+          {statusBadge}
+        </div>
       </div>
 
-      {/* Questions */}
-      <div className="space-y-4">
-        {questions.map((q, idx) => {
-          const draft = draftFor(idx)
-          const otherSelected = draft.selected.includes(OTHER_VALUE)
-          const recorded = recordedAnswers?.[q.question]
-          return (
-            <div key={q.question} className="space-y-1.5">
-              <div className="flex items-baseline gap-2">
-                {questions.length > 1 && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
-                    {q.header || `Q${idx + 1}`}
-                  </span>
+      {/* Chip navigation — paginated cards only, while actionable. */}
+      {actionable && paginated && (
+        <div className="flex flex-wrap items-center gap-1.5" role="tablist">
+          {questions.map((q, idx) => {
+            const answered = answerFor(idx) !== null
+            const isCurrent = idx === currentIdx
+            return (
+              <button
+                key={q.question}
+                type="button"
+                role="tab"
+                aria-selected={isCurrent}
+                disabled={state === "submitting"}
+                onClick={() => goTo(idx)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                  isCurrent
+                    ? "border-sky-500 bg-sky-500 text-white dark:border-sky-500/80"
+                    : "border-border bg-background/60 text-muted-foreground hover:bg-muted/60",
                 )}
-                <span
-                  className={cn(
-                    "text-sm",
-                    mutedText && "text-muted-foreground",
-                  )}
-                >
-                  {q.question}
-                </span>
-              </div>
-              {q.multi_select && actionable && (
-                <div className="text-xs text-muted-foreground">
-                  {t("userQuestion.multiSelectHint")}
-                </div>
-              )}
+              >
+                {answered && <Check className="h-3 w-3" aria-hidden />}
+                {q.header || `Q${idx + 1}`}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
-              {/* Resolved view: show the recorded answer only. */}
-              {state === "answered" && (
+      {/* Body */}
+      {state === "answered" ? (
+        // Resolved: flat summary of every question and its recorded answer.
+        <div className="space-y-2">
+          {questions.map((q) => {
+            const recorded = recordedAnswers?.[q.question]
+            return (
+              <div key={q.question} className="space-y-0.5">
+                <div className="text-sm">{q.question}</div>
                 <div className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
                   {Array.isArray(recorded)
                     ? recorded.join(", ")
                     : (recorded ?? "—")}
                 </div>
-              )}
-
-              {/* Interactive option list */}
-              {state !== "answered" && (
-                <div className="space-y-1">
-                  {q.options.map((opt) => {
-                    const isSelected = draft.selected.includes(opt.label)
-                    return (
-                      <button
-                        key={opt.label}
-                        type="button"
-                        disabled={!actionable || state === "submitting"}
-                        onClick={() => toggleOption(idx, opt.label)}
-                        aria-pressed={isSelected}
-                        className={cn(
-                          "flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                          "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                          isSelected
-                            ? "border-sky-400 bg-sky-100/70 dark:border-sky-500/60 dark:bg-sky-900/40"
-                            : "border-border bg-background/60 hover:bg-muted/60",
-                          !actionable && "opacity-60 cursor-default",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border",
-                            q.multi_select ? "rounded-sm" : "rounded-full",
-                            isSelected
-                              ? "border-sky-500 bg-sky-500 text-white"
-                              : "border-muted-foreground/40",
-                          )}
-                          aria-hidden
-                        >
-                          {isSelected && <Check className="h-3 w-3" />}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="font-medium">{opt.label}</span>
-                          {opt.description && (
-                            <span className="block text-xs text-muted-foreground">
-                              {opt.description}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                    )
-                  })}
-
-                  {/* "Other" free-text choice — always offered. */}
-                  <button
-                    type="button"
-                    disabled={!actionable || state === "submitting"}
-                    onClick={() => toggleOption(idx, OTHER_VALUE)}
-                    aria-pressed={otherSelected}
-                    className={cn(
-                      "flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                      "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
-                      otherSelected
-                        ? "border-sky-400 bg-sky-100/70 dark:border-sky-500/60 dark:bg-sky-900/40"
-                        : "border-border bg-background/60 hover:bg-muted/60",
-                      !actionable && "opacity-60 cursor-default",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border",
-                        q.multi_select ? "rounded-sm" : "rounded-full",
-                        otherSelected
-                          ? "border-sky-500 bg-sky-500 text-white"
-                          : "border-muted-foreground/40",
-                      )}
-                      aria-hidden
-                    >
-                      {otherSelected ? (
-                        <Check className="h-3 w-3" />
-                      ) : (
-                        <PenLine className="h-2.5 w-2.5 text-muted-foreground" />
-                      )}
-                    </span>
-                    <span className="font-medium">
-                      {t("userQuestion.otherOption")}
-                    </span>
-                  </button>
-                  {otherSelected && actionable && (
-                    <Input
-                      autoFocus
-                      value={draft.otherText}
-                      onChange={(e) => setOtherText(idx, e.target.value)}
-                      placeholder={t("userQuestion.otherPlaceholder")}
-                      disabled={state === "submitting"}
-                      className="mt-1"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && allAnswered) void submit()
-                      }}
-                    />
-                  )}
-                </div>
-              )}
+              </div>
+            )
+          })}
+        </div>
+      ) : mutedText ? (
+        // Skipped / expired: question texts only, muted.
+        <div className="space-y-1">
+          {questions.map((q) => (
+            <div key={q.question} className="text-sm text-muted-foreground">
+              {q.question}
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      ) : paginated ? (
+        renderInteractiveQuestion(currentIdx)
+      ) : (
+        renderInteractiveQuestion(0)
+      )}
 
       {/* Countdown / resolved info */}
       {actionable && (
@@ -494,7 +558,36 @@ export function QuestionCard({
 
       {/* Actions */}
       {actionable && (
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {paginated && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => goTo(currentIdx - 1)}
+                disabled={state === "submitting" || currentIdx === 0}
+                aria-label={t("userQuestion.prevButton")}
+              >
+                <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                {t("userQuestion.prevButton")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => goTo(currentIdx + 1)}
+                disabled={
+                  state === "submitting" ||
+                  currentIdx === questions.length - 1
+                }
+                aria-label={t("userQuestion.nextButton")}
+              >
+                {t("userQuestion.nextButton")}
+                <ChevronRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
           <Button
             type="button"
             variant="default"
@@ -519,7 +612,7 @@ export function QuestionCard({
           >
             {t("userQuestion.skipButton")}
           </Button>
-          {!allAnswered && questions.length > 1 && (
+          {!allAnswered && paginated && (
             <span className="text-xs text-muted-foreground">
               {t("userQuestion.unansweredWarning")}
             </span>

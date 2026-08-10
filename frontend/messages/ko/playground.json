@@ -203,6 +203,8 @@
     "expiredHint": "에이전트가 답변 없이 계속 진행했습니다.",
     "unansweredWarning": "답변하지 않은 질문이 있습니다.",
     "errorToast": "답변 제출에 실패했습니다",
-    "questionProgress": "{current}/{total}"
+    "questionProgress": "{current}개 중 {total}개",
+    "prevButton": "뒤로",
+    "nextButton": "다음"
   }
 }

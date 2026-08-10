@@ -47,10 +47,10 @@ SessionFactory = Callable[[], AsyncSession]
 
 #: Users read 1-4 questions and may type a custom answer — noticeably
 #: slower than an approve/reject glance, hence a wider window than the
-#: confirmation gate's 120s.  Kept deliberately short beyond that: these
+#: confirmation gate's 120s.  Kept deliberately bounded beyond that: these
 #: prompts are meant for immediate, in-flow decisions, and an unanswered
 #: question should release the turn rather than pin it.
-DEFAULT_TIMEOUT_SECONDS = 180
+DEFAULT_TIMEOUT_SECONDS = 300
 DEFAULT_POLL_INTERVAL_SECONDS = 1.5
 
 MAX_QUESTIONS = 4
