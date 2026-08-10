@@ -633,7 +633,7 @@
   },
   "docs/architecture/dag-engine.mdx": {
     "de": [
-      "004b76072448c5bb",
+      "f55a85cad864d91d",
       "a97862c3440edc82",
       "77918687f65c2774",
       "cb10822887993362",
@@ -646,7 +646,7 @@
       "6d62a5fdc9d0ba35"
     ],
     "fr": [
-      "004b76072448c5bb",
+      "f55a85cad864d91d",
       "a97862c3440edc82",
       "77918687f65c2774",
       "cb10822887993362",
@@ -659,7 +659,7 @@
       "6d62a5fdc9d0ba35"
     ],
     "ja": [
-      "004b76072448c5bb",
+      "f55a85cad864d91d",
       "a97862c3440edc82",
       "77918687f65c2774",
       "cb10822887993362",
@@ -672,7 +672,7 @@
       "6d62a5fdc9d0ba35"
     ],
     "ko": [
-      "004b76072448c5bb",
+      "f55a85cad864d91d",
       "a97862c3440edc82",
       "77918687f65c2774",
       "cb10822887993362",
@@ -685,7 +685,7 @@
       "6d62a5fdc9d0ba35"
     ],
     "zh": [
-      "004b76072448c5bb",
+      "f55a85cad864d91d",
       "a97862c3440edc82",
       "77918687f65c2774",
       "cb10822887993362",
@@ -1317,54 +1317,89 @@
   },
   "docs/architecture/planning-landscape.mdx": {
     "de": [
-      "154f683a818cf340",
+      "8a7be2e8125fd24d",
+      "08a48e3fa830733e",
+      "585d9e7142f36e12",
+      "14e51f2e92e53c3b",
+      "f396ba60b37d7f76",
+      "fbb7f18bc7bc49b2",
+      "aaa6d5393c9044d0",
       "1282d758e19dae88",
       "8edca3702638f75c",
-      "6c84aca7674ea78e",
+      "90a3a702c9142fb3",
       "a3d7b0f77da5abe6",
-      "073f3cfe4a62548f",
+      "d46ef5ac60f76136",
       "96d4a909926bf934",
-      "1e36577b2baf29e3"
+      "f09d0c0bea10b6d0",
+      "4831584b411d214a"
     ],
     "fr": [
-      "154f683a818cf340",
+      "8a7be2e8125fd24d",
+      "08a48e3fa830733e",
+      "585d9e7142f36e12",
+      "14e51f2e92e53c3b",
+      "f396ba60b37d7f76",
+      "fbb7f18bc7bc49b2",
+      "aaa6d5393c9044d0",
       "1282d758e19dae88",
       "8edca3702638f75c",
-      "6c84aca7674ea78e",
+      "90a3a702c9142fb3",
       "a3d7b0f77da5abe6",
-      "073f3cfe4a62548f",
+      "d46ef5ac60f76136",
       "96d4a909926bf934",
-      "1e36577b2baf29e3"
+      "f09d0c0bea10b6d0",
+      "4831584b411d214a"
     ],
     "ja": [
-      "154f683a818cf340",
+      "8a7be2e8125fd24d",
+      "08a48e3fa830733e",
+      "585d9e7142f36e12",
+      "14e51f2e92e53c3b",
+      "f396ba60b37d7f76",
+      "fbb7f18bc7bc49b2",
+      "aaa6d5393c9044d0",
       "1282d758e19dae88",
       "8edca3702638f75c",
-      "6c84aca7674ea78e",
+      "90a3a702c9142fb3",
       "a3d7b0f77da5abe6",
-      "073f3cfe4a62548f",
+      "d46ef5ac60f76136",
       "96d4a909926bf934",
-      "1e36577b2baf29e3"
+      "f09d0c0bea10b6d0",
+      "4831584b411d214a"
     ],
     "ko": [
-      "154f683a818cf340",
+      "8a7be2e8125fd24d",
+      "08a48e3fa830733e",
+      "585d9e7142f36e12",
+      "14e51f2e92e53c3b",
+      "f396ba60b37d7f76",
+      "fbb7f18bc7bc49b2",
+      "aaa6d5393c9044d0",
       "1282d758e19dae88",
       "8edca3702638f75c",
-      "6c84aca7674ea78e",
+      "90a3a702c9142fb3",
       "a3d7b0f77da5abe6",
-      "073f3cfe4a62548f",
+      "d46ef5ac60f76136",
       "96d4a909926bf934",
-      "1e36577b2baf29e3"
+      "f09d0c0bea10b6d0",
+      "4831584b411d214a"
     ],
     "zh": [
-      "154f683a818cf340",
+      "8a7be2e8125fd24d",
+      "08a48e3fa830733e",
+      "585d9e7142f36e12",
+      "14e51f2e92e53c3b",
+      "f396ba60b37d7f76",
+      "fbb7f18bc7bc49b2",
+      "aaa6d5393c9044d0",
       "1282d758e19dae88",
       "8edca3702638f75c",
-      "6c84aca7674ea78e",
+      "90a3a702c9142fb3",
       "a3d7b0f77da5abe6",
-      "073f3cfe4a62548f",
+      "d46ef5ac60f76136",
       "96d4a909926bf934",
-      "1e36577b2baf29e3"
+      "f09d0c0bea10b6d0",
+      "4831584b411d214a"
     ]
   },
   "docs/architecture/progressive-disclosure.mdx": {
@@ -1456,7 +1491,7 @@
   },
   "docs/architecture/react-engine.mdx": {
     "de": [
-      "205e6c221f9e9ec2",
+      "338a7474be75cc6b",
       "3ffc398140d68e3a",
       "8cdaac76f9984862",
       "8ad51ba7c1b09bac",
@@ -1472,7 +1507,7 @@
       "2824f33b004aa6b4"
     ],
     "fr": [
-      "205e6c221f9e9ec2",
+      "338a7474be75cc6b",
       "3ffc398140d68e3a",
       "8cdaac76f9984862",
       "8ad51ba7c1b09bac",
@@ -1488,7 +1523,7 @@
       "2824f33b004aa6b4"
     ],
     "ja": [
-      "205e6c221f9e9ec2",
+      "338a7474be75cc6b",
       "3ffc398140d68e3a",
       "8cdaac76f9984862",
       "8ad51ba7c1b09bac",
@@ -1504,7 +1539,7 @@
       "2824f33b004aa6b4"
     ],
     "ko": [
-      "205e6c221f9e9ec2",
+      "338a7474be75cc6b",
       "3ffc398140d68e3a",
       "8cdaac76f9984862",
       "8ad51ba7c1b09bac",
@@ -1520,7 +1555,7 @@
       "2824f33b004aa6b4"
     ],
     "zh": [
-      "205e6c221f9e9ec2",
+      "338a7474be75cc6b",
       "3ffc398140d68e3a",
       "8cdaac76f9984862",
       "8ad51ba7c1b09bac",
