@@ -9,6 +9,12 @@ import {
 } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { CopyButton } from "@/components/ui/copy-button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useEvidenceSources } from "@/contexts/evidence-context"
 import type { ParsedSource } from "@/lib/evidence-utils"
 import { cn } from "@/lib/utils"
@@ -196,6 +202,9 @@ const BLOCK_TOOLBAR_BUTTON =
  * diagrams and tables all expose their actions the same way.  `floating` is for
  * blocks with no header bar to sit in.  Keyboard users reach the buttons via
  * focus-within, which a hover-only control would lock them out of.
+ *
+ * Canonical child order (left → right): optional view toggles → copy/export →
+ * download.  Download is always the rightmost control.
  */
 function BlockActions({ children, floating }: { children: React.ReactNode; floating?: boolean }) {
   return (
@@ -226,16 +235,24 @@ function DownloadButton({
   label?: string
 }) {
   return (
-    <a
-      href={`data:${mime};charset=utf-8,${encodeURIComponent(content)}`}
-      download={filename}
-      title={title}
-      aria-label={title}
-      className={BLOCK_TOOLBAR_BUTTON}
-    >
-      <Download className="h-3.5 w-3.5" />
-      {label && <span>{label}</span>}
-    </a>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <a
+            href={`data:${mime};charset=utf-8,${encodeURIComponent(content)}`}
+            download={filename}
+            aria-label={title}
+            className={BLOCK_TOOLBAR_BUTTON}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {label && <span>{label}</span>}
+          </a>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={4}>
+          {title}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -376,13 +393,14 @@ function MermaidDiagram({ code, fallback }: { code: string; fallback: React.Reac
         className="group relative my-3 overflow-x-auto rounded-lg border border-border bg-muted/20 p-4"
       >
         <BlockActions floating>
+          {/* Order: copy → download (download always rightmost) */}
+          <CopyButton text={code} />
           <DownloadButton
             content={svg}
             mime="image/svg+xml"
             filename="diagram.svg"
             title={t("downloadSvg")}
           />
-          <CopyButton text={code} />
         </BlockActions>
         <div
           className="[&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
@@ -423,17 +441,27 @@ function SvgFigure({ code, children }: { code: string; children: React.ReactNode
       <div className="flex items-center justify-between border-b border-border/60 px-3 py-1.5">
         <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">svg</span>
         <BlockActions>
+          {/* Order: view toggle → copy → download (download always rightmost) */}
           {!sourceOnly && (
-            <button
-              type="button"
-              onClick={() => setShowSource((v) => !v)}
-              title={showSource ? t("viewPreview") : t("viewSource")}
-              aria-label={showSource ? t("viewPreview") : t("viewSource")}
-              className={BLOCK_TOOLBAR_BUTTON}
-            >
-              {showSource ? <Eye className="h-3.5 w-3.5" /> : <Code2 className="h-3.5 w-3.5" />}
-            </button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setShowSource((v) => !v)}
+                    aria-label={showSource ? t("viewPreview") : t("viewSource")}
+                    className={BLOCK_TOOLBAR_BUTTON}
+                  >
+                    {showSource ? <Eye className="h-3.5 w-3.5" /> : <Code2 className="h-3.5 w-3.5" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4}>
+                  {showSource ? t("viewPreview") : t("viewSource")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
+          <CopyButton text={code} />
           {sanitized && (
             <DownloadButton
               content={sanitized}
@@ -442,7 +470,6 @@ function SvgFigure({ code, children }: { code: string; children: React.ReactNode
               title={t("downloadSvg")}
             />
           )}
-          <CopyButton text={code} />
         </BlockActions>
       </div>
       {showingSource ? (
@@ -478,13 +505,14 @@ function CodeBlock({ children, ...props }: React.ComponentProps<"pre">) {
           {language ?? "text"}
         </span>
         <BlockActions>
+          {/* Order: copy → download (download always rightmost) */}
+          <CopyButton text={source} />
           <DownloadButton
             content={isCsv ? "﻿" + source : source}
             mime={isCsv ? "text/csv" : "text/plain"}
             filename={`snippet.${ext}`}
             title={tc("download")}
           />
-          <CopyButton text={source} />
         </BlockActions>
       </div>
       <pre className="overflow-x-auto p-4 font-mono text-sm" {...props}>
@@ -621,20 +649,16 @@ function TableActions({ data }: { data: TableData }) {
   const t = useTranslations("playground")
   // A leading BOM is what makes Excel read the file as UTF-8; without it a
   // table with CJK content opens as mojibake.
-  const csvHref = `data:text/csv;charset=utf-8,${encodeURIComponent("﻿" + toCsv(data))}`
   return (
     <BlockActions floating>
-      <CopyButton text={() => toMarkdownTable(data)} label="MD" title={t("copyTableMarkdown")} />
-      <a
-        href={csvHref}
-        download="table.csv"
+      {/* Order: copy → download (download always rightmost); icon-only like code blocks */}
+      <CopyButton text={() => toMarkdownTable(data)} title={t("copyTableMarkdown")} />
+      <DownloadButton
+        content={"﻿" + toCsv(data)}
+        mime="text/csv"
+        filename="table.csv"
         title={t("downloadTableCsv")}
-        aria-label={t("downloadTableCsv")}
-        className={BLOCK_TOOLBAR_BUTTON}
-      >
-        <Download className="h-3.5 w-3.5" />
-        <span>CSV</span>
-      </a>
+      />
     </BlockActions>
   )
 }
