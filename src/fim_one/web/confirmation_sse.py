@@ -56,7 +56,22 @@ logger = logging.getLogger(__name__)
 
 
 _QueueKey = tuple[str, str]
-"""Key = (agent_id, user_id).  Both MUST be non-empty strings."""
+"""Key = (scope, user_id).  Both MUST be non-empty strings.
+
+``scope`` is the agent_id for agent-bound runs, or ``conv:<conversation_id>``
+for agent-less runs (the ask_user_question tool works in plain playground
+chats that have no agent row).  The SSE generator computes the same scope
+when it spawns its pump, so producer and consumer always agree.
+"""
+
+
+def scope_for(agent_id: str | None, conversation_id: str | None) -> str:
+    """Return the queue scope for a run: agent_id, else ``conv:<id>``, else ``""``."""
+    if agent_id:
+        return str(agent_id)
+    if conversation_id:
+        return f"conv:{conversation_id}"
+    return ""
 
 # Per-key queue of event payload dicts.  ``defaultdict`` is safe even under
 # concurrent ``__getitem__`` — the cost of the occasional extra empty Queue
@@ -77,14 +92,15 @@ _MAX_QUEUE_SIZE = 64
 # ---------------------------------------------------------------------------
 
 
-def queue_for(agent_id: str, user_id: str) -> asyncio.Queue[dict[str, Any]]:
-    """Return the shared queue for ``(agent_id, user_id)``.
+def queue_for(scope: str, user_id: str) -> asyncio.Queue[dict[str, Any]]:
+    """Return the shared queue for ``(scope, user_id)``.
 
-    Creates an empty queue on first access.  Safe to call from both the
-    listener (producer) and the SSE generator (consumer) — there is no
-    race because ``defaultdict`` serialises ``__getitem__`` under the GIL.
+    ``scope`` comes from :func:`scope_for`.  Creates an empty queue on
+    first access.  Safe to call from both the listener (producer) and the
+    SSE generator (consumer) — there is no race because ``defaultdict``
+    serialises ``__getitem__`` under the GIL.
     """
-    return _queues[(agent_id, user_id)]
+    return _queues[(scope, user_id)]
 
 
 def _request_to_event_payload(request: "ConfirmationRequest") -> dict[str, Any]:
@@ -105,6 +121,28 @@ def _request_to_event_payload(request: "ConfirmationRequest") -> dict[str, Any]:
         }
     """
     payload = request.payload if isinstance(request.payload, dict) else {}
+
+    # created_at is a TimestampMixin column; fall back to utcnow() so the
+    # event is always well-formed even if we get a detached instance.
+    created = getattr(request, "created_at", None) or datetime.now(timezone.utc)
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+
+    # -- kind="user_question": the ask_user_question tool's question card --
+    if str(getattr(request, "kind", "") or payload.get("kind") or "") == "user_question":
+        timeout_seconds = int(
+            payload.get("timeout_seconds") or _HOOK_DEFAULT_TIMEOUT_SECONDS
+        )
+        timeout_at = created + timedelta(seconds=timeout_seconds)
+        return {
+            "type": "awaiting_user_question",
+            "question_id": str(request.id),
+            "questions": payload.get("questions") or [],
+            "timeout_at": timeout_at.astimezone(timezone.utc).isoformat(),
+            "agent_id": str(request.agent_id or ""),
+            "conversation_id": str(payload.get("conversation_id") or ""),
+        }
+
     tool_name = str(payload.get("tool_name") or "")
     arguments = payload.get("tool_args") or {}
     if not isinstance(arguments, dict):
@@ -112,11 +150,6 @@ def _request_to_event_payload(request: "ConfirmationRequest") -> dict[str, Any]:
         # older rows.  Keep the event contract dict-typed either way.
         arguments = {"value": arguments}
 
-    # ``created_at`` is a TimestampMixin column; fall back to utcnow() so
-    # the event is always well-formed even if we get a detached instance.
-    created = getattr(request, "created_at", None) or datetime.now(timezone.utc)
-    if created.tzinfo is None:
-        created = created.replace(tzinfo=timezone.utc)
     timeout_at = created + timedelta(seconds=_HOOK_DEFAULT_TIMEOUT_SECONDS)
 
     return {
@@ -144,12 +177,16 @@ async def _listener(request: "ConfirmationRequest") -> None:
     The hook ignores our return value and swallows exceptions.  We still
     catch defensively so a transient bug here never blocks a tool call.
     """
-    agent_id = str(request.agent_id or "")
+    payload = request.payload if isinstance(request.payload, dict) else {}
+    scope = scope_for(
+        str(request.agent_id or ""),
+        str(payload.get("conversation_id") or ""),
+    )
     user_id = str(request.user_id or "")
-    if not agent_id or not user_id:
+    if not scope or not user_id:
         # No addressable SSE stream — the DB poll fallback covers this.
         logger.debug(
-            "confirmation_sse: skipping dispatch — missing agent_id or "
+            "confirmation_sse: skipping dispatch — missing scope or "
             "user_id on request %s",
             getattr(request, "id", "<unknown>"),
         )
@@ -164,7 +201,7 @@ async def _listener(request: "ConfirmationRequest") -> None:
         )
         return
 
-    q = queue_for(agent_id, user_id)
+    q = queue_for(scope, user_id)
     try:
         q.put_nowait(event)
     except asyncio.QueueFull:
@@ -179,7 +216,7 @@ async def _listener(request: "ConfirmationRequest") -> None:
             logger.warning(
                 "confirmation_sse: queue for (%s, %s) stuck full; "
                 "dropping confirmation %s",
-                agent_id,
+                scope,
                 user_id,
                 getattr(request, "id", "<unknown>"),
             )
@@ -203,16 +240,16 @@ def unregister_confirmation_bridge() -> None:
 
 
 async def drain_confirmations(
-    agent_id: str,
+    scope: str,
     user_id: str,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Yield every queued confirmation for ``(agent_id, user_id)`` without blocking.
+    """Yield every queued confirmation for ``(scope, user_id)`` without blocking.
 
     Intended to be called from the SSE generator on a cadence (e.g. after
     each progress-queue item) so pending ``awaiting_confirmation`` events
     are flushed mid-stream.  Returns immediately when the queue is empty.
     """
-    q = queue_for(agent_id, user_id)
+    q = queue_for(scope, user_id)
     while True:
         try:
             event = q.get_nowait()
@@ -232,5 +269,6 @@ __all__ = [
     "unregister_confirmation_bridge",
     "drain_confirmations",
     "queue_for",
+    "scope_for",
     "clear_all_queues",
 ]

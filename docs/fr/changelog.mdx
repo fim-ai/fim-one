@@ -12,21 +12,23 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Ajouts
 
-- **Les étapes de l'agent affichent des titres d'une ligne en direct.** Pendant que l'agent travaille, chaque itération reçoit un libellé généré court (« Vérification des données de tarification… »), affiché dans un en-tête unique replié qui bascule vers l'étape la plus récente ; le développer révèle la chronologie complète des étapes, et les libellés persistent dans l'historique de conversation.
+- **Les agents peuvent poser des questions à choix multiples de clarification en cours d'exécution.** Quand une tâche pourrait prendre des directions matériellement différentes, l'agent fait une pause et présente jusqu'à quatre questions structurées dans le chat, chacune avec 2-4 options plus un champ texte libre « Autre » ; répondre reprend l'exécution sur place, et ignorer ou un délai d'attente lui permet de continuer selon son propre jugement.
 
-- **Les modèles d'un fournisseur peuvent être supprimés en masse.** Chaque ligne de modèle dans Admin → Models porte une case à cocher, l'en-tête sélectionne la liste entière, et maintenir Maj enfoncé en cliquant étend la sélection sur une plage de lignes. La suppression de la sélection supprime tous les modèles choisis en une seule requête, après une confirmation indiquant le nombre.
+- **Les étapes d'agent portent des titres d'une ligne en direct.** Pendant qu'un agent travaille, chaque itération reçoit un libellé généré court (« Vérification des données de tarification… »), affiché dans un seul en-tête replié qui bascule vers l'étape la plus récente ; le développer révèle la chronologie complète des étapes, et les libellés persistent dans l'historique de conversation.
 
-- **Les petits tableaux de comparaison dans les réponses de chat s'affichent désormais sous forme de mises en page de type carte.** Un tableau de 2-3 colonnes dont la première colonne contient des libellés d'attributs affiche chaque attribut dans sa cellule de valeur (correspondant au style de carte de comparaison popularisé par les interfaces de chat IA) ; les tableaux plus grands conservent la grille classique.
+- **Les modèles d'un fournisseur peuvent être supprimés en masse.** Chaque ligne de modèle dans Admin → Modèles porte une case à cocher, l'en-tête sélectionne la liste entière, et maintenir Maj enfoncé tout en cliquant étend la sélection sur une plage de lignes. Supprimer la sélection supprime chaque modèle choisi en une seule requête, après une confirmation nommant le nombre.
 
-- **Les réponses de chat affichent désormais les diagrammes Mermaid et les figures SVG.** Un bloc de code `mermaid` devient un diagramme thématisé et un bloc `svg` devient une image avec un bouton bascule de source et un téléchargement ; les deux reviennent au code brut si la source est incomplète ou n'analyse pas, de sorte qu'un diagramme partiellement diffusé ne clignotera jamais une erreur.
+- **Les petits tableaux de comparaison dans les réponses du chat s'affichent désormais sous forme de mises en page de style carte.** Un tableau à 2-3 colonnes dont la première colonne contient des libellés d'attribut affiche chaque attribut à l'intérieur de sa cellule de valeur (correspondant au style de carte de comparaison popularisé par les interfaces de chat IA) ; les tableaux plus grands conservent la grille classique.
 
-- **Les réponses, les blocs de code et les tableaux peuvent être copiés.** Chaque réponse dispose d'une action de copie en tant que Markdown, les blocs de code portent un en-tête nommant leur langage, et les tableaux offrent une copie en tant que Markdown plus un téléchargement CSV (UTF-8, s'ouvre correctement dans Excel).
+- **Les réponses du chat affichent désormais les diagrammes Mermaid et les figures SVG.** Un bloc de code `mermaid` devient un diagramme thématisé et un bloc `svg` devient une image avec un bouton bascule de source et un téléchargement ; les deux reviennent au code brut si la source est incomplète ou ne s'analyse pas, donc un diagramme à moitié diffusé ne clignote jamais une erreur.
 
-- **Les citations indiquent le document dont elles proviennent.** Un marqueur de citation s'affiche désormais sous forme de pastille portant le nom du document source, avec les marqueurs adjacents regroupés dans une pastille et un nombre ; le popover répertorie chaque source derrière lui.
+- **Les réponses, les blocs de code et les tableaux peuvent être copiés.** Chaque réponse a une action copier-en-Markdown, les blocs de code portent un en-tête nommant leur langage, et les tableaux offrent copier-en-Markdown plus un téléchargement CSV (UTF-8, s'ouvre proprement dans Excel).
 
-- **`/clear` fonctionne dans l'entrée de chat.** En tapant `/clear`, vous commencez une nouvelle conversation, identique à cliquer sur Nouveau chat ; un tour en cours est d'abord arrêté.
+- **Les citations indiquent le document dont elles proviennent.** Un marqueur de citation s'affiche désormais sous forme de pastille portant le nom du document source, avec les marqueurs adjacents réduits en une pastille et un nombre ; le popover liste chaque source derrière.
 
-- **Les diagrammes et les blocs de code peuvent être téléchargés, pas seulement copiés.** Les diagrammes Mermaid exportent le SVG rendu, et chaque bloc de code se télécharge avec un nom de fichier correspondant à son langage ; un bloc `csv` se télécharge sous forme de fichier UTF-8 qui s'ouvre correctement dans Excel.
+- **`/clear` fonctionne dans l'entrée du chat.** Taper `/clear` démarre une conversation nouvelle, identique à cliquer sur Nouveau chat ; un tour en cours est d'abord arrêté.
+
+- **Les diagrammes et les blocs de code peuvent être téléchargés, pas seulement copiés.** Les diagrammes Mermaid exportent le SVG rendu, et chaque bloc de code se télécharge avec un nom de fichier correspondant à son langage ; un bloc `csv` se télécharge en tant que fichier UTF-8 qui s'ouvre proprement dans Excel.
 
 ### Modifications
 

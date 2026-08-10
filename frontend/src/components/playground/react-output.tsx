@@ -29,7 +29,9 @@ import { SuggestedFollowups } from "./suggested-followups"
 import { parseEvidence, parseSimpleEvidence, mergeEvidence, type ParsedEvidence } from "@/lib/evidence-utils"
 import { EvidenceProvider } from "@/contexts/evidence-context"
 import { ConfirmationCard } from "@/components/chat/confirmation-card"
+import { QuestionCard } from "@/components/chat/question-card"
 import { GuardrailBlockedCard } from "@/components/chat/guardrail-blocked-card"
+import type { UserQuestion } from "@/lib/api/confirmations"
 import { CopyButton } from "@/components/ui/copy-button"
 import type { GuardrailTripwiredEvent } from "@/types/api"
 
@@ -47,6 +49,20 @@ interface AwaitingConfirmationEvent {
   approver_scope?: "initiator" | "agent_owner" | "org_members" | ""
   timeout_at: string
   agent_id: string
+}
+
+/**
+ * Wire shape emitted by the backend for `awaiting_user_question` SSE events
+ * (the ask_user_question tool). Keep in sync with
+ * `confirmation_sse.py::_request_to_event_payload`.
+ */
+interface AwaitingUserQuestionEvent {
+  type: "awaiting_user_question"
+  question_id: string
+  questions: UserQuestion[]
+  timeout_at: string
+  agent_id: string
+  conversation_id: string
 }
 
 /* ------------------------------------------------------------------ */
@@ -366,6 +382,22 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
           )
         })}
 
+        {/* Question cards — persist after done so the answers stay
+             visible in the transcript. */}
+        {items.filter((i) => i.event === "awaiting_user_question").map((item) => {
+          const originalIdx = items.indexOf(item)
+          const ev = item.data as AwaitingUserQuestionEvent
+          return (
+            <div key={`quest-${ev.question_id}`} data-react-idx={originalIdx}>
+              <QuestionCard
+                questionId={ev.question_id}
+                questions={ev.questions}
+                timeoutAt={ev.timeout_at}
+              />
+            </div>
+          )
+        })}
+
         {/* Guardrail tripwire bubbles — terminal events; the turn ended
             here. We still render them in the completed-view branch in
             case the stream raced to ``done`` with a guardrail in tow. */}
@@ -514,6 +546,18 @@ export function ReactOutput({ items, isStreaming, streamingAnswer, suggestions, 
                 mode={ev.mode}
                 channelLabel={ev.channel_label}
                 approverScope={ev.approver_scope}
+              />
+            </div>
+          )
+        }
+        if (item.event === "awaiting_user_question") {
+          const ev = item.data as AwaitingUserQuestionEvent
+          return (
+            <div key={`quest-${ev.question_id}`} data-react-idx={idx}>
+              <QuestionCard
+                questionId={ev.question_id}
+                questions={ev.questions}
+                timeoutAt={ev.timeout_at}
               />
             </div>
           )

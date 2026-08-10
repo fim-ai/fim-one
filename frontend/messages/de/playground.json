@@ -186,5 +186,23 @@
   "viewPreview": "Vorschau anzeigen",
   "downloadSvg": "SVG herunterladen",
   "modelOutput": "Ausgabe",
-  "thoughtProcess": "Gedankenprozess"
+  "thoughtProcess": "Gedankenprozess",
+  "userQuestion": {
+    "title": "Der Agent benötigt deine Eingabe",
+    "expiresIn": "Verfällt in {time}",
+    "otherOption": "Sonstiges",
+    "otherPlaceholder": "Gib deine eigene Antwort ein…",
+    "multiSelectHint": "Wähle alle zutreffenden Optionen",
+    "submitButton": "Absenden",
+    "skipButton": "Überspringen",
+    "answered": "Beantwortet",
+    "answeredAt": "Beantwortet um {time}",
+    "skipped": "Übersprungen",
+    "skippedAt": "Übersprungen um {time}",
+    "expired": "Frage abgelaufen",
+    "expiredHint": "Der Agent hat ohne Antwort fortgefahren.",
+    "unansweredWarning": "Einige Fragen sind nicht beantwortet.",
+    "errorToast": "Fehler beim Absenden der Antworten",
+    "questionProgress": "{current} von {total}"
+  }
 }

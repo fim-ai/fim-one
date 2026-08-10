@@ -63,11 +63,34 @@ class ConfirmationStatusResponse(BaseModel):
     confirmation_id: str
     status: str
     mode: str
+    kind: str = "confirmation"
     tool_name: str
     arguments: dict[str, Any]
     created_at: str
     decided_at: str | None
     approver_user_id: str | None
+    # kind="user_question" only: the questions asked and (once answered)
+    # the recorded answers.
+    questions: list[dict[str, Any]] | None = None
+    answers: dict[str, Any] | None = None
+
+
+class QuestionAnswerRequest(BaseModel):
+    """Body for ``POST /api/confirmations/{id}/answer`` (kind=user_question).
+
+    ``answers`` maps each question's text to the selected option label, a
+    list of labels (multi_select), or the user's free "Other" text.  Set
+    ``skip=true`` (with empty answers) when the user dismisses the card.
+    """
+
+    answers: dict[str, Any] = Field(default_factory=dict)
+    skip: bool = False
+
+
+class QuestionAnswerResponse(BaseModel):
+    status: str
+    confirmation_id: str
+    decided_at: str
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +362,121 @@ async def respond_to_confirmation(
     )
 
 
+@router.post(
+    "/{confirmation_id}/answer",
+    response_model=QuestionAnswerResponse,
+)
+async def answer_user_question(
+    confirmation_id: str,
+    body: QuestionAnswerRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> QuestionAnswerResponse:
+    """Answer (or dismiss) a pending ``kind=user_question`` request.
+
+    The ``ask_user_question`` tool polls the row; flipping it to
+    ``answered`` / ``dismissed`` wakes the paused ReAct run.
+
+    * ``404`` — request not found or not a user question.
+    * ``403`` — caller is not the initiator (admins bypass).
+    * ``409`` — already answered / dismissed / expired, or raced.
+    * ``422`` — no answers given and ``skip`` not set, or unknown question.
+    """
+    row = (
+        await db.execute(
+            select(ConfirmationRequest).where(
+                ConfirmationRequest.id == confirmation_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or str(getattr(row, "kind", "")) != "user_question":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question request not found.",
+        )
+
+    if row.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Question is already {row.status}.",
+        )
+
+    # Only the user who initiated the run may answer their own question.
+    if row.user_id != current_user.id and not getattr(
+        current_user, "is_admin", False
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorised to answer this question.",
+        )
+
+    payload: dict[str, Any] = row.payload if isinstance(row.payload, dict) else {}
+    known_questions = {
+        str(q.get("question") or "")
+        for q in (payload.get("questions") or [])
+        if isinstance(q, dict)
+    }
+
+    answers: dict[str, Any] = {}
+    if not body.skip:
+        for question, answer in (body.answers or {}).items():
+            if question not in known_questions:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown question: {question!r}",
+                )
+            if isinstance(answer, list):
+                answers[question] = [str(a)[:2000] for a in answer[:16]]
+            else:
+                answers[question] = str(answer)[:2000]
+        if not answers:
+            raise HTTPException(
+                status_code=422,
+                detail="Provide at least one answer, or set skip=true.",
+            )
+
+    new_status = "dismissed" if body.skip else "answered"
+    now = datetime.now(timezone.utc)
+    values: dict[str, Any] = {
+        "status": new_status,
+        "responded_at": now,
+        "approver_user_id": current_user.id,
+    }
+    if not body.skip:
+        values["response_payload"] = {"answers": answers}
+
+    # Conditional UPDATE so concurrent submissions race cleanly — same
+    # pattern as apply_confirmation_decision.
+    stmt = (
+        sa_update(ConfirmationRequest)
+        .where(
+            ConfirmationRequest.id == confirmation_id,
+            ConfirmationRequest.status == "pending",
+        )
+        .values(**values)
+    )
+    result = _cast(CursorResult[Any], await db.execute(stmt))
+    await db.commit()
+    if (result.rowcount or 0) != 1:
+        refreshed_status = (
+            await db.execute(
+                select(ConfirmationRequest.status).where(
+                    ConfirmationRequest.id == confirmation_id
+                )
+            )
+        ).scalar_one_or_none()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Question is already {refreshed_status or 'gone'}.",
+        )
+
+    return QuestionAnswerResponse(
+        status=new_status,
+        confirmation_id=confirmation_id,
+        decided_at=now.isoformat(),
+    )
+
+
 @router.get(
     "/{confirmation_id}",
     response_model=ConfirmationStatusResponse,
@@ -368,6 +506,40 @@ async def get_confirmation(
     if request is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
+    kind = str(getattr(request, "kind", "") or "confirmation")
+    payload: dict[str, Any] = request.payload or {}
+
+    if kind == "user_question":
+        # Question requests may come from agent-less playground runs —
+        # there is no agent scope to resolve; only the initiator (or an
+        # admin) may observe them.
+        if request.user_id != current_user.id and not getattr(
+            current_user, "is_admin", False
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+        response_payload: dict[str, Any] = (
+            request.response_payload
+            if isinstance(request.response_payload, dict)
+            else {}
+        )
+        return ConfirmationStatusResponse(
+            confirmation_id=request.id,
+            status=request.status,
+            mode=request.mode or "inline",
+            kind=kind,
+            tool_name="ask_user_question",
+            arguments={},
+            created_at=(
+                request.created_at.isoformat() if request.created_at else ""
+            ),
+            decided_at=(
+                request.responded_at.isoformat() if request.responded_at else None
+            ),
+            approver_user_id=request.approver_user_id,
+            questions=payload.get("questions") or [],
+            answers=response_payload.get("answers"),
+        )
+
     agent_stmt = select(Agent).where(Agent.id == request.agent_id)
     agent_res = await db.execute(agent_stmt)
     agent_row = agent_res.scalar_one_or_none()
@@ -379,11 +551,11 @@ async def get_confirmation(
         db, request=request, agent=agent_row, current_user=current_user
     )
 
-    payload: dict[str, Any] = request.payload or {}
     return ConfirmationStatusResponse(
         confirmation_id=request.id,
         status=request.status,
         mode=request.mode or "channel",
+        kind=kind,
         tool_name=str(payload.get("tool_name") or ""),
         arguments=payload.get("arguments") or {},
         created_at=request.created_at.isoformat() if request.created_at else "",

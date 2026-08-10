@@ -186,5 +186,23 @@
     "inputBlocked": "Input blocked by guardrail",
     "outputBlocked": "Response blocked by guardrail",
     "detailsLabel": "Details"
+  },
+  "userQuestion": {
+    "title": "The agent needs your input",
+    "expiresIn": "Expires in {time}",
+    "otherOption": "Other",
+    "otherPlaceholder": "Type your own answer…",
+    "multiSelectHint": "Select all that apply",
+    "submitButton": "Submit",
+    "skipButton": "Skip",
+    "answered": "Answered",
+    "answeredAt": "Answered at {time}",
+    "skipped": "Skipped",
+    "skippedAt": "Skipped at {time}",
+    "expired": "Question expired",
+    "expiredHint": "The agent continued without an answer.",
+    "unansweredWarning": "Some questions are unanswered.",
+    "errorToast": "Failed to submit answers",
+    "questionProgress": "{current} of {total}"
   }
 }

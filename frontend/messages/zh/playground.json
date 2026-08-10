@@ -186,5 +186,23 @@
   "viewPreview": "查看预览",
   "downloadSvg": "下载 SVG",
   "modelOutput": "输出",
-  "thoughtProcess": "思考过程"
+  "thoughtProcess": "思考过程",
+  "userQuestion": {
+    "title": "智能体需要您的输入",
+    "expiresIn": "过期时间：{time}",
+    "otherOption": "其他",
+    "otherPlaceholder": "输入您自己的答案…",
+    "multiSelectHint": "选择所有适用的选项",
+    "submitButton": "提交",
+    "skipButton": "跳过",
+    "answered": "已回答",
+    "answeredAt": "回答于 {time}",
+    "skipped": "已跳过",
+    "skippedAt": "跳过于 {time}",
+    "expired": "问题已过期",
+    "expiredHint": "智能体已在没有答案的情况下继续。",
+    "unansweredWarning": "某些问题未回答。",
+    "errorToast": "提交答案失败",
+    "questionProgress": "{current}/{total}"
+  }
 }

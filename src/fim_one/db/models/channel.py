@@ -90,6 +90,15 @@ class ConfirmationRequest(UUIDPKMixin, TimestampMixin, Base):
         default="channel",
         server_default=sa.text("'channel'"),
     )
+    # Request kind discriminator: "confirmation" (approve/reject gate, the
+    # original behaviour) or "user_question" (structured multiple-choice
+    # questions raised by the ask_user_question tool).
+    kind: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="confirmation",
+        server_default="confirmation",
+    )
     # Optional explicit approver. When set, only this user's approval counts;
     # otherwise the Agent's confirmation_approver_scope governs eligibility.
     approver_user_id: Mapped[str | None] = mapped_column(
@@ -97,10 +106,12 @@ class ConfirmationRequest(UUIDPKMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    org_id: Mapped[str] = mapped_column(
+    # Nullable since the ask_user_question tool: question requests can
+    # originate from agent-less playground chats that carry no org.
+    org_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     # Nullable since v0.9: inline-mode requests do NOT go through a
@@ -121,6 +132,12 @@ class ConfirmationRequest(UUIDPKMixin, TimestampMixin, Base):
         index=True,
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(
+        sa.JSON, nullable=True
+    )
+    # Structured response written by the answer endpoint — for
+    # kind="user_question" this is ``{"answers": {question: label|labels}}``.
+    # NULL for plain confirmations (their outcome lives in ``status``).
+    response_payload: Mapped[dict[str, Any] | None] = mapped_column(
         sa.JSON, nullable=True
     )
     responded_at: Mapped[datetime | None] = mapped_column(

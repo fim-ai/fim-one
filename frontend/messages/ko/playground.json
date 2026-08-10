@@ -186,5 +186,23 @@
   "viewPreview": "미리보기",
   "downloadSvg": "SVG 다운로드",
   "modelOutput": "출력",
-  "thoughtProcess": "생각 과정"
+  "thoughtProcess": "생각 과정",
+  "userQuestion": {
+    "title": "에이전트가 입력을 기다리고 있습니다",
+    "expiresIn": "{time}에 만료됨",
+    "otherOption": "기타",
+    "otherPlaceholder": "직접 답변을 입력하세요…",
+    "multiSelectHint": "해당하는 모든 항목을 선택하세요",
+    "submitButton": "제출",
+    "skipButton": "건너뛰기",
+    "answered": "답변됨",
+    "answeredAt": "{time}에 답변됨",
+    "skipped": "건너뜀",
+    "skippedAt": "{time}에 건너뜀",
+    "expired": "질문 만료됨",
+    "expiredHint": "에이전트가 답변 없이 계속 진행했습니다.",
+    "unansweredWarning": "답변하지 않은 질문이 있습니다.",
+    "errorToast": "답변 제출에 실패했습니다",
+    "questionProgress": "{current}/{total}"
+  }
 }

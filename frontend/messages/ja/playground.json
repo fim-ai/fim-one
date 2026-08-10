@@ -186,5 +186,23 @@
   "viewPreview": "プレビューを表示",
   "downloadSvg": "SVGをダウンロード",
   "modelOutput": "出力",
-  "thoughtProcess": "思考プロセス"
+  "thoughtProcess": "思考プロセス",
+  "userQuestion": {
+    "title": "智能体があなたの入力を必要としています",
+    "expiresIn": "{time}で期限切れ",
+    "otherOption": "その他",
+    "otherPlaceholder": "独自の回答を入力してください…",
+    "multiSelectHint": "すべて選択してください",
+    "submitButton": "送信",
+    "skipButton": "スキップ",
+    "answered": "回答済み",
+    "answeredAt": "{time}に回答",
+    "skipped": "スキップ済み",
+    "skippedAt": "{time}にスキップ",
+    "expired": "質問の期限切れ",
+    "expiredHint": "智能体は回答なしで続行しました。",
+    "unansweredWarning": "回答されていない質問があります。",
+    "errorToast": "回答の送信に失敗しました",
+    "questionProgress": "{current}/{total}"
+  }
 }

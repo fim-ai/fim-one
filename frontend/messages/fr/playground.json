@@ -186,5 +186,23 @@
   "viewPreview": "Afficher l'aperçu",
   "downloadSvg": "Télécharger SVG",
   "modelOutput": "Résultat",
-  "thoughtProcess": "Processus de réflexion"
+  "thoughtProcess": "Processus de réflexion",
+  "userQuestion": {
+    "title": "L'agent a besoin de votre avis",
+    "expiresIn": "Expire dans {time}",
+    "otherOption": "Autre",
+    "otherPlaceholder": "Tapez votre propre réponse…",
+    "multiSelectHint": "Sélectionnez tous les éléments applicables",
+    "submitButton": "Soumettre",
+    "skipButton": "Ignorer",
+    "answered": "Répondu",
+    "answeredAt": "Répondu à {time}",
+    "skipped": "Ignoré",
+    "skippedAt": "Ignoré à {time}",
+    "expired": "Question expirée",
+    "expiredHint": "L'agent a continué sans réponse.",
+    "unansweredWarning": "Certaines questions n'ont pas de réponse.",
+    "errorToast": "Échec de la soumission des réponses",
+    "questionProgress": "{current} sur {total}"
+  }
 }

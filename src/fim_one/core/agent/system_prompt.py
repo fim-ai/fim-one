@@ -145,6 +145,24 @@ HTML_STYLE_BASELINE = PromptSection(
     ),
 )
 
+ASK_USER_QUESTION = PromptSection(
+    name="ask_user_question",
+    content=(
+        "- CLARIFY WITH ask_user_question: When that tool is available and "
+        "the task could go in materially different directions (scope, "
+        "output format, which target to act on, destructive vs. safe "
+        "variants) that you cannot resolve from context, call "
+        "ask_user_question with 2-4 concrete options instead of guessing or "
+        "embedding a text question in your answer. Prefer asking EARLY, "
+        "before investing work in one direction, and batch related "
+        "questions into a single call. Do NOT use it to ask permission to "
+        "proceed, to report progress, or when a sensible default exists — "
+        "pick the default, state the assumption, and continue. If the user "
+        "declines to answer or the question times out, do not ask again in "
+        "the same run."
+    ),
+)
+
 # Communication-tone rule borrowed in spirit (not text) from how strong
 # assistants own mistakes: acknowledge plainly, correct in place, no grovel.
 ACCOUNTABILITY = PromptSection(
@@ -165,6 +183,7 @@ _SHARED_TRAILING = (
     DELIVERABLE_FILES,
     IMAGE_TOOL_SCOPE,
     HTML_STYLE_BASELINE,
+    ASK_USER_QUESTION,
     DIAGNOSE_WHY,
     SAME_ARGS,
     EXIT_CODE_1,
@@ -346,6 +365,7 @@ NATIVE_MODE_SYSTEM_PROMPT = _text(IDENTITY) + "\n\n" + _NATIVE_GUIDELINES + "\n"
 
 __all__ = [
     "ACCOUNTABILITY",
+    "ASK_USER_QUESTION",
     "DELIVERABLE_FILES",
     "DIAGNOSE_WHY",
     "EXIT_CODE_1",

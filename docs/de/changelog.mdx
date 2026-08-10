@@ -12,19 +12,21 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **Agent-Schritte tragen Live-Einzeilentitel.** Während ein Agent arbeitet, erhält jede Iteration ein kurz generiertes Label („Preisdaten werden überprüft…"), das in einem einzelnen eingeklappten Header angezeigt wird, der zum neuesten Schritt wechselt; beim Erweitern wird die vollständige Schritt-Zeitleiste angezeigt, und die Labels bleiben in der Gesprächshistorie erhalten.
+- **Agenten können während der Ausführung Verständnisfragen mit mehreren Antwortmöglichkeiten stellen.** Wenn eine Aufgabe in verschiedene Richtungen gehen könnte, pausiert der Agent und präsentiert bis zu vier strukturierte Fragen im Chat, jeweils mit 2–4 Optionen plus einem Freitextfeld „Sonstiges"; das Beantworten setzt die Ausführung fort, und das Überspringen oder ein Timeout lässt den Agent nach eigenem Ermessen weitermachen.
 
-- **Modelle eines Anbieters können in Massen gelöscht werden.** Jede Modellzeile in Admin → Models trägt ein Kontrollkästchen, der Header wählt die gesamte Liste aus, und das Halten von Shift beim Klicken erweitert die Auswahl über mehrere Zeilen. Das Löschen der Auswahl entfernt jedes ausgewählte Modell in einer Anfrage, nach einer Bestätigung, die die Anzahl angibt.
+- **Agent-Schritte tragen Live-Titel in einer Zeile.** Während ein Agent arbeitet, erhält jede Iteration ein kurz generiertes Label („Preisdaten werden überprüft…"), das in einem einzelnen eingeklappten Header angezeigt wird, der zum neuesten Schritt wechselt; das Erweitern zeigt die vollständige Schritt-Chronologie, und die Labels bleiben in der Gesprächshistorie erhalten.
 
-- **Kleine Vergleichstabellen in Chat-Antworten werden nun als kartenähnliche Layouts dargestellt.** Eine Tabelle mit 2–3 Spalten, deren erste Spalte Attributbezeichnungen enthält, zeigt jedes Attribut in seiner Wertzelle an (im Stil der Vergleichskarten, die von KI-Chat-UIs populär gemacht wurden); größere Tabellen behalten das klassische Gitter.
+- **Die Modelle eines Anbieters können in Masse gelöscht werden.** Jede Modellzeile in Admin → Models trägt ein Kontrollkästchen, der Header wählt die gesamte Liste aus, und das Halten von Shift beim Klicken erweitert die Auswahl über einen Bereich von Zeilen. Das Löschen der Auswahl entfernt jedes ausgewählte Modell in einer Anfrage, nach einer Bestätigung mit der Anzahl.
 
-- **Chat-Antworten rendern nun Mermaid-Diagramme und SVG-Abbildungen.** Ein `mermaid`-Codeblock wird zu einem thematisierten Diagramm und ein `svg`-Block wird zu einem Bild mit einem Quellumschalter und Download; beide fallen auf einfachen Code zurück, wenn die Quelle unvollständig ist oder nicht analysiert wird, sodass ein halb gestreamtes Diagramm niemals einen Fehler anzeigt.
+- **Kleine Vergleichstabellen in Chat-Antworten werden nun als Kartenlayouts dargestellt.** Eine Tabelle mit 2–3 Spalten, deren erste Spalte Attributbezeichnungen enthält, zeigt jedes Attribut in seiner Wertzelle an (entsprechend dem Vergleichskarten-Stil, der von KI-Chat-UIs populär gemacht wurde); größere Tabellen behalten das klassische Raster.
+
+- **Chat-Antworten rendern nun Mermaid-Diagramme und SVG-Abbildungen.** Ein `mermaid`-Codeblock wird zu einem Design-Diagramm und ein `svg`-Block zu einem Bild mit einem Quellen-Toggle und Download; beide fallen auf einfachen Code zurück, wenn die Quelle unvollständig ist oder nicht analysiert wird, sodass ein halb gestreamtes Diagramm niemals einen Fehler anzeigt.
 
 - **Antworten, Codeblöcke und Tabellen können kopiert werden.** Jede Antwort hat eine Aktion zum Kopieren als Markdown, Codeblöcke tragen einen Header mit ihrer Sprache, und Tabellen bieten Kopieren als Markdown sowie einen CSV-Download (UTF-8, öffnet sich sauber in Excel).
 
-- **Zitate zeigen, aus welchem Dokument sie stammen.** Ein Zitiermarker wird nun als Pille dargestellt, die den Namen des Quelldokuments trägt, wobei benachbarte Marker in einer Pille zusammengefasst und gezählt werden; das Popover listet jede Quelle dahinter auf.
+- **Zitate zeigen, aus welchem Dokument sie stammen.** Ein Zitiermarker wird nun als Pille mit dem Namen des Quelldokuments dargestellt, wobei benachbarte Marker in einer Pille zusammengefasst und gezählt werden; das Popover listet jede Quelle dahinter auf.
 
-- **`/clear` funktioniert in der Chat-Eingabe.** Das Eingeben von `/clear` startet ein neues Gespräch, identisch mit dem Klicken auf „Neuer Chat"; ein laufender Zug wird zuerst gestoppt.
+- **`/clear` funktioniert in der Chat-Eingabe.** Die Eingabe von `/clear` startet ein neues Gespräch, identisch mit dem Klick auf „Neuer Chat"; ein laufender Zug wird zuerst gestoppt.
 
 - **Diagramme und Codeblöcke können heruntergeladen werden, nicht nur kopiert.** Mermaid-Diagramme exportieren das gerenderte SVG, und jeder Codeblock wird mit einem Dateinamen heruntergeladen, der seiner Sprache entspricht; ein `csv`-Block wird als UTF-8-Datei heruntergeladen, die sich sauber in Excel öffnet.
 

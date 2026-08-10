@@ -244,19 +244,21 @@ def _emit(sse_events: list[dict[str, Any]], event: str, data: Any) -> str:
 
 
 async def _pump_inline_confirmations(
-    agent_id: str,
+    scope: str,
     user_id: str,
     progress_queue: "asyncio.Queue[str]",
     sse_events: list[dict[str, Any]],
 ) -> None:
-    """Forward ``awaiting_confirmation`` events from the in-process queue.
+    """Forward confirmation / question events from the in-process queue.
 
     Runs for the lifetime of a single SSE response.  The bridge
     (``fim_one.web.confirmation_sse``) parks each inline ``ConfirmationRequest``
-    on a ``(agent_id, user_id)`` queue; this coroutine drains that queue
-    and pushes frames onto the SSE ``progress_queue`` so the frontend sees
-    ``awaiting_confirmation`` MID-stream (before the gate hook's DB poll
-    returns).
+    on a ``(scope, user_id)`` queue (scope = agent_id, or
+    ``conv:<conversation_id>`` for agent-less runs); this coroutine drains
+    that queue and pushes frames onto the SSE ``progress_queue`` so the
+    frontend sees ``awaiting_confirmation`` / ``awaiting_user_question``
+    MID-stream (while the gate hook's or ask_user_question tool's DB poll
+    is still blocked).
 
     Cancelled by the handler when the stream ends; never raises.
     """
@@ -264,23 +266,25 @@ async def _pump_inline_confirmations(
     # initialisation (chat.py is imported by app.py before lifespan runs).
     from fim_one.web.confirmation_sse import queue_for
 
-    if not agent_id or not user_id:
+    if not scope or not user_id:
         return
 
-    q = queue_for(agent_id, user_id)
+    q = queue_for(scope, user_id)
     try:
         while True:
             event = await q.get()
-            _append_event(sse_events, "awaiting_confirmation", event)
+            # The payload's ``type`` doubles as the SSE event name so one
+            # pump serves both confirmation cards and question cards.
+            event_name = str(event.get("type") or "awaiting_confirmation")
+            _append_event(sse_events, event_name, event)
             try:
-                progress_queue.put_nowait(
-                    _sse("awaiting_confirmation", event)
-                )
+                progress_queue.put_nowait(_sse(event_name, event))
             except asyncio.QueueFull:
                 logger.warning(
-                    "SSE progress queue full — dropping awaiting_confirmation "
-                    "event for agent=%s user=%s",
-                    agent_id,
+                    "SSE progress queue full — dropping %s "
+                    "event for scope=%s user=%s",
+                    event_name,
+                    scope,
                     user_id,
                 )
     except asyncio.CancelledError:
@@ -288,8 +292,8 @@ async def _pump_inline_confirmations(
         raise
     except Exception:  # pragma: no cover - defensive
         logger.exception(
-            "inline-confirmation pump crashed for agent=%s user=%s",
-            agent_id,
+            "inline-confirmation pump crashed for scope=%s user=%s",
+            scope,
             user_id,
         )
 
@@ -3188,6 +3192,31 @@ async def react_endpoint(
         classify_domain(q, fast_llm),
     )
 
+    # ask_user_question — ReAct-only human-in-the-loop clarification tool.
+    # Registered here (not in _resolve_tools) so the DAG executor never
+    # sees it: mid-plan questions don't fit a precomputed DAG.  Needs a
+    # session factory independent of the request session because it polls
+    # the confirmation_requests table while the response is streaming.
+    try:
+        from fim_one.core.tool.builtin.ask_user_question import AskUserQuestionTool
+        from fim_one.db import create_session as _auq_create_session
+
+        tools.register(
+            AskUserQuestionTool(
+                session_factory=_auq_create_session,
+                user_id=str(current_user_id),
+                agent_id=(agent_cfg or {}).get("agent_id"),
+                org_id=(agent_cfg or {}).get("org_id"),
+                conversation_id=conversation_id,
+            )
+        )
+    except Exception:
+        logger.warning(
+            "Failed to register AskUserQuestionTool — agent cannot ask "
+            "clarifying questions in this conversation",
+            exc_info=True,
+        )
+
     agent_instructions = agent_cfg["instructions"] if agent_cfg else None
     lang_directive = get_language_directive(preferred_language)
 
@@ -3410,18 +3439,26 @@ async def react_endpoint(
         progress_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=1000)
         done_event = asyncio.Event()
 
-        # Fan pending inline confirmations into the SSE stream mid-turn.
-        # The hook inside the agent task commits a ConfirmationRequest row
-        # and fires the bridge listener; this pump turns those rows into
-        # ``awaiting_confirmation`` SSE frames while the hook's DB poll
-        # is still blocked.  Cancelled below when the stream tears down.
-        _react_confirm_agent_id = str((agent_cfg or {}).get("agent_id") or "")
+        # Fan pending inline confirmations / user questions into the SSE
+        # stream mid-turn.  The hook (or the ask_user_question tool) inside
+        # the agent task commits a ConfirmationRequest row and fires the
+        # bridge listener; this pump turns those rows into
+        # ``awaiting_confirmation`` / ``awaiting_user_question`` SSE frames
+        # while the DB poll is still blocked.  Scope falls back to the
+        # conversation for agent-less playground runs so question cards
+        # work without an agent binding.  Cancelled below at teardown.
+        from fim_one.web.confirmation_sse import scope_for as _confirm_scope_for
+
+        _react_confirm_scope = _confirm_scope_for(
+            str((agent_cfg or {}).get("agent_id") or ""),
+            str(conversation_id or ""),
+        )
         _react_confirm_user_id = str(current_user_id or "")
         _confirmation_pump_task: asyncio.Task[None] | None = None
-        if _react_confirm_agent_id and _react_confirm_user_id:
+        if _react_confirm_scope and _react_confirm_user_id:
             _confirmation_pump_task = asyncio.create_task(
                 _pump_inline_confirmations(
-                    _react_confirm_agent_id,
+                    _react_confirm_scope,
                     _react_confirm_user_id,
                     progress_queue,
                     sse_events,
@@ -3698,7 +3735,9 @@ async def react_endpoint(
 
             # Always pin web_search — it's a fundamental capability that
             # tool selection should never drop, regardless of domain.
-            _pinned: list[str] = ["web_search"]
+            # ask_user_question likewise: clarification must stay available
+            # no matter which domain the tool selector picks.
+            _pinned: list[str] = ["web_search", "ask_user_question"]
 
             # --- Hook System bootstrap ---
             # Load any class_hooks declared on this agent's ``model_config_json``

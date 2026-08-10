@@ -101,10 +101,14 @@ export function useReactSteps(messages: SSEMessage[], isRunning: boolean): React
         continue
       }
       // awaiting_confirmation is emitted mid-stream when a tool hook pauses
-      // execution pending human approval. Forward it as a first-class item
-      // so ReactOutput can render the inline ConfirmationCard. Payload shape
-      // is frozen (see Phase 1 Task #3) — do not normalize/reshape.
-      if (msg.event === "awaiting_confirmation") {
+      // execution pending human approval; awaiting_user_question when the
+      // ask_user_question tool pauses for structured answers. Forward both
+      // as first-class items so ReactOutput can render the inline card.
+      // Payload shapes are frozen — do not normalize/reshape.
+      if (
+        msg.event === "awaiting_confirmation" ||
+        msg.event === "awaiting_user_question"
+      ) {
         result.push({
           event: msg.event,
           data: msg.data,

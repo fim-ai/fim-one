@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Explicit re-exports (for convenience — callers can still import directly)
+from .ask_user_question import AskUserQuestionTool
 from .call_agent import CallAgentTool
 from .calculator import CalculatorTool
 from .datetime_tool import DateTimeTool
@@ -127,6 +128,7 @@ __all__ = [
     "DbSetTableVisibilityTool",
     "DbBatchSetVisibilityTool",
     "DbRunSampleQueryTool",
+    "AskUserQuestionTool",
     "discover_builtin_tools",
 ]
 
@@ -161,6 +163,7 @@ _ARTIFACTS_KWARGS: dict[type, str] = {
 # Tools that require explicit configuration and should NOT be auto-discovered.
 # They are registered manually when the appropriate config is available.
 _SKIP_AUTO_DISCOVER: set[type] = {
+    AskUserQuestionTool,  # requires session_factory + requester identity — injected by chat.py
     CallAgentTool,  # requires available_agents list — injected by chat.py for multi-agent setups
     ReadSkillTool,  # requires skill_ids — registered by _resolve_tools()
     RunWorkflowTool,  # requires workflow_ids — registered by _resolve_tools()

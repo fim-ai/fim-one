@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Agents can ask clarifying multiple-choice questions mid-run.** When a task could go in materially different directions, the agent pauses and presents up to four structured questions in the chat, each with 2-4 options plus a free-text "Other"; answering resumes the run in place, and skipping or a timeout lets it continue on its own judgment.
+
 - **Agent steps carry live one-line titles.** While an agent works, each iteration gets a short generated label ("Verifying pricing data…"), shown in a single folded header that cycles to the newest step; expanding it reveals the full step timeline, and the labels persist into conversation history.
 
 - **A provider's models can be deleted in bulk.** Each model row in Admin → Models carries a checkbox, the header selects the whole list, and holding Shift while clicking extends the selection across a range of rows. Deleting the selection removes every chosen model in one request, after a confirmation naming the count.
