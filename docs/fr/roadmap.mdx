@@ -310,11 +310,12 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 #### Rendu des réponses
 
-- [x] Les réponses finales se diffusent nativement — la boucle se transmet via un signal `finish` et la réponse est écrite comme un tour en streaming de tokens en direct
-- [x] Les réponses affichent des diagrammes Mermaid, des figures SVG et des tableaux de comparaison de style carte, avec copie/export sur les réponses, les blocs de code et les tableaux
-- [x] Le markdown rendu est assaini, fermant l'injection HTML brut à partir de la sortie du modèle et des fichiers téléchargés
+- [x] Les réponses finales se diffusent nativement — la boucle se termine via un signal `finish` et la réponse est écrite comme un tour diffusé en direct par token
+- [x] Le markdown diffusé s'affiche par bloc — les blocs terminés restent stables et la syntaxe inline à moitié arrivée ne scintille plus
+- [x] Les réponses affichent les diagrammes Mermaid, les figures SVG et les tableaux de comparaison de style carte, avec copie/export sur les réponses, les blocs de code et les tableaux
+- [x] Le markdown affiché est désinfecté, fermant l'injection HTML brute de la sortie du modèle et des fichiers téléchargés
 - [x] Les diagrammes et les blocs de code se téléchargent en tant que fichiers ; le raisonnement se replie en aperçus d'une ligne par défaut dans les conversations en direct et passées
-- [x] Les exports de conversation sont composés pour CJK — le PDF intègre une vraie police (espacement correct, puces et gras), DOCX déclare une police d'Asie de l'Est, tous deux à une échelle de taille
+- [x] Les exports de conversation sont composés pour CJK — le PDF intègre une véritable police (espacement correct, puces et gras), DOCX déclare une police d'Asie de l'Est, les deux à une échelle de taille
 
 #### Workbench UX
 

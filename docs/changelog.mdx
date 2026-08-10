@@ -34,6 +34,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Changed
 
+- **Streamed replies render steadily instead of flickering.** A growing answer now renders block by block: finished blocks stay stable rather than re-rendering on every frame, and half-arrived formatting (bold, links, math) is completed or held until it finishes streaming in.
+
 - **Final answers stream as they are written.** The agent now signals when it is done gathering and writes the answer as a live streamed turn, so long replies arrive token by token with full detail instead of replaying after a wait. `REACT_FINISH_SIGNAL=false` restores the previous behavior.
 
 - **Architecture docs map graph engineering onto FIM One.** [Planning Landscape](/architecture/planning-landscape) explains loop vs graph engineering, how that differs from classic visual workflows, how it maps to Workflow / DAG / ReAct, and what to borrow for each engine. It also states the current fact that every DAG step is already a full ReAct agent (not a one-shot LLM call). ReAct and DAG engine pages link to it.
@@ -63,6 +65,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Raw HTML in rendered markdown is now sanitized.** Model output and uploaded markdown files are scrubbed before display, so injected scripts, event handlers, iframes, forms and style overrides can no longer reach the page. Math, syntax highlighting, tables, task lists and disclosure blocks are unaffected. Raw inline `<svg>` is no longer rendered; use an `svg` code block instead.
 
 ### Fixed
+
+- **GPT-5.x agents run tools with reasoning enabled instead of erroring.** OpenAI models now go through the Responses API first, where function tools and reasoning work together; endpoints without a `/v1/responses` route fall back to chat completions automatically, where GPT-5.x tool calls explicitly disable reasoning as that API requires.
 
 - **Ask-first requests complete in one round under Planner mode.** A goal that explicitly asks the agent to clarify requirements with multiple-choice questions before delivering ("问清楚我再出方案") now produces one clean questionnaire as the turn's result, instead of planning steps that wait for answers, looping through re-plans and ending with "goal not achieved" plus repeated question lists. Auto mode routes such requests to Standard mode.
 

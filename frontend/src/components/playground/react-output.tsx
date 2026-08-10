@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { MarkdownContent } from "@/lib/markdown"
+import { MarkdownContent, StreamingMarkdownContent } from "@/lib/markdown"
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import type { LucideIcon } from "lucide-react"
@@ -603,9 +603,10 @@ function StreamingAnswerCard({ content, aborted }: { content: string; aborted?: 
       </CardHeader>
       {content && (
         <CardContent>
-          <MarkdownContent
+          <StreamingMarkdownContent
             content={content}
-            className={`prose-sm text-sm text-foreground/90 streaming-fade${aborted ? "" : " streaming-cursor"}`}
+            showCursor={!aborted}
+            className="prose-sm text-sm text-foreground/90 streaming-fade"
           />
         </CardContent>
       )}
@@ -673,7 +674,7 @@ function ThinkingCard({ iterLabel, duration, reasoning, titleOverride, isContent
         )}
         {reasoning && expanded && (
           <div className="text-xs italic text-muted-foreground leading-relaxed">
-            <MarkdownContent content={reasoning} className={`prose-xs text-xs text-muted-foreground${duration == null ? " streaming-cursor" : ""}`} />
+            <StreamingMarkdownContent content={reasoning} showCursor={duration == null} className="prose-xs text-xs text-muted-foreground" />
           </div>
         )}
       </CardContent>

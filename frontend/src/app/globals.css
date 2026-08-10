@@ -595,6 +595,40 @@ pre code.hljs {
   }
 }
 
+/* Streaming block-split markdown (StreamingMarkdownContent): every top-level
+   block renders inside its own .md-stream-block wrapper so completed blocks
+   never re-render. That makes the first:/last: margin trims inside each block
+   fire on every block, so the wrapper takes over inter-block spacing. The
+   values mirror what the single-container render produces through collapsed
+   sibling margins (p mb-3, h1 mt-6/mb-3, h2 mt-5/mb-2, h3 mt-4/mb-2, hr my-4),
+   keeping the swap to the final non-streaming render visually seamless. */
+.md-stream > .md-stream-block > :first-child {
+  margin-top: 0 !important;
+}
+.md-stream > .md-stream-block > :last-child {
+  margin-bottom: 0 !important;
+}
+.md-stream > .md-stream-block + .md-stream-block {
+  margin-top: 0.75rem;
+}
+/* Tighter below a heading — the heading's own mb-2/mb-3 was the gap. */
+.md-stream > .md-stream-block:has(> h2) + .md-stream-block,
+.md-stream > .md-stream-block:has(> h3) + .md-stream-block {
+  margin-top: 0.5rem;
+}
+/* Wider above a heading — its mt-* dominated the collapsed margin. Declared
+   last so a heading that follows a heading keeps the larger gap. */
+.md-stream > .md-stream-block + .md-stream-block:has(> h1) {
+  margin-top: 1.5rem;
+}
+.md-stream > .md-stream-block + .md-stream-block:has(> h2) {
+  margin-top: 1.25rem;
+}
+.md-stream > .md-stream-block + .md-stream-block:has(> h3),
+.md-stream > .md-stream-block + .md-stream-block:has(> hr) {
+  margin-top: 1rem;
+}
+
 /* Rotating step title in the live step-group header: each new label eases in.
    Applied to the element itself (remounted via key), unlike .streaming-fade
    which only animates block-level children. */

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Code2, Download, Eye } from "lucide-react"
 import {
   Dialog,
@@ -23,6 +23,7 @@ import rehypeKatex from "rehype-katex"
 import rehypeHighlight from "rehype-highlight"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
+import { completeIncompleteMarkdown, splitMarkdownBlocks } from "@/lib/streaming-markdown"
 
 /**
  * A run of adjacent citation markers: `[1]`, `[1][2]`, `[1] [2]`.  Spaces
@@ -812,6 +813,50 @@ const markdownComponents = {
     )
   },
 }
+
+interface StreamingMarkdownContentProps {
+  content: string
+  className?: string
+  /** Show the pulsing cursor dot after the last line of the tail block */
+  showCursor?: boolean
+}
+
+/**
+ * Streaming-optimised markdown renderer.
+ *
+ * The source is split into top-level blocks and each completed block renders
+ * through its own memoized <MarkdownContent>, so a growing answer re-parses
+ * only the still-arriving tail block instead of the whole document on every
+ * frame. The tail additionally runs through completeIncompleteMarkdown so
+ * half-arrived inline syntax does not flicker between literal and rendered
+ * form.
+ *
+ * Because every block sits in its own container, the first:/last: margin
+ * trims inside MarkdownContent fire on every block — the .md-stream CSS in
+ * globals.css moves inter-block spacing onto the wrappers instead.
+ *
+ * `.streaming-fade` composes naturally: wrappers are direct children of the
+ * container, so each block eases in once on mount and never replays.
+ */
+export const StreamingMarkdownContent = React.memo(function StreamingMarkdownContent({
+  content,
+  className,
+  showCursor,
+}: StreamingMarkdownContentProps) {
+  const blocks = useMemo(() => splitMarkdownBlocks(content), [content])
+  const last = blocks.length - 1
+  return (
+    <div className={cn("md-stream min-w-0", className)}>
+      {blocks.map((block, i) => (
+        <MarkdownContent
+          key={i}
+          content={i === last ? completeIncompleteMarkdown(block) : block}
+          className={cn("md-stream-block", showCursor && i === last && "streaming-cursor")}
+        />
+      ))}
+    </div>
+  )
+})
 
 export const MarkdownContent = React.memo(function MarkdownContent({ content, className }: MarkdownContentProps) {
   const normalized = normalizeHeadings(content)

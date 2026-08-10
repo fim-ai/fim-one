@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { MarkdownContent } from "@/lib/markdown"
+import { MarkdownContent, StreamingMarkdownContent } from "@/lib/markdown"
 import { fmtDuration } from "@/lib/utils"
 import { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from "react"
 import { useTranslations } from "next-intl"
@@ -363,9 +363,10 @@ function DagStreamingAnswerCard({ content, aborted }: { content: string; aborted
         </div>
       </CardHeader>
       <CardContent>
-        <MarkdownContent
+        <StreamingMarkdownContent
           content={stripCitations(content)}
-          className={`prose-sm text-sm text-foreground/90 streaming-fade${aborted ? "" : " streaming-cursor"}`}
+          showCursor={!aborted}
+          className="prose-sm text-sm text-foreground/90 streaming-fade"
         />
       </CardContent>
     </Card>
@@ -748,9 +749,10 @@ function ThinkingBlock({ text, streaming }: { text: string; streaming: boolean }
       </div>
       {expanded && (
         <div className="mt-1 text-xs italic text-muted-foreground leading-relaxed">
-          <MarkdownContent
+          <StreamingMarkdownContent
             content={text}
-            className={`prose-xs text-xs text-muted-foreground${streaming ? " streaming-cursor" : ""}`}
+            showCursor={streaming}
+            className="prose-xs text-xs text-muted-foreground"
           />
         </div>
       )}
