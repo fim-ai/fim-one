@@ -4,6 +4,8 @@ icon: "bolt"
 description: "How FIM One's ReAct engine works — dual-mode execution, structured LLM calls, and streaming answer synthesis."
 ---
 
+For how this loop sits next to DAG scheduling, Workflow blueprints, and industry **graph engineering**, see [Planning Landscape](/architecture/planning-landscape).
+
 ## The architecture
 
 The ReAct engine implements a two-phase execution model. The first phase is an iterative tool-use loop: the agent repeatedly asks the LLM for an action, executes any requested tool, appends the observation, and continues until the LLM signals "done." The second phase is answer synthesis: a separate streaming LLM call that reads the full execution trace and produces the user-facing response.

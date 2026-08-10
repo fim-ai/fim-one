@@ -5,6 +5,8 @@ description: "How FIM One's DAG engine works — dynamic planning, parallel exec
 mode: "wide"
 ---
 
+For how this engine relates to industry **graph engineering**, classic visual workflows, and the ReAct loop, see [Planning Landscape](/architecture/planning-landscape).
+
 ## The pipeline
 
 DAG mode decomposes a complex goal into a directed acyclic graph of steps, executes them with maximum parallelism, then reflects on whether the goal was actually achieved. If not, it re-plans and tries again — autonomously, up to a configurable budget.
