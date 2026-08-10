@@ -165,8 +165,8 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
             ) : (
               <>
                 {groups.map((group) => (
-                  <div key={group.label} className="mb-3">
-                    <div className="px-2 py-1.5 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                  <div key={group.label} className="mb-1.5">
+                    <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
                       {group.label}
                     </div>
                     {group.items.map((conv) => (
@@ -175,13 +175,13 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
                         href={`/?c=${conv.id}`}
                         onClick={() => { selectConversation(conv.id) }}
                         className={cn(
-                          "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors text-left cursor-pointer",
+                          "group flex w-full items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors text-left cursor-pointer",
                           activeId === conv.id && pathname === "/"
                             ? "bg-accent/60 text-accent-foreground"
                             : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
                         )}
                       >
-                        <span className="flex-1 truncate text-[13px]">
+                        <span className="flex-1 truncate">
                           {conv.id in typingTitles ? typingTitles[conv.id] : (conv.title || t("untitled"))}
                         </span>
                         <DropdownMenu>
@@ -219,7 +219,7 @@ export function ConversationSidebar({ collapsed }: ConversationSidebarProps) {
                 {/* Bottom "All Chats" link */}
                 <Link
                   href="/chats"
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 mt-1 text-xs text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/50 transition-colors"
+                  className="flex items-center gap-2 rounded-md px-2 py-1 mt-0.5 text-xs text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/50 transition-colors"
                 >
                   <MessagesSquare className="h-3.5 w-3.5" />
                   {t("allChats")}
