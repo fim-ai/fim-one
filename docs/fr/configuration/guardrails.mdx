@@ -1,12 +1,13 @@
 ---
 title: "Garde-fous de contenu"
+icon: "road-barrier"
 description: "Détectez et bloquez les entrées ou sorties non sécurisées avant qu'elles n'atteignent l'agent ou l'utilisateur."
 ---
 
-Les garde-fous de contenu sont une troisième couche de sécurité **axée sur le contenu** dans FIM One.
+Les garde-fous de contenu constituent une troisième couche de sécurité **axée sur le contenu** dans FIM One.
 Ils sont intentionnellement orthogonaux à la porte de permission d'outil existante
-(`core/hooks/*`) et aux protections d'authentification / SSRF dans
-`core/security/*` — les garde-fous inspectent *ce qui est dit*, pas *ce qui est
+(`core/hooks/*`) et aux protections d'identifiants / SSRF dans
+`core/security/*` — les garde-fous inspectent *ce qui est dit*, non *ce qui est
 exécuté*.
 
 ## Les trois couches
