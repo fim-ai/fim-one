@@ -1,9 +1,150 @@
 ---
-title: "Paysage de la planification"
+title: "Paysage de planification"
 icon: "location-dot"
-description: "Cinq types de planification dans le paysage des outils d'IA et où FIM One s'inscrit."
+description: "Approches de planification, ingénierie de graphe par rapport aux couches FIM One, et où ReAct, DAG et Workflow s'inscrivent."
 mode: "wide"
 ---
+
+## Graph engineering (2026) et FIM One
+
+Les discussions sectorielles évoquent souvent un passage du **loop engineering** (un agent unique qui pense et agit de manière répétée) au **graph engineering** (faire de la topologie multi-nœuds un objet d'ingénierie explicite). Le terme est nouveau ; la pratique ne l'est pas. Les systèmes de style LangGraph et les organisations multi-agents utilisent des graphes depuis des années. Ce qui importe pour FIM One, c'est le **type** de graphe dont les gens parlent, et comment cela s'inscrit dans nos trois couches d'exécution.
+
+### Ce que l'ingénierie de graphe signifie généralement
+
+| Couche (cadre courant) | Préoccupation |
+|---|---|
+| **Harness** | Outils, sandbox, authentification, journalisation, quotas autour du modèle |
+| **Loop** | Cycle think → act → observe d'un agent |
+| **Graph** | Comment les **nœuds** se connectent : branches, jointures, cycles, points de contrôle humains, état partagé |
+
+Consensus sur ce cadre : **graph ne remplace pas loop**. Les designs de graphe **conçoivent les relations entre les processus** ; chaque nœud agentic peut toujours exécuter une boucle complète.
+
+« Graph » est surchargé en pratique. Trois usages se mélangent :
+
+| Usage | Exemple | Rôle |
+|---|---|---|
+| **Graphe de flux de contrôle** | LangGraph `StateGraph` : arêtes conditionnelles, tentatives, interruption/reprise | Machine d'état pour déterminer qui s'exécute ensuite |
+| **Graphe de dépendances de tâches** | Claude Code Tasks `blockedBy` ; FIM One `depends_on` | Planifier et paralléliser le travail |
+| **Graphe de connaissances** | Entités et relations typées | Récupération / mémoire (pas orchestration) |
+
+Cette page porte sur les deux premiers (orchestration).
+
+### Pas « Dify Workflow avec un nouveau nom »
+
+Les **workflows visuels** de style Dify et l'ingénierie de graphes partagent une origine commune (**topologie explicite**) mais ce ne sont pas le même produit.
+
+| | Workflow visuel classique (ex. Dify) | Ingénierie de graphes (usage 2026) |
+|---|---|---|
+| **Artefact principal** | Canevas / schéma que l'implémenteur dessine | Topologie en tant que conception système versionnée (code ou config) |
+| **Nœuds** | Blocs de capacité fixes (LLM, HTTP, KB, condition…) | **Hétérogènes** : fonctions, routeurs, **agents complets**, humains, jointures |
+| **Où réside l'intelligence** | Principalement dans les nœuds LLM isolés ; le graphe est un tuyau | Souvent **à l'intérieur des nœuds** (chacun peut être une boucle) ; le graphe organise les rôles |
+| **Arêtes** | Succès/échec du pipeline et branches | Flux de contrôle **et** transitions d'état, incluant **cycles contrôlés** |
+| **Humain dans la boucle** | Formulaires / approbations comme modules complémentaires | Interruption / reprise en tant que primitives de première classe |
+| **Relation à la boucle** | Souvent vendu comme « Workflow **vs** Agent » | Explicitement **Graphe plutôt que Boucle** |
+
+Forme courte : le Workflow classique est un **tuyau déterministe (ou semi-déterministe)** avec des étapes LLM occasionnelles. L'ingénierie de graphes est une **topologie système multi-nœuds**, où les postes critiques peuvent toujours être des agents autonomes.
+
+```mermaid
+flowchart LR
+  subgraph classic["Classic visual Workflow"]
+    A1[HTTP] --> A2[LLM] --> A3[Condition] --> A4[Notify]
+  end
+  subgraph ge["Graph engineering shape"]
+    B1[Router] --> B2[Agent loop]
+    B1 --> B3[Agent loop]
+    B2 --> B4[Join / state]
+    B3 --> B4
+    B4 --> B5[Human gate]
+    B5 -->|retry / rework| B2
+  end
+```
+
+### Comment la carte industrielle s'inscrit dans FIM One
+
+FIM One couvre déjà l'ensemble du spectre de contrôle ; le mode « Planner » du chat n'en est qu'une partie.
+
+| Idée industrielle | Élément FIM One le plus proche | Adéquation |
+|---|---|---|
+| Workflow visuel classique | **Workflow Engine** (blueprint au moment de la conception) | Forte |
+| Graphe de flux de contrôle + HITL + état durable | Étapes humaines du workflow + portes de confirmation ; partiel sur DAG de chat | Moyenne |
+| Graphe de dépendances de tâches + planification parallèle | **DAGPlanner** (`depends_on`, fan-out topologique) | Forte pour la planification ; plus faible pour HITL en milieu de graphe |
+| Boucle d'agent unique + mémoire de checklist | **ReAct** (`update_plan`, outils, `ask_user_question`) | Forte |
+| Plan dessiné par LLM à l'exécution à chaque tour | **DAGPlanner** (pas Dify ; pas DSL de conception de LangGraph) | Produit distinct |
+
+```mermaid
+flowchart TB
+  subgraph industry["Industry labels"]
+    GE["Graph engineering"]
+    Loop["Loop engineering"]
+    WF["Visual Workflow tradition"]
+  end
+  subgraph fim["FIM One"]
+    W["Workflow Engine<br/>design-time graph"]
+    D["DAGPlanner<br/>runtime task graph"]
+    R["ReAct Agent<br/>loop + plan board + ASK"]
+  end
+  WF --> W
+  GE --> W
+  GE --> D
+  Loop --> R
+  GE -.->|"nodes may contain loops"| R
+  D -->|"each step is already a ReAct agent"| R
+```
+
+### Graph engineering vs FIM One DAG (chat Planner)
+
+Même famille (topologie multi-étapes explicite). Espèces différentes.
+
+| Dimension | Graph engineering (typique) | FIM One DAG (chat) |
+|---|---|---|
+| **Qui dessine le graphe** | Développeur / implémenteur (topologie stable) | **LLM à l'exécution** (nouveau graphe par objectif) |
+| **Signification des arêtes** | Souvent **flux de contrôle** (où ensuite, y compris les cycles) | Principalement **dépendance / données** (`depends_on`, exécution acyclique) |
+| **Correction** | Retry au niveau des arêtes, nœud humain, reprendre le même graphe | **PlanAnalyzer → replan** (souvent un **nouveau** graphe) |
+| **Profondeur des nœuds** | Le nœud peut être une boucle agent complète | **Déjà ReAct complet par étape** : `DAGExecutor` exécute `agent.run()` avec une boucle d'outils multi-itération (limite par défaut de `DAG_STEP_MAX_ITERATIONS`, généralement 15). Le modèle par défaut est le registre **général** (pas d'infrastructure rapide) ; `model_hint` peut escalader vers le raisonnement ou rétrograder vers rapide. Le cache d'outils, la vérification des étapes/citations et la preuve des sources sont fournis avec chaque étape. Les agents d'étape définissent `enable_plan_tool=False` (pas de tableau `update_plan` à l'intérieur d'une étape) car l'unité de travail est déjà une sous-tâche ciblée. |
+| **État partagé** | État typé de première classe + récit de point de contrôle | Résultats d'étape + mémoire/compact ; les points de contrôle d'étape existent |
+| **Questions en cours d'exécution** | Interruption comme fonctionnalité produit | Les portes de confirmation existent ; **`ask_user_question` est ReAct uniquement** (boucle externe chat), pas une arête d'attente DAG de première classe |
+| **Entrée produit** | Framework ou organigramme backend | Mode visible par l'utilisateur à côté de ReAct |
+
+```mermaid
+flowchart TB
+  subgraph ge2["Graph engineering runtime"]
+    S[Shared state] --> N1[Node]
+    N1 -->|cond| N2[Node]
+    N2 -->|interrupt| H[Human]
+    H -->|resume| N3[Node]
+    N3 -->|cycle| N1
+  end
+  subgraph fimdag["FIM One DAG chat path"]
+    G[User goal] --> P[LLM Planner]
+    P --> J[JSON depends_on DAG]
+    J --> E[Topological executor]
+    E --> Z[PlanAnalyzer]
+    Z -->|not achieved / recoverable| P
+  end
+```
+
+**Implication :** la chaleur de l'industrie autour de l'ingénierie des graphes **valide le maintien d'un moteur de graphe/planification**. Elle **ne** nécessite pas un défaut chat qui force les utilisateurs à choisir « Planner » à chaque tour. La plupart des tâches veulent toujours une boucle forte ; les graphes se justifient sur les branches parallèles, les chemins de conformité fixes et l'orchestration multi-rôles.
+
+### Ce que FIM One peut apprendre (renforcer ReAct, DAG, Workflow)
+
+Des enseignements concrets, pas des slogans. Ordonnés par impact.
+
+| # | Idée d'ingénierie graphique | Appliquer à | Direction |
+|---|---|---|---|
+| 1 | **Graphe plutôt que boucle, pas à la place** | Produit + Routage automatique | L'UX par défaut reste **ReAct** (boucle + `update_plan` + `ask_user_question`). Utiliser DAG/Workflow quand la topologie justifie le coût. |
+| 2 | **Nœuds profonds hétérogènes** | DAG | **Déjà le statu quo.** Chaque étape est un agent ReAct complet (`agent.run`, outils multi-itération, modèle général ou meilleur par défaut), pas un appel LLM unique. Les paramètres restants sont optionnels (p. ex. tableau de plan sur les étapes longues), pas une lacune structurelle. |
+| 3 | **Interruption / reprise comme arêtes** | DAG + ReAct | La clarification en cours d'exécution appartient à la **boucle externe** ou comme état d'attente de première classe. Éviter les fausses étapes DAG qui « demandent à l'utilisateur » en texte puis replanifient comme « objectif non atteint ». |
+| 4 | **Cycles contrôlés vs replanification de graphe entier** | DAG | Préférer la nouvelle tentative locale / report partiel (déjà partiellement vrai pour les étapes complétées) plutôt que de déverser tout le texte d'étape comme réponse finale échouée. |
+| 5 | **État partagé typé le long des arêtes** | DAG + Workflow | Des contrats plus forts pour l'E/S des étapes (schéma, livrables) réduisent la fausse confiance de l'Analyseur et la dérive réponse/source. |
+| 6 | **Topologie comme actif versionné** | Workflow | Conserver les graphes créés par l'humain pour l'audit ; ne pas s'attendre à ce que les DAG LLM d'exécution remplacent les plans de conformité. |
+| 7 | **Honnêteté : « la plupart des tâches n'ont jamais besoin de graphe »** | Auto + docs | Router clarification-et-choix, Q&A court et travail exploratoire vers ReAct ; réserver DAG pour le travail parallèle décomposable. |
+
+**Anti-motifs à éviter lors de la « création de graphe » :**
+
+- Utiliser un **graphe de dépendances** pour simuler une **machine d'état humaine** (« attendre les réponses » multi-étapes sans primitive d'attente).
+- Assimiler **`update_plan`** de ReAct (mémoire de liste de contrôle) à l'ingénierie graphique (topologie de planification).
+- Livrer la chaleur graphique comme une deuxième personnalité de chat au lieu de **composition moteur** (boucle externe, planification interne si nécessaire).
+- Décrire les étapes DAG de FIM One comme des « appels LLM peu profonds » : cela sous-estime le moteur et induit en erreur les décisions produit.
 
 ## Cinq types de « planification » dans le paysage des outils IA
 
@@ -62,22 +203,22 @@ flowchart TB
 
 L'idée clé : **Claude Code Teams et FIM One DAG implémentent les trois mêmes niveaux, simplement avec des mécaniques de niveau 2 différentes** — passage de messages vs résolution d'arêtes de dépendance.
 
-## Runtime Complet : FIM One vs Claude Code Teams
+## Full-Power Runtime: FIM One vs Claude Code Teams
 
-Les deux sont de véritables Agents — la boucle centrale est identique : **Percevoir → Raisonner → Agir → Retour d'information**. La différence réside dans la façon dont ils orchestrent le travail parallèle à pleine capacité.
+Both are genuine Agents — the core loop is identical: **Perceive → Reason → Act → Feedback**. The difference lies in how they orchestrate parallel work at full capacity.
 
 | Dimension | Claude Code Teams | FIM One DAG |
 |---|---|---|
-| **Modèle parallèle** | Le Leader crée des SubAgents, assigne les tâches via messages | Tri topologique auto-parallélise les étapes indépendantes |
-| **Graphe de tâches** | TaskList avec arêtes `blockedBy` / `blocks` (DAG dynamique) | DAG JSON statique avec arêtes `depends_on` |
-| **Coordination** | Passage de messages explicite (SendMessage / Broadcast) | Arêtes de dépendance implicites — pas de messages, juste flux de données |
-| **Cycle de vie de l'Agent** | Pool dynamique — agents créés à la demande, arrêtés une fois terminés | Exécuteurs d'étapes fixes — un appel LLM par étape |
-| **Retour d'information et correction** | Chaque SubAgent réessaie de manière autonome ; le Leader réassigne en cas d'échec | PlanAnalyzer évalue les résultats → Boucle de Re-Planification (jusqu'à 3 tours) |
-| **Implication humaine** | Approbation du mode Plan, puis exécution autonome | Entièrement automatique — PlanAnalyzer décide de l'approbation/re-planification |
-| **Gestion du contexte** | Chaque SubAgent obtient une fenêtre de contexte isolée (pas de contamination croisée) | DbMemory partagée + LLM Compact sur toutes les étapes |
-| **Économie de tokens** | `N agents × tokens par agent` — temps↓ tokens↑ (coût multiplicatif) | Séquentiel ou parallélisme peu profond — tokens totaux plus bas |
-| **Modèle de mise à l'échelle** | Ajouter plus de SubAgents (horizontal, couplage par messages) | Ajouter plus de branches DAG (horizontal, couplage par dépendances) |
-| **Mieux adapté pour** | Tâches diverses et peu liées (recherche + code + test) | Flux de travail structurés avec dépendances de données claires |
+| **Parallel model** | Leader spawns SubAgents, assigns tasks via messages | Topological sort auto-parallelizes independent steps |
+| **Task graph** | TaskList with `blockedBy` / `blocks` edges (dynamic DAG) | Static JSON DAG with `depends_on` edges |
+| **Coordination** | Explicit message passing (SendMessage / Broadcast) | Implicit dependency edges — no messages, just data flow |
+| **Agent lifecycle** | Dynamic pool — agents spawned on demand, shut down when done | Per-step **ReAct agents** (fresh agent per step via `_resolve_agent`); each step runs a full multi-iteration tool loop |
+| **Feedback & correction** | Each SubAgent retries autonomously; Leader re-assigns on failure | PlanAnalyzer evaluates outcomes → Re-Planning loop (up to 3 rounds); completed steps can carry into the next plan |
+| **Human involvement** | Plan mode approval, then autonomous execution | Fully automatic — PlanAnalyzer decides pass/replan (chat-level ASK is ReAct-only) |
+| **Context management** | Each SubAgent gets isolated context window (no cross-contamination) | Shared DbMemory + LLM Compact across the turn; each step agent still sees its task + dependency results, not a full peer transcript |
+| **Token economics** | `N agents × per-agent tokens` — time↓ tokens↑ (multiplicative cost) | Parallel branches cost more than serial ReAct, but shared memory and step caps usually stay below multi-agent team spend |
+| **Scaling pattern** | Add more SubAgents (horizontal, message-coupled) | Add more DAG branches (horizontal, dependency-coupled) |
+| **Best suited for** | Diverse, loosely-related tasks (research + code + test) | Structured workflows with clear data dependencies |
 
 ### Benchmark du monde réel : Système RAG v0.5
 
@@ -91,14 +232,14 @@ Claude Code Teams a construit l'ensemble du sous-système RAG v0.5 de FIM One en
 
 Cela démontre le compromis fondamental : **parallélisme temporel au prix d'une multiplication des tokens**. Claude Code Teams échange des dollars de calcul contre des heures de développeur.
 
-### Converger, non concurrencer
+### Convergence, pas concurrence
 
-La frontière entre « collaboration d'équipe » et « planification de pipeline » s'estompe :
+La frontière entre « collaboration d'équipe » et « ordonnancement de pipeline » s'estompe :
 
-- **Les `blockedBy`/`blocks` de Claude Code Teams SONT un DAG** — les tâches ont des arêtes de dépendance explicites, et le leader distribue les tâches nouvellement débloquées à mesure que les prédécesseurs se terminent. C'est de la planification topologique avec des étapes supplémentaires (messages).
-- **Le DAG de FIM One pourrait bénéficier de l'autonomie des agents** — au lieu d'appels LLM uniques par étape, laisser chaque étape exécuter une boucle ReAct complète gérerait mieux les sous-tâches complexes.
+- **Les `blockedBy`/`blocks` de Claude Code Teams SONT un DAG** — les tâches ont des arêtes de dépendance explicites, et le leader distribue les tâches nouvellement débloquées au fur et à mesure que les prédécesseurs se terminent. C'est de l'ordonnancement topologique avec des étapes supplémentaires (messages).
+- **Les étapes DAG de FIM One sont déjà des agents ReAct complets** — la couche 3 n'est pas aspirationnelle. Chaque étape exécute `agent.run()` avec des outils et des boucles multi-itération ; les différences par rapport à un tour de chat ReAct de haut niveau sont intentionnelles (pas de tableau de plan par étape, pas d'attente `ask_user_question` au niveau du chat, modèle choisi par `model_hint` / défaut général).
 
-**Conclusion :** Même essence d'agent, philosophies parallèles convergentes. Claude Code suit un modèle de **collaboration d'équipe** — un Leader délègue aux Workers qui communiquent via des messages. FIM One suit un modèle de **planification de pipeline** — un DAG Executor distribue les étapes en fonction de la résolution des dépendances. En pratique, les deux implémentent l'exécution parallèle pilotée par les dépendances ; la différence réside dans les frais généraux de coordination (messages vs arêtes) et l'économie des tokens (contextes isolés vs mémoire partagée). L'architecture optimale combine probablement les deux : planification DAG pour les pipelines structurés, pools d'agents pour les tâches qui nécessitent un raisonnement multi-étapes autonome.
+**Conclusion :** Même essence d'agent, philosophies parallèles convergentes. Claude Code suit un modèle de **collaboration d'équipe** — un Leader délègue aux Workers qui communiquent via des messages. FIM One suit un modèle de **ordonnancement de pipeline** — un DAG Executor distribue les **étapes ReAct** en fonction de la résolution des dépendances. En pratique, les deux implémentent l'exécution parallèle pilotée par les dépendances ; la différence réside dans les frais généraux de coordination (messages vs arêtes), l'isolation (agents pairs vs tâche + résultats de dépendance) et l'économie des tokens. L'écart produit n'est pas tant « transformer les nœuds en agents » que **quand ordonnancer un graphe vs rester dans une boucle de chat unique**, plus les **arêtes d'attente humaine** où le graphe ne peut pas s'arrêter.
 
 ## Dégradation de la sortie structurée
 
@@ -114,27 +255,33 @@ Chaque niveau basé sur le texte réessaie une fois avec une invite de reformata
 
 Cette conception signifie que la même invite fonctionne de manière fiable sur GPT-4 (FC natif), Claude (mode JSON) et les modèles locaux (texte brut), avec une gestion des erreurs cohérente et une logique de nouvelle tentative en un seul endroit au lieu d'être dispersées sur quatre sites d'appel.
 
-## Trois couches d'exécution : Spectre de contrôle
+## Three Execution Layers: Control Spectrum
 
-Les cinq approches de planification ci-dessus décrivent le paysage. Au sein de FIM One lui-même, trois couches d'exécution offrent un **spectre de contrôle** — du contrôle humain total à l'autonomie complète de l'IA :
+Les cinq approches de planification ci-dessus décrivent le paysage. Au sein de FIM One lui-même, trois couches d'exécution offrent un **spectre de contrôle** allant du contrôle humain total à l'autonomie complète de l'IA. Par rapport à l'ingénierie de graphes : **Workflow** est le produit de graphe au moment de la conception ; **DAGPlanner** est un graphe de tâches à l'exécution ; **ReAct** est l'ingénierie de boucles (avec mémoire optionnelle du tableau de planification, pas un graphe d'ordonnancement).
 
-| Couche | Graphe défini par | Graphe existe quand ? | Idéal pour |
-|---|---|---|---|
-| **Moteur de flux de travail** | Utilisateur (canevas visuel / blueprint JSON) | Temps de conception | Processus déterministes, pistes d'audit/conformité, automatisation planifiée par cron, orchestration non-IA |
-| **DAGPlanner** | LLM (décompose automatiquement l'objectif) | Temps d'exécution | Tâches multi-étapes décomposables avec des limites de sous-tâches claires |
-| **Agent ReAct** | Aucun (boucle itérative) | Jamais — pas de graphe | Tâches exploratoires, conversationnelles ou d'affinement itératif |
+| Couche | Graphe défini par | Le graphe existe quand ? | Rôle d'ingénierie de graphes | Idéal pour |
+|---|---|---|---|---|
+| **Workflow Engine** | Utilisateur (canevas visuel / blueprint JSON) | Moment de la conception | Closest to classic visual Workflow + durable process topology | Processus déterministes, pistes d'audit/conformité, automatisation planifiée par cron |
+| **DAGPlanner** | LLM (décompose automatiquement l'objectif) | Exécution | Graphe de dépendances de tâches + ordonnancement parallèle + analyse des résultats | Travail multi-étapes décomposable avec des limites de sous-tâches claires |
+| **ReAct Agent** | Aucun (boucle itérative) | Jamais comme graphe d'ordonnancement | Couche de boucle ; les nœuds dans un graphe plus large peuvent être des agents ReAct | Exploratoire, conversationnel, clarifier puis agir, raffinement itératif |
 
 Le principe de conception : **donner aux utilisateurs exactement autant de contrôle qu'ils le souhaitent**.
 
-- Besoin de prouver que chaque approbation de prêt passe par cinq étapes spécifiques ? → Flux de travail.
+- Besoin de prouver que chaque approbation de prêt passe par cinq étapes spécifiques ? → Workflow.
 - Besoin de rechercher trois sujets en parallèle puis synthétiser ? → DAG.
-- Besoin de rédiger et affiner jusqu'à satisfaction ? → Agent.
-- Pas sûr ? → `execution_mode: "auto"` permet au LLM de classifier la requête et de router vers DAG ou ReAct à l'exécution.
+- Besoin de rédiger, affiner ou poser des questions structurées en cours d'exécution ? → ReAct.
+- Pas sûr ? → `execution_mode: "auto"` classe la requête et l'achemine vers DAG ou ReAct à l'exécution (préférer ReAct quand l'objectif est principalement une clarification ou une courte exploration).
 
 Cette stratification est ce qui distingue FIM One des outils à paradigme unique :
 
-- **Dify** offre uniquement la couche Flux de travail (DAGs visuels statiques).
-- **LangGraph** offre uniquement un DSL de graphe au niveau du code (topologie définie par le développeur, routage dynamique — structurellement équivalent aux flux de travail visuels mais nécessitant Python).
-- **Manus** offre uniquement la couche Agent (exécution autonome, pas de structure définie par l'utilisateur).
+- **Dify** met l'accent sur la couche Workflow (graphes visuels statiques ou semi-statiques).
+- **LangGraph** met l'accent sur un DSL de graphe de flux de contrôle au niveau du code (topologie définie par le développeur, routage dynamique, points de contrôle). Structurellement lié aux workflows visuels, exprimé sous forme de logiciel.
+- **Les agents de classe Manus** mettent l'accent sur la couche Agent/boucle (exécution autonome, peu de structure définie par l'utilisateur).
 
-FIM One couvre les trois couches, plus le routage automatique entre elles. La progression d'abstraction — graphe défini par l'utilisateur → graphe généré par LLM → pas de graphe du tout — reflète une tendance plus large de l'industrie : à mesure que les modèles deviennent plus capables, les structures d'orchestration explicites deviennent optionnelles plutôt que obligatoires.
+FIM One couvre les trois couches, plus le routage automatique entre les moteurs de chat. La progression **graphe défini par l'utilisateur → graphe de tâches généré par LLM → pas de graphe d'ordonnancement** correspond à une honnêteté plus large de l'industrie : à mesure que les modèles s'améliorent, **la topologie explicite devient optionnelle pour la plupart des tours**, pas obligatoire dans l'interface utilisateur. La chaleur de l'ingénierie de graphes est une raison d'**investir dans les moteurs et la composition**, pas de forcer chaque chat à travers un planificateur.
+
+### Documentation connexe
+
+- [Moteur ReAct](/architecture/react-engine) — boucle, outils, tableau de planification, questions de clarification
+- [Moteur DAG](/architecture/dag-engine) — planificateur, exécuteur, analyseur, replanification
+- [Paysage concurrentiel](/strategy/competitive-landscape) — positionnement de Dify / Manus / Coze

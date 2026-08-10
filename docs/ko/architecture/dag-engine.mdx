@@ -5,6 +5,8 @@ description: "FIM One의 DAG 엔진 작동 방식 — 동적 계획, 병렬 실�
 mode: "wide"
 ---
 
+이 엔진이 업계 **그래프 엔지니어링**, 클래식 시각적 워크플로우 및 ReAct 루프와 어떻게 관련되는지는 [Planning Landscape](/architecture/planning-landscape)를 참조하세요.
+
 ## 파이프라인
 
 DAG 모드는 복잡한 목표를 방향성 비순환 그래프(DAG)의 단계로 분해하고, 최대 병렬성으로 실행한 후 목표가 실제로 달성되었는지 반영합니다. 그렇지 않으면 다시 계획하고 시도합니다 — 자동으로, 구성 가능한 예산까지.
