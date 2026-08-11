@@ -102,6 +102,34 @@ class TestGenerateSuggestionsHelper:
         assert items == ["Why?", "How?", "What next?"]
 
     @pytest.mark.asyncio
+    async def test_prompt_requires_user_voice_not_reverse_interview(self) -> None:
+        """Chips become the user's next message; ban assistant-interview tone.
+
+        Regression guard for preference-poll chips like
+        「你更偏好…还是…？」that read as the assistant questioning the user.
+        """
+        from fim_one.web.api.chat import _generate_suggestions
+
+        fake_llm = MagicMock()
+        fake_message = MagicMock()
+        fake_message.content = "[]"
+        fake_result = MagicMock()
+        fake_result.message = fake_message
+        fake_result.usage = None
+        fake_llm.chat = AsyncMock(return_value=fake_result)
+
+        await _generate_suggestions(fake_llm, "推荐几部恐怖片", "…", count=3)
+
+        assert fake_llm.chat.await_count == 1
+        messages = fake_llm.chat.await_args.args[0]
+        system = messages[0].content
+        user = messages[1].content
+        assert "user would type" in system.lower() or "USER would type" in system
+        assert "NEVER reverse roles" in system
+        assert "你更偏好" in system  # explicit Chinese anti-pattern
+        assert "user → assistant" in user
+
+    @pytest.mark.asyncio
     async def test_returns_empty_when_llm_declines(self) -> None:
         """The prompt allows ``[]`` for closure turns (thanks, farewells)."""
         from fim_one.web.api.chat import _generate_suggestions

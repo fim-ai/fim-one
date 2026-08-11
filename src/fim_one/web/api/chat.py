@@ -483,20 +483,39 @@ async def _generate_suggestions(
             if lang_directive
             else "- Match the language of the original query (e.g. Chinese query -> Chinese questions).\n"
         )
+        # Chips are injected as the user's next message when clicked, so
+        # every item must read in the user's voice (requesting the
+        # assistant), never as the assistant interviewing the user.
         system_prompt = (
-            "You generate concise follow-up questions that a user might naturally ask "
-            "after receiving an answer. The questions should explore different angles: "
-            "deeper detail, related topics, or practical next steps.\n\n"
+            "You write short follow-up chips a user can click to send as "
+            "their next message after reading an answer.\n\n"
+            "Voice (critical):\n"
+            "- Phrase each chip as something the USER would type to the "
+            "assistant — a request or question directed at the assistant.\n"
+            "- NEVER reverse roles. Do not write preference surveys, "
+            "multi-choice polls, or interviewer questions such as "
+            "\"Which do you prefer…?\", \"你更偏好…还是…?\", "
+            "\"What are your priorities?\", or \"Would you like A or B?\".\n"
+            "- Prefer concrete, self-contained asks (deeper detail on a "
+            "named point, alternatives, how/where/when/why about items "
+            "already in the answer, practical next steps).\n"
+            "- Do not restate the original query without a new angle; "
+            "avoid near-duplicates across chips.\n\n"
             "Rules:\n"
-            f"- Return AT MOST {count} questions; fewer is fine.\n"
-            "- If the exchange doesn't invite further discussion (greetings, "
-            "thanks, farewells, brief acknowledgements), return an empty "
-            "JSON array [].\n"
-            "- Each question must be a single sentence, under 80 characters.\n"
+            f"- Return AT MOST {count} items; fewer is fine.\n"
+            "- If the exchange doesn't invite further discussion "
+            "(greetings, thanks, farewells, brief acknowledgements), "
+            "return an empty JSON array [].\n"
+            "- Each item: single sentence, under 80 characters.\n"
             f"{lang_rule}"
             "- Return ONLY a JSON array of strings, no other text."
         )
-        user_content = f"User query: {query}\n\nAssistant answer (truncated): {truncated_answer}"
+        user_content = (
+            f"User query: {query}\n\n"
+            f"Assistant answer (truncated): {truncated_answer}\n\n"
+            "Write chips the user would click to send next "
+            "(user → assistant only)."
+        )
 
         # This call sits inline between ``done`` and ``end``, so its latency
         # is directly visible as the chips' load time.  Reasoning-capable
