@@ -232,16 +232,14 @@ ReAct 및 DAG 실행 **이전**에 실행되는 독립적인 LLM 기반 도메�
 
 | 변수 | 필수 | 기본값 | 설명 |
 |---|---|---|---|
-| `JINA_API_KEY` | 아니오 | — | Jina API 키. 서비스별 키가 설정되지 않았을 때 **검색, 가져오기, 임베딩 및 재순위 지정**을 위한 공유 폴백으로 작동합니다. [jina.ai](https://jina.ai/)에서 발급받으세요 |
-| `TAVILY_API_KEY` | 아니오 | — | Tavily Search API 키 (설정되어 있고 `WEB_SEARCH_PROVIDER`가 설정되지 않은 경우 자동 선택) |
-| `BRAVE_API_KEY` | 아니오 | — | Brave Search API 키 (설정되어 있고 `WEB_SEARCH_PROVIDER`가 설정되지 않은 경우 자동 선택) |
-| `EXA_API_KEY` | 아니오 | — | Exa Search API 키 (설정되어 있고 `WEB_SEARCH_PROVIDER`가 설정되지 않은 경우 자동 선택). [exa.ai](https://exa.ai/)에서 발급받으세요 |
-| `WEB_SEARCH_PROVIDER` | 아니오 | `jina` | 검색 제공자 선택: `jina` / `tavily` / `brave` / `exa` |
-| `WEB_FETCH_PROVIDER` | 아니오 | `jina` (키가 설정된 경우, 그 외 `httpx`) | 가져오기 제공자: `jina` (Jina Reader API 사용) / `httpx` (직접 HTTP 요청, API 키 불필요) |
+| `JINA_API_KEY` | 아니오 | — | Jina API 키. **기본** 검색 백엔드를 구동하며, 서비스별 키가 설정되지 않았을 때 **fetch, embedding, reranker**의 공유 폴백으로 작동합니다. [jina.ai](https://jina.ai/)에서 발급받으세요 |
+| `TAVILY_API_KEY` | 아니오 | — | Tavily Search API 키. `WEB_SEARCH_PROVIDER=tavily`일 때 필수이며, 제공자가 설정되지 않았을 때 자동 감지에서도 사용됩니다 |
+| `BRAVE_API_KEY` | 아니오 | — | Brave Search API 키. `WEB_SEARCH_PROVIDER=brave`일 때 필수이며, 제공자가 설정되지 않았을 때 자동 감지에서도 사용됩니다 |
+| `EXA_API_KEY` | 아니오 | — | Exa Search API 키. `WEB_SEARCH_PROVIDER=exa`일 때 필수이며, 제공자가 설정되지 않았을 때 자동 감지에서도 사용됩니다. [Exa](/integrations/exa)를 참조하세요. [exa.ai](https://exa.ai/)에서 발급받으세요 |
+| `WEB_SEARCH_PROVIDER` | 아니오 | `jina` | 검색 제공자 선택: `jina` (기본값) / `tavily` / `brave` / `exa`. 기본값이 아닌 제공자를 사용할 때는 명시적으로 설정하는 것을 권장합니다 |
+| `WEB_FETCH_PROVIDER` | 아니오 | `jina` (키가 설정된 경우, 그렇지 않으면 `httpx`) | Fetch 제공자: `jina` (Jina Reader API 사용) / `httpx` (직접 HTTP 요청, API 키 불필요) |
 
-> **빠른 시작 팁**: `JINA_API_KEY`만 설정하면 웹 검색, 웹 가져오기, 임베딩 및 재순위 지정이 모두 한 번에 활성화됩니다 — 하나의 키로 네 가지 서비스를 이용할 수 있습니다. 아래 변수를 사용하여 각 서비스를 개별적으로 재정의할 수 있습니다.
-
----
+> **빠른 시작 팁**: `JINA_API_KEY`만 설정하면 기본 웹 검색 스택, 웹 fetch, embedding, reranking을 활성화할 수 있습니다 — 하나의 키로 네 가지 서비스를 이용할 수 있습니다. `WEB_SEARCH_PROVIDER`와 일치하는 API 키로 검색을 Tavily, Brave 또는 Exa로 전환하세요.
 
 ## RAG 및 지식 기반 (권장)
 

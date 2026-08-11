@@ -234,16 +234,14 @@ FIM One从`LLM_BASE_URL`解析提供商（加上配置时的显式提供商字�
 
 | 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `JINA_API_KEY` | 否 | — | Jina API 密钥。当未设置特定服务密钥时，作为**搜索、获取、嵌入和重排序**的共享备用方案。在 [jina.ai](https://jina.ai/) 获取 |
-| `TAVILY_API_KEY` | 否 | — | Tavily 搜索 API 密钥（如果设置且 `WEB_SEARCH_PROVIDER` 未设置，则自动选择） |
-| `BRAVE_API_KEY` | 否 | — | Brave 搜索 API 密钥（如果设置且 `WEB_SEARCH_PROVIDER` 未设置，则自动选择） |
-| `EXA_API_KEY` | 否 | — | Exa 搜索 API 密钥（如果设置且 `WEB_SEARCH_PROVIDER` 未设置，则自动选择）。在 [exa.ai](https://exa.ai/) 获取 |
-| `WEB_SEARCH_PROVIDER` | 否 | `jina` | 搜索提供商选择器：`jina` / `tavily` / `brave` / `exa` |
-| `WEB_FETCH_PROVIDER` | 否 | `jina`（如果密钥已设置，否则 `httpx`） | 获取提供商：`jina`（使用 Jina Reader API）/ `httpx`（直接 HTTP 请求，无需 API 密钥） |
+| `JINA_API_KEY` | 否 | — | Jina API 密钥。为**默认**搜索后端提供支持，并在未设置服务特定密钥时充当**获取、嵌入和重排序**的共享备用方案。在 [jina.ai](https://jina.ai/) 获取 |
+| `TAVILY_API_KEY` | 否 | — | Tavily 搜索 API 密钥。当 `WEB_SEARCH_PROVIDER=tavily` 时必需；如果提供商未设置，自动检测也会使用它 |
+| `BRAVE_API_KEY` | 否 | — | Brave 搜索 API 密钥。当 `WEB_SEARCH_PROVIDER=brave` 时必需；如果提供商未设置，自动检测也会使用它 |
+| `EXA_API_KEY` | 否 | — | Exa 搜索 API 密钥。当 `WEB_SEARCH_PROVIDER=exa` 时必需；如果提供商未设置，自动检测也会使用它。参见 [Exa](/integrations/exa)。在 [exa.ai](https://exa.ai/) 获取 |
+| `WEB_SEARCH_PROVIDER` | 否 | `jina` | 搜索提供商选择器：`jina`（默认）/ `tavily` / `brave` / `exa`。使用非默认提供商时建议明确设置此项 |
+| `WEB_FETCH_PROVIDER` | 否 | `jina`（如果设置了密钥，否则为 `httpx`） | 获取提供商：`jina`（使用 Jina Reader API）/ `httpx`（直接 HTTP 请求，无需 API 密钥） |
 
-> **快速开始提示**：仅设置 `JINA_API_KEY` 即可同时启用网页搜索、网页获取、嵌入和重排序——一个密钥，四项服务。您可以使用下面的变量单独覆盖每项服务。
-
----
+> **快速开始提示**：仅设置 `JINA_API_KEY` 即可启用默认 Web 搜索堆栈、Web 获取、嵌入和重排序——一个密钥，四项服务。通过 `WEB_SEARCH_PROVIDER` 和匹配的 API 密钥将搜索切换到 Tavily、Brave 或 Exa。
 
 ## RAG 与知识库（推荐）
 

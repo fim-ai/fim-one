@@ -1,10 +1,10 @@
 ---
 title: "Exa"
 icon: "magnifying-glass"
-description: "Use Exa as the default web search provider in FIM One agents — neural, fast, deep-reasoning, and instant modes with sensible defaults."
+description: "Optional Exa web search backend for FIM One agents — neural, fast, deep-reasoning, and instant modes with sensible defaults."
 ---
 
-[Exa](https://exa.ai) is integrated as a first-class web search backend in FIM One. Agents get access to the full Exa search surface — `auto` (Exa's recommended default), `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, and `instant` — plus structured content retrieval (highlights, text, summaries) and rich filtering (categories, include/exclude domains, date ranges, and max-age windows). Sensible defaults ship out of the box, so downstream developers get Exa best practices without manual tuning.
+[Exa](https://exa.ai) is available as an optional web search backend in FIM One. When you enable it, agents get access to the full Exa search surface — `auto` (Exa's recommended search type), `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, and `instant` — plus structured content retrieval (highlights, text, summaries) and rich filtering (categories, include/exclude domains, date ranges, and max-age windows). Sensible Exa-side defaults ship out of the box, so you get Exa best practices without manual tuning.
 
 ## Why Exa in FIM One
 
@@ -19,26 +19,20 @@ description: "Use Exa as the default web search provider in FIM One agents — n
 
 Sign up at [exa.ai](https://exa.ai) and grab your API key from the dashboard.
 
-### 2. Set the key in FIM One
+### 2. Enable Exa in FIM One
 
 Add to your `.env`:
-
-```bash
-EXA_API_KEY=your_key_here
-```
-
-That's it. If `WEB_SEARCH_PROVIDER` is unset, FIM One auto-selects Exa when `EXA_API_KEY` is present.
-
-To make Exa explicit:
 
 ```bash
 WEB_SEARCH_PROVIDER=exa
 EXA_API_KEY=your_key_here
 ```
 
+Set both variables so `web_search` routes through Exa. Prefer an explicit `WEB_SEARCH_PROVIDER=exa` over relying on key auto-detect alone.
+
 ### 3. Use it from any agent
 
-Web search is exposed to agents as a built-in tool — no extra wiring needed. Agents with `web_search` enabled will automatically route through Exa.
+Web search is exposed to agents as a built-in tool — no extra wiring needed. With Exa configured as above, agents that have `web_search` enabled route search calls through Exa.
 
 ## Configuration
 

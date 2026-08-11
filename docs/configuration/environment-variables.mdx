@@ -238,14 +238,14 @@ Comma-separated names of guardrails that inspect the *content* of input or outpu
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `JINA_API_KEY` | No | — | Jina API key. Acts as a shared fallback for **search, fetch, embedding, and reranker** when no service-specific key is set. Get yours at [jina.ai](https://jina.ai/) |
-| `TAVILY_API_KEY` | No | — | Tavily Search API key (auto-selected if set and `WEB_SEARCH_PROVIDER` is unset) |
-| `BRAVE_API_KEY` | No | — | Brave Search API key (auto-selected if set and `WEB_SEARCH_PROVIDER` is unset) |
-| `EXA_API_KEY` | No | — | Exa Search API key (auto-selected if set and `WEB_SEARCH_PROVIDER` is unset). Get yours at [exa.ai](https://exa.ai/) |
-| `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` / `tavily` / `brave` / `exa` |
+| `JINA_API_KEY` | No | — | Jina API key. Powers the **default** search backend, and acts as a shared fallback for **fetch, embedding, and reranker** when no service-specific key is set. Get yours at [jina.ai](https://jina.ai/) |
+| `TAVILY_API_KEY` | No | — | Tavily Search API key. Required when `WEB_SEARCH_PROVIDER=tavily`; also used by auto-detect if the provider is unset |
+| `BRAVE_API_KEY` | No | — | Brave Search API key. Required when `WEB_SEARCH_PROVIDER=brave`; also used by auto-detect if the provider is unset |
+| `EXA_API_KEY` | No | — | Exa Search API key. Required when `WEB_SEARCH_PROVIDER=exa`; also used by auto-detect if the provider is unset. See [Exa](/integrations/exa). Get yours at [exa.ai](https://exa.ai/) |
+| `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` (default) / `tavily` / `brave` / `exa`. Prefer setting this explicitly when using a non-default provider |
 | `WEB_FETCH_PROVIDER` | No | `jina` (if key set, else `httpx`) | Fetch provider: `jina` (uses Jina Reader API) / `httpx` (direct HTTP request, no API key needed) |
 
-> **Quick start tip**: Setting just `JINA_API_KEY` enables web search, web fetch, embedding, and reranking all at once — one key, four services. You can override each service individually with the variables below.
+> **Quick start tip**: Setting just `JINA_API_KEY` enables the default web search stack, plus web fetch, embedding, and reranking — one key, four services. Switch search to Tavily, Brave, or Exa with `WEB_SEARCH_PROVIDER` and the matching API key.
 
 ---
 

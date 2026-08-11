@@ -228,20 +228,18 @@ ReAct と DAG 実行の**前に**実行される独立した LLM ベースのド
 |---|---|---|---|
 | ~~`SYSTEM_PROMPT_RESERVE`~~ | — | — | **削除されました。** 以前はコンテキスト予算からシステムプロンプト用に固定の4K予約を差し引いていました。ContextGuardがメッセージリストトークンを推定する際にシステムプロンプトを既に含めているため、二重計算が発生していました。予算計算式は現在`(context_size - max_output_tokens) × 0.92`です（マージンはトークン推定エラーを吸収します）。システムプロンプトの実際のサイズは動的に考慮されます |
 
-## Webツール（オプション）
+## Web Tools (オプション)
 
-| 変数 | 必須 | デフォルト | 説明 |
+| Variable | Required | Default | Description |
 |---|---|---|---|
-| `JINA_API_KEY` | いいえ | — | Jina APIキー。**検索、フェッチ、埋め込み、リランカー**のための共有フォールバックとして機能します（サービス固有のキーが設定されていない場合）。[jina.ai](https://jina.ai/)で取得してください |
-| `TAVILY_API_KEY` | いいえ | — | Tavily Search APIキー（設定されており`WEB_SEARCH_PROVIDER`が未設定の場合は自動選択） |
-| `BRAVE_API_KEY` | いいえ | — | Brave Search APIキー（設定されており`WEB_SEARCH_PROVIDER`が未設定の場合は自動選択） |
-| `EXA_API_KEY` | いいえ | — | Exa Search APIキー（設定されており`WEB_SEARCH_PROVIDER`が未設定の場合は自動選択）。[exa.ai](https://exa.ai/)で取得してください |
-| `WEB_SEARCH_PROVIDER` | いいえ | `jina` | 検索プロバイダーセレクター：`jina` / `tavily` / `brave` / `exa` |
-| `WEB_FETCH_PROVIDER` | いいえ | `jina`（キーが設定されている場合、それ以外は`httpx`） | フェッチプロバイダー：`jina`（Jina Reader APIを使用） / `httpx`（直接HTTPリクエスト、APIキー不要） |
+| `JINA_API_KEY` | No | — | Jina API キー。**デフォルト**検索バックエンドを提供し、サービス固有のキーが設定されていない場合は**fetch、embedding、reranker**の共有フォールバックとして機能します。[jina.ai](https://jina.ai/) で取得してください |
+| `TAVILY_API_KEY` | No | — | Tavily Search API キー。`WEB_SEARCH_PROVIDER=tavily` の場合に必須です。プロバイダーが未設定の場合は自動検出でも使用されます |
+| `BRAVE_API_KEY` | No | — | Brave Search API キー。`WEB_SEARCH_PROVIDER=brave` の場合に必須です。プロバイダーが未設定の場合は自動検出でも使用されます |
+| `EXA_API_KEY` | No | — | Exa Search API キー。`WEB_SEARCH_PROVIDER=exa` の場合に必須です。プロバイダーが未設定の場合は自動検出でも使用されます。[Exa](/integrations/exa) を参照してください。[exa.ai](https://exa.ai/) で取得してください |
+| `WEB_SEARCH_PROVIDER` | No | `jina` | 検索プロバイダーセレクター：`jina`（デフォルト）/ `tavily` / `brave` / `exa`。デフォルト以外のプロバイダーを使用する場合は、明示的に設定することをお勧めします |
+| `WEB_FETCH_PROVIDER` | No | `jina`（キーが設定されている場合）/ `httpx`（それ以外） | Fetch プロバイダー：`jina`（Jina Reader API を使用）/ `httpx`（直接 HTTP リクエスト、API キー不要） |
 
-> **クイックスタートのヒント**：`JINA_API_KEY`を設定するだけで、Web検索、Webフェッチ、埋め込み、リランキングがすべて一度に有効になります — 1つのキーで4つのサービスが利用できます。以下の変数で各サービスを個別にオーバーライドできます。
-
----
+> **クイックスタートのヒント**：`JINA_API_KEY` を設定するだけで、デフォルト Web 検索スタック、Web fetch、embedding、reranking が有効になります——1 つのキーで 4 つのサービスが利用できます。`WEB_SEARCH_PROVIDER` と対応する API キーで検索を Tavily、Brave、または Exa に切り替えることができます。
 
 ## RAG & ナレッジベース（推奨）
 

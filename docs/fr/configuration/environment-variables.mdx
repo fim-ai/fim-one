@@ -232,16 +232,14 @@ Noms de garde-fous séparés par des virgules qui inspectent le *contenu* des en
 
 | Variable | Requis | Par défaut | Description |
 |---|---|---|---|
-| `JINA_API_KEY` | Non | — | Clé API Jina. Agit comme un fallback partagé pour **search, fetch, embedding, et reranker** quand aucune clé spécifique au service n'est définie. Obtenez la vôtre sur [jina.ai](https://jina.ai/) |
-| `TAVILY_API_KEY` | Non | — | Clé API Tavily Search (sélectionnée automatiquement si définie et `WEB_SEARCH_PROVIDER` n'est pas défini) |
-| `BRAVE_API_KEY` | Non | — | Clé API Brave Search (sélectionnée automatiquement si définie et `WEB_SEARCH_PROVIDER` n'est pas défini) |
-| `EXA_API_KEY` | Non | — | Clé API Exa Search (sélectionnée automatiquement si définie et `WEB_SEARCH_PROVIDER` n'est pas défini). Obtenez la vôtre sur [exa.ai](https://exa.ai/) |
-| `WEB_SEARCH_PROVIDER` | Non | `jina` | Sélecteur de fournisseur de recherche : `jina` / `tavily` / `brave` / `exa` |
+| `JINA_API_KEY` | Non | — | Clé API Jina. Alimente le backend de recherche **par défaut** et agit comme solution de secours partagée pour **fetch, embedding et reranker** quand aucune clé spécifique au service n'est définie. Obtenez la vôtre sur [jina.ai](https://jina.ai/) |
+| `TAVILY_API_KEY` | Non | — | Clé API Tavily Search. Requise quand `WEB_SEARCH_PROVIDER=tavily` ; également utilisée par la détection automatique si le fournisseur n'est pas défini |
+| `BRAVE_API_KEY` | Non | — | Clé API Brave Search. Requise quand `WEB_SEARCH_PROVIDER=brave` ; également utilisée par la détection automatique si le fournisseur n'est pas défini |
+| `EXA_API_KEY` | Non | — | Clé API Exa Search. Requise quand `WEB_SEARCH_PROVIDER=exa` ; également utilisée par la détection automatique si le fournisseur n'est pas défini. Voir [Exa](/integrations/exa). Obtenez la vôtre sur [exa.ai](https://exa.ai/) |
+| `WEB_SEARCH_PROVIDER` | Non | `jina` | Sélecteur de fournisseur de recherche : `jina` (par défaut) / `tavily` / `brave` / `exa`. Préférez définir ceci explicitement quand vous utilisez un fournisseur non-par défaut |
 | `WEB_FETCH_PROVIDER` | Non | `jina` (si clé définie, sinon `httpx`) | Fournisseur de fetch : `jina` (utilise l'API Jina Reader) / `httpx` (requête HTTP directe, aucune clé API nécessaire) |
 
-> **Conseil de démarrage rapide** : Définir simplement `JINA_API_KEY` active la recherche web, le fetch web, l'embedding et le reranking en même temps — une clé, quatre services. Vous pouvez remplacer chaque service individuellement avec les variables ci-dessous.
-
----
+> **Conseil de démarrage rapide** : Définir simplement `JINA_API_KEY` active la pile de recherche web par défaut, plus fetch, embedding et reranking — une clé, quatre services. Basculez la recherche vers Tavily, Brave ou Exa avec `WEB_SEARCH_PROVIDER` et la clé API correspondante.
 
 ## RAG et Base de Connaissances (Recommandé)
 
