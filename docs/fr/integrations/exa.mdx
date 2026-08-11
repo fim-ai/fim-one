@@ -1,17 +1,17 @@
 ---
 title: "Exa"
 icon: "magnifying-glass"
-description: "Backend de recherche web Exa optionnel pour les agents FIM One — modes neural, fast, deep-reasoning et instant avec des paramètres par défaut judicieux."
+description: "Backend de recherche web Exa optionnel pour les agents FIM One — modes neural, fast, deep-reasoning et instant avec des paramètres par défaut sensés."
 ---
 
-[Exa](https://exa.ai) est disponible en tant que backend de recherche web optionnel dans FIM One. Lorsque vous l'activez, les agents ont accès à toute la surface de recherche Exa — `auto` (type de recherche recommandé par Exa), `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning` et `instant` — ainsi qu'à la récupération de contenu structuré (highlights, texte, résumés) et au filtrage avancé (catégories, inclusion/exclusion de domaines, plages de dates et fenêtres d'âge maximal). Les paramètres par défaut judicieux côté Exa sont fournis d'emblée, vous bénéficiez donc des meilleures pratiques Exa sans réglage manuel.
+[Exa](https://exa.ai) est disponible en tant que backend de recherche web optionnel dans FIM One. Lorsque vous l'activez, les agents ont accès à toute la surface de recherche Exa — `auto` (type de recherche recommandé par Exa), `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning` et `instant` — plus la récupération de contenu structuré (highlights, texte, résumés) et le filtrage avancé (catégories, inclusion/exclusion de domaines, plages de dates et fenêtres d'âge maximum). Les paramètres par défaut sensés côté Exa sont fournis d'emblée, vous bénéficiez donc des meilleures pratiques Exa sans réglage manuel.
 
 ## Pourquoi Exa dans FIM One
 
-- **Recherche neuronale pour le raisonnement des agents** — La recherche native par embedding d'Exa retourne des résultats sémantiquement pertinents, pas seulement des correspondances de mots-clés. C'est crucial pour les agents de recherche qui raisonnent sur du contenu web.
-- **Mode de raisonnement profond pour les requêtes complexes** — raisonnement multi-sauts en un seul appel sur le web ouvert, sans que l'agent n'ait besoin d'orchestrer lui-même des sous-requêtes.
-- **Extraction de contenu intégrée** — les surlignages + texte + résumés optionnels arrivent avec l'appel de recherche, éliminant un second aller-retour pour récupérer et nettoyer le contenu de la page.
-- **Contrôles stricts du domaine et de la récence** — listes d'inclusions/exclusions de domaines (jusqu'à 1200 entrées), fenêtres de dates ISO-8601, et `maxAgeHours` pour les workflows sensibles au temps.
+- **Recherche neuronale pour le raisonnement des agents** — La recherche native par embedding d'Exa retourne des résultats sémantiquement pertinents, pas seulement des correspondances de mots-clés. C'est crucial pour les agents de recherche qui raisonnent sur le contenu web.
+- **Mode de raisonnement profond pour les requêtes complexes** — raisonnement multi-hop en un seul appel sur le web ouvert, sans que l'agent n'ait besoin d'orchestrer des sous-requêtes.
+- **Extraction de contenu intégrée** — les surlignages + texte + résumés optionnels arrivent avec l'appel de recherche, éliminant un deuxième aller-retour pour récupérer et nettoyer le contenu de la page.
+- **Contrôles stricts du domaine et de la récence** — listes d'inclusion/exclusion de domaines (jusqu'à 1200 entrées), fenêtres de date ISO-8601, et `maxAgeHours` pour les workflows sensibles au temps.
 
 ## Démarrage rapide
 
@@ -54,7 +54,7 @@ All Exa-specific knobs have sensible defaults. Override any of them via environm
 
 ### Comment les extraits sont assemblés
 
-FIM One parcourt en cascade les champs de contenu d'Exa pour produire un extrait utile sur chaque résultat, indépendamment des types de contenu que l'API a remplis :
+FIM One parcourt en cascade les champs de contenu d'Exa pour produire un extrait utile sur chaque résultat, quel que soit les types de contenu que l'API a remplis :
 
 1. `highlights` (joints avec ` … `) — préféré quand présent
 2. `text` — revient au texte d'article extrait, tronqué à `EXA_TEXT_MAX_CHARS`
@@ -90,7 +90,7 @@ EXA_SUMMARY_QUERY=What is the key finding and its supporting evidence?
 
 ## Attribution
 
-Chaque requête Exa provenant de FIM One porte un en-tête `x-exa-integration: fim-one` afin qu'Exa puisse attribuer l'utilisation de l'API à cette intégration dans les tableaux de bord des responsables. Ceci est utilisé uniquement pour l'attribution au niveau de l'intégration — aucune identification ou suivi d'utilisateur final.
+Chaque requête Exa provenant de FIM One inclut un en-tête `x-exa-integration: fim-one` pour qu'Exa puisse attribuer l'utilisation de l'API à cette intégration dans les tableaux de bord des mainteneurs. Ceci est utilisé uniquement pour l'attribution au niveau de l'intégration — aucune identification ou suivi des utilisateurs finaux.
 
 Le connecteur Exa se trouve à [`src/fim_one/core/web/search/exa.py`](https://github.com/fim-ai/fim-one/blob/master/src/fim_one/core/web/search/exa.py) et suit le même protocole `BaseWebSearch` que Jina, Tavily et Brave — changer de fournisseur ne nécessite qu'une modification de variable d'environnement.
 

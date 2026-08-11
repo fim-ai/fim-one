@@ -1,23 +1,23 @@
 ---
 title: "Exa"
 icon: "magnifying-glass"
-description: "FIM One智能体的可选Exa网络搜索后端——支持神经、快速、深度推理和即时模式，配置合理的默认值。"
+description: "FIM One智能体的可选Exa网络搜索后端——神经、快速、深度推理和即时模式，具有合理的默认设置。"
 ---
 
-[Exa](https://exa.ai)在FIM One中作为可选的网络搜索后端提供。启用后，智能体可以访问完整的Exa搜索功能——`auto`（Exa推荐的搜索类型）、`neural`、`fast`、`deep-lite`、`deep`、`deep-reasoning`和`instant`——以及结构化内容检索（高亮、文本、摘要）和丰富的筛选选项（分类、包含/排除域名、日期范围和最大期限窗口）。Exa端合理的默认值开箱即用，让你无需手动调优就能获得Exa最佳实践。
+[Exa](https://exa.ai)在FIM One中作为可选的网络搜索后端提供。启用后，智能体可以访问完整的Exa搜索界面——`auto`（Exa推荐的搜索类型）、`neural`、`fast`、`deep-lite`、`deep`、`deep-reasoning`和`instant`——以及结构化内容检索（高亮、文本、摘要）和丰富的过滤选项（分类、包含/排除域名、日期范围和最大期限窗口）。合理的Exa端默认设置开箱即用，因此您可以获得Exa最佳实践，无需手动调整。
 
 ## 为什么在 FIM One 中使用 Exa
 
 - **用于智能体推理的神经搜索** — Exa 的嵌入原生搜索返回语义相关的结果，而不仅仅是关键词匹配。这对于需要对网络内容进行推理的研究智能体至关重要。
-- **针对复杂查询的深度推理模式** — 在开放网络上进行单次调用的多跳推理，无需智能体自身编排子查询。
-- **内置内容提取** — 高亮、文本和可选摘要随搜索调用一起返回，消除了获取和清理页面内容所需的第二次往返。
-- **严格的域名和时效性控制** — 包括/排除域名列表（最多 1200 个条目）、ISO-8601 日期窗口和 `maxAgeHours`，适用于时间敏感的工作流。
+- **用于复杂查询的深度推理模式** — 在开放网络上进行单次调用的多跳推理，无需智能体自己编排子查询。
+- **内置内容提取** — 高亮、文本和可选摘要随搜索调用一起返回，消除了获取和清理页面内容的第二次往返。
+- **严格的域名/时效性控制** — 包括/排除域名列表（最多 1200 个条目）、ISO-8601 日期窗口和 `maxAgeHours` 用于时间敏感的工作流。
 
 ## 快速开始
 
-### 1. 获取Exa API密钥
+### 1. 获取 Exa API 密钥
 
-在[exa.ai](https://exa.ai)注册并从仪表板获取您的API密钥。
+在 [exa.ai](https://exa.ai) 注册并从仪表板获取你的 API 密钥。
 
 ### 2. 在 FIM One 中启用 Exa
 
@@ -36,33 +36,33 @@ EXA_API_KEY=your_key_here
 
 ## 配置
 
-所有Exa特定的配置都有合理的默认值。通过环境变量覆盖其中任何一个：
+所有Exa特定的参数都有合理的默认值。可通过环境变量覆盖任何参数：
 
 | 变量 | 默认值 | 描述 |
 |---|---|---|
-| `EXA_API_KEY` | — | **必需。** 你的Exa API密钥。 |
-| `EXA_SEARCH_TYPE` | `auto` | 以下之一：`auto`、`neural`、`fast`、`deep-lite`、`deep`、`deep-reasoning`、`instant`。 |
-| `EXA_CATEGORY` | — | 以下之一：`company`、`research paper`、`news`、`personal site`、`financial report`、`people`。 |
-| `EXA_INCLUDE_DOMAINS` | — | 逗号分隔的允许列表（最多1200个条目）。 |
-| `EXA_EXCLUDE_DOMAINS` | — | 逗号分隔的阻止列表（最多1200个条目）。 |
+| `EXA_API_KEY` | — | **必需。** 您的Exa API密钥。 |
+| `EXA_SEARCH_TYPE` | `auto` | 可选值：`auto`、`neural`、`fast`、`deep-lite`、`deep`、`deep-reasoning`、`instant`。 |
+| `EXA_CATEGORY` | — | 可选值：`company`、`research paper`、`news`、`personal site`、`financial report`、`people`。 |
+| `EXA_INCLUDE_DOMAINS` | — | 逗号分隔的允许列表（最多1200项）。 |
+| `EXA_EXCLUDE_DOMAINS` | — | 逗号分隔的阻止列表（最多1200项）。 |
 | `EXA_START_PUBLISHED_DATE` | — | ISO-8601格式，例如`2025-01-01`。 |
 | `EXA_END_PUBLISHED_DATE` | — | ISO-8601格式。 |
-| `EXA_MAX_AGE_HOURS` | — | 仅返回在过去N小时内索引的页面。 |
+| `EXA_MAX_AGE_HOURS` | — | 仅返回过去N小时内索引的页面。 |
 | `EXA_INCLUDE_HIGHLIGHTS` | `true` | 从结果中提取高亮片段。 |
 | `EXA_TEXT_MAX_CHARS` | `800` | 每个结果的文本/片段长度上限。 |
-| `EXA_SUMMARY_QUERY` | — | 可选的每个结果的自定义摘要提示词。 |
+| `EXA_SUMMARY_QUERY` | — | 可选的每个结果自定义摘要提示词。 |
 
-### 片段如何组装
+### 代码片段如何组装
 
-FIM One在Exa的内容字段中级联，以在每个结果上生成有用的片段，无论API填充了哪些内容类型：
+FIM One 通过级联遍历 Exa 的内容字段来在每个结果上生成有用的代码片段，无论 API 填充了哪些内容类型：
 
-1. `highlights`（用` … `连接）——存在时优先使用
-2. `text` ——回退到提取的文章文本，截断到`EXA_TEXT_MAX_CHARS`
-3. `summary` ——当上述两者都为空时使用
+1. `highlights`（用 ` … ` 连接）— 存在时优先使用
+2. `text` — 回退到提取的文章文本，截断至 `EXA_TEXT_MAX_CHARS`
+3. `summary` — 当上述两者都为空时使用
 
-这保证了下游智能体始终有非空片段可用于推理，即使对于Exa无法提取高亮的结果也是如此。
+这保证了下游智能体始终有非空的代码片段可用于推理，即使对于 Exa 无法提取高亮的结果也是如此。
 
-### 预设：新闻监测
+### 预设：新闻监控
 
 ```bash
 EXA_SEARCH_TYPE=fast
@@ -71,7 +71,7 @@ EXA_MAX_AGE_HOURS=24
 EXA_TEXT_MAX_CHARS=1200
 ```
 
-# 预设：研究论文检索
+### 预设：研究论文检索
 
 ```bash
 EXA_SEARCH_TYPE=neural

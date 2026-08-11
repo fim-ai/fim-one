@@ -1,17 +1,17 @@
 ---
 title: "Exa"
 icon: "magnifying-glass"
-description: "Optionales Exa-Web-Such-Backend für FIM One-Agenten — neuronale, schnelle, tiefe Reasoning- und Instant-Modi mit sinnvollen Standardwerten."
+description: "Optionales Exa-Web-Such-Backend für FIM One-Agenten — Neural-, Fast-, Deep-Reasoning- und Instant-Modi mit sinnvollen Standardwerten."
 ---
 
-[Exa](https://exa.ai) ist als optionales Web-Such-Backend in FIM One verfügbar. Wenn Sie es aktivieren, erhalten Agenten Zugriff auf die vollständige Exa-Such-Oberfläche — `auto` (Exas empfohlener Suchtyp), `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning` und `instant` — sowie strukturierte Inhaltsabfrage (Highlights, Text, Zusammenfassungen) und umfangreiche Filterung (Kategorien, Domains einschließen/ausschließen, Datumsbereiche und Max-Age-Fenster). Sinnvolle Exa-seitige Standardwerte werden standardmäßig bereitgestellt, sodass Sie Best Practices von Exa ohne manuelle Abstimmung erhalten.
+[Exa](https://exa.ai) ist als optionales Web-Such-Backend in FIM One verfügbar. Wenn Sie es aktivieren, erhalten Agenten Zugriff auf die gesamte Exa-Such-Oberfläche — `auto` (Exas empfohlener Suchtyp), `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning` und `instant` — sowie strukturierte Inhaltsabfrage (Highlights, Text, Zusammenfassungen) und umfangreiche Filterung (Kategorien, Domänen einschließen/ausschließen, Datumsbereiche und Max-Age-Fenster). Sinnvolle Exa-seitige Standardwerte werden standardmäßig bereitgestellt, sodass Sie Best Practices von Exa ohne manuelle Abstimmung erhalten.
 
 ## Warum Exa in FIM One
 
-- **Neural-Suche für Agent-Reasoning** — Exa's Embedding-native Suche liefert semantisch relevante Ergebnisse, nicht nur Keyword-Matches. Das ist wichtig für Research-Agenten, die über Web-Inhalte nachdenken.
-- **Deep-Reasoning-Modus für schwierige Anfragen** — Single-Call Multi-Hop-Reasoning über das offene Web, ohne dass der Agent Sub-Queries selbst orchestriert.
-- **Integrierte Content-Extraktion** — Highlights + Text + optionale Zusammenfassungen werden mit dem Such-Call geliefert, wodurch eine zweite Round-Trip zum Abrufen und Bereinigen von Seiteninhalten entfällt.
-- **Enge Domain- / Aktualitätskontrollen** — Include/Exclude-Domain-Listen (bis zu 1200 Einträge), ISO-8601-Datumsfenster und `maxAgeHours` für zeitkritische Workflows.
+- **Neural Search für Agent-Reasoning** — Exa's Embedding-native Suche liefert semantisch relevante Ergebnisse, nicht nur Keyword-Treffer. Das ist wichtig für Research-Agenten, die über Web-Inhalte nachdenken.
+- **Deep-Reasoning-Modus für schwierige Anfragen** — Single-Call Multi-Hop-Reasoning über das offene Web, ohne dass der Agent Sub-Queries selbst orchestrieren muss.
+- **Integrierte Content-Extraktion** — Highlights + Text + optionale Zusammenfassungen werden mit dem Such-Call bereitgestellt, was eine zweite Roundtrip zum Abrufen und Bereinigen von Seiteninhalten eliminiert.
+- **Enge Domain- / Aktualitätskontrollen** — umfasst Include/Exclude-Domain-Listen (bis zu 1200 Einträge), ISO-8601-Datumsfenster und `maxAgeHours` für zeitkritische Workflows.
 
 ## Schnelleinstieg
 
@@ -21,7 +21,7 @@ Melden Sie sich bei [exa.ai](https://exa.ai) an und holen Sie sich Ihren API-Sch
 
 ### 2. Exa in FIM One aktivieren
 
-Fügen Sie zu Ihrer `.env` hinzu:
+Fügen Sie Folgendes zu Ihrer `.env` hinzu:
 
 ```bash
 WEB_SEARCH_PROVIDER=exa
@@ -32,7 +32,7 @@ Setzen Sie beide Variablen, damit `web_search` über Exa läuft. Bevorzugen Sie 
 
 ### 3. Nutzen Sie es von jedem Agent aus
 
-Die Websuche wird Agenten als integriertes Tool zur Verfügung gestellt — keine zusätzliche Verkabelung erforderlich. Mit Exa, das wie oben konfiguriert ist, leiten Agenten, die `web_search` aktiviert haben, Suchanfragen durch Exa weiter.
+Die Websuche wird Agenten als integriertes Tool bereitgestellt — keine zusätzliche Verkabelung erforderlich. Mit Exa, das wie oben konfiguriert ist, leiten Agenten, bei denen `web_search` aktiviert ist, Suchanfragen über Exa weiter.
 
 ## Konfiguration
 
@@ -40,11 +40,11 @@ Alle Exa-spezifischen Parameter haben sinnvolle Standardwerte. Überschreiben Si
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `EXA_API_KEY` | — | **Erforderlich.** Ihr Exa API-Schlüssel. |
+| `EXA_API_KEY` | — | **Erforderlich.** Ihr Exa-API-Schlüssel. |
 | `EXA_SEARCH_TYPE` | `auto` | Einer von `auto`, `neural`, `fast`, `deep-lite`, `deep`, `deep-reasoning`, `instant`. |
 | `EXA_CATEGORY` | — | Einer von `company`, `research paper`, `news`, `personal site`, `financial report`, `people`. |
-| `EXA_INCLUDE_DOMAINS` | — | Kommagetrennte Allowlist (max. 1200 Einträge). |
-| `EXA_EXCLUDE_DOMAINS` | — | Kommagetrennte Blocklist (max. 1200 Einträge). |
+| `EXA_INCLUDE_DOMAINS` | — | Komma-getrennte Allowlist (max. 1200 Einträge). |
+| `EXA_EXCLUDE_DOMAINS` | — | Komma-getrennte Blocklist (max. 1200 Einträge). |
 | `EXA_START_PUBLISHED_DATE` | — | ISO-8601, z. B. `2025-01-01`. |
 | `EXA_END_PUBLISHED_DATE` | — | ISO-8601. |
 | `EXA_MAX_AGE_HOURS` | — | Nur Seiten zurückgeben, die in den letzten N Stunden indexiert wurden. |
@@ -54,13 +54,13 @@ Alle Exa-spezifischen Parameter haben sinnvolle Standardwerte. Überschreiben Si
 
 ### Wie Snippets zusammengestellt werden
 
-FIM One durchläuft kaskadenförmig die Inhaltsfelder von Exa, um auf jedem Ergebnis ein nützliches Snippet zu erzeugen, unabhängig davon, welche Inhaltstypen die API gefüllt hat:
+FIM One durchläuft kaskadenförmig die Inhaltsfelder von Exa, um bei jedem Ergebnis ein nützliches Snippet zu erzeugen, unabhängig davon, welche Inhaltstypen die API gefüllt hat:
 
 1. `highlights` (verbunden mit ` … `) — bevorzugt, wenn vorhanden
-2. `text` — fällt zurück auf extrahierten Artikeltext, gekürzt auf `EXA_TEXT_MAX_CHARS`
-3. `summary` — wird verwendet, wenn beide oben genannten leer sind
+2. `text` — Fallback auf extrahierter Artikeltext, gekürzt auf `EXA_TEXT_MAX_CHARS`
+3. `summary` — verwendet, wenn beide oben genannten leer sind
 
-Dies garantiert, dass nachgelagerte Agenten immer ein nicht-leeres Snippet zum Analysieren haben, selbst für Ergebnisse, bei denen Exa keine Highlights extrahieren konnte.
+Dies garantiert, dass nachgelagerte Agenten immer ein nicht-leeres Snippet zum Analysieren haben, auch bei Ergebnissen, bei denen Exa keine Highlights extrahieren konnte.
 
 ### Voreinstellung: Nachrichtenüberwachung
 
@@ -71,7 +71,7 @@ EXA_MAX_AGE_HOURS=24
 EXA_TEXT_MAX_CHARS=1200
 ```
 
-### Preset: research paper retrieval
+### Voreinstellung: Abruf von Forschungsarbeiten
 
 ```bash
 EXA_SEARCH_TYPE=neural
