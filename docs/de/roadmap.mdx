@@ -69,6 +69,18 @@ Nachverfolgter Bugs, die in der Produktion reproduzierbar sind, aber noch nicht 
 
 - **Playground-Stopp-und-Wiederholung zeigt vorübergehende visuelle Artefakte, die ein Seitenaktualisierung immer behebt.** Drei gleichzeitige Render-Quellen — `activeConversation.messages` (DB-Snapshot), der SSE-`messages`-Stream und der optimistische `pendingQuery`-Platzhalter — werden nicht in einen einzelnen abgeleiteten Zustand zusammengefasst, sodass zwischen dem Klicken auf „Wiederholen" und der Ankunft der gepaarten Assistentantwort die Benutzeroberfläche (a) kurzzeitig dieselbe Abfrage zweimal im Pre-Stream-Fenster rendern kann, (b) vorherige verwaiste Benutzerblasen aus dem Wiederholungsverlauf löschen kann, während `hasLiveMessages` wahr ist und bevor der Snapshot neu geladen wird, und (c) im engen Fenster zwischen dem SSE-„done"-Ereignis und der nächsten `selectConversation`-Aktualisierung flackern kann. **Daten gehen niemals verloren** — jede Benutzernachricht (einschließlich abgebrochener Wiederholungen) wird in `conversation.messages` beibehalten, über `normalize_alternating_messages` in den nächsten LLM-Aufruf übernommen und nach der Aktualisierung über `HistoryTurn.orphanUserContents` (eingeführt in der Render-Behebung `48ba08c6`) korrekt gerendert. Zum Kontext: Claudes eigene Web-Benutzeroberfläche weist eine analoge Klasse von Bugs auf — das Stoppen mitten in einer Antwort und das sofortige Senden einer Folgeanfrage verzweigt die Folgeanfrage manchmal als Geschwister-Bearbeitungszweig der ersten Abfrage, anstatt sie als neue Runde anzuhängen — daher ist dies ein bekanntes schwieriges Problem in optimistischen UI + SSE + persistierten Verlaufsdesigns, kein FIM-One-spezifischer Defekt. Eine ordnungsgemäße Behebung erfordert das Zusammenfassen der drei Render-Quellen in einen einzelnen abgeleiteten Zustand; aufgeschoben bis zu einer umfassenderen Playground-Zustandsmaschinen-Umgestaltung.
 
+## Architecture Program — Agent Core {/* dev: dev/dsh-lessons/README.md */}
+
+Scoped, not yet scheduled into a version. Batches are dependency-ordered; each expands into concrete tasks in the companion design.
+
+- [ ] **Governance**: bug-class defensive-patterns doc, design-note lifecycle states, markdown link gate.
+- [ ] **Session event log**: every model-visible input becomes a durable, ordered fact, with model history derived from it.
+- [ ] **Runtime invariants + keyless snapshot replay**: assert owned relationships in production; diff assembled transcripts in CI without a key.
+- [ ] **Tool pipeline seams**: pre/execute/post stages so permission, timeout, sandbox and background work leave the agent loop.
+- [ ] **Code Mode preset**: one program composes several connector calls through the same pipeline, replacing multi-round-trip orchestration.
+- [ ] **Agent presets as declared capability sets**, plus plan and background state recorded as log facts rather than side files.
+- [ ] **Typed frontend from OpenAPI** and generated tool/env catalogs, replacing hand-maintained copies that drift.
+
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
 Aufgeschobene Härtung — nicht blockierend; nur aufgreifen, wenn das entsprechende Szenario auftritt.
@@ -360,9 +372,9 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 - [ ] Outbound-Muster: Fehleralerts, Budget-Warnungen, geplante Digests, Eskalation, Audit-Belege
 - [ ] WeCom / DingTalk Kanäle nach Feishu-Vorbild
 
-### Geparkt — signalgesteuert
+### Parked — signal-gated
 
-Starten Sie diese nicht ohne ihren Auslöser (siehe Neuplanung §3): Das MCP-Gateway wartet auf ≥2 unaufgeforderte „Mount your tools in my agent"-Anfragen; Channelization wartet auf eine Implementierer-Frage zur Lizenzierung; IdP/OrgSync wartet auf Kundenpull; der Rest wartet auf ein bereitgestelltes Engagement, das sie benötigt.
+Do not start these without their trigger (see the replan §3): the MCP gateway waits for ≥2 unsolicited "mount your tools in my agent" asks; channelization waits for an implementor asking about licensing; IdP/OrgSync waits for customer pull; the rest wait for a delivered engagement that needs them.
 
 - [ ] MCP gateway output — reverse-expose connector discover/execute as MCP tools for downstream agents
 - [ ] Channelization / white-label enablement — commercial-license path already in place
@@ -375,29 +387,29 @@ Starten Sie diese nicht ohne ihren Auslöser (siehe Neuplanung §3): Das MCP-Gat
 - [ ] Hook System extras — built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
 - [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
 - [ ] Prompt cache follow-ups — Gemini context cache adapter, per-agent `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/incremental-dag.md */}
+- [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/archive/incremental-dag.md */}
 - [ ] Ecosystem — scheduled/event-triggered agents, workflow trigger-identity observability, per-workflow `credential_policy`, DB Schema Advanced Builder, sandbox hardening v2
 
 ### Aus dem Pre-Replan v0.9-Plan ausgeliefert
 
-- [x] ~~Auth & Security: JWT Token-Type-Beschränkung + OAuth-Fixes (v0.8.7); PG Zeitzonen-bewusste Zeitstempel (v0.8.6); Force-Logout UTC + `POSTGRES_*` Override + SSRF IPv6-Mapped-Fix (v0.8.8); Owner-Fallback Opt-in + Visibility-Unified Binding + Webhook/Cron-Metering (v0.8.9)~~
-- [x] ~~Provider-Kompatibilität: Anthropic Adaptive Thinking + Shared LLM Pool Self-Heal (v0.8.8)~~
-- [x] ~~Content Guardrails v0: Tripwire Layer + Jailbreak Detector (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
-- [x] ~~Hook-System: Skeleton + FeishuGateHook + Approval Playground + ReAct/DAG Runtime (v0.8.5); PreToolUse Enforcement Fail-Closed (v0.8.8)~~
-- [x] ~~Feishu-Kanal Phase 1 + Task-Completion-Benachrichtigung (v0.8.5)~~
-- [x] ~~`run_workflow` Agent-Tool (v0.8.9); Reasoning-Details End-to-End beibehalten (v0.8.8); Workspace Tool-Output-Offloading in Chat integriert (v0.8.9)~~
-- [x] ~~Agent Loop Hardening: Plan Board, LLM-Call-Resilienz, Background Tools, Inkrementelles DAG-Replan + Checkpoint Resume, Compaction Tool-Pairing (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
+- [x] ~~Auth & security: JWT token-type confinement + OAuth fixes (v0.8.7); PG tz-aware timestamps (v0.8.6); force-logout UTC + `POSTGRES_*` override + SSRF IPv6-mapped fix (v0.8.8); owner-fallback opt-in + visibility-unified binding + webhook/cron metering (v0.8.9)~~
+- [x] ~~Provider compat: Anthropic adaptive thinking + shared LLM pool self-heal (v0.8.8)~~
+- [x] ~~Content guardrails v0: tripwire layer + jailbreak detector (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
+- [x] ~~Hook system: skeleton + FeishuGateHook + Approval Playground + ReAct/DAG runtime (v0.8.5); PreToolUse enforcement fail-closed (v0.8.8)~~
+- [x] ~~Feishu channel Phase 1 + task completion notification (v0.8.5)~~
+- [x] ~~`run_workflow` agent tool (v0.8.9); reasoning detail preserved end-to-end (v0.8.8); workspace tool-output offloading wired into chat (v0.8.9)~~
+- [x] ~~Agent loop hardening: plan board, LLM-call resilience, background tools, incremental DAG replan + checkpoint resume, compaction tool-pairing (v0.8.9)~~ {/* dev: dev/archive/incremental-dag.md */}
 
-- [x] ~~Circuit Breaker, Workflow Run Retention Cleanup, Workflow Version Diff Summaries~~ *(v0.8 / v0.8.1)*
-- [x] ~~DAG Quality Overhaul, Domain Model Escalation, Per-Model NFC Toggle~~ *(v0.8.1)*
-- [x] ~~DatabaseMetaTool, MCPServerMetaTool, On-Demand `request_tools`~~ *(v0.8.1)*
-- [x] ~~Workflow Connection Dep Auto-Subscribe, Workflow Real Executors~~ *(v0.8.1)*
+- [x] ~~Circuit breaker, Workflow run retention cleanup, Workflow version diff summaries~~ *(v0.8 / v0.8.1)*
+- [x] ~~DAG quality overhaul, Domain model escalation, Per-model NFC toggle~~ *(v0.8.1)*
+- [x] ~~DatabaseMetaTool, MCPServerMetaTool, On-demand `request_tools`~~ *(v0.8.1)*
+- [x] ~~Workflow Connection Dep Auto-Subscribe, Workflow real executors~~ *(v0.8.1)*
 - [x] ~~ReAct Cycle Detection, Completion Checklist~~ *(v0.8.1)*
-- [x] ~~Vorgefertigte Lösungsvorlagen (8 vertikale Bundles), Resource Fork (MCP/Skill/Agent/Connector/Workflow)~~ *(v0.8.1)*
-- [x] ~~Vision-Dokumentenverarbeitung (PDF / DOCX / PPTX), MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
+- [x] ~~Prebuilt Solution Templates (8 vertical bundles), Resource Fork (MCP/Skill/Agent/Connector/Workflow)~~ *(v0.8.1)*
+- [x] ~~Vision document processing (PDF / DOCX / PPTX), MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
 - [x] ~~Smart File Content Injection + `read_uploaded_file`~~ *(v0.8)*
-- [x] ~~Agent Core Phase 3: Conversation Recovery MVP, Compact Work Card, Turn Profiler, Per-User Rate Limiting~~ *(v0.8.3)*
-- [x] ~~Conversation Resume MVP, System Prompt Registry + Cache, Thinking-Block Persistence, Reasoning Replay Policy, Cache Observability~~ *(v0.8.4)*
+- [x] ~~Agent Core Phase 3: Conversation Recovery MVP, Compact Work Card, Turn Profiler, Per-user Rate Limiting~~ *(v0.8.3)*
+- [x] ~~Conversation resume MVP, System prompt registry + cache, Thinking-block persistence, Reasoning replay policy, Cache observability~~ *(v0.8.4)*
 
 ### v1.0 — Hot-Plug + Embeddable
 

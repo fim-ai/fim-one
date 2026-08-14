@@ -69,6 +69,18 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 - **Playground stop-and-retry shows transient visual artefacts that a page refresh always clears.** Three concurrent render sources — `activeConversation.messages` (DB snapshot), the SSE `messages` stream, and the optimistic `pendingQuery` placeholder — are not collapsed into a single derived state, so between clicking "Retry" and the paired assistant response landing, the UI can (a) briefly render the same query twice in the pre-stream window, (b) drop prior orphan user bubbles from the retry history while `hasLiveMessages` is true and before the snapshot reloads, and (c) flicker in the narrow window between the SSE "done" event and the next `selectConversation` refresh. **Data is never lost** — every user message (including aborted retries) is persisted in `conversation.messages`, carried into the next LLM call via `normalize_alternating_messages`, and rendered correctly after refresh via `HistoryTurn.orphanUserContents` introduced in the `48ba08c6` render fix. For context, Claude's own web UI exhibits an analogous class of bug — stopping mid-response and immediately sending a follow-up query sometimes forks the follow-up as a sibling-edit branch of the first query rather than appending it as a new turn — so this is a known hard problem in optimistic-UI + SSE + persisted-history designs, not a FIM-One-specific defect. A proper fix requires collapsing the three render sources into a single derived state; deferred until a broader Playground state-machine refactor.
 
+## Architecture Program — Agent Core {/* dev: dev/dsh-lessons/README.md */}
+
+Scoped, not yet scheduled into a version. Batches are dependency-ordered; each expands into concrete tasks in the companion design.
+
+- [ ] **Governance**: bug-class defensive-patterns doc, design-note lifecycle states, markdown link gate.
+- [ ] **Session event log**: every model-visible input becomes a durable, ordered fact, with model history derived from it.
+- [ ] **Runtime invariants + keyless snapshot replay**: assert owned relationships in production; diff assembled transcripts in CI without a key.
+- [ ] **Tool pipeline seams**: pre/execute/post stages so permission, timeout, sandbox and background work leave the agent loop.
+- [ ] **Code Mode preset**: one program composes several connector calls through the same pipeline, replacing multi-round-trip orchestration.
+- [ ] **Agent presets as declared capability sets**, plus plan and background state recorded as log facts rather than side files.
+- [ ] **Typed frontend from OpenAPI** and generated tool/env catalogs, replacing hand-maintained copies that drift.
+
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
 Deferred hardening — not blocking; pick up only if the matching scenario shows up.

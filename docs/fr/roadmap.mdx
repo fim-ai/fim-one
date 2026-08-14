@@ -69,6 +69,18 @@ Bugs suivis qui sont reproductibles en production mais pas encore corrigés. Cha
 
 - **L'arrêt et la nouvelle tentative du playground affichent des artefacts visuels transitoires qu'une actualisation de page efface toujours.** Trois sources de rendu concurrentes — `activeConversation.messages` (snapshot DB), le flux SSE `messages` et l'espace réservé optimiste `pendingQuery` — ne sont pas regroupées dans un seul état dérivé, donc entre le clic sur « Retry » et l'arrivée de la réponse de l'assistant appairée, l'interface utilisateur peut (a) brièvement afficher deux fois la même requête dans la fenêtre pré-flux, (b) supprimer les bulles utilisateur orphelines antérieures de l'historique de nouvelle tentative tandis que `hasLiveMessages` est vrai et avant le rechargement du snapshot, et (c) scintiller dans la fenêtre étroite entre l'événement SSE « done » et l'actualisation `selectConversation` suivante. **Les données ne sont jamais perdues** — chaque message utilisateur (y compris les nouvelles tentatives abandonnées) est conservé dans `conversation.messages`, transporté dans l'appel LLM suivant via `normalize_alternating_messages` et rendu correctement après actualisation via `HistoryTurn.orphanUserContents` introduit dans le correctif de rendu `48ba08c6`. Pour le contexte, l'interface web propre de Claude présente une classe analogue de bug — arrêter au milieu d'une réponse et envoyer immédiatement une requête de suivi crée parfois la requête de suivi en tant que branche d'édition sœur de la première requête plutôt que de l'ajouter en tant que nouveau tour — c'est donc un problème difficile connu dans les conceptions optimiste-UI + SSE + historique-persistant, et non un défaut spécifique à FIM One. Un correctif approprié nécessite de regrouper les trois sources de rendu dans un seul état dérivé ; reporté jusqu'à une refonte plus large de la machine d'état du Playground.
 
+## Architecture Program — Agent Core {/* dev: dev/dsh-lessons/README.md */}
+
+Scoped, not yet scheduled into a version. Batches are dependency-ordered; each expands into concrete tasks in the companion design.
+
+- [ ] **Governance**: bug-class defensive-patterns doc, design-note lifecycle states, markdown link gate.
+- [ ] **Session event log**: every model-visible input becomes a durable, ordered fact, with model history derived from it.
+- [ ] **Runtime invariants + keyless snapshot replay**: assert owned relationships in production; diff assembled transcripts in CI without a key.
+- [ ] **Tool pipeline seams**: pre/execute/post stages so permission, timeout, sandbox and background work leave the agent loop.
+- [ ] **Code Mode preset**: one program composes several connector calls through the same pipeline, replacing multi-round-trip orchestration.
+- [ ] **Agent presets as declared capability sets**, plus plan and background state recorded as log facts rather than side files.
+- [ ] **Typed frontend from OpenAPI** and generated tool/env catalogs, replacing hand-maintained copies that drift.
+
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
 Durcissement différé — ne bloque pas ; à reprendre uniquement si le scénario correspondant se présente.
@@ -360,23 +372,23 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 - [ ] Modèles sortants : alertes d'échec, avertissements de budget, digests programmés, escalade, reçus d'audit
 - [ ] Canaux WeCom / DingTalk suivant Feishu
 
-### Parqué — signal-gated
+### Parked — signal-gated
 
-Ne démarrez pas ces éléments sans leur déclencheur (voir replan §3) : la passerelle MCP attend ≥2 demandes non sollicitées « montez vos outils dans mon agent » ; la canalisation attend un implémenteur posant des questions sur les licences ; IdP/OrgSync attend un tirage client ; le reste attend un engagement livré qui en a besoin.
+Do not start these without their trigger (see the replan §3): the MCP gateway waits for ≥2 unsolicited "mount your tools in my agent" asks; channelization waits for an implementor asking about licensing; IdP/OrgSync waits for customer pull; the rest wait for a delivered engagement that needs them.
 
-- [ ] Sortie de passerelle MCP — exposer inversement la découverte/exécution du connecteur en tant qu'outils MCP pour les agents en aval
-- [ ] Canalisation / activation white-label — chemin de licence commerciale déjà en place
-- [ ] Module Identity Provider + réduction de canal — SSO Feishu, synchronisation du graphe org {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] Autorisation du connecteur Tier 2 (exiger des identifiants par utilisateur, liaison de clés, santé) + Tier 3 (échange de ticket de connexion) {/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] API publique Phase 2 — limites de débit par clé/quotas, versioning, SDK, portail développeur {/* dev: dev/public-api-phase2.md */}
-- [ ] Observabilité — Couche de trace d'agent (modèle Trace/Span, visionneuse de chronologie, export OTel) + tableau de bord des métriques {/* dev: dev/agent-trace-layer.md */}
-- [ ] Reste de l'espace de travail d'agent — notes de transfert, interface de navigateur de fichiers, rappel inter-sessions, segments de compaction (résumé lisible sur disque que l'agent relit) {/* dev: dev/agent-workspace.md */}
-- [ ] Guardrails v1 — filtre hors sujet, garde-fou de sortie de rédacteur PII, interface de configuration de garde-fou par agent
-- [ ] Extras du système de hooks — hooks intégrés, `SessionStart` + hooks YAML utilisateur {/* dev: dev/hook-system.md */}
-- [ ] Profondeur de plateforme de connecteur — Phase de divulgation progressive 3-4, configuration de connecteur YAML/JSON, connecteurs DB Phase 4 (Oracle / SQL Server / GBase), mise en commun de connexions MCP
-- [ ] Suites du cache de prompt — adaptateur de cache de contexte Gemini, `cache_ttl` par agent {/* dev: dev/prompt-cache-followups.md */}
-- [ ] Reprise DAG en milieu de flux à chaud — reconnexion SSE se réattache à un tour en cours (reprise par nouvelle tentative à froid déjà livrée) {/* dev: dev/incremental-dag.md */}
-- [ ] Écosystème — agents programmés/déclenchés par événement, observabilité d'identité de déclencheur de flux de travail, `credential_policy` par flux de travail, générateur de schéma DB avancé, durcissement de sandbox v2
+- [ ] MCP gateway output — reverse-expose connector discover/execute as MCP tools for downstream agents
+- [ ] Channelization / white-label enablement — commercial-license path already in place
+- [ ] Identity Provider module + Channel slim-down — Feishu SSO, org graph sync {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] Connector authorization Tier 2 (require per-user credentials, key-binding health) + Tier 3 (login-ticket exchange) {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] Public API Phase 2 — per-key rate limits/quotas, versioning, SDKs, developer portal {/* dev: dev/public-api-phase2.md */}
+- [ ] Observability — Agent Trace Layer (Trace/Span model, timeline viewer, OTel export) + metrics dashboard {/* dev: dev/agent-trace-layer.md */}
+- [ ] Agent Workspace remainder — handoff notes, file browser UI, cross-session recall, compaction segments (grep-able on-disk summary the agent reads back) {/* dev: dev/agent-workspace.md */}
+- [ ] Guardrails v1 — off-topic filter, PII redactor output guardrail, per-agent guardrail config UI
+- [ ] Hook System extras — built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
+- [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
+- [ ] Prompt cache follow-ups — Gemini context cache adapter, per-agent `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/archive/incremental-dag.md */}
+- [ ] Ecosystem — scheduled/event-triggered agents, workflow trigger-identity observability, per-workflow `credential_policy`, DB Schema Advanced Builder, sandbox hardening v2
 
 ### Livré du plan de pré-replan v0.9
 
@@ -386,7 +398,7 @@ Ne démarrez pas ces éléments sans leur déclencheur (voir replan §3) : la pa
 - [x] ~~Hook system: skeleton + FeishuGateHook + Approval Playground + ReAct/DAG runtime (v0.8.5); PreToolUse enforcement fail-closed (v0.8.8)~~
 - [x] ~~Feishu channel Phase 1 + task completion notification (v0.8.5)~~
 - [x] ~~`run_workflow` agent tool (v0.8.9); reasoning detail preserved end-to-end (v0.8.8); workspace tool-output offloading wired into chat (v0.8.9)~~
-- [x] ~~Agent loop hardening: plan board, LLM-call resilience, background tools, incremental DAG replan + checkpoint resume, compaction tool-pairing (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
+- [x] ~~Agent loop hardening: plan board, LLM-call resilience, background tools, incremental DAG replan + checkpoint resume, compaction tool-pairing (v0.8.9)~~ {/* dev: dev/archive/incremental-dag.md */}
 
 - [x] ~~Circuit breaker, Workflow run retention cleanup, Workflow version diff summaries~~ *(v0.8 / v0.8.1)*
 - [x] ~~DAG quality overhaul, Domain model escalation, Per-model NFC toggle~~ *(v0.8.1)*

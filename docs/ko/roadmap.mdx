@@ -69,6 +69,18 @@ flowchart LR
 
 - **Playground 중지 및 재시도 시 일시적인 시각적 아티팩트가 표시되며, 페이지 새로고침으로 항상 해결됩니다.** 세 가지 동시 렌더 소스 — `activeConversation.messages`(DB 스냅샷), SSE `messages` 스트림, 낙관적 `pendingQuery` 플레이스홀더 — 가 단일 파생 상태로 축소되지 않아서, "재시도" 클릭과 쌍을 이루는 어시스턴트 응답이 도착하는 사이에 UI가 (a) 사전 스트림 윈도우에서 동일한 쿼리를 잠시 두 번 렌더링하거나, (b) `hasLiveMessages`가 true이고 스냅샷이 다시 로드되기 전에 재시도 기록에서 이전 고아 사용자 버블을 삭제하거나, (c) SSE "완료" 이벤트와 다음 `selectConversation` 새로고침 사이의 좁은 윈도우에서 깜빡일 수 있습니다. **데이터는 절대 손실되지 않습니다** — 모든 사용자 메시지(중단된 재시도 포함)는 `conversation.messages`에 유지되고, `normalize_alternating_messages`를 통해 다음 LLM 호출로 전달되며, `48ba08c6` 렌더 수정에서 도입된 `HistoryTurn.orphanUserContents`를 통해 새로고침 후 올바르게 렌더링됩니다. 참고로, Claude의 자체 웹 UI도 유사한 클래스의 버그를 보여줍니다 — 응답 중간에 중지하고 즉시 후속 쿼리를 보내면 때때로 후속 쿼리가 첫 번째 쿼리의 형제 편집 분기로 포크되기도 하고 새로운 턴으로 추가되기도 합니다 — 따라서 이는 낙관적 UI + SSE + 지속된 기록 설계에서 알려진 어려운 문제이지, FIM One 특정 결함이 아닙니다. 적절한 수정을 위해서는 세 가지 렌더 소스를 단일 파생 상태로 축소해야 하며, 더 광범위한 Playground 상태 머신 리팩토링까지 연기되었습니다.
 
+## Architecture Program — Agent Core {/* dev: dev/dsh-lessons/README.md */}
+
+범위가 정해졌으나 아직 버전에 예약되지 않음. 배치는 의존성 순서로 정렬되며, 각각은 동반 설계의 구체적인 작업으로 확장됨.
+
+- [ ] **Governance**: 버그 클래스 방어 패턴 문서, 설계 노트 라이프사이클 상태, 마크다운 링크 게이트.
+- [ ] **Session event log**: 모든 모델 가시 입력이 지속적이고 순서가 있는 사실이 되며, 모델 히스토리는 이로부터 파생됨.
+- [ ] **Runtime invariants + keyless snapshot replay**: 프로덕션에서 소유 관계를 어설션하고, CI에서 키 없이 조립된 트랜스크립트를 비교.
+- [ ] **Tool pipeline seams**: 사전/실행/사후 단계로 권한, 타임아웃, 샌드박스 및 백그라운드 작업이 에이전트 루프를 벗어남.
+- [ ] **Code Mode preset**: 하나의 프로그램이 동일한 파이프라인을 통해 여러 커넥터 호출을 구성하여 다중 왕복 오케스트레이션을 대체.
+- [ ] **Agent presets as declared capability sets**, 플러스 플랜 및 백그라운드 상태가 사이드 파일이 아닌 로그 사실로 기록됨.
+- [ ] **Typed frontend from OpenAPI** 및 생성된 도구/환경 카탈로그로, 드리프트되는 수동 유지 복사본을 대체.
+
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
 연기된 강화 — 차단하지 않음; 일치하는 시나리오가 나타날 때만 진행.
@@ -361,31 +373,31 @@ flowchart LR
 
 ### 보류 중 — 신호 게이트
 
-이 항목들을 시작하지 마세요. 트리거가 필요합니다 (재계획 §3 참조): MCP 게이트웨이는 "내 에이전트에 도구를 마운트하세요"라는 요청이 2개 이상 들어올 때까지 대기; 채널화는 구현자가 라이선싱에 대해 물어볼 때까지 대기; IdP/OrgSync는 고객 풀 요청까지 대기; 나머지는 이들이 필요한 전달된 참여가 있을 때까지 대기합니다.
+이 항목들을 시작하지 마세요. 트리거가 필요합니다 (재계획 §3 참조): MCP 게이트웨이는 "내 에이전트에 도구를 마운트하세요"라는 비요청 질문 ≥2개를 기다립니다. 채널화는 구현자의 라이선싱 관련 질문을 기다립니다. IdP/OrgSync는 고객 요청을 기다립니다. 나머지는 필요한 배포된 참여를 기다립니다.
 
-- [ ] MCP gateway output — reverse-expose connector discover/execute as MCP tools for downstream agents
-- [ ] Channelization / white-label enablement — commercial-license path already in place
-- [ ] Identity Provider module + Channel slim-down — Feishu SSO, org graph sync {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] Connector authorization Tier 2 (require per-user credentials, key-binding health) + Tier 3 (login-ticket exchange) {/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] Public API Phase 2 — per-key rate limits/quotas, versioning, SDKs, developer portal {/* dev: dev/public-api-phase2.md */}
-- [ ] Observability — Agent Trace Layer (Trace/Span model, timeline viewer, OTel export) + metrics dashboard {/* dev: dev/agent-trace-layer.md */}
-- [ ] Agent Workspace remainder — handoff notes, file browser UI, cross-session recall, compaction segments (grep-able on-disk summary the agent reads back) {/* dev: dev/agent-workspace.md */}
-- [ ] Guardrails v1 — off-topic filter, PII redactor output guardrail, per-agent guardrail config UI
-- [ ] Hook System extras — built-in hooks, `SessionStart` + user YAML hooks {/* dev: dev/hook-system.md */}
-- [ ] Connector platform depth — Progressive Disclosure Phase 3-4, YAML/JSON connector config, DB connectors Phase 4 (Oracle / SQL Server / GBase), MCP connection pooling
-- [ ] Prompt cache follow-ups — Gemini context cache adapter, per-agent `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] Hot mid-stream DAG resume — SSE reconnect re-attaches to a running turn (cold retry-resume already shipped) {/* dev: dev/incremental-dag.md */}
-- [ ] Ecosystem — scheduled/event-triggered agents, workflow trigger-identity observability, per-workflow `credential_policy`, DB Schema Advanced Builder, sandbox hardening v2
+- [ ] MCP 게이트웨이 출력 — 커넥터 검색/실행을 다운스트림 에이전트용 MCP 도구로 역노출
+- [ ] 채널화 / 화이트라벨 활성화 — 상용 라이선스 경로 이미 준비됨
+- [ ] Identity Provider 모듈 + Channel 슬림화 — Feishu SSO, 조직 그래프 동기화 {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] 커넥터 인증 Tier 2 (사용자별 자격증명 필요, 키 바인딩 상태) + Tier 3 (로그인 티켓 교환) {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] Public API Phase 2 — 키별 속도 제한/할당량, 버전 관리, SDK, 개발자 포털 {/* dev: dev/public-api-phase2.md */}
+- [ ] 관찰성 — Agent Trace Layer (Trace/Span 모델, 타임라인 뷰어, OTel 내보내기) + 메트릭 대시보드 {/* dev: dev/agent-trace-layer.md */}
+- [ ] Agent Workspace 나머지 — 인계 노트, 파일 브라우저 UI, 세션 간 회상, 압축 세그먼트 (에이전트가 다시 읽는 grep 가능한 온디스크 요약) {/* dev: dev/agent-workspace.md */}
+- [ ] Guardrails v1 — 주제 벗어남 필터, PII 편집기 출력 가드레일, 에이전트별 가드레일 설정 UI
+- [ ] Hook System 추가 기능 — 기본 제공 훅, `SessionStart` + 사용자 YAML 훅 {/* dev: dev/hook-system.md */}
+- [ ] 커넥터 플랫폼 심화 — Progressive Disclosure Phase 3-4, YAML/JSON 커넥터 설정, DB 커넥터 Phase 4 (Oracle / SQL Server / GBase), MCP 연결 풀링
+- [ ] Prompt 캐시 후속 조치 — Gemini 컨텍스트 캐시 어댑터, 에이전트별 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] Hot 중간 스트림 DAG 재개 — SSE 재연결이 실행 중인 턴에 다시 연결됨 (콜드 재시도-재개는 이미 배포됨) {/* dev: dev/archive/incremental-dag.md */}
+- [ ] 에코시스템 — 예약된/이벤트 트리거 에이전트, 워크플로우 트리거 ID 관찰성, 워크플로우별 `credential_policy`, DB Schema Advanced Builder, 샌드박스 강화 v2
 
 ### v0.9 사전 계획에서 배포됨
 
-- [x] ~~인증 & 보안: JWT 토큰 타입 제한 + OAuth 수정 (v0.8.7); PG 시간대 인식 타임스탬프 (v0.8.6); 강제 로그아웃 UTC + `POSTGRES_*` 오버라이드 + SSRF IPv6 매핑 수정 (v0.8.8); 소유자 폴백 옵트인 + 가시성 통합 바인딩 + 웹훅/크론 미터링 (v0.8.9)~~
-- [x] ~~제공자 호환성: Anthropic 적응형 추론 + 공유 LLM 풀 자가 치유 (v0.8.8)~~
-- [x] ~~콘텐츠 가드레일 v0: 트립와이어 계층 + 탈옥 탐지기 (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
+- [x] ~~인증 및 보안: JWT 토큰 유형 제한 + OAuth 수정 (v0.8.7); PG 시간대 인식 타임스탬프 (v0.8.6); 강제 로그아웃 UTC + `POSTGRES_*` 재정의 + SSRF IPv6 매핑 수정 (v0.8.8); 소유자 폴백 옵트인 + 가시성 통합 바인딩 + webhook/cron 미터링 (v0.8.9)~~
+- [x] ~~공급자 호환성: Anthropic 적응형 사고 + 공유 LLM 풀 자가 치유 (v0.8.8)~~
+- [x] ~~콘텐츠 가드레일 v0: 트립와이어 레이어 + 탈옥 탐지기 (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
 - [x] ~~훅 시스템: 스켈레톤 + FeishuGateHook + 승인 연습장 + ReAct/DAG 런타임 (v0.8.5); PreToolUse 강제 실패 폐쇄 (v0.8.8)~~
-- [x] ~~Feishu 통도 1단계 + 작업 완료 알림 (v0.8.5)~~
-- [x] ~~`run_workflow` 에이전트 도구 (v0.8.9); 추론 세부 정보 종단간 보존 (v0.8.8); 워크스페이스 도구 출력 오프로딩 채팅에 연결 (v0.8.9)~~
-- [x] ~~에이전트 루프 강화: 계획 보드, LLM 호출 복원력, 백그라운드 도구, 증분 DAG 재계획 + 체크포인트 재개, 압축 도구 쌍 (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
+- [x] ~~Feishu 통도 Phase 1 + 작업 완료 알림 (v0.8.5)~~
+- [x] ~~`run_workflow` 스마트체 도구 (v0.8.9); 추론 세부 정보 엔드투엔드 보존 (v0.8.8); 작업 영역 도구 출력 오프로딩 채팅에 연결 (v0.8.9)~~
+- [x] ~~스마트체 루프 강화: 계획 보드, LLM 호출 복원력, 백그라운드 도구, 증분 DAG 재계획 + 체크포인트 재개, 압축 도구 쌍 (v0.8.9)~~ {/* dev: dev/archive/incremental-dag.md */}
 
 - [x] ~~서킷 브레이커, 워크플로우 실행 보존 정리, 워크플로우 버전 차이 요약~~ *(v0.8 / v0.8.1)*
 - [x] ~~DAG 품질 개선, 도메인 모델 에스컬레이션, 모델별 NFC 토글~~ *(v0.8.1)*
@@ -395,8 +407,8 @@ flowchart LR
 - [x] ~~사전 구축 솔루션 템플릿 (8개 수직 번들), 리소스 포크 (MCP/Skill/Agent/Connector/Workflow)~~ *(v0.8.1)*
 - [x] ~~비전 문서 처리 (PDF / DOCX / PPTX), MarkItDown OCR~~ *(v0.8.2 / v0.8.3)*
 - [x] ~~스마트 파일 콘텐츠 주입 + `read_uploaded_file`~~ *(v0.8)*
-- [x] ~~에이전트 코어 3단계: 대화 복구 MVP, 컴팩트 작업 카드, 턴 프로파일러, 사용자별 속도 제한~~ *(v0.8.3)*
-- [x] ~~대화 재개 MVP, 시스템 프롬프트 레지스트리 + 캐시, 생각 블록 지속성, 추론 재생 정책, 캐시 관찰성~~ *(v0.8.4)*
+- [x] ~~스마트체 코어 Phase 3: 대화 복구 MVP, 컴팩트 작업 카드, 턴 프로파일러, 사용자별 속도 제한~~ *(v0.8.3)*
+- [x] ~~대화 재개 MVP, 시스템 프롬프트 레지스트리 + 캐시, 사고 블록 지속성, 추론 재생 정책, 캐시 관찰성~~ *(v0.8.4)*
 
 ### v1.0 — Hot-Plug + Embeddable
 

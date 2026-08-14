@@ -69,6 +69,18 @@ flowchart LR
 
 - **演练场停止并重试显示瞬间视觉伪影，页面刷新总能清除。** 三个并发渲染源——`activeConversation.messages`（数据库快照）、SSE `messages` 流和乐观的 `pendingQuery` 占位符——未折叠为单一派生状态，因此在点击"重试"和配对的助手响应到达之间，UI 可能会（a）在流前窗口中短暂渲染相同查询两次，（b）在 `hasLiveMessages` 为真且快照重新加载前从重试历史中删除先前的孤立用户气泡，以及（c）在 SSE"完成"事件和下一个 `selectConversation` 刷新之间的狭窄窗口中闪烁。**数据永不丢失**——每条用户消息（包括中止的重试）都持久化在 `conversation.messages` 中，通过 `normalize_alternating_messages` 传入下一个 LLM 调用，并在 `48ba08c6` 渲染修复中引入的 `HistoryTurn.orphanUserContents` 刷新后正确渲染。从上下文看，Claude 自身的网页 UI 表现出类似的缺陷类——停止中途响应并立即发送后续查询有时会将后续作为第一个查询的兄弟编辑分支而非作为新轮次追加——因此这是乐观 UI + SSE + 持久化历史设计中的已知难题，而非 FIM One 特定的缺陷。正确的修复需要将三个渲染源折叠为单一派生状态；延迟至更广泛的演练场状态机重构。
 
+## Architecture Program — Agent Core {/* dev: dev/dsh-lessons/README.md */}
+
+范围已确定，尚未排期到具体版本。批次按依赖关系排序；每个批次在配套设计中展开为具体任务。
+
+- [ ] **治理**：bug 类防御模式文档、设计笔记生命周期状态、markdown 链接闸门。
+- [ ] **会话事件日志**：每个模型可见的输入都成为持久的、有序的事实，模型历史从中派生。
+- [ ] **运行时不变量 + 无键快照重放**：在生产环境中断言所有权关系；在 CI 中对比组装的记录而无需密钥。
+- [ ] **工具管道接缝**：前置/执行/后置阶段，使权限、超时、沙箱和后台工作脱离智能体循环。
+- [ ] **代码模式预设**：一个程序通过同一管道组合多个连接器调用，替代多轮往返编排。
+- [ ] **智能体预设作为声明的能力集**，加上计划和后台状态记录为日志事实而非副文件。
+- [ ] **来自 OpenAPI 的类型化前端**及生成的工具/环境目录，替代容易漂移的手工维护副本。
+
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
 延期加固——不阻塞；仅在匹配场景出现时才处理。
@@ -360,33 +372,33 @@ flowchart LR
 - [ ] 出站模式：故障告警、预算警告、定时摘要、升级、审计收据
 - [ ] WeCom / DingTalk 通道跟随 Feishu
 
-### 已搁置——信号门控
+### 待处理 — 信号门控
 
-不要在没有触发器的情况下启动这些功能（见重新规划 §3）：MCP 网关等待 ≥2 个主动的"在我的智能体中挂载你的工具"请求；通道化等待实现者询问许可问题；IdP/OrgSync 等待客户拉取；其余的等待需要它们的已交付参与。
+不要在没有触发器的情况下启动这些（参见重新规划 §3）：MCP 网关等待 ≥2 个未经请求的"在我的智能体中挂载你的工具"请求；通道化等待实现者询问许可证问题；IdP/OrgSync 等待客户拉取；其余的等待需要它们的已交付参与。
 
-- [ ] MCP 网关输出——反向暴露连接器发现/执行为下游智能体的 MCP 工具
-- [ ] 通道化/白标启用——商业许可路径已就位
-- [ ] 身份提供商模块 + 通道精简——Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] 连接器授权第 2 层（需要按用户凭证、密钥绑定健康检查）+ 第 3 层（登录票证交换） {/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] 公共 API 第 2 阶段——按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
-- [ ] 可观测性——智能体追踪层（追踪/跨度模型、时间线查看器、OTel 导出）+ 指标仪表板 {/* dev: dev/agent-trace-layer.md */}
-- [ ] 智能体工作区剩余部分——交接笔记、文件浏览器 UI、跨会话回忆、压缩段（智能体读回的磁盘上可搜索摘要） {/* dev: dev/agent-workspace.md */}
-- [ ] 护栏 v1——离题过滤、PII 编辑器输出护栏、按智能体护栏配置 UI
-- [ ] 钩子系统扩展——内置钩子、`SessionStart` + 用户 YAML 钩子 {/* dev: dev/hook-system.md */}
-- [ ] 连接器平台深度——渐进式披露第 3-4 阶段、YAML/JSON 连接器配置、数据库连接器第 4 阶段（Oracle / SQL Server / GBase）、MCP 连接池
-- [ ] 提示词缓存后续——Gemini 上下文缓存适配器、按智能体 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] 热中流 DAG 恢复——SSE 重连重新连接到运行中的轮次（冷重试-恢复已发布） {/* dev: dev/incremental-dag.md */}
-- [ ] 生态系统——计划/事件触发的智能体、工作流触发身份可观测性、按工作流 `credential_policy`、数据库架构高级构建器、沙箱加固 v2
+- [ ] MCP 网关输出 — 反向公开连接器发现/执行为下游智能体的 MCP 工具
+- [ ] 通道化 / 白标启用 — 商业许可证路径已就位
+- [ ] 身份提供商模块 + 通道精简 — Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
+- [ ] 连接器授权第 2 层（需要按用户凭证、密钥绑定健康检查）+ 第 3 层（登录票据交换） {/* dev: dev/connector-rbac/00-overview.md */}
+- [ ] 公共 API 第 2 阶段 — 按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
+- [ ] 可观测性 — 智能体追踪层（追踪/跨度模型、时间线查看器、OTel 导出）+ 指标仪表板 {/* dev: dev/agent-trace-layer.md */}
+- [ ] 智能体工作区剩余部分 — 交接笔记、文件浏览器 UI、跨会话回忆、压缩段（智能体读回的可 grep 的磁盘上摘要） {/* dev: dev/agent-workspace.md */}
+- [ ] 护栏 v1 — 离题过滤、PII 编辑器输出护栏、按智能体护栏配置 UI
+- [ ] 钩子系统扩展 — 内置钩子、`SessionStart` + 用户 YAML 钩子 {/* dev: dev/hook-system.md */}
+- [ ] 连接器平台深度 — 渐进式披露第 3-4 阶段、YAML/JSON 连接器配置、数据库连接器第 4 阶段（Oracle / SQL Server / GBase）、MCP 连接池
+- [ ] 提示词缓存后续 — Gemini 上下文缓存适配器、按智能体 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
+- [ ] 热中流 DAG 恢复 — SSE 重新连接重新附加到运行中的轮次（冷重试-恢复已交付） {/* dev: dev/archive/incremental-dag.md */}
+- [ ] 生态系统 — 计划/事件触发的智能体、工作流触发器-身份可观测性、按工作流 `credential_policy`、数据库架构高级构建器、沙箱强化 v2
 
-### 从pre-replan v0.9计划发布
+### 从pre-replan v0.9计划中已交付
 
 - [x] ~~Auth & security: JWT token-type confinement + OAuth fixes (v0.8.7); PG tz-aware timestamps (v0.8.6); force-logout UTC + `POSTGRES_*` override + SSRF IPv6-mapped fix (v0.8.8); owner-fallback opt-in + visibility-unified binding + webhook/cron metering (v0.8.9)~~
 - [x] ~~Provider compat: Anthropic adaptive thinking + shared LLM pool self-heal (v0.8.8)~~
 - [x] ~~Content guardrails v0: tripwire layer + jailbreak detector (v0.8.7)~~ {/* dev: dev/archive/openai-agents-insights.md */}
 - [x] ~~Hook system: skeleton + FeishuGateHook + Approval Playground + ReAct/DAG runtime (v0.8.5); PreToolUse enforcement fail-closed (v0.8.8)~~
-- [x] ~~Feishu 通道 Phase 1 + task completion notification (v0.8.5)~~
-- [x] ~~`run_workflow` 智能体工具 (v0.8.9); reasoning detail preserved end-to-end (v0.8.8); workspace tool-output offloading wired into chat (v0.8.9)~~
-- [x] ~~Agent loop hardening: plan board, LLM-call resilience, background tools, incremental DAG replan + checkpoint resume, compaction tool-pairing (v0.8.9)~~ {/* dev: dev/incremental-dag.md */}
+- [x] ~~Feishu channel Phase 1 + task completion notification (v0.8.5)~~
+- [x] ~~`run_workflow` agent tool (v0.8.9); reasoning detail preserved end-to-end (v0.8.8); workspace tool-output offloading wired into chat (v0.8.9)~~
+- [x] ~~Agent loop hardening: plan board, LLM-call resilience, background tools, incremental DAG replan + checkpoint resume, compaction tool-pairing (v0.8.9)~~ {/* dev: dev/archive/incremental-dag.md */}
 
 - [x] ~~Circuit breaker, Workflow run retention cleanup, Workflow version diff summaries~~ *(v0.8 / v0.8.1)*
 - [x] ~~DAG quality overhaul, Domain model escalation, Per-model NFC toggle~~ *(v0.8.1)*
