@@ -425,6 +425,75 @@ class TestQuotaChain:
         quota = await get_user_quota(u, session)
         assert quota == 999
 
+    @pytest.mark.asyncio
+    async def test_paid_only_without_plan_is_unentitled_zero(
+        self, session: AsyncSession, stripe_env: None
+    ) -> None:
+        await activate_billing(session, access_model="paid_only")
+        session.add(SystemSetting(key="default_token_quota", value="0"))
+        u = User(
+            id=str(uuid.uuid4()),
+            email="eve@example.com",
+            password_hash="x",
+        )
+        session.add(u)
+        await session.commit()
+
+        quota = await get_user_quota(u, session)
+        assert quota == 0
+        from fim_one.web.services.quota_enforcer import is_user_unentitled
+
+        assert await is_user_unentitled(u.id, session) is True
+
+
+class TestAccessModel:
+    @pytest.mark.asyncio
+    async def test_paid_only_does_not_seed_free_or_backfill(
+        self, session: AsyncSession, stripe_env: None
+    ) -> None:
+        u = User(
+            id=str(uuid.uuid4()),
+            email="alice@example.com",
+            password_hash="x",
+        )
+        session.add(u)
+        await session.commit()
+
+        result = await activate_billing(session, access_model="paid_only")
+
+        assert result["access_model"] == "paid_only"
+        assert result["users_backfilled"] == 0
+        slugs = {
+            p.slug
+            for p in (await session.execute(select(BillingPlan))).scalars()
+        }
+        assert "pro" in slugs
+        assert "free" not in slugs
+        await session.refresh(u)
+        assert u.plan_id is None
+
+    @pytest.mark.asyncio
+    async def test_paid_template_has_no_hardcoded_price(
+        self, session: AsyncSession, stripe_env: None
+    ) -> None:
+        await activate_billing(session)
+        pro = (
+            await session.execute(
+                select(BillingPlan).where(BillingPlan.slug == "pro")
+            )
+        ).scalar_one()
+        assert pro.stripe_price_id is None
+
+    @pytest.mark.asyncio
+    async def test_legacy_flag_maps_to_freemium(
+        self, session: AsyncSession
+    ) -> None:
+        from fim_one.web.services.billing_flag import get_access_model
+
+        session.add(SystemSetting(key="billing_enabled", value="true"))
+        await session.commit()
+        assert await get_access_model(session) == "freemium"
+
 
 # ---------------------------------------------------------------------------
 # API gating — 503 when flag is off

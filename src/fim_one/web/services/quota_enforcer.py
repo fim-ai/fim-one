@@ -11,15 +11,14 @@ Resolution chain — top wins (Scheme A: override-first + 3-state):
 2. ``user.token_quota >  0``  → ``int(user.token_quota)`` (admin hard cap,
    overrides plan; intentional so an admin can throttle a paying user
    without revoking their plan).
-3. ``user.token_quota IS NULL`` → ``user.plan.monthly_token_quota`` (the
-   Stripe-billed plan tier; canonical for normal users post-MVP).
-   **Skipped entirely when ``system_settings.billing_enabled`` is false** —
-   private deployments without Stripe rely on the legacy admin-set
-   defaults, never on plan rows that may be stale.
+3. ``user.token_quota IS NULL`` → ``user.plan.monthly_token_quota``
+   when ``access_model`` is ``freemium`` or ``paid_only``.
+   **Skipped when ``access_model`` is ``off``.**
+   ``paid_only`` with no plan returns ``0`` (unentitled — not unlimited)
+   and does **not** fall through to ``default_token_quota``.
 4. *(defensive fallback)* the system-wide ``default_token_quota`` admin
-   setting. Should not normally fire when billing is enabled since every
-   user post-MVP is bound to at least the Free plan; with billing
-   disabled it becomes the canonical second tier.
+   setting. Used by ``off`` (the instance-wide cap) and as a last
+   resort for freemium users with no plan binding.
 5. ``None`` (unlimited) — last-resort when *everything* above is unset.
 
 The semantic 3-state for ``users.token_quota`` (preserve, do not change):
@@ -41,7 +40,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db.models import BillingPlan, SystemSetting, User
-from fim_one.web.services.billing_flag import is_billing_enabled
+from fim_one.web.services.billing_flag import (
+    ACCESS_MODEL_OFF,
+    ACCESS_MODEL_PAID_ONLY,
+    get_access_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,20 +111,22 @@ async def get_user_quota(user: User, db: AsyncSession) -> int | None:
             return None
         return int(user.token_quota)
 
-    # Tier 3: follow the user's billing plan — only when the operator
-    # has flipped billing on. With billing disabled we deliberately
-    # skip this tier so private deployments rely on the legacy default
-    # rather than potentially-stale plan rows that the admin never
-    # opted into.
-    if await is_billing_enabled(db) and user.plan_id is not None:
+    # Tier 3: follow the user's billing plan when a Stripe posture is
+    # on. ``off`` skips this so private deployments rely on the
+    # instance-wide default, never on leftover catalogue rows.
+    model = await get_access_model(db)
+    if model != ACCESS_MODEL_OFF and user.plan_id is not None:
         plan = await db.get(BillingPlan, user.plan_id)
         if plan is not None and plan.monthly_token_quota is not None:
             return int(plan.monthly_token_quota)
 
-    # Tier 4: defensive fallback to the system-wide setting. Reaching
-    # this branch implies the user has no plan_id (or billing is off);
-    # post-MVP every registration auto-binds to Free, so this is mostly
-    # used by no-billing deployments.
+    # paid_only + no plan = unentitled. Return 0 (no tokens), never
+    # fall through to default_token_quota — a leftover 0 there would
+    # leak as unlimited.
+    if model == ACCESS_MODEL_PAID_ONLY:
+        return 0
+
+    # Tier 4: instance-wide default (``off``, or freemium with no plan).
     default = await _read_default_token_quota(db)
     if default is not None:
         return default
@@ -157,13 +162,18 @@ async def get_user_quota_by_id(user_id: str, db: AsyncSession) -> int | None:
             return None
         return int(legacy_quota)
 
-    # Tier 3: plan tier — gated on the billing feature flag.
+    model = await get_access_model(db)
+
+    # Tier 3: plan tier — gated on a Stripe posture.
     if (
-        plan_id is not None
+        model != ACCESS_MODEL_OFF
+        and plan_id is not None
         and plan_quota is not None
-        and await is_billing_enabled(db)
     ):
         return int(plan_quota)
+
+    if model == ACCESS_MODEL_PAID_ONLY:
+        return 0
 
     # Tier 4: system default.
     default = await _read_default_token_quota(db)
@@ -174,4 +184,26 @@ async def get_user_quota_by_id(user_id: str, db: AsyncSession) -> int | None:
     return None
 
 
-__all__ = ["get_user_quota", "get_user_quota_by_id"]
+async def is_user_unentitled(user_id: str, db: AsyncSession) -> bool:
+    """Return True when ``paid_only`` and the user has no plan or VIP gift.
+
+    ``users.token_quota == 0`` (VIP unlimited) is never unentitled.
+    A leftover included-tier ``plan_id`` after switching freemium →
+    paid_only still counts as entitled (existing users keep access).
+    """
+    model = await get_access_model(db)
+    if model != ACCESS_MODEL_PAID_ONLY:
+        return False
+    result = await db.execute(
+        select(User.token_quota, User.plan_id).where(User.id == user_id)
+    )
+    row = result.one_or_none()
+    if row is None:
+        return True
+    token_quota, plan_id = row
+    if token_quota is not None:
+        return False
+    return plan_id is None
+
+
+__all__ = ["get_user_quota", "get_user_quota_by_id", "is_user_unentitled"]

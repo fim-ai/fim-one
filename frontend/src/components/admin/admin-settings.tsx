@@ -37,7 +37,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { apiFetch, adminApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
-import { setBillingEnabled as setBillingEnabledApi } from "@/lib/billing-flag"
+import {
+  setAccessModel,
+  type AccessModel,
+} from "@/lib/billing-flag"
 import { MODULE_FLAGS_CHANGED_EVENT } from "@/lib/module-flags"
 import { toast } from "sonner"
 import { useDateFormatter } from "@/hooks/use-date-formatter"
@@ -54,6 +57,8 @@ interface SystemSettings {
   smtp_configured: boolean
   /** True when the operator has enabled the Stripe billing pipeline. */
   billing_enabled: boolean
+  /** Instance posture: off | freemium | paid_only. */
+  access_model: AccessModel
   /** True when STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET are present. */
   stripe_configured: boolean
   /** Soft-shelvable modules (off by default): skills, workflows. */
@@ -221,7 +226,13 @@ export function AdminSettings() {
         icon={Zap}
         iconColor="text-blue-500"
         title={t("tokenQuotaTitle")}
-        description={t("tokenQuotaDesc")}
+        description={
+          settings?.access_model === "paid_only"
+            ? t("tokenQuotaDescPaidOnly")
+            : settings?.access_model === "freemium"
+              ? t("tokenQuotaDescFreemium")
+              : t("tokenQuotaDesc")
+        }
       >
         <div className="flex items-center gap-3">
           <Input
@@ -687,40 +698,65 @@ function BillingToggleSection({
   onUpdated: (s: SystemSettings) => void
 }) {
   const t = useTranslations("admin.settings")
+  const tc = useTranslations("common")
   const tError = useTranslations("errors")
   const [isSaving, setIsSaving] = useState(false)
+  const [pendingModel, setPendingModel] = useState<AccessModel | null>(null)
 
   if (!settings) return null
 
-  const handleToggle = async (next: boolean) => {
-    if (next && !settings.stripe_configured) {
+  const current: AccessModel = settings.access_model ?? (settings.billing_enabled ? "freemium" : "off")
+
+  const applyModel = async (next: AccessModel) => {
+    if (next !== "off" && !settings.stripe_configured) {
       toast.error(t("billingStripeMissing"))
       return
     }
     setIsSaving(true)
     try {
-      const result = await setBillingEnabledApi(next)
-      onUpdated({ ...settings, billing_enabled: result.billing_enabled })
-      if (next) {
-        if (result.plans_seeded > 0 || result.users_backfilled > 0) {
-          toast.success(
-            t("billingActivatedSeeded", {
-              plans: result.plans_seeded,
-              users: result.users_backfilled,
-            }),
-          )
-        } else {
-          toast.success(t("billingEnabled"))
-        }
-      } else {
+      const result = await setAccessModel(next)
+      onUpdated({
+        ...settings,
+        billing_enabled: result.billing_enabled,
+        access_model: result.access_model,
+      })
+      if (next === "off") {
         toast.success(t("billingDisabled"))
+      } else if (result.plans_seeded > 0 || result.users_backfilled > 0) {
+        toast.success(
+          t("billingActivatedSeeded", {
+            plans: result.plans_seeded,
+            users: result.users_backfilled,
+          }),
+        )
+      } else {
+        toast.success(t("accessModelSaved"))
       }
     } catch (err) {
       toast.error(getErrorMessage(err, tError))
     } finally {
       setIsSaving(false)
+      setPendingModel(null)
     }
   }
+
+  const requestModel = (next: AccessModel) => {
+    if (next === current) return
+    const tightening =
+      (current !== "off" && next === "off") ||
+      next === "paid_only"
+    if (tightening) {
+      setPendingModel(next)
+      return
+    }
+    void applyModel(next)
+  }
+
+  const options: { value: AccessModel; title: string; desc: string }[] = [
+    { value: "off", title: t("accessModelOff"), desc: t("accessModelOffDesc") },
+    { value: "freemium", title: t("accessModelFreemium"), desc: t("accessModelFreemiumDesc") },
+    { value: "paid_only", title: t("accessModelPaidOnly"), desc: t("accessModelPaidOnlyDesc") },
+  ]
 
   return (
     <SettingSection
@@ -732,31 +768,62 @@ function BillingToggleSection({
       description={t("billingDesc")}
     >
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="pr-4">
-            <Label htmlFor="billing-toggle" className="text-sm font-medium cursor-pointer">
-              {t("billingToggle")}
-            </Label>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {t("billingToggleHelper")}
-            </p>
-            {!settings.stripe_configured && (
-              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                {t("billingStripeMissing")}
-              </p>
-            )}
-          </div>
-          <Switch
-            id="billing-toggle"
-            checked={settings.billing_enabled}
-            onCheckedChange={handleToggle}
-            disabled={
-              isSaving ||
-              (!settings.billing_enabled && !settings.stripe_configured)
-            }
-          />
+        {!settings.stripe_configured && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            {t("billingStripeMissing")}
+          </p>
+        )}
+        <div className="grid gap-2">
+          {options.map((opt) => {
+            const selected = current === opt.value
+            const stripeBlocked = opt.value !== "off" && !settings.stripe_configured
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                disabled={isSaving || stripeBlocked}
+                onClick={() => requestModel(opt.value)}
+                className={`rounded-md border px-3 py-2.5 text-left transition-colors ${
+                  selected
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-muted/40"
+                } disabled:opacity-50`}
+              >
+                <div className="text-sm font-medium">{opt.title}</div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{opt.desc}</p>
+              </button>
+            )
+          })}
         </div>
       </div>
+
+      <AlertDialog
+        open={pendingModel !== null}
+        onOpenChange={(open) => { if (!open) setPendingModel(null) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("accessModelConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingModel === "off"
+                ? t("accessModelConfirmOff", { quota: settings.default_token_quota })
+                : current === "freemium"
+                  ? t("accessModelConfirmPaidOnlyFromFreemium")
+                  : t("accessModelConfirmPaidOnlyFromOff")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => pendingModel && applyModel(pendingModel)}
+              disabled={isSaving}
+            >
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {tc("confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SettingSection>
   )
 }

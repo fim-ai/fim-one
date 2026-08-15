@@ -356,6 +356,8 @@ export function AdminBillingPlans() {
         const args = err.errorArgs as { count?: number } | undefined
         const count = args?.count ?? deleteTarget.active_subscription_count
         setDeleteError(t("deleteBlocked", { count }))
+      } else if (err instanceof ApiError && err.errorCode === "billing_plan_is_default") {
+        setDeleteError(t("deleteDefaultBlocked"))
       } else {
         toast.error(getErrorMessage(err, tError))
         setDeleteTarget(null)
@@ -409,7 +411,16 @@ export function AdminBillingPlans() {
             <tbody className="divide-y divide-border">
               {plans.map((p) => (
                 <tr key={p.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-foreground">{p.slug}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      {p.slug}
+                      {p.is_default && (
+                        <Badge variant="outline" className="font-sans text-[10px]">
+                          {t("defaultPlan")}
+                        </Badge>
+                      )}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-foreground">{p.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {p.stripe_price_id && !p.price_display ? (
@@ -456,30 +467,36 @@ export function AdminBillingPlans() {
                           <Pencil className="mr-2 h-4 w-4" />
                           {t("actions.edit")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setToggleTarget(p)}>
-                          {p.is_active ? (
-                            <>
-                              <PowerOff className="mr-2 h-4 w-4" />
-                              {t("actions.disable")}
-                            </>
-                          ) : (
-                            <>
-                              <Power className="mr-2 h-4 w-4" />
-                              {t("actions.enable")}
-                            </>
-                          )}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => {
-                            setDeleteError(null)
-                            setDeleteTarget(p)
-                          }}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {t("actions.delete")}
-                        </DropdownMenuItem>
+                        {!p.is_default && (
+                          <DropdownMenuItem onClick={() => setToggleTarget(p)}>
+                            {p.is_active ? (
+                              <>
+                                <PowerOff className="mr-2 h-4 w-4" />
+                                {t("actions.disable")}
+                              </>
+                            ) : (
+                              <>
+                                <Power className="mr-2 h-4 w-4" />
+                                {t("actions.enable")}
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        )}
+                        {!p.is_default && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => {
+                                setDeleteError(null)
+                                setDeleteTarget(p)
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {t("actions.delete")}
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>

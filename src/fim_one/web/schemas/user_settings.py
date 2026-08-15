@@ -131,6 +131,8 @@ class UsageResponse(BaseModel):
     reset_at: str | None = None
     quota: int | None = None
     quota_used_pct: float | None = None
+    # True when access_model is paid_only and this user has no plan.
+    unentitled: bool = False
     daily: list[DailyUsage]
     by_agent: list[AgentUsage]
 

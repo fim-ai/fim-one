@@ -395,17 +395,21 @@ async def get_my_usage(
 
     # Quota — unified precedence chain (plan tier / admin override /
     # default). ``None`` means "unlimited".
+    from fim_one.web.services.quota_enforcer import is_user_unentitled
+
     quota = await get_user_quota_by_id(current_user.id, db)
+    unentitled = await is_user_unentitled(current_user.id, db)
     quota_used_pct = None
-    if quota is not None and quota > 0:
+    if not unentitled and quota is not None and quota > 0:
         quota_used_pct = round(window_tokens / quota * 100, 2)
 
     return UsageResponse(
         total_tokens=int(total_tokens),
         window_tokens=window_tokens,
         reset_at=window_reset.isoformat(),
-        quota=quota,
+        quota=None if unentitled else quota,
         quota_used_pct=quota_used_pct,
+        unentitled=unentitled,
         daily=daily,
         by_agent=by_agent,
     )

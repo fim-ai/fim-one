@@ -1,25 +1,21 @@
-"""Billing feature flag — admin-controlled gate for the Stripe pipeline.
+"""Billing access model — instance posture + Stripe pipeline gate.
 
-Implements the "front-loaded data, switch-only state" architectural
-principle: the activation flow seeds plans and backfills users **once**;
-toggling ``billing_enabled`` from ``true`` → ``false`` and back is a
-pure flag flip with **no** data side-effects.
+An instance is always in exactly one posture (``access_model``):
 
-Public API
-----------
-- :func:`is_billing_enabled` — read the live flag from
-  ``system_settings.billing_enabled``. Returns ``False`` for any
-  representation other than the literal string ``"true"``.
-- :func:`require_billing_enabled` — FastAPI dependency that raises
-  ``HTTPException(503)`` when the flag is off.
-- :func:`activate_billing` — idempotent activation procedure. Seeds
-  the catalogue, backfills user plan bindings, then flips the flag.
-- :func:`deactivate_billing` — pure flag flip; no data mutated.
+- ``off`` — no Stripe, no catalogue. Quota is ``default_token_quota``
+  (``0`` = unlimited). Software default.
+- ``freemium`` — Stripe on. New users bind to the default plan
+  (seeded as slug ``free``). Canceled paid users demote to that plan.
+- ``paid_only`` — Stripe on. No default plan. Users without a paid
+  plan are unentitled (chat returns 402) until they subscribe.
 
-The flag column lives in the existing ``system_settings`` key/value
-store rather than its own column on a dedicated row, mirroring how the
-rest of the platform's runtime knobs (registration mode, default token
-quota, maintenance mode) are persisted.
+``billing_enabled`` is derived (``access_model != off``) and kept in
+sync so existing endpoint gates do not change. Installs that only
+have the legacy flag map ``true`` → ``freemium``.
+
+Activation still follows "front-loaded data, switch-only state":
+first switch into a paid posture seeds the catalogue; later off/on
+of the same posture is a flag flip.
 """
 
 from __future__ import annotations
@@ -43,15 +39,34 @@ SETTING_BILLING_ENABLED = "billing_enabled"
 #: Stable name for the pointer that replaces ``WHERE slug='free'`` lookups.
 SETTING_DEFAULT_PLAN_ID = "default_plan_id"
 
+#: Instance posture. Always exactly one of the three values below.
+SETTING_ACCESS_MODEL = "access_model"
 
-async def is_billing_enabled(db: AsyncSession) -> bool:
-    """Return ``True`` when the operator has flipped the billing switch on.
+ACCESS_MODEL_OFF = "off"
+ACCESS_MODEL_FREEMIUM = "freemium"
+ACCESS_MODEL_PAID_ONLY = "paid_only"
+ACCESS_MODELS: frozenset[str] = frozenset(
+    {ACCESS_MODEL_OFF, ACCESS_MODEL_FREEMIUM, ACCESS_MODEL_PAID_ONLY}
+)
 
-    The default for fresh installs and pre-flag deployments is ``False`` —
-    admins must opt in via :func:`activate_billing` (or the admin UI) so
-    that private/self-hosted boxes don't accidentally surface payment
-    UX they didn't configure.
+
+async def get_access_model(db: AsyncSession) -> str:
+    """Return the instance posture, mapping the legacy flag if needed.
+
+    Preference: explicit ``access_model`` if it is one of the three
+    known values. Otherwise ``billing_enabled=true`` maps to
+    ``freemium`` (the only posture the v0.8.6 pipeline knew) and
+    everything else to ``off``.
     """
+    raw = await _get_setting(db, SETTING_ACCESS_MODEL)
+    if raw is not None and raw in ACCESS_MODELS:
+        return raw
+    if await _legacy_billing_flag_on(db):
+        return ACCESS_MODEL_FREEMIUM
+    return ACCESS_MODEL_OFF
+
+
+async def _legacy_billing_flag_on(db: AsyncSession) -> bool:
     result = await db.execute(
         select(SystemSetting.value).where(
             SystemSetting.key == SETTING_BILLING_ENABLED
@@ -61,6 +76,16 @@ async def is_billing_enabled(db: AsyncSession) -> bool:
     if raw is None:
         return False
     return raw.strip().lower() == "true"
+
+
+async def is_billing_enabled(db: AsyncSession) -> bool:
+    """Return ``True`` when the instance is in a Stripe-using posture.
+
+    True for ``freemium`` and ``paid_only``. Fresh installs default to
+    ``off`` so private boxes never surface payment UX they didn't
+    configure.
+    """
+    return await get_access_model(db) != ACCESS_MODEL_OFF
 
 
 async def require_billing_enabled(
@@ -110,41 +135,35 @@ async def _get_setting(
 # ---------------------------------------------------------------------------
 
 
-# The seed catalogue mirrors the original ``i9d1e3f5g678`` migration.
-# Re-running activation against an install that already has these rows is
-# a no-op (we conflict on slug). Operators should refine the Pro
-# stripe_price_id via the admin UI before going live.
+# Seed catalogue. Re-running activation against an install that already
+# has these slugs is a no-op. Paid templates ship with a null Stripe
+# Price — the operator pastes theirs from their own Dashboard. Never
+# seed a live ``price_…`` from a FIM account.
 #
-# Free's ``monthly_token_quota`` is sourced at activation time from
-# ``system_settings.default_token_quota`` when present (see
-# :func:`_resolve_free_seed_quota`), so the seed value below is only the
-# fallback for installs that never configured the legacy default.
-_FREE_FALLBACK_QUOTA = 100_000
+# The included-tier quota is copied from ``default_token_quota`` at
+# activation (including ``0`` = unlimited). The seed value below is
+# only used when that setting is missing or unparseable.
+_INCLUDED_FALLBACK_QUOTA = 0
 
-_SEED_PLANS: tuple[dict[str, Any], ...] = (
-    {
-        "slug": "free",
-        "name": "Free",
-        "stripe_price_id": None,
-        "monthly_token_quota": _FREE_FALLBACK_QUOTA,
-        # Description deliberately omits the token count — that number
-        # is rendered separately by the UI (sourced from
-        # ``monthly_token_quota``) and would drift here as soon as an
-        # admin edited ``default_token_quota``.
-        "description": "Basic features",
-        "sort_order": 0,
-        "is_active": True,
-    },
-    {
-        "slug": "pro",
-        "name": "Pro",
-        "stripe_price_id": "price_1TULYLPQaxUGYm0zj6R3Mpne",
-        "monthly_token_quota": 5_000_000,
-        "description": "Priority support",
-        "sort_order": 1,
-        "is_active": True,
-    },
-)
+_SEED_INCLUDED_PLAN: dict[str, Any] = {
+    "slug": "free",
+    "name": "Free",
+    "stripe_price_id": None,
+    "monthly_token_quota": _INCLUDED_FALLBACK_QUOTA,
+    "description": "Basic features",
+    "sort_order": 0,
+    "is_active": True,
+}
+
+_SEED_PAID_TEMPLATE: dict[str, Any] = {
+    "slug": "pro",
+    "name": "Pro",
+    "stripe_price_id": None,
+    "monthly_token_quota": 5_000_000,
+    "description": "Priority support",
+    "sort_order": 1,
+    "is_active": True,
+}
 
 _DEFAULT_TOKEN_QUOTA_KEY = "default_token_quota"
 
@@ -157,17 +176,18 @@ async def _resolve_free_seed_quota(db: AsyncSession) -> int:
     seed Free with that exact value rather than inserting the hardcoded
     fallback and then immediately overwriting it.
 
-    Falls back to :data:`_FREE_FALLBACK_QUOTA` when the setting is
-    unset, empty, non-numeric, or non-positive.
+    Copies the operator's existing knob, including ``0`` (unlimited).
+    Does not rewrite ``0`` to a positive fallback. Unset / empty /
+    non-numeric values fall back to :data:`_INCLUDED_FALLBACK_QUOTA`.
     """
     raw = await _get_setting(db, _DEFAULT_TOKEN_QUOTA_KEY)
     if raw is None:
-        return _FREE_FALLBACK_QUOTA
+        return _INCLUDED_FALLBACK_QUOTA
     try:
         n = int(raw)
     except ValueError:
-        return _FREE_FALLBACK_QUOTA
-    return n if n > 0 else _FREE_FALLBACK_QUOTA
+        return _INCLUDED_FALLBACK_QUOTA
+    return n if n >= 0 else _INCLUDED_FALLBACK_QUOTA
 
 
 async def _resolve_default_pointer_target(
@@ -227,31 +247,56 @@ def _stripe_env_configured() -> tuple[bool, str | None]:
     return True, None
 
 
-async def activate_billing(db: AsyncSession) -> dict[str, Any]:
-    """Run the one-time activation procedure, then flip the flag on.
+async def _seed_plan_if_absent(
+    db: AsyncSession, spec: dict[str, Any], *, quota: int | None = None
+) -> bool:
+    """Insert *spec* when no row with that slug exists. Returns True if inserted."""
+    existing = await db.execute(
+        select(BillingPlan).where(BillingPlan.slug == spec["slug"])
+    )
+    if existing.scalar_one_or_none() is not None:
+        return False
+    db.add(
+        BillingPlan(
+            slug=spec["slug"],
+            name=spec["name"],
+            stripe_price_id=spec["stripe_price_id"],
+            monthly_token_quota=(
+                quota if quota is not None else spec["monthly_token_quota"]
+            ),
+            description=spec["description"],
+            features_json={},
+            sort_order=spec["sort_order"],
+            is_active=spec["is_active"],
+        )
+    )
+    return True
 
-    Idempotent: re-running on an already-activated install touches no
-    data and reports zero seeded / backfilled.
 
-    Steps (all guarded by IF-NOT-EXISTS / IF-NULL checks):
+async def activate_billing(
+    db: AsyncSession,
+    *,
+    access_model: str = ACCESS_MODEL_FREEMIUM,
+) -> dict[str, Any]:
+    """Enter a Stripe-using posture, seeding the catalogue as needed.
 
-    1. Verify Stripe env vars exist; raise 400 with the missing key name
-       when they don't (the flag stays off).
-    2. Resolve Free's seed quota from ``default_token_quota`` if the
-       legacy admin knob is set, falling back to the hardcoded default.
-    3. Insert Free + Pro plans if their slug rows are absent. Free is
-       seeded with the resolved quota directly (no post-insert mirror
-       UPDATE needed).
-    4. Set ``system_settings.default_plan_id`` — points at the Free row
-       when unset, AND self-heals if the existing pointer references a
-       missing or soft-deleted plan.
-    5. Backfill ``users.plan_id`` to Free for any NULL rows.
-    6. Flip ``billing_enabled = "true"``.
+    ``access_model`` must be ``freemium`` or ``paid_only``. Re-running
+    on an already-seeded install reports zero seeded / backfilled.
 
-    Returns a summary dict useful for ops debugging:
-    ``{"plans_seeded": int, "users_backfilled": int, "default_plan_id": int | None}``.
+    ``freemium``:
+      seed included + paid template; set ``default_plan_id``; backfill
+      NULL ``users.plan_id``.
+    ``paid_only``:
+      seed paid template only; do not set or self-heal the pointer;
+      do not backfill. Existing included-tier bindings stay put.
     """
-    ok, missing = _stripe_env_configured()
+    if access_model not in (ACCESS_MODEL_FREEMIUM, ACCESS_MODEL_PAID_ONLY):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid access_model for activation: {access_model}",
+        )
+
+    ok, _missing = _stripe_env_configured()
     if not ok:
         raise HTTPException(
             status_code=400,
@@ -261,87 +306,59 @@ async def activate_billing(db: AsyncSession) -> dict[str, Any]:
             ),
         )
 
-    # ── Resolve Free's quota from the legacy knob before seeding ─────────
-    free_seed_quota = await _resolve_free_seed_quota(db)
-
-    # ── Seed plans ────────────────────────────────────────────────────────
     plans_seeded = 0
-    for spec in _SEED_PLANS:
-        existing = await db.execute(
-            select(BillingPlan).where(BillingPlan.slug == spec["slug"])
-        )
-        if existing.scalar_one_or_none() is not None:
-            continue
-        # Free's quota is overridden from the resolved legacy default so
-        # admins who set ``default_token_quota`` pre-billing don't see
-        # Free silently revert to 100K on first activation.
-        quota = (
-            free_seed_quota
-            if spec["slug"] == "free"
-            else spec["monthly_token_quota"]
-        )
-        db.add(
-            BillingPlan(
-                slug=spec["slug"],
-                name=spec["name"],
-                stripe_price_id=spec["stripe_price_id"],
-                monthly_token_quota=quota,
-                description=spec["description"],
-                features_json={},
-                sort_order=spec["sort_order"],
-                is_active=spec["is_active"],
-            )
-        )
-        plans_seeded += 1
-    if plans_seeded:
-        # Flush so we can read back the assigned ids in the next step.
-        await db.flush()
-
-    # Look up Free plan id — could be either freshly inserted or a
-    # pre-existing row, so we re-query rather than relying on the loop.
-    free_row = await db.execute(
-        select(BillingPlan.id).where(BillingPlan.slug == "free")
-    )
-    free_plan_id = free_row.scalar_one_or_none()
-
-    # ── default_plan_id pointer (with self-heal) ─────────────────────────
-    if free_plan_id is not None:
-        target = await _resolve_default_pointer_target(db, free_plan_id)
-        if target is not None:
-            await _set_setting(db, SETTING_DEFAULT_PLAN_ID, str(target))
-
-    # ── Backfill user plan_id ────────────────────────────────────────────
+    free_plan_id: int | None = None
     users_backfilled = 0
-    if free_plan_id is not None:
-        # Count first, then update — keeps the return value typed
-        # (``CursorResult.rowcount`` isn't exposed on the async
-        # ``Result`` shape mypy infers).
-        # Pre-count so we can return how many rows we'll touch — the
-        # async ``Result`` doesn't surface ``rowcount`` cleanly. We
-        # query through raw SQL (rather than ``select(func.count())``)
-        # because the User ORM's eager-joined relationship confuses
-        # mypy's overload resolution into expecting a BillingPlan.
-        from sqlalchemy import text as _text
 
-        count_row = await db.execute(
-            _text("SELECT COUNT(*) FROM users WHERE plan_id IS NULL")
+    if access_model == ACCESS_MODEL_FREEMIUM:
+        included_quota = await _resolve_free_seed_quota(db)
+        if await _seed_plan_if_absent(
+            db, _SEED_INCLUDED_PLAN, quota=included_quota
+        ):
+            plans_seeded += 1
+        if await _seed_plan_if_absent(db, _SEED_PAID_TEMPLATE):
+            plans_seeded += 1
+        if plans_seeded:
+            await db.flush()
+
+        free_row = await db.execute(
+            select(BillingPlan.id).where(BillingPlan.slug == "free")
         )
-        users_backfilled = int(count_row.scalar_one() or 0)
-        if users_backfilled:
-            await db.execute(
-                update(User)
-                .where(User.plan_id.is_(None))
-                .values(plan_id=free_plan_id)
-            )
+        free_plan_id = free_row.scalar_one_or_none()
 
-    # ── Flip the flag ────────────────────────────────────────────────────
+        if free_plan_id is not None:
+            target = await _resolve_default_pointer_target(db, free_plan_id)
+            if target is not None:
+                await _set_setting(db, SETTING_DEFAULT_PLAN_ID, str(target))
+
+        if free_plan_id is not None:
+            from sqlalchemy import text as _text
+
+            count_row = await db.execute(
+                _text("SELECT COUNT(*) FROM users WHERE plan_id IS NULL")
+            )
+            users_backfilled = int(count_row.scalar_one() or 0)
+            if users_backfilled:
+                await db.execute(
+                    update(User)
+                    .where(User.plan_id.is_(None))
+                    .values(plan_id=free_plan_id)
+                )
+    else:
+        # paid_only: catalogue needs a purchasable template, nothing else.
+        if await _seed_plan_if_absent(db, _SEED_PAID_TEMPLATE):
+            plans_seeded += 1
+            await db.flush()
+
+    await _set_setting(db, SETTING_ACCESS_MODEL, access_model)
     await _set_setting(db, SETTING_BILLING_ENABLED, "true")
 
     await db.commit()
 
     logger.info(
-        "Billing activation: plans_seeded=%s users_backfilled=%s "
-        "default_plan_id=%s",
+        "Billing activation: access_model=%s plans_seeded=%s "
+        "users_backfilled=%s default_plan_id=%s",
+        access_model,
         plans_seeded,
         users_backfilled,
         free_plan_id,
@@ -352,6 +369,7 @@ async def activate_billing(db: AsyncSession) -> dict[str, Any]:
         "users_backfilled": users_backfilled,
         "default_plan_id": free_plan_id,
         "billing_enabled": True,
+        "access_model": access_model,
     }
 
 
@@ -362,16 +380,44 @@ async def deactivate_billing(db: AsyncSession) -> dict[str, Any]:
     later re-activation finds the catalogue already seeded and runs as
     a no-op.
     """
+    await _set_setting(db, SETTING_ACCESS_MODEL, ACCESS_MODEL_OFF)
     await _set_setting(db, SETTING_BILLING_ENABLED, "false")
     await db.commit()
-    return {"billing_enabled": False}
+    return {
+        "billing_enabled": False,
+        "access_model": ACCESS_MODEL_OFF,
+    }
+
+
+async def set_access_model(db: AsyncSession, access_model: str) -> dict[str, Any]:
+    """Switch posture. Tightening / widening is the caller's to confirm.
+
+    ``off`` deactivates. ``freemium`` / ``paid_only`` activate with
+    that seed policy. Same-value calls still run activation so a
+    dangling pointer can self-heal on freemium.
+    """
+    if access_model not in ACCESS_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid access_model: {access_model}",
+        )
+    if access_model == ACCESS_MODEL_OFF:
+        return await deactivate_billing(db)
+    return await activate_billing(db, access_model=access_model)
 
 
 __all__ = [
+    "ACCESS_MODEL_FREEMIUM",
+    "ACCESS_MODEL_OFF",
+    "ACCESS_MODEL_PAID_ONLY",
+    "ACCESS_MODELS",
+    "SETTING_ACCESS_MODEL",
     "SETTING_BILLING_ENABLED",
     "SETTING_DEFAULT_PLAN_ID",
     "activate_billing",
     "deactivate_billing",
+    "get_access_model",
     "is_billing_enabled",
     "require_billing_enabled",
+    "set_access_model",
 ]

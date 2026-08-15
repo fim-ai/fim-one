@@ -193,6 +193,7 @@ export interface AdminBillingPlan {
   features_json: Record<string, unknown>
   sort_order: number
   is_active: boolean
+  is_default: boolean
   active_subscription_count: number
   created_at: string | null
 }

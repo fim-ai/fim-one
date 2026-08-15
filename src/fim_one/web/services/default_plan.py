@@ -50,7 +50,18 @@ async def get_default_plan_id(db: AsyncSession) -> int | None:
     the backfill migration (and the activation flow) cover any rows we
     miss here.
     """
+    from fim_one.web.services.billing_flag import (
+        ACCESS_MODEL_FREEMIUM,
+        get_access_model,
+    )
+
     try:
+        # Only freemium assigns a default plan at registration.
+        # paid_only leaves plan_id NULL (unentitled). off does not
+        # bind users to the catalogue.
+        if await get_access_model(db) != ACCESS_MODEL_FREEMIUM:
+            return None
+
         # Tier 1: explicit pointer.
         ptr_result = await db.execute(
             select(SystemSetting.value).where(

@@ -36,6 +36,11 @@ async def session() -> AsyncIterator[AsyncSession]:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as s:
+        # Default-plan lookup only binds users under freemium. The
+        # legacy flag maps to that posture so existing pointer/slug
+        # tests keep their meaning.
+        s.add(SystemSetting(key="billing_enabled", value="true"))
+        await s.commit()
         yield s
     await engine.dispose()
 
@@ -98,6 +103,17 @@ class TestGetDefaultPlanId:
     ) -> None:
         plan_id = await get_default_plan_id(session)
         assert plan_id is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_paid_only(
+        self, session: AsyncSession
+    ) -> None:
+        plan = BillingPlan(slug="free", name="Free", monthly_token_quota=100)
+        session.add(plan)
+        session.add(SystemSetting(key="access_model", value="paid_only"))
+        await session.commit()
+
+        assert await get_default_plan_id(session) is None
 
 
 class TestBackwardCompatAlias:

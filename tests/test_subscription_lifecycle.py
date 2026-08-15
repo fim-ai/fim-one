@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
-from fim_one.db.models import BillingPlan, Subscription, User
+from fim_one.db.models import BillingPlan, Subscription, SystemSetting, User
 from fim_one.web.services.subscription_lifecycle import (
     downgrade_expired_canceled_subscriptions,
 )
@@ -32,6 +32,8 @@ async def session() -> AsyncIterator[AsyncSession]:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as s:
+        s.add(SystemSetting(key="billing_enabled", value="true"))
+        await s.commit()
         yield s
     await engine.dispose()
 
@@ -169,3 +171,23 @@ class TestDowngradeExpiredCanceledSubscriptions:
         # No plans seeded — function must short-circuit cleanly.
         result = await downgrade_expired_canceled_subscriptions(session)
         assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_paid_only_clears_plan_at_period_end(
+        self, session: AsyncSession
+    ) -> None:
+        _free, pro = await _seed_plans(session)
+        session.add(SystemSetting(key="access_model", value="paid_only"))
+        await session.commit()
+        user, _sub = await _make_user_with_sub(
+            session,
+            plan=pro,
+            sub_status="canceled",
+            period_end=datetime.now(UTC) - timedelta(hours=1),
+        )
+
+        downgraded = await downgrade_expired_canceled_subscriptions(session)
+        await session.refresh(user)
+
+        assert downgraded == 1
+        assert user.plan_id is None

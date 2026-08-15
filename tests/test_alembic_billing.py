@@ -117,11 +117,11 @@ class TestUpgrade:
 
         assert len(rows) == 2
         assert rows[0][0] == "free"
-        assert rows[0][2] == 100_000
+        assert rows[0][2] == 0
         assert rows[0][3] is None
         assert rows[1][0] == "pro"
         assert rows[1][2] == 5_000_000
-        assert rows[1][3] == "price_1TULYLPQaxUGYm0zj6R3Mpne"
+        assert rows[1][3] is None
 
     def test_idempotent_on_replay(
         self, synchronous_engine: sa.Engine

@@ -1037,8 +1037,25 @@ def _next_month_reset_iso() -> str:
 
 
 async def _check_token_quota(user_id: str) -> None:
-    """Raise 429 if the user has exceeded their monthly token quota."""
+    """Raise 429 if the user has exceeded their monthly token quota.
+
+    ``paid_only`` users with no plan raise 402 ``subscription_required``.
+    That check uses a separate session so the quota-status FIFO mock
+    contract in ``test_chat_quota_streaming`` stays intact.
+    """
     monthly_tokens, user_quota = await _get_quota_status(user_id)
+
+    from fim_one.db import create_session
+    from fim_one.web.services.quota_enforcer import is_user_unentitled
+
+    try:
+        async with create_session() as session:
+            unentitled = await is_user_unentitled(user_id, session)
+    except Exception:
+        unentitled = False
+    if unentitled:
+        raise AppError("subscription_required", status_code=402)
+
     if user_quota > 0 and monthly_tokens >= user_quota:
         raise AppError("token_quota_exceeded", status_code=429)
 

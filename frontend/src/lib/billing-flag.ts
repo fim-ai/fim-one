@@ -61,6 +61,8 @@ export interface BillingFlagChangedDetail {
  * admin sidebar (which gates the Billing nav group on this flag)
  * re-renders without a hard reload.
  */
+export type AccessModel = "off" | "freemium" | "paid_only"
+
 export async function setBillingEnabled(
   enabled: boolean,
 ): Promise<{
@@ -68,15 +70,29 @@ export async function setBillingEnabled(
   users_backfilled: number
   default_plan_id: number | null
   billing_enabled: boolean
+  access_model: AccessModel
+}> {
+  return setAccessModel(enabled ? "freemium" : "off")
+}
+
+export async function setAccessModel(
+  accessModel: AccessModel,
+): Promise<{
+  plans_seeded: number
+  users_backfilled: number
+  default_plan_id: number | null
+  billing_enabled: boolean
+  access_model: AccessModel
 }> {
   const result = await apiFetch<{
     plans_seeded: number
     users_backfilled: number
     default_plan_id: number | null
     billing_enabled: boolean
+    access_model: AccessModel
   }>("/api/admin/system/billing/toggle", {
     method: "POST",
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify({ access_model: accessModel }),
   })
   if (typeof window !== "undefined") {
     window.dispatchEvent(

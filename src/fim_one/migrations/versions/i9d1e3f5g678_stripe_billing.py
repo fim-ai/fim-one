@@ -216,7 +216,7 @@ def upgrade() -> None:
                     "slug": "free",
                     "name": "Free",
                     "stripe_price_id": None,
-                    "monthly_token_quota": 100_000,
+                    "monthly_token_quota": 0,
                     # Token count intentionally omitted — the UI reads
                     # it from ``monthly_token_quota`` and any literal
                     # here would drift the moment an admin edited
@@ -228,7 +228,7 @@ def upgrade() -> None:
                 {
                     "slug": "pro",
                     "name": "Pro",
-                    "stripe_price_id": "price_1TULYLPQaxUGYm0zj6R3Mpne",
+                    "stripe_price_id": None,
                     "monthly_token_quota": 5_000_000,
                     "description": "Priority support",
                     "sort_order": 1,

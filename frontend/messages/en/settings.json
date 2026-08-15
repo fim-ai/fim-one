@@ -393,6 +393,8 @@
     "tokens": "tokens",
     "unlimited": "Unlimited",
     "noQuota": "No quota limit set",
+    "unentitled": "Subscribe to continue",
+    "unentitledHint": "This instance requires a paid plan before models can be used.",
     "dailyUsageTitle": "Daily Usage",
     "dailyDate": "Date",
     "dailyTokens": "Tokens",

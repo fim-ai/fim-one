@@ -50,11 +50,13 @@ from fim_one.web.services.user_deletion import purge_user_data
 from fim_one.web.api.admin_utils import get_setting, set_setting, write_audit  # noqa: F811,E402
 from fim_one.web.api.files import _load_index, _user_dir
 from fim_one.web.services.billing_flag import (
+    ACCESS_MODEL_OFF,
     SETTING_BILLING_ENABLED,
     activate_billing,
     deactivate_billing,
     is_billing_enabled,
     require_billing_enabled,
+    set_access_model,
 )
 from fim_one.web.services.stripe_pricing import (
     fetch_price_details as fetch_stripe_price_details,
@@ -822,6 +824,9 @@ class SystemSettingsResponse(BaseModel):
     # decide whether to render the Plan & Billing tab and the admin
     # billing nav group.
     billing_enabled: bool = False
+    # Instance posture: ``off`` | ``freemium`` | ``paid_only``.
+    # ``billing_enabled`` is derived (anything but ``off``).
+    access_model: str = "off"
     # ``True`` when Stripe credentials are present at runtime — admin
     # UI uses this to enable / explain the toggle button in the System
     # Settings page.
@@ -852,12 +857,18 @@ class BillingActivationResponse(BaseModel):
     users_backfilled: int
     default_plan_id: int | None
     billing_enabled: bool
+    access_model: str = "off"
 
 
 class BillingToggleRequest(BaseModel):
-    """Request body for the billing toggle endpoint."""
+    """Request body for the billing toggle / posture endpoint.
 
-    enabled: bool
+    Prefer ``access_model``. ``enabled`` is the legacy boolean: True
+    enters ``freemium``, False enters ``off``.
+    """
+
+    enabled: bool | None = None
+    access_model: str | None = None
 
 
 async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
@@ -882,8 +893,13 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
     # Billing flag + Stripe configuration. ``stripe_configured`` is
     # surfaced so the admin UI can explain what the operator is missing
     # before flipping the switch.
+    from fim_one.web.services.billing_flag import (
+        _stripe_env_configured,
+        get_access_model,
+    )
+
     billing_flag = await is_billing_enabled(db)
-    from fim_one.web.services.billing_flag import _stripe_env_configured
+    access_model = await get_access_model(db)
     stripe_ok, _ = _stripe_env_configured()
 
     from fim_one.web.services.feature_flags import are_features_enabled
@@ -900,6 +916,7 @@ async def _load_all_settings(db: AsyncSession) -> SystemSettingsResponse:
         smtp_configured=_smtp_configured(),
         disabled_builtin_tools=disabled_tools,
         billing_enabled=billing_flag,
+        access_model=access_model,
         stripe_configured=stripe_ok,
         modules=modules,
     )
@@ -1054,24 +1071,33 @@ async def toggle_billing_endpoint(
     the frontend can update its local state in one round-trip; the
     seed / backfill counts are zero on the deactivate path.
     """
-    if body.enabled:
-        summary = await activate_billing(db)
-        action = "billing.enable"
-    else:
-        result = await deactivate_billing(db)
+    target = body.access_model
+    if target is None:
+        if body.enabled is None:
+            raise AppError("invalid_access_model", status_code=400)
+        target = "freemium" if body.enabled else ACCESS_MODEL_OFF
+
+    summary = await set_access_model(db, target)
+    action = (
+        "billing.disable" if target == ACCESS_MODEL_OFF else "billing.enable"
+    )
+    if "plans_seeded" not in summary:
         summary = {
             "plans_seeded": 0,
             "users_backfilled": 0,
             "default_plan_id": None,
-            "billing_enabled": result["billing_enabled"],
+            "billing_enabled": summary["billing_enabled"],
+            "access_model": summary.get("access_model", target),
         }
-        action = "billing.disable"
 
     await write_audit(
         db,
         current_user,
         action,
-        detail=f"billing_enabled={summary['billing_enabled']}",
+        detail=(
+            f"billing_enabled={summary['billing_enabled']} "
+            f"access_model={summary.get('access_model', target)}"
+        ),
     )
     return BillingActivationResponse(**summary)
 
@@ -3479,7 +3505,12 @@ def get_model_group_version() -> int:
 _ACTIVE_SUB_STATUSES = ("active", "trialing", "past_due")
 
 
-def _plan_to_read(plan: BillingPlan, active_count: int = 0) -> AdminBillingPlanRead:
+def _plan_to_read(
+    plan: BillingPlan,
+    active_count: int = 0,
+    *,
+    is_default: bool = False,
+) -> AdminBillingPlanRead:
     """Project a :class:`BillingPlan` ORM row into :class:`AdminBillingPlanRead`.
 
     ``features_json`` is a free-form blob for forward-compat (we may
@@ -3537,9 +3568,16 @@ def _plan_to_read(plan: BillingPlan, active_count: int = 0) -> AdminBillingPlanR
         features_json=features_json,
         sort_order=plan.sort_order,
         is_active=plan.is_active,
+        is_default=is_default,
         active_subscription_count=active_count,
         created_at=plan.created_at,
     )
+
+
+async def _default_plan_id(db: AsyncSession) -> int | None:
+    from fim_one.web.services.default_plan import get_default_plan_id
+
+    return await get_default_plan_id(db)
 
 
 async def _count_active_subs_for_plan(db: AsyncSession, plan_id: int) -> int:
@@ -3577,8 +3615,14 @@ async def list_billing_plans(
         .group_by(Subscription.plan_id)
     )
     counts: dict[int, int] = {row[0]: int(row[1]) for row in counts_result.all()}
+    default_id = await _default_plan_id(db)
 
-    return [_plan_to_read(p, counts.get(p.id, 0)) for p in plans]
+    return [
+        _plan_to_read(
+            p, counts.get(p.id, 0), is_default=(default_id == p.id)
+        )
+        for p in plans
+    ]
 
 
 @router.post(
@@ -3655,7 +3699,10 @@ async def get_billing_plan(
         raise AppError("billing_plan_not_found", status_code=404)
 
     count = await _count_active_subs_for_plan(db, plan_id)
-    return _plan_to_read(plan, active_count=count)
+    default_id = await _default_plan_id(db)
+    return _plan_to_read(
+        plan, active_count=count, is_default=(default_id == plan.id)
+    )
 
 
 @router.patch(
@@ -3693,8 +3740,13 @@ async def update_billing_plan(
     if "slug" in payload:
         raise AppError("billing_plan_slug_immutable", status_code=400)
 
+    default_id = await _default_plan_id(db)
+    is_default = default_id == plan.id
+
     if "stripe_price_id" in payload:
         new_price_id = payload["stripe_price_id"]
+        if new_price_id and is_default:
+            raise AppError("billing_plan_is_default", status_code=409)
         if new_price_id and new_price_id != plan.stripe_price_id:
             existing_price = await db.execute(
                 select(BillingPlan).where(
@@ -3730,6 +3782,8 @@ async def update_billing_plan(
     if "sort_order" in payload and payload["sort_order"] is not None:
         plan.sort_order = payload["sort_order"]
     if "is_active" in payload and payload["is_active"] is not None:
+        if is_default and payload["is_active"] is False:
+            raise AppError("billing_plan_is_default", status_code=409)
         plan.is_active = payload["is_active"]
 
     # features_json patch: features list + price_cents are stored under
@@ -3753,7 +3807,7 @@ async def update_billing_plan(
         target_label=plan.slug,
     )
     count = await _count_active_subs_for_plan(db, plan_id)
-    return _plan_to_read(plan, active_count=count)
+    return _plan_to_read(plan, active_count=count, is_default=is_default)
 
 
 @router.delete(
@@ -3776,6 +3830,10 @@ async def delete_billing_plan(
     plan = result.scalar_one_or_none()
     if plan is None:
         raise AppError("billing_plan_not_found", status_code=404)
+
+    default_id = await _default_plan_id(db)
+    if default_id == plan.id:
+        raise AppError("billing_plan_is_default", status_code=409)
 
     active_count = await _count_active_subs_for_plan(db, plan_id)
     if active_count > 0:

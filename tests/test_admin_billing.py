@@ -459,6 +459,18 @@ class TestPlansUpdate:
 
     @pytest.mark.asyncio
     async def test_update_toggles_is_active(
+        self, client: AsyncClient, admin_user: User, pro_plan: BillingPlan
+    ) -> None:
+        resp = await client.patch(
+            f"/api/admin/billing/plans/{pro_plan.id}",
+            headers=_auth_headers(admin_user),
+            json={"is_active": False},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["is_active"] is False
+
+    @pytest.mark.asyncio
+    async def test_update_rejects_disabling_default_plan(
         self, client: AsyncClient, admin_user: User, free_plan: BillingPlan
     ) -> None:
         resp = await client.patch(
@@ -466,8 +478,8 @@ class TestPlansUpdate:
             headers=_auth_headers(admin_user),
             json={"is_active": False},
         )
-        assert resp.status_code == 200
-        assert resp.json()["is_active"] is False
+        assert resp.status_code == 409
+        assert resp.json().get("error_code") == "billing_plan_is_default"
 
     @pytest.mark.asyncio
     async def test_update_404_for_unknown_plan(
@@ -484,15 +496,22 @@ class TestPlansUpdate:
     async def test_update_rejects_duplicate_stripe_price(
         self,
         client: AsyncClient,
+        db_session: AsyncSession,
         admin_user: User,
-        free_plan: BillingPlan,
         pro_plan: BillingPlan,
     ) -> None:
-        # Free has no stripe_price_id by default; assigning Pro's collides.
+        extra = BillingPlan(
+            slug="team",
+            name="Team",
+            monthly_token_quota=10_000_000,
+            stripe_price_id="price_test_team",
+        )
+        db_session.add(extra)
+        await db_session.commit()
         resp = await client.patch(
-            f"/api/admin/billing/plans/{free_plan.id}",
+            f"/api/admin/billing/plans/{pro_plan.id}",
             headers=_auth_headers(admin_user),
-            json={"stripe_price_id": pro_plan.stripe_price_id},
+            json={"stripe_price_id": extra.stripe_price_id},
         )
         assert resp.status_code == 409
 
@@ -509,10 +528,10 @@ class TestPlansDelete:
         client: AsyncClient,
         db_session: AsyncSession,
         admin_user: User,
-        free_plan: BillingPlan,
+        pro_plan: BillingPlan,
     ) -> None:
         resp = await client.delete(
-            f"/api/admin/billing/plans/{free_plan.id}",
+            f"/api/admin/billing/plans/{pro_plan.id}",
             headers=_auth_headers(admin_user),
         )
         assert resp.status_code == 200
@@ -523,11 +542,25 @@ class TestPlansDelete:
         from sqlalchemy import select
 
         result = await db_session.execute(
-            select(BillingPlan).where(BillingPlan.id == free_plan.id)
+            select(BillingPlan).where(BillingPlan.id == pro_plan.id)
         )
         row = result.scalar_one()
         await db_session.refresh(row)
         assert row.is_active is False
+
+    @pytest.mark.asyncio
+    async def test_delete_rejects_default_plan(
+        self,
+        client: AsyncClient,
+        admin_user: User,
+        free_plan: BillingPlan,
+    ) -> None:
+        resp = await client.delete(
+            f"/api/admin/billing/plans/{free_plan.id}",
+            headers=_auth_headers(admin_user),
+        )
+        assert resp.status_code == 409
+        assert resp.json().get("error_code") == "billing_plan_is_default"
 
     @pytest.mark.asyncio
     async def test_delete_rejects_when_active_subs_exist(

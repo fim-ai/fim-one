@@ -181,6 +181,7 @@ class AdminBillingPlanRead(BaseModel):
     features_json: dict[str, Any] = Field(default_factory=dict)
     sort_order: int = 0
     is_active: bool = True
+    is_default: bool = False
     active_subscription_count: int = 0
     created_at: datetime | None = None
 

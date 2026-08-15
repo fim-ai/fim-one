@@ -20,11 +20,18 @@ from datetime import UTC, datetime
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.db.models import BillingPlan, Subscription, User
+from fim_one.db.models import Subscription, User
+from fim_one.web.services.billing_flag import (
+    ACCESS_MODEL_FREEMIUM,
+    ACCESS_MODEL_PAID_ONLY,
+    get_access_model,
+)
+from fim_one.web.services.default_plan import get_default_plan_id
 
 logger = logging.getLogger(__name__)
 
-#: Free plan slug — ORM source of truth, never hardcoded elsewhere.
+#: Kept as a published name so existing imports do not break. New
+#: code should resolve the downgrade target via ``default_plan_id``.
 FREE_PLAN_SLUG = "free"
 
 #: Default sweep interval. One hour matches Stripe's webhook-retry SLA
@@ -48,16 +55,20 @@ async def downgrade_expired_canceled_subscriptions(db: AsyncSession) -> int:
         The number of users downgraded in this pass. ``0`` is the steady
         state.
     """
-    free_plan_result = await db.execute(
-        select(BillingPlan).where(BillingPlan.slug == FREE_PLAN_SLUG)
-    )
-    free_plan = free_plan_result.scalar_one_or_none()
-    if free_plan is None:
-        # The seed migration ships this row; if it's missing the operator
-        # ran an unsupported schema. Log and bail so we don't poison data.
-        logger.warning(
-            "Free plan row missing — skipping subscription downgrade sweep"
-        )
+    model = await get_access_model(db)
+    target_plan_id: int | None
+    if model == ACCESS_MODEL_FREEMIUM:
+        target_plan_id = await get_default_plan_id(db)
+        if target_plan_id is None:
+            logger.warning(
+                "Freemium default plan missing — skipping subscription "
+                "downgrade sweep"
+            )
+            return 0
+    elif model == ACCESS_MODEL_PAID_ONLY:
+        # Period-end cancel becomes unentitled.
+        target_plan_id = None
+    else:
         return 0
 
     now = datetime.now(UTC)
@@ -79,14 +90,14 @@ async def downgrade_expired_canceled_subscriptions(db: AsyncSession) -> int:
         user = await db.get(User, sub.user_id)
         if user is None:
             continue
-        if user.plan_id == free_plan.id:
-            # Already downgraded by a prior sweep — nothing to do.
+        if user.plan_id == target_plan_id:
             continue
-        user.plan_id = free_plan.id
+        user.plan_id = target_plan_id
         downgraded += 1
         logger.info(
-            "Downgraded user %s to free plan after canceled subscription %s expired",
+            "Downgraded user %s to plan_id=%s after canceled subscription %s expired",
             sub.user_id,
+            target_plan_id,
             sub.stripe_subscription_id,
         )
 

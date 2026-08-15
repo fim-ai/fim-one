@@ -26,6 +26,7 @@ interface UsageData {
   reset_at: string | null
   quota: number | null
   quota_used_pct: number | null
+  unentitled?: boolean
   daily: DailyUsage[]
   by_agent: AgentUsage[]
 }
@@ -99,7 +100,14 @@ export function UsageSettings() {
               <p className="text-xs font-medium text-muted-foreground">
                 {t("currentUsage")}
               </p>
-              {data.quota != null && data.quota > 0 ? (
+              {data.unentitled ? (
+                <div className="space-y-1">
+                  <p className="text-3xl font-bold">{t("unentitled")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("unentitledHint")}
+                  </p>
+                </div>
+              ) : data.quota != null && data.quota > 0 ? (
                 <div className="space-y-2">
                   <p className="text-3xl font-bold tabular-nums">
                     {(data.quota_used_pct ?? 0).toFixed(1)}%
