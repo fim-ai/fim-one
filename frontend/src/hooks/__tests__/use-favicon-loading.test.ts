@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import { useFaviconLoading } from "@/hooks/use-favicon-loading"
 
 // ---------------------------------------------------------------------------
@@ -85,6 +85,10 @@ describe("useFaviconLoading", () => {
   })
 
   afterEach(() => {
+    // vitest runs with globals:false, so Testing Library never registers its
+    // own auto-cleanup: without this, a hook left mounted keeps its favicon
+    // interval ticking into the torn-down environment.
+    cleanup()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.useRealTimers()
