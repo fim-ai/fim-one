@@ -38,7 +38,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **The composer warns before an image goes to a text-only model.** Attaching an image while the active model cannot read images shows a note saying the model will only receive the file name, resolved from the model that turn would actually use.
 
+- **Unsent input is kept.** Text, pasted clips and finished attachments that have not been sent are remembered per conversation, and separately for a new chat, so they survive a refresh, a switch to another conversation, and an expired session. A draft is cleared once the message is sent or its conversation is deleted.
+
 ### Fixed
+
+- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
+
+- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
 
 - **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
 

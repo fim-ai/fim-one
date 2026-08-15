@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, Download, FileText, ChevronDown, ChevronUp, Sparkles } from "lucide-react"
+import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, Download, FileText, ChevronDown, ChevronUp, Sparkles, AlertTriangle } from "lucide-react"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -26,9 +26,11 @@ import { useReactSteps } from "@/hooks/use-react-steps"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useFaviconLoading } from "@/hooks/use-favicon-loading"
 import { useLocalStorage } from "@/hooks/use-local-storage"
+import { useChatDraft, NEW_CHAT_DRAFT_KEY, type ChatDraft } from "@/hooks/use-chat-draft"
+import { useStateWithRef } from "@/hooks/use-state-with-ref"
 import { useAuth } from "@/contexts/auth-context"
 import { useConversation } from "@/contexts/conversation-context"
-import { agentApi, fileApi, chatApi, ApiError } from "@/lib/api"
+import { agentApi, fileApi, chatApi, modelApi, ApiError } from "@/lib/api"
 import { getApiBaseUrl, getApiDirectUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { cn, formatFileSize, isDocumentFile, isImageFile } from "@/lib/utils"
 import {
@@ -94,7 +96,14 @@ interface PastedClip {
 
 interface PendingFile {
   id: string
-  file: File
+  /** Absent for attachments restored from a saved draft — those bytes are
+   *  already on the server, only the local File handle is gone. */
+  file?: File
+  /** Display fields, kept separately so restored attachments render the same. */
+  name: string
+  size: number
+  mime: string
+  /** Local blob preview; restored image attachments refetch instead. */
   previewUrl?: string
   status: "uploading" | "uploaded" | "failed"
   uploadResult?: FileUploadResponse
@@ -280,6 +289,17 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, pathname])
 
+  // Composer draft persistence — the composer itself owns the hook (it holds
+  // the clips and attachments); this only resolves which draft it should be
+  // looking at. `?c=<id>` is read once at mount: until it resolves into an
+  // active conversation the key would read as "new chat" and restore the
+  // wrong draft.
+  const [bootConvId] = useState<string | null>(() =>
+    isNewChat || embedded ? null : searchParams.get("c"),
+  )
+  const draftKey = activeId ?? NEW_CHAT_DRAFT_KEY
+  const draftEnabled = !embedded && !(bootConvId !== null && activeId === null)
+
   // When user clicks a DIFFERENT conversation in sidebar, sync mode and reset SSE.
   // Skip if we just created this conversation ourselves (selfCreatedIdRef).
   const prevActiveIdRef = useRef<string | null>(null)
@@ -293,7 +313,10 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
       }
       setMode("react")
       reset()
-      setQuery("")
+      // With drafts on, the composer restores this conversation's own text
+      // (its effect already ran — child effects fire before the parent's), so
+      // clearing here would wipe what it just put back.
+      if (!draftEnabled) setQuery("")
       setSourceMode(null)
       setPendingQuery(null)
 
@@ -307,7 +330,8 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
   useEffect(() => {
     if (!activeId && prevActiveIdRef.current !== null) {
       reset()
-      setQuery("")
+      // Same as above: the new-chat draft is the composer's to restore.
+      if (!draftEnabled) setQuery("")
       setSourceMode(null)
       setPendingQuery(null)
 
@@ -437,6 +461,12 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
           selfCreatedIdRef.current = convId
         } catch (err) {
           console.error("Failed to create conversation:", err)
+          // Put the text back in the composer instead of swallowing it — this
+          // is the expired-session / offline send, where the message was never
+          // delivered anywhere.
+          setQuery(trimmed)
+          setPendingQuery(null)
+          toast.error(getErrorMessage(err, tError))
           sendingRef.current = false
           return
         }
@@ -536,6 +566,8 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
         isNewChat={isNewChat}
         initialAgentId={initialAgentId ?? agentParam}
         embedded={embedded}
+        draftKey={draftKey}
+        draftEnabled={draftEnabled}
         isPostProcessing={isPostProcessing}
         resumeState={resumeState}
         resumeAttempt={resumeAttempt}
@@ -549,6 +581,37 @@ export function PlaygroundPage({ isNewChat, embedded, initialAgentId, onTurnComp
       />
     </div>
   )
+}
+
+/** Composer-chip preview for an image attachment restored from a saved draft. */
+function AttachmentThumbnail({ fileId, alt }: { fileId: string; alt: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+    let objectUrl: string | null = null
+    fetch(`${getApiBaseUrl()}/api/files/${fileId}`, {
+      signal: controller.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error("not found"))))
+      .then((blob) => {
+        if (controller.signal.aborted) return
+        objectUrl = URL.createObjectURL(blob)
+        setBlobUrl(objectUrl)
+      })
+      .catch(() => {})
+
+    return () => {
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [fileId])
+
+  if (!blobUrl) return <Paperclip className="h-3 w-3 text-muted-foreground" />
+  /* eslint-disable-next-line @next/next/no-img-element */
+  return <img src={blobUrl} alt={alt} className="h-8 w-8 rounded object-cover" />
 }
 
 /** Fetches an image via authenticated request and displays a clickable thumbnail with lightbox. */
@@ -761,6 +824,10 @@ interface PlaygroundContentProps {
   /** Auto-resume state from useSseResume — drives the "Reconnecting…" badge. */
   resumeState?: "idle" | "running" | "reconnecting" | "failed"
   resumeAttempt?: number
+  /** Which unsent draft this composer owns: conversation id or NEW_CHAT_DRAFT_KEY. */
+  draftKey: string
+  /** False while the draft target is ambiguous (embedded, unresolved `?c=`). */
+  draftEnabled: boolean
 }
 
 function PlaygroundContent({
@@ -788,6 +855,8 @@ function PlaygroundContent({
   isPostProcessing,
   resumeState,
   resumeAttempt,
+  draftKey,
+  draftEnabled,
 }: PlaygroundContentProps) {
   const t = useTranslations("playground")
   const tc = useTranslations("common")
@@ -844,23 +913,111 @@ function PlaygroundContent({
   const [agentsLoaded, setAgentsLoaded] = useState(false)
   const [agentSelectorOpen, setAgentSelectorOpen] = useState(false)
 
-  // File upload (eager — files upload immediately when attached)
-  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
-  const pendingFilesRef = useRef<PendingFile[]>([])
+  // File upload (eager — files upload immediately when attached).
+  // The ref mirror is synchronous: a send that lands mid-upload resumes in the
+  // same microtask as the upload's `.then()`, long before React commits, and a
+  // post-render mirror would hand it files still marked "uploading" — which is
+  // how attachments used to vanish from the sent message.
+  const [pendingFiles, setPendingFiles, pendingFilesRef] = useStateWithRef<PendingFile[]>([])
   const uploadPromisesRef = useRef<Map<string, Promise<FileUploadResponse | void>>>(new Map())
   const [pendingImages, setPendingImages] = useState<Array<{ file_id: string; filename: string }>>([])
   const [pendingFilesMetadata, setPendingFilesMetadata] = useState<FileMessageMetadata | null>(null)
   const isUploading = pendingFiles.some((f) => f.status === "uploading")
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Keep pendingFilesRef in sync with state so async callbacks can read latest
-  useEffect(() => {
-    pendingFilesRef.current = pendingFiles
-  }, [pendingFiles])
+  // Send blocked on uploads that were still in flight when the user hit Enter
+  const [awaitingUploads, setAwaitingUploads] = useState(false)
+  const sendGuardRef = useRef(false)
 
   // Pasted clips (long text folded into cards)
   const [clips, setClips] = useState<PastedClip[]>([])
   const [expandedClips, setExpandedClips] = useState<Set<string>>(new Set())
+
+  // ---- Vision capability ----------------------------------------------
+  // A text-only model never sees an attached image: chat drops the bytes and
+  // passes the filename through instead. Ask what the turn would actually use,
+  // but only once an image is actually attached — no image, no request.
+  const hasImageAttachment = pendingFiles.some((f) => f.mime.startsWith("image/"))
+  const [modelReadsImages, setModelReadsImages] = useState<boolean | null>(null)
+  useEffect(() => {
+    if (!hasImageAttachment) return
+    let cancelled = false
+    modelApi
+      .effectiveVision({
+        agentId: selectedAgent?.id,
+        conversationId: activeConversation?.id,
+      })
+      .then((res) => {
+        if (!cancelled) setModelReadsImages(res.supports_vision)
+      })
+      .catch(() => {
+        // Unknown capability: stay quiet rather than warn on a failed probe.
+        if (!cancelled) setModelReadsImages(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hasImageAttachment, selectedAgent?.id, activeConversation?.id])
+
+  // ---- Unsent draft ---------------------------------------------------
+  // Text, clips and finished uploads are mirrored to localStorage and come
+  // back on refresh or conversation switch. Uploads still in flight are left
+  // out: without a file_id there is nothing to restore them from.
+  const draftAttachments = useMemo(
+    () =>
+      pendingFiles
+        .filter((f): f is PendingFile & { uploadResult: FileUploadResponse } =>
+          f.status === "uploaded" && !!f.uploadResult,
+        )
+        .map((f) => ({ id: f.id, uploadResult: f.uploadResult })),
+    [pendingFiles],
+  )
+
+  const restoreDraft = useCallback(
+    (draft: ChatDraft) => {
+      onQueryChange(draft.text)
+      setClips(draft.clips)
+      setExpandedClips(new Set())
+      setPendingFiles(
+        draft.attachments.map((a) => ({
+          id: a.id,
+          name: a.uploadResult.filename,
+          size: a.uploadResult.size,
+          mime: a.uploadResult.mime_type ?? "",
+          status: "uploaded" as const,
+          uploadResult: a.uploadResult,
+        })),
+      )
+      if (draft.attachments.length === 0) return
+      // The files may have been cleaned up server-side since the draft was
+      // written. Drop those rather than sending dead ids — scoped to the ids
+      // we just restored, so an upload finishing meanwhile is left alone.
+      const restoredIds = new Set(draft.attachments.map((a) => a.id))
+      fileApi
+        .list()
+        .then((files) => {
+          const alive = new Set(files.map((f) => f.file_id))
+          setPendingFiles((prev) =>
+            prev.filter(
+              (f) =>
+                !restoredIds.has(f.id) ||
+                (!!f.uploadResult && alive.has(f.uploadResult.file_id)),
+            ),
+          )
+        })
+        .catch(() => {})
+    },
+    [onQueryChange, setPendingFiles],
+  )
+
+  useChatDraft({
+    userId: user?.id ?? "",
+    draftKey,
+    enabled: draftEnabled,
+    text: query,
+    clips,
+    attachments: draftAttachments,
+    onRestore: restoreDraft,
+  })
 
   // Slash commands
   const slashCommands = useSlashCommands({
@@ -1047,7 +1204,7 @@ function PlaygroundContent({
     setPendingFilesMetadata(null)
     onRunWithQuery(q)
     requestAnimationFrame(() => scrollViewportToBottom())
-  }, [onRunWithQuery, scrollViewportToBottom])
+  }, [onRunWithQuery, scrollViewportToBottom, setPendingFiles])
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -1424,9 +1581,12 @@ function PlaygroundContent({
   const addFiles = useCallback((files: File[]) => {
     const validFiles = validateFiles(files)
     if (!validFiles.length) return
-    const newPending: PendingFile[] = validFiles.map((file) => ({
+    const newPending: (PendingFile & { file: File })[] = validFiles.map((file) => ({
       id: crypto.randomUUID(),
       file,
+      name: file.name,
+      size: file.size,
+      mime: file.type,
       previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
       status: "uploading" as const,
     }))
@@ -1447,7 +1607,7 @@ function PlaygroundContent({
       })
       uploadPromisesRef.current.set(pf.id, promise)
     }
-  }, [validateFiles])
+  }, [validateFiles, setPendingFiles])
 
   // File input handler
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1534,15 +1694,18 @@ function PlaygroundContent({
       uploadPromisesRef.current.delete(fileId)
       return prev.filter((f) => f.id !== fileId)
     })
-  }, [])
+  }, [setPendingFiles])
 
   const retryFileUpload = useCallback((fileId: string) => {
     const file = pendingFilesRef.current.find((f) => f.id === fileId)
-    if (!file) return
+    // No local File handle means this came back from a draft and is already
+    // uploaded — there is nothing to retry.
+    if (!file?.file) return
+    const localFile = file.file
     setPendingFiles((prev) =>
       prev.map((f) => f.id === fileId ? { ...f, status: "uploading" as const } : f)
     )
-    const promise = fileApi.upload(file.file).then((result) => {
+    const promise = fileApi.upload(localFile).then((result) => {
       setPendingFiles((prev) =>
         prev.map((f) => f.id === fileId ? { ...f, status: "uploaded" as const, uploadResult: result } : f)
       )
@@ -1555,7 +1718,7 @@ function PlaygroundContent({
       uploadPromisesRef.current.delete(fileId)
     })
     uploadPromisesRef.current.set(fileId, promise)
-  }, [])
+  }, [setPendingFiles, pendingFilesRef])
 
   const removeClip = useCallback((clipId: string) => {
     setClips((prev) => prev.filter((c) => c.id !== clipId))
@@ -1586,6 +1749,9 @@ function PlaygroundContent({
     composingRef.current = false
     setComposing(false)
 
+    // Enter can fire again while we wait for uploads below — one send per press.
+    if (sendGuardRef.current) return
+
     const currentFiles = pendingFilesRef.current
     const hasUploadableFiles = currentFiles.some((f) => f.status !== "failed")
     let finalQuery = query.trim()
@@ -1598,9 +1764,20 @@ function PlaygroundContent({
       return
     }
 
-    // Wait for any still-uploading files to complete
+    // Wait for any still-uploading files to complete. Looping (rather than one
+    // allSettled) covers files attached during the wait — each upload removes
+    // itself from the map when it settles, so this drains and stops.
     if (uploadPromisesRef.current.size > 0) {
-      await Promise.allSettled(uploadPromisesRef.current.values())
+      sendGuardRef.current = true
+      setAwaitingUploads(true)
+      try {
+        while (uploadPromisesRef.current.size > 0) {
+          await Promise.allSettled([...uploadPromisesRef.current.values()])
+        }
+      } finally {
+        sendGuardRef.current = false
+        setAwaitingUploads(false)
+      }
     }
 
     // Re-read latest state after awaiting
@@ -1730,7 +1907,7 @@ function PlaygroundContent({
 
     onRunWithQuery(finalQuery, imageIds.length > 0 ? imageIds : undefined, Object.keys(userMetadata).length > 0 ? userMetadata : undefined)
     requestAnimationFrame(() => scrollViewportToBottom())
-  }, [clips, query, onRunWithQuery, scrollViewportToBottom, t, tError])
+  }, [clips, query, onRunWithQuery, scrollViewportToBottom, t, tError, setPendingFiles, pendingFilesRef])
 
   const handleKeyDownWithFiles = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -2082,7 +2259,7 @@ function PlaygroundContent({
         {pendingFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 pb-2">
             {pendingFiles.map((pf) => {
-              const isImage = pf.file.type.startsWith("image/")
+              const isImage = pf.mime.startsWith("image/")
               return (
                 <div
                   key={pf.id}
@@ -2097,14 +2274,17 @@ function PlaygroundContent({
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
                       src={pf.previewUrl}
-                      alt={pf.file.name}
+                      alt={pf.name}
                       className="h-8 w-8 rounded object-cover"
                     />
+                  ) : isImage && pf.uploadResult ? (
+                    // Restored from a draft: the blob URL died with the page.
+                    <AttachmentThumbnail fileId={pf.uploadResult.file_id} alt={pf.name} />
                   ) : (
                     <Paperclip className="h-3 w-3 text-muted-foreground" />
                   )}
-                  <span className="max-w-[150px] truncate">{pf.file.name}</span>
-                  <span className="text-muted-foreground">({formatFileSize(pf.file.size)})</span>
+                  <span className="max-w-[150px] truncate">{pf.name}</span>
+                  <span className="text-muted-foreground">({formatFileSize(pf.size)})</span>
                   {/* Upload status indicator */}
                   {pf.status === "uploading" && (
                     <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
@@ -2131,6 +2311,12 @@ function PlaygroundContent({
               )
             })}
           </div>
+        )}
+        {hasImageAttachment && modelReadsImages === false && (
+          <p className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            {t("imagesNotReadable")}
+          </p>
         )}
         {/* Pasted clips */}
         {clips.length > 0 && (
@@ -2222,11 +2408,14 @@ function PlaygroundContent({
           />
           <Button
             onClick={isRunning ? ((query.trim() || composing) ? handleRunWithFiles : onAbort) : handleRunWithFiles}
-            disabled={!isRunning && !query.trim() && !composing && clips.length === 0 && !pendingFiles.some((f) => f.status !== "failed")}
+            disabled={awaitingUploads || (!isRunning && !query.trim() && !composing && clips.length === 0 && !pendingFiles.some((f) => f.status !== "failed"))}
             className="h-[72px] w-16 shrink-0"
             variant={isRunning && !query.trim() && !composing ? "destructive" : "default"}
           >
-            {isRunning && !query.trim() && !composing ? (
+            {awaitingUploads ? (
+              // The send is queued behind an attachment that is still uploading.
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isRunning && !query.trim() && !composing ? (
               <Square className="h-4 w-4" />
             ) : (
               <Send className="h-4 w-4" />

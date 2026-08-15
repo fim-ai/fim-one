@@ -10,6 +10,7 @@ import {
 } from "react"
 import { toast } from "sonner"
 import { conversationApi, ApiError } from "@/lib/api"
+import { dropDrafts } from "@/hooks/use-chat-draft"
 import { useAuth } from "./auth-context"
 import type {
   ConversationResponse,
@@ -149,12 +150,13 @@ export function ConversationProvider({
     async (id: string) => {
       await conversationApi.delete(id)
       setConversations((prev) => prev.filter((c) => c.id !== id))
+      if (user?.id) dropDrafts(user.id, [id])
       if (activeId === id) {
         setActiveConversation(null)
         setActiveId(null)
       }
     },
-    [activeId],
+    [activeId, user?.id],
   )
 
   const updateTitle = useCallback(
@@ -219,12 +221,13 @@ export function ConversationProvider({
     async (ids: string[]) => {
       await conversationApi.batchDelete(ids)
       setConversations((prev) => prev.filter((c) => !ids.includes(c.id)))
+      if (user?.id) dropDrafts(user.id, ids)
       if (activeId && ids.includes(activeId)) {
         setActiveConversation(null)
         setActiveId(null)
       }
     },
-    [activeId],
+    [activeId, user?.id],
   )
 
   const clearActive = useCallback(() => {
