@@ -2117,6 +2117,17 @@ export const modelApi = {
   get: (id: string) =>
     apiFetch<ApiResponse<ModelConfigResponse>>(`/api/models/${id}`).then((r) => r.data),
 
+  /** Whether the model a chat turn would use can read attached images. */
+  effectiveVision: (params?: { agentId?: string; conversationId?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.agentId) query.set("agent_id", params.agentId)
+    if (params?.conversationId) query.set("conversation_id", params.conversationId)
+    const qs = query.toString()
+    return apiFetch<ApiResponse<{ supports_vision: boolean }>>(
+      `/api/models/effective/vision${qs ? `?${qs}` : ""}`,
+    ).then((r) => r.data)
+  },
+
   create: (body: ModelConfigCreate) =>
     apiFetch<ApiResponse<ModelConfigResponse>>("/api/models", {
       method: "POST",

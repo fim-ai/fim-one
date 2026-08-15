@@ -38,6 +38,8 @@ These roles can be configured via ENV variables or through the admin UI's **Mode
 
 <Tip>
 **Vision** indicates whether the model accepts image input. This is required for [Intelligent Document Processing (IDP)](/features/idp) — if your model doesn't support vision, IDP will fall back to text-only extraction. Providers marked ⚠️ have vision on some models but not others; check the specific model you're using.
+
+Chat attachments follow the same flag: with a text-only model an attached image is not sent, and the model receives its file name only. The chat composer says so before you send, based on the model the turn would actually use (agent setting, then the active model group, then the system default). Document text is unaffected — a PDF or DOCX still has its content extracted and injected.
 </Tip>
 
 This table lists the combinations we recommend, not the full set of providers FIM One supports. xAI (Grok), ByteDance Doubao, Mistral and any OpenAI-compatible relay all work; see the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) for the complete list and how each one is routed.

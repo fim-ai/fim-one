@@ -59,6 +59,33 @@ async def list_model_configs(
     )
 
 
+@router.get("/effective/vision", response_model=ApiResponse)
+async def get_effective_vision_support(
+    agent_id: str | None = Query(None),
+    conversation_id: str | None = Query(None),
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Report whether the model a chat turn would use can read images.
+
+    The composer calls this to warn before an image is attached to a
+    text-only model: chat gates uploaded images on exactly this value, so
+    ``false`` means the picture would reach the model as a filename only.
+    Resolution mirrors the chat path (agent config > active model group >
+    system default), which is why it delegates instead of re-deriving.
+    """
+    from fim_one.web.api.chat import (
+        _resolve_agent_config,
+        _resolve_model_supports_vision,
+    )
+
+    agent_cfg = await _resolve_agent_config(
+        agent_id, conversation_id, user_id=current_user.id
+    )
+    supports_vision = await _resolve_model_supports_vision(agent_cfg, db)
+    return ApiResponse(data={"supports_vision": supports_vision})
+
+
 @router.get("/{model_id}", response_model=ApiResponse)
 async def get_model_config(
     model_id: str,
