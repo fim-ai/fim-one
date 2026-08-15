@@ -1,23 +1,25 @@
 ---
 title: "Stripe Billing"
 icon: "credit-card"
-description: "ユーザーごとのStripe サブスクリプション（Free + Pro）をトークンクォータと自動サービス プラン管理で有効にします。"
+description: "Enable per-user Stripe subscriptions (Free + Pro) with token quotas and self-service plan management."
 ---
 
-FIM One は、管理者が制御する機能フラグの背後に完全な Stripe 請求パイプラインを搭載しています。支払い機能が不要なプライベート デプロイメントはこれをオフのままにし、UI は表示されません。SaaS オペレーターは 1 つのトグルを切り替えるだけで、ホストされた Checkout、カスタマー ポータル、webhook 駆動のサブスクリプション ライフサイクル、およびクォータ強制が すぐに利用できます。
+FIM One ships a complete Stripe billing pipeline behind an instance access model. Private deployments leave it on **No subscriptions** and never see payment UI. Operators who want a catalogue pick **Included + paid** or **Paid only** and get hosted Checkout, Customer Portal, webhook-driven subscription lifecycle, and quota enforcement.
 
 <Note>
-請求は**デフォルトで無効**です。新規インストールと既存のセルフホスト デプロイメントの両方は、`system_settings.billing_enabled = FALSE` で開始されます。管理者が明示的に有効にするまで、請求 UI は表示されません。
+The software default is **No subscriptions** (`access_model = off`, `default_token_quota = 0` meaning unlimited). Fresh installs and existing self-hosts start there. No billing UI surfaces until an admin picks a Stripe posture.
 </Note>
 
-## 提供内容
+---
 
-- **Free + Pro ティア**（月次トークンクォータ付き、デフォルト：Free 1M / Pro 5M、アクティベーション後にカスタマイズ可能）
-- **Stripe ホスト型チェックアウト** — ユーザーはアップグレード時にカード情報があなたのコードに触れることなく完了
-- **カスタマーポータル** — ユーザーが支払い方法の更新、請求書のダウンロード、キャンセルをすべて Stripe UI で実行
-- **Webhook 駆動ライフサイクル** — サブスクリプションは自動的にプロビジョニングおよび更新され、キャンセルされたサブスクリプションは期間終了時に Free に降格
-- **クォータ強制実行** — トークン使用量を期間ごとに追跡、ストリーム中のカットオフと構造化されたアップグレードプロンプト
-- **管理ページ** — プラン CRUD とサブスクリプション監視用
+## What you get
+
+- **Three access postures**: no subscriptions, included + paid, or paid only
+- **Stripe-hosted Checkout** — users upgrade without your code ever touching card data
+- **Customer Portal** — users update payment methods, download invoices, cancel — all on Stripe's UI
+- **Webhook-driven lifecycle** — subscriptions provision and renew automatically; canceled paid users return to the included tier (or become unentitled in paid-only) at period end
+- **Quota enforcement** — token usage tracked per period; mid-stream cutoff with a structured upgrade prompt
+- **Admin pages** for plan CRUD and subscription monitoring
 
 ## 前提条件
 
@@ -90,18 +92,20 @@ STRIPE_BILLING_RETURN_URL=https://<your-domain>/settings?tab=billing
 ./deploy.sh   # or: docker compose restart fim-one
 ```
 
-### 3. Admin で有効化
+### 3. Activate in Admin
 
-1. 管理者としてログイン
-2. **Admin → System Settings → Billing**
-3. **Enable Stripe Billing** をONに切り替え
-4. バックエンドが `STRIPE_SECRET_KEY` と `STRIPE_WEBHOOK_SECRET` の両方が存在することを検証します — どちらかが欠落している場合は400を返し、トグルはOFFのままになります
-5. 初回有効化時のみ、バックエンドは**べき等なセットアップ**を実行します：
-   - Free + Pro プランをシード（既に存在する場合はスキップ）
-   - `system_settings.default_plan_id` を Free プランのIDに設定
-   - プランを持たないユーザーの `users.plan_id = free.id` をバックフィル
-   - `default_token_quota` → Free プランの `monthly_token_quota` を同期して、既存の管理者制御グローバルクォータを引き継ぎ
-6. その後のトグルオフ/オンは**純粋なフラグ反転**で、データ側の影響はありません
+1. Log in as an admin
+2. **Admin → System Settings → Access and billing**
+3. Pick one posture (the instance is always in exactly one):
+   - **No subscriptions** (software default) — Stripe unused. Token access is the default monthly quota (`0` = unlimited).
+   - **Included + paid** — Stripe required. New users land on the included tier; they can upgrade. Canceled paid users return to the included tier at period end.
+   - **Paid only** — Stripe required. No included tier. Users must subscribe before they can call models. Existing included-tier users keep their quota if you switch from Included + paid.
+4. The backend validates that both `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are present when you pick a Stripe posture — if either is missing it returns 400
+5. On first activation of a Stripe posture the backend runs an **idempotent setup**:
+   - Included + paid: seeds the included plan (`slug=free`) + a Pro template with an empty Price ID; sets `default_plan_id`; backfills users without a plan
+   - Paid only: seeds the Pro template only; does not backfill
+   - Copies `default_token_quota` onto the included plan when that plan is seeded (`0` stays `0`, unlimited)
+6. Switching back to **No subscriptions** is a **pure flag flip** with no data side effects. The included default plan cannot be deleted while Included + paid is active.
 
 ### 4. Pro プランをライブ価格で更新する
 
@@ -181,18 +185,19 @@ Admin → System Settings → Billing で **Enable Stripe Billing** スイッチ
 
 オーバーライドは常にプランとデフォルトより優先されます。管理者が Stripe に触れることなく、個別ユーザーをプラン階層の上下に固定できるよう存在します。
 
-### クォータ解決チェーン — v1（現在）
+### Quota resolution chain — v1 (current)
 
-認証されたリクエストの場合、上限は上から下へ計算されます——**最初にマッチしたものが優先されます**：
+For any authenticated request, the cap is computed top-down — **first match wins**:
 
 ```
 1. users.token_quota        ── NULL? skip. 0? unlimited. N>0? cap at N.
-2. users.plan.monthly_token_quota   ── only when billing_enabled = TRUE
-3. system_settings.default_token_quota  ── defensive fallback
-4. unlimited                ── last resort if everything above is NULL
+2. users.plan.monthly_token_quota   ── only when access_model is freemium or paid_only
+3. paid_only + no plan      ── unentitled (stop; do not fall through)
+4. system_settings.default_token_quota  ── used when access_model is off
+5. unlimited                ── last resort if everything above is unset
 ```
 
-ステップ3は、課金が有効な場合はめったに到達しません。これは、アクティベーションがすべてのユーザーの `users.plan_id` をバックフィルするためです。これは防御層として存在し、設定が誤ったプランがユーザーを静かに無制限にすることがないようにします。
+Step 4 is the instance-wide cap for **No subscriptions**. Under **Paid only**, a user with no plan is unentitled (chat returns 402) even if `default_token_quota` is 0.
 
 ### 期間リセット
 
@@ -251,21 +256,24 @@ Team プランがリリースされる場合：
 - クレジット残高は払い戻し不可（プリペイドの業界標準）。
 - UI は両方のバーを公開：`Subscription quota: 4.2M / 5M used` + `Credits: $7.40 remaining`。
 
-### デフォルト値
+### Default values
 
-出荷時のデフォルト — すべてインストール後に調整可能（記載されている場合を除く）。
+Ship-time defaults — all tunable post-install except where noted.
 
-| 変数 | デフォルト | 調整方法 |
+| Variable | Default | Tunable via |
 |---|---|---|
-| `billing_plans.monthly_token_quota` (Free) | `1,000,000` | Admin → Billing → Plans → Free → Edit |
-| `billing_plans.monthly_token_quota` (Pro) | `5,000,000` | Admin → Billing → Plans → Pro → Edit |
-| `system_settings.default_token_quota` | `1,000,000`（アクティベーション時にFreeと同期） | Admin → System Settings → Quotas |
-| `system_settings.billing_enabled` | `FALSE` | Admin → System Settings → Billing |
+| `system_settings.access_model` | `off` | Admin → System Settings → Access and billing |
+| `billing_plans.monthly_token_quota` (included) | copied from `default_token_quota` (`0` = unlimited) | Admin → System Settings → Default Monthly Token Quota |
+| `billing_plans.monthly_token_quota` (Pro template) | `5,000,000` | Admin → Billing → Plans → Pro → Edit |
+| `system_settings.default_token_quota` | `0` (unlimited; synced to the included plan under freemium) | Admin → System Settings → Default Monthly Token Quota |
+| `system_settings.billing_enabled` | `FALSE` (derived from `access_model != off`) | Admin → System Settings → Access and billing |
 | Pro list price | `$20.00 USD / month` | Stripe Dashboard (price object) |
 | Stripe webhook events subscribed | 6 | Stripe Dashboard → Webhooks |
-| Stripe price cache TTL | `5 minutes` | `stripe_client.py`にハードコード |
-| Subscription lifecycle cron | 毎時間 | `web/main.py`のAPScheduler |
-| Free-tier reset cron | 毎時間（暦月の境界） | `web/main.py`のAPScheduler |
+| Stripe price cache TTL | `5 minutes` | hardcoded in `stripe_client.py` |
+| Subscription lifecycle cron | hourly | APScheduler in `web/main.py` |
+| Free-tier reset cron | hourly (calendar-month boundary) | APScheduler in `web/main.py` |
+
+---
 
 ## 料金モデル
 

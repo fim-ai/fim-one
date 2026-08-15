@@ -83,5 +83,8 @@
   "model_provider_name_taken": "已存在同名的提供商。",
   "model_name_taken": "此提供商下已存在该模型ID。",
   "cannot_delete_org_owner": "该用户拥有一个或多个组织。请先转移所有权或删除这些组织。",
-  "feishu_channel_requires_encrypt_key": "Feishu通道需要加密密钥——没有它，无法验证回调签名。"
+  "feishu_channel_requires_encrypt_key": "Feishu通道需要加密密钥——没有它，无法验证回调签名。",
+  "subscription_required": "A paid subscription is required to use models.",
+  "billing_plan_is_default": "The included default plan cannot be disabled or deleted. Switch the access model instead.",
+  "invalid_access_model": "Invalid access model."
 }

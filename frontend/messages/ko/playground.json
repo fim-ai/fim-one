@@ -208,5 +208,6 @@
     "nextButton": "다음",
     "noteButton": "노트 추가",
     "notePlaceholder": "이 답변에 대한 선택적 노트…"
-  }
+  },
+  "imagesNotReadable": "The selected model cannot read images. It will only receive the file name."
 }

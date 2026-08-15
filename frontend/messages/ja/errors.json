@@ -83,5 +83,8 @@
   "model_provider_name_taken": "この名前のプロバイダーは既に存在します。",
   "model_name_taken": "このプロバイダーの下に、このモデルIDは既に存在します。",
   "cannot_delete_org_owner": "このユーザーは1つ以上の組織の所有者です。所有権を譲渡するか、それらの組織を削除してください。",
-  "feishu_channel_requires_encrypt_key": "Feishuチャネルには暗号化キーが必要です。これがないとコールバック署名を検証できません。"
+  "feishu_channel_requires_encrypt_key": "Feishuチャネルには暗号化キーが必要です。これがないとコールバック署名を検証できません。",
+  "subscription_required": "A paid subscription is required to use models.",
+  "billing_plan_is_default": "The included default plan cannot be disabled or deleted. Switch the access model instead.",
+  "invalid_access_model": "Invalid access model."
 }

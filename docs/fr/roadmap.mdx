@@ -331,13 +331,15 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 #### Workbench UX
 
-- [x] Barre latérale réorganisée autour du cluster de chat — conversations directement sous Nouveau chat/Recherche, navigation des modules dans un dock compact en bas
-- [x] Commande slash `/clear` démarre une nouvelle conversation depuis la boîte de saisie
-- [x] Les listes de modèles d'administration supportent la multi-sélection par cases à cocher avec plages Shift-clic et suppression en masse en une seule requête
-- [x] Les étapes d'agent en cours d'exécution affichent des titres générés d'une ligne dans un en-tête unique replié, conservés dans l'historique de conversation
-- [x] Un message nouvellement envoyé remonte en haut de la transcription, la réponse se développant dans l'espace en dessous
-- [x] Les pages de liste décalent leurs cartes au premier chargement, et toutes les animations respectent la préférence système de réduction des mouvements
-- [x] Les agents posent des questions de clarification à choix multiples en cours d'exécution (ask_user_question) — le tour ReAct s'interrompt sur une carte dans le chat et reprend avec les réponses
+- [x] Sidebar reorganized around the chat cluster — conversations directly under New chat/Search, module nav in a compact bottom dock
+- [x] `/clear` slash command starts a fresh conversation from the input box
+- [x] Admin model lists support checkbox multi-select with Shift-click ranges and one-request bulk delete
+- [x] Running agent steps show generated one-line titles in a single folded header, kept in conversation history
+- [x] A newly sent message rises to the top of the transcript, with the answer growing into the space below it
+- [x] List pages stagger their cards in on first load, and all animation honours the system reduce-motion preference
+- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the ReAct turn pauses on an in-chat card and resumes with the answers
+- [x] Composer warns when an attached image would reach a text-only model, resolved from the model the turn would actually use
+- [x] Unsent composer text, clips and attachments are kept per conversation (and for new chat), surviving refresh, conversation switches and expired sessions
 
 #### Robustesse du contexte
 
@@ -427,6 +429,7 @@ Do not start these without their trigger (see the replan §3): the MCP gateway w
 - [ ] **Batch execution**: process 1000+ items via DAG
 - [ ] **Enterprise security**: IP whitelisting, encryption at rest, SSO
 - [ ] **KB Advanced Editor**: Builder-mode agent for power users managing large knowledge bases — bulk URL ingestion, duplicate detection, gap analysis, document lifecycle management; extends existing KB AI chat with ReAct tool loop
+- [ ] Billing access model — instance picks no-subscriptions / included+paid / paid-only, so self-host, SaaS, and charge-from-day-one stay distinct {/* dev: dev/billing-access-model.md */}
 - [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Free + Pro two-tier subscription with monthly token quota. Stripe Checkout (hosted) + Customer Portal (self-service) + webhook-driven lifecycle (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). Soft-cap at quota exhaustion (HTTP 402 + upgrade prompt) — no overage charges in v1. Per-user billing only; Org/Team subscriptions deferred to v3. Prerequisites:
   - [x] ~~**Data model + SDK groundwork** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` tables, ORM models, Stripe SDK singleton, Free + Pro seeds~~ *(shipped in v0.8.6)*
   - [x] ~~**Backend API + webhook handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` with signature verification + idempotency; plan-aware quota; hourly lifecycle sweep~~ *(shipped in v0.8.6)*

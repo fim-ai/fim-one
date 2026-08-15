@@ -208,5 +208,6 @@
     "nextButton": "下一步",
     "noteButton": "添加备注",
     "notePlaceholder": "此答案的可选备注…"
-  }
+  },
+  "imagesNotReadable": "The selected model cannot read images. It will only receive the file name."
 }

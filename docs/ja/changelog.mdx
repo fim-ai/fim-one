@@ -10,37 +10,49 @@ description: "FIM Oneの全ての注目すべき変更。"
 
 ## [未リリース]
 
-### 追加
+### Added
 
-- **GPT-5.x エージェントはツール呼び出し全体で推論を保持します。** FIM One は OpenAI Responses API を GPT-5.x モデル向けに直接使用し、各ターンの暗号化された推論を次のターンに引き継ぐため、マルチステップエージェントはすでに導き出した内容に基づいて構築され、ツールラウンドのたびに再導出することはありません。推論トークンカウントは使用量に表示され、思考パネルはモデル独自の要約を表示します。`FIM_GPT5_RESPONSES_MODE=bridge`（または `off`）を設定して以前の動作に戻すことができます。`/v1/responses` ルートを持たないエンドポイントは自動的にチャット補完にフォールバックします。
+- **Instance access model for billing.** Admins pick one of three postures: no subscriptions (software default, monthly quota `0` = unlimited), included + paid, or paid only. The included default plan cannot be deleted; paid templates no longer ship with a FIM Stripe Price ID.
 
-- **DAG プランの純粋な変換ステップは単一の直接 LLM 呼び出しとして実行されます。** プランナーは上流の出力のみを消費するマージ/書き換え/要約ステップを直接ステップとしてタグ付けし、使用されないツールループをスキップするため、コストとレイテンシが低下します。すべてのステップ結果は実行方法（直接呼び出しまたはエージェントループ、イテレーション、使用されたツール）も記録するようになりました。
+- **GPT-5.x agents keep their reasoning across tool calls.** FIM One now talks the OpenAI Responses API directly for GPT-5.x models and carries each turn's encrypted reasoning into the next one, so a multi-step agent builds on what it already worked out instead of re-deriving it at every tool round. Reasoning token counts appear in usage, and the thinking panel shows the model's own summary. Set `FIM_GPT5_RESPONSES_MODE=bridge` (or `off`) to return to the previous behavior; endpoints without a `/v1/responses` route still fall back to chat completions on their own.
 
-- **エージェントは実行中に澄清用の複数選択肢質問を提示できます。** タスクが大きく異なる方向に進む可能性がある場合、エージェントは一時停止して最大 4 つの構造化された質問をチャットに提示します。各質問には 2～4 個のオプションと自由記述の「その他」があります。回答すると実行がその場で再開され、スキップまたはタイムアウトすると独自の判断で続行できます。
+- **Pure transformation steps in DAG plans run as a single direct LLM call.** The planner tags merge/rewrite/summarise steps that only consume upstream outputs as direct steps, skipping the tool loop they would never use, which lowers cost and latency; every step result now also records how it ran (direct call or agent loop, iterations, tools used).
 
-- **エージェントステップはライブの 1 行タイトルを持ちます。** エージェントが動作している間、各イテレーションは短い生成ラベル（「価格データを検証中…」）を取得し、単一の折りたたまれたヘッダーに表示されて最新のステップに循環します。展開するとステップタイムライン全体が表示され、ラベルは会話履歴に保持されます。
+- **Agents can ask clarifying multiple-choice questions mid-run.** When a task could go in materially different directions, the agent pauses and presents up to four structured questions in the chat, each with 2-4 options plus a free-text "Other"; answering resumes the run in place, and skipping or a timeout lets it continue on its own judgment.
 
-- **プロバイダーのモデルを一括削除できます。** Admin → Models の各モデル行にはチェックボックスがあり、ヘッダーはリスト全体を選択し、Shift キーを押しながらクリックすると行の範囲全体に選択を拡張します。選択を削除すると、選択されたすべてのモデルが 1 つのリクエストで削除され、カウントを名前に含む確認が表示されます。
+- **Agent steps carry live one-line titles.** While an agent works, each iteration gets a short generated label ("Verifying pricing data…"), shown in a single folded header that cycles to the newest step; expanding it reveals the full step timeline, and the labels persist into conversation history.
 
-- **チャット返信内の小さな比較表はカードスタイルレイアウトとしてレンダリングされるようになりました。** 最初の列が属性ラベルを保持する 2～3 列の表は、各属性を値セル内に表示します（AI チャット UI で普及している比較カードスタイルに一致）。より大きな表は従来のグリッドを保持します。
+- **A provider's models can be deleted in bulk.** Each model row in Admin → Models carries a checkbox, the header selects the whole list, and holding Shift while clicking extends the selection across a range of rows. Deleting the selection removes every chosen model in one request, after a confirmation naming the count.
 
-- **チャット返信は Mermaid ダイアグラムと SVG 図をレンダリングするようになりました。** `mermaid` コードブロックはテーマ付きダイアグラムになり、`svg` ブロックはソース切り替えとダウンロード付きの画像になります。どちらもソースが不完全または解析に失敗した場合は通常のコードにフォールバックするため、半分ストリーミングされたダイアグラムがエラーをフラッシュすることはありません。
+- **Small comparison tables in chat replies now render as card-style layouts.** A 2-3 column table whose first column holds attribute labels shows each attribute inside its value cell (matching the comparison-card style popularized by AI chat UIs); larger tables keep the classic grid.
 
-- **回答、コードブロック、表をコピーできます。** すべての返信には Markdown としてコピーするアクション、コードブロックには言語を名前に含むヘッダー、表は Markdown としてコピーと CSV ダウンロード（UTF-8、Excel で正常に開く）があります。
+- **Chat replies now render Mermaid diagrams and SVG figures.** A `mermaid` code block becomes a themed diagram and an `svg` block becomes an image with a source toggle and download; both fall back to plain code if the source is incomplete or does not parse, so a half-streamed diagram never flashes an error.
 
-- **引用はどのドキュメントから来たかを表示します。** 引用マーカーはソースのドキュメント名を含むピルとしてレンダリングされ、隣接するマーカーは 1 つのピルとカウントに折りたたまれます。ポップオーバーはその背後にあるすべてのソースをリストします。
+- **Answers, code blocks, and tables can be copied out.** Every reply has a copy-as-Markdown action, code blocks carry a header naming their language, and tables offer copy-as-Markdown plus a CSV download (UTF-8, opens cleanly in Excel).
 
-- **`/clear` はチャット入力で機能します。** チャット入力に `/clear` と入力すると新しい会話が開始され、「新規チャット」をクリックするのと同じです。実行中のターンは最初に停止されます。
+- **Citations show which document they came from.** A citation marker now renders as a pill carrying the source's document name, with adjacent markers collapsed into one pill and a count; the popover lists every source behind it.
 
-- **ダイアグラムとコードブロックはコピーするだけでなくダウンロードできます。** Mermaid ダイアグラムはレンダリングされた SVG をエクスポートし、すべてのコードブロックは言語に一致するファイル名でダウンロードされます。`csv` ブロックは Excel で正常に開く UTF-8 ファイルとしてダウンロードされます。
+- **`/clear` works in the chat input.** Typing `/clear` starts a fresh conversation, identical to clicking New chat; a running turn is stopped first.
 
-### 修正
+- **Diagrams and code blocks can be downloaded, not just copied.** Mermaid diagrams export the rendered SVG, and every code block downloads with a filename matching its language; a `csv` block downloads as a UTF-8 file that opens cleanly in Excel.
 
-- **フォローアップ提案チップはユーザーの声を保つ。** 提案される次の質問は、ユーザーが送信するもの（アシスタントへのリクエストまたは質問）として構成され、「どちらを好みますか…？」のような逆向きの好みアンケートではありません。
+- **The composer warns before an image goes to a text-only model.** Attaching an image while the active model cannot read images shows a note saying the model will only receive the file name, resolved from the model that turn would actually use.
 
-- **Exa ドキュメントは Exa をデフォルト検索プロバイダーとして呼び出さなくなりました。** 統合と環境変数ページでは、Exa を `WEB_SEARCH_PROVIDER=exa` で有効にするオプションのバックエンドとして説明し、デフォルト検索パスは Jina のままです。
+- **Unsent input is kept.** Text, pasted clips and finished attachments that have not been sent are remembered per conversation, and separately for a new chat, so they survive a refresh, a switch to another conversation, and an expired session. A draft is cleared once the message is sent or its conversation is deleted.
 
-- **サイドバーロゴは再び実際のリンクになりました。** 中クリックと cmd/ctrl クリックでダッシュボードを新しいタブで開きます。左クリックはまだナビゲートして短いバウンスアニメーションを保ちます。
+- **Chat replies accept LaTeX math delimiters.** Formulas written with `\[...\]` or `\(...\)` render as math, matching the existing dollar-sign syntax; delimiters inside code fences stay as text.
+
+### Fixed
+
+- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
+
+- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
+
+- **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
+
+- **Exa docs no longer call Exa the default search provider.** Integration and environment-variable pages now describe Exa as an optional backend you enable with `WEB_SEARCH_PROVIDER=exa`; the default search path stays Jina.
+
+- **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
 
 ### Changed
 

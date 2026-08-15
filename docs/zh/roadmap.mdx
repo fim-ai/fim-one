@@ -331,13 +331,15 @@ flowchart LR
 
 #### Workbench UX
 
-- [x] 侧边栏围绕聊天集群重新组织——对话直接显示在"新建聊天/搜索"下方，模块导航在紧凑的底部停靠栏中
-- [x] `/clear` 斜杠命令从输入框启动新对话
-- [x] 管理员模型列表支持复选框多选，支持 Shift 点击范围选择和一次请求批量删除
-- [x] 运行中的智能体步骤在单个折叠标题中显示生成的单行标题，保存在对话历史中
-- [x] 新发送的消息上升到记录的顶部，答案在其下方的空间中展开
-- [x] 列表页面在首次加载时错开卡片显示，所有动画都遵守系统的减少动画偏好设置
-- [x] 智能体在运行中提出澄清性多选题（ask_user_question）——ReAct 轮次在聊天卡片上暂停，并使用答案恢复
+- [x] Sidebar reorganized around the chat cluster — conversations directly under New chat/Search, module nav in a compact bottom dock
+- [x] `/clear` slash command starts a fresh conversation from the input box
+- [x] Admin model lists support checkbox multi-select with Shift-click ranges and one-request bulk delete
+- [x] Running agent steps show generated one-line titles in a single folded header, kept in conversation history
+- [x] A newly sent message rises to the top of the transcript, with the answer growing into the space below it
+- [x] List pages stagger their cards in on first load, and all animation honours the system reduce-motion preference
+- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the ReAct turn pauses on an in-chat card and resumes with the answers
+- [x] Composer warns when an attached image would reach a text-only model, resolved from the model the turn would actually use
+- [x] Unsent composer text, clips and attachments are kept per conversation (and for new chat), surviving refresh, conversation switches and expired sessions
 
 #### 上下文鲁棒性
 
@@ -411,34 +413,35 @@ flowchart LR
 - [x] ~~Agent Core Phase 3: Conversation Recovery MVP, Compact Work Card, Turn Profiler, Per-user Rate Limiting~~ *(v0.8.3)*
 - [x] ~~Conversation resume MVP, System prompt registry + cache, Thinking-block persistence, Reasoning replay policy, Cache observability~~ *(v0.8.4)*
 
-### v1.0 — 热插拔 + 可嵌入
+### v1.0 — Hot-Plug + Embeddable
 
-**目标**：零重启连接器添加、套餐生态系统和嵌入式交付。
+**Goal**: Zero-restart connector addition, Package ecosystem, and embedded delivery.
 
-- [ ] **连接器渐进式披露（第5阶段）**：**语义引导工具选择**（从查询中提取实体 → 本体注册表查找 → 连接器集合缩减；50+连接器部署时减少90%+令牌）；批处理/ETL连接器的规模模式；CLI风格的通用 `connector <name> <action> <params>` 接口
-- [ ] **跨连接器实体对齐（本体注册表）** — *2026-04-21降级：按需自定义交付，非核心能力*：定义共享实体类型（Customer、Order、Asset），具有跨连接器的字段映射；DAGPlanner自动解析跨系统JOIN键；启用跨连接器查询（例如"在Salesforce中订购过Shopify的客户"），无需硬编码字段名
-- [ ] **热插拔连接器**：上传OpenAPI规范，AI生成配置，5分钟内上线（无需重启）
-- [x] ~~**市场重设计第1阶段 — 解决方案+组件**~~：两层市场模型（解决方案：智能体/技能/工作流；组件：连接器/MCP服务器）；范围选择器（全球市场/组织）；统一订阅模型（组织自动出现已移除）；KB从市场范围移除；数据迁移为现有组织成员的订阅回填
-- [ ] **市场套餐系统**：市场的可分发资源包 — 用统一打包层替换按类型的"市场"。`fim-package.yaml` 清单声明：元数据（名称、版本、描述、作者、许可证、标签、`min_fim_version`）、入口点（主要技能或智能体）、资源列表（智能体、技能、连接器、知识库、MCP服务器、工作流）及配置引用、包间依赖项（semver范围）、所需凭证（映射到连接器引用以进行安装时收集）和用户可配置变量及默认值。**两种消费模式**：（1）**install** — 批量创建所有资源+通过ID替换自动连接内部引用；安装链接到源以获取版本更新通知；`POST /api/market/packages/{id}/install`；（2）**fork** — 克隆为用户拥有的可编辑副本，无更新链接（这就是模板模式）；`POST /api/market/packages/{id}/fork`。其他端点：发布（`POST /api/market/packages` 带审查工作流）、卸载（`DELETE /packages/{id}/uninstall` 带依赖项检查+修改资源确认）、版本历史（`GET /packages/{id}/versions`）、升级（`POST /packages/{id}/upgrade` 带按资源差异预览）。嵌套包需求的依赖项解析器，具有冲突检测。`PackageInstallation` 表跟踪每个用户的已安装包及资源ID映射，用于卸载/升级。**与单个资源发布共存** — 套餐是组合层，不是替代品；单个连接器仍可独立发布。示例依赖树：`Package: contract-review` → `Skill: contract-review`（入口点）→ `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
-- [ ] **创作者计划**：市场货币化层 — 创作者档案及作品集页面、按套餐分析（安装、分叉、活跃用户、评分/评论）、套餐驱动新订阅时的联盟佣金追踪。付费套餐等级，含定价、购买流程和审批工作流。创作者仪表板，含安装趋势、收入报告和用户反馈。用于程序化套餐发布的公共创作者API（套餐作者的CI/CD）。社区功能：套餐评论、问答、每个版本的更新日志
-- [ ] **可嵌入小部件**：`<script src="fim-one.js">` 注入到主机页面
-- [ ] **页面上下文注入**：小部件读取主机页面上下文（当前ID、URL、DOM选择器）
-- [ ] **高级触发器**：Webhook入站事件；计划作业增强（多时区、日历感知）
-- [ ] **批量执行**：通过DAG处理1000+项目
-- [ ] **企业安全**：IP白名单、静态加密、SSO
-- [ ] **知识库高级编辑器**：为管理大型知识库的高级用户提供生成器模式智能体 — 批量URL摄取、重复检测、差距分析、文档生命周期管理；使用ReAct工具循环扩展现有知识库AI聊天
-- [ ] **Stripe计费（v1 MVP — Pro订阅）**：免费+Pro两层订阅，月度令牌配额。Stripe Checkout（托管）+客户门户（自助）+webhook驱动的生命周期（`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`）。配额耗尽时软上限（HTTP 402+升级提示）— v1中无超额费用。仅按用户计费；组织/团队订阅推迟到v3。前置条件：
-  - [x] ~~**数据模型+SDK基础工作**（P1）— `billing_plans` / `subscriptions` / `stripe_webhook_events` 表、ORM模型、Stripe SDK单例、免费+Pro种子~~ *（在v0.8.6中发布）*
-  - [x] ~~**后端API+webhook处理程序**（P2）— `/api/billing/*` + `/api/webhooks/stripe` 带签名验证+幂等性；计划感知配额；每小时生命周期扫描~~ *（在v0.8.6中发布）*
-  - [x] ~~**前端计费标签+402升级对话框**（P3）— `/settings?tab=billing` 配额显示、升级CTA、`past_due` 横幅、中流402对话框~~ *（在v0.8.6中发布）*
-  - [x] ~~**管理员计划管理**（P4）— `admin/billing/{plans,subscriptions}` CRUD~~ *（在v0.8.6中发布）*
-  - [x] ~~**管理员控制的计费功能标志**（P5）— `system_settings.billing_enabled` 控制Stripe管道；幂等激活种子免费+Pro、设置默认计划指针、回填用户；激活后切换开/关是纯标志翻转~~ *（在v0.8.6中发布）*
-  - [ ] **协调+端到端+上线**（P6）— 夜间 `subscriptions` ↔ `stripe.Subscription.list()` 协调脚本用于错过的webhook恢复；完整堆栈快乐路径/取消中期/逾期回归测试；从测试模式 `stripe_price_id` 切换到实时 `price_id`；使用真实卡在暂存环境上进行烟雾测试。
+- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (entity extraction from query → Ontology Registry lookup → connector set reduction; 90%+ token reduction for 50+ connector deployments); Scale mode for batch/ETL connectors; CLI-style universal `connector <name> <action> <params>` interface
+- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *downgraded 2026-04-21: on-demand custom delivery, not a core capability*: define shared entity types (Customer, Order, Asset) with field mappings across connectors; DAGPlanner auto-resolves cross-system JOIN keys; enables cross-connector queries (e.g., "customers in Salesforce who ordered in Shopify") without hardcoded field names
+- [ ] **Hot-plug connectors**: upload OpenAPI spec, AI generates config, live in 5 minutes (no restart)
+- [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: Two-tier Market model (Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); scope selector (Global Market / org); unified subscription model (org auto-appear removed); KB removed from Market scope; data migration backfills subscriptions for existing org members
+- [ ] **Market Package System**: Distributable resource bundles for the Marketplace — replaces per-type "marketplace" with a unified packaging layer. `fim-package.yaml` manifest declares: metadata (name, version, description, author, license, tags, `min_fim_version`), entry point (primary Skill or Agent), resource list (agents, skills, connectors, KBs, MCP servers, workflows) with config references, inter-package dependencies (semver ranges), required credentials (mapped to connector refs for install-time collection), and user-configurable variables with defaults. **Two consumption modes**: (1) **install** — batch-create all resources + auto-wire internal references via ID substitution; installation linked to source for version update notifications; `POST /api/market/packages/{id}/install`; (2) **fork** — clone as user-owned editable copies with no update link (this IS the template mode); `POST /api/market/packages/{id}/fork`. Additional endpoints: publish (`POST /api/market/packages` with review workflow), uninstall (`DELETE /packages/{id}/uninstall` with dependency check + modified-resource confirmation), version history (`GET /packages/{id}/versions`), upgrade (`POST /packages/{id}/upgrade` with per-resource diff preview). Dependency resolver for nested package requirements with conflict detection. `PackageInstallation` table tracks installed packages per user with resource ID mapping for uninstall/upgrade. **Coexists with individual resource publishing** — Package is a composition layer, not a replacement; a single Connector is still publishable standalone. Example dependency tree: `Package: contract-review` → `Skill: contract-review` (entry point) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
+- [ ] **Creator Program**: Marketplace monetization layer — creator profiles with portfolio pages, per-package analytics (installs, forks, active users, ratings/reviews), affiliate commission tracking when packages drive new subscriptions. Paid package tier with pricing, purchase flow, and approval workflow. Creator dashboard with install trends, revenue reporting, and user feedback. Public creator API for programmatic package publishing (CI/CD for package authors). Community features: package comments, Q&A, changelogs per version
+- [ ] **Embeddable widget**: `<script src="fim-one.js">` injected into host page
+- [ ] **Page context injection**: widget reads host page context (current ID, URL, DOM selectors)
+- [ ] **Advanced triggers**: Webhook inbound events; scheduled job enhancements (multi-timezone, calendar-aware)
+- [ ] **Batch execution**: process 1000+ items via DAG
+- [ ] **Enterprise security**: IP whitelisting, encryption at rest, SSO
+- [ ] **KB Advanced Editor**: Builder-mode agent for power users managing large knowledge bases — bulk URL ingestion, duplicate detection, gap analysis, document lifecycle management; extends existing KB AI chat with ReAct tool loop
+- [ ] Billing access model — instance picks no-subscriptions / included+paid / paid-only, so self-host, SaaS, and charge-from-day-one stay distinct {/* dev: dev/billing-access-model.md */}
+- [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Free + Pro two-tier subscription with monthly token quota. Stripe Checkout (hosted) + Customer Portal (self-service) + webhook-driven lifecycle (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). Soft-cap at quota exhaustion (HTTP 402 + upgrade prompt) — no overage charges in v1. Per-user billing only; Org/Team subscriptions deferred to v3. Prerequisites:
+  - [x] ~~**Data model + SDK groundwork** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` tables, ORM models, Stripe SDK singleton, Free + Pro seeds~~ *(shipped in v0.8.6)*
+  - [x] ~~**Backend API + webhook handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` with signature verification + idempotency; plan-aware quota; hourly lifecycle sweep~~ *(shipped in v0.8.6)*
+  - [x] ~~**Frontend billing tab + 402 upgrade dialog** (P3) — `/settings?tab=billing` quota display, upgrade CTA, `past_due` banner, mid-stream 402 dialog~~ *(shipped in v0.8.6)*
+  - [x] ~~**Admin plan management** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(shipped in v0.8.6)*
+  - [x] ~~**Admin-controlled billing feature flag** (P5) — `system_settings.billing_enabled` gates the Stripe pipeline; idempotent activation seeds Free+Pro, sets default plan pointer, backfills users; toggle off/on is pure flag flip after activation~~ *(shipped in v0.8.6)*
+  - [ ] **Reconciliation + e2e + go-live** (P6) — nightly `subscriptions` ↔ `stripe.Subscription.list()` reconcile script for missed-webhook recovery; full-stack happy-path / cancel-mid-period / past-due regression tests; switch from test-mode `stripe_price_id` to a live `price_id`; smoke test on staging with a real card.
 
-- [ ] **团队计划（Stripe座位）** — 通过 `stripe.Subscription.quantity` 的按座位定价，与组织成员资格集成。让公司订阅一个团队范围的计划，具有N个座位；配额和功能标志通过座位组而非单个用户解析。基于v1.0 Stripe MVP和现有组织模型。
-- [ ] **非计费部署的组级令牌配额** — 没有Stripe的企业/私有部署配置组织级令牌预算。配额链扩展到 `override > group > plan > default`；组解析使用 `max(user_quota, group_quota)` 以便个人VIP不受团队上限约束。与团队计划一起推出，以便相同的原语同时服务于计费和自托管拓扑。
+- [ ] **Team plan (Stripe seats)** — Per-seat pricing via `stripe.Subscription.quantity`, integrated with Organization membership. Lets companies subscribe to one team-wide plan with N seats; quota and feature flags resolve through the seat group rather than the individual user. Builds on the v1.0 Stripe MVP and the existing Organization model.
+- [ ] **Group-level token quota for non-billing deployments** — Enterprise / private deployments without Stripe configure organization-level token budgets. Quota chain extends to `override > group > plan > default`; group resolution uses `max(user_quota, group_quota)` so individual VIPs aren't constrained by the team cap. Lands alongside the Team plan so the same primitives serve both billed and self-hosted topologies.
 
-**影响**：企业在数天内从零部署FIM One到多系统编排。套餐系统创建创作者生态系统 — 解决方案作者发布复合包（技能+智能体+连接器+知识库+工作流），企业一键安装，创作者从采用中获利。安装/分叉二元性在单一机制中涵盖"按原样使用"和"从模板自定义"两种用例。
+**Impact**: Enterprises deploy FIM One from zero to multi-system orchestration in days. Package system creates a creator ecosystem — solution authors publish composite bundles (Skill + Agents + Connectors + KBs + Workflows), enterprises install with one click, creators earn from adoption. Install/fork duality covers both "use as-is" and "customize from template" use cases in a single mechanism.
 
 ## 冻结功能（已发布，仅维护）
 

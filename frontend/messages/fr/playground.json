@@ -208,5 +208,6 @@
     "nextButton": "Suivant",
     "noteButton": "Ajouter une note",
     "notePlaceholder": "Note facultative pour cette réponse…"
-  }
+  },
+  "imagesNotReadable": "The selected model cannot read images. It will only receive the file name."
 }

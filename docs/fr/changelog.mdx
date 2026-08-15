@@ -10,37 +10,49 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
-### Ajoutés
+### Added
 
-- **Les agents GPT-5.x conservent leur raisonnement entre les appels d'outils.** FIM One communique désormais directement avec l'API Responses d'OpenAI pour les modèles GPT-5.x et transporte le raisonnement chiffré de chaque tour au suivant, de sorte qu'un agent multi-étapes s'appuie sur ce qu'il a déjà élaboré au lieu de le redériver à chaque tour d'outils. Les décomptes de jetons de raisonnement apparaissent dans l'utilisation, et le panneau de réflexion affiche le résumé généré par le modèle. Définissez `FIM_GPT5_RESPONSES_MODE=bridge` (ou `off`) pour revenir au comportement précédent ; les points de terminaison sans route `/v1/responses` basculent automatiquement vers les complétions de chat.
+- **Instance access model for billing.** Admins pick one of three postures: no subscriptions (software default, monthly quota `0` = unlimited), included + paid, or paid only. The included default plan cannot be deleted; paid templates no longer ship with a FIM Stripe Price ID.
 
-- **Les étapes de transformation pure dans les plans DAG s'exécutent comme un seul appel LLM direct.** Le planificateur étiquète les étapes de fusion/réécriture/résumé qui ne consomment que les sorties en amont comme des étapes directes, contournant la boucle d'outils qu'elles n'utiliseraient jamais, ce qui réduit le coût et la latence ; chaque résultat d'étape enregistre désormais aussi comment il s'est exécuté (appel direct ou boucle d'agent, itérations, outils utilisés).
+- **GPT-5.x agents keep their reasoning across tool calls.** FIM One now talks the OpenAI Responses API directly for GPT-5.x models and carries each turn's encrypted reasoning into the next one, so a multi-step agent builds on what it already worked out instead of re-deriving it at every tool round. Reasoning token counts appear in usage, and the thinking panel shows the model's own summary. Set `FIM_GPT5_RESPONSES_MODE=bridge` (or `off`) to return to the previous behavior; endpoints without a `/v1/responses` route still fall back to chat completions on their own.
 
-- **Les agents peuvent poser des questions de clarification à choix multiples en cours d'exécution.** Quand une tâche pourrait prendre des directions matériellement différentes, l'agent fait une pause et présente jusqu'à quatre questions structurées dans le chat, chacune avec 2-4 options plus un champ texte libre « Autre » ; répondre reprend l'exécution sur place, et ignorer ou un délai d'expiration lui permet de continuer selon son propre jugement.
+- **Pure transformation steps in DAG plans run as a single direct LLM call.** The planner tags merge/rewrite/summarise steps that only consume upstream outputs as direct steps, skipping the tool loop they would never use, which lowers cost and latency; every step result now also records how it ran (direct call or agent loop, iterations, tools used).
 
-- **Les étapes d'agent portent des titres d'une ligne en direct.** Pendant qu'un agent travaille, chaque itération reçoit une étiquette générée courte (« Vérification des données de tarification… »), affichée dans un seul en-tête replié qui bascule vers l'étape la plus récente ; le développer révèle la chronologie complète des étapes, et les étiquettes persistent dans l'historique de conversation.
+- **Agents can ask clarifying multiple-choice questions mid-run.** When a task could go in materially different directions, the agent pauses and presents up to four structured questions in the chat, each with 2-4 options plus a free-text "Other"; answering resumes the run in place, and skipping or a timeout lets it continue on its own judgment.
 
-- **Les modèles d'un fournisseur peuvent être supprimés en masse.** Chaque ligne de modèle dans Admin → Models porte une case à cocher, l'en-tête sélectionne toute la liste, et maintenir Maj enfoncé tout en cliquant étend la sélection sur une plage de lignes. Supprimer la sélection supprime chaque modèle choisi en une seule requête, après une confirmation indiquant le nombre.
+- **Agent steps carry live one-line titles.** While an agent works, each iteration gets a short generated label ("Verifying pricing data…"), shown in a single folded header that cycles to the newest step; expanding it reveals the full step timeline, and the labels persist into conversation history.
 
-- **Les petits tableaux de comparaison dans les réponses de chat s'affichent désormais sous forme de mises en page de cartes.** Un tableau de 2-3 colonnes dont la première colonne contient des étiquettes d'attributs affiche chaque attribut à l'intérieur de sa cellule de valeur (correspondant au style de carte de comparaison popularisé par les interfaces de chat IA) ; les tableaux plus grands conservent la grille classique.
+- **A provider's models can be deleted in bulk.** Each model row in Admin → Models carries a checkbox, the header selects the whole list, and holding Shift while clicking extends the selection across a range of rows. Deleting the selection removes every chosen model in one request, after a confirmation naming the count.
 
-- **Les réponses de chat affichent désormais les diagrammes Mermaid et les figures SVG.** Un bloc de code `mermaid` devient un diagramme thématisé et un bloc `svg` devient une image avec un bouton bascule de source et un téléchargement ; les deux reviennent au code brut si la source est incomplète ou n'analyse pas, de sorte qu'un diagramme partiellement diffusé ne montre jamais d'erreur.
+- **Small comparison tables in chat replies now render as card-style layouts.** A 2-3 column table whose first column holds attribute labels shows each attribute inside its value cell (matching the comparison-card style popularized by AI chat UIs); larger tables keep the classic grid.
 
-- **Les réponses, blocs de code et tableaux peuvent être copiés.** Chaque réponse a une action copier-en-Markdown, les blocs de code portent un en-tête nommant leur langage, et les tableaux offrent copier-en-Markdown plus un téléchargement CSV (UTF-8, s'ouvre correctement dans Excel).
+- **Chat replies now render Mermaid diagrams and SVG figures.** A `mermaid` code block becomes a themed diagram and an `svg` block becomes an image with a source toggle and download; both fall back to plain code if the source is incomplete or does not parse, so a half-streamed diagram never flashes an error.
 
-- **Les citations indiquent le document dont elles proviennent.** Un marqueur de citation s'affiche désormais sous forme de pastille portant le nom du document source, avec les marqueurs adjacents réduits en une pastille et un décompte ; le survol liste chaque source derrière.
+- **Answers, code blocks, and tables can be copied out.** Every reply has a copy-as-Markdown action, code blocks carry a header naming their language, and tables offer copy-as-Markdown plus a CSV download (UTF-8, opens cleanly in Excel).
 
-- **`/clear` fonctionne dans l'entrée de chat.** Taper `/clear` démarre une nouvelle conversation, identique à cliquer sur Nouveau chat ; un tour en cours est d'abord arrêté.
+- **Citations show which document they came from.** A citation marker now renders as a pill carrying the source's document name, with adjacent markers collapsed into one pill and a count; the popover lists every source behind it.
 
-- **Les diagrammes et blocs de code peuvent être téléchargés, pas seulement copiés.** Les diagrammes Mermaid exportent le SVG rendu, et chaque bloc de code se télécharge avec un nom de fichier correspondant à son langage ; un bloc `csv` se télécharge sous forme de fichier UTF-8 qui s'ouvre correctement dans Excel.
+- **`/clear` works in the chat input.** Typing `/clear` starts a fresh conversation, identical to clicking New chat; a running turn is stopped first.
 
-### Corrections
+- **Diagrams and code blocks can be downloaded, not just copied.** Mermaid diagrams export the rendered SVG, and every code block downloads with a filename matching its language; a `csv` block downloads as a UTF-8 file that opens cleanly in Excel.
 
-- **Les puces de suggestion de suivi restent dans la voix de l'utilisateur.** Les questions suggérées suivantes sont formulées comme quelque chose que l'utilisateur enverrait (demandes ou questions à l'assistant), et non comme des sondages de préférence inversés du type « lequel préférez-vous… ? ».
+- **The composer warns before an image goes to a text-only model.** Attaching an image while the active model cannot read images shows a note saying the model will only receive the file name, resolved from the model that turn would actually use.
 
-- **La documentation Exa n'appelle plus Exa le fournisseur de recherche par défaut.** Les pages d'intégration et de variables d'environnement décrivent désormais Exa comme un backend optionnel que vous activez avec `WEB_SEARCH_PROVIDER=exa` ; le chemin de recherche par défaut reste Jina.
+- **Unsent input is kept.** Text, pasted clips and finished attachments that have not been sent are remembered per conversation, and separately for a new chat, so they survive a refresh, a switch to another conversation, and an expired session. A draft is cleared once the message is sent or its conversation is deleted.
 
-- **Le logo de la barre latérale est à nouveau un vrai lien.** Le clic du milieu et le clic cmd/ctrl ouvrent le tableau de bord dans un nouvel onglet ; le clic gauche navigue toujours et conserve la courte animation de rebond.
+- **Chat replies accept LaTeX math delimiters.** Formulas written with `\[...\]` or `\(...\)` render as math, matching the existing dollar-sign syntax; delimiters inside code fences stay as text.
+
+### Fixed
+
+- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
+
+- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
+
+- **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
+
+- **Exa docs no longer call Exa the default search provider.** Integration and environment-variable pages now describe Exa as an optional backend you enable with `WEB_SEARCH_PROVIDER=exa`; the default search path stays Jina.
+
+- **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
 
 ### Modifications
 

@@ -20,25 +20,29 @@ Fast und Reasoning fallen auf General zurück, falls nicht konfiguriert. Für Pr
 
 Diese Rollen können über Umgebungsvariablen oder über die Funktion **Model Groups** der Admin-Benutzeroberfläche konfiguriert werden, die Ein-Klick-Umschaltung zwischen Modellsätzen ermöglicht. Siehe [Model Management](/configuration/model-management) für das vollständige Admin-UI-Handbuch.
 
-## Schnellauswahlmatrix
+## Quick Selection Matrix
 
-| Anbieter | Haupt-LLM | Schnelles LLM | Reasoning | Vision | Hinweise |
+| Provider | Main LLM | Fast LLM | Reasoning | Vision | Notes |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ Alle | Beste native Tool-Aufrufe; GPT-5.4 ist das neueste Flaggschiff (März 2026) |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ über LiteLLM | ✅ Alle | Native API-Weiterleitung; vollständige `reasoning_content`-Unterstützung; 1M-Kontext GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ Alle | 2.5 ist stabiles GA; 3.x ist Vorschau; `gemini-3-pro-preview` wurde am 9. März abgeschaltet |
-| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Nur Text; V4 (April 2026) wird Vision hinzufügen |
-| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` auf `qwen3-max` | ⚠️ nur qwen3.5 | Stärkste chinesische Sprache; qwq/Reasoning nur Text |
-| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Erzwungenes FC nicht unterstützt; Vision erfordert separates VLM-Modell |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Nur Text; M2.7 neueste (März 2026); 80,2% SWE-Bench |
-| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ nur K2.5 | K2-thinking nur Text; erzwungenes FC nicht unterstützt mit Thinking |
-| **Ollama (lokal)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Variiert | Vollständig offline, kein API-Schlüssel; Llama 4 unterstützt Vision |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ All | Best native tool-calling; GPT-5.4 is latest flagship (Mar 2026) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | ✅ All | Native API routing; full `reasoning_content` support; 1M context GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ All | 2.5 is stable GA; 3.x is preview; `gemini-3-pro-preview` shut down Mar 9 |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Text-only; V4 (Apr 2026) will add vision |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` on `qwen3-max` | ⚠️ qwen3.5 only | Strongest Chinese language; qwq/reasoning text-only |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Forced FC not supported; vision requires separate VLM model |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Text-only; M2.7 latest (Mar 2026); 80.2% SWE-Bench |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5 only | K2-thinking text-only; forced FC not supported with thinking |
+| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Varies | Fully offline, no API key; Llama 4 supports vision |
 
 <Tip>
-**Vision** gibt an, ob das Modell Bildeingaben akzeptiert. Dies ist erforderlich für [Intelligent Document Processing (IDP)](/features/idp) — wenn Ihr Modell Vision nicht unterstützt, wird IDP auf reine Textextraktion zurückgreifen. Anbieter, die mit ⚠️ gekennzeichnet sind, haben Vision auf einigen Modellen, aber nicht auf anderen; überprüfen Sie das spezifische Modell, das Sie verwenden.
+**Vision** indicates whether the model accepts image input. This is required for [Intelligent Document Processing (IDP)](/features/idp) — if your model doesn't support vision, IDP will fall back to text-only extraction. Providers marked ⚠️ have vision on some models but not others; check the specific model you're using.
+
+Chat attachments follow the same flag: with a text-only model an attached image is not sent, and the model receives its file name only. The chat composer says so before you send, based on the model the turn would actually use (agent setting, then the active model group, then the system default). Document text is unaffected — a PDF or DOCX still has its content extracted and injected.
 </Tip>
 
-Diese Tabelle listet die Kombinationen auf, die wir empfehlen, nicht die vollständige Menge der Anbieter, die FIM One unterstützt. xAI (Grok), ByteDance Doubao, Mistral und alle OpenAI-kompatiblen Relays funktionieren; siehe die [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) für die vollständige Liste und wie jeder weitergeleitet wird.
+This table lists the combinations we recommend, not the full set of providers FIM One supports. xAI (Grok), ByteDance Doubao, Mistral and any OpenAI-compatible relay all work; see the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) for the complete list and how each one is routed.
+
+---
 
 ## Strukturierte Ausgabekompatibilität
 

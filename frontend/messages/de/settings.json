@@ -368,7 +368,9 @@
     "monthlyUsage": "Monatliche Nutzung",
     "currentUsage": "Aktuelle Nutzung",
     "tokens": "Token",
-    "noQuota": "Kein Kontingentlimit festgelegt"
+    "noQuota": "Kein Kontingentlimit festgelegt",
+    "unentitled": "Subscribe to continue",
+    "unentitledHint": "This instance requires a paid plan before models can be used."
   },
   "notifications": {
     "title": "Benachrichtigungen",

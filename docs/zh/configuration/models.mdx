@@ -20,25 +20,29 @@ FIM One 有三个模型角色：
 
 这些角色可以通过环境变量或通过管理 UI 的**模型组**功能进行配置，该功能允许一键切换模型集。有关完整的管理 UI 指南，请参阅 [模型管理](/configuration/model-management)。
 
-## 快速选择矩阵
+## Quick Selection Matrix
 
-| 提供商 | 主模型 | 快速模型 | 推理 | 视觉 | 备注 |
+| Provider | Main LLM | Fast LLM | Reasoning | Vision | Notes |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 全部 | 最佳原生工具调用；GPT-5.4 是最新旗舰版（2026年3月） |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ 通过 LiteLLM | ✅ 全部 | 原生 API 路由；完整 `reasoning_content` 支持；1M 上下文 GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 全部 | 2.5 为稳定 GA；3.x 为预览版；`gemini-3-pro-preview` 已于3月9日关闭 |
-| **DeepSeek** | `deepseek-chat`（V3.2） | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 仅文本；V4（2026年4月）将增加视觉功能 |
-| **Qwen（阿里巴巴）** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max` 上的 `enable_thinking` | ⚠️ 仅 qwen3.5 | 中文语言能力最强；qwq/推理仅文本 |
-| **ChatGLM（智谱）** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 不支持强制函数调用；视觉需要单独的 VLM 模型 |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 仅文本；M2.7 最新版（2026年3月）；SWE-Bench 80.2% |
-| **Kimi（月之暗面）** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ 仅 K2.5 | K2-thinking 仅文本；思考模式下不支持强制函数调用 |
-| **Ollama（本地）** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 因模型而异 | 完全离线，无需 API 密钥；Llama 4 支持视觉 |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ All | Best native tool-calling; GPT-5.4 is latest flagship (Mar 2026) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | ✅ All | Native API routing; full `reasoning_content` support; 1M context GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ All | 2.5 is stable GA; 3.x is preview; `gemini-3-pro-preview` shut down Mar 9 |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Text-only; V4 (Apr 2026) will add vision |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` on `qwen3-max` | ⚠️ qwen3.5 only | Strongest Chinese language; qwq/reasoning text-only |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Forced FC not supported; vision requires separate VLM model |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Text-only; M2.7 latest (Mar 2026); 80.2% SWE-Bench |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5 only | K2-thinking text-only; forced FC not supported with thinking |
+| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Varies | Fully offline, no API key; Llama 4 supports vision |
 
 <Tip>
-**视觉**表示模型是否接受图像输入。这是[智能文档处理（IDP）](/features/idp)所必需的——如果您的模型不支持视觉，IDP 将回退到仅文本提取。标记为 ⚠️ 的提供商在某些模型上支持视觉但在其他模型上不支持；请检查您正在使用的特定模型。
+**Vision** indicates whether the model accepts image input. This is required for [Intelligent Document Processing (IDP)](/features/idp) — if your model doesn't support vision, IDP will fall back to text-only extraction. Providers marked ⚠️ have vision on some models but not others; check the specific model you're using.
+
+Chat attachments follow the same flag: with a text-only model an attached image is not sent, and the model receives its file name only. The chat composer says so before you send, based on the model the turn would actually use (agent setting, then the active model group, then the system default). Document text is unaffected — a PDF or DOCX still has its content extracted and injected.
 </Tip>
 
-此表列出了我们推荐的组合，而非 FIM One 支持的全部提供商。xAI（Grok）、ByteDance Doubao、Mistral 以及任何 OpenAI 兼容中继都可以使用；请参阅[提供商能力矩阵](/architecture/llm-provider-guide#provider-capability-matrix)了解完整列表以及每个提供商的路由方式。
+This table lists the combinations we recommend, not the full set of providers FIM One supports. xAI (Grok), ByteDance Doubao, Mistral and any OpenAI-compatible relay all work; see the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) for the complete list and how each one is routed.
+
+---
 
 ## 结构化输出兼容性
 

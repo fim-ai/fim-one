@@ -83,5 +83,8 @@
   "model_provider_name_taken": "Un fournisseur avec ce nom existe déjà.",
   "model_name_taken": "Cet ID de modèle existe déjà sous ce fournisseur.",
   "cannot_delete_org_owner": "Cet utilisateur est propriétaire d'une ou plusieurs organisations. Transférez la propriété ou supprimez d'abord ces organisations.",
-  "feishu_channel_requires_encrypt_key": "Les canaux Feishu nécessitent une clé de chiffrement (Encrypt Key) — sans elle, les signatures de rappel ne peuvent pas être vérifiées."
+  "feishu_channel_requires_encrypt_key": "Les canaux Feishu nécessitent une clé de chiffrement (Encrypt Key) — sans elle, les signatures de rappel ne peuvent pas être vérifiées.",
+  "subscription_required": "A paid subscription is required to use models.",
+  "billing_plan_is_default": "The included default plan cannot be disabled or deleted. Switch the access model instead.",
+  "invalid_access_model": "Invalid access model."
 }

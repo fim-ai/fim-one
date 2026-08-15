@@ -643,7 +643,20 @@
     "moduleWorkflows": "工作流",
     "moduleWorkflowsDesc": "具有webhook和定时触发器的可视化多步自动化。默认关闭。",
     "moduleEnabled": "模块已启用",
-    "moduleDisabled": "模块已禁用"
+    "moduleDisabled": "模块已禁用",
+    "tokenQuotaDescFreemium": "This value is the included-tier monthly quota. 0 means unlimited on that tier.",
+    "tokenQuotaDescPaidOnly": "Not used for access while paid-only is on. Users without a subscription cannot call models.",
+    "accessModelOff": "No subscriptions",
+    "accessModelOffDesc": "Everyone shares one monthly cap. 0 means unlimited. Stripe is not used.",
+    "accessModelFreemium": "Included + paid",
+    "accessModelFreemiumDesc": "New users start on the included tier and can upgrade through Stripe.",
+    "accessModelPaidOnly": "Paid only",
+    "accessModelPaidOnlyDesc": "No included tier. Users must subscribe before they can call models.",
+    "accessModelSaved": "Access model updated",
+    "accessModelConfirmTitle": "Change access model?",
+    "accessModelConfirmOff": "Billing pages will hide. Token access falls back to the default monthly quota (currently {quota}; 0 means unlimited).",
+    "accessModelConfirmPaidOnlyFromOff": "Users without a paid subscription will not be able to call models until they subscribe.",
+    "accessModelConfirmPaidOnlyFromFreemium": "New users must subscribe. People already on the included tier keep their quota. Later cancellations will not fall back to the included tier."
   },
   "security": {
     "title": "安全",
@@ -1230,7 +1243,9 @@
       "freeQuotaSyncedHint": "从「系统设置」→「默认月度 Token 配额」同步。",
       "freeQuotaEditLink": "在那里编辑 →",
       "stripePriceMissing": "未找到Stripe价格",
-      "stripePriceMissingHint": "Stripe无法解析此价格ID。请在此套餐中更新它，或在您的Stripe仪表板中创建匹配的价格。"
+      "stripePriceMissingHint": "Stripe无法解析此价格ID。请在此套餐中更新它，或在您的Stripe仪表板中创建匹配的价格。",
+      "deleteDefaultBlocked": "The included default plan cannot be deleted. Switch the access model if you do not want an included tier.",
+      "defaultPlan": "Default"
     },
     "subscriptions": {
       "title": "订阅",

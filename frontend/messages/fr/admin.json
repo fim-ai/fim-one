@@ -643,7 +643,20 @@
     "moduleWorkflows": "Flux de travail",
     "moduleWorkflowsDesc": "Automations visuelles multi-étapes avec déclencheurs webhook et programmés. Désactivé par défaut.",
     "moduleEnabled": "Module activé",
-    "moduleDisabled": "Module désactivé"
+    "moduleDisabled": "Module désactivé",
+    "tokenQuotaDescFreemium": "This value is the included-tier monthly quota. 0 means unlimited on that tier.",
+    "tokenQuotaDescPaidOnly": "Not used for access while paid-only is on. Users without a subscription cannot call models.",
+    "accessModelOff": "No subscriptions",
+    "accessModelOffDesc": "Everyone shares one monthly cap. 0 means unlimited. Stripe is not used.",
+    "accessModelFreemium": "Included + paid",
+    "accessModelFreemiumDesc": "New users start on the included tier and can upgrade through Stripe.",
+    "accessModelPaidOnly": "Paid only",
+    "accessModelPaidOnlyDesc": "No included tier. Users must subscribe before they can call models.",
+    "accessModelSaved": "Access model updated",
+    "accessModelConfirmTitle": "Change access model?",
+    "accessModelConfirmOff": "Billing pages will hide. Token access falls back to the default monthly quota (currently {quota}; 0 means unlimited).",
+    "accessModelConfirmPaidOnlyFromOff": "Users without a paid subscription will not be able to call models until they subscribe.",
+    "accessModelConfirmPaidOnlyFromFreemium": "New users must subscribe. People already on the included tier keep their quota. Later cancellations will not fall back to the included tier."
   },
   "security": {
     "title": "Sécurité",
@@ -1230,7 +1243,9 @@
       "freeQuotaSyncedHint": "Synchronisé depuis Paramètres système → Quota de jetons mensuel par défaut.",
       "freeQuotaEditLink": "Modifier là →",
       "stripePriceMissing": "Prix Stripe introuvable",
-      "stripePriceMissingHint": "Stripe n'a pas pu résoudre cet ID de prix. Mettez-le à jour sur ce plan ou créez un prix correspondant dans votre tableau de bord Stripe."
+      "stripePriceMissingHint": "Stripe n'a pas pu résoudre cet ID de prix. Mettez-le à jour sur ce plan ou créez un prix correspondant dans votre tableau de bord Stripe.",
+      "deleteDefaultBlocked": "The included default plan cannot be deleted. Switch the access model if you do not want an included tier.",
+      "defaultPlan": "Default"
     },
     "subscriptions": {
       "title": "Abonnements",

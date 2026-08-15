@@ -208,5 +208,6 @@
     "nextButton": "次へ",
     "noteButton": "メモを追加",
     "notePlaceholder": "この回答のオプションメモ…"
-  }
+  },
+  "imagesNotReadable": "The selected model cannot read images. It will only receive the file name."
 }

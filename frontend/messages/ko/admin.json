@@ -643,7 +643,20 @@
     "moduleWorkflows": "워크플로우",
     "moduleWorkflowsDesc": "웹훅 및 예약된 트리거가 있는 시각적 다단계 자동화입니다. 기본적으로 비활성화되어 있습니다.",
     "moduleEnabled": "모듈 활성화됨",
-    "moduleDisabled": "모듈 비활성화됨"
+    "moduleDisabled": "모듈 비활성화됨",
+    "tokenQuotaDescFreemium": "This value is the included-tier monthly quota. 0 means unlimited on that tier.",
+    "tokenQuotaDescPaidOnly": "Not used for access while paid-only is on. Users without a subscription cannot call models.",
+    "accessModelOff": "No subscriptions",
+    "accessModelOffDesc": "Everyone shares one monthly cap. 0 means unlimited. Stripe is not used.",
+    "accessModelFreemium": "Included + paid",
+    "accessModelFreemiumDesc": "New users start on the included tier and can upgrade through Stripe.",
+    "accessModelPaidOnly": "Paid only",
+    "accessModelPaidOnlyDesc": "No included tier. Users must subscribe before they can call models.",
+    "accessModelSaved": "Access model updated",
+    "accessModelConfirmTitle": "Change access model?",
+    "accessModelConfirmOff": "Billing pages will hide. Token access falls back to the default monthly quota (currently {quota}; 0 means unlimited).",
+    "accessModelConfirmPaidOnlyFromOff": "Users without a paid subscription will not be able to call models until they subscribe.",
+    "accessModelConfirmPaidOnlyFromFreemium": "New users must subscribe. People already on the included tier keep their quota. Later cancellations will not fall back to the included tier."
   },
   "security": {
     "title": "보안",
@@ -1230,7 +1243,9 @@
       "freeQuotaSyncedHint": "시스템 설정 → 기본 월간 토큰 할당량에서 동기화됨.",
       "freeQuotaEditLink": "여기서 편집 →",
       "stripePriceMissing": "Stripe 가격을 찾을 수 없음",
-      "stripePriceMissingHint": "Stripe가 이 가격 ID를 확인할 수 없습니다. 이 요금제에서 업데이트하거나 Stripe 대시보드에서 일치하는 가격을 생성하세요."
+      "stripePriceMissingHint": "Stripe가 이 가격 ID를 확인할 수 없습니다. 이 요금제에서 업데이트하거나 Stripe 대시보드에서 일치하는 가격을 생성하세요.",
+      "deleteDefaultBlocked": "The included default plan cannot be deleted. Switch the access model if you do not want an included tier.",
+      "defaultPlan": "Default"
     },
     "subscriptions": {
       "title": "구독",

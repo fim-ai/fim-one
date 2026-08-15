@@ -368,7 +368,9 @@
     "monthlyUsage": "月度使用量",
     "currentUsage": "当前使用量",
     "tokens": "令牌",
-    "noQuota": "未设置配额限制"
+    "noQuota": "未设置配额限制",
+    "unentitled": "Subscribe to continue",
+    "unentitledHint": "This instance requires a paid plan before models can be used."
   },
   "notifications": {
     "title": "通知",

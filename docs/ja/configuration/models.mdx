@@ -20,25 +20,29 @@ Fast と Reasoning が設定されていない場合は General にフォール�
 
 これらのロールは環境変数を通じて、または admin UI の **Model Groups** 機能を通じて設定できます。この機能により、モデルセット間のワンクリック切り替えが可能になります。詳細な admin UI ガイドについては [Model Management](/configuration/model-management) を参照してください。
 
-## クイック選択マトリックス
+## Quick Selection Matrix
 
-| プロバイダー | メイン LLM | 高速 LLM | 推論 | ビジョン | 備考 |
+| Provider | Main LLM | Fast LLM | Reasoning | Vision | Notes |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ すべて | ネイティブツール呼び出しが最適；GPT-5.4は最新フラッグシップ（2026年3月） |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ LiteLLM経由 | ✅ すべて | ネイティブAPIルーティング；完全な`reasoning_content`サポート；1Mコンテキスト GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ すべて | 2.5は安定GA；3.xはプレビュー；`gemini-3-pro-preview`は3月9日に廃止 |
-| **DeepSeek** | `deepseek-chat`（V3.2） | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | テキストのみ；V4（2026年4月）でビジョン対応予定 |
-| **Qwen（アリババ）** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max`の`enable_thinking` | ⚠️ qwen3.5のみ | 中国語が最強；qwq/推論はテキストのみ |
-| **ChatGLM（Zhipu）** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 強制FCは非サポート；ビジョンは別のVLMモデルが必要 |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | テキストのみ；M2.7は最新（2026年3月）；SWE-Bench 80.2% |
-| **Kimi（Moonshot）** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5のみ | K2-thinkingはテキストのみ；thinkingでは強制FCは非サポート |
-| **Ollama（ローカル）** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 異なる | 完全オフライン、APIキー不要；Llama 4はビジョン対応 |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ All | Best native tool-calling; GPT-5.4 is latest flagship (Mar 2026) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | ✅ All | Native API routing; full `reasoning_content` support; 1M context GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ All | 2.5 is stable GA; 3.x is preview; `gemini-3-pro-preview` shut down Mar 9 |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Text-only; V4 (Apr 2026) will add vision |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` on `qwen3-max` | ⚠️ qwen3.5 only | Strongest Chinese language; qwq/reasoning text-only |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Forced FC not supported; vision requires separate VLM model |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Text-only; M2.7 latest (Mar 2026); 80.2% SWE-Bench |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5 only | K2-thinking text-only; forced FC not supported with thinking |
+| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Varies | Fully offline, no API key; Llama 4 supports vision |
 
 <Tip>
-**ビジョン**はモデルが画像入力を受け入れるかどうかを示します。これは[インテリジェント ドキュメント プロセッシング（IDP）](/features/idp)に必要です——モデルがビジョンをサポートしていない場合、IDPはテキストのみの抽出にフォールバックします。⚠️でマークされたプロバイダーは一部のモデルではビジョンをサポートしていますが、他のモデルではサポートしていません。使用している特定のモデルを確認してください。
+**Vision** indicates whether the model accepts image input. This is required for [Intelligent Document Processing (IDP)](/features/idp) — if your model doesn't support vision, IDP will fall back to text-only extraction. Providers marked ⚠️ have vision on some models but not others; check the specific model you're using.
+
+Chat attachments follow the same flag: with a text-only model an attached image is not sent, and the model receives its file name only. The chat composer says so before you send, based on the model the turn would actually use (agent setting, then the active model group, then the system default). Document text is unaffected — a PDF or DOCX still has its content extracted and injected.
 </Tip>
 
-このテーブルは推奨される組み合わせを示しており、FIM Oneがサポートするプロバイダーの完全なセットではありません。xAI（Grok）、ByteDance Doubao、Mistral、およびOpenAI互換のリレーはすべて機能します。完全なリストと各プロバイダーのルーティング方法については、[プロバイダー機能マトリックス](/architecture/llm-provider-guide#provider-capability-matrix)を参照してください。
+This table lists the combinations we recommend, not the full set of providers FIM One supports. xAI (Grok), ByteDance Doubao, Mistral and any OpenAI-compatible relay all work; see the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) for the complete list and how each one is routed.
+
+---
 
 ## 構造化出力の互換性
 

@@ -1,23 +1,25 @@
 ---
-title: "Stripe 计费"
+title: "Stripe Billing"
 icon: "credit-card"
-description: "启用按用户的 Stripe 订阅（免费版 + 专业版），包含令牌配额和自助式套餐管理。"
+description: "Enable per-user Stripe subscriptions (Free + Pro) with token quotas and self-service plan management."
 ---
 
-FIM One 在管理员控制的功能标志后面提供完整的 Stripe 计费管道。不需要支付功能的私有部署可以将其关闭，永远不会看到相关 UI。SaaS 运营商只需切换一个开关，即可获得托管结账、客户门户、由 webhook 驱动的订阅生命周期管理和配额强制执行。
+FIM One ships a complete Stripe billing pipeline behind an instance access model. Private deployments leave it on **No subscriptions** and never see payment UI. Operators who want a catalogue pick **Included + paid** or **Paid only** and get hosted Checkout, Customer Portal, webhook-driven subscription lifecycle, and quota enforcement.
 
 <Note>
-计费**默认禁用**。全新安装和现有自托管部署都以 `system_settings.billing_enabled = FALSE` 开始。在管理员明确激活之前，不会显示任何计费 UI。
+The software default is **No subscriptions** (`access_model = off`, `default_token_quota = 0` meaning unlimited). Fresh installs and existing self-hosts start there. No billing UI surfaces until an admin picks a Stripe posture.
 </Note>
 
-## 您将获得
+---
 
-- **免费版和专业版** 配有月度令牌配额（默认值：免费版 1M / 专业版 5M；激活后可调整）
-- **Stripe 托管结账** — 用户无需您的代码接触卡数据即可升级
-- **客户门户** — 用户可更新支付方式、下载发票、取消订阅——全部在 Stripe 的界面上完成
-- **Webhook 驱动的生命周期** — 订阅自动配置和续期；已取消的订阅在周期结束时降级为免费版
-- **配额强制执行** — 按周期跟踪令牌使用情况；中途截断并显示结构化升级提示
-- **管理页面** 用于计划 CRUD 和订阅监控
+## What you get
+
+- **Three access postures**: no subscriptions, included + paid, or paid only
+- **Stripe-hosted Checkout** — users upgrade without your code ever touching card data
+- **Customer Portal** — users update payment methods, download invoices, cancel — all on Stripe's UI
+- **Webhook-driven lifecycle** — subscriptions provision and renew automatically; canceled paid users return to the included tier (or become unentitled in paid-only) at period end
+- **Quota enforcement** — token usage tracked per period; mid-stream cutoff with a structured upgrade prompt
+- **Admin pages** for plan CRUD and subscription monitoring
 
 ## 前置条件
 
@@ -90,18 +92,20 @@ STRIPE_BILLING_RETURN_URL=https://<your-domain>/settings?tab=billing
 ./deploy.sh   # or: docker compose restart fim-one
 ```
 
-### 3. 在管理员中激活
+### 3. Activate in Admin
 
-1. 以管理员身份登录
-2. **管理员 → 系统设置 → 计费**
-3. 切换**启用 Stripe 计费**为 ON
-4. 后端验证 `STRIPE_SECRET_KEY` 和 `STRIPE_WEBHOOK_SECRET` 都存在——如果任一缺失，返回 400 并且切换保持 OFF
-5. 仅在首次激活时，后端运行**幂等设置**：
-   - 种子化免费版和专业版套餐（如果已存在则跳过）
-   - 设置 `system_settings.default_plan_id` 为免费版套餐 id
-   - 为任何没有套餐的用户回填 `users.plan_id = free.id`
-   - 同步 `default_token_quota` → 免费版套餐 `monthly_token_quota`，使现有的管理员控制的全局配额得以保留
-6. 后续的切换关闭/打开是**纯标志翻转**，无数据副作用
+1. Log in as an admin
+2. **Admin → System Settings → Access and billing**
+3. Pick one posture (the instance is always in exactly one):
+   - **No subscriptions** (software default) — Stripe unused. Token access is the default monthly quota (`0` = unlimited).
+   - **Included + paid** — Stripe required. New users land on the included tier; they can upgrade. Canceled paid users return to the included tier at period end.
+   - **Paid only** — Stripe required. No included tier. Users must subscribe before they can call models. Existing included-tier users keep their quota if you switch from Included + paid.
+4. The backend validates that both `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are present when you pick a Stripe posture — if either is missing it returns 400
+5. On first activation of a Stripe posture the backend runs an **idempotent setup**:
+   - Included + paid: seeds the included plan (`slug=free`) + a Pro template with an empty Price ID; sets `default_plan_id`; backfills users without a plan
+   - Paid only: seeds the Pro template only; does not backfill
+   - Copies `default_token_quota` onto the included plan when that plan is seeded (`0` stays `0`, unlimited)
+6. Switching back to **No subscriptions** is a **pure flag flip** with no data side effects. The included default plan cannot be deleted while Included + paid is active.
 
 ### 4. 使用您的实时价格更新Pro套餐
 
@@ -181,18 +185,19 @@ WHERE slug = 'pro';
 
 覆盖始终优先于套餐和默认值。它的存在使管理员能够将单个用户固定在其套餐层级之上或之下，而无需接触Stripe。
 
-### 配额解析链——v1（当前版本）
+### Quota resolution chain — v1 (current)
 
-对于任何已认证的请求，上限按自上而下的方式计算——**首次匹配获胜**：
+For any authenticated request, the cap is computed top-down — **first match wins**:
 
 ```
 1. users.token_quota        ── NULL? skip. 0? unlimited. N>0? cap at N.
-2. users.plan.monthly_token_quota   ── only when billing_enabled = TRUE
-3. system_settings.default_token_quota  ── defensive fallback
-4. unlimited                ── last resort if everything above is NULL
+2. users.plan.monthly_token_quota   ── only when access_model is freemium or paid_only
+3. paid_only + no plan      ── unentitled (stop; do not fall through)
+4. system_settings.default_token_quota  ── used when access_model is off
+5. unlimited                ── last resort if everything above is unset
 ```
 
-当启用计费时，第3步很少被执行，因为激活会为每个用户回填`users.plan_id`。它作为纵深防御存在，以确保配置错误的计划永远不会静默地为用户解除上限。
+Step 4 is the instance-wide cap for **No subscriptions**. Under **Paid only**, a user with no plan is unentitled (chat returns 402) even if `default_token_quota` is 0.
 
 ### 周期重置
 
@@ -251,21 +256,24 @@ WHERE slug = 'pro';
 - 信用额度余额不可退款（预付款行业标准）。
 - UI 同时展示两个进度条：`订阅配额：已使用 4.2M / 5M` + `信用额度：剩余 $7.40`。
 
-### 默认值
+### Default values
 
-发货时的默认值——除特别说明外，所有值都可在安装后调整。
+Ship-time defaults — all tunable post-install except where noted.
 
-| 变量 | 默认值 | 可通过以下方式调整 |
+| Variable | Default | Tunable via |
 |---|---|---|
-| `billing_plans.monthly_token_quota` (Free) | `1,000,000` | 管理员 → 计费 → 套餐 → Free → 编辑 |
-| `billing_plans.monthly_token_quota` (Pro) | `5,000,000` | 管理员 → 计费 → 套餐 → Pro → 编辑 |
-| `system_settings.default_token_quota` | `1,000,000`（激活时与 Free 同步） | 管理员 → 系统设置 → 配额 |
-| `system_settings.billing_enabled` | `FALSE` | 管理员 → 系统设置 → 计费 |
-| Pro 列表价格 | `$20.00 USD / month` | Stripe Dashboard（价格对象） |
-| Stripe webhook 事件订阅数 | 6 | Stripe Dashboard → Webhooks |
-| Stripe 价格缓存 TTL | `5 minutes` | `stripe_client.py` 中硬编码 |
-| 订阅生命周期 cron | 每小时 | `web/main.py` 中的 APScheduler |
-| 免费层重置 cron | 每小时（日历月边界） | `web/main.py` 中的 APScheduler |
+| `system_settings.access_model` | `off` | Admin → System Settings → Access and billing |
+| `billing_plans.monthly_token_quota` (included) | copied from `default_token_quota` (`0` = unlimited) | Admin → System Settings → Default Monthly Token Quota |
+| `billing_plans.monthly_token_quota` (Pro template) | `5,000,000` | Admin → Billing → Plans → Pro → Edit |
+| `system_settings.default_token_quota` | `0` (unlimited; synced to the included plan under freemium) | Admin → System Settings → Default Monthly Token Quota |
+| `system_settings.billing_enabled` | `FALSE` (derived from `access_model != off`) | Admin → System Settings → Access and billing |
+| Pro list price | `$20.00 USD / month` | Stripe Dashboard (price object) |
+| Stripe webhook events subscribed | 6 | Stripe Dashboard → Webhooks |
+| Stripe price cache TTL | `5 minutes` | hardcoded in `stripe_client.py` |
+| Subscription lifecycle cron | hourly | APScheduler in `web/main.py` |
+| Free-tier reset cron | hourly (calendar-month boundary) | APScheduler in `web/main.py` |
+
+---
 
 ## 定价模型
 

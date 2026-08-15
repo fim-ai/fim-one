@@ -22,25 +22,29 @@ Fast와 Reasoning이 구성되지 않으면 General로 폴백됩니다. 프로�
 
 ---
 
-## 빠른 선택 매트릭스
+## Quick Selection Matrix
 
-| 제공자 | 메인 LLM | 빠른 LLM | 추론 | 비전 | 참고 |
+| Provider | Main LLM | Fast LLM | Reasoning | Vision | Notes |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 모두 | 최고의 네이티브 도구 호출; GPT-5.4는 최신 플래그십 (Mar 2026) |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ LiteLLM 경유 | ✅ 모두 | 네이티브 API 라우팅; 완전한 `reasoning_content` 지원; 1M 컨텍스트 GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 모두 | 2.5는 안정적 GA; 3.x는 프리뷰; `gemini-3-pro-preview` Mar 9 종료 |
-| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 텍스트 전용; V4 (Apr 2026)에서 비전 추가 예정 |
-| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max`의 `enable_thinking` | ⚠️ qwen3.5만 | 가장 강력한 중국어; qwq/추론은 텍스트 전용 |
-| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 강제 FC 미지원; 비전은 별도 VLM 모델 필요 |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 텍스트 전용; M2.7 최신 (Mar 2026); 80.2% SWE-Bench |
-| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5만 | K2-thinking은 텍스트 전용; 강제 FC는 thinking과 미지원 |
-| **Ollama (로컬)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 다양함 | 완전히 오프라인, API 키 불필요; Llama 4는 비전 지원 |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ All | Best native tool-calling; GPT-5.4 is latest flagship (Mar 2026) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | ✅ All | Native API routing; full `reasoning_content` support; 1M context GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ All | 2.5 is stable GA; 3.x is preview; `gemini-3-pro-preview` shut down Mar 9 |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Text-only; V4 (Apr 2026) will add vision |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` on `qwen3-max` | ⚠️ qwen3.5 only | Strongest Chinese language; qwq/reasoning text-only |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Forced FC not supported; vision requires separate VLM model |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Text-only; M2.7 latest (Mar 2026); 80.2% SWE-Bench |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5 only | K2-thinking text-only; forced FC not supported with thinking |
+| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Varies | Fully offline, no API key; Llama 4 supports vision |
 
 <Tip>
-**비전**은 모델이 이미지 입력을 수용하는지 여부를 나타냅니다. 이는 [지능형 문서 처리 (IDP)](/features/idp)에 필수입니다 — 모델이 비전을 지원하지 않으면 IDP는 텍스트 전용 추출로 폴백됩니다. ⚠️로 표시된 제공자는 일부 모델에서만 비전을 지원합니다. 사용 중인 특정 모델을 확인하세요.
+**Vision** indicates whether the model accepts image input. This is required for [Intelligent Document Processing (IDP)](/features/idp) — if your model doesn't support vision, IDP will fall back to text-only extraction. Providers marked ⚠️ have vision on some models but not others; check the specific model you're using.
+
+Chat attachments follow the same flag: with a text-only model an attached image is not sent, and the model receives its file name only. The chat composer says so before you send, based on the model the turn would actually use (agent setting, then the active model group, then the system default). Document text is unaffected — a PDF or DOCX still has its content extracted and injected.
 </Tip>
 
-이 표는 FIM One이 지원하는 전체 제공자 세트가 아니라 권장하는 조합을 나열합니다. xAI (Grok), ByteDance Doubao, Mistral 및 모든 OpenAI 호환 릴레이가 작동합니다. 전체 목록과 각 제공자의 라우팅 방식은 [제공자 기능 매트릭스](/architecture/llm-provider-guide#provider-capability-matrix)를 참조하세요.
+This table lists the combinations we recommend, not the full set of providers FIM One supports. xAI (Grok), ByteDance Doubao, Mistral and any OpenAI-compatible relay all work; see the [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) for the complete list and how each one is routed.
+
+---
 
 ## 구조화된 출력 호환성
 

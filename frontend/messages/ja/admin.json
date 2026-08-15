@@ -643,7 +643,20 @@
     "moduleWorkflows": "ワークフロー",
     "moduleWorkflowsDesc": "Webhookとスケジュール済みトリガーを備えた視覚的な複数ステップの自動化。デフォルトではオフです。",
     "moduleEnabled": "モジュール有効",
-    "moduleDisabled": "モジュール無効"
+    "moduleDisabled": "モジュール無効",
+    "tokenQuotaDescFreemium": "This value is the included-tier monthly quota. 0 means unlimited on that tier.",
+    "tokenQuotaDescPaidOnly": "Not used for access while paid-only is on. Users without a subscription cannot call models.",
+    "accessModelOff": "No subscriptions",
+    "accessModelOffDesc": "Everyone shares one monthly cap. 0 means unlimited. Stripe is not used.",
+    "accessModelFreemium": "Included + paid",
+    "accessModelFreemiumDesc": "New users start on the included tier and can upgrade through Stripe.",
+    "accessModelPaidOnly": "Paid only",
+    "accessModelPaidOnlyDesc": "No included tier. Users must subscribe before they can call models.",
+    "accessModelSaved": "Access model updated",
+    "accessModelConfirmTitle": "Change access model?",
+    "accessModelConfirmOff": "Billing pages will hide. Token access falls back to the default monthly quota (currently {quota}; 0 means unlimited).",
+    "accessModelConfirmPaidOnlyFromOff": "Users without a paid subscription will not be able to call models until they subscribe.",
+    "accessModelConfirmPaidOnlyFromFreemium": "New users must subscribe. People already on the included tier keep their quota. Later cancellations will not fall back to the included tier."
   },
   "security": {
     "title": "セキュリティ",
@@ -1230,7 +1243,9 @@
       "freeQuotaSyncedHint": "システム設定 → デフォルト月間トークンクォータから同期されています。",
       "freeQuotaEditLink": "そこで編集 →",
       "stripePriceMissing": "Stripe価格が見つかりません",
-      "stripePriceMissingHint": "Stripeがこの価格IDを解決できませんでした。このプランで更新するか、Stripe ダッシュボードで一致する価格を作成してください。"
+      "stripePriceMissingHint": "Stripeがこの価格IDを解決できませんでした。このプランで更新するか、Stripe ダッシュボードで一致する価格を作成してください。",
+      "deleteDefaultBlocked": "The included default plan cannot be deleted. Switch the access model if you do not want an included tier.",
+      "defaultPlan": "Default"
     },
     "subscriptions": {
       "title": "サブスクリプション",
