@@ -29,6 +29,7 @@ import rehypeKatex from "rehype-katex"
 import rehypeHighlight from "rehype-highlight"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
+import { normalizeHeadings, normalizeMathDelimiters } from "@/lib/markdown-normalize"
 import { completeIncompleteMarkdown, splitMarkdownBlocks } from "@/lib/streaming-markdown"
 
 /**
@@ -146,15 +147,6 @@ function ClickableImage({ src, alt }: { src: string; alt: string }) {
 interface MarkdownContentProps {
   content: string
   className?: string
-}
-
-/**
- * Normalise markdown so that ATX headings without a space after the `#`
- * sequence (e.g. `###标题`) are parsed correctly.  CommonMark requires
- * `### heading` (with a space), but many LLMs omit the space before CJK text.
- */
-function normalizeHeadings(md: string): string {
-  return md.replace(/^(#{1,6})([^\s#])/gm, "$1 $2")
 }
 
 /** Extract plain text from React children recursively */
@@ -867,7 +859,9 @@ export const StreamingMarkdownContent = React.memo(function StreamingMarkdownCon
   className,
   showCursor,
 }: StreamingMarkdownContentProps) {
-  const blocks = useMemo(() => splitMarkdownBlocks(content), [content])
+  // Math delimiters are normalised before splitting so the tail-block repair
+  // below sees `$$` and can hide a half-arrived formula.
+  const blocks = useMemo(() => splitMarkdownBlocks(normalizeMathDelimiters(content)), [content])
   const last = blocks.length - 1
   return (
     <div className={cn("md-stream min-w-0", className)}>
@@ -883,7 +877,7 @@ export const StreamingMarkdownContent = React.memo(function StreamingMarkdownCon
 })
 
 export const MarkdownContent = React.memo(function MarkdownContent({ content, className }: MarkdownContentProps) {
-  const normalized = normalizeHeadings(content)
+  const normalized = normalizeHeadings(normalizeMathDelimiters(content))
   return (
     <div className={`min-w-0 overflow-hidden ${className ?? ""}`}>
       <Markdown

@@ -40,6 +40,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **Unsent input is kept.** Text, pasted clips and finished attachments that have not been sent are remembered per conversation, and separately for a new chat, so they survive a refresh, a switch to another conversation, and an expired session. A draft is cleared once the message is sent or its conversation is deleted.
 
+- **Chat replies accept LaTeX math delimiters.** Formulas written with `\[...\]` or `\(...\)` render as math, matching the existing dollar-sign syntax; delimiters inside code fences stay as text.
+
 ### Fixed
 
 - **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.

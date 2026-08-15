@@ -181,3 +181,39 @@ describe("MarkdownContent citations", () => {
     expect(container.querySelector("sup")?.textContent).toBe("7")
   })
 })
+
+describe("MarkdownContent math", () => {
+  const katex = (container: HTMLElement) => container.querySelectorAll(".katex")
+
+  it("renders a formula written with LaTeX display delimiters", () => {
+    const { container } = render(
+      <MarkdownContent content={"其价格页显示：\n\n\\[ 20\\ credits/秒 \\times 5秒=100\\ credits \\]\n"} />
+    )
+    // The visible layer carries the typeset glyphs; the TeX source survives
+    // only inside KaTeX's MathML annotation, which is not what the user sees.
+    expect(container.querySelector(".katex-html")?.textContent).toContain("×")
+    expect(katex(container).length).toBeGreaterThan(0)
+  })
+
+  it("renders a formula written with LaTeX inline delimiters", () => {
+    const { container } = render(<MarkdownContent content={"成本是 \\(P \\div 10\\) 元。"} />)
+    expect(container.querySelector(".katex-html")?.textContent).toContain("÷")
+    expect(katex(container).length).toBeGreaterThan(0)
+  })
+
+  it("still renders dollar-delimited math", () => {
+    const { container } = render(<MarkdownContent content={"$$a^2 + b^2 = c^2$$"} />)
+    expect(katex(container).length).toBeGreaterThan(0)
+  })
+
+  it("leaves LaTeX delimiters inside a code fence alone", () => {
+    const { container } = render(<MarkdownContent content={"```tex\n\\[ x \\]\n```"} />)
+    expect(katex(container)).toHaveLength(0)
+    expect(container.textContent).toContain("\\[ x \\]")
+  })
+
+  it("leaves an unmatched opening delimiter as text", () => {
+    const { container } = render(<MarkdownContent content={"开头 \\[ 20 credits"} />)
+    expect(katex(container)).toHaveLength(0)
+  })
+})
