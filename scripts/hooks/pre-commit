@@ -43,7 +43,13 @@ fi
 # The glossary is prompt-injected into every translation run and applies
 # to all five locales uniformly. See that file's header for details.
 # ---------------------------------------------------------------------------
-if [ -n "$LOCALE_GUARD_PATTERN" ]; then
+#
+# Escape hatch: TRANSLATION_REPAIR=1 git commit ... — for committing output of
+# scripts/translate.py when the matching EN change is already committed, which
+# happens after the hook itself was disabled (a stale core.hooksPath, a broken
+# .git/hooks symlink) and translations fell behind. Use it only for generated
+# output; hand-edited translations still belong in the glossary.
+if [ -n "$LOCALE_GUARD_PATTERN" ] && [ -z "$TRANSLATION_REPAIR" ]; then
   FORBIDDEN_LOCALE=$(git diff --cached --name-only --diff-filter=ACM \
     | grep -E "$LOCALE_GUARD_PATTERN" || true)
   if [ -n "$FORBIDDEN_LOCALE" ]; then
