@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from .harness import BANNED_PURPLE_HEXES, EvalRun, eval_retry, run_case
+from .harness import BANNED_PURPLE_HEXES, eval_retry, run_case
 
 # Real LLM + up to 15 ReAct iterations — override the repo-wide 30s cap.
 pytestmark = pytest.mark.timeout(600)
@@ -109,44 +109,3 @@ class TestDeliverableIsFile:
             )
 
         await eval_retry(attempt)
-
-
-def test_harness_trajectory_accessors(tmp_path: Path) -> None:
-    """Offline sanity check for EvalRun accessors (no LLM involved)."""
-    from fim_one.core.agent.types import (  # type: ignore[import-untyped]
-        Action,
-        AgentResult,
-        StepResult,
-    )
-
-    from .harness import RecordingImageTool
-
-    steps = [
-        StepResult(
-            action=Action(
-                type="tool_call",
-                reasoning="",
-                tool_name="file_ops",
-                tool_args={"operation": "write", "path": "a/scorecard.html"},
-            )
-        ),
-        StepResult(
-            action=Action(
-                type="tool_call",
-                reasoning="",
-                tool_name="file_ops",
-                tool_args={"operation": "read", "path": "a/scorecard.html"},
-            )
-        ),
-        StepResult(action=Action(type="final_answer", reasoning="", answer="done")),
-    ]
-    run = EvalRun(
-        result=AgentResult(answer="done", steps=steps),
-        sandbox=tmp_path,
-        image_tool=RecordingImageTool(),
-    )
-    assert run.tool_names() == ["file_ops", "file_ops"]
-    assert run.file_writes() == [{"operation": "write", "path": "a/scorecard.html"}]
-    assert run.file_writes(path_contains="scorecard.html")
-    assert not run.file_writes(path_contains="other.html")
-    assert run.sandbox_file("missing.html") == ""

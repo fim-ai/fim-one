@@ -111,8 +111,15 @@ async def run_case(
     sandbox: Path,
     *,
     max_iterations: int = 15,
+    llm: Any = None,
 ) -> EvalRun:
-    """Run one query through a real ReAct loop on a sandboxed toolset."""
+    """Run one query through a real ReAct loop on a sandboxed toolset.
+
+    *llm* defaults to the model under test. Passing a scripted stand-in
+    exercises the harness itself without a real call — that is how
+    ``tests/test_eval_harness.py`` pins the plumbing these cases rely on,
+    so a red eval means the model regressed and not the harness.
+    """
     sandbox.mkdir(parents=True, exist_ok=True)
     image_tool = RecordingImageTool()
     tools = ToolRegistry()
@@ -122,7 +129,7 @@ async def run_case(
     tools.register(FileOpsTool(workspace_dir=sandbox))  # type: ignore[arg-type]
     tools.register(image_tool)
     agent = ReActAgent(
-        llm=make_llm(),
+        llm=llm if llm is not None else make_llm(),
         tools=tools,
         max_iterations=max_iterations,
         enable_plan_tool=False,

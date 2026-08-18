@@ -16,6 +16,14 @@ never on answer wording.
 - Real token cost, minutes per case, non-deterministic results — the three
   reasons this stays out of the regular test loop.
 
+**The harness is not part of what these cases test.** Every case reaches its
+assertion through the same plumbing: the sandboxed `FileOpsTool`, the
+recording image tool, the `EvalRun` accessors, the pass@k retry. That
+plumbing is pinned in `tests/test_eval_harness.py` against a scripted model,
+where it costs nothing — so a red eval here means the model regressed, not
+that an accessor drifted. Keep it that way: harness changes get covered
+there, and nothing there asserts what a model *chooses* to do.
+
 ## When to run
 
 Run once, manually, before committing a change to any of:
@@ -35,6 +43,11 @@ the eval run costs tokens. Escape hatches:
   merge-back).
 - An all-skipped run (no `LLM_API_KEY`) does **not** stamp — a skip
   proves nothing.
+- A **partial** run does not stamp either. `pytest evals/ -k restyle` exits
+  zero having exercised one case; stamping there would certify the whole
+  watch list against a run that never touched most of it, and the hook would
+  then wave through the prompt change the other cases exist to catch. Any
+  skip or deselection blocks the stamp and says so on stderr.
 
 ## Handling non-determinism
 

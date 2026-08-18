@@ -47,18 +47,39 @@ def pytest_collection_modifyitems(
 # ---------------------------------------------------------------------------
 
 _passed_count = 0
+_skipped_count = 0
+_deselected_count = 0
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    global _passed_count
+    global _passed_count, _skipped_count
     if report.when == "call" and report.passed:
         _passed_count += 1
+    if report.skipped:
+        _skipped_count += 1
+
+
+def pytest_deselected(items: list[pytest.Item]) -> None:
+    global _deselected_count
+    _deselected_count += len(items)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     # Stamp only a genuinely green run with at least one real pass —
     # an all-skipped run (no LLM_API_KEY) proves nothing.
     if exitstatus != 0 or _passed_count == 0:
+        return
+    # ...and only a COMPLETE run. `pytest evals/ -k restyle` exits 0 having
+    # exercised one case; stamping there would certify the whole watch list
+    # against a run that never touched most of it, and the hook would then
+    # wave through the very prompt change the other cases exist to catch.
+    if _skipped_count or _deselected_count:
+        print(
+            "eval stamp: skipped "
+            f"({_skipped_count} skipped, {_deselected_count} deselected) — "
+            "stamping needs a full green run",
+            file=sys.stderr,
+        )
         return
     subprocess.run(
         [sys.executable, str(_PROJECT_ROOT / "scripts" / "eval_stamp.py"), "--write"],
