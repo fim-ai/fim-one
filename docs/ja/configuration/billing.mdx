@@ -1,22 +1,22 @@
 ---
 title: "Stripe Billing"
 icon: "credit-card"
-description: "ユーザーごとのStripe サブスクリプション（Free + Pro）をトークンクォータと自動サービス プラン管理で有効にします。"
+description: "ユーザーごとのStripe サブスクリプション（Free + Pro）を有効にし、トークンクォータとセルフサービスプラン管理を実現します。"
 ---
 
-FIM One は、管理者が制御する機能フラグの背後に完全な Stripe 請求パイプラインを搭載しています。支払い機能が不要なプライベート デプロイメントはこれをオフのままにし、UI は表示されません。SaaS オペレーターは 1 つのトグルを切り替えるだけで、ホストされた Checkout、カスタマー ポータル、webhook 駆動のサブスクリプション ライフサイクル、およびクォータ強制が すぐに利用できます。
+FIM One は、インスタンスアクセスモデルの背後に完全な Stripe 請求パイプラインを搭載しています。プライベートデプロイメントでは **No subscriptions** のままで、支払い UI は表示されません。カタログが必要なオペレーターは **Included + paid** または **Paid only** を選択すると、ホストされた Checkout、カスタマーポータル、webhook 駆動のサブスクリプションライフサイクル、およびクォータ強制が利用できます。
 
 <Note>
-請求は**デフォルトで無効**です。新規インストールと既存のセルフホスト デプロイメントの両方は、`system_settings.billing_enabled = FALSE` で開始されます。管理者が明示的に有効にするまで、請求 UI は表示されません。
+ソフトウェアのデフォルトは **No subscriptions**（`access_model = off`、`default_token_quota = 0` は無制限を意味します）です。新規インストールと既存のセルフホストはここから始まります。管理者が Stripe の設定を選択するまで、請求 UI は表示されません。
 </Note>
 
-## 提供内容
+## 何が得られるか
 
-- **Free + Pro ティア**（月次トークンクォータ付き、デフォルト：Free 1M / Pro 5M、アクティベーション後にカスタマイズ可能）
-- **Stripe ホスト型チェックアウト** — ユーザーはアップグレード時にカード情報があなたのコードに触れることなく完了
-- **カスタマーポータル** — ユーザーが支払い方法の更新、請求書のダウンロード、キャンセルをすべて Stripe UI で実行
-- **Webhook 駆動ライフサイクル** — サブスクリプションは自動的にプロビジョニングおよび更新され、キャンセルされたサブスクリプションは期間終了時に Free に降格
-- **クォータ強制実行** — トークン使用量を期間ごとに追跡、ストリーム中のカットオフと構造化されたアップグレードプロンプト
+- **3つのアクセスポスチャー**: サブスクリプションなし、含まれている + 有料、または有料のみ
+- **Stripe ホストチェックアウト** — ユーザーはアップグレード時にカード情報があなたのコードに触れることなく完了
+- **カスタマーポータル** — ユーザーは支払い方法の更新、請求書のダウンロード、キャンセルをすべて Stripe の UI で実行
+- **Webhook 駆動ライフサイクル** — サブスクリプションは自動的にプロビジョニングおよび更新され、キャンセルされた有料ユーザーは期間終了時に含まれているティアに戻るか（または有料のみの場合は権利がなくなる）
+- **クォータ強制** — トークン使用量は期間ごとに追跡され、ストリーム中のカットオフと構造化されたアップグレードプロンプト
 - **管理ページ** — プラン CRUD とサブスクリプション監視用
 
 ## 前提条件
@@ -90,18 +90,20 @@ STRIPE_BILLING_RETURN_URL=https://<your-domain>/settings?tab=billing
 ./deploy.sh   # or: docker compose restart fim-one
 ```
 
-### 3. Admin で有効化
+### 3. 管理員で有効化
 
 1. 管理者としてログイン
-2. **Admin → System Settings → Billing**
-3. **Enable Stripe Billing** をONに切り替え
-4. バックエンドが `STRIPE_SECRET_KEY` と `STRIPE_WEBHOOK_SECRET` の両方が存在することを検証します — どちらかが欠落している場合は400を返し、トグルはOFFのままになります
-5. 初回有効化時のみ、バックエンドは**べき等なセットアップ**を実行します：
-   - Free + Pro プランをシード（既に存在する場合はスキップ）
-   - `system_settings.default_plan_id` を Free プランのIDに設定
-   - プランを持たないユーザーの `users.plan_id = free.id` をバックフィル
-   - `default_token_quota` → Free プランの `monthly_token_quota` を同期して、既存の管理者制御グローバルクォータを引き継ぎ
-6. その後のトグルオフ/オンは**純粋なフラグ反転**で、データ側の影響はありません
+2. **Admin → System Settings → Access and billing**
+3. 1つのポスチャーを選択（インスタンスは常に正確に1つの状態）:
+   - **No subscriptions**（ソフトウェアデフォルト）— Stripe未使用。トークンアクセスはデフォルト月間クォータ（`0` = 無制限）。
+   - **Included + paid** — Stripe必須。新規ユーザーはインクルード層にランディング。アップグレード可能。キャンセルされた有料ユーザーは期間終了時にインクルード層に戻る。
+   - **Paid only** — Stripe必須。インクルード層なし。ユーザーはモデルを呼び出す前にサブスクライブする必要がある。Included + paidから切り替える場合、既存のインクルード層ユーザーはクォータを保持。
+4. バックエンドは、Stripeポスチャーを選択する際に `STRIPE_SECRET_KEY` と `STRIPE_WEBHOOK_SECRET` の両方が存在することを検証します — どちらかが欠落している場合は400を返す
+5. Stripeポスチャーの初回有効化時、バックエンドは**べき等セットアップ**を実行:
+   - Included + paid: インクルードプラン（`slug=free`）+ 空のPrice IDを持つProテンプレートをシード。`default_plan_id`を設定。プランのないユーザーをバックフィル
+   - Paid only: Proテンプレートのみをシード。バックフィルなし
+   - そのプランがシードされるときに `default_token_quota` をインクルードプランにコピー（`0`は`0`のまま、無制限）
+6. **No subscriptions**に戻すことは**純粋なフラグ反転**で、データ副作用なし。Included + paidがアクティブな間、インクルードデフォルトプランは削除できない。
 
 ### 4. Pro プランをライブ価格で更新する
 
@@ -183,16 +185,17 @@ Admin → System Settings → Billing で **Enable Stripe Billing** スイッチ
 
 ### クォータ解決チェーン — v1（現在）
 
-認証されたリクエストの場合、上限は上から下へ計算されます——**最初にマッチしたものが優先されます**：
+認証されたリクエストの場合、上限は上から下へ計算されます——**最初にマッチしたものが優先**されます：
 
 ```
 1. users.token_quota        ── NULL? skip. 0? unlimited. N>0? cap at N.
-2. users.plan.monthly_token_quota   ── only when billing_enabled = TRUE
-3. system_settings.default_token_quota  ── defensive fallback
-4. unlimited                ── last resort if everything above is NULL
+2. users.plan.monthly_token_quota   ── only when access_model is freemium or paid_only
+3. paid_only + no plan      ── unentitled (stop; do not fall through)
+4. system_settings.default_token_quota  ── used when access_model is off
+5. unlimited                ── last resort if everything above is unset
 ```
 
-ステップ3は、課金が有効な場合はめったに到達しません。これは、アクティベーションがすべてのユーザーの `users.plan_id` をバックフィルするためです。これは防御層として存在し、設定が誤ったプランがユーザーを静かに無制限にすることがないようにします。
+ステップ4は**サブスクリプションなし**の場合のインスタンス全体の上限です。**有料のみ**の場合、プランのないユーザーは`default_token_quota`が0であっても権限がなく（チャットは402を返します）。
 
 ### 期間リセット
 
@@ -253,19 +256,20 @@ Team プランがリリースされる場合：
 
 ### デフォルト値
 
-出荷時のデフォルト — すべてインストール後に調整可能（記載されている場合を除く）。
+出荷時のデフォルト — すべてインストール後に調整可能（記載がある場合を除く）。
 
 | 変数 | デフォルト | 調整方法 |
 |---|---|---|
-| `billing_plans.monthly_token_quota` (Free) | `1,000,000` | Admin → Billing → Plans → Free → Edit |
-| `billing_plans.monthly_token_quota` (Pro) | `5,000,000` | Admin → Billing → Plans → Pro → Edit |
-| `system_settings.default_token_quota` | `1,000,000`（アクティベーション時にFreeと同期） | Admin → System Settings → Quotas |
-| `system_settings.billing_enabled` | `FALSE` | Admin → System Settings → Billing |
+| `system_settings.access_model` | `off` | Admin → System Settings → Access and billing |
+| `billing_plans.monthly_token_quota` (included) | `default_token_quota` からコピー（`0` = 無制限） | Admin → System Settings → Default Monthly Token Quota |
+| `billing_plans.monthly_token_quota` (Pro template) | `5,000,000` | Admin → Billing → Plans → Pro → Edit |
+| `system_settings.default_token_quota` | `0`（無制限；フリーミアムの included プラン下で同期） | Admin → System Settings → Default Monthly Token Quota |
+| `system_settings.billing_enabled` | `FALSE`（`access_model != off` から導出） | Admin → System Settings → Access and billing |
 | Pro list price | `$20.00 USD / month` | Stripe Dashboard (price object) |
 | Stripe webhook events subscribed | 6 | Stripe Dashboard → Webhooks |
-| Stripe price cache TTL | `5 minutes` | `stripe_client.py`にハードコード |
-| Subscription lifecycle cron | 毎時間 | `web/main.py`のAPScheduler |
-| Free-tier reset cron | 毎時間（暦月の境界） | `web/main.py`のAPScheduler |
+| Stripe price cache TTL | `5 minutes` | `stripe_client.py` にハードコード |
+| Subscription lifecycle cron | 毎時 | `web/main.py` の APScheduler |
+| Free-tier reset cron | 毎時（暦月の境界） | `web/main.py` の APScheduler |
 
 ## 料金モデル
 

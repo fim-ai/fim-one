@@ -1,22 +1,22 @@
 ---
-title: "Facturation Stripe"
+title: "Stripe Billing"
 icon: "credit-card"
-description: "Activez les abonnements Stripe par utilisateur (Gratuit + Pro) avec quotas de jetons et gestion de plan en libre-service."
+description: "Activez les abonnements Stripe par utilisateur (Gratuit + Pro) avec des quotas de tokens et une gestion de forfait en libre-service."
 ---
 
-FIM One intègre un pipeline de facturation Stripe complet contrôlé par un drapeau de fonctionnalité administrateur. Les déploiements privés sans besoin de paiement le laissent désactivé et ne voient jamais l'interface utilisateur. Les opérateurs SaaS basculent un seul paramètre et obtiennent immédiatement la Checkout hébergée, le Portail Client, le cycle de vie des abonnements piloté par webhook et l'application des quotas.
+FIM One propose un pipeline de facturation Stripe complet derrière un modèle d'accès par instance. Les déploiements privés le laissent sur **Pas d'abonnements** et ne voient jamais l'interface de paiement. Les opérateurs qui souhaitent un catalogue choisissent **Inclus + payant** ou **Payant uniquement** et obtiennent Checkout hébergé, Customer Portal, cycle de vie d'abonnement piloté par webhook et application des quotas.
 
 <Note>
-La facturation est **désactivée par défaut**. Les nouvelles installations et les déploiements autonomes existants commencent avec `system_settings.billing_enabled = FALSE`. Aucune interface de facturation n'apparaît tant qu'un administrateur ne l'active pas explicitement.
+La valeur par défaut du logiciel est **Pas d'abonnements** (`access_model = off`, `default_token_quota = 0` signifiant illimité). Les nouvelles installations et les auto-hébergements existants commencent là. Aucune interface de facturation n'apparaît jusqu'à ce qu'un administrateur choisisse une posture Stripe.
 </Note>
 
 ## Ce que vous obtenez
 
-- **Niveaux Free + Pro** avec quotas de tokens mensuels (par défaut : Free 1M / Pro 5M ; tous deux ajustables après activation)
-- **Stripe Checkout hébergé** — les utilisateurs passent à la version payante sans que votre code ne touche jamais aux données de carte
-- **Portail client** — les utilisateurs mettent à jour les méthodes de paiement, téléchargent les factures, annulent — tout sur l'interface de Stripe
-- **Cycle de vie piloté par webhooks** — les abonnements se provisionnent et se renouvellent automatiquement ; les abonnements annulés rétrogradent à Free à la fin de la période
-- **Application des quotas** — utilisation des tokens suivie par période ; arrêt en cours de flux avec une invite de mise à niveau structurée
+- **Trois modèles d'accès** : sans abonnement, inclus + payant, ou payant uniquement
+- **Stripe Checkout hébergé** — les utilisateurs passent à la version payante sans que vos données de carte ne transitent par votre code
+- **Portail client** — les utilisateurs mettent à jour leurs méthodes de paiement, téléchargent des factures, annulent — tout sur l'interface de Stripe
+- **Cycle de vie piloté par webhooks** — les abonnements se provisionnent et se renouvellent automatiquement ; les utilisateurs payants annulés reviennent au niveau inclus (ou deviennent non autorisés en mode payant uniquement) à la fin de la période
+- **Application des quotas** — utilisation des tokens suivie par période ; interruption en cours de flux avec une invite de mise à niveau structurée
 - **Pages d'administration** pour la gestion des plans et la surveillance des abonnements
 
 ## Prérequis
@@ -90,18 +90,20 @@ Redémarrez le backend après avoir modifié `.env` pour que les clés soient pr
 ./deploy.sh   # or: docker compose restart fim-one
 ```
 
-### 3. Activate in Admin
+### 3. Activer dans Admin
 
-1. Log in as an admin
-2. **Admin → System Settings → Billing**
-3. Toggle **Enable Stripe Billing** ON
-4. The backend validates that both `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are present — if either is missing it returns 400 and the toggle stays OFF
-5. On first activation only, the backend runs an **idempotent setup**:
-   - Seeds Free + Pro plans (skipped if already present)
-   - Sets `system_settings.default_plan_id` to the Free plan id
-   - Backfills `users.plan_id = free.id` for any user without a plan
-   - Syncs `default_token_quota` → Free plan `monthly_token_quota` so the existing admin-controlled global quota carries over
-6. Subsequent toggle off/on is a **pure flag flip** with no data side effects
+1. Connectez-vous en tant qu'administrateur
+2. **Admin → System Settings → Access and billing**
+3. Choisissez une posture (l'instance est toujours dans exactement une) :
+   - **No subscriptions** (logiciel par défaut) — Stripe inutilisé. L'accès par token est le quota mensuel par défaut (`0` = illimité).
+   - **Included + paid** — Stripe requis. Les nouveaux utilisateurs arrivent sur le tier inclus ; ils peuvent passer à une version payante. Les utilisateurs payants annulés reviennent au tier inclus à la fin de la période.
+   - **Paid only** — Stripe requis. Pas de tier inclus. Les utilisateurs doivent s'abonner avant de pouvoir appeler les modèles. Les utilisateurs du tier inclus existants conservent leur quota si vous passez de Included + paid.
+4. Le backend valide que `STRIPE_SECRET_KEY` et `STRIPE_WEBHOOK_SECRET` sont présents lorsque vous choisissez une posture Stripe — si l'un des deux est manquant, il retourne 400
+5. À la première activation d'une posture Stripe, le backend exécute une **configuration idempotente** :
+   - Included + paid : initialise le plan inclus (`slug=free`) + un modèle Pro avec un ID de prix vide ; définit `default_plan_id` ; remplit rétroactivement les utilisateurs sans plan
+   - Paid only : initialise uniquement le modèle Pro ; ne remplit pas rétroactivement
+   - Copie `default_token_quota` sur le plan inclus lors de son initialisation (`0` reste `0`, illimité)
+6. Revenir à **No subscriptions** est un **simple changement de drapeau** sans effets secondaires sur les données. Le plan par défaut inclus ne peut pas être supprimé tant que Included + paid est actif.
 
 ### 4. Mettez à jour le plan Pro avec votre prix en direct
 
@@ -183,16 +185,17 @@ Le remplacement l'emporte toujours sur le plan et le défaut. Il existe pour per
 
 ### Chaîne de résolution des quotas — v1 (actuelle)
 
-Pour toute requête authentifiée, le plafond est calculé de haut en bas — **la première correspondance gagne** :
+Pour toute demande authentifiée, le plafond est calculé de haut en bas — **la première correspondance gagne** :
 
 ```
 1. users.token_quota        ── NULL? skip. 0? unlimited. N>0? cap at N.
-2. users.plan.monthly_token_quota   ── only when billing_enabled = TRUE
-3. system_settings.default_token_quota  ── defensive fallback
-4. unlimited                ── last resort if everything above is NULL
+2. users.plan.monthly_token_quota   ── only when access_model is freemium or paid_only
+3. paid_only + no plan      ── unentitled (stop; do not fall through)
+4. system_settings.default_token_quota  ── used when access_model is off
+5. unlimited                ── last resort if everything above is unset
 ```
 
-L'étape 3 est rarement atteinte quand la facturation est activée, car l'activation remplit rétroactivement `users.plan_id` pour chaque utilisateur. Elle existe comme une défense en profondeur pour qu'un plan mal configuré ne lève jamais silencieusement le plafond d'un utilisateur.
+L'étape 4 est le plafond au niveau de l'instance pour **Aucun abonnement**. Sous **Payant uniquement**, un utilisateur sans plan n'a pas de droits (le chat retourne 402) même si `default_token_quota` est 0.
 
 ### Réinitialisation de la période
 
@@ -255,19 +258,20 @@ Quand le plan Team sera lancé :
 
 ### Valeurs par défaut
 
-Valeurs par défaut au moment du déploiement — toutes ajustables après installation sauf indication contraire.
+Valeurs par défaut au moment du déploiement — toutes modifiables après installation sauf indication contraire.
 
-| Variable | Défaut | Ajustable via |
+| Variable | Défaut | Modifiable via |
 |---|---|---|
-| `billing_plans.monthly_token_quota` (Free) | `1,000,000` | Admin → Billing → Plans → Free → Edit |
-| `billing_plans.monthly_token_quota` (Pro) | `5,000,000` | Admin → Billing → Plans → Pro → Edit |
-| `system_settings.default_token_quota` | `1,000,000` (synchronisé avec Free à l'activation) | Admin → System Settings → Quotas |
-| `system_settings.billing_enabled` | `FALSE` | Admin → System Settings → Billing |
-| Prix catalogue Pro | `$20.00 USD / mois` | Stripe Dashboard (objet price) |
-| Événements webhook Stripe abonnés | 6 | Stripe Dashboard → Webhooks |
-| TTL cache prix Stripe | `5 minutes` | codé en dur dans `stripe_client.py` |
-| Cron cycle de vie abonnement | toutes les heures | APScheduler dans `web/main.py` |
-| Cron réinitialisation niveau gratuit | toutes les heures (limite calendaire mensuelle) | APScheduler dans `web/main.py` |
+| `system_settings.access_model` | `off` | Admin → System Settings → Access and billing |
+| `billing_plans.monthly_token_quota` (included) | copiée depuis `default_token_quota` (`0` = illimité) | Admin → System Settings → Default Monthly Token Quota |
+| `billing_plans.monthly_token_quota` (Pro template) | `5,000,000` | Admin → Billing → Plans → Pro → Edit |
+| `system_settings.default_token_quota` | `0` (illimité ; synchronisé avec le plan included en freemium) | Admin → System Settings → Default Monthly Token Quota |
+| `system_settings.billing_enabled` | `FALSE` (dérivé de `access_model != off`) | Admin → System Settings → Access and billing |
+| Pro list price | `$20.00 USD / month` | Stripe Dashboard (price object) |
+| Stripe webhook events subscribed | 6 | Stripe Dashboard → Webhooks |
+| Stripe price cache TTL | `5 minutes` | hardcoded in `stripe_client.py` |
+| Subscription lifecycle cron | hourly | APScheduler in `web/main.py` |
+| Free-tier reset cron | hourly (calendar-month boundary) | APScheduler in `web/main.py` |
 
 ## Modèle de tarification
 

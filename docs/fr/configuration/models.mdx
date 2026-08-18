@@ -28,14 +28,16 @@ Ces rôles peuvent être configurés via des variables d'environnement ou via la
 | **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | ✅ Tous | Routage API natif ; support complet de `reasoning_content` ; contexte 1M GA |
 | **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ Tous | 2.5 est GA stable ; 3.x est en aperçu ; `gemini-3-pro-preview` arrêté le 9 mar |
 | **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Texte uniquement ; V4 (avr 2026) ajoutera la vision |
-| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` sur `qwen3-max` | ⚠️ qwen3.5 uniquement | Langage chinois le plus puissant ; qwq/raisonnement texte uniquement |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` sur `qwen3-max` | ⚠️ qwen3.5 uniquement | Meilleure langue chinoise ; qwq/raisonnement texte uniquement |
 | **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | FC forcé non supporté ; la vision nécessite un modèle VLM séparé |
 | **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Texte uniquement ; M2.7 dernier (mar 2026) ; 80,2% SWE-Bench |
 | **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5 uniquement | K2-thinking texte uniquement ; FC forcé non supporté avec raisonnement |
-| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Varie | Complètement hors ligne, pas de clé API ; Llama 4 supporte la vision |
+| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Varie | Entièrement hors ligne, pas de clé API ; Llama 4 supporte la vision |
 
 <Tip>
-**Vision** indique si le modèle accepte l'entrée d'image. Ceci est requis pour [Traitement Intelligent des Documents (IDP)](/features/idp) — si votre modèle ne supporte pas la vision, IDP basculera vers l'extraction texte uniquement. Les fournisseurs marqués ⚠️ ont la vision sur certains modèles mais pas d'autres ; vérifiez le modèle spécifique que vous utilisez.
+**Vision** indique si le modèle accepte l'entrée d'image. Ceci est requis pour le [Traitement Intelligent des Documents (IDP)](/features/idp) — si votre modèle ne supporte pas la vision, IDP reviendra à l'extraction texte uniquement. Les fournisseurs marqués ⚠️ ont la vision sur certains modèles mais pas d'autres ; vérifiez le modèle spécifique que vous utilisez.
+
+Les pièces jointes de chat suivent le même indicateur : avec un modèle texte uniquement, une image jointe n'est pas envoyée, et le modèle reçoit uniquement son nom de fichier. Le compositeur de chat l'indique avant l'envoi, en fonction du modèle que le tour utiliserait réellement (paramètre d'agent, puis le groupe de modèles actif, puis la valeur par défaut du système). Le texte du document n'est pas affecté — un PDF ou DOCX a toujours son contenu extrait et injecté.
 </Tip>
 
 Ce tableau énumère les combinaisons que nous recommandons, pas l'ensemble complet des fournisseurs que FIM One supporte. xAI (Grok), ByteDance Doubao, Mistral et tout relais compatible OpenAI fonctionnent ; consultez la [Matrice de Capacités des Fournisseurs](/architecture/llm-provider-guide#provider-capability-matrix) pour la liste complète et la façon dont chacun est routé.

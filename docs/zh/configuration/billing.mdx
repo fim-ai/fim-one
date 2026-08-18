@@ -4,20 +4,20 @@ icon: "credit-card"
 description: "启用按用户的 Stripe 订阅（免费版 + 专业版），包含令牌配额和自助式套餐管理。"
 ---
 
-FIM One 在管理员控制的功能标志后面提供完整的 Stripe 计费管道。不需要支付功能的私有部署可以将其关闭，永远不会看到相关 UI。SaaS 运营商只需切换一个开关，即可获得托管结账、客户门户、由 webhook 驱动的订阅生命周期管理和配额强制执行。
+FIM One 在实例访问模型后面提供完整的 Stripe 计费管道。私有部署将其设置为**无订阅**，永远不会显示支付 UI。希望获得目录的运营者可以选择**包含 + 付费**或**仅付费**，并获得托管结账、客户门户、由 webhook 驱动的订阅生命周期和配额强制执行。
 
 <Note>
-计费**默认禁用**。全新安装和现有自托管部署都以 `system_settings.billing_enabled = FALSE` 开始。在管理员明确激活之前，不会显示任何计费 UI。
+软件默认为**无订阅**（`access_model = off`、`default_token_quota = 0` 表示无限制）。全新安装和现有自托管部署从此处开始。在管理员选择 Stripe 方案之前，不会显示任何计费 UI。
 </Note>
 
-## 您将获得
+## 你获得的功能
 
-- **免费版和专业版** 配有月度令牌配额（默认值：免费版 1M / 专业版 5M；激活后可调整）
-- **Stripe 托管结账** — 用户无需您的代码接触卡数据即可升级
-- **客户门户** — 用户可更新支付方式、下载发票、取消订阅——全部在 Stripe 的界面上完成
-- **Webhook 驱动的生命周期** — 订阅自动配置和续期；已取消的订阅在周期结束时降级为免费版
-- **配额强制执行** — 按周期跟踪令牌使用情况；中途截断并显示结构化升级提示
-- **管理页面** 用于计划 CRUD 和订阅监控
+- **三种访问模式**：无订阅、包含+付费或仅付费
+- **Stripe托管结账** — 用户升级时无需你的代码接触卡数据
+- **客户门户** — 用户更新支付方式、下载发票、取消订阅——全部在Stripe的UI中完成
+- **Webhook驱动的生命周期** — 订阅自动配置和续期；已取消的付费用户在周期结束时返回包含层级（或在仅付费模式下失去权限）
+- **配额强制执行** — 按周期跟踪令牌使用情况；流式传输中断并显示结构化升级提示
+- **管理页面** — 用于计划CRUD和订阅监控
 
 ## 前置条件
 
@@ -93,15 +93,17 @@ STRIPE_BILLING_RETURN_URL=https://<your-domain>/settings?tab=billing
 ### 3. 在管理员中激活
 
 1. 以管理员身份登录
-2. **管理员 → 系统设置 → 计费**
-3. 切换**启用 Stripe 计费**为 ON
-4. 后端验证 `STRIPE_SECRET_KEY` 和 `STRIPE_WEBHOOK_SECRET` 都存在——如果任一缺失，返回 400 并且切换保持 OFF
-5. 仅在首次激活时，后端运行**幂等设置**：
-   - 种子化免费版和专业版套餐（如果已存在则跳过）
-   - 设置 `system_settings.default_plan_id` 为免费版套餐 id
-   - 为任何没有套餐的用户回填 `users.plan_id = free.id`
-   - 同步 `default_token_quota` → 免费版套餐 `monthly_token_quota`，使现有的管理员控制的全局配额得以保留
-6. 后续的切换关闭/打开是**纯标志翻转**，无数据副作用
+2. **管理员 → 系统设置 → 访问和计费**
+3. 选择一种状态（实例始终恰好处于其中一种）：
+   - **无订阅**（软件默认值）— Stripe 未使用。令牌访问是默认月度配额（`0` = 无限制）。
+   - **包含 + 付费** — 需要 Stripe。新用户进入包含层级；他们可以升级。已取消的付费用户在周期结束时返回包含层级。
+   - **仅付费** — 需要 Stripe。无包含层级。用户必须先订阅才能调用模型。如果从"包含 + 付费"切换，现有包含层级用户保留其配额。
+4. 后端验证当你选择 Stripe 状态时，`STRIPE_SECRET_KEY` 和 `STRIPE_WEBHOOK_SECRET` 都存在——如果缺少任何一个，返回 400
+5. 首次激活 Stripe 状态时，后端运行**幂等设置**：
+   - 包含 + 付费：为包含计划（`slug=free`）和带有空 Price ID 的 Pro 模板提供种子数据；设置 `default_plan_id`；为没有计划的用户回填
+   - 仅付费：仅为 Pro 模板提供种子数据；不进行回填
+   - 当该计划被提供种子数据时，将 `default_token_quota` 复制到包含计划（`0` 保持 `0`，无限制）
+6. 切换回**无订阅**是**纯标志翻转**，没有数据副作用。当"包含 + 付费"处于活跃状态时，包含的默认计划无法删除。
 
 ### 4. 使用您的实时价格更新Pro套餐
 
@@ -183,16 +185,17 @@ WHERE slug = 'pro';
 
 ### 配额解析链——v1（当前版本）
 
-对于任何已认证的请求，上限按自上而下的方式计算——**首次匹配获胜**：
+对于任何已认证的请求，上限从上到下计算——**首次匹配获胜**：
 
 ```
 1. users.token_quota        ── NULL? skip. 0? unlimited. N>0? cap at N.
-2. users.plan.monthly_token_quota   ── only when billing_enabled = TRUE
-3. system_settings.default_token_quota  ── defensive fallback
-4. unlimited                ── last resort if everything above is NULL
+2. users.plan.monthly_token_quota   ── only when access_model is freemium or paid_only
+3. paid_only + no plan      ── unentitled (stop; do not fall through)
+4. system_settings.default_token_quota  ── used when access_model is off
+5. unlimited                ── last resort if everything above is unset
 ```
 
-当启用计费时，第3步很少被执行，因为激活会为每个用户回填`users.plan_id`。它作为纵深防御存在，以确保配置错误的计划永远不会静默地为用户解除上限。
+第4步是**无订阅**的实例范围上限。在**仅付费**模式下，即使`default_token_quota`为0，没有计划的用户也无权限（聊天返回402）。
 
 ### 周期重置
 
@@ -253,17 +256,18 @@ WHERE slug = 'pro';
 
 ### 默认值
 
-发货时的默认值——除特别说明外，所有值都可在安装后调整。
+发货时的默认值——除特别说明外，所有值均可在安装后调整。
 
 | 变量 | 默认值 | 可通过以下方式调整 |
 |---|---|---|
-| `billing_plans.monthly_token_quota` (Free) | `1,000,000` | 管理员 → 计费 → 套餐 → Free → 编辑 |
-| `billing_plans.monthly_token_quota` (Pro) | `5,000,000` | 管理员 → 计费 → 套餐 → Pro → 编辑 |
-| `system_settings.default_token_quota` | `1,000,000`（激活时与 Free 同步） | 管理员 → 系统设置 → 配额 |
-| `system_settings.billing_enabled` | `FALSE` | 管理员 → 系统设置 → 计费 |
-| Pro 列表价格 | `$20.00 USD / month` | Stripe Dashboard（价格对象） |
-| Stripe webhook 事件订阅数 | 6 | Stripe Dashboard → Webhooks |
-| Stripe 价格缓存 TTL | `5 minutes` | `stripe_client.py` 中硬编码 |
+| `system_settings.access_model` | `off` | 管理员 → 系统设置 → 访问和计费 |
+| `billing_plans.monthly_token_quota`（包含） | 复制自 `default_token_quota`（`0` = 无限制） | 管理员 → 系统设置 → 默认月度令牌配额 |
+| `billing_plans.monthly_token_quota`（Pro 模板） | `5,000,000` | 管理员 → 计费 → 套餐 → Pro → 编辑 |
+| `system_settings.default_token_quota` | `0`（无限制；在免费增值模式下同步到包含的套餐） | 管理员 → 系统设置 → 默认月度令牌配额 |
+| `system_settings.billing_enabled` | `FALSE`（派生自 `access_model != off`） | 管理员 → 系统设置 → 访问和计费 |
+| Pro 列表价格 | `$20.00 USD / 月` | Stripe 仪表板（价格对象） |
+| Stripe webhook 事件订阅 | 6 | Stripe 仪表板 → Webhooks |
+| Stripe 价格缓存 TTL | `5 分钟` | `stripe_client.py` 中硬编码 |
 | 订阅生命周期 cron | 每小时 | `web/main.py` 中的 APScheduler |
 | 免费层重置 cron | 每小时（日历月边界） | `web/main.py` 中的 APScheduler |
 
