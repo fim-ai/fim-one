@@ -2,66 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import Any
-
 from fim_one.core.agent import AgentResult, ReActAgent
-from fim_one.core.model import BaseLLM, ChatMessage, LLMResult, StreamChunk
 from fim_one.core.tool import ToolRegistry
 
 from .conftest import EchoTool
-
-
-class TruncatingLLM(BaseLLM):
-    """Streams scripted ``(content, finish_reason)`` responses in order.
-
-    Each script entry becomes one full stream: content deltas followed by
-    a final chunk carrying the finish_reason.  When the scripts run out,
-    the last one repeats.
-    """
-
-    def __init__(self, scripts: list[tuple[str, str]]) -> None:
-        self._scripts = scripts
-        self.calls = 0
-        self.seen_messages: list[list[ChatMessage]] = []
-
-    @property
-    def abilities(self) -> dict[str, bool]:
-        return {"tool_call": True, "streaming": True}
-
-    async def chat(
-        self,
-        messages: list[ChatMessage],
-        **kwargs: Any,
-    ) -> LLMResult:
-        idx = min(self.calls, len(self._scripts) - 1)
-        self.calls += 1
-        content, finish = self._scripts[idx]
-        return LLMResult(
-            message=ChatMessage(role="assistant", content=content),
-            finish_reason=finish,
-        )
-
-    async def stream_chat(
-        self,
-        messages: list[ChatMessage],
-        **kwargs: Any,
-    ) -> AsyncIterator[StreamChunk]:
-        idx = min(self.calls, len(self._scripts) - 1)
-        self.calls += 1
-        self.seen_messages.append(list(messages))
-        content, finish = self._scripts[idx]
-        yield StreamChunk(delta_content=content)
-        yield StreamChunk(finish_reason=finish, usage={"total_tokens": 1})
+from .fake_llm import NATIVE_TOOLS, FakeLLM, answer, truncated_tool_call
 
 
 class TestNativeLoopContinuation:
     async def test_truncated_answer_is_stitched(self) -> None:
-        llm = TruncatingLLM(
-            [
-                ("The answer begins ", "length"),
-                ("and here it ends.", "stop"),
-            ]
+        llm = FakeLLM(
+            abilities=NATIVE_TOOLS,
+            responses=[
+                answer("The answer begins ", finish_reason="length"),
+                answer("and here it ends.", finish_reason="stop"),
+            ],
         )
         registry = ToolRegistry()
         registry.register(EchoTool())
@@ -86,7 +41,10 @@ class TestNativeLoopContinuation:
 
     async def test_continuation_bounded(self) -> None:
         # Every response is truncated — the loop must not continue forever.
-        llm = TruncatingLLM([("chunk ", "length")])
+        llm = FakeLLM(
+            abilities=NATIVE_TOOLS,
+            responses=[answer("chunk ", finish_reason="length")],
+        )
         registry = ToolRegistry()
         registry.register(EchoTool())
         agent = ReActAgent(
@@ -113,7 +71,10 @@ class TestNativeLoopContinuation:
         assert len(prompts) == 3
 
     async def test_no_continuation_on_stop(self) -> None:
-        llm = TruncatingLLM([("complete answer", "stop")])
+        llm = FakeLLM(
+            abilities=NATIVE_TOOLS,
+            responses=[answer("complete answer", finish_reason="stop")],
+        )
         registry = ToolRegistry()
         registry.register(EchoTool())
         agent = ReActAgent(
@@ -127,16 +88,17 @@ class TestNativeLoopContinuation:
         result = await agent.run("q")
 
         assert result.answer == "complete answer"
-        assert llm.calls == 1
+        assert llm.call_count == 1
 
 
 class TestStreamAnswerContinuation:
     async def test_synthesis_stream_continues_past_truncation(self) -> None:
-        llm = TruncatingLLM(
-            [
-                ("first half ", "length"),
-                ("second half", "stop"),
-            ]
+        llm = FakeLLM(
+            abilities=NATIVE_TOOLS,
+            responses=[
+                answer("first half ", finish_reason="length"),
+                answer("second half", finish_reason="stop"),
+            ],
         )
         agent = ReActAgent(
             llm=llm,
@@ -151,7 +113,7 @@ class TestStreamAnswerContinuation:
         assert "".join(chunks) == "first half second half"
         # The second call's message list carries the partial assistant
         # output plus the continuation prompt.
-        second_call = llm.seen_messages[1]
+        second_call = llm.all_messages[1]
         assert any(
             m.role == "assistant" and m.content == "first half " for m in second_call
         )
@@ -163,7 +125,10 @@ class TestStreamAnswerContinuation:
         )
 
     async def test_synthesis_stops_cleanly_without_truncation(self) -> None:
-        llm = TruncatingLLM([("whole answer", "stop")])
+        llm = FakeLLM(
+            abilities=NATIVE_TOOLS,
+            responses=[answer("whole answer", finish_reason="stop")],
+        )
         agent = ReActAgent(
             llm=llm,
             tools=ToolRegistry(),
@@ -174,47 +139,20 @@ class TestStreamAnswerContinuation:
         chunks = [c async for c in agent.stream_answer("q", result)]
 
         assert "".join(chunks) == "whole answer"
-        assert llm.calls == 1
-
-
-class TruncatedToolCallLLM(BaseLLM):
-    """First turn is a tool call the output limit cut off, then a normal turn."""
-
-    def __init__(self) -> None:
-        self.calls = 0
-        self.seen_messages: list[list[ChatMessage]] = []
-
-    @property
-    def abilities(self) -> dict[str, bool]:
-        return {"tool_call": True, "streaming": True}
-
-    async def chat(
-        self,
-        messages: list[ChatMessage],
-        **kwargs: Any,
-    ) -> LLMResult:  # pragma: no cover - native loop streams
-        raise NotImplementedError
-
-    async def stream_chat(
-        self,
-        messages: list[ChatMessage],
-        **kwargs: Any,
-    ) -> AsyncIterator[StreamChunk]:
-        self.calls += 1
-        self.seen_messages.append(list(messages))
-        if self.calls == 1:
-            # The model narrated its intent, then blew the budget writing the
-            # tool call — the shim drops the half-written call and reports it.
-            yield StreamChunk(delta_content="I will now write the file.")
-            yield StreamChunk(finish_reason="length", truncated_tool_call=True)
-        else:
-            yield StreamChunk(delta_content="Wrote it in two smaller parts.")
-            yield StreamChunk(finish_reason="stop")
+        assert llm.call_count == 1
 
 
 class TestTruncatedToolCallRetry:
     async def test_preamble_is_not_accepted_as_the_answer(self) -> None:
-        llm = TruncatedToolCallLLM()
+        llm = FakeLLM(
+            abilities=NATIVE_TOOLS,
+            responses=[
+                # The model narrated its intent, then blew the budget writing
+                # the tool call; the shim drops it and reports the truncation.
+                truncated_tool_call("I will now write the file."),
+                answer("Wrote it in two smaller parts."),
+            ],
+        )
         registry = ToolRegistry()
         registry.register(EchoTool())
         agent = ReActAgent(
@@ -230,7 +168,7 @@ class TestTruncatedToolCallRetry:
         # The truncated turn only announced the work — it must not stand in
         # for the work itself.
         assert result.answer == "Wrote it in two smaller parts."
-        assert llm.calls == 2
+        assert llm.call_count == 2
         assert any(
             m.role == "user"
             and isinstance(m.content, str)

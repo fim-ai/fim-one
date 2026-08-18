@@ -2,132 +2,23 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any, AsyncIterator
+from typing import Any
 
 import pytest
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.types import Action, StepResult
-from fim_one.core.model import BaseLLM, ChatMessage, LLMResult, StreamChunk
-from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.tool import BaseTool, ToolRegistry
 
-from .conftest import EchoTool, FakeLLM
-
-
-# ======================================================================
-# Helpers -- FakeLLM with native tool_call support
-# ======================================================================
-
-
-class NativeToolFakeLLM(BaseLLM):
-    """A fake LLM that advertises ``tool_call`` capability.
-
-    Returns pre-configured responses in sequence.  When the queue is
-    exhausted the last response is reused.
-
-    Attributes:
-        received_tools: The ``tools`` argument from the most recent call.
-        received_tool_choice: The ``tool_choice`` argument from the most
-            recent call.
-    """
-
-    def __init__(self, responses: list[LLMResult] | None = None) -> None:
-        self._responses: list[LLMResult] = responses or []
-        self._call_count: int = 0
-        self.received_tools: list[dict[str, Any]] | None = None
-        self.received_tool_choice: str | dict[str, Any] | None = None
-        self.all_messages: list[list[ChatMessage]] = []
-
-    @property
-    def call_count(self) -> int:
-        return self._call_count
-
-    async def chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        response_format: dict[str, Any] | None = None,
-        reasoning_effort: Any = None,
-    ) -> LLMResult:
-        self.received_tools = tools
-        self.received_tool_choice = tool_choice
-        self.all_messages.append(list(messages))
-        idx = min(self._call_count, len(self._responses) - 1)
-        self._call_count += 1
-        return self._responses[idx]
-
-    async def stream_chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        # Convert the pre-configured LLMResult into StreamChunks so that
-        # tests using _native_final_answer / _native_tool_call work with
-        # the stream_chat-based _run_native().
-        self.received_tools = tools
-        self.all_messages.append(list(messages))
-        idx = min(self._call_count, len(self._responses) - 1)
-        self._call_count += 1
-        resp = self._responses[idx]
-        if resp.message.content:
-            yield StreamChunk(delta_content=resp.message.content)
-        if resp.message.tool_calls:
-            yield StreamChunk(
-                tool_calls=resp.message.tool_calls,
-                finish_reason="tool_calls",
-                usage=resp.usage or None,
-            )
-        else:
-            yield StreamChunk(finish_reason="stop", usage=resp.usage or None)
-
-    @property
-    def abilities(self) -> dict[str, bool]:
-        return {
-            "tool_call": True,
-            "json_mode": True,
-            "vision": False,
-            "streaming": True,
-        }
-
-
-def _native_final_answer(content: str) -> LLMResult:
-    """Create an ``LLMResult`` that represents a final answer (no tool_calls)."""
-    return LLMResult(
-        message=ChatMessage(role="assistant", content=content),
-    )
-
-
-def _native_tool_call(
-    calls: list[tuple[str, str, dict[str, Any]]],
-    content: str | None = None,
-) -> LLMResult:
-    """Create an ``LLMResult`` with one or more tool calls.
-
-    Args:
-        calls: List of ``(id, name, arguments)`` tuples.
-        content: Optional textual content alongside tool calls.
-    """
-    tool_calls = [
-        ToolCallRequest(id=tc_id, name=name, arguments=args)
-        for tc_id, name, args in calls
-    ]
-    return LLMResult(
-        message=ChatMessage(
-            role="assistant",
-            content=content,
-            tool_calls=tool_calls,
-        ),
-    )
+from .conftest import EchoTool
+from .fake_llm import (
+    NATIVE_TOOLS,
+    FakeLLM,
+    answer,
+    react_final_answer,
+    react_tool_call,
+    tool_calls,
+)
 
 
 # ======================================================================
@@ -189,13 +80,13 @@ class TestNativeModeDetection:
     """Verify that native mode is activated (or not) based on config."""
 
     def test_native_mode_active_when_both_flag_and_ability(self) -> None:
-        llm = NativeToolFakeLLM(responses=[])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[])
         registry = ToolRegistry()
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=True)
         assert agent._native_mode_active is True
 
     def test_native_mode_inactive_when_flag_false(self) -> None:
-        llm = NativeToolFakeLLM(responses=[])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[])
         registry = ToolRegistry()
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=False)
         assert agent._native_mode_active is False
@@ -209,20 +100,7 @@ class TestNativeModeDetection:
     def test_fallback_to_json_mode_when_llm_lacks_ability(self) -> None:
         """use_native_tools=True but LLM does not support tool_call."""
         llm = FakeLLM(
-            responses=[
-                LLMResult(
-                    message=ChatMessage(
-                        role="assistant",
-                        content=json.dumps(
-                            {
-                                "type": "final_answer",
-                                "reasoning": "done",
-                                "answer": "json fallback",
-                            }
-                        ),
-                    ),
-                ),
-            ]
+            responses=[react_final_answer("json fallback", reasoning="done")]
         )
         registry = ToolRegistry()
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=True)
@@ -237,7 +115,7 @@ class TestNativeImmediateFinalAnswer:
     """LLM returns a final answer without making any tool calls."""
 
     async def test_simple_final_answer(self) -> None:
-        llm = NativeToolFakeLLM(responses=[_native_final_answer("The answer is 42.")])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("The answer is 42.")])
         registry = ToolRegistry()
         registry.register(EchoTool())
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=True)
@@ -251,7 +129,7 @@ class TestNativeImmediateFinalAnswer:
 
     async def test_tools_passed_to_llm(self) -> None:
         """Verify that OpenAI tool definitions are forwarded to the LLM."""
-        llm = NativeToolFakeLLM(responses=[_native_final_answer("done")])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("done")])
         registry = ToolRegistry()
         registry.register(EchoTool())
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=True)
@@ -265,7 +143,7 @@ class TestNativeImmediateFinalAnswer:
 
     async def test_tool_choice_auto(self) -> None:
         """Verify tools are passed to the LLM (stream_chat uses auto by default)."""
-        llm = NativeToolFakeLLM(responses=[_native_final_answer("done")])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("done")])
         registry = ToolRegistry()
         registry.register(EchoTool())
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=True)
@@ -281,10 +159,10 @@ class TestNativeSingleToolCall:
     """LLM makes a single tool call, then answers."""
 
     async def test_single_tool_call_then_answer(self) -> None:
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("call-1", "echo", {"text": "ping"})]),
-                _native_final_answer("Got: ping"),
+                tool_calls([("call-1", "echo", {"text": "ping"})]),
+                answer("Got: ping"),
             ]
         )
         registry = ToolRegistry()
@@ -309,10 +187,10 @@ class TestNativeSingleToolCall:
 
     async def test_tool_response_message_in_history(self) -> None:
         """Verify tool result is sent as role='tool' with correct tool_call_id."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("call-abc", "echo", {"text": "hello"})]),
-                _native_final_answer("done"),
+                tool_calls([("call-abc", "echo", {"text": "hello"})]),
+                answer("done"),
             ]
         )
         registry = ToolRegistry()
@@ -333,15 +211,15 @@ class TestNativeParallelToolCalls:
     """LLM requests multiple tool calls in a single response."""
 
     async def test_two_parallel_calls(self) -> None:
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call(
+                tool_calls(
                     [
                         ("call-1", "echo", {"text": "first"}),
                         ("call-2", "echo", {"text": "second"}),
                     ]
                 ),
-                _native_final_answer("Both done"),
+                answer("Both done"),
             ]
         )
         registry = ToolRegistry()
@@ -363,15 +241,15 @@ class TestNativeParallelToolCalls:
 
     async def test_parallel_calls_messages_in_history(self) -> None:
         """Each parallel tool call should produce its own tool response message."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call(
+                tool_calls(
                     [
                         ("call-a", "echo", {"text": "aaa"}),
                         ("call-b", "add", {"a": 1, "b": 2}),
                     ]
                 ),
-                _native_final_answer("done"),
+                answer("done"),
             ]
         )
         registry = ToolRegistry()
@@ -391,16 +269,16 @@ class TestNativeParallelToolCalls:
 
     async def test_three_parallel_calls(self) -> None:
         """Three parallel tool calls should all execute."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call(
+                tool_calls(
                     [
                         ("c1", "echo", {"text": "a"}),
                         ("c2", "echo", {"text": "b"}),
                         ("c3", "echo", {"text": "c"}),
                     ]
                 ),
-                _native_final_answer("all done"),
+                answer("all done"),
             ]
         )
         registry = ToolRegistry()
@@ -419,10 +297,10 @@ class TestNativeErrorHandling:
     """Error handling in native tool calling mode."""
 
     async def test_unknown_tool_produces_error(self) -> None:
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("call-1", "nonexistent", {})]),
-                _native_final_answer("fallback"),
+                tool_calls([("call-1", "nonexistent", {})]),
+                answer("fallback"),
             ]
         )
         registry = ToolRegistry()
@@ -435,10 +313,10 @@ class TestNativeErrorHandling:
         assert "Unknown tool" in result.steps[0].error
 
     async def test_tool_exception_produces_error(self) -> None:
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("call-1", "fail", {})]),
-                _native_final_answer("recovered"),
+                tool_calls([("call-1", "fail", {})]),
+                answer("recovered"),
             ]
         )
         registry = ToolRegistry()
@@ -453,10 +331,10 @@ class TestNativeErrorHandling:
 
     async def test_error_message_sent_to_llm(self) -> None:
         """Tool error should appear in the tool response message."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("call-err", "nonexistent", {})]),
-                _native_final_answer("ok"),
+                tool_calls([("call-err", "nonexistent", {})]),
+                answer("ok"),
             ]
         )
         registry = ToolRegistry()
@@ -472,15 +350,15 @@ class TestNativeErrorHandling:
 
     async def test_parallel_calls_with_mixed_success_and_failure(self) -> None:
         """One tool succeeds, another fails -- both results reported."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call(
+                tool_calls(
                     [
                         ("call-ok", "echo", {"text": "success"}),
                         ("call-bad", "fail", {}),
                     ]
                 ),
-                _native_final_answer("handled"),
+                answer("handled"),
             ]
         )
         registry = ToolRegistry()
@@ -502,9 +380,9 @@ class TestNativeMaxIterations:
 
     async def test_max_iterations_reached(self) -> None:
         """Agent should stop after max_iterations even if LLM keeps calling tools."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("call-loop", "echo", {"text": "again"})]),
+                tool_calls([("call-loop", "echo", {"text": "again"})]),
             ]
         )
         registry = ToolRegistry()
@@ -527,7 +405,7 @@ class TestNativeOnIterationCallback:
     """Verify the on_iteration callback fires correctly in native mode."""
 
     async def test_callback_on_final_answer(self) -> None:
-        llm = NativeToolFakeLLM(responses=[_native_final_answer("answer")])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("answer")])
         registry = ToolRegistry()
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=True)
 
@@ -549,10 +427,10 @@ class TestNativeOnIterationCallback:
         assert callbacks[1] == (1, "final_answer", None, None)
 
     async def test_callback_on_tool_call_and_answer(self) -> None:
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("c1", "echo", {"text": "hi"})]),
-                _native_final_answer("done"),
+                tool_calls([("c1", "echo", {"text": "hi"})]),
+                answer("done"),
             ]
         )
         registry = ToolRegistry()
@@ -589,15 +467,15 @@ class TestNativeOnIterationCallback:
 
     async def test_callback_on_parallel_tool_calls(self) -> None:
         """Each parallel tool call should trigger its own callback."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call(
+                tool_calls(
                     [
                         ("c1", "echo", {"text": "a"}),
                         ("c2", "echo", {"text": "b"}),
                     ]
                 ),
-                _native_final_answer("done"),
+                answer("done"),
             ]
         )
         registry = ToolRegistry()
@@ -636,7 +514,7 @@ class TestNativeCustomSystemPrompt:
     """Verify that a custom system prompt overrides the native default."""
 
     async def test_custom_system_prompt_used_in_native_mode(self) -> None:
-        llm = NativeToolFakeLLM(responses=[_native_final_answer("custom answer")])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("custom answer")])
         registry = ToolRegistry()
         agent = ReActAgent(
             llm=llm,
@@ -658,7 +536,7 @@ class TestNativeEmptyToolRegistry:
 
     async def test_no_tools_gives_immediate_answer(self) -> None:
         """With no tools, the LLM should still work and give an answer."""
-        llm = NativeToolFakeLLM(responses=[_native_final_answer("no tools needed")])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("no tools needed")])
         registry = ToolRegistry()
         agent = ReActAgent(llm=llm, tools=registry, use_native_tools=True)
 
@@ -674,11 +552,11 @@ class TestNativeMultiStepToolCalls:
     """LLM makes multiple sequential tool calls across iterations."""
 
     async def test_two_sequential_tool_calls(self) -> None:
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("c1", "echo", {"text": "step1"})]),
-                _native_tool_call([("c2", "add", {"a": 3, "b": 4})]),
-                _native_final_answer("step1 and 7"),
+                tool_calls([("c1", "echo", {"text": "step1"})]),
+                tool_calls([("c2", "add", {"a": 3, "b": 4})]),
+                answer("step1 and 7"),
             ]
         )
         registry = ToolRegistry()
@@ -706,13 +584,13 @@ class TestNativeAssistantMessageWithContent:
 
     async def test_content_plus_tool_calls(self) -> None:
         """Content alongside tool_calls should not be treated as final answer."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call(
+                tool_calls(
                     [("c1", "echo", {"text": "data"})],
                     content="Let me look that up.",
                 ),
-                _native_final_answer("Here is the result: data"),
+                answer("Here is the result: data"),
             ]
         )
         registry = ToolRegistry()
@@ -738,31 +616,8 @@ class TestBackwardCompatibility:
         """Without use_native_tools, behaviour is exactly as before."""
         llm = FakeLLM(
             responses=[
-                LLMResult(
-                    message=ChatMessage(
-                        role="assistant",
-                        content=json.dumps(
-                            {
-                                "type": "tool_call",
-                                "reasoning": "need echo",
-                                "tool_name": "echo",
-                                "tool_args": {"text": "hello"},
-                            }
-                        ),
-                    ),
-                ),
-                LLMResult(
-                    message=ChatMessage(
-                        role="assistant",
-                        content=json.dumps(
-                            {
-                                "type": "final_answer",
-                                "reasoning": "got it",
-                                "answer": "hello back",
-                            }
-                        ),
-                    ),
-                ),
+                react_tool_call("echo", {"text": "hello"}, reasoning="need echo"),
+                react_final_answer("hello back", reasoning="got it"),
             ]
         )
         registry = ToolRegistry()
@@ -786,10 +641,10 @@ class TestEmptyToolOutputWithWorkspace:
         previously overwrote the fallback with the raw empty string."""
         from fim_one.core.agent.workspace import AgentWorkspace
 
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _native_tool_call([("call-1", "echo", {"text": ""})]),
-                _native_final_answer("done"),
+                tool_calls([("call-1", "echo", {"text": ""})]),
+                answer("done"),
             ]
         )
         registry = ToolRegistry()

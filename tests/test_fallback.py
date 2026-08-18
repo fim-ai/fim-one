@@ -7,9 +7,10 @@ from typing import Any
 
 import pytest
 
-from fim_one.core.model.base import REASONING_INHERIT, BaseLLM
 from fim_one.core.model.fallback import FallbackLLM, is_availability_error
 from fim_one.core.model.types import ChatMessage, LLMResult, StreamChunk
+
+from .fake_llm import FakeLLM, answer, chunks, raises
 
 
 # ======================================================================
@@ -39,63 +40,6 @@ def _result(content: str) -> LLMResult:
         message=ChatMessage(role="assistant", content=content),
         usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
     )
-
-
-class StubLLM(BaseLLM):
-    """A stub LLM that returns a fixed response or raises an exception."""
-
-    def __init__(
-        self,
-        *,
-        chat_result: LLMResult | None = None,
-        chat_error: Exception | None = None,
-        stream_chunks: list[StreamChunk] | None = None,
-        stream_error: Exception | None = None,
-        model_id_val: str = "stub-model",
-    ) -> None:
-        self._chat_result = chat_result
-        self._chat_error = chat_error
-        self._stream_chunks = stream_chunks or []
-        self._stream_error = stream_error
-        self._model_id_val = model_id_val
-        self.chat_call_count = 0
-        self.stream_call_count = 0
-
-    @property
-    def model_id(self) -> str:
-        return self._model_id_val
-
-    async def chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        response_format: dict[str, Any] | None = None,
-        reasoning_effort: str | object | None = REASONING_INHERIT,
-    ) -> LLMResult:
-        self.chat_call_count += 1
-        if self._chat_error is not None:
-            raise self._chat_error
-        assert self._chat_result is not None
-        return self._chat_result
-
-    async def stream_chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        self.stream_call_count += 1
-        if self._stream_error is not None:
-            raise self._stream_error
-        for chunk in self._stream_chunks:
-            yield chunk
 
 
 # ======================================================================
@@ -168,8 +112,8 @@ class TestFallbackChat:
 
     async def test_primary_success_no_fallback(self) -> None:
         """When primary succeeds, fallback is never called."""
-        primary = StubLLM(chat_result=_result("primary answer"))
-        fallback = StubLLM(chat_result=_result("fallback answer"))
+        primary = FakeLLM([answer("primary answer")])
+        fallback = FakeLLM([answer("fallback answer")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         result = await llm.chat([_msg("hello")])
@@ -179,8 +123,8 @@ class TestFallbackChat:
 
     async def test_fallback_on_429(self) -> None:
         """Rate limited primary triggers fallback."""
-        primary = StubLLM(chat_error=_make_status_error(429))
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(_make_status_error(429))])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         result = await llm.chat([_msg("hello")])
@@ -190,8 +134,8 @@ class TestFallbackChat:
 
     async def test_fallback_on_503(self) -> None:
         """Service unavailable primary triggers fallback."""
-        primary = StubLLM(chat_error=_make_status_error(503))
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(_make_status_error(503))])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         result = await llm.chat([_msg("hello")])
@@ -199,8 +143,8 @@ class TestFallbackChat:
 
     async def test_fallback_on_529(self) -> None:
         """Overloaded primary triggers fallback."""
-        primary = StubLLM(chat_error=_make_status_error(529))
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(_make_status_error(529))])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         result = await llm.chat([_msg("hello")])
@@ -208,8 +152,8 @@ class TestFallbackChat:
 
     async def test_fallback_on_connection_error(self) -> None:
         """Connection error triggers fallback."""
-        primary = StubLLM(chat_error=ConnectionError("refused"))
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(ConnectionError("refused"))])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         result = await llm.chat([_msg("hello")])
@@ -217,8 +161,8 @@ class TestFallbackChat:
 
     async def test_fallback_on_timeout_error(self) -> None:
         """Timeout error triggers fallback."""
-        primary = StubLLM(chat_error=TimeoutError("timed out"))
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(TimeoutError("timed out"))])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         result = await llm.chat([_msg("hello")])
@@ -227,8 +171,8 @@ class TestFallbackChat:
     async def test_no_fallback_on_400(self) -> None:
         """Bad request error propagates without fallback."""
         error = _make_status_error(400)
-        primary = StubLLM(chat_error=error)
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(error)])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         with pytest.raises(Exception) as exc_info:
@@ -239,8 +183,8 @@ class TestFallbackChat:
     async def test_no_fallback_on_401(self) -> None:
         """Auth error propagates without fallback."""
         error = _make_status_error(401)
-        primary = StubLLM(chat_error=error)
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(error)])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         with pytest.raises(Exception) as exc_info:
@@ -251,8 +195,8 @@ class TestFallbackChat:
     async def test_no_fallback_on_context_overflow(self) -> None:
         """Context overflow is NOT an availability error -- different recovery path."""
         error = _make_status_error(400, "maximum context length exceeded")
-        primary = StubLLM(chat_error=error)
-        fallback = StubLLM(chat_result=_result("fallback"))
+        primary = FakeLLM([raises(error)])
+        fallback = FakeLLM([answer("fallback")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         with pytest.raises(Exception) as exc_info:
@@ -263,8 +207,8 @@ class TestFallbackChat:
     async def test_fallback_error_propagates(self) -> None:
         """If both primary and fallback fail, the fallback error propagates."""
         fallback_error = _make_status_error(500, "fallback also failed")
-        primary = StubLLM(chat_error=_make_status_error(503))
-        fallback = StubLLM(chat_error=fallback_error)
+        primary = FakeLLM([raises(_make_status_error(503))])
+        fallback = FakeLLM([raises(fallback_error)])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         with pytest.raises(Exception) as exc_info:
@@ -282,12 +226,12 @@ class TestFallbackStreamChat:
 
     async def test_primary_stream_success(self) -> None:
         """Successful primary stream yields all chunks."""
-        chunks = [
+        stream = [
             StreamChunk(delta_content="hello"),
             StreamChunk(delta_content=" world", finish_reason="stop"),
         ]
-        primary = StubLLM(stream_chunks=chunks)
-        fallback = StubLLM(stream_chunks=[StreamChunk(delta_content="fallback")])
+        primary = FakeLLM([chunks(stream)])
+        fallback = FakeLLM([chunks([StreamChunk(delta_content="fallback")])])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         collected: list[StreamChunk] = []
@@ -302,8 +246,8 @@ class TestFallbackStreamChat:
 
     async def test_fallback_stream_on_503(self) -> None:
         """503 from primary stream triggers fallback stream."""
-        primary = StubLLM(stream_error=_make_status_error(503))
-        fallback = StubLLM(stream_chunks=[StreamChunk(delta_content="fallback")])
+        primary = FakeLLM([raises(_make_status_error(503))])
+        fallback = FakeLLM([chunks([StreamChunk(delta_content="fallback")])])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         collected: list[StreamChunk] = []
@@ -315,8 +259,8 @@ class TestFallbackStreamChat:
 
     async def test_fallback_stream_on_connection_error(self) -> None:
         """Connection error from primary triggers fallback stream."""
-        primary = StubLLM(stream_error=ConnectionError("refused"))
-        fallback = StubLLM(stream_chunks=[StreamChunk(delta_content="fb")])
+        primary = FakeLLM([raises(ConnectionError("refused"))])
+        fallback = FakeLLM([chunks([StreamChunk(delta_content="fb")])])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         collected: list[StreamChunk] = []
@@ -329,8 +273,8 @@ class TestFallbackStreamChat:
     async def test_no_fallback_stream_on_400(self) -> None:
         """400 from primary stream propagates without fallback."""
         error = _make_status_error(400)
-        primary = StubLLM(stream_error=error)
-        fallback = StubLLM(stream_chunks=[StreamChunk(delta_content="fb")])
+        primary = FakeLLM([raises(error)])
+        fallback = FakeLLM([chunks([StreamChunk(delta_content="fb")])])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         with pytest.raises(Exception) as exc_info:
@@ -341,8 +285,8 @@ class TestFallbackStreamChat:
 
     async def test_empty_primary_stream(self) -> None:
         """Empty stream from primary is fine -- no fallback triggered."""
-        primary = StubLLM(stream_chunks=[])
-        fallback = StubLLM(stream_chunks=[StreamChunk(delta_content="fb")])
+        primary = FakeLLM([chunks([])])
+        fallback = FakeLLM([chunks([StreamChunk(delta_content="fb")])])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         collected: list[StreamChunk] = []
@@ -362,22 +306,22 @@ class TestFallbackProperties:
     """Verify property delegation to the primary LLM."""
 
     def test_model_id_delegates_to_primary(self) -> None:
-        primary = StubLLM(chat_result=_result("x"), model_id_val="gpt-4o")
-        fallback = StubLLM(chat_result=_result("y"), model_id_val="gpt-4o-mini")
+        primary = FakeLLM([answer("x")], model_id="gpt-4o")
+        fallback = FakeLLM([answer("y")], model_id="gpt-4o-mini")
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         assert llm.model_id == "gpt-4o"
 
     def test_abilities_delegates_to_primary(self) -> None:
-        primary = StubLLM(chat_result=_result("x"))
-        fallback = StubLLM(chat_result=_result("y"))
+        primary = FakeLLM([answer("x")])
+        fallback = FakeLLM([answer("y")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         assert llm.abilities == primary.abilities
 
     def test_primary_and_fallback_accessors(self) -> None:
-        primary = StubLLM(chat_result=_result("x"))
-        fallback = StubLLM(chat_result=_result("y"))
+        primary = FakeLLM([answer("x")])
+        fallback = FakeLLM([answer("y")])
         llm = FallbackLLM(primary=primary, fallback=fallback)
 
         assert llm.primary is primary

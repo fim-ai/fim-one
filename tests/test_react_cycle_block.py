@@ -25,13 +25,13 @@ from fim_one.core.model import ChatMessage, LLMResult
 from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.tool import BaseTool, ToolRegistry
 
-from .test_react_harness import (
-    CapturingFakeLLM,
-    CapturingNativeFakeLLM,
-    _json_final_answer,
-    _json_tool_call,
-    _native_final_answer,
-    _native_tool_call,
+from .fake_llm import (
+    NATIVE_TOOLS,
+    FakeLLM,
+    answer,
+    react_final_answer,
+    react_tool_call,
+    tool_calls,
 )
 
 
@@ -72,14 +72,14 @@ class TestJsonModeBlocking:
     async def test_tool_stops_executing_once_refused(self) -> None:
         args = {"text": "same"}
         repeats = _CYCLE_BLOCK_THRESHOLD + 3
-        responses = [_json_tool_call("echo", args) for _ in range(repeats)]
-        responses.append(_json_final_answer())
+        responses = [react_tool_call("echo", args) for _ in range(repeats)]
+        responses.append(react_final_answer())
 
         tool = CountingTool()
         registry = ToolRegistry()
         registry.register(tool)
         agent = ReActAgent(
-            llm=CapturingFakeLLM(responses),
+            llm=FakeLLM(responses),
             tools=registry,
             max_iterations=repeats + 5,
             completion_check=False,
@@ -97,12 +97,12 @@ class TestJsonModeBlocking:
     async def test_refusal_reaches_the_model(self) -> None:
         args = {"text": "same"}
         responses = [
-            _json_tool_call("echo", args)
+            react_tool_call("echo", args)
             for _ in range(_CYCLE_BLOCK_THRESHOLD + 1)
         ]
-        responses.append(_json_final_answer())
+        responses.append(react_final_answer())
 
-        llm = CapturingFakeLLM(responses)
+        llm = FakeLLM(responses)
         registry = ToolRegistry()
         registry.register(CountingTool())
         agent = ReActAgent(
@@ -127,16 +127,16 @@ class TestJsonModeBlocking:
     @pytest.mark.asyncio
     async def test_distinct_arguments_are_never_refused(self) -> None:
         responses = [
-            _json_tool_call("echo", {"text": f"different_{i}"})
+            react_tool_call("echo", {"text": f"different_{i}"})
             for i in range(_CYCLE_BLOCK_THRESHOLD + 4)
         ]
-        responses.append(_json_final_answer())
+        responses.append(react_final_answer())
 
         tool = CountingTool()
         registry = ToolRegistry()
         registry.register(tool)
         agent = ReActAgent(
-            llm=CapturingFakeLLM(responses),
+            llm=FakeLLM(responses),
             tools=registry,
             max_iterations=20,
             completion_check=False,
@@ -154,15 +154,15 @@ class TestNativeModeBlocking:
         args = {"text": "same"}
         repeats = _CYCLE_BLOCK_THRESHOLD + 3
         responses = [
-            _native_tool_call([(f"c{i}", "echo", args)]) for i in range(repeats)
+            tool_calls([(f"c{i}", "echo", args)]) for i in range(repeats)
         ]
-        responses.append(_native_final_answer())
+        responses.append(answer("done"))
 
         tool = CountingTool()
         registry = ToolRegistry()
         registry.register(tool)
         agent = ReActAgent(
-            llm=CapturingNativeFakeLLM(responses),
+            llm=FakeLLM(abilities=NATIVE_TOOLS, responses=responses),
             tools=registry,
             use_native_tools=True,
             max_iterations=repeats + 5,
@@ -185,7 +185,7 @@ class TestNativeModeBlocking:
         registry = ToolRegistry()
         registry.register(tool)
         agent = ReActAgent(
-            llm=CapturingNativeFakeLLM([_native_final_answer()]),
+            llm=FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("done")]),
             tools=registry,
             use_native_tools=True,
             enable_plan_tool=False,
@@ -225,7 +225,7 @@ class TestNativeModeBlocking:
         registry = ToolRegistry()
         registry.register(tool)
         agent = ReActAgent(
-            llm=CapturingNativeFakeLLM([_native_final_answer()]),
+            llm=FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("done")]),
             tools=registry,
             use_native_tools=True,
             hook_registry=RecordingHooks(),
@@ -247,7 +247,7 @@ class TestNativeModeBlocking:
 class TestCheckCycleContract:
     def test_first_call_is_unremarkable(self) -> None:
         agent = ReActAgent(
-            llm=CapturingFakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
+            llm=FakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
         )
         tracker: dict[tuple[str, str], int] = {}
         message, blocked = agent._check_cycle("echo", {"text": "x"}, tracker)
@@ -256,7 +256,7 @@ class TestCheckCycleContract:
 
     def test_escalates_from_warning_to_refusal(self) -> None:
         agent = ReActAgent(
-            llm=CapturingFakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
+            llm=FakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
         )
         tracker: dict[tuple[str, str], int] = {}
         outcomes = [
@@ -271,7 +271,7 @@ class TestCheckCycleContract:
 
     def test_counts_are_per_argument_set(self) -> None:
         agent = ReActAgent(
-            llm=CapturingFakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
+            llm=FakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
         )
         tracker: dict[tuple[str, str], int] = {}
         for i in range(_CYCLE_BLOCK_THRESHOLD + 2):
@@ -291,7 +291,7 @@ class TestEndpointGuard:
 
     def _agent(self) -> ReActAgent:
         return ReActAgent(
-            llm=CapturingFakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
+            llm=FakeLLM([]), tools=ToolRegistry(), enable_plan_tool=False,
         )
 
     @staticmethod
@@ -408,19 +408,19 @@ class TestEndpointGuardInLoop:
 
         repeats = _ENDPOINT_BLOCK_THRESHOLD + 3
         responses = [
-            _json_tool_call(
+            react_tool_call(
                 "http_request",
                 {"url": f"https://api.example.com/posts?_start={i}"},
             )
             for i in range(repeats)
         ]
-        responses.append(_json_final_answer())
+        responses.append(react_final_answer())
 
         tool = UrlTool()
         registry = ToolRegistry()
         registry.register(tool)
         agent = ReActAgent(
-            llm=CapturingFakeLLM(responses),
+            llm=FakeLLM(responses),
             tools=registry,
             max_iterations=repeats + 5,
             completion_check=False,

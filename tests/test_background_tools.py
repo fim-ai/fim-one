@@ -6,12 +6,10 @@ import asyncio
 from typing import Any
 
 from fim_one.core.agent import ReActAgent
-from fim_one.core.model import ChatMessage, LLMResult
-from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.tool import BaseTool, ToolRegistry
 
 from .conftest import EchoTool
-from .test_native_function_calling import NativeToolFakeLLM
+from .fake_llm import NATIVE_TOOLS, FakeLLM, answer, tool_call
 
 
 class SlowTool(BaseTool):
@@ -44,21 +42,8 @@ class SlowTool(BaseTool):
         return self._result
 
 
-def _tool_call(name: str, args: dict[str, Any], call_id: str = "tc1") -> LLMResult:
-    return LLMResult(
-        message=ChatMessage(
-            role="assistant",
-            content=None,
-            tool_calls=[ToolCallRequest(id=call_id, name=name, arguments=args)],
-        ),
-    )
 
-
-def _final(answer: str) -> LLMResult:
-    return LLMResult(message=ChatMessage(role="assistant", content=answer))
-
-
-def _make_agent(llm: NativeToolFakeLLM, *tools: Any) -> ReActAgent:
+def _make_agent(llm: FakeLLM, *tools: Any) -> ReActAgent:
     registry = ToolRegistry()
     for tool in tools:
         registry.register(tool)
@@ -83,7 +68,7 @@ def _notifications(result: Any) -> list[str]:
 
 class TestSchemaAdvertisement:
     async def test_run_in_background_only_on_whitelisted_tools(self) -> None:
-        llm = NativeToolFakeLLM(responses=[_final("done")])
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=[answer("done")])
         agent = _make_agent(llm, SlowTool(), EchoTool())
 
         await agent.run("q")
@@ -104,11 +89,11 @@ class TestBackgroundDispatch:
     async def test_result_arrives_as_notification(self) -> None:
         # 1: dispatch slow_tool to background; 2: echo (bg completes during
         # the sleep); 3: final answer.
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _tool_call("slow_tool", {"run_in_background": True}, "tc1"),
-                _tool_call("echo", {"text": "hi"}, "tc2"),
-                _final("done"),
+                tool_call("slow_tool", {"run_in_background": True}, call_id="tc1"),
+                tool_call("echo", {"text": "hi"}, call_id="tc2"),
+                answer("done"),
             ]
         )
         slow = SlowTool(delay=0.01)
@@ -135,11 +120,11 @@ class TestBackgroundDispatch:
     async def test_finalize_waits_for_pending_background(self) -> None:
         # 1: dispatch bg; 2: immediate final answer while bg pending →
         # gate waits + injects the notification → 3: real final answer.
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _tool_call("slow_tool", {"run_in_background": True}),
-                _final("premature"),
-                _final("informed answer"),
+                tool_call("slow_tool", {"run_in_background": True}),
+                answer("premature"),
+                answer("informed answer"),
             ]
         )
         agent = _make_agent(llm, SlowTool(delay=0.01))
@@ -155,10 +140,10 @@ class TestBackgroundDispatch:
     async def test_non_whitelisted_tool_runs_foreground(self) -> None:
         # run_in_background on echo (not whitelisted) is stripped and the
         # tool runs synchronously.
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _tool_call("echo", {"text": "hi", "run_in_background": True}),
-                _final("done"),
+                tool_call("echo", {"text": "hi", "run_in_background": True}),
+                answer("done"),
             ]
         )
         agent = _make_agent(llm, EchoTool())
@@ -177,10 +162,10 @@ class TestBackgroundDispatch:
                 self.calls += 1
                 raise RuntimeError("boom")
 
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _tool_call("slow_tool", {"run_in_background": True}),
-                _final("handled"),
+                tool_call("slow_tool", {"run_in_background": True}),
+                answer("handled"),
             ]
         )
         agent = _make_agent(llm, FailingSlowTool())
@@ -204,11 +189,11 @@ class TestBackgroundResultVisibility:
     async def test_drained_result_emitted_via_on_iteration(self) -> None:
         """The real background output must reach on_iteration (SSE stream /
         DAG evidence), not just the <task_notification> user message."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _tool_call("slow_tool", {"run_in_background": True}, "tc1"),
-                _tool_call("echo", {"text": "hi"}, "tc2"),
-                _final("done"),
+                tool_call("slow_tool", {"run_in_background": True}, call_id="tc1"),
+                tool_call("echo", {"text": "hi"}, call_id="tc2"),
+                answer("done"),
             ]
         )
         agent = _make_agent(llm, SlowTool(delay=0.01), EchoTool())
@@ -245,11 +230,11 @@ class TestBackgroundResultVisibility:
     async def test_cancelled_background_task_reports_error_event(self) -> None:
         """A background task that errors surfaces via the error field so
         evidence collection never records the failure text as source data."""
-        llm = NativeToolFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, 
             responses=[
-                _tool_call("boom_tool", {"run_in_background": True}, "tc1"),
-                _tool_call("echo", {"text": "hi"}, "tc2"),
-                _final("done"),
+                tool_call("boom_tool", {"run_in_background": True}, call_id="tc1"),
+                tool_call("echo", {"text": "hi"}, call_id="tc2"),
+                answer("done"),
             ]
         )
 

@@ -8,7 +8,7 @@ continues the same native history as a genuinely token-streamed turn.
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from typing import Any
 
 import pytest
 
@@ -20,109 +20,10 @@ from fim_one.core.agent.react import (
     _FINISH_TOOL_NAME,
 )
 from fim_one.core.agent.types import AgentResult
-from fim_one.core.model import BaseLLM, ChatMessage, LLMResult, StreamChunk
-from fim_one.core.model.types import ToolCallRequest
 from fim_one.core.tool import BaseTool, ToolRegistry
 
 from .conftest import EchoTool
-
-
-class NativeFakeLLM(BaseLLM):
-    """Native tool-calling fake that replays scripted responses.
-
-    ``stream_chat`` records the (messages, tools, tool_choice) of every
-    call so tests can assert on the finish-signal handoff request.
-    """
-
-    def __init__(self, responses: list[LLMResult]) -> None:
-        self._responses = responses
-        self._call_count = 0
-        self.stream_calls: list[dict[str, Any]] = []
-
-    @property
-    def call_count(self) -> int:
-        return self._call_count
-
-    async def chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        response_format: dict[str, Any] | None = None,
-        reasoning_effort: Any = None,
-    ) -> LLMResult:
-        idx = min(self._call_count, len(self._responses) - 1)
-        self._call_count += 1
-        return self._responses[idx]
-
-    async def stream_chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        self.stream_calls.append(
-            {
-                "messages": list(messages),
-                "tools": tools,
-                "tool_choice": tool_choice,
-            },
-        )
-        idx = min(self._call_count, len(self._responses) - 1)
-        self._call_count += 1
-        resp = self._responses[idx]
-        if isinstance(resp.message.content, str) and resp.message.content:
-            yield StreamChunk(delta_content=resp.message.content)
-        if resp.message.tool_calls:
-            yield StreamChunk(
-                tool_calls=resp.message.tool_calls,
-                finish_reason="tool_calls",
-                usage=resp.usage or None,
-            )
-        else:
-            yield StreamChunk(finish_reason="stop", usage=resp.usage or None)
-
-    @property
-    def abilities(self) -> dict[str, bool]:
-        return {
-            "tool_call": True,
-            "json_mode": True,
-            "vision": False,
-            "streaming": True,
-        }
-
-
-def _tool_call(tc_id: str, name: str, args: dict[str, Any] | None = None) -> LLMResult:
-    return LLMResult(
-        message=ChatMessage(
-            role="assistant",
-            content=None,
-            tool_calls=[ToolCallRequest(id=tc_id, name=name, arguments=args or {})],
-        ),
-    )
-
-
-def _multi_tool_call(calls: list[tuple[str, str, dict[str, Any]]]) -> LLMResult:
-    return LLMResult(
-        message=ChatMessage(
-            role="assistant",
-            content=None,
-            tool_calls=[
-                ToolCallRequest(id=tc_id, name=name, arguments=args)
-                for tc_id, name, args in calls
-            ],
-        ),
-    )
-
-
-def _text_answer(content: str) -> LLMResult:
-    return LLMResult(message=ChatMessage(role="assistant", content=content))
+from .fake_llm import NATIVE_TOOLS, FakeLLM, answer, tool_call, tool_calls
 
 
 class FinishNamedTool(BaseTool):
@@ -145,7 +46,7 @@ class FinishNamedTool(BaseTool):
 
 
 def _make_agent(
-    llm: NativeFakeLLM,
+    llm: FakeLLM,
     *,
     finish_signal: bool = True,
     completion_check: bool = False,
@@ -166,7 +67,7 @@ def _make_agent(
 
 class TestFinishToolAdvertised:
     def test_payload_includes_finish_when_enabled(self) -> None:
-        agent = _make_agent(NativeFakeLLM([]), finish_signal=True)
+        agent = _make_agent(FakeLLM(abilities=NATIVE_TOOLS, responses=[]), finish_signal=True)
         payload = agent._build_tools_payload()
         assert payload is not None
         names = [entry["function"]["name"] for entry in payload]
@@ -174,7 +75,7 @@ class TestFinishToolAdvertised:
         assert agent._finish_tool_active is True
 
     def test_payload_excludes_finish_when_disabled(self) -> None:
-        agent = _make_agent(NativeFakeLLM([]), finish_signal=False)
+        agent = _make_agent(FakeLLM(abilities=NATIVE_TOOLS, responses=[]), finish_signal=False)
         payload = agent._build_tools_payload()
         assert payload is not None
         names = [entry["function"]["name"] for entry in payload]
@@ -184,7 +85,7 @@ class TestFinishToolAdvertised:
     def test_name_clash_disables_signal(self) -> None:
         registry = ToolRegistry()
         registry.register(FinishNamedTool())
-        agent = _make_agent(NativeFakeLLM([]), finish_signal=True, tools=registry)
+        agent = _make_agent(FakeLLM(abilities=NATIVE_TOOLS, responses=[]), finish_signal=True, tools=registry)
         payload = agent._build_tools_payload()
         assert payload is not None
         names = [entry["function"]["name"] for entry in payload]
@@ -194,19 +95,19 @@ class TestFinishToolAdvertised:
 
 class TestFinishPromptSelection:
     def test_finish_prompt_used_when_enabled(self) -> None:
-        agent = _make_agent(NativeFakeLLM([]), finish_signal=True)
+        agent = _make_agent(FakeLLM(abilities=NATIVE_TOOLS, responses=[]), finish_signal=True)
         prefix, _suffix = agent._build_system_prompt_split_native()
         assert "FINAL ANSWER PROTOCOL" in prefix
 
     def test_default_prompt_without_signal(self) -> None:
-        agent = _make_agent(NativeFakeLLM([]), finish_signal=False)
+        agent = _make_agent(FakeLLM(abilities=NATIVE_TOOLS, responses=[]), finish_signal=False)
         prefix, _suffix = agent._build_system_prompt_split_native()
         assert "FINAL ANSWER PROTOCOL" not in prefix
 
     def test_default_prompt_on_name_clash(self) -> None:
         registry = ToolRegistry()
         registry.register(FinishNamedTool())
-        agent = _make_agent(NativeFakeLLM([]), finish_signal=True, tools=registry)
+        agent = _make_agent(FakeLLM(abilities=NATIVE_TOOLS, responses=[]), finish_signal=True, tools=registry)
         prefix, _suffix = agent._build_system_prompt_split_native()
         assert "FINAL ANSWER PROTOCOL" not in prefix
 
@@ -214,10 +115,10 @@ class TestFinishPromptSelection:
 class TestFinishSignalHandoff:
     @pytest.mark.asyncio
     async def test_pure_finish_turn_hands_off(self) -> None:
-        llm = NativeFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=
             [
-                _tool_call("c1", "echo", {"text": "hi"}),
-                _tool_call("c2", _FINISH_TOOL_NAME),
+                tool_call("echo", {"text": "hi"}, call_id="c1"),
+                tool_call(_FINISH_TOOL_NAME, {}, call_id="c2"),
             ],
         )
         agent = _make_agent(llm)
@@ -251,10 +152,10 @@ class TestFinishSignalHandoff:
 
     @pytest.mark.asyncio
     async def test_finish_disabled_treats_finish_as_unknown_tool(self) -> None:
-        llm = NativeFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=
             [
-                _tool_call("c1", _FINISH_TOOL_NAME),
-                _text_answer("done inline"),
+                tool_call(_FINISH_TOOL_NAME, {}, call_id="c1"),
+                answer("done inline"),
             ],
         )
         agent = _make_agent(llm, finish_signal=False)
@@ -265,15 +166,15 @@ class TestFinishSignalHandoff:
 
     @pytest.mark.asyncio
     async def test_mixed_batch_defers_finish(self) -> None:
-        llm = NativeFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=
             [
-                _multi_tool_call(
+                tool_calls(
                     [
                         ("c1", "echo", {"text": "hi"}),
                         ("c2", _FINISH_TOOL_NAME, {}),
-                    ],
+                    ]
                 ),
-                _text_answer("inline answer after deferral"),
+                answer("inline answer after deferral"),
             ],
         )
         agent = _make_agent(llm)
@@ -297,13 +198,13 @@ class TestFinishSignalHandoff:
 
     @pytest.mark.asyncio
     async def test_completion_checklist_via_finish_result(self) -> None:
-        llm = NativeFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=
             [
-                _tool_call("c1", "echo", {"text": "a"}),
-                _tool_call("c2", "echo", {"text": "b"}),
-                _tool_call("c3", "echo", {"text": "c"}),
-                _tool_call("c4", _FINISH_TOOL_NAME),
-                _tool_call("c5", _FINISH_TOOL_NAME),
+                tool_call("echo", {"text": "a"}, call_id="c1"),
+                tool_call("echo", {"text": "b"}, call_id="c2"),
+                tool_call("echo", {"text": "c"}, call_id="c3"),
+                tool_call(_FINISH_TOOL_NAME, {}, call_id="c4"),
+                tool_call(_FINISH_TOOL_NAME, {}, call_id="c5"),
             ],
         )
         agent = _make_agent(llm, completion_check=True)
@@ -328,11 +229,11 @@ class TestFinishSignalHandoff:
 class TestStreamAnswerFinishBranch:
     @pytest.mark.asyncio
     async def test_streams_native_continuation(self) -> None:
-        llm = NativeFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=
             [
-                _tool_call("c1", "echo", {"text": "hi"}),
-                _tool_call("c2", _FINISH_TOOL_NAME),
-                _text_answer("the real streamed answer"),
+                tool_call("echo", {"text": "hi"}, call_id="c1"),
+                tool_call(_FINISH_TOOL_NAME, {}, call_id="c2"),
+                answer("the real streamed answer"),
             ],
         )
         agent = _make_agent(llm)
@@ -348,14 +249,14 @@ class TestStreamAnswerFinishBranch:
         # The handoff call continues the native history with the loop's
         # tools payload and tool_choice="none".
         handoff = llm.stream_calls[-1]
-        assert handoff["tool_choice"] == "none"
-        assert handoff["tools"] is not None
-        tool_names = [entry["function"]["name"] for entry in handoff["tools"]]
+        assert handoff.tool_choice == "none"
+        assert handoff.tools is not None
+        tool_names = [entry["function"]["name"] for entry in handoff.tools]
         assert _FINISH_TOOL_NAME in tool_names
         # The full trajectory (finish ack included) is in the request.
         assert any(
             m.role == "tool" and m.content == _FINISH_ACK_PROMPT
-            for m in handoff["messages"]
+            for m in handoff.messages
         )
 
     @pytest.mark.asyncio
@@ -365,11 +266,11 @@ class TestStreamAnswerFinishBranch:
         A bare "(Language note: ...)" user message reads as the newest user
         request and the model answers IT instead of the original question.
         """
-        llm = NativeFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=
             [
-                _tool_call("c1", "echo", {"text": "hi"}),
-                _tool_call("c2", _FINISH_TOOL_NAME),
-                _text_answer("最终答案"),
+                tool_call("echo", {"text": "hi"}, call_id="c1"),
+                tool_call(_FINISH_TOOL_NAME, {}, call_id="c2"),
+                answer("最终答案"),
             ],
         )
         agent = _make_agent(llm)
@@ -385,17 +286,17 @@ class TestStreamAnswerFinishBranch:
         ]
         assert "".join(chunks) == "最终答案"
         last_user = [
-            m for m in llm.stream_calls[-1]["messages"] if m.role == "user"
+            m for m in llm.stream_calls[-1].messages if m.role == "user"
         ][-1]
         assert "final answer" in last_user.content
         assert "Respond in Simplified Chinese." in last_user.content
 
     @pytest.mark.asyncio
     async def test_replay_path_untouched_without_signal(self) -> None:
-        llm = NativeFakeLLM(
+        llm = FakeLLM(abilities=NATIVE_TOOLS, responses=
             [
-                _tool_call("c1", "echo", {"text": "hi"}),
-                _text_answer("inline final answer"),
+                tool_call("echo", {"text": "hi"}, call_id="c1"),
+                answer("inline final answer"),
             ],
         )
         agent = _make_agent(llm, finish_signal=False)

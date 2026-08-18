@@ -2,70 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
-
 import pytest
 
 from fim_one.core.memory.context_guard import ContextGuard, _COMPACT_PROMPTS
 from fim_one.core.memory.work_card import WorkCard
-from fim_one.core.model import BaseLLM, ChatMessage, LLMResult, StreamChunk
+from fim_one.core.model import ChatMessage
 
-
-# ------------------------------------------------------------------
-# Mock LLM
-# ------------------------------------------------------------------
-
-
-class _MockLLM(BaseLLM):
-    """Minimal LLM mock for ContextGuard tests."""
-
-    def __init__(
-        self,
-        response_content: str = "",
-        raise_exc: Exception | None = None,
-    ) -> None:
-        self._response_content = response_content
-        self._raise_exc = raise_exc
-        self.call_count = 0
-        self.last_system_prompt: str | None = None
-
-    async def chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        response_format: dict[str, Any] | None = None,
-        reasoning_effort: Any = None,
-    ) -> LLMResult:
-        self.call_count += 1
-        # Capture system prompt for hint verification.
-        for m in messages:
-            if m.role == "system":
-                self.last_system_prompt = m.content
-                break
-        if self._raise_exc is not None:
-            raise self._raise_exc
-        return LLMResult(
-            message=ChatMessage(role="assistant", content=self._response_content),
-        )
-
-    async def stream_chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        yield StreamChunk(delta_content="mock", finish_reason="stop")
-
-    @property
-    def abilities(self) -> dict[str, bool]:
-        return {"tool_call": False, "json_mode": False}
+from .fake_llm import FakeLLM, answer, raises
 
 
 # ------------------------------------------------------------------
@@ -102,7 +45,7 @@ class TestUnderBudget:
 
 class TestOverBudgetTriggersCompact:
     async def test_over_budget_with_llm(self):
-        llm = _MockLLM(response_content="Summary of old conversation.")
+        llm = FakeLLM([answer("Summary of old conversation.")])
         # Budget must be < total (~800 tokens) but > compacted result
         # (summary + 4 recent msgs ≈ 330 tokens).
         guard = ContextGuard(compact_llm=llm, default_budget=400)
@@ -131,7 +74,7 @@ class TestOverBudgetTriggersCompact:
 
 class TestCompactFailureFallback:
     async def test_llm_failure_falls_back_to_truncate(self):
-        llm = _MockLLM(raise_exc=RuntimeError("API error"))
+        llm = FakeLLM([raises(RuntimeError("API error"))])
         guard = ContextGuard(compact_llm=llm, default_budget=100)
         msgs = _make_messages(10)
 
@@ -142,7 +85,7 @@ class TestCompactFailureFallback:
         assert len(result) < len(msgs)
 
     async def test_empty_summary_falls_back_to_truncate(self):
-        llm = _MockLLM(response_content="")
+        llm = FakeLLM([answer("")])
         guard = ContextGuard(compact_llm=llm, default_budget=100)
         msgs = _make_messages(10)
 
@@ -178,41 +121,41 @@ class TestOversizedMessageTruncated:
 
 class TestHintSpecificPrompts:
     async def test_react_iteration_hint_uses_correct_prompt(self):
-        llm = _MockLLM(response_content="Summarized.")
+        llm = FakeLLM([answer("Summarized.")])
         guard = ContextGuard(compact_llm=llm, default_budget=100)
         msgs = _make_messages(10)
 
         await guard.check_and_compact(msgs, hint="react_iteration")
 
         assert llm.call_count == 1
-        assert llm.last_system_prompt == _COMPACT_PROMPTS["react_iteration"]
+        assert llm.last_call.system_prompt == _COMPACT_PROMPTS["react_iteration"]
 
     async def test_planner_input_hint(self):
-        llm = _MockLLM(response_content="Summarized.")
+        llm = FakeLLM([answer("Summarized.")])
         guard = ContextGuard(compact_llm=llm, default_budget=100)
         msgs = _make_messages(10)
 
         await guard.check_and_compact(msgs, hint="planner_input")
 
-        assert llm.last_system_prompt == _COMPACT_PROMPTS["planner_input"]
+        assert llm.last_call.system_prompt == _COMPACT_PROMPTS["planner_input"]
 
     async def test_step_dependency_hint(self):
-        llm = _MockLLM(response_content="Summarized.")
+        llm = FakeLLM([answer("Summarized.")])
         guard = ContextGuard(compact_llm=llm, default_budget=100)
         msgs = _make_messages(10)
 
         await guard.check_and_compact(msgs, hint="step_dependency")
 
-        assert llm.last_system_prompt == _COMPACT_PROMPTS["step_dependency"]
+        assert llm.last_call.system_prompt == _COMPACT_PROMPTS["step_dependency"]
 
     async def test_unknown_hint_falls_back_to_general(self):
-        llm = _MockLLM(response_content="Summarized.")
+        llm = FakeLLM([answer("Summarized.")])
         guard = ContextGuard(compact_llm=llm, default_budget=100)
         msgs = _make_messages(10)
 
         await guard.check_and_compact(msgs, hint="nonexistent_hint")
 
-        assert llm.last_system_prompt == _COMPACT_PROMPTS["general"]
+        assert llm.last_call.system_prompt == _COMPACT_PROMPTS["general"]
 
     async def test_all_prompts_exist(self):
         """Verify all expected hint keys have corresponding prompts."""
@@ -234,48 +177,6 @@ class TestBudgetOverride:
         assert len(result2) < 10
 
 
-class _ScriptedLLM(BaseLLM):
-    """LLM mock that replays a scripted list of canned responses."""
-
-    def __init__(self, responses: list[str]) -> None:
-        self._responses = list(responses)
-        self.call_count = 0
-
-    async def chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        response_format: dict[str, Any] | None = None,
-        reasoning_effort: Any = None,
-    ) -> LLMResult:
-        idx = min(self.call_count, len(self._responses) - 1)
-        self.call_count += 1
-        return LLMResult(
-            message=ChatMessage(
-                role="assistant", content=self._responses[idx],
-            ),
-        )
-
-    async def stream_chat(
-        self,
-        messages: list[ChatMessage],
-        *,
-        tools: list[dict[str, Any]] | None = None,
-        tool_choice: str | dict[str, Any] | None = None,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        yield StreamChunk(delta_content="", finish_reason="stop")
-
-    @property
-    def abilities(self) -> dict[str, bool]:
-        return {"tool_call": False, "json_mode": False}
-
-
 class TestWorkCardPersistence:
     """I.15 — ContextGuard persists and merges WorkCards across compactions."""
 
@@ -293,7 +194,7 @@ Build feature X.
 ## 4. Errors
 - initial-error
 """
-        llm = _ScriptedLLM(responses=[canned])
+        llm = FakeLLM([answer(r) for r in [canned]])
         guard = ContextGuard(compact_llm=llm, default_budget=400)
         msgs = _make_messages(10)
 
@@ -329,7 +230,7 @@ Build feature X (revised).
 ## 4. Errors
 - err-two
 """
-        llm = _ScriptedLLM(responses=[first, second])
+        llm = FakeLLM([answer(r) for r in [first, second]])
         guard = ContextGuard(compact_llm=llm, default_budget=400)
 
         await guard.check_and_compact(
@@ -365,7 +266,7 @@ Build feature X (revised).
         assert "task-gamma" in summary_content
 
     async def test_non_react_hint_does_not_populate_work_card(self) -> None:
-        llm = _ScriptedLLM(responses=["plain summary"])
+        llm = FakeLLM([answer(r) for r in ["plain summary"]])
         guard = ContextGuard(compact_llm=llm, default_budget=400)
 
         await guard.check_and_compact(_make_messages(10), hint="general")
@@ -375,7 +276,7 @@ Build feature X (revised).
 
 class TestSystemMessagesPreserved:
     async def test_system_messages_preserved_during_compact(self):
-        llm = _MockLLM(response_content="Summary of chat.")
+        llm = FakeLLM([answer("Summary of chat.")])
         # Budget < total (~880) but > compacted (system + summary + 4 recent ≈ 340).
         guard = ContextGuard(compact_llm=llm, default_budget=500)
 
@@ -399,20 +300,6 @@ class TestSystemMessagesPreserved:
 # ------------------------------------------------------------------
 
 
-class _CapturingLLM(_MockLLM):
-    """_MockLLM that records the user-role content of each chat() call."""
-
-    def __init__(self, response_content: str = "summary") -> None:
-        super().__init__(response_content=response_content)
-        self.captured_user: str | None = None
-
-    async def chat(self, messages, **kw):  # type: ignore[no-untyped-def]
-        for m in messages:
-            if m.role == "user" and isinstance(m.content, str):
-                self.captured_user = m.content
-        return await super().chat(messages, **kw)
-
-
 class TestTruncateOversizedPreservesThinking:
     def test_reasoning_and_signature_survive_truncation(self) -> None:
         guard = ContextGuard(max_message_chars=10)
@@ -433,14 +320,13 @@ class TestTruncateOversizedPreservesThinking:
 
 class TestCompactionSummariserSeesThinking:
     async def test_reasoning_content_reaches_summariser(self) -> None:
-        llm = _CapturingLLM(response_content="summary")
+        llm = FakeLLM([answer("summary")])
         guard = ContextGuard(compact_llm=llm, default_budget=400)
         msgs = _make_messages(10)
         # Put a clue ONLY in an old assistant turn's thinking block.
         msgs[1].reasoning_content = "REASON_CLUE_XYZ"
         await guard.check_and_compact(msgs)
-        assert llm.captured_user is not None
-        assert "REASON_CLUE_XYZ" in llm.captured_user
+        assert "REASON_CLUE_XYZ" in llm.last_call.user_text()
 
 
 class TestCompactPreservesToolPairing:
@@ -489,7 +375,7 @@ class TestCompactPreservesToolPairing:
     async def test_compact_keeps_tool_calls_turn_with_its_results(self) -> None:
         from fim_one.core.model.types import ToolCallRequest
 
-        llm = _MockLLM(response_content="Summary of old conversation.")
+        llm = FakeLLM([answer("Summary of old conversation.")])
         guard = ContextGuard(compact_llm=llm, default_budget=300)
         msgs = _make_messages(8, content_len=200)
         msgs.append(
