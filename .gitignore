@@ -32,7 +32,11 @@ coverage.xml
 .DS_Store
 node_modules/
 tmp/
-.claude/
+# Local Claude config stays out; task checklists are a shared repo asset.
+# Must be `.claude/*`, not `.claude/` — git never descends into an excluded
+# directory, so a negation under one can never re-include anything.
+.claude/*
+!.claude/skills/
 data/
 uploads/
 .playwright-mcp/

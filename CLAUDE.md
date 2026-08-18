@@ -16,7 +16,8 @@ frontend/            # Next.js portal (shadcn/ui)
 
 ## Git Rules (MANDATORY)
 
-- **Commit scope**: (1) session has context → commit session's files; (2) fresh session no context → `git add -A`; (3) user specifies files inline → follow exactly. Always exclude sensitive files (.env, credentials).
+- **Commit scope**: (1) user specifies files inline → follow exactly; (2) otherwise commit only files this session changed. Always exclude sensitive files (.env, credentials).
+- **Stage explicit paths** (`git add <path> …`), never `git add -A` / `git add .`. Other sessions and worktree agents may be editing this same tree, and a blanket add commits their half-finished work under your message. With no context about what changed, `git status` + `git diff` first and stage what you can account for; ask rather than sweeping the tree.
 - **Atomic commits**: split unrelated changes, even if user says "commit all".
 - **NEVER `git stash --include-untracked`** with important untracked files — `git add` them first. Use `git stash pop` not `apply` + `drop`.
 - **Worktrees**: clean tree before starting; agents commit on their branch; merge via `git merge`/`cherry-pick`, not file copying.
@@ -83,31 +84,22 @@ All UI text via `next-intl` — **never hardcode English**. `useTranslations("{n
 
 ## Alembic Migrations (MANDATORY — SQLite/PG dual-track)
 
-Dev = SQLite, prod = PG. One migration set for both. `start.sh` runs `alembic upgrade head` on startup.
-
-- **Every new ORM model/column MUST have a migration** — never `metadata.create_all()`, never ad-hoc `ALTER TABLE` in `engine.py`.
-- **Idempotent**: use `table_exists()` / `table_has_column()` / `index_exists()` from `fim_one.migrations.helpers`.
-- **Boolean defaults**: `server_default=sa.text("FALSE")`/`"TRUE"` — never `"0"`/`"1"` (PG rejects). Same for ORM model `server_default`.
-- **Integer default**: `server_default="0"` OK. **Timestamp**: `sa.text('(CURRENT_TIMESTAMP)')` OK.
-- **Timestamp columns MUST be `sa.DateTime(timezone=True)`** in BOTH the ORM model and the migration. The ORM writes tz-aware `datetime.now(UTC)`, which asyncpg rejects against a naive PG column — SQLite hides this, so it's a latent PG-only 500. A one-time scan (`l2n4p6r8t901`) already converted all columns that existed then; any new naive timestamp column re-introduces the bug (ref: `m5o7q9s1u234`).
-- **JSON**: SQLite `json_extract(col, '$.key')` vs PG `col::json->>'key'`. Check `bind.dialect.name` in data migrations (ref: `b2d4e6f8a901`).
-- **SQLite ALTER COLUMN**: use `op.batch_alter_table()` (SQLite can't ALTER).
-- **Auto-apply**: after writing migration in main worktree (NOT agent worktree), immediately `uv run alembic upgrade head`.
+Dev = SQLite, prod = PG, one migration set for both, applied by `start.sh` on
+startup. **Every new ORM model / column / index needs a migration** — never
+`metadata.create_all()`, never ad-hoc `ALTER TABLE` in `engine.py`. Adding or
+altering anything under `src/fim_one/db/models/` → load the
+**`alembic-migration`** skill for the dual-track rules (idempotency helpers,
+boolean/timestamp defaults, tz-aware timestamps, dialect branching,
+`batch_alter_table`, and when it is safe to apply).
 
 ## User Deletion File Cleanup (MANDATORY)
 
-New user-owned module writing to disk → update `purge_user_data()` in `src/fim_one/web/services/user_deletion.py` (the single path both admin delete and self-serve delete funnel through). ORM cascade only drops rows; files get orphaned. New table with a FK to `users` and no `ondelete` cascade → also add an explicit FK-safe `DELETE` there, or `db.delete(user)` will hit a FK violation (SQLite now runs with `PRAGMA foreign_keys=ON`).
-
-Current registry (search `Clean up file-system resources`):
-
-| Module | Path | Method |
-|---|---|---|
-| conversations | `data/sandbox/{conv_id}/`, `uploads/conversations/{conv_id}/`, `data/workspaces/{conv_id}/`, `data/dag_checkpoints/{conv_id}.json` | `shutil.rmtree` / `unlink` |
-| knowledge_bases | `uploads/kb/{kb_id}/`, `data/vector_store/user_{user_id}/` | `shutil.rmtree` |
-| user uploads | `uploads/user_{user_id}/` | `shutil.rmtree` |
-| avatar | `uploads/avatars/{user_id}_*` | `glob` + `unlink` |
-
-If your module writes under `uploads/` or `data/`, add cleanup.
+`purge_user_data()` in `src/fim_one/web/services/user_deletion.py` is the
+single path both admin and self-serve deletion funnel through. A new table
+with a FK to `users`, or a module writing under `uploads/` or `data/`, must be
+wired in there — ORM cascade only drops rows, and a FK without `ondelete`
+makes deletion raise. Load the **`user-owned-module`** skill for the registry
+and what to add.
 
 ## Code Conventions
 
@@ -152,13 +144,9 @@ Communication only — doesn't replace automated tests.
 
 ## Cut Release (triggered by "what's next" / "接下来做什么")
 
-**Version source chain**: About dialog (frontend) → `GET /api/version` → `fim_one.__version__` (`src/fim_one/__init__.py`) → must equal `pyproject.toml::version` → must equal highest ROADMAP **Shipped** version → must equal latest archived CHANGELOG version. **All five must agree at all times.** When they drift, fix in the same commit that surfaced the drift.
-
-BEFORE answering:
-
-1. **Archive** `CHANGELOG [Unreleased]` → `[vX.Y] - YYYY-MM-DD`. Add a fresh empty `[Unreleased]` above it.
-2. **Mark shipped**: ROADMAP version heading gets date, moved under **Shipped Versions**.
-3. **Bump version**: `pyproject.toml::version` AND `src/fim_one/__init__.py::__version__` match new shipped version.
-4. Then answer with next priorities from first unfinished version's `- [ ]`.
-
-**Roadmap vs Changelog (don't conflate them)**: Roadmap = capability index (per-version one-liners; trajectory + headline of what shipped). Changelog = release notes (per-version Added/Changed/Fixed prose; what a developer auditing the diff needs to know). Both are mandatory; they target different readers and different organizing dimensions. Cut-release writes both.
+Cut the release **before** answering: archive `CHANGELOG [Unreleased]`, mark
+the ROADMAP version shipped, bump `pyproject.toml::version` and
+`src/fim_one/__init__.py::__version__`, then answer with the first unfinished
+version's `- [ ]` items. The five-way version chain (About dialog →
+`/api/version` → `__version__` → `pyproject.toml` → ROADMAP/CHANGELOG) must
+agree at all times. Load the **`cut-release`** skill for the full procedure.
