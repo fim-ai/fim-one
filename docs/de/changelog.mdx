@@ -12,35 +12,49 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **GPT-5.x-Agenten behalten ihr Reasoning über Tool-Aufrufe hinweg.** FIM One kommuniziert jetzt direkt mit der OpenAI Responses API für GPT-5.x-Modelle und überträgt das verschlüsselte Reasoning jeder Runde in die nächste, sodass ein mehrstufiger Agent auf bereits erarbeiteten Ergebnissen aufbaut, anstatt sie bei jeder Tool-Runde neu abzuleiten. Reasoning-Token-Zählungen erscheinen in der Nutzung, und das Thinking-Panel zeigt die eigene Zusammenfassung des Modells. Setzen Sie `FIM_GPT5_RESPONSES_MODE=bridge` (oder `off`), um zum vorherigen Verhalten zurückzukehren; Endpoints ohne eine `/v1/responses`-Route fallen automatisch auf Chat Completions zurück.
+- **Instanzbasiertes Zugangsmodell für die Abrechnung.** Administratoren wählen eine von drei Positionen: keine Abonnements (Softwarestandard, monatliches Kontingent `0` = unbegrenzt), enthalten + bezahlt oder nur bezahlt. Der enthaltene Standardplan kann nicht gelöscht werden; bezahlte Vorlagen werden nicht mehr mit einer FIM Stripe Price ID ausgeliefert.
 
-- **Reine Transformationsschritte in DAG-Plänen laufen als einzelner direkter LLM-Aufruf.** Der Planner markiert Merge-/Rewrite-/Zusammenfassungsschritte, die nur Upstream-Ausgaben verbrauchen, als direkte Schritte und überspringt die Tool-Schleife, die sie nie verwenden würden, was Kosten und Latenz senkt; jedes Schritt-Ergebnis erfasst nun auch, wie es ausgeführt wurde (direkter Aufruf oder Agent-Schleife, Iterationen, verwendete Tools).
+- **GPT-5.x-Agenten behalten ihr Reasoning über Toolaufrufe hinweg.** FIM One spricht jetzt direkt die OpenAI Responses API für GPT-5.x-Modelle an und überträgt das verschlüsselte Reasoning jeder Runde in die nächste, sodass ein mehrstufiger Agent auf dem aufbaut, was er bereits erarbeitet hat, anstatt es bei jeder Tool-Runde neu abzuleiten. Reasoning-Token-Zählungen erscheinen in der Nutzung, und das Thinking-Panel zeigt die eigene Zusammenfassung des Modells. Setzen Sie `FIM_GPT5_RESPONSES_MODE=bridge` (oder `off`), um zum vorherigen Verhalten zurückzukehren; Endpunkte ohne eine `/v1/responses`-Route fallen automatisch auf Chat Completions zurück.
 
-- **Agenten können während der Ausführung klärende Multiple-Choice-Fragen stellen.** Wenn eine Aufgabe in wesentlich unterschiedliche Richtungen gehen könnte, pausiert der Agent und präsentiert bis zu vier strukturierte Fragen im Chat, jeweils mit 2–4 Optionen plus einem Freitextfeld „Sonstiges"; die Antwort setzt die Ausführung an Ort und Stelle fort, und das Überspringen oder ein Timeout lässt ihn nach eigenem Ermessen fortfahren.
+- **Reine Transformationsschritte in DAG-Plänen laufen als einzelner direkter LLM-Aufruf.** Der Planer kennzeichnet Merge-/Umschreib-/Zusammenfassungsschritte, die nur Upstream-Ausgaben verbrauchen, als direkte Schritte und überspringt die Tool-Schleife, die sie nie verwenden würden, was Kosten und Latenz senkt; jedes Schrittergebnis verzeichnet nun auch, wie es ausgeführt wurde (direkter Aufruf oder Agent-Schleife, Iterationen, verwendete Tools).
 
-- **Agent-Schritte tragen Live-Einzeilentitel.** Während ein Agent arbeitet, erhält jede Iteration ein kurz generiertes Label („Preisdaten werden überprüft…"), das in einem einzelnen eingeklappten Header angezeigt wird, der zum neuesten Schritt wechselt; das Erweitern zeigt die vollständige Schritt-Chronologie, und die Labels bleiben in der Gesprächshistorie erhalten.
+- **Agenten können klärende Multiple-Choice-Fragen während der Ausführung stellen.** Wenn eine Aufgabe in wesentlich unterschiedliche Richtungen gehen könnte, pausiert der Agent und präsentiert bis zu vier strukturierte Fragen im Chat, jeweils mit 2–4 Optionen plus einem Freitextfeld „Sonstiges"; das Beantworten setzt die Ausführung an Ort und Stelle fort, und das Überspringen oder ein Timeout lässt ihn nach eigenem Ermessen fortfahren.
 
-- **Modelle eines Providers können in Bulk gelöscht werden.** Jede Modellzeile in Admin → Models trägt ein Kontrollkästchen, der Header wählt die gesamte Liste aus, und das Halten von Shift beim Klicken erweitert die Auswahl über einen Bereich von Zeilen. Das Löschen der Auswahl entfernt jedes ausgewählte Modell in einer Anfrage, nach einer Bestätigung mit der Anzahl.
+- **Agent-Schritte tragen Live-Einzeilentitel.** Während ein Agent arbeitet, erhält jede Iteration ein kurz generiertes Label („Preisdaten überprüfen…"), das in einer einzelnen eingeklappten Kopfzeile angezeigt wird, die zum neuesten Schritt wechselt; das Erweitern zeigt die vollständige Schritt-Zeitleiste, und die Labels bleiben in der Gesprächshistorie erhalten.
 
-- **Kleine Vergleichstabellen in Chat-Antworten werden jetzt als Card-ähnliche Layouts gerendert.** Eine Tabelle mit 2–3 Spalten, deren erste Spalte Attributbezeichnungen enthält, zeigt jedes Attribut in seiner Wertzelle an (entsprechend dem Vergleichskarten-Stil, der von KI-Chat-UIs popularisiert wurde); größere Tabellen behalten das klassische Raster.
+- **Die Modelle eines Anbieters können in Massen gelöscht werden.** Jede Modellzeile in Admin → Modelle trägt ein Kontrollkästchen, die Kopfzeile wählt die gesamte Liste aus, und das Halten von Umschalt beim Klicken erweitert die Auswahl über einen Bereich von Zeilen. Das Löschen der Auswahl entfernt jedes gewählte Modell in einer Anfrage, nach einer Bestätigung, die die Anzahl nennt.
 
-- **Chat-Antworten rendern jetzt Mermaid-Diagramme und SVG-Abbildungen.** Ein `mermaid`-Codeblock wird zu einem Diagramm mit Design und ein `svg`-Block zu einem Bild mit Quellen-Toggle und Download; beide fallen auf einfachen Code zurück, wenn die Quelle unvollständig ist oder nicht geparst wird, sodass ein halb-gestreamtes Diagramm nie einen Fehler anzeigt.
+- **Kleine Vergleichstabellen in Chat-Antworten werden nun als kartenähnliche Layouts gerendert.** Eine Tabelle mit 2–3 Spalten, deren erste Spalte Attributbezeichnungen enthält, zeigt jedes Attribut in seiner Wertzelle an (entsprechend dem Vergleichskartenstil, der von KI-Chat-UIs popularisiert wurde); größere Tabellen behalten das klassische Gitter.
 
-- **Antworten, Codeblöcke und Tabellen können kopiert werden.** Jede Antwort hat eine Copy-as-Markdown-Aktion, Codeblöcke tragen einen Header mit ihrer Sprache, und Tabellen bieten Copy-as-Markdown plus einen CSV-Download (UTF-8, öffnet sich sauber in Excel).
+- **Chat-Antworten rendern nun Mermaid-Diagramme und SVG-Abbildungen.** Ein `mermaid`-Codeblock wird zu einem thematischen Diagramm und ein `svg`-Block zu einem Bild mit einem Quellumschalter und Download; beide fallen auf einfachen Code zurück, wenn die Quelle unvollständig ist oder nicht geparst wird, sodass ein halb gestreamtes Diagramm nie einen Fehler anzeigt.
 
-- **Zitate zeigen, aus welchem Dokument sie stammen.** Ein Zitat-Marker wird jetzt als Pill mit dem Dokumentnamen der Quelle gerendert, wobei benachbarte Marker in einer Pill zusammengefasst und gezählt werden; das Popover listet jede Quelle dahinter auf.
+- **Antworten, Codeblöcke und Tabellen können kopiert werden.** Jede Antwort hat eine Aktion zum Kopieren als Markdown, Codeblöcke tragen eine Kopfzeile mit ihrer Sprache, und Tabellen bieten Kopieren als Markdown plus einen CSV-Download (UTF-8, öffnet sich sauber in Excel).
 
-- **`/clear` funktioniert in der Chat-Eingabe.** Die Eingabe von `/clear` startet ein neues Gespräch, identisch mit dem Klick auf „Neuer Chat"; eine laufende Runde wird zuerst gestoppt.
+- **Zitate zeigen, aus welchem Dokument sie stammen.** Ein Zitiermarker wird nun als Pille mit dem Namen des Quelldokuments gerendert, wobei benachbarte Marker in einer Pille zusammengefasst und gezählt werden; das Popover listet jede Quelle dahinter auf.
+
+- **`/clear` funktioniert in der Chat-Eingabe.** Das Eingeben von `/clear` startet ein neues Gespräch, identisch mit dem Klicken auf Neuer Chat; eine laufende Runde wird zuerst gestoppt.
 
 - **Diagramme und Codeblöcke können heruntergeladen werden, nicht nur kopiert.** Mermaid-Diagramme exportieren das gerenderte SVG, und jeder Codeblock wird mit einem Dateinamen heruntergeladen, der seiner Sprache entspricht; ein `csv`-Block wird als UTF-8-Datei heruntergeladen, die sich sauber in Excel öffnet.
 
+- **Der Composer warnt, bevor ein Bild an ein reines Textmodell geht.** Das Anhängen eines Bildes, während das aktive Modell keine Bilder lesen kann, zeigt eine Notiz an, dass das Modell nur den Dateinamen erhält, aufgelöst vom Modell, das diese Runde tatsächlich verwenden würde.
+
+- **Ungesendete Eingabe wird beibehalten.** Text, eingefügte Clips und fertiggestellte Anhänge, die nicht gesendet wurden, werden pro Gespräch und separat für einen neuen Chat gespeichert, sodass sie eine Aktualisierung, einen Wechsel zu einem anderen Gespräch und eine abgelaufene Sitzung überstehen. Ein Entwurf wird gelöscht, sobald die Nachricht gesendet oder ihr Gespräch gelöscht wird.
+
+- **Chat-Antworten akzeptieren LaTeX-Mathematik-Trennzeichen.** Formeln, die mit `\[...\]` oder `\(...\)` geschrieben sind, werden als Mathematik gerendert, was der bestehenden Dollar-Zeichen-Syntax entspricht; Trennzeichen in Code-Zäunen bleiben als Text.
+
 ### Behoben
 
-- **Nachfolge-Vorschlagschips bleiben in der Stimme des Benutzers.** Vorgeschlagene nächste Fragen werden als etwas formuliert, das der Benutzer senden würde (Anfragen oder Fragen an den Assistenten), nicht als umgekehrte Präferenzumfragen wie „welche bevorzugst du…?".
+- **Eine durch das Ausgabelimit unterbrochene Antwort führt nicht mehr halb ihre Tool-Aufrufe aus.** Wenn das Modell mitten in einer Nachricht das Token-Limit erreicht, werden alle Tool-Aufrufe in dieser Antwort verworfen und das Modell wird aufgefordert, sie kleiner erneut auszugeben. Zuvor wurden Aufrufe, deren Argumente zufällig vollständig waren, ausgeführt, sodass ein Batch, den das Modell als Einheit geplant hatte, nur teilweise ausgeführt werden konnte, während das Transkript so aussah, als wäre alles davon erfolgt.
 
-- **Exa-Dokumentation nennt Exa nicht mehr den Standard-Suchanbieter.** Integrations- und Umgebungsvariablenseiten beschreiben Exa jetzt als optionales Backend, das Sie mit `WEB_SEARCH_PROVIDER=exa` aktivieren; der Standard-Suchpfad bleibt Jina.
+- **Das Senden während ein Anhang noch hochgeladen wird, löscht ihn nicht mehr.** Das Senden wartet nun, bis der Upload abgeschlossen ist, und fügt die Datei ein, wobei der Senden-Button während des Wartens einen Spinner anzeigt; zuvor wurde die Nachricht ohne das Bild oder Dokument und ohne Warnung versendet.
 
-- **Sidebar-Logo ist wieder ein echter Link.** Mittleres Klicken und Cmd/Ctrl-Klick öffnen das Dashboard in einem neuen Tab; Linksklick navigiert weiterhin und behält die kurze Bounce-Animation bei.
+- **Eine Nachricht, die nicht versendet werden kann, wird zurück in das Eingabefeld eingefügt.** Wenn das Erstellen der Konversation fehlschlägt (abgelaufene Sitzung, Netzwerk down), wird der eingegebene Text mit einem Error-Toast zum Composer zurückgebracht, anstatt zu verschwinden.
+
+- **Vorschlag-Chips für Folgefragen bleiben in der Stimme des Benutzers.** Vorgeschlagene nächste Fragen werden als etwas formuliert, das der Benutzer senden würde (Anfragen oder Fragen an den Assistenten), nicht als umgekehrte Präferenzabfragen wie „welche bevorzugst du…?".
+
+- **Exa-Dokumentation nennt Exa nicht mehr den Standard-Sucheanbieter.** Integrations- und Umgebungsvariablen-Seiten beschreiben Exa nun als optionales Backend, das Sie mit `WEB_SEARCH_PROVIDER=exa` aktivieren; der Standard-Suchpfad bleibt Jina.
+
+- **Sidebar-Logo ist wieder ein echter Link.** Mittleres Klicken und Cmd/Strg-Klick öffnen das Dashboard in einem neuen Tab; Linksklick navigiert immer noch und behält die kurze Bounce-Animation bei.
 
 ### Geändert
 

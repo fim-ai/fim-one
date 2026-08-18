@@ -10,37 +10,51 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
-### Ajoutés
+### Ajouts
 
-- **Les agents GPT-5.x conservent leur raisonnement entre les appels d'outils.** FIM One communique désormais directement avec l'API Responses d'OpenAI pour les modèles GPT-5.x et transporte le raisonnement chiffré de chaque tour au suivant, de sorte qu'un agent multi-étapes s'appuie sur ce qu'il a déjà élaboré au lieu de le redériver à chaque tour d'outils. Les décomptes de jetons de raisonnement apparaissent dans l'utilisation, et le panneau de réflexion affiche le résumé généré par le modèle. Définissez `FIM_GPT5_RESPONSES_MODE=bridge` (ou `off`) pour revenir au comportement précédent ; les points de terminaison sans route `/v1/responses` basculent automatiquement vers les complétions de chat.
+- **Modèle d'accès aux instances pour la facturation.** Les administrateurs choisissent l'une de trois postures : pas d'abonnements (par défaut logiciel, quota mensuel `0` = illimité), inclus + payant, ou payant uniquement. Le plan par défaut inclus ne peut pas être supprimé ; les modèles payants ne sont plus fournis avec un ID de prix FIM Stripe.
 
-- **Les étapes de transformation pure dans les plans DAG s'exécutent comme un seul appel LLM direct.** Le planificateur étiquète les étapes de fusion/réécriture/résumé qui ne consomment que les sorties en amont comme des étapes directes, contournant la boucle d'outils qu'elles n'utiliseraient jamais, ce qui réduit le coût et la latence ; chaque résultat d'étape enregistre désormais aussi comment il s'est exécuté (appel direct ou boucle d'agent, itérations, outils utilisés).
+- **Les agents GPT-5.x conservent leur raisonnement entre les appels d'outils.** FIM One communique désormais directement avec l'API Responses d'OpenAI pour les modèles GPT-5.x et transporte le raisonnement chiffré de chaque tour au suivant, de sorte qu'un agent multi-étapes s'appuie sur ce qu'il a déjà élaboré au lieu de le redériver à chaque tour d'outil. Les comptages de jetons de raisonnement apparaissent dans l'utilisation, et le panneau de réflexion affiche le résumé du modèle. Définissez `FIM_GPT5_RESPONSES_MODE=bridge` (ou `off`) pour revenir au comportement précédent ; les points de terminaison sans route `/v1/responses` reviennent automatiquement aux complétions de chat.
 
-- **Les agents peuvent poser des questions de clarification à choix multiples en cours d'exécution.** Quand une tâche pourrait prendre des directions matériellement différentes, l'agent fait une pause et présente jusqu'à quatre questions structurées dans le chat, chacune avec 2-4 options plus un champ texte libre « Autre » ; répondre reprend l'exécution sur place, et ignorer ou un délai d'expiration lui permet de continuer selon son propre jugement.
+- **Les étapes de transformation pure dans les plans DAG s'exécutent en un seul appel LLM direct.** Le planificateur marque les étapes de fusion/réécriture/résumé qui ne consomment que les sorties en amont comme des étapes directes, en contournant la boucle d'outils qu'elles n'utiliseraient jamais, ce qui réduit le coût et la latence ; chaque résultat d'étape enregistre désormais aussi comment il s'est exécuté (appel direct ou boucle d'agent, itérations, outils utilisés).
 
-- **Les étapes d'agent portent des titres d'une ligne en direct.** Pendant qu'un agent travaille, chaque itération reçoit une étiquette générée courte (« Vérification des données de tarification… »), affichée dans un seul en-tête replié qui bascule vers l'étape la plus récente ; le développer révèle la chronologie complète des étapes, et les étiquettes persistent dans l'historique de conversation.
+- **Les agents peuvent poser des questions de clarification à choix multiples en cours d'exécution.** Quand une tâche pourrait prendre des directions matériellement différentes, l'agent s'arrête et présente jusqu'à quatre questions structurées dans le chat, chacune avec 2-4 options plus un champ texte libre « Autre » ; répondre reprend l'exécution sur place, et ignorer ou un délai d'expiration lui permet de continuer selon son propre jugement.
 
-- **Les modèles d'un fournisseur peuvent être supprimés en masse.** Chaque ligne de modèle dans Admin → Models porte une case à cocher, l'en-tête sélectionne toute la liste, et maintenir Maj enfoncé tout en cliquant étend la sélection sur une plage de lignes. Supprimer la sélection supprime chaque modèle choisi en une seule requête, après une confirmation indiquant le nombre.
+- **Les étapes d'agent portent des titres d'une ligne en direct.** Pendant qu'un agent travaille, chaque itération reçoit une étiquette générée courte (« Vérification des données de tarification… »), affichée dans un seul en-tête replié qui bascule vers l'étape la plus récente ; l'expansion révèle la chronologie complète des étapes, et les étiquettes persistent dans l'historique de conversation.
 
-- **Les petits tableaux de comparaison dans les réponses de chat s'affichent désormais sous forme de mises en page de cartes.** Un tableau de 2-3 colonnes dont la première colonne contient des étiquettes d'attributs affiche chaque attribut à l'intérieur de sa cellule de valeur (correspondant au style de carte de comparaison popularisé par les interfaces de chat IA) ; les tableaux plus grands conservent la grille classique.
+- **Les modèles d'un fournisseur peuvent être supprimés en masse.** Chaque ligne de modèle dans Admin → Modèles porte une case à cocher, l'en-tête sélectionne la liste entière, et maintenir Maj en cliquant étend la sélection sur une plage de lignes. La suppression de la sélection supprime chaque modèle choisi en une seule requête, après une confirmation nommant le nombre.
 
-- **Les réponses de chat affichent désormais les diagrammes Mermaid et les figures SVG.** Un bloc de code `mermaid` devient un diagramme thématisé et un bloc `svg` devient une image avec un bouton bascule de source et un téléchargement ; les deux reviennent au code brut si la source est incomplète ou n'analyse pas, de sorte qu'un diagramme partiellement diffusé ne montre jamais d'erreur.
+- **Les petits tableaux de comparaison dans les réponses de chat s'affichent désormais sous forme de mises en page de cartes.** Un tableau à 2-3 colonnes dont la première colonne contient des étiquettes d'attributs affiche chaque attribut à l'intérieur de sa cellule de valeur (correspondant au style de carte de comparaison popularisé par les interfaces de chat IA) ; les tableaux plus grands conservent la grille classique.
+
+- **Les réponses de chat affichent désormais les diagrammes Mermaid et les figures SVG.** Un bloc de code `mermaid` devient un diagramme thématisé et un bloc `svg` devient une image avec un bouton bascule de source et un téléchargement ; les deux reviennent au code brut si la source est incomplète ou ne s'analyse pas, de sorte qu'un diagramme partiellement diffusé ne montre jamais d'erreur.
 
 - **Les réponses, blocs de code et tableaux peuvent être copiés.** Chaque réponse a une action copier-en-Markdown, les blocs de code portent un en-tête nommant leur langage, et les tableaux offrent copier-en-Markdown plus un téléchargement CSV (UTF-8, s'ouvre correctement dans Excel).
 
-- **Les citations indiquent le document dont elles proviennent.** Un marqueur de citation s'affiche désormais sous forme de pastille portant le nom du document source, avec les marqueurs adjacents réduits en une pastille et un décompte ; le survol liste chaque source derrière.
+- **Les citations indiquent le document dont elles proviennent.** Un marqueur de citation s'affiche désormais sous forme de pilule portant le nom du document source, avec les marqueurs adjacents regroupés en une seule pilule et un comptage ; le survol liste chaque source derrière.
 
 - **`/clear` fonctionne dans l'entrée de chat.** Taper `/clear` démarre une nouvelle conversation, identique à cliquer sur Nouveau chat ; un tour en cours est d'abord arrêté.
 
-- **Les diagrammes et blocs de code peuvent être téléchargés, pas seulement copiés.** Les diagrammes Mermaid exportent le SVG rendu, et chaque bloc de code se télécharge avec un nom de fichier correspondant à son langage ; un bloc `csv` se télécharge sous forme de fichier UTF-8 qui s'ouvre correctement dans Excel.
+- **Les diagrammes et blocs de code peuvent être téléchargés, pas seulement copiés.** Les diagrammes Mermaid exportent le SVG rendu, et chaque bloc de code se télécharge avec un nom de fichier correspondant à son langage ; un bloc `csv` se télécharge en tant que fichier UTF-8 qui s'ouvre correctement dans Excel.
+
+- **Le compositeur avertit avant qu'une image ne soit envoyée à un modèle texte uniquement.** Joindre une image alors que le modèle actif ne peut pas lire les images affiche une note indiquant que le modèle ne recevra que le nom de fichier, résolu à partir du modèle qui serait réellement utilisé ce tour.
+
+- **L'entrée non envoyée est conservée.** Le texte, les clips collés et les pièces jointes terminées qui n'ont pas été envoyés sont mémorisés par conversation, et séparément pour un nouveau chat, de sorte qu'ils survivent à une actualisation, un changement vers une autre conversation et une session expirée. Un brouillon est effacé une fois le message envoyé ou sa conversation supprimée.
+
+- **Les réponses de chat acceptent les délimiteurs de mathématiques LaTeX.** Les formules écrites avec `\[...\]` ou `\(...\)` s'affichent sous forme de mathématiques, correspondant à la syntaxe de signe dollar existante ; les délimiteurs à l'intérieur des clôtures de code restent du texte.
 
 ### Corrections
 
-- **Les puces de suggestion de suivi restent dans la voix de l'utilisateur.** Les questions suggérées suivantes sont formulées comme quelque chose que l'utilisateur enverrait (demandes ou questions à l'assistant), et non comme des sondages de préférence inversés du type « lequel préférez-vous… ? ».
+- **Une réponse interrompue par la limite de sortie n'exécute plus partiellement ses appels d'outils.** Quand le modèle atteint la limite de tokens au milieu d'un message, chaque appel d'outil dans cette réponse est maintenant rejeté et le modèle est invité à les rémettre en plus petit. Auparavant, les appels dont les arguments étaient complets étaient exécutés, donc un lot que le modèle avait prévu comme une unité pouvait s'exécuter partiellement tandis que la transcription donnait l'impression que tout avait été exécuté.
 
-- **La documentation Exa n'appelle plus Exa le fournisseur de recherche par défaut.** Les pages d'intégration et de variables d'environnement décrivent désormais Exa comme un backend optionnel que vous activez avec `WEB_SEARCH_PROVIDER=exa` ; le chemin de recherche par défaut reste Jina.
+- **L'envoi pendant qu'une pièce jointe est encore en cours de téléchargement ne la supprime plus.** L'envoi attend maintenant que le téléchargement se termine et inclut le fichier, le bouton d'envoi affichant un spinner pendant l'attente ; auparavant, le message était envoyé sans l'image ou le document et sans aucun avertissement.
 
-- **Le logo de la barre latérale est à nouveau un vrai lien.** Le clic du milieu et le clic cmd/ctrl ouvrent le tableau de bord dans un nouvel onglet ; le clic gauche navigue toujours et conserve la courte animation de rebond.
+- **Un message qui échoue à l'envoi est remis dans la zone de saisie.** Quand la création de la conversation échoue (session expirée, réseau indisponible), le texte saisi revient au compositeur avec un toast d'erreur au lieu de disparaître.
+
+- **Les puces de suggestion de suivi restent dans la voix de l'utilisateur.** Les questions suivantes suggérées sont formulées comme quelque chose que l'utilisateur enverrait (demandes ou questions à l'assistant), et non comme des sondages de préférence inversés du type « lequel préférez-vous… ? ».
+
+- **La documentation Exa n'appelle plus Exa le fournisseur de recherche par défaut.** Les pages d'intégration et de variables d'environnement décrivent maintenant Exa comme un backend optionnel que vous activez avec `WEB_SEARCH_PROVIDER=exa` ; le chemin de recherche par défaut reste Jina.
+
+- **Le logo de la barre latérale est à nouveau un vrai lien.** Le clic du milieu et cmd/ctrl-clic ouvrent le tableau de bord dans un nouvel onglet ; le clic gauche navigue toujours et conserve la courte animation de rebond.
 
 ### Modifications
 

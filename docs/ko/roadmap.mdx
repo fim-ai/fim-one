@@ -330,13 +330,15 @@ flowchart LR
 
 #### Workbench UX
 
-- [x] 사이드바가 채팅 클러스터 중심으로 재구성됨 — 새 채팅/검색 바로 아래에 대화 표시, 모듈 네비게이션은 컴팩트한 하단 도크에 배치
+- [x] 사이드바가 채팅 클러스터 중심으로 재구성됨 — 새 채팅/검색 바로 아래에 대화가 표시되고, 모듈 네비게이션은 컴팩트한 하단 도크에 위치
 - [x] `/clear` 슬래시 명령어로 입력 상자에서 새로운 대화 시작
-- [x] 관리자 모델 목록이 Shift-클릭 범위와 한 번의 요청으로 일괄 삭제를 지원하는 체크박스 다중 선택 제공
-- [x] 실행 중인 에이전트 단계는 생성된 한 줄 제목을 단일 접힌 헤더에 표시하고, 대화 기록에 유지됨
+- [x] 관리자 모델 목록이 Shift-클릭 범위와 한 번의 요청으로 일괄 삭제를 지원하는 체크박스 다중 선택 지원
+- [x] 실행 중인 에이전트 단계가 생성된 한 줄 제목을 단일 접힌 헤더에 표시하고, 대화 기록에 유지됨
 - [x] 새로 전송된 메시지가 대화 기록의 맨 위로 올라가고, 답변이 아래 공간으로 확장됨
-- [x] 목록 페이지는 첫 로드 시 카드를 엇갈리게 표시하며, 모든 애니메이션은 시스템 동작 감소 설정을 준수함
-- [x] 에이전트가 실행 중 명확화 객관식 질문을 제시함 (ask_user_question) — ReAct 턴이 채팅 내 카드에서 일시 중지되고 답변으로 재개됨
+- [x] 목록 페이지가 첫 로드 시 카드를 엇갈리게 표시하고, 모든 애니메이션이 시스템 reduce-motion 설정을 준수
+- [x] 에이전트가 실행 중에 명확한 객관식 질문을 제시함 (ask_user_question) — ReAct 턴이 채팅 내 카드에서 일시 중지되고 답변과 함께 재개됨
+- [x] 작성기가 텍스트 전용 모델에 도달할 이미지가 첨부되면 경고하며, 턴이 실제로 사용할 모델에서 해결됨
+- [x] 전송되지 않은 작성기 텍스트, 클립 및 첨부 파일이 대화별로 유지되고(새 채팅의 경우도 포함), 새로고침, 대화 전환 및 만료된 세션을 거쳐 유지됨
 
 #### 컨텍스트 견고성
 
@@ -351,10 +353,11 @@ flowchart LR
 
 #### Model Layer
 
-- [x] GPT-5.x는 Responses-API-first로 이동 (tools + reasoning 함께; 404는 chat completions로 폴백); 다른 families는 설계상 completions 유지
-- [x] GPT-5.x는 tool rounds 전체에서 reasoning 유지 — native `/v1/responses`와 암호화된 reasoning replay, `FIM_GPT5_RESPONSES_MODE`로 롤백 가능
-- [ ] 다음 LiteLLM 업그레이드 시 Responses-bridge streaming 사용량 확인 (upstream 오매핑 의심)
-- [ ] native GPT-5.x 경로가 전체 릴리스를 실행한 후 LiteLLM chat→responses bridge 폐기
+- [x] GPT-5.x는 Responses-API-first로 이동 (도구 + 추론 함께; 404는 chat completions으로 폴백); 다른 계열은 설계상 completions 유지
+- [x] GPT-5.x는 도구 라운드 전체에서 추론 유지 — 네이티브 `/v1/responses`와 암호화된 추론 재생, `FIM_GPT5_RESPONSES_MODE`로 롤백 가능
+- [x] 출력 제한 초과 시 전체 도구 호출 배치를 버리고 더 작은 재시도를 요청하므로, 응답이 계획한 일부만 실행되지 않음
+- [ ] 다음 LiteLLM 업그레이드에서 Responses-bridge 스트리밍 사용량 확인 (업스트림 잘못된 매핑 의심)
+- [ ] 네이티브 GPT-5.x 경로가 전체 릴리스를 실행한 후 LiteLLM chat→responses 브리지 폐기
 
 #### 시나리오 온보딩
 
@@ -414,30 +417,31 @@ flowchart LR
 
 **목표**: 재시작 없는 커넥터 추가, 패키지 생태계, 임베디드 배포.
 
-- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantic-Guided Tool Selection** (쿼리에서 엔티티 추출 → Ontology Registry 조회 → 커넥터 세트 축소; 50개 이상 커넥터 배포 시 90% 이상 토큰 감소); 배치/ETL 커넥터용 스케일 모드; CLI 스타일 범용 `connector <name> <action> <params>` 인터페이스
-- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *2026-04-21 다운그레이드: 온디맨드 커스텀 배포, 핵심 기능 아님*: 커넥터 간 공유 엔티티 타입(Customer, Order, Asset) 정의 및 필드 매핑; DAGPlanner가 크로스시스템 JOIN 키 자동 해결; 하드코딩된 필드명 없이 크로스커넥터 쿼리 활성화(예: "Salesforce의 고객 중 Shopify에서 주문한 고객")
-- [ ] **Hot-plug 커넥터**: OpenAPI 스펙 업로드, AI가 설정 생성, 5분 내 라이브(재시작 불필요)
-- [x] ~~**Marketplace Redesign Phase 1 — Solutions + Components**~~: 2계층 마켓 모델(Solutions: Agent/Skill/Workflow; Components: Connector/MCP Server); 범위 선택기(Global Market / org); 통합 구독 모델(org 자동 표시 제거); KB를 마켓 범위에서 제거; 데이터 마이그레이션이 기존 org 멤버의 구독 백필
-- [ ] **Market Package System**: 마켓플레이스용 배포 가능한 리소스 번들 — 유형별 "마켓플레이스"를 통합 패키징 레이어로 대체. `fim-package.yaml` 매니페스트 선언: 메타데이터(name, version, description, author, license, tags, `min_fim_version`), 진입점(기본 Skill 또는 Agent), 리소스 목록(agents, skills, connectors, KBs, MCP servers, workflows) 및 설정 참조, 패키지 간 의존성(semver 범위), 필수 자격증명(설치 시 수집을 위해 커넥터 참조에 매핑), 기본값이 있는 사용자 설정 가능 변수. **두 가지 소비 모드**: (1) **install** — 모든 리소스 일괄 생성 + ID 치환을 통해 내부 참조 자동 연결; 설치가 버전 업데이트 알림을 위해 소스에 연결; `POST /api/market/packages/{id}/install`; (2) **fork** — 업데이트 링크 없이 사용자 소유 편집 가능 복사본으로 복제(이것이 템플릿 모드임); `POST /api/market/packages/{id}/fork`. 추가 엔드포인트: 게시(`POST /api/market/packages` 검토 워크플로우 포함), 제거(`DELETE /packages/{id}/uninstall` 의존성 확인 + 수정된 리소스 확인), 버전 히스토리(`GET /packages/{id}/versions`), 업그레이드(`POST /packages/{id}/upgrade` 리소스별 diff 미리보기 포함). 중첩된 패키지 요구사항에 대한 의존성 해결기 및 충돌 감지. `PackageInstallation` 테이블이 제거/업그레이드를 위한 리소스 ID 매핑과 함께 사용자별 설치된 패키지 추적. **개별 리소스 게시와 공존** — 패키지는 구성 레이어이며 대체가 아님; 단일 Connector는 여전히 독립적으로 게시 가능. 예시 의존성 트리: `Package: contract-review` → `Skill: contract-review`(진입점) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
-- [ ] **Creator Program**: 마켓플레이스 수익화 레이어 — 포트폴리오 페이지가 있는 크리에이터 프로필, 패키지별 분석(설치, 포크, 활성 사용자, 평점/리뷰), 패키지가 새 구독을 유도할 때 제휴 수수료 추적. 가격 책정, 구매 흐름, 승인 워크플로우가 있는 유료 패키지 계층. 설치 추세, 수익 보고, 사용자 피드백이 있는 크리에이터 대시보드. 프로그래매틱 패키지 게시(패키지 작성자용 CI/CD)를 위한 공개 크리에이터 API. 커뮤니티 기능: 패키지 댓글, Q&A, 버전별 변경 로그
-- [ ] **Embeddable 위젯**: `<script src="fim-one.js">` 호스트 페이지에 주입
-- [ ] **Page context injection**: 위젯이 호스트 페이지 컨텍스트(현재 ID, URL, DOM 선택기) 읽음
-- [ ] **Advanced triggers**: Webhook 인바운드 이벤트; 예약된 작업 개선(다중 시간대, 캘린더 인식)
-- [ ] **Batch execution**: DAG를 통해 1000개 이상 항목 처리
-- [ ] **Enterprise security**: IP 화이트리스팅, 저장 데이터 암호화, SSO
-- [ ] **KB Advanced Editor**: 대규모 지식 기반을 관리하는 고급 사용자용 Builder 모드 에이전트 — 대량 URL 수집, 중복 감지, 간격 분석, 문서 수명 주기 관리; ReAct 도구 루프로 기존 KB AI 채팅 확장
-- [ ] **Stripe Billing (v1 MVP — Pro Subscription)**: Free + Pro 2계층 구독(월간 토큰 할당량). Stripe Checkout(호스팅) + Customer Portal(셀프서비스) + 웹훅 기반 수명 주기(`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). 할당량 소진 시 소프트 캡(HTTP 402 + 업그레이드 프롬프트) — v1에서는 초과 요금 없음. 사용자별 청구만 해당; Org/Team 구독은 v3로 연기. 전제 조건:
-  - [x] ~~**Data model + SDK groundwork** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` 테이블, ORM 모델, Stripe SDK 싱글톤, Free + Pro 시드~~ *(v0.8.6에서 배포됨)*
-  - [x] ~~**Backend API + webhook handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` 서명 검증 + 멱등성 포함; 계획 인식 할당량; 시간별 수명 주기 스윕~~ *(v0.8.6에서 배포됨)*
-  - [x] ~~**Frontend billing tab + 402 upgrade dialog** (P3) — `/settings?tab=billing` 할당량 표시, 업그레이드 CTA, `past_due` 배너, 스트림 중 402 대화~~ *(v0.8.6에서 배포됨)*
-  - [x] ~~**Admin plan management** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(v0.8.6에서 배포됨)*
-  - [x] ~~**Admin-controlled billing feature flag** (P5) — `system_settings.billing_enabled`가 Stripe 파이프라인을 제어; 멱등성 활성화가 Free+Pro 시드, 기본 계획 포인터 설정, 사용자 백필; 활성화 후 토글 온/오프는 순수 플래그 플립~~ *(v0.8.6에서 배포됨)*
-  - [ ] **Reconciliation + e2e + go-live** (P6) — 야간 `subscriptions` ↔ `stripe.Subscription.list()` 조정 스크립트(누락된 웹훅 복구용); 전체 스택 행복 경로 / 기간 중 취소 / 연체 회귀 테스트; 테스트 모드 `stripe_price_id`에서 라이브 `price_id`로 전환; 실제 카드를 사용한 스테이징 스모크 테스트.
+- [ ] **커넥터 점진적 공개 (Phase 5)**: **의미론적 가이드 도구 선택** (쿼리에서 엔티티 추출 → 온톨로지 레지스트리 조회 → 커넥터 세트 축소; 50개 이상 커넥터 배포 시 90% 이상 토큰 감소); 배치/ETL 커넥터용 스케일 모드; CLI 스타일 범용 `connector <name> <action> <params>` 인터페이스
+- [ ] **크로스 커넥터 엔티티 정렬 (온톨로지 레지스트리)** — *2026-04-21 다운그레이드: 온디맨드 커스텀 배포, 핵심 기능 아님*: 커넥터 간 공유 엔티티 타입(고객, 주문, 자산) 및 필드 매핑 정의; DAGPlanner가 크로스 시스템 JOIN 키 자동 해결; 하드코딩된 필드명 없이 크로스 커넥터 쿼리 가능 (예: "Salesforce의 고객 중 Shopify에서 주문한 고객")
+- [ ] **핫플러그 커넥터**: OpenAPI 스펙 업로드, AI가 설정 생성, 5분 내 라이브 (재시작 불필요)
+- [x] ~~**마켓플레이스 재설계 Phase 1 — 솔루션 + 컴포넌트**~~: 2단계 마켓 모델 (솔루션: 에이전트/스킬/워크플로우; 컴포넌트: 커넥터/MCP 서버); 범위 선택기 (글로벌 마켓 / 조직); 통합 구독 모델 (조직 자동 표시 제거); KB 마켓 범위에서 제거; 데이터 마이그레이션이 기존 조직 구성원의 구독 백필
+- [ ] **마켓 패키지 시스템**: 마켓플레이스용 배포 가능한 리소스 번들 — 타입별 "마켓플레이스"를 통합 패키징 계층으로 대체. `fim-package.yaml` 매니페스트 선언: 메타데이터 (이름, 버전, 설명, 작성자, 라이선스, 태그, `min_fim_version`), 진입점 (기본 스킬 또는 에이전트), 리소스 목록 (에이전트, 스킬, 커넥터, KB, MCP 서버, 워크플로우) 및 설정 참조, 패키지 간 의존성 (semver 범위), 필수 자격증명 (설치 시 수집을 위해 커넥터 참조에 매핑), 기본값이 있는 사용자 구성 가능 변수. **두 가지 소비 모드**: (1) **설치** — 모든 리소스 일괄 생성 + ID 대체를 통해 내부 참조 자동 연결; 설치가 버전 업데이트 알림을 위해 소스에 연결; `POST /api/market/packages/{id}/install`; (2) **포크** — 사용자 소유 편집 가능 복사본으로 복제, 업데이트 링크 없음 (이것이 템플릿 모드); `POST /api/market/packages/{id}/fork`. 추가 엔드포인트: 게시 (`POST /api/market/packages` 검토 워크플로우 포함), 제거 (`DELETE /packages/{id}/uninstall` 의존성 확인 + 수정된 리소스 확인 포함), 버전 기록 (`GET /packages/{id}/versions`), 업그레이드 (`POST /packages/{id}/upgrade` 리소스별 diff 미리보기 포함). 중첩된 패키지 요구사항 및 충돌 감지를 위한 의존성 해결기. `PackageInstallation` 테이블이 사용자별 설치된 패키지를 제거/업그레이드용 리소스 ID 매핑으로 추적. **개별 리소스 게시와 공존** — 패키지는 구성 계층이지 대체가 아님; 단일 커넥터는 여전히 독립적으로 게시 가능. 예시 의존성 트리: `Package: contract-review` → `Skill: contract-review` (진입점) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
+- [ ] **크리에이터 프로그램**: 마켓플레이스 수익화 계층 — 포트폴리오 페이지가 있는 크리에이터 프로필, 패키지별 분석 (설치, 포크, 활성 사용자, 평점/리뷰), 패키지가 새로운 구독을 유도할 때 제휴 수수료 추적. 가격 책정 및 구매 흐름이 있는 유료 패키지 계층, 승인 워크플로우. 설치 추세, 수익 보고, 사용자 피드백이 있는 크리에이터 대시보드. 프로그래매틱 패키지 게시를 위한 공개 크리에이터 API (패키지 작성자용 CI/CD). 커뮤니티 기능: 패키지 댓글, Q&A, 버전별 변경 로그
+- [ ] **임베디드 위젯**: `<script src="fim-one.js">` 호스트 페이지에 주입
+- [ ] **페이지 컨텍스트 주입**: 위젯이 호스트 페이지 컨텍스트 읽기 (현재 ID, URL, DOM 선택기)
+- [ ] **고급 트리거**: 웹훅 인바운드 이벤트; 예약된 작업 개선 (다중 시간대, 달력 인식)
+- [ ] **배치 실행**: DAG를 통해 1000개 이상 항목 처리
+- [ ] **엔터프라이즈 보안**: IP 화이트리스팅, 저장 데이터 암호화, SSO
+- [ ] **KB 고급 편집기**: 대규모 지식 기반을 관리하는 고급 사용자용 빌더 모드 에이전트 — 대량 URL 수집, 중복 감지, 갭 분석, 문서 라이프사이클 관리; 기존 KB AI 채팅을 ReAct 도구 루프로 확장
+- [ ] 청구 액세스 모델 — 인스턴스가 구독 없음 / 포함+유료 / 유료 전용을 선택하므로 자체 호스팅, SaaS, 첫날부터 청구가 구별됨 {/* dev: dev/billing-access-model.md */}
+- [ ] **Stripe 청구 (v1 MVP — Pro 구독)**: 무료 + Pro 2단계 구독, 월간 토큰 할당량. Stripe Checkout (호스팅) + 고객 포털 (셀프 서비스) + 웹훅 기반 라이프사이클 (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). 할당량 소진 시 소프트 캡 (HTTP 402 + 업그레이드 프롬프트) — v1에서 초과 요금 없음. 사용자별 청구만; 조직/팀 구독은 v3으로 연기. 전제 조건:
+  - [x] ~~**데이터 모델 + SDK 기초 작업** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events` 테이블, ORM 모델, Stripe SDK 싱글톤, 무료 + Pro 시드~~ *(v0.8.6에서 배포됨)*
+  - [x] ~~**백엔드 API + 웹훅 핸들러** (P2) — `/api/billing/*` + `/api/webhooks/stripe` 서명 검증 + 멱등성 포함; 계획 인식 할당량; 시간별 라이프사이클 스윕~~ *(v0.8.6에서 배포됨)*
+  - [x] ~~**프론트엔드 청구 탭 + 402 업그레이드 대화** (P3) — `/settings?tab=billing` 할당량 표시, 업그레이드 CTA, `past_due` 배너, 스트림 중 402 대화~~ *(v0.8.6에서 배포됨)*
+  - [x] ~~**관리자 계획 관리** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(v0.8.6에서 배포됨)*
+  - [x] ~~**관리자 제어 청구 기능 플래그** (P5) — `system_settings.billing_enabled`가 Stripe 파이프라인을 제어; 멱등성 활성화가 무료+Pro를 시드하고, 기본 계획 포인터를 설정하고, 사용자를 백필; 활성화 후 토글 온/오프는 순수 플래그 플립~~ *(v0.8.6에서 배포됨)*
+  - [ ] **조정 + e2e + 라이브 전환** (P6) — 야간 `subscriptions` ↔ `stripe.Subscription.list()` 조정 스크립트로 놓친 웹훅 복구; 전체 스택 행복 경로 / 기간 중 취소 / 연체 회귀 테스트; 테스트 모드 `stripe_price_id`에서 라이브 `price_id`로 전환; 실제 카드로 스테이징에서 스모크 테스트.
 
-- [ ] **Team plan (Stripe seats)** — `stripe.Subscription.quantity`를 통한 좌석별 가격 책정, Organization 멤버십과 통합. 회사가 N개 좌석이 있는 1개의 팀 전체 계획에 구독할 수 있음; 할당량 및 기능 플래그는 개별 사용자가 아닌 좌석 그룹을 통해 해결. v1.0 Stripe MVP 및 기존 Organization 모델을 기반으로 구축.
-- [ ] **Group-level token quota for non-billing deployments** — Stripe 없는 엔터프라이즈/프라이빗 배포가 조직 수준 토큰 예산을 구성. 할당량 체인이 `override > group > plan > default`로 확장; 그룹 해결이 `max(user_quota, group_quota)`를 사용하므로 개별 VIP가 팀 캡으로 제한되지 않음. Team 계획과 함께 제공되므로 동일한 기본 요소가 청구 및 자체 호스팅 토폴로지를 모두 제공.
+- [ ] **팀 계획 (Stripe 시트)** — `stripe.Subscription.quantity`를 통한 시트별 가격 책정, 조직 멤버십과 통합. 회사가 N개 시트가 있는 하나의 팀 전체 계획을 구독할 수 있음; 할당량 및 기능 플래그는 개별 사용자가 아닌 시트 그룹을 통해 해결. v1.0 Stripe MVP 및 기존 조직 모델을 기반으로 구축.
+- [ ] **비청구 배포를 위한 그룹 수준 토큰 할당량** — Stripe 없는 엔터프라이즈/프라이빗 배포가 조직 수준 토큰 예산을 구성. 할당량 체인이 `override > group > plan > default`로 확장; 그룹 해결이 `max(user_quota, group_quota)`를 사용하므로 개별 VIP가 팀 캡으로 제약받지 않음. 팀 계획과 함께 배포되므로 동일한 기본 요소가 청구 및 자체 호스팅 토폴로지를 모두 제공.
 
-**영향**: 엔터프라이즈가 FIM One을 0에서 다중 시스템 오케스트레이션으로 며칠 내에 배포. 패키지 시스템이 크리에이터 생태계 생성 — 솔루션 작성자가 복합 번들(Skill + Agents + Connectors + KBs + Workflows) 게시, 엔터프라이즈가 한 번의 클릭으로 설치, 크리에이터가 채택으로부터 수익. Install/fork 이중성이 단일 메커니즘에서 "있는 그대로 사용" 및 "템플릿에서 사용자 정의" 사용 사례를 모두 포함.
+**영향**: 엔터프라이즈가 FIM One을 0에서 다중 시스템 오케스트레이션으로 며칠 내에 배포. 패키지 시스템이 크리에이터 생태계를 생성 — 솔루션 작성자가 복합 번들 (스킬 + 에이전트 + 커넥터 + KB + 워크플로우)을 게시하고, 엔터프라이즈가 한 번의 클릭으로 설치하고, 크리에이터가 채택으로부터 수익. 설치/포크 이중성이 "있는 그대로 사용" 및 "템플릿에서 사용자 정의" 사용 사례를 단일 메커니즘에서 다룸.
 
 ## 동결된 기능 (출시됨, 유지보수만 진행)
 
