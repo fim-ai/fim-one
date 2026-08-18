@@ -44,6 +44,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **A reply cut off by the output limit no longer runs half its tool calls.** When the model hits the token limit mid-message, every tool call in that reply is now discarded and the model is asked to re-issue them smaller. Previously calls whose arguments happened to be complete were executed, so a batch the model planned as a unit could run only partway while the transcript read as if all of it had.
+
 - **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
 
 - **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.

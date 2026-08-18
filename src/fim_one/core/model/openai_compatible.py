@@ -138,22 +138,6 @@ litellm.suppress_debug_info = True
 _SHARED_HTTP_CLIENT: httpx.AsyncClient | None = None
 
 
-def _incomplete_arguments(raw: str | None) -> bool:
-    """Return True when a tool call's argument JSON never finished arriving.
-
-    Used to tell a genuinely complete call apart from one the output limit
-    cut in half.  An empty payload counts as complete — some providers send
-    argument-less calls.
-    """
-    if not raw:
-        return False
-    try:
-        json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return True
-    return False
-
-
 def _pool_int(key: str, default: int) -> int:
     raw = os.environ.get(key)
     return int(raw) if raw else default
@@ -584,24 +568,13 @@ class OpenAICompatibleLLM(BaseLLM):
         choice = response.choices[0]
         assistant_msg = self._parse_choice_message(choice)
 
-        # Same truncation guard as the streaming path: a call whose arguments
-        # were cut in half by the output limit must not be dispatched.
+        # Same truncation guard as the streaming and Responses paths: a
+        # ``length`` stop makes the whole batch untrustworthy, so none of it
+        # runs.  See :func:`_drop_truncated_tool_calls`.
         finish_reason = getattr(choice, "finish_reason", None)
-        truncated_tool_call = False
-        if finish_reason == "length" and assistant_msg.tool_calls:
-            raw_calls = getattr(choice.message, "tool_calls", None) or []
-            if any(
-                _incomplete_arguments(getattr(tc.function, "arguments", None))
-                for tc in raw_calls
-            ):
-                logger.warning(
-                    "Tool call truncated by the output limit (%s), "
-                    "dropping %d partial call(s)",
-                    self._model,
-                    len(assistant_msg.tool_calls),
-                )
-                assistant_msg.tool_calls = None
-                truncated_tool_call = True
+        truncated_tool_call = self._drop_truncated_tool_calls(
+            assistant_msg, finish_reason
+        )
 
         usage: dict[str, int] = {}
         if response.usage is not None:
@@ -788,18 +761,16 @@ class OpenAICompatibleLLM(BaseLLM):
                 # and provider-specific ones — swallowing it here strands the
                 # caller with a truncated turn it cannot detect.
                 if finish_reason and pending_tool_calls:
-                    truncated = finish_reason == "length" and any(
-                        _incomplete_arguments(p.arguments)
-                        for p in pending_tool_calls.values()
-                    )
-                    if truncated:
-                        # The output limit landed inside the arguments, so the
-                        # JSON is half-written.  Dispatching it would run a
-                        # tool with garbage input; report the truncation and
-                        # let the caller ask the model to retry smaller.
+                    if finish_reason == "length":
+                        # The output limit cut the message, so the batch is
+                        # untrustworthy as a whole — see
+                        # ``_drop_truncated_tool_calls`` for why parsing the
+                        # arguments cannot separate safe calls from unsafe
+                        # ones.  Report the truncation and let the caller ask
+                        # the model to retry smaller.
                         logger.warning(
-                            "Tool call truncated by the output limit (%s), "
-                            "dropping %d partial call(s)",
+                            "Response truncated by the output limit (%s), "
+                            "dropping %d tool call(s) from the batch",
                             self._model,
                             len(pending_tool_calls),
                         )
@@ -1443,6 +1414,42 @@ class OpenAICompatibleLLM(BaseLLM):
                 if isinstance(sig, str) and sig:
                     return sig
         return None
+
+    def _drop_truncated_tool_calls(
+        self,
+        message: ChatMessage,
+        finish_reason: str | None,
+    ) -> bool:
+        """Discard every tool call when the response hit the output limit.
+
+        ``finish_reason == "length"`` says the *message* was cut off, not
+        which part of it.  Inspecting the arguments is not enough to tell a
+        safe batch from an unsafe one:
+
+        * a batch can be cut between calls, so the emitted calls all parse
+          while the ones the model still intended never arrive.  Running the
+          prefix leaves the model believing the whole batch executed;
+        * a call cut before its first argument delta arrives looks like a
+          legitimate argument-less call;
+        * :meth:`_flush_tool_calls` salvages unparsable arguments into
+          ``{"_raw": ...}``, so "the JSON parses" is not a truncation test.
+
+        None of it is safe to dispatch.  Drop the batch and report the
+        truncation; ``ReActAgent`` turns that into a retry prompt asking the
+        model to re-issue smaller calls.
+
+        Returns ``True`` when calls were dropped.
+        """
+        if finish_reason != "length" or not message.tool_calls:
+            return False
+        logger.warning(
+            "Response truncated by the output limit (%s), "
+            "dropping %d tool call(s) from the batch",
+            self._model,
+            len(message.tool_calls),
+        )
+        message.tool_calls = None
+        return True
 
     @staticmethod
     def _flush_tool_calls(

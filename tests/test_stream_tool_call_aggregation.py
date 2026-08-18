@@ -371,20 +371,37 @@ class TestOutputLimitDuringToolCall:
         assert final[-1].truncated_tool_call is True
 
     @pytest.mark.asyncio
-    async def test_complete_call_survives_length_finish(self) -> None:
-        """Arguments that did finish are still dispatched under "length"."""
+    async def test_parseable_call_is_dropped_too(self) -> None:
+        """A "length" stop condemns the batch even when the JSON parses.
+
+        Where the limit landed is unknowable: the model may have been cut
+        between calls, leaving the emitted ones complete and the intended
+        rest missing.  Executing the survivors would report a batch that
+        only partly ran.
+        """
         chunks = [
             _tc_chunk(index=0, tc_id="call_1", name="echo", arguments='{"text": "hi"}'),
             _finish_chunk("length"),
         ]
         result = await _run_stream(chunks)
 
-        tc_chunks = [c for c in result if c.tool_calls]
-        assert len(tc_chunks) == 1
-        tool_calls = tc_chunks[0].tool_calls
-        assert tool_calls is not None
-        assert tool_calls[0].arguments == {"text": "hi"}
-        assert tc_chunks[0].truncated_tool_call is False
+        assert not any(c.tool_calls for c in result)
+        final = [c for c in result if c.finish_reason]
+        assert final[-1].truncated_tool_call is True
+
+    @pytest.mark.asyncio
+    async def test_whole_batch_is_dropped_not_just_the_partial_call(self) -> None:
+        """One truncated call condemns its complete siblings as well."""
+        chunks = [
+            _tc_chunk(index=0, tc_id="call_1", name="echo", arguments='{"text": "hi"}'),
+            _tc_chunk(index=1, tc_id="call_2", name="file_ops", arguments='{"path": "/tm'),
+            _finish_chunk("length"),
+        ]
+        result = await _run_stream(chunks)
+
+        assert not any(c.tool_calls for c in result)
+        final = [c for c in result if c.finish_reason]
+        assert final[-1].truncated_tool_call is True
 
     @pytest.mark.asyncio
     async def test_unknown_finish_reason_still_flushes(self) -> None:
