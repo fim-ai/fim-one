@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import contextmanager
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -150,6 +151,45 @@ def _make_context(
     )
 
 
+@contextmanager
+def _decide_on_create(
+    session_factory: async_sessionmaker[AsyncSession],
+    decision: str,
+    *,
+    on_row: Callable[[Any], None] | None = None,
+) -> Iterator[None]:
+    """Record ``decision`` on every confirmation the hook commits.
+
+    The hook fires the inline-confirmation listener right after committing the
+    pending row, on both the inline and the channel path, so that callback is
+    the exact moment a decision becomes possible. Driving the decision from it
+    keeps these tests deterministic. A background task that polls the table on
+    a wall-clock timer instead races the hook's confirmation timeout, and loses
+    it whenever the machine is loaded enough to delay the task's wakeups.
+    """
+    from fim_one.core.hooks import set_inline_confirmation_listener
+
+    async def _listener(req: Any) -> None:
+        if on_row is not None:
+            on_row(req)
+        async with session_factory() as db:
+            row = (
+                await db.execute(
+                    select(ConfirmationRequest).where(
+                        ConfirmationRequest.id == req.id
+                    )
+                )
+            ).scalar_one()
+            row.status = decision
+            await db.commit()
+
+    set_inline_confirmation_listener(_listener)
+    try:
+        yield
+    finally:
+        set_inline_confirmation_listener(None)
+
+
 class TestShouldTrigger:
     @pytest.mark.asyncio
     async def test_skips_when_not_required(
@@ -190,26 +230,11 @@ class TestGateFlow:
         # Mock the send call — assert it was invoked with the group chat id.
         send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
 
-        async def _approve_after_delay() -> None:
-            await asyncio.sleep(0.2)
-            async with session_factory() as db:
-                row = (
-                    await db.execute(
-                        select(ConfirmationRequest).where(
-                            ConfirmationRequest.status == "pending"
-                        )
-                    )
-                ).scalar_one()
-                row.status = "approved"
-                await db.commit()
-
         with patch(
             "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
             new=send_mock,
-        ):
-            approver = asyncio.create_task(_approve_after_delay())
+        ), _decide_on_create(session_factory, "approved"):
             result = await hook.execute(ctx)
-            await approver
 
         assert result.allow is True
         # Card sent to the org's chat_id.
@@ -244,26 +269,11 @@ class TestGateFlow:
             agent_id=seed["agent_id"],
         )
 
-        async def _reject() -> None:
-            await asyncio.sleep(0.15)
-            async with session_factory() as db:
-                row = (
-                    await db.execute(
-                        select(ConfirmationRequest).where(
-                            ConfirmationRequest.status == "pending"
-                        )
-                    )
-                ).scalar_one()
-                row.status = "rejected"
-                await db.commit()
-
         with patch(
             "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
             new=AsyncMock(return_value=ChannelSendResult(ok=True)),
-        ):
-            rejecter = asyncio.create_task(_reject())
+        ), _decide_on_create(session_factory, "rejected"):
             result = await hook.execute(ctx)
-            await rejecter
 
         assert result.allow is False
         assert "rejected" in (result.error or "").lower()
@@ -328,26 +338,11 @@ class TestGateFlow:
 
         send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
 
-        async def _approve_after_delay() -> None:
-            await asyncio.sleep(0.1)
-            async with session_factory() as db:
-                row2 = (
-                    await db.execute(
-                        select(ConfirmationRequest).where(
-                            ConfirmationRequest.status == "pending"
-                        )
-                    )
-                ).scalar_one()
-                row2.status = "approved"
-                await db.commit()
-
         with patch(
             "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
             new=send_mock,
-        ):
-            approver = asyncio.create_task(_approve_after_delay())
+        ), _decide_on_create(session_factory, "approved"):
             result = await hook.execute(ctx)
-            await approver
 
         assert result.allow is True
         send_mock.assert_not_awaited()
@@ -447,29 +442,11 @@ class TestInlineMode:
 
         send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
 
-        async def _approve_after_delay() -> None:
-            for _ in range(200):
-                await asyncio.sleep(0.02)
-                async with session_factory() as db:
-                    row = (
-                        await db.execute(
-                            select(ConfirmationRequest).where(
-                                ConfirmationRequest.status == "pending"
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if row is not None:
-                        row.status = "approved"
-                        await db.commit()
-                        return
-
         with patch(
             "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
             new=send_mock,
-        ):
-            approver = asyncio.create_task(_approve_after_delay())
+        ), _decide_on_create(session_factory, "approved"):
             result = await hook.execute(ctx)
-            await approver
 
         assert result.allow is True
         send_mock.assert_not_awaited()
@@ -511,29 +488,11 @@ class TestInlineMode:
         )
         send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
 
-        async def _approve_after_delay() -> None:
-            for _ in range(200):
-                await asyncio.sleep(0.02)
-                async with session_factory() as db:
-                    row = (
-                        await db.execute(
-                            select(ConfirmationRequest).where(
-                                ConfirmationRequest.status == "pending"
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if row is not None:
-                        row.status = "approved"
-                        await db.commit()
-                        return
-
         with patch(
             "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
             new=send_mock,
-        ):
-            approver = asyncio.create_task(_approve_after_delay())
+        ), _decide_on_create(session_factory, "approved"):
             result = await hook.execute(ctx)
-            await approver
 
         assert result.allow is True
         send_mock.assert_not_awaited()
@@ -632,25 +591,8 @@ class TestInlineMode:
             requires=False,
         )
 
-        async def _approve_after_delay() -> None:
-            for _ in range(200):
-                await asyncio.sleep(0.02)
-                async with session_factory() as db:
-                    row = (
-                        await db.execute(
-                            select(ConfirmationRequest).where(
-                                ConfirmationRequest.status == "pending"
-                            )
-                        )
-                    ).scalar_one_or_none()
-                    if row is not None:
-                        row.status = "approved"
-                        await db.commit()
-                        return
-
-        approver = asyncio.create_task(_approve_after_delay())
-        result = await hook.execute(ctx)
-        await approver
+        with _decide_on_create(session_factory, "approved"):
+            result = await hook.execute(ctx)
 
         assert result.allow is True
         async with session_factory() as db:
@@ -664,10 +606,6 @@ class TestInlineMode:
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """Registered listener receives the freshly-committed row."""
-        from fim_one.core.hooks import (
-            set_inline_confirmation_listener,
-        )
-
         async with session_factory() as db:
             user = User(
                 id=str(uuid.uuid4()),
@@ -687,11 +625,11 @@ class TestInlineMode:
 
         captured: list[str] = []
 
-        async def _listener(req: Any) -> None:
-            captured.append(req.id)
-
-        set_inline_confirmation_listener(_listener)
-        try:
+        with _decide_on_create(
+            session_factory,
+            "approved",
+            on_row=lambda req: captured.append(req.id),
+        ):
             hook = create_feishu_gate_hook(
                 session_factory=session_factory,
                 timeout_seconds=5,
@@ -703,27 +641,7 @@ class TestInlineMode:
                 agent_id="agent-listener",
             )
 
-            async def _approve_after_delay() -> None:
-                for _ in range(200):
-                    await asyncio.sleep(0.02)
-                    async with session_factory() as db:
-                        row = (
-                            await db.execute(
-                                select(ConfirmationRequest).where(
-                                    ConfirmationRequest.status == "pending"
-                                )
-                            )
-                        ).scalar_one_or_none()
-                        if row is not None:
-                            row.status = "approved"
-                            await db.commit()
-                            return
-
-            approver = asyncio.create_task(_approve_after_delay())
             result = await hook.execute(ctx)
-            await approver
-        finally:
-            set_inline_confirmation_listener(None)
 
         assert result.allow is True
         assert len(captured) == 1
