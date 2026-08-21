@@ -101,6 +101,27 @@ wired in there — ORM cascade only drops rows, and a FK without `ondelete`
 makes deletion raise. Load the **`user-owned-module`** skill for the registry
 and what to add.
 
+## Model-Visible Context Rules (MANDATORY)
+
+Anything injected into the model's message list — system prompt segments,
+interrupts, handoff context, compaction summaries, tool notices — follows
+these rules (from `dev/codex-lessons/backlog.md` Batch 0.1):
+
+1. **No history rewrite.** Context is appended, never edited in place.
+2. **Don't move the cached prefix.** A value that changes every turn belongs
+   after the dynamic boundary or in a diff, never in the prefix. Ref:
+   `dev/prompt-cache-followups.md`.
+3. **No unbounded item.** Everything injected declares a hard cap.
+4. **No single item over 10K tokens.**
+5. **New items that can exceed 1K tokens** get flagged in the commit/PR
+   description for manual review.
+6. **Injected fragments are typed classes** under `core/agent/context/`,
+   never f-strings at the call site.
+
+Rules 3 and 6 are aspirational until codex-lessons Batch 1 lands — existing
+violations are known debt listed in `dev/codex-lessons/audit.md`. The rules
+gate **new** code now: don't add another f-string injection site.
+
 ## Code Conventions
 
 - Type hints on all public functions. Async-first for I/O. `__init__.py` imports minimal (public API only).
