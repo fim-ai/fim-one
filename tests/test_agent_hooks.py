@@ -531,6 +531,43 @@ class TestSessionStartHooks:
         assert call_log == ["started:agent-123"]
         assert "session initialized" in result.side_effects
 
+    @pytest.mark.asyncio
+    async def test_react_run_dispatches_session_start_once(self) -> None:
+        """``ReActAgent.run()`` fires SESSION_START on the first run only.
+
+        Regression guard: ``run_session_start`` existed on the registry but
+        had no production caller, so configured session hooks never fired.
+        """
+        from fim_one.core.agent import ReActAgent
+        from fim_one.core.tool import ToolRegistry
+
+        from .fake_llm import FakeLLM, react_final_answer
+
+        seen: list[str] = []
+
+        async def session_hook(ctx: HookContext) -> HookResult:
+            seen.append(ctx.agent_id or "")
+            return HookResult()
+
+        registry = HookRegistry()
+        registry.register(
+            Hook("session", HookPoint.SESSION_START, session_hook)
+        )
+        agent = ReActAgent(
+            llm=FakeLLM([react_final_answer(), react_final_answer()]),
+            tools=ToolRegistry(),
+            hook_registry=registry,
+            agent_id="agent-xyz",
+            completion_check=False,
+            enable_plan_tool=False,
+        )
+
+        await agent.run("first")
+        await agent.run("second")
+
+        # Once per instance, not once per run.
+        assert seen == ["agent-xyz"]
+
 
 # ---------------------------------------------------------------------------
 # Built-in Hooks

@@ -536,6 +536,11 @@ class ReActAgent:
         self._memory = memory
         self._context_guard = context_guard
         self._hook_registry = hook_registry
+        # SESSION_START dispatch guard — the registry's run_session_start
+        # had no production caller before this flag existed, so configured
+        # session hooks were silently skipped.  Fires once per instance,
+        # on the first run() (a reused instance is one session).
+        self._session_started = False
         self._workspace = workspace
         self._max_turn_tokens = max_turn_tokens
         self._completion_check = completion_check
@@ -868,6 +873,19 @@ class ReActAgent:
         # we raise ``InputGuardrailTripwireTriggered`` and the SSE layer
         # surfaces a structured ``guardrail_tripwired`` event.
         await self._run_input_guardrails(query)
+
+        # --- SESSION_START hooks ---
+        # After the input guardrails so a tripwired turn stays free of
+        # hook side effects; before any LLM call.  Cannot block the run.
+        if self._hook_registry is not None and not self._session_started:
+            self._session_started = True
+            session_ctx = HookContext(
+                hook_point=HookPoint.SESSION_START,
+                agent_id=self._agent_id,
+                user_id=self._user_id,
+                metadata={"org_id": self._org_id} if self._org_id else None,
+            )
+            await self._hook_registry.run_session_start(session_ctx)
 
         # Fresh plan board per run — plans must not leak across runs of a
         # reused agent instance.
