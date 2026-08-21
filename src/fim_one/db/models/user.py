@@ -49,6 +49,13 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     oauth_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)
     oauth_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Whether this address was ever proven to belong to the account holder.
+    # Only a verified address may be used to auto-bind an OAuth login to an
+    # existing account (see ``web/api/oauth.py``), so this defaults to False:
+    # a creation path that forgets to set it fails closed.
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.text("FALSE")
+    )
     avatar: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
     username_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     privacy_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

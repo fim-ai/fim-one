@@ -653,6 +653,9 @@ async def create_user(
         password_hash=await hash_password_async(body.password),
         email=body.email,
         display_name=body.display_name,
+        # An admin typing the address in is this system asserting it, the
+        # same standing as a completed OTP — not a third-party claim.
+        email_verified=True,
         is_admin=body.is_admin,
     )
     db.add(user)

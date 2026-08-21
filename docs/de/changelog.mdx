@@ -44,17 +44,19 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Behoben
 
-- **Eine durch das Ausgabelimit unterbrochene Antwort führt nicht mehr halb ihre Tool-Aufrufe aus.** Wenn das Modell mitten in einer Nachricht das Token-Limit erreicht, werden alle Tool-Aufrufe in dieser Antwort verworfen und das Modell wird aufgefordert, sie kleiner erneut auszugeben. Zuvor wurden Aufrufe, deren Argumente zufällig vollständig waren, ausgeführt, sodass ein Batch, den das Modell als Einheit geplant hatte, nur teilweise ausgeführt werden konnte, während das Transkript so aussah, als wäre alles davon erfolgt.
+- **Eine Social-Login kann nicht mehr von einem Konto mit unbestätigter E-Mail-Adresse erfasst werden.** Das Verknüpfen einer Social-Login mit einem bestehenden Konto erfordert nun, dass die Adresse auf beiden Seiten verifiziert wurde, nicht nur vom eingehenden Anbieter. Die Anmeldung mit einem Anbieter, der die Adresse nie bestätigt hat, erstellt immer noch ein Konto, aber dieses Konto kann später nicht mehr mit einer verifizierten Anmeldung abgeglichen werden.
 
-- **Das Senden während ein Anhang noch hochgeladen wird, löscht ihn nicht mehr.** Das Senden wartet nun, bis der Upload abgeschlossen ist, und fügt die Datei ein, wobei der Senden-Button während des Wartens einen Spinner anzeigt; zuvor wurde die Nachricht ohne das Bild oder Dokument und ohne Warnung versendet.
+- **Eine durch das Ausgabelimit abgeschnittene Antwort führt nicht mehr halb ihre Tool-Aufrufe aus.** Wenn das Modell das Token-Limit mitten in der Nachricht erreicht, werden nun alle Tool-Aufrufe in dieser Antwort verworfen und das Modell wird aufgefordert, sie kleiner erneut auszugeben. Zuvor wurden Aufrufe, deren Argumente zufällig vollständig waren, ausgeführt, sodass ein Batch, den das Modell als Einheit geplant hatte, nur teilweise ausgeführt werden konnte, während das Transkript so aussah, als wäre alles davon ausgeführt worden.
 
-- **Eine Nachricht, die nicht versendet werden kann, wird zurück in das Eingabefeld eingefügt.** Wenn das Erstellen der Konversation fehlschlägt (abgelaufene Sitzung, Netzwerk down), wird der eingegebene Text mit einem Error-Toast zum Composer zurückgebracht, anstatt zu verschwinden.
+- **Das Senden während ein Anhang noch hochgeladen wird, lässt ihn nicht mehr fallen.** Das Senden wartet nun darauf, dass der Upload abgeschlossen ist, und fügt die Datei ein, wobei die Schaltfläche „Senden" während des Wartens einen Spinner anzeigt; zuvor wurde die Nachricht ohne das Bild oder Dokument und ohne Warnung versendet.
 
-- **Vorschlag-Chips für Folgefragen bleiben in der Stimme des Benutzers.** Vorgeschlagene nächste Fragen werden als etwas formuliert, das der Benutzer senden würde (Anfragen oder Fragen an den Assistenten), nicht als umgekehrte Präferenzabfragen wie „welche bevorzugst du…?".
+- **Eine Nachricht, die nicht versendet werden kann, wird zurück in das Eingabefeld gelegt.** Wenn das Erstellen der Konversation fehlschlägt (abgelaufene Sitzung, Netzwerk ausfallen), kehrt der eingegebene Text mit einem Fehler-Toast zum Composer zurück, anstatt zu verschwinden.
 
-- **Exa-Dokumentation nennt Exa nicht mehr den Standard-Sucheanbieter.** Integrations- und Umgebungsvariablen-Seiten beschreiben Exa nun als optionales Backend, das Sie mit `WEB_SEARCH_PROVIDER=exa` aktivieren; der Standard-Suchpfad bleibt Jina.
+- **Vorschlagschips für Folgefragen bleiben in der Stimme des Benutzers.** Vorgeschlagene nächste Fragen werden als etwas formuliert, das der Benutzer senden würde (Anfragen oder Fragen an den Assistenten), nicht als umgekehrte Präferenzumfragen wie „welche bevorzugst du…?".
 
-- **Sidebar-Logo ist wieder ein echter Link.** Mittleres Klicken und Cmd/Strg-Klick öffnen das Dashboard in einem neuen Tab; Linksklick navigiert immer noch und behält die kurze Bounce-Animation bei.
+- **Exa-Dokumentation nennt Exa nicht mehr den Standard-Suchanbieter.** Integrations- und Umgebungsvariablen-Seiten beschreiben Exa nun als optionales Backend, das Sie mit `WEB_SEARCH_PROVIDER=exa` aktivieren; der Standard-Suchpfad bleibt Jina.
+
+- **Sidebar-Logo ist wieder ein echter Link.** Mittlerer Klick und cmd/ctrl-Klick öffnen das Dashboard in einem neuen Tab; Linksklick navigiert immer noch und behält die kurze Bounce-Animation bei.
 
 ### Geändert
 

@@ -320,6 +320,10 @@ Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, 
 - [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
 - [x] Approval gates hold across delegation — `call_agent` and workflow `AGENT` nodes run the agent's own hooks instead of none
 
+#### Auth & Identity
+
+- [x] OAuth auto-link requires a verified address on both sides, so an account made from an unverified provider email is never a bind target
+
 #### Answer Rendering
 
 - [x] Final answers stream natively — the loop hands off via a `finish` signal and the answer is written as a live token-streamed turn

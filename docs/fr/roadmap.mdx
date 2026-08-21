@@ -320,6 +320,10 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 - [ ] Configuration par hook (`{"name", "config"}` schéma) — le vecteur pour les règles ScopeGuard {/* dev: dev/hook-system.md */}
 - [x] Les portes d'approbation persistent lors de la délégation — `call_agent` et les nœuds `AGENT` du workflow exécutent les propres hooks de l'agent au lieu d'aucun
 
+#### Auth & Identity
+
+- [x] La liaison automatique OAuth nécessite une adresse vérifiée des deux côtés, donc un compte créé à partir d'une adresse e-mail de fournisseur non vérifiée n'est jamais une cible de liaison
+
 #### Rendu des réponses
 
 - [x] Les réponses finales se diffusent nativement — la boucle se termine via un signal `finish` et la réponse est écrite comme un tour diffusé en direct par token

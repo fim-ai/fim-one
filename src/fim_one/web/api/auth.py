@@ -334,6 +334,12 @@ async def register(
     user = User(
         password_hash=await hash_password_async(body.password),
         email=body.email,
+        # The address cleared whatever proof this deployment requires: either
+        # the OTP block above validated it, or the operator turned
+        # ``email_verification_enabled`` off and accepts addresses at face
+        # value. Either way it is this system's own decision, unlike a
+        # third-party provider telling us an address was never confirmed.
+        email_verified=True,
         is_admin=is_first_user_check,
         privacy_accepted_at=datetime.now(UTC) if body.privacy_accepted else None,
         plan_id=default_plan_id,
@@ -1439,6 +1445,9 @@ async def setup(
     user = User(
         password_hash=await hash_password_async(body.password),
         email=body.email,
+        # Bootstrap admin: the address is supplied by whoever installs the
+        # system, so there is no third party to distrust.
+        email_verified=True,
         is_admin=True,
         plan_id=default_plan_id,
     )
@@ -1861,6 +1870,8 @@ async def confirm_email_change(
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
     user.email = body.new_email
+    # Reached only past the OTP check above, so the new address is proven.
+    user.email_verified = True
     await db.commit()
 
     return ApiResponse(data={"message": "Email changed successfully"})

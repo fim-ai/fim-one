@@ -44,17 +44,19 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Corrections
 
-- **Une réponse interrompue par la limite de sortie n'exécute plus partiellement ses appels d'outils.** Quand le modèle atteint la limite de tokens au milieu d'un message, chaque appel d'outil dans cette réponse est maintenant rejeté et le modèle est invité à les rémettre en plus petit. Auparavant, les appels dont les arguments étaient complets étaient exécutés, donc un lot que le modèle avait prévu comme une unité pouvait s'exécuter partiellement tandis que la transcription donnait l'impression que tout avait été exécuté.
+- **Une connexion sociale ne peut plus être capturée par un compte avec une adresse e-mail non vérifiée.** La liaison d'une connexion sociale à un compte existant nécessite désormais que l'adresse ait été vérifiée des deux côtés, pas seulement par le fournisseur entrant. Se connecter avec un fournisseur qui n'a jamais confirmé l'adresse crée toujours un compte, mais ce compte n'est plus quelque chose dans lequel une connexion vérifiée ultérieure peut être associée.
 
-- **L'envoi pendant qu'une pièce jointe est encore en cours de téléchargement ne la supprime plus.** L'envoi attend maintenant que le téléchargement se termine et inclut le fichier, le bouton d'envoi affichant un spinner pendant l'attente ; auparavant, le message était envoyé sans l'image ou le document et sans aucun avertissement.
+- **Une réponse coupée par la limite de sortie n'exécute plus la moitié de ses appels d'outils.** Quand le modèle atteint la limite de tokens au milieu d'un message, chaque appel d'outil dans cette réponse est maintenant rejeté et le modèle est invité à les réémettre plus petits. Auparavant, les appels dont les arguments se trouvaient être complets étaient exécutés, donc un lot que le modèle avait planifié comme une unité ne pouvait s'exécuter que partiellement tandis que la transcription se lisait comme si tout cela avait eu lieu.
 
-- **Un message qui échoue à l'envoi est remis dans la zone de saisie.** Quand la création de la conversation échoue (session expirée, réseau indisponible), le texte saisi revient au compositeur avec un toast d'erreur au lieu de disparaître.
+- **L'envoi pendant qu'une pièce jointe est encore en cours de téléchargement ne la supprime plus.** L'envoi attend maintenant que le téléchargement se termine et inclut le fichier, le bouton d'envoi affichant un spinner pendant qu'il attend ; auparavant, le message partait sans l'image ou le document et sans aucun avertissement.
 
-- **Les puces de suggestion de suivi restent dans la voix de l'utilisateur.** Les questions suivantes suggérées sont formulées comme quelque chose que l'utilisateur enverrait (demandes ou questions à l'assistant), et non comme des sondages de préférence inversés du type « lequel préférez-vous… ? ».
+- **Un message qui ne peut pas être envoyé est remis dans la zone de saisie.** Quand la création de la conversation échoue (session expirée, réseau indisponible), le texte saisi revient au compositeur avec un toast d'erreur au lieu de disparaître.
 
-- **La documentation Exa n'appelle plus Exa le fournisseur de recherche par défaut.** Les pages d'intégration et de variables d'environnement décrivent maintenant Exa comme un backend optionnel que vous activez avec `WEB_SEARCH_PROVIDER=exa` ; le chemin de recherche par défaut reste Jina.
+- **Les puces de suggestion de suivi restent dans la voix de l'utilisateur.** Les questions suivantes suggérées sont formulées comme quelque chose que l'utilisateur enverrait (demandes ou questions à l'assistant), pas des sondages de préférence inversés comme « lequel préférez-vous… ? ».
 
-- **Le logo de la barre latérale est à nouveau un vrai lien.** Le clic du milieu et cmd/ctrl-clic ouvrent le tableau de bord dans un nouvel onglet ; le clic gauche navigue toujours et conserve la courte animation de rebond.
+- **Les documents Exa n'appellent plus Exa le fournisseur de recherche par défaut.** Les pages d'intégration et de variables d'environnement décrivent désormais Exa comme un backend optionnel que vous activez avec `WEB_SEARCH_PROVIDER=exa` ; le chemin de recherche par défaut reste Jina.
+
+- **Le logo de la barre latérale est à nouveau un vrai lien.** Le clic du milieu et le clic cmd/ctrl ouvrent le tableau de bord dans un nouvel onglet ; le clic gauche navigue toujours et conserve la courte animation de rebond.
 
 ### Modifications
 

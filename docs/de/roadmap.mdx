@@ -320,6 +320,10 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 - [ ] Pro-Hook-Konfigurationsübergabe (`{"name", "config"}` Schema) — der Träger für ScopeGuard-Regeln {/* dev: dev/hook-system.md */}
 - [x] Genehmigungsgates bleiben über Delegierung erhalten — `call_agent` und Workflow-`AGENT`-Knoten führen die eigenen Hooks des Agenten aus, anstatt keine
 
+#### Auth & Identität
+
+- [x] OAuth auto-link erfordert eine verifizierte Adresse auf beiden Seiten, daher ist ein Konto, das von einer unverifizierten Provider-E-Mail erstellt wurde, niemals ein Bind-Ziel
+
 #### Antwort-Rendering
 
 - [x] Endgültige Antworten streamen nativ — die Schleife übergibt über ein `finish`-Signal und die Antwort wird als Live-Token-gestreamte Nachricht geschrieben

@@ -65,11 +65,21 @@ async def session() -> AsyncIterator[AsyncSession]:
     await engine.dispose()
 
 
-async def _seed_user(session: AsyncSession, email: str) -> User:
+async def _seed_user(
+    session: AsyncSession, email: str, *, email_verified: bool = True
+) -> User:
+    """Seed a local account.
+
+    ``email_verified`` defaults to True to model the common case: an account
+    whose address cleared registration OTP, an admin, or a pre-existing row
+    grandfathered by migration ``h9j1l3n5p789``. Pass False to model an
+    account created from an OAuth address the provider never confirmed.
+    """
     user = User(
         id=str(uuid.uuid4()),
         username=f"u_{uuid.uuid4().hex[:8]}",
         email=email,
+        email_verified=email_verified,
     )
     session.add(user)
     await session.commit()
@@ -186,6 +196,117 @@ class TestEmailVerifiedGating:
         # Unverified email must NOT match the existing account — a fresh user
         # is created instead, so the victim's account is never taken over.
         assert binding.user_id != existing.id
+
+    async def test_new_user_from_unverified_email_is_stored_unverified(
+        self, session: AsyncSession
+    ) -> None:
+        """The fresh account inherits the provider's verdict, not a blank slate."""
+        info = OAuthUserInfo(
+            provider="github",
+            id="gh-fresh-unverified",
+            username="someone",
+            email="someone@example.com",
+            display_name="S",
+            email_verified=False,
+        )
+
+        await _handle_login(session, info, "github", "http://frontend")
+
+        binding = await _binding_for(session, "github", "gh-fresh-unverified")
+        assert binding is not None
+        created = await session.get(User, binding.user_id)
+        assert created is not None
+        assert created.email == "someone@example.com"
+        assert created.email_verified is False
+
+    async def test_new_user_from_verified_email_is_stored_verified(
+        self, session: AsyncSession
+    ) -> None:
+        info = OAuthUserInfo(
+            provider="github",
+            id="gh-fresh-verified",
+            username="someone",
+            email="someone@example.com",
+            display_name="S",
+            email_verified=True,
+        )
+
+        await _handle_login(session, info, "github", "http://frontend")
+
+        binding = await _binding_for(session, "github", "gh-fresh-verified")
+        assert binding is not None
+        created = await session.get(User, binding.user_id)
+        assert created is not None
+        assert created.email_verified is True
+
+    async def test_squatted_unverified_account_is_not_a_bind_target(
+        self, session: AsyncSession
+    ) -> None:
+        """The reverse-direction takeover the two-sided gate exists to stop.
+
+        The attacker cannot match the victim's account, but step 3 of
+        ``_handle_login`` still creates one holding the victim's address. If
+        that account were a valid match target, the victim's next sign-in --
+        from a different provider, with the address genuinely verified --
+        would land them inside the attacker's account.
+        """
+        attacker_info = OAuthUserInfo(
+            provider="github",
+            id="gh-attacker",
+            username="attacker",
+            email="victim@example.com",  # never confirmed by GitHub
+            display_name="A",
+            email_verified=False,
+        )
+        await _handle_login(session, attacker_info, "github", "http://frontend")
+
+        squatted = await _binding_for(session, "github", "gh-attacker")
+        assert squatted is not None
+
+        victim_info = OAuthUserInfo(
+            provider="google",
+            id="google-victim",
+            username="victim",
+            email="victim@example.com",  # same address, genuinely verified
+            display_name="V",
+            email_verified=True,
+        )
+        await _handle_login(session, victim_info, "google", "http://frontend")
+
+        victim_binding = await _binding_for(session, "google", "google-victim")
+        assert victim_binding is not None
+        assert victim_binding.user_id != squatted.user_id
+
+    async def test_verified_account_still_binds_a_second_provider(
+        self, session: AsyncSession
+    ) -> None:
+        """The legitimate cross-provider case the gate must not break."""
+        info = OAuthUserInfo(
+            provider="github",
+            id="gh-owner",
+            username="owner",
+            email="owner@example.com",
+            display_name="O",
+            email_verified=True,
+        )
+        await _handle_login(session, info, "github", "http://frontend")
+        first = await _binding_for(session, "github", "gh-owner")
+        assert first is not None
+
+        same_person = OAuthUserInfo(
+            provider="google",
+            id="google-owner",
+            username="owner",
+            email="owner@example.com",
+            display_name="O",
+            email_verified=True,
+        )
+        await _handle_login(session, same_person, "google", "http://frontend")
+
+        second = await _binding_for(session, "google", "google-owner")
+        assert second is not None
+        # Same human, same verified address → one account, two bindings.
+        assert second.user_id == first.user_id
 
 
 class TestRefreshTokenHashed:

@@ -297,13 +297,24 @@ async def _handle_login(
     else:
         # 2. No binding found -- check if a local account with this *verified*
         #    email exists. If found, auto-bind: log in as that existing user.
-        #    Auto-binding is gated on email_verified: matching on an unverified
-        #    address would let an attacker set their third-party email to a
-        #    victim's address and take over the victim's local account.
+        #    Auto-binding is gated on email_verified at BOTH ends:
+        #    - the incoming login (``user_info.email_verified``), because
+        #      matching on an unverified address would let an attacker set
+        #      their third-party email to a victim's and take over the
+        #      victim's local account;
+        #    - the stored account (``User.email_verified``), because an
+        #      account created from an unverified OAuth address is itself
+        #      unproven. Without this half an attacker parks the victim's
+        #      address on an account they control (step 3 below still creates
+        #      one), then waits for the victim's next verified sign-in from
+        #      another provider to land in it.
         user = None
         if user_info.email and user_info.email_verified:
             email_result = await db.execute(
-                select(User).where(func.lower(User.email) == user_info.email.lower())
+                select(User).where(
+                    func.lower(User.email) == user_info.email.lower(),
+                    User.email_verified.is_(True),
+                )
             )
             matched = email_result.scalar_one_or_none()
             if matched is not None:
@@ -352,6 +363,10 @@ async def _handle_login(
                 oauth_provider=user_info.provider,
                 oauth_id=user_info.id,
                 email=user_info.email,
+                # Carry the provider's verdict through: an address the
+                # provider never confirmed must not become a match target
+                # for a future login (see the auto-bind gate above).
+                email_verified=user_info.email_verified,
                 plan_id=default_plan_id,
             )
             db.add(user)
