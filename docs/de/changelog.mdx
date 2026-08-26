@@ -278,7 +278,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 - **Eine Umgehung der Zwei-Faktor-Authentifizierung wurde behoben.** API- und Chat-/SSE-Authentifizierung erfordern nun ein echtes Zugriffstoken (SSE-Streaming akzeptiert auch sein kurzlebiges Ticket); das 2FA-Temp-Token, Refresh-Tokens und Bind-/SSE-Tickets — alle mit demselben Schlüssel signiert — können nicht mehr zur Authentifizierung wiedergegeben werden, sodass ein gestohlenes Passwort allein nicht mehr die zweite Authentifizierungsfaktor umgehen kann.
 - **OAuth-Anmeldung verknüpft sich nicht mehr automatisch mit einem vorhandenen Konto bei einer unverifizierten E-Mail.** Ein Drittanbieter-Konto wird nur dann mit einem lokalen Konto per E-Mail abgeglichen, wenn der Anbieter diese E-Mail als verifiziert kennzeichnet, was eine Übernahme über eine von einem Angreifer kontrollierte unverifizierten Adresse verhindert.
 
-### Added
+### Hinzugefügt
 
 - **`file_ops.apply_patch` — apply V4A-format diff patches to files.** Lets agents make multi-line edits with line-based hunks and fuzzy whitespace matching, complementing the existing `find_replace` for cases where exact substring match is brittle.
 - **Content guardrails for input and output validation.** A new `core/agent/guardrail` layer runs alongside (not replacing) existing tool-permission gates and security checks. Input guardrails (default: jailbreak phrase detector) run before any LLM call and abort the turn if triggered, saving tokens and surfacing a clear "blocked" notice in chat. Output guardrails run after the final answer. Configurable via `FIM_GUARDRAILS_INPUT` / `FIM_GUARDRAILS_OUTPUT` env vars; per-agent UI configuration coming in a future release.
@@ -297,7 +297,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [v0.8.6] - 2026-05-08
 
-### Added
+### Hinzugefügt
 
 - **Stripe-Abrechnung — Pro-Plan-Abonnement.** Neue Registerkarte `Plan & Billing` unter `/settings?tab=billing` zeigt den aktuellen Plan, monatliche Token-Nutzung, Periodenzurückstellung und entweder `Upgrade to Pro` (Stripe Checkout) oder `Manage subscription` (Customer Portal). Nach erfolgreichem Checkout öffnet sich ein Konfetti-Modal mit dem gekauften Plan; Umleitungsparameter werden nur nach dem Schließen entfernt, sodass ein Aktualisieren es nicht erneut auslöst. Die Kontingentdurchsetzung berücksichtigt den Plan jedes Benutzers; stornierte Abonnements bleiben bis zum Ende des bezahlten Zeitraums im Pro-Plan; der Mid-Stream-402-Kontingentdialog landet jetzt auf der Abrechnungsregisterkarte. Administratoren verwalten Pläne und durchsuchen Abonnements unter Admin Panel → Billing. Pro verwendet derzeit einen Stripe **test-mode**-Preis; die Produktionsumstellung ersetzt die Preis-ID.
 - **Von Admin gesteuerte Abrechnungs-Feature-Flag.** Der Schalter `Enable Stripe Billing` in Admin → System Settings steuert die gesamte Stripe-Pipeline — benutzergerichtete `/api/billing/*`, Stripe-Webhook, Admin-Plan/Abonnement-CRUD und Frontend-Abrechnungsregisterkarte + Admin-Navigation sind alle ausgeblendet oder geben 503 zurück, wenn deaktiviert. Die erste Aktivierung erstellt Free + Pro, setzt den `default_plan_id`-Zeiger und füllt `users.plan_id` rückwirkend auf; nachfolgende Aus-/Einschaltungen sind reine Flag-Umschaltungen. Private Bereitstellungen ohne Stripe-Anmeldedaten bleiben sauber. Die Kontingent-Kette fällt auf das von Admin festgelegte `Default Monthly Token Quota` zurück, wenn die Abrechnung deaktiviert ist.
@@ -420,7 +420,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [v0.8.2] - 2026-04-10
 
-### Added
+### Hinzugefügt
 
 - **Intelligent Document Processing (Vision-Aware)** — Adaptive document handling based on model capabilities. When the target LLM supports vision (GPT-4o, Claude 3/4, Gemini), PDF pages are rendered as images and sent via vision content blocks for full visual fidelity. Text-only models fall back to pdfplumber text extraction. Two modes: Vision and Text-only. Configurable via `DOCUMENT_PROCESSING_MODE`, `DOCUMENT_VISION_DPI`, `DOCUMENT_VISION_MAX_PAGES` env vars. Per-model `supports_vision` toggle in Admin.
 - **Document vision pipeline** — DOCX, PPTX, and PDF files uploaded in chat now have their embedded images extracted and sent as vision content to the LLM when vision is enabled on the model.
@@ -559,7 +559,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [v0.7.4] - 2026-03-12
 
-### Added
+### Hinzugefügt
 
 - **Evaluation Center** — Test dataset management, parallel eval runs with LLM grading, per-case pass/fail/latency/token results viewer with auto-polling.
 - **Admin: `json_mode_enabled` per-model flag** — Explicit toggle preventing AWS Bedrock prefill issues. ENV models controlled by `LLM_JSON_MODE_ENABLED`.
@@ -633,7 +633,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [v0.6] - 2026-03-01
 
-### Added
+### Hinzugefügt
 
 - **Connector Platform** — Full CRUD, ConnectorToolAdapter, per-user credential encryption, confirmation gate, circuit breaker, audit logging.
 - **MCP integration** — Tool auto-discovery via protocol, process isolation.

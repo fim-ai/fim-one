@@ -10,7 +10,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
-### Ajouts
+### Ajouté
 
 - **Modèle d'accès aux instances pour la facturation.** Les administrateurs choisissent l'une de trois postures : pas d'abonnements (par défaut logiciel, quota mensuel `0` = illimité), inclus + payant, ou payant uniquement. Le plan par défaut inclus ne peut pas être supprimé ; les modèles payants ne sont plus fournis avec un ID de prix FIM Stripe.
 
@@ -98,7 +98,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - **Le HTML brut dans le markdown rendu est désormais désinfecté.** Les sorties de modèle et les fichiers markdown téléchargés sont nettoyés avant l'affichage, de sorte que les scripts injectés, les gestionnaires d'événements, les iframes, les formulaires et les remplacements de style ne peuvent plus atteindre la page. Les formules mathématiques, la coloration syntaxique, les tableaux, les listes de tâches et les blocs de divulgation ne sont pas affectés. Le `<svg>` inline brut n'est plus rendu ; utilisez un bloc de code `svg` à la place.
 
-### Corrections
+### Corrigé
 
 - **Les agents GPT-5.x exécutent les outils avec le raisonnement activé au lieu de générer une erreur.** Les modèles GPT-5.x passent maintenant d'abord par l'API Responses, où les outils de fonction et le raisonnement fonctionnent ensemble ; les endpoints sans route `/v1/responses` basculent automatiquement vers les complétions de chat, où les appels d'outils GPT-5.x désactivent explicitement le raisonnement car cette API l'exige. Les autres familles de modèles sur les endpoints compatibles OpenAI conservent leur chemin de complétions de chat existant.
 
@@ -180,7 +180,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [v0.8.9] - 2026-07-08
 
-### Ajouts
+### Ajouté
 
 - **Les Skills et Workflows sont désormais des modules optionnels, désactivés par défaut.** Une nouvelle installation démarre avec uniquement le cœur (chat, agents, bases de connaissances, connecteurs) ; un administrateur active Skills et/ou Workflows depuis Admin → Settings → Modules. Tant qu'un module est désactivé, il est masqué de la navigation et de ses pages, ses API, ses entrées Market et ses déclencheurs sont indisponibles — rien n'est supprimé, et tout réapparaît quand il est réactivé.
 
@@ -200,14 +200,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - **Deux nouveaux modèles de démarrage de workflow : Connector Action et MCP Tool Call.** La galerie « Create from Template » met désormais en avant les nœuds connecteur et MCP — appelez un système externe ou un outil MCP, puis résumez le résultat avec un LLM. Choisissez le connecteur/serveur spécifique après la création.
 
-### Modifications
+### Modifié
 
 - **Les bases de connaissances ne sont plus partageables.** La publication d'une base de connaissances vers une organisation ou la Market a été supprimée ; une KB n'atteint d'autres personnes que si elle est liée à un Agent partagé, qui délègue le contenu du propriétaire au moment de l'exécution. Toute base de connaissances déjà publiée reste accessible à ses abonnés actuels et peut être ramenée au statut personnel via son menu.
 - **Les connecteurs et serveurs MCP ne partagent plus les identifiants du propriétaire par défaut (modification majeure).** « Autoriser le recours aux identifiants du propriétaire » est désormais optionnel : les nouveaux connecteurs/serveurs MCP sont créés avec cette option désactivée, et tous les connecteurs/serveurs existants ont également été désactivés. Un abonné qui s'appuyait sur le jeton du propriétaire pour utiliser un connecteur ou serveur MCP partagé devra désormais ajouter ses propres identifiants, ou le propriétaire doit réactiver le recours sur cette ressource. Les propriétaires peuvent toujours utiliser leurs propres identifiants indépendamment du paramètre. Par conséquent, un connecteur dont le recours est désactivé et pour lequel vous n'avez pas d'identifiants est désormais masqué de l'ensemble d'outils de l'agent (comme c'était déjà le cas pour les serveurs MCP) au lieu d'être proposé puis d'échouer lors de l'appel.
 - **Les nouveaux agents utilisent par défaut l'exécution ReAct au lieu d'Auto.** Le mode Auto effectuait un appel de classification supplémentaire du modèle rapide par requête pour décider entre ReAct et DAG ; les nouveaux agents (et les modèles intégrés/marketplace) utilisent désormais ReAct par défaut, éliminant cette latence et ce coût par message. Auto et DAG restent sélectionnables par agent ; les agents existants conservent leur mode actuel.
 - **La création d'agent IA récupère d'un modèle rapide faible.** La construction ou l'affinage d'un agent à partir d'une instruction en langage naturel s'exécute sur le modèle rapide ; s'il ne peut pas produire une configuration valide, la requête réessaie une fois sur le modèle général plus puissant avant d'échouer, de sorte qu'un modèle rapide trop faible ne remonte plus comme une défaillance à l'utilisateur.
 
-### Supprimés
+### Supprimé
 
 - **L'éditeur visuel de flux de travail a été réduit à 9 types de nœuds essentiels.** Seize nœuds utilitaires et de contrôle de flux rarement utilisés — variables d'environnement, requête HTTP, exécution de code, itérateur/boucle, sous-flux de travail, assistants de modèle/liste/transformation, et les extracteurs de paramètres/questions et le classificateur — ont été supprimés pour que l'éditeur se concentre sur l'orchestration des agents, connecteurs, serveurs MCP et bases de connaissances. Par conséquent, un flux de travail partagé ne contient plus de secrets intégrés : il s'agit désormais purement d'un graphe de références, et chaque ressource référencée applique son propre contrôle d'accès par utilisateur à l'exécution. Les flux de travail existants construits sur un nœud supprimé devront être reconstruits avec l'ensemble restant.
 
@@ -223,7 +223,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Les demandes d'approbation ne sont plus routées vers un chat involontaire.** Quand un agent n'avait pas de canal d'approbation explicitement configuré, une approbation en attente pouvait être poussée vers le canal de notification d'achèvement de l'agent ou, à défaut, vers le premier canal de l'organisation — exposant une carte d'action sensible à un groupe qui n'a jamais été choisi comme approbateur. Les approbations vont désormais uniquement vers le canal d'approbation explicitement configuré de l'agent, et sinon reviennent à l'approbation dans le portail.
 - **Les serveurs MCP partagés et les bases de connaissances sont revérifiés pour l'accès au moment de l'exécution, pas seulement lors de la liaison.** Une étape MCP de workflow, un serveur MCP lié d'un agent, ou une base de connaissances liée d'un agent est désormais vérifiée par rapport à l'état d'abonnement actuel à chaque exécution, donc l'accès révoqué en quittant une organisation prend effet immédiatement au lieu de persister via une liaison obsolète.
 
-### Corrections
+### Corrigé
 
 - **La connexion OAuth échoue maintenant rapidement avec un message clair "le fournisseur a mis trop de temps" lorsque GitHub/Google/Discord/Feishu sont lents**, au lieu de rester bloquée sur les délais d'attente par défaut de la bibliothèque et d'afficher un message d'erreur générique.
 - **L'agent ne génère plus d'image superflue lorsqu'on lui demande de remodeler un livrable HTML, et ne prétend jamais qu'un fichier a été créé sans l'avoir réellement écrit dans l'espace de travail.** La génération d'images est maintenant explicitement limitée aux images raster, et les livrables de fichiers doivent être écrits via un appel d'outil — coller du contenu dans le chat ne compte plus comme "générer un fichier".
@@ -285,7 +285,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **`file_ops.apply_patch` — appliquer des correctifs au format V4A aux fichiers.** Permet aux agents d'effectuer des modifications multi-lignes avec des blocs basés sur les lignes et une correspondance floue des espaces, complétant le `find_replace` existant pour les cas où la correspondance exacte de sous-chaîne est fragile.
 - **Garde-fous de contenu pour la validation des entrées et des sorties.** Une nouvelle couche `core/agent/guardrail` s'exécute aux côtés (sans remplacer) des portes de permission d'outils existantes et des vérifications de sécurité. Les garde-fous d'entrée (par défaut : détecteur de phrase de jailbreak) s'exécutent avant tout appel LLM et interrompent le tour s'ils sont déclenchés, économisant des tokens et affichant un avis clair « bloqué » dans le chat. Les garde-fous de sortie s'exécutent après la réponse finale. Configurable via les variables d'environnement `FIM_GUARDRAILS_INPUT` / `FIM_GUARDRAILS_OUTPUT` ; la configuration par interface utilisateur par agent arrivera dans une version future.
 
-### Changé
+### Modifié
 
 - **`/settings?tab=billing` s'affiche désormais en pleine largeur et visuellement cohérent avec les autres onglets des Paramètres.** Suppression du plafond de largeur `max-w-4xl` et du conteneur de défilement externe redondant ; suppression de l'icône de titre de page ; réécriture des cartes plan / utilisation / abonnement / comparaison des plans pour utiliser le même motif de div bordée épurée (étiquettes compactes + nombres `tabular-nums`) que l'onglet Utilisation. L'ancienne mise en page ressemblait à une page autonome accidentellement coincée dans le cadre des paramètres.
 
@@ -299,14 +299,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [v0.8.6] - 2026-05-08
 
-### Added
+### Ajouté
 
 - **Facturation Stripe — abonnement au plan Pro.** Un nouvel onglet `Plan & Billing` sous `/settings?tab=billing` affiche le plan actuel, l'utilisation mensuelle des tokens, la réinitialisation de la période, et soit `Upgrade to Pro` (Stripe Checkout) soit `Manage subscription` (Customer Portal). Un paiement réussi ouvre une modal de confettis indiquant le plan acheté ; les paramètres de redirection sont supprimés uniquement après fermeture pour qu'une actualisation ne le déclenche pas à nouveau. L'application des quotas respecte le plan de chaque utilisateur ; les abonnements annulés restent en Pro jusqu'à la fin de la période payante ; la boîte de dialogue de quota 402 en cours de flux se trouve maintenant sur l'onglet de facturation. Les administrateurs gèrent les plans et parcourent les abonnements sous Admin Panel → Billing. Pro utilise actuellement un prix Stripe en **mode test** ; le basculement en production remplace l'ID de prix.
 - **Drapeau de fonctionnalité de facturation contrôlé par l'administrateur.** Le bouton `Enable Stripe Billing` dans Admin → System Settings contrôle l'ensemble du pipeline Stripe — `/api/billing/*` côté utilisateur, webhook Stripe, CRUD plan/abonnement administrateur, et onglet de facturation frontend + nav administrateur se cachent tous ou retournent 503 quand il est désactivé. La première activation crée Free + Pro, définit le pointeur `default_plan_id`, et remplit rétroactivement `users.plan_id` ; les activations ultérieures off/on sont un simple basculement de drapeau. Les déploiements privés sans identifiants Stripe restent propres. La chaîne de quotas revient au `Default Monthly Token Quota` défini par l'administrateur quand la facturation est désactivée.
 - **Quota illimité par utilisateur + colonne Registered.** Un champ de quota vide hérite de la limite globale ; `0` accorde un quota illimité. Auparavant, les deux s'effondraient dans le même état. Le tableau des utilisateurs gagne également une colonne Registered.
 - **Les docs non-anglais (`zh` / `ja` / `ko` / `de` / `fr`) affichent maintenant les sections complètes API Reference et Channels Configuration** — le groupe `Endpoints` et le sous-groupe `Configuration > Channels` étaient auparavant en anglais uniquement.
 
-### Modifications
+### Modifié
 
 - **`Plan & Billing` est un onglet Paramètres, pas une page autonome.** L'itinéraire `/settings/billing` a été replié dans `/settings?tab=billing` pour que la navigation de gauche reste visible lors du changement de plans (comme GitHub / Linear / Notion). L'itinéraire autonome redirige, de sorte que les anciens signets et les URL de retour de Stripe Checkout des déploiements antérieurs continuent de fonctionner. L'onglet `Subscriptions` est renommé en `Marketplace` pour éviter la confusion avec les abonnements aux plans.
 - **Le quota du plan gratuit est en lecture seule sur la page Plans de l'administrateur.** Provenant de Paramètres système → Quota de jetons mensuel par défaut ; les modifications y sont propagées automatiquement. Le backend ignore silencieusement `monthly_token_quota` sur PATCH pour le plan gratuit.
@@ -314,7 +314,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **L'autorité de traduction a changé de fichiers par locale à un glossaire unique.** Les règles se trouvent dans [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md), chargées dans chaque appel de traduction LLM (JSON, MDX, README). Le hook de pré-commit refuse inconditionnellement les modifications manuelles des fichiers de locale générés. Pour corriger une traduction incorrecte, modifiez le glossaire et régénérez avec `--force`.
 - **Concédant et droit applicable.** La licence FIM One Source Available est désormais accordée par **FIM Labs Pte. Ltd.** (Singapour) ; le droit applicable passe de la RPC à Singapour ; les litiges sont soumis à l'arbitrage SIAC à Singapour (un arbitre, en anglais). Un nouveau fichier `NOTICE` de haut niveau enregistre l'attribution R&D, les marques déposées et la politique des composants tiers. Aucune modification aux conditions d'utilisation autorisées ou aux conditions de restriction.
 
-### Corrections
+### Corrigé
 
 - **L'approbation/rejet par l'administrateur des agents, connecteurs, bases de connaissances et serveurs MCP ne échoue plus sur PostgreSQL.** La colonne `reviewed_at` de publish-review est maintenant consciente du fuseau horaire, de sorte que les écritures d'approbation réussissent sur PG (le bug était invisible sur les bases de données SQLite de développement).
 - **Les utilisateurs OAuth peuvent à nouveau actualiser leur session.** Le jeton d'actualisation émis par OAuth était stocké sous une forme que le point de terminaison d'actualisation ne pouvait jamais faire correspondre, forçant une reconnexion une fois le jeton d'accès expiré ; il est maintenant stocké sous forme de digest comme tous les autres chemins.
@@ -400,7 +400,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [v0.8.3] - 2026-04-16
 
-### Ajouts
+### Ajouté
 
 - **Outil intégré `convert_to_markdown`** — Nouvel outil Agent polyvalent qui convertit n'importe quel fichier, URL, lien YouTube ou URI de données en Markdown propre en utilisant MarkItDown de Microsoft. Supporte PDF, Word (.docx), Excel (.xlsx/.xls), PowerPoint (.pptx), HTML, JSON, CSV, XML, ZIP, EPUB, Outlook .msg, images, audio (parole → texte) et transcriptions YouTube. Disponible par défaut pour chaque agent — au même niveau que `web_fetch`. Lorsqu'un LLM capable de vision est configuré, les images intégrées et les pages PDF numérisées sont automatiquement OCR via le plugin officiel `markitdown-ocr`. Auparavant, cette capacité était cachée dans le pipeline d'ingestion RAG en arrière-plan ; les agents y ont maintenant accès sur le chemin de conversation interactif.
 - **OCR de documents via `markitdown-ocr`** — Les images intégrées dans DOCX / XLSX / PPTX et les pages PDF numérisées sont maintenant OCR en utilisant le même LLM capable de vision que le reste de FIM One route. S'applique à la fois à l'outil intégré `convert_to_markdown` et au pipeline d'ingestion RAG, de sorte que la conversion au moment du chat et l'ingestion de la base de connaissances produisent un Markdown identique pour la même entrée.
@@ -415,14 +415,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - **Limitation de débit par utilisateur** — Le limiteur de débit au niveau LLM maintient désormais un bucket séparé par utilisateur au lieu d'un bucket global unique au processus. Empêche un utilisateur bruyant de limiter tous les autres utilisateurs sur le même worker. Activable via `LLM_RATE_LIMIT_PER_USER` (par défaut : activé).
 
-### Corrections
+### Corrigé
 
 - **Dangling tool_use recovery** — Les conversations interrompues en cours d'exécution d'outil (arrêt utilisateur, déconnexion SSE, crash) laissaient précédemment un message assistant avec un bloc `tool_use` et aucun `tool_result` correspondant, ce qui provoquait un crash à la prochaine étape avec une erreur HTTP 400 opaque de l'API LLM. `DbMemory.get_messages()` détecte maintenant et répare ces blocs orphelins sur le chemin de lecture avec un `tool_result` synthétique `[interrupted]`. Le journal DB brut n'est pas modifié.
 - **Les messages assistant vides avec tool_calls ne sont plus supprimés** — Le filtre du chemin de chargement DbMemory supprimait précédemment silencieusement toute ligne assistant avec un contenu texte vide. Les intermédiaires d'appel de fonction natifs (qui ne contiennent que `tool_calls`, pas de texte) étaient effacés. Le filtre nécessite maintenant à la fois un contenu vide ET l'absence de `tool_calls`.
 
 ## [v0.8.2] - 2026-04-10
 
-### Added
+### Ajouté
 
 - **Intelligent Document Processing (Vision-Aware)** — Adaptive document handling based on model capabilities. When the target LLM supports vision (GPT-4o, Claude 3/4, Gemini), PDF pages are rendered as images and sent via vision content blocks for full visual fidelity. Text-only models fall back to pdfplumber text extraction. Two modes: Vision and Text-only. Configurable via `DOCUMENT_PROCESSING_MODE`, `DOCUMENT_VISION_DPI`, `DOCUMENT_VISION_MAX_PAGES` env vars. Per-model `supports_vision` toggle in Admin.
 - **Document vision pipeline** — DOCX, PPTX, and PDF files uploaded in chat now have their embedded images extracted and sent as vision content to the LLM when vision is enabled on the model.
@@ -431,7 +431,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Pre-built sandbox image** — `Dockerfile.sandbox` with common data-science packages (pdfplumber, Pillow, pandas, etc.) so AI code execution works out of the box in `--network=none` containers.
 - **Resource Fork completion** — All five resource types now support fork: Agent, Connector, Workflow, MCP Server, and Skill. KB fork removed (inherently user-local).
 
-### Modifications
+### Modifié
 
 - **Réponses de chat plus rapides** — Le flux SSE se ferme maintenant immédiatement après la fin de l'agent ; la génération de titre et les suggestions de suivi s'exécutent en arrière-plan au lieu de bloquer la réponse.
 - **Compaction de contexte plus intelligente** — La compaction de conversation utilise un format structuré à 9 sections qui préserve mieux les informations clés (demande originale, erreurs, tâches en attente) sur les longues sessions.
@@ -446,7 +446,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Vérification de complétion plus intelligente** — L'étape de vérification post-réponse est ignorée pour les réponses longues et détaillées (>200 jetons), éliminant un aller-retour LLM inutile.
 - **Basculement de modèle en cas de panne du fournisseur** — Quand le modèle principal n'est pas disponible (limité en débit, surchargé ou indisponible), l'agent réessaie automatiquement avec le modèle rapide au lieu d'échouer.
 
-### Corrections
+### Corrigé
 
 - **Agent hallucination on unreadable files** — When the AI agent could not read a file (e.g., image-based PDF), it previously read other unrelated files and presented their content as the target file's. A file integrity guardrail in the system prompt now prevents this.
 - **File ID injection for uploads** — Uploaded files now include their UUID file_id in the message context, so the agent can directly access them via `read_uploaded_file` without guessing.
@@ -455,7 +455,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [v0.8.1] - 2026-03-29
 
-### Ajoutés
+### Ajouté
 
 - **Notifications d'administrateur sensibles au fuseau horaire** — Les e-mails de notification d'administrateur affichent désormais les heures des événements dans le fuseau horaire configuré de chaque destinataire au lieu de toujours afficher l'UTC.
 - **Divulgation progressive des outils de base de données** — Un seul méta-outil `database` avec les sous-commandes `list_tables`/`discover`/`query` remplace les outils individuels par table. Configurable via la variable d'environnement `DATABASE_TOOL_MODE` (`progressive` par défaut, `legacy` comme secours).
@@ -474,7 +474,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Détection de cycle ReAct** — Détection déterministe des appels d'outils identiques répétés. Injecte un avertissement après 3 appels consécutifs avec les mêmes arguments, empêchant les agents de boucler sur les outils défaillants. Configurable via `REACT_CYCLE_DETECTION_THRESHOLD`.
 - **Liste de contrôle d'achèvement ReAct** — Invite de vérification unique avant d'accepter les réponses finales quand des outils ont été utilisés, réduisant les réponses prématurées ou incomplètes. Basculable par instance d'agent.
 
-### Modifications
+### Modifié
 
 - **Seuil minimum d'outils de la liste de contrôle d'achèvement** — La liste de contrôle ne s'active désormais que lorsque l'agent a effectué 3+ appels d'outils (configurable via `REACT_COMPLETION_CHECK_MIN_TOOLS`). Les tâches simples avec 1-2 outils ignorent la vérification pour éviter une latence inutile.
 - **Budgétisation dynamique du système prompt** — Suppression de la réserve fixe `SYSTEM_PROMPT_RESERVE` (4K tokens) du calcul du budget de contexte. ContextGuard tient désormais compte du système prompt de manière dynamique, donnant à chaque itération ~4K de contexte utilisable supplémentaire.
@@ -482,7 +482,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Détection de domaine découplée** — La classification de domaine s'exécute indépendamment sur chaque endpoint, n'étant plus regroupée avec le routage automatique. Les instructions SOP de domaine sont assouplies pour guider plutôt que de mandater la recherche web.
 - **Variable d'environnement `AUTO_ROUTING` supprimée** — L'endpoint automatique classe toujours les requêtes.
 
-### Corrections
+### Corrigé
 
 - **Soumission de message en double** — L'entrée de chat utilise désormais un garde synchrone pour empêcher le même message d'être soumis plusieurs fois lors de clics rapides.
 - **Chaîne de dégradation de sortie structurée** — Le repli à 3 niveaux (FC natif → mode JSON → texte brut) traverse désormais correctement tous les niveaux.
@@ -492,7 +492,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [v0.8] - 2026-03-20
 
-### Ajoutés
+### Ajouté
 
 - **Refonte du Marketplace Phase 1 — Solutions + Composants** — Modèle de Marché à deux niveaux (Solutions : Agent/Skill/Workflow ; Composants : Connector/MCP Server) avec sélecteur de portée (Marché Global / org). KB supprimé de la portée du Marché. Modèle d'abonnement unifié.
 - **Injection intelligente de contenu de fichier + outil `read_uploaded_file`** — Les petits téléchargements (moins de 32K caractères) sont automatiquement intégrés au contexte LLM ; les fichiers volumineux reçoivent des métadonnées + conseil d'outil. Outil de lecture en mode dual avec pagination et recherche regex. Point de terminaison `GET /api/files/{file_id}/content`.
@@ -515,7 +515,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Onglet d'audit du journal de révision** — Page d'audit admin avec bascule journal système / journal de révision et piste de révision filtrable par org/ressource.
 - **Directive d'Agent dans la synthèse** — Paramètre `agent_directive` garantissant que les réponses finales respectent l'objectif principal de l'agent.
 
-### Modifications
+### Modifié
 
 - **Modèle de visibilité basé sur l'abonnement** — Simplifié de 3 niveaux à 2 niveaux (propre → abonné). La migration automatique préserve l'accès existant.
 - **Liste blanche du cache d'outils** — Remplacement de la liste noire par une propriété explicite `cacheable` sur les outils. 11 outils en lecture seule marqués comme pouvant être mis en cache.
@@ -561,7 +561,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [v0.7.4] - 2026-03-12
 
-### Added
+### Ajouté
 
 - **Evaluation Center** — Test dataset management, parallel eval runs with LLM grading, per-case pass/fail/latency/token results viewer with auto-polling.
 - **Admin: `json_mode_enabled` per-model flag** — Explicit toggle preventing AWS Bedrock prefill issues. ENV models controlled by `LLM_JSON_MODE_ENABLED`.
@@ -575,7 +575,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 - **Export: PDF format** — Conversations exportable as PDF documents.
 - **Multi-worker support** — `WORKERS=N` env var; Redis interrupt broker for cross-worker relay.
 
-### Modifications
+### Modifié
 
 - **Couche LLM : LiteLLM** — Remplacement du client `AsyncOpenAI` direct pour une prise en charge universelle des fournisseurs.
 - **Dégradation de la sortie structurée** — Unification de `structured_llm_call()` avec extraction à 3 niveaux (Native FC → JSON Mode → texte brut + regex).
@@ -591,7 +591,7 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [v0.7.3] - 2026-03-06
 
-### Ajoutés
+### Ajouté
 
 - **Serveurs MCP globaux** — Provisionnés par l'administrateur, chargés dans toutes les sessions de chat.
 - **Journalisation d'audit structurée** — Assistant `write_audit()` avec colonnes structurées.

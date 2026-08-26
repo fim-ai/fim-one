@@ -1119,6 +1119,46 @@ _MDX_SYSTEM_PROMPT = (
 _MDX_TRANSLATE_SKIP: set[str] = set()
 
 
+# Keep a Changelog's section headings are a closed set, but they reach the LLM
+# as ~80 independent per-section calls, so the wording drifts: zh alone had
+# 新增/已添加, 修复/已修复 and 变更/已更改/已变更, ja carried three Chinese
+# 修复 headings, and every locale left a few untranslated as "### Added".
+# A prompt rule alone cannot hold across that many calls — pin them instead.
+_CHANGELOG_SECTIONS: dict[str, dict[str, str]] = {
+    "Added": {"zh": "新增", "ja": "追加", "ko": "추가", "de": "Hinzugefügt", "fr": "Ajouté"},
+    "Changed": {"zh": "变更", "ja": "変更", "ko": "변경", "de": "Geändert", "fr": "Modifié"},
+    "Deprecated": {"zh": "弃用", "ja": "非推奨", "ko": "지원 중단", "de": "Veraltet", "fr": "Déprécié"},
+    "Removed": {"zh": "移除", "ja": "削除", "ko": "제거", "de": "Entfernt", "fr": "Supprimé"},
+    "Fixed": {"zh": "修复", "ja": "修正", "ko": "수정", "de": "Behoben", "fr": "Corrigé"},
+    "Security": {"zh": "安全", "ja": "セキュリティ", "ko": "보안", "de": "Sicherheit", "fr": "Sécurité"},
+}
+
+
+def _normalize_changelog_headings(en_content: str, translated: str, locale: str) -> str:
+    """Rewrite changelog `### ` headings to their canonical per-locale term.
+
+    Sections keep their source order through translation, so the Nth `### ` line
+    in the output is the Nth in the EN source. Only the six Keep a Changelog
+    section names are touched; any other H3 is left as the model wrote it. If the
+    counts disagree the alignment is untrustworthy, so nothing is rewritten.
+    """
+    en_heads = [ln[4:].strip() for ln in en_content.splitlines() if ln.startswith("### ")]
+    out_lines = translated.splitlines(keepends=True)
+    out_idx = [i for i, ln in enumerate(out_lines) if ln.startswith("### ")]
+    if len(en_heads) != len(out_idx):
+        tprint(
+            f"  [{locale}] changelog.mdx: WARNING — {len(out_idx)} H3 heading(s) "
+            f"vs {len(en_heads)} in EN, leaving section headings as translated"
+        )
+        return translated
+    for en_head, i in zip(en_heads, out_idx):
+        canonical = _CHANGELOG_SECTIONS.get(en_head, {}).get(locale)
+        if canonical:
+            eol = "\n" if out_lines[i].endswith("\n") else ""
+            out_lines[i] = f"### {canonical}{eol}"
+    return "".join(out_lines)
+
+
 def translate_mdx_file(src_path: Path, locale: str, config: dict[str, str], force: bool = False) -> Path | None:
     try:
         rel = src_path.relative_to(ROOT / "docs")
@@ -1145,6 +1185,9 @@ def translate_mdx_file(src_path: Path, locale: str, config: dict[str, str], forc
         validate_fn=_validate_mdx_section,
         target_path=target_path,
     )
+
+    if rel.as_posix() == "changelog.mdx":
+        translated_content = _normalize_changelog_headings(content, translated_content, locale)
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(translated_content, encoding="utf-8")

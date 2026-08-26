@@ -165,3 +165,21 @@ Apply to all locales unless a language has a contradictory convention.
    anchor syntax. Never introduce a new heading level.
 7. **Frontmatter**: translate only `title`, `description`, `sidebarTitle`.
    Leave all other keys and values untouched.
+8. **Changelog section headings** are a fixed vocabulary, not free translation.
+   In `changelog.mdx` the `### Added` / `### Changed` / `### Deprecated` /
+   `### Removed` / `### Fixed` / `### Security` headings must use exactly the
+   term below and nothing else — no past-participle variants, no synonyms, and
+   never left in English.
+
+   | English | zh | ja | ko | de | fr |
+   |---|---|---|---|---|---|
+   | Added | 新增 | 追加 | 추가 | Hinzugefügt | Ajouté |
+   | Changed | 变更 | 変更 | 변경 | Geändert | Modifié |
+   | Deprecated | 弃用 | 非推奨 | 지원 중단 | Veraltet | Déprécié |
+   | Removed | 移除 | 削除 | 제거 | Entfernt | Supprimé |
+   | Fixed | 修复 | 修正 | 수정 | Behoben | Corrigé |
+   | Security | 安全 | セキュリティ | 보안 | Sicherheit | Sécurité |
+
+   `translate.py` pins these headings after translation as a backstop, so a
+   drifting heading is corrected rather than shipped — but produce the right
+   term directly.
