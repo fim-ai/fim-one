@@ -783,8 +783,14 @@ def translate_json_file(src_path: Path, locale: str, config: dict[str, str], for
         if k not in merged_flat:
             merged_flat[k] = v
 
-    # Cache hashes ONLY for keys that have real translations (not EN fallback)
-    successfully_translated_keys = set(existing_flat.keys()) | set(translated.keys())
+    # Cache hashes ONLY for keys that have real translations (not EN fallback).
+    # A key queued for retranslation whose batch failed still sits in
+    # existing_flat holding its *previous* translation. Caching the new EN hash
+    # for it would freeze the outdated wording in forever, so drop those.
+    failed_keys = set(to_translate.keys()) - set(translated.keys())
+    successfully_translated_keys = (
+        set(existing_flat.keys()) | set(translated.keys())
+    ) - failed_keys
     new_hashes = {key: _hash(src_flat[key]) for key in successfully_translated_keys if key in src_flat}
     if new_hashes:
         _hashes_put_json(cache_key, locale, new_hashes)
