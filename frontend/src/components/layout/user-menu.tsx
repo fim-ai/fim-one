@@ -124,9 +124,10 @@ export function UserMenu({ collapsed }: UserMenuProps) {
         </DropdownMenuItem>
         {user.is_admin && (
           <DropdownMenuItem asChild>
-            <Link href="/admin">
+            <Link href="/admin" target="_blank" rel="noopener noreferrer">
               <LayoutDashboard className="h-4 w-4" />
-              {t("adminPanel")}
+              <span className="flex-1">{t("adminPanel")}</span>
+              <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
             </Link>
           </DropdownMenuItem>
         )}
