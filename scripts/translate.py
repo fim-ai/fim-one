@@ -73,11 +73,11 @@ def tprint(*args: Any, **kwargs: Any) -> None:
 # ---------------------------------------------------------------------------
 
 _HASHES_PATH = ROOT / ".translation-hashes.json"
-_hashes: dict | None = None
+_hashes: dict[str, Any] | None = None
 _hashes_lock = threading.Lock()
 
 
-def _get_hashes() -> dict:
+def _get_hashes() -> dict[str, Any]:
     global _hashes
     if _hashes is None:
         try:
@@ -406,7 +406,12 @@ def _llm_chat_inner(config: dict[str, str], system_prompt: str, user_content: st
             time.sleep(backoff)
         try:
             response = litellm.completion(**kwargs)
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if not isinstance(content, str) or not content.strip():
+                # Empty/contentless reply — treat as a failed attempt and retry
+                # rather than handing a None downstream.
+                raise RuntimeError("LLM returned no text content")
+            return content
         except Exception as exc:
             last_exc = exc
             continue
@@ -704,7 +709,18 @@ def translate_json_file(src_path: Path, locale: str, config: dict[str, str], for
                 if inner and inner[-1].strip() == "```":
                     inner = inner[:-1]
                 cleaned = "\n".join(inner)
-            return json.loads(cleaned)
+            raw = json.loads(cleaned)
+            # A non-object reply, or one carrying nested/non-string values, is
+            # unusable. Raising JSONDecodeError routes it into the existing
+            # split-and-retry path instead of poisoning the merged output.
+            if not isinstance(raw, dict):
+                raise json.JSONDecodeError("expected a JSON object", cleaned, 0)
+            parsed: dict[str, str] = {}
+            for k, v in raw.items():
+                if not isinstance(k, str) or not isinstance(v, str):
+                    raise json.JSONDecodeError("expected string values", cleaned, 0)
+                parsed[k] = v
+            return parsed
 
         def _translate_batch(batch: dict[str, str], depth: int = 0) -> dict[str, str]:
             """Translate a batch; on JSON parse failure, split in half and retry."""
