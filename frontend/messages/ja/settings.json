@@ -368,7 +368,9 @@
     "monthlyUsage": "月間使用量",
     "currentUsage": "現在の使用量",
     "tokens": "トークン",
-    "noQuota": "クォータ制限が設定されていません"
+    "noQuota": "クォータ制限が設定されていません",
+    "unentitled": "続けるにはサブスクライブしてください",
+    "unentitledHint": "このインスタンスでモデルを使用するには、有料プランへの加入が必要です。"
   },
   "notifications": {
     "title": "通知",
