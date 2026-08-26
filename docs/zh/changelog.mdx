@@ -42,53 +42,57 @@ description: "FIM One的所有重要更新。"
 
 - **聊天回复接受 LaTeX 数学分隔符。** 使用 `\[...\]` 或 `\(...\)` 编写的公式呈现为数学，与现有的美元符号语法匹配；代码围栏内的分隔符保持为文本。
 
-### Fixed
+### 修复
 
-- **A Feishu channel's callback URL can now pass Feishu's verification.** Feishu omits its signature headers on the one-time URL verification handshake, and the callback endpoint rejected anything unsigned, so saving the request address always failed with "Challenge code not returned" and the channel's card buttons never worked. An unsigned push is now authenticated by the other shared secrets instead: its encrypted envelope must open with the channel's Encrypt Key, and its token must match the Verification Token when one is configured. An unsigned, unencrypted body is still refused.
+- **管理员账单及访问模型设置现已按界面语言显示。** 管理员 → 设置中的账单状态、访问模型和 token 配额字符串，以及对应的订阅错误和账户用量面板，此前在中文、日文、韩文、德文和法文界面下会显示英文原文或原始键名。
 
-- **A social login can no longer be captured by an account holding an unproven email address.** Linking a social login to an existing account now requires the address to have been verified on both sides, not just by the incoming provider. Signing in with a provider that never confirmed the address still creates an account, but that account is no longer something a later verified sign-in can be matched into.
+- **Feishu 通道的回调 URL 现可通过 Feishu 的验证。** Feishu 在一次性 URL 验证握手时不携带签名头，而回调端点会拒绝所有未签名的请求，导致保存请求地址时始终报错"未返回 Challenge 码"，且通道的卡片按钮也无法正常使用。现在，未签名的推送将通过其他共享密钥进行认证：其加密信封必须能用通道的 Encrypt Key 解开，且在配置了 Verification Token 的情况下，其 token 必须与之匹配。未签名且未加密的请求体仍会被拒绝。
 
-- **A reply cut off by the output limit no longer runs half its tool calls.** When the model hits the token limit mid-message, every tool call in that reply is now discarded and the model is asked to re-issue them smaller. Previously calls whose arguments happened to be complete were executed, so a batch the model planned as a unit could run only partway while the transcript read as if all of it had.
+- **社交登录不再被持有未验证邮箱的账户劫持。** 将社交登录关联到已有账户，现在要求该邮箱地址在双方均已完成验证，而不仅仅是由传入的提供商验证。使用从未确认过邮箱地址的提供商登录仍会创建新账户，但该账户不再能被后续已验证的登录匹配关联。
 
-- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
+- **被输出限制截断的回复不再执行其中一半的工具调用。** 当模型在消息中途触及 token 限制时，该回复中的所有工具调用现在都会被丢弃，并要求模型以更小的粒度重新发起。此前，参数恰好完整的调用会被执行，导致模型作为整体规划的一批调用只执行了一部分，而对话记录却显示全部已执行。
 
-- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
+- **附件仍在上传时发送消息不再丢失附件。** 发送操作现在会等待上传完成后再附带文件一并发出，等待期间发送按钮显示加载动画；此前消息会在不含图片或文档的情况下直接发出，且没有任何提示。
 
-- **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
+- **发送失败的消息会被放回输入框。** 当创建对话失败（会话过期、网络中断）时，已输入的文字会返回到编辑器，并显示错误提示，而不是直接消失。
 
-- **Exa docs no longer call Exa the default search provider.** Integration and environment-variable pages now describe Exa as an optional backend you enable with `WEB_SEARCH_PROVIDER=exa`; the default search path stays Jina.
+- **后续建议问题保持用户的语气。** 建议的后续问题以用户会发送的内容为框架（向助手提出请求或问题），而非"您更喜欢哪个……？"之类的反向偏好调查。
 
-- **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
+- **Exa 文档不再将 Exa 描述为默认搜索提供商。** 集成和环境变量相关页面现在将 Exa 描述为通过 `WEB_SEARCH_PROVIDER=exa` 启用的可选后端；默认搜索路径仍为 Jina。
 
-### 已更改
+- **侧边栏 Logo 恢复为真实链接。** 鼠标中键点击和 cmd/ctrl 点击可在新标签页中打开仪表板；左键点击仍执行页面导航，并保留短暂的弹跳动画。
 
-- **侧边栏将导航置于首位。** 模块导航现在位于对话列表上方，以紧凑的连续列表形式显示（无"构建/资源/运维"部分标签），导航项、新建聊天/搜索和对话行的间距更紧凑，而不是隐藏在侧边栏底部的停靠栏中。
+### 变更
 
-- **流式回复稳定渲染，不再闪烁。** 不断增长的答案现在逐块渲染：已完成的块保持稳定，不会在每一帧都重新渲染，半到达的格式（粗体、链接、数学公式）会等待完成或保持到流式传输完成。
+- **管理面板在新标签页中打开。** 从用户菜单选择管理面板时，当前工作区保持在后台，与该菜单中其他外部链接的行为保持一致。
 
-- **最终答案以流式方式实时写入。** 智能体现在会在完成信息收集时发出信号，并将答案作为实时流式转轮写入，因此长回复会逐令牌到达并包含完整细节，而不是在等待后重新播放。`REACT_FINISH_SIGNAL=false` 可恢复之前的行为。
+- **侧边栏将导航置于首位。** 模块导航位于对话列表上方，以紧凑的连续列表形式呈现（无"构建/资源/运营"分区标签），导航项、新建对话/搜索及对话行的间距更紧凑，不再收纳在侧边栏底部的停靠区。
 
-- **架构文档将图形工程映射到 FIM One。** [规划景观](/architecture/planning-landscape)解释了循环与图形工程、它与经典可视化工作流的区别、它如何映射到工作流/DAG/ReAct，以及每个引擎应该借鉴什么。它还说明了当前的事实：每个 DAG 步骤已经是一个完整的 ReAct 智能体（不是一次性的 LLM 调用）。ReAct 和 DAG 引擎页面链接到它。
+- **流式回复渲染稳定，不再闪烁。** 正在生成的回答现在逐块渲染：已完成的块保持稳定，不再在每一帧重新渲染；未完整到达的格式（加粗、链接、数学公式）会补全后再显示，或等待流式传输完成后再呈现。
 
-- **纯聊天始终提供后续建议。** 没有绑定智能体的对话在每个答案后获得建议的下一个问题；绑定智能体的聊天仍需要按智能体的"后续建议"切换（默认关闭）。问候或感谢等结束转轮可能不返回任何芯片。
+- **最终答案在生成时实时流式输出。** 智能体现在会在完成信息收集后发出信号，并以实时流式轮次的形式写出答案，长回复会逐token到达并包含完整细节，而不是等待后再回放。`REACT_FINISH_SIGNAL=false` 可恢复之前的行为。
 
-- **新发送的消息从屏幕顶部开始。** 记录保持当前转轮下方的空间刚好足以让其第一行到达顶部，因此问题保持在视图中，答案向下方的空间增长，而不是整个转轮紧贴底部边缘。一旦转轮超过一屏，空间就会消失。
+- **架构文档将图工程映射到 FIM One。** [规划全景](/architecture/planning-landscape) 解释了循环工程与图工程的区别、与经典可视化工作流的差异、如何映射到 Workflow / DAG / ReAct，以及各引擎可借鉴的内容。文档还说明了当前的事实：每个 DAG 步骤已经是完整的 ReAct 智能体（而非单次 LLM 调用）。ReAct 和 DAG 引擎页面均链接至此文档。
 
-- **推理块在转轮运行时保持折叠。** ReAct 和 DAG 输出中的推理现在默认显示单行预览，而不是在流式传输时展开，保持结果在视图中；单击任何块可读取完整跟踪。
+- **纯对话始终提供后续建议。** 未绑定智能体的对话在每次回答后会提供建议的后续问题；绑定智能体的对话仍需开启各智能体的"后续建议"开关（默认关闭）。问候或致谢等结束性话语可能不返回建议选项。
 
-- **导出的 PDF 和 Word 文件针对中文进行了正确排版。** PDF 导出现在嵌入真实的 CJK 字体而不是引用字体，修复了英文文本中的折叠间距和呈现为无关中文字符的项目符号，粗体现在可用。Word 导出声明了东亚字体，因此混合中文/英文粗体文本不再显示为半粗体，两种格式都使用五级大小比例，使回复内的标题从属于记录本身的结构。
+- **新发送的消息从屏幕顶部开始显示。** 对话记录在当前轮次下方保留恰好足够的空间，使其第一行到达顶部，问题始终保持可见，答案向下方空间延伸，而不是整个轮次贴在底部边缘。当轮次内容超出一屏后，该空间自动消失。
 
-- **智能体在长任务中保持计划。** 智能体现在会在无果地重复同一工具时被提醒改变方法，在没有计划的情况下工作时被推动编写计划，并且在没有显式验证通过的情况下不能再在计划项仍然开放时提交最终答案。
+- **推理块在轮次运行时保持折叠状态。** ReAct 和 DAG 输出中的推理现在默认显示单行预览，而不是在流式传输时展开，使结果保持可见；点击任意块可查看完整追踪。
 
-- **流式答案缓入而不是弹出。** 新到达的块在流式传输时短暂淡入，尊重读者的减少运动偏好。长表格还会突出显示光标下的行，列表项目符号位于文本后面而不是与其竞争。
+- **导出的 PDF 和 Word 文件针对中文进行了正确排版。** PDF 导出现在嵌入真实的 CJK 字体而非引用，修复了英文文本间距塌陷和项目符号渲染为无关汉字的问题，加粗现在也可正常显示。Word 导出声明了东亚字体，使中英文混排的加粗文本不再出现半加粗的情况；两种格式均采用五级字号体系，确保回复中的标题层级从属于对话记录自身的结构。
 
-- **块操作保持隐藏，直到你需要它们。** 答案、代码块、图表和表格上的复制和下载是仅图标形式，带有工具提示（下载始终最右），在悬停时显示，并通过键盘保持可达。
+- **智能体在长任务中保持执行计划。** 智能体现在会在重复无效使用同一工具时被提示更换方案，在无计划工作时被引导制定计划，并且在计划项目尚未完成时，若未经明确的验证步骤，将无法给出最终答案。
 
-- **侧边栏现在将聊天保持在一起。** 对话列表直接位于"新建聊天"和"搜索"下方，模块导航移到用户区域上方的紧凑着色停靠栏中，为列表提供更多空间，为侧边栏提供清晰的从上到下的层次结构。
+- **流式答案以淡入方式出现，而非突然弹出。** 新到达的块在流式传输时会短暂淡入，并遵循用户的减少动效偏好设置。长表格还会高亮光标所在行，列表项目符号位于文字后方，不与文字产生视觉竞争。
 
-- **推理默认折叠。** 实时运行和过去对话中的思考部分折叠为单行预览，单击时展开；推理在生成时仍然流式打开，然后在步骤完成时折叠。
+- **块操作按钮在需要时才显示。** 答案、代码块、图表和表格上的复制与下载按钮仅显示图标并附带提示（下载按钮始终在最右侧），悬停时显示，并支持键盘访问。
 
-- **列表页面缓入其卡片。** 智能体、连接器、知识库、技能、工作流、工具、对话、工件和市场在首次加载时错开其卡片，而不是一次全部出现。筛选和分页保持即时，因此在搜索框中键入永远不会重新播放入场。
+- **侧边栏现在将对话集中在一起。** 对话列表直接位于新建对话和搜索下方，模块导航移至用户区域上方的紧凑色调停靠区，为列表提供更多空间，使侧边栏呈现清晰的从上到下层级结构。
+
+- **推理默认折叠。** 实时运行和历史对话中的思考部分均折叠为单行预览，点击可展开；推理在生成过程中仍以展开状态流式传输，步骤完成后自动折叠。
+
+- **列表页面以动画方式加载卡片。** 智能体、连接器、知识库、技能、工作流、工具、对话、制品和市场在首次加载时以交错动画方式呈现卡片，而非一次性全部显示。筛选和翻页保持即时响应，在搜索框中输入时不会重播入场动画。
 
 ### 安全性
 

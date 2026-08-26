@@ -44,6 +44,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Admin billing and access-model settings read in the interface language again.** The billing posture, access-model and token-quota strings under Admin → Settings, and the matching subscription errors and account usage panel, showed English text or a raw key in Chinese, Japanese, Korean, German and French.
+
 - **A Feishu channel's callback URL can now pass Feishu's verification.** Feishu omits its signature headers on the one-time URL verification handshake, and the callback endpoint rejected anything unsigned, so saving the request address always failed with "Challenge code not returned" and the channel's card buttons never worked. An unsigned push is now authenticated by the other shared secrets instead: its encrypted envelope must open with the channel's Encrypt Key, and its token must match the Verification Token when one is configured. An unsigned, unencrypted body is still refused.
 
 - **A social login can no longer be captured by an account holding an unproven email address.** Linking a social login to an existing account now requires the address to have been verified on both sides, not just by the incoming provider. Signing in with a provider that never confirmed the address still creates an account, but that account is no longer something a later verified sign-in can be matched into.
@@ -61,6 +63,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
 
 ### Changed
+
+- **The admin panel opens in a new tab.** Choosing Admin Panel from the user menu leaves the current workspace open behind it, matching the other external links in that menu.
 
 - **The sidebar puts navigation first.** Module navigation sits above the conversation list as a compact continuous list (no Build / Resources / Operate section labels), with tighter spacing on nav items, New chat / Search, and conversation rows, instead of being tucked into a dock at the bottom of the sidebar.
 
