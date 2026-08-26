@@ -273,18 +273,29 @@ class FeishuChannel(BaseChannel):
         body: bytes,
         headers: dict[str, str],
     ) -> bool:
-        """Verify a Feishu callback signature.
+        """Authenticate a Feishu callback.
 
-        Feishu's Event Subscription v2 signs the payload with the
-        ``encrypt_key`` using the scheme::
+        Two proofs are accepted, tried in order:
 
-            signature = sha256(timestamp + nonce + encrypt_key + body)
+        1. **Header signature.**  When the Event Subscription v2 headers are
+           present, verify ``sha256(timestamp + nonce + encrypt_key + body)``
+           against ``X-Lark-Signature``.
 
-        If ``encrypt_key`` is not configured, verification **fails closed**
-        (returns ``False``): an unsigned callback endpoint would let anyone
-        who learns the channel id forge card-action approvals.  Channel
-        create/update requires the key for Feishu channels; this guard
-        covers legacy rows that predate that requirement.
+        2. **Encrypted envelope.**  Feishu does not send those headers on
+           every push.  The ``url_verification`` handshake in particular
+           arrives carrying nothing but ``Content-Type``, so requiring the
+           headers there makes the handshake impossible to pass and the
+           channel can never be activated.  Fall back to the other shared
+           secrets: the body must be an ``{"encrypt": ...}`` envelope that
+           decrypts under our ``encrypt_key``, and, when a
+           ``verification_token`` is configured, the token inside it must
+           match.
+
+        Both paths require possession of a shared secret, so the fallback is
+        no weaker than the signature. What stays refused is an *unsigned and
+        unencrypted* body: without ``encrypt_key``, or with plaintext and no
+        signature, anyone who learned the channel id could forge card-action
+        approvals.
 
         Header names are matched case-insensitively.
         """
@@ -297,7 +308,7 @@ class FeishuChannel(BaseChannel):
         nonce = lower_headers.get("x-lark-request-nonce")
         provided = lower_headers.get("x-lark-signature")
         if not timestamp or not nonce or not provided:
-            return False
+            return self._verify_encrypted_envelope(body)
 
         m = hashlib.sha256()
         m.update(timestamp.encode("utf-8"))
@@ -306,6 +317,41 @@ class FeishuChannel(BaseChannel):
         m.update(body)
         expected = m.hexdigest()
         return _constant_time_eq(expected, provided)
+
+    def _verify_encrypted_envelope(self, body: bytes) -> bool:
+        """Authenticate an unsigned push by decrypting its envelope.
+
+        Producing a payload that decrypts cleanly under ``encrypt_key``
+        already proves the sender holds that secret, which is what stands in
+        for the absent header signature.  A configured
+        ``verification_token`` is then checked as a second factor; Feishu
+        carries it at the top level on legacy events and under ``header`` on
+        schema 2.0 events.
+        """
+        try:
+            parsed = json.loads(body.decode("utf-8")) if body else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return False
+        if not isinstance(parsed, dict):
+            return False
+        if not isinstance(parsed.get("encrypt"), str):
+            return False
+
+        decrypted = self.decrypt_callback(parsed)
+        if not decrypted:
+            return False
+
+        expected_token = str(
+            self.config.get("verification_token") or ""
+        ).strip()
+        if not expected_token:
+            return True
+
+        header = decrypted.get("header")
+        token = decrypted.get("token") or (
+            header.get("token") if isinstance(header, dict) else None
+        )
+        return _constant_time_eq(str(token or ""), expected_token)
 
     def decrypt_callback(self, body: dict[str, Any]) -> dict[str, Any]:
         """Decrypt Feishu's encrypted event envelope.

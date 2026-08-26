@@ -372,12 +372,13 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 
 ### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-**Ziel**: Die zwei verkäuflichsten Lieferflächen, beide auf demselben Kernel und der gleichen Assembly-Schicht.
+**Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
 
-- [ ] JS bubble / iframe embed — ein Snippet in ein Host-System; anonyme Besucher-Identität + Abrechnungszuordnung vor dem Build entschieden
-- [ ] Feishu inbound @mention — Agenten leben in der Gruppe: Daten abfragen, Datei-Genehmigungen, Ablaufverfolgung
-- [ ] Outbound-Muster: Fehleralerts, Budget-Warnungen, geplante Digests, Eskalation, Audit-Belege
-- [ ] WeCom / DingTalk Kanäle nach Feishu-Vorbild
+- [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
+- [x] Feishu callback URL passes verification: unsigned pushes authenticate by Encrypt Key envelope + Verification Token
+- [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
+- [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
+- [ ] WeCom / DingTalk channels following Feishu
 
 ### Parked — signal-gated
 

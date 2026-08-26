@@ -44,19 +44,21 @@ description: "FIM Oneの全ての注目すべき変更。"
 
 ### Fixed
 
-- **ソーシャルログインは、未検証のメールアドレスを持つアカウントによってキャプチャされなくなりました。** ソーシャルログインを既存のアカウントにリンクするには、アドレスが両側で検証されている必要があります。受信プロバイダーによってのみ検証されるのではなく。プロバイダーがアドレスを確認しなかったプロバイダーでサインインすると、アカウントが作成されますが、そのアカウントは後で検証されたサインインと一致させることができなくなります。
+- **A Feishu channel's callback URL can now pass Feishu's verification.** Feishu omits its signature headers on the one-time URL verification handshake, and the callback endpoint rejected anything unsigned, so saving the request address always failed with "Challenge code not returned" and the channel's card buttons never worked. An unsigned push is now authenticated by the other shared secrets instead: its encrypted envelope must open with the channel's Encrypt Key, and its token must match the Verification Token when one is configured. An unsigned, unencrypted body is still refused.
 
-- **出力制限によってカットオフされた返信は、ツール呼び出しの半分を実行しなくなりました。** モデルがメッセージの途中でトークン制限に達した場合、その返信内のすべてのツール呼び出しが破棄され、モデルはより小さいサイズで再発行するよう求められます。以前は、引数がたまたま完全だった呼び出しが実行されていたため、モデルが単位として計画したバッチが部分的にのみ実行される可能性がありますが、トランスクリプトはすべてが実行されたかのように読まれていました。
+- **A social login can no longer be captured by an account holding an unproven email address.** Linking a social login to an existing account now requires the address to have been verified on both sides, not just by the incoming provider. Signing in with a provider that never confirmed the address still creates an account, but that account is no longer something a later verified sign-in can be matched into.
 
-- **添付ファイルがまだアップロード中に送信しても、ドロップされなくなりました。** 送信はアップロードが完了するのを待ち、ファイルを含めるようになりました。送信ボタンは待機中にスピナーを表示します。以前は、メッセージは画像またはドキュメントなしで送信され、警告もありませんでした。
+- **A reply cut off by the output limit no longer runs half its tool calls.** When the model hits the token limit mid-message, every tool call in that reply is now discarded and the model is asked to re-issue them smaller. Previously calls whose arguments happened to be complete were executed, so a batch the model planned as a unit could run only partway while the transcript read as if all of it had.
 
-- **送信に失敗したメッセージは入力ボックスに戻されます。** 会話の作成に失敗した場合（セッション期限切れ、ネットワークダウン）、入力されたテキストはエラートーストとともにコンポーザーに戻り、消えることはありません。
+- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
 
-- **フォローアップ提案チップはユーザーの声を保ちます。** 提案された次の質問は、ユーザーが送信するもの（アシスタントへのリクエストまたは質問）として構成されます。「どちらを好みますか…？」のような逆の選好投票ではなく。
+- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
 
-- **Exa ドキュメントは、Exa をデフォルト検索プロバイダーと呼ばなくなりました。** 統合と環境変数ページでは、Exa を `WEB_SEARCH_PROVIDER=exa` で有効にするオプションのバックエンドとして説明するようになりました。デフォルト検索パスは Jina のままです。
+- **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
 
-- **サイドバーロゴは再び実際のリンクになりました。** 中クリックと cmd/ctrl クリックで新しいタブでダッシュボードが開きます。左クリックはまだナビゲートし、短いバウンスアニメーションを保ちます。
+- **Exa docs no longer call Exa the default search provider.** Integration and environment-variable pages now describe Exa as an optional backend you enable with `WEB_SEARCH_PROVIDER=exa`; the default search path stays Jina.
+
+- **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
 
 ### Changed
 

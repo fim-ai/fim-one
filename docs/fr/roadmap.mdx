@@ -372,12 +372,13 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 ### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-**Objectif** : Les deux surfaces de livraison les plus commercialisables, toutes deux sur le même noyau et couche d'assemblage.
+**Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
 
-- [ ] JS bubble / iframe embed — un snippet unique dans un système hôte ; identité du visiteur anonyme + attribution de facturation décidées avant la construction
-- [ ] Feishu inbound @mention — les agents vivent dans le groupe : interroger les données, approuver les fichiers, suivre les flux
-- [ ] Modèles sortants : alertes d'échec, avertissements de budget, digests programmés, escalade, reçus d'audit
-- [ ] Canaux WeCom / DingTalk suivant Feishu
+- [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
+- [x] Feishu callback URL passes verification: unsigned pushes authenticate by Encrypt Key envelope + Verification Token
+- [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
+- [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
+- [ ] WeCom / DingTalk channels following Feishu
 
 ### Parked — signal-gated
 

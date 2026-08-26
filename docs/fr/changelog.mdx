@@ -42,21 +42,23 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - **Les réponses de chat acceptent les délimiteurs de mathématiques LaTeX.** Les formules écrites avec `\[...\]` ou `\(...\)` s'affichent sous forme de mathématiques, correspondant à la syntaxe de signe dollar existante ; les délimiteurs à l'intérieur des clôtures de code restent du texte.
 
-### Corrections
+### Fixed
 
-- **Une connexion sociale ne peut plus être capturée par un compte avec une adresse e-mail non vérifiée.** La liaison d'une connexion sociale à un compte existant nécessite désormais que l'adresse ait été vérifiée des deux côtés, pas seulement par le fournisseur entrant. Se connecter avec un fournisseur qui n'a jamais confirmé l'adresse crée toujours un compte, mais ce compte n'est plus quelque chose dans lequel une connexion vérifiée ultérieure peut être associée.
+- **A Feishu channel's callback URL can now pass Feishu's verification.** Feishu omits its signature headers on the one-time URL verification handshake, and the callback endpoint rejected anything unsigned, so saving the request address always failed with "Challenge code not returned" and the channel's card buttons never worked. An unsigned push is now authenticated by the other shared secrets instead: its encrypted envelope must open with the channel's Encrypt Key, and its token must match the Verification Token when one is configured. An unsigned, unencrypted body is still refused.
 
-- **Une réponse coupée par la limite de sortie n'exécute plus la moitié de ses appels d'outils.** Quand le modèle atteint la limite de tokens au milieu d'un message, chaque appel d'outil dans cette réponse est maintenant rejeté et le modèle est invité à les réémettre plus petits. Auparavant, les appels dont les arguments se trouvaient être complets étaient exécutés, donc un lot que le modèle avait planifié comme une unité ne pouvait s'exécuter que partiellement tandis que la transcription se lisait comme si tout cela avait eu lieu.
+- **A social login can no longer be captured by an account holding an unproven email address.** Linking a social login to an existing account now requires the address to have been verified on both sides, not just by the incoming provider. Signing in with a provider that never confirmed the address still creates an account, but that account is no longer something a later verified sign-in can be matched into.
 
-- **L'envoi pendant qu'une pièce jointe est encore en cours de téléchargement ne la supprime plus.** L'envoi attend maintenant que le téléchargement se termine et inclut le fichier, le bouton d'envoi affichant un spinner pendant qu'il attend ; auparavant, le message partait sans l'image ou le document et sans aucun avertissement.
+- **A reply cut off by the output limit no longer runs half its tool calls.** When the model hits the token limit mid-message, every tool call in that reply is now discarded and the model is asked to re-issue them smaller. Previously calls whose arguments happened to be complete were executed, so a batch the model planned as a unit could run only partway while the transcript read as if all of it had.
 
-- **Un message qui ne peut pas être envoyé est remis dans la zone de saisie.** Quand la création de la conversation échoue (session expirée, réseau indisponible), le texte saisi revient au compositeur avec un toast d'erreur au lieu de disparaître.
+- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
 
-- **Les puces de suggestion de suivi restent dans la voix de l'utilisateur.** Les questions suivantes suggérées sont formulées comme quelque chose que l'utilisateur enverrait (demandes ou questions à l'assistant), pas des sondages de préférence inversés comme « lequel préférez-vous… ? ».
+- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
 
-- **Les documents Exa n'appellent plus Exa le fournisseur de recherche par défaut.** Les pages d'intégration et de variables d'environnement décrivent désormais Exa comme un backend optionnel que vous activez avec `WEB_SEARCH_PROVIDER=exa` ; le chemin de recherche par défaut reste Jina.
+- **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
 
-- **Le logo de la barre latérale est à nouveau un vrai lien.** Le clic du milieu et le clic cmd/ctrl ouvrent le tableau de bord dans un nouvel onglet ; le clic gauche navigue toujours et conserve la courte animation de rebond.
+- **Exa docs no longer call Exa the default search provider.** Integration and environment-variable pages now describe Exa as an optional backend you enable with `WEB_SEARCH_PROVIDER=exa`; the default search path stays Jina.
+
+- **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
 
 ### Modifications
 

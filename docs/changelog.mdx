@@ -44,6 +44,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **A Feishu channel's callback URL can now pass Feishu's verification.** Feishu omits its signature headers on the one-time URL verification handshake, and the callback endpoint rejected anything unsigned, so saving the request address always failed with "Challenge code not returned" and the channel's card buttons never worked. An unsigned push is now authenticated by the other shared secrets instead: its encrypted envelope must open with the channel's Encrypt Key, and its token must match the Verification Token when one is configured. An unsigned, unencrypted body is still refused.
+
 - **A social login can no longer be captured by an account holding an unproven email address.** Linking a social login to an existing account now requires the address to have been verified on both sides, not just by the incoming provider. Signing in with a provider that never confirmed the address still creates an account, but that account is no longer something a later verified sign-in can be matched into.
 
 - **A reply cut off by the output limit no longer runs half its tool calls.** When the model hits the token limit mid-message, every tool call in that reply is now discarded and the model is asked to re-issue them smaller. Previously calls whose arguments happened to be complete were executed, so a batch the model planned as a unit could run only partway while the transcript read as if all of it had.

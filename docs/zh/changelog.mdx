@@ -42,21 +42,23 @@ description: "FIM One的所有重要更新。"
 
 - **聊天回复接受 LaTeX 数学分隔符。** 使用 `\[...\]` 或 `\(...\)` 编写的公式呈现为数学，与现有的美元符号语法匹配；代码围栏内的分隔符保持为文本。
 
-### 已修复
+### Fixed
 
-- **社交登录不再能被持有未验证电子邮件地址的账户捕获。** 将社交登录关联到现有账户现在要求该地址已在双方验证，而不仅仅由传入的提供商验证。使用从未确认该地址的提供商登录仍会创建账户，但该账户不再是稍后经过验证的登录可以匹配到的对象。
+- **A Feishu channel's callback URL can now pass Feishu's verification.** Feishu omits its signature headers on the one-time URL verification handshake, and the callback endpoint rejected anything unsigned, so saving the request address always failed with "Challenge code not returned" and the channel's card buttons never worked. An unsigned push is now authenticated by the other shared secrets instead: its encrypted envelope must open with the channel's Encrypt Key, and its token must match the Verification Token when one is configured. An unsigned, unencrypted body is still refused.
 
-- **被输出限制截断的回复不再运行一半的工具调用。** 当模型在消息中途达到令牌限制时，该回复中的每个工具调用现在都会被丢弃，模型被要求以更小的方式重新发出它们。以前，参数恰好完整的调用会被执行，因此模型计划作为一个整体的批处理可能只会部分运行，而记录显示所有调用都已执行。
+- **A social login can no longer be captured by an account holding an unproven email address.** Linking a social login to an existing account now requires the address to have been verified on both sides, not just by the incoming provider. Signing in with a provider that never confirmed the address still creates an account, but that account is no longer something a later verified sign-in can be matched into.
 
-- **在附件仍在上传时发送不再会丢弃它。** 发送现在会等待上传完成并包含该文件，发送按钮在等待时显示加载动画；以前消息会在没有图像或文档的情况下发出，且没有任何警告。
+- **A reply cut off by the output limit no longer runs half its tool calls.** When the model hits the token limit mid-message, every tool call in that reply is now discarded and the model is asked to re-issue them smaller. Previously calls whose arguments happened to be complete were executed, so a batch the model planned as a unit could run only partway while the transcript read as if all of it had.
 
-- **发送失败的消息会放回输入框。** 当创建对话失败时（会话过期、网络中断），输入的文本会返回到编辑器，并显示错误提示，而不是消失。
+- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
 
-- **后续建议芯片保持用户的语气。** 建议的后续问题被框架化为用户会发送的内容（对助手的请求或问题），而不是反向偏好投票，如"你更喜欢哪个……？"。
+- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
 
-- **Exa 文档不再将 Exa 称为默认搜索提供商。** 集成和环境变量页面现在将 Exa 描述为可选后端，你可以使用 `WEB_SEARCH_PROVIDER=exa` 启用它；默认搜索路径仍为 Jina。
+- **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
 
-- **侧边栏徽标再次成为真实链接。** 中键单击和 cmd/ctrl 单击在新标签页中打开仪表板；左键单击仍然导航并保持简短的反弹动画。
+- **Exa docs no longer call Exa the default search provider.** Integration and environment-variable pages now describe Exa as an optional backend you enable with `WEB_SEARCH_PROVIDER=exa`; the default search path stays Jina.
+
+- **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
 
 ### 已更改
 

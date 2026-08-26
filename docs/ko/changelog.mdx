@@ -42,21 +42,23 @@ description: "FIM One의 모든 주목할 만한 변경 사항입니다."
 
 - **채팅 답변은 LaTeX 수학 구분 기호를 허용합니다.** `\[...\]` 또는 `\(...\)`로 작성된 공식은 수학으로 렌더링되며, 기존 달러 기호 구문과 일치합니다. 코드 펜스 내의 구분 기호는 텍스트로 유지됩니다.
 
-### 수정됨
+### Fixed
 
-- **검증되지 않은 이메일 주소를 가진 계정이 소셜 로그인을 더 이상 탈취할 수 없습니다.** 소셜 로그인을 기존 계정에 연결하려면 이제 양쪽에서 주소가 검증되어야 하며, 들어오는 제공자만으로는 부족합니다. 주소를 확인하지 않은 제공자로 로그인하면 여전히 계정이 생성되지만, 나중에 검증된 로그인이 일치할 수 있는 대상이 더 이상 아닙니다.
+- **A Feishu channel's callback URL can now pass Feishu's verification.** Feishu omits its signature headers on the one-time URL verification handshake, and the callback endpoint rejected anything unsigned, so saving the request address always failed with "Challenge code not returned" and the channel's card buttons never worked. An unsigned push is now authenticated by the other shared secrets instead: its encrypted envelope must open with the channel's Encrypt Key, and its token must match the Verification Token when one is configured. An unsigned, unencrypted body is still refused.
 
-- **출력 제한으로 잘린 회신이 더 이상 도구 호출의 절반만 실행되지 않습니다.** 모델이 메시지 중간에 토큰 제한에 도달하면, 해당 회신의 모든 도구 호출이 이제 폐기되고 모델은 더 작은 크기로 다시 발급하도록 요청받습니다. 이전에는 인수가 완전한 호출이 실행되었으므로, 모델이 단위로 계획한 배치가 부분적으로만 실행될 수 있었고 기록에는 모두 실행된 것처럼 표시되었습니다.
+- **A social login can no longer be captured by an account holding an unproven email address.** Linking a social login to an existing account now requires the address to have been verified on both sides, not just by the incoming provider. Signing in with a provider that never confirmed the address still creates an account, but that account is no longer something a later verified sign-in can be matched into.
 
-- **첨부 파일이 여전히 업로드 중일 때 전송해도 더 이상 삭제되지 않습니다.** 이제 전송은 업로드가 완료될 때까지 기다리고 파일을 포함하며, 전송 버튼은 대기 중에 스피너를 표시합니다. 이전에는 메시지가 이미지나 문서 없이 전송되었고 경고도 없었습니다.
+- **A reply cut off by the output limit no longer runs half its tool calls.** When the model hits the token limit mid-message, every tool call in that reply is now discarded and the model is asked to re-issue them smaller. Previously calls whose arguments happened to be complete were executed, so a batch the model planned as a unit could run only partway while the transcript read as if all of it had.
 
-- **전송에 실패한 메시지가 입력 상자에 다시 표시됩니다.** 대화 생성이 실패하면(세션 만료, 네트워크 다운), 입력된 텍스트가 오류 토스트와 함께 작성기로 돌아가고 사라지지 않습니다.
+- **Sending while an attachment is still uploading no longer drops it.** The send now waits for the upload to finish and includes the file, with the send button showing a spinner while it waits; previously the message went out without the image or document and without any warning.
 
-- **후속 제안 칩이 사용자의 음성으로 유지됩니다.** 제안된 다음 질문은 사용자가 보낼 수 있는 것(어시스턴트에 대한 요청 또는 질문)으로 표현되며, "어느 것을 선호하시나요…?"와 같은 역방향 선호도 투표가 아닙니다.
+- **A message that fails to send is put back in the input box.** When creating the conversation fails (expired session, network down), the typed text returns to the composer with an error toast instead of disappearing.
 
-- **Exa 문서가 더 이상 Exa를 기본 검색 제공자로 표시하지 않습니다.** 통합 및 환경 변수 페이지는 이제 Exa를 `WEB_SEARCH_PROVIDER=exa`로 활성화하는 선택적 백엔드로 설명하며, 기본 검색 경로는 Jina로 유지됩니다.
+- **Follow-up suggestion chips stay in the user's voice.** Suggested next questions are framed as something the user would send (requests or questions to the assistant), not reverse preference polls like "which do you prefer…?".
 
-- **사이드바 로고가 다시 실제 링크입니다.** 중간 클릭 및 cmd/ctrl 클릭은 새 탭에서 대시보드를 열고, 왼쪽 클릭은 여전히 탐색하고 짧은 바운스 애니메이션을 유지합니다.
+- **Exa docs no longer call Exa the default search provider.** Integration and environment-variable pages now describe Exa as an optional backend you enable with `WEB_SEARCH_PROVIDER=exa`; the default search path stays Jina.
+
+- **Sidebar logo is a real link again.** Middle-click and cmd/ctrl-click open the dashboard in a new tab; left-click still navigates and keeps the short bounce animation.
 
 ### 변경사항
 

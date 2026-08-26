@@ -433,6 +433,90 @@ class TestVerifySignature:
         assert await channel.verify_signature(b"x", {}) is False
 
 
+class TestVerifyUnsignedEnvelope:
+    """Feishu omits the signature headers on some pushes, notably the
+    ``url_verification`` handshake.  Those fall back to proving possession
+    of ``encrypt_key`` (and ``verification_token`` when configured)."""
+
+    @staticmethod
+    def _envelope(encrypt_key: str, payload: dict[str, Any]) -> bytes:
+        return json.dumps(
+            {"encrypt": _feishu_encrypt(encrypt_key, payload)}
+        ).encode("utf-8")
+
+    @pytest.mark.asyncio
+    async def test_envelope_without_token_configured_accepted(self) -> None:
+        channel = FeishuChannel({"app_id": "x", "encrypt_key": "secret"})
+        body = self._envelope(
+            "secret", {"type": "url_verification", "challenge": "abc"}
+        )
+        assert await channel.verify_signature(body, {}) is True
+
+    @pytest.mark.asyncio
+    async def test_envelope_with_matching_token_accepted(self) -> None:
+        channel = FeishuChannel(
+            {
+                "app_id": "x",
+                "encrypt_key": "secret",
+                "verification_token": "tok-123",
+            }
+        )
+        body = self._envelope(
+            "secret",
+            {
+                "type": "url_verification",
+                "challenge": "abc",
+                "token": "tok-123",
+            },
+        )
+        assert await channel.verify_signature(body, {}) is True
+
+    @pytest.mark.asyncio
+    async def test_schema_v2_header_token_accepted(self) -> None:
+        channel = FeishuChannel(
+            {
+                "app_id": "x",
+                "encrypt_key": "secret",
+                "verification_token": "tok-123",
+            }
+        )
+        body = self._envelope(
+            "secret", {"schema": "2.0", "header": {"token": "tok-123"}}
+        )
+        assert await channel.verify_signature(body, {}) is True
+
+    @pytest.mark.asyncio
+    async def test_envelope_with_wrong_token_rejected(self) -> None:
+        channel = FeishuChannel(
+            {
+                "app_id": "x",
+                "encrypt_key": "secret",
+                "verification_token": "tok-123",
+            }
+        )
+        body = self._envelope("secret", {"token": "not-the-token"})
+        assert await channel.verify_signature(body, {}) is False
+
+    @pytest.mark.asyncio
+    async def test_envelope_encrypted_with_wrong_key_rejected(self) -> None:
+        channel = FeishuChannel({"app_id": "x", "encrypt_key": "secret"})
+        body = self._envelope("other-key", {"challenge": "abc"})
+        assert await channel.verify_signature(body, {}) is False
+
+    @pytest.mark.asyncio
+    async def test_unsigned_plaintext_still_rejected(self) -> None:
+        # The forged-approval guard: no signature and no envelope means no
+        # proof of the shared secret, whatever the body claims to be.
+        channel = FeishuChannel({"app_id": "x", "encrypt_key": "secret"})
+        body = json.dumps(
+            {
+                "action": {"value": {"decision": "approve"}},
+                "open_id": "ou_attacker",
+            }
+        ).encode("utf-8")
+        assert await channel.verify_signature(body, {}) is False
+
+
 # ---------------------------------------------------------------------------
 # decrypt_callback
 # ---------------------------------------------------------------------------

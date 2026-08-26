@@ -372,12 +372,13 @@ flowchart LR
 
 ### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-**Goal**: 最も販売可能な2つの配信サーフェス、同じカーネルとアセンブリレイヤー上で実現。
+**Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
 
-- [ ] JS bubble / iframe embed — ホストシステムへの単一スニペット；匿名訪問者のアイデンティティと課金属性はビルド前に決定
-- [ ] Feishu inbound @mention — エージェントはグループ内に存在：データクエリ、ファイル承認、フロー追跡
-- [ ] アウトバウンドパターン：障害アラート、予算警告、スケジュール済みダイジェスト、エスカレーション、監査レシート
-- [ ] Feishuに続くWeCom / DingTalkチャネル
+- [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
+- [x] Feishu callback URL passes verification: unsigned pushes authenticate by Encrypt Key envelope + Verification Token
+- [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
+- [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
+- [ ] WeCom / DingTalk channels following Feishu
 
 ### 保留中 — 信号门控
 
