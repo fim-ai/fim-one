@@ -303,6 +303,24 @@ flowchart LR
 - [x] 리소스 바인딩은 가시성에서 통합됨 — 구독된 커넥터/KB/MCP 서버는 에이전트에 바인딩 가능; 워크플로우 커넥터 단계는 실행자의 접근을 적용함
 - [x] 대화 워크스페이스는 채팅에 연결됨 — `workspace://` 과도한 도구 결과의 오프로드, 예산 절단 구조, 사전 압축 트랜스크립트 스냅샷
 
+### v0.8.10 (2026-08-28) — Streamed Answers + Rich Rendering + GPT-5 Responses + Access Model
+- [x] Final answers stream natively via a `finish` handoff; streamed markdown renders per block, stable and flicker-free
+- [x] Answers render Mermaid diagrams, SVG figures and card-style comparison tables, with copy/export and file downloads on answers, code blocks and tables
+- [x] Rendered markdown sanitized (raw-HTML injection closed); conversation exports typeset for CJK (PDF embeds a real font, DOCX declares an East Asian font)
+- [x] Reasoning folds to one-line previews; running agent steps show generated one-line titles kept in conversation history
+- [x] Sidebar reorganized around the chat cluster; `/clear` command; admin model lists get checkbox multi-select with Shift-click ranges and bulk delete
+- [x] A newly sent message rises to the top of the transcript; list pages stagger cards in; all animation honours reduce-motion
+- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the turn pauses on an in-chat card and resumes with the answers
+- [x] Composer keeps unsent drafts per conversation, warns when an image would reach a text-only model, and waits for in-flight uploads on send
+- [x] GPT-5.x goes Responses-API-first with encrypted reasoning replay across tool rounds (`FIM_GPT5_RESPONSES_MODE` to roll back)
+- [x] An output-limit cut discards the whole tool-call batch and asks for a smaller retry
+- [x] Typed DAG steps — pure transform/synthesis steps run as one direct LLM call; ask-first goals finish in one round
+- [x] Context budgets sit 8% below the model hard limit; plan-board discipline (repetition/no-plan reminders, verification before finish)
+- [x] Approval gates hold across delegation — `call_agent` and workflow AGENT nodes run the agent's own hooks instead of none
+- [x] OAuth auto-link requires a verified address on both sides; refresh-token rotation carries a unique `jti` so the old token dies immediately
+- [x] Feishu callback URL passes verification — unsigned pushes authenticate by Encrypt Key envelope + Verification Token
+- [x] Instance access model for billing — no-subscriptions / included+paid / paid-only postures, included default plan undeletable
+
 ## 계획된 버전
 
 2026-07-08 재계획: FIM One은 에이전트 런타임입니다 — 하나의 커널(ReAct 엔진, 자격증명, 승인 게이트, 감사, 멀티테넌트 조직)이 여러 전달 표면을 지원합니다: Web UI, API, JS embed, MCP output. 모든 표면은 인증, 자격증명, 승인 및 미터링을 위해 동일한 어셈블리 계층을 재사용합니다: 더 많은 프론트엔드, 절대 더 많은 로직은 아닙니다. 단기 방향은 데이터-Q&A(ChatBI) 슬라이스로의 수렴이며, 플랫폼이 아닌 시나리오를 판매합니다. {/* dev: dev/replan-2026-07.md */}
@@ -311,57 +329,21 @@ flowchart LR
 
 **목표**: 후처리 자산이 완전한 데이터 Q&A 제품으로 조립됨 — 읽기 전용 DB 연결기 + 펜스 + 승인 게이트 + IM 진입점. Tier-1 펜스는 보안 부채를 제품 기능으로 전환함.
 
-#### DB Connector Fences — Tier 1, 세 개의 PR {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII 열 마스킹 (`ConnectorScopeGuard` PreToolUse hook)
-- [ ] 스키마 가시성 — 테이블/열 허용-거부 + 동사 차단 (읽기 전용 적용)
-- [ ] Fence 감사 가능성 — `ConnectorCallLog`의 `caller_user_id`, `effective_credential_source`, `scope_rules_applied`
-- [ ] 훅별 구성 전달 (`{"name", "config"}` 스키마) — ScopeGuard 규칙의 전달자 {/* dev: dev/hook-system.md */}
-- [x] 위임 전체에서 승인 게이트 유지 — `call_agent` 및 워크플로우 `AGENT` 노드는 에이전트의 자체 훅을 실행하며 아무것도 실행하지 않음
+- [ ] PII column redaction (`ConnectorScopeGuard` PreToolUse hook)
+- [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
+- [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
+- [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
 
-#### 인증 및 신원
+#### Context Robustness
 
-- [x] OAuth 자동 연결은 양쪽 모두에서 확인된 주소가 필요하므로, 확인되지 않은 제공자 이메일로 만든 계정은 바인딩 대상이 될 수 없습니다
-
-#### 답변 렌더링
-
-- [x] 최종 답변이 기본적으로 스트리밍됨 — 루프가 `finish` 신호를 통해 전달하고 답변이 라이브 토큰 스트리밍 턴으로 작성됨
-- [x] 스트리밍된 마크다운이 블록별로 렌더링됨 — 완료된 블록은 안정적으로 유지되고 반쯤 도착한 인라인 구문이 더 이상 깜빡이지 않음
-- [x] 답변이 Mermaid 다이어그램, SVG 도형 및 카드 스타일 비교 테이블을 렌더링하며, 답변, 코드 블록 및 테이블에서 복사/내보내기 가능
-- [x] 렌더링된 마크다운이 새니타이제이션됨 — 모델 출력 및 업로드된 파일의 원본 HTML 주입을 차단
-- [x] 다이어그램 및 코드 블록을 파일로 다운로드 가능하며, 추론은 라이브 및 과거 대화에서 기본적으로 한 줄 미리보기로 접힘
-- [x] 대화 내보내기가 CJK에 맞게 조판됨 — PDF는 실제 글꼴을 포함하고(올바른 간격, 글머리 기호 및 굵게), DOCX는 동아시아 글꼴을 선언하며, 둘 다 동일한 크기 스케일로 표시됨
-
-#### Workbench UX
-
-- [x] 사이드바가 채팅 클러스터 중심으로 재구성됨 — 새 채팅/검색 바로 아래에 대화가 표시되고, 모듈 네비게이션은 컴팩트한 하단 도크에 위치
-- [x] `/clear` 슬래시 명령어로 입력 상자에서 새로운 대화 시작
-- [x] 관리자 모델 목록이 Shift-클릭 범위와 한 번의 요청으로 일괄 삭제를 지원하는 체크박스 다중 선택 지원
-- [x] 실행 중인 에이전트 단계가 생성된 한 줄 제목을 단일 접힌 헤더에 표시하고, 대화 기록에 유지됨
-- [x] 새로 전송된 메시지가 대화 기록의 맨 위로 올라가고, 답변이 아래 공간으로 확장됨
-- [x] 목록 페이지가 첫 로드 시 카드를 엇갈리게 표시하고, 모든 애니메이션이 시스템 reduce-motion 설정을 준수
-- [x] 에이전트가 실행 중에 명확한 객관식 질문을 제시함 (ask_user_question) — ReAct 턴이 채팅 내 카드에서 일시 중지되고 답변과 함께 재개됨
-- [x] 작성기가 텍스트 전용 모델에 도달할 이미지가 첨부되면 경고하며, 턴이 실제로 사용할 모델에서 해결됨
-- [x] 전송되지 않은 작성기 텍스트, 클립 및 첨부 파일이 대화별로 유지되고(새 채팅의 경우도 포함), 새로고침, 대화 전환 및 만료된 세션을 거쳐 유지됨
-
-#### 컨텍스트 견고성
-
-- [x] 컨텍스트 예산이 모델 하드 제한보다 8% 낮게 설정되며, 빠른 모델의 윈도우가 일반 예산을 수용할 수 없을 때 시작 시 경고 표시
-- [x] 계획 보드 규율: 반복 및 계획 없음 알림, 그리고 열린 계획 항목으로 마무리하면 이제 검증 패스를 강제 실행
-- [ ] 청크 압축 입력 및 메인 채팅 경로의 모델 인식 예산, 따라서 모든 모델 조합이 윈도우 내에 유지됨
-
-#### DAG 엔진
-
-- [x] 타입이 지정된 DAG 단계 — 플래너가 순수 변환/합성 단계를 `llm_direct`로 표시(단일 호출, 도구 루프 없음); 결과는 타입이 지정된 실행 메타데이터를 포함
-- [x] Ask-first 목표는 한 라운드에 완료 — 플래너가 설문지를 단계로 전달하고, 분석기가 이를 수락하며, 자동 라우팅이 Standard를 선호
+- [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
 
 #### Model Layer
 
-- [x] GPT-5.x는 Responses-API-first로 이동 (도구 + 추론 함께; 404는 chat completions으로 폴백); 다른 계열은 설계상 completions 유지
-- [x] GPT-5.x는 도구 라운드 전체에서 추론 유지 — 네이티브 `/v1/responses`와 암호화된 추론 재생, `FIM_GPT5_RESPONSES_MODE`로 롤백 가능
-- [x] 출력 제한 초과 시 전체 도구 호출 배치를 버리고 더 작은 재시도를 요청하므로, 응답이 계획한 일부만 실행되지 않음
-- [ ] 다음 LiteLLM 업그레이드에서 Responses-bridge 스트리밍 사용량 확인 (업스트림 잘못된 매핑 의심)
-- [ ] 네이티브 GPT-5.x 경로가 전체 릴리스를 실행한 후 LiteLLM chat→responses 브리지 폐기
+- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
+- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
 
 #### 시나리오 온보딩
 
@@ -374,7 +356,6 @@ flowchart LR
 **Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
 
 - [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
-- [x] Feishu callback URL passes verification: unsigned pushes authenticate by Encrypt Key envelope + Verification Token
 - [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
 - [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
 - [ ] WeCom / DingTalk channels following Feishu

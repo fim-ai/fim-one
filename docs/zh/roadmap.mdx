@@ -304,6 +304,24 @@ flowchart LR
 - [x] 资源绑定在可见性上统一——已订阅连接器/知识库/MCP服务器可绑定至智能体；工作流连接器步骤强制运行者的访问权限
 - [x] 对话工作区接入聊天——`workspace://`超大工具结果卸载、预算截断救援、预压缩记录快照
 
+### v0.8.10 (2026-08-28) — Streamed Answers + Rich Rendering + GPT-5 Responses + Access Model
+- [x] Final answers stream natively via a `finish` handoff; streamed markdown renders per block, stable and flicker-free
+- [x] Answers render Mermaid diagrams, SVG figures and card-style comparison tables, with copy/export and file downloads on answers, code blocks and tables
+- [x] Rendered markdown sanitized (raw-HTML injection closed); conversation exports typeset for CJK (PDF embeds a real font, DOCX declares an East Asian font)
+- [x] Reasoning folds to one-line previews; running agent steps show generated one-line titles kept in conversation history
+- [x] Sidebar reorganized around the chat cluster; `/clear` command; admin model lists get checkbox multi-select with Shift-click ranges and bulk delete
+- [x] A newly sent message rises to the top of the transcript; list pages stagger cards in; all animation honours reduce-motion
+- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the turn pauses on an in-chat card and resumes with the answers
+- [x] Composer keeps unsent drafts per conversation, warns when an image would reach a text-only model, and waits for in-flight uploads on send
+- [x] GPT-5.x goes Responses-API-first with encrypted reasoning replay across tool rounds (`FIM_GPT5_RESPONSES_MODE` to roll back)
+- [x] An output-limit cut discards the whole tool-call batch and asks for a smaller retry
+- [x] Typed DAG steps — pure transform/synthesis steps run as one direct LLM call; ask-first goals finish in one round
+- [x] Context budgets sit 8% below the model hard limit; plan-board discipline (repetition/no-plan reminders, verification before finish)
+- [x] Approval gates hold across delegation — `call_agent` and workflow AGENT nodes run the agent's own hooks instead of none
+- [x] OAuth auto-link requires a verified address on both sides; refresh-token rotation carries a unique `jti` so the old token dies immediately
+- [x] Feishu callback URL passes verification — unsigned pushes authenticate by Encrypt Key envelope + Verification Token
+- [x] Instance access model for billing — no-subscriptions / included+paid / paid-only postures, included default plan undeletable
+
 ## 计划版本
 
 重新规划于2026-07-08：FIM One是一个智能体运行时——一个内核（ReAct引擎、凭证、确认闸门、审计、多租户组织）支持多个交付表面：Web UI、API、JS嵌入、MCP输出。每个表面都重用相同的组装层来处理身份验证、凭证、审批和计量：更多前端，永不增加逻辑。近期方向是聚焦于数据问答（ChatBI）切片，销售场景而非平台。{/* dev: dev/replan-2026-07.md */}
@@ -312,57 +330,21 @@ flowchart LR
 
 **目标**：后期资产组装成完整的数据问答产品——只读数据库连接器 + 栅栏 + 审批闸门 + IM入口。一级栅栏将安全债转化为产品特性。
 
-#### DB Connector Fences — Tier 1，三个PR {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII列脱敏（`ConnectorScopeGuard` PreToolUse钩子）
-- [ ] 模式可见性——表/列允许-拒绝+动词阻止（只读强制执行）
-- [ ] Fence可审计性——`ConnectorCallLog`中的`caller_user_id`、`effective_credential_source`、`scope_rules_applied`
-- [ ] 每个钩子配置传递（`{"name", "config"}`模式）——ScopeGuard规则的载体 {/* dev: dev/hook-system.md */}
-- [x] 审批闸门在委派中保持——`call_agent`和工作流`AGENT`节点运行智能体自己的钩子而不是无
+- [ ] PII column redaction (`ConnectorScopeGuard` PreToolUse hook)
+- [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
+- [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
+- [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
 
-#### 身份验证与身份
+#### Context Robustness
 
-- [x] OAuth自动链接要求双方都有已验证的地址，因此从未验证的提供商电子邮件创建的账户永远不会成为绑定目标
+- [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
 
-#### 答案渲染
+#### Model Layer
 
-- [x] 最终答案原生流式传输——循环通过`finish`信号切换，答案作为实时token流式转换
-- [x] 流式markdown按块渲染——已完成的块保持稳定，半到达的内联语法不再闪烁
-- [x] 答案渲染Mermaid图表、SVG图形和卡片式对比表，支持答案、代码块和表格的复制/导出
-- [x] 渲染的markdown已清理，防止模型输出和上传文件中的原始HTML注入
-- [x] 图表和代码块可下载为文件；推理在实时和历史对话中默认折叠为单行预览
-- [x] 对话导出针对CJK排版——PDF嵌入真实字体（正确的间距、项目符号和粗体），DOCX声明东亚字体，两者采用统一的大小比例
-
-#### 工作台UX
-
-- [x] 侧边栏围绕聊天集群重新组织——对话直接显示在"新建聊天/搜索"下方，模块导航在紧凑的底部停靠栏中
-- [x] `/clear` 斜杠命令从输入框启动新对话
-- [x] 管理员模型列表支持复选框多选，支持Shift+点击范围选择和一次请求批量删除
-- [x] 运行中的智能体步骤在单个折叠标题中显示生成的单行标题，保留在对话历史中
-- [x] 新发送的消息上升到记录的顶部，答案在其下方的空间中展开
-- [x] 列表页面在首次加载时错开卡片，所有动画都遵守系统的减少动作偏好设置
-- [x] 智能体在运行中提出澄清性的多选问题（ask_user_question）——ReAct转向在聊天卡片上暂停，并使用答案恢复
-- [x] 编辑器在附加的图像到达纯文本模型时发出警告，从该转向实际使用的模型中解析
-- [x] 未发送的编辑器文本、剪辑和附件按对话保留（以及新建聊天），在刷新、对话切换和会话过期后保持
-
-#### 上下文鲁棒性
-
-- [x] 上下文预算设置在模型硬限制以下8%；当快速模型的窗口无法容纳通用预算时启动警告
-- [x] 计划板纪律：重复和无计划提醒，以及使用开放计划项目完成现在强制执行验证通过
-- [ ] 分块压缩输入和主聊天路径上的模型感知预算，因此任何模型组合都保持在窗口内
-
-#### DAG 引擎
-
-- [x] 类型化 DAG 步骤——规划器将纯转换/合成步骤标记为 `llm_direct`（单次调用，无工具循环）；结果携带类型化运行元数据
-- [x] 先问目标一轮完成——规划器将问卷作为步骤交付，分析器接受，自动路由优先选择 Standard
-
-#### 模型层
-
-- [x] GPT-5.x 采用 Responses-API-first（工具+推理一起；404 回退到聊天完成）；其他系列按设计保持在完成上
-- [x] GPT-5.x 在工具轮次中保持其推理——原生 `/v1/responses` 带加密推理重放，`FIM_GPT5_RESPONSES_MODE` 用于回滚
-- [x] 输出限制切割会丢弃整个工具调用批次并请求较小的重试，因此没有回复仅运行其计划的一部分
-- [ ] 在下一次 LiteLLM 升级时验证 Responses-bridge 流式使用数字（怀疑上游映射错误）
-- [ ] 一旦原生 GPT-5.x 路径完成整个版本发布，就停用 LiteLLM 聊天→responses 桥接
+- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
+- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
 
 #### 场景入门
 
@@ -375,7 +357,6 @@ flowchart LR
 **Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
 
 - [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
-- [x] Feishu callback URL passes verification: unsigned pushes authenticate by Encrypt Key envelope + Verification Token
 - [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
 - [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
 - [ ] WeCom / DingTalk channels following Feishu

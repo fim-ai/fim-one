@@ -304,6 +304,24 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] Resource binding unified on visibility — subscribed connectors/KBs/MCP servers bindable to agents; workflow connector steps enforce the runner's access
 - [x] Conversation workspace wired into chat — `workspace://` offload of oversized tool results, budget-truncation rescue, pre-compaction transcript snapshots
 
+### v0.8.10 (2026-08-28) — Streamed Answers + Rich Rendering + GPT-5 Responses + Access Model
+- [x] Final answers stream natively via a `finish` handoff; streamed markdown renders per block, stable and flicker-free
+- [x] Answers render Mermaid diagrams, SVG figures and card-style comparison tables, with copy/export and file downloads on answers, code blocks and tables
+- [x] Rendered markdown sanitized (raw-HTML injection closed); conversation exports typeset for CJK (PDF embeds a real font, DOCX declares an East Asian font)
+- [x] Reasoning folds to one-line previews; running agent steps show generated one-line titles kept in conversation history
+- [x] Sidebar reorganized around the chat cluster; `/clear` command; admin model lists get checkbox multi-select with Shift-click ranges and bulk delete
+- [x] A newly sent message rises to the top of the transcript; list pages stagger cards in; all animation honours reduce-motion
+- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the turn pauses on an in-chat card and resumes with the answers
+- [x] Composer keeps unsent drafts per conversation, warns when an image would reach a text-only model, and waits for in-flight uploads on send
+- [x] GPT-5.x goes Responses-API-first with encrypted reasoning replay across tool rounds (`FIM_GPT5_RESPONSES_MODE` to roll back)
+- [x] An output-limit cut discards the whole tool-call batch and asks for a smaller retry
+- [x] Typed DAG steps — pure transform/synthesis steps run as one direct LLM call; ask-first goals finish in one round
+- [x] Context budgets sit 8% below the model hard limit; plan-board discipline (repetition/no-plan reminders, verification before finish)
+- [x] Approval gates hold across delegation — `call_agent` and workflow AGENT nodes run the agent's own hooks instead of none
+- [x] OAuth auto-link requires a verified address on both sides; refresh-token rotation carries a unique `jti` so the old token dies immediately
+- [x] Feishu callback URL passes verification — unsigned pushes authenticate by Encrypt Key envelope + Verification Token
+- [x] Instance access model for billing — no-subscriptions / included+paid / paid-only postures, included default plan undeletable
+
 ## Planned Versions
 
 Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, credentials, approval gate, audit, multi-tenant orgs) behind multiple delivery surfaces: Web UI, API, JS embed, MCP output. Every surface reuses the same assembly layer for auth, credentials, approval, and metering: more frontends, never more logic. Near-term direction is convergence on the data-Q&A (ChatBI) slice, selling scenarios rather than a platform. {/* dev: dev/replan-2026-07.md */}
@@ -318,49 +336,13 @@ Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, 
 - [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
 - [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
 - [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
-- [x] Approval gates hold across delegation — `call_agent` and workflow `AGENT` nodes run the agent's own hooks instead of none
-
-#### Auth & Identity
-
-- [x] OAuth auto-link requires a verified address on both sides, so an account made from an unverified provider email is never a bind target
-
-#### Answer Rendering
-
-- [x] Final answers stream natively — the loop hands off via a `finish` signal and the answer is written as a live token-streamed turn
-- [x] Streamed markdown renders per block — finished blocks stay stable and half-arrived inline syntax no longer flickers
-- [x] Answers render Mermaid diagrams, SVG figures and card-style comparison tables, with copy/export on answers, code blocks and tables
-- [x] Rendered markdown is sanitized, closing raw-HTML injection from model output and uploaded files
-- [x] Diagrams and code blocks download as files; reasoning folds to one-line previews by default in live and past conversations
-- [x] Conversation exports are typeset for CJK — PDF embeds a real font (correct spacing, bullets and bold), DOCX declares an East Asian font, both on one size scale
-
-#### Workbench UX
-
-- [x] Sidebar reorganized around the chat cluster — conversations directly under New chat/Search, module nav in a compact bottom dock
-- [x] `/clear` slash command starts a fresh conversation from the input box
-- [x] Admin model lists support checkbox multi-select with Shift-click ranges and one-request bulk delete
-- [x] Running agent steps show generated one-line titles in a single folded header, kept in conversation history
-- [x] A newly sent message rises to the top of the transcript, with the answer growing into the space below it
-- [x] List pages stagger their cards in on first load, and all animation honours the system reduce-motion preference
-- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the ReAct turn pauses on an in-chat card and resumes with the answers
-- [x] Composer warns when an attached image would reach a text-only model, resolved from the model the turn would actually use
-- [x] Unsent composer text, clips and attachments are kept per conversation (and for new chat), surviving refresh, conversation switches and expired sessions
 
 #### Context Robustness
 
-- [x] Context budgets sit 8% below the model hard limit; startup warns when the fast model's window can't hold the general budget
-- [x] Plan-board discipline: repetition and no-plan reminders, and finalising with open plan items now forces a verification pass
 - [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
-
-#### DAG Engine
-
-- [x] Typed DAG steps — planner marks pure transform/synthesis steps `llm_direct` (single call, no tool loop); results carry typed run metadata
-- [x] Ask-first goals finish in one round — planner delivers the questionnaire as the step, analyzer accepts it, auto-routing prefers Standard
 
 #### Model Layer
 
-- [x] GPT-5.x goes Responses-API-first (tools + reasoning together; 404 falls back to chat completions); other families stay on completions by design
-- [x] GPT-5.x keeps its reasoning across tool rounds — native `/v1/responses` with encrypted reasoning replay, `FIM_GPT5_RESPONSES_MODE` to roll back
-- [x] An output-limit cut discards the whole tool-call batch and asks for a smaller retry, so no reply runs only part of what it planned
 - [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
 - [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
 
@@ -375,7 +357,6 @@ Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, 
 **Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
 
 - [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
-- [x] Feishu callback URL passes verification: unsigned pushes authenticate by Encrypt Key envelope + Verification Token
 - [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
 - [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
 - [ ] WeCom / DingTalk channels following Feishu
