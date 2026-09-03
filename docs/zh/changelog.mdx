@@ -10,6 +10,15 @@ description: "FIM One的所有重要更新。"
 
 ## [未发布]
 
+### 新增
+
+- **ENV回退配置可从管理面板同步。** `scripts/env_from_active_group.py`会将当前模型组（general / fast / reasoning，可选图像生成）复制到`.env`中，使国际化钩子、evals以及其他无需数据库的路径不再错误地使用过时的提供商。
+
+### 修复
+
+- **图像生成可使用 OpenAI 的 `gpt-image-*` 模型。** 请求不再发送 `response_format`，并且宽高比会映射到这些模型所接受的尺寸。
+- **国际化翻译脚本支持 GPT-5.x 和 o-series 模型。** 对于推理模型，脚本会省略 `temperature`，而不会因 400 错误而失败。
+
 ## [v0.8.11] - 2026-09-03
 
 ### 变更

@@ -381,6 +381,13 @@ def llm_chat(config: dict[str, str], system_prompt: str, user_content: str, temp
             _api_semaphore.release()
 
 
+def _model_accepts_temperature(model: str) -> bool:
+    """OpenAI reasoning models (gpt-5.x, o-series) reject any non-default
+    ``temperature`` with a 400, so the parameter must be omitted for them."""
+    name = model.rsplit("/", 1)[-1].lower()
+    return not (name.startswith("gpt-5") or re.match(r"^o[1-9](-|$)", name) is not None)
+
+
 def _llm_chat_inner(config: dict[str, str], system_prompt: str, user_content: str, temperature: float = 0.3) -> str:
     import random
 
@@ -388,12 +395,13 @@ def _llm_chat_inner(config: dict[str, str], system_prompt: str, user_content: st
 
     kwargs: dict[str, Any] = {
         "model": litellm_model,
-        "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ],
     }
+    if _model_accepts_temperature(config["model"]):
+        kwargs["temperature"] = temperature
     if config.get("api_key"):
         kwargs["api_key"] = config["api_key"]
     if api_base:

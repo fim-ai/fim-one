@@ -78,6 +78,18 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 > **解析顺序**：用户偏好 → 管理员模型（数据库）→ ENV 回退。如果在管理员 → 模型中配置了角色为"通用"的管理员模型，这些 ENV 变量仅作为回退。健康检查考虑两个来源。
 
+### 让 ENV 回退与管理面板保持同步
+
+在管理面板 → 模型中启用模型组后，运行时会从该模型组获取模型，上面的`LLM_*`／`FAST_LLM_*`／`REASONING_LLM_*`值仅作为回退。不会打开数据库的旁路仍会直接读取这些值：`scripts/translate.py`（i18n 预提交钩子）、`evals/`、Jina/OpenAI 重排器以及图像生成。为避免它们切换到过时的提供商，请将活动模型组复制到环境变量文件中：
+
+```bash
+uv run scripts/env_from_active_group.py --dry-run     # show what would change, keys masked
+uv run scripts/env_from_active_group.py               # rewrite .env (backup in .env.bak)
+uv run scripts/env_from_active_group.py --image-gen   # also point IMAGE_GEN_* at the general provider
+```
+
+脚本通过 ORM 读取提供商密钥，并将其直接写入文件，不会回显任何内容。之后请重启应用。
+
 ### MarkItDown OCR 分辨率
 
 `convert_to_markdown` 内置工具和 RAG 摄取管道都使用 Microsoft 的 [MarkItDown](https://github.com/microsoft/markitdown) + 官方 [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) 插件从文档中提取文本 — 包括在有支持视觉的 LLM 可用时对嵌入图像和扫描 PDF 页面进行 OCR。

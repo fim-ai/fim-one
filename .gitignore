@@ -49,3 +49,4 @@ evals/.eval-stamp
 
 # PDF-export CJK font, fetched by scripts/fetch_export_fonts.py
 assets/fonts/
+.env.bak*

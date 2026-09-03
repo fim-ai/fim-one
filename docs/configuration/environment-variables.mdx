@@ -80,6 +80,18 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 > **Resolution order**: User Preference → Admin Models (DB) → ENV Fallback. If an admin model with role "General" is configured in Admin → Models, these ENV vars serve as fallback only. The health check considers both sources.
 
+### Keeping the ENV fallback in step with the admin panel
+
+Once a model group is active in Admin → Models, the runtime takes its models from that group and the `LLM_*` / `FAST_LLM_*` / `REASONING_LLM_*` values above are only the fallback. Side paths that never open the database still read them directly: `scripts/translate.py` (the i18n pre-commit hook), `evals/`, the Jina/OpenAI reranker, and image generation. To stop those from drifting onto a stale provider, copy the active group into the env file:
+
+```bash
+uv run scripts/env_from_active_group.py --dry-run     # show what would change, keys masked
+uv run scripts/env_from_active_group.py               # rewrite .env (backup in .env.bak)
+uv run scripts/env_from_active_group.py --image-gen   # also point IMAGE_GEN_* at the general provider
+```
+
+The script reads the provider keys through the ORM and writes them straight to the file; nothing is echoed. Restart the app afterwards.
+
 ### MarkItDown OCR Resolution
 
 The `convert_to_markdown` built-in tool and the RAG ingestion pipeline both use Microsoft's [MarkItDown](https://github.com/microsoft/markitdown) + the official [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) plugin to extract text from documents — including OCR on embedded images and scanned PDF pages when a vision-capable LLM is available.

@@ -78,6 +78,18 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 > **Ordre de résolution** : Préférence utilisateur → Modèles Admin (DB) → Secours ENV. Si un modèle admin avec le rôle « General » est configuré dans Admin → Modèles, ces variables ENV servent de secours uniquement. Le contrôle de santé considère les deux sources.
 
+### Garder le fallback ENV synchronisé avec le panneau d’administration
+
+Une fois qu’un groupe de modèles est activé dans Administration → Modèles, l’environnement d’exécution récupère ses modèles dans ce groupe, et les valeurs `LLM_*` / `FAST_LLM_*` / `REASONING_LLM_*` ci-dessus servent uniquement de valeurs de secours. Les chemins secondaires qui n’ouvrent jamais la base de données les lisent directement : `scripts/translate.py` (le hook i18n de pré-commit), `evals/`, le reranker Jina/OpenAI et la génération d’images. Pour éviter qu’ils n’utilisent un fournisseur obsolète, copiez le groupe actif dans le fichier d’environnement :
+
+```bash
+uv run scripts/env_from_active_group.py --dry-run     # show what would change, keys masked
+uv run scripts/env_from_active_group.py               # rewrite .env (backup in .env.bak)
+uv run scripts/env_from_active_group.py --image-gen   # also point IMAGE_GEN_* at the general provider
+```
+
+Le script lit les clés du fournisseur via l’ORM et les écrit directement dans le fichier ; rien n’est affiché. Redémarrez ensuite l’application.
+
 ### Résolution OCR MarkItDown
 
 L'outil intégré `convert_to_markdown` et le pipeline d'ingestion RAG utilisent tous deux [MarkItDown](https://github.com/microsoft/markitdown) de Microsoft + le plugin officiel [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) pour extraire du texte à partir de documents — y compris l'OCR sur les images intégrées et les pages PDF numérisées lorsqu'un LLM capable de vision est disponible.

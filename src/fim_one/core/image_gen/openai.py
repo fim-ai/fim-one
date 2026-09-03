@@ -54,14 +54,18 @@ class OpenAIImageGen(BaseImageGen):
         }
 
         # Map aspect ratio to size (OpenAI Images API uses WxH).
-        size = _aspect_to_size(aspect_ratio)
+        gpt_image = _is_gpt_image_model(self._model)
+        size = _aspect_to_size(aspect_ratio, gpt_image=gpt_image)
 
         payload: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
             "n": 1,
-            "response_format": "b64_json",
         }
+        # gpt-image-* always returns base64 and rejects ``response_format``;
+        # dall-e and relay models default to URLs and need it spelled out.
+        if not gpt_image:
+            payload["response_format"] = "b64_json"
         if size:
             payload["size"] = size
 
@@ -98,13 +102,30 @@ class OpenAIImageGen(BaseImageGen):
         )
 
 
-def _aspect_to_size(aspect_ratio: str) -> str | None:
-    """Best-effort mapping from aspect ratio to OpenAI ``size`` param."""
-    mapping = {
-        "1:1": "1024x1024",
-        "16:9": "1792x1024",
-        "9:16": "1024x1792",
-        "4:3": "1024x768",
-        "3:4": "768x1024",
-    }
+def _is_gpt_image_model(model: str) -> bool:
+    return model.lower().startswith("gpt-image")
+
+
+def _aspect_to_size(aspect_ratio: str, *, gpt_image: bool = False) -> str | None:
+    """Best-effort mapping from aspect ratio to OpenAI ``size`` param.
+
+    gpt-image-* only accepts 1024x1024 / 1536x1024 / 1024x1536, so wide and
+    tall ratios snap to the nearest of those; dall-e keeps its own sizes.
+    """
+    if gpt_image:
+        mapping = {
+            "1:1": "1024x1024",
+            "16:9": "1536x1024",
+            "9:16": "1024x1536",
+            "4:3": "1536x1024",
+            "3:4": "1024x1536",
+        }
+    else:
+        mapping = {
+            "1:1": "1024x1024",
+            "16:9": "1792x1024",
+            "9:16": "1024x1792",
+            "4:3": "1024x768",
+            "3:4": "768x1024",
+        }
     return mapping.get(aspect_ratio)

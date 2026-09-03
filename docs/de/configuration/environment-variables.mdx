@@ -78,6 +78,18 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 > **Auflösungsreihenfolge**: Benutzereinstellung → Admin-Modelle (DB) → ENV-Fallback. Wenn ein Admin-Modell mit der Rolle „General" in Admin → Modelle konfiguriert ist, dienen diese ENV-Variablen nur als Fallback. Die Integritätsprüfung berücksichtigt beide Quellen.
 
+### Den ENV-Fallback mit dem Admin-Panel synchron halten
+
+Sobald eine Modellgruppe unter Admin → Modelle aktiv ist, bezieht die Laufzeit ihre Modelle aus dieser Gruppe, und die oben genannten Werte `LLM_*` / `FAST_LLM_*` / `REASONING_LLM_*` dienen nur als Fallback. Nebenpfade, die die Datenbank nie öffnen, lesen diese Werte weiterhin direkt aus: `scripts/translate.py` (der i18n-Pre-Commit-Hook), `evals/`, der Jina/OpenAI-Reranker und die Bildgenerierung. Damit diese nicht auf einen veralteten Provider ausweichen, kopieren Sie die aktive Gruppe in die Umgebungsdatei:
+
+```bash
+uv run scripts/env_from_active_group.py --dry-run     # show what would change, keys masked
+uv run scripts/env_from_active_group.py               # rewrite .env (backup in .env.bak)
+uv run scripts/env_from_active_group.py --image-gen   # also point IMAGE_GEN_* at the general provider
+```
+
+Das Skript liest die Provider-Schlüssel über das ORM aus und schreibt sie direkt in die Datei; es wird nichts ausgegeben. Starten Sie die App anschließend neu.
+
 ### MarkItDown OCR-Auflösung
 
 Das `convert_to_markdown` Built-in-Tool und die RAG-Ingestion-Pipeline verwenden beide Microsofts [MarkItDown](https://github.com/microsoft/markitdown) + das offizielle [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) Plugin, um Text aus Dokumenten zu extrahieren — einschließlich OCR auf eingebetteten Bildern und gescannten PDF-Seiten, wenn ein Vision-fähiges LLM verfügbar ist.

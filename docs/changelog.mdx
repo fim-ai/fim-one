@@ -10,6 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Added
+
+- **ENV fallback can be synced from the admin panel.** `scripts/env_from_active_group.py` copies the active model group (general / fast / reasoning, optionally image generation) into `.env`, so the i18n hook, evals and other DB-less paths stop drifting onto a stale provider.
+
+### Fixed
+
+- **Image generation works against OpenAI's `gpt-image-*` models.** The request no longer sends `response_format`, and aspect ratios map to the sizes those models accept.
+- **The i18n translation script accepts GPT-5.x and o-series models.** It omits `temperature` for reasoning models instead of failing with a 400.
+
 ## [v0.8.11] - 2026-09-03
 
 ### Changed

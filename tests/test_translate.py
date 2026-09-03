@@ -186,3 +186,40 @@ class TestShieldRestoreRoundTrip:
         _, comments = translate._shield_jsx_comments("a {/* dev: x.md */}\n")
         out = translate._restore_jsx_comments("<!--CODE_BLOCK_0-->\n", comments)
         assert out == "<!--CODE_BLOCK_0-->\n"
+
+
+class TestModelAcceptsTemperature:
+    def test_reasoning_models_drop_temperature(self) -> None:
+        for name in ("gpt-5.6-luna", "openai/gpt-5.4-mini", "o3", "o4-mini", "openai/o1-preview"):
+            assert translate._model_accepts_temperature(name) is False, name
+
+    def test_other_models_keep_temperature(self) -> None:
+        for name in ("gpt-4o", "claude-sonnet-4-6", "anthropic/claude-haiku-4-5-20251001", "gemini-2.5-pro", "orca-2"):
+            assert translate._model_accepts_temperature(name) is True, name
+
+    def test_request_kwargs_omit_temperature_for_gpt5(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        class _Msg:
+            content = "ok"
+
+        class _Choice:
+            message = _Msg()
+
+        class _Resp:
+            choices = [_Choice()]
+
+        def fake_completion(**kwargs: object) -> _Resp:
+            captured.update(kwargs)
+            return _Resp()
+
+        monkeypatch.setattr(translate.litellm, "completion", fake_completion)
+        cfg = {"base_url": "https://api.openai.com/v1", "model": "gpt-5.6-luna", "api_key": "sk-test"}
+        translate._llm_chat_inner(cfg, "sys", "user", temperature=0.3)
+        assert "temperature" not in captured
+        assert captured["model"] == "openai/gpt-5.6-luna"
+
+        captured.clear()
+        cfg["model"] = "gpt-4o-mini"
+        translate._llm_chat_inner(cfg, "sys", "user", temperature=0.3)
+        assert captured["temperature"] == 0.3

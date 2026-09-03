@@ -78,6 +78,18 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 > **解決順序**：ユーザー設定→Admin モデル（DB）→ENV フォールバック。Admin→Models で「General」ロールのadminモデルが設定されている場合、これらのENV変数はフォールバックのみとして機能します。ヘルスチェックは両方のソースを考慮します。
 
+### ENV フォールバックを管理パネルと同期させる
+
+Admin → Models でモデルグループを有効にすると、ランタイムはそのグループからモデルを取得し、上記の `LLM_*` / `FAST_LLM_*` / `REASONING_LLM_*` の値はフォールバックとしてのみ使用されます。データベースを開かない補助経路では、これらの値が直接読み取られます。対象となるのは、`scripts/translate.py`（国際化の pre-commit フック）、`evals/`、Jina/OpenAI のリランカー、画像生成です。これらが古いプロバイダーを参照し続けるのを防ぐには、アクティブなグループを env ファイルにコピーします。
+
+```bash
+uv run scripts/env_from_active_group.py --dry-run     # show what would change, keys masked
+uv run scripts/env_from_active_group.py               # rewrite .env (backup in .env.bak)
+uv run scripts/env_from_active_group.py --image-gen   # also point IMAGE_GEN_* at the general provider
+```
+
+スクリプトは ORM を介してプロバイダーキーを読み取り、そのままファイルに書き込みます。内容が出力されることはありません。完了後、アプリを再起動してください。
+
 ### MarkItDown OCR 解像度
 
 `convert_to_markdown` 組み込みツールと RAG 取り込みパイプラインは、Microsoft の [MarkItDown](https://github.com/microsoft/markitdown) と公式の [`markitdown-ocr`](https://github.com/microsoft/markitdown/tree/main/packages/markitdown-ocr) プラグインを使用して、ドキュメントからテキストを抽出します。ビジョン対応 LLM が利用可能な場合、埋め込み画像とスキャン PDF ページの OCR も含まれます。
