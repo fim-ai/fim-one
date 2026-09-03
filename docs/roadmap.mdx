@@ -322,6 +322,9 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 - [x] Feishu callback URL passes verification — unsigned pushes authenticate by Encrypt Key envelope + Verification Token
 - [x] Instance access model for billing — no-subscriptions / included+paid / paid-only postures, included default plan undeletable
 
+### v0.8.11 (2026-09-03) — Floating Composer
+- [x] Chat composer is one floating pill over the message stream — attachments, mode/agent selectors and send in one input; messages scroll beneath it
+
 ## Planned Versions
 
 Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, credentials, approval gate, audit, multi-tenant orgs) behind multiple delivery surfaces: Web UI, API, JS embed, MCP output. Every surface reuses the same assembly layer for auth, credentials, approval, and metering: more frontends, never more logic. Near-term direction is convergence on the data-Q&A (ChatBI) slice, selling scenarios rather than a platform. {/* dev: dev/replan-2026-07.md */}

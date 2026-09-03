@@ -304,23 +304,26 @@ Durcissement différé — ne bloque pas ; à reprendre uniquement si le scénar
 - [x] Resource binding unified on visibility — subscribed connectors/KBs/MCP servers bindable to agents; workflow connector steps enforce the runner's access
 - [x] Conversation workspace wired into chat — `workspace://` offload of oversized tool results, budget-truncation rescue, pre-compaction transcript snapshots
 
-### v0.8.10 (2026-08-28) — Streamed Answers + Rich Rendering + GPT-5 Responses + Access Model
-- [x] Final answers stream natively via a `finish` handoff; streamed markdown renders per block, stable and flicker-free
-- [x] Answers render Mermaid diagrams, SVG figures and card-style comparison tables, with copy/export and file downloads on answers, code blocks and tables
-- [x] Rendered markdown sanitized (raw-HTML injection closed); conversation exports typeset for CJK (PDF embeds a real font, DOCX declares an East Asian font)
-- [x] Reasoning folds to one-line previews; running agent steps show generated one-line titles kept in conversation history
-- [x] Sidebar reorganized around the chat cluster; `/clear` command; admin model lists get checkbox multi-select with Shift-click ranges and bulk delete
-- [x] A newly sent message rises to the top of the transcript; list pages stagger cards in; all animation honours reduce-motion
-- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the turn pauses on an in-chat card and resumes with the answers
-- [x] Composer keeps unsent drafts per conversation, warns when an image would reach a text-only model, and waits for in-flight uploads on send
-- [x] GPT-5.x goes Responses-API-first with encrypted reasoning replay across tool rounds (`FIM_GPT5_RESPONSES_MODE` to roll back)
-- [x] An output-limit cut discards the whole tool-call batch and asks for a smaller retry
-- [x] Typed DAG steps — pure transform/synthesis steps run as one direct LLM call; ask-first goals finish in one round
-- [x] Context budgets sit 8% below the model hard limit; plan-board discipline (repetition/no-plan reminders, verification before finish)
-- [x] Approval gates hold across delegation — `call_agent` and workflow AGENT nodes run the agent's own hooks instead of none
-- [x] OAuth auto-link requires a verified address on both sides; refresh-token rotation carries a unique `jti` so the old token dies immediately
-- [x] Feishu callback URL passes verification — unsigned pushes authenticate by Encrypt Key envelope + Verification Token
-- [x] Instance access model for billing — no-subscriptions / included+paid / paid-only postures, included default plan undeletable
+### v0.8.10 (2026-08-28) — Réponses en streaming + Rendu enrichi + GPT-5 Responses + Modèle d'accès
+- [x] Les réponses finales sont diffusées nativement via un transfert `finish` ; le markdown en streaming s'affiche bloc par bloc, de façon stable et sans scintillement
+- [x] Les réponses affichent des diagrammes Mermaid, des figures SVG et des tableaux comparatifs en style carte, avec copie/export et téléchargement de fichiers sur les réponses, blocs de code et tableaux
+- [x] Le markdown rendu est assaini (injection de HTML brut fermée) ; les exports de conversation sont composés pour le CJK (le PDF intègre une vraie police, le DOCX déclare une police d'Asie orientale)
+- [x] Le raisonnement se replie en aperçus d'une ligne ; les étapes d'agent en cours affichent des titres d'une ligne générés et conservés dans l'historique de conversation
+- [x] La barre latérale est réorganisée autour du cluster de chat ; commande `/clear` ; les listes de modèles d'administration disposent d'une sélection multiple par cases à cocher avec plages Shift-clic et suppression en masse
+- [x] Un message nouvellement envoyé remonte en haut de la transcription ; les pages de liste font apparaître les cartes en décalé ; toutes les animations respectent reduce-motion
+- [x] Les agents posent des questions à choix multiples en cours d'exécution (ask_user_question) — le tour se met en pause sur une carte dans le chat et reprend avec les réponses
+- [x] Le compositeur conserve les brouillons non envoyés par conversation, avertit lorsqu'une image atteindrait un modèle texte uniquement, et attend la fin des téléchargements en cours à l'envoi
+- [x] GPT-5.x passe en priorité sur l'API Responses avec relecture du raisonnement chiffré entre les tours d'outils (`FIM_GPT5_RESPONSES_MODE` pour revenir en arrière)
+- [x] Un dépassement de la limite de sortie rejette l'ensemble du lot d'appels d'outils et demande une nouvelle tentative plus courte
+- [x] Étapes DAG typées — les étapes de transformation/synthèse pures s'exécutent en un seul appel LLM direct ; les objectifs ask-first se terminent en un seul tour
+- [x] Les budgets de contexte sont fixés 8 % en dessous de la limite stricte du modèle ; discipline du tableau de planification (rappels de répétition/absence de plan, vérification avant la fin)
+- [x] Les portes d'approbation sont maintenues lors de la délégation — `call_agent` et les nœuds AGENT de workflow exécutent les hooks propres à l'agent plutôt qu'aucun
+- [x] La liaison automatique OAuth exige une adresse vérifiée des deux côtés ; la rotation des tokens de rafraîchissement porte un `jti` unique afin que l'ancien token expire immédiatement
+- [x] L'URL de callback Feishu passe la vérification — les push non signés s'authentifient par enveloppe Encrypt Key + Verification Token
+- [x] Modèle d'accès aux instances pour la facturation — postures sans abonnement / inclus+payant / payant uniquement, plan par défaut inclus non supprimable
+
+### v0.8.11 (2026-09-03) — Floating Composer
+- [x] Le compositeur de chat est une pilule flottante au-dessus du flux de messages — pièces jointes, sélecteurs de mode/agent et envoi dans une seule entrée ; les messages défilent en dessous
 
 ## Versions Prévues
 
@@ -330,21 +333,21 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 **Goal**: The post-reduce assets assemble into a complete data-Q&A product — read-only DB connectors + fences + approval gate + IM entry. Tier-1 fences turn security debt into product features.
 
-#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
+#### Clôtures du connecteur DB — Niveau 1, trois PRs {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII column redaction (`ConnectorScopeGuard` PreToolUse hook)
-- [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
-- [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
-- [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
+- [ ] Masquage des colonnes PII (hook PreToolUse `ConnectorScopeGuard`)
+- [ ] Visibilité du schéma — liste d'autorisation/refus des tables/colonnes + blocage des verbes (application du mode lecture seule)
+- [ ] Auditabilité des clôtures — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` dans `ConnectorCallLog`
+- [ ] Transmission de la configuration par hook (schéma `{"name", "config"}`) — le vecteur des règles ScopeGuard {/* dev: dev/hook-system.md */}
 
-#### Context Robustness
+#### Robustesse du contexte
 
-- [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
+- [ ] Compaction par blocs en entrée et budgets adaptés au modèle sur le chemin de chat principal, afin que toute combinaison de modèles reste dans la fenêtre de contexte
 
-#### Model Layer
+#### Couche Modèle
 
-- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
-- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
+- [ ] Vérifier les chiffres d'utilisation du streaming du bridge Responses sur la prochaine mise à jour LiteLLM (un mauvais mappage en amont est suspecté)
+- [ ] Retirer le bridge LiteLLM chat→responses une fois que le chemin natif GPT-5.x aura effectué une version complète
 
 #### Intégration de scénarios
 
@@ -354,12 +357,12 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 ### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-**Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
+**Objectif** : Les deux surfaces de déploiement les plus vendables, toutes deux sur le même noyau et la même couche d'assemblage.
 
-- [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
-- [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
-- [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
-- [ ] WeCom / DingTalk channels following Feishu
+- [ ] Intégration JS bubble / iframe — un seul snippet dans un système hôte ; identité des visiteurs anonymes + attribution de facturation décidées avant la construction
+- [ ] Mention @mention entrante Feishu — les agents vivent dans le groupe : interroger des données, soumettre des approbations, relancer des flux
+- [ ] Modèles sortants : alertes d'échec, avertissements de budget, résumés planifiés, escalade, accusés d'audit
+- [ ] Canaux WeCom / DingTalk à la suite de Feishu
 
 ### Parked — signal-gated
 

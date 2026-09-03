@@ -304,23 +304,26 @@ flowchart LR
 - [x] リソースバインディングは可視性で統一 — サブスクライブされたコネクタ/KB/MCP サーバーはエージェントにバインド可能、ワークフローコネクタステップは実行者のアクセスを強制
 - [x] 会話ワークスペースはチャットに配線 — `workspace://` 超大型ツール結果のオフロード、予算切り詰め救済、圧縮前トランスクリプトスナップショット
 
-### v0.8.10 (2026-08-28) — Streamed Answers + Rich Rendering + GPT-5 Responses + Access Model
-- [x] Final answers stream natively via a `finish` handoff; streamed markdown renders per block, stable and flicker-free
-- [x] Answers render Mermaid diagrams, SVG figures and card-style comparison tables, with copy/export and file downloads on answers, code blocks and tables
-- [x] Rendered markdown sanitized (raw-HTML injection closed); conversation exports typeset for CJK (PDF embeds a real font, DOCX declares an East Asian font)
-- [x] Reasoning folds to one-line previews; running agent steps show generated one-line titles kept in conversation history
-- [x] Sidebar reorganized around the chat cluster; `/clear` command; admin model lists get checkbox multi-select with Shift-click ranges and bulk delete
-- [x] A newly sent message rises to the top of the transcript; list pages stagger cards in; all animation honours reduce-motion
-- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the turn pauses on an in-chat card and resumes with the answers
-- [x] Composer keeps unsent drafts per conversation, warns when an image would reach a text-only model, and waits for in-flight uploads on send
-- [x] GPT-5.x goes Responses-API-first with encrypted reasoning replay across tool rounds (`FIM_GPT5_RESPONSES_MODE` to roll back)
-- [x] An output-limit cut discards the whole tool-call batch and asks for a smaller retry
-- [x] Typed DAG steps — pure transform/synthesis steps run as one direct LLM call; ask-first goals finish in one round
-- [x] Context budgets sit 8% below the model hard limit; plan-board discipline (repetition/no-plan reminders, verification before finish)
-- [x] Approval gates hold across delegation — `call_agent` and workflow AGENT nodes run the agent's own hooks instead of none
-- [x] OAuth auto-link requires a verified address on both sides; refresh-token rotation carries a unique `jti` so the old token dies immediately
-- [x] Feishu callback URL passes verification — unsigned pushes authenticate by Encrypt Key envelope + Verification Token
-- [x] Instance access model for billing — no-subscriptions / included+paid / paid-only postures, included default plan undeletable
+### v0.8.10 (2026-08-28) — ストリーミング回答 + リッチレンダリング + GPT-5 Responses + アクセスモデル
+- [x] 最終回答は `finish` ハンドオフを通じてネイティブにストリーミングされ、ストリーミングされたMarkdownはブロック単位でレンダリングされ、安定してちらつきなし
+- [x] 回答はMermaidダイアグラム、SVG図、カードスタイルの比較表をレンダリングし、回答・コードブロック・表のコピー/エクスポートおよびファイルダウンロードに対応
+- [x] レンダリングされたMarkdownはサニタイズ済み（生HTMLインジェクションを遮断）；会話エクスポートはCJK向けに組版（PDFには実フォントを埋め込み、DOCXは東アジアフォントを宣言）
+- [x] 推論は1行プレビューに折りたたまれ、実行中のエージェントステップは生成された1行タイトルを会話履歴に保持して表示
+- [x] サイドバーをチャットクラスター中心に再編成；`/clear` コマンドを追加；管理者モデルリストにShiftクリック範囲選択と一括削除対応のチェックボックス複数選択を追加
+- [x] 新規送信メッセージはトランスクリプトの先頭に移動；リストページはカードをずらしながら表示；すべてのアニメーションはreduce-motionを尊重
+- [x] エージェントが実行中に複数選択の明確化質問を行う（ask_user_question）——ターンはチャット内カードで一時停止し、回答とともに再開
+- [x] コンポーザーは会話ごとに未送信の下書きを保持し、テキスト専用モデルに画像を送信しようとすると警告し、送信時にアップロード完了を待機
+- [x] GPT-5.xはResponses APIファーストに移行し、ツールラウンドをまたいで暗号化された推論リプレイを実施（`FIM_GPT5_RESPONSES_MODE` でロールバック可能）
+- [x] 出力制限超過時はツールコールバッチ全体を破棄し、より小さな再試行を要求
+- [x] 型付きDAGステップ——純粋な変換/合成ステップは単一の直接LLM呼び出しとして実行；ask-firstゴールは1ラウンドで完了
+- [x] コンテキストバジェットはモデルのハードリミットより8%低く設定；プランボードの規律（繰り返し/プランなしリマインダー、完了前の検証）
+- [x] 審批闸門は委譲をまたいで保持——`call_agent` およびワークフローのAGENTノードは、なしではなくエージェント自身のフックを実行
+- [x] OAuth自動リンクは両側で確認済みアドレスを要求；リフレッシュトークンのローテーションは一意の `jti` を持ち、古いトークンは即座に無効化
+- [x] Feishuコールバック URLは検証を通過——未署名のプッシュはEncrypt Keyエンベロープ + Verification Tokenで認証
+- [x] 課金用インスタンスアクセスモデル——サブスクリプションなし / 含まれる+有料 / 有料のみのポスチャー、含まれるデフォルトプランは削除不可
+
+### v0.8.11 (2026-09-03) — Floating Composer
+- [x] チャットコンポーザーがメッセージストリームの上に浮かぶ1つのピル形UIになりました — 添付ファイル、モード/エージェントセレクター、送信ボタンが1つの入力欄に統合され、メッセージはその下にスクロールされます
 
 ## 計画されたバージョン
 
@@ -330,21 +333,21 @@ flowchart LR
 
 **目標**: ポスト削減アセットが完全なデータQ&A製品に組み立てられます——読み取り専用DBコネクタ + フェンス + 承認ゲート + IM エントリ。Tier-1フェンスはセキュリティ負債を製品機能に変えます。
 
-#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB コネクターフェンス — Tier 1、3つのPR {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII column redaction (`ConnectorScopeGuard` PreToolUse hook)
-- [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
-- [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
-- [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
+- [ ] PII カラムのリダクション（`ConnectorScopeGuard` PreToolUse hook）
+- [ ] スキーマ可視性 — テーブル/カラムの許可・拒否リスト + 動詞ブロッキング（読み取り専用の強制）
+- [ ] フェンスの監査可能性 — `ConnectorCallLog` 内の `caller_user_id`、`effective_credential_source`、`scope_rules_applied`
+- [ ] フック単位の設定パススルー（`{"name", "config"}` スキーマ）— ScopeGuard ルールのキャリア {/* dev: dev/hook-system.md */}
 
-#### Context Robustness
+#### コンテキストの堅牢性
 
-- [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
+- [ ] メインチャットパスにおけるチャンク分割コンパクション入力とモデル対応バジェットにより、どのモデルの組み合わせもコンテキストウィンドウ内に収まるようにする
 
-#### Model Layer
+#### モデルレイヤー
 
-- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
-- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
+- [ ] 次回のLiteLLMアップグレード時にResponses-bridgeのストリーミング使用数を確認する（上流の誤マッピングが疑われる）
+- [ ] ネイティブGPT-5.xパスが完全なリリースサイクルを経た後、LiteLLMのchat→responsesブリッジを廃止する
 
 #### シナリオオンボーディング
 
@@ -354,12 +357,12 @@ flowchart LR
 
 ### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-**Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
+**目標**: 最も販売しやすい2つの配信サーフェスを、同一のカーネルとアセンブリレイヤー上で実現する。
 
-- [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
-- [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
-- [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
-- [ ] WeCom / DingTalk channels following Feishu
+- [ ] JS バブル / iframe 埋め込み — ホストシステムへのワンスニペット導入；匿名訪問者のアイデンティティと課金帰属をビルド前に決定
+- [ ] Feishu インバウンド @メンション — エージェントがグループ内に常駐：データ照会、承認ファイル、フロー追跡
+- [ ] アウトバウンドパターン：障害アラート、予算警告、定期ダイジェスト、エスカレーション、監査レシート
+- [ ] WeCom / DingTalk チャンネル（Feishu に続いて対応）
 
 ### 保留中 — 信号门控
 

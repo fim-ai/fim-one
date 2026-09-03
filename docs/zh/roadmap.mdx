@@ -304,23 +304,26 @@ flowchart LR
 - [x] 资源绑定在可见性上统一——已订阅连接器/知识库/MCP服务器可绑定至智能体；工作流连接器步骤强制运行者的访问权限
 - [x] 对话工作区接入聊天——`workspace://`超大工具结果卸载、预算截断救援、预压缩记录快照
 
-### v0.8.10 (2026-08-28) — Streamed Answers + Rich Rendering + GPT-5 Responses + Access Model
-- [x] Final answers stream natively via a `finish` handoff; streamed markdown renders per block, stable and flicker-free
-- [x] Answers render Mermaid diagrams, SVG figures and card-style comparison tables, with copy/export and file downloads on answers, code blocks and tables
-- [x] Rendered markdown sanitized (raw-HTML injection closed); conversation exports typeset for CJK (PDF embeds a real font, DOCX declares an East Asian font)
-- [x] Reasoning folds to one-line previews; running agent steps show generated one-line titles kept in conversation history
-- [x] Sidebar reorganized around the chat cluster; `/clear` command; admin model lists get checkbox multi-select with Shift-click ranges and bulk delete
-- [x] A newly sent message rises to the top of the transcript; list pages stagger cards in; all animation honours reduce-motion
-- [x] Agents ask clarifying multiple-choice questions mid-run (ask_user_question) — the turn pauses on an in-chat card and resumes with the answers
-- [x] Composer keeps unsent drafts per conversation, warns when an image would reach a text-only model, and waits for in-flight uploads on send
-- [x] GPT-5.x goes Responses-API-first with encrypted reasoning replay across tool rounds (`FIM_GPT5_RESPONSES_MODE` to roll back)
-- [x] An output-limit cut discards the whole tool-call batch and asks for a smaller retry
-- [x] Typed DAG steps — pure transform/synthesis steps run as one direct LLM call; ask-first goals finish in one round
-- [x] Context budgets sit 8% below the model hard limit; plan-board discipline (repetition/no-plan reminders, verification before finish)
-- [x] Approval gates hold across delegation — `call_agent` and workflow AGENT nodes run the agent's own hooks instead of none
-- [x] OAuth auto-link requires a verified address on both sides; refresh-token rotation carries a unique `jti` so the old token dies immediately
-- [x] Feishu callback URL passes verification — unsigned pushes authenticate by Encrypt Key envelope + Verification Token
-- [x] Instance access model for billing — no-subscriptions / included+paid / paid-only postures, included default plan undeletable
+### v0.8.10 (2026-08-28) — 流式答案 + 富文本渲染 + GPT-5 Responses + 访问模型
+- [x] 最终答案通过 `finish` 移交原生流式输出；流式 Markdown 按块渲染，稳定无闪烁
+- [x] 答案支持渲染 Mermaid 图表、SVG 图形和卡片式对比表格，并提供答案、代码块和表格的复制/导出及文件下载功能
+- [x] 渲染的 Markdown 已做安全过滤（关闭原始 HTML 注入）；对话导出针对 CJK 排版优化（PDF 内嵌真实字体，DOCX 声明东亚字体）
+- [x] 推理折叠为单行预览；正在运行的智能体步骤显示自动生成的单行标题，并保留在对话历史中
+- [x] 侧边栏围绕聊天集群重新整理；新增 `/clear` 命令；管理员模型列表支持复选框多选，可配合 Shift 键选择范围并批量删除
+- [x] 新发送的消息置顶显示于对话记录；列表页面卡片交错入场；所有动画遵循减少动效设置
+- [x] 智能体可在运行中途提出多选澄清问题（ask_user_question）——对话在聊天卡片处暂停，待用户回答后继续
+- [x] 编辑器为每个对话保留未发送的草稿，当图片将发送至纯文本模型时发出警告，并在发送前等待上传中的文件完成
+- [x] GPT-5.x 优先采用 Responses API，并在工具调用轮次间支持加密推理回放（可通过 `FIM_GPT5_RESPONSES_MODE` 回滚）
+- [x] 输出超限时丢弃整批工具调用，并要求以更小的请求重试
+- [x] 类型化 DAG 步骤——纯转换/合成步骤作为单次直接 LLM 调用执行；先询问的目标在一轮内完成
+- [x] 上下文预算设置在模型硬限制的 8% 以下；计划板规范（重复/无计划提醒，完成前验证）
+- [x] 审批闸门在委托链中保持有效——`call_agent` 和工作流 AGENT 节点执行智能体自身的钩子，而非跳过
+- [x] OAuth 自动关联要求双方均有已验证的邮箱地址；刷新令牌轮换携带唯一 `jti`，旧令牌立即失效
+- [x] Feishu 回调 URL 通过验证——未签名的推送通过 Encrypt Key 信封 + Verification Token 进行身份验证
+- [x] 实例访问模型用于计费——支持无订阅 / 含包含额度+付费 / 仅付费等策略，含包含额度的默认套餐不可删除
+
+### v0.8.11 (2026-09-03) — Floating Composer
+- [x] 聊天输入框现为悬浮在消息流上方的胶囊组件——附件、模式/智能体选择器与发送按钮集于一体；消息在其下方滚动
 
 ## 计划版本
 
@@ -330,21 +333,21 @@ flowchart LR
 
 **目标**：后期资产组装成完整的数据问答产品——只读数据库连接器 + 栅栏 + 审批闸门 + IM入口。一级栅栏将安全债转化为产品特性。
 
-#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB 连接器围栏——第一层，三个 PR {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII column redaction (`ConnectorScopeGuard` PreToolUse hook)
-- [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
-- [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
-- [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
+- [ ] PII 列脱敏（`ConnectorScopeGuard` PreToolUse 钩子）
+- [ ] 模式可见性——表/列允许拒绝 + 动词阻断（只读强制执行）
+- [ ] 围栏可审计性——`ConnectorCallLog` 中的 `caller_user_id`、`effective_credential_source`、`scope_rules_applied`
+- [ ] 每钩子配置透传（`{"name", "config"}` 模式）——ScopeGuard 规则的载体 {/* dev: dev/hook-system.md */}
 
-#### Context Robustness
+#### 上下文健壮性
 
-- [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
+- [ ] 在主聊天路径上实现分块压缩输入和模型感知预算，使任意模型组合都能保持在上下文窗口内
 
-#### Model Layer
+#### 模型层
 
-- [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
-- [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
+- [ ] 在下次升级 LiteLLM 时验证 Responses-bridge 流式传输的使用数据（疑似上游映射错误）
+- [ ] 一旦原生 GPT-5.x 路径完整运行一个发布周期，即退役 LiteLLM chat→responses 桥接
 
 #### 场景入门
 
@@ -354,12 +357,12 @@ flowchart LR
 
 ### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
 
-**Goal**: The two most sellable delivery surfaces, both on the same kernel and assembly layer.
+**目标**：两个最具销售价值的交付界面，均运行在同一内核与组装层之上。
 
-- [ ] JS bubble / iframe embed — one snippet into a host system; anonymous-visitor identity + billing attribution decided before build
-- [ ] Feishu inbound @mention — agents live in the group: query data, file approvals, chase flows
-- [ ] Outbound patterns: failure alerts, budget warnings, scheduled digests, escalation, audit receipts
-- [ ] WeCom / DingTalk channels following Feishu
+- [ ] JS 气泡/iframe 嵌入——将一段代码片段嵌入宿主系统；匿名访客身份识别与计费归因在构建前确定
+- [ ] Feishu 入站 @提及——智能体在群组中运行：查询数据、提交审批、推进流程
+- [ ] 出站模式：故障告警、预算预警、定时摘要、升级通知、审计回执
+- [ ] 企业微信/钉钉通道跟进 Feishu
 
 ### 待处理 — 信号门控
 
