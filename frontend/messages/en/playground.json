@@ -209,5 +209,7 @@
     "nextButton": "Next",
     "noteButton": "Add note",
     "notePlaceholder": "Optional note for this answer…"
-  }
+  },
+  "sendButton": "Send",
+  "stopButton": "Stop"
 }

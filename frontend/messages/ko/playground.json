@@ -208,5 +208,8 @@
     "nextButton": "다음",
     "noteButton": "노트 추가",
     "notePlaceholder": "이 답변에 대한 선택적 노트…"
-  }
+  },
+  "imagesNotReadable": "선택한 모델은 이미지를 읽을 수 없습니다. 파일 이름만 전달됩니다.",
+  "sendButton": "전송",
+  "stopButton": "중지"
 }

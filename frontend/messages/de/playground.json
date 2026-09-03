@@ -208,5 +208,8 @@
     "nextButton": "Weiter",
     "noteButton": "Notiz hinzufügen",
     "notePlaceholder": "Optionale Notiz zu dieser Antwort…"
-  }
+  },
+  "imagesNotReadable": "Das ausgewählte Modell kann keine Bilder lesen. Es erhält nur den Dateinamen.",
+  "sendButton": "Senden",
+  "stopButton": "Stopp"
 }

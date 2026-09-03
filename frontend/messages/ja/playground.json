@@ -203,10 +203,13 @@
     "expiredHint": "智能体は回答なしで続行しました。",
     "unansweredWarning": "回答されていない質問があります。",
     "errorToast": "回答の送信に失敗しました",
-    "questionProgress": "{current} / {total}",
+    "questionProgress": "{total} 件中 {current} 件目",
     "prevButton": "戻る",
     "nextButton": "次へ",
     "noteButton": "メモを追加",
     "notePlaceholder": "この回答のオプションメモ…"
-  }
+  },
+  "imagesNotReadable": "選択したモデルは画像を読み取ることができません。ファイル名のみが送信されます。",
+  "sendButton": "送信",
+  "stopButton": "停止"
 }

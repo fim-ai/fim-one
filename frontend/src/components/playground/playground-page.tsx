@@ -871,6 +871,19 @@ function PlaygroundContent({
   const hasCurrentTurn = hasLiveMessages || !!pendingQuery || injectedMessages.length > 0
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // The floating composer overlaps the stream; its measured height becomes the
+  // stream's bottom padding so the last message can scroll clear of it.
+  const composerRef = useRef<HTMLDivElement>(null)
+  const [composerHeight, setComposerHeight] = useState(0)
+  useEffect(() => {
+    const el = composerRef.current
+    if (!el) return
+    const update = () => setComposerHeight(el.getBoundingClientRect().height)
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    update()
+    return () => observer.disconnect()
+  }, [hasMessages])
   const dagOutputRef = useRef<DagOutputHandle>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const composingRef = useRef(false)
@@ -1155,6 +1168,8 @@ function PlaygroundContent({
   const spacerPxRef = useRef(0)
   // Breathing room kept above the current turn once it is lifted to the top.
   const TURN_TOP_OFFSET = 16
+  // Gradient fade above the pill plus the pill's own bottom inset.
+  const COMPOSER_GAP = 56
   // While set, the follow logic hands the viewport to one smooth scroll so the
   // lift reads as motion instead of a jump.
   const smoothPinUntilRef = useRef(0)
@@ -1960,10 +1975,363 @@ function PlaygroundContent({
 
   const retryQuery = wasStopped ? pendingQuery : refreshStoppedQuery
 
+
+  // Composer: a single floating pill that holds attachments, the textarea and
+  // every control. Rendered over the message stream once a chat has started
+  // and inline (centered) on the empty state.
+  const composer = (
+    <div ref={composerRef} className="mx-auto w-full max-w-4xl">
+      <div
+        className={cn(
+          "relative rounded-[26px] border border-border/60 bg-background/95 shadow-lg shadow-black/5 backdrop-blur-md",
+          "transition-[border-color,box-shadow] duration-200 focus-within:border-ring/50 focus-within:shadow-xl focus-within:shadow-black/10",
+        )}
+      >
+        {fileDragging && (
+          <div className="absolute inset-0 z-50 rounded-[26px] border-2 border-dashed border-primary bg-primary/5 backdrop-blur-sm flex items-center justify-center gap-2 pointer-events-none">
+            <Paperclip className="h-5 w-5 text-primary" />
+            <p className="text-sm font-medium text-primary">{t("dropFilesHere")}</p>
+          </div>
+        )}
+        {(pendingFiles.length > 0 || clips.length > 0 || (hasImageAttachment && modelReadsImages === false)) && (
+          <div className="px-4 pt-3">
+      {/* Pending files (uploading eagerly) */}
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 pb-2">
+          {pendingFiles.map((pf) => {
+            const isImage = pf.mime.startsWith("image/")
+            return (
+              <div
+                key={pf.id}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
+                  pf.status === "failed"
+                    ? "border-destructive/60 bg-destructive/10"
+                    : "border-border/60 bg-muted/30"
+                )}
+              >
+                {isImage && pf.previewUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={pf.previewUrl}
+                    alt={pf.name}
+                    className="h-8 w-8 rounded object-cover"
+                  />
+                ) : isImage && pf.uploadResult ? (
+                  // Restored from a draft: the blob URL died with the page.
+                  <AttachmentThumbnail fileId={pf.uploadResult.file_id} alt={pf.name} />
+                ) : (
+                  <Paperclip className="h-3 w-3 text-muted-foreground" />
+                )}
+                <span className="max-w-[150px] truncate">{pf.name}</span>
+                <span className="text-muted-foreground">({formatFileSize(pf.size)})</span>
+                {/* Upload status indicator */}
+                {pf.status === "uploading" && (
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                )}
+                {pf.status === "uploaded" && (
+                  <Check className="h-3 w-3 text-green-500" />
+                )}
+                {pf.status === "failed" && (
+                  <button
+                    onClick={() => retryFileUpload(pf.id)}
+                    className="text-destructive hover:text-destructive/80"
+                    title={t("retryUpload")}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => removeFile(pf.id)}
+                  className="ml-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {hasImageAttachment && modelReadsImages === false && (
+        <p className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          {t("imagesNotReadable")}
+        </p>
+      )}
+      {/* Pasted clips */}
+      {clips.length > 0 && (
+        <div className="flex flex-col gap-2 pb-2">
+          {clips.map((clip) => {
+            const isExpanded = expandedClips.has(clip.id)
+            return (
+              <div
+                key={clip.id}
+                className="rounded-lg border border-border/60 bg-muted/50 text-xs overflow-hidden"
+              >
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => toggleClipExpand(clip.id)}
+                    className="flex flex-1 min-w-0 items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/80 transition-colors text-left"
+                    aria-label={isExpanded ? t("collapseClip") : t("expandClip")}
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 min-w-0 truncate text-foreground">{clip.preview}</span>
+                    <span className="shrink-0 text-muted-foreground">({clip.charCount.toLocaleString()} {t("chars")})</span>
+                    {isExpanded ? (
+                      <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeClip(clip.id)}
+                    className="shrink-0 px-2 py-2 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={t("removeClip")}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                {isExpanded && (
+                  <div className="border-t border-border/40 bg-muted px-3 py-2 max-h-[200px] overflow-y-auto">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground/80">{clip.content}</pre>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+          </div>
+        )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileUpload}
+        accept=".txt,.md,.py,.js,.json,.csv,.pdf,.docx,.html,.htm,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.svg,image/*"
+      />
+        <div className="relative flex items-end gap-1 px-2.5 py-2">
+          <SlashCommandMenu
+            isOpen={slashCommands.isOpen}
+            filteredCommands={slashCommands.filteredCommands}
+            subMenuCommand={slashCommands.subMenuCommand}
+            subMenuItems={slashCommands.subMenuItems}
+            selectedIndex={slashCommands.selectedIndex}
+            onSelect={slashCommands.executeCommand}
+            onQueryChange={onQueryChange}
+          />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors select-none",
+              "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start">
+            <DropdownMenuItem
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+            >
+              <Paperclip className="h-4 w-4" />
+              {t("uploadFiles")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+          <Textarea
+            ref={textareaRef}
+            rows={1}
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            onCompositionStart={() => { composingRef.current = true; setComposing(true) }}
+            onCompositionEnd={(e) => { composingRef.current = false; setComposing(false); onQueryChange(e.currentTarget.value) }}
+            onKeyDown={handleKeyDownWithFiles}
+            onPaste={handlePaste}
+            placeholder={
+              isRunning
+                ? t("placeholderInterrupt")
+                : mode === "auto"
+                  ? t("placeholderAuto")
+                  : mode === "react"
+                    ? t("placeholderReact")
+                    : t("placeholderDag")
+            }
+            className={cn(
+              "min-h-9 max-h-[200px] flex-1 resize-none self-center border-0 bg-transparent px-2 py-2 shadow-none",
+              "dark:bg-transparent hover:border-transparent focus-visible:outline-none focus-visible:border-transparent",
+            )}
+          />
+          <div className="flex shrink-0 items-center gap-0.5">
+        <DropdownMenu>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild disabled={isRunning}>
+                  <button
+                    type="button"
+                    disabled={isRunning}
+                    className={cn(
+                      "inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors select-none",
+                      "text-muted-foreground",
+                      isRunning ? "opacity-50 cursor-not-allowed" : "hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    {mode === "auto" ? (
+                      <Sparkles className="h-3 w-3" />
+                    ) : mode === "react" ? (
+                      <Zap className="h-3 w-3" />
+                    ) : (
+                      <GitBranch className="h-3 w-3" />
+                    )}
+                    {mode === "auto" ? t("modeAuto") : mode === "react" ? t("modeStandard") : t("modePlanner")}
+                    <ChevronDown className="h-3 w-3 opacity-60" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {mode === "auto"
+                  ? t("modeAutoTooltip")
+                  : mode === "react"
+                    ? t("modeStandardTooltip")
+                    : t("modePlannerTooltip")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <DropdownMenuContent side="top" align="start">
+            <DropdownMenuItem onClick={() => onModeChange("auto")} className={cn(mode === "auto" && "bg-accent")}>
+              <Sparkles className="h-4 w-4" />
+              {t("modeAuto")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onModeChange("react")} className={cn(mode === "react" && "bg-accent")}>
+              <Zap className="h-4 w-4" />
+              {t("modeStandard")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onModeChange("dag")} className={cn(mode === "dag" && "bg-accent")}>
+              <GitBranch className="h-4 w-4" />
+              {t("modePlanner")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {!embedded && (
+          <Popover open={agentSelectorOpen} onOpenChange={setAgentSelectorOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                disabled={isRunning}
+                className={cn(
+                  "inline-flex h-8 max-w-[160px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors select-none",
+                  "text-muted-foreground",
+                  isRunning
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {selectedAgent?.icon
+                  ? <span className="text-sm leading-none">{selectedAgent.icon}</span>
+                  : <Sparkles className="h-3 w-3" />
+                }
+                <span className="truncate">{selectedAgent ? selectedAgent.name : t("autoAgent")}</span>
+                <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[260px] p-0" side="top" align="start">
+              <Command>
+                <CommandInput placeholder={t("searchAgents")} />
+                <CommandList>
+                  <CommandEmpty>{t("noAgentFound")}</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="__auto_agent__"
+                      keywords={["auto"]}
+                      onSelect={() => {
+                        onAgentChange(null)
+                        setAgentSelectorOpen(false)
+                      }}
+                      className="flex items-start gap-2"
+                    >
+                      <Check
+                        className={cn(
+                          "h-3.5 w-3.5 mt-0.5 shrink-0",
+                          !selectedAgent ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="h-3 w-3 text-primary" />
+                          <span className="font-medium">{t("autoAgent")}</span>
+                          <span className="text-[10px] text-primary/70 bg-primary/10 px-1.5 py-0 rounded-full leading-relaxed">
+                            {tc("default")}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground leading-tight">
+                          {t("autoAgentDescription")}
+                        </span>
+                      </div>
+                    </CommandItem>
+                    {agents.map((a) => (
+                      <CommandItem
+                        key={a.id}
+                        value={a.id}
+                        keywords={[a.name]}
+                        onSelect={() => {
+                          onAgentChange(a)
+                          setAgentSelectorOpen(false)
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "h-3.5 w-3.5",
+                            selectedAgent?.id === a.id ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {a.icon && <span className="text-sm leading-none">{a.icon}</span>}
+                        {a.name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        )}
+            <Button
+              size="icon"
+              onClick={isRunning ? ((query.trim() || composing) ? handleRunWithFiles : onAbort) : handleRunWithFiles}
+              disabled={awaitingUploads || (!isRunning && !query.trim() && !composing && clips.length === 0 && !pendingFiles.some((f) => f.status !== "failed"))}
+              className="ml-1 h-9 w-9 shrink-0 rounded-full"
+              variant={isRunning && !query.trim() && !composing ? "destructive" : "default"}
+              aria-label={isRunning && !query.trim() && !composing ? t("stopButton") : t("sendButton")}
+            >
+              {awaitingUploads ? (
+                // The send is queued behind an attachment that is still uploading.
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : isRunning && !query.trim() && !composing ? (
+                <Square className="h-3.5 w-3.5" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <>
     <div
-      className="relative flex flex-1 flex-col overflow-hidden px-6 pb-6 pt-0 gap-4"
+      className="relative flex flex-1 flex-col overflow-hidden px-6 pb-4 pt-0"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -2044,8 +2412,11 @@ function PlaygroundContent({
             </div>
 
             <div className="relative flex-1 min-h-0">
-              <ScrollArea ref={scrollAreaRef} className="h-full p-4">
-                <div className="min-w-0 max-w-4xl mx-auto w-full space-y-4">
+              <ScrollArea ref={scrollAreaRef} className="h-full px-4 pt-4">
+                <div
+                  className="min-w-0 max-w-4xl mx-auto w-full space-y-4"
+                  style={{ paddingBottom: composerHeight + COMPOSER_GAP }}
+                >
                   {/* Previous turns from DB (shown during both live and history mode) */}
                   {allHistoryTurns?.map((turn, idx, turnsArr) => {
                     const historyCompact = turn.sseMessages.find((m) => m.event === "compact")
@@ -2188,15 +2559,25 @@ function PlaygroundContent({
                   {spacerPx > 0 && <div aria-hidden style={{ height: spacerPx }} />}
                 </div>
               </ScrollArea>
-              {showScrollBtn && (
-                <button
-                  onClick={scrollToBottom}
-                  className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:text-foreground hover:border-border"
-                >
-                  <ArrowDown className="h-3 w-3" />
-                  {t("newUpdates")}
-                </button>
-              )}
+              {/* Floating composer: the stream keeps scrolling underneath and
+                  fades out through the gradient. Only the pill itself takes
+                  pointer events so the faded tail stays scrollable. */}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/85 to-transparent px-4 pb-2 pt-12">
+                <div className="relative mx-auto w-full max-w-4xl">
+                  {showScrollBtn && (
+                    <button
+                      type="button"
+                      onClick={scrollToBottom}
+                      aria-label={t("newUpdates")}
+                      title={t("newUpdates")}
+                      className="pointer-events-auto absolute -top-11 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:border-border hover:text-foreground"
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <div className="pointer-events-auto">{composer}</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2239,7 +2620,8 @@ function PlaygroundContent({
           )}
         </div>
       ) : (
-        <div className="flex flex-1 flex-col justify-center min-h-0 w-full">
+        <div className="flex flex-1 flex-col justify-center min-h-0 w-full gap-8 overflow-y-auto py-4">
+          {composer}
           {!embedded && (
             <Examples
               mode={mode}
@@ -2253,340 +2635,6 @@ function PlaygroundContent({
         </div>
       )}
 
-      {/* Input area -- pinned to bottom */}
-      <div className="shrink-0 space-y-2 max-w-4xl mx-auto w-full">
-        {/* Pending files (uploading eagerly) */}
-        {pendingFiles.length > 0 && (
-          <div className="flex flex-wrap gap-2 pb-2">
-            {pendingFiles.map((pf) => {
-              const isImage = pf.mime.startsWith("image/")
-              return (
-                <div
-                  key={pf.id}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
-                    pf.status === "failed"
-                      ? "border-destructive/60 bg-destructive/10"
-                      : "border-border/60 bg-muted/30"
-                  )}
-                >
-                  {isImage && pf.previewUrl ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={pf.previewUrl}
-                      alt={pf.name}
-                      className="h-8 w-8 rounded object-cover"
-                    />
-                  ) : isImage && pf.uploadResult ? (
-                    // Restored from a draft: the blob URL died with the page.
-                    <AttachmentThumbnail fileId={pf.uploadResult.file_id} alt={pf.name} />
-                  ) : (
-                    <Paperclip className="h-3 w-3 text-muted-foreground" />
-                  )}
-                  <span className="max-w-[150px] truncate">{pf.name}</span>
-                  <span className="text-muted-foreground">({formatFileSize(pf.size)})</span>
-                  {/* Upload status indicator */}
-                  {pf.status === "uploading" && (
-                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                  )}
-                  {pf.status === "uploaded" && (
-                    <Check className="h-3 w-3 text-green-500" />
-                  )}
-                  {pf.status === "failed" && (
-                    <button
-                      onClick={() => retryFileUpload(pf.id)}
-                      className="text-destructive hover:text-destructive/80"
-                      title={t("retryUpload")}
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => removeFile(pf.id)}
-                    className="ml-0.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-        {hasImageAttachment && modelReadsImages === false && (
-          <p className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
-            <AlertTriangle className="h-3 w-3 shrink-0" />
-            {t("imagesNotReadable")}
-          </p>
-        )}
-        {/* Pasted clips */}
-        {clips.length > 0 && (
-          <div className="flex flex-col gap-2 pb-2">
-            {clips.map((clip) => {
-              const isExpanded = expandedClips.has(clip.id)
-              return (
-                <div
-                  key={clip.id}
-                  className="rounded-lg border border-border/60 bg-muted/50 text-xs overflow-hidden"
-                >
-                  <div className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => toggleClipExpand(clip.id)}
-                      className="flex flex-1 min-w-0 items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/80 transition-colors text-left"
-                      aria-label={isExpanded ? t("collapseClip") : t("expandClip")}
-                    >
-                      <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="flex-1 min-w-0 truncate text-foreground">{clip.preview}</span>
-                      <span className="shrink-0 text-muted-foreground">({clip.charCount.toLocaleString()} {t("chars")})</span>
-                      {isExpanded ? (
-                        <ChevronUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeClip(clip.id)}
-                      className="shrink-0 px-2 py-2 text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label={t("removeClip")}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                  {isExpanded && (
-                    <div className="border-t border-border/40 bg-muted px-3 py-2 max-h-[200px] overflow-y-auto">
-                      <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground/80">{clip.content}</pre>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={handleFileUpload}
-          accept=".txt,.md,.py,.js,.json,.csv,.pdf,.docx,.html,.htm,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.svg,image/*"
-        />
-        <div className="relative flex items-end gap-2">
-          {fileDragging && (
-            <div className="absolute inset-0 z-50 rounded-lg border-2 border-dashed border-primary bg-primary/5 backdrop-blur-sm flex items-center justify-center gap-2 pointer-events-none">
-              <Paperclip className="h-5 w-5 text-primary" />
-              <p className="text-sm font-medium text-primary">{t("dropFilesHere")}</p>
-            </div>
-          )}
-          <SlashCommandMenu
-            isOpen={slashCommands.isOpen}
-            filteredCommands={slashCommands.filteredCommands}
-            subMenuCommand={slashCommands.subMenuCommand}
-            subMenuItems={slashCommands.subMenuItems}
-            selectedIndex={slashCommands.selectedIndex}
-            onSelect={slashCommands.executeCommand}
-            onQueryChange={onQueryChange}
-          />
-          <Textarea
-            ref={textareaRef}
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onCompositionStart={() => { composingRef.current = true; setComposing(true) }}
-            onCompositionEnd={(e) => { composingRef.current = false; setComposing(false); onQueryChange(e.currentTarget.value) }}
-            onKeyDown={handleKeyDownWithFiles}
-            onPaste={handlePaste}
-            placeholder={
-              isRunning
-                ? t("placeholderInterrupt")
-                : mode === "auto"
-                  ? t("placeholderAuto")
-                  : mode === "react"
-                    ? t("placeholderReact")
-                    : t("placeholderDag")
-            }
-            className="min-h-[72px] max-h-[160px] resize-none"
-          />
-          <Button
-            onClick={isRunning ? ((query.trim() || composing) ? handleRunWithFiles : onAbort) : handleRunWithFiles}
-            disabled={awaitingUploads || (!isRunning && !query.trim() && !composing && clips.length === 0 && !pendingFiles.some((f) => f.status !== "failed"))}
-            className="h-[72px] w-16 shrink-0"
-            variant={isRunning && !query.trim() && !composing ? "destructive" : "default"}
-          >
-            {awaitingUploads ? (
-              // The send is queued behind an attachment that is still uploading.
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : isRunning && !query.trim() && !composing ? (
-              <Square className="h-4 w-4" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-        {/* Mode toggle toolbar */}
-        <div className="flex items-center gap-2">
-          {/* "+" dropdown menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex items-center justify-center rounded-full px-2 py-1 transition-colors",
-                  "border border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground select-none"
-                )}
-              >
-                {isUploading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Plus className="h-3.5 w-3.5" />
-                )}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start">
-              <DropdownMenuItem
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-              >
-                <Paperclip className="h-4 w-4" />
-                {t("uploadFiles")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild disabled={isRunning}>
-                    <button
-                      type="button"
-                      disabled={isRunning}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                        "border select-none",
-                        isRunning && "opacity-50 cursor-not-allowed",
-                        "border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                      )}
-                    >
-                      {mode === "auto" ? (
-                        <Sparkles className="h-3 w-3" />
-                      ) : mode === "react" ? (
-                        <Zap className="h-3 w-3" />
-                      ) : (
-                        <GitBranch className="h-3 w-3" />
-                      )}
-                      {mode === "auto" ? t("modeAuto") : mode === "react" ? t("modeStandard") : t("modePlanner")}
-                    </button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {mode === "auto"
-                    ? t("modeAutoTooltip")
-                    : mode === "react"
-                      ? t("modeStandardTooltip")
-                      : t("modePlannerTooltip")}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <DropdownMenuContent side="top" align="start">
-              <DropdownMenuItem onClick={() => onModeChange("auto")} className={cn(mode === "auto" && "bg-accent")}>
-                <Sparkles className="h-4 w-4" />
-                {t("modeAuto")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onModeChange("react")} className={cn(mode === "react" && "bg-accent")}>
-                <Zap className="h-4 w-4" />
-                {t("modeStandard")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onModeChange("dag")} className={cn(mode === "dag" && "bg-accent")}>
-                <GitBranch className="h-4 w-4" />
-                {t("modePlanner")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {/* Agent selector — hidden in embedded/builder mode */}
-          {!embedded && (
-            <Popover open={agentSelectorOpen} onOpenChange={setAgentSelectorOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  disabled={isRunning}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                    "border select-none",
-                    "border-border/60 bg-muted/40 text-muted-foreground",
-                    isRunning
-                      ? "opacity-50 cursor-not-allowed"
-                      : "hover:bg-muted/70 hover:text-foreground"
-                  )}
-                >
-                  {selectedAgent?.icon
-                    ? <span className="text-sm leading-none">{selectedAgent.icon}</span>
-                    : <Sparkles className="h-3 w-3" />
-                  }
-                  {selectedAgent ? selectedAgent.name : t("autoAgent")}
-                  <ChevronsUpDown className="h-3 w-3 opacity-50" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[260px] p-0" side="top" align="start">
-                <Command>
-                  <CommandInput placeholder={t("searchAgents")} />
-                  <CommandList>
-                    <CommandEmpty>{t("noAgentFound")}</CommandEmpty>
-                    <CommandGroup>
-                      <CommandItem
-                        value="__auto_agent__"
-                        keywords={["auto"]}
-                        onSelect={() => {
-                          onAgentChange(null)
-                          setAgentSelectorOpen(false)
-                        }}
-                        className="flex items-start gap-2"
-                      >
-                        <Check
-                          className={cn(
-                            "h-3.5 w-3.5 mt-0.5 shrink-0",
-                            !selectedAgent ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <Sparkles className="h-3 w-3 text-primary" />
-                            <span className="font-medium">{t("autoAgent")}</span>
-                            <span className="text-[10px] text-primary/70 bg-primary/10 px-1.5 py-0 rounded-full leading-relaxed">
-                              {tc("default")}
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-muted-foreground leading-tight">
-                            {t("autoAgentDescription")}
-                          </span>
-                        </div>
-                      </CommandItem>
-                      {agents.map((a) => (
-                        <CommandItem
-                          key={a.id}
-                          value={a.id}
-                          keywords={[a.name]}
-                          onSelect={() => {
-                            onAgentChange(a)
-                            setAgentSelectorOpen(false)
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "h-3.5 w-3.5",
-                              selectedAgent?.id === a.id ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          {a.icon && <span className="text-sm leading-none">{a.icon}</span>}
-                          {a.name}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
-      </div>
     </div>
     {activeConversation && (
       <ExportDialog
