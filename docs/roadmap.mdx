@@ -325,6 +325,11 @@ Deferred hardening — not blocking; pick up only if the matching scenario shows
 ### v0.8.11 (2026-09-03) — Floating Composer
 - [x] Chat composer is one floating pill over the message stream — attachments, mode/agent selectors and send in one input; messages scroll beneath it
 
+### v0.8.12 (2026-09-04) — Shared Composer + ENV Sync
+- [x] KB / agent / connector AI assistants use the same floating composer as the chat; Enter during IME composition no longer sends
+- [x] `scripts/env_from_active_group.py` keeps the `.env` model fallback in step with the admin-panel active group
+- [x] Image generation works against OpenAI `gpt-image-*` models
+
 ## Planned Versions
 
 Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, credentials, approval gate, audit, multi-tenant orgs) behind multiple delivery surfaces: Web UI, API, JS embed, MCP output. Every surface reuses the same assembly layer for auth, credentials, approval, and metering: more frontends, never more logic. Near-term direction is convergence on the data-Q&A (ChatBI) slice, selling scenarios rather than a platform. {/* dev: dev/replan-2026-07.md */}

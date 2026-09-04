@@ -325,6 +325,11 @@ Durcissement différé — ne bloque pas ; à reprendre uniquement si le scénar
 ### v0.8.11 (2026-09-03) — Floating Composer
 - [x] Le compositeur de chat est une pilule flottante au-dessus du flux de messages — pièces jointes, sélecteurs de mode/agent et envoi dans une seule entrée ; les messages défilent en dessous
 
+### v0.8.12 (2026-09-04) — Compositeur partagé + synchronisation ENV
+- [x] Les assistants IA de la base de connaissances (KB), des agents et des connecteurs utilisent le même éditeur flottant que le chat ; appuyer sur Entrée pendant la composition IME n’envoie plus le message
+- [x] `scripts/env_from_active_group.py` maintient le modèle de secours dans `.env` synchronisé avec le groupe actif du panneau d’administration
+- [x] La génération d’images fonctionne avec les modèles OpenAI `gpt-image-*`
+
 ## Versions Prévues
 
 Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (moteur ReAct, identifiants, confirmation gate, audit, orgs multi-tenant) derrière plusieurs surfaces de livraison : Web UI, API, JS embed, sortie MCP. Chaque surface réutilise la même couche d'assemblage pour l'authentification, les identifiants, la confirmation et le metering : plus de frontends, jamais plus de logique. La direction à court terme est la convergence sur la tranche data-Q&A (ChatBI), vendre des scénarios plutôt qu'une plateforme. {/* dev: dev/replan-2026-07.md */}

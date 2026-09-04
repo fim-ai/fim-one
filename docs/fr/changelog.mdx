@@ -10,6 +10,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+## [v0.8.12] - 2026-09-04
+
 ### Ajouté
 
 - **Le fallback ENV peut être synchronisé depuis le panneau d’administration.** `scripts/env_from_active_group.py` copie le groupe de modèles actif (général / rapide / raisonnement, avec génération d’images en option) dans `.env`, afin que le hook i18n, les évaluations et les autres chemins sans DB cessent de basculer vers un fournisseur obsolète.

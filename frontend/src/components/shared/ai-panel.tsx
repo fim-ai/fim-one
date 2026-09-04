@@ -430,7 +430,7 @@ export function AIPanel({
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 [&>*]:mx-auto [&>*]:w-full [&>*]:max-w-3xl">
         {isDisabled ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-muted-foreground text-center">
@@ -509,7 +509,7 @@ export function AIPanel({
       </div>
 
       {/* Composer */}
-      <div className="shrink-0 px-3 pb-3 pt-1">
+      <div className="mx-auto w-full max-w-3xl shrink-0 px-3 pb-3 pt-1">
         <ComposerShell>
           <ComposerRow className="px-2 py-1.5">
             <ComposerTextarea
