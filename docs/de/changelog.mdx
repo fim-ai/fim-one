@@ -14,6 +14,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 - **ENV-Fallback kann über das Admin-Panel synchronisiert werden.** `scripts/env_from_active_group.py` kopiert die aktive Modellgruppe (allgemein / schnell / Reasoning, optional auch Bildgenerierung) in `.env`, sodass der i18n-Hook, Evals und andere Pfade ohne DB nicht mehr auf einen veralteten Provider zurückfallen.
 
+### Geändert
+
+- **Die Bereiche des AI assistant verwenden denselben Composer wie der Chat.** Die Assistenten für die Wissensdatenbank, agent und connector erhalten jetzt das pillenförmige Eingabefeld mit einem mehrzeiligen Textbereich und einer runden Senden-Schaltfläche. Enter sendet die Nachricht nicht mehr, wenn gerade eine Eingabemethode zusammengestellt wird.
+
 ### Behoben
 
 - **Die Bildgenerierung funktioniert mit den `gpt-image-*`-Modellen von OpenAI.** Die Anfrage sendet nicht mehr `response_format`, und Seitenverhältnisse werden den von diesen Modellen akzeptierten Größen zugeordnet.

@@ -14,6 +14,10 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 - **Le fallback ENV peut être synchronisé depuis le panneau d’administration.** `scripts/env_from_active_group.py` copie le groupe de modèles actif (général / rapide / raisonnement, avec génération d’images en option) dans `.env`, afin que le hook i18n, les évaluations et les autres chemins sans DB cessent de basculer vers un fournisseur obsolète.
 
+### Modifié
+
+- **Les panneaux des assistants IA utilisent la même zone de composition que le chat.** Les assistants de la base de connaissances, des agents et des connecteurs disposent désormais d’un champ de saisie en forme de pilule avec une zone de texte multiligne et un bouton d’envoi rond ; appuyer sur Entrée pendant la composition avec une méthode de saisie n’envoie plus le message.
+
 ### Corrigé
 
 - **La génération d’images fonctionne avec les modèles `gpt-image-*` d’OpenAI.** La requête n’envoie plus `response_format`, et les ratios d’aspect sont mappés vers les tailles acceptées par ces modèles.

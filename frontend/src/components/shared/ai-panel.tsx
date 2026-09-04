@@ -2,11 +2,11 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { Sparkles, Send, Loader2, Wand2, ArrowLeft } from "lucide-react"
+import { Sparkles, Loader2, Wand2, ArrowLeft } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { ComposerRow, ComposerSendButton, ComposerShell, ComposerTextarea } from "@/components/shared/chat-composer"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { agentApi, connectorApi, kbApi, ApiError } from "@/lib/api"
@@ -71,7 +71,7 @@ export function AIPanel({
   const [builderLoading, setBuilderLoading] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -296,7 +296,8 @@ export function AIPanel({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Enter while an IME is composing (CJK input) confirms the candidate, not the message.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       handleSend()
     }
@@ -507,31 +508,28 @@ export function AIPanel({
         )}
       </div>
 
-      {/* Input bar */}
-      <div className="flex items-center gap-2 shrink-0 px-4 py-3 border-t border-border">
-        <Input
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={getPlaceholder()}
-          disabled={isLoading || isDisabled}
-          className="flex-1 h-8 text-sm"
-        />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-xs"
+      {/* Composer */}
+      <div className="shrink-0 px-3 pb-3 pt-1">
+        <ComposerShell>
+          <ComposerRow className="px-2 py-1.5">
+            <ComposerTextarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={getPlaceholder()}
+              disabled={isLoading || isDisabled}
+              className="min-h-8 max-h-[160px] py-1.5 text-sm"
+            />
+            <ComposerSendButton
+              state={isLoading ? "busy" : "send"}
               onClick={handleSend}
               disabled={isLoading || isDisabled || !input.trim()}
-            >
-              <Send className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" sideOffset={5}>
-            {mode === "kb" ? tKb("send") : mode === "agent" ? tAgents("send") : tConnectors("send")}
-          </TooltipContent>
-        </Tooltip>
+              className="h-8 w-8"
+              sendLabel={mode === "kb" ? tKb("send") : mode === "agent" ? tAgents("send") : tConnectors("send")}
+            />
+          </ComposerRow>
+        </ComposerShell>
       </div>
     </div>
   )

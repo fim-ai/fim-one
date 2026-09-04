@@ -14,6 +14,10 @@ description: "FIM One的所有重要更新。"
 
 - **ENV回退配置可从管理面板同步。** `scripts/env_from_active_group.py`会将当前模型组（general / fast / reasoning，可选图像生成）复制到`.env`中，使国际化钩子、evals以及其他无需数据库的路径不再错误地使用过时的提供商。
 
+### 变更
+
+- **AI助手面板使用与聊天相同的输入框。**知识库、智能体和连接器助手现在都使用胶囊形输入框，配备多行文本区域和圆形发送按钮；在输入法组合输入时按Enter键不再发送消息。
+
 ### 修复
 
 - **图像生成可使用 OpenAI 的 `gpt-image-*` 模型。** 请求不再发送 `response_format`，并且宽高比会映射到这些模型所接受的尺寸。

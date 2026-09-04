@@ -3,11 +3,11 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, memo, Fragment } from "react"
 import { useTranslations } from "next-intl"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { Textarea } from "@/components/ui/textarea"
+import { ComposerRow, ComposerSendButton, ComposerShell, ComposerTextarea } from "@/components/shared/chat-composer"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Send, Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Square, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, Download, FileText, ChevronDown, ChevronUp, Sparkles, AlertTriangle } from "lucide-react"
+import { Loader2, PanelRightOpen, PanelRightClose, ArrowDown, Zap, GitBranch, Bot, Paperclip, X, Plus, ChevronsUpDown, Check, Undo2, RotateCcw, Download, FileText, ChevronDown, ChevronUp, Sparkles, AlertTriangle } from "lucide-react"
 import { UserAvatar } from "@/components/shared/user-avatar"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -1981,12 +1981,7 @@ function PlaygroundContent({
   // and inline (centered) on the empty state.
   const composer = (
     <div ref={composerRef} className="mx-auto w-full max-w-4xl">
-      <div
-        className={cn(
-          "relative rounded-[26px] border border-border/60 bg-background/95 shadow-lg shadow-black/5 backdrop-blur-md",
-          "transition-[border-color,box-shadow] duration-200 focus-within:border-ring/50 focus-within:shadow-xl focus-within:shadow-black/10",
-        )}
-      >
+      <ComposerShell>
         {fileDragging && (
           <div className="absolute inset-0 z-50 rounded-[26px] border-2 border-dashed border-primary bg-primary/5 backdrop-blur-sm flex items-center justify-center gap-2 pointer-events-none">
             <Paperclip className="h-5 w-5 text-primary" />
@@ -2113,7 +2108,7 @@ function PlaygroundContent({
         onChange={handleFileUpload}
         accept=".txt,.md,.py,.js,.json,.csv,.pdf,.docx,.html,.htm,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.svg,image/*"
       />
-        <div className="relative flex items-end gap-1 px-2.5 py-2">
+        <ComposerRow>
           <SlashCommandMenu
             isOpen={slashCommands.isOpen}
             filteredCommands={slashCommands.filteredCommands}
@@ -2149,9 +2144,8 @@ function PlaygroundContent({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-          <Textarea
+          <ComposerTextarea
             ref={textareaRef}
-            rows={1}
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onCompositionStart={() => { composingRef.current = true; setComposing(true) }}
@@ -2167,10 +2161,6 @@ function PlaygroundContent({
                     ? t("placeholderReact")
                     : t("placeholderDag")
             }
-            className={cn(
-              "min-h-9 max-h-[200px] flex-1 resize-none self-center border-0 bg-transparent px-2 py-2 shadow-none",
-              "dark:bg-transparent hover:border-transparent focus-visible:outline-none focus-visible:border-transparent",
-            )}
           />
           <div className="flex shrink-0 items-center gap-0.5">
         <DropdownMenu>
@@ -2305,26 +2295,18 @@ function PlaygroundContent({
             </PopoverContent>
           </Popover>
         )}
-            <Button
-              size="icon"
+            <ComposerSendButton
+              // `busy` = the send is queued behind an attachment that is still uploading.
+              state={awaitingUploads ? "busy" : isRunning && !query.trim() && !composing ? "stop" : "send"}
               onClick={isRunning ? ((query.trim() || composing) ? handleRunWithFiles : onAbort) : handleRunWithFiles}
               disabled={awaitingUploads || (!isRunning && !query.trim() && !composing && clips.length === 0 && !pendingFiles.some((f) => f.status !== "failed"))}
-              className="ml-1 h-9 w-9 shrink-0 rounded-full"
-              variant={isRunning && !query.trim() && !composing ? "destructive" : "default"}
-              aria-label={isRunning && !query.trim() && !composing ? t("stopButton") : t("sendButton")}
-            >
-              {awaitingUploads ? (
-                // The send is queued behind an attachment that is still uploading.
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isRunning && !query.trim() && !composing ? (
-                <Square className="h-3.5 w-3.5" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+              className="ml-1"
+              sendLabel={t("sendButton")}
+              stopLabel={t("stopButton")}
+            />
           </div>
-        </div>
-      </div>
+        </ComposerRow>
+      </ComposerShell>
     </div>
   )
 

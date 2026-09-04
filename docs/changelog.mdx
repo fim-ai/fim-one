@@ -14,6 +14,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 - **ENV fallback can be synced from the admin panel.** `scripts/env_from_active_group.py` copies the active model group (general / fast / reasoning, optionally image generation) into `.env`, so the i18n hook, evals and other DB-less paths stop drifting onto a stale provider.
 
+### Changed
+
+- **The AI assistant panels use the same composer as the chat.** The knowledge base, agent and connector assistants now get the pill-shaped input with a multi-line textarea and round send button; Enter while an input method is composing no longer sends the message.
+
 ### Fixed
 
 - **Image generation works against OpenAI's `gpt-image-*` models.** The request no longer sends `response_format`, and aspect ratios map to the sizes those models accept.
