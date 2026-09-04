@@ -1,9 +1,14 @@
-"""Behavioral evals for deliverable handling.
+"""Behavioral evals for deliverable handling — regression tier.
 
 Both cases replay a production failure from a 2026-07-05 user session
 (see evals/README.md).  Assertions target the trajectory and the sandbox,
 not the answer text — with one deliberate exception: the claim-vs-deed
 check, where the *claim* in the text is exactly what is under test.
+
+Tier: ``regression``, so these run pass@k (``eval_retry``) — the question
+is whether the fixed behavior is still reachable, not whether it holds on
+every single sample.  Policy probes are the other tier; see
+``test_policy_behavior.py``.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ import pytest
 from .harness import BANNED_PURPLE_HEXES, eval_retry, run_case
 
 # Real LLM + up to 15 ReAct iterations — override the repo-wide 30s cap.
-pytestmark = pytest.mark.timeout(600)
+pytestmark = [pytest.mark.timeout(600), pytest.mark.regression]
 
 # The turn-1 deliverable as production generated it: AI-purple gradient.
 _PURPLE_SCORECARD = """\

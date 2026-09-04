@@ -144,6 +144,8 @@ asyncio_mode = "auto"
 timeout = 30
 markers = [
     "docker: mark test as requiring a running Docker daemon",
+    "regression: eval tier — a production bug frozen after its fix (pass@k)",
+    "challenge: eval tier — a policy probe the agent must never fail (pass^k)",
 ]
 
 [dependency-groups]
