@@ -105,6 +105,7 @@ The hook runs automatically on every commit. It only processes staged files rele
 | 2 | i18n translation | `messages/en/*.json`, `docs/*.mdx`, or `README.md` changed (needs local `LLM_API_KEY`, else CI handles it after merge) | Translates new/changed keys into all target locales |
 | 3 | mypy type checking | Any `src/fim_one/**/*.py` changed | Runs mypy with full import chain on staged files |
 | 4 | MDX validation | Any `.mdx` file staged | Validates JSX/MDX syntax before it reaches Mintlify |
+| 5 | Markdown link gate | Any `.md` / `.mdx` file staged | `scripts/check_md_links.py` rejects links to missing pages or assets and `#anchors` that match no heading, across all of `docs/` (a rename breaks links in files you did not stage). Also runs in CI. |
 
 If any step fails, the commit is aborted. Fix the reported errors and retry.
 

@@ -92,19 +92,22 @@ mypy 严格模式已启用。整个代码库通过零错误检查，预提交钩
 
 ---
 
-## 预提交钩子管道
+## 提交前钩子流水线
 
-钩子在每次提交时自动运行。它只处理与每个步骤相关的暂存文件——如果你只修改了Python文件，i18n步骤会被跳过，反之亦然。
+该钩子会在每次提交时自动运行。它只处理与各步骤相关的已暂存文件——如果你只修改了Python文件，则会跳过国际化步骤，反之亦然。
 
-| 顺序 | 步骤 | 触发条件 | 功能 |
+| 顺序 | 步骤 | 触发条件 | 作用 |
 |---|---|---|---|
-| 0 | 语言环境编辑保护 | 任何`messages/{locale}/`、`docs/{locale}/`或`README.{locale}.md`下的暂存文件 | 中止提交——无法覆盖。通过`scripts/translation-glossary.md`修复翻译。 |
-| 1 | OpenAPI规范重新生成 | `src/fim_one/web/**/*.py`已更改 | 从FastAPI路由重新导出`docs/openapi.json` |
-| 2 | i18n翻译 | `messages/en/*.json`、`docs/*.mdx`或`README.md`已更改（需要本地`LLM_API_KEY`，否则CI在合并后处理） | 将新增/更改的键翻译为所有目标语言 |
-| 3 | mypy类型检查 | 任何`src/fim_one/**/*.py`已更改 | 在暂存文件上运行mypy及完整导入链 |
-| 4 | MDX验证 | 任何`.mdx`文件已暂存 | 在到达Mintlify之前验证JSX/MDX语法 |
+| 0 | 语言环境编辑保护 | `messages/{locale}/`、`docs/{locale}/` 或 `README.{locale}.md` 下的任意已暂存文件 | 中止提交——不允许覆盖。请改为通过`scripts/translation-glossary.md`修复翻译。 |
+| 1 | OpenAPI规范重新生成 | `src/fim_one/web/**/*.py` 发生更改 | 根据FastAPI路由重新导出`docs/openapi.json` |
+| 2 | 国际化翻译 | `messages/en/*.json`、`docs/*.mdx` 或 `README.md` 发生更改（需要本地配置`LLM_API_KEY`，否则由CI在合并后处理） | 将新增或更改的键翻译到所有目标语言环境 |
+| 3 | mypy类型检查 | 任意`src/fim_one/**/*.py`发生更改 | 对已暂存文件运行带完整导入链的mypy |
+| 4 | MDX验证 | 任意`.mdx`文件已暂存 | 在内容交给Mintlify之前验证JSX/MDX语法 |
+| 5 | Markdown链接闸门 | 任意`.md`或`.mdx`文件已暂存 | `scripts/check_md_links.py`会拒绝指向缺失页面或资源的链接，以及与任何标题都不匹配的`#anchors`，检查范围涵盖整个`docs/`（重命名会破坏未暂存文件中的链接）。CI中也会运行此检查。 |
 
-如果任何步骤失败，提交将被中止。修复报告的错误并重试。
+如果任一步骤失败，提交将被中止。请修复报告的错误后重试。
+
+---
 
 ## 国际化
 

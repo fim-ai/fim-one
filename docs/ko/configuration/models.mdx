@@ -24,25 +24,27 @@ Fast와 Reasoning이 구성되지 않으면 General로 폴백됩니다. 프로�
 
 ## 빠른 선택 매트릭스
 
-| 제공자 | 메인 LLM | 빠른 LLM | 추론 | 비전 | 참고 |
+| 제공업체 | 주요 LLM | 빠른 LLM | 추론 | 비전 | 참고 |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 모두 | 최고의 네이티브 도구 호출; GPT-5.4는 최신 플래그십 (2026년 3월) |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ LiteLLM 경유 | ✅ 모두 | 네이티브 API 라우팅; 완전한 `reasoning_content` 지원; 1M 컨텍스트 GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 모두 | 2.5는 안정적 GA; 3.x는 프리뷰; `gemini-3-pro-preview` 3월 9일 종료 |
-| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 텍스트 전용; V4 (2026년 4월)에서 비전 추가 예정 |
-| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max`의 `enable_thinking` | ⚠️ qwen3.5만 | 최강의 중국어 지원; qwq/추론은 텍스트 전용 |
-| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 강제 FC 미지원; 비전은 별도 VLM 모델 필요 |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 텍스트 전용; M2.7 최신 (2026년 3월); SWE-Bench 80.2% |
-| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5만 | K2-thinking은 텍스트 전용; 강제 FC는 thinking과 미지원 |
-| **Ollama (로컬)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 다양함 | 완전 오프라인, API 키 불필요; Llama 4는 비전 지원 |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 모두 | 네이티브 도구 호출에 가장 적합하며, GPT-5.4는 최신 플래그십 모델(2026년 3월) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ LiteLLM을 통해 지원 | ✅ 모두 | 네이티브 API 라우팅, 완전한 `reasoning_content` 지원, 1M 컨텍스트 GA |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 모두 | 2.5는 안정적인 GA 버전이며, 3.x는 프리뷰 버전입니다. `gemini-3-pro-preview`는 3월 9일 종료됨 |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 텍스트 전용이며, V4(2026년 4월)에서 비전 지원 추가 예정 |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max`에서 `enable_thinking` | ⚠️ qwen3.5만 지원 | 중국어 성능이 가장 뛰어남. qwq/reasoning은 텍스트 전용 |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 강제 FC는 지원되지 않으며, 비전에는 별도의 VLM 모델이 필요함 |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 텍스트 전용. M2.7은 최신 모델(2026년 3월)이며 SWE-Bench에서 80.2%를 기록 |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5만 지원 | K2-thinking은 텍스트 전용이며, thinking 사용 시 강제 FC는 지원되지 않음 |
+| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 모델에 따라 다름 | 완전한 오프라인 실행이 가능하며 API 키가 필요 없음. Llama 4는 비전을 지원함 |
 
 <Tip>
-**비전**은 모델이 이미지 입력을 수용하는지 여부를 나타냅니다. 이는 [지능형 문서 처리 (IDP)](/features/idp)에 필수적입니다——모델이 비전을 지원하지 않으면 IDP는 텍스트 전용 추출로 폴백됩니다. ⚠️로 표시된 제공자는 일부 모델에서만 비전을 지원합니다. 사용 중인 특정 모델을 확인하세요.
+**비전**은 모델이 이미지 입력을 허용하는지를 나타냅니다. 이는 [지능형 문서 처리(IDP)](/concepts/document-processing)에 필요합니다. 모델이 비전을 지원하지 않으면 IDP는 텍스트 전용 추출로 대체됩니다. ⚠️로 표시된 제공업체는 일부 모델에서만 비전을 지원하므로, 사용 중인 특정 모델을 확인하세요.
 
-채팅 첨부 파일도 동일한 플래그를 따릅니다. 텍스트 전용 모델의 경우 첨부된 이미지가 전송되지 않으며, 모델은 파일 이름만 받습니다. 채팅 작성기는 실제로 사용할 모델 (에이전트 설정, 활성 모델 그룹, 시스템 기본값)을 기반으로 전송 전에 이를 표시합니다. 문서 텍스트는 영향을 받지 않습니다——PDF 또는 DOCX는 여전히 콘텐츠가 추출되어 주입됩니다.
+채팅 첨부 파일에도 동일한 플래그가 적용됩니다. 텍스트 전용 모델에서는 첨부된 이미지가 전송되지 않고 모델에는 파일 이름만 전달됩니다. 채팅 작성기는 실제로 해당 턴에서 사용될 모델(에이전트 설정, 활성 모델 그룹, 시스템 기본값 순서)을 기준으로 메시지를 보내기 전에 이를 알려 줍니다. 문서 텍스트에는 영향을 주지 않으므로 PDF 또는 DOCX의 콘텐츠는 계속 추출되어 주입됩니다.
 </Tip>
 
-이 표는 FIM One이 지원하는 전체 제공자 세트가 아닌 권장하는 조합을 나열합니다. xAI (Grok), ByteDance Doubao, Mistral 및 모든 OpenAI 호환 릴레이가 작동합니다. 전체 목록과 각각의 라우팅 방식은 [제공자 기능 매트릭스](/architecture/llm-provider-guide#provider-capability-matrix)를 참조하세요.
+이 표는 FIM One이 지원하는 전체 제공업체 목록이 아니라 권장하는 조합을 보여 줍니다. xAI(Grok), ByteDance Doubao, Mistral 및 모든 OpenAI 호환 릴레이도 사용할 수 있습니다. 전체 목록과 각 제공업체의 라우팅 방식을 확인하려면 [제공업체 기능 매트릭스](/architecture/llm-provider-guide#provider-capability-matrix)를 참조하세요.
+
+---
 
 ## 구조화된 출력 호환성
 

@@ -90,19 +90,22 @@ mypy strict モードが強制されています。コードベース全体が�
 
 ---
 
-## Pre-commit hook pipeline
+## pre-commitフックのパイプライン
 
-フックはすべてのコミットで自動的に実行されます。各ステップに関連するステージング済みファイルのみを処理します。Pythonファイルのみを変更した場合、i18nステップはスキップされます（その逆も同様）。
+フックはすべてのコミットで自動的に実行されます。各ステップに関連するステージ済みファイルのみを処理します。Pythonファイルのみを変更した場合はi18nステップがスキップされ、その逆も同様です。
 
-| Order | Step | Trigger | What it does |
+| 順序 | ステップ | トリガー | 処理内容 |
 |---|---|---|---|
-| 0 | Locale-edit guard | `messages/{locale}/`、`docs/{locale}/`、または `README.{locale}.md` の下にあるステージング済みファイル | コミットを中止します——オーバーライドはできません。代わりに `scripts/translation-glossary.md` を使用して翻訳を修正してください。 |
-| 1 | OpenAPI spec regen | `src/fim_one/web/**/*.py` が変更された場合 | FastAPIルートから `docs/openapi.json` を再エクスポートします |
-| 2 | i18n translation | `messages/en/*.json`、`docs/*.mdx`、または `README.md` が変更された場合（ローカル `LLM_API_KEY` が必要、ない場合はマージ後にCIが処理） | 新規/変更されたキーをすべてのターゲットロケールに翻訳します |
-| 3 | mypy type checking | `src/fim_one/**/*.py` の任意のファイルが変更された場合 | ステージング済みファイルの完全なインポートチェーンでmypyを実行します |
-| 4 | MDX validation | `.mdx` ファイルがステージングされた場合 | Mintlifyに到達する前にJSX/MDX構文を検証します |
+| 0 | 言語ロケール編集ガード | `messages/{locale}/`、`docs/{locale}/`、または`README.{locale}.md`配下のステージ済みファイル | コミットを中止します — 上書きによる回避はできません。代わりに、`scripts/translation-glossary.md`を使用して翻訳を修正してください。 |
+| 1 | OpenAPI仕様の再生成 | `src/fim_one/web/**/*.py`に変更がある場合 | FastAPIのルートから`docs/openapi.json`を再エクスポートします |
+| 2 | i18n翻訳 | `messages/en/*.json`、`docs/*.mdx`、または`README.md`に変更がある場合（ローカルの`LLM_API_KEY`が必要です。設定されていない場合は、マージ後にCIが処理します） | 新規または変更されたキーをすべての対象言語に翻訳します |
+| 3 | mypy型チェック | `src/fim_one/**/*.py`に変更がある場合 | ステージ済みファイルに対して、完全なインポートチェーンを使用してmypyを実行します |
+| 4 | MDX検証 | `.mdx`ファイルがステージされている場合 | Mintlifyに到達する前にJSX/MDX構文を検証します |
+| 5 | Markdownリンクゲート | `.md` / `.mdx`ファイルがステージされている場合 | `scripts/check_md_links.py`は、`docs/`全体を対象に、存在しないページやアセットへのリンク、およびどの見出しにも一致しない`#anchors`を拒否します（名前変更によって、ステージしていないファイル内のリンクも壊れる可能性があります）。CIでも実行されます。 |
 
-いずれかのステップが失敗した場合、コミットは中止されます。報告されたエラーを修正して再度実行してください。
+いずれかのステップが失敗すると、コミットは中止されます。報告されたエラーを修正して、再試行してください。
+
+---
 
 ## i18n
 

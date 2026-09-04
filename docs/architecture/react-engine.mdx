@@ -29,7 +29,7 @@ flowchart TD
 
 The tool loop produces an `AgentResult` containing the full conversation history — system prompt, user query, every assistant message, every tool result. The `stream_answer()` method distills this trace into a concise, coherent answer. Tool results are truncated to 2,000 characters each in the synthesis context, keeping the prompt lean even after complex multi-tool workflows.
 
-**Model binding.** The LLM is injected into `ReActAgent.__init__()` and stored as `self._llm`. Every call within a single `run()` invocation — all tool loop iterations and the final answer synthesis — uses this same instance. The model does not change between iterations. To use a different model, a new `ReActAgent` must be constructed. In DAG mode, `DAGExecutor._resolve_agent()` exploits this pattern: it creates a fresh agent per step (selecting the model from `ModelRegistry` based on `step.model_hint`) immediately before that step's ReAct loop begins. See [DAG Engine — Per-step override](/architecture/dag-engine#two-llm-architecture) for details.
+**Model binding.** The LLM is injected into `ReActAgent.__init__()` and stored as `self._llm`. Every call within a single `run()` invocation — all tool loop iterations and the final answer synthesis — uses this same instance. The model does not change between iterations. To use a different model, a new `ReActAgent` must be constructed. In DAG mode, `DAGExecutor._resolve_agent()` exploits this pattern: it creates a fresh agent per step (selecting the model from `ModelRegistry` based on `step.model_hint`) immediately before that step's ReAct loop begins. See [DAG Engine — Per-step override](/architecture/dag-engine#multi-llm-architecture) for details.
 
 ## Dual-mode execution
 

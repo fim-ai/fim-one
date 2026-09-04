@@ -66,3 +66,12 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  docs-links:
+    runs-on: ubuntu-latest
+    name: Docs links
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check markdown links and anchors
+        run: python3 scripts/check_md_links.py

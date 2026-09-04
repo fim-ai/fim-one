@@ -8,9 +8,9 @@ Für die Funktionsweise dieser Schleife neben DAG-Planung, Workflow-Blueprints u
 
 ## Die Architektur
 
-Die ReAct-Engine implementiert ein zweiphasiges Ausführungsmodell. Die erste Phase ist eine iterative Tool-Nutzungsschleife: der Agent fragt das LLM wiederholt nach einer Aktion, führt angeforderte Tools aus, fügt die Beobachtung hinzu und setzt fort, bis das LLM „fertig" signalisiert. Die zweite Phase ist die Antwortsynthesize: ein separater Streaming-LLM-Aufruf, der die vollständige Ausführungsspur liest und die benutzergerichtete Antwort erzeugt.
+Die ReAct-Engine implementiert ein zweiphasiges Ausführungsmodell. Die erste Phase ist eine iterative Werkzeugschleife: Der Agent fordert das LLM wiederholt zu einer Aktion auf, führt jedes angeforderte Werkzeug aus, fügt die Beobachtung hinzu und fährt fort, bis das LLM „fertig“ signalisiert. Die zweite Phase ist die Antwortsynthese: ein separater Streaming-LLM-Aufruf, der den vollständigen Ausführungs-Trace liest und die Antwort für den Benutzer erzeugt.
 
-Diese Aufteilung ist absichtlich. Tool-Iterationen sind für Geschwindigkeit optimiert — jeder LLM-Aufruf in der Schleife verwendet nicht-streamendes `chat()`, da der Benutzer keine partiellen JSON-Aktionen oder zwischenzeitliche Reasoning-Token sehen muss. Die Antwortgenerierung ist für UX optimiert — sie verwendet `stream_chat()`, damit der Benutzer Token in Echtzeit erscheinen sieht. Das Ergebnis ist das Beste aus beiden Welten: schnelle Tool-Ausführung mit reaktiver Antwortbereitstellung.
+Diese Aufteilung ist beabsichtigt. Werkzeugiterationen sind auf Geschwindigkeit optimiert – jeder LLM-Aufruf innerhalb der Schleife verwendet das nicht-streamende `chat()`, da der Benutzer weder partielle JSON-Aktionen noch Zwischen-Tokens der Schlussfolgerung sehen muss. Die Antwortgenerierung ist auf eine gute UX optimiert – sie verwendet `stream_chat()`, sodass der Benutzer die Tokens in Echtzeit erscheinen sieht. Das Ergebnis vereint die Vorteile beider Ansätze: schnelle Werkzeugausführung und eine reaktionsschnelle Antwortübermittlung.
 
 ```mermaid
 flowchart TD
@@ -27,9 +27,9 @@ flowchart TD
     C --> D["SSE token stream → frontend"]
 ```
 
-Die Tool-Schleife erzeugt ein `AgentResult`, das die vollständige Konversationshistorie enthält — System-Prompt, Benutzerabfrage, jede Assistant-Nachricht, jedes Tool-Ergebnis. Die `stream_answer()`-Methode destilliert diese Spur zu einer prägnanten, kohärenten Antwort. Tool-Ergebnisse werden im Synthesekontext auf 2.000 Zeichen gekürzt, um den Prompt auch nach komplexen Multi-Tool-Workflows schlank zu halten.
+Die Werkzeugschleife erzeugt ein `AgentResult`, das den vollständigen Konversationsverlauf enthält – System-Prompt, Benutzeranfrage, jede Assistentennachricht und jedes Werkzeugergebnis. Die Methode `stream_answer()` verdichtet diesen Trace zu einer prägnanten, kohärenten Antwort. Werkzeugergebnisse werden im Synthesekontext jeweils auf 2.000 Zeichen gekürzt, sodass der Prompt auch nach komplexen Workflows mit mehreren Werkzeugen kompakt bleibt.
 
-**Modellbindung.** Das LLM wird in `ReActAgent.__init__()` injiziert und als `self._llm` gespeichert. Jeder Aufruf innerhalb einer einzelnen `run()`-Invokation — alle Tool-Schleifeniterationen und die endgültige Antwortsynthesize — verwendet diese gleiche Instanz. Das Modell ändert sich nicht zwischen Iterationen. Um ein anderes Modell zu verwenden, muss ein neuer `ReActAgent` konstruiert werden. Im DAG-Modus nutzt `DAGExecutor._resolve_agent()` dieses Muster: Es erstellt einen frischen Agent pro Schritt (wählt das Modell aus `ModelRegistry` basierend auf `step.model_hint`) unmittelbar bevor die ReAct-Schleife dieses Schritts beginnt. Siehe [DAG-Engine — Per-Step-Überschreibung](/architecture/dag-engine#two-llm-architecture) für Details.
+**Modellbindung.** Das LLM wird in `ReActAgent.__init__()` injiziert und als `self._llm` gespeichert. Jeder Aufruf innerhalb einer einzelnen `run()`-Ausführung – alle Iterationen der Werkzeugschleife sowie die abschließende Antwortsynthese – verwendet dieselbe Instanz. Das Modell ändert sich zwischen den Iterationen nicht. Um ein anderes Modell zu verwenden, muss ein neuer `ReActAgent` erstellt werden. Im DAG-Modus nutzt `DAGExecutor._resolve_agent()` dieses Muster: Direkt bevor die ReAct-Schleife des jeweiligen Schritts beginnt, erstellt die Methode einen neuen Agenten pro Schritt und wählt das Modell anhand von `step.model_hint` aus der `ModelRegistry` aus. Weitere Informationen finden Sie unter [DAG Engine – Überschreibung pro Schritt](/architecture/dag-engine#multi-llm-architecture).
 
 ## Dual-Mode-Ausführung
 

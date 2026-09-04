@@ -22,25 +22,27 @@ FIM One 有三个模型角色：
 
 ## 快速选择矩阵
 
-| 提供商 | 主模型 | 快速模型 | 推理 | 视觉 | 备注 |
+| 提供商 | 主要LLM | 快速LLM | 推理 | 视觉 | 备注 |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 全部 | 原生工具调用最佳；GPT-5.4 是最新旗舰版（2026年3月） |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ 通过 LiteLLM | ✅ 全部 | 原生 API 路由；完整 `reasoning_content` 支持；1M 上下文 GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 全部 | 2.5 为稳定 GA；3.x 为预览版；`gemini-3-pro-preview` 于3月9日停用 |
-| **DeepSeek** | `deepseek-chat`（V3.2） | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 仅文本；V4（2026年4月）将添加视觉 |
-| **Qwen（阿里巴巴）** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `qwen3-max` 上的 `enable_thinking` | ⚠️ 仅 qwen3.5 | 中文语言能力最强；qwq/推理仅文本 |
-| **ChatGLM（智谱）** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 不支持强制函数调用；视觉需要单独的 VLM 模型 |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 仅文本；M2.7 最新版（2026年3月）；SWE-Bench 80.2% |
-| **Kimi（月之暗面）** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ 仅 K2.5 | K2-thinking 仅文本；思考模式下不支持强制函数调用 |
-| **Ollama（本地）** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 因模型而异 | 完全离线，无需 API 密钥；Llama 4 支持视觉 |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ 全部 | 原生工具调用能力最佳；GPT-5.4是最新旗舰模型（2026年3月） |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ 通过LiteLLM | ✅ 全部 | 原生API路由；完整支持`reasoning_content`；1M上下文已正式发布 |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ 全部 | 2.5是稳定正式版；3.x是预览版；`gemini-3-pro-preview`已于3月9日停止服务 |
+| **DeepSeek** | `deepseek-chat`（V3.2） | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | 仅支持文本；V4（2026年4月）将增加视觉能力 |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ 在`qwen3-max`上启用`enable_thinking` | ⚠️ 仅qwen3.5 | 中文能力最强；qwq/推理仅支持文本 |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | 不支持强制FC；视觉功能需要单独的VLM模型 |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | 仅支持文本；M2.7是最新版本（2026年3月）；SWE-Bench得分为80.2% |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ 仅K2.5 | K2-thinking仅支持文本；启用thinking时不支持强制FC |
+| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | 不同模型有所不同 | 完全离线运行，无需API密钥；Llama 4支持视觉能力 |
 
 <Tip>
-**视觉**表示模型是否接受图像输入。这是[智能文档处理（IDP）](/features/idp)所必需的——如果您的模型不支持视觉，IDP 将回退到仅文本提取。标记为 ⚠️ 的提供商在某些模型上支持视觉，但在其他模型上不支持；请检查您正在使用的特定模型。
+**视觉**表示模型是否接受图像输入。对于[智能文档处理（IDP）](/concepts/document-processing)，这是一项必要能力——如果你的模型不支持视觉，IDP将回退到仅文本提取。标记为⚠️的提供商仅部分模型支持视觉；请确认你使用的具体模型。
 
-聊天附件遵循相同的标志：对于仅文本模型，附加的图像不会被发送，模型仅接收其文件名。聊天编辑器会在您发送前根据该轮实际使用的模型（智能体设置，然后是活跃模型组，然后是系统默认值）进行提示。文档文本不受影响——PDF 或 DOCX 仍然会提取其内容并注入。
+聊天附件遵循相同的开关：使用仅支持文本的模型时，不会发送附加图像，模型只会收到其文件名。聊天编辑器会在发送前根据该轮实际使用的模型告知你这一点（依次为智能体设置、当前激活的模型组，然后是系统默认模型）。文档文本不受影响——PDF或DOCX仍会提取其内容并注入。
 </Tip>
 
-此表列出了我们推荐的组合，而非 FIM One 支持的完整提供商集合。xAI（Grok）、ByteDance 豆包、Mistral 和任何 OpenAI 兼容中继都可以使用；请参阅[提供商能力矩阵](/architecture/llm-provider-guide#provider-capability-matrix)了解完整列表以及每个提供商的路由方式。
+此表列出的是我们推荐的组合，并非FIM One支持的全部提供商。xAI（Grok）、字节跳动Doubao、Mistral以及任何兼容OpenAI的中继服务均可使用；完整列表及每种提供商的路由方式，请参阅[提供商能力矩阵](/architecture/llm-provider-guide#provider-capability-matrix)。
+
+---
 
 ## 结构化输出兼容性
 

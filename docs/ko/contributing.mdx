@@ -90,19 +90,22 @@ mypy strict 모드가 적용됩니다. 전체 코드베이스는 오류 없이 �
 
 ---
 
-## Pre-commit hook pipeline
+## Pre-commit 훅 파이프라인
 
-훅은 모든 커밋에서 자동으로 실행됩니다. 각 단계와 관련된 스테이징된 파일만 처리합니다 — Python 파일만 변경한 경우 i18n 단계는 건너뛰고, 그 반대도 마찬가지입니다.
+훅은 모든 커밋에서 자동으로 실행됩니다. 각 단계와 관련된 스테이징된 파일만 처리하므로, Python 파일만 변경한 경우 i18n 단계가 건너뛰어지고 그 반대의 경우도 마찬가지입니다.
 
-| Order | Step | Trigger | What it does |
+| 순서 | 단계 | 트리거 | 수행 작업 |
 |---|---|---|---|
-| 0 | Locale-edit guard | `messages/{locale}/`, `docs/{locale}/`, 또는 `README.{locale}.md` 아래의 스테이징된 파일 | 커밋을 중단합니다 — 재정의 불가. `scripts/translation-glossary.md`를 통해 번역을 수정하세요. |
-| 1 | OpenAPI spec regen | `src/fim_one/web/**/*.py` 변경됨 | FastAPI 경로에서 `docs/openapi.json`을 다시 내보냅니다 |
-| 2 | i18n translation | `messages/en/*.json`, `docs/*.mdx`, 또는 `README.md` 변경됨 (로컬 `LLM_API_KEY` 필요, 없으면 CI가 병합 후 처리) | 새로운/변경된 키를 모든 대상 로케일로 번역합니다 |
-| 3 | mypy type checking | `src/fim_one/**/*.py`의 모든 파일 변경됨 | 스테이징된 파일에서 전체 import 체인으로 mypy를 실행합니다 |
-| 4 | MDX validation | 스테이징된 모든 `.mdx` 파일 | Mintlify에 도달하기 전에 JSX/MDX 구문을 검증합니다 |
+| 0 | 로캘 편집 검사 | `messages/{locale}/`, `docs/{locale}/` 또는 `README.{locale}.md` 아래의 스테이징된 파일 | 커밋을 중단합니다 — 재정의할 수 없습니다. 대신 `scripts/translation-glossary.md`를 통해 번역을 수정하세요. |
+| 1 | OpenAPI 사양 재생성 | `src/fim_one/web/**/*.py`가 변경됨 | FastAPI 라우트에서 `docs/openapi.json`을 다시 내보냅니다. |
+| 2 | i18n 번역 | `messages/en/*.json`, `docs/*.mdx` 또는 `README.md`가 변경됨 (로컬 `LLM_API_KEY`가 필요하며, 없으면 병합 후 CI에서 처리) | 새 키와 변경된 키를 모든 대상 로캘로 번역합니다. |
+| 3 | mypy 타입 검사 | `src/fim_one/**/*.py`가 변경됨 | 스테이징된 파일에 대해 전체 import 체인을 사용하여 mypy를 실행합니다. |
+| 4 | MDX 검증 | `.mdx` 파일이 스테이징됨 | Mintlify에 전달되기 전에 JSX/MDX 구문을 검증합니다. |
+| 5 | Markdown 링크 검사 | `.md` 또는 `.mdx` 파일이 스테이징됨 | `scripts/check_md_links.py`가 `docs/` 전체에서 존재하지 않는 페이지나 자산으로 연결되는 링크와 어떤 제목과도 일치하지 않는 `#anchors`를 거부합니다 (이름을 변경하면 스테이징하지 않은 파일의 링크도 손상됩니다). CI에서도 실행됩니다. |
 
-단계가 실패하면 커밋이 중단됩니다. 보고된 오류를 수정하고 다시 시도하세요.
+어느 단계에서든 실패하면 커밋이 중단됩니다. 보고된 오류를 수정한 후 다시 시도하세요.
+
+---
 
 ## i18n
 

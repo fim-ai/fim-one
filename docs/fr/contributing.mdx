@@ -90,19 +90,22 @@ Chaque nouveau module **doit** avoir un fichier de test correspondant. Chaque co
 
 ---
 
-## Pipeline de hook de pré-commit
+## Pipeline du hook de pre-commit
 
-Le hook s'exécute automatiquement à chaque commit. Il traite uniquement les fichiers staged pertinents pour chaque étape — si vous avez modifié uniquement des fichiers Python, l'étape i18n est ignorée, et vice versa.
+Le hook s’exécute automatiquement à chaque commit. Il traite uniquement les fichiers indexés pertinents pour chaque étape — si vous avez uniquement modifié des fichiers Python, l’étape i18n est ignorée, et inversement.
 
-| Ordre | Étape | Déclencheur | Ce qu'il fait |
+| Ordre | Étape | Déclencheur | Fonctionnement |
 |---|---|---|---|
-| 0 | Garde contre les modifications de locale | Tout fichier staged sous `messages/{locale}/`, `docs/{locale}/`, ou `README.{locale}.md` | Interrompt le commit — pas de contournement possible. Corrigez les traductions via `scripts/translation-glossary.md` à la place. |
-| 1 | Régénération de la spécification OpenAPI | `src/fim_one/web/**/*.py` modifié | Réexporte `docs/openapi.json` à partir des routes FastAPI |
-| 2 | Traduction i18n | `messages/en/*.json`, `docs/*.mdx`, ou `README.md` modifié (nécessite une `LLM_API_KEY` locale, sinon CI la gère après la fusion) | Traduit les clés nouvelles/modifiées dans toutes les locales cibles |
-| 3 | Vérification de type mypy | Tout `src/fim_one/**/*.py` modifié | Exécute mypy avec la chaîne d'importation complète sur les fichiers staged |
-| 4 | Validation MDX | Tout fichier `.mdx` staged | Valide la syntaxe JSX/MDX avant qu'elle n'atteigne Mintlify |
+| 0 | Contrôle des modifications de traductions | Tout fichier indexé sous `messages/{locale}/`, `docs/{locale}/` ou `README.{locale}.md` | Interrompt le commit — aucun contournement possible. Corrigez les traductions via `scripts/translation-glossary.md`. |
+| 1 | Régénération de la spécification OpenAPI | Modification de `src/fim_one/web/**/*.py` | Réexporte `docs/openapi.json` à partir des routes FastAPI |
+| 2 | Traduction i18n | Modification de `messages/en/*.json`, `docs/*.mdx` ou `README.md` (nécessite un `LLM_API_KEY` local, sinon la CI s’en charge après la fusion) | Traduit les nouvelles clés ou les clés modifiées dans toutes les langues cibles |
+| 3 | Vérification des types avec mypy | Modification de tout fichier `src/fim_one/**/*.py` | Exécute mypy avec la chaîne complète des imports sur les fichiers indexés |
+| 4 | Validation MDX | Tout fichier `.mdx` indexé | Valide la syntaxe JSX/MDX avant son envoi à Mintlify |
+| 5 | Contrôle des liens Markdown | Tout fichier `.md` ou `.mdx` indexé | `scripts/check_md_links.py` rejette les liens vers des pages ou ressources inexistantes, ainsi que les `#anchors` ne correspondant à aucun titre, dans l’ensemble de `docs/` (un renommage peut interrompre les liens dans des fichiers que vous n’avez pas indexés). S’exécute également dans la CI. |
 
-Si une étape échoue, le commit est interrompu. Corrigez les erreurs signalées et réessayez.
+Si une étape échoue, le commit est interrompu. Corrigez les erreurs signalées, puis réessayez.
+
+---
 
 ## i18n
 

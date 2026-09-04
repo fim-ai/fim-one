@@ -92,19 +92,22 @@ Jedes neue Modul **muss** eine entsprechende Testdatei haben. Jeder Feature-Comm
 
 ---
 
-## Pre-commit Hook-Pipeline
+## Pre-Commit-Hook-Pipeline
 
-Der Hook wird bei jedem Commit automatisch ausgeführt. Er verarbeitet nur gestaffelte Dateien, die für jeden Schritt relevant sind – wenn Sie nur Python-Dateien geändert haben, wird der i18n-Schritt übersprungen und umgekehrt.
+Der Hook wird bei jedem Commit automatisch ausgeführt. Er verarbeitet nur gestagte Dateien, die für den jeweiligen Schritt relevant sind – wenn du ausschließlich Python-Dateien geändert hast, wird der i18n-Schritt übersprungen und umgekehrt.
 
 | Reihenfolge | Schritt | Auslöser | Funktion |
 |---|---|---|---|
-| 0 | Locale-Edit-Schutz | Alle gestaffelten Dateien unter `messages/{locale}/`, `docs/{locale}/` oder `README.{locale}.md` | Bricht den Commit ab – kein Override möglich. Beheben Sie Übersetzungen über `scripts/translation-glossary.md`. |
-| 1 | OpenAPI-Spec-Regeneration | `src/fim_one/web/**/*.py` geändert | Exportiert `docs/openapi.json` neu aus FastAPI-Routen |
-| 2 | i18n-Übersetzung | `messages/en/*.json`, `docs/*.mdx` oder `README.md` geändert (benötigt lokalen `LLM_API_KEY`, sonst wird es nach dem Merge von CI verarbeitet) | Übersetzt neue/geänderte Schlüssel in alle Zielsprachen |
-| 3 | mypy-Typprüfung | Beliebige `src/fim_one/**/*.py` geändert | Führt mypy mit vollständiger Import-Kette auf gestaffelten Dateien aus |
-| 4 | MDX-Validierung | Beliebige `.mdx`-Datei gestaffelt | Validiert JSX/MDX-Syntax, bevor sie Mintlify erreicht |
+| 0 | Schutz vor der Bearbeitung von Locales | Eine gestagte Datei unter `messages/{locale}/`, `docs/{locale}/` oder `README.{locale}.md` | Bricht den Commit ab – keine Umgehung möglich. Korrigiere Übersetzungen stattdessen über `scripts/translation-glossary.md`. |
+| 1 | OpenAPI-Spezifikation neu generieren | Änderungen an `src/fim_one/web/**/*.py` | Exportiert `docs/openapi.json` aus den FastAPI-Routen erneut |
+| 2 | i18n-Übersetzung | Änderungen an `messages/en/*.json`, `docs/*.mdx` oder `README.md` (lokal ist `LLM_API_KEY` erforderlich, andernfalls übernimmt CI den Schritt nach dem Merge) | Übersetzt neue/geänderte Schlüssel in alle Ziel-Locales |
+| 3 | mypy-Typprüfung | Änderungen an einer beliebigen Datei unter `src/fim_one/**/*.py` | Führt mypy mit der vollständigen Importkette für die gestagten Dateien aus |
+| 4 | MDX-Validierung | Eine beliebige `.mdx`-Datei wurde gestagt | Validiert die JSX-/MDX-Syntax, bevor sie Mintlify erreicht |
+| 5 | Markdown-Link-Prüfung | Eine beliebige `.md`- oder `.mdx`-Datei wurde gestagt | `scripts/check_md_links.py` weist Links auf fehlende Seiten oder Assets sowie `#anchors` zurück, die keiner Überschrift entsprechen, und zwar in allen Dateien unter `docs/` (eine Umbenennung kann Links in Dateien beschädigen, die du nicht gestagt hast). Wird ebenfalls in CI ausgeführt. |
 
-Wenn ein Schritt fehlschlägt, wird der Commit abgebrochen. Beheben Sie die gemeldeten Fehler und versuchen Sie es erneut.
+Wenn ein Schritt fehlschlägt, wird der Commit abgebrochen. Behebe die gemeldeten Fehler und versuche es erneut.
+
+---
 
 ## i18n
 

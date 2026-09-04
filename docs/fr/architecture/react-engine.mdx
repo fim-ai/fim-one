@@ -6,11 +6,11 @@ description: "Fonctionnement du moteur ReAct de FIM One — exécution en mode d
 
 Pour comprendre comment cette boucle s'articule avec la planification DAG, les blueprints de flux de travail et l'**ingénierie graphique** industrielle, consultez [Planning Landscape](/architecture/planning-landscape).
 
-## L'architecture
+## L’architecture
 
-Le moteur ReAct implémente un modèle d'exécution en deux phases. La première phase est une boucle itérative d'utilisation d'outils : l'agent demande à plusieurs reprises au LLM une action, exécute tout outil demandé, ajoute l'observation et continue jusqu'à ce que le LLM signale « terminé ». La deuxième phase est la synthèse de la réponse : un appel LLM de streaming séparé qui lit la trace d'exécution complète et produit la réponse destinée à l'utilisateur.
+Le moteur ReAct implémente un modèle d’exécution en deux phases. La première phase est une boucle itérative d’utilisation d’outils : l’agent demande à plusieurs reprises au LLM une action, exécute l’outil demandé, ajoute l’observation, puis continue jusqu’à ce que le LLM indique « terminé ». La deuxième phase est la synthèse de la réponse : un appel LLM distinct en streaming lit l’ensemble de la trace d’exécution et produit la réponse destinée à l’utilisateur.
 
-Cette séparation est intentionnelle. Les itérations d'outils sont optimisées pour la vitesse — chaque appel LLM dans la boucle utilise `chat()` sans streaming, car l'utilisateur n'a pas besoin de voir les actions JSON partielles ou les jetons de raisonnement intermédiaires. La génération de réponses est optimisée pour l'expérience utilisateur — elle utilise `stream_chat()` pour que l'utilisateur voie les jetons apparaître en temps réel. Le résultat est le meilleur des deux mondes : exécution rapide des outils avec livraison de réponses réactive.
+Cette séparation est délibérée. Les itérations d’outils sont optimisées pour la vitesse — chaque appel LLM dans la boucle utilise `chat()` sans streaming, car l’utilisateur n’a pas besoin de voir les actions JSON partielles ni les tokens de raisonnement intermédiaires. La génération de la réponse est optimisée pour l’expérience utilisateur — elle utilise `stream_chat()` en streaming afin que l’utilisateur voie les tokens apparaître en temps réel. Le résultat combine ainsi le meilleur des deux mondes : une exécution rapide des outils et une diffusion réactive de la réponse.
 
 ```mermaid
 flowchart TD
@@ -27,9 +27,9 @@ flowchart TD
     C --> D["SSE token stream → frontend"]
 ```
 
-La boucle d'outils produit un `AgentResult` contenant l'historique complet de la conversation — invite système, requête utilisateur, chaque message d'assistant, chaque résultat d'outil. La méthode `stream_answer()` distille cette trace en une réponse concise et cohérente. Les résultats des outils sont tronqués à 2 000 caractères chacun dans le contexte de synthèse, gardant l'invite allégée même après des flux de travail multi-outils complexes.
+La boucle d’outils produit un `AgentResult` contenant l’historique complet de la conversation — le prompt système, la requête utilisateur, chaque message de l’assistant et chaque résultat d’outil. La méthode `stream_answer()` transforme cette trace en une réponse concise et cohérente. Dans le contexte de synthèse, les résultats des outils sont tronqués à 2 000 caractères chacun, ce qui permet de conserver un prompt léger, même après des workflows complexes utilisant plusieurs outils.
 
-**Liaison du modèle.** Le LLM est injecté dans `ReActAgent.__init__()` et stocké comme `self._llm`. Chaque appel au sein d'une seule invocation `run()` — toutes les itérations de la boucle d'outils et la synthèse de réponse finale — utilise cette même instance. Le modèle ne change pas entre les itérations. Pour utiliser un modèle différent, un nouveau `ReActAgent` doit être construit. En mode DAG, `DAGExecutor._resolve_agent()` exploite ce modèle : il crée un agent frais par étape (en sélectionnant le modèle dans `ModelRegistry` en fonction de `step.model_hint`) immédiatement avant le début de la boucle ReAct de cette étape. Voir [Moteur DAG — Remplacement par étape](/architecture/dag-engine#two-llm-architecture) pour plus de détails.
+**Liaison du modèle.** Le LLM est injecté dans `ReActAgent.__init__()` et stocké dans `self._llm`. Chaque appel effectué au sein d’une même invocation de `run()` — toutes les itérations de la boucle d’outils ainsi que la synthèse finale de la réponse — utilise cette même instance. Le modèle ne change pas d’une itération à l’autre. Pour utiliser un autre modèle, il faut construire un nouvel objet `ReActAgent`. En mode DAG, `DAGExecutor._resolve_agent()` exploite ce fonctionnement : il crée un nouvel agent pour chaque étape — en sélectionnant le modèle dans `ModelRegistry` selon `step.model_hint` — immédiatement avant le début de la boucle ReAct de cette étape. Consultez [Moteur DAG — Remplacement par étape](/architecture/dag-engine#multi-llm-architecture) pour plus de détails.
 
 ## Exécution en mode dual
 

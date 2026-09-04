@@ -97,7 +97,10 @@ STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM \
 # ---------------------------------------------------------------------------
 # Skip hook if nothing relevant is staged
 # ---------------------------------------------------------------------------
-if [ -z "$STAGED_JSON" ] && [ -z "$STAGED_MDX" ] && [ -z "$STAGED_README" ] && [ -z "$STAGED_WEB_PY" ] && [ -z "$STAGED_PY" ]; then
+STAGED_ANY_MD=$(git diff --cached --name-only --diff-filter=ACMRD \
+  | grep -E '\.(md|mdx)$' || true)
+
+if [ -z "$STAGED_JSON" ] && [ -z "$STAGED_MDX" ] && [ -z "$STAGED_README" ] && [ -z "$STAGED_WEB_PY" ] && [ -z "$STAGED_PY" ] && [ -z "$STAGED_ANY_MD" ]; then
   exit 0
 fi
 
@@ -167,6 +170,21 @@ fi
 if [ -n "$STAGED_PY" ] && [ -z "$SKIP_EVALS" ]; then
   cd "$ROOT"
   if ! uv run python scripts/eval_stamp.py --check-staged; then
+    exit 1
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Markdown link gate: a renamed doc must not leave dangling links or anchors
+# behind. Runs on the whole docs/ tree (plus dev/ when present) because a
+# rename breaks links in files that are not staged. Stdlib-only, sub-second.
+# ---------------------------------------------------------------------------
+if [ -n "$STAGED_ANY_MD" ]; then
+  echo "md-links: checking docs/ links and anchors..."
+  cd "$ROOT"
+  if ! python3 scripts/check_md_links.py --quiet; then
+    echo ""
+    echo "md-links: broken links found. Fix the targets or anchors above before committing."
     exit 1
   fi
 fi

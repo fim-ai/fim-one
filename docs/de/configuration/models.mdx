@@ -20,27 +20,29 @@ Fast und Reasoning fallen auf General zurück, falls nicht konfiguriert. Für Pr
 
 Diese Rollen können über Umgebungsvariablen oder über die Funktion **Model Groups** der Admin-Benutzeroberfläche konfiguriert werden, die Ein-Klick-Umschaltung zwischen Modellsätzen ermöglicht. Siehe [Model Management](/configuration/model-management) für das vollständige Admin-UI-Handbuch.
 
-## Quick Selection Matrix
+## Schnellwahl-Matrix
 
-| Provider | Main LLM | Fast LLM | Reasoning | Vision | Notes |
+| Anbieter | Haupt-LLM | Schnelles LLM | Reasoning | Vision | Hinweise |
 |---|---|---|---|---|---|
-| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ All | Best native tool-calling; GPT-5.4 is latest flagship (Mar 2026) |
-| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ via LiteLLM | ✅ All | Native API routing; full `reasoning_content` support; 1M context GA |
-| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ All | 2.5 is stable GA; 3.x is preview; `gemini-3-pro-preview` shut down Mar 9 |
-| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Text-only; V4 (Apr 2026) will add vision |
-| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` on `qwen3-max` | ⚠️ qwen3.5 only | Strongest Chinese language; qwq/reasoning text-only |
-| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Forced FC not supported; vision requires separate VLM model |
-| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Text-only; M2.7 latest (Mar 2026); 80.2% SWE-Bench |
-| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ K2.5 only | K2-thinking text-only; forced FC not supported with thinking |
-| **Ollama (local)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Varies | Fully offline, no API key; Llama 4 supports vision |
+| **OpenAI** | `gpt-5.4` | `gpt-5.4-mini` / `gpt-5.4-nano` | ✅ `reasoning_effort` | ✅ Alle | Bestes natives Tool-Calling; GPT-5.4 ist das neueste Spitzenmodell (März 2026) |
+| **Anthropic** | `claude-sonnet-4-6` | `claude-haiku-4-5` | ✅ über LiteLLM | ✅ Alle | Native API-Routenführung; vollständige Unterstützung für `reasoning_content`; 1M-Kontext allgemein verfügbar |
+| **Google Gemini** | `gemini-2.5-pro` / `gemini-3.1-pro-preview` | `gemini-2.5-flash` / `gemini-3-flash-preview` | ✅ `reasoning_effort` | ✅ Alle | 2.5 ist stabil allgemein verfügbar; 3.x ist eine Preview; `gemini-3-pro-preview` wurde am 9. März abgeschaltet |
+| **DeepSeek** | `deepseek-chat` (V3.2) | `deepseek-chat` | ✅ `deepseek-reasoner` | ❌ | Nur Text; V4 (April 2026) wird Vision-Unterstützung hinzufügen |
+| **Qwen (Alibaba)** | `qwen3.5-plus` / `qwen3-max` | `qwen3.5-flash` / `qwen-turbo` | ✅ `enable_thinking` bei `qwen3-max` | ⚠️ nur qwen3.5 | Stärkste Unterstützung für die chinesische Sprache; qwq/Reasoning nur für Text |
+| **ChatGLM (Zhipu)** | `glm-4.7` | `glm-4.7-flash` | `glm-5` | ⚠️ GLM-4.6V | Erzwungenes FC wird nicht unterstützt; Vision erfordert ein separates VLM-Modell |
+| **MiniMax** | `MiniMax-M2.7` | `MiniMax-M2.5` | ❌ | ❌ | Nur Text; M2.7 ist das neueste Modell (März 2026); 80,2 % SWE-Bench |
+| **Kimi (Moonshot)** | `kimi-k2.5` | `kimi-k2` | ✅ `kimi-k2-thinking` | ⚠️ nur K2.5 | K2-thinking unterstützt nur Text; erzwungenes FC wird bei Verwendung von Thinking nicht unterstützt |
+| **Ollama (lokal)** | `qwen3.5` / `llama4` | `qwen3.5:9b` | ❌ | Variiert | Vollständig offline, kein API-Schlüssel erforderlich; Llama 4 unterstützt Vision |
 
 <Tip>
-**Vision** gibt an, ob das Modell Bildeingaben akzeptiert. Dies ist erforderlich für [Intelligent Document Processing (IDP)](/features/idp) — wenn Ihr Modell Vision nicht unterstützt, greift IDP auf reine Textextraktion zurück. Anbieter, die mit ⚠️ gekennzeichnet sind, haben Vision auf einigen Modellen, aber nicht auf anderen; überprüfen Sie das spezifische Modell, das Sie verwenden.
+**Vision** gibt an, ob das Modell Bildeingaben akzeptiert. Dies ist für [Intelligent Document Processing (IDP)](/concepts/document-processing) erforderlich — wenn dein Modell Vision nicht unterstützt, fällt IDP auf eine reine Textextraktion zurück. Bei mit ⚠️ gekennzeichneten Anbietern wird Vision von einigen Modellen unterstützt, von anderen jedoch nicht. Prüfe daher das von dir verwendete spezifische Modell.
 
-Chat-Anhänge folgen demselben Flag: Bei einem reinen Textmodell wird ein angehängtes Bild nicht gesendet, und das Modell erhält nur seinen Dateinamen. Der Chat-Composer teilt dies mit, bevor Sie senden, basierend auf dem Modell, das der Turn tatsächlich verwenden würde (Agent-Einstellung, dann die aktive Modellgruppe, dann der Systemstandard). Dokumenttext ist nicht betroffen — eine PDF oder DOCX hat ihren Inhalt weiterhin extrahiert und eingefügt.
+Chat-Anhänge folgen derselben Kennzeichnung: Bei einem reinen Textmodell wird ein angehängtes Bild nicht gesendet, und das Modell erhält nur dessen Dateinamen. Der Chat-Composer weist dich vor dem Senden darauf hin, basierend auf dem Modell, das für den Durchlauf tatsächlich verwendet würde (Agent-Einstellung, dann die aktive Modellgruppe, dann der Systemstandard). Dokumenttext ist davon nicht betroffen — der Inhalt einer PDF- oder DOCX-Datei wird weiterhin extrahiert und eingefügt.
 </Tip>
 
-Diese Tabelle listet die Kombinationen auf, die wir empfehlen, nicht die vollständige Menge der Anbieter, die FIM One unterstützt. xAI (Grok), ByteDance Doubao, Mistral und jedes OpenAI-kompatible Relay funktionieren; siehe die [Provider Capability Matrix](/architecture/llm-provider-guide#provider-capability-matrix) für die vollständige Liste und wie jeder weitergeleitet wird.
+Diese Tabelle führt die von uns empfohlenen Kombinationen auf, nicht die vollständige Liste der von FIM One unterstützten Anbieter. xAI (Grok), ByteDance Doubao, Mistral und jedes OpenAI-kompatible Relay funktionieren ebenfalls. Eine vollständige Liste sowie Informationen zur jeweiligen Routenführung findest du in der [Anbieter-Fähigkeitsmatrix](/architecture/llm-provider-guide#provider-capability-matrix).
+
+---
 
 ## Strukturierte Ausgabekompatibilität
 
