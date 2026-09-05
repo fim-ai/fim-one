@@ -69,18 +69,6 @@ Nachverfolgte Fehler, die in der Produktionsumgebung reproduzierbar, aber noch n
 
 - **Das Stoppen und Wiederholen im Playground zeigt vorübergehende visuelle Artefakte, die sich durch ein Neuladen der Seite stets beheben lassen.** Drei gleichzeitige Render-Quellen — `activeConversation.messages` (DB-Snapshot), der SSE-`messages`-Stream und der optimistische `pendingQuery`-Platzhalter — werden nicht zu einem einzigen abgeleiteten Zustand zusammengeführt. Dadurch kann es zwischen dem Klick auf „Wiederholen" und dem Eintreffen der zugehörigen Assistenten-Antwort zu folgenden Problemen kommen: (a) Die gleiche Anfrage wird kurzzeitig zweimal im Vor-Stream-Fenster gerendert, (b) frühere verwaiste Nutzer-Bubbles aus dem Wiederholungsverlauf werden ausgeblendet, solange `hasLiveMessages` den Wert `true` hat und bevor der Snapshot neu geladen wird, und (c) es kommt zu einem Flackern im kurzen Zeitfenster zwischen dem SSE-„done"-Ereignis und dem nächsten `selectConversation`-Refresh. **Daten gehen dabei nie verloren** — jede Nutzernachricht (einschließlich abgebrochener Wiederholungen) wird in `conversation.messages` gespeichert, beim nächsten LLM-Aufruf über `normalize_alternating_messages` einbezogen und nach einem Neuladen über `HistoryTurn.orphanUserContents` korrekt dargestellt, das im Render-Fix `48ba08c6` eingeführt wurde. Zum Kontext: Claudes eigene Web-Oberfläche weist eine vergleichbare Fehlerklasse auf — wird eine Antwort mittendrin gestoppt und sofort eine Folgeanfrage gesendet, wird diese manchmal als Geschwister-Bearbeitungszweig der ersten Anfrage verzweigt, anstatt als neuer Turn angehängt zu werden. Es handelt sich also um ein bekanntes, schwieriges Problem bei Designs mit optimistischer UI + SSE + persistiertem Verlauf und nicht um einen FIM-One-spezifischen Fehler. Eine ordentliche Behebung erfordert die Zusammenführung der drei Render-Quellen zu einem einzigen abgeleiteten Zustand; dies wird bis zu einem umfassenderen Refactoring der Playground-Zustandsmaschine zurückgestellt.
 
-## Architekturprogramm — Agent Core {/* dev: dev/dsh-lessons/README.md */}
-
-Geplant, aber noch keiner Version zugeordnet. Die Batches sind abhängigkeitsgeordnet; jeder wird im begleitenden Design in konkrete Aufgaben aufgeteilt.
-
-- [ ] **Governance**: Dokumentation defensiver Muster für Bug-Klassen, Lifecycle-Zustände für Design-Notes, Markdown-Link-Gate.
-- [ ] **Session-Ereignisprotokoll**: Jede für das Modell sichtbare Eingabe wird zu einem dauerhaften, geordneten Fakt, aus dem der Modellverlauf abgeleitet wird.
-- [ ] **Runtime-Invarianten + schlüsselloser Snapshot-Replay**: Eigentümerbeziehungen in der Produktion prüfen; zusammengestellte Transkripte in CI ohne Schlüssel vergleichen.
-- [ ] **Tool-Pipeline-Nahtstellen**: Pre/Execute/Post-Stufen, damit Berechtigungen, Timeouts, Sandbox und Hintergrundarbeit den Agent-Loop verlassen.
-- [ ] **Code-Mode-Preset**: Ein Programm kombiniert mehrere Connector-Aufrufe durch dieselbe Pipeline und ersetzt mehrstufige Orchestrierung.
-- [ ] **Agent-Presets als deklarierte Capability-Sets**, plus Plan- und Hintergrundstatus als Log-Fakten statt als Seitendateien.
-- [ ] **Typisiertes Frontend aus OpenAPI** und generierte Tool-/Env-Kataloge, die manuell gepflegte Kopien ersetzen, die sich mit der Zeit unterscheiden.
-
 ## Backlog (Niedrige Priorität) {/* dev: dev/dag-evidence-fidelity.md */}
 
 Zurückgestellte Härtungsmaßnahmen — nicht blockierend; nur aufgreifen, wenn das entsprechende Szenario auftritt.
@@ -332,60 +320,29 @@ Zurückgestellte Härtungsmaßnahmen — nicht blockierend; nur aufgreifen, wenn
 
 ## Geplante Versionen
 
-Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Engine, Credentials, Approval Gate, Audit, Multi-Tenant-Orgs) hinter mehreren Bereitstellungsoberflächen: Web UI, API, JS-Embed, MCP-Output. Jede Oberfläche nutzt dieselbe Assembly-Schicht für Auth, Credentials, Approval und Metering: mehr Frontends, nie mehr Logik. Die kurzfristige Ausrichtung liegt auf der Konvergenz im Bereich Data-Q&A (ChatBI) — Szenarien werden verkauft, keine Plattform. {/* dev: dev/replan-2026-07.md */}
+Neu geplant am 2026-09-06. Der Kern ist fertiggestellt: ReAct-Engine, Konnektoren,
+Zugangsdaten, Freigabegate, Audit und mandantenfähige Organisationen. Von hier an geht es
+darum, das, was bereits in der Codebasis vorhanden ist, fertigzustellen und korrekt zu halten,
+nicht darum, neue Funktionsbereiche zu eröffnen. Alles, was unten nicht aufgeführt ist, ist nicht
+geplant; siehe den abschließenden Hinweis.
 
-### v0.9 — Connector Fences + Szenario-Onboarding
+### v0.9 — Connector-Fences
 
-**Ziel**: Die nach der Reduktion zusammengestellten Assets ergeben ein vollständiges Daten-Q&A-Produkt — schreibgeschützte DB-Connectors + Fences + Approval Gate + IM-Einstiegspunkt. Tier-1-Fences verwandeln Sicherheitsschulden in Produktfeatures.
+**Ziel**: Ein Datenbank-Connector kann sicher an eine Kollegin oder einen Kollegen
+übergeben werden, und die bereits im Projekt vorhandenen, halbfertigen Pfade werden abgeschlossen.
 
 #### DB-Connector-Schranken {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [x] PII-Spaltenmarkierung – markierte Spalten bleiben im Schema erhalten, Werte werden in jedem Abfrageergebnis maskiert
-- [x] Schemasichtbarkeit – Allow-Deny-Regeln für Tabellen und Spalten sowie Verb-Blockierung (Erzwingung des Nur-Lese-Modus)
-- [x] Auditierbarkeit der Schranken – `scope_rules_applied` in `ConnectorCallLog` erfasst die Schranken, unter denen jeder Aufruf ausgeführt wurde
-- [ ] Konfigurationsweitergabe pro Hook (`{"name", "config"}`-Schema) – der Träger für ScopeGuard-Regeln {/* dev: dev/hook-system.md */}
+- [x] Markierung von PII-Spalten — markierte Spalten bleiben im Schema, Werte werden in jedem Abfrageergebnis maskiert
+- [x] Schemasichtbarkeit — Allow-/Deny-Regeln für Tabellen und Spalten sowie Verb-Blockierung (Erzwingung des schreibgeschützten Zugriffs)
+- [x] Nachvollziehbarkeit der Schranken — `scope_rules_applied` in `ConnectorCallLog` zeichnet auf, unter welchen Schranken jeder Aufruf ausgeführt wurde
 
-#### Kontextrobustheit
+#### Abschließen, was bereits begonnen ist
 
-- [ ] Segmentierte Kompaktierungseingabe und modellbewusste Budgets im Haupt-Chat-Pfad, damit jede Modellkombination im Kontextfenster bleibt
-
-#### Modell-Schicht
-
-- [ ] Streaming-Nutzungszahlen der Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (vermutete fehlerhafte Zuordnung im Upstream)
-- [ ] Die LiteLLM-Chat→Responses-Bridge außer Betrieb nehmen, sobald der native GPT-5.x-Pfad ein vollständiges Release durchlaufen hat
-
-#### Szenario-Onboarding
-
-- [ ] Der erste Start beginnt mit einer Szenario-Vorlage (solution_seeds) statt mit einer leeren Workbench
-- [ ] Die Docs-Startseite zeigt drei vertikale Szenario-Storys statt einer Modulreferenz
-- [ ] Pro abgeschlossenem Engagement wird eine Szenario-Vorlage destilliert — der Wettbewerbsvorteil liegt in Szenario-Assets × Liefergeschwindigkeit
-
-### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
-
-**Ziel**: Die zwei meistverkäuflichen Bereitstellungsoberflächen, beide auf demselben Kernel und derselben Assembly-Schicht.
-
-- [ ] JS-Bubble / iframe-Embed — ein Snippet in ein Host-System; Anonymbesucher-Identität + Abrechnungszuordnung vor dem Build festgelegt
-- [ ] Feishu Inbound @mention — Agents leben in der Gruppe: Daten abfragen, Freigaben einreichen, Flows nachverfolgen
-- [ ] Outbound-Muster: Fehlerbenachrichtigungen, Budget-Warnungen, geplante Digests, Eskalation, Audit-Belege
-- [ ] WeCom / DingTalk-Kanäle nach Feishu
-
-### Geparkt — signalgesteuert
-
-Beginnen Sie diese nicht ohne ihren Auslöser (siehe Replan §3): Das MCP-Gateway wartet auf ≥2 unaufgeforderte „Binde meine Tools in meinen Agenten ein"-Anfragen; die Kanalisierung wartet auf einen Implementierer, der nach der Lizenzierung fragt; IdP/OrgSync wartet auf Kundennachfrage; der Rest wartet auf ein abgeschlossenes Engagement, das sie benötigt.
-
-- [ ] MCP-Gateway-Ausgabe — Connector-Discover/Execute als MCP-Tools für nachgelagerte Agenten umgekehrt exponieren
-- [ ] Kanalisierung / White-Label-Aktivierung — kommerzieller Lizenzpfad bereits vorhanden
-- [ ] Identity-Provider-Modul + Channel-Verschlankung — Feishu SSO, Org-Graph-Sync {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] Connector-Autorisierung Stufe 2 (benutzerspezifische Anmeldedaten erforderlich, Key-Binding-Health) + Stufe 3 (Login-Ticket-Austausch) {/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] Public API Phase 2 — schlüsselspezifische Rate-Limits/Kontingente, Versionierung, SDKs, Entwicklerportal {/* dev: dev/public-api-phase2.md */}
-- [ ] Observability — Agent Trace Layer (Trace/Span-Modell, Timeline-Viewer, OTel-Export) + Metriken-Dashboard {/* dev: dev/agent-trace-layer.md */}
-- [ ] Agent-Workspace-Rest — Übergabenotizen, Datei-Browser-UI, sitzungsübergreifender Abruf, Kompaktierungssegmente (grep-fähige On-Disk-Zusammenfassung, die der Agent zurückliest) {/* dev: dev/agent-workspace.md */}
-- [ ] Guardrails v1 — Off-Topic-Filter, PII-Redaktor-Ausgabe-Guardrail, agentspezifische Guardrail-Konfigurations-UI
-- [ ] Hook-System-Extras — eingebaute Hooks, `SessionStart` + Benutzer-YAML-Hooks {/* dev: dev/hook-system.md */}
-- [ ] Connector-Plattformtiefe — Progressive Disclosure Phase 3–4, YAML/JSON-Connector-Konfiguration, DB-Connectors Phase 4 (Oracle / SQL Server / GBase), MCP-Connection-Pooling
-- [ ] Prompt-Cache-Folgemaßnahmen — Gemini-Kontext-Cache-Adapter, agentspezifisches `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] Hot-Mid-Stream-DAG-Resume — SSE-Reconnect hängt sich an einen laufenden Turn an (Cold-Retry-Resume bereits ausgeliefert) {/* dev: dev/archive/incremental-dag.md */}
-- [ ] Ökosystem — geplante/ereignisgesteuerte Agenten, Workflow-Trigger-Identity-Observability, workflowspezifische `credential_policy`, DB-Schema-Advanced-Builder, Sandbox-Hardening v2
+- [ ] Chunkweise Komprimierung der Eingabe und modellbewusste Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
+- [ ] Beim nächsten LiteLLM-Upgrade die Streaming-Nutzungszahlen der Responses-Bridge überprüfen (eine falsche Zuordnung im Upstream wird vermutet)
+- [ ] Die LiteLLM-Chat→Responses-Bridge außer Betrieb nehmen, sobald der native GPT-5.x-Pfad eine vollständige Veröffentlichung durchlaufen hat
+- [ ] Produktivsetzung der Stripe-Abrechnung — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, vollständige Full-Stack-Regressionstests, aktive Preis-ID
 
 ### Aus dem Pre-Replan-Plan v0.9 ausgeliefert
 
@@ -408,36 +365,6 @@ Beginnen Sie diese nicht ohne ihren Auslöser (siehe Replan §3): Das MCP-Gatewa
 - [x] ~~Agent Core Phase 3: Konversations-Wiederherstellungs-MVP, Kompaktes Work-Card, Turn-Profiler, Benutzerbasiertes Rate-Limiting~~ *(v0.8.3)*
 - [x] ~~Konversations-Wiederaufnahme-MVP, System-Prompt-Registry + Cache, Thinking-Block-Persistenz, Reasoning-Replay-Richtlinie, Cache-Observierbarkeit~~ *(v0.8.4)*
 
-### v1.0 — Hot-Plug + Einbettbar
-
-**Ziel**: Connector-Hinzufügung ohne Neustart, Package-Ökosystem und eingebettete Bereitstellung.
-
-- [ ] **Connector Progressive Disclosure (Phase 5)**: **Semantisch geführte Tool-Auswahl** (Entity-Extraktion aus Anfrage → Ontology-Registry-Lookup → Connector-Set-Reduktion; 90%+ Token-Reduktion für Deployments mit 50+ Connectors); Scale-Modus für Batch/ETL-Connectors; CLI-ähnliches universelles `connector <name> <action> <params>`-Interface
-- [ ] **Cross-Connector Entity Alignment (Ontology Registry)** — *herabgestuft 2026-04-21: bedarfsgesteuerte individuelle Bereitstellung, keine Kernfunktion*: gemeinsame Entity-Typen (Customer, Order, Asset) mit Feldzuordnungen über Connectors hinweg definieren; DAGPlanner löst Cross-System-JOIN-Schlüssel automatisch auf; ermöglicht Connector-übergreifende Abfragen (z. B. „Kunden in Salesforce, die in Shopify bestellt haben") ohne hartcodierte Feldnamen
-- [ ] **Hot-Plug-Connectors**: OpenAPI-Spec hochladen, KI generiert Konfiguration, in 5 Minuten live (kein Neustart)
-- [x] ~~**Marketplace-Redesign Phase 1 — Lösungen + Komponenten**~~: Zweistufiges Marktmodell (Lösungen: Agent/Skill/Workflow; Komponenten: Connector/MCP Server); Bereichsauswahl (Globaler Markt / Org); einheitliches Abonnementmodell (automatisches Erscheinen der Org entfernt); KB aus dem Marktumfang entfernt; Datenmigration füllt Abonnements für bestehende Org-Mitglieder nach
-- [ ] **Market Package System**: Verteilbare Ressourcenpakete für den Marketplace — ersetzt typspezifische „Marketplaces" durch eine einheitliche Packaging-Schicht. Das `fim-package.yaml`-Manifest deklariert: Metadaten (Name, Version, Beschreibung, Autor, Lizenz, Tags, `min_fim_version`), Einstiegspunkt (primärer Skill oder Agent), Ressourcenliste (Agents, Skills, Connectors, KBs, MCP-Server, Workflows) mit Konfigurationsreferenzen, paketübergreifende Abhängigkeiten (Semver-Bereiche), erforderliche Credentials (auf Connector-Refs für die Sammlung zur Installationszeit gemappt) und benutzerkonfigurierbare Variablen mit Standardwerten. **Zwei Nutzungsmodi**: (1) **install** — Batch-Erstellung aller Ressourcen + automatische Verdrahtung interner Referenzen via ID-Substitution; Installation mit Quelle verknüpft für Versionsaktualisierungsbenachrichtigungen; `POST /api/market/packages/{id}/install`; (2) **fork** — Klonen als benutzereigene bearbeitbare Kopien ohne Aktualisierungsverknüpfung (dies IST der Template-Modus); `POST /api/market/packages/{id}/fork`. Weitere Endpunkte: Veröffentlichen (`POST /api/market/packages` mit Review-Workflow), Deinstallieren (`DELETE /packages/{id}/uninstall` mit Abhängigkeitsprüfung + Bestätigung geänderter Ressourcen), Versionsverlauf (`GET /packages/{id}/versions`), Upgrade (`POST /packages/{id}/upgrade` mit ressourcenweiser Diff-Vorschau). Abhängigkeitsauflöser für verschachtelte Paketanforderungen mit Konflikterkennung. Die `PackageInstallation`-Tabelle verfolgt installierte Pakete pro Benutzer mit Ressourcen-ID-Zuordnung für Deinstallation/Upgrade. **Koexistiert mit der Veröffentlichung einzelner Ressourcen** — Package ist eine Kompositionsschicht, kein Ersatz; ein einzelner Connector kann weiterhin eigenständig veröffentlicht werden. Beispiel-Abhängigkeitsbaum: `Package: contract-review` → `Skill: contract-review` (Einstiegspunkt) → `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
-- [ ] **Creator-Programm**: Monetarisierungsschicht für den Marketplace — Creator-Profile mit Portfolio-Seiten, paketbezogene Analysen (Installationen, Forks, aktive Nutzer, Bewertungen/Rezensionen), Affiliate-Provisionsverfolgung, wenn Pakete neue Abonnements generieren. Bezahlte Paketstufe mit Preisgestaltung, Kaufablauf und Genehmigungsworkflow. Creator-Dashboard mit Installationstrends, Umsatzberichten und Nutzerfeedback. Öffentliche Creator-API für programmatische Paketveröffentlichung (CI/CD für Paketautoren). Community-Funktionen: Paketkommentare, Q&A, Changelogs pro Version
-- [ ] **Einbettbares Widget**: `<script src="fim-one.js">` in die Host-Seite injiziert
-- [ ] **Seitenkontext-Injektion**: Widget liest den Host-Seitenkontext (aktuelle ID, URL, DOM-Selektoren)
-- [ ] **Erweiterte Trigger**: Eingehende Webhook-Ereignisse; Verbesserungen für geplante Jobs (Multi-Zeitzone, kalenderbasiert)
-- [ ] **Batch-Ausführung**: Verarbeitung von 1000+ Elementen via DAG
-- [ ] **Enterprise-Sicherheit**: IP-Whitelisting, Verschlüsselung im Ruhezustand, SSO
-- [ ] **KB Advanced Editor**: Agent im Builder-Modus für Power-User, die große Wissensdatenbanken verwalten — Massen-URL-Ingestion, Duplikaterkennung, Lückenanalyse, Dokument-Lifecycle-Management; erweitert den bestehenden KB-KI-Chat mit ReAct-Tool-Loop
-- [ ] Abrechnungszugriffsmodell — Instanz wählt keine Abonnements / inklusive+bezahlt / nur-bezahlt, damit Self-Hosting, SaaS und sofortige Abrechnung getrennt bleiben {/* dev: dev/billing-access-model.md */}
-- [ ] **Stripe Billing (v1 MVP — Pro-Abonnement)**: Kostenloses + Pro-Zweistufenabonnement mit monatlichem Token-Kontingent. Stripe Checkout (gehostet) + Customer Portal (Self-Service) + webhook-gesteuerter Lifecycle (`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`). Soft-Cap bei Kontingenterschöpfung (HTTP 402 + Upgrade-Hinweis) — keine Überschreitungsgebühren in v1. Nur Abrechnung pro Benutzer; Org/Team-Abonnements auf v3 verschoben. Voraussetzungen:
-  - [x] ~~**Datenmodell + SDK-Grundlagen** (P1) — `billing_plans` / `subscriptions` / `stripe_webhook_events`-Tabellen, ORM-Modelle, Stripe-SDK-Singleton, Free + Pro Seeds~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Backend-API + Webhook-Handler** (P2) — `/api/billing/*` + `/api/webhooks/stripe` mit Signaturverifizierung + Idempotenz; planbewusstes Kontingent; stündlicher Lifecycle-Sweep~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Frontend-Abrechnungs-Tab + 402-Upgrade-Dialog** (P3) — `/settings?tab=billing` Kontingentanzeige, Upgrade-CTA, `past_due`-Banner, Mid-Stream-402-Dialog~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Admin-Planverwaltung** (P4) — `admin/billing/{plans,subscriptions}` CRUD~~ *(ausgeliefert in v0.8.6)*
-  - [x] ~~**Admin-gesteuertes Abrechnungs-Feature-Flag** (P5) — `system_settings.billing_enabled` steuert die Stripe-Pipeline; idempotente Aktivierung befüllt Free+Pro, setzt Standard-Plan-Zeiger, füllt Benutzer nach; Ein-/Ausschalten ist nach Aktivierung ein reines Flag-Umschalten~~ *(ausgeliefert in v0.8.6)*
-  - [ ] **Abstimmung + E2E + Go-Live** (P6) — nächtliches `subscriptions` ↔ `stripe.Subscription.list()`-Abstimmungsskript zur Wiederherstellung verpasster Webhooks; vollständige Happy-Path-/Kündigung-in-der-Mitte-/Zahlungsverzug-Regressionstests; Wechsel von Test-Modus `stripe_price_id` zu einer Live-`price_id`; Smoke-Test auf Staging mit einer echten Karte.
-
-- [ ] **Team-Plan (Stripe-Seats)** — Sitzplatzbasierte Preisgestaltung via `stripe.Subscription.quantity`, integriert mit der Organisationsmitgliedschaft. Ermöglicht Unternehmen, einen teamweiten Plan mit N Seats zu abonnieren; Kontingent und Feature-Flags werden über die Seat-Gruppe statt über den einzelnen Benutzer aufgelöst. Baut auf dem v1.0 Stripe MVP und dem bestehenden Organisationsmodell auf.
-- [ ] **Gruppen-Token-Kontingent für Deployments ohne Abrechnung** — Enterprise-/Private-Deployments ohne Stripe konfigurieren Token-Budgets auf Organisationsebene. Die Kontingentkette erweitert sich auf `override > group > plan > default`; die Gruppenauflösung verwendet `max(user_quota, group_quota)`, sodass individuelle VIPs nicht durch das Team-Cap eingeschränkt werden. Wird zusammen mit dem Team-Plan eingeführt, damit dieselben Grundbausteine sowohl abgerechneten als auch selbst gehosteten Topologien dienen.
-
-**Auswirkung**: Unternehmen deployen FIM One von null bis zur Multi-System-Orchestrierung in Tagen. Das Package-System schafft ein Creator-Ökosystem — Lösungsautoren veröffentlichen zusammengesetzte Bundles (Skill + Agents + Connectors + KBs + Workflows), Unternehmen installieren mit einem Klick, Creators verdienen durch Adoption. Die Install/Fork-Dualität deckt sowohl „so verwenden wie es ist" als auch „aus Vorlage anpassen" in einem einzigen Mechanismus ab.
-
 ## Eingefrorene Funktionen (Ausgeliefert, nur Wartung)
 
 Gemäß der [Orthogonalitätsstrategie](/strategy/orthogonality-strategy) sind diese Funktionen ausgeliefert und funktionsfähig, erhalten jedoch keine neuen Funktionen mehr (nur noch Fehlerbehebungen):
@@ -451,71 +378,8 @@ Gemäß der [Orthogonalitätsstrategie](/strategy/orthogonality-strategy) sind d
 | Grounded Generation | v0.5 | Modelle verbessern sich bei Zitierungen; 5-stufige Pipeline bringt abnehmenden Mehrwert |
 | ContextGuard / Pinned Messages | v0.5 | Wird so ausgeliefert; keine neuen Funktionen |
 
-## Erwägen (Auf unbestimmte Zeit zurückgestellt)
+## Nicht auf dieser Roadmap
 
-Gemäß der Orthogonalitätsstrategie wären diese Punkte mit hohem Aufwand verbunden und unterliegen dem Absorptionsrisiko:
+Wenn eine Funktionalität oben nicht aufgeführt ist, ist sie nicht geplant. Das ist eine bewusste Entscheidung und kein Versehen: Das Projekt befindet sich im Wartungsmodus, und die Arbeit wird danach priorisiert, was tatsächlich benötigt wird, statt danach, was die Funktionsmatrix abrunden würde.
 
-| Feature | Grund für Zurückstellung |
-|---------|------------|
-| Multi-Agent-Orchestrierung (tiefe Hierarchien) | Anbieter bauen nativ (OpenAI Swarm, Google A2A und ähnliche Multi-Agent-Angebote). FIM Ones CallAgentTool deckt den einstufigen Delegierungsfall ab; ereignisgesteuerte Hintergrundagenten werden durch Scheduled Jobs in v0.9 abgedeckt |
-| Selbstmodifizierende Agent-Skills (Prozedurales Gedächtnis) | Agenten, die ihre eigene `skill.md` während der Ausführung aktualisieren — hohe Komplexität, Sicherheits-/Audit-Oberfläche. Hängt davon ab, dass das Agent Skill System (v0.8) zuerst ausgeliefert wird. Neu bewerten, wenn Enterprise-Kunden explizit selbstverbessernde Agenten anfragen |
-| ~~Agent Workspace (Tool Output File Offloading)~~ | Auf v0.9 hochgestuft. Der Wert liegt im **selektiven Lesen**, nicht in der Kontextkapazität — durch Framework-übergreifende Validierung bestätigt. Die ursprüngliche Zurückstellungsbegründung („200K+-Fenster reduzieren die Dringlichkeit") war falsch. |
-| Sitzungsübergreifendes Langzeitgedächtnis | Kontextfenster wachsen schnell (200K–2M); Anbieter fügen eingebautes Gedächtnis hinzu (OpenAI memory, Gemini context caching); hohe Implementierungskosten gegenüber sinkendem Differenzierungswert. Neu bewerten, wenn Enterprise-Kunden es explizit anfragen |
-| Gedächtnis-Lebenszyklus (TTL, Kontingente) | Hängt vom sitzungsübergreifenden Gedächtnis ab; gemeinsam zurückgestellt |
-| Aktives Kontextkomprimierungs-Tool (agentausgelöst) | Explizit eingefroren mit ContextGuard (v0.5). Kontextfenster bei 200K+ reduzieren den Wert. Wird nicht erneut aufgegriffen, es sei denn, Kontextkosten werden zu einer wesentlichen Enterprise-Beschwerde |
-| Browser-Automatisierung / Computer Use | Hohe Wartungskosten (DOM-Änderungen, Anti-Bot, Sandboxing). Die Branche konvergiert auf den Computer Use-Modus (Anthropic, OpenAI Operator, Google Mariner) und MCP-Browser-Tools (Puppeteer/Playwright MCP). Über MCP-Integration konsumieren, nicht selbst aufbauen. Neu bewerten, wenn ein stabiler Computer Use MCP-Standard entsteht |
-| Web-Push-Benachrichtigungen | Browser-natives Push via Service Worker + VAPID. Überschneidet sich mit IM Channel Integration (v0.8), die bevorzugte Enterprise-Kanäle abdeckt (Lark/Slack/WeCom/Email). IM-Push hat höheren Enterprise-Wert; Web Push ist ein Nice-to-have für reine Portal-Nutzer. Neu bewerten, nachdem IM Channel ausgeliefert wurde — falls Nutzer Browser-Benachrichtigungen über die IM-Abdeckung hinaus anfragen |
-| Mehrbenutzer-Workflow-kollaboratives Bearbeiten | Echtzeit-Co-Editing desselben Workflow-Blueprints (Figma/Notion-Stil) mit Cursor-Awareness, Konfliktlösung und knotenbasierter Sperre. Hohe Implementierungskosten (CRDT / OT, Präsenz-Infrastruktur), unklare Enterprise-Nachfrage gegenüber dem heutigen Modell „ein Editor gleichzeitig + Versions-Diff". Neu bewerten, wenn mehrere Unternehmen explizit gemeinsames Live-Editing anfragen |
-| Knotenspezifische Workflow-Ausführungsberechtigungen (RBAC bei Ausführung) | Feingranulare Autorisierung *innerhalb* einer einzelnen Workflow-Ausführung — z. B. „Knoten X erfordert die Rolle `finance_approver` zur Ausführung". Heute erfolgt die Autorisierung auf Workflow-Ebene (wer auslösen darf) und auf Connector-Ebene (wessen Anmeldedaten ausgeführt werden); knotenspezifisches RBAC fügt eine dritte Achse mit erheblicher Komplexität und ohne aktive Kundenanfrage hinzu |
-| Org-übergreifendes Workflow-Sharing mit Live-Updates | Einen Workflow einer anderen Organisation abonnieren und Upstream-Updates erhalten, ohne neu zu forken. Heute bedeutet Abonnieren = Forken (Snapshot), sodass Breaking Changes im Upstream nie propagiert werden. Live-Updates würden upstream-kompatible Schema-Evolution + Konfliktlösung erfordern; hohe Wartungskosten. Neu bewerten, wenn Unternehmen „gemeinsame Workflows über Tochtergesellschaften" anfragen |
-
-## Wie Versionen mit Modi übereinstimmen
-
-| Version | Standalone | Copilot | Hub | Hinweise |
-|---------|-----------|---------|-----|-------|
-| **v0.1–v0.3** | Funktionsfähig | Noch nicht | Noch nicht | Nur Portal, Einzelbenutzer |
-| **v0.4** | Funktionsfähig | Noch nicht | Noch nicht | Mehrere Konversationen, Agent-Verwaltung |
-| **v0.5** | Funktionsfähig | Noch nicht | Noch nicht | Wissensdatenbank + RAG |
-| **v0.6** | Funktionsfähig | Möglich | Möglich | Connectors verfügbar; Copilot/Hub mit manueller Konfiguration möglich |
-| **v0.7** | Funktionsfähig | Bereit | Bereit | Admin-Plattform; Multi-Tenant-Authentifizierung; produktionsbereit |
-| **v0.8** | Funktionsfähig | Bereit | Optimiert | RBAC + Audit-Log pro System; einfacheres Onboarding |
-| **v0.9** | Funktionsfähig | Bereit | Produktion | Observability, Performance, Härtung |
-| **v1.0** | Funktionsfähig | Optimiert | Enterprise | Paketsystem, Creator-Programm, Hot-Plug, einbettbares Widget, Webhooks, Batch |
-
-## Ressourcenallokation (v0.8–v1.0)
-
-Die Orthogonalitätsstrategie bestimmt, wo der Aufwand investiert wird:
-
-| Kategorie | Allokation | Versionen | Begründung |
-|----------|-----------|----------|-----|
-| **Connector-Plattform** (v0.6+) | 50% | Fortlaufend | Kerndifferenzierung; kein Absorptionsrisiko |
-| **Enterprise-Features** (RBAC, Audit, Sicherheit, Observability) | 30% | v0.8–v1.0 | Unspektakulär, aber dauerhaft; Produktionsvoraussetzung. Agent Trace Layer ist kommerzieller Anker |
-| **Agent-Intelligenz** (Skill-System, geplante Agents) | 15% | v0.8–v0.9 | 指令+工具+技能 Differenzierungsgeschichte; geringes Absorptionsrisiko — Frameworks validieren Muster, aber Enterprise-SOPs sind kundenspezifisch |
-| **v0.1–v0.5 Wartung** | 5% | Fortlaufend | Nur Bugfixes; keine neuen Features |
-
-## Metrikbasierte Meilensteine
-
-Der Erfolg wird gemessen an:
-
-| Metrik | v0.7-Ziel | v0.8-Ziel | v1.0-Ziel |
-|--------|------------|------------|------------|
-| Eingesetzte Konnektoren | 5 | 20+ | 100+ |
-| Enterprise-Kunden | 1–2 | 5–10 | 20+ |
-| Durchschn. Konnektor-Einrichtungszeit | 2 Wochen | 2 Tage | 5 Minuten (Hot-Plug) |
-| Token-Effizienz (DAG vs. nur ReAct) | 30 % Reduktion | 40 % Reduktion | 50 % Reduktion |
-| Uptime-SLA | 99,5 % | 99,9 % | 99,95 % |
-| Support-Ticket-Themen | Integration, Einrichtung | Benutzerdefinierte Konnektor-Logik | Hot-Plug, Skalierung |
-
-## Offene Fragen / TBD
-
-- **Marketplace-Moderation**: Wie werden Community-Pakete und einzelne Ressourcen validiert? Automatisiertes Scannen auf Credential-Leaks in Paketkonfigurationen? (v1.0)
-- **Token-Ökonomie**: Wie werden Multi-User- und Multi-Agent-Szenarien bepreist? (v1.0)
-- **Paket-Versionierung**: Breaking Changes in installierten Paketen — automatisches Upgrade mit Migrationsskripten oder manuelle Genehmigung pro Update? Auflösung des Dependency-Diamond-Problems? (v1.0)
-- **Paketpreisgestaltung**: Kostenlose vs. kostenpflichtige Stufen, Provisionssätze für das Creator Program, Integration von Zahlungsanbietern? (v1.0)
-- **Credential-UX für Pakete**: Credential-Erfassung bei der Installation — schrittweiser Wizard-Stil oder verzögertes Setup? Credential-Sharing zwischen Paketen, die denselben Connector-Typ verwenden? (v1.0)
-- **Telemetrie-Opt-out**: Wie werden Datenschutzpräferenzen berücksichtigt? (v0.8)
-- **Connector-Versionierung**: Wie werden Breaking Changes in Connector-APIs verwaltet? (v0.8)
-- **Rate Limiting**: Benutzerbasiertes Workflow-Rate-Limiting ist implementiert (Sliding Window: 10 Ausführungen/Min., 3 gleichzeitig). Connector- und agentenbezogenes Rate Limiting TBD (v0.9)
-- **Auswahl der Connector-Autorisierungsstufe**: Wie erkennt ein Administrator, welche Stufe für ein bestimmtes Upstream-System gilt? Auto-Probe (versuche benutzerspezifischen API-Key → Fallback auf Login-Ticket → Fallback auf Shared-DB) vs. explizite Deklaration in der Connector-Spezifikation? Wie stellen wir „dieser Connector unterstützt Stufe 2, aber der Administrator hat sich für Stufe 1 entschieden" in der UI dar, ohne nicht-technische Administratoren zu verwirren? (v0.9)
-- **Dualität Integration vs. Connector**: Wenn eine Feishu-Anbindung gleichzeitig ein SSO-Anbieter UND eine API-Aufruffläche ist — wie präsentieren wir das in den Einstellungen? Ein Objekt mit drei Schaltern oder drei separate Anbindungen, die eine Credential teilen? Auswirkungen auf die Deinstallationssemantik (führt das Widerrufen von SSO zur Deaktivierung des Connectors?) (v0.9)
-
+Wenn dir etwas fehlt, eröffne ein Issue und beschreibe das Problem, an dem du festhängst. Ein konkreter blockierter Anwendungsfall ist der Grund, aus dem ein Punkt auf diese Seite gelangt.

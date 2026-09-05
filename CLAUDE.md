@@ -105,7 +105,7 @@ and what to add.
 
 Anything injected into the model's message list — system prompt segments,
 interrupts, handoff context, compaction summaries, tool notices — follows
-these rules (from `dev/codex-lessons/backlog.md` Batch 0.1):
+these rules (from `dev/archive/codex-lessons/backlog.md` Batch 0.1):
 
 1. **No history rewrite.** Context is appended, never edited in place.
 2. **Don't move the cached prefix.** A value that changes every turn belongs
@@ -118,9 +118,10 @@ these rules (from `dev/codex-lessons/backlog.md` Batch 0.1):
 6. **Injected fragments are typed classes** under `core/agent/context/`,
    never f-strings at the call site.
 
-Rules 3 and 6 are aspirational until codex-lessons Batch 1 lands — existing
-violations are known debt listed in `dev/codex-lessons/audit.md`. The rules
-gate **new** code now: don't add another f-string injection site.
+Rules 3 and 6 describe the target, not the current state: the conversion that
+would make them true is parked (see `PARKED.md`), and the existing violations
+are listed in `dev/archive/codex-lessons/audit.md`. The rules still gate
+**new** code: don't add another f-string injection site.
 
 ## Code Conventions
 
@@ -154,7 +155,7 @@ Communication only — doesn't replace automated tests.
   1. **Check off** `- [ ]` → `- [x]` if commit satisfies it.
   2. **Insert new** significant items under fitting planned version; `- [x]` if just shipped, `- [ ]` if spawns follow-up.
   3. **Never touch** shipped (date-stamped) versions.
-  4. **Deferred items** → `- [ ]` under right version. Internal planning docs are scratchpads, not a substitute.
+  4. **Deferred items** → `PARKED.md` at the repo root, not the roadmap. `docs/roadmap.mdx` is published to Mintlify and lists only work that is actually planned; a capability with no requester goes in `PARKED.md` with a one-line trigger saying what would bring it back. Do not add a new feature area to the roadmap without an outside request — the whole point of the split is that the public page stays short and honest.
   5. **Roadmap is an INDEX, not a blueprint.** Each entry is **one line, ≤150 chars** — names what ships and the user benefit. **No multi-sentence implementation prose, no nested sub-bullets describing schema/tradeoffs/rationale.** If you need to write more, you need a `dev/` file.
   6. **Detail goes to `dev/<topic>.md`** (single-topic) or `dev/<topic>/` (multi-file design). `dev/` is **not** shipped to Mintlify, so roadmap pointers MUST use a JSX comment: append ` {/* dev: dev/<topic>.md */}` to the section heading (e.g. `#### Hook System {/* dev: dev/hook-system.md */}`). Mintlify strips JSX comments at compile time → public docs stay clean; Claude reading the file source sees the pointer and can pick up the companion design doc on the next pass. **Never** use a visible bracketed link like `[详见 dev/...]` — that leaks internal structure to public readers. Existing dev/ companions are indexed in `dev/README.md` — read that instead of maintaining a list here. **Rule applies forward** — don't audit/rewrite already-terse entries; existing verbose entries stay until they ship and get archived.
   7. **`dev/<topic>.md` is a planning-time artifact, not a per-commit artifact.** Create or extend it when **adding** a complex roadmap item (incremental planning — "let's do X in v0.9, here's the design"). When **checking off** an existing item at commit time (`[ ]` → `[x]`), do NOT touch the dev/ file. Implementation may have diverged from the design doc and that's fine — the source of truth is the code. After the version ships and the item is archived, the matching dev/ file may be moved to `dev/archive/` in a follow-up cleanup, but that's optional and never blocks a ship commit.

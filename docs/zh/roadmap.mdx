@@ -69,18 +69,6 @@ flowchart LR
 
 - **演练场停止并重试显示瞬间视觉伪影，页面刷新总能清除。** 三个并发渲染源——`activeConversation.messages`（数据库快照）、SSE `messages` 流和乐观的 `pendingQuery` 占位符——未折叠为单一派生状态，因此在点击"重试"和配对的助手响应到达之间，UI 可能会（a）在流前窗口中短暂渲染相同查询两次，（b）在 `hasLiveMessages` 为真且快照重新加载前从重试历史中删除先前的孤立用户气泡，以及（c）在 SSE"完成"事件和下一个 `selectConversation` 刷新之间的狭窄窗口中闪烁。**数据永不丢失**——每条用户消息（包括中止的重试）都持久化在 `conversation.messages` 中，通过 `normalize_alternating_messages` 传入下一个 LLM 调用，并在 `48ba08c6` 渲染修复中引入的 `HistoryTurn.orphanUserContents` 刷新后正确渲染。从上下文看，Claude 自身的网页 UI 表现出类似的缺陷类——停止中途响应并立即发送后续查询有时会将后续作为第一个查询的兄弟编辑分支而非作为新轮次追加——因此这是乐观 UI + SSE + 持久化历史设计中的已知难题，而非 FIM One 特定的缺陷。正确的修复需要将三个渲染源折叠为单一派生状态；延迟至更广泛的演练场状态机重构。
 
-## Architecture Program — Agent Core {/* dev: dev/dsh-lessons/README.md */}
-
-范围已确定，尚未排期到具体版本。批次按依赖关系排序；每个批次在配套设计中展开为具体任务。
-
-- [ ] **治理**：bug 类防御模式文档、设计笔记生命周期状态、markdown 链接闸门。
-- [ ] **会话事件日志**：每个模型可见的输入都成为持久的、有序的事实，模型历史从中派生。
-- [ ] **运行时不变量 + 无键快照重放**：在生产环境中断言所有权关系；在 CI 中对比组装的记录而无需密钥。
-- [ ] **工具管道接缝**：前置/执行/后置阶段，使权限、超时、沙箱和后台工作脱离智能体循环。
-- [ ] **代码模式预设**：一个程序通过同一管道组合多个连接器调用，替代多轮往返编排。
-- [ ] **智能体预设作为声明的能力集**，加上计划和后台状态记录为日志事实而非副文件。
-- [ ] **来自 OpenAPI 的类型化前端**及生成的工具/环境目录，替代容易漂移的手工维护副本。
-
 ## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
 
 延期加固——不阻塞；仅在匹配场景出现时才处理。
@@ -332,60 +320,24 @@ flowchart LR
 
 ## 计划版本
 
-重新规划于2026-07-08：FIM One是一个智能体运行时——一个内核（ReAct引擎、凭证、确认闸门、审计、多租户组织）支持多个交付表面：Web UI、API、JS嵌入、MCP输出。每个表面都重用相同的组装层来处理身份验证、凭证、审批和计量：更多前端，永不增加逻辑。近期方向是聚焦于数据问答（ChatBI）切片，销售场景而非平台。{/* dev: dev/replan-2026-07.md */}
+重新规划于2026-09-06。核心已构建完成：ReAct引擎、连接器、凭据、审批闸门、审计、多租户组织。接下来将完成代码库中已有的内容并确保其正确性，而不是开启新的功能领域。下方未列出的任何内容均不在计划中；请参阅结尾说明。
 
-### v0.9 — 连接器栅栏 + 场景引导
+### v0.9——连接器防护栏
 
-**目标**：后期资产组装成完整的数据问答产品——只读数据库连接器 + 栅栏 + 审批闸门 + IM入口。一级栅栏将安全债转化为产品特性。
+**目标**：数据库连接器可以安全地交给同事使用，并完成代码树中已有的半成品路径。
 
-#### DB 连接器隔离边界 {/* dev: dev/connector-rbac/00-overview.md */}
+#### 数据库连接器闸门 {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [x] PII 列标记——已标记的列会保留在架构中，其值在每个查询结果中都会返回掩码
-- [x] 架构可见性——表／列允许或拒绝规则＋动词阻断（只读强制）
-- [x] 隔离边界可审计性——`ConnectorCallLog` 中的 `scope_rules_applied` 会记录每次调用所运行于其下的隔离边界
-- [ ] 按钩子传递配置（`{"name", "config"}` 架构）——用于传递 ScopeGuard 规则 {/* dev: dev/hook-system.md */}
+- [x] PII列标记——已标记的列会保留在架构中，其值在每个查询结果中均以掩码形式返回
+- [x] 架构可见性——表／列允许或拒绝规则，以及动词阻止（只读强制执行）
+- [x] 闸门可审计性——`ConnectorCallLog`中的`scope_rules_applied`记录每次调用所使用的闸门
 
-#### 上下文健壮性
+#### 完成已有工作
 
-- [ ] 在主聊天路径上实现分块压缩输入和模型感知预算，使任意模型组合都能保持在上下文窗口内
-
-#### 模型层
-
-- [ ] 在下次升级 LiteLLM 时验证 Responses-bridge 流式传输的使用数据（疑似上游映射错误）
-- [ ] 一旦原生 GPT-5.x 路径完整运行一个发布周期，即退役 LiteLLM chat→responses 桥接
-
-#### 场景入门
-
-- [ ] 首次运行从场景模板（solution_seeds）开始，而不是从空工作台开始
-- [ ] 文档登陆页面以三个垂直场景故事开头，而不是模块参考
-- [ ] 每次交付的参与度提炼一个场景模板——护城河是场景资产×交付速度
-
-### v0.10 — Two Mouths: JS Embed + IM Inbound {/* dev: dev/im-channels.md */}
-
-**目标**：两个最具销售价值的交付界面，均运行在同一内核与组装层之上。
-
-- [ ] JS 气泡/iframe 嵌入——将一段代码片段嵌入宿主系统；匿名访客身份识别与计费归因在构建前确定
-- [ ] Feishu 入站 @提及——智能体在群组中运行：查询数据、提交审批、推进流程
-- [ ] 出站模式：故障告警、预算预警、定时摘要、升级通知、审计回执
-- [ ] 企业微信/钉钉通道跟进 Feishu
-
-### 待处理 — 信号门控
-
-不要在没有触发器的情况下启动这些（参见重新规划 §3）：MCP 网关等待 ≥2 个未经请求的"在我的智能体中挂载你的工具"请求；通道化等待实现者询问许可证问题；IdP/OrgSync 等待客户拉取；其余的等待需要它们的已交付参与。
-
-- [ ] MCP 网关输出 — 反向公开连接器发现/执行为下游智能体的 MCP 工具
-- [ ] 通道化 / 白标启用 — 商业许可证路径已就位
-- [ ] 身份提供商模块 + 通道精简 — Feishu SSO、组织图同步 {/* dev: dev/connector-rbac/07-identity-providers.md */}
-- [ ] 连接器授权第 2 层（需要按用户凭证、密钥绑定健康检查）+ 第 3 层（登录票据交换） {/* dev: dev/connector-rbac/00-overview.md */}
-- [ ] 公共 API 第 2 阶段 — 按密钥速率限制/配额、版本控制、SDK、开发者门户 {/* dev: dev/public-api-phase2.md */}
-- [ ] 可观测性 — 智能体追踪层（追踪/跨度模型、时间线查看器、OTel 导出）+ 指标仪表板 {/* dev: dev/agent-trace-layer.md */}
-- [ ] 智能体工作区剩余部分 — 交接笔记、文件浏览器 UI、跨会话回忆、压缩段（智能体读回的可 grep 的磁盘上摘要） {/* dev: dev/agent-workspace.md */}
-- [ ] 护栏 v1 — 离题过滤、PII 编辑器输出护栏、按智能体护栏配置 UI
-- [ ] 钩子系统扩展 — 内置钩子、`SessionStart` + 用户 YAML 钩子 {/* dev: dev/hook-system.md */}
-- [ ] 连接器平台深度 — 渐进式披露第 3-4 阶段、YAML/JSON 连接器配置、数据库连接器第 4 阶段（Oracle / SQL Server / GBase）、MCP 连接池
-- [ ] 提示词缓存后续 — Gemini 上下文缓存适配器、按智能体 `cache_ttl` {/* dev: dev/prompt-cache-followups.md */}
-- [ ] 热中流 DAG 恢复 — SSE 重新连接重新附加到运行中的轮次（冷重试-恢复已交付） {/* dev: dev/archive/incremental-dag.md */}
-- [ ] 生态系统 — 计划/事件触发的智能体、工作流触发器-身份可观测性、按工作流 `credential_policy`、数据库架构高级构建器、沙箱强化 v2
+- [ ] 在主聊天路径中实现分块压缩输入和模型感知的预算，确保任何模型组合都不会超出上下文窗口
+- [ ] 在下一次LiteLLM升级时验证Responses桥接的流式使用量数据——怀疑上游存在错误映射
+- [ ] 原生GPT-5.x路径完成一次完整发布后，移除LiteLLM的聊天→Responses桥接
+- [ ] Stripe计费正式上线——每晚与Stripe对账以检查遗漏的webhook，完成全栈回归测试，使用正式价格ID
 
 ### 从pre-replan v0.9计划中已交付
 
@@ -408,36 +360,6 @@ flowchart LR
 - [x] ~~Agent Core Phase 3: Conversation Recovery MVP, Compact Work Card, Turn Profiler, Per-user Rate Limiting~~ *(v0.8.3)*
 - [x] ~~Conversation resume MVP, System prompt registry + cache, Thinking-block persistence, Reasoning replay policy, Cache observability~~ *(v0.8.4)*
 
-### v1.0 — 热插拔 + 可嵌入
-
-**目标**：零重启连接器添加、包生态系统和嵌入式交付。
-
-- [ ] **连接器渐进式信息披露（第5阶段）**：**语义引导工具选择**（从查询中提取实体 → 本体注册表查找 → 连接器集合缩减；对于50+连接器部署可减少90%+令牌）；批处理/ETL连接器的规模模式；CLI风格通用`connector <name> <action> <params>`接口
-- [ ] **跨连接器实体对齐（本体注册表）** — *降级于2026-04-21：按需自定义交付，非核心功能*：定义共享实体类型（Customer、Order、Asset），具有跨连接器的字段映射；DAGPlanner自动解析跨系统JOIN键；启用跨连接器查询（例如"在Salesforce中订购过Shopify的客户"），无需硬编码字段名
-- [ ] **热插拔连接器**：上传OpenAPI规范，AI生成配置，5分钟内上线（无需重启）
-- [x] ~~**市场重设计第1阶段 — 解决方案+组件**~~：两层市场模型（解决方案：Agent/Skill/Workflow；组件：Connector/MCP Server）；范围选择器（全球市场/组织）；统一订阅模型（组织自动出现已移除）；KB从市场范围移除；数据迁移为现有组织成员回填订阅
-- [ ] **市场包系统**：市场的可分发资源包 — 用统一打包层替代按类型的"市场"。`fim-package.yaml`清单声明：元数据（名称、版本、描述、作者、许可证、标签、`min_fim_version`）、入口点（主要Skill或Agent）、资源列表（agents、skills、connectors、KBs、MCP servers、workflows）及配置引用、包间依赖（semver范围）、必需凭证（映射到连接器引用以供安装时收集）和用户可配置变量及默认值。**两种消费模式**：（1）**install** — 批量创建所有资源+通过ID替换自动连接内部引用；安装链接到源以获取版本更新通知；`POST /api/market/packages/{id}/install`；（2）**fork** — 克隆为用户拥有的可编辑副本，无更新链接（这就是模板模式）；`POST /api/market/packages/{id}/fork`。其他端点：发布（`POST /api/market/packages`带审查工作流）、卸载（`DELETE /packages/{id}/uninstall`带依赖检查+修改资源确认）、版本历史（`GET /packages/{id}/versions`）、升级（`POST /packages/{id}/upgrade`带按资源差异预览）。嵌套包需求的依赖解析器，具有冲突检测。`PackageInstallation`表跟踪每个用户安装的包及资源ID映射以供卸载/升级。**与单个资源发布共存** — 包是组合层，非替代品；单个Connector仍可独立发布。示例依赖树：`Package: contract-review` → `Skill: contract-review`（入口点）→ `Agent: contract-analyst` + `Agent: risk-scorer` → `KB: legal-clauses` + `Connector: docusign-api` + `MCP: pdf-extractor` + `Workflow: contract-approval-flow`
-- [ ] **创作者计划**：市场货币化层 — 创作者档案及作品集页面、按包分析（安装数、fork数、活跃用户、评分/评论）、当包驱动新订阅时的联盟佣金追踪。付费包层级，含定价、购买流程和审批工作流。创作者仪表板，显示安装趋势、收入报告和用户反馈。公开创作者API，用于程序化包发布（包作者的CI/CD）。社区功能：包评论、问答、每个版本的更新日志
-- [ ] **可嵌入小部件**：`<script src="fim-one.js">`注入到主机页面
-- [ ] **页面上下文注入**：小部件读取主机页面上下文（当前ID、URL、DOM选择器）
-- [ ] **高级触发器**：Webhook入站事件；计划作业增强（多时区、日历感知）
-- [ ] **批量执行**：通过DAG处理1000+项目
-- [ ] **企业安全**：IP白名单、静态加密、SSO
-- [ ] **KB高级编辑器**：为管理大型知识库的高级用户提供的Builder模式智能体 — 批量URL摄取、重复检测、差距分析、文档生命周期管理；用ReAct工具循环扩展现有KB AI聊天
-- [ ] 计费访问模型 — 实例选择无订阅/包含+付费/仅付费，因此自托管、SaaS和从第一天开始收费保持不同 {/* dev: dev/billing-access-model.md */}
-- [ ] **Stripe计费（v1 MVP — Pro订阅）**：Free + Pro两层订阅，月度令牌配额。Stripe Checkout（托管）+ Customer Portal（自助）+ webhook驱动生命周期（`checkout.session.completed` / `customer.subscription.updated|deleted` / `invoice.payment_succeeded|failed`）。在配额耗尽时软上限（HTTP 402 + 升级提示）— v1中无超额费用。仅按用户计费；Org/Team订阅推迟到v3。先决条件：
-  - [x] ~~**数据模型+SDK基础**（P1）— `billing_plans` / `subscriptions` / `stripe_webhook_events`表、ORM模型、Stripe SDK单例、Free+Pro种子~~ *（已在v0.8.6中发布）*
-  - [x] ~~**后端API+webhook处理器**（P2）— `/api/billing/*` + `/api/webhooks/stripe`，带签名验证+幂等性；计划感知配额；每小时生命周期扫描~~ *（已在v0.8.6中发布）*
-  - [x] ~~**前端计费选项卡+402升级对话框**（P3）— `/settings?tab=billing`配额显示、升级CTA、`past_due`横幅、中途402对话框~~ *（已在v0.8.6中发布）*
-  - [x] ~~**管理员计划管理**（P4）— `admin/billing/{plans,subscriptions}` CRUD~~ *（已在v0.8.6中发布）*
-  - [x] ~~**管理员控制的计费功能标志**（P5）— `system_settings.billing_enabled`控制Stripe管道；幂等激活种子Free+Pro、设置默认计划指针、回填用户；切换开/关是激活后的纯标志翻转~~ *（已在v0.8.6中发布）*
-  - [ ] **对账+端到端+上线**（P6）— 夜间`subscriptions` ↔ `stripe.Subscription.list()`对账脚本以恢复错过的webhook；完整堆栈happy-path/取消中期/past-due回归测试；从测试模式`stripe_price_id`切换到实时`price_id`；使用真实卡在staging上进行烟雾测试。
-
-- [ ] **团队计划（Stripe座位）** — 通过`stripe.Subscription.quantity`的按座位定价，与Organization成员资格集成。让公司订阅一个团队范围的计划，包含N个座位；配额和功能标志通过座位组而非单个用户解析。基于v1.0 Stripe MVP和现有Organization模型构建。
-- [ ] **非计费部署的组级令牌配额** — 没有Stripe的企业/私有部署配置组织级令牌预算。配额链扩展到`override > group > plan > default`；组解析使用`max(user_quota, group_quota)`，因此个别VIP不受团队上限约束。与Team计划一起发布，因此相同的原语同时服务于计费和自托管拓扑。
-
-**影响**：企业在数天内从零部署FIM One到多系统编排。包系统创建创作者生态 — 解决方案作者发布复合包（Skill + Agents + Connectors + KBs + Workflows），企业一键安装，创作者从采用中获利。安装/fork二元性在单一机制中涵盖"按原样使用"和"从模板自定义"两种用例。
-
 ## 冻结功能（已发布，仅维护）
 
 根据[正交性策略](/strategy/orthogonality-strategy)，这些功能已发布且正常工作，但不会获得新功能（仅修复错误）：
@@ -451,71 +373,8 @@ flowchart LR
 | 有根据的生成 | v0.5 | 模型在引用方面不断改进；5 阶段管道增加的价值递减 |
 | ContextGuard / 固定消息 | v0.5 | 按现状发布；无新功能 |
 
-## 考虑中（无限期延后）
+## 不在此路线图中
 
-根据正交性策略，以下功能实施成本高且面临吸收风险：
+如果某项能力未在上文列出，就表示目前没有计划支持它。这是经过慎重考虑的选择，而非疏漏：项目目前处于维护阶段，工作优先级取决于实际需求，而不是为了完善功能矩阵。
 
-| 功能 | 延后原因 |
-|---------|------------|
-| 多智能体编排（深层级结构） | 提供商正在原生构建（OpenAI Swarm、Google A2A 及类似多智能体方案）。FIM One 的 CallAgentTool 覆盖单层委托场景；事件触发的后台智能体由 v0.9 的定时任务覆盖 |
-| 智能体自修改技能（过程记忆） | 智能体在执行期间更新自己的 `skill.md`——复杂度高、安全/审计面积大。取决于智能体技能系统（v0.8）先行发布。如企业客户明确要求自改进智能体，则重新评估 |
-| ~~智能体工作区（工具输出文件卸载）~~ | 晋升至 v0.9。价值在于**选择性读取**，而非上下文容量——跨框架验证已确认。原有延后理由（"200K+ 窗口降低紧迫性"）有误 |
-| 跨会话长期记忆 | 上下文窗口快速增长（200K–2M）；提供商添加内置记忆（OpenAI 记忆、Gemini 上下文缓存）；实施成本高而差异化价值递减。企业客户明确要求时重新评估 |
-| 记忆生命周期（TTL、配额） | 取决于跨会话记忆；一并延后 |
-| 主动上下文压缩工具（智能体触发） | 已通过 ContextGuard（v0.5）明确冻结。200K+ 上下文窗口降低价值。除非上下文成本成为主要企业投诉，否则不再重新审视 |
-| 浏览器自动化 / 计算机使用 | 维护成本高（DOM 变化、反爬虫、沙箱隔离）。行业收敛于计算机使用模式（Anthropic、OpenAI Operator、Google Mariner）和 MCP 浏览器工具（Puppeteer/Playwright MCP）。通过 MCP 集成消费，不自建。稳定的计算机使用 MCP 标准出现时重新评估 |
-| Web 推送通知 | 浏览器原生推送（Service Worker + VAPID）。与 IM 通道集成（v0.8）重叠，后者覆盖企业首选通道（Lark/Slack/WeCom/Email）。IM 推送企业价值更高；Web 推送是仅限门户用户的锦上添花。IM 通道发布后重新评估——如用户要求超出 IM 覆盖范围的浏览器通知 |
-| 多用户工作流协作编辑 | 实时共编同一工作流蓝图（Figma/Notion 风格），支持光标感知、冲突解决和逐节点锁定。实施成本高（CRDT / OT、存在感基础设施），企业需求不明确（相比现有"单编辑器 + 版本对比"模型）。多家企业明确要求共享实时编辑时重新评估 |
-| 逐节点工作流执行权限（运行时 RBAC） | 单个工作流运行内的细粒度授权——例如"节点 X 需要 `finance_approver` 角色才能执行"。当前授权发生在工作流级别（谁可触发）和连接器级别（谁的凭证运行）；逐节点 RBAC 添加第三轴，复杂度高且无活跃客户需求 |
-| 跨组织工作流共享与实时更新 | 订阅来自另一组织的工作流并接收上游更新，无需重新分叉。当前订阅 = 分叉（快照），上游破坏性变更永不传播。实时更新需要上游兼容的模式演进 + 冲突解决；维护成本高。企业要求"跨子公司共享工作流"时重新评估 |
-
-## 版本如何与模式对齐
-
-| 版本 | Standalone | Copilot | Hub | 备注 |
-|---------|-----------|---------|-----|-------|
-| **v0.1–v0.3** | 可用 | 尚未支持 | 尚未支持 | 仅门户、单用户 |
-| **v0.4** | 可用 | 尚未支持 | 尚未支持 | 多对话、智能体管理 |
-| **v0.5** | 可用 | 尚未支持 | 尚未支持 | 知识库 + RAG |
-| **v0.6** | 可用 | 可能 | 可能 | 连接器发布；Copilot/Hub 可通过手动配置实现 |
-| **v0.7** | 可用 | 就绪 | 就绪 | 管理平台；多租户认证；生产就绪 |
-| **v0.8** | 可用 | 就绪 | 优化 | 按系统的 RBAC + 审计日志；更易于集成 |
-| **v0.9** | 可用 | 就绪 | 生产 | 可观测性、性能、加固 |
-| **v1.0** | 可用 | 优化 | 企业 | 套餐系统、创作者计划、热插拔、可嵌入小部件、Webhook、批处理 |
-
-## Resource Allocation (v0.8–v1.0)
-
-The Orthogonality Strategy shapes where effort goes:
-
-| Category | Allocation | Versions | Why |
-|----------|-----------|----------|-----|
-| **Connector Platform** (v0.6+) | 50% | Ongoing | Core differentiation; no absorption risk |
-| **Enterprise Features** (RBAC, audit, security, observability) | 30% | v0.8–v1.0 | Boring but durable; production requirement. Agent Trace Layer is commercial anchor |
-| **Agent Intelligence** (Skill System, scheduled agents) | 15% | v0.8–v0.9 | 指令+工具+技能差异化故事；低吸收风险——框架验证模式，但企业SOP是客户特定的 |
-| **v0.1–v0.5 maintenance** | 5% | Ongoing | Bug fixes only; no new features |
-
-## 指标驱动的里程碑
-
-成功通过以下指标衡量：
-
-| 指标 | v0.7 目标 | v0.8 目标 | v1.0 目标 |
-|--------|------------|------------|------------|
-| 已部署连接器 | 5 | 20+ | 100+ |
-| 企业客户 | 1–2 | 5–10 | 20+ |
-| 平均连接器设置时间 | 2 周 | 2 天 | 5 分钟（热插拔） |
-| Token 效率（DAG vs ReAct-only） | 30% 降低 | 40% 降低 | 50% 降低 |
-| 正常运行时间 SLA | 99.5% | 99.9% | 99.95% |
-| 支持工单主题 | 集成、设置 | 连接器自定义逻辑 | 热插拔、扩展 |
-
-## Open Questions / TBD
-
-- **Marketplace moderation（市场审核）**: How to validate community packages and individual resources? Automated scanning for credential leaks in package configs? (v1.0)
-- **Token economics（代币经济学）**: How to price multi-user, multi-agent scenarios? (v1.0)
-- **Package versioning（包版本管理）**: Breaking changes in installed packages — auto-upgrade with migration scripts, or manual approval per update? Dependency diamond problem resolution? (v1.0)
-- **Package pricing（包定价）**: Free vs paid tiers, commission rates for Creator Program, payment provider integration? (v1.0)
-- **Package credential UX（包凭证用户体验）**: Install-time credential collection — wizard-style step-by-step or deferred setup? Credential sharing across packages that use the same connector type? (v1.0)
-- **Telemetry opt-out（遥测选择退出）**: How to honor privacy preferences? (v0.8)
-- **Connector versioning（连接器版本管理）**: How to manage breaking changes in connector APIs? (v0.8)
-- **Rate limiting（速率限制）**: Per-user workflow rate limiting shipped (sliding window 10 runs/min, 3 concurrent). Per-connector and per-agent rate limiting TBD (v0.9)
-- **Connector authorization tier selection（连接器授权层级选择）**: how does an admin discover which tier applies to a given upstream system? Auto-probe (try per-user API key → fall back to login-ticket → fall back to shared-DB) vs. explicit declaration in the connector spec? How do we express "this connector supports Tier 2 but the admin chose to operate in Tier 1" in the UI without confusing non-technical admins? (v0.9)
-- **Integration vs Connector duality（集成与连接器的二元性）**: when a Feishu binding is simultaneously an SSO provider AND an API-call surface, how do we present it in Settings? One object with three toggles, or three separate bindings that share a credential? Implications for uninstall semantics (does revoking SSO kill the Connector?) (v0.9)
-
+如果你需要的功能尚未提供，请提交 issue，描述你遇到的问题。只有具体且受阻的使用场景，才会推动某项内容被列入本页面。
