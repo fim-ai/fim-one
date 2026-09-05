@@ -337,12 +337,12 @@ flowchart LR
 
 **목표**: 후처리 자산이 완전한 데이터 Q&A 제품으로 조립됨 — 읽기 전용 DB 연결기 + 펜스 + 승인 게이트 + IM 진입점. Tier-1 펜스는 보안 부채를 제품 기능으로 전환함.
 
-#### DB 커넥터 펜스 — Tier 1, PR 3개 {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB 커넥터 펜스 {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII 컬럼 리댁션 (`ConnectorScopeGuard` PreToolUse 훅)
-- [ ] 스키마 가시성 — 테이블/컬럼 허용-거부 + 동사 차단 (읽기 전용 강제)
-- [ ] 펜스 감사 가능성 — `ConnectorCallLog`의 `caller_user_id`, `effective_credential_source`, `scope_rules_applied`
-- [ ] 훅별 설정 전달 (`{"name", "config"}` 스키마) — ScopeGuard 규칙의 캐리어 {/* dev: dev/hook-system.md */}
+- [x] PII 열 표시 — 표시된 열은 스키마에 유지되며, 모든 쿼리 결과에서 값이 마스킹되어 반환됩니다
+- [x] 스키마 가시성 — 테이블/열 허용-거부 및 동사 차단(읽기 전용 적용)
+- [x] 펜스 감사 가능성 — `ConnectorCallLog`의 `scope_rules_applied`에 각 호출이 실행된 펜스가 기록됩니다
+- [ ] 훅별 구성 전달(`{"name", "config"}` 스키마) — ScopeGuard 규칙의 전달 매개체 {/* dev: dev/hook-system.md */}
 
 #### 컨텍스트 견고성
 

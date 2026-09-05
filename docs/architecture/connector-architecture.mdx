@@ -81,6 +81,32 @@ The **Connector Governance Layer** adds enterprise governance that raw MCP lacks
 | Confirmation gate | No | Write operations require human approval (SSE `confirmation_required`) |
 | Circuit breaker | No | Connection failure triggers graceful degradation |
 | Operation classification | No | Operations tagged as read/write/admin with per-level policies |
+| Column-level masking | No | Database columns marked as personal data return a mask instead of their values |
+
+### Database column masking
+
+A database connector is often configured with one privileged account, so
+every caller reaches the same tables. Marking a column as **PII** in the
+connector's schema manager narrows what the agent can see from it:
+
+- the column stays listed in the schema, tagged, so the model knows it
+  exists and does not invent a substitute for it;
+- any value returned under that column name is replaced with `***` before
+  the result reaches the model, including through `SELECT *`;
+- the call log records which columns were masked, alongside whether the
+  connector was in read-only mode.
+
+Matching is by column name, which is the only identifier a result set
+carries. Two limits follow, and both are deliberate: the database still
+*uses* the column, so `WHERE salary > 5000` filters normally, and a query
+that renames the column (`SELECT salary AS s`) returns unmasked values.
+When the requirement is that the query account cannot read a column at
+all, grant that in the database and point the connector at the restricted
+account.
+
+The owner's own query playground is not masked. Masking governs what
+reaches an agent and the conversation transcript, not what the person who
+configured the connection can inspect.
 
 ### Why not invent a custom protocol
 

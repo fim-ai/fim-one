@@ -90,6 +90,7 @@ class SchemaColumnResponse(BaseModel):
     is_nullable: bool
     is_primary_key: bool
     is_visible: bool
+    is_pii: bool = False
 
 
 class SchemaTableResponse(BaseModel):
@@ -117,6 +118,7 @@ class SchemaColumnUpdate(BaseModel):
     display_name: str | None = None
     description: str | None = None
     is_visible: bool | None = None
+    is_pii: bool | None = None
 
 
 class BulkSchemaUpdate(BaseModel):
@@ -126,7 +128,8 @@ class BulkSchemaUpdate(BaseModel):
         default_factory=list,
         description=(
             "List of {table_name, display_name?, description?, is_visible?, "
-            "columns?: [{column_name, display_name?, description?, is_visible?}]}"
+            "columns?: [{column_name, display_name?, description?, "
+            "is_visible?, is_pii?}]}"
         ),
     )
 

@@ -10,6 +10,11 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+### Ajouté
+
+- **Les colonnes de base de données peuvent être marquées comme données personnelles.** Une colonne marquée comme PII dans le gestionnaire de schéma du connecteur continue d’apparaître dans le schéma visible par l’agent, mais ses valeurs sont masquées dans tous les résultats de requête, y compris avec `SELECT *`. Le journal des appels du connecteur enregistre les colonnes qui ont été masquées et indique si le connecteur était en lecture seule.
+
+
 ## [v0.8.12] - 2026-09-04
 
 ### Ajouté

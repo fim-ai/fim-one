@@ -338,12 +338,12 @@ flowchart LR
 
 **目標**: ポスト削減アセットが完全なデータQ&A製品に組み立てられます——読み取り専用DBコネクタ + フェンス + 承認ゲート + IM エントリ。Tier-1フェンスはセキュリティ負債を製品機能に変えます。
 
-#### DB コネクターフェンス — Tier 1、3つのPR {/* dev: dev/connector-rbac/00-overview.md */}
+#### DBコネクタフェンス {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII カラムのリダクション（`ConnectorScopeGuard` PreToolUse hook）
-- [ ] スキーマ可視性 — テーブル/カラムの許可・拒否リスト + 動詞ブロッキング（読み取り専用の強制）
-- [ ] フェンスの監査可能性 — `ConnectorCallLog` 内の `caller_user_id`、`effective_credential_source`、`scope_rules_applied`
-- [ ] フック単位の設定パススルー（`{"name", "config"}` スキーマ）— ScopeGuard ルールのキャリア {/* dev: dev/hook-system.md */}
+- [x] PIIカラムのマーキング — マークされたカラムはスキーマに残り、すべてのクエリ結果で値がマスクされる
+- [x] スキーマの可視性 — テーブル/カラムの許可・拒否 + 動詞のブロック（読み取り専用の強制）
+- [x] フェンスの監査可能性 — `ConnectorCallLog` の `scope_rules_applied` に、各呼び出しが適用されたフェンスが記録される
+- [ ] フックごとの設定の受け渡し（`{"name", "config"}` スキーマ） — ScopeGuard ルールのキャリア {/* dev: dev/hook-system.md */}
 
 #### コンテキストの堅牢性
 

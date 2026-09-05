@@ -235,5 +235,7 @@
   "aiFailedActions": "{count, plural, one {# Operation} other {# Operationen}} fehlgeschlagen: {details}",
   "aiNoChanges": "Keine Änderungen angewendet. Ihre Anweisung entsprach keinem umsetzbaren Vorgang — versuchen Sie es mit einer konkreteren Formulierung (z. B. \"eine GET /users Aktion hinzufügen\").",
   "aiPartialFailure": "Abgeschlossen mit {count, plural, one {# Fehler} other {# Fehlern}}",
-  "aiAllFailed": "Alle Operationen fehlgeschlagen"
+  "aiAllFailed": "Alle Operationen fehlgeschlagen",
+  "pii": "PII",
+  "piiTooltip": "Maskiere die Werte dieser Spalte in den Abfrageergebnissen. Der Agent sieht weiterhin, dass die Spalte vorhanden ist, aber niemals deren Inhalte."
 }

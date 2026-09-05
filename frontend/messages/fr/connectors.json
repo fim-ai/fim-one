@@ -235,5 +235,7 @@
   "aiFailedActions": "{count, plural, one {# opération} other {# opérations}} échouée(s) : {details}",
   "aiNoChanges": "Aucune modification appliquée. Votre instruction ne correspondait à aucune opération exploitable — essayez de reformuler avec une cible concrète (par exemple « ajouter une action GET /users »).",
   "aiPartialFailure": "Complété avec {count, plural, one {# échec} other {# échecs}}",
-  "aiAllFailed": "Toutes les opérations ont échoué"
+  "aiAllFailed": "Toutes les opérations ont échoué",
+  "pii": "PII",
+  "piiTooltip": "Masquez les valeurs de cette colonne dans les résultats de requête. L’agent voit toujours que la colonne existe, mais jamais son contenu."
 }

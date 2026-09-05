@@ -108,6 +108,7 @@ def _schema_table_to_response(table: DatabaseSchema) -> SchemaTableResponse:
                 is_nullable=col.is_nullable,
                 is_primary_key=col.is_primary_key,
                 is_visible=col.is_visible,
+                is_pii=col.is_pii,
             )
             for col in (table.columns or [])
         ],
@@ -410,6 +411,7 @@ async def update_schema_column(
             is_nullable=col_obj.is_nullable,
             is_primary_key=col_obj.is_primary_key,
             is_visible=col_obj.is_visible,
+            is_pii=col_obj.is_pii,
         ).model_dump()
     )
 
@@ -456,7 +458,7 @@ async def bulk_update_schemas(
                 if not col_name or col_name not in col_lookup:
                     continue
                 col_obj = col_lookup[col_name]
-                for field in ("display_name", "description", "is_visible"):
+                for field in ("display_name", "description", "is_visible", "is_pii"):
                     if field in cu:
                         setattr(col_obj, field, cu[field])
                         updated_count += 1

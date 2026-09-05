@@ -30,3 +30,7 @@ class ConnectorCallLog(UUIDPKMixin, TimestampMixin, Base):
     response_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON blob naming the fences that applied to this call, e.g.
+    # {"read_only": true, "redacted_columns": ["salary"]}. Null for callers
+    # that record no fence state.
+    scope_rules_applied: Mapped[str | None] = mapped_column(Text, nullable=True)

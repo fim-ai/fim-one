@@ -338,12 +338,12 @@ flowchart LR
 
 **目标**：后期资产组装成完整的数据问答产品——只读数据库连接器 + 栅栏 + 审批闸门 + IM入口。一级栅栏将安全债转化为产品特性。
 
-#### DB 连接器围栏——第一层，三个 PR {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB 连接器隔离边界 {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII 列脱敏（`ConnectorScopeGuard` PreToolUse 钩子）
-- [ ] 模式可见性——表/列允许拒绝 + 动词阻断（只读强制执行）
-- [ ] 围栏可审计性——`ConnectorCallLog` 中的 `caller_user_id`、`effective_credential_source`、`scope_rules_applied`
-- [ ] 每钩子配置透传（`{"name", "config"}` 模式）——ScopeGuard 规则的载体 {/* dev: dev/hook-system.md */}
+- [x] PII 列标记——已标记的列会保留在架构中，其值在每个查询结果中都会返回掩码
+- [x] 架构可见性——表／列允许或拒绝规则＋动词阻断（只读强制）
+- [x] 隔离边界可审计性——`ConnectorCallLog` 中的 `scope_rules_applied` 会记录每次调用所运行于其下的隔离边界
+- [ ] 按钩子传递配置（`{"name", "config"}` 架构）——用于传递 ScopeGuard 规则 {/* dev: dev/hook-system.md */}
 
 #### 上下文健壮性
 

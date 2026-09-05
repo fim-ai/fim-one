@@ -338,12 +338,12 @@ Neu geplant 2026-07-08: FIM One ist eine Agent-Runtime — ein Kernel (ReAct-Eng
 
 **Ziel**: Die nach der Reduktion zusammengestellten Assets ergeben ein vollständiges Daten-Q&A-Produkt — schreibgeschützte DB-Connectors + Fences + Approval Gate + IM-Einstiegspunkt. Tier-1-Fences verwandeln Sicherheitsschulden in Produktfeatures.
 
-#### DB Connector Fences — Tier 1, drei PRs {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB-Connector-Schranken {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII-Spalten-Schwärzung (`ConnectorScopeGuard` PreToolUse hook)
-- [ ] Schema-Sichtbarkeit — Tabellen-/Spalten-Zulassungs-/Sperrliste + Verb-Blockierung (Nur-Lese-Durchsetzung)
-- [ ] Fence-Auditierbarkeit — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
-- [ ] Konfigurationsübergabe pro Hook (`{"name", "config"}` Schema) — der Träger für ScopeGuard-Regeln {/* dev: dev/hook-system.md */}
+- [x] PII-Spaltenmarkierung – markierte Spalten bleiben im Schema erhalten, Werte werden in jedem Abfrageergebnis maskiert
+- [x] Schemasichtbarkeit – Allow-Deny-Regeln für Tabellen und Spalten sowie Verb-Blockierung (Erzwingung des Nur-Lese-Modus)
+- [x] Auditierbarkeit der Schranken – `scope_rules_applied` in `ConnectorCallLog` erfasst die Schranken, unter denen jeder Aufruf ausgeführt wurde
+- [ ] Konfigurationsweitergabe pro Hook (`{"name", "config"}`-Schema) – der Träger für ScopeGuard-Regeln {/* dev: dev/hook-system.md */}
 
 #### Kontextrobustheit
 

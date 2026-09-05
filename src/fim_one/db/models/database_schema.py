@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fim_one.db.base import Base, TimestampMixin, UUIDPKMixin
@@ -56,6 +57,12 @@ class SchemaColumn(UUIDPKMixin, TimestampMixin, Base):
     )
     is_visible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="TRUE"
+    )
+    # Marked PII: the column stays in the schema shown to the model, but its
+    # values are masked in query results. See core/tool/connector/database/
+    # redaction.py for what this does and does not cover.
+    is_pii: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_text("FALSE")
     )
 
     schema: Mapped[DatabaseSchema] = relationship(back_populates="columns", lazy="raise")

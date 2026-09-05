@@ -338,11 +338,11 @@ Replanned 2026-07-08: FIM One is an agent runtime — one kernel (ReAct engine, 
 
 **Goal**: The post-reduce assets assemble into a complete data-Q&A product — read-only DB connectors + fences + approval gate + IM entry. Tier-1 fences turn security debt into product features.
 
-#### DB Connector Fences — Tier 1, three PRs {/* dev: dev/connector-rbac/00-overview.md */}
+#### DB Connector Fences {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] PII column redaction (`ConnectorScopeGuard` PreToolUse hook)
-- [ ] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
-- [ ] Fence auditability — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` in `ConnectorCallLog`
+- [x] PII column marking — marked columns stay in the schema, values come back masked in every query result
+- [x] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
+- [x] Fence auditability — `scope_rules_applied` in `ConnectorCallLog` records the fences each call ran under
 - [ ] Per-hook config pass-through (`{"name", "config"}` schema) — the carrier for ScopeGuard rules {/* dev: dev/hook-system.md */}
 
 #### Context Robustness

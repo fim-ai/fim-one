@@ -1684,6 +1684,7 @@ async def _resolve_tools(
                         response_time_ms=kwargs.get("response_time_ms"),
                         success=kwargs.get("success", False),
                         error_message=kwargs.get("error_message"),
+                        scope_rules_applied=kwargs.get("scope_rules_applied"),
                     )
                     log_session.add(log)
                     await log_session.commit()
@@ -1779,6 +1780,7 @@ async def _resolve_tools(
                                         "is_primary_key": col.is_primary_key,
                                         "display_name": col.display_name,
                                         "description": col.description,
+                                        "is_pii": col.is_pii,
                                     }
                                 )
                             schema_tables.append(
@@ -1994,6 +1996,7 @@ async def _resolve_tools(
                                             "is_primary_key": col.is_primary_key,
                                             "display_name": col.display_name,
                                             "description": col.description,
+                                            "is_pii": col.is_pii,
                                         }
                                     )
                                 schema_tables.append(

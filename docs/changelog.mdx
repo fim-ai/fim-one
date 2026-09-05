@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Added
+
+- **Database columns can be marked as personal data.** A column marked PII in the connector's schema manager still appears in the schema the agent sees, but its values come back masked in every query result, `SELECT *` included. The connector call log records which columns were masked and whether the connector was read-only.
+
+
 ## [v0.8.12] - 2026-09-04
 
 ### Added

@@ -71,16 +71,29 @@ Les adaptateurs sont implémentés en tant que **Serveurs MCP**. Il s'agit d'un 
 
 ### Ce que MCP seul ne fournit pas
 
-La **Couche de gouvernance des connecteurs** ajoute la gouvernance d'entreprise que MCP brut ne possède pas :
+La **couche de gouvernance des connecteurs** ajoute la gouvernance d’entreprise qui fait défaut à MCP brut :
 
 | Préoccupation | MCP | Couche de gouvernance des connecteurs |
 |---|---|---|
-| Application de la lecture seule | Non | Drapeau `read_only` sur les opérations ; écriture bloquée par défaut |
-| Journalisation d'audit | Non | Chaque appel d'outil enregistré (horodatage, utilisateur, outil, paramètres, résultat) |
-| Authentification directe | Non | Authentification du système hôte proxy ; l'agent agit au nom de l'utilisateur connecté |
-| Porte de confirmation | Non | Les opérations d'écriture nécessitent une approbation humaine (SSE `confirmation_required`) |
-| Disjoncteur | Non | L'échec de la connexion déclenche une dégradation progressive |
-| Classification des opérations | Non | Opérations étiquetées comme lecture/écriture/administration avec des politiques par niveau |
+| Application du mode lecture seule | Non | Indicateur `read_only` sur les opérations ; les écritures sont bloquées par défaut |
+| Journalisation d’audit | Non | Chaque appel d’outil est enregistré (horodatage, utilisateur, outil, paramètres, résultat) |
+| Transmission de l’authentification | Non | L’hôte relaie l’authentification du système ; l’agent agit au nom de l’utilisateur connecté |
+| Confirmation | Non | Les opérations d’écriture nécessitent l’approbation d’un humain (`confirmation_required` via SSE) |
+| Disjoncteur | Non | Une défaillance de connexion déclenche un mode dégradé contrôlé |
+| Classification des opérations | Non | Les opérations sont classées comme lecture/écriture/administration, avec des politiques par niveau |
+| Masquage au niveau des colonnes | Non | Les colonnes de base de données marquées comme contenant des données personnelles renvoient un masque à la place de leurs valeurs |
+
+### Masquage des colonnes de base de données
+
+Un connecteur de base de données est souvent configuré avec un compte privilégié unique, de sorte que tous les appelants accèdent aux mêmes tables. Marquer une colonne comme **PII** dans le gestionnaire de schéma du connecteur limite ce que l’agent peut en voir :
+
+- la colonne reste répertoriée dans le schéma et marquée, afin que le modèle sache qu’elle existe et n’en invente pas de substitut ;
+- toute valeur renvoyée sous le nom de cette colonne est remplacée par `***` avant que le résultat n’atteigne le modèle, y compris avec `SELECT *` ;
+- le journal des appels indique quelles colonnes ont été masquées, ainsi que si le connecteur était en mode lecture seule.
+
+La correspondance se fait par nom de colonne, qui est le seul identifiant transmis par un jeu de résultats. Deux limites en découlent, et elles sont délibérées : la base de données continue d’*utiliser* la colonne, ainsi `WHERE salary > 5000` filtre normalement les résultats, tandis qu’une requête qui renomme la colonne (`SELECT salary AS s`) renvoie des valeurs non masquées. Lorsque la requête ne doit absolument pas pouvoir lire une colonne, accordez cette restriction dans la base de données et utilisez le compte restreint pour le connecteur.
+
+L’espace de requêtes du propriétaire n’est pas masqué. Le masquage régit ce qui est transmis à un agent et à la transcription de la conversation, et non ce que la personne ayant configuré la connexion peut inspecter.
 
 ### Pourquoi ne pas inventer un protocole personnalisé
 

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { connectorApi } from "@/lib/api"
 import { toast } from "sonner"
 import type { SchemaTable, SchemaColumn } from "@/types/connector"
@@ -260,31 +261,28 @@ export function SchemaManager({ connectorId, refreshKey }: SchemaManagerProps) {
     }
   }
 
-  // Toggle column visibility — immediate save
-  const handleToggleColumnVisible = async (
+  // Toggle a column flag — immediate save, optimistic with rollback
+  const handleToggleColumnFlag = async (
     tableId: string,
     col: SchemaColumn,
+    field: "is_visible" | "is_pii",
   ) => {
-    const newVisible = !col.is_visible
-    setTables((prev) =>
-      prev.map((tb) =>
-        tb.id === tableId
-          ? { ...tb, columns: tb.columns.map((c) => c.id === col.id ? { ...c, is_visible: newVisible } : c) }
-          : tb,
-      ),
-    )
-    markSaving()
-    try {
-      await connectorApi.updateSchemaColumn(connectorId, tableId, col.id, { is_visible: newVisible })
-      markSaved()
-    } catch {
+    const next = !col[field]
+    const patch = (value: boolean) =>
       setTables((prev) =>
         prev.map((tb) =>
           tb.id === tableId
-            ? { ...tb, columns: tb.columns.map((c) => c.id === col.id ? { ...c, is_visible: col.is_visible } : c) }
+            ? { ...tb, columns: tb.columns.map((c) => c.id === col.id ? { ...c, [field]: value } : c) }
             : tb,
         ),
       )
+    patch(next)
+    markSaving()
+    try {
+      await connectorApi.updateSchemaColumn(connectorId, tableId, col.id, { [field]: next })
+      markSaved()
+    } catch {
+      patch(col[field])
       markError()
     }
   }
@@ -517,6 +515,9 @@ export function SchemaManager({ connectorId, refreshKey }: SchemaManagerProps) {
                           {tc("description")}
                         </th>
                         <th className="text-center font-medium text-muted-foreground px-3 py-2 w-[60px]">
+                          {t("pii")}
+                        </th>
+                        <th className="text-center font-medium text-muted-foreground px-3 py-2 w-[60px]">
                           {t("visible")}
                         </th>
                       </tr>
@@ -577,11 +578,29 @@ export function SchemaManager({ connectorId, refreshKey }: SchemaManagerProps) {
                             />
                           </td>
                           <td className="px-3 py-1.5 text-center">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex">
+                                  <Switch
+                                    size="sm"
+                                    checked={col.is_pii}
+                                    onCheckedChange={() =>
+                                      handleToggleColumnFlag(selectedTable.id, col, "is_pii")
+                                    }
+                                  />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-[260px]">
+                                {t("piiTooltip")}
+                              </TooltipContent>
+                            </Tooltip>
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
                             <Switch
                               size="sm"
                               checked={col.is_visible}
                               onCheckedChange={() =>
-                                handleToggleColumnVisible(selectedTable.id, col)
+                                handleToggleColumnFlag(selectedTable.id, col, "is_visible")
                               }
                             />
                           </td>
@@ -590,7 +609,7 @@ export function SchemaManager({ connectorId, refreshKey }: SchemaManagerProps) {
                       {selectedTable.columns.length === 0 && (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={8}
                             className="px-3 py-6 text-center text-xs text-muted-foreground"
                           >
                             {t("noTablesYet")}

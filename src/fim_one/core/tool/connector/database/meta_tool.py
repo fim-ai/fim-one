@@ -26,6 +26,7 @@ from typing import Any
 from fim_one.core.tool.base import BaseTool
 
 from .pool import ConnectionPoolManager
+from .redaction import pii_column_names, redact_rows
 from .safety import SqlSafetyError, validate_sql
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,9 @@ class DatabaseMetaTool(BaseTool):
         on_call_complete: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         self._stubs: dict[str, DatabaseStub] = {s.name: s for s in stubs}
+        self._pii: dict[str, frozenset[str]] = {
+            s.name: pii_column_names(s.schema_tables) for s in stubs
+        }
         self._on_call_complete = on_call_complete
 
     # ------------------------------------------------------------------
@@ -286,19 +290,34 @@ class DatabaseMetaTool(BaseTool):
                 max_rows=stub.max_rows,
             )
 
+            rows, redacted = redact_rows(
+                result.columns, result.rows, self._pii.get(database_name, frozenset())
+            )
+
             output: dict[str, Any] = {
                 "columns": result.columns,
-                "rows": result.rows,
+                "rows": rows,
                 "row_count": result.row_count,
                 "execution_time_ms": result.execution_time_ms,
             }
             if result.truncated:
                 output["truncated"] = True
                 output["note"] = f"Results limited to {stub.max_rows} rows"
+            if redacted:
+                output["redacted_columns"] = redacted
+                output["redaction_note"] = (
+                    "Values in these columns are marked as personal data and "
+                    "are masked. Re-running the query returns the same mask."
+                )
 
             text = json.dumps(output, ensure_ascii=False, indent=2)
             await self._log_call(
-                stub, start_ms, True, action_name="query", sql=cleaned_sql
+                stub,
+                start_ms,
+                True,
+                action_name="query",
+                sql=cleaned_sql,
+                redacted_columns=redacted,
             )
             return text
 
@@ -362,6 +381,8 @@ class DatabaseMetaTool(BaseTool):
                     col_str = " ".join(col_parts)
                     if col.get("display_name"):
                         col_str += f" ({col['display_name']})"
+                    if col.get("is_pii"):
+                        col_str += " [PII — values returned masked]"
                     if col.get("description"):
                         col_str += f" /* {col['description']} */"
                     lines.append(col_str)
@@ -392,11 +413,15 @@ class DatabaseMetaTool(BaseTool):
         action_name: str = "",
         error: str | None = None,
         sql: str = "",
+        redacted_columns: list[str] | None = None,
     ) -> None:
         """Log a database tool call via the on_call_complete callback."""
         if self._on_call_complete:
             try:
                 elapsed = time.monotonic_ns() // 1_000_000 - start_ms
+                fences: dict[str, Any] = {"read_only": stub.read_only}
+                if redacted_columns:
+                    fences["redacted_columns"] = redacted_columns
                 await self._on_call_complete(
                     connector_id=stub.connector_id,
                     connector_name=stub.display_name,
@@ -408,6 +433,7 @@ class DatabaseMetaTool(BaseTool):
                     response_time_ms=elapsed,
                     success=success,
                     error_message=error,
+                    scope_rules_applied=json.dumps(fences, ensure_ascii=False),
                 )
             except Exception:
                 logger.debug("on_call_complete callback failed", exc_info=True)

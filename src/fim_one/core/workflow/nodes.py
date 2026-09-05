@@ -923,6 +923,9 @@ class ConnectorExecutor:
                                     response_time_ms=kwargs.get("response_time_ms"),
                                     success=kwargs.get("success", False),
                                     error_message=kwargs.get("error_message"),
+                                    scope_rules_applied=kwargs.get(
+                                        "scope_rules_applied"
+                                    ),
                                 )
                             )
                             await log_session.commit()

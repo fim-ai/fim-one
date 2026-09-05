@@ -338,12 +338,12 @@ Replanifié 2026-07-08 : FIM One est un runtime d'agent — un noyau unique (mot
 
 **Goal**: The post-reduce assets assemble into a complete data-Q&A product — read-only DB connectors + fences + approval gate + IM entry. Tier-1 fences turn security debt into product features.
 
-#### Clôtures du connecteur DB — Niveau 1, trois PRs {/* dev: dev/connector-rbac/00-overview.md */}
+#### Barrières des connecteurs DB {/* dev: dev/connector-rbac/00-overview.md */}
 
-- [ ] Masquage des colonnes PII (hook PreToolUse `ConnectorScopeGuard`)
-- [ ] Visibilité du schéma — liste d'autorisation/refus des tables/colonnes + blocage des verbes (application du mode lecture seule)
-- [ ] Auditabilité des clôtures — `caller_user_id`, `effective_credential_source`, `scope_rules_applied` dans `ConnectorCallLog`
-- [ ] Transmission de la configuration par hook (schéma `{"name", "config"}`) — le vecteur des règles ScopeGuard {/* dev: dev/hook-system.md */}
+- [x] Marquage des colonnes PII — les colonnes marquées restent dans le schéma, et les valeurs sont masquées dans chaque résultat de requête
+- [x] Visibilité du schéma — autorisation et refus au niveau des tables/colonnes, ainsi que blocage des verbes (application de la lecture seule)
+- [x] Auditabilité des barrières — `scope_rules_applied` dans `ConnectorCallLog` enregistre les barrières sous lesquelles chaque appel a été exécuté
+- [ ] Transmission de la configuration par hook (`{"name", "config"}` schema) — le support des règles ScopeGuard {/* dev: dev/hook-system.md */}
 
 #### Robustesse du contexte
 

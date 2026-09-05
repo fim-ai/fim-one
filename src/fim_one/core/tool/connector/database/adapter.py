@@ -18,6 +18,7 @@ from typing import Any
 from fim_one.core.tool.base import BaseTool
 
 from .pool import ConnectionPoolManager
+from .redaction import pii_column_names, redact_rows
 from .safety import SqlSafetyError, validate_sql
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,8 @@ class _DatabaseDescribeTableTool(BaseTool):
                         entry["display_name"] = col["display_name"]
                     if col.get("description"):
                         entry["description"] = col["description"]
+                    if col.get("is_pii"):
+                        entry["pii"] = "values returned masked"
                     columns.append(entry)
 
                 result = {
@@ -285,6 +288,7 @@ class _DatabaseQueryTool(BaseTool):
         self._connector_id = connector_id
         self._db_config = db_config
         self._schema_tables = schema_tables
+        self._pii = pii_column_names(schema_tables)
         self._read_only = read_only
         self._max_rows = max_rows
         self._query_timeout = query_timeout
@@ -339,6 +343,8 @@ class _DatabaseQueryTool(BaseTool):
                     col_str = f"{c['column_name']} {c['data_type']}"
                     if c.get("is_primary_key"):
                         col_str += " PK"
+                    if c.get("is_pii"):
+                        col_str += " [PII masked]"
                     if c.get("description"):
                         col_str += f" /* {c['description']} */"
                     col_parts.append(col_str)
@@ -373,18 +379,28 @@ class _DatabaseQueryTool(BaseTool):
                 max_rows=self._max_rows,
             )
 
-            output = {
+            rows, redacted = redact_rows(result.columns, result.rows, self._pii)
+
+            output: dict[str, Any] = {
                 "columns": result.columns,
-                "rows": result.rows,
+                "rows": rows,
                 "row_count": result.row_count,
                 "execution_time_ms": result.execution_time_ms,
             }
             if result.truncated:
                 output["truncated"] = True
                 output["note"] = f"Results limited to {self._max_rows} rows"
+            if redacted:
+                output["redacted_columns"] = redacted
+                output["redaction_note"] = (
+                    "Values in these columns are marked as personal data and "
+                    "are masked. Re-running the query returns the same mask."
+                )
 
             text = json.dumps(output, ensure_ascii=False, indent=2)
-            await self._log_call(start_ms, True, sql=cleaned_sql)
+            await self._log_call(
+                start_ms, True, sql=cleaned_sql, redacted_columns=redacted
+            )
             return text
 
         except SqlSafetyError as exc:
@@ -403,10 +419,14 @@ class _DatabaseQueryTool(BaseTool):
         success: bool,
         error: str | None = None,
         sql: str = "",
+        redacted_columns: list[str] | None = None,
     ) -> None:
         if self._on_call_complete:
             try:
                 elapsed = time.monotonic_ns() // 1_000_000 - start_ms
+                fences: dict[str, Any] = {"read_only": self._read_only}
+                if redacted_columns:
+                    fences["redacted_columns"] = redacted_columns
                 await self._on_call_complete(
                     connector_id=self._connector_id,
                     connector_name=self._connector_name,
@@ -418,6 +438,7 @@ class _DatabaseQueryTool(BaseTool):
                     response_time_ms=elapsed,
                     success=success,
                     error_message=error,
+                    scope_rules_applied=json.dumps(fences, ensure_ascii=False),
                 )
             except Exception:
                 logger.debug("on_call_complete callback failed", exc_info=True)

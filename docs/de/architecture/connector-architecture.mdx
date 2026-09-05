@@ -71,16 +71,29 @@ Adapter werden als **MCP Server** implementiert. Dies ist eine bewusste architek
 
 ### Was MCP allein nicht bietet
 
-Die **Connector Governance Layer** fügt Enterprise-Governance hinzu, die rohes MCP nicht hat:
+Die **Connector Governance Layer** ergänzt MCP um Governance-Funktionen für Unternehmen, die MCP allein nicht bietet:
 
-| Concern | MCP | Connector Governance Layer |
+| Aspekt | MCP | Connector Governance Layer |
 |---|---|---|
-| Read-only enforcement | Nein | `read_only` Flag bei Operationen; Schreibvorgänge standardmäßig blockiert |
-| Audit logging | Nein | Jeder Tool-Aufruf wird protokolliert (Zeitstempel, Benutzer, Tool, Parameter, Ergebnis) |
-| Auth passthrough | Nein | Proxy Host-System-Authentifizierung; Agent handelt im Namen des angemeldeten Benutzers |
-| Confirmation gate | Nein | Schreibvorgänge erfordern menschliche Genehmigung (SSE `confirmation_required`) |
-| Circuit breaker | Nein | Verbindungsfehler löst ordnungsgemäße Verschlechterung aus |
-| Operation classification | Nein | Operationen gekennzeichnet als read/write/admin mit Richtlinien pro Ebene |
+| Durchsetzung des Nur-Lese-Modus | Nein | `read_only`-Flag für Operationen; Schreibvorgänge sind standardmäßig blockiert |
+| Audit-Protokollierung | Nein | Jeder Tool-Aufruf wird protokolliert (Zeitstempel, Benutzer, Tool, Parameter, Ergebnis) |
+| Weitergabe der Authentifizierung | Nein | Proxy für die Authentifizierung des Host-Systems; der Agent handelt im Namen des angemeldeten Benutzers |
+| Bestätigungs-Gate | Nein | Schreibvorgänge erfordern die Zustimmung eines Menschen (SSE `confirmation_required`) |
+| Circuit Breaker | Nein | Ein Verbindungsfehler löst eine kontrollierte Einschränkung aus |
+| Klassifizierung von Operationen | Nein | Operationen werden als Lese-, Schreib- oder Admin-Operationen gekennzeichnet, mit Richtlinien pro Ebene |
+| Maskierung auf Spaltenebene | Nein | Als personenbezogene Daten markierte Datenbankspalten geben anstelle ihrer Werte eine Maske zurück |
+
+### Maskierung von Datenbankspalten
+
+Ein Datenbank-Connector wird häufig mit einem privilegierten Konto konfiguriert, sodass jeder Aufrufer auf dieselben Tabellen zugreift. Wenn eine Spalte im Schema-Manager des Connectors als **PII** markiert wird, schränkt dies ein, was der Agent daraus sehen kann:
+
+- Die Spalte bleibt im Schema aufgeführt und gekennzeichnet, sodass das Modell weiß, dass sie existiert, und keinen Ersatz dafür erfindet.
+- Jeder unter diesem Spaltennamen zurückgegebene Wert wird durch `***` ersetzt, bevor das Ergebnis das Modell erreicht – auch bei `SELECT *`.
+- Das Aufrufprotokoll erfasst, welche Spalten maskiert wurden, sowie, ob sich der Connector im schreibgeschützten Modus befand.
+
+Der Abgleich erfolgt über den Spaltennamen, da dies der einzige Bezeichner ist, den ein Ergebnissatz enthält. Daraus ergeben sich zwei Einschränkungen, die beide beabsichtigt sind: Die Datenbank verwendet die Spalte weiterhin, daher filtert `WHERE salary > 5000` normal, und eine Abfrage, die die Spalte umbenennt (`SELECT salary AS s`), gibt nicht maskierte Werte zurück. Wenn die Anforderung besteht, dass das Abfragekonto eine Spalte überhaupt nicht lesen kann, gewähren Sie diese Einschränkung in der Datenbank und verweisen Sie den Connector auf das eingeschränkte Konto.
+
+Der eigene Abfrage-Playground des Besitzers wird nicht maskiert. Die Maskierung steuert, was einen Agenten und das Gesprächsprotokoll erreicht, nicht, was die Person, die die Verbindung konfiguriert hat, selbst einsehen kann.
 
 ### Warum nicht ein benutzerdefiniertes Protokoll erfinden
 

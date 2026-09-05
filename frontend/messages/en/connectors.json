@@ -102,12 +102,10 @@
   "aiConnectorModified": "Connector modified. Check the updated settings and actions.",
   "aiConnectorCreatedMessage": "Connector created successfully.",
   "aiErrorFallback": "Something went wrong. Please try again.",
-
   "ai_connector_imported": "Imported {count} action(s) from OpenAPI spec.",
   "ai_connector_created": "Created connector with {count} action(s).",
   "ai_actions_generated": "Created {created} action(s).",
   "ai_connector_refined": "Operation completed.",
-
   "databaseType": "Database Type",
   "host": "Host",
   "port": "Port",
@@ -122,7 +120,6 @@
   "connectionSuccess": "Connected successfully",
   "connectionFailed": "Connection failed",
   "dbVersion": "Version",
-
   "dbTypePostgresql": "PostgreSQL",
   "dbTypeMysql": "MySQL",
   "dbTypeOracle": "Oracle",
@@ -131,7 +128,6 @@
   "dbTypeKingbasees": "KingbaseES (PG compatible)",
   "dbTypeGbase": "GBase",
   "dbTypeHighgo": "HighGo (PG compatible)",
-
   "tables": "Tables",
   "discoverSchema": "Discover Schema",
   "discovering": "Discovering...",
@@ -162,7 +158,6 @@
   "batches": "batches",
   "searchTables": "Search tables...",
   "schemaUpdated": "Schema updated",
-
   "runQuery": "Run Query",
   "clearQuery": "Clear",
   "queryPlaceholder": "SELECT * FROM table_name LIMIT 10",
@@ -174,19 +169,15 @@
   "queryError": "Query failed",
   "readOnlyMode": "Read-only mode",
   "noResults": "Query returned no results",
-
   "tableCount": "{count} tables",
-
   "comingSoon": "Coming soon",
   "schemaImportTitle": "Import Schema",
   "schemaImportComingSoon": "Coming soon — Excel/CSV import and AI extraction.",
-
   "disableOrgConnector": "Disable connector for entire org?",
   "disableOrgConnectorDescription": "This will immediately stop all org members from using this connector. You can re-enable it at any time.",
   "connectorEnabled": "Connector enabled",
   "connectorDisabled": "Connector disabled",
   "connectorToggleFailed": "Failed to update connector status",
-
   "allowFallback": "Allow fallback to default credentials",
   "allowFallbackHelp": "When enabled, users without personal credentials will use the connector owner's default token. If it involves paid APIs or private services, all usage across your org will be billed to your account. You (the owner) can always use the default credential regardless of this setting — it only controls whether other users may borrow it.",
   "privateDefaultBadge": "Private default",
@@ -199,7 +190,6 @@
   "myCredentialsSaveFailed": "Failed to save credentials",
   "myCredentialsDeleted": "Credentials deleted",
   "credentialsHelpOwner": "Stored securely. Leave blank to keep existing credentials.",
-
   "publishTitle": "Publish Connector",
   "publishDescription": "Share this connector with members of your organization.",
   "publishSelectOrg": "Select organization",
@@ -228,7 +218,6 @@
   "connectorUnpublishFailed": "Failed to unpublish connector",
   "connectorResubmitted": "Connector resubmitted for review",
   "connectorResubmitFailed": "Failed to resubmit connector",
-
   "exportConnector": "Export",
   "importConnector": "Import",
   "forkConnector": "Duplicate",
@@ -239,7 +228,6 @@
   "importFailed": "Failed to import connector",
   "forkFailed": "Failed to duplicate connector",
   "importFileInvalid": "Invalid JSON file",
-
   "templateGalleryTitle": "Create from Template",
   "templateGalleryDescription": "Choose a pre-built API connector template to get started quickly",
   "templateSelectHint": "Select a template to continue",
@@ -247,5 +235,7 @@
   "templateCreateFailed": "Failed to create connector from template",
   "templateCategory_api": "API",
   "templateCategory_database": "Database",
-  "fromTemplate": "From Template"
+  "fromTemplate": "From Template",
+  "pii": "PII",
+  "piiTooltip": "Mask this column's values in query results. The agent still sees that the column exists, but never its contents."
 }

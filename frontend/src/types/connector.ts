@@ -179,6 +179,7 @@ export interface SchemaColumn {
   is_nullable: boolean
   is_primary_key: boolean
   is_visible: boolean
+  is_pii: boolean
 }
 
 export interface SchemaTableUpdate {
@@ -191,6 +192,7 @@ export interface SchemaColumnUpdate {
   display_name?: string
   description?: string
   is_visible?: boolean
+  is_pii?: boolean
 }
 
 // Test connection
