@@ -24,3 +24,11 @@ class ResourceSubscription(UUIDPKMixin, TimestampMixin, Base):
     resource_type: Mapped[str] = mapped_column(String(30), nullable=False)
     resource_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    #: ``direct`` — the user subscribed to this resource themselves.
+    #: ``auto`` — it was installed because a subscribed solution depends on
+    #: it.  Only ``auto`` rows are removed by the unsubscribe cascade, so a
+    #: connector the user set up on their own survives (with its credential)
+    #: when a solution that happens to use it is removed.
+    source: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="direct", server_default="direct"
+    )

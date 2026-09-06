@@ -137,6 +137,26 @@ _ALL_RESOURCE_TYPES = [
 ]
 
 
+async def _module_enabled(resource_type: str, db: AsyncSession) -> bool:
+    """False when *resource_type*'s module is soft-shelved.
+
+    Browse and subscribe both consult this: hiding a disabled module's rows
+    from the listing while still honouring a subscribe call for one left the
+    module reachable to anyone holding a resource id.
+    """
+    from fim_one.web.services.feature_flags import (
+        SETTING_FEATURE_SKILLS,
+        SETTING_FEATURE_WORKFLOWS,
+        is_feature_enabled,
+    )
+
+    if resource_type == "skill":
+        return await is_feature_enabled(db, SETTING_FEATURE_SKILLS)
+    if resource_type == "workflow":
+        return await is_feature_enabled(db, SETTING_FEATURE_WORKFLOWS)
+    return True
+
+
 @router.get("", response_model=ApiResponse)
 async def browse_market(
     resource_type: str | None = Query(None),
@@ -197,20 +217,11 @@ async def browse_market(
     # Drop soft-shelved modules from the Market so their published rows are
     # unreachable while the module is disabled (matches the router-level
     # 404 on the modules' own endpoints).
-    from fim_one.web.services.feature_flags import (
-        is_feature_enabled,
-        SETTING_FEATURE_SKILLS,
-        SETTING_FEATURE_WORKFLOWS,
-    )
-
-    if "skill" in types_to_query and not await is_feature_enabled(
-        db, SETTING_FEATURE_SKILLS
-    ):
-        types_to_query = [t for t in types_to_query if t != "skill"]
-    if "workflow" in types_to_query and not await is_feature_enabled(
-        db, SETTING_FEATURE_WORKFLOWS
-    ):
-        types_to_query = [t for t in types_to_query if t != "workflow"]
+    kept: list[str] = []
+    for rtype in types_to_query:
+        if await _module_enabled(rtype, db):
+            kept.append(rtype)
+    types_to_query = kept
 
     model_map: dict[str, tuple[Any, ...]] = {
         "agent": (Agent, _agent_market_info, "published"),
@@ -348,12 +359,19 @@ async def subscribe_resource(
     if model_cls is None:
         raise AppError("invalid_resource_type", status_code=400)
 
+    if not await _module_enabled(body.resource_type, db):
+        raise AppError("resource_not_found", status_code=404)
+
     if body.org_id == MARKET_ORG_ID:
-        # Market: no membership check needed, just validate resource
+        # Market: no membership check needed, just validate resource.
+        # ``visibility`` is checked here as well as in the org branch — an
+        # unpublished resource keeps no share state, and subscribing to one
+        # by id used to succeed while the listing already hid it.
         res_result = await db.execute(
             select(model_cls).where(
                 model_cls.id == body.resource_id,
                 model_cls.org_id == MARKET_ORG_ID,
+                model_cls.visibility == "org",
                 or_(
                     model_cls.publish_status == None,  # noqa: E711
                     model_cls.publish_status == "approved",
@@ -394,14 +412,21 @@ async def subscribe_resource(
             ResourceSubscription.resource_id == body.resource_id,
         )
     )
-    if existing.scalar_one_or_none() is None:
+    existing_sub = existing.scalar_one_or_none()
+    if existing_sub is None:
         sub = ResourceSubscription(
             user_id=current_user.id,
             resource_type=body.resource_type,
             resource_id=body.resource_id,
             org_id=body.org_id,
+            source="direct",
         )
         db.add(sub)
+        await db.commit()
+    elif existing_sub.source != "direct":
+        # Arrived as a dependency, now chosen on its own: it outlives the
+        # solution that brought it in.
+        existing_sub.source = "direct"
         await db.commit()
 
     # Auto-subscribe content dependencies for Solutions.
@@ -430,6 +455,7 @@ async def subscribe_resource(
                     resource_type=dep.resource_type,
                     resource_id=dep.resource_id,
                     org_id=body.org_id,
+                    source="auto",
                 )
                 db.add(dep_sub)
 
@@ -450,6 +476,7 @@ async def subscribe_resource(
                     resource_type=conn_dep.resource_type,
                     resource_id=conn_dep.resource_id,
                     org_id=body.org_id,
+                    source="auto",
                 )
                 db.add(dep_sub)
 
@@ -524,6 +551,26 @@ async def unsubscribe_resource(
 
     await db.commit()
     return ApiResponse(data={"unsubscribed": True})
+
+
+async def purge_resource_subscriptions(
+    db: AsyncSession, *, resource_type: str, resource_id: str
+) -> None:
+    """Drop every subscription pointing at a resource that is being deleted.
+
+    ``resource_subscriptions`` carries no foreign keys, so the database
+    clears nothing on its own and these rows would outlive the resource they
+    name.  Per-user credentials need no equivalent step — they cascade off
+    the connector / MCP server row.
+
+    Does **not** commit — the caller owns the transaction.
+    """
+    await db.execute(
+        delete(ResourceSubscription).where(
+            ResourceSubscription.resource_type == resource_type,
+            ResourceSubscription.resource_id == resource_id,
+        )
+    )
 
 
 async def reclaim_org_subscriptions(
@@ -629,11 +676,15 @@ async def _cascade_clean_content_deps(
         if dep_key in all_still_needed:
             continue
 
+        # ``source == "auto"``: only rows this dependency mechanism created
+        # are its to remove.  A resource the user subscribed to themselves
+        # stays, even when a solution that used it goes away.
         dep_sub_result = await db.execute(
             select(ResourceSubscription).where(
                 ResourceSubscription.user_id == user_id,
                 ResourceSubscription.resource_type == dep.resource_type,
                 ResourceSubscription.resource_id == dep.resource_id,
+                ResourceSubscription.source == "auto",
             )
         )
         dep_sub_obj = dep_sub_result.scalar_one_or_none()
@@ -683,7 +734,11 @@ async def _cascade_clean_connection_deps(
         for d in other_manifest.connection_deps:
             other_conn_deps.add((d.resource_type, d.resource_id))
 
-    # Delete orphaned connection-dep subscriptions + credentials
+    # Delete orphaned connection-dep subscriptions + credentials.
+    # Restricted to ``source == "auto"`` rows: the credential deletion below
+    # is unrecoverable, and a connector the user subscribed to and
+    # configured on their own must not be swept away by unsubscribing from
+    # some solution that happened to reference it.
     for dep in manifest.connection_deps:
         dep_key = (dep.resource_type, dep.resource_id)
         if dep_key in other_conn_deps:
@@ -695,15 +750,18 @@ async def _cascade_clean_connection_deps(
                 ResourceSubscription.user_id == user_id,
                 ResourceSubscription.resource_type == dep.resource_type,
                 ResourceSubscription.resource_id == dep.resource_id,
+                ResourceSubscription.source == "auto",
             )
         )
         dep_sub_obj = dep_sub_result.scalar_one_or_none()
-        if dep_sub_obj:
-            logger.info(
-                "Cascade-deleting orphaned connection subscription: user=%s, type=%s, id=%s",
-                user_id, dep.resource_type, dep.resource_id,
-            )
-            await db.delete(dep_sub_obj)
+        if dep_sub_obj is None:
+            continue  # not ours to remove — leave the credential in place
+
+        logger.info(
+            "Cascade-deleting orphaned connection subscription: user=%s, type=%s, id=%s",
+            user_id, dep.resource_type, dep.resource_id,
+        )
+        await db.delete(dep_sub_obj)
 
         # Delete associated credentials
         if dep.resource_type == "connector":

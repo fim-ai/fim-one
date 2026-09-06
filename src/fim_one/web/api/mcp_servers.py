@@ -522,6 +522,11 @@ async def delete_mcp_server(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     server = await _get_owned_server(server_id, current_user.id, db)
+    from fim_one.web.api.market import purge_resource_subscriptions
+
+    await purge_resource_subscriptions(
+        db, resource_type="mcp_server", resource_id=server_id
+    )
     await db.delete(server)
     await db.commit()
     return ApiResponse(data={"deleted": server_id})

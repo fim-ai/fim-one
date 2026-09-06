@@ -230,6 +230,11 @@ async def delete_kb(
     except Exception:
         logger.warning("Failed to delete upload directory for KB %s", kb_id, exc_info=True)
     # Delete DB records (cascade deletes documents)
+    from fim_one.web.api.market import purge_resource_subscriptions
+
+    await purge_resource_subscriptions(
+        db, resource_type="knowledge_base", resource_id=kb_id
+    )
     await db.delete(kb)
     await db.commit()
     return ApiResponse(data={"deleted": kb_id})

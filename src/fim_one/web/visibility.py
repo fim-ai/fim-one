@@ -4,7 +4,15 @@ After the marketplace redesign, org auto-visibility is removed.  Resources
 are visible to a user only if:
 
 1. The user owns the resource (any visibility setting), OR
-2. The user has an explicit ResourceSubscription for it.
+2. The user has an explicit ResourceSubscription for it **and the resource
+   is still shared** — ``visibility == "org"`` and not awaiting or refused
+   by review.
+
+Condition 2's second half is what makes unpublishing effective: a
+subscription row alone used to grant access forever, so an owner who
+reverted a resource to personal visibility could not actually take it back
+short of deleting it.  The share state is re-read on every query, so
+revocation applies to running conversations too.
 
 Org-scoped resources are surfaced via subscriptions that are created when
 org members subscribe from the Market page (or via auto-subscribe on
@@ -14,7 +22,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from fim_one.db.models.resource_subscription import ResourceSubscription
 
@@ -32,10 +40,14 @@ def build_visibility_filter(
 
     Returns rows where:
     - user owns the resource (any visibility), OR
-    - resource id is in the user's subscription list
+    - resource id is in the user's subscription list **and** the resource is
+      still shared (``visibility == "org"`` and ``publish_status`` is either
+      unset or ``approved``)
 
     Org resources are now included via subscriptions (created when user
-    subscribes from the org scope in the Market page).
+    subscribes from the org scope in the Market page).  A subscription does
+    not survive the owner unpublishing: the share state is checked here on
+    every query rather than trusted from the subscription row.
 
     For a higher-level helper that auto-fetches org IDs and subscriptions,
     see :func:`resolve_visibility`.
@@ -45,7 +57,16 @@ def build_visibility_filter(
     ]
 
     if subscribed_ids:
-        conditions.append(model.id.in_(subscribed_ids))
+        conditions.append(
+            and_(
+                model.id.in_(subscribed_ids),
+                model.visibility == "org",
+                or_(
+                    model.publish_status.is_(None),
+                    model.publish_status == "approved",
+                ),
+            )
+        )
 
     return or_(*conditions)
 

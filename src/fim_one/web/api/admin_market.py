@@ -198,23 +198,44 @@ async def delete_market_resource(
     For agents, linked skills (referenced via ``agent.skill_ids``) are
     also deleted.
     """
+    from fim_one.web.api.market import purge_resource_subscriptions
+
     resource = await _get_market_resource(db, resource_type, resource_id)
     resource_name: str = resource.name
 
-    # If deleting an agent, also remove its linked skills
+    # If deleting an agent, also remove the skills only it uses.  A skill
+    # referenced by another Market agent is left alone — deleting it would
+    # break that agent.
     if resource_type == "agent":
         skill_ids: list[str] = resource.skill_ids or []
         if skill_ids:
-            result = await db.execute(
-                select(Skill).where(
-                    Skill.id.in_(skill_ids),
-                    Skill.org_id == MARKET_ORG_ID,
+            others = await db.execute(
+                select(Agent.skill_ids).where(
+                    Agent.org_id == MARKET_ORG_ID,
+                    Agent.id != resource_id,
                 )
             )
-            linked_skills = result.scalars().all()
-            for skill in linked_skills:
-                await db.delete(skill)
+            still_referenced: set[str] = set()
+            for (other_skill_ids,) in others.all():
+                still_referenced.update(other_skill_ids or [])
 
+            orphan_ids = [sid for sid in skill_ids if sid not in still_referenced]
+            if orphan_ids:
+                result = await db.execute(
+                    select(Skill).where(
+                        Skill.id.in_(orphan_ids),
+                        Skill.org_id == MARKET_ORG_ID,
+                    )
+                )
+                for skill in result.scalars().all():
+                    await purge_resource_subscriptions(
+                        db, resource_type="skill", resource_id=skill.id
+                    )
+                    await db.delete(skill)
+
+    await purge_resource_subscriptions(
+        db, resource_type=resource_type, resource_id=resource_id
+    )
     await db.delete(resource)
     await db.commit()
 
@@ -237,7 +258,13 @@ async def unpublish_market_resource(
     db: AsyncSession = Depends(get_session),
     admin: User = Depends(get_current_admin),
 ) -> dict[str, object]:
-    """Set a Market resource's status to ``draft`` (hides it from browse)."""
+    """Take a resource back out of the Market.
+
+    Reverts it to personal visibility so it leaves the Market listing, stops
+    accepting new subscriptions, and drops out of every existing
+    subscriber's resource list.  The resource itself is untouched and its
+    owner can publish it again.
+    """
     if resource_type not in _PUBLISHABLE_TYPES:
         raise AppError(
             "unpublish_not_supported",
@@ -246,7 +273,17 @@ async def unpublish_market_resource(
         )
 
     resource = await _get_market_resource(db, resource_type, resource_id)
+
+    # A real unpublish, not just a hidden row: browse filters on ``status``,
+    # but both ``subscribe`` and the visibility filter key off
+    # ``visibility``/``org_id``, so leaving those set kept existing
+    # subscribers connected and let anyone holding the id subscribe to a
+    # resource the admin had taken down.  Mirrors the owner-side unpublish.
     resource.status = "draft"
+    resource.visibility = "personal"
+    resource.org_id = None
+    resource.published_at = None
+    resource.publish_status = None
     await db.commit()
 
     await write_audit(

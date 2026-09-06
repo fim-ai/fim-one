@@ -45,6 +45,10 @@ async def session() -> AsyncIterator[AsyncSession]:
                 type="api",
                 base_url="https://api.example.com",
                 status="published",
+                # A subscribable connector is one its owner published: the
+                # subscription only grants access while that holds.
+                visibility="org",
+                org_id="org-1",
             )
         )
         # SUBSCRIBER has an explicit subscription to OWNER's connector.
@@ -86,3 +90,45 @@ class TestBindingVisibility:
     async def test_empty_binding_is_noop(self, session: AsyncSession) -> None:
         await _validate_binding_ownership(STRANGER, session, connector_ids=None)
         await _validate_binding_ownership(STRANGER, session, connector_ids=[])
+
+    @pytest.mark.asyncio
+    async def test_unpublished_connector_is_no_longer_bindable(
+        self, session: AsyncSession
+    ) -> None:
+        """The subscription row survives unpublish; the access does not."""
+        conn = await session.get(Connector, CID)
+        assert conn is not None
+        conn.visibility = "personal"
+        conn.org_id = None
+        await session.commit()
+
+        with pytest.raises(AppError) as exc:
+            await _validate_binding_ownership(SUBSCRIBER, session, connector_ids=[CID])
+        assert exc.value.error_code == "connector_ownership_denied"
+
+    @pytest.mark.asyncio
+    async def test_pending_review_connector_is_not_bindable(
+        self, session: AsyncSession
+    ) -> None:
+        """A resource put back into review is not reachable meanwhile."""
+        conn = await session.get(Connector, CID)
+        assert conn is not None
+        conn.publish_status = "pending_review"
+        await session.commit()
+
+        with pytest.raises(AppError) as exc:
+            await _validate_binding_ownership(SUBSCRIBER, session, connector_ids=[CID])
+        assert exc.value.error_code == "connector_ownership_denied"
+
+    @pytest.mark.asyncio
+    async def test_owner_keeps_access_after_unpublish(
+        self, session: AsyncSession
+    ) -> None:
+        """Revocation applies to subscribers, never to the owner."""
+        conn = await session.get(Connector, CID)
+        assert conn is not None
+        conn.visibility = "personal"
+        conn.org_id = None
+        await session.commit()
+
+        await _validate_binding_ownership(OWNER, session, connector_ids=[CID])

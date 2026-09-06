@@ -1026,6 +1026,11 @@ async def delete_workflow(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
+    from fim_one.web.api.market import purge_resource_subscriptions
+
+    await purge_resource_subscriptions(
+        db, resource_type="workflow", resource_id=workflow_id
+    )
     await db.delete(wf)
     await db.commit()
     return ApiResponse(data={"deleted": workflow_id})

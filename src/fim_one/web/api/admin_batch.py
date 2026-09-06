@@ -17,6 +17,7 @@ from fim_one.db.models import Agent, Connector, KnowledgeBase, User
 from fim_one.web.schemas.workflow import BatchOperationResponse
 
 from fim_one.web.api.admin_utils import write_audit
+from fim_one.web.api.market import purge_resource_subscriptions
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,9 @@ async def batch_delete_agents(
     deleted_names: list[str] = []
     for agent in agents:
         deleted_names.append(agent.name)
+        await purge_resource_subscriptions(
+            db, resource_type="agent", resource_id=agent.id
+        )
         await db.delete(agent)
         count += 1
 
@@ -218,6 +222,9 @@ async def batch_delete_knowledge_bases(
         except Exception:
             logger.warning("Failed to delete upload dir for KB %s", kb.id, exc_info=True)
 
+        await purge_resource_subscriptions(
+            db, resource_type="knowledge_base", resource_id=kb.id
+        )
         await db.delete(kb)
         count += 1
 
@@ -305,6 +312,9 @@ async def batch_delete_connectors(
     deleted_names: list[str] = []
     for connector in connectors:
         deleted_names.append(connector.name)
+        await purge_resource_subscriptions(
+            db, resource_type="connector", resource_id=connector.id
+        )
         await db.delete(connector)
         count += 1
 

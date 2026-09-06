@@ -337,6 +337,13 @@ note de clôture.
 - [x] Visibilité du schéma — autorisation/interdiction des tables et des colonnes, avec blocage des verbes (application du mode lecture seule)
 - [x] Traçabilité des barrières — `scope_rules_applied` dans `ConnectorCallLog` enregistre les barrières sous lesquelles chaque appel a été exécuté
 
+#### Révocation du partage
+
+- [x] La dépublication fonctionne — un abonnement accorde l’accès uniquement tant que la ressource reste partagée, avec une nouvelle vérification au moment de son utilisation
+- [x] Le retrait d’une ressource par un administrateur dans Admin Market la rend privée au lieu de la masquer uniquement de la liste
+- [x] La désinscription d’une solution ne supprime plus les connecteurs ni les identifiants configurés par l’utilisateur lui-même
+- [x] La suppression d’une organisation restitue ses ressources publiées à leurs propriétaires et révoque les abonnements associés à l’organisation
+
 #### Finaliser ce qui est déjà en cours
 
 - [ ] Entrée de compaction par lots et budgets adaptés au modèle sur le chemin de chat principal, afin que toute combinaison de modèles reste dans la fenêtre de contexte

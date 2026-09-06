@@ -8,7 +8,7 @@ import secrets
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -365,6 +365,48 @@ async def update_org(
     return ApiResponse(data=_org_with_role(org, membership.role, member_count).model_dump())
 
 
+async def _dissolve_org_sharing(db: AsyncSession, org_id: str) -> None:
+    """Unwind everything pointing at *org_id* before the org row is deleted.
+
+    Two things go wrong without this.  Every resource model's ``org_id`` is a
+    foreign key with no ``ON DELETE`` action, so deleting an org that anyone
+    published into fails on the constraint.  And members keep the
+    subscriptions they hold through this org, which is the one path where an
+    org disappearing granted more lasting access than being removed from it.
+
+    Resources are reverted to personal visibility, not deleted — the org is
+    going away, their owners are not.  Child orgs are detached for the same
+    foreign-key reason.  Does not commit; the caller owns the transaction.
+    """
+    from fim_one.db.models.agent import Agent
+    from fim_one.db.models.connector import Connector
+    from fim_one.db.models.knowledge_base import KnowledgeBase
+    from fim_one.db.models.mcp_server import MCPServer
+    from fim_one.db.models.skill import Skill
+    from fim_one.db.models.workflow import Workflow
+
+    member_ids = (
+        await db.execute(
+            select(OrgMembership.user_id).where(OrgMembership.org_id == org_id)
+        )
+    ).scalars().all()
+    for member_id in member_ids:
+        await reclaim_org_subscriptions(db, user_id=member_id, org_id=org_id)
+
+    for model in (Agent, Connector, KnowledgeBase, MCPServer, Skill, Workflow):
+        await db.execute(
+            update(model)
+            .where(model.org_id == org_id)
+            .values(visibility="personal", org_id=None, publish_status=None)
+        )
+
+    await db.execute(
+        update(Organization)
+        .where(Organization.parent_id == org_id)
+        .values(parent_id=None)
+    )
+
+
 @router.delete("/{org_id}", response_model=ApiResponse)
 async def delete_org(
     org_id: str,
@@ -386,6 +428,7 @@ async def delete_org(
     if org is None:
         raise AppError("org_not_found", status_code=404)
 
+    await _dissolve_org_sharing(db, org_id)
     await db.delete(org)
     await db.commit()
     return ApiResponse(data={"deleted": org_id})
@@ -736,6 +779,7 @@ async def admin_delete_org(
     if org is None:
         raise AppError("org_not_found", status_code=404)
 
+    await _dissolve_org_sharing(db, org_id)
     await db.delete(org)
     await db.commit()
     return ApiResponse(data={"deleted": org_id})

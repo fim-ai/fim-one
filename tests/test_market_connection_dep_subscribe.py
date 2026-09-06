@@ -82,13 +82,23 @@ async def user_a(async_session: AsyncSession) -> User:
     return user
 
 
-def _make_sub(user_id: str, resource_type: str, resource_id: str) -> ResourceSubscription:
-    """Helper to create a ResourceSubscription object."""
+def _make_sub(
+    user_id: str,
+    resource_type: str,
+    resource_id: str,
+    source: str = "direct",
+) -> ResourceSubscription:
+    """Helper to create a ResourceSubscription object.
+
+    ``source="auto"`` marks a row the dependency mechanism installed — the
+    only kind the unsubscribe cascade is allowed to remove.
+    """
     return ResourceSubscription(
         user_id=user_id,
         resource_type=resource_type,
         resource_id=resource_id,
         org_id=MARKET_ORG_ID,
+        source=source,
     )
 
 
@@ -312,8 +322,8 @@ class TestUnsubscribeCascadesConnectionDeps:
 
         # Create subscriptions (skill + connection deps)
         sub_skill = _make_sub(user_a.id, "skill", skill_id)
-        sub_conn = _make_sub(user_a.id, "connector", conn_id)
-        sub_srv = _make_sub(user_a.id, "mcp_server", srv_id)
+        sub_conn = _make_sub(user_a.id, "connector", conn_id, source="auto")
+        sub_srv = _make_sub(user_a.id, "mcp_server", srv_id, source="auto")
         async_session.add_all([sub_skill, sub_conn, sub_srv])
 
         # Create credentials
@@ -380,6 +390,81 @@ class TestUnsubscribeCascadesConnectionDeps:
         assert srv_cred_result.scalar_one_or_none() is None
 
     @pytest.mark.asyncio
+    async def test_unsubscribe_keeps_directly_subscribed_connector(
+        self, async_session: AsyncSession, user_a: User
+    ) -> None:
+        """A connector the user subscribed to themselves survives, credential and all.
+
+        The cascade used to key off "does any other subscribed solution need
+        this", which cannot tell a dependency it installed from a connector
+        the user chose and configured independently. Unsubscribing from a
+        skill that happened to reference it then deleted the subscription
+        and the encrypted credential with it.
+        """
+        from fim_one.core.security.encryption import encrypt_credential
+
+        conn_id = str(uuid.uuid4())
+        skill_id = str(uuid.uuid4())
+        other_user_id = str(uuid.uuid4())
+
+        connector = Connector(
+            id=conn_id,
+            user_id=other_user_id,
+            name="Chosen Connector",
+            type="api",
+            base_url="https://api.example.com",
+        )
+        skill = Skill(
+            id=skill_id,
+            user_id=other_user_id,
+            name="Skill using it",
+            content="Test",
+            resource_refs=[
+                {"type": "connector", "id": conn_id, "name": "Chosen Connector"},
+            ],
+        )
+        async_session.add_all([connector, skill])
+
+        # The connector was subscribed to on its own, before the skill.
+        sub_skill = _make_sub(user_a.id, "skill", skill_id)
+        sub_conn = _make_sub(user_a.id, "connector", conn_id, source="direct")
+        async_session.add_all([sub_skill, sub_conn])
+        async_session.add(
+            ConnectorCredential(
+                connector_id=conn_id,
+                user_id=user_a.id,
+                credentials_blob=encrypt_credential({"api_key": "mine"}),
+            )
+        )
+        await async_session.commit()
+
+        await async_session.delete(sub_skill)
+        await _cascade_clean_connection_deps(
+            user_id=user_a.id,
+            unsubscribed_type="skill",
+            unsubscribed_id=skill_id,
+            db=async_session,
+        )
+        await async_session.commit()
+
+        conn_sub = await async_session.execute(
+            select(ResourceSubscription).where(
+                ResourceSubscription.user_id == user_a.id,
+                ResourceSubscription.resource_type == "connector",
+                ResourceSubscription.resource_id == conn_id,
+            )
+        )
+        assert conn_sub.scalar_one_or_none() is not None
+
+        cred = await async_session.execute(
+            select(ConnectorCredential).where(
+                ConnectorCredential.connector_id == conn_id,
+                ConnectorCredential.user_id == user_a.id,
+            )
+        )
+        assert cred.scalar_one_or_none() is not None
+
+    @pytest.mark.asyncio
     async def test_unsubscribe_keeps_shared_connection_deps(
         self, async_session: AsyncSession, user_a: User
     ) -> None:
@@ -414,7 +499,7 @@ class TestUnsubscribeCascadesConnectionDeps:
         # User subscriptions: both skills + the shared connector
         sub_a = _make_sub(user_a.id, "skill", skill_a_id)
         sub_b = _make_sub(user_a.id, "skill", skill_b_id)
-        sub_conn = _make_sub(user_a.id, "connector", conn_id)
+        sub_conn = _make_sub(user_a.id, "connector", conn_id, source="auto")
         async_session.add_all([sub_a, sub_b, sub_conn])
         await async_session.commit()
 

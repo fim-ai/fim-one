@@ -337,6 +337,13 @@ geplant; siehe den abschließenden Hinweis.
 - [x] Schemasichtbarkeit — Allow-/Deny-Regeln für Tabellen und Spalten sowie Verb-Blockierung (Erzwingung des schreibgeschützten Zugriffs)
 - [x] Nachvollziehbarkeit der Schranken — `scope_rules_applied` in `ConnectorCallLog` zeichnet auf, unter welchen Schranken jeder Aufruf ausgeführt wurde
 
+#### Widerruf der Freigabe
+
+- [x] Die Veröffentlichung aufheben funktioniert – ein Abonnement gewährt nur Zugriff, solange die Ressource weiterhin freigegeben ist; dies wird zum Zeitpunkt der Nutzung erneut geprüft
+- [x] Das Entfernen aus dem Admin Market setzt die Ressource wieder auf privat, anstatt sie nur aus dem Listing auszublenden
+- [x] Das Kündigen eines Abonnements für eine Lösung entfernt keine Connectoren oder Zugangsdaten mehr, die der Benutzer selbst eingerichtet hat
+- [x] Beim Löschen einer Organisation werden deren veröffentlichte Ressourcen an ihre Besitzer zurückgegeben und auf die Organisation beschränkte Abonnements widerrufen
+
 #### Abschließen, was bereits begonnen ist
 
 - [ ] Chunkweise Komprimierung der Eingabe und modellbewusste Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt

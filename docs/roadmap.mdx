@@ -337,6 +337,13 @@ half-finished paths already in the tree get closed out.
 - [x] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
 - [x] Fence auditability — `scope_rules_applied` in `ConnectorCallLog` records the fences each call ran under
 
+#### Sharing revocation
+
+- [x] Unpublishing works — a subscription grants access only while the resource is still shared, re-checked at use time
+- [x] Admin Market takedown reverts the resource to private instead of only hiding it from the listing
+- [x] Unsubscribing from a solution no longer removes connectors, or credentials, the user set up themselves
+- [x] Deleting an org returns its published resources to their owners and revokes org-scoped subscriptions
+
 #### Finishing what is already in
 
 - [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window

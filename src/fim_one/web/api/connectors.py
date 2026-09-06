@@ -493,6 +493,11 @@ async def delete_connector(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     connector = await _get_owned_connector(connector_id, current_user.id, db)
+    from fim_one.web.api.market import purge_resource_subscriptions
+
+    await purge_resource_subscriptions(
+        db, resource_type="connector", resource_id=connector_id
+    )
     await db.delete(connector)
     await db.commit()
     return ApiResponse(data={"deleted": connector_id})

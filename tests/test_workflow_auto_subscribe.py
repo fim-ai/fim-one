@@ -85,13 +85,23 @@ async def user_a(async_session: AsyncSession) -> User:
     return user
 
 
-def _make_sub(user_id: str, resource_type: str, resource_id: str) -> ResourceSubscription:
-    """Helper to create a ResourceSubscription object."""
+def _make_sub(
+    user_id: str,
+    resource_type: str,
+    resource_id: str,
+    source: str = "direct",
+) -> ResourceSubscription:
+    """Helper to create a ResourceSubscription object.
+
+    ``source="auto"`` marks a row the dependency mechanism installed — the
+    only kind the unsubscribe cascade is allowed to remove.
+    """
     return ResourceSubscription(
         user_id=user_id,
         resource_type=resource_type,
         resource_id=resource_id,
         org_id=MARKET_ORG_ID,
+        source=source,
     )
 
 
@@ -346,7 +356,7 @@ class TestWorkflowUnsubscribeCascade:
 
         # Pre-create subscriptions (simulating prior subscribe)
         sub_wf = _make_sub(user_a.id, "workflow", wf_id)
-        sub_conn = _make_sub(user_a.id, "connector", conn_id)
+        sub_conn = _make_sub(user_a.id, "connector", conn_id, source="auto")
         async_session.add_all([sub_wf, sub_conn])
         await async_session.commit()
 
@@ -397,7 +407,7 @@ class TestWorkflowUnsubscribeCascade:
         async_session.add_all([agent, workflow])
 
         sub_wf = _make_sub(user_a.id, "workflow", wf_id)
-        sub_agent = _make_sub(user_a.id, "agent", agent_id)
+        sub_agent = _make_sub(user_a.id, "agent", agent_id, source="auto")
         async_session.add_all([sub_wf, sub_agent])
         await async_session.commit()
 

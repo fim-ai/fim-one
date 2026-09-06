@@ -12,8 +12,18 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Ajouté
 
-- **Les appels à sortie structurée indiquent quel niveau d’extraction a fourni la réponse.** Chaque appel consigne le niveau qui a effectivement produit le résultat et journalise un avertissement lorsque tous les niveaux échouent et qu’une valeur par défaut est renvoyée. Une dégradation silencieuse vers l’analyse de texte libre est ainsi désormais visible dans les journaux.
-- **Les colonnes de base de données peuvent être marquées comme données personnelles.** Une colonne marquée comme PII dans le gestionnaire de schéma du connecteur reste présente dans le schéma visible par l’agent, mais ses valeurs sont masquées dans chaque résultat de requête, y compris avec `SELECT *`. Le journal des appels du connecteur indique quelles colonnes ont été masquées et si le connecteur était en lecture seule.
+- **Les appels produisant une sortie structurée indiquent le niveau d’extraction qui leur a répondu.** Chaque appel consigne le niveau qui a effectivement produit le résultat et enregistre un avertissement lorsque tous les niveaux échouent et qu’une valeur par défaut est renvoyée. Une dégradation silencieuse vers l’analyse de texte libre est ainsi désormais visible dans les journaux.
+- **Les colonnes de base de données peuvent être marquées comme données personnelles.** Une colonne marquée PII dans le gestionnaire de schéma du connecteur apparaît toujours dans le schéma consulté par l’agent, mais ses valeurs sont masquées dans chaque résultat de requête, y compris avec `SELECT *`. Le journal des appels du connecteur indique les colonnes qui ont été masquées et si le connecteur était en lecture seule.
+
+### Corrigé
+
+- **La dépublication d’une ressource la retire désormais réellement.** L’accès était accordé par le seul abonnement : toute personne abonnée à un agent, un connecteur, un serveur MCP, une compétence ou un workflow le conservait même après que le propriétaire l’avait rendu privé, et le seul moyen de le retirer effectivement était de le supprimer. Les abonnements sont désormais revérifiés à chaque utilisation par rapport à l’état de partage actuel de la ressource, y compris au sein d’une conversation en cours.
+- **La suppression d’une ressource du Market la retire réellement.** L’action d’administration la masquait uniquement de la liste : les abonnés existants n’étaient pas affectés, et toute personne disposant de l’identifiant de la ressource pouvait encore s’y abonner. La ressource repasse désormais en privé, comme lors de sa dépublication par le propriétaire.
+- **La désinscription d’un agent, d’une compétence ou d’un workflow ne supprime plus les connecteurs que vous avez configurés vous-même.** Le nettoyage des dépendances ne pouvait pas distinguer un connecteur installé pour vous d’un connecteur auquel vous vous étiez abonné et pour lequel vous aviez saisi des identifiants, et supprimait les deux, entraînant la perte de l’identifiant enregistré. Seuls les éléments installés par une solution sont désormais supprimés avec celle-ci.
+- **La suppression d’une organisation n’échoue plus et ne laisse plus d’accès résiduel.** La suppression échouait dès qu’un membre avait publié du contenu dans l’organisation, et les membres conservaient les abonnements qu’ils détenaient via celle-ci. Les ressources publiées dans l’organisation redeviennent privées chez leurs propriétaires, et les abonnements associés à l’organisation sont révoqués, comme lorsqu’un membre la quitte.
+- **Les abonnements sont supprimés avec la ressource vers laquelle ils pointent**, au lieu de rester après sa suppression.
+- **Une compétence partagée par deux agents du Market est conservée après la suppression de l’un d’eux.**
+- **L’abonnement à une compétence ou à un workflow est refusé lorsque le module est désactivé**, conformément au comportement de la liste, qui les masquait déjà.
 
 
 ## [v0.8.12] - 2026-09-04

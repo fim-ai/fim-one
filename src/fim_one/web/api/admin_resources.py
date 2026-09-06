@@ -226,6 +226,11 @@ async def admin_delete_agent(
         raise AppError("agent_not_found", status_code=404)
 
     agent_name = agent.name
+    from fim_one.web.api.market import purge_resource_subscriptions
+
+    await purge_resource_subscriptions(
+        db, resource_type="agent", resource_id=agent_id
+    )
     await db.delete(agent)
     await db.commit()
 
@@ -394,6 +399,11 @@ async def admin_delete_knowledge_base(
         )
 
     # Delete DB records (cascade deletes documents)
+    from fim_one.web.api.market import purge_resource_subscriptions
+
+    await purge_resource_subscriptions(
+        db, resource_type="knowledge_base", resource_id=kb_id
+    )
     await db.delete(kb)
     await db.commit()
 

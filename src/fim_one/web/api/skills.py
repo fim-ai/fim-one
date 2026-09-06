@@ -246,6 +246,11 @@ async def delete_skill(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     skill = await _get_owned_skill(skill_id, current_user.id, db)
+    from fim_one.web.api.market import purge_resource_subscriptions
+
+    await purge_resource_subscriptions(
+        db, resource_type="skill", resource_id=skill_id
+    )
     await db.delete(skill)
     await db.commit()
     return ApiResponse(data={"deleted": skill_id})

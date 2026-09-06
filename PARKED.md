@@ -146,6 +146,22 @@ The cluster that felt heaviest and was never pulled by anyone.
 Historically this cluster generated the most design documents and the least
 shipped code, which is the signal that it was never pulled.
 
+Two smaller items from the same area, left undone after the sharing-revocation
+fixes in v0.9:
+
+- **Withdrawing an approval** — a reviewer can approve or reject a submission
+  while it is pending, but there is no way to revoke an approval already
+  granted; the only route back is asking the owner to unpublish. The
+  visibility filter already refuses anything whose `publish_status` is not
+  `approved`, so the missing half is one endpoint and its audit entry.
+  **Trigger**: a reviewer who has to take something down and cannot reach its
+  owner.
+- **Market browse pagination** — the listing reads every published row of all
+  five resource types for the scope into memory and slices the requested page
+  in Python. Correct, and linear in catalogue size. **Trigger**: a Market
+  catalogue large enough for the listing to be slow, which needs more
+  published resources than exist today.
+
 ---
 
 ## Billing beyond what ships today
