@@ -17,6 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Translated docs render bold lead sentences.** CJK translations that dropped the space after a closing `**` left the asterisks visible on the page; the translation pipeline now keeps it.
 - **Unpublishing a resource now takes it back.** Access was granted by the subscription alone, so anyone who had subscribed to an agent, connector, MCP server, skill or workflow kept it after the owner reverted it to private, and the only way to actually withdraw one was to delete it. Subscriptions are re-checked against the resource's current sharing state on every use, including inside a running conversation.
 - **Removing a resource from the Market removes it.** The admin action only hid it from the listing: existing subscribers were unaffected, and anyone with the resource id could still subscribe to it. It now reverts the resource to private, as the owner-side unpublish does.
 - **Unsubscribing from an agent, skill or workflow no longer deletes connectors you set up yourself.** The dependency cleanup could not tell a connector installed on your behalf from one you had subscribed to and entered credentials for, and removed both — discarding the stored credential with it. Only what a solution installed is removed with it.

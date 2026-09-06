@@ -188,6 +188,73 @@ class TestShieldRestoreRoundTrip:
         assert out == "<!--CODE_BLOCK_0-->\n"
 
 
+class TestFixMdEmphasisClosers:
+    """CommonMark cannot close `**` between punctuation and a letter.
+
+    CJK translations drop the space English puts after a bold lead sentence
+    (`**句子。**其余`), so Mintlify prints the asterisks. The fixer puts
+    that space back and must not touch code, already-valid markup, or
+    letter-letter closers that already parse.
+    """
+
+    def test_cjk_period_then_letter_gets_a_space(self) -> None:
+        src = "- **AI助手面板使用与聊天相同的输入框。**知识库、智能体现在都使用胶囊形输入框。\n"
+        out = translate._fix_md_emphasis_closers(src)
+        assert out == "- **AI助手面板使用与聊天相同的输入框。** 知识库、智能体现在都使用胶囊形输入框。\n"
+
+    def test_already_spaced_is_unchanged(self) -> None:
+        src = "- **图像生成可使用 OpenAI 的模型。** 请求不再发送 `response_format`。\n"
+        assert translate._fix_md_emphasis_closers(src) == src
+
+    def test_letter_letter_closer_is_unchanged(self) -> None:
+        # `**foo**bar` is already right-flanking in CommonMark.
+        src = "这是**替代产品**它们要求迁移。\n"
+        assert translate._fix_md_emphasis_closers(src) == src
+
+    def test_colon_label_then_cjk(self) -> None:
+        src = "**何时选择哪一种：**如果你发现自己在编写分步说明\n"
+        out = translate._fix_md_emphasis_closers(src)
+        assert out == "**何时选择哪一种：** 如果你发现自己在编写分步说明\n"
+
+    def test_closing_paren_then_korean_particle(self) -> None:
+        src = "드롭다운에서 **KingbaseES (PG compatible)**를 선택합니다.\n"
+        out = translate._fix_md_emphasis_closers(src)
+        assert out == "드롭다운에서 **KingbaseES (PG compatible)** 를 선택합니다.\n"
+
+    def test_bold_wrapping_inline_code_then_particle(self) -> None:
+        src = "**`smart_truncate`**는 휴리스틱 폴백입니다.\n"
+        out = translate._fix_md_emphasis_closers(src)
+        assert out == "**`smart_truncate`** 는 휴리스틱 폴백입니다.\n"
+
+    def test_pair_inside_inline_code_is_untouched(self) -> None:
+        src = "use `**x。**y` as a literal.\n"
+        assert translate._fix_md_emphasis_closers(src) == src
+
+    def test_fenced_code_is_untouched(self) -> None:
+        src = "prose\n```\n**foo。**bar\n```\nafter\n"
+        assert translate._fix_md_emphasis_closers(src) == src
+
+    def test_jsx_comment_is_untouched(self) -> None:
+        src = "- item {/* **foo。**bar */}\n"
+        assert translate._fix_md_emphasis_closers(src) == src
+
+    def test_italic_cjk_quote_then_particle(self) -> None:
+        src = "機能が*「モデルをより賢くする方法」*を解決する場合\n"
+        out = translate._fix_md_emphasis_closers(src)
+        assert out == "機能が*「モデルをより賢くする方法」* を解決する場合\n"
+
+    def test_idempotent(self) -> None:
+        src = "- **句子。**其余内容。\n"
+        once = translate._fix_md_emphasis_closers(src)
+        twice = translate._fix_md_emphasis_closers(once)
+        assert once == twice
+        assert once == "- **句子。** 其余内容。\n"
+
+    def test_followed_by_punctuation_is_unchanged(self) -> None:
+        src = "- **订阅会随该资源一并移除**，不再保留。\n"
+        assert translate._fix_md_emphasis_closers(src) == src
+
+
 class TestModelAcceptsTemperature:
     def test_reasoning_models_drop_temperature(self) -> None:
         for name in ("gpt-5.6-luna", "openai/gpt-5.4-mini", "o3", "o4-mini", "openai/o1-preview"):

@@ -31,6 +31,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
@@ -292,6 +293,92 @@ def _restore_jsx_comments(text: str, comments: list[str]) -> str:
         return comments[idx]
 
     return _PLACEHOLDER_RE.sub(_sub, text)
+
+
+# ---------------------------------------------------------------------------
+# CommonMark emphasis closers vs CJK
+# ---------------------------------------------------------------------------
+#
+# CommonMark will not treat `**` as a closer when it is preceded by punctuation
+# and followed by a letter (`**句子。**其余`, `**label：**其余`, `**code)**를`).
+# English sources put a space after the closer (`**Sentence.** Rest`); CJK
+# translations drop it as typesetting. The asterisks then render as literal
+# text on Mintlify. Insert that space back — it is markdown syntax, not prose.
+
+_CM_ASCII_PUNCT = set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+_STRONG_PAIR_RE = re.compile(r"\*\*(.+?)\*\*")
+_EM_PAIR_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
+
+
+def _is_cm_punct(ch: str) -> bool:
+    if ch in _CM_ASCII_PUNCT:
+        return True
+    return unicodedata.category(ch).startswith("P")
+
+
+def _is_cm_ws(ch: str) -> bool:
+    return ch in " \t\n\r\f" or unicodedata.category(ch) == "Zs"
+
+
+def _inline_code_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    i = 0
+    while True:
+        start = text.find("`", i)
+        if start < 0:
+            break
+        end = text.find("`", start + 1)
+        if end < 0:
+            break
+        spans.append((start, end + 1))
+        i = end + 1
+    return spans
+
+
+def _span_fully_inside(start: int, end: int, spans: list[tuple[int, int]]) -> bool:
+    return any(a <= start and end <= b for a, b in spans)
+
+
+def _insert_closer_spaces(text: str, pattern: re.Pattern[str]) -> str:
+    """Insert a space after a matched closer that is not CommonMark-right-flanking."""
+    code_spans = _inline_code_spans(text)
+    out: list[str] = []
+    last = 0
+    for match in pattern.finditer(text):
+        if _span_fully_inside(match.start(), match.end(), code_spans):
+            continue
+        inner = match.group(1)
+        nxt = text[match.end()] if match.end() < len(text) else ""
+        if not inner or not nxt:
+            continue
+        if not _is_cm_punct(inner[-1]):
+            continue
+        if _is_cm_ws(nxt) or _is_cm_punct(nxt):
+            continue
+        out.append(text[last : match.end()])
+        out.append(" ")
+        last = match.end()
+    out.append(text[last:])
+    return "".join(out)
+
+
+def _fix_md_emphasis_closers(text: str) -> str:
+    """Make CJK `**bold。**rest` parse as bold under CommonMark.
+
+    Fenced code and JSX comments are left untouched. Inline code may sit
+    *inside* a bold span (`**`name`**는`) and still needs the space; a
+    `**` pair that lives entirely inside backticks is left alone.
+    Idempotent: a second pass sees the inserted space and no-ops.
+    """
+    shielded, code_blocks = _shield_code_blocks(text)
+    shielded, jsx_comments = _shield_jsx_comments(shielded)
+    fixed = _insert_closer_spaces(shielded, _STRONG_PAIR_RE)
+    fixed = _insert_closer_spaces(fixed, _EM_PAIR_RE)
+    if jsx_comments:
+        fixed = _restore_jsx_comments(fixed, jsx_comments)
+    if code_blocks:
+        fixed = _restore_code_blocks(fixed, code_blocks)
+    return fixed
 
 
 # ---------------------------------------------------------------------------
@@ -1115,7 +1202,10 @@ _MDX_SYSTEM_PROMPT = (
     "5. For frontmatter (--- ... ---): translate ONLY the VALUES of title, description, "
     "and sidebarTitle. Leave all other frontmatter keys and values untouched.\n"
     "6. Preserve ALL blank lines, heading levels, list markers, and MDX structure exactly.\n"
-    "7. Return ONLY the translated content — no extra commentary, no markdown fences "
+    "7. Keep a space after a closing `**` or `*` when the next character is a letter "
+    "or digit (including CJK). `**句子。**其余` prints the asterisks as text; "
+    "`**句子。** 其余` bolds. Do not drop the space that follows `**` in the English source.\n"
+    "8. Return ONLY the translated content — no extra commentary, no markdown fences "
     "wrapping the output.\n"
     + _GLOSSARY
 )
@@ -1197,6 +1287,8 @@ def translate_mdx_file(src_path: Path, locale: str, config: dict[str, str], forc
     if rel.as_posix() == "changelog.mdx":
         translated_content = _normalize_changelog_headings(content, translated_content, locale)
 
+    translated_content = _fix_md_emphasis_closers(translated_content)
+
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(translated_content, encoding="utf-8")
     tprint(f"  [{locale}] {rel}: saved")
@@ -1217,8 +1309,10 @@ _README_SYSTEM_PROMPT = (
     "3. NEVER translate badge markdown ([![...](...)]) or any markdown image/link URLs.\n"
     "4. NEVER translate HTML tags or attributes.\n"
     "5. Preserve ALL markdown structure: headings, lists, tables, bold, italic, links.\n"
-    "6. Translate heading text, paragraph text, table cell text, and list item text.\n"
-    "7. Return ONLY the translated content — no extra commentary.\n"
+    "6. Keep a space after a closing `**` or `*` when the next character is a letter "
+    "or digit (including CJK). `**句子。**其余` prints the asterisks as text.\n"
+    "7. Translate heading text, paragraph text, table cell text, and list item text.\n"
+    "8. Return ONLY the translated content — no extra commentary.\n"
     + _GLOSSARY
 )
 
@@ -1239,6 +1333,7 @@ def translate_readme_file(src_path: Path, locale: str, config: dict[str, str], f
         validate_fn=_validate_mdx_section,
         target_path=target_path,
     )
+    translated = _fix_md_emphasis_closers(translated)
 
     target_path.write_text(translated, encoding="utf-8")
     tprint(f"  [{locale}] README.md: saved → {target_path.name}")

@@ -161,6 +161,11 @@ Apply to all locales unless a language has a contradictory convention.
      ASCII token is in backticks or is a standalone English term.
    - Example: "使用 `uv run pytest`" (space around backtick is OK) but
      "使用uv和pnpm" when flowing prose (no spaces).
+   - Exception (markdown closers): keep a space after a closing `**` or `*`
+     when the next character is a letter (CJK or Latin). CommonMark cannot
+     close emphasis when the closer sits between punctuation and a letter
+     (`**句子。**其余` prints the asterisks; `**句子。** 其余` bolds). That
+     space is markdown syntax, not prose, so it overrides the no-space rule.
 6. **Headings**: translate the text content but preserve `#` depth and any
    anchor syntax. Never introduce a new heading level.
 7. **Frontmatter**: translate only `title`, `description`, `sidebarTitle`.
@@ -183,3 +188,8 @@ Apply to all locales unless a language has a contradictory convention.
    `translate.py` pins these headings after translation as a backstop, so a
    drifting heading is corrected rather than shipped — but produce the right
    term directly.
+9. **Emphasis closers (all locales).** Keep the space after a closing `**`
+   or `*` when the next character is a letter or digit. English changelog
+   leads are `**Sentence.** Rest`; dropping that space in CJK (`**句子。**其余`)
+   leaves the asterisks visible on the docs site. `translate.py` inserts the
+   space after translation as a backstop.

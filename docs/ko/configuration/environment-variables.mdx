@@ -107,7 +107,7 @@ uv run scripts/env_from_active_group.py --image-gen   # also point IMAGE_GEN_* a
 
 **제로 회귀 폴백**: 어떤 수준에서도 비전 기능이 있는 모델을 찾을 수 없을 때, OCR은 자동으로 비활성화되고 MarkItDown은 텍스트 전용 모드에서 실행됩니다. Word/PowerPoint/Excel 임베드된 이미지 OCR은 사용할 수 없게 됩니다(이 기능이 출시되기 전과 동일), 하지만 다른 모든 텍스트 추출(제목, 표, 단락 텍스트)은 변경 없이 계속 작동합니다. **이 기능을 추가하여 추출이 이전 동작보다 악화된 경우는 절대 없습니다.**
 
-**OpenAI가 아닌 제공자(Anthropic, Google Gemini 등)**는 투명하게 지원됩니다: 해석된 LLM은 `LiteLLMOpenAIShim`으로 래핑되어 `chat.completions.create(...)` 호출을 `litellm.completion()`을 통해 라우팅하며, 이는 제공자별 메시지 형식 변환(예: Anthropic의 `source.type="base64"` 이미지 블록)을 처리합니다. 하나의 shim은 LiteLLM이 지원하는 모든 제공자를 포함합니다 — 새로운 제공자를 추가하는 데 FIM One에서 코드 변경이 필요하지 않습니다.
+**OpenAI가 아닌 제공자(Anthropic, Google Gemini 등)** 는 투명하게 지원됩니다: 해석된 LLM은 `LiteLLMOpenAIShim`으로 래핑되어 `chat.completions.create(...)` 호출을 `litellm.completion()`을 통해 라우팅하며, 이는 제공자별 메시지 형식 변환(예: Anthropic의 `source.type="base64"` 이미지 블록)을 처리합니다. 하나의 shim은 LiteLLM이 지원하는 모든 제공자를 포함합니다 — 새로운 제공자를 추가하는 데 FIM One에서 코드 변경이 필요하지 않습니다.
 
 ### 확장 사고 (추론)
 
