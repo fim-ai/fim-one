@@ -289,6 +289,16 @@ Extensions to shipped subsystems. None has a requester.
   stories, and one template distilled per delivered engagement. Parked because
   the templates are supposed to come out of real deliveries; writing them
   first is the closed-room problem this whole list exists to stop.
+- **DAG evidence fidelity** — three deferred hardening items around how source
+  evidence reaches the DAG analyzer and synthesis steps: give evidence its own
+  truncation budget instead of re-clipping it with `DAG_ANALYZER_TRUNCATION`;
+  truncate structure-aware (head plus tail, keep lists and tables) so a long
+  enumeration does not silently lose its tail; and port the source-fidelity
+  guideline into the ReAct fallback synthesis prompt, which today catches
+  total and severity mislabels only on the DAG path. Held a low-priority
+  backlog section on the roadmap for a while without anyone hitting the
+  matching scenario. **Trigger**: a report where the numbers came back wrong
+  and the cause traces to clipped evidence.
 
 ---
 

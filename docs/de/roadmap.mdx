@@ -69,14 +69,6 @@ Nachverfolgte Fehler, die in der Produktionsumgebung reproduzierbar, aber noch n
 
 - **Das Stoppen und Wiederholen im Playground zeigt vorübergehende visuelle Artefakte, die sich durch ein Neuladen der Seite stets beheben lassen.** Drei gleichzeitige Render-Quellen — `activeConversation.messages` (DB-Snapshot), der SSE-`messages`-Stream und der optimistische `pendingQuery`-Platzhalter — werden nicht zu einem einzigen abgeleiteten Zustand zusammengeführt. Dadurch kann es zwischen dem Klick auf „Wiederholen" und dem Eintreffen der zugehörigen Assistenten-Antwort zu folgenden Problemen kommen: (a) Die gleiche Anfrage wird kurzzeitig zweimal im Vor-Stream-Fenster gerendert, (b) frühere verwaiste Nutzer-Bubbles aus dem Wiederholungsverlauf werden ausgeblendet, solange `hasLiveMessages` den Wert `true` hat und bevor der Snapshot neu geladen wird, und (c) es kommt zu einem Flackern im kurzen Zeitfenster zwischen dem SSE-„done"-Ereignis und dem nächsten `selectConversation`-Refresh. **Daten gehen dabei nie verloren** — jede Nutzernachricht (einschließlich abgebrochener Wiederholungen) wird in `conversation.messages` gespeichert, beim nächsten LLM-Aufruf über `normalize_alternating_messages` einbezogen und nach einem Neuladen über `HistoryTurn.orphanUserContents` korrekt dargestellt, das im Render-Fix `48ba08c6` eingeführt wurde. Zum Kontext: Claudes eigene Web-Oberfläche weist eine vergleichbare Fehlerklasse auf — wird eine Antwort mittendrin gestoppt und sofort eine Folgeanfrage gesendet, wird diese manchmal als Geschwister-Bearbeitungszweig der ersten Anfrage verzweigt, anstatt als neuer Turn angehängt zu werden. Es handelt sich also um ein bekanntes, schwieriges Problem bei Designs mit optimistischer UI + SSE + persistiertem Verlauf und nicht um einen FIM-One-spezifischen Fehler. Eine ordentliche Behebung erfordert die Zusammenführung der drei Render-Quellen zu einem einzigen abgeleiteten Zustand; dies wird bis zu einem umfassenderen Refactoring der Playground-Zustandsmaschine zurückgestellt.
 
-## Backlog (Niedrige Priorität) {/* dev: dev/dag-evidence-fidelity.md */}
-
-Zurückgestellte Härtungsmaßnahmen — nicht blockierend; nur aufgreifen, wenn das entsprechende Szenario auftritt.
-
-- [ ] **DAG-Evidenz erhält ein eigenes Kürzungsbudget**, entkoppelt von `DAG_ANALYZER_TRUNCATION`, damit Quellevidenz nicht durch das Zusammenfassungsbudget erneut gekürzt wird, bevor Analyzer/Synthese sie verifizieren.
-- [ ] **Strukturbewusste Evidenzkürzung** (Kopf+Ende / Listen & Tabellen beibehalten), damit lange Aufzählungen das Limit überstehen, anstatt ihr Ende stillschweigend zu verlieren.
-- [ ] **Den Quelltreue-Leitfaden in den ReAct-Fallback-Syntheseprompt übertragen**, damit Gesamt-/Schweregrad-Fehlkennzeichnungen auch in ReAct erkannt werden, nicht nur in DAG.
-
 ## Ausgelieferte Versionen
 
 ### v0.1 (2026-02-22) — MVP: ReAct + DAG Planner
@@ -326,10 +318,9 @@ darum, das, was bereits in der Codebasis vorhanden ist, fertigzustellen und korr
 nicht darum, neue Funktionsbereiche zu eröffnen. Alles, was unten nicht aufgeführt ist, ist nicht
 geplant; siehe den abschließenden Hinweis.
 
-### v0.9 — Connector-Fences
+### v0.9 — Sicher zum Teilen
 
-**Ziel**: Ein Datenbank-Connector kann sicher an eine Kollegin oder einen Kollegen
-übergeben werden, und die bereits im Projekt vorhandenen, halbfertigen Pfade werden abgeschlossen.
+**Ziel**: Ein Datenbank-Connector kann sicher an einen Kollegen übergeben werden, das Zurücknehmen nimmt ihn tatsächlich zurück, und die halbfertigen Pfade, die bereits im Tree vorhanden sind, werden abgeschlossen.
 
 #### DB-Connector-Schranken {/* dev: dev/connector-rbac/00-overview.md */}
 

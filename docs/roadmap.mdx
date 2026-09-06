@@ -69,14 +69,6 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 
 - **Playground stop-and-retry shows transient visual artefacts that a page refresh always clears.** Three concurrent render sources — `activeConversation.messages` (DB snapshot), the SSE `messages` stream, and the optimistic `pendingQuery` placeholder — are not collapsed into a single derived state, so between clicking "Retry" and the paired assistant response landing, the UI can (a) briefly render the same query twice in the pre-stream window, (b) drop prior orphan user bubbles from the retry history while `hasLiveMessages` is true and before the snapshot reloads, and (c) flicker in the narrow window between the SSE "done" event and the next `selectConversation` refresh. **Data is never lost** — every user message (including aborted retries) is persisted in `conversation.messages`, carried into the next LLM call via `normalize_alternating_messages`, and rendered correctly after refresh via `HistoryTurn.orphanUserContents` introduced in the `48ba08c6` render fix. For context, Claude's own web UI exhibits an analogous class of bug — stopping mid-response and immediately sending a follow-up query sometimes forks the follow-up as a sibling-edit branch of the first query rather than appending it as a new turn — so this is a known hard problem in optimistic-UI + SSE + persisted-history designs, not a FIM-One-specific defect. A proper fix requires collapsing the three render sources into a single derived state; deferred until a broader Playground state-machine refactor.
 
-## Backlog (Low Priority) {/* dev: dev/dag-evidence-fidelity.md */}
-
-Deferred hardening — not blocking; pick up only if the matching scenario shows up.
-
-- [ ] **DAG evidence gets its own truncation budget**, decoupled from `DAG_ANALYZER_TRUNCATION`, so source evidence isn't re-clipped by the summary budget before the analyzer/synthesis verify against it.
-- [ ] **Structure-aware evidence truncation** (head+tail / keep lists & tables) so long enumerations survive the cap instead of silently losing their tail.
-- [ ] **Port the source-fidelity guideline into the ReAct fallback synthesis prompt** so total/severity mislabels are caught in ReAct too, not only in DAG.
-
 ## Shipped Versions
 
 ### v0.1 (2026-02-22) — MVP: ReAct + DAG Planner
@@ -326,10 +318,11 @@ finishing what is already in the codebase and keeping it correct, not opening
 new feature areas. Anything not listed below is not planned; see the closing
 note.
 
-### v0.9 — Connector Fences
+### v0.9 — Safe to Share
 
-**Goal**: a database connector is safe to hand to a colleague, and the
-half-finished paths already in the tree get closed out.
+**Goal**: a database connector is safe to hand to a colleague, taking one
+back actually takes it back, and the half-finished paths already in the tree
+get closed out.
 
 #### DB Connector Fences {/* dev: dev/connector-rbac/00-overview.md */}
 
