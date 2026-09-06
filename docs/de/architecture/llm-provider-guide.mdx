@@ -65,9 +65,9 @@ Die ReAct-Engine verwendet natives Function Calling (`_run_native`), wenn `abili
 
 ### structured_llm_call — tool_choice=forced
 
-Einmalige strukturierte Extraktion (Schema-Annotation, DAG-Planung, Plan-Analyse). Erzwingt, dass das Modell eine bestimmte virtuelle Funktion aufruft und garantiert strukturierte JSON-Ausgabe. Dies ist die Aufrufstelle, die anbieterspezifische Fehler auslöst.
+Einmalige strukturierte Extraktion (Schema-Annotation, DAG-Planung, Plananalyse). Erzwingt, dass das Modell eine bestimmte virtuelle Funktion aufruft, und garantiert dadurch eine strukturierte JSON-Ausgabe. Dies ist die Aufrufstelle, die anbieterspezifische Fehler auslöst.
 
-`structured_llm_call` implementiert eine 3-stufige Degradationskette:
+`structured_llm_call` implementiert eine dreistufige Degradationskette. Die drei Stufen sind nach dem Code benannt, und ihre Nummerierung entspricht nicht den vier Garantieebenen, die im [folgenden Abschnitt](#structured-output-the-four-guarantee-tiers) beschrieben werden:
 
 ```mermaid
 flowchart TD
@@ -84,7 +84,101 @@ flowchart TD
     PT -->|"Fail → retry once"| ERR["StructuredOutputError<br/>or default_value"]
 ```
 
-Der kritische Designunterschied: Das Fallback von `structured_llm_call` ist **Laufzeit** — es versucht dynamisch jede Stufe und fängt Ausnahmen ab, um durchzufallen. Die Modusauswahl der ReAct-Engine ist **Build-Zeit** — sie prüft `_native_mode_active` einmal am Anfang und verpflichtet sich auf einen Modus für die gesamte Schleife. Das bedeutet, dass `structured_llm_call` sich transparent von anbieterspezifischen 400-Fehlern erholen kann, während ReAct darauf angewiesen ist, dass der Modus von Anfang an korrekt gewählt wird.
+Der entscheidende Designunterschied: Der Fallback von `structured_llm_call` erfolgt **zur Laufzeit** — es wird dynamisch jede Stufe ausprobiert, und Ausnahmen werden abgefangen, um zur nächsten Stufe überzugehen. Die Modusauswahl der ReAct-Engine erfolgt **zur Build-Zeit** — sie prüft `_native_mode_active` einmal zu Beginn und legt sich für die gesamte Schleife auf einen Modus fest. Das bedeutet, dass `structured_llm_call` anbieterspezifische 400-Fehler transparent abfangen kann, während ReAct darauf angewiesen ist, dass der Modus von Anfang an korrekt ausgewählt wird.
+
+## Strukturierte Ausgabe: die vier Garantieebenen
+
+„Strukturierte Ausgabe“ ist ein Begriff für vier verschiedene Mechanismen. Sie alle erzeugen JSON, bieten aber nicht dieselbe Garantie. Der entscheidende Unterschied liegt darin, wo die Einschränkung greift: im Decoder, der kein Token ausgeben kann, das das Schema verbietet, oder im Prompt, der lediglich eine Aufforderung formulieren kann.
+
+| Ebene | Was die Anfrage enthält | Wo die Nutzlast eintrifft | Was garantiert wird | Durchgesetzt von |
+|---|---|---|---|---|
+| **T1 — natives Function Calling, `strict: true`** | `tools=[…]` mit gesetztem `strict` in der Funktionsdefinition | Ein JSON-String in `tool_calls[0].function.arguments` | Auf Schemaebene: jedes erforderliche Feld ist vorhanden, keine nicht deklarierten Schlüssel, Typen und Enumerationen sind korrekt | Zustandsautomat des Decoders |
+| **T2 — `response_format: {"type": "json_schema"}`** | Das Schema selbst innerhalb von `response_format`, mit `strict: true` | Ein JSON-String in `message.content` | Auf Schemaebene wie bei T1, jedoch in der eigenen Antwort des Assistenten statt in einem Tool-Aufruf | Zustandsautomat des Decoders |
+| **T3 — `response_format: {"type": "json_object"}`** | Nur der Typ, kein Schema | Ein JSON-String in `message.content` | Nur syntaktisch: Der Text lässt sich als JSON parsen. Welche Schlüssel vorkommen, ist nicht eingeschränkt | Decoder (Syntax) |
+| **T4 — Freitext plus Anweisungen** | Nichts. Das Schema wird im Prompt beschrieben | `message.content`, möglicherweise von Prosa oder Code-Fences umgeben | Nichts | Der Prompt |
+
+Der Mechanismus hinter T1 und T2 ist Constrained Decoding. Der Anbieter kompiliert das Schema in eine Grammatik und maskiert bei jedem Decodierungsschritt jedes Token, das die Ausgabe gegenüber diesem Schema unparsebar machen würde. Ein erforderliches Feld kann nicht übersprungen werden, weil das Token zum Schließen des Objekts erst dann zur zulässigen Menge gehört, wenn dieses Feld ausgegeben wurde. Das ist eine andere Art von Aussage als „das Modell wurde freundlich gebeten und hat sich daran gehalten“ – und der Grund, warum T1/T2 bei Temperatur 1 und auch bei kleinen Modellen zuverlässig funktionieren, wo die Befolgung von Prompts dies nicht tut.
+
+### T1 und T2 sind nicht austauschbar
+
+Sie bieten über unterschiedliche Kanäle dieselbe Garantie, und der Kanal ist in drei Punkten entscheidend.
+
+**Die Form des Turns unterscheidet sich.** T1 gibt einen Tool-Call-Turn zurück; das Modell hat entschieden zu *handeln*. T2 gibt eine gewöhnliche Assistant-Nachricht zurück; das Modell hat in einer bestimmten Form *geantwortet*. Wenn der Aufrufer eine einzelne Extraktion und keine Agentenschleife möchte, bringt T2 dies direkt zum Ausdruck, anstatt für das Modell eine virtuelle Funktion zu erfinden, die es „aufrufen“ soll.
+
+**Das Erzwingen von T1 kollidiert mit Thinking.** Um aus T1 eine schema-gesteuerte Nutzlast zu erhalten, muss die Auswahl in der Regel erzwungen werden, entweder mit `required` oder mit einer benannten Funktion. Mehrere Provider lehnen eine erzwungene Tool-Auswahl ab, wenn Extended Thinking aktiv ist. Tabelle B weiter unten zeigt, welche das betrifft. Bei T2 gibt es keinen solchen Konflikt: T2 ist eine Antwortbeschränkung und keine Tool-Beschränkung. Daher ist T2 der einzige schema-gesteuerte Pfad, der auch bei aktiviertem Thinking funktioniert. Für eine Bereitstellung, die auf Reasoning-Modellen standardisiert ist, ist das ein praktisches und kein stilistisches Argument für T2.
+
+**T1 verursacht einen zusätzlichen Durchlauf für die Schema-Anbindung, den T2 nicht benötigt.** Eine virtuelle Funktion benötigt einen Namen, eine Beschreibung und eine Entscheidung darüber, ob das Modell den Aufruf ablehnen darf.
+
+### Was T2 kostet
+
+Constrained Decoding ist nicht kostenlos, und das Schema, das bereits vorhanden ist, entspricht normalerweise nicht dem Schema, das akzeptiert wird.
+
+- **Eine Teilmenge des Schemas.** Der Strict-Modus von OpenAI erfordert bei jedem Objekt `additionalProperties: false` und bei jeder Eigenschaft einen Eintrag in `required`; Optionalität wird durch eine Union mit `null` ausgedrückt und nicht durch das Weglassen aus `required`. Die Wurzel muss ein Objekt sein. Für die Gesamtzahl der Eigenschaften und die Verschachtelungstiefe gelten Obergrenzen. Die meisten von Hand geschriebenen Schemas müssen bearbeitet werden, bevor sie dafür geeignet sind.
+- **Kompilierung der Grammatik.** Die erste Anfrage mit einem neuen Schema verursacht auf der Seite des Anbieters eine einmalige Kompilierungslatenz. Durch die Wiederverwendung eines stabilen Schemas lässt sich diese amortisieren; bei der Erzeugung eines neuen Schemas pro Anfrage ist das nicht der Fall.
+- **Eine neue Fehlerquelle.** Ein Modell, das nicht antworten möchte, gibt statt eines schemaförmigen Objekts eine Ablehnung zurück. Daher benötigt der Aufrufer dafür einen eigenen Zweig.
+
+### Was keine Stufe garantiert
+
+Jede Stufe schränkt die Form ein. Keine schränkt die Wahrheit ein. Eine T2-Antwort kann vollständig schema-konform und dennoch sachlich falsch sein. Ein enum-beschränktes Feld gibt einen der zulässigen Werte zurück, selbst wenn keiner davon korrekt ist, denn die Aufgabe des Decoders besteht darin, die Ausgabe innerhalb der Grammatik zu halten, nicht darin, die Antwort zu kennen. Die Schema-Steuerung verhindert Parsing-Fehler und Fehler bei der Feldstruktur. Sie macht jedoch nicht überflüssig, zu prüfen, was der Wert aussagt.
+
+<Warning>
+**Zwei Nummerierungsschemata, die nicht übereinstimmen.** Diese Seite verwendet **T1–T4** für die oben genannten Garantie-Stufen. Für die drei Stufen der Degradationskette von `structured_llm_call` wird **Level 1/2/3** verwendet; sie sind nach dem Code benannt (`native_fc`, `json_mode`, `plain_text`). FIM Ones Level 2 ist `json_object`, also **T3**, nicht T2. Die Kette hat drei Stufen, weil sie T2 vollständig überspringt, nicht weil es nur drei Stufen gibt.
+</Warning>
+
+### Wo FIM One einzuordnen ist
+
+| `structured_llm_call`-Ebene | Stufe | Was der Code tatsächlich tut |
+|---|---|---|
+| Ebene 1 — `native_fc` | **T1 ohne `strict`** | `_build_tool_def` gibt `name` / `description` / `parameters` und nichts anderes aus. Keine Aufrufstelle setzt `strict`, daher verwendet `convert_tools` in `responses_adapter.py` standardmäßig den Wert `False`. Das Schema erreicht das Modell als Beschreibung dessen, was es erzeugen soll, nicht als Einschränkung dessen, was es erzeugen kann |
+| *(nicht vorhanden)* | **T2** | Nicht implementiert. `json_schema` taucht an keiner Stelle in der Codebasis auf, und `abilities` verfügt über kein Flag, mit dem sich die Unterstützung pro Modell ausdrücken ließe |
+| Ebene 2 — `json_mode` | **T3** | `{"type": "json_object"}`, fest in `structured.py::_call_llm` und `react.py::_json_response_format` hinterlegt |
+| Ebene 3 — `plain_text` | **T4** | `extract_json()` über frei formatierten Inhalt, mit einem optionalen Regex-Fallback pro Aufrufstelle |
+
+Daraus ergeben sich fünf Konsequenzen – und das sind die ehrlichen Einschränkungen des aktuellen Designs.
+
+1. **Die Kette verfügt über keine schema-gesteuerte Stufe, auf die sie zurückfallen kann.** Wenn Ebene 1 fehlschlägt, ist die nächste Stufe `json_object`, was lediglich garantiert, dass der Text geparst werden kann. Es gibt keinen Zwischenschritt, der weiterhin Felder erzwingt.
+2. **Die Garantie von Ebene 1 ist schwächer, als der Name vermuten lässt.** Ohne `strict` entspricht native function calling der nicht-strikten Variante aus der Zeit vor 2024: Das Modell hält sich normalerweise an das Schema, wird aber nicht daran gehindert, ein erforderliches Feld auszulassen, einen eigenen Schlüssel zu erfinden oder eine Zeichenfolge zurückzugeben, obwohl eine Zahl deklariert wurde.
+3. **Auf `anthropic/`-Routen ist Ebene 2 nicht wirklich T3.** Die Anthropic Messages API verfügt über kein `response_format`, daher emuliert LiteLLM den JSON-Modus durch das Einfügen eines Assistant-Prefills. Das ist ein Mechanismus auf Prompt-Ebene, wodurch die effektive Garantie zwischen T4 und T3 liegt und nicht bei T3. Die weiter unten dokumentierte Bedrock-Prefill-Falle besteht darin, dass diese Emulation deutlich fehlschlägt. Die weniger offensichtlichen Kosten bestehen darin, dass die Garantie nie derjenigen entsprach, die der Parametername nahelegt.
+4. **Das Ergebnis wird anschließend nicht gegen das Schema validiert.** `jsonschema` ist keine Abhängigkeit. Jede Prüfung erfolgt innerhalb der optionalen `parse_fn` pro Aufrufstelle, und ihre Gründlichkeit variiert je nach Aufrufstelle.
+5. **Fehler werden abgefangen, statt sichtbar gemacht zu werden.** Fast jeder Aufrufer übergibt `default_value`, sodass eine erschöpfte Kette ein plausibel aussehendes Objekt zurückgibt, anstatt einen Fehler auszulösen. `StructuredCallResult.level_used` erfasst, welche Stufe den Wert erzeugt hat, aber keine Aufrufstelle liest diesen Wert aus. Beim `default_value`-Pfad meldet es außerdem `plain_text` für eine Kette, die tatsächlich nichts erzeugt hat.
+
+**So lässt sich feststellen, auf welcher Stufe man sich tatsächlich befindet.** `structured_llm_call` protokolliert bei `INFO` eine Zeile pro abgeschlossenem Aufruf. Sie wird erst ausgegeben, nachdem die Daten `parse_fn` erfolgreich durchlaufen haben, und nennt daher eine Stufe, die tatsächlich erfolgreich war:
+
+```
+structured_llm_call: fn=classify_mode level=native_fc attempt=first calls=1
+structured_llm_call: fn=annotate_tables level=json_mode attempt=reformat_retry calls=3
+```
+
+Ein vollständiger Fehlschlag wird mit `WARNING` und `level=none outcome=default_value` protokolliert. Diese beiden Zeilen über einen Tag hinweg im Datenverkehr zu suchen, ist die einzige Möglichkeit festzustellen, ob das fehlende T2 in einer bestimmten Bereitstellung Auswirkungen hat, da das `default_value`-Design als Symptom eine mittelmäßige Antwort statt eines Fehlers erzeugt.
+
+### Provider-Unterstützung für jede Stufe
+
+<Note>
+**Diese Tabelle dokumentiert Upstream-APIs, nicht die Codepfade von FIM One.** Jede andere Tabelle auf dieser Seite nennt die Funktion, die das Verhalten implementiert. Diese Tabelle kann das nicht, da FIM One keine T2-Funktion eines Providers verwendet und bei keinem von ihnen `strict` setzt. Sie ist hier enthalten, damit eine Entscheidung zur Implementierung von T2 auf dem tatsächlich Verfügbaren basiert. Die Fähigkeiten der Anbieter entwickeln sich schnell weiter, und Unterstützung wird häufig zuerst für einige Modelle einer Familie verfügbar, bevor andere folgen. Prüfen Sie daher die Dokumentation des jeweiligen Anbieters erneut, bevor Sie sich auf eine Tabellenzeile verlassen.
+</Note>
+
+| Provider | T1 `strict` | T2 `json_schema` | T3 `json_object` | Hinweise |
+|---|---|---|---|---|
+| **OpenAI** | ✅ | ✅ | ✅ | Die Referenzimplementierung beider Strict-Stufen. Strict Function Calling und `response_format: json_schema` verwenden dieselbe Grammar Engine und dieselbe Schema-Teilmenge. `json_object` ist der ältere JSON-Modus, der aus Kompatibilitätsgründen beibehalten wird |
+| **Anthropic** | ⚠️ | ⚠️ | ❌ | Die Messages API bietet überhaupt kein `response_format`; `input_schema` von Tools wird validiert, aber nicht vom Decoder erzwungen. Strict Tool Use und ein schema-beschränktes Ausgabeformat sind bei aktuellen Claude-Modellen hinter einem Beta-Header verfügbar. FIM One greift über LiteLLM auf Anthropic zu. LiteLLM simuliert den JSON-Modus durch Prefill und verwendet die Beta-Funktion nicht, daher ist hier nichts davon aktiv |
+| **Gemini** | ✅ | ✅ | ✅ | `responseSchema` (eine Teilmenge von OpenAPI 3.0) und das spätere `responseJsonSchema` werden vom Decoder erzwungen, und der OpenAI-kompatible Endpunkt akzeptiert `response_format: json_schema`. Erzwungenes Aufrufen verwendet `ANY` mit `allowed_function_names` |
+| **xAI (Grok)** | ✅ | ✅ | ✅ | OpenAI-kompatible Oberfläche einschließlich Strict Structured Outputs |
+| **Mistral** | ✅ | ✅ | ✅ | Benutzerdefinierte Structured Outputs akzeptieren ein vom Benutzer bereitgestelltes JSON Schema |
+| **DeepSeek** | ❌ | ❌ | ✅ | Die JSON-Ausgabe ist ausschließlich `json_object`. Laut Dokumentation muss der Prompt das Wort „json“ enthalten und ein Beispiel zeigen. Das ist ein T4-Mechanismus, der an einen T3-Parameter angehängt ist. `deepseek-reasoner` lehnt außerdem eine erzwungene Tool-Auswahl ab, daher ist sein schema-gesteuerter Pfad an beiden Enden geschlossen |
+| **Qwen** (DashScope) | ⚠️ | ⚠️ | ✅ | `json_object` ist auf dem Kompatibilitätsendpunkt verfügbar. Schema-beschränktes Decoding ist bei selbst gehostetem Qwen über den Serving-Stack zuverlässig, nicht jedoch unbedingt über die API; die Unterstützung von `json_schema` durch DashScope selbst variiert je nach Modellgeneration. Für jedes Modell einzeln prüfen |
+| **GLM** (Zhipu / Z.AI) | ❌ | ⚠️ | ✅ | `json_object` ist auf dem OpenAI-kompatiblen Endpunkt verfügbar. Eine erzwungene Tool-Auswahl wird grundsätzlich nicht unterstützt. Deshalb wird in Tabelle B `tool_choice_enabled=false` als empfohlene Einstellung angegeben. Behandeln Sie `json_schema` als nicht verfügbar, sofern die Plattform es nicht für Ihr Modell dokumentiert |
+| **Kimi** (Moonshot) | ⚠️ | ⚠️ | ✅ | `json_object` ist dokumentiert. Thinking-Varianten akzeptieren nur die Tool-Auswahl `auto`; bei diesen kann der T1-Pfad daher unabhängig von der Unterstützung von `strict` nicht erzwungen werden |
+| **MiniMax** | ⚠️ | ⚠️ | ✅ | Function Calling funktioniert auch bei dauerhaft aktiviertem Thinking mit einer erzwungenen Auswahl. Damit ist dies unter den Modellen mit dauerhaftem Thinking der am besten nutzbare T1-Pfad. Eine Durchsetzung auf Schemaebene ist nicht dokumentiert; gehen Sie davon aus, dass T1 nicht Strict ist |
+| **Doubao** (Volcengine Ark) | ⚠️ | ⚠️ | ✅ | Ark dokumentiert Structured Output für Teile der Doubao-Produktlinie. Die Abdeckung ist modellabhängig. Prüfen Sie daher, ob das Modell Ihres Kontos diese Funktion unterstützt |
+| **Ollama / vLLM / llama.cpp** | ✅ | ✅ | ✅ | Die stärkste Unterstützung für die Stufen auf dieser Liste und zugleich die am wenigsten beworbene. Grammar-beschränktes Decoding (GBNF, XGrammar, Outlines) läuft lokal. Dadurch kann ein selbst gehostetes 14B-Modell eine Garantie erhalten, die mehrere der oben genannten gehosteten APIs nicht bieten können. Je nach Server wird dies als `format` von Ollama, als Parameter für Guided Decoding von vLLM oder als OpenAI-kompatibles `response_format` bereitgestellt |
+
+Drei Muster sind eine eigene Erwähnung wert, weil sie die Struktur der Tabelle erklären, statt sie nur zu wiederholen.
+
+**T3 ist universell, T2 nicht.** Jeder von FIM One unterstützte Provider bietet `json_object`, während ungefähr die Hälfte eine Schema-Stufe anbietet. Ein portabler Pfad für Structured Output muss daher auf T3 oder darunter aufbauen. Das erklärt, warum die Kette von FIM One so aussieht. T2 hinzuzufügen bedeutet, ein Flag für die Fähigkeiten jedes einzelnen Modells hinzuzufügen, keinen globalen Schalter.
+
+**Dauerhaft aktiviertes Thinking schließt tendenziell die T1-Tür.** GLM, die Thinking-Modelle von Kimi und `deepseek-reasoner` schränken eine erzwungene Tool-Auswahl ein oder lehnen sie ab, und Anthropic lehnt sie ab, während Thinking aktiv ist. MiniMax ist das Gegenbeispiel. Wenn diese Tür geschlossen ist, bleibt T2 als einzige schema-gesteuerte Option. Deshalb ist die fehlende Stufe bei einem Deployment chinesischer Modelle von größerer Bedeutung als bei OpenAI.
+
+**Selbsthosting kehrt die übliche Reihenfolge um.** Beschränktes Decoding ist eine Eigenschaft des Serving-Stacks. Daher steht es auf einem lokalen Checkpoint zur Verfügung, dessen Befolgung von Anweisungen deutlich schwächer ist als die eines Frontier-Modells. Die Modelle, die Schema-Gating am dringendsten benötigen, können es am ehesten erhalten.
 
 ## Die Bedrock-Prefill-Falle
 
@@ -119,12 +213,12 @@ Wenn sowohl Level 1 (native_fc) als auch Level 2 (json_mode) auf Bedrock fehlsch
 
 ### Die Lösung: json_mode_enabled
 
-Ein pro-Modell-Flag `json_mode_enabled` steuert, ob Level 2 (json_mode) jemals versucht wird:
+Ein modellbezogenes `json_mode_enabled`-Flag steuert, ob Level 2 (`json_mode`) überhaupt versucht wird:
 
-- **DB-konfigurierte Modelle**: Umschalter in Admin → Models → Advanced settings. Das Flag wird auf `ModelProviderModel.json_mode_enabled` gespeichert (Standard `TRUE`).
-- **ENV-konfigurierte Modelle**: setzen Sie `LLM_JSON_MODE_ENABLED=false` in Ihrer Umgebung.
-- **Auswirkung**: wenn deaktiviert, gibt `abilities["json_mode"]` `False` zurück → `response_format` wird nie übergeben → keine Prefill → Bedrock funktioniert. Die Degradationskette wird zu `native_fc → plain_text`, wobei der fehlgeschlagene json_mode-Aufruf vollständig übersprungen wird.
-- **Kein Qualitätsverlust**: das Modell gibt weiterhin gültiges JSON zurück, da das System-Prompt es anweist. Die plain_text-Ebene verwendet `extract_json()` zum Parsen von JSON aus Freitext-Inhalten, was bei modernen Modellen zuverlässig funktioniert.
+- **Datenbankkonfigurierte Modelle**: In Admin → Modelle → Erweiterte Einstellungen umschalten. Das Flag wird in `ModelProviderModel.json_mode_enabled` gespeichert (Standardwert `TRUE`).
+- **ENV-konfigurierte Modelle**: `LLM_JSON_MODE_ENABLED=false` in Ihrer Umgebung festlegen.
+- **Auswirkung**: Wenn das Flag deaktiviert ist, gibt `abilities["json_mode"]` `False` zurück → `response_format` wird nie übergeben → kein Prefill → Bedrock funktioniert. Die Degradationskette wird zu `native_fc → plain_text` und überspringt den zum Scheitern verurteilten `json_mode`-Aufruf vollständig.
+- **Kosten des Überspringens**: Das Modell gibt in der Praxis weiterhin gültiges JSON zurück, da der System-Prompt dies anfordert und `extract_json()` frei formatierten Inhalt bei modernen Modellen zuverlässig parst. Verloren geht nicht die Ausgabe, sondern die Garantie: Die Kette endet nun bei T4, wo ausschließlich der Prompt das Ergebnis einschränkt. Bei einer `anthropic/`-Route ist dieser Verlust weniger gravierend, als es zunächst scheint, da der emulierte JSON-Modus ohnehin keine Garantie auf Decoderebene bot.
 
 ## Thinking models + forced tool_choice
 

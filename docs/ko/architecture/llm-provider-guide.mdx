@@ -65,9 +65,9 @@ ReAct 엔진은 `abilities["tool_call"] = True`일 때 네이티브 함수 호�
 
 ### structured_llm_call — tool_choice=forced
 
-원샷 구조화된 추출(스키마 주석, DAG 계획, 계획 분석). 모델이 특정 가상 함수를 호출하도록 강제하여 구조화된 JSON 출력을 보장합니다. 이것은 공급자별 오류를 트리거하는 호출 사이트입니다.
+한 번의 호출로 수행하는 구조화된 추출(스키마 주석, DAG 계획, 계획 분석)입니다. 모델이 특정 가상 함수를 호출하도록 강제하여 구조화된 JSON 출력을 보장합니다. 이 호출 지점에서 제공업체별 오류가 발생합니다.
 
-`structured_llm_call`은 3단계 성능 저하 체인을 구현합니다:
+`structured_llm_call`은 3단계 성능 저하 체인을 구현합니다. 세 단계의 이름은 코드에서 따온 것이며, 번호는 [아래 섹션](#structured-output-the-four-guarantee-tiers)에서 설명하는 네 가지 보장 계층의 번호와 일치하지 않습니다.
 
 ```mermaid
 flowchart TD
@@ -84,7 +84,101 @@ flowchart TD
     PT -->|"Fail → retry once"| ERR["StructuredOutputError<br/>or default_value"]
 ```
 
-중요한 설계 차이점: `structured_llm_call`의 폴백은 **런타임**입니다 — 각 단계를 동적으로 시도하고 예외를 포착하여 통과합니다. ReAct 엔진의 모드 선택은 **빌드 타임**입니다 — 시작 시 `_native_mode_active`를 한 번 확인하고 전체 루프에 대해 한 가지 모드에 커밋합니다. 이는 `structured_llm_call`이 공급자별 400 오류에서 투명하게 복구할 수 있음을 의미하는 반면, ReAct는 모드가 처음부터 올바르게 선택되어야 합니다.
+핵심적인 설계 차이는 다음과 같습니다. `structured_llm_call`의 fallback은 **런타임**에 수행됩니다. 각 단계를 동적으로 시도하고 예외를 포착하여 다음 단계로 넘어갑니다. 반면 ReAct 엔진의 모드 선택은 **빌드 타임**에 수행됩니다. 시작 시 `_native_mode_active`를 한 번 확인하고 전체 루프에서 하나의 모드로 실행합니다. 따라서 `structured_llm_call`은 제공업체별 400 오류가 발생해도 투명하게 복구할 수 있지만, ReAct는 처음부터 모드가 올바르게 선택되어 있어야 합니다.
+
+## 구조화된 출력: 네 가지 보장 수준
+
+"구조화된 출력"은 서로 다른 네 가지 메커니즘을 포괄하는 표현입니다. 이 메커니즘은 모두 JSON을 생성하지만 동일한 수준의 보장을 제공하지는 않습니다. 차이를 만드는 것은 제약이 적용되는 위치입니다. 스키마에서 금지한 토큰을 디코더가 생성할 수 없도록 디코더 내부에 제약이 적용되거나, 단지 요청만 할 수 있는 프롬프트 내부에 제약이 적용됩니다.
+
+| 수준 | 요청에 포함되는 내용 | 페이로드가 전달되는 위치 | 보장되는 내용 | 적용 주체 |
+|---|---|---|---|---|
+| **T1 — 네이티브 함수 호출, `strict: true`** | 함수 정의에 `strict`가 설정된 `tools=[…]` | `tool_calls[0].function.arguments`의 JSON 문자열 | 스키마 수준: 모든 필수 필드가 포함되고, 선언되지 않은 키가 없으며, 타입과 열거형이 올바름 | 디코더 상태 머신 |
+| **T2 — `response_format: {"type": "json_schema"}`** | `response_format` 내부의 스키마 자체와 `strict: true` | `message.content`의 JSON 문자열 | T1과 동일한 스키마 수준의 보장이 적용되지만, 도구 호출이 아닌 어시스턴트 자체의 응답에 적용됨 | 디코더 상태 머신 |
+| **T3 — `response_format: {"type": "json_object"}`** | 스키마 없이 타입만 지정 | `message.content`의 JSON 문자열 | 구문 수준만 보장: 텍스트가 JSON으로 파싱됨. 어떤 키가 포함되는지는 제한되지 않음 | 디코더(구문) |
+| **T4 — 지침이 포함된 자유 형식 텍스트** | 없음. 프롬프트에서 스키마를 설명함 | `message.content`, 설명문이나 코드 펜스로 감싸질 수 있음 | 없음 | 프롬프트 |
+
+T1과 T2를 뒷받침하는 메커니즘은 제약 디코딩입니다. 제공업체는 스키마를 문법으로 컴파일하고, 각 디코딩 단계에서 해당 출력이 스키마에 따라 파싱되지 않도록 만드는 모든 토큰을 마스킹합니다. 필수 필드는 반드시 출력되기 전까지 객체를 닫게 만드는 토큰이 허용 집합에 포함되지 않으므로 건너뛸 수 없습니다. 이는 "모델에 정중하게 요청했고 모델이 따랐다"는 주장과는 다른 종류의 보장이며, 프롬프트 준수가 보장되지 않는 temperature 1이나 소형 모델에서도 T1/T2가 보장되는 이유입니다.
+
+### T1과 T2는 서로 대체할 수 없습니다
+
+두 방식은 서로 다른 채널을 통해 동일한 보장을 제공하며, 채널은 세 가지 측면에서 중요합니다.
+
+**턴의 형태가 다릅니다.** T1은 도구 호출 턴을 반환하며, 모델이 *행동하기로 결정했음*을 의미합니다. T2는 일반적인 assistant 메시지를 반환하며, 모델이 특정 형태로 *답변했음*을 의미합니다. 호출자가 에이전트 루프가 아닌 하나의 추출만 원할 때 T2는 모델이 "호출"할 가상 함수를 만들어 내지 않고 그 의도를 직접 전달합니다.
+
+**T1을 강제하면 사고 과정과 충돌합니다.** T1에서 스키마로 제한된 페이로드를 얻으려면 일반적으로 선택을 강제해야 하며, `required` 또는 이름이 지정된 함수 중 하나를 사용합니다. 여러 provider는 확장된 사고 과정이 활성화된 상태에서 강제된 도구 선택을 거부합니다. 아래 표 B에는 이를 지원하는 provider가 정리되어 있습니다. T2에는 이러한 충돌이 없습니다. T2는 도구 제약이 아니라 응답 제약이므로, 사고 과정이 활성화된 상태에서도 동작하는 유일한 스키마 제한 경로입니다. 추론 모델을 표준으로 사용하는 배포 환경에서는 이것이 스타일이 아닌 실용적인 측면에서 T2를 선택해야 하는 이유입니다.
+
+**T1은 T2에는 없는 스키마 연결 작업을 한 라운드 추가로 요구합니다.** 가상 함수에는 이름과 설명이 필요하며, 모델이 해당 함수를 호출하지 않고 거부할 수 있도록 허용할지 결정해야 합니다.
+
+### T2의 비용
+
+제약 디코딩은 무료가 아니며, 이미 보유한 스키마가 일반적으로 해당 스키마가 허용하는 스키마와 일치하지 않습니다.
+
+- **스키마의 부분 집합.** OpenAI의 strict mode에서는 모든 객체에 `additionalProperties: false`를 지정하고 모든 속성을 `required`에 나열해야 합니다. 선택 사항은 `required`에서 생략하는 대신 `null`과의 유니온으로 표현합니다. 루트는 객체여야 합니다. 전체 속성 수와 중첩 깊이에도 제한이 있습니다. 직접 작성한 스키마 대부분은 사용 가능해지기 전에 수정이 필요합니다.
+- **문법 컴파일.** 새로운 스키마를 포함하는 첫 번째 요청은 provider 측에서 일회성 컴파일 지연을 발생시킵니다. 안정적인 스키마를 재사용하면 이 비용을 분산할 수 있지만, 요청마다 새로운 스키마를 생성하면 그렇지 않습니다.
+- **새로운 실패 지점.** 응답하지 않는 모델은 스키마 형태의 객체 대신 refusal을 반환하므로, 호출자는 이를 처리하는 분기를 추가해야 합니다.
+
+### 어떤 tier도 보장하지 않는 것
+
+모든 tier는 형식을 제한합니다. 진실성을 보장하는 tier는 없습니다. T2 응답은 스키마에 완전히 부합하면서도 사실과 다를 수 있으며, enum으로 제한된 필드는 허용된 값 중 어느 것도 올바르지 않은 경우에도 그중 하나를 반환합니다. 디코더의 역할은 정답을 아는 것이 아니라 출력이 문법의 범위 안에 있도록 유지하는 것이기 때문입니다. 스키마 게이팅은 파싱 실패와 필드 형식 오류를 제거합니다. 하지만 값이 무엇을 의미하는지 확인해야 할 필요성까지 없애지는 않습니다.
+
+<Warning>
+**두 가지 번호 체계가 있으며, 서로 일치하지 않습니다.** 이 페이지에서는 위의 보장 tier에 **T1–T4**를 사용합니다. 또한 `structured_llm_call`의 성능 저하 체계에 있는 세 단계에는 **Level 1/2/3**을 사용하며, 각 단계의 이름은 코드(`native_fc`, `json_mode`, `plain_text`)에서 따왔습니다. FIM One의 Level 2는 `json_object`이며, 이는 T2가 아닌 **T3**입니다. 이 체계에 세 단계만 있는 이유는 tier가 세 개뿐이어서가 아니라 T2를 건너뛰기 때문입니다.
+</Warning>
+
+### FIM One의 위치
+
+| `structured_llm_call` 수준 | 등급 | 코드가 실제로 수행하는 작업 |
+|---|---|---|
+| Level 1 — `native_fc` | **`strict`가 없는 T1** | `_build_tool_def`는 `name` / `description` / `parameters`만 내보냅니다. 호출 지점에서 `strict`를 설정하는 곳이 없으므로 `responses_adapter.py`의 `convert_tools`는 기본값인 `False`를 사용합니다. 따라서 스키마는 모델이 생성해야 할 내용에 대한 설명으로 전달될 뿐, 모델이 생성할 수 있는 내용을 제한하지 않습니다. |
+| *(없음)* | **T2** | 구현되지 않았습니다. 코드베이스 어디에도 `json_schema`가 나타나지 않으며, `abilities`에도 모델별 지원 여부를 표현할 수 있는 플래그가 없습니다. |
+| Level 2 — `json_mode` | **T3** | `structured.py::_call_llm`과 `react.py::_json_response_format`에 `{"type": "json_object"}`로 하드코딩되어 있습니다. |
+| Level 3 — `plain_text` | **T4** | 자유 형식 콘텐츠에 `extract_json()`을 적용하며, 호출 지점별로 선택적인 정규 표현식 폴백을 사용할 수 있습니다. |
+
+현재 설계의 정직한 한계는 다음 다섯 가지입니다.
+
+1. **체인에는 스키마로 제한된 대체 단계가 없습니다.** Level 1이 실패하면 다음 단계는 `json_object`이며, 이는 텍스트가 파싱된다는 것만 보장합니다. 필드를 계속 강제하는 중간 단계는 없습니다.
+2. **Level 1의 보장은 이름이 암시하는 것보다 약합니다.** `strict`가 없으면 네이티브 함수 호출은 2024년 이전의 비엄격 방식으로 동작합니다. 모델은 일반적으로 스키마를 따르지만, 필수 필드를 누락하거나, 존재하지 않는 키를 만들거나, 숫자로 선언된 위치에 문자열을 반환하는 것이 방지되지는 않습니다.
+3. **`anthropic/` 경로에서는 Level 2가 실제로 T3가 아닙니다.** Anthropic Messages API에는 `response_format`이 없으므로 LiteLLM은 assistant 프리필을 삽입해 JSON 모드를 에뮬레이션합니다. 이는 프롬프트 계층의 장치이므로 실질적인 보장은 T4와 T3 사이에 있으며, T3 수준의 보장을 제공하지 않습니다. 아래에 설명된 Bedrock 프리필 문제는 이 에뮬레이션이 명시적으로 실패하는 경우입니다. 더 조용한 문제는 매개변수 이름이 암시하는 보장이 애초에 제공되지 않았다는 점입니다.
+4. **이후 결과를 스키마에 대해 검증하는 과정이 없습니다.** `jsonschema`는 의존성에 포함되어 있지 않습니다. 수행되는 검사는 무엇이든 선택적 `parse_fn` 내부의 호출 지점별 검사이며, 엄격성은 호출 지점마다 다릅니다.
+5. **실패가 드러나지 않고 흡수됩니다.** 거의 모든 호출자가 `default_value`를 전달하므로, 체인을 모두 소진해도 예외가 발생하는 대신 그럴듯해 보이는 객체가 반환됩니다. `StructuredCallResult.level_used`는 값을 생성한 단계를 기록하지만, 어떤 호출 지점에서도 이를 읽지 않습니다. 또한 `default_value` 경로에서는 실제로 아무것도 생성되지 않은 체인인데도 `plain_text`로 보고합니다.
+
+**현재 실제로 어느 단계에 있는지 확인하는 방법.** `structured_llm_call`은 완료된 호출마다 `INFO` 수준으로 한 줄을 기록합니다. 이 로그는 데이터가 `parse_fn`을 통과한 후에만 생성되므로, 실제로 성공한 단계를 나타냅니다.
+
+```
+structured_llm_call: fn=classify_mode level=native_fc attempt=first calls=1
+structured_llm_call: fn=annotate_tables level=json_mode attempt=reformat_retry calls=3
+```
+
+전체 실패는 `level=none outcome=default_value`로 `WARNING` 수준에 기록됩니다. 하루 동안의 트래픽에서 이 두 줄을 grep하는 것이 특정 배포 환경에서 누락된 T2 단계가 비용을 발생시키는지 확인할 수 있는 유일한 방법입니다. `default_value` 설계 때문에 증상이 오류가 아니라 평범하지 못한 응답으로 나타나기 때문입니다.
+
+### 각 tier의 Provider 지원
+
+<Note>
+**이 표는 FIM One의 코드 경로가 아니라 upstream API를 설명합니다.** 이 페이지의 다른 모든 표에는 동작을 구현하는 함수가 명시되어 있습니다. 이 표에는 해당 함수를 명시할 수 없습니다. FIM One은 어떤 provider에서도 T2 기능을 사용하지 않으며, 어느 provider에도 `strict`를 설정하지 않기 때문입니다. 이 표는 T2 구현을 결정할 때 실제로 사용 가능한 기능을 기준으로 검토할 수 있도록 제공됩니다. Vendor의 기능은 빠르게 변경되며, 지원이 한 제품군의 일부 모델에 먼저 적용되는 경우가 많습니다. 따라서 표의 항목을 사용하기 전에 vendor의 공식 문서를 다시 확인하세요.
+</Note>
+
+| Provider | T1 `strict` | T2 `json_schema` | T3 `json_object` | Notes |
+|---|---|---|---|---|
+| **OpenAI** | ✅ | ✅ | ✅ | 두 strict tier의 reference implementation입니다. Strict function calling과 `response_format: json_schema`는 하나의 grammar engine과 하나의 schema subset을 공유합니다. `json_object`는 호환성을 위해 유지되는 이전 JSON mode입니다 |
+| **Anthropic** | ⚠️ | ⚠️ | ❌ | Messages API에는 `response_format`이 전혀 없으며, tool의 `input_schema`는 decoder가 강제하는 것이 아니라 검증만 수행합니다. 최근 Claude 모델에서는 beta header를 통해 strict tool use와 schema-constrained output format을 사용할 수 있습니다. FIM One은 LiteLLM을 통해 Anthropic에 연결되며, LiteLLM은 prefill로 JSON mode를 에뮬레이트하고 beta를 사용하지 않습니다. 따라서 이 기능들은 여기에서 활성화되어 있지 않습니다 |
+| **Gemini** | ✅ | ✅ | ✅ | `responseSchema`(OpenAPI 3.0 subset)와 이후 추가된 `responseJsonSchema`는 decoder가 강제하며, OpenAI-compatible endpoint는 `response_format: json_schema`를 허용합니다. 강제 호출은 `allowed_function_names`와 함께 `ANY`를 사용합니다 |
+| **xAI (Grok)** | ✅ | ✅ | ✅ | strict structured outputs를 포함한 OpenAI-compatible surface입니다 |
+| **Mistral** | ✅ | ✅ | ✅ | 사용자 지정 JSON Schema를 허용하는 custom structured outputs를 지원합니다 |
+| **DeepSeek** | ❌ | ❌ | ✅ | JSON output은 `json_object`만 지원합니다. 문서에 명시된 요구 사항은 prompt에 "json"이라는 단어를 포함하고 예시를 보여 주는 것입니다. 이는 T3 parameter에 연결된 T4 device입니다. 또한 `deepseek-reasoner`는 강제된 tool choice를 거부하므로 schema-gated path가 양쪽 끝에서 모두 차단됩니다 |
+| **Qwen** (DashScope) | ⚠️ | ⚠️ | ✅ | compatibility endpoint에서 `json_object`를 사용할 수 있습니다. Schema-constrained decoding은 API보다 serving stack을 통해 self-hosted Qwen에서 안정적으로 작동합니다. DashScope 자체의 `json_schema` 지원 여부는 model generation에 따라 다릅니다. model별로 확인하세요 |
+| **GLM** (Zhipu / Z.AI) | ❌ | ⚠️ | ✅ | OpenAI-compatible endpoint에서 `json_object`를 사용할 수 있습니다. 강제된 tool choice는 아예 지원되지 않으므로 Table B에서는 `tool_choice_enabled=false`를 권장합니다. 플랫폼이 해당 model에 대해 지원한다고 문서화하지 않은 한 `json_schema`는 사용할 수 없는 것으로 간주하세요 |
+| **Kimi** (Moonshot) | ⚠️ | ⚠️ | ✅ | `json_object`가 문서화되어 있습니다. Thinking variant는 `auto` tool choice만 허용하므로, `strict` 지원 여부와 관계없이 해당 모델에서는 T1 path를 강제할 수 없습니다 |
+| **MiniMax** | ⚠️ | ⚠️ | ✅ | thinking이 항상 활성화된 상태에서도 강제 choice를 사용한 function calling이 작동하므로, always-thinking model 중 가장 사용하기 쉬운 T1 경로입니다. Schema-level enforcement는 문서화되어 있지 않으므로 T1은 non-strict로 간주하세요 |
+| **Doubao** (Volcengine Ark) | ⚠️ | ⚠️ | ✅ | Ark는 Doubao 제품군 일부에 대해 structured output을 문서화하고 있습니다. 지원 범위는 model별로 다르므로 계정의 model이 이를 지원한다고 가정하기 전에 확인하세요 |
+| **Ollama / vLLM / llama.cpp** | ✅ | ✅ | ✅ | 이 목록의 어떤 항목보다 tier 지원이 강력하면서도 가장 덜 알려져 있습니다. Grammar-constrained decoding(GBNF, XGrammar, Outlines)이 로컬에서 실행되므로, self-hosted 14B model에 위의 여러 hosted API가 제공하지 못하는 보장을 적용할 수 있습니다. 서버에 따라 Ollama의 `format`, vLLM의 guided decoding parameters 또는 OpenAI-compatible `response_format`으로 노출됩니다 |
+
+단순히 표를 다시 설명하는 것이 아니라 표의 형태를 이해하는 데 도움이 되는 세 가지 패턴을 살펴보겠습니다.
+
+**T3는 보편적이지만 T2는 그렇지 않습니다.** FIM One이 지원하는 모든 provider는 `json_object`를 제공하지만, schema tier를 제공하는 provider는 대략 절반입니다. 따라서 이식 가능한 structured-output 경로는 T3 이하를 기반으로 구축해야 하며, 이것이 FIM One의 chain이 현재와 같은 형태를 갖는 이유입니다. T2를 추가하려면 전역 switch가 아니라 model별 capability flag를 추가해야 합니다.
+
+**항상 활성화된 thinking은 T1 경로를 닫는 경향이 있습니다.** GLM, Kimi의 thinking model, `deepseek-reasoner`는 모두 강제된 tool choice를 제한하거나 거부하며, Anthropic은 thinking이 활성화된 동안 이를 거부합니다. MiniMax는 이에 대한 반례입니다. 경로가 닫혀 있는 경우 T2가 남은 유일한 schema-gated option이므로, OpenAI보다 Chinese-model deployment에서 누락된 rung이 더 중요합니다.
+
+**Self-hosting은 일반적인 우선순위를 뒤집습니다.** Constrained decoding은 serving stack의 속성이므로, instruction-following이 frontier model보다 훨씬 약한 local checkpoint에서도 사용할 수 있습니다. Schema gating이 가장 필요한 model일수록 이를 적용할 수 있는 가능성도 가장 큽니다.
 
 ## Bedrock prefill 함정
 
@@ -117,14 +211,14 @@ The conversation must end with a user message.
 
 Level 1(native_fc)과 Level 2(json_mode)가 모두 Bedrock에서 실패하면, 시스템은 Level 3(plain_text)에서 복구됩니다. 아래에 설명된 `json_mode_enabled` 플래그는 낭비되는 Level 2 호출을 제거합니다.
 
-### 해결책: json_mode_enabled
+### 해결 방법: json_mode_enabled
 
-모델별 `json_mode_enabled` 플래그는 Level 2 (json_mode)를 시도할지 여부를 제어합니다:
+모델별 `json_mode_enabled` 플래그는 Level 2 (`json_mode`)를 시도할지 여부를 제어합니다.
 
-- **DB 구성 모델**: Admin → Models → Advanced settings에서 토글합니다. 플래그는 `ModelProviderModel.json_mode_enabled`에 저장됩니다 (기본값 `TRUE`).
-- **ENV 구성 모델**: 환경에서 `LLM_JSON_MODE_ENABLED=false`를 설정합니다.
-- **효과**: 비활성화되면 `abilities["json_mode"]`는 `False`를 반환 → `response_format`이 전달되지 않음 → prefill 없음 → Bedrock이 작동합니다. 성능 저하 체인은 `native_fc → plain_text`가 되어 실패할 json_mode 호출을 완전히 건너뜁니다.
-- **품질 손실 없음**: 시스템 프롬프트가 모델에 JSON을 반환하도록 지시하므로 모델은 여전히 유효한 JSON을 반환합니다. plain_text 레벨은 `extract_json()`을 사용하여 자유 형식 콘텐츠에서 JSON을 파싱하며, 이는 최신 모델에서 안정적으로 작동합니다.
+- **DB로 구성된 모델**: 관리자 → 모델 → 고급 설정에서 토글합니다. 이 플래그는 `ModelProviderModel.json_mode_enabled`에 저장되며 기본값은 `TRUE`입니다.
+- **ENV로 구성된 모델**: 환경에 `LLM_JSON_MODE_ENABLED=false`를 설정합니다.
+- **효과**: 비활성화하면 `abilities["json_mode"]`가 `False`를 반환하므로 `response_format`이 전달되지 않고, 프리필도 수행되지 않아 Bedrock이 작동합니다. 성능 저하 체인은 `native_fc → plain_text`가 되며, 문제가 발생하는 `json_mode` 호출을 완전히 건너뜁니다.
+- **건너뛰기의 비용**: 시스템 프롬프트가 JSON 형식으로 반환하도록 요청하고 최신 모델에서는 `extract_json()`이 자유 형식 콘텐츠를 안정적으로 파싱하므로, 실제로 모델은 여전히 유효한 JSON을 반환합니다. 손실되는 것은 출력이 아니라 보장입니다. 이제 체인은 T4에서 끝나며, 결과를 제약하는 것은 프롬프트뿐입니다. `anthropic/` 라우트에서는 에뮬레이트된 JSON 모드가 디코더 수준의 보장을 제공한 적이 없으므로 이러한 손실이 보이는 것보다 작습니다.
 
 ## Thinking models + forced tool_choice
 

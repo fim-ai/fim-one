@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Added
 
+- **Structured-output calls report which extraction level answered them.** Each call logs the level that actually produced the result, and logs a warning when every level fails and a default value is returned, so a silent degradation to free-text parsing is now visible in the logs.
 - **Database columns can be marked as personal data.** A column marked PII in the connector's schema manager still appears in the schema the agent sees, but its values come back masked in every query result, `SELECT *` included. The connector call log records which columns were masked and whether the connector was read-only.
 
 

@@ -105,6 +105,25 @@ def _build_tool_def(name: str, schema: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _log_outcome(fn_name: str, level: str, attempt: str, calls: int) -> None:
+    """Record which extraction level actually produced the returned value.
+
+    Emitted only once a level's data has survived ``parse_fn``, so the line
+    reports a level that succeeded rather than one that merely parsed.  It
+    is the only place the chain's real level distribution is observable:
+    ``StructuredCallResult.level_used`` is returned to callers but no call
+    site reads it, and most callers pass ``default_value``, which turns a
+    total failure into a plausible-looking result.
+    """
+    logger.info(
+        "structured_llm_call: fn=%s level=%s attempt=%s calls=%d",
+        fn_name,
+        level,
+        attempt,
+        calls,
+    )
+
+
 def _same_model(a: BaseLLM, b: BaseLLM) -> bool:
     """Whether two LLM handles point at the same underlying model.
 
@@ -298,13 +317,9 @@ async def structured_llm_call(
             last_content = content
 
         if data is not None:
-            logger.info(
-                "structured_llm_call: level=%s extracted data keys=%s",
-                level,
-                list(data.keys()) if isinstance(data, dict) else type(data).__name__,
-            )
             value = _transform(data, parse_fn)
             if value is not None:
+                _log_outcome(function_name, level, "first", calls)
                 return StructuredCallResult(
                     value=value,
                     raw_data=data,
@@ -335,6 +350,7 @@ async def structured_llm_call(
             if data2 is not None:
                 value = _transform(data2, parse_fn)
                 if value is not None:
+                    _log_outcome(function_name, level, "reformat_retry", calls)
                     return StructuredCallResult(
                         value=value,
                         raw_data=data2,
@@ -372,6 +388,15 @@ async def structured_llm_call(
 
     # --- All levels failed ---
     if default_value is not _SENTINEL:
+        # ``level_used`` has no "failed" member, so it reports the last level
+        # tried rather than one that succeeded.  This log line, not that
+        # field, is the signal that the chain produced nothing.
+        logger.warning(
+            "structured_llm_call: fn=%s level=none calls=%d "
+            "outcome=default_value (all levels exhausted)",
+            function_name,
+            calls,
+        )
         return StructuredCallResult(
             value=default_value,
             raw_data={},

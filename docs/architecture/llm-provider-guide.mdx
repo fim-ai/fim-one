@@ -67,7 +67,7 @@ The ReAct engine uses native function calling (`_run_native`) when `abilities["t
 
 One-shot structured extraction (schema annotation, DAG planning, plan analysis). Forces the model to call a specific virtual function, guaranteeing structured JSON output. This is the call site that triggers provider-specific errors.
 
-`structured_llm_call` implements a 3-level degradation chain:
+`structured_llm_call` implements a 3-level degradation chain. The three rungs are named after the code, and their numbering is not the same as the four guarantee tiers described in [the section below](#structured-output-the-four-guarantee-tiers):
 
 ```mermaid
 flowchart TD
@@ -85,6 +85,100 @@ flowchart TD
 ```
 
 The critical design difference: `structured_llm_call`'s fallback is **runtime** — it dynamically tries each level and catches exceptions to fall through. The ReAct engine's mode selection is **build-time** — it checks `_native_mode_active` once at the start and commits to one mode for the entire loop. This means `structured_llm_call` can recover from provider-specific 400 errors transparently, while ReAct relies on the mode being correctly chosen upfront.
+
+## Structured output: the four guarantee tiers
+
+"Structured output" is one phrase covering four different mechanisms. They all produce JSON and they do not offer the same guarantee. What separates them is where the constraint lives: inside the decoder, which cannot emit a token the schema forbids, or inside the prompt, which can only ask.
+
+| Tier | What the request carries | Where the payload arrives | What is guaranteed | Enforced by |
+|---|---|---|---|---|
+| **T1 — native function calling, `strict: true`** | `tools=[…]` with `strict` set on the function definition | A JSON string in `tool_calls[0].function.arguments` | Schema-level: every required field present, no undeclared keys, types and enums correct | Decoder state machine |
+| **T2 — `response_format: {"type": "json_schema"}`** | The schema itself, inside `response_format`, with `strict: true` | A JSON string in `message.content` | Schema-level, same as T1, but on the assistant's own reply rather than on a tool call | Decoder state machine |
+| **T3 — `response_format: {"type": "json_object"}`** | The type alone, no schema | A JSON string in `message.content` | Syntactic only: the text parses as JSON. Which keys appear is unconstrained | Decoder (syntax) |
+| **T4 — free text plus instructions** | Nothing. The schema is described in the prompt | `message.content`, possibly wrapped in prose or code fences | Nothing | The prompt |
+
+The mechanism behind T1 and T2 is constrained decoding. The provider compiles the schema into a grammar and, at each decoding step, masks out every token that would make the output unparseable against it. A required field cannot be skipped because the token that would close the object is not in the allowed set until that field has been emitted. This is a different kind of claim from "the model was asked nicely and complied," and it is why T1/T2 hold at temperature 1 and on small models, where prompt compliance does not.
+
+### T1 and T2 are not interchangeable
+
+They give the same guarantee through different channels, and the channel matters in three ways.
+
+**The turn shape differs.** T1 returns a tool-call turn; the model has decided to *act*. T2 returns an ordinary assistant message; the model has *answered* in a shape. When the caller wants one extraction and not an agent loop, T2 says so directly instead of inventing a virtual function for the model to "call".
+
+**Forcing T1 collides with thinking.** Getting a schema-gated payload out of T1 usually means forcing the choice, either `required` or a named function. Several providers reject a forced tool choice while extended thinking is active. Table B below records which ones. T2 has no such conflict: it is a response constraint, not a tool constraint, so it is the only schema-gated path that survives thinking being on. For a deployment standardised on reasoning models, that is the practical argument for T2 rather than a stylistic one.
+
+**T1 costs a round of schema plumbing that T2 does not.** A virtual function needs a name, a description, and a decision about whether the model may decline to call it.
+
+### What T2 costs
+
+Constrained decoding is not free and the schema you already have is usually not the schema it accepts.
+
+- **A schema subset.** OpenAI's strict mode wants `additionalProperties: false` on every object and every property listed in `required`; optionality is expressed as a union with `null` rather than by omission from `required`. Root must be an object. There are caps on total properties and nesting depth. Most hand-written schemas need editing before they are eligible.
+- **Grammar compilation.** The first request carrying a new schema pays a one-off compile latency on the provider side. Reusing a stable schema amortises it; generating a fresh schema per request does not.
+- **A new failure surface.** A model that will not answer returns a refusal rather than a schema-shaped object, so the caller needs a branch for it.
+
+### What no tier guarantees
+
+Every tier constrains form. None constrains truth. A T2 response can be perfectly schema-valid and factually wrong, and an enum-constrained field will return one of the allowed values even when none of them is correct, because the decoder's job is to keep the output inside the grammar rather than to know the answer. Schema gating removes parse failures and field-shape bugs. It does not remove the need to check what the value says.
+
+<Warning>
+**Two numbering schemes, and they do not line up.** This page uses **T1–T4** for the guarantee tiers above. It uses **Level 1/2/3** for the three rungs of `structured_llm_call`'s degradation chain, which are named after the code (`native_fc`, `json_mode`, `plain_text`). FIM One's Level 2 is `json_object`, which is **T3**, not T2. The chain has three rungs because it skips T2 entirely, not because there are only three tiers.
+</Warning>
+
+### Where FIM One sits
+
+| `structured_llm_call` level | Tier | What the code actually does |
+|---|---|---|
+| Level 1 — `native_fc` | **T1 without `strict`** | `_build_tool_def` emits `name` / `description` / `parameters` and nothing else. No call site sets `strict`, so `convert_tools` in `responses_adapter.py` defaults it to `False`. The schema reaches the model as a description of what to produce, not as a constraint on what it can produce |
+| *(absent)* | **T2** | Not implemented. `json_schema` appears nowhere in the codebase, and `abilities` has no flag that could express per-model support for it |
+| Level 2 — `json_mode` | **T3** | `{"type": "json_object"}`, hardcoded in `structured.py::_call_llm` and `react.py::_json_response_format` |
+| Level 3 — `plain_text` | **T4** | `extract_json()` over free-form content, with an optional per-call-site regex fallback |
+
+Five consequences follow, and they are the honest limitations of the current design.
+
+1. **The chain has no schema-gated rung to fall back to.** When Level 1 fails, the next rung down is `json_object`, which guarantees only that the text parses. There is no intermediate step that still enforces fields.
+2. **Level 1's guarantee is weaker than its name suggests.** Without `strict`, native function calling is the pre-2024 non-strict variety: the model usually honours the schema and is not prevented from omitting a required field, inventing a key, or returning a string where a number was declared.
+3. **On `anthropic/` routes, Level 2 is not really T3.** The Anthropic Messages API has no `response_format`, so LiteLLM emulates JSON mode by injecting an assistant prefill. That is a prompt-layer device, which puts the effective guarantee between T4 and T3 rather than at T3. The Bedrock prefill trap documented below is this emulation failing loudly; the quieter cost is that the guarantee was never the one the parameter name implies.
+4. **Nothing validates the result against the schema afterwards.** `jsonschema` is not a dependency. Whatever checking happens is per-call-site, inside the optional `parse_fn`, and its rigour varies by call site.
+5. **Failure is absorbed rather than surfaced.** Nearly every caller passes `default_value`, so an exhausted chain returns a plausible-looking object instead of raising. `StructuredCallResult.level_used` records which rung produced the value, but no call site reads it, and on the `default_value` path it reports `plain_text` for a chain that in fact produced nothing.
+
+**How to see which rung you are actually on.** `structured_llm_call` logs one line per completed call at `INFO`, emitted only after the data has survived `parse_fn`, so it names a rung that genuinely succeeded:
+
+```
+structured_llm_call: fn=classify_mode level=native_fc attempt=first calls=1
+structured_llm_call: fn=annotate_tables level=json_mode attempt=reformat_retry calls=3
+```
+
+Total failure logs at `WARNING` with `level=none outcome=default_value`. Grepping these two lines over a day of traffic is the only way to tell whether the missing T2 rung costs anything in a given deployment, since the `default_value` design means the symptom is a mediocre answer rather than an error.
+
+### Provider support for each tier
+
+<Note>
+**This table documents upstream APIs, not FIM One code paths.** Every other table on this page names the function that implements the behaviour. This one cannot, because FIM One uses no T2 feature from any provider and sets `strict` on none of them. It is here so that a decision to implement T2 starts from what is actually available. Vendor capability moves quickly and support often lands on some models in a family before others; re-check the vendor's own documentation before relying on a row.
+</Note>
+
+| Provider | T1 `strict` | T2 `json_schema` | T3 `json_object` | Notes |
+|---|---|---|---|---|
+| **OpenAI** | ✅ | ✅ | ✅ | The reference implementation of both strict tiers. Strict function calling and `response_format: json_schema` share one grammar engine and one schema subset. `json_object` is the older JSON mode, kept for compatibility |
+| **Anthropic** | ⚠️ | ⚠️ | ❌ | No `response_format` on the Messages API at all; tool `input_schema` is validated rather than decoder-enforced. Strict tool use and a schema-constrained output format exist behind a beta header on recent Claude models. FIM One reaches Anthropic through LiteLLM, which emulates JSON mode by prefill and does not use the beta, so none of this is live here |
+| **Gemini** | ✅ | ✅ | ✅ | `responseSchema` (an OpenAPI 3.0 subset) and the later `responseJsonSchema` are decoder-enforced, and the OpenAI-compatible endpoint accepts `response_format: json_schema`. Forced calling is `ANY` with `allowed_function_names` |
+| **xAI (Grok)** | ✅ | ✅ | ✅ | OpenAI-compatible surface including strict structured outputs |
+| **Mistral** | ✅ | ✅ | ✅ | Custom structured outputs accept a user-supplied JSON Schema |
+| **DeepSeek** | ❌ | ❌ | ✅ | JSON output is `json_object` only. The documented requirement is that the prompt contain the word "json" and show an example, which is a T4 device attached to a T3 parameter. `deepseek-reasoner` additionally rejects a forced tool choice, so its schema-gated path is closed at both ends |
+| **Qwen** (DashScope) | ⚠️ | ⚠️ | ✅ | `json_object` is available on the compatibility endpoint. Schema-constrained decoding is reliable on self-hosted Qwen through the serving stack rather than the API; DashScope's own `json_schema` support varies by model generation. Verify per model |
+| **GLM** (Zhipu / Z.AI) | ❌ | ⚠️ | ✅ | `json_object` on the OpenAI-compatible endpoint. Forced tool choice is unsupported outright, which is why `tool_choice_enabled=false` is the recommended setting in Table B. Treat `json_schema` as unavailable unless the platform documents it for your model |
+| **Kimi** (Moonshot) | ⚠️ | ⚠️ | ✅ | `json_object` is documented. Thinking variants accept only `auto` tool choice, so on those the T1 path cannot be forced regardless of `strict` support |
+| **MiniMax** | ⚠️ | ⚠️ | ✅ | Function calling works with a forced choice even with thinking always on, which makes it the most usable T1 route among the always-thinking models. Schema-level enforcement is not documented; assume T1 is non-strict |
+| **Doubao** (Volcengine Ark) | ⚠️ | ⚠️ | ✅ | Ark documents structured output for parts of the Doubao line. Coverage is per model, so confirm before assuming the account's model has it |
+| **Ollama / vLLM / llama.cpp** | ✅ | ✅ | ✅ | The strongest tier support of anything on this list, and the least advertised. Grammar-constrained decoding (GBNF, XGrammar, Outlines) runs locally, so a self-hosted 14B can be given a guarantee that several hosted APIs above cannot offer. Exposed as Ollama's `format`, vLLM's guided decoding parameters, or an OpenAI-compatible `response_format` depending on the server |
+
+Three patterns are worth naming, because they explain the shape of the table rather than just restating it.
+
+**T3 is universal, T2 is not.** Every provider FIM One supports offers `json_object`, and roughly half offer a schema tier. A portable structured-output path therefore has to be built on T3 or below, which is the reason FIM One's chain looks the way it does. Adding T2 means adding a per-model capability flag, not a global switch.
+
+**Always-on thinking tends to close the T1 door.** GLM, Kimi's thinking models, and `deepseek-reasoner` all restrict or reject a forced tool choice, and Anthropic rejects it while thinking is active. MiniMax is the counterexample. Where the door is closed, T2 is the only remaining schema-gated option, which is why the missing rung matters more on a Chinese-model deployment than on an OpenAI one.
+
+**Self-hosting inverts the usual ordering.** Constrained decoding is a property of the serving stack, so it is available on a local checkpoint whose instruction-following is far weaker than a frontier model's. The models that need schema gating most are the ones most able to get it.
 
 ## The Bedrock prefill trap
 
@@ -124,7 +218,7 @@ A per-model `json_mode_enabled` flag controls whether Level 2 (json_mode) is eve
 - **DB-configured models**: toggle in Admin → Models → Advanced settings. The flag is stored on `ModelProviderModel.json_mode_enabled` (default `TRUE`).
 - **ENV-configured models**: set `LLM_JSON_MODE_ENABLED=false` in your environment.
 - **Effect**: when disabled, `abilities["json_mode"]` returns `False` → `response_format` is never passed → no prefill → Bedrock works. The degradation chain becomes `native_fc → plain_text`, skipping the doomed json_mode call entirely.
-- **No quality loss**: the model still returns valid JSON because the system prompt instructs it to. The plain_text level uses `extract_json()` to parse JSON from free-form content, which works reliably with modern models.
+- **Cost of the skip**: the model still returns valid JSON in practice, because the system prompt asks for it and `extract_json()` parses free-form content reliably on modern models. What is lost is the guarantee rather than the output: the chain now ends at T4, where nothing but the prompt constrains the result. On an `anthropic/` route that loss is smaller than it looks, since the emulated JSON mode was never a decoder-level guarantee either.
 
 ## Thinking models + forced tool_choice
 

@@ -12,7 +12,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ### Ajouté
 
-- **Les colonnes de base de données peuvent être marquées comme données personnelles.** Une colonne marquée comme PII dans le gestionnaire de schéma du connecteur continue d’apparaître dans le schéma visible par l’agent, mais ses valeurs sont masquées dans tous les résultats de requête, y compris avec `SELECT *`. Le journal des appels du connecteur enregistre les colonnes qui ont été masquées et indique si le connecteur était en lecture seule.
+- **Les appels à sortie structurée indiquent quel niveau d’extraction a fourni la réponse.** Chaque appel consigne le niveau qui a effectivement produit le résultat et journalise un avertissement lorsque tous les niveaux échouent et qu’une valeur par défaut est renvoyée. Une dégradation silencieuse vers l’analyse de texte libre est ainsi désormais visible dans les journaux.
+- **Les colonnes de base de données peuvent être marquées comme données personnelles.** Une colonne marquée comme PII dans le gestionnaire de schéma du connecteur reste présente dans le schéma visible par l’agent, mais ses valeurs sont masquées dans chaque résultat de requête, y compris avec `SELECT *`. Le journal des appels du connecteur indique quelles colonnes ont été masquées et si le connecteur était en lecture seule.
 
 
 ## [v0.8.12] - 2026-09-04

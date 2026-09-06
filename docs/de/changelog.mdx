@@ -12,7 +12,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ### Hinzugefügt
 
-- **Datenbankspalten können als personenbezogene Daten gekennzeichnet werden.** Eine im Schema-Manager des Connectors als PII gekennzeichnete Spalte wird weiterhin im Schema angezeigt, das der Agent sieht. Ihre Werte werden jedoch in jedem Abfrageergebnis maskiert, einschließlich `SELECT *`. Das Protokoll der Connector-Aufrufe erfasst, welche Spalten maskiert wurden und ob der Connector schreibgeschützt war.
+- **Aufrufe mit strukturierter Ausgabe geben an, auf welcher Extraktionsebene sie beantwortet wurden.** Jeder Aufruf protokolliert die Ebene, die tatsächlich das Ergebnis erzeugt hat, und gibt eine Warnung aus, wenn alle Ebenen fehlschlagen und ein Standardwert zurückgegeben wird. Dadurch ist eine stille Verschlechterung auf die Freitextanalyse jetzt in den Protokollen sichtbar.
+- **Datenbankspalten können als personenbezogene Daten markiert werden.** Eine im Schema-Manager des Connectors als PII markierte Spalte wird weiterhin im für den Agent sichtbaren Schema angezeigt, ihre Werte werden jedoch in jedem Abfrageergebnis maskiert, einschließlich bei `SELECT *`. Das Aufrufprotokoll des Connectors erfasst, welche Spalten maskiert wurden und ob der Connector schreibgeschützt war.
 
 
 ## [v0.8.12] - 2026-09-04

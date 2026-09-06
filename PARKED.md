@@ -242,6 +242,25 @@ Extensions to shipped subsystems. None has a requester.
 - **Agent Workspace remainder** — handoff notes, file browser UI,
   cross-session recall, and grep-able on-disk compaction segments. Chat wiring
   already shipped.
+- **Schema-gated structured output (T2)** — `response_format:
+  {"type": "json_schema"}` plus `strict: true` on native function calling, so
+  `structured_llm_call` gains a rung that enforces fields rather than only
+  syntax. Today the chain is non-strict function calling → `json_object` →
+  plain text, and the middle guarantee tier is missing entirely; the tiers and
+  per-provider support are written up in
+  `docs/architecture/llm-provider-guide.mdx`. Parked because every call site
+  but one passes `default_value`, so a failed extraction already degrades to a
+  safe default rather than an error, and consumers re-validate the fields they
+  care about by hand. The cost is not one branch: it needs a per-model
+  capability flag (`abilities` + a `model_configs` column + migration + admin
+  toggle) because only about half the supported providers offer the tier, and
+  strict mode's schema subset (`additionalProperties: false`, every field in
+  `required`) would mean rewriting most schemas in the tree.
+  **Trigger**: the `structured_llm_call` level logs show a non-trivial share of
+  traffic landing on `plain_text` or `default_value`, or a deployment
+  standardises on models whose thinking mode blocks forced tool choice (GLM,
+  Kimi thinking, `deepseek-reasoner`), which closes the T1 door and leaves T2
+  as the only schema-gated path.
 - **Prompt cache follow-ups** — a Gemini context-cache adapter and per-agent
   `cache_ttl`.
 - **Hot mid-stream DAG resume** — SSE reconnect re-attaches to a running turn.

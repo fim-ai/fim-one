@@ -63,11 +63,11 @@ flowchart TD
 
 ReAct 引擎在 `abilities["tool_call"] = True` 时使用原生函数调用（`_run_native`），否则回退到 JSON-in-content 模式（`_run_json`）。两种模式都使用 `"auto"`——区别在于工具是通过 `tools` 参数传递还是在系统提示中描述。详见 [ReAct 引擎——双模式执行](/architecture/react-engine#dual-mode-execution)。
 
-### structured_llm_call — tool_choice=forced
+### structured_llm_call——tool_choice=forced
 
-一次性结构化提取（模式注解、DAG 规划、计划分析）。强制模型调用特定的虚拟函数，保证结构化 JSON 输出。这是触发提供商特定错误的调用点。
+一次性结构化提取（架构注释、DAG规划、计划分析）。强制模型调用特定的虚拟函数，从而保证输出结构化JSON。这是触发提供商特定错误的调用位置。
 
-`structured_llm_call` 实现了一个 3 级降级链：
+`structured_llm_call`实现了三级降级链。这三个层级以代码命名，其编号与下文[结构化输出的四个保证层级](#structured-output-the-four-guarantee-tiers)并不相同：
 
 ```mermaid
 flowchart TD
@@ -84,7 +84,101 @@ flowchart TD
     PT -->|"Fail → retry once"| ERR["StructuredOutputError<br/>or default_value"]
 ```
 
-关键设计差异：`structured_llm_call` 的回退是**运行时**——它动态尝试每个级别并捕获异常以进行回退。ReAct 引擎的模式选择是**构建时**——它在开始时检查一次 `_native_mode_active` 并为整个循环提交到一种模式。这意味着 `structured_llm_call` 可以透明地从提供商特定的 400 错误中恢复，而 ReAct 依赖于模式在前期被正确选择。
+关键的设计差异在于：`structured_llm_call`的回退是**运行时**行为——它会动态尝试每个层级，并捕获异常以继续执行后续层级。ReAct引擎的模式选择则发生在**构建时**——它会在开始时检查一次`_native_mode_active`，并在整个循环中固定使用一种模式。这意味着`structured_llm_call`可以透明地从提供商特定的400错误中恢复，而ReAct依赖于在开始时正确选择模式。
+
+## 结构化输出：四个保证层级
+
+“结构化输出”是一个涵盖四种不同机制的术语。它们都会生成JSON，但提供的保证并不相同。区别在于约束存在于何处：是在解码器内部——它无法生成Schema禁止的token；还是在提示词中——它只能提出要求。
+
+| 层级 | 请求携带的内容 | 载荷到达的位置 | 保证内容 | 强制执行方 |
+|---|---|---|---|---|
+| **T1——原生函数调用，`strict: true`** | `tools=[…]`，并在函数定义中设置`strict` | `tool_calls[0].function.arguments`中的JSON字符串 | Schema级别：所有必填字段均存在，不含未声明的键，类型和枚举值均正确 | 解码器状态机 |
+| **T2——`response_format: {"type": "json_schema"}`** | Schema本身位于`response_format`中，并设置`strict: true` | `message.content`中的JSON字符串 | Schema级别，与T1相同，但约束的是助手自身的回复，而不是工具调用 | 解码器状态机 |
+| **T3——`response_format: {"type": "json_object"}`** | 仅指定类型，不提供Schema | `message.content`中的JSON字符串 | 仅保证语法：文本可解析为JSON。具体出现哪些键不受约束 | 解码器（语法） |
+| **T4——自由文本加指令** | 无。Schema在提示词中描述 | `message.content`，可能包裹在说明文字或代码围栏中 | 不提供任何保证 | 提示词 |
+
+T1和T2背后的机制是受约束解码。提供商会将Schema编译成语法，并在每个解码步骤中屏蔽所有会导致输出无法根据Schema解析的token。必填字段不能被跳过，因为在该字段生成之前，用于闭合对象的token不会位于允许集合中。这与“模型被客气地要求后遵守了”是完全不同类型的保证，也正因如此，T1/T2在温度为1以及较小的模型上仍然成立，而提示词遵循并不能做到这一点。
+
+### T1和T2不可互换
+
+它们通过不同的通道提供相同的保证，而通道在三个方面都很重要。
+
+**两者的轮次形态不同。**T1返回工具调用轮次；模型已经决定要*采取行动*。T2返回普通的助手消息；模型以某种结构*给出了回答*。当调用方需要一次提取而不是智能体循环时，T2会直接表达这一点，而不是为模型虚构一个供其“调用”的虚拟函数。
+
+**强制使用T1会与思考冲突。**要从T1获取经过架构约束的载荷，通常意味着强制指定选项，可以是`required`或命名函数。多家提供商会拒绝在扩展思考处于启用状态时强制指定工具选项。下方的表B记录了具体情况。T2不存在此类冲突：它是响应约束，而不是工具约束，因此它是唯一一条在启用思考时仍然有效的架构约束路径。对于采用推理模型作为标准的部署而言，这才是选择T2而非T1的实际理由，而不是风格偏好。
+
+**T1需要额外一轮T2不需要的架构连接工作。**虚拟函数需要名称、描述，以及决定模型是否可以拒绝调用它。
+
+### T2的成本
+
+受约束解码并非免费，而且你已有的schema通常并不是它所接受的schema。
+
+- **schema子集。**OpenAI的strict mode要求每个对象都设置`additionalProperties: false`，并将每个属性都列入`required`；可选性通过与`null`组成联合类型来表示，而不是从`required`中省略。根节点必须是对象。属性总数和嵌套深度也存在上限。大多数手写schema在符合要求前都需要进行编辑。
+- **语法编译。**携带新schema的首次请求需要承担提供商侧一次性的编译延迟。复用稳定的schema可以分摊这项开销；而每个请求都生成全新的schema则无法做到这一点。
+- **新的失败面。**不愿回答的模型会返回拒答，而不是符合schema结构的对象，因此调用方需要为此增加一个分支。
+
+### 没有任何层级能够保证的内容
+
+每个层级都会约束形式，但没有任何层级能够约束真实性。T2响应可以完全符合schema且在事实上错误；即使没有一个值是正确的，受枚举约束的字段也会返回允许值中的一个，因为解码器的职责是让输出保持在语法范围内，而不是知道答案。Schema门控可以消除解析失败和字段形状错误，但不能免除对值所表达内容进行检查的必要性。
+
+<Warning>
+**两套编号方案并不对应。**本页使用**T1–T4**表示上述保证层级，使用**Level 1/2/3**表示`structured_llm_call`降级链的三个阶梯，这些名称取自代码（`native_fc`、`json_mode`、`plain_text`）。FIM One的Level 2是`json_object`，它属于**T3**，而不是T2。这条链只有三个阶梯，是因为它完全跳过了T2，而不是因为只有三个层级。
+</Warning>
+
+### FIM One 所处的位置
+
+| `structured_llm_call` level | Tier | 代码实际执行的操作 |
+|---|---|---|
+| Level 1 — `native_fc` | **未启用 `strict` 的 T1** | `_build_tool_def` 只生成 `name`、`description`、`parameters`，不会生成其他内容。没有任何调用位置设置 `strict`，因此 `responses_adapter.py` 中的 `convert_tools` 会将其默认为 `False`。该 schema 会以应生成内容的描述形式传递给模型，而不是作为对模型生成内容的约束 |
+| *(absent)* | **T2** | 未实现。代码库中没有任何地方出现 `json_schema`，`abilities` 也没有能够表达模型是否支持该功能的标志 |
+| Level 2 — `json_mode` | **T3** | `{"type": "json_object"}`，在 `structured.py::_call_llm` 和 `react.py::_json_response_format` 中硬编码 |
+| Level 3 — `plain_text` | **T4** | 对自由格式内容调用 `extract_json()`，并可选择在每个调用位置使用正则表达式回退 |
+
+由此产生五个后果，这些是当前设计的实际限制。
+
+1. **链中没有可回退到的 schema 约束层级。** 当 Level 1 失败时，下一层是 `json_object`，它只能保证文本可解析。不存在仍然强制要求字段的中间步骤。
+2. **Level 1 的保证弱于其名称所暗示的程度。** 未启用 `strict` 时，原生函数调用属于 2024 年之前的非严格形式：模型通常会遵循 schema，但不会被阻止省略必填字段、编造键，或在声明为数字时返回字符串。
+3. **在 `anthropic/` 路由上，Level 2 实际上并不是真正的 T3。** Anthropic Messages API 没有 `response_format`，因此 LiteLLM 会通过注入 assistant prefill 来模拟 JSON mode。这是一种提示词层面的机制，使实际保证介于 T4 和 T3 之间，而不是达到 T3。下文记录的 Bedrock prefill 陷阱，就是这种模拟机制明显失败的表现；更隐蔽的代价在于，这种保证从未达到参数名称所暗示的程度。
+4. **结果不会在之后根据 schema 进行验证。** `jsonschema` 不是依赖项。实际执行的任何检查都位于可选的 `parse_fn` 中，并且由每个调用位置自行决定，其严格程度各不相同。
+5. **失败会被吸收，而不是暴露出来。** 几乎所有调用方都会传入 `default_value`，因此链耗尽后会返回一个看似合理的对象，而不是抛出异常。`StructuredCallResult.level_used` 会记录生成该值的层级，但没有任何调用位置读取它；在 `default_value` 路径上，它还会为实际上什么都没生成的链报告 `plain_text`。
+
+**如何查看当前实际处于哪个层级。** `structured_llm_call` 会在每次调用完成后于 `INFO` 级别记录一行日志；该日志仅在数据通过 `parse_fn` 后才会输出，因此其中标示的是确实成功的层级：
+
+```
+structured_llm_call: fn=classify_mode level=native_fc attempt=first calls=1
+structured_llm_call: fn=annotate_tables level=json_mode attempt=reformat_retry calls=3
+```
+
+完全失败时，会以 `WARNING` 级别记录 `level=none outcome=default_value`。在一天的流量中检索这两行日志，是判断缺失的 T2 层级是否给特定部署带来影响的唯一方法，因为 `default_value` 设计会让症状表现为质量一般的答案，而不是错误。
+
+### 每个层级的提供商支持情况
+
+<Note>
+**此表记录的是上游 API，而不是 FIM One 的代码路径。** 本页中的其他表格都会列出实现相应行为的函数，而此表无法这样做，因为 FIM One 不使用任何提供商的 T2 功能，也不会对任何提供商设置 `strict`。此表的作用是确保实现 T2 的决策以实际可用的能力为起点。提供商的能力变化很快，同一系列中的部分模型可能会先于其他模型获得支持；依赖某一行之前，请重新查阅提供商自己的文档。
+</Note>
+
+| 提供商 | T1 `strict` | T2 `json_schema` | T3 `json_object` | 备注 |
+|---|---|---|---|---|
+| **OpenAI** | ✅ | ✅ | ✅ | 两个严格层级的参考实现。严格函数调用和 `response_format: json_schema` 共享同一个语法引擎和同一套 Schema 子集。`json_object` 是较早的 JSON 模式，为兼容性而保留 |
+| **Anthropic** | ⚠️ | ⚠️ | ❌ | Messages API 完全不提供 `response_format`；工具的 `input_schema` 会经过验证，但不会由解码器强制执行。最新的 Claude 模型通过 beta header 支持严格工具使用和 Schema 约束的输出格式。FIM One 通过 LiteLLM 接入 Anthropic，而 LiteLLM 通过预填充模拟 JSON 模式，不会使用该 beta 功能，因此这些能力在这里都未启用 |
+| **Gemini** | ✅ | ✅ | ✅ | `responseSchema`（OpenAPI 3.0 子集）和后续推出的 `responseJsonSchema` 都由解码器强制执行，且 OpenAI 兼容端点接受 `response_format: json_schema`。强制调用使用 `ANY` 和 `allowed_function_names` |
+| **xAI（Grok）** | ✅ | ✅ | ✅ | OpenAI 兼容接口，包含严格结构化输出 |
+| **Mistral** | ✅ | ✅ | ✅ | 自定义结构化输出接受用户提供的 JSON Schema |
+| **DeepSeek** | ❌ | ❌ | ✅ | 仅支持 `json_object` JSON 输出。文档要求提示词中包含单词 "json" 并展示示例，这是附加在 T3 参数上的 T4 手段。`deepseek-reasoner` 还会拒绝强制工具选择，因此其 Schema 闸门路径两端都被关闭 |
+| **Qwen**（DashScope） | ⚠️ | ⚠️ | ✅ | 兼容端点提供 `json_object`。通过服务栈在自托管 Qwen 上可以可靠地进行 Schema 约束解码，而不是通过 API；DashScope 自身的 `json_schema` 支持因模型代际而异。请按模型逐一验证 |
+| **GLM**（Zhipu / Z.AI） | ❌ | ⚠️ | ✅ | OpenAI 兼容端点提供 `json_object`。强制工具选择完全不受支持，这也是表 B 推荐设置 `tool_choice_enabled=false` 的原因。除非平台针对你的模型明确记录了支持情况，否则应将 `json_schema` 视为不可用 |
+| **Kimi**（Moonshot） | ⚠️ | ⚠️ | ✅ | 文档明确支持 `json_object`。思考模型仅接受 `auto` 工具选择，因此无论是否支持 `strict`，这些模型都无法强制使用 T1 路径 |
+| **MiniMax** | ⚠️ | ⚠️ | ✅ | 即使始终启用思考，函数调用仍支持强制选择，因此在始终思考的模型中，它是最可用的 T1 路径。文档未说明支持层级强制；假设 T1 为非严格模式 |
+| **Doubao**（Volcengine Ark） | ⚠️ | ⚠️ | ✅ | Ark 记录了部分 Doubao 系列支持结构化输出。支持范围按模型划分，因此不要默认账号中的模型具备该能力，请先确认 |
+| **Ollama / vLLM / llama.cpp** | ✅ | ✅ | ✅ | 此列表中层级支持最强、但宣传最少的一类。语法约束解码（GBNF、XGrammar、Outlines）在本地运行，因此可以为一个自托管的14B模型提供保证，而上面多个托管 API 无法做到这一点。根据服务器的不同，它会以 Ollama 的 `format`、vLLM 的引导解码参数，或 OpenAI 兼容的 `response_format` 形式公开 |
+
+有三个模式值得单独说明，因为它们解释了表格的结构，而不只是重复表格内容。
+
+**T3 是通用的，T2 则不是。** FIM One 支持的每个提供商都提供 `json_object`，而大约一半的提供商提供 Schema 层级。因此，可移植的结构化输出路径必须建立在 T3 或更低层级之上，这就是 FIM One 采用当前链路的原因。添加 T2 意味着添加按模型划分的能力标志，而不是启用一个全局开关。
+
+**始终启用思考往往会关闭 T1 通道。** GLM、Kimi 的思考模型和 `deepseek-reasoner` 都会限制或拒绝强制工具选择，而 Anthropic 在思考处于启用状态时也会拒绝该选择。MiniMax 是一个反例。当通道关闭时，T2 是唯一剩下的 Schema 闸门选项，这也是缺失这一层级在中国模型部署中比在 OpenAI 部署中更重要的原因。
+
+**自托管会颠倒通常的排序。** 约束解码是服务栈的属性，因此一个指令遵循能力远弱于前沿模型的本地 checkpoint 也可以使用它。最需要 Schema 闸门的模型，反而最有可能获得这一能力。
 
 ## Bedrock预填陷阱
 
@@ -117,14 +211,14 @@ The conversation must end with a user message.
 
 如果第1级（native_fc）和第2级（json_mode）在Bedrock上都失败，系统会在第3级（plain_text）恢复。下面描述的`json_mode_enabled`标志消除了浪费的第2级调用。
 
-### 修复方案：json_mode_enabled
+### 修复方案：`json_mode_enabled`
 
-一个按模型的 `json_mode_enabled` 标志控制是否尝试 Level 2（json_mode）：
+每个模型的`json_mode_enabled`标志控制是否会尝试 Level 2（`json_mode`）：
 
-- **数据库配置的模型**：在 Admin → Models → Advanced settings 中切换。该标志存储在 `ModelProviderModel.json_mode_enabled` 上（默认值 `TRUE`）。
-- **环境变量配置的模型**：在环境中设置 `LLM_JSON_MODE_ENABLED=false`。
-- **效果**：禁用时，`abilities["json_mode"]` 返回 `False` → `response_format` 永远不会被传递 → 无预填充 → Bedrock 正常工作。降级链变为 `native_fc → plain_text`，完全跳过注定失败的 json_mode 调用。
-- **无质量损失**：模型仍然返回有效的 JSON，因为系统提示指示它这样做。plain_text 级别使用 `extract_json()` 从自由格式内容中解析 JSON，这在现代模型中工作可靠。
+- **通过 DB 配置的模型**：在管理员 → 模型 → 高级设置中切换。该标志存储在`ModelProviderModel.json_mode_enabled`上（默认值为`TRUE`）。
+- **通过 ENV 配置的模型**：在环境中设置`LLM_JSON_MODE_ENABLED=false`。
+- **效果**：禁用后，`abilities["json_mode"]`返回`False`→不会传递`response_format`→不会进行预填充→Bedrock 可以正常工作。降级链变为`native_fc → plain_text`，完全跳过注定失败的`json_mode`调用。
+- **跳过的代价**：实际上，模型仍会返回有效的 JSON，因为系统提示词要求模型这样做，并且在现代模型上，`extract_json()`能够可靠地解析自由格式的内容。失去的是保证，而不是输出：现在链路会在 T4 结束，此时除了提示词之外，没有任何机制约束结果。对于`anthropic/`路由来说，这种损失没有看起来那么大，因为模拟的 JSON 模式本来也不是解码器级别的保证。
 
 ## 思维模型 + 强制 tool_choice
 
