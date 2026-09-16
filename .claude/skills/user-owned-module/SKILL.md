@@ -46,7 +46,9 @@ is ownership; the explicit delete is for the cases where it is not.
 
 ## Current registry
 
-Keep this table and the one in `CLAUDE.md` in step with the code.
+This table is the registry. Keep it in step with `purge_user_data()`.
+The copies at `.claude/skills/user-owned-module/SKILL.md` and
+`.agents/skills/user-owned-module/SKILL.md` must stay identical.
 
 | Module | Path | Method |
 |---|---|---|

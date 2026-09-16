@@ -33,7 +33,8 @@ out of order). Guard every DDL statement:
 from fim_one.migrations.helpers import table_exists, table_has_column, index_exists
 
 def upgrade() -> None:
-    if not table_has_column("conversations", "starred"):
+    bind = op.get_bind()
+    if not table_has_column(bind, "conversations", "starred"):
         op.add_column("conversations", sa.Column("starred", sa.Boolean(), ...))
 ```
 

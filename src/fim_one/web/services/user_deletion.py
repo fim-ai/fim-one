@@ -141,7 +141,8 @@ async def purge_user_data(db: AsyncSession, user_id: str) -> dict[str, int]:
 
     # 3. Clean up file-system resources before the DB delete.
     #    NOTE: any new user-owned module that writes to disk MUST be added here
-    #    AND to the registry in .claude/skills/user-owned-module/SKILL.md.
+    #    AND to the registry in .claude/skills/user-owned-module/SKILL.md
+    #    and .agents/skills/user-owned-module/SKILL.md.
     conv_ids = (
         await db.execute(
             select(Conversation.id).where(Conversation.user_id == user_id)
