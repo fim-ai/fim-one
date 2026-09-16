@@ -41,6 +41,10 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     name: Frontend
+    env:
+      # action-setup sets PNPM_HOME to its dest bin; without this, `pnpm store path`
+      # (what setup-node cache: pnpm uses) names a directory install never writes.
+      npm_config_store_dir: ${{ github.workspace }}/.pnpm-store
     defaults:
       run:
         working-directory: frontend
@@ -50,24 +54,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.9
+          package_json_file: frontend/package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      # setup-node's `cache: pnpm` resolves the store via `pnpm store path`,
-      # which points at a directory pnpm never creates; on a cold cache the
-      # post-job save then fails and turns the job red. Cache an explicit
-      # store dir instead.
-      - uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.pnpm-store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --store-dir "${{ github.workspace }}/.pnpm-store"
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm lint
