@@ -50,16 +50,24 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 9.15.9
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # setup-node's `cache: pnpm` resolves the store via `pnpm store path`,
+      # which points at a directory pnpm never creates; on a cold cache the
+      # post-job save then fails and turns the job red. Cache an explicit
+      # store dir instead.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --store-dir "${{ github.workspace }}/.pnpm-store"
 
       - name: Lint
         run: pnpm lint
