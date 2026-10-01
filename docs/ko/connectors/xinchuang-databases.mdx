@@ -18,10 +18,10 @@ FIM One의 데이터베이스 커넥터는 기본적으로 PostgreSQL, MySQL, Or
 
 | Database       | Vendor                 | Protocol                 | Driver package                 | Status    |
 |----------------|------------------------|--------------------------|--------------------------------|-----------|
-| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| DM8            | 达梦 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
-| GBase          | 南大通用 / GBase        | ODBC / Native            | `aioodbc` (planned)            | Planned (v0.9) |
+| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL 와이어 프로토콜 | `asyncpg` (ships with `[postgres]`) | 프로덕션 준비 완료 |
+| HighGo         | 瀚高 / HighGo          | PostgreSQL 와이어 프로토콜 | `asyncpg` (ships with `[postgres]`) | 프로덕션 준비 완료 |
+| DM8            | 达梦 / DaMeng          | 네이티브 DM 프로토콜       | `dmPython` (vendor wheel)      | 프로덕션 준비 완료 |
+| GBase          | 南大通用 / GBase        | ODBC / 네이티브            | —                              | 계획 없음 |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -145,8 +145,8 @@ uv run python scripts/test_xinchuang_dbs.py \
 Progressive Disclosure가 활성화되면(`DATABASE_TOOL_MODE=progressive`,
 v0.8.1 이후 기본값), 이들은 `list_tables` / `discover` / `query` 하위 명령이 있는 단일 `database` 메타 도구로 통합됩니다.
 
-## 관련 항목
+## 관련 문서
 
 - [데이터베이스 구성](/configuration/database) — FIM One 자체의 백엔드 저장소
 - [환경 변수](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
-- [로드맵](/roadmap) — GBase (v0.9) 및 기타 엔터프라이즈 드라이버
+- [로드맵](/roadmap) — 예정된 작업입니다. GBase 및 기타 엔터프라이즈 드라이버는 포함되어 있지 않습니다.

@@ -14,14 +14,14 @@ Ce guide vous montre comment connecter chacune d'elles.
   Ajouter un cinquième driver représente environ 60 lignes quand le protocole de communication est compatible avec Postgres.
 </Info>
 
-## Matrice de support
+## Matrice de prise en charge
 
-| Base de données | Fournisseur            | Protocole                | Paquet pilote              | Statut    |
-|-----------------|------------------------|--------------------------|----------------------------|-----------|
-| KingbaseES      | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| HighGo          | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| DM8             | 达梦 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)   | Production-ready |
-| GBase           | 南大通用 / GBase        | ODBC / Native            | `aioodbc` (planned)        | Planned (v0.9) |
+| Base de données | Fournisseur             | Protocole                | Package du pilote                 | Statut                 |
+|-----------------|-------------------------|--------------------------|-----------------------------------|------------------------|
+| KingbaseES      | 人大金仓 / Kingbase      | Protocole réseau PostgreSQL | `asyncpg` (fourni avec `[postgres]`) | Prêt pour la production |
+| HighGo          | 瀚高 / HighGo           | Protocole réseau PostgreSQL | `asyncpg` (fourni avec `[postgres]`) | Prêt pour la production |
+| DM8             | 达梦 / DaMeng            | Protocole DM natif       | `dmPython` (wheel du fournisseur) | Prêt pour la production |
+| GBase           | 南大通用 / GBase         | ODBC / natif             | —                                 | Non prévu              |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -156,8 +156,8 @@ Lorsque Progressive Disclosure est activé (`DATABASE_TOOL_MODE=progressive`,
 par défaut depuis v0.8.1), ceux-ci sont fusionnés en un seul méta-outil `database`
 avec les sous-commandes `list_tables` / `discover` / `query`.
 
-## Connexes
+## Pages associées
 
-- [Configuration de la base de données](/configuration/database) — stockage backend pour FIM One lui-même
-- [Variables d'environnement](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
-- [Feuille de route](/roadmap) — GBase (v0.9) et autres pilotes d'entreprise
+- [Configuration de la base de données](/configuration/database) — stockage backend de FIM One
+- [Variables d’environnement](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
+- [Feuille de route](/roadmap) — travaux prévus ; GBase et les autres pilotes d’entreprise n’y figurent pas

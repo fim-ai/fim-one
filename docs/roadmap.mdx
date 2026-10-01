@@ -310,6 +310,16 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [x] `scripts/env_from_active_group.py` keeps the `.env` model fallback in step with the admin-panel active group
 - [x] Image generation works against OpenAI `gpt-image-*` models
 
+### v0.9.0 (2026-10-01) — Safe to Share {/* dev: dev/connector-rbac/00-overview.md */}
+- [x] PII column marking — marked columns stay in the schema, values come back masked in every query result
+- [x] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
+- [x] Fence auditability — `scope_rules_applied` in `ConnectorCallLog` records the fences each call ran under
+- [x] Unpublishing works — a subscription grants access only while the resource is still shared, re-checked at use time
+- [x] Admin Market takedown reverts the resource to private instead of only hiding it from the listing
+- [x] Unsubscribing from a solution no longer removes connectors, or credentials, the user set up themselves
+- [x] Deleting an org returns its published resources to their owners and revokes org-scoped subscriptions
+- [x] GPT-6 models (6-luna, 6-sol, 6.1-sol, 6-astra) work with tools and structured output on the GPT-5.x request path
+
 ## Planned Versions
 
 Replanned 2026-09-06. The kernel is built: ReAct engine, connectors,
@@ -318,31 +328,13 @@ finishing what is already in the codebase and keeping it correct, not opening
 new feature areas. Anything not listed below is not planned; see the closing
 note.
 
-### v0.9 — Safe to Share
+### v0.9.1 — Finishing What Is In
 
-**Goal**: a database connector is safe to hand to a colleague, taking one
-back actually takes it back, and the half-finished paths already in the tree
-get closed out.
-
-#### DB Connector Fences {/* dev: dev/connector-rbac/00-overview.md */}
-
-- [x] PII column marking — marked columns stay in the schema, values come back masked in every query result
-- [x] Schema visibility — table/column allow-deny + verb blocking (read-only enforcement)
-- [x] Fence auditability — `scope_rules_applied` in `ConnectorCallLog` records the fences each call ran under
-
-#### Sharing revocation
-
-- [x] Unpublishing works — a subscription grants access only while the resource is still shared, re-checked at use time
-- [x] Admin Market takedown reverts the resource to private instead of only hiding it from the listing
-- [x] Unsubscribing from a solution no longer removes connectors, or credentials, the user set up themselves
-- [x] Deleting an org returns its published resources to their owners and revokes org-scoped subscriptions
-
-#### Finishing what is already in
+**Goal**: close out the half-finished paths already in the tree.
 
 - [ ] Chunked compaction input and model-aware budgets on the main chat path, so any model mix stays within window
 - [ ] Verify Responses-bridge streaming usage numbers on the next LiteLLM upgrade (upstream mis-mapping suspected)
 - [ ] Retire the LiteLLM chat→responses bridge once the native GPT-5.x path has run a full release
-- [x] GPT-6 models (6-luna, 6-sol, 6.1-sol, 6-astra) work with tools and structured output on the GPT-5.x request path
 - [ ] Stripe billing go-live — nightly reconcile against Stripe for missed webhooks, full-stack regression tests, live price ID
 
 ### Shipped from the pre-replan v0.9 plan

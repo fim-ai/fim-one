@@ -135,18 +135,18 @@ sequenceDiagram
 
 `FeishuGateHook` 依赖于配置的 [Feishu 频道](/configuration/channels/feishu) — 钩子通过频道的 `send_interactive_card()` 方法发送卡片，并监听频道解析的回调事件。这种分离是有意的：钩子拥有"审批状态机"，频道拥有"IM 平台机制"。同一个钩子明天可以针对 Slack 或 WeCom，而无需改变其逻辑 — 只需改变频道实现。
 
-## 计划中的 hooks (v0.9)
+## 候选钩子（暂未规划）
 
-四种 hook 模式在 v0.9 路线图中，都复用相同的生命周期：
+有四种钩子模式适用于相同的生命周期。目前的路线图中都没有这些模式；在有部署需求之前，它们会暂时搁置：
 
-| Hook | 触发点 | 目的 |
+| 钩子 | 时机 | 用途 |
 |---|---|---|
-| `AuditLogHook` | PostToolUse | 在每次连接器调用时自动写入 `ConnectorCallLog`。目前这是手动的；将其作为 hook 可以确保覆盖。 |
+| `AuditLogHook` | PostToolUse | 每次调用连接器时自动写入 `ConnectorCallLog`。目前这需要手动完成；将其设为钩子可确保不遗漏。 |
 | `ReadOnlyGuard` | PreToolUse | 当组织处于只读模式时阻止写入。 |
-| `ResultTruncateHook` | PostToolUse | 在工具观察到达 LLM 上下文窗口前截断超大工具观察（>8k 字符）。 |
-| `ConnectorRateLimitHook` | PreToolUse | 按连接器按用户的调用频率上限，独立于 LLM 速率限制。 |
+| `ResultTruncateHook` | PostToolUse | 在超大工具观察结果（超过8k个字符）到达 LLM 上下文之前将其截断。 |
+| `ConnectorRateLimitHook` | PreToolUse | 针对每个连接器和每位用户限制调用频率，不受 LLM 速率限制影响。 |
 
-还计划了一个用户定义的 hook 层：每个智能体的 YAML 配置（`hooks: [...]`）声明在匹配工具事件时运行的 shell 命令或 Python 可调用对象。这遵循现代智能体框架（Claude Code、OpenDevin）已经汇聚的相同模式——基于 hook 的强制执行将"必须始终发生"的逻辑保持在提示词之外。
+自定义钩子层也会按相同原则暂时搁置：通过每个智能体的 YAML 配置（`hooks: [...]`）声明在匹配的工具事件上运行的 shell 命令或 Python 可调用对象。这遵循了现代智能体框架（Claude Code、OpenDevin）逐渐采用的相同模式——基于钩子的执行机制可以将“必须始终执行”的逻辑从提示词中移出。
 
 ## Hooks vs. Channels
 
@@ -163,17 +163,17 @@ Hooks 消费 Channels — 需要与外部世界通信的 hook（发送卡片、�
 
 ## 当前状态（v0.8.4）
 
-已发布功能和后续计划的快照：
+已交付内容与后续计划一览：
 
-- ✅ `HookRegistry`、`HookContext`、`HookResult` 原语已集成到 ReAct 和 DAG 中
+- ✅ `HookRegistry`、`HookContext`、`HookResult` 基础组件已接入 ReAct 和 DAG
 - ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 抽象基类
-- ✅ `FeishuGateHook` ——完整实现，包括 `ConfirmationRequest` 表、轮询循环、超时/过期和回调驱动的状态转换
-- ✅ Feishu 通道回调端点，解码 `card.action.trigger` 并更新待处理行
-- ✅ 智能体级钩子声明：`agent.model_config_json.hooks.class_hooks` 在每个 ReAct/DAG 会话中解析为实例化的 `HookRegistry`
-- ✅ **钩子在每个执行表面触发**：主聊天路径（门户、API、DAG）、委托的子智能体（`CallAgentTool`）和工作流 `AGENT` 节点。评估中心运行**有意绕过**钩子（自动化评估不得阻塞于人工审批）。
+- ✅ `FeishuGateHook`——已完整实现，包括 `ConfirmationRequest` 表、轮询循环、超时/过期处理，以及由回调驱动的状态变更
+- ✅ Feishu 通道回调端点，可解码 `card.action.trigger` 并更新待处理记录
+- ✅ 智能体级钩子声明：`agent.model_config_json.hooks.class_hooks` 会在每个 ReAct/DAG 会话中解析为已实例化的 `HookRegistry`
+- ✅ **钩子会在所有执行入口触发**：主聊天路径（门户、API、DAG）、委派的子智能体（`CallAgentTool`），以及工作流 `AGENT` 节点。Eval Center 有意绕过钩子（自动化评估不得因等待人工审批而阻塞）。
 
-  委托的智能体不继承调用者的注册表——它从自己的 `model_config_json` 构建**自己的**注册表。由于确认闸门自动附加到每个智能体，重新构建是继承的超集：委托获得闸门*加上*它为自己声明的任何内容，闸门解析委托的 `require_confirmation_for_all` 而非调用者的。两个表面都**安全失败**：无法构建钩子的智能体不会运行。
-- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（v0.9）
-- ❌ 用户定义的 YAML 钩子声明（v0.9）
+  委派的智能体不会继承调用方的注册表——它会根据自身的 `model_config_json` 构建**自己的**注册表。由于确认闸门会自动附加到每个智能体，重新构建的结果包含的内容比继承更多：被委派的智能体会获得该闸门，*以及*它自身声明的其他钩子；闸门读取的是被委派智能体自身的 `require_confirmation_for_all`，而不是调用方的配置。两个执行入口都会**默认拒绝**：如果无法构建智能体的钩子，就不会运行该智能体。
+- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（不在计划内）
+- ❌ 用户自定义的 YAML 钩子声明（不在计划内）
 
-钩子系统是 **v0.9 生产加固的承重基础**。它的第一个用户（`FeishuGateHook`）本身也是一个生产特性，这就是为什么骨架在 2026-04-24 路演而不是等待完整钩子目录时提前发布。
+钩子系统是生产环境加固的**关键基础**。它的首个使用者（`FeishuGateHook`）本身也是一项生产功能，因此我们选择提前交付基础框架，以赶上 2026-04-24 路演，而不是等到完整的钩子目录都准备就绪。

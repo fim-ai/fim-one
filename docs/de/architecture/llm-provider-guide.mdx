@@ -436,22 +436,22 @@ System-Prompts für ReAct (JSON-Modus, nativer Function-Calling-Modus, Synthese)
 
 Alle anderen Provider erhalten eine **einzelne** verkettete Systemnachricht ohne `cache_control`-Feld — notwendig, da Nicht-Anthropic-Endpunkte das Feld entweder ablehnen oder stillschweigend ignorieren, und das Senden über einige Relays führt zu `400 unknown parameter`-Fehlern.
 
-### Cross-Provider-Abdeckung
+### Anbieterübergreifende Abdeckung
 
-| Provider | Mechanismus | Read-Rabatt | Unsere Handhabung |
+| Anbieter | Mechanismus | Leserabatt | Unsere Handhabung |
 |---|---|---|---|
-| **Anthropic Claude** (3, 3.5, 4) | Explizit `cache_control` | 0.10× | Zwei Systemmeldungen mit ephemerem Breakpoint |
-| **AWS Bedrock Anthropic** | Leitet Anthropic-Cache durch | 0.10× | Gleich wie Anthropic |
-| **GCP Vertex AI Claude** | Leitet Anthropic-Cache durch | 0.10× | Gleich wie Anthropic |
-| **OpenAI GPT / o-series** | Auto-Präfix-Hash (≥1024 tokens) | 0.50× | Byte-stabiles Präfix über Section Registry → automatischer Hit |
-| **DeepSeek (v3 / R1)** | Auto disk-gestützter Präfix-Cache | 0.10× | Gleich wie OpenAI |
-| **Moonshot Kimi (K1/K2)** | Auto-Präfix-Cache | 0.10×/0.50× | Gleich |
-| **ZhipuAI GLM-4.5+** | Auto Long-Context-Cache | 0.20× | Gleich |
-| **Grok (xAI)** | Auto-Präfix-Cache | 0.25× | Gleich |
-| **Google Gemini** | Separate `createCachedContent` API | 0.25× | **Noch nicht implementiert** — auf v0.9-Roadmap als `GeminiCacheAdapter` verfolgt |
+| **Anthropic Claude** (3, 3.5, 4) | Explizites `cache_control` | 0.10× | Zwei Systemnachrichten mit ephemerem Breakpoint |
+| **AWS Bedrock Anthropic** | Übernimmt den Anthropic-Cache | 0.10× | Wie bei Anthropic |
+| **GCP Vertex AI Claude** | Übernimmt den Anthropic-Cache | 0.10× | Wie bei Anthropic |
+| **OpenAI GPT / o-series** | Automatischer Präfix-Hash (≥1024 Tokens) | 0.50× | Byte-stabiler Präfix über Section Registry → automatischer Treffer |
+| **DeepSeek (v3 / R1)** | Automatischer, festplattenbasierter Präfix-Cache | 0.10× | Wie bei OpenAI |
+| **Moonshot Kimi (K1/K2)** | Automatischer Präfix-Cache | 0.10×/0.50× | Gleich |
+| **ZhipuAI GLM-4.5+** | Automatischer Cache für lange Kontexte | 0.20× | Gleich |
+| **Grok (xAI)** | Automatischer Präfix-Cache | 0.25× | Gleich |
+| **Google Gemini** | Separate `createCachedContent`-API | 0.25× | **Nicht implementiert** — ein `GeminiCacheAdapter` ist zurückgestellt und nicht geplant |
 | **Mistral / Cohere** | Kein nativer Cache | N/A | N/A |
 
-Die `PromptRegistry` bietet jedem Provider automatisches Präfix-Caching „kostenlos" — durch Beibehaltung des statischen Teils byte-identisch über Aufrufe hinweg (aktuelle Uhrzeit befindet sich im dynamischen Suffix, nicht im Präfix), stimmt der Hash jedes Auto-Caching-Providers überein und erzielt einen Cache-Hit. Dies ist der Grund, warum die Registry bereits vor Berücksichtigung des Anthropic-spezifischen `cache_control` ein grundlegender modellloser Gewinn ist.
+Die `PromptRegistry` kommt jedem Anbieter mit automatischem Präfix-Caching „kostenlos“ zugute: Da der statische Teil über Aufrufe hinweg byte-identisch bleibt (das aktuelle Datum und die aktuelle Uhrzeit stehen im dynamischen Suffix und nicht im Präfix), stimmt der Hash bei jedem Anbieter mit automatischem Caching überein und erzielt einen Cache-Treffer. Deshalb ist die Registry ein grundlegender modellunabhängiger Vorteil, noch bevor man das speziell für Anthropic vorgesehene `cache_control` berücksichtigt.
 
 ### Observability
 

@@ -14,14 +14,14 @@ Diese Anleitung führt Sie durch die Verbindung mit jeder einzelnen.
   Das Hinzufügen eines fünften Treibers sind ~60 Zeilen, wenn das Wire-Protokoll Postgres-kompatibel ist.
 </Info>
 
-## Support-Matrix
+## Unterstützungsmatrix
 
-| Datenbank      | Anbieter               | Protokoll                | Treiber-Paket                  | Status    |
-|----------------|------------------------|--------------------------|--------------------------------|-----------|
-| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| DM8            | 达梦 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
-| GBase          | 南大通用 / GBase        | ODBC / Native            | `aioodbc` (planned)            | Planned (v0.9) |
+| Datenbank     | Anbieter               | Protokoll                | Treiberpaket                       | Status             |
+|---------------|------------------------|--------------------------|------------------------------------|--------------------|
+| KingbaseES    | 人大金仓 / Kingbase     | PostgreSQL-Wire-Protokoll | `asyncpg` (in `[postgres]` enthalten) | Produktionsbereit |
+| HighGo        | 瀚高 / HighGo          | PostgreSQL-Wire-Protokoll | `asyncpg` (in `[postgres]` enthalten) | Produktionsbereit |
+| DM8           | 达梦 / DaMeng          | Natives DM-Protokoll     | `dmPython` (Hersteller-Wheel)     | Produktionsbereit |
+| GBase         | 南大通用 / GBase        | ODBC / nativ             | —                                  | Nicht geplant      |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -159,8 +159,8 @@ Wenn Progressive Disclosure aktiviert ist (`DATABASE_TOOL_MODE=progressive`,
 Standard seit v0.8.1), werden diese in ein einzelnes `database`
 Meta-Tool mit den Unterbefehlen `list_tables` / `discover` / `query` zusammengefasst.
 
-## Verwandt
+## Weiterführendes
 
 - [Datenbankkonfiguration](/configuration/database) — Backend-Speicher für FIM One selbst
 - [Umgebungsvariablen](/configuration/environment-variables) — `DATABASE_TOOL_MODE`, `CREDENTIAL_ENCRYPTION_KEY`
-- [Roadmap](/roadmap) — GBase (v0.9) und andere Enterprise-Treiber
+- [Roadmap](/roadmap) — geplante Arbeiten; GBase und andere Datenbanktreiber für Unternehmen stehen nicht darauf

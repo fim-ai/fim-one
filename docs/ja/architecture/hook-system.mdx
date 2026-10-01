@@ -135,18 +135,18 @@ sequenceDiagram
 
 `FeishuGateHook` は設定済みの [Feishu Channel](/configuration/channels/feishu) に依存します。フックはチャネルの `send_interactive_card()` メソッドを通じてカードを送信し、チャネルが解析したコールバックイベントをリッスンします。この分離は意図的です。フックは「承認ステートマシン」を所有し、チャネルは「IM プラットフォーム機構」を所有します。同じフックは、ロジックを変更することなく、明日 Slack または WeCom をターゲットにすることができます。チャネル実装のみを変更します。
 
-## 計画中のフック (v0.9)
+## 候補となるフック（予定なし）
 
-v0.9 ロードマップには 4 つのフックパターンがあり、すべて同じライフサイクルを再利用します:
+同じライフサイクルに適合するフックのパターンは4つあります。いずれも現在のロードマップには含まれておらず、導入先から要望があるまで保留されています。
 
-| フック | ポイント | 目的 |
+| フック | タイミング | 目的 |
 |---|---|---|
-| `AuditLogHook` | PostToolUse | すべてのコネクタ呼び出しで `ConnectorCallLog` を自動的に書き込みます。現在これは手動です。フックにすることでカバレッジを確保します。 |
-| `ReadOnlyGuard` | PreToolUse | 組織が読み取り専用モードの場合、書き込みをブロックします。 |
-| `ResultTruncateHook` | PostToolUse | 過度に大きいツール観測 (>8k 文字) を LLM コンテキストに到達する前に切り詰めます。 |
-| `ConnectorRateLimitHook` | PreToolUse | コネクタごと、ユーザーごとの呼び出し頻度上限。LLM レート制限とは独立しています。 |
+| `AuditLogHook` | PostToolUse | コネクターが呼び出されるたびに `ConnectorCallLog` を自動で記録します。現在は手動で行っていますが、フックにすることで記録漏れを防げます。 |
+| `ReadOnlyGuard` | PreToolUse | 組織が読み取り専用モードのとき、書き込みをブロックします。 |
+| `ResultTruncateHook` | PostToolUse | 大きすぎるツールの観測結果（8k文字超）を、LLMのコンテキストに渡す前に切り詰めます。 |
+| `ConnectorRateLimitHook` | PreToolUse | LLMのレート制限とは独立して、コネクターごと・ユーザーごとの呼び出し頻度を制限します。 |
 
-ユーザー定義フックレイヤーも計画中です: エージェントごとの YAML 設定 (`hooks: [...]`) で、マッチングツールイベントで実行するシェルコマンドまたは Python 呼び出し可能オブジェクトを宣言します。これは最新のエージェントフレームワーク (Claude Code、OpenDevin) が収束したパターンに従います — フックベースの強制により、「必ず実行される」ロジックをプロンプトから除外します。
+ユーザー定義のフックレイヤーも同様の理由で保留されています。これは、ツールイベントに一致したときに実行するシェルコマンドやPythonの呼び出し可能オブジェクトを宣言する、エージェントごとのYAML設定（`hooks: [...]`）です。この方式は、現代のエージェントフレームワーク（Claude Code、OpenDevin）で定着しているパターンに沿ったものです。フックベースの適用により、「常に実行しなければならない」ロジックをプロンプトから切り離せます。
 
 ## Hooks vs. Channels
 
@@ -161,19 +161,19 @@ Hooks は Channels を消費します — 外部世界と通信する必要が�
 
 別の言い方をすると：**Channels は「人間と通信する場所」のプラミング、Hooks は「人間と通信する必要がある時」のポリシーです**。本番環境の人間参加型ワークフローには両方が必要です。
 
-## Current state (v0.8.4)
+## 現状（v0.8.4）
 
-Snapshot of what shipped and what is still ahead:
+リリース済みの内容と今後の予定：
 
-- ✅ `HookRegistry`、`HookContext`、`HookResult` プリミティブが ReAct と DAG の両方に統合
-- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 抽象基底クラス
-- ✅ `FeishuGateHook` — 完全実装。`ConfirmationRequest` テーブル、ポーリングループ、タイムアウト/有効期限、コールバック駆動の状態遷移を含む
-- ✅ Feishu チャネルコールバックエンドポイント。`card.action.trigger` をデコードして保留中の行を更新
-- ✅ エージェントレベルのフック宣言：`agent.model_config_json.hooks.class_hooks` が ReAct/DAG セッションごとにインスタンス化された `HookRegistry` に解決
-- ✅ **すべての実行サーフェスでフックが発火**：メインチャットパス（Portal、API、DAG）、委譲されたサブエージェント（`CallAgentTool`）、Workflow `AGENT` ノード。Eval Center は意図的に**フックをバイパス**（自動評価は人間の承認でブロックされてはいけない）。
+- ✅ `HookRegistry`、`HookContext`、`HookResult` のプリミティブを ReAct と DAG の両方に組み込み済み
+- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` の抽象基底クラス
+- ✅ `FeishuGateHook` — `ConfirmationRequest` テーブル、ポーリングループ、タイムアウト／期限切れ処理、コールバック駆動の状態更新を含めて実装完了
+- ✅ `card.action.trigger` をデコードし、保留中の行を更新する Feishu チャネルコールバックエンドポイント
+- ✅ エージェントレベルのフック宣言：`agent.model_config_json.hooks.class_hooks` により、すべての ReAct/DAG セッションでインスタンス化された `HookRegistry` を解決
+- ✅ **すべての実行経路でフックが実行されます**：メインチャット経路（Portal、API、DAG）、委譲されたサブエージェント（`CallAgentTool`）、Workflow の `AGENT` ノード。Eval Center では意図的にフックを**バイパス**します（自動評価が人間の承認待ちでブロックされないようにするため）。
 
-  委譲されたエージェントは呼び出し元のレジストリを継承しない——自身の `model_config_json` から**独自の**レジストリを構築する。確認ゲートはすべてのエージェントに自動的に付加されるため、再構築は継承のスーパーセット：委譲先はゲート*プラス*自身が宣言したもの を取得し、ゲートは呼び出し元の `require_confirmation_for_all` ではなく委譲先の `require_confirmation_for_all` を解決する。両方のサーフェスは**安全側で失敗**：フックを構築できないエージェントは実行されない。
-- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（v0.9）
-- ❌ ユーザー定義 YAML フック宣言（v0.9）
+  委譲先のエージェントは呼び出し元のレジストリを引き継がず、自身の `model_config_json` から**独自の**レジストリを構築します。確認ゲートはすべてのエージェントに自動でアタッチされるため、再構築では継承時より多くのフックが含まれます。委譲先には確認ゲートに加えて、委譲先自身が宣言したフックが適用され、確認ゲートは呼び出し元ではなく委譲先の `require_confirmation_for_all` を参照します。どちらの経路も**フェイルクローズ**で動作します。フックを構築できないエージェントは実行されません。
+- ❌ `AuditLogHook`、`ReadOnlyGuard`、`ResultTruncateHook`、`ConnectorRateLimitHook`（計画なし）
+- ❌ ユーザー定義の YAML フック宣言（計画なし）
 
-Hook System は v0.9 本番環境対応の**基盤となるシステム**。その最初のユーザー（`FeishuGateHook`）も本番機能そのもの。そのため、フック全体カタログを待つのではなく、2026-04-24 路演のために早期にスケルトンをリリースした。
+フックシステムは、本番環境の堅牢化を支える**重要な基盤**です。最初の利用者である `FeishuGateHook` 自体も独立した本番機能であるため、フックの全カタログが揃うのを待たず、2026-04-24 のロードショーに向けて骨格を早期にリリースしました。

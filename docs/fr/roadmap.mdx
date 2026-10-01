@@ -310,6 +310,16 @@ Bugs suivis qui sont reproductibles en production mais pas encore corrigés. Cha
 - [x] `scripts/env_from_active_group.py` maintient le modèle de secours dans `.env` synchronisé avec le groupe actif du panneau d’administration
 - [x] La génération d’images fonctionne avec les modèles OpenAI `gpt-image-*`
 
+### v0.9.0 (2026-10-01) — Partage sécurisé {/* dev: dev/connector-rbac/00-overview.md */}
+- [x] Marquage des colonnes contenant des données personnelles — les colonnes marquées restent dans le schéma, mais leurs valeurs sont masquées dans chaque résultat de requête
+- [x] Visibilité du schéma — autorisation ou interdiction des tables et des colonnes, et blocage des verbes (application du mode lecture seule)
+- [x] Auditabilité des garde-fous — `scope_rules_applied` dans `ConnectorCallLog` enregistre les garde-fous appliqués à chaque appel
+- [x] La dépublication fonctionne — un abonnement donne accès à une ressource uniquement tant qu’elle reste partagée ; ce statut est vérifié à nouveau au moment de l’utilisation
+- [x] Le retrait d’une ressource par Admin Market la rend à nouveau privée au lieu de simplement la masquer dans la liste
+- [x] Se désabonner d’une solution ne supprime plus les connecteurs ni les identifiants que l’utilisateur a configurés lui-même
+- [x] La suppression d’une organisation restitue ses ressources publiées à leurs propriétaires et révoque les abonnements associés à l’organisation
+- [x] Les modèles GPT-6 (6-luna, 6-sol, 6.1-sol, 6-astra) fonctionnent avec les outils et la sortie structurée sur le chemin de requête GPT-5.x
+
 ## Versions planifiées
 
 Replanifié le 06/09/2026. Le noyau est construit : moteur ReAct, connecteurs,
@@ -319,32 +329,14 @@ s’agit désormais d’achever ce qui existe déjà dans la base de code et de 
 qui ne figure pas dans la liste ci-dessous n’est pas planifié ; consultez la
 note de clôture.
 
-### v0.9 — Partage en toute sécurité
+### v0.9.1 — Finaliser l’existant
 
-**Objectif** : un connecteur de base de données peut être transmis à un collègue
-en toute sécurité, le fait de le récupérer permet réellement de le récupérer, et les
-parcours à moitié terminés déjà présents dans l’arborescence sont enfin finalisés.
+**Objectif** : terminer les parcours à moitié achevés déjà présents dans le dépôt.
 
-#### Barrières du connecteur DB {/* dev: dev/connector-rbac/00-overview.md */}
-
-- [x] Marquage des colonnes PII — les colonnes marquées restent dans le schéma, et les valeurs sont masquées dans chaque résultat de requête
-- [x] Visibilité du schéma — autorisation/interdiction des tables et des colonnes, avec blocage des verbes (application du mode lecture seule)
-- [x] Traçabilité des barrières — `scope_rules_applied` dans `ConnectorCallLog` enregistre les barrières sous lesquelles chaque appel a été exécuté
-
-#### Révocation du partage
-
-- [x] La dépublication fonctionne — un abonnement accorde l’accès uniquement tant que la ressource reste partagée, avec une nouvelle vérification au moment de son utilisation
-- [x] Le retrait d’une ressource par un administrateur dans Admin Market la rend privée au lieu de la masquer uniquement de la liste
-- [x] La désinscription d’une solution ne supprime plus les connecteurs ni les identifiants configurés par l’utilisateur lui-même
-- [x] La suppression d’une organisation restitue ses ressources publiées à leurs propriétaires et révoque les abonnements associés à l’organisation
-
-#### Finaliser ce qui est déjà en cours
-
-- [ ] Compaction de l’entrée par blocs et budgets tenant compte du modèle sur le parcours principal du chat, afin que tout mélange de modèles reste dans la fenêtre de contexte
-- [ ] Vérifier les métriques d’utilisation du streaming du pont Responses lors de la prochaine mise à niveau de LiteLLM (un problème de correspondance en amont est suspecté)
-- [ ] Retirer le pont chat→responses de LiteLLM une fois que le parcours natif GPT-5.x aura traversé un cycle complet de publication
-- [x] Les modèles GPT-6 (6-luna, 6-sol, 6.1-sol, 6-astra) fonctionnent avec les outils et la sortie structurée sur le parcours de requête GPT-5.x
-- [ ] Mise en production de la facturation Stripe — rapprochement nocturne avec Stripe pour repérer les webhooks manqués, tests de régression de l’ensemble de la pile, ID de prix en production
+- [ ] Entrée de compactage par blocs et budgets tenant compte du modèle sur le parcours principal de chat, afin que tout mélange de modèles reste dans la fenêtre de contexte
+- [ ] Vérifier les chiffres d’utilisation du streaming du pont Responses de LiteLLM lors de la prochaine mise à niveau de LiteLLM (une mauvaise correspondance en amont est suspectée)
+- [ ] Retirer le pont chat→responses de LiteLLM une fois que le parcours natif GPT-5.x aura été utilisé dans une version complète
+- [ ] Mise en service de la facturation Stripe — rapprochement nocturne avec Stripe pour repérer les webhooks manqués, tests de régression de bout en bout, identifiant de prix en production
 
 ### Livré du plan de pré-replan v0.9
 

@@ -135,18 +135,18 @@ sequenceDiagram
 
 `FeishuGateHook`은 구성된 [Feishu Channel](/configuration/channels/feishu)에 의존합니다. 훅은 채널의 `send_interactive_card()` 메서드를 통해 카드를 전송하고 채널이 파싱한 콜백 이벤트를 수신합니다. 이러한 분리는 의도적입니다. 훅은 "승인 상태 머신"을 소유하고, 채널은 "IM 플랫폼 메커니즘"을 소유합니다. 동일한 훅은 내일 Slack이나 WeCom을 대상으로 할 수 있으며, 로직을 변경하지 않고 채널 구현만 변경하면 됩니다.
 
-## 계획된 훅 (v0.9)
+## 후보 훅 (계획 없음)
 
-네 가지 훅 패턴이 v0.9 로드맵에 있으며, 모두 동일한 라이프사이클을 재사용합니다:
+네 가지 훅 패턴이 동일한 라이프사이클에 적용됩니다. 현재 로드맵에는 포함되지 않았으며, 배포 환경에서 필요해질 때까지 보류됩니다.
 
-| 훅 | 포인트 | 목적 |
+| 훅 | 시점 | 목적 |
 |---|---|---|
-| `AuditLogHook` | PostToolUse | 모든 커넥터 호출 시 `ConnectorCallLog`를 자동으로 작성합니다. 현재는 수동이며, 훅으로 만들면 커버리지를 보장합니다. |
+| `AuditLogHook` | PostToolUse | 모든 커넥터 호출에 대해 `ConnectorCallLog`를 자동으로 기록합니다. 현재는 수동으로 처리하며, 훅으로 만들면 모든 호출을 기록할 수 있습니다. |
 | `ReadOnlyGuard` | PreToolUse | 조직이 읽기 전용 모드일 때 쓰기를 차단합니다. |
-| `ResultTruncateHook` | PostToolUse | 과도하게 큰 도구 관찰 결과(>8k 문자)를 LLM 컨텍스트에 도달하기 전에 자릅니다. |
-| `ConnectorRateLimitHook` | PreToolUse | 커넥터당 사용자당 호출 빈도 상한선으로, LLM 속도 제한과 무관합니다. |
+| `ResultTruncateHook` | PostToolUse | 크기가 너무 큰 도구 관찰 결과(8k자 초과)를 잘라 LLM 컨텍스트에 전달하기 전에 줄입니다. |
+| `ConnectorRateLimitHook` | PreToolUse | LLM 속도 제한과 별개로 커넥터별, 사용자별 호출 빈도를 제한합니다. |
 
-사용자 정의 훅 레이어도 계획 중입니다: 에이전트당 YAML 구성(`hooks: [...]`)으로 일치하는 도구 이벤트에서 실행할 셸 명령 또는 Python 호출 가능 객체를 선언합니다. 이는 최신 에이전트 프레임워크(Claude Code, OpenDevin)가 수렴한 패턴을 따릅니다 — 훅 기반 강제 실행은 "반드시 발생해야 하는" 로직을 프롬프트 밖으로 유지합니다.
+사용자 정의 훅 계층도 같은 조건으로 보류되어 있습니다. 에이전트별 YAML 구성(`hooks: [...]`)에 일치하는 도구 이벤트에서 실행할 셸 명령이나 Python 호출 가능 객체를 선언하는 방식입니다. 이는 최신 에이전트 프레임워크(Claude Code, OpenDevin)에서 자리 잡은 패턴을 따릅니다. 훅 기반 시행을 사용하면 “항상 수행되어야 하는” 로직을 프롬프트에서 분리할 수 있습니다.
 
 ## Hooks vs. Channels
 
@@ -161,19 +161,19 @@ Hooks는 Channels를 사용합니다 — 외부 세계와 통신해야 하는 ho
 
 다르게 말하면: **Channels는 "인간과 어떻게 통신할 것인가"라는 인프라이고, Hooks는 "언제 인간과 통신해야 하는가"라는 정책입니다**. 프로덕션 인간-루프 워크플로우에는 둘 다 필요합니다.
 
-## Current state (v0.8.4)
+## 현재 상태 (v0.8.4)
 
-Shipped된 것과 앞으로 진행할 것의 스냅샷:
+출시된 항목과 앞으로 남은 항목의 스냅샷입니다.
 
-- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives가 ReAct와 DAG 모두에 연결됨
-- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 추상 기본 클래스
-- ✅ `FeishuGateHook` — 완성됨. `ConfirmationRequest` 테이블, 폴링 루프, 타임아웃/만료, 콜백 기반 상태 전환 포함
-- ✅ Feishu 채널 콜백 엔드포인트가 `card.action.trigger`를 디코딩하고 pending 행을 업데이트함
-- ✅ Agent 레벨 hook 선언: `agent.model_config_json.hooks.class_hooks`가 모든 ReAct/DAG 세션에서 인스턴스화된 `HookRegistry`로 해석됨
-- ✅ **Hooks가 모든 실행 표면에서 작동**: 메인 채팅 경로(Portal, API, DAG), 위임된 sub-agent(`CallAgentTool`), Workflow `AGENT` 노드. Eval Center는 의도적으로 **hooks를 우회**함 (자동화된 평가는 인간 승인에서 차단되면 안 됨).
+- ✅ `HookRegistry`, `HookContext`, `HookResult` 프리미티브를 ReAct와 DAG 모두에 연결
+- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` 추상 기반 클래스
+- ✅ `FeishuGateHook` — `ConfirmationRequest` 테이블, 폴링 루프, 시간 초과/만료, 콜백 기반 상태 변경을 포함해 완성
+- ✅ `card.action.trigger`를 디코딩하고 대기 중인 행을 업데이트하는 Feishu 채널 콜백 엔드포인트
+- ✅ 에이전트 수준 훅 선언: `agent.model_config_json.hooks.class_hooks`가 모든 ReAct/DAG 세션에서 인스턴스화된 `HookRegistry`로 확인됨
+- ✅ **모든 실행 경로에서 훅이 실행됩니다**: 기본 채팅 경로(Portal, API, DAG), 위임된 하위 에이전트(`CallAgentTool`), Workflow `AGENT` 노드. Eval Center는 의도적으로 훅을 **우회합니다**(자동 평가가 사람의 승인을 기다리느라 차단되면 안 됩니다).
 
-  위임된 agent는 호출자의 registry를 상속하지 않음 — 자신의 `model_config_json`에서 자신의 것을 빌드함. 확인 闸门이 모든 agent에 자동으로 첨부되므로, 재구축은 상속의 상위 집합임: delegate는 闸门 *plus* 자신이 선언한 것을 얻고, 闸门은 호출자의 `require_confirmation_for_all`이 아닌 delegate의 것을 해석함. 두 표면 모두 **closed fail**: hooks를 빌드할 수 없는 agent는 실행되지 않음.
-- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (v0.9)
-- ❌ 사용자 정의 YAML hook 선언 (v0.9)
+  위임된 에이전트는 호출자의 레지스트리를 상속하지 않습니다. 자체 `model_config_json`으로 **별도의** 레지스트리를 구성합니다. 확인 게이트는 모든 에이전트에 자동으로 연결되므로, 레지스트리를 다시 구성하면 상속보다 더 많은 항목이 포함됩니다. 즉, 위임된 에이전트는 게이트에 더해 자체적으로 선언한 항목도 가져오며, 게이트는 호출자의 `require_confirmation_for_all`이 아니라 위임된 에이전트의 값을 확인합니다. 두 실행 경로 모두 **fail closed**로 동작합니다. 훅을 구성할 수 없는 에이전트는 실행되지 않습니다.
+- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (계획 없음)
+- ❌ 사용자 정의 YAML 훅 선언 (계획 없음)
 
-Hook System은 v0.9 프로덕션 강화를 위한 **하중을 지탱하는 기초**임. 첫 번째 사용자(`FeishuGateHook`)는 또한 자체적으로 프로덕션 기능이므로, 전체 hook 카탈로그를 기다리지 않고 2026-04-24 roadshow를 위해 스켈레톤이 조기에 shipped됨.
+훅 시스템은 프로덕션 강화의 **핵심 기반**입니다. 첫 번째 사용자 기능인 `FeishuGateHook` 자체도 프로덕션 기능이므로, 전체 훅 카탈로그가 완성될 때까지 기다리는 대신 2026-04-24 로드쇼에 맞춰 뼈대를 먼저 출시했습니다.

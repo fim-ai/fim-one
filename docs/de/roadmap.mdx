@@ -310,6 +310,16 @@ Nachverfolgte Fehler, die in der Produktionsumgebung reproduzierbar, aber noch n
 - [x] `scripts/env_from_active_group.py` hält den `.env`-Modell-Fallback mit der aktiven Gruppe im Admin-Panel synchron
 - [x] Bildgenerierung funktioniert mit OpenAI-`gpt-image-*`-Modellen
 
+### v0.9.0 (2026-10-01) — Sicher teilbar {/* dev: dev/connector-rbac/00-overview.md */}
+- [x] PII-Spaltenmarkierung — markierte Spalten bleiben im Schema, Werte werden in jedem Abfrageergebnis maskiert zurückgegeben
+- [x] Schemasichtbarkeit — Zulassen und Sperren von Tabellen und Spalten sowie Sperren von Verben (Durchsetzung des Nur-Lese-Zugriffs)
+- [x] Nachvollziehbarkeit der Schutzregeln — `scope_rules_applied` in `ConnectorCallLog` protokolliert die Schutzregeln, unter denen jeder Aufruf ausgeführt wurde
+- [x] Aufheben der Veröffentlichung funktioniert — ein Abonnement gewährt nur Zugriff, solange die Ressource weiterhin geteilt wird; dies wird zum Nutzungszeitpunkt erneut geprüft
+- [x] Das Entfernen einer Ressource aus dem Admin Market macht sie wieder privat, statt sie nur aus der Auflistung auszublenden
+- [x] Beim Abmelden von einer Lösung werden keine Connectoren oder Zugangsdaten mehr entfernt, die der Benutzer selbst eingerichtet hat
+- [x] Beim Löschen einer Organisation werden ihre veröffentlichten Ressourcen an ihre Eigentümer zurückgegeben und organisationsbezogene Abonnements widerrufen
+- [x] GPT-6-Modelle (6-luna, 6-sol, 6.1-sol, 6-astra) funktionieren mit Tools und strukturierter Ausgabe über den GPT-5.x-Anforderungspfad
+
 ## Geplante Versionen
 
 Neu geplant am 2026-09-06. Der Kern ist fertiggestellt: ReAct-Engine, Konnektoren,
@@ -318,30 +328,14 @@ darum, das, was bereits in der Codebasis vorhanden ist, fertigzustellen und korr
 nicht darum, neue Funktionsbereiche zu eröffnen. Alles, was unten nicht aufgeführt ist, ist nicht
 geplant; siehe den abschließenden Hinweis.
 
-### v0.9 — Sicher zum Teilen
+### v0.9.1 — Angefangenes abschließen
 
-**Ziel**: Ein Datenbank-Connector kann sicher an einen Kollegen übergeben werden, das Zurücknehmen nimmt ihn tatsächlich zurück, und die halbfertigen Pfade, die bereits im Tree vorhanden sind, werden abgeschlossen.
+**Ziel**: die bereits im Codebestand angefangenen, aber nicht abgeschlossenen Pfade fertigstellen.
 
-#### DB-Connector-Schranken {/* dev: dev/connector-rbac/00-overview.md */}
-
-- [x] Markierung von PII-Spalten — markierte Spalten bleiben im Schema, Werte werden in jedem Abfrageergebnis maskiert
-- [x] Schemasichtbarkeit — Allow-/Deny-Regeln für Tabellen und Spalten sowie Verb-Blockierung (Erzwingung des schreibgeschützten Zugriffs)
-- [x] Nachvollziehbarkeit der Schranken — `scope_rules_applied` in `ConnectorCallLog` zeichnet auf, unter welchen Schranken jeder Aufruf ausgeführt wurde
-
-#### Widerruf der Freigabe
-
-- [x] Die Veröffentlichung aufheben funktioniert – ein Abonnement gewährt nur Zugriff, solange die Ressource weiterhin freigegeben ist; dies wird zum Zeitpunkt der Nutzung erneut geprüft
-- [x] Das Entfernen aus dem Admin Market setzt die Ressource wieder auf privat, anstatt sie nur aus dem Listing auszublenden
-- [x] Das Kündigen eines Abonnements für eine Lösung entfernt keine Connectoren oder Zugangsdaten mehr, die der Benutzer selbst eingerichtet hat
-- [x] Beim Löschen einer Organisation werden deren veröffentlichte Ressourcen an ihre Besitzer zurückgegeben und auf die Organisation beschränkte Abonnements widerrufen
-
-#### Abschließen, was bereits begonnen wurde
-
-- [ ] Eingabe für blockweise Komprimierung und modellbewusste Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
-- [ ] Nutzungszahlen des Streamings über die Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (fehlerhafte Zuordnung upstream vermutet)
-- [ ] Die LiteLLM-Chat→Responses-Bridge außer Betrieb nehmen, sobald der native GPT-5.x-Pfad einen vollständigen Release-Zyklus durchlaufen hat
-- [x] GPT-6-Modelle (6-luna, 6-sol, 6.1-sol, 6-astra) funktionieren mit Tools und strukturierter Ausgabe über den GPT-5.x-Anfragepfad
-- [ ] Stripe-Abrechnung live schalten — nächtlicher Abgleich mit Stripe auf fehlende Webhooks, Regressionstests für den gesamten Stack, Live-Preis-ID
+- [ ] Eingabe für chunkweise Komprimierung und modellbewusste Budgets im Haupt-Chatpfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
+- [ ] Streaming-Nutzungszahlen der Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (Verdacht auf fehlerhafte Zuordnung upstream)
+- [ ] Die LiteLLM-Chat→Responses-Bridge ablösen, sobald der native GPT-5.x-Pfad einen vollständigen Release durchlaufen hat
+- [ ] Stripe-Abrechnung produktiv setzen — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, vollständige Full-Stack-Regressionstests und Live-Preis-ID
 
 ### Aus dem Pre-Replan-Plan v0.9 ausgeliefert
 

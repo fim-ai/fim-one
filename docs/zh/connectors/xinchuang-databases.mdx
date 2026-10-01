@@ -16,12 +16,12 @@ FIM One 的数据库连接器开箱即用地支持 PostgreSQL、MySQL 和 Oracle
 
 ## 支持矩阵
 
-| 数据库       | 供应商                 | 协议                 | 驱动程序包                 | 状态    |
+| 数据库         | 厂商                   | 协议                     | 驱动包                           | 状态       |
 |----------------|------------------------|--------------------------|--------------------------------|-----------|
-| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| DM8            | 达梦 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
-| GBase          | 南大通用 / GBase        | ODBC / Native            | `aioodbc` (planned)            | Planned (v0.9) |
+| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL 线路协议       | `asyncpg` (ships with `[postgres]`) | 可用于生产环境 |
+| HighGo         | 瀚高 / HighGo          | PostgreSQL 线路协议       | `asyncpg` (ships with `[postgres]`) | 可用于生产环境 |
+| DM8            | 达梦 / DaMeng           | 原生 DM 协议              | `dmPython` (vendor wheel)      | 可用于生产环境 |
+| GBase          | 南大通用 / GBase        | ODBC / 原生               | —                              | 暂无计划 |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -147,6 +147,6 @@ uv run python scripts/test_xinchuang_dbs.py \
 
 ## 相关内容
 
-- [数据库配置](/configuration/database) — FIM One 本身的后端存储
+- [数据库配置](/configuration/database) — FIM One自身的后端存储
 - [环境变量](/configuration/environment-variables) — `DATABASE_TOOL_MODE`、`CREDENTIAL_ENCRYPTION_KEY`
-- [路线图](/roadmap) — GBase (v0.9) 和其他企业驱动程序
+- [路线图](/roadmap) — 计划中的工作；GBase及其他企业级驱动程序不在其中

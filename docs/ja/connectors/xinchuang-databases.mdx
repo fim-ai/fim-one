@@ -14,14 +14,14 @@ FIM Oneのデータベースコネクタは、PostgreSQL、MySQL、およびOrac
   ワイヤプロトコルがPostgres互換の場合、5番目のドライバを追加するのは約60行です。
 </Info>
 
-## サポートマトリックス
+## サポート対象
 
 | Database       | Vendor                 | Protocol                 | Driver package                 | Status    |
 |----------------|------------------------|--------------------------|--------------------------------|-----------|
-| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| HighGo         | 瀚高 / HighGo          | PostgreSQL wire protocol | `asyncpg` (ships with `[postgres]`) | Production-ready |
-| DM8            | 達夢 / DaMeng          | Native DM protocol       | `dmPython` (vendor wheel)      | Production-ready |
-| GBase          | 南大通用 / GBase        | ODBC / Native            | `aioodbc` (planned)            | Planned (v0.9) |
+| KingbaseES     | 人大金仓 / Kingbase     | PostgreSQLワイヤープロトコル | `asyncpg`（`[postgres]`に同梱） | 本番環境対応 |
+| HighGo         | 瀚高 / HighGo          | PostgreSQLワイヤープロトコル | `asyncpg`（`[postgres]`に同梱） | 本番環境対応 |
+| DM8            | 达梦 / DaMeng          | DMネイティブプロトコル       | `dmPython`（ベンダー提供のwheel） | 本番環境対応 |
+| GBase          | 南大通用 / GBase        | ODBC / ネイティブ            | —                              | 対応予定なし |
 
 ## 1. KingbaseES (人大金仓)
 
@@ -150,6 +150,6 @@ Progressive Disclosureが有効な場合（`DATABASE_TOOL_MODE=progressive`、v0
 
 ## 関連
 
-- [データベース設定](/configuration/database) — FIM One自体のバックエンド ストレージ
+- [データベース設定](/configuration/database) — FIM One 自体のバックエンドストレージ
 - [環境変数](/configuration/environment-variables) — `DATABASE_TOOL_MODE`、`CREDENTIAL_ENCRYPTION_KEY`
-- [ロードマップ](/roadmap) — GBase (v0.9) およびその他のエンタープライズ ドライバ
+- [ロードマップ](/roadmap) — 今後の予定。GBase やその他のエンタープライズ向けドライバーは含まれていません。

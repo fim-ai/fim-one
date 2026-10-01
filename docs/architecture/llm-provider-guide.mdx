@@ -448,7 +448,7 @@ Every other provider receives a **single** concatenated system message with no `
 | **Moonshot Kimi (K1/K2)** | Auto prefix cache | 0.10×/0.50× | Same |
 | **ZhipuAI GLM-4.5+** | Auto long-context cache | 0.20× | Same |
 | **Grok (xAI)** | Auto prefix cache | 0.25× | Same |
-| **Google Gemini** | Separate `createCachedContent` API | 0.25× | **Not yet implemented** — tracked on v0.9 roadmap as `GeminiCacheAdapter` |
+| **Google Gemini** | Separate `createCachedContent` API | 0.25× | **Not implemented** — a `GeminiCacheAdapter` is parked, not planned |
 | **Mistral / Cohere** | No native cache | N/A | N/A |
 
 The `PromptRegistry` benefits every provider with auto prefix caching "for free" — by keeping the static portion byte-identical across calls (current datetime lives in the dynamic suffix, not prefix), every auto-caching provider's hash matches and hits their cache. This is why the Registry is a foundational modelless win even before considering Anthropic-specific `cache_control`.

@@ -436,22 +436,22 @@ Les prompts système pour ReAct (mode JSON, mode d'appel de fonction natif, synt
 
 Tous les autres fournisseurs reçoivent un **seul** message système concaténé sans champ `cache_control` — cela est nécessaire car les points de terminaison non-Anthropic rejettent soit le champ, soit le suppriment silencieusement, et l'envoyer via certains relais provoque des erreurs `400 unknown parameter`.
 
-### Couverture multi-fournisseurs
+### Prise en charge de plusieurs fournisseurs
 
-| Fournisseur | Mécanisme | Réduction de lecture | Notre gestion |
+| Fournisseur | Mécanisme | Réduction à la lecture | Notre gestion |
 |---|---|---|---|
-| **Anthropic Claude** (3, 3.5, 4) | `cache_control` explicite | 0.10× | Deux messages système avec point d'arrêt éphémère |
-| **AWS Bedrock Anthropic** | Transmission du cache Anthropic | 0.10× | Identique à Anthropic |
-| **GCP Vertex AI Claude** | Transmission du cache Anthropic | 0.10× | Identique à Anthropic |
-| **OpenAI GPT / o-series** | Hash de préfixe automatique (≥1024 tokens) | 0.50× | Préfixe stable en octets via Section Registry → hit automatique |
-| **DeepSeek (v3 / R1)** | Cache de préfixe automatique sauvegardé sur disque | 0.10× | Identique à OpenAI |
+| **Anthropic Claude** (3, 3.5, 4) | `cache_control` explicite | 0.10× | Deux messages système avec un point de rupture éphémère |
+| **AWS Bedrock Anthropic** | Utilise le cache Anthropic | 0.10× | Identique à Anthropic |
+| **GCP Vertex AI Claude** | Utilise le cache Anthropic | 0.10× | Identique à Anthropic |
+| **OpenAI GPT / o-series** | Hash automatique du préfixe (≥1024 tokens) | 0.50× | Préfixe stable au niveau des octets via Section Registry → correspondance automatique |
+| **DeepSeek (v3 / R1)** | Cache de préfixe automatique sur disque | 0.10× | Identique à OpenAI |
 | **Moonshot Kimi (K1/K2)** | Cache de préfixe automatique | 0.10×/0.50× | Identique |
-| **ZhipuAI GLM-4.5+** | Cache de long contexte automatique | 0.20× | Identique |
+| **ZhipuAI GLM-4.5+** | Cache automatique du long contexte | 0.20× | Identique |
 | **Grok (xAI)** | Cache de préfixe automatique | 0.25× | Identique |
-| **Google Gemini** | API `createCachedContent` séparée | 0.25× | **Pas encore implémenté** — suivi sur la feuille de route v0.9 en tant que `GeminiCacheAdapter` |
+| **Google Gemini** | API `createCachedContent` distincte | 0.25× | **Non implémenté** — un `GeminiCacheAdapter` est mis de côté, sans projet de mise en œuvre |
 | **Mistral / Cohere** | Pas de cache natif | N/A | N/A |
 
-Le `PromptRegistry` bénéficie à chaque fournisseur avec mise en cache de préfixe automatique « gratuitement » — en gardant la portion statique identique en octets entre les appels (la date/heure actuelle se trouve dans le suffixe dynamique, pas le préfixe), le hash de chaque fournisseur avec mise en cache automatique correspond et atteint son cache. C'est pourquoi le Registry est une victoire fondamentale indépendante du modèle, même avant de considérer le `cache_control` spécifique à Anthropic.
+Le `PromptRegistry` profite gratuitement à tous les fournisseurs qui utilisent la mise en cache automatique des préfixes : en conservant la partie statique identique au niveau des octets d’un appel à l’autre (la date et l’heure actuelles se trouvent dans le suffixe dynamique, et non dans le préfixe), le hash correspond pour chaque fournisseur doté de cette mise en cache et une entrée en cache est trouvée. C’est pourquoi le Registry constitue un avantage fondamental indépendant du modèle, même avant de tenir compte de `cache_control`, spécifique à Anthropic.
 
 ### Observabilité
 

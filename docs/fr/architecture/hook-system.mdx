@@ -135,18 +135,18 @@ Ce design apporte :
 
 `FeishuGateHook` dépend d'un [Canal Feishu](/configuration/channels/feishu) configuré — le hook envoie la carte via la méthode `send_interactive_card()` du canal et écoute les événements de rappel que le canal a analysés. La séparation est intentionnelle : le hook gère la « machine d'état d'approbation », le canal gère la « mécanique de la plateforme IM ». Le même hook pourrait cibler Slack ou WeCom demain sans changer sa logique — seule l'implémentation du canal changerait.
 
-## Crochets planifiés (v0.9)
+## Hooks candidats (non prévus)
 
-Quatre modèles de crochets sont sur la feuille de route v0.9, tous réutilisant le même cycle de vie :
+Quatre modèles de hooks s’inscrivent dans le même cycle de vie. Aucun ne figure sur la feuille de route actuelle ; ils sont mis de côté jusqu’à ce qu’un déploiement en nécessite un :
 
-| Crochet | Point | Objectif |
+| Hook | Point | Objectif |
 |---|---|---|
-| `AuditLogHook` | PostToolUse | Écrire automatiquement `ConnectorCallLog` à chaque appel de connecteur. Aujourd'hui, c'est manuel ; en faire un crochet garantit la couverture. |
-| `ReadOnlyGuard` | PreToolUse | Bloquer les écritures lorsque l'organisation est en mode lecture seule. |
-| `ResultTruncateHook` | PostToolUse | Tronquer les observations d'outils surdimensionnées (>8k caractères) avant qu'elles n'atteignent le contexte du LLM. |
-| `ConnectorRateLimitHook` | PreToolUse | Limite de fréquence d'appel par connecteur par utilisateur, indépendante des limites de débit du LLM. |
+| `AuditLogHook` | PostToolUse | Créer automatiquement une entrée `ConnectorCallLog` à chaque appel de connecteur. Aujourd’hui, cette opération est manuelle ; en faire un hook garantit qu’elle est toujours effectuée. |
+| `ReadOnlyGuard` | PreToolUse | Bloquer les écritures lorsque l’organisation est en mode lecture seule. |
+| `ResultTruncateHook` | PostToolUse | Tronquer les observations d’outil trop volumineuses (>8k chars) avant qu’elles n’atteignent le contexte du LLM. |
+| `ConnectorRateLimitHook` | PreToolUse | Limiter la fréquence des appels par connecteur et par utilisateur, indépendamment des limites de débit du LLM. |
 
-Une couche de crochet définie par l'utilisateur est également planifiée : configuration YAML par agent (`hooks: [...]`) déclarant des commandes shell ou des callables Python à exécuter sur les événements d'outils correspondants. Cela suit le même modèle que les frameworks d'agents modernes (Claude Code, OpenDevin) ont convergé — l'application basée sur les crochets maintient la logique « doit toujours se produire » en dehors des prompts.
+Une couche de hooks définis par l’utilisateur est mise de côté selon les mêmes modalités : une configuration YAML par agent (`hooks: [...]`) déclarant des commandes shell ou des fonctions Python à exécuter lors des événements d’outil correspondants. Cette approche reprend le modèle adopté par les frameworks d’agents modernes (Claude Code, OpenDevin) : l’application des règles par des hooks permet de garder hors des prompts la logique qui doit toujours s’exécuter.
 
 ## Hooks vs. Channels
 
@@ -163,17 +163,17 @@ Autrement dit : **Les Channels sont la « plomberie » pour « où parler aux hu
 
 ## État actuel (v0.8.4)
 
-Snapshot de ce qui a été livré et ce qui est encore à venir :
+Aperçu de ce qui a été livré et de ce qui reste à faire :
 
-- ✅ `HookRegistry`, `HookContext`, `HookResult` primitives intégrées dans ReAct et DAG
-- ✅ `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook` classes de base abstraites
-- ✅ `FeishuGateHook` — complet, incluant la table `ConfirmationRequest`, la boucle de polling, le timeout/expiration et les changements d'état pilotés par callback
-- ✅ Point de terminaison de callback du canal Feishu qui décode `card.action.trigger` et met à jour la ligne en attente
-- ✅ Déclarations de hook au niveau de l'agent : `agent.model_config_json.hooks.class_hooks` se résout en un `HookRegistry` instancié sur chaque session ReAct/DAG
-- ✅ **Les hooks se déclenchent sur chaque surface d'exécution** : le chemin de chat principal (Portal, API, DAG), les sous-agents délégués (`CallAgentTool`) et les nœuds `AGENT` du Workflow. L'Eval Center contourne intentionnellement **les hooks** (l'évaluation automatisée ne doit pas être bloquée par une approbation humaine).
+- ✅ Primitives `HookRegistry`, `HookContext`, `HookResult` intégrées à ReAct et DAG
+- ✅ Classes de base abstraites `PreToolUseHook` / `PostToolUseHook` / `SessionStartHook`
+- ✅ `FeishuGateHook` — complet, avec la table `ConfirmationRequest`, la boucle d’interrogation, la gestion des délais d’expiration et des expirations, ainsi que les changements d’état déclenchés par les callbacks
+- ✅ Point de terminaison de callback du canal Feishu qui décode `card.action.trigger` et met à jour l’enregistrement en attente
+- ✅ Déclarations de hooks au niveau de l’agent : `agent.model_config_json.hooks.class_hooks` instancie un `HookRegistry` pour chaque session ReAct/DAG
+- ✅ **Les hooks s’exécutent sur toutes les surfaces d’exécution** : le parcours principal de conversation (Portail, API, DAG), les sous-agents délégués (`CallAgentTool`) et les nœuds `AGENT` de Workflow. Eval Center contourne intentionnellement les hooks (l’évaluation automatisée ne doit pas être bloquée par une approbation humaine).
 
-  Un agent délégué n'hérite pas du registre de son appelant — il construit **le sien** à partir de son propre `model_config_json`. Comme la porte de confirmation est automatiquement attachée à chaque agent, la reconstruction est un sur-ensemble de l'héritage : le délégué obtient la porte *plus* tout ce qu'il déclare pour lui-même, et la porte résout le `require_confirmation_for_all` du délégué plutôt que celui de son appelant. Les deux surfaces échouent **en fermé** : un agent dont les hooks ne peuvent pas être construits n'est pas exécuté.
-- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (v0.9)
-- ❌ Déclarations de hook YAML définies par l'utilisateur (v0.9)
+  Un agent délégué n’hérite pas du registre de son appelant : il crée **son propre** registre à partir de son propre `model_config_json`. Comme la confirmation gate est automatiquement associée à chaque agent, la recréer est plus complet que d’en hériter : le délégué reçoit la gate *ainsi que* les hooks qu’il déclare lui-même, et la gate utilise la valeur `require_confirmation_for_all` du délégué plutôt que celle de son appelant. Les deux parcours échouent **de manière sécurisée** : un agent dont les hooks ne peuvent pas être créés n’est pas exécuté.
+- ❌ `AuditLogHook`, `ReadOnlyGuard`, `ResultTruncateHook`, `ConnectorRateLimitHook` (non prévus)
+- ❌ Déclarations de hooks YAML définies par l’utilisateur (non prévues)
 
-Le Hook System est une **fondation porteuse** pour le durcissement de production v0.9. Son premier utilisateur (`FeishuGateHook`) est également une fonctionnalité de production à part entière, c'est pourquoi le squelette a été livré tôt pour la roadshow du 2026-04-24 plutôt que d'attendre le catalogue complet des hooks.
+Le système de hooks constitue un **socle essentiel** au renforcement de la sécurité en production. Son premier utilisateur (`FeishuGateHook`) est également une fonctionnalité de production à part entière, ce qui explique pourquoi le squelette a été livré en avance pour la tournée de présentation du 2026-04-24, au lieu d’attendre que le catalogue complet de hooks soit prêt.

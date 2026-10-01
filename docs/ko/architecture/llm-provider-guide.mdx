@@ -436,22 +436,22 @@ ReAct(JSON 모드, 네이티브 함수 호출 모드, 합성)의 시스템 提�
 
 다른 모든 제공자는 `cache_control` 필드가 없는 **단일** 연결된 시스템 메시지를 받습니다. 이는 Anthropic이 아닌 엔드포인트들이 해당 필드를 거부하거나 자동으로 삭제하기 때문이며, 일부 릴레이를 통해 전송하면 `400 unknown parameter` 오류가 발생하기 때문입니다.
 
-### 교차 제공자 커버리지
+### 제공업체 간 지원 범위
 
-| 제공자 | 메커니즘 | 읽기 할인 | 당사 처리 |
+| 제공업체 | 메커니즘 | 읽기 할인율 | 처리 방식 |
 |---|---|---|---|
-| **Anthropic Claude** (3, 3.5, 4) | 명시적 `cache_control` | 0.10× | 임시 중단점이 있는 두 개의 시스템 메시지 |
-| **AWS Bedrock Anthropic** | Anthropic 캐시 통과 | 0.10× | Anthropic과 동일 |
-| **GCP Vertex AI Claude** | Anthropic 캐시 통과 | 0.10× | Anthropic과 동일 |
-| **OpenAI GPT / o-series** | 자동 접두사 해시 (≥1024 tokens) | 0.50× | Section Registry를 통한 바이트 안정 접두사 → 자동 히트 |
-| **DeepSeek (v3 / R1)** | 자동 디스크 지원 접두사 캐시 | 0.10× | OpenAI와 동일 |
+| **Anthropic Claude** (3, 3.5, 4) | 명시적 `cache_control` | 0.10× | 임시 브레이크포인트가 있는 두 개의 시스템 메시지 |
+| **AWS Bedrock Anthropic** | Anthropic 캐시로 전달 | 0.10× | Anthropic과 동일 |
+| **GCP Vertex AI Claude** | Anthropic 캐시로 전달 | 0.10× | Anthropic과 동일 |
+| **OpenAI GPT / o-series** | 자동 접두사 해시 (≥1024 토큰) | 0.50× | Section Registry를 통해 바이트 단위로 동일한 접두사를 유지 → 자동 적중 |
+| **DeepSeek (v3 / R1)** | 자동 디스크 기반 접두사 캐시 | 0.10× | OpenAI와 동일 |
 | **Moonshot Kimi (K1/K2)** | 자동 접두사 캐시 | 0.10×/0.50× | 동일 |
-| **ZhipuAI GLM-4.5+** | 자동 긴 컨텍스트 캐시 | 0.20× | 동일 |
+| **ZhipuAI GLM-4.5+** | 자동 장문 컨텍스트 캐시 | 0.20× | 동일 |
 | **Grok (xAI)** | 자동 접두사 캐시 | 0.25× | 동일 |
-| **Google Gemini** | 별도 `createCachedContent` API | 0.25× | **아직 구현되지 않음** — v0.9 로드맵에서 `GeminiCacheAdapter`로 추적 중 |
-| **Mistral / Cohere** | 기본 캐시 없음 | N/A | N/A |
+| **Google Gemini** | 별도의 `createCachedContent` API | 0.25× | **구현되지 않음** — `GeminiCacheAdapter`는 보류 중이며 계획에 없음 |
+| **Mistral / Cohere** | 기본 캐시 없음 | 해당 없음 | 해당 없음 |
 
-`PromptRegistry`는 모든 제공자에게 자동 접두사 캐싱을 "무료로" 제공합니다. 정적 부분을 호출 간에 바이트 동일하게 유지함으로써 (현재 날짜/시간은 접두사가 아닌 동적 접미사에 위치), 모든 자동 캐싱 제공자의 해시가 일치하고 캐시에 히트합니다. 이것이 Anthropic 특정 `cache_control`을 고려하기 전에도 Registry가 기본 모델 없는 이점인 이유입니다.
+`PromptRegistry`는 자동 접두사 캐싱을 지원하는 모든 제공업체에서 “무료로” 이점을 제공합니다. 정적 부분이 호출 간 바이트 단위로 동일하게 유지되도록 하고(현재 날짜 및 시간은 접두사가 아닌 동적 접미사에 포함), 각 자동 캐싱 제공업체의 해시가 일치해 캐시를 적중하게 합니다. 따라서 Anthropic 전용 `cache_control`을 고려하기 전부터 `PromptRegistry`는 모델에 종속되지 않는 근본적인 이점을 제공합니다.
 
 ### 관찰성
 

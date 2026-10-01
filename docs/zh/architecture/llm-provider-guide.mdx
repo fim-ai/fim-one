@@ -436,22 +436,22 @@ ReAct 的系统提示词（JSON 模式、原生函数调用模式、综合）分
 
 所有其他提供商接收一个**单一的**连接系统消息，没有 `cache_control` 字段——这是必要的，因为非 Anthropic 端点要么拒绝该字段，要么静默丢弃它，通过某些中继发送它会导致 `400 unknown parameter` 错误。
 
-### 跨提供商覆盖
+### 跨提供商覆盖情况
 
-| 提供商 | 机制 | 读取折扣 | 我们的处理 |
+| 提供商 | 机制 | 读取折扣 | 我们的处理方式 |
 |---|---|---|---|
-| **Anthropic Claude** (3, 3.5, 4) | 显式 `cache_control` | 0.10× | 两个系统消息，带有临时断点 |
-| **AWS Bedrock Anthropic** | 通过 Anthropic 缓存传递 | 0.10× | 与 Anthropic 相同 |
-| **GCP Vertex AI Claude** | 通过 Anthropic 缓存传递 | 0.10× | 与 Anthropic 相同 |
-| **OpenAI GPT / o-series** | 自动前缀哈希（≥1024 tokens） | 0.50× | 通过 Section Registry 的字节稳定前缀 → 自动命中 |
-| **DeepSeek (v3 / R1)** | 自动磁盘支持的前缀缓存 | 0.10× | 与 OpenAI 相同 |
-| **Moonshot Kimi (K1/K2)** | 自动前缀缓存 | 0.10×/0.50× | 相同 |
+| **Anthropic Claude**（3、3.5、4） | 显式 `cache_control` | 0.10× | 两条带有临时断点的系统消息 |
+| **AWS Bedrock Anthropic** | 使用 Anthropic 缓存 | 0.10× | 与 Anthropic 相同 |
+| **GCP Vertex AI Claude** | 使用 Anthropic 缓存 | 0.10× | 与 Anthropic 相同 |
+| **OpenAI GPT / o-series** | 自动前缀哈希（≥1024 个 token） | 0.50× | 通过 Section Registry 保持前缀的字节内容稳定 → 自动命中 |
+| **DeepSeek（v3 / R1）** | 自动磁盘支持的前缀缓存 | 0.10× | 与 OpenAI 相同 |
+| **Moonshot Kimi（K1/K2）** | 自动前缀缓存 | 0.10×/0.50× | 相同 |
 | **ZhipuAI GLM-4.5+** | 自动长上下文缓存 | 0.20× | 相同 |
-| **Grok (xAI)** | 自动前缀缓存 | 0.25× | 相同 |
-| **Google Gemini** | 独立的 `createCachedContent` API | 0.25× | **尚未实现** — 在 v0.9 路线图上作为 `GeminiCacheAdapter` 跟踪 |
-| **Mistral / Cohere** | 无原生缓存 | N/A | N/A |
+| **Grok（xAI）** | 自动前缀缓存 | 0.25× | 相同 |
+| **Google Gemini** | 独立的 `createCachedContent` API | 0.25× | **尚未实现** —— `GeminiCacheAdapter` 暂时搁置，并未列入计划 |
+| **Mistral / Cohere** | 不支持原生缓存 | 不适用 | 不适用 |
 
-`PromptRegistry` 通过自动前缀缓存为每个提供商"免费"提供优势 — 通过在调用中保持静态部分字节相同（当前日期时间位于动态后缀而非前缀），每个自动缓存提供商的哈希匹配并命中其缓存。这就是为什么即使在考虑 Anthropic 特定的 `cache_control` 之前，Registry 也是一个基础的无模型优势。
+对于支持自动前缀缓存的所有提供商，`PromptRegistry` 都能「免费」带来收益——通过确保静态部分在每次调用之间保持字节内容一致（当前日期时间位于动态后缀中，而非前缀中），所有支持自动缓存的提供商都能匹配哈希并命中缓存。因此，即使不考虑 Anthropic 专属的 `cache_control`，Registry 也能带来基础性的无模型收益。
 
 ### 可观测性
 
