@@ -826,6 +826,83 @@ class TestBuildRequestKwargs:
         )
         assert kwargs["reasoning_effort"] == "medium"
 
+    def test_gpt6_tools_forces_reasoning_none(self) -> None:
+        """GPT-6 shares the GPT-5 contract: tools on chat completions → "none",
+        whitelisted so drop_params does not strip it for an id LiteLLM lacks."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-6-sol",
+            reasoning_effort="high",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        tools = [{"type": "function", "function": {"name": "test", "parameters": {}}}]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=tools,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["reasoning_effort"] == "none"
+        assert kwargs["allowed_openai_params"] == ["reasoning_effort"]
+
+    def test_gpt6_uses_completion_tokens_and_drops_temperature(self) -> None:
+        """LiteLLM only translates gpt-5 ids; gpt-6 gets the rename from us."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-6-luna",
+            default_temperature=0.7,
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=1234,
+            stream=False,
+        )
+        assert "max_tokens" not in kwargs
+        assert kwargs["max_completion_tokens"] == 1234
+        assert "temperature" not in kwargs
+        # No effort configured → nothing whitelisted, so no null is sent.
+        assert "allowed_openai_params" not in kwargs
+
+    def test_gpt35_azure_id_is_not_gpt5_family(self) -> None:
+        """``gpt-35-turbo`` (Azure's gpt-3.5 id) keeps max_tokens/temperature."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-35-turbo",
+            default_temperature=0.3,
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs, tools=None, temperature=None, max_tokens=100, stream=False
+        )
+        assert kwargs["max_tokens"] == 100
+        assert kwargs["temperature"] == 0.3
+
+    def test_gpt6_keeps_default_temperature(self) -> None:
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-6.1-sol",
+            default_temperature=1,
+            reasoning_effort="medium",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+        )
+        assert kwargs["temperature"] == 1
+        assert kwargs["reasoning_effort"] == "medium"
+
     def test_non_gpt5_tools_reasoning_untouched(self) -> None:
         """Non-GPT-5 models with tools keep their reasoning_effort as-is."""
         llm = OpenAICompatibleLLM(

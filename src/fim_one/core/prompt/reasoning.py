@@ -69,7 +69,7 @@ _ANTHROPIC_THINKING_FRAGMENTS: tuple[str, ...] = (
 # exactly as it is for ``informational_only``.  Checked after the Anthropic
 # fragments and before the informational ones, whose generic "reasoning"
 # entry would otherwise swallow proxy-tagged GPT-5 ids.
-_OPENAI_RESPONSES_FRAGMENTS: tuple[str, ...] = ("gpt-5",)
+_OPENAI_RESPONSES_FRAGMENTS: tuple[str, ...] = ("gpt-5", "gpt-6")
 
 # Fragments that identify reasoning-capable models where the reasoning
 # field is informational-only and MUST NOT be replayed to the provider.

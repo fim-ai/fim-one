@@ -363,6 +363,20 @@ _GPT5_MODE_BRIDGE = "bridge"
 _GPT5_MODE_OFF = "off"
 
 
+_OPENAI_GPT5_FAMILY_RE = re.compile(r"gpt-[5-9](?!\d)")
+
+
+def _is_openai_gpt5_family(model: str) -> bool:
+    """True for GPT-5 and later OpenAI models (gpt-5.x, gpt-6, gpt-6.1, ...).
+
+    They share the GPT-5 request contract: ``max_completion_tokens`` instead
+    of ``max_tokens``, only the default ``temperature`` (1), reasoning carried
+    as Responses-API items.  Matched by prefix because LiteLLM only knows
+    the ``gpt-5`` names; a ``gpt-6`` id reached it untranslated and 400'd.
+    """
+    return bool(_OPENAI_GPT5_FAMILY_RE.match(model.lower()))
+
+
 def _gpt5_responses_mode() -> str:
     """Read the GPT-5.x protocol switch, defaulting to ``native``.
 
@@ -873,6 +887,7 @@ class OpenAICompatibleLLM(BaseLLM):
             "o3",
             "o4",
             "gpt-5",
+            "gpt-6",
             "gemini-2.0-flash-thinking",
             "gemini-2.5-flash-thinking",
         )
@@ -943,7 +958,7 @@ class OpenAICompatibleLLM(BaseLLM):
         """
         if not self._litellm_model.startswith("openai/"):
             return False
-        if not self._model.lower().startswith("gpt-5"):
+        if not _is_openai_gpt5_family(self._model):
             return False
         if _gpt5_responses_mode() != _GPT5_MODE_NATIVE:
             return False
@@ -1149,7 +1164,7 @@ class OpenAICompatibleLLM(BaseLLM):
         key = (self._api_base, self._litellm_model)
         if (
             self._litellm_model.startswith("openai/")
-            and self._model.lower().startswith("gpt-5")
+            and _is_openai_gpt5_family(self._model)
             and _gpt5_responses_mode() == _GPT5_MODE_BRIDGE
             and _RESPONSES_BRIDGE_SUPPORT.get(key) is not False
         ):
@@ -1245,11 +1260,22 @@ class OpenAICompatibleLLM(BaseLLM):
         if self._rejects_sampling_params():
             kwargs.pop("temperature", None)
 
+        # GPT-5 and later on an OpenAI route: rename the token cap and drop a
+        # non-default temperature ourselves.  LiteLLM does this only for ids
+        # it recognises as gpt-5, so gpt-6 ids would otherwise 400 on
+        # ``max_tokens`` / ``temperature``.
+        if self._litellm_model.startswith("openai/") and _is_openai_gpt5_family(
+            self._model
+        ):
+            kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+            if kwargs.get("temperature") != 1:
+                kwargs.pop("temperature", None)
+
         # Resolve effective reasoning effort: per-call override > instance default.
         effective_reasoning = (
             self._reasoning_effort if reasoning_effort is _REASONING_INHERIT else reasoning_effort
         )
-        if tools and not via_responses and self._model.lower().startswith("gpt-5"):
+        if tools and not via_responses and _is_openai_gpt5_family(self._model):
             # GPT-5.x /v1/chat/completions rejects function tools combined
             # with reasoning, and OpenAI requires an explicit
             # reasoning_effort="none" — merely omitting the field is not
@@ -1298,6 +1324,15 @@ class OpenAICompatibleLLM(BaseLLM):
                 # Bedrock rejects temperature != 1.0 when thinking is enabled
                 if self._litellm_model.startswith("anthropic/"):
                     kwargs["temperature"] = 1.0
+        # drop_params=True strips reasoning_effort for ids LiteLLM does not
+        # know (gpt-6 and later), including the forced "none" on the tools
+        # path; whitelist it only when a value is actually being sent.
+        if (
+            self._litellm_model.startswith("openai/")
+            and _is_openai_gpt5_family(self._model)
+            and kwargs.get("reasoning_effort") is not None
+        ):
+            kwargs["allowed_openai_params"] = ["reasoning_effort"]
         return kwargs
 
     @staticmethod
