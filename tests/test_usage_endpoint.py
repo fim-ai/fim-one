@@ -126,8 +126,9 @@ async def _add_conversation(
 async def test_usage_exposes_window_fields_for_free_user(
     client: AsyncClient, db_session: AsyncSession, user: User
 ) -> None:
-    # A conversation earlier this calendar month.
-    await _add_conversation(db_session, user, tokens=5000, days_ago=2)
+    # A conversation this calendar month.  ``days_ago=0``: any earlier
+    # offset lands in the previous month on the first days of a month.
+    await _add_conversation(db_session, user, tokens=5000, days_ago=0)
 
     resp = await client.get("/api/me/usage?period=month", headers=_auth_headers(user))
     assert resp.status_code == 200
