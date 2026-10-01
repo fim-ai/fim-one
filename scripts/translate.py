@@ -469,10 +469,14 @@ def llm_chat(config: dict[str, str], system_prompt: str, user_content: str, temp
 
 
 def _model_accepts_temperature(model: str) -> bool:
-    """OpenAI reasoning models (gpt-5.x, o-series) reject any non-default
-    ``temperature`` with a 400, so the parameter must be omitted for them."""
+    """OpenAI reasoning models (gpt-5 and later, o-series) reject any
+    non-default ``temperature`` with a 400, so the parameter must be omitted
+    for them."""
     name = model.rsplit("/", 1)[-1].lower()
-    return not (name.startswith("gpt-5") or re.match(r"^o[1-9](-|$)", name) is not None)
+    return not (
+        re.match(r"gpt-[5-9](?!\d)", name) is not None
+        or re.match(r"^o[1-9](-|$)", name) is not None
+    )
 
 
 def _llm_chat_inner(config: dict[str, str], system_prompt: str, user_content: str, temperature: float = 0.3) -> str:

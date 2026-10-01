@@ -112,6 +112,14 @@ class TestNativeGating:
         """``structured_llm_call`` wants no reasoning, so gains nothing here."""
         assert _llm()._should_use_native_responses(reasoning_effort=None) is False
 
+    @pytest.mark.parametrize("model", ["gpt-6.1-sol", "gpt-6-astra"])
+    def test_explicit_none_effort_stays_native_without_reasoning_off(
+        self, model: str
+    ) -> None:
+        """Their completions path rejects tools, so suppression must not leave."""
+        llm = _llm(model=model)
+        assert llm._should_use_native_responses(reasoning_effort=None) is True
+
     def test_explicit_effort_string_still_goes_native(self) -> None:
         assert _llm()._should_use_native_responses(reasoning_effort="high") is True
 
@@ -172,6 +180,50 @@ class TestResponsesKwargs:
 
     def test_reasoning_effort_and_summary(self) -> None:
         assert self._kwargs()["reasoning"] == {"summary": "auto", "effort": "medium"}
+
+    def test_suppressed_reasoning_uses_lowest_effort_without_reasoning_off(
+        self,
+    ) -> None:
+        kwargs = _llm(model="gpt-6.1-sol")._build_responses_kwargs(
+            [ChatMessage(role="user", content="hi")],
+            tools=_tools(),
+            tool_choice=None,
+            max_tokens=None,
+            reasoning_effort=None,
+        )
+        assert kwargs["reasoning"] == {"summary": "auto", "effort": "low"}
+
+    def test_configured_none_becomes_lowest_effort_without_reasoning_off(
+        self,
+    ) -> None:
+        llm = _llm(model="gpt-6-astra", reasoning_effort="none")
+        kwargs = llm._build_responses_kwargs(
+            [ChatMessage(role="user", content="hi")],
+            tools=None,
+            tool_choice=None,
+            max_tokens=None,
+        )
+        assert kwargs["reasoning"]["effort"] == "low"
+
+    def test_unset_effort_keeps_model_default(self) -> None:
+        llm = _llm(model="gpt-6.1-sol", reasoning_effort=None)
+        kwargs = llm._build_responses_kwargs(
+            [ChatMessage(role="user", content="hi")],
+            tools=None,
+            tool_choice=None,
+            max_tokens=None,
+        )
+        assert kwargs["reasoning"] == {"summary": "auto"}
+
+    def test_suppressed_reasoning_omitted_when_none_is_accepted(self) -> None:
+        kwargs = _llm(model="gpt-6-sol")._build_responses_kwargs(
+            [ChatMessage(role="user", content="hi")],
+            tools=None,
+            tool_choice=None,
+            max_tokens=None,
+            reasoning_effort=None,
+        )
+        assert kwargs["reasoning"] == {"summary": "auto"}
 
     def test_tools_are_flattened_and_choice_converted(self) -> None:
         kwargs = self._kwargs(
@@ -340,6 +392,44 @@ class TestNativeErrorClassification:
         assert mock_responses.call_count == 2  # retried, not blacklisted
         assert mock_completion.call_count == 1  # only the first call fell back
         assert second.message.content == "hi"
+
+    async def test_bad_request_with_tools_propagates_without_reasoning_off(
+        self,
+    ) -> None:
+        """Completions rejects tools for these models, so keep the real error."""
+        llm = _llm(model="gpt-6.1-sol")
+        with (
+            patch(
+                "fim_one.core.model.openai_compatible.litellm.aresponses",
+                new=AsyncMock(side_effect=_bad_request()),
+            ),
+            patch(
+                "fim_one.core.model.openai_compatible.litellm.acompletion",
+                new=AsyncMock(return_value=_fake_completion()),
+            ) as mock_completion,
+        ):
+            with pytest.raises(Exception, match="stale reasoning item"):
+                await llm.chat(
+                    [ChatMessage(role="user", content="hi")], tools=_tools()
+                )
+        assert mock_completion.call_count == 0
+
+    async def test_bad_request_without_tools_still_falls_back_without_reasoning_off(
+        self,
+    ) -> None:
+        llm = _llm(model="gpt-6.1-sol")
+        with (
+            patch(
+                "fim_one.core.model.openai_compatible.litellm.aresponses",
+                new=AsyncMock(side_effect=_bad_request()),
+            ),
+            patch(
+                "fim_one.core.model.openai_compatible.litellm.acompletion",
+                new=AsyncMock(return_value=_fake_completion()),
+            ) as mock_completion,
+        ):
+            await llm.chat([ChatMessage(role="user", content="hi")])
+        assert mock_completion.call_count == 1
 
     async def test_other_errors_propagate(self) -> None:
         """A transient failure belongs to the retry layer, not the fallback."""

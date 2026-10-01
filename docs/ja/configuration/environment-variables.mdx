@@ -45,38 +45,38 @@ echo 'NEXT_PUBLIC_API_URL=http://localhost:9000' > frontend/.env.local
 
 > **ビルド時の注意**：`NEXT_PUBLIC_*` 変数は `pnpm build` 時に JS バンドルに埋め込まれます。実行時に変更する場合（例：ルート `.env` 経由）は効果がありません — これが、ローカル開発のみで `frontend/.env.local` に配置される理由です。
 
-## LLM (必須)
+## LLM（必須）
 
 | 変数 | 必須 | デフォルト | 説明 |
 |---|---|---|---|
-| `LLM_API_KEY` | **はい** | — | LLMプロバイダーのAPIキー |
-| `LLM_BASE_URL` | いいえ | `https://api.openai.com/v1` | OpenAI互換APIのベースURL |
-| `LLM_MODEL` | いいえ | `gpt-4o` | メインモデル——計画、分析、ReAct agentに使用 |
-| `FAST_LLM_MODEL` | いいえ | *(`LLM_MODEL`にフォールバック)* | 高速モデル——DAGステップ実行に使用（より安価で高速） |
-| `LLM_TEMPERATURE` | いいえ | `0.7` | デフォルトサンプリング温度 |
-| `LLM_CONTEXT_SIZE` | いいえ | `128000` | メインLLMのコンテキストウィンドウサイズ |
-| `LLM_MAX_OUTPUT_TOKENS` | いいえ | `64000` | メインLLMの呼び出しあたりの最大出力トークン数 |
-| `FAST_LLM_API_KEY` | いいえ | *(`LLM_API_KEY`にフォールバック)* | 高速モデルプロバイダーのAPIキー。高速モデルがメインモデルと異なるプロバイダーでホストされている場合に使用 |
-| `FAST_LLM_BASE_URL` | いいえ | *(`LLM_BASE_URL`にフォールバック)* | 高速モデルプロバイダーのベースURL |
-| `FAST_LLM_TEMPERATURE` | いいえ | *(`LLM_TEMPERATURE`にフォールバック)* | 高速モデルのサンプリング温度 |
-| `FAST_LLM_CONTEXT_SIZE` | いいえ | *(`LLM_CONTEXT_SIZE`にフォールバック)* | 高速LLMのコンテキストウィンドウサイズ |
-| `FAST_LLM_MAX_OUTPUT_TOKENS` | いいえ | *(`LLM_MAX_OUTPUT_TOKENS`にフォールバック)* | 高速LLMの呼び出しあたりの最大出力トークン数 |
-| `LLM_REASONING_EFFORT` | いいえ | *(無効)* | サポートされているモデル用の拡張思考レベル（OpenAI o-series、Gemini 2.5+、Claude）。値：`low`、`medium`、`high`。LiteLLMは各プロバイダーのネイティブ形式に自動的に変換します。モデルの思考プロセスはUI「thinking」ステップで表示されます。 |
-| `LLM_REASONING_BUDGET_TOKENS` | いいえ | *(effortから自動)* | Anthropic思考の明示的なトークン予算（最小1024）。OpenAI/Geminiの場合、effortレベルが直接使用されます。`LLM_REASONING_EFFORT`が設定されている場合のみ有効です。 |
-| `FIM_GPT5_RESPONSES_MODE` | いいえ | `native` | GPT-5.xモデルが使用するプロトコル。`native`はOpenAI Responses APIと直接通信し、各ターンの暗号化された推論を再生するため、モデルはツール呼び出し全体で思考を保持します。`bridge`はLiteLLMのチャット完了翻訳を使用し、機能しますが推論を毎ラウンド再導出します。`off`は通常のチャット完了を強制し、ツールが存在する場合は推論が無効になります。デバッグ中でない限り設定しないでください。`/v1/responses`ルートがないエンドポイントは独自にフォールバックします。GPT-5.xのみに適用されます。 |
-| `LLM_JSON_MODE_ENABLED` | いいえ | `true` | `response_format=json_object`のグローバルトグル。プロバイダーがLiteLLMのアシスタント先読み注入を拒否する場合は`false`に設定してください（例：AWS Bedrockリレー→2番目以降のagent反復で`ValidationException`）。無効にすると、構造化呼び出しはJSONモードをスキップし、プレーンテキスト正規表現抽出にフォールバックします——品質低下なし。すべてのモデル（ENV設定およびAdmin設定）に適用されます。 |
-| `LLM_TOOL_CHOICE_ENABLED` | いいえ | `true` | 構造化出力抽出での強制`tool_choice`のグローバルトグル（レベル1——ネイティブ関数呼び出し）。モデルが強制ツール選択でエラーを返す場合は`false`に設定してください（例：`tool_choice='specified'`を拒否する思考モードモデル）。無効にすると、構造化呼び出しはネイティブFCをスキップし、JSONモードから開始します。モデルごとのオーバーライドは設定→モデル→詳細で利用可能です。 |
-| `REASONING_LLM_MODEL` | いいえ | *(`LLM_MODEL`にフォールバック)* | 推論層のモデル名。深い分析が必要なタスク（例：DAG計画、計画分析）に使用 |
-| `REASONING_LLM_API_KEY` | いいえ | *(`LLM_API_KEY`にフォールバック)* | 推論モデルプロバイダーのAPIキー |
-| `REASONING_LLM_BASE_URL` | いいえ | *(`LLM_BASE_URL`にフォールバック)* | 推論モデルプロバイダーのベースURL |
-| `REASONING_LLM_TEMPERATURE` | いいえ | *(`LLM_TEMPERATURE`にフォールバック)* | 推論モデルのサンプリング温度 |
-| `REASONING_LLM_CONTEXT_SIZE` | いいえ | *(`LLM_CONTEXT_SIZE`にフォールバック)* | 推論モデルのコンテキストウィンドウサイズ |
-| `REASONING_LLM_MAX_OUTPUT_TOKENS` | いいえ | *(`LLM_MAX_OUTPUT_TOKENS`にフォールバック)* | 推論モデルの呼び出しあたりの最大出力トークン数 |
-| `REASONING_LLM_EFFORT` | いいえ | *(`LLM_REASONING_EFFORT`にフォールバック)* | 推論層の推論effortレベル。値：`low`、`medium`、`high` |
-| `REASONING_LLM_BUDGET` | いいえ | *(`LLM_REASONING_BUDGET_TOKENS`にフォールバック)* | 推論のトークン予算（主にAnthropicの場合）。推論層の自動計算予算をオーバーライドします |
-| `LLM_SUPPORTS_VISION` | いいえ | `true` *(楽観的)* | ENV モードドキュメント OCR（MarkItDown + `markitdown-ocr`経由）の試行を制御します。**Admin→Models でアクティブなモデルグループが設定されていない場合のみ適用**（純ENV モード）。デフォルトの`true`が有効な場合、`convert_to_markdown`と RAG 取り込みは`LLM_MODEL`がビジョンをサポートしていると想定し、画像 OCR のために呼び出します——これはすべての一般的な選択肢（`gpt-4o`、`claude-3-5-sonnet`、`gemini-1.5-pro/flash`）の正しい動作です。ENV設定の`LLM_MODEL`がビジョンをサポート**していない**場合は`false`に設定してください（例：`deepseek-v3`、`qwen-chat`、`llama-3.1`、`gpt-3.5-turbo`、`o1-mini`）。失敗するビジョン呼び出しをスキップし、テキストのみの抽出に直接進みます。Admin→Models パネルにアクティブなモデルグループが存在する場合、このフラグは無視され、グループの`supports_vision`フラグが優先されます——admin キュレーションの選択は常に DB モードの真実のソースです。 |
+| `LLM_API_KEY` | **はい** | — | LLM 提供元の API キー |
+| `LLM_BASE_URL` | いいえ | `https://api.openai.com/v1` | OpenAI 互換 API のベース URL |
+| `LLM_MODEL` | いいえ | `gpt-4o` | メインモデル — 計画、分析、ReAct エージェントに使用 |
+| `FAST_LLM_MODEL` | いいえ | *( `LLM_MODEL` にフォールバック)* | 高速モデル — DAG のステップ実行に使用（低コストで高速） |
+| `LLM_TEMPERATURE` | いいえ | `0.7` | デフォルトのサンプリング温度 |
+| `LLM_CONTEXT_SIZE` | いいえ | `128000` | メイン LLM のコンテキストウィンドウサイズ |
+| `LLM_MAX_OUTPUT_TOKENS` | いいえ | `64000` | メイン LLM の呼び出しあたりの最大出力 token 数 |
+| `FAST_LLM_API_KEY` | いいえ | *( `LLM_API_KEY` にフォールバック)* | 高速モデルの提供元の API キー。高速モデルがメインモデルとは異なる提供元でホストされている場合に使用 |
+| `FAST_LLM_BASE_URL` | いいえ | *( `LLM_BASE_URL` にフォールバック)* | 高速モデルの提供元のベース URL |
+| `FAST_LLM_TEMPERATURE` | いいえ | *( `LLM_TEMPERATURE` にフォールバック)* | 高速モデルのサンプリング温度 |
+| `FAST_LLM_CONTEXT_SIZE` | いいえ | *( `LLM_CONTEXT_SIZE` にフォールバック)* | 高速 LLM のコンテキストウィンドウサイズ |
+| `FAST_LLM_MAX_OUTPUT_TOKENS` | いいえ | *( `LLM_MAX_OUTPUT_TOKENS` にフォールバック)* | 高速 LLM の呼び出しあたりの最大出力 token 数 |
+| `LLM_REASONING_EFFORT` | いいえ | *(無効)* | 対応モデル（OpenAI o-series、Gemini 2.5 以降、Claude）の拡張思考レベル。値：`low`、`medium`、`high`。LiteLLM が各提供元のネイティブ形式に自動的に変換します。モデルの思考連鎖は UI の「thinking」ステップに表示されます。 |
+| `LLM_REASONING_BUDGET_TOKENS` | いいえ | *(effort から自動設定)* | Anthropic の思考に対する明示的な token 予算（最小 1024）。OpenAI/Gemini では effort レベルが直接使用されます。`LLM_REASONING_EFFORT` が設定されている場合にのみ有効です。 |
+| `FIM_GPT5_RESPONSES_MODE` | いいえ | `native` | GPT-5.x モデルが使用するプロトコル。`native` は OpenAI Responses API と直接通信し、各ターンの暗号化された推論を再送するため、モデルはツール呼び出しをまたいで思考連鎖を維持します。`bridge` は LiteLLM の chat-completions 変換を使用します。動作しますが、毎回のラウンドで推論を再導出します。`off` は通常の chat completions を強制し、ツールが存在する場合は推論が無効になります。デバッグ時以外は設定しないでください。`/v1/responses` ルートがないエンドポイントでは、それぞれ独自にフォールバックします。GPT-5.x 以降（GPT-6、GPT-6.1）に適用されます。`gpt-6.1-*` と `gpt-6-astra` は推論を無効にできず、chat completions ではどの effort レベルでも function tools が拒否されます。そのため、`native` または `bridge` と `/v1/responses` を提供するエンドポイントが必要です。そうでない場合、ツール呼び出しは失敗します。 |
+| `LLM_JSON_MODE_ENABLED` | いいえ | `true` | `response_format=json_object` のグローバル切り替え。提供元が LiteLLM の assistant prefill injection を拒否する場合（例：AWS Bedrock relay で、2 回目以降のエージェント反復時に `ValidationException` が発生する場合）は、`false` に設定してください。無効にすると、構造化呼び出しでは JSON mode をスキップし、通常のテキストに対する正規表現抽出にフォールバックします。品質への影響はありません。すべてのモデル（ENV で設定されたモデルと Admin で設定されたモデル）に適用されます。 |
+| `LLM_TOOL_CHOICE_ENABLED` | いいえ | `true` | 構造化出力の抽出（Level 1 — Native Function Calling）における強制 `tool_choice` のグローバル切り替え。モデルが強制ツール選択でエラーを返す場合（例：`tool_choice='specified'` を拒否する思考モードのモデル）は、`false` に設定してください。無効にすると、構造化呼び出しではネイティブ FC をスキップし、JSON Mode から開始します。Settings → Models → Advanced でモデルごとに上書きできます。 |
+| `REASONING_LLM_MODEL` | いいえ | *( `LLM_MODEL` にフォールバック)* | 推論用モデルの名前。深い分析が必要なタスク（例：DAG の計画、計画の分析）に使用 |
+| `REASONING_LLM_API_KEY` | いいえ | *( `LLM_API_KEY` にフォールバック)* | 推論用モデルの提供元の API キー |
+| `REASONING_LLM_BASE_URL` | いいえ | *( `LLM_BASE_URL` にフォールバック)* | 推論用モデルの提供元のベース URL |
+| `REASONING_LLM_TEMPERATURE` | いいえ | *( `LLM_TEMPERATURE` にフォールバック)* | 推論用モデルのサンプリング温度 |
+| `REASONING_LLM_CONTEXT_SIZE` | いいえ | *( `LLM_CONTEXT_SIZE` にフォールバック)* | 推論用モデルのコンテキストウィンドウサイズ |
+| `REASONING_LLM_MAX_OUTPUT_TOKENS` | いいえ | *( `LLM_MAX_OUTPUT_TOKENS` にフォールバック)* | 推論用モデルの呼び出しあたりの最大出力 token 数 |
+| `REASONING_LLM_EFFORT` | いいえ | *( `LLM_REASONING_EFFORT` にフォールバック)* | 推論用モデル層の推論 effort レベル。値：`low`、`medium`、`high` |
+| `REASONING_LLM_BUDGET` | いいえ | *( `LLM_REASONING_BUDGET_TOKENS` にフォールバック)* | 推論の token 予算（主に Anthropic 用）。推論用モデル層の自動計算された予算を上書きします |
+| `LLM_SUPPORTS_VISION` | いいえ | `true` *(楽観的)* | ENV モードでのドキュメント OCR（MarkItDown + `markitdown-ocr` 経由）を試行するかどうかを制御します。Admin → Models で有効なモデルグループが設定されていない場合（ENV のみのモード）に限り適用されます。デフォルトの `true` が有効な場合、`convert_to_markdown` と RAG の取り込み処理は `LLM_MODEL` が vision に対応しているとみなし、画像 OCR のために呼び出します。これは一般的な選択肢（`gpt-4o`、`claude-3-5-sonnet`、`gemini-1.5-pro/flash`）では正しい動作です。ENV で設定した `LLM_MODEL` が vision に対応していない場合（例：`deepseek-v3`、`qwen-chat`、`llama-3.1`、`gpt-3.5-turbo`、`o1-mini`）は、失敗する vision 呼び出しをスキップしてテキストのみの抽出に直接進むよう、`false` に設定してください。Admin → Models パネルに有効なモデルグループがある場合、このフラグは無視され、グループの `supports_vision` フラグが優先されます。DB モードでは、管理者が選定した設定が常に信頼できる唯一の情報源となります。 |
 
-> **解決順序**：ユーザー設定→Admin モデル（DB）→ENV フォールバック。Admin→Models で「General」ロールのadminモデルが設定されている場合、これらのENV変数はフォールバックのみとして機能します。ヘルスチェックは両方のソースを考慮します。
+> **解決の優先順位**：ユーザー設定 → Admin Models（DB）→ ENV フォールバック。Admin → Models で「General」ロールの管理者モデルが設定されている場合、これらの ENV 変数はフォールバックとしてのみ使用されます。ヘルスチェックでは両方の情報源が考慮されます。
 
 ### ENV フォールバックを管理パネルと同期させる
 

@@ -340,10 +340,11 @@ parcours à moitié terminés déjà présents dans l’arborescence sont enfin 
 
 #### Finaliser ce qui est déjà en cours
 
-- [ ] Entrée de compaction par lots et budgets adaptés au modèle sur le chemin de chat principal, afin que toute combinaison de modèles reste dans la fenêtre de contexte
-- [ ] Vérifier les chiffres d’utilisation du streaming du pont Responses sur la prochaine mise à niveau de LiteLLM (une mauvaise correspondance en amont est suspectée)
-- [ ] Retirer le pont chat→responses de LiteLLM une fois que le chemin GPT-5.x natif aura effectué une version complète
-- [ ] Mise en production de la facturation Stripe — rapprochement nocturne avec Stripe pour détecter les webhooks manqués, tests de régression full-stack et ID de prix en production
+- [ ] Compaction de l’entrée par blocs et budgets tenant compte du modèle sur le parcours principal du chat, afin que tout mélange de modèles reste dans la fenêtre de contexte
+- [ ] Vérifier les métriques d’utilisation du streaming du pont Responses lors de la prochaine mise à niveau de LiteLLM (un problème de correspondance en amont est suspecté)
+- [ ] Retirer le pont chat→responses de LiteLLM une fois que le parcours natif GPT-5.x aura traversé un cycle complet de publication
+- [x] Les modèles GPT-6 (6-luna, 6-sol, 6.1-sol, 6-astra) fonctionnent avec les outils et la sortie structurée sur le parcours de requête GPT-5.x
+- [ ] Mise en production de la facturation Stripe — rapprochement nocturne avec Stripe pour repérer les webhooks manqués, tests de régression de l’ensemble de la pile, ID de prix en production
 
 ### Livré du plan de pré-replan v0.9
 

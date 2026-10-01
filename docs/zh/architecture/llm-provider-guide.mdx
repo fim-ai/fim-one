@@ -265,32 +265,32 @@ tool_choice 'specified' is incompatible with thinking enabled
 
 ### 表 A：协议路由
 
-配置的 `base_url` 加上 `model` 如何成为 LiteLLM 调用，以及当首选接口不可用时会发生什么。
+已配置的 `base_url` 和 `model` 如何转换为 LiteLLM 调用，以及首选接口不可用时会发生什么。
 
-| 提供商 | 检测方式 | LiteLLM 前缀 | 接口表面 | 降级链 | 代码锚点 |
+| 提供商 | 检测依据 | LiteLLM 前缀 | 接口形式 | 降级链 | 代码锚点 |
 |---|---|---|---|---|---|
-| **OpenAI** | 域名 `api.openai.com`，或模型配置中显式的 `provider` 为 `openai` | `openai/` | `completions`。GPT-5.x 使用 `responses-native`（`litellm.aresponses`），保留 `responses-bridge`（`openai/responses/<model>`）作为回退 | GPT-5.x 原生支持 Responses，在 404 时回退到 `completions`（在 `_RESPONSES_NATIVE_SUPPORT` 中按端点和模型缓存）或在 400 时回退（不缓存）。其他所有模型直接使用 `completions` | `_resolve_litellm_model`、`_should_use_native_responses`、`_dispatch_acompletion` |
-| **Anthropic**（Bedrock 注释见下） | 域名 `anthropic.com`、路径段 `/claude` 或 `/anthropic`，或模型配置中显式的 `provider` 为 `anthropic` | `anthropic/` | `anthropic messages` | 无。原生路由从不进入 Responses 桥接；其协议在 `_build_request_kwargs` 中构建 | `_resolve_litellm_model`、`_dispatch_acompletion` |
-| **Gemini** | 域名 `generativelanguage.googleapis.com`、路径段 `/gemini`，或显式的 `provider` 为 `gemini` | `gemini/` | `gemini` | 无。域名匹配也会丢弃 `api_base`，因此 OpenAI 兼容后缀（如 `/v1beta/openai/`）被忽略，调用转到原生 Gemini API | `_resolve_litellm_model` |
-| **xAI (Grok)** | 无域名或路径条目。除非在模型配置中显式设置 `provider`，否则解析为通用 OpenAI 兼容 | `openai/` 加 `api_base`，或显式提供商前缀 | `completions` | 无 | `_resolve_litellm_model` |
-| **DeepSeek** | 域名 `api.deepseek.com` | `deepseek/` | `completions` | 无 | `_resolve_litellm_model` |
-| **Qwen**（DashScope） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
-| **GLM**（Zhipu、Z.AI） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
-| **MiniMax** | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
-| **Kimi**（Moonshot） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
-| **Doubao**（Volcengine） | 通用回退 | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
-| **Mistral** | 域名 `api.mistral.ai` | `mistral/` | `completions` | 无 | `_resolve_litellm_model` |
-| **Ollama / 本地** | 通用回退，通常为 `http://localhost:11434/v1` | `openai/` 加 `api_base` | `completions` | 无 | `_resolve_litellm_model` |
-| **Relay / 代理** | 路径提示优先，然后是通用回退。模型配置中的显式 `provider` 优先于两者 | 提示的提供商前缀，否则 `openai/`，始终加上指向中继的 `api_base` | 解析的前缀所暗示的任何内容 | 无，仅限解析的前缀。参见下面的中继陷阱 | `_resolve_litellm_model` |
+| **OpenAI** | 域名为 `api.openai.com`，或模型配置中显式设置 `provider` 为 `openai` | `openai/` | `completions`。GPT-5.x 使用 `responses-native`（`litellm.aresponses`），并保留 `responses-bridge`（`openai/responses/<model>`）作为回滚方案 | GPT-5.x 原生使用 Responses；遇到 404 时回退到 `completions`（按端点和模型缓存在 `_RESPONSES_NATIVE_SUPPORT` 中），遇到 400 时也会回退（不缓存）。`gpt-6.1-*` 和 `gpt-6-astra` 在包含工具的请求遇到 400 时不会回退，因为它们的 `completions` 不接受工具。其他所有模型都直接使用 `completions` | `_resolve_litellm_model`、`_should_use_native_responses`、`_dispatch_acompletion` |
+| **Anthropic**（Bedrock 说明见下文） | 域名为 `anthropic.com`，路径段包含 `/claude` 或 `/anthropic`，或显式设置 `provider` 为 `anthropic` | `anthropic/` | `anthropic messages` | 无。原生路由不会进入 Responses 桥接；其协议在 `_build_request_kwargs` 中构建 | `_resolve_litellm_model`、`_dispatch_acompletion` |
+| **Gemini** | 域名为 `generativelanguage.googleapis.com`，路径段包含 `/gemini`，或显式设置 `provider` 为 `gemini` | `gemini/` | `gemini` | 无。匹配到域名时也会丢弃 `api_base`，因此会忽略 `/v1beta/openai/` 之类的 OpenAI 兼容后缀，并改为调用原生 Gemini API | `_resolve_litellm_model` |
+| **xAI (Grok)** | 没有域名或路径匹配规则。除非在模型配置中显式设置 `provider`，否则会解析为通用 OpenAI 兼容模型 | 使用 `api_base` 的 `openai/`，或显式指定的提供商前缀 | `completions` | 无 | `_resolve_litellm_model` |
+| **DeepSeek** | 域名为 `api.deepseek.com` | `deepseek/` | `completions` | 无 | `_resolve_litellm_model` |
+| **Qwen**（DashScope） | 通用回退 | 使用 `api_base` 的 `openai/` | `completions` | 无 | `_resolve_litellm_model` |
+| **GLM**（Zhipu、Z.AI） | 通用回退 | 使用 `api_base` 的 `openai/` | `completions` | 无 | `_resolve_litellm_model` |
+| **MiniMax** | 通用回退 | 使用 `api_base` 的 `openai/` | `completions` | 无 | `_resolve_litellm_model` |
+| **Kimi**（Moonshot） | 通用回退 | 使用 `api_base` 的 `openai/` | `completions` | 无 | `_resolve_litellm_model` |
+| **Doubao**（Volcengine） | 通用回退 | 使用 `api_base` 的 `openai/` | `completions` | 无 | `_resolve_litellm_model` |
+| **Mistral** | 域名为 `api.mistral.ai` | `mistral/` | `completions` | 无 | `_resolve_litellm_model` |
+| **Ollama / 本地模型** | 通用回退，通常为 `http://localhost:11434/v1` | 使用 `api_base` 的 `openai/` | `completions` | 无 | `_resolve_litellm_model` |
+| **中继 / 代理** | 先检查路径提示，再使用通用回退。模型配置中显式设置的 `provider` 优先级高于两者 | 提示指定的提供商前缀，否则为 `openai/`；始终使用指向中继的 `api_base` | 由解析出的前缀决定 | 除解析出的前缀外无其他降级。参见下文的中继注意事项 | `_resolve_litellm_model` |
 
-**GPT-5.x 如何选择协议。** `FIM_GPT5_RESPONSES_MODE` 选择它：`native`（默认值）直接通过 `litellm.aresponses` 与 `/v1/responses` 通信，`bridge` 使用 LiteLLM 的聊天补全翻译，`off` 强制使用普通聊天补全。原生路径存在是因为桥接在唯一重要的地方有损失：它丢弃推理项，所以 GPT-5.x 智能体在每个工具轮次重新推导其思维链。直接与协议通信可以重放这些项。显式传递 `reasoning_effort=None` 的调用（这是 `structured_llm_call` 和完成信号探针所做的）保留在聊天补全上，因为不需要思考的调用没有推理状态可保留。
+**GPT-5.x 如何选择协议。** `FIM_GPT5_RESPONSES_MODE` 用于选择协议：`native`（默认值）通过 `litellm.aresponses` 直接调用 `/v1/responses`；`bridge` 使用 LiteLLM 的 chat-completions 转换；`off` 强制使用普通 chat completions。之所以提供原生路径，是因为桥接会在关键环节丢失信息：它会丢弃推理项，导致 GPT-5.x 智能体在每轮工具调用时都重新推导思维链。直接使用该协议，可以重放这些推理项。显式传入 `reasoning_effort=None` 的调用（`structured_llm_call` 和完成信号探测就是如此）会继续使用 chat completions，因为不需要思考的调用没有要保留的推理状态。例外情况是无法关闭推理的模型（`gpt-6.1-*`、`gpt-6-astra`）：无论 `reasoning_effort` 为何，它们的 chat completions 都会拒绝函数工具，因此这些调用会继续使用 `/v1/responses`，并采用最低推理强度 `low`。出于同样原因，`off` 模式或不支持 `/v1/responses` 的端点会导致这些模型无法进行工具调用。
 
-该原生请求的两个属性是承重的，容易出错：
+原生请求有两个容易出错、但至关重要的属性：
 
-- `store=false` 保持上游对话无状态，`include=["reasoning.encrypted_content"]` 请求返回加密负载。没有 include，推理项到达时为空，重放无声地变成无操作。
-- 重放的推理项必须剥离其服务器端 `id`。使用 `store=false` 时，上游不持久化任何内容，所以将 id 回显会导致 `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false`。`encrypted_content` blob 自己携带状态，所以删除 id 没有成本（`sanitize_reasoning_item`）。
+- `store=false` 可确保上游对话保持无状态；`include=["reasoning.encrypted_content"]` 则会请求返回加密载荷。如果不包含该字段，返回的推理项将为空，重放会悄无声息地变成空操作。
+- 重放的推理项必须去除服务器端的 `id`。由于 `store=false` 时上游不会持久化任何内容，回传该 id 会导致错误：`Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false`。`encrypted_content` 数据块本身就携带了状态，因此去掉 id 不会造成任何损失（`sanitize_reasoning_item`）。
 
-**Bedrock。** Bedrock 托管的 Claude 遵循它解析到的行，而不是 Bedrock 托管它的事实。通过 `anthropic/` 路由的中继到达时，它继承 Anthropic 协议行为，包括 LiteLLM 的 json 模式助手预填充，较新的 Bedrock 版本会拒绝。通过 OpenAI 兼容网关到达时，它解析为 `openai/`，不注入预填充，`json_mode_enabled` 可以保持开启。
+**Bedrock。** 由 Bedrock 托管的 Claude 遵循其解析到的路由，而不是由 Bedrock 托管这一事实。通过路由到 `anthropic/` 的中继访问时，它会沿用 Anthropic 协议行为，包括 LiteLLM 的 json-mode assistant 预填充；较新的 Bedrock 版本会拒绝这种预填充。通过 OpenAI 兼容网关访问时，它会解析为 `openai/`，不会注入预填充，并且可以保持 `json_mode_enabled` 开启。
 
 ### 表 B：冲突与解决方案
 

@@ -263,34 +263,34 @@ API를 통해 사고를 전환할 수 없는 경우, native_fc는 모든 구조�
 
 한 행은 단일 모델이 아닌 제공자의 프로토콜을 설명합니다. 한 제품군 내의 모델이 다른 경우(DeepSeek chat 대 reasoner, Kimi thinking 켜짐 대 꺼짐), 셀에 그 내용이 표시됩니다.
 
-### Table A: Protocol routing
+### 표 A: 프로토콜 라우팅
 
-설정된 `base_url`과 `model`이 LiteLLM 호출로 어떻게 변환되는지, 그리고 첫 번째 인터페이스 선택이 사용 불가능할 때 어떤 일이 발생하는지를 나타냅니다.
+설정된 `base_url`과 `model`이 LiteLLM 호출로 변환되는 방식과, 첫 번째 인터페이스 선택지를 사용할 수 없을 때 발생하는 상황입니다.
 
-| Provider | Detected by | LiteLLM prefix | Interface surface | Downgrade chain | Code anchor |
+| 제공업체 | 감지 기준 | LiteLLM 접두사 | 인터페이스 | 폴백 경로 | 코드 위치 |
 |---|---|---|---|---|---|
-| **OpenAI** | Domain `api.openai.com`, 또는 모델 설정에서 명시적 `provider` `openai` | `openai/` | `completions`. GPT-5.x는 `responses-native` (`litellm.aresponses`)를 사용하며, `responses-bridge` (`openai/responses/<model>`)는 폴백으로 유지됨 | GPT-5.x는 Responses를 기본적으로 사용하고, 404 (엔드포인트 및 모델별로 `_RESPONSES_NATIVE_SUPPORT`에 캐시됨) 또는 400 (캐시되지 않음)에서 `completions`로 폴백. 다른 모든 모델은 `completions`로 직접 이동 | `_resolve_litellm_model`, `_should_use_native_responses`, `_dispatch_acompletion` |
-| **Anthropic** (Bedrock 참고 아래) | Domain `anthropic.com`, 경로 세그먼트 `/claude` 또는 `/anthropic`, 또는 명시적 `provider` `anthropic` | `anthropic/` | `anthropic messages` | 없음. 기본 경로는 Responses 브리지에 진입하지 않으며, 프로토콜은 `_build_request_kwargs`에서 구축됨 | `_resolve_litellm_model`, `_dispatch_acompletion` |
-| **Gemini** | Domain `generativelanguage.googleapis.com`, 경로 세그먼트 `/gemini`, 또는 명시적 `provider` `gemini` | `gemini/` | `gemini` | 없음. 도메인 일치는 `api_base`도 제거하므로, `/v1beta/openai/`와 같은 OpenAI 호환 접미사는 무시되고 호출은 기본 Gemini API로 이동 | `_resolve_litellm_model` |
-| **xAI (Grok)** | 도메인 또는 경로 항목 없음. 모델 설정에서 `provider`가 명시적으로 설정되지 않으면 일반 OpenAI 호환으로 해석됨 | `openai/` with `api_base`, 또는 명시적 제공자 접두사 | `completions` | 없음 | `_resolve_litellm_model` |
-| **DeepSeek** | Domain `api.deepseek.com` | `deepseek/` | `completions` | 없음 | `_resolve_litellm_model` |
-| **Qwen** (DashScope) | 일반 폴백 | `openai/` with `api_base` | `completions` | 없음 | `_resolve_litellm_model` |
-| **GLM** (Zhipu, Z.AI) | 일반 폴백 | `openai/` with `api_base` | `completions` | 없음 | `_resolve_litellm_model` |
-| **MiniMax** | 일반 폴백 | `openai/` with `api_base` | `completions` | 없음 | `_resolve_litellm_model` |
-| **Kimi** (Moonshot) | 일반 폴백 | `openai/` with `api_base` | `completions` | 없음 | `_resolve_litellm_model` |
-| **Doubao** (Volcengine) | 일반 폴백 | `openai/` with `api_base` | `completions` | 없음 | `_resolve_litellm_model` |
-| **Mistral** | Domain `api.mistral.ai` | `mistral/` | `completions` | 없음 | `_resolve_litellm_model` |
-| **Ollama / local** | 일반 폴백, 일반적으로 `http://localhost:11434/v1` | `openai/` with `api_base` | `completions` | 없음 | `_resolve_litellm_model` |
-| **Relay / proxy** | 경로 힌트 우선, 그 다음 일반 폴백. 모델 설정의 명시적 `provider`는 둘 다 우선함 | 힌트된 제공자 접두사, 그렇지 않으면 `openai/`, 항상 릴레이를 가리키는 `api_base` 포함 | 해석된 접두사가 암시하는 것 | 해석된 접두사 이상 없음. 아래 릴레이 주의사항 참조 | `_resolve_litellm_model` |
+| **OpenAI** | 도메인이 `api.openai.com`이거나 모델 설정에서 `provider`를 `openai`로 명시 | `openai/` | `completions`. GPT-5.x는 `responses-native`(`litellm.aresponses`)를 사용하며, 롤백 경로로 `responses-bridge`(`openai/responses/<model>`)도 유지 | GPT-5.x는 Responses 네이티브 경로를 사용하며, 404가 발생하면 `completions`로 폴백합니다(엔드포인트와 모델별로 `_RESPONSES_NATIVE_SUPPORT`에 캐시됨). 400이 발생해도 폴백하지만 캐시하지 않습니다. `gpt-6.1-*` 및 `gpt-6-astra`는 도구가 포함된 요청에서 400이 발생해도 폴백하지 않습니다. 해당 모델의 `completions`는 도구를 거부하기 때문입니다. 그 외 모든 모델은 바로 `completions`를 사용합니다. | `_resolve_litellm_model`, `_should_use_native_responses`, `_dispatch_acompletion` |
+| **Anthropic** (아래 Bedrock 참고) | 도메인이 `anthropic.com`이거나 경로에 `/claude` 또는 `/anthropic`이 포함되거나 `provider`를 `anthropic`으로 명시 | `anthropic/` | `anthropic messages` | 없음. 네이티브 경로는 Responses 브리지를 거치지 않으며, 프로토콜은 `_build_request_kwargs`에서 구성됩니다. | `_resolve_litellm_model`, `_dispatch_acompletion` |
+| **Gemini** | 도메인이 `generativelanguage.googleapis.com`이거나 경로에 `/gemini`가 포함되거나 `provider`를 `gemini`로 명시 | `gemini/` | `gemini` | 없음. 도메인이 일치하면 `api_base`도 제거되므로 `/v1beta/openai/`와 같은 OpenAI 호환 접미사는 무시되고 호출은 네이티브 Gemini API로 전송됩니다. | `_resolve_litellm_model` |
+| **xAI (Grok)** | 도메인 또는 경로 일치 항목이 없습니다. 모델 설정에서 `provider`를 명시하지 않으면 일반 OpenAI 호환 제공업체로 처리됩니다. | `api_base`를 사용하는 `openai/` 또는 명시된 제공업체 접두사 | `completions` | 없음 | `_resolve_litellm_model` |
+| **DeepSeek** | 도메인이 `api.deepseek.com` | `deepseek/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **Qwen** (DashScope) | 일반 폴백 | `api_base`를 사용하는 `openai/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **GLM** (Zhipu, Z.AI) | 일반 폴백 | `api_base`를 사용하는 `openai/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **MiniMax** | 일반 폴백 | `api_base`를 사용하는 `openai/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **Kimi** (Moonshot) | 일반 폴백 | `api_base`를 사용하는 `openai/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **Doubao** (Volcengine) | 일반 폴백 | `api_base`를 사용하는 `openai/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **Mistral** | 도메인이 `api.mistral.ai` | `mistral/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **Ollama / 로컬** | 일반 폴백. 보통 `http://localhost:11434/v1`을 사용합니다. | `api_base`를 사용하는 `openai/` | `completions` | 없음 | `_resolve_litellm_model` |
+| **릴레이 / 프록시** | 경로 힌트를 먼저 확인한 다음 일반 폴백을 적용합니다. 모델 설정에 명시된 `provider`는 둘 다보다 우선합니다. | 힌트에 따른 제공업체 접두사. 해당하지 않으면 `openai/`를 사용하며, 항상 릴레이를 가리키는 `api_base`를 함께 사용합니다. | 확인된 접두사에 따라 결정됩니다. | 확인된 접두사 외에는 없습니다. 아래 릴레이 관련 주의 사항을 참고하세요. | `_resolve_litellm_model` |
 
-**GPT-5.x가 프로토콜을 선택하는 방법.** `FIM_GPT5_RESPONSES_MODE`가 선택합니다: `native` (기본값)는 `litellm.aresponses`를 통해 `/v1/responses`를 직접 사용하고, `bridge`는 LiteLLM의 chat-completions 변환을 사용하며, `off`는 일반 chat completions를 강제합니다. 기본 경로가 존재하는 이유는 브리지가 중요한 한 곳에서 손실이 있기 때문입니다: 추론 항목을 버리므로 GPT-5.x 에이전트는 모든 도구 라운드에서 사고의 연쇄를 다시 도출합니다. 프로토콜을 직접 사용하면 이러한 항목을 재생할 수 있습니다. `reasoning_effort=None`을 명시적으로 전달하는 호출(이는 `structured_llm_call`과 완료 신호 프로브가 수행하는 작업)은 chat completions에 머물러 있습니다. 생각이 없기를 원하는 호출은 보존할 추론 상태가 없기 때문입니다.
+**GPT-5.x가 프로토콜을 선택하는 방식.** `FIM_GPT5_RESPONSES_MODE`가 프로토콜을 선택합니다. 기본값인 `native`는 `litellm.aresponses`를 통해 `/v1/responses`를 직접 호출하고, `bridge`는 LiteLLM의 chat-completions 변환을 사용하며, `off`는 일반 chat completions를 강제합니다. 브리지가 중요한 한 가지 정보를 손실하기 때문에 네이티브 경로가 필요합니다. 브리지는 추론 항목을 버리므로 GPT-5.x 에이전트는 도구를 호출할 때마다 사고 과정을 다시 도출합니다. 프로토콜을 직접 호출하면 해당 항목을 재생할 수 있습니다. `reasoning_effort=None`을 명시적으로 전달하는 호출은 chat completions를 사용합니다. `structured_llm_call`과 완료 신호 프로브가 이에 해당합니다. 생각하지 않도록 지정한 호출에는 보존할 추론 상태가 없기 때문입니다. 단, 추론을 끌 수 없는 모델(`gpt-6.1-*`, `gpt-6-astra`)은 예외입니다. 이 모델은 `reasoning_effort` 값과 관계없이 chat completions에서 함수 도구를 거부하므로, 해당 호출은 `/v1/responses`를 사용하며 가장 낮은 추론 수준인 `low`로 실행됩니다. 같은 이유로 `off`를 설정하거나 엔드포인트에 `/v1/responses`가 없으면 이 모델에서는 도구 호출을 사용할 수 없습니다.
 
-해당 기본 요청의 두 가지 속성은 중요하며 잘못 이해하기 쉽습니다:
+네이티브 요청에서 중요한 속성 두 가지는 놓치기 쉽습니다.
 
-- `store=false`는 업스트림에서 대화를 상태 비저장으로 유지하고, `include=["reasoning.encrypted_content"]`는 암호화된 페이로드가 반환되도록 요청합니다. include 없이 추론 항목은 비어 도착하고 재생은 조용히 작동하지 않습니다.
-- 재생된 추론 항목은 서버 측 `id`를 제거해야 합니다. `store=false`를 사용하면 업스트림에 아무것도 유지되지 않으므로 id를 다시 에코하면 `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false`를 얻습니다. `encrypted_content` blob은 자체적으로 상태를 전달하므로 id를 제거해도 비용이 없습니다 (`sanitize_reasoning_item`).
+- `store=false`는 업스트림에서 대화 상태를 저장하지 않도록 하며, `include=["reasoning.encrypted_content"]`는 암호화된 페이로드를 반환하도록 요청합니다. `include`가 없으면 추론 항목은 비어 있는 상태로 도착하고, 재생은 아무런 표시 없이 작동하지 않게 됩니다.
+- 재생할 추론 항목에서는 서버 측 `id`를 제거해야 합니다. `store=false`이면 업스트림에 아무것도 저장되지 않으므로, `id`를 그대로 돌려보내면 `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false` 오류가 발생합니다. `encrypted_content` 블롭에 상태가 자체적으로 담겨 있으므로 `id`를 제거해도 손실되는 것은 없습니다(`sanitize_reasoning_item`).
 
-**Bedrock.** Bedrock 호스팅 Claude는 Bedrock이 호스팅한다는 사실이 아니라 해석되는 행을 따릅니다. `anthropic/` 라우팅 릴레이를 통해 도달하면 Anthropic 프로토콜 동작을 상속하며, 여기에는 LiteLLM의 json-mode 어시스턴트 프리필이 포함되며, 더 최신 Bedrock 버전은 이를 거부합니다. OpenAI 호환 게이트웨이를 통해 도달하면 `openai/`로 해석되고, 프리필은 주입되지 않으며, `json_mode_enabled`는 켜진 상태로 유지될 수 있습니다.
+**Bedrock.** Bedrock에서 호스팅되는 Claude는 Bedrock에서 호스팅된다는 사실이 아니라, 어떤 경로로 확인되었는지에 따라 동작합니다. `anthropic/` 경로로 라우팅되는 릴레이를 거치면 Anthropic 프로토콜 동작을 따릅니다. 여기에는 최신 Bedrock 버전에서 거부되는 LiteLLM의 json-mode assistant 사전 입력도 포함됩니다. OpenAI 호환 게이트웨이를 거치면 `openai/`로 확인되고, 사전 입력은 추가되지 않으며 `json_mode_enabled`를 계속 활성화할 수 있습니다.
 
 ### Table B: 충돌 및 해결 방법
 

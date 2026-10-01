@@ -263,34 +263,34 @@ API を通じて思考をオフにできない場合、native_fc はすべての
 
 行は単一のモデルではなく、プロバイダーのプロトコルを説明しています。1つのファミリー内のモデルが異なる場合（DeepSeek chatと推論器、Kimiは思考をオンにするかオフにするか）、セルはそのことを示しています。
 
-### Table A: プロトコルルーティング
+### 表 A: プロトコルのルーティング
 
-設定された `base_url` と `model` がどのように LiteLLM 呼び出しになるか、また最初に選択したインターフェースが利用できない場合に何が起こるかを示します。
+設定された `base_url` と `model` がどのように LiteLLM の呼び出しに変換されるか、また最初に選択したインターフェースが利用できない場合にどうなるかを示します。
 
-| プロバイダー | 検出方法 | LiteLLM プレフィックス | インターフェース | ダウングレードチェーン | コードアンカー |
+| プロバイダー | 判定条件 | LiteLLM のプレフィックス | インターフェース | フォールバック順序 | コード参照 |
 |---|---|---|---|---|---|
-| **OpenAI** | ドメイン `api.openai.com`、またはモデル設定での明示的な `provider` が `openai` | `openai/` | `completions`。GPT-5.x は `responses-native`（`litellm.aresponses`）を使用し、`responses-bridge`（`openai/responses/<model>`）はフォールバックとして保持 | GPT-5.x はネイティブで Responses を使用し、404 時（`_RESPONSES_NATIVE_SUPPORT` でエンドポイントとモデルごとにキャッシュ）または 400 時（キャッシュなし）に `completions` にフォールバック。その他のすべてのモデルは直接 `completions` に移行 | `_resolve_litellm_model`、`_should_use_native_responses`、`_dispatch_acompletion` |
-| **Anthropic**（下記の Bedrock 注記参照） | ドメイン `anthropic.com`、パスセグメント `/claude` または `/anthropic`、またはモデル設定での明示的な `provider` が `anthropic` | `anthropic/` | `anthropic messages` | なし。ネイティブルートは Responses ブリッジに入らず、プロトコルは `_build_request_kwargs` で構築 | `_resolve_litellm_model`、`_dispatch_acompletion` |
-| **Gemini** | ドメイン `generativelanguage.googleapis.com`、パスセグメント `/gemini`、またはモデル設定での明示的な `provider` が `gemini` | `gemini/` | `gemini` | なし。ドメインマッチは `api_base` も削除するため、`/v1beta/openai/` などの OpenAI 互換サフィックスは無視され、呼び出しはネイティブ Gemini API に移行 | `_resolve_litellm_model` |
-| **xAI (Grok)** | ドメインまたはパスエントリなし。モデル設定で `provider` が明示的に設定されない限り、汎用 OpenAI 互換として解決 | `openai/`（`api_base` 付き）、または明示的なプロバイダープレフィックス | `completions` | なし | `_resolve_litellm_model` |
-| **DeepSeek** | ドメイン `api.deepseek.com` | `deepseek/` | `completions` | なし | `_resolve_litellm_model` |
-| **Qwen**（DashScope） | 汎用フォールバック | `openai/`（`api_base` 付き） | `completions` | なし | `_resolve_litellm_model` |
-| **GLM**（Zhipu、Z.AI） | 汎用フォールバック | `openai/`（`api_base` 付き） | `completions` | なし | `_resolve_litellm_model` |
-| **MiniMax** | 汎用フォールバック | `openai/`（`api_base` 付き） | `completions` | なし | `_resolve_litellm_model` |
-| **Kimi**（Moonshot） | 汎用フォールバック | `openai/`（`api_base` 付き） | `completions` | なし | `_resolve_litellm_model` |
-| **Doubao**（Volcengine） | 汎用フォールバック | `openai/`（`api_base` 付き） | `completions` | なし | `_resolve_litellm_model` |
-| **Mistral** | ドメイン `api.mistral.ai` | `mistral/` | `completions` | なし | `_resolve_litellm_model` |
-| **Ollama / ローカル** | 汎用フォールバック、通常は `http://localhost:11434/v1` | `openai/`（`api_base` 付き） | `completions` | なし | `_resolve_litellm_model` |
-| **Relay / プロキシ** | パスヒント優先、次に汎用フォールバック。モデル設定での明示的な `provider` は両方をオーバーライド | ヒントされたプロバイダープレフィックス、またはそれ以外は `openai/`、常に `api_base` がリレーを指す | 解決されたプレフィックスが示すもの | 解決されたプレフィックスを超えるものはなし。下記のリレーの落とし穴を参照 | `_resolve_litellm_model` |
+| **OpenAI** | ドメインが `api.openai.com`、またはモデル設定で `provider` に `openai` が明示的に指定されている | `openai/` | `completions`。GPT-5.x は `responses-native`（`litellm.aresponses`）を使用し、ロールバック用に `responses-bridge`（`openai/responses/<model>`）も利用可能 | GPT-5.x は Responses をネイティブに使用し、404 の場合（エンドポイントとモデルごとに `_RESPONSES_NATIVE_SUPPORT` にキャッシュ）または 400 の場合（キャッシュされない）に `completions` にフォールバックします。`gpt-6.1-*` と `gpt-6-astra` は、`completions` がツールを拒否するため、ツールを含むリクエストで 400 が返ってもフォールバックしません。それ以外のモデルはすべて、直接 `completions` を使用します | `_resolve_litellm_model`、`_should_use_native_responses`、`_dispatch_acompletion` |
+| **Anthropic**（下記の Bedrock に関する注記を参照） | ドメインが `anthropic.com`、パスセグメントに `/claude` または `/anthropic` が含まれる、または `provider` に `anthropic` が明示的に指定されている | `anthropic/` | `anthropic messages` | なし。ネイティブルートは Responses ブリッジを経由しません。プロトコルは `_build_request_kwargs` で構築されます | `_resolve_litellm_model`、`_dispatch_acompletion` |
+| **Gemini** | ドメインが `generativelanguage.googleapis.com`、パスセグメントに `/gemini` が含まれる、または `provider` に `gemini` が明示的に指定されている | `gemini/` | `gemini` | なし。ドメインが一致すると `api_base` も削除されるため、`/v1beta/openai/` のような OpenAI 互換のサフィックスは無視され、ネイティブの Gemini API が呼び出されます | `_resolve_litellm_model` |
+| **xAI (Grok)** | ドメインにもパスにも該当する項目はありません。モデル設定で `provider` が明示的に設定されていない場合、汎用の OpenAI 互換として解決されます | `api_base` を指定した `openai/`、または明示されたプロバイダーのプレフィックス | `completions` | なし | `_resolve_litellm_model` |
+| **DeepSeek** | ドメインが `api.deepseek.com` | `deepseek/` | `completions` | なし | `_resolve_litellm_model` |
+| **Qwen**（DashScope） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
+| **GLM**（Zhipu、Z.AI） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
+| **MiniMax** | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
+| **Kimi**（Moonshot） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
+| **Doubao**（Volcengine） | 汎用のフォールバック | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
+| **Mistral** | ドメインが `api.mistral.ai` | `mistral/` | `completions` | なし | `_resolve_litellm_model` |
+| **Ollama / ローカル** | 汎用のフォールバック。通常は `http://localhost:11434/v1` | `api_base` を指定した `openai/` | `completions` | なし | `_resolve_litellm_model` |
+| **リレー / プロキシ** | まずパスのヒントを確認し、次に汎用のフォールバックを使用します。モデル設定で明示された `provider` は、どちらよりも優先されます | ヒントで指定されたプロバイダーのプレフィックス。なければ `openai/`。いずれの場合も `api_base` はリレーを指します | 解決されたプレフィックスが示すインターフェース | 解決されたプレフィックス以外へのフォールバックはありません。リレーに関する注意点は下記を参照してください | `_resolve_litellm_model` |
 
-**GPT-5.x がプロトコルを選択する方法。** `FIM_GPT5_RESPONSES_MODE` がこれを選択します：`native`（デフォルト）は `/v1/responses` を `litellm.aresponses` 経由で直接使用し、`bridge` は LiteLLM のチャット完了翻訳を使用し、`off` は通常のチャット完了を強制します。ネイティブパスが存在するのは、ブリッジが重要な 1 つの場所で損失があるためです：推論項目を破棄するため、GPT-5.x エージェントはツールラウンドのたびに思考の連鎖を再導出します。プロトコルを直接使用すると、これらの項目を再生できます。`reasoning_effort=None` を明示的に渡す呼び出し（これは `structured_llm_call` と完了シグナルプローブが行うこと）は、チャット完了にとどまります。思考を望まない呼び出しには保持する推論状態がないためです。
+**GPT-5.x がプロトコルを選択する方法。** `FIM_GPT5_RESPONSES_MODE` で選択します。`native`（デフォルト）は `litellm.aresponses` 経由で `/v1/responses` を直接使用し、`bridge` は LiteLLM の chat-completions 変換を使用し、`off` は通常の chat completions を強制します。ブリッジは重要な箇所で情報を失うため、ネイティブパスが用意されています。ブリッジは推論アイテムを破棄するため、GPT-5.x のエージェントはツールを呼び出すたびに思考の連鎖を再導出します。プロトコルを直接使用すれば、これらのアイテムを再生できます。`reasoning_effort=None` を明示的に渡す呼び出しは、`structured_llm_call` や終了シグナルのプローブが行う呼び出しと同様に、chat completions を使用します。思考を必要としない呼び出しには、保持すべき推論状態がないためです。ただし、推論をオフにできないモデル（`gpt-6.1-*`、`gpt-6-astra`）は例外です。これらのモデルでは、`reasoning_effort` の値にかかわらず chat completions が関数ツールを拒否するため、そのような呼び出しは `/v1/responses` を使用し、最も低い推論強度である `low` で実行されます。同じ理由から、`off` を設定するか、`/v1/responses` のないエンドポイントを使うと、これらのモデルではツール呼び出しができなくなります。
 
-そのネイティブリクエストの 2 つのプロパティは重要で、間違えやすいものです：
+このネイティブリクエストには、挙動を左右する、間違えやすい重要なプロパティが 2 つあります。
 
-- `store=false` は会話をアップストリームでステートレスに保ち、`include=["reasoning.encrypted_content"]` は暗号化されたペイロードが返されるよう要求します。include がないと、推論項目は空で到着し、再生はサイレントに no-op になります。
-- 再生された推論項目は、サーバー側の `id` を削除する必要があります。`store=false` ではアップストリームに何も保持されないため、id をエコーバックすると `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false` が返されます。`encrypted_content` ブロブはそれ自体で状態を保持するため、id を削除しても何も失われません（`sanitize_reasoning_item`）。
+- `store=false` にすると、上流では会話がステートレスに保たれ、`include=["reasoning.encrypted_content"]` を指定すると、暗号化されたペイロードが返されるよう要求できます。`include` がない場合、推論アイテムは空で返され、再生しても何も起きないままになります。
+- 再生する推論アイテムでは、サーバー側の `id` を削除する必要があります。`store=false` では上流に何も保存されないため、id をそのまま返すと `Item with id 'rs_...' not found. Items are not persisted when 'store' is set to false` というエラーになります。`encrypted_content` のデータ自体に状態が含まれているため、id を削除しても問題ありません（`sanitize_reasoning_item`）。
 
-**Bedrock。** Bedrock でホストされている Claude は、Bedrock がホストしているという事実ではなく、解決されたロウに従います。`anthropic/` ルーティングされたリレー経由でアクセスされると、LiteLLM の json-mode アシスタントプリフィルを含む Anthropic プロトコル動作を継承し、より新しい Bedrock バージョンはこれを拒否します。OpenAI 互換ゲートウェイ経由でアクセスされると、`openai/` として解決され、プリフィルは注入されず、`json_mode_enabled` はオンのままにできます。
+**Bedrock。** Bedrock でホストされる Claude は、Bedrock がホストしているかどうかではなく、解決先の行に従います。`anthropic/` にルーティングされるリレー経由でアクセスすると、Anthropic のプロトコル動作を引き継ぎます。これには、より新しい Bedrock バージョンで拒否される LiteLLM の json-mode assistant prefill も含まれます。OpenAI 互換のゲートウェイ経由でアクセスすると、`openai/` として解決され、prefill は挿入されず、`json_mode_enabled` を有効のままにできます。
 
 ### Table B: 競合と回避策
 

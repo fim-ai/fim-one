@@ -257,11 +257,11 @@ class TestFixMdEmphasisClosers:
 
 class TestModelAcceptsTemperature:
     def test_reasoning_models_drop_temperature(self) -> None:
-        for name in ("gpt-5.6-luna", "openai/gpt-5.4-mini", "o3", "o4-mini", "openai/o1-preview"):
+        for name in ("gpt-5.6-luna", "openai/gpt-5.4-mini", "gpt-6-luna", "openai/gpt-6.1-sol", "o3", "o4-mini", "openai/o1-preview"):
             assert translate._model_accepts_temperature(name) is False, name
 
     def test_other_models_keep_temperature(self) -> None:
-        for name in ("gpt-4o", "claude-sonnet-4-6", "anthropic/claude-haiku-4-5-20251001", "gemini-2.5-pro", "orca-2"):
+        for name in ("gpt-4o", "gpt-35-turbo", "claude-sonnet-4-6", "anthropic/claude-haiku-4-5-20251001", "gemini-2.5-pro", "orca-2"):
             assert translate._model_accepts_temperature(name) is True, name
 
     def test_request_kwargs_omit_temperature_for_gpt5(self, monkeypatch: pytest.MonkeyPatch) -> None:

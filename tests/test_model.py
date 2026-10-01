@@ -903,6 +903,44 @@ class TestBuildRequestKwargs:
         assert kwargs["temperature"] == 1
         assert kwargs["reasoning_effort"] == "medium"
 
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [
+            ("gpt-5.6-luna", False),
+            ("gpt-6-luna", False),
+            ("gpt-6-sol", False),
+            ("gpt-6.1-sol", True),
+            ("gpt-6-astra", True),
+            ("gpt-7-sol", True),
+            ("gpt-4o", False),
+            ("gpt-35-turbo", False),
+        ],
+    )
+    def test_rejects_reasoning_none(self, model: str, expected: bool) -> None:
+        from fim_one.core.model.openai_compatible import _rejects_reasoning_none
+
+        assert _rejects_reasoning_none(model) is expected
+
+    def test_gpt61_suppressed_reasoning_without_tools_uses_lowest(self) -> None:
+        """Completions without tools: "off" maps to the lowest accepted effort."""
+        llm = OpenAICompatibleLLM(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            model="gpt-6.1-sol",
+            reasoning_effort="high",
+        )
+        msgs = [ChatMessage(role="user", content="hi")]
+        kwargs = llm._build_request_kwargs(
+            msgs,
+            tools=None,
+            temperature=None,
+            max_tokens=None,
+            stream=False,
+            reasoning_effort=None,
+        )
+        assert kwargs["reasoning_effort"] == "low"
+        assert kwargs["allowed_openai_params"] == ["reasoning_effort"]
+
     def test_non_gpt5_tools_reasoning_untouched(self) -> None:
         """Non-GPT-5 models with tools keep their reasoning_effort as-is."""
         llm = OpenAICompatibleLLM(

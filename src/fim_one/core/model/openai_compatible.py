@@ -377,6 +377,32 @@ def _is_openai_gpt5_family(model: str) -> bool:
     return bool(_OPENAI_GPT5_FAMILY_RE.match(model.lower()))
 
 
+_OPENAI_VERSION_RE = re.compile(r"gpt-(\d+)(?:\.(\d+))?")
+
+# Lowest effort accepted by models that cannot switch reasoning off.
+_LOWEST_REASONING_EFFORT = "low"
+
+
+def _rejects_reasoning_none(model: str) -> bool:
+    """True for GPT-5-family models that reject ``reasoning_effort="none"``.
+
+    Measured 2026-10-01: gpt-5.6-*, gpt-6-luna and gpt-6-sol accept "none";
+    gpt-6.1-sol and gpt-6-astra reject it and accept low/medium/high/xhigh
+    only.  Their /v1/chat/completions also rejects function tools at any
+    effort, so tool calls on these models work only through /v1/responses.
+    Versions from 6.1 up are assumed to follow 6.1.
+    """
+    name = model.lower()
+    if not _is_openai_gpt5_family(name):
+        return False
+    if "astra" in name:
+        return True
+    version = _OPENAI_VERSION_RE.match(name)
+    if version is None:
+        return False
+    return (int(version[1]), int(version[2] or 0)) >= (6, 1)
+
+
 def _gpt5_responses_mode() -> str:
     """Read the GPT-5.x protocol switch, defaulting to ``native``.
 
@@ -933,6 +959,27 @@ class OpenAICompatibleLLM(BaseLLM):
     # Native /v1/responses path (GPT-5.x)
     # ------------------------------------------------------------------
 
+    def _resolve_reasoning_effort(
+        self, reasoning_effort: str | object | None
+    ) -> str | object | None:
+        """Per-call override > instance default, adjusted for the model.
+
+        On models that reject ``"none"`` a request to switch reasoning off
+        (an explicit ``"none"``, or a per-call ``None``) becomes the lowest
+        effort they accept.  An unset instance default is left alone so the
+        model's own default applies.
+        """
+        effective = (
+            self._reasoning_effort
+            if reasoning_effort is _REASONING_INHERIT
+            else reasoning_effort
+        )
+        if _rejects_reasoning_none(self._model) and (
+            effective == "none" or reasoning_effort is None
+        ):
+            return _LOWEST_REASONING_EFFORT
+        return effective
+
     def _should_use_native_responses(
         self,
         *,
@@ -954,7 +1001,10 @@ class OpenAICompatibleLLM(BaseLLM):
            passes ``reasoning_effort=None`` wants no thinking at all
            (``structured_llm_call`` and the finish-signal probes), so
            there is no reasoning state to preserve and the well-trodden
-           completions path is the safer choice.
+           completions path is the safer choice.  Models that cannot
+           switch reasoning off (see :func:`_rejects_reasoning_none`) are
+           exempt: their completions path rejects tools outright, so they
+           stay here and run at the lowest effort instead.
         """
         if not self._litellm_model.startswith("openai/"):
             return False
@@ -962,7 +1012,11 @@ class OpenAICompatibleLLM(BaseLLM):
             return False
         if _gpt5_responses_mode() != _GPT5_MODE_NATIVE:
             return False
-        if reasoning_effort is not _REASONING_INHERIT and reasoning_effort is None:
+        if (
+            reasoning_effort is not _REASONING_INHERIT
+            and reasoning_effort is None
+            and not _rejects_reasoning_none(self._model)
+        ):
             return False
         key = (self._api_base, self._litellm_model)
         return _RESPONSES_NATIVE_SUPPORT.get(key) is not False
@@ -990,11 +1044,7 @@ class OpenAICompatibleLLM(BaseLLM):
         ``temperature`` is deliberately absent: GPT-5 reasoning models
         reject it outright.
         """
-        effective_reasoning = (
-            self._reasoning_effort
-            if reasoning_effort is _REASONING_INHERIT
-            else reasoning_effort
-        )
+        effective_reasoning = self._resolve_reasoning_effort(reasoning_effort)
         kwargs: dict[str, Any] = {
             # The bare model name plus an explicit provider — the
             # ``openai/`` prefix belongs to LiteLLM's completions router
@@ -1051,11 +1101,29 @@ class OpenAICompatibleLLM(BaseLLM):
             )
         else:
             logger.warning(
-                "Native Responses request rejected for %s (%s); "
+                "Native Responses request rejected for %s (%s: %s); "
                 "falling back to chat completions for this call only",
                 self._model,
                 type(exc).__name__,
+                str(exc)[:300],
             )
+
+    def _native_failure_is_final(
+        self, exc: Exception, tools: list[dict[str, Any]] | None
+    ) -> bool:
+        """True when a rejected native request must not fall back.
+
+        Models that cannot switch reasoning off reject tools on chat
+        completions at any effort, so the fallback is certain to fail and
+        would replace the original error with an unrelated one.  A missing
+        route (``NotFoundError``) still falls back: no path works there, and
+        the completions error names the requirement.
+        """
+        return (
+            isinstance(exc, BadRequestError)
+            and bool(tools)
+            and _rejects_reasoning_none(self._model)
+        )
 
     async def _native_responses_chat(
         self,
@@ -1086,6 +1154,8 @@ class OpenAICompatibleLLM(BaseLLM):
             response = await litellm.aresponses(**kwargs)
         except (NotFoundError, BadRequestError) as exc:
             self._remember_native_failure(exc)
+            if self._native_failure_is_final(exc, tools):
+                raise
             return None
         _RESPONSES_NATIVE_SUPPORT[(self._api_base, self._litellm_model)] = True
         result = parse_response(response)
@@ -1127,6 +1197,8 @@ class OpenAICompatibleLLM(BaseLLM):
             stream = await litellm.aresponses(**kwargs)
         except (NotFoundError, BadRequestError) as exc:
             self._remember_native_failure(exc)
+            if self._native_failure_is_final(exc, tools):
+                raise
             return None
         _RESPONSES_NATIVE_SUPPORT[(self._api_base, self._litellm_model)] = True
         return stream_to_chunks(stream)
@@ -1272,9 +1344,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 kwargs.pop("temperature", None)
 
         # Resolve effective reasoning effort: per-call override > instance default.
-        effective_reasoning = (
-            self._reasoning_effort if reasoning_effort is _REASONING_INHERIT else reasoning_effort
-        )
+        effective_reasoning = self._resolve_reasoning_effort(reasoning_effort)
         if tools and not via_responses and _is_openai_gpt5_family(self._model):
             # GPT-5.x /v1/chat/completions rejects function tools combined
             # with reasoning, and OpenAI requires an explicit
@@ -1283,7 +1353,17 @@ class OpenAICompatibleLLM(BaseLLM):
             # may inject one).  Tools win over reasoning on this path; the
             # Responses bridge above is what allows both at once.
             kwargs["reasoning_effort"] = "none"
-            if effective_reasoning:
+            if _rejects_reasoning_none(self._model):
+                # No value works here: "none" is rejected, and any other
+                # effort is rejected together with tools.  The request is
+                # sent unchanged so the provider error reaches the caller.
+                logger.warning(
+                    "%s accepts function tools only on /v1/responses; set "
+                    "FIM_GPT5_RESPONSES_MODE to native or bridge and use an "
+                    "endpoint that serves /v1/responses",
+                    self._model,
+                )
+            elif effective_reasoning:
                 logger.debug(
                     "Forcing reasoning_effort='none' for %s "
                     "(tools + reasoning unsupported in chat completions)",

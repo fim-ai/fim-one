@@ -335,12 +335,13 @@ geplant; siehe den abschließenden Hinweis.
 - [x] Das Kündigen eines Abonnements für eine Lösung entfernt keine Connectoren oder Zugangsdaten mehr, die der Benutzer selbst eingerichtet hat
 - [x] Beim Löschen einer Organisation werden deren veröffentlichte Ressourcen an ihre Besitzer zurückgegeben und auf die Organisation beschränkte Abonnements widerrufen
 
-#### Abschließen, was bereits begonnen ist
+#### Abschließen, was bereits begonnen wurde
 
-- [ ] Chunkweise Komprimierung der Eingabe und modellbewusste Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
-- [ ] Beim nächsten LiteLLM-Upgrade die Streaming-Nutzungszahlen der Responses-Bridge überprüfen (eine falsche Zuordnung im Upstream wird vermutet)
-- [ ] Die LiteLLM-Chat→Responses-Bridge außer Betrieb nehmen, sobald der native GPT-5.x-Pfad eine vollständige Veröffentlichung durchlaufen hat
-- [ ] Produktivsetzung der Stripe-Abrechnung — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, vollständige Full-Stack-Regressionstests, aktive Preis-ID
+- [ ] Eingabe für blockweise Komprimierung und modellbewusste Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
+- [ ] Nutzungszahlen des Streamings über die Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (fehlerhafte Zuordnung upstream vermutet)
+- [ ] Die LiteLLM-Chat→Responses-Bridge außer Betrieb nehmen, sobald der native GPT-5.x-Pfad einen vollständigen Release-Zyklus durchlaufen hat
+- [x] GPT-6-Modelle (6-luna, 6-sol, 6.1-sol, 6-astra) funktionieren mit Tools und strukturierter Ausgabe über den GPT-5.x-Anfragepfad
+- [ ] Stripe-Abrechnung live schalten — nächtlicher Abgleich mit Stripe auf fehlende Webhooks, Regressionstests für den gesamten Stack, Live-Preis-ID
 
 ### Aus dem Pre-Replan-Plan v0.9 ausgeliefert
 
