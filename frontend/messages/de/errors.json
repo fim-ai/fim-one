@@ -86,5 +86,6 @@
   "feishu_channel_requires_encrypt_key": "Feishu-Kanäle erfordern einen Encrypt Key — ohne diesen können Callback-Signaturen nicht verifiziert werden.",
   "subscription_required": "Für die Nutzung von Modellen ist ein kostenpflichtiges Abonnement erforderlich.",
   "billing_plan_is_default": "Der enthaltene Standardplan kann nicht deaktiviert oder gelöscht werden. Wechseln Sie stattdessen das Zugriffsmodell.",
-  "invalid_access_model": "Ungültiges Zugriffsmodell."
+  "invalid_access_model": "Ungültiges Zugriffsmodell.",
+  "db_password_required": "Die Verbindungseinstellungen wurden geändert. Geben Sie das Passwort erneut ein, um den Test durchzuführen."
 }

@@ -86,5 +86,6 @@
   "feishu_channel_requires_encrypt_key": "Les canaux Feishu nécessitent une clé de chiffrement (Encrypt Key) — sans elle, les signatures de rappel ne peuvent pas être vérifiées.",
   "subscription_required": "Un abonnement payant est requis pour utiliser les modèles.",
   "billing_plan_is_default": "Le plan par défaut inclus ne peut pas être désactivé ni supprimé. Modifiez plutôt le modèle d'accès.",
-  "invalid_access_model": "Modèle d'accès invalide."
+  "invalid_access_model": "Modèle d'accès invalide.",
+  "db_password_required": "Les paramètres de connexion ont changé. Saisissez à nouveau le mot de passe pour tester."
 }

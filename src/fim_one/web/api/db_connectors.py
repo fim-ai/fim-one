@@ -21,7 +21,7 @@ from sqlalchemy.orm import selectinload
 
 from fim_one.core.model.base import BaseLLM
 from fim_one.core.utils import get_language_directive, spawn_background
-from fim_one.core.security.encryption import decrypt_db_config
+from fim_one.core.security.encryption import decrypt_db_config, same_connection_target
 from fim_one.core.tool.connector.database.pool import ConnectionPoolManager
 from fim_one.core.tool.connector.database.safety import SqlSafetyError, validate_sql
 from fim_one.db import create_session, get_session
@@ -130,7 +130,10 @@ async def test_connection_adhoc(
 
     When the password field is the masked sentinel ``***`` and a
     ``connector_id`` is supplied, the real password is fetched from
-    the saved connector's encrypted config.
+    the saved connector's encrypted config. The connector must belong to
+    the caller, and the stored password is only substituted when the
+    request targets the same server, database, account and TLS settings
+    it was saved for; otherwise the caller has to type the password again.
     """
     from fim_one.core.tool.connector.database.drivers import DRIVER_REGISTRY
 
@@ -139,10 +142,17 @@ async def test_connection_adhoc(
     # Resolve masked password from saved connector
     password = config.get("password", "")
     if password == "***" and body.connector_id:
-        connector = await db.get(Connector, body.connector_id)
-        if connector and connector.db_config:
-            real_config = decrypt_db_config(connector.db_config)
-            config["password"] = real_config.get("password", "")
+        connector = await _get_db_connector(body.connector_id, current_user.id, db)
+        real_config = _get_decrypted_config(connector)
+        if real_config.get("password") and not same_connection_target(
+            config, real_config
+        ):
+            raise AppError(
+                "db_password_required",
+                status_code=400,
+                detail="Connection target changed; re-enter the password",
+            )
+        config["password"] = real_config.get("password", "")
 
     driver_name = config.get("driver", "postgresql")
     driver_cls = DRIVER_REGISTRY.get(driver_name)

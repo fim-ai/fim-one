@@ -86,5 +86,6 @@
   "feishu_channel_requires_encrypt_key": "Feishuチャネルには暗号化キーが必要です。これがないとコールバック署名を検証できません。",
   "subscription_required": "モデルを使用するには有料サブスクリプションが必要です。",
   "billing_plan_is_default": "デフォルトプランは無効化または削除できません。代わりにアクセスモデルを切り替えてください。",
-  "invalid_access_model": "無効なアクセスモデルです。"
+  "invalid_access_model": "無効なアクセスモデルです。",
+  "db_password_required": "接続設定が変更されました。テストするには、もう一度パスワードを入力してください。"
 }

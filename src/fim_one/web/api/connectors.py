@@ -417,18 +417,30 @@ async def update_connector(
 
     # Re-encrypt password if db_config is being updated
     if "db_config" in update_data and update_data["db_config"]:
-        from fim_one.core.security.encryption import encrypt_db_config
+        from fim_one.core.security.encryption import (
+            encrypt_db_config,
+            same_connection_target,
+        )
 
-        new_config = update_data["db_config"]
-        # If password is the masked sentinel "***", preserve existing
-        # encrypted password instead of encrypting the literal "***".
-        if new_config.get("password") == "***" and connector.db_config:
-            new_config.pop("password")
-            existing_encrypted = connector.db_config.get("encrypted_password")
+        new_config = dict(update_data["db_config"])
+        # A missing/empty password or the masked sentinel "***" means "keep
+        # the stored password". It is only kept when the target and TLS
+        # settings are unchanged, so a saved password is never redirected
+        # to a different server.
+        submitted_password = new_config.pop("password", None)
+        existing_encrypted = (connector.db_config or {}).get("encrypted_password")
+        if submitted_password in (None, "", "***"):
             if existing_encrypted:
+                if not same_connection_target(new_config, connector.db_config):
+                    raise AppError(
+                        "db_password_required",
+                        status_code=400,
+                        detail="Connection target changed; re-enter the password",
+                    )
                 new_config["encrypted_password"] = existing_encrypted
             update_data["db_config"] = new_config
         else:
+            new_config["password"] = submitted_password
             update_data["db_config"] = encrypt_db_config(new_config)
         # Close any existing driver pool for this connector
         from fim_one.core.tool.connector.database.pool import ConnectionPoolManager

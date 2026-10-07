@@ -86,5 +86,6 @@
   "feishu_channel_requires_encrypt_key": "Feishu 채널은 암호화 키가 필요합니다 — 이 키가 없으면 콜백 서명을 확인할 수 없습니다.",
   "subscription_required": "모델을 사용하려면 유료 구독이 필요합니다.",
   "billing_plan_is_default": "기본으로 포함된 플랜은 비활성화하거나 삭제할 수 없습니다. 대신 액세스 모델을 변경하세요.",
-  "invalid_access_model": "유효하지 않은 액세스 모델입니다."
+  "invalid_access_model": "유효하지 않은 액세스 모델입니다.",
+  "db_password_required": "연결 설정이 변경되었습니다. 테스트하려면 비밀번호를 다시 입력하세요."
 }

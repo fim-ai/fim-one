@@ -305,3 +305,41 @@ class EncryptedString(TypeDecorator[str]):
         if result is None:
             return None
         return decrypt_string(result)
+
+
+# Fields a stored database password is bound to. A saved password is only
+# reused against the same target and transport it was entered for; changing
+# any of these requires the password to be entered again.
+_PASSWORD_BOUND_FIELDS = (
+    "driver",
+    "host",
+    "port",
+    "database",
+    "username",
+    "ssl",
+    "ca_cert",
+)
+
+
+def _connection_target(config: dict[str, Any]) -> tuple[str, ...]:
+    """Normalise the password-bound fields of a db_config for comparison."""
+    host = str(config.get("host") or "").strip().casefold()
+    try:
+        port = str(int(config.get("port") or 0))
+    except (TypeError, ValueError):
+        port = str(config.get("port"))
+    values = {
+        "driver": str(config.get("driver") or "postgresql"),
+        "host": host,
+        "port": port,
+        "database": str(config.get("database") or "").strip(),
+        "username": str(config.get("username") or "").strip(),
+        "ssl": str(bool(config.get("ssl"))),
+        "ca_cert": str(config.get("ca_cert") or "").strip(),
+    }
+    return tuple(values[key] for key in _PASSWORD_BOUND_FIELDS)
+
+
+def same_connection_target(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Return whether two db_configs point at the same target and transport."""
+    return _connection_target(a) == _connection_target(b)

@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { EmojiPickerPopover } from "@/components/ui/emoji-picker-popover"
-import { connectorApi } from "@/lib/api"
+import { ApiError, connectorApi } from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { ConnectorResponse, DbConnectionConfig } from "@/types/connector"
 
@@ -57,6 +58,7 @@ export function DbConnectorSettingsForm({
 }: DbConnectorSettingsFormProps) {
   const t = useTranslations("connectors")
   const tc = useTranslations("common")
+  const tError = useTranslations("errors")
 
   // Basic fields — lazy initializers so the first render already has correct values
   // (useEffect fires after paint; without this, the Select would flash the wrong value)
@@ -77,6 +79,7 @@ export function DbConnectorSettingsForm({
   // Always start empty so the placeholder ("********") is visible on edit.
   // Empty on save = keep stored password (see build payload below).
   const [password, setPassword] = useState("")
+  const [passwordError, setPasswordError] = useState<string | null>(null)
   const [ssl, setSsl] = useState(() => connector?.db_config?.ssl ?? false)
   const [readOnly, setReadOnly] = useState(() => connector?.db_config?.read_only ?? true)
   const [maxRows, setMaxRows] = useState(() => connector?.db_config?.max_rows ?? 1000)
@@ -192,7 +195,11 @@ export function DbConnectorSettingsForm({
         toast.error(t("connectionFailed"))
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error"
+      const message = getErrorMessage(err, tError)
+      if (err instanceof ApiError && err.errorCode === "db_password_required") {
+        setPasswordError(message)
+        return
+      }
       setTestResult({ success: false, db_version: null, error: message })
       toast.error(t("connectionFailed"))
     } finally {
@@ -246,8 +253,12 @@ export function DbConnectorSettingsForm({
       setTestResult(null)
       toast.success(connector ? t("connectorUpdated") : t("connectorCreated"))
     } catch (err) {
+      const message = getErrorMessage(err, tError)
+      if (err instanceof ApiError && err.errorCode === "db_password_required") {
+        setPasswordError(message)
+        return
+      }
       console.error("Failed to save connector:", err)
-      const message = err instanceof Error ? err.message : "Unknown error"
       toast.error(t("connectorSaveFailed", { message }))
     } finally {
       setIsSubmitting(false)
@@ -399,9 +410,13 @@ export function DbConnectorSettingsForm({
               id="db-connector-password"
               type="password"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setTestResult(null) }}
+              onChange={(e) => { setPassword(e.target.value); setPasswordError(null); setTestResult(null) }}
               placeholder="********"
+              aria-invalid={passwordError ? true : undefined}
             />
+            {passwordError && (
+              <p className="text-sm text-destructive">{passwordError}</p>
+            )}
           </div>
 
           {/* Test Connection — right after connection fields */}

@@ -86,5 +86,6 @@
   "feishu_channel_requires_encrypt_key": "Feishu通道需要加密密钥——没有它，无法验证回调签名。",
   "subscription_required": "使用模型需要付费订阅。",
   "billing_plan_is_default": "内置默认套餐无法禁用或删除，请改为切换访问模型。",
-  "invalid_access_model": "无效的访问模型。"
+  "invalid_access_model": "无效的访问模型。",
+  "db_password_required": "连接设置已更改。请重新输入密码以进行测试。"
 }

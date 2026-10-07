@@ -47,6 +47,7 @@
   "feishu_channel_requires_encrypt_key": "Feishu channels require an Encrypt Key — without it, callback signatures cannot be verified.",
 
   "connector_not_found": "Connector not found.",
+  "db_password_required": "The connection settings changed. Enter the password again to test.",
   "action_not_found": "Action not found.",
   "spec_fetch_failed": "Failed to fetch OpenAPI spec: {reason}.",
   "spec_input_required": "Provide spec, spec_url, or spec_raw.",
