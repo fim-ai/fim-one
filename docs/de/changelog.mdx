@@ -10,6 +10,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unveröffentlicht]
 
+## [v0.9.1] - 2026-10-07
+
 ### Behoben
 
 - **Ein gespeichertes Datenbankpasswort wird nur für die Verbindung verwendet, für die es gespeichert wurde.** Beim Testen einer Verbindung oder Bearbeiten eines Datenbank-Connectors wird das gespeicherte Passwort nur für den Besitzer des Connectors wiederverwendet und nur, solange Treiber-, Host-, Port-, Datenbank-, Benutzernamen- und TLS-Einstellungen unverändert sind. Andernfalls muss das Passwort erneut eingegeben werden. Beim Speichern einer Bearbeitung mit leer gelassenem Passwortfeld bleibt das gespeicherte Passwort nun erhalten, anstatt gelöscht zu werden.

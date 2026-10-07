@@ -10,6 +10,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+## [v0.9.1] - 2026-10-07
+
 ### Corrigé
 
 - **Un mot de passe de base de données enregistré est utilisé uniquement pour la connexion avec laquelle il a été enregistré.** Le test d’une connexion ou la modification d’un connecteur de base de données réutilise le mot de passe enregistré uniquement pour le propriétaire du connecteur et tant que les paramètres du pilote, de l’hôte, du port, de la base de données, du nom d’utilisateur et de TLS sont inchangés ; sinon, le mot de passe doit être saisi à nouveau. Enregistrer une modification en laissant le champ du mot de passe vide conserve désormais le mot de passe enregistré au lieu de l’effacer.

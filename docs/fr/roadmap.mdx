@@ -320,6 +320,9 @@ Bugs suivis qui sont reproductibles en production mais pas encore corrigés. Cha
 - [x] La suppression d’une organisation restitue ses ressources publiées à leurs propriétaires et révoque les abonnements associés à l’organisation
 - [x] Les modèles GPT-6 (6-luna, 6-sol, 6.1-sol, 6-astra) fonctionnent avec les outils et la sortie structurée sur le chemin de requête GPT-5.x
 
+### v0.9.1 (2026-10-07) — Correctif de liaison des identifiants
+- [x] Un mot de passe de base de données enregistré est utilisé uniquement par le propriétaire du connecteur et uniquement pour la cible avec laquelle il a été enregistré
+
 ## Versions planifiées
 
 Replanifié le 06/09/2026. Le noyau est construit : moteur ReAct, connecteurs,
@@ -329,14 +332,14 @@ s’agit désormais d’achever ce qui existe déjà dans la base de code et de 
 qui ne figure pas dans la liste ci-dessous n’est pas planifié ; consultez la
 note de clôture.
 
-### v0.9.1 — Finaliser l’existant
+### v0.9.2 — Finaliser ce qui est déjà en place
 
-**Objectif** : terminer les parcours à moitié achevés déjà présents dans le dépôt.
+**Objectif** : achever les parcours à moitié terminés déjà présents dans l’arborescence.
 
-- [ ] Entrée de compactage par blocs et budgets tenant compte du modèle sur le parcours principal de chat, afin que tout mélange de modèles reste dans la fenêtre de contexte
-- [ ] Vérifier les chiffres d’utilisation du streaming du pont Responses de LiteLLM lors de la prochaine mise à niveau de LiteLLM (une mauvaise correspondance en amont est suspectée)
-- [ ] Retirer le pont chat→responses de LiteLLM une fois que le parcours natif GPT-5.x aura été utilisé dans une version complète
-- [ ] Mise en service de la facturation Stripe — rapprochement nocturne avec Stripe pour repérer les webhooks manqués, tests de régression de bout en bout, identifiant de prix en production
+- [ ] Entrée de compaction par blocs et budgets tenant compte du modèle sur le parcours principal du chat, afin que toute combinaison de modèles reste dans la fenêtre de contexte
+- [ ] Vérifier les chiffres d’utilisation du streaming du pont Responses lors de la prochaine mise à niveau de LiteLLM (un mauvais mappage en amont est suspecté)
+- [ ] Retirer le pont chat→responses de LiteLLM une fois que le parcours GPT-5.x natif aura effectué une version complète
+- [ ] Mise en production de la facturation Stripe — réconciliation nocturne avec Stripe pour détecter les webhooks manqués, tests de régression full-stack et identifiant de prix en production
 
 ### Livré du plan de pré-replan v0.9
 

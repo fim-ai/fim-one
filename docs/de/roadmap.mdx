@@ -320,6 +320,9 @@ Nachverfolgte Fehler, die in der Produktionsumgebung reproduzierbar, aber noch n
 - [x] Beim Löschen einer Organisation werden ihre veröffentlichten Ressourcen an ihre Eigentümer zurückgegeben und organisationsbezogene Abonnements widerrufen
 - [x] GPT-6-Modelle (6-luna, 6-sol, 6.1-sol, 6-astra) funktionieren mit Tools und strukturierter Ausgabe über den GPT-5.x-Anforderungspfad
 
+### v0.9.1 (2026-10-07) — Patch zur Anmeldeinformationsbindung
+- [x] Ein gespeichertes Datenbankpasswort wird nur vom Besitzer des Connectors und nur für das Ziel verwendet, für das es gespeichert wurde
+
 ## Geplante Versionen
 
 Neu geplant am 2026-09-06. Der Kern ist fertiggestellt: ReAct-Engine, Konnektoren,
@@ -328,14 +331,14 @@ darum, das, was bereits in der Codebasis vorhanden ist, fertigzustellen und korr
 nicht darum, neue Funktionsbereiche zu eröffnen. Alles, was unten nicht aufgeführt ist, ist nicht
 geplant; siehe den abschließenden Hinweis.
 
-### v0.9.1 — Angefangenes abschließen
+### v0.9.2 — Vorhandenes abschließen
 
-**Ziel**: die bereits im Codebestand angefangenen, aber nicht abgeschlossenen Pfade fertigstellen.
+**Ziel**: Die bereits im Tree vorhandenen, halb fertigen Pfade abschließen.
 
-- [ ] Eingabe für chunkweise Komprimierung und modellbewusste Budgets im Haupt-Chatpfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
-- [ ] Streaming-Nutzungszahlen der Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (Verdacht auf fehlerhafte Zuordnung upstream)
-- [ ] Die LiteLLM-Chat→Responses-Bridge ablösen, sobald der native GPT-5.x-Pfad einen vollständigen Release durchlaufen hat
-- [ ] Stripe-Abrechnung produktiv setzen — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, vollständige Full-Stack-Regressionstests und Live-Preis-ID
+- [ ] Chunk-basierte Komprimierungseingaben und modellabhängige Budgets im zentralen Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
+- [ ] Die Streaming-Nutzungszahlen der Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (eine fehlerhafte Zuordnung im Upstream wird vermutet)
+- [ ] Die LiteLLM-Chat→Responses-Bridge außer Betrieb nehmen, sobald der native GPT-5.x-Pfad einen vollständigen Release-Zyklus durchlaufen hat
+- [ ] Stripe-Abrechnung produktiv schalten — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, Regressionstests für den gesamten Stack, aktive Price ID
 
 ### Aus dem Pre-Replan-Plan v0.9 ausgeliefert
 
