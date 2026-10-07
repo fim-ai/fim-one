@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+### Fixed
+
+- **A saved database password is only used for the connection it was saved with.** Testing a connection or editing a database connector reuses the stored password only for the connector's owner and only while driver, host, port, database, username and TLS settings are unchanged; otherwise the password must be entered again. Saving an edit with the password field left blank now keeps the stored password instead of clearing it.
+
 ## [v0.9.0] - 2026-10-01
 
 ### Added
