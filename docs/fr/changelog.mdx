@@ -10,6 +10,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/). Les versions cor
 
 ## [Unreleased]
 
+## [v0.9.2] - 2026-10-09
+
 ### Corrigé
 
 - **Les requêtes sortantes sont vérifiées par rapport aux adresses privées au moment de leur envoi, et pas uniquement lorsque l’URL est enregistrée.** Les webhooks de workflow résolvent à nouveau leur hôte lors de la livraison et refusent les adresses privées ou internes. Ainsi, un nom d’hôte dont le DNS change après son enregistrement ne peut plus accéder au réseau interne. Les redirections vers une adresse IP privée sont refusées pour toutes les requêtes sortantes, et l’adresse de métadonnées d’Alibaba Cloud (`100.100.100.200`, plage `100.64.0.0/10`) est désormais bloquée, au même titre que les autres plages internes.

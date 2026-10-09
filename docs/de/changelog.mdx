@@ -10,6 +10,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unveröffentlicht]
 
+## [v0.9.2] - 2026-10-09
+
 ### Behoben
 
 - **Ausgehende Anfragen werden beim Senden gegen private Adressen geprüft, nicht nur beim Speichern der URL.** Workflow-Webhooks lösen ihren Host bei der Zustellung erneut auf und lehnen private oder interne Adressen ab. Dadurch kann ein Hostname, der nach dem Speichern seinen DNS-Eintrag ändert, nicht mehr auf das interne Netzwerk zugreifen. Weiterleitungen an eine private IP-Adresse werden bei jeder ausgehenden Anfrage abgelehnt, und die Metadatenadresse von Alibaba Cloud (`100.100.100.200`, Bereich `100.64.0.0/10`) ist jetzt zusammen mit den anderen internen Bereichen blockiert.

@@ -323,6 +323,9 @@ Nachverfolgte Fehler, die in der Produktionsumgebung reproduzierbar, aber noch n
 ### v0.9.1 (2026-10-07) — Patch zur Anmeldeinformationsbindung
 - [x] Ein gespeichertes Datenbankpasswort wird nur vom Besitzer des Connectors und nur für das Ziel verwendet, für das es gespeichert wurde
 
+### v0.9.2 (2026-10-09) — Patch für ausgehende Anfragen
+- [x] Webhooks und Weiterleitungen werden zum Zeitpunkt des Sendens auf private Adressen geprüft; der Metadatenbereich von Alibaba Cloud wird blockiert
+
 ## Geplante Versionen
 
 Neu geplant am 2026-09-06. Der Kern ist fertiggestellt: ReAct-Engine, Konnektoren,
@@ -331,14 +334,14 @@ darum, das, was bereits in der Codebasis vorhanden ist, fertigzustellen und korr
 nicht darum, neue Funktionsbereiche zu eröffnen. Alles, was unten nicht aufgeführt ist, ist nicht
 geplant; siehe den abschließenden Hinweis.
 
-### v0.9.2 — Vorhandenes abschließen
+### v0.9.3 — Das Vorhandene fertigstellen
 
-**Ziel**: Die bereits im Tree vorhandenen, halb fertigen Pfade abschließen.
+**Ziel**: Die bereits im Code vorhandenen, halb fertigen Pfade abschließen.
 
-- [ ] Chunk-basierte Komprimierungseingaben und modellabhängige Budgets im zentralen Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
-- [ ] Die Streaming-Nutzungszahlen der Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (eine fehlerhafte Zuordnung im Upstream wird vermutet)
-- [ ] Die LiteLLM-Chat→Responses-Bridge außer Betrieb nehmen, sobald der native GPT-5.x-Pfad einen vollständigen Release-Zyklus durchlaufen hat
-- [ ] Stripe-Abrechnung produktiv schalten — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, Regressionstests für den gesamten Stack, aktive Price ID
+- [ ] Chunked-Compaction-Eingaben und modellabhängige Budgets im Haupt-Chat-Pfad, damit jede Modellkombination innerhalb des Kontextfensters bleibt
+- [ ] Die Streaming-Nutzungszahlen der Responses-Bridge beim nächsten LiteLLM-Upgrade überprüfen (eine Fehlzuordnung im Upstream wird vermutet)
+- [ ] Die LiteLLM-Chat→Responses-Bridge zurückziehen, sobald der native GPT-5.x-Pfad eine vollständige Release-Runde durchlaufen hat
+- [ ] Stripe-Abrechnung produktiv schalten — nächtlicher Abgleich mit Stripe auf verpasste Webhooks, vollständige Full-Stack-Regressionstests, Live-Preis-ID
 
 ### Aus dem Pre-Replan-Plan v0.9 ausgeliefert
 

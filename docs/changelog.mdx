@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ## [Unreleased]
 
+## [v0.9.2] - 2026-10-09
+
 ### Fixed
 
 - **Outbound requests are checked against private addresses when they are sent, not only when the URL is saved.** Workflow webhooks resolve their host again at delivery and refuse private or internal addresses, so a hostname that changes its DNS after it was saved can no longer reach the internal network. Redirects to a private IP address are refused for every outbound request, and Alibaba Cloud's metadata address (`100.100.100.200`, range `100.64.0.0/10`) is now blocked along with the other internal ranges.
