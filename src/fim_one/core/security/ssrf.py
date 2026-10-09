@@ -6,6 +6,7 @@ Used by http_request, web_fetch, connector adapter, and OpenAPI importer.
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from typing import Any
@@ -24,12 +25,21 @@ _BLOCKED_IPV4_NETWORKS = [
     ipaddress.IPv4Network("192.168.0.0/16"),
     ipaddress.IPv4Network("169.254.0.0/16"),
     ipaddress.IPv4Network("0.0.0.0/8"),
+    # Shared address space; Alibaba Cloud's metadata service is 100.100.100.200.
+    # 198.18.0.0/15 is deliberately absent: fake-IP DNS proxies (Surge, Clash)
+    # resolve every public hostname into it.
+    ipaddress.IPv4Network("100.64.0.0/10"),
+    ipaddress.IPv4Network("192.0.0.0/24"),
+    ipaddress.IPv4Network("224.0.0.0/4"),
+    ipaddress.IPv4Network("240.0.0.0/4"),
 ]
 
 _BLOCKED_IPV6_NETWORKS = [
+    ipaddress.IPv6Network("::/128"),
     ipaddress.IPv6Network("::1/128"),
     ipaddress.IPv6Network("fc00::/7"),
     ipaddress.IPv6Network("fe80::/10"),
+    ipaddress.IPv6Network("ff00::/8"),
 ]
 
 
@@ -134,7 +144,10 @@ def _is_ip_literal(host: str) -> bool:
 
 
 def _resolve_and_pin(hostname: str) -> str:
-    """Resolve *hostname*, check all IPs, return first public IP.
+    """Resolve *hostname*, check all IPs, return the one to connect to.
+
+    Prefers the first IPv4 address: the pinned address gets no Happy
+    Eyeballs fallback, and many hosts have no IPv6 route.
 
     Raises:
         ValueError: If DNS fails or any resolved IP is private/internal.
@@ -150,7 +163,8 @@ def _resolve_and_pin(hostname: str) -> str:
         raise ValueError(f"DNS resolution returned no results for '{hostname}'")
 
     first_ip: str | None = None
-    for _family, _type, _proto, _canonname, sockaddr in results:
+    first_ipv4: str | None = None
+    for family, _type, _proto, _canonname, sockaddr in results:
         ip = str(sockaddr[0])
         if is_private_ip(ip):
             raise ValueError(
@@ -159,9 +173,11 @@ def _resolve_and_pin(hostname: str) -> str:
             )
         if first_ip is None:
             first_ip = ip
+        if first_ipv4 is None and family == socket.AF_INET:
+            first_ipv4 = ip
 
     assert first_ip is not None
-    return first_ip
+    return first_ipv4 or first_ip
 
 
 class SSRFSafeTransport(httpx.AsyncHTTPTransport):
@@ -170,12 +186,20 @@ class SSRFSafeTransport(httpx.AsyncHTTPTransport):
     On each request, resolves the hostname ourselves, checks all IPs
     against the private range blocklist, then rewrites the request URL
     to use the resolved IP directly (preserving the original Host header).
+    IP-literal hosts are checked against the same blocklist, so a redirect
+    to e.g. ``http://169.254.169.254/`` is refused like a hostname would be.
     """
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
-        if host and not _is_ip_literal(host):
-            ip = _resolve_and_pin(host)
+        if host and _is_ip_literal(host):
+            if is_private_ip(host):
+                raise ValueError(
+                    f"SSRF blocked: '{host}' is a private/internal address"
+                )
+        elif host:
+            # getaddrinfo blocks; keep it off the event loop.
+            ip = await asyncio.to_thread(_resolve_and_pin, host)
             # Rewrite URL to use the pinned IP; preserve original Host header
             request.url = request.url.copy_with(host=ip)
             # Preserve original hostname for TLS SNI so certificate verification

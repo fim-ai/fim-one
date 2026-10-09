@@ -23,6 +23,7 @@ from sqlalchemy import CursorResult, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session, create_session
+from fim_one.core.security import get_safe_async_client, is_private_ip
 from fim_one.core.utils import spawn_background
 from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
 from fim_one.web.exceptions import AppError
@@ -163,7 +164,13 @@ def _validate_webhook_url(url: str) -> None:
         except ValueError:
             continue
 
-        if ip.is_loopback or ip.is_private or ip.is_reserved or ip.is_link_local:
+        if (
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_reserved
+            or ip.is_link_local
+            or is_private_ip(str(ip))
+        ):
             raise AppError(
                 "invalid_webhook_url",
                 status_code=400,
@@ -1284,10 +1291,8 @@ async def _deliver_webhook(
     Logs errors but never raises — callers should schedule this as a
     background task so it doesn't block the SSE stream.
     """
-    import httpx
-
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with get_safe_async_client(timeout=10.0) as client:
             resp = await client.post(
                 webhook_url,
                 json=payload,
@@ -1809,7 +1814,7 @@ async def test_webhook(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with get_safe_async_client(timeout=10.0) as client:
             resp = await client.post(
                 webhook_url,
                 json=test_payload,
@@ -1832,6 +1837,17 @@ async def test_webhook(
                 "status_code": None,
                 "webhook_url": webhook_url,
                 "error": "Request timed out after 10 seconds",
+            }
+        )
+    except ValueError:
+        # Raised by the SSRF transport; its message names the resolved IP,
+        # which must not be reported back to the caller.
+        return ApiResponse(
+            data={
+                "success": False,
+                "status_code": None,
+                "webhook_url": webhook_url,
+                "error": "Webhook URL must not point to a private or internal address",
             }
         )
     except Exception as exc:

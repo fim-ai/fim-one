@@ -440,10 +440,10 @@ class WorkflowScheduler:
         webhook_url: str, payload: dict[str, Any]
     ) -> None:
         """Fire-and-forget POST to a workflow webhook URL."""
-        import httpx
+        from fim_one.core.security import get_safe_async_client
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with get_safe_async_client(timeout=10.0) as client:
                 resp = await client.post(
                     webhook_url,
                     json=payload,
