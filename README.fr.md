@@ -277,6 +277,10 @@ Merci à ces personnes merveilleuses ([clé emoji](https://allcontributors.org/d
 
 Ce projet suit la spécification [all-contributors](https://allcontributors.org/). Les contributions de toute nature sont bienvenues !
 
+## À propos de FIM
+
+FIM One est développé par [FIM](https://fim.ai). FIM est une marque partagée par deux entreprises indépendantes : FIM Labs Pte. Ltd. (Singapour) et Beijing FIM Network Technology Co., Ltd. (Beijing, fondée en 2013).
+
 ## Licence
 
 Licence FIM One Source Available. Il ne s'agit **pas** d'une licence open source approuvée par l'OSI.

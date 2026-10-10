@@ -10,7 +10,7 @@ readme = "README.md"
 license = "LicenseRef-FIM-One"
 requires-python = ">=3.11"
 authors = [
-    { name = "fim-ai", email = "dev@fim.ai" },
+    { name = "FIM", email = "dev@fim.ai" },
 ]
 keywords = ["agent", "llm", "dag", "rag", "ai"]
 classifiers = [
@@ -108,6 +108,8 @@ dm8 = []
 Homepage = "https://github.com/fim-ai/fim-one"
 Repository = "https://github.com/fim-ai/fim-one"
 Issues = "https://github.com/fim-ai/fim-one/issues"
+Website = "https://one.fim.ai"
+Company = "https://fim.ai"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fim_one"]

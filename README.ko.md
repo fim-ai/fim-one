@@ -277,6 +277,10 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 이 프로젝트는 [all-contributors](https://allcontributors.org/) 명세를 따릅니다. 모든 종류의 기여를 환영합니다!
 
+## FIM 소개
+
+FIM One은 [FIM](https://fim.ai)에서 개발합니다. FIM은 서로 독립적인 두 회사가 공동으로 사용하는 브랜드입니다. FIM Labs Pte. Ltd. (싱가포르) 및 Beijing FIM Network Technology Co., Ltd. (베이징, 2013년 설립).
+
 ## 라이선스
 
 FIM One Source Available License. 이는 **OSI 승인 오픈 소스 라이선스가 아닙니다**.
