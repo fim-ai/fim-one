@@ -46,6 +46,10 @@ async def patched_session(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None
             s.add(ConnectorAction(connector_id=cid, name="ping", method="GET", path="/ping"))
         await s.commit()
     monkeypatch.setattr("fim_one.db.create_session", factory)
+    # _resolve_tools builds (and caches) the model registry from this test's
+    # env; restore the module cache afterwards so later tests rebuild theirs.
+    monkeypatch.setattr("fim_one.web.deps._cached_registry", None)
+    monkeypatch.setattr("fim_one.web.deps._cached_registry_version", -1)
     yield
     await engine.dispose()
 
