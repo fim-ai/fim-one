@@ -7,6 +7,18 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+def _check_base_url_scheme(v: str | None) -> str | None:
+    """Reject a connector base_url that is not plain http(s)."""
+    if v is None:
+        return v
+    from urllib.parse import urlparse
+
+    parsed = urlparse(v)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Only http and https schemes are allowed for base_url")
+    return v
+
+
 # --- Action Schemas ---
 
 
@@ -80,14 +92,7 @@ class ConnectorCreate(BaseModel):
     @field_validator("base_url")
     @classmethod
     def validate_base_url_scheme(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        from urllib.parse import urlparse
-
-        parsed = urlparse(v)
-        if parsed.scheme not in ("http", "https"):
-            raise ValueError("Only http and https schemes are allowed for base_url")
-        return v
+        return _check_base_url_scheme(v)
 
 
 class ConnectorUpdate(BaseModel):
@@ -101,6 +106,11 @@ class ConnectorUpdate(BaseModel):
     db_config: dict[str, Any] | None = None
     allow_fallback: bool | None = None
     is_active: bool | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url_scheme(cls, v: str | None) -> str | None:
+        return _check_base_url_scheme(v)
 
 
 class ConnectorResponse(BaseModel):
@@ -244,6 +254,11 @@ class ConnectorImportRequest(BaseModel):
     auth_config: dict[str, Any] | None = None
     actions: list[ActionExportData] = Field(default_factory=list)
     _meta: dict[str, Any] | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url_scheme(cls, v: str | None) -> str | None:
+        return _check_base_url_scheme(v)
 
 
 class ConnectorImportResult(BaseModel):

@@ -222,17 +222,17 @@ async def _get_owned_connector(
 async def _get_visible_connector(
     connector_id: str, user_id: str, db: AsyncSession
 ) -> Connector:
-    """Fetch a connector visible to the given user (own + org + global)."""
-    from fim_one.web.visibility import build_visibility_filter
+    """Fetch a connector visible to the given user (own + subscribed)."""
+    from fim_one.web.visibility import resolve_visibility
 
-    user_org_ids = await get_user_org_ids(user_id, db)
+    # Subscriptions are the only way a non-owner sees a shared connector, so
+    # the filter must include them — without it a subscriber 404s on their
+    # own credential endpoints.
+    vis_filter, _, _ = await resolve_visibility(Connector, user_id, "connector", db)
     result = await db.execute(
         select(Connector)
         .options(selectinload(Connector.actions))
-        .where(
-            Connector.id == connector_id,
-            build_visibility_filter(Connector, user_id, user_org_ids),
-        )
+        .where(Connector.id == connector_id, vis_filter)
     )
     connector = result.scalar_one_or_none()
     if connector is None:
@@ -379,26 +379,44 @@ async def list_semantic_tags(
     return ApiResponse(data=get_all_semantic_tags())
 
 
+# Static GET paths must be registered before ``/{connector_id}``, which
+# would otherwise capture them as a connector id and 404.
+
+
+@router.get("/config-template", response_model=ApiResponse)
+async def get_connector_config_template(
+    format: str = Query("yaml", pattern=r"^(yaml|json)$"),
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> ApiResponse:
+    """Return a starter connector config template in YAML or JSON format."""
+    from fim_one.core.tool.connector.config_loader import (
+        get_config_template as _get_template,
+    )
+
+    template = _get_template(format=format)
+    return ApiResponse(data={"template": template, "format": format})
+
+
+@router.get("/circuit-breaker-status", response_model=ApiResponse)
+async def get_circuit_breaker_status(
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> ApiResponse:
+    """Return the state of all per-connector circuit breakers.
+
+    Useful for monitoring which external services are experiencing
+    failures and when recovery probes are scheduled.
+    """
+    registry = await get_circuit_breaker_registry()
+    return ApiResponse(data={"breakers": registry.get_status()})
+
+
 @router.get("/{connector_id}", response_model=ApiResponse)
 async def get_connector(
     connector_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    from fim_one.web.visibility import build_visibility_filter
-
-    user_org_ids = await get_user_org_ids(current_user.id, db)
-    result = await db.execute(
-        select(Connector)
-        .options(selectinload(Connector.actions))
-        .where(
-            Connector.id == connector_id,
-            build_visibility_filter(Connector, current_user.id, user_org_ids),
-        )
-    )
-    connector = result.scalar_one_or_none()
-    if connector is None:
-        raise AppError("connector_not_found", status_code=404)
+    connector = await _get_visible_connector(connector_id, current_user.id, db)
     has_creds = await _has_default_credential(connector_id, db)
     _is_owner = connector.user_id == current_user.id
     return ApiResponse(data=_connector_to_response(connector, has_default_credentials=has_creds, is_owner=_is_owner).model_dump())
@@ -1077,6 +1095,9 @@ async def import_connector(
     and empty credentials. The ``warnings`` list in the response tells the user
     which fields need manual configuration (e.g. credentials, base_url).
     """
+    # Imports never carry credentials: a hand-edited export could still hold
+    # a token, and auth_config is stored in plaintext, so drop secret fields.
+    clean_auth_config, _ = _split_auth_config(body.auth_type, body.auth_config)
     connector = Connector(
         user_id=current_user.id,
         name=body.name,
@@ -1085,7 +1106,7 @@ async def import_connector(
         type=body.connector_type,
         base_url=body.base_url,
         auth_type=body.auth_type,
-        auth_config=body.auth_config,
+        auth_config=clean_auth_config or None,
         status="draft",
     )
     db.add(connector)
@@ -1289,44 +1310,19 @@ async def create_connector_from_config(
     return ApiResponse(data=_connector_to_response(connector).model_dump())
 
 
-@router.get("/config-template", response_model=ApiResponse)
-async def get_connector_config_template(
-    format: str = Query("yaml", pattern=r"^(yaml|json)$"),
-    current_user: User = Depends(get_current_user),  # noqa: B008
-) -> ApiResponse:
-    """Return a starter connector config template in YAML or JSON format."""
-    from fim_one.core.tool.connector.config_loader import (
-        get_config_template as _get_template,
-    )
-
-    template = _get_template(format=format)
-    return ApiResponse(data={"template": template, "format": format})
-
-
 # ---------------------------------------------------------------------------
-# Circuit breaker status
+# Circuit breaker reset
 # ---------------------------------------------------------------------------
-
-
-@router.get("/circuit-breaker-status", response_model=ApiResponse)
-async def get_circuit_breaker_status(
-    current_user: User = Depends(get_current_user),  # noqa: B008
-) -> ApiResponse:
-    """Return the state of all per-connector circuit breakers.
-
-    Useful for monitoring which external services are experiencing
-    failures and when recovery probes are scheduled.
-    """
-    registry = await get_circuit_breaker_registry()
-    return ApiResponse(data={"breakers": registry.get_status()})
 
 
 @router.post("/{connector_id}/circuit-breaker-reset", response_model=ApiResponse)
 async def reset_circuit_breaker(
     connector_id: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Manually reset a circuit breaker for a connector to CLOSED state."""
+    await _get_visible_connector(connector_id, current_user.id, db)
     registry = await get_circuit_breaker_registry()
     existed = await registry.reset(connector_id)
     return ApiResponse(

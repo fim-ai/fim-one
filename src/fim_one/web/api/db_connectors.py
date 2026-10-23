@@ -337,6 +337,59 @@ async def list_schemas(
     )
 
 
+# ``/schemas/bulk`` must be registered before ``/schemas/{schema_id}``,
+# which would otherwise capture "bulk" as a schema id and 404.
+@router.put("/{connector_id}/schemas/bulk", response_model=ApiResponse)
+async def bulk_update_schemas(
+    connector_id: str,
+    body: BulkSchemaUpdate,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Bulk update annotations for tables and columns."""
+    await _get_db_connector(connector_id, current_user.id, db)
+
+    # Load all schemas for this connector
+    result = await db.execute(
+        select(DatabaseSchema)
+        .options(selectinload(DatabaseSchema.columns))
+        .where(DatabaseSchema.connector_id == connector_id)
+    )
+    schema_lookup = {s.table_name: s for s in result.scalars().all()}
+
+    updated_count = 0
+
+    for table_update in body.tables:
+        table_name = table_update.get("table_name")
+        if not table_name or table_name not in schema_lookup:
+            continue
+
+        schema_obj = schema_lookup[table_name]
+
+        # Update table-level fields
+        for field in ("display_name", "description", "is_visible"):
+            if field in table_update:
+                setattr(schema_obj, field, table_update[field])
+                updated_count += 1
+
+        # Update column-level fields
+        col_updates = table_update.get("columns", [])
+        if col_updates:
+            col_lookup = {c.column_name: c for c in (schema_obj.columns or [])}
+            for cu in col_updates:
+                col_name = cu.get("column_name")
+                if not col_name or col_name not in col_lookup:
+                    continue
+                col_obj = col_lookup[col_name]
+                for field in ("display_name", "description", "is_visible", "is_pii"):
+                    if field in cu:
+                        setattr(col_obj, field, cu[field])
+                        updated_count += 1
+
+    await db.commit()
+    return ApiResponse(data={"updated_count": updated_count})
+
+
 @router.put("/{connector_id}/schemas/{schema_id}", response_model=ApiResponse)
 async def update_schema_table(
     connector_id: str,
@@ -424,57 +477,6 @@ async def update_schema_column(
             is_pii=col_obj.is_pii,
         ).model_dump()
     )
-
-
-@router.put("/{connector_id}/schemas/bulk", response_model=ApiResponse)
-async def bulk_update_schemas(
-    connector_id: str,
-    body: BulkSchemaUpdate,
-    current_user: User = Depends(get_current_user),  # noqa: B008
-    db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> ApiResponse:
-    """Bulk update annotations for tables and columns."""
-    await _get_db_connector(connector_id, current_user.id, db)
-
-    # Load all schemas for this connector
-    result = await db.execute(
-        select(DatabaseSchema)
-        .options(selectinload(DatabaseSchema.columns))
-        .where(DatabaseSchema.connector_id == connector_id)
-    )
-    schema_lookup = {s.table_name: s for s in result.scalars().all()}
-
-    updated_count = 0
-
-    for table_update in body.tables:
-        table_name = table_update.get("table_name")
-        if not table_name or table_name not in schema_lookup:
-            continue
-
-        schema_obj = schema_lookup[table_name]
-
-        # Update table-level fields
-        for field in ("display_name", "description", "is_visible"):
-            if field in table_update:
-                setattr(schema_obj, field, table_update[field])
-                updated_count += 1
-
-        # Update column-level fields
-        col_updates = table_update.get("columns", [])
-        if col_updates:
-            col_lookup = {c.column_name: c for c in (schema_obj.columns or [])}
-            for cu in col_updates:
-                col_name = cu.get("column_name")
-                if not col_name or col_name not in col_lookup:
-                    continue
-                col_obj = col_lookup[col_name]
-                for field in ("display_name", "description", "is_visible", "is_pii"):
-                    if field in cu:
-                        setattr(col_obj, field, cu[field])
-                        updated_count += 1
-
-    await db.commit()
-    return ApiResponse(data={"updated_count": updated_count})
 
 
 # ---------------------------------------------------------------------------
