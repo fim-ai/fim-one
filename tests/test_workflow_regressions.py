@@ -7,9 +7,10 @@ built-in templates, and the run endpoints' quota / rate-limit bookkeeping.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any, AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -58,7 +59,9 @@ def _e(source: str, target: str, handle: str | None = None) -> dict[str, Any]:
     return edge
 
 
-async def _run(raw: dict[str, Any], inputs: dict[str, Any] | None = None) -> list[tuple[str, dict[str, Any]]]:
+async def _run(
+    raw: dict[str, Any], inputs: dict[str, Any] | None = None
+) -> list[tuple[str, dict[str, Any]]]:
     engine = WorkflowEngine(run_id="r", user_id="u", workflow_id="w")
     events: list[tuple[str, dict[str, Any]]] = []
     async for name, data in engine.execute_streaming(parse_blueprint(raw), inputs):
@@ -157,9 +160,7 @@ async def _eval_condition(
         id="cond",
         type=NodeType.CONDITION_BRANCH,
         data={
-            "conditions": [
-                {"id": "a", "variable": variable, "operator": operator, "value": value}
-            ]
+            "conditions": [{"id": "a", "variable": variable, "operator": operator, "value": value}]
         },
     )
     result = await ConditionBranchExecutor().execute(node, store, _ctx())
@@ -220,7 +221,9 @@ class TestConditionVariables:
             ("input.score", "~=", "80"),  # unsupported operator is ignored
         ],
     )
-    async def test_condition_falls_to_default(self, variable: str, operator: str, value: Any) -> None:
+    async def test_condition_falls_to_default(
+        self, variable: str, operator: str, value: Any
+    ) -> None:
         assert await _eval_condition(variable, operator, value, _VARS) == "source-default"
 
     @pytest.mark.asyncio
@@ -298,7 +301,9 @@ class TestOutputVariable:
     @pytest.mark.asyncio
     async def test_store_output_writes_output_variable(self) -> None:
         store = VariableStore()
-        node = WorkflowNodeDef(id="llm_1", type=NodeType.LLM, data={"output_variable": "llm_result"})
+        node = WorkflowNodeDef(
+            id="llm_1", type=NodeType.LLM, data={"output_variable": "llm_result"}
+        )
         await _store_output(node, store, "hi")
         assert await store.get("llm_1.output") == "hi"
         assert await store.get("llm_1.llm_result") == "hi"
@@ -426,7 +431,13 @@ class TestNodeTimeoutDefaults:
                 _n("conn", "CONNECTOR"),
                 _n("e", "END"),
             ],
-            "edges": [_e("s", "agent"), _e("agent", "llm"), _e("llm", "mcp"), _e("mcp", "conn"), _e("conn", "e")],
+            "edges": [
+                _e("s", "agent"),
+                _e("agent", "llm"),
+                _e("llm", "mcp"),
+                _e("mcp", "conn"),
+                _e("conn", "e"),
+            ],
         }
         timeouts = {n.id: n.timeout_ms for n in parse_blueprint(raw).nodes}
         assert timeouts["agent"] == 300_000
@@ -495,7 +506,10 @@ class TestBuiltinTemplates:
         tpl = next(t for t in WORKFLOW_TEMPLATES if t["id"] == "conditional-router")
 
         async def fake_llm(
-            self: LLMExecutor, node: WorkflowNodeDef, store: VariableStore, context: ExecutionContext
+            self: LLMExecutor,
+            node: WorkflowNodeDef,
+            store: VariableStore,
+            context: ExecutionContext,
         ) -> NodeResult:
             answer = "tech answer" if node.id == "llm_technical" else "general answer"
             await store.set(f"{node.id}.output", answer)
@@ -538,9 +552,9 @@ class TestTriggerRateLimitSlot:
         with (
             patch.object(wf_api, "_rate_limiter", limiter),
             patch("fim_one.web.api.chat._check_token_quota", AsyncMock()),
+            pytest.raises(AppError),
         ):
-            with pytest.raises(AppError):
-                await wf_api.trigger_workflow("key", WorkflowTriggerRequest(inputs={}), db)
+            await wf_api.trigger_workflow("key", WorkflowTriggerRequest(inputs={}), db)
 
         assert not limiter._active_runs.get("owner-1")
 
@@ -562,11 +576,11 @@ class TestInteractiveRunQuota:
                 "fim_one.web.api.chat._check_token_quota",
                 AsyncMock(side_effect=AppError("token_quota_exceeded", status_code=429)),
             ),
+            pytest.raises(AppError),
         ):
-            with pytest.raises(AppError):
-                await wf_api.run_workflow(
-                    "wf-1", WorkflowRunRequest(inputs={}), MagicMock(), user, MagicMock()
-                )
+            await wf_api.run_workflow(
+                "wf-1", WorkflowRunRequest(inputs={}), MagicMock(), user, MagicMock()
+            )
         acquire.assert_not_awaited()
 
 
