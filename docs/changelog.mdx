@@ -13,6 +13,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 ### Fixed
 
 - **Completion notifications for DAG runs list the tools that actually ran.** The "tools used" line on a completion card was built from the planner's suggested tool per step, so it could name tools that were never called and miss ones that were; it now reflects each step's real tool calls.
+- **Knowledge-base agents find evidence on deployments without a reranker.** With hybrid retrieval and no reranker key, every result was dropped by the grounding relevance threshold, so a KB-bound agent always answered "no relevant evidence".
+- **Org members can save their own credentials for a shared connector.** Opening a subscribed connector or its personal-credential settings returned "not found", so a connector shared without owner-credential fallback could not be used by anyone but its owner.
+- **Skills shared to an organization or the Market show up there.** Published skills were missing from the listing, so nobody could subscribe to them.
+- **Disabling a connector or knowledge base takes it out of every agent that uses it.** Agents bound to a switched-off connector or knowledge base kept calling it.
+- **Connector actions apply their Response Extract (JMESPath) expression.** The expression was silently ignored and the full response was returned.
+- **With the Skills or Workflows module turned off, agents no longer see them.** The system prompt still listed skills and workflows, and told the model to call tools that were not there.
+- **Connector import no longer stores tokens in plain text, and connector URLs must be http or https on edit and import too.**
+- **The connector config template, circuit-breaker status and database schema bulk-update endpoints respond.** They returned 404 because another route captured their paths.
 
 ## [v0.9.2] - 2026-10-09
 
