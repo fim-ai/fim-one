@@ -62,6 +62,29 @@ async def test_hybrid_rrf_fusion():
     assert results[0].score is not None
 
 
+async def test_hybrid_rrf_marks_scores_rank_fused():
+    """Unreranked RRF scores are rank artifacts (<= ~0.033), and say so."""
+    dense = FakeRetriever([Document(content="doc_a", score=0.9)])
+    sparse = FakeRetriever([Document(content="doc_a", score=0.7)])
+
+    results = await HybridRetriever(dense, sparse).retrieve("test", top_k=1)
+
+    assert results[0].rank_fused is True
+    assert results[0].score is not None and results[0].score < 0.05
+    assert results[0].vector_score == 0.9
+
+
+async def test_hybrid_reranked_scores_are_not_rank_fused():
+    dense = FakeRetriever([Document(content="first", score=0.9)])
+    sparse = FakeRetriever([])
+
+    results = await HybridRetriever(
+        dense, sparse, reranker=FakeReranker()
+    ).retrieve("test", top_k=1)
+
+    assert results[0].rank_fused is False
+
+
 async def test_hybrid_fts_degradation():
     """When FTS fails, should fall back to dense-only."""
     dense = FakeRetriever(
