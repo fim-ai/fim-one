@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -83,6 +84,149 @@ def _flatten_eval_names(snapshot: dict[str, Any]) -> dict[str, Any]:
         # Full dotted key (for explicit references)
         names[key] = val
     return names
+
+
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_TEMPLATE_REF = re.compile(r"\{\{\s*(.+?)\s*\}\}")
+_MISSING = object()
+
+
+async def _store_output(node: WorkflowNodeDef, store: VariableStore, value: Any) -> None:
+    """Store a node's result as ``{node_id}.output`` and its output variable.
+
+    The editor lets every node name an ``output_variable`` and its variable
+    picker inserts ``{{node_id.<output_variable>}}``, so the value must be
+    readable under that name too, not only under ``.output``.
+    """
+    await store.set(f"{node.id}.output", value)
+    output_variable = node.data.get("output_variable")
+    if (
+        isinstance(output_variable, str)
+        and output_variable != "output"
+        and _IDENTIFIER.fullmatch(output_variable)
+    ):
+        await store.set(f"{node.id}.{output_variable}", value)
+
+
+def _lookup_variable(snapshot: dict[str, Any], ref: str) -> Any:
+    """Resolve a variable reference the way a user writes it in the editor.
+
+    Accepts ``{{node.var}}``, ``node.var``, ``input.var``, a nested path into a
+    dict/list value (``human_1.output.status``, ``node.items.0``) and a bare
+    short name (``score``) that matches the last segment of one stored key.
+    Returns ``_MISSING`` when nothing matches.
+    """
+    ref = ref.strip()
+    match = _TEMPLATE_REF.fullmatch(ref)
+    if match:
+        ref = match.group(1).strip()
+    if not ref:
+        return _MISSING
+    if ref in snapshot:
+        return snapshot[ref]
+
+    parts = ref.split(".")
+    # Longest stored prefix first, then walk the rest into the value.
+    for cut in range(len(parts) - 1, 0, -1):
+        prefix = ".".join(parts[:cut])
+        if prefix not in snapshot:
+            continue
+        value: Any = snapshot[prefix]
+        for part in parts[cut:]:
+            if isinstance(value, dict) and part in value:
+                value = value[part]
+            elif isinstance(value, (list, tuple)) and part.isdigit() and int(part) < len(value):
+                value = value[int(part)]
+            else:
+                return _MISSING
+        return value
+
+    if len(parts) == 1:
+        # Short name or the underscore alias (``input_score``) that
+        # expression-mode conditions have always accepted.
+        flattened = _flatten_eval_names(snapshot)
+        if ref in flattened:
+            return flattened[ref]
+    return _MISSING
+
+
+def _as_text(value: Any) -> str:
+    """String form used for equality and ``contains`` comparisons."""
+    if value is None or value is _MISSING:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return str(value)
+
+
+def _as_number(value: Any) -> float | None:
+    """Numeric form of *value*, or ``None`` (booleans are not numbers here)."""
+    if isinstance(value, bool) or value is None or value is _MISSING:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _is_empty(value: Any) -> bool:
+    if value is None or value is _MISSING:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, dict, set)):
+        return len(value) == 0
+    return False
+
+
+def _compare(actual: Any, operator: str, expected: Any) -> bool:
+    """Evaluate one structured condition (variable / operator / value).
+
+    Numbers are compared numerically when both sides parse as numbers, so a
+    form input of ``"80"`` still satisfies ``> 50``; everything else is
+    compared as text.
+    """
+    if operator == "is_empty":
+        return _is_empty(actual)
+    if operator == "is_not_empty":
+        return not _is_empty(actual)
+    if operator in ("contains", "not_contains"):
+        needle = _as_text(expected)
+        if isinstance(actual, (list, tuple, set)):
+            found = any(_as_text(item) == needle for item in actual)
+        else:
+            found = needle in _as_text(actual)
+        return found if operator == "contains" else not found
+
+    actual_num = _as_number(actual)
+    expected_num = _as_number(expected)
+    both_numeric = actual_num is not None and expected_num is not None
+    if operator in ("==", "!="):
+        if both_numeric:
+            equal = actual_num == expected_num
+        else:
+            equal = _as_text(actual) == _as_text(expected)
+        return equal if operator == "==" else not equal
+    if operator in (">", "<", ">=", "<="):
+        if not both_numeric:
+            return False
+        assert actual_num is not None and expected_num is not None
+        if operator == ">":
+            return actual_num > expected_num
+        if operator == "<":
+            return actual_num < expected_num
+        if operator == ">=":
+            return actual_num >= expected_num
+        return actual_num <= expected_num
+    raise ValueError(f"Unsupported condition operator: {operator!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +314,12 @@ class EndExecutor:
                     if isinstance(var_ref, str) and "{{" in var_ref:
                         outputs[key] = await store.interpolate(var_ref)
                     elif isinstance(var_ref, str):
-                        outputs[key] = await store.get(var_ref)
+                        # A bare variable name reads that variable; anything
+                        # that isn't one is a constant ("Request rejected.").
+                        if await store.has(var_ref):
+                            outputs[key] = await store.get(var_ref)
+                        else:
+                            outputs[key] = var_ref
                     else:
                         outputs[key] = var_ref
             else:
@@ -257,7 +406,7 @@ class LLMExecutor:
                     result.usage, model=getattr(llm, "model_id", None)
                 )
 
-            await store.set(f"{node.id}.output", output)
+            await _store_output(node, store, output)
 
             return NodeResult(
                 node_id=node.id,
@@ -340,7 +489,7 @@ class ConditionBranchExecutor:
                         )
                         # Delegate just this condition to LLM evaluation
                         llm_handle = await self._evaluate_llm(
-                            node, [cond], store, default_handle,
+                            node, [cond], store, default_handle, context,
                         )
                         if llm_handle is not None:
                             active_handle = llm_handle
@@ -348,22 +497,25 @@ class ConditionBranchExecutor:
                         continue
 
                     if not expr and variable:
-                        # Auto-build expression from structured fields
-                        if operator in ("is_empty",):
-                            expr = f"not {variable}"
-                        elif operator in ("is_not_empty",):
-                            expr = f"bool({variable})"
-                        elif operator == "contains":
-                            expr = f"{json.dumps(value)} in str({variable})"
-                        elif operator == "not_contains":
-                            expr = f"{json.dumps(value)} not in str({variable})"
-                        else:
-                            # Try to parse value as number, else quote it
-                            try:
-                                float(value)
-                                expr = f"{variable} {operator} {value}"
-                            except (ValueError, TypeError):
-                                expr = f"{variable} {operator} {json.dumps(value)}"
+                        # Structured fields: resolve the variable directly
+                        # rather than splicing it into a Python expression,
+                        # where a dotted reference such as ``input.score`` or
+                        # ``{{llm_1.output}}`` cannot be evaluated.
+                        if not handle:
+                            continue
+                        actual = _lookup_variable(snapshot, str(variable))
+                        try:
+                            matched = _compare(actual, str(operator), value)
+                        except ValueError as e:
+                            logger.warning(
+                                "Condition %s on node %s skipped: %s",
+                                cond_id, node.id, e,
+                            )
+                            continue
+                        if matched:
+                            active_handle = handle
+                            break
+                        continue
 
                     if not expr or not handle:
                         continue
@@ -383,7 +535,7 @@ class ConditionBranchExecutor:
 
             if mode != "expression" and active_handle is None:
                 active_handle = await self._evaluate_llm(
-                    node, conditions, store, default_handle,
+                    node, conditions, store, default_handle, context,
                 )
 
             if active_handle is None:
@@ -414,6 +566,7 @@ class ConditionBranchExecutor:
         conditions: list[dict[str, Any]],
         store: VariableStore,
         default_handle: str,
+        context: ExecutionContext | None = None,
     ) -> str | None:
         """Use the fast LLM to decide which condition branch to activate.
 
@@ -501,6 +654,16 @@ class ConditionBranchExecutor:
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=user_content),
         ])
+
+        # Meter the classification call like the LLM node does.
+        if (
+            context is not None
+            and context.usage_tracker is not None
+            and getattr(result, "usage", None)
+        ):
+            await context.usage_tracker.record(
+                result.usage, model=getattr(llm, "model_id", None)
+            )
 
         _raw_content = result.message.content
         answer = (_raw_content if isinstance(_raw_content, str) else "").strip()
@@ -664,7 +827,7 @@ class AgentExecutor:
                     }
                 )
 
-            await store.set(f"{node.id}.output", output)
+            await _store_output(node, store, output)
 
             return NodeResult(
                 node_id=node.id,
@@ -751,7 +914,7 @@ class KnowledgeRetrievalExecutor:
             combined = "\n\n".join(
                 r.get("content", "") for r in all_results
             )
-            await store.set(f"{node.id}.output", combined)
+            await _store_output(node, store, combined)
             await store.set(f"{node.id}.results", all_results)
 
             return NodeResult(
@@ -957,7 +1120,7 @@ class ConnectorExecutor:
                 )
 
             output = await adapter.run(**params)
-            await store.set(f"{node.id}.output", output)
+            await _store_output(node, store, output)
 
             return NodeResult(
                 node_id=node.id,
@@ -1161,7 +1324,12 @@ class HumanInterventionExecutor:
                     "decision_by": record.decision_by,
                     "decision_note": record.decision_note,
                 }
-                await store.set(f"{node.id}.output", output)
+                # Same names as the headless path above, so downstream
+                # references behave identically with and without a DB.
+                output_variable = node.data.get("output_variable", "approval_result")
+                await _store_output(node, store, output)
+                if isinstance(output_variable, str) and output_variable:
+                    await store.set(output_variable, output)
                 return NodeResult(
                     node_id=node.id,
                     status=NodeStatus.COMPLETED,
@@ -1428,7 +1596,7 @@ class MCPExecutor:
             output = await target_tool.run(**params)
 
             # Store output
-            await store.set(f"{node.id}.output", output)
+            await _store_output(node, store, output)
             if output_variable:
                 await store.set(output_variable, output)
 

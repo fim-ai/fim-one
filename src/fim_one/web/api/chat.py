@@ -2634,6 +2634,8 @@ async def _resolve_user_workflow_ids(user_id: str) -> list[str]:
     carrying a ``HUMAN_INTERVENTION`` node — those block on approval and so are
     only triggerable from the Workflows page, never inline from an agent loop.
     """
+    from fim_one.core.workflow.parser import resolve_raw_node_type
+    from fim_one.core.workflow.types import NodeType
     from fim_one.db import create_session
     from fim_one.db.models.workflow import Workflow
     from fim_one.web.visibility import resolve_visibility
@@ -2653,7 +2655,10 @@ async def _resolve_user_workflow_ids(user_id: str) -> list[str]:
             ids: list[str] = []
             for wid, blueprint in result.all():
                 nodes = (blueprint or {}).get("nodes") or []
-                if any((n or {}).get("type") == "HUMAN_INTERVENTION" for n in nodes):
+                if any(
+                    resolve_raw_node_type(n or {}) == NodeType.HUMAN_INTERVENTION
+                    for n in nodes
+                ):
                     continue
                 ids.append(wid)
             return ids

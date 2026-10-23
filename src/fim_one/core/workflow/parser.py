@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any
 
-from .types import ErrorStrategy, NodeType, WorkflowBlueprint, WorkflowEdgeDef, WorkflowNodeDef
+from .types import (
+    ErrorStrategy,
+    NodeType,
+    WorkflowBlueprint,
+    WorkflowEdgeDef,
+    WorkflowNodeDef,
+    default_timeout_ms,
+)
 
 
 class BlueprintValidationError(ValueError):
@@ -22,9 +30,26 @@ class BlueprintWarning:
     message: str
 
 
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def _normalize_type_name(raw: str) -> str:
+    """Normalize ``conditionBranch`` / ``condition-branch`` / ``CONDITION_BRANCH``."""
+    return (
+        _CAMEL_BOUNDARY.sub("_", raw.strip())
+        .upper()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+
+
 def _resolve_node_type(raw: str) -> NodeType:
-    """Map a raw type string to a NodeType enum, case-insensitive."""
-    normalized = raw.upper().replace("-", "_").replace(" ", "_")
+    """Map a raw type string to a NodeType enum.
+
+    Accepts the backend spelling (``CONDITION_BRANCH``) as well as the React
+    Flow spelling the editor saves (``conditionBranch``).
+    """
+    normalized = _normalize_type_name(raw)
     try:
         return NodeType(normalized)
     except ValueError:
@@ -32,6 +57,27 @@ def _resolve_node_type(raw: str) -> NodeType:
             f"Unknown node type: '{raw}'. "
             f"Valid types: {[t.value for t in NodeType]}"
         )
+
+
+def resolve_raw_node_type(node: dict[str, Any]) -> NodeType | None:
+    """Return the type of a raw (unparsed) blueprint node, or ``None``.
+
+    The editor saves the React Flow type on ``node.type`` (``conditionBranch``)
+    and usually nothing on ``data.type``; templates and imports carry the
+    backend type on ``data.type`` and a placeholder such as ``custom`` on
+    ``node.type``.  Both spellings are tried, ``data.type`` first.
+    """
+    if not isinstance(node, dict):
+        return None
+    data = node.get("data") or {}
+    candidates = (data.get("type") if isinstance(data, dict) else None, node.get("type"))
+    for raw in candidates:
+        if isinstance(raw, str) and raw:
+            try:
+                return NodeType(_normalize_type_name(raw))
+            except ValueError:
+                continue
+    return None
 
 
 def parse_blueprint(raw: dict[str, Any]) -> WorkflowBlueprint:
@@ -87,7 +133,8 @@ def parse_blueprint(raw: dict[str, Any]) -> WorkflowBlueprint:
                 f"Node '{node_id}' is missing type"
             )
 
-        node_type = _resolve_node_type(raw_type)
+        resolved = resolve_raw_node_type(n)
+        node_type = resolved if resolved is not None else _resolve_node_type(raw_type)
 
         if node_type == NodeType.START:
             start_count += 1
@@ -105,15 +152,7 @@ def parse_blueprint(raw: dict[str, Any]) -> WorkflowBlueprint:
                 pass  # fallback to default
 
         # Parse optional per-node timeout
-        raw_timeout = node_data.get("timeout_ms")
-        timeout_ms = 30000  # default
-        if raw_timeout is not None:
-            try:
-                timeout_ms = int(raw_timeout)
-                if timeout_ms <= 0:
-                    timeout_ms = 30000
-            except (TypeError, ValueError):
-                pass
+        timeout_ms = parse_timeout_ms(node_data.get("timeout_ms"), node_type)
 
         nodes.append(
             WorkflowNodeDef(
@@ -177,6 +216,18 @@ def parse_blueprint(raw: dict[str, Any]) -> WorkflowBlueprint:
     _check_no_cycles(nodes, edges)
 
     return WorkflowBlueprint(nodes=nodes, edges=edges, viewport=viewport)
+
+
+def parse_timeout_ms(raw_timeout: Any, node_type: NodeType) -> int:
+    """Return a node's timeout in ms, falling back to its type's default."""
+    default = default_timeout_ms(node_type)
+    if raw_timeout is None:
+        return default
+    try:
+        timeout_ms = int(raw_timeout)
+    except (TypeError, ValueError):
+        return default
+    return timeout_ms if timeout_ms > 0 else default
 
 
 def _check_no_cycles(

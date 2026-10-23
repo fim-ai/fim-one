@@ -16,6 +16,24 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 
+# React Flow component key the editor renders each backend node type with.
+_EDITOR_NODE_TYPES: dict[str, str] = {
+    "START": "start",
+    "END": "end",
+    "LLM": "llm",
+    "CONDITION_BRANCH": "conditionBranch",
+    "AGENT": "agent",
+    "KNOWLEDGE_RETRIEVAL": "knowledgeRetrieval",
+    "CONNECTOR": "connector",
+    "HUMAN_INTERVENTION": "humanIntervention",
+    "MCP": "mcp",
+}
+
+# Handle ids the editor's ConditionBranch node renders: one
+# ``condition-{id}`` per condition plus ``source-default`` for the else branch.
+_DEFAULT_HANDLE = "source-default"
+
+
 def _node(
     node_id: str,
     node_type: str,
@@ -26,7 +44,7 @@ def _node(
 ) -> dict[str, Any]:
     return {
         "id": node_id,
-        "type": "custom",
+        "type": _EDITOR_NODE_TYPES[node_type],
         "position": {"x": x, "y": y},
         "data": {"type": node_type, **data},
     }
@@ -69,16 +87,14 @@ _SIMPLE_LLM_CHAIN: dict[str, Any] = {
                 "START",
                 {
                     "label": "Start",
-                    "input_schema": {
-                        "variables": [
-                            {
-                                "name": "query",
-                                "type": "string",
-                                "required": True,
-                                "description": "User question or prompt",
-                            }
-                        ]
-                    },
+                    "variables": [
+                        {
+                            "name": "query",
+                            "type": "string",
+                            "required": True,
+                            "description": "User question or prompt",
+                        }
+                    ],
                 },
                 x=100,
                 y=200,
@@ -102,15 +118,7 @@ _SIMPLE_LLM_CHAIN: dict[str, Any] = {
                 "END",
                 {
                     "label": "End",
-                    "output_schema": {
-                        "variables": [
-                            {
-                                "name": "result",
-                                "type": "string",
-                                "value": "{{llm_1.output}}",
-                            }
-                        ]
-                    },
+                    "output_mapping": {"result": "{{llm_1.output}}"},
                 },
                 x=700,
                 y=200,
@@ -143,22 +151,20 @@ _CONDITIONAL_ROUTER: dict[str, Any] = {
                 "START",
                 {
                     "label": "Start",
-                    "input_schema": {
-                        "variables": [
-                            {
-                                "name": "query",
-                                "type": "string",
-                                "required": True,
-                                "description": "User question",
-                            },
-                            {
-                                "name": "category",
-                                "type": "string",
-                                "required": True,
-                                "description": 'Category of the query (e.g. "technical", "general")',
-                            },
-                        ]
-                    },
+                    "variables": [
+                        {
+                            "name": "query",
+                            "type": "string",
+                            "required": True,
+                            "description": "User question",
+                        },
+                        {
+                            "name": "category",
+                            "type": "string",
+                            "required": True,
+                            "description": 'Category of the query (e.g. "technical", "general")',
+                        },
+                    ],
                 },
                 x=100,
                 y=250,
@@ -170,14 +176,14 @@ _CONDITIONAL_ROUTER: dict[str, Any] = {
                     "label": "Is Technical?",
                     "conditions": [
                         {
-                            "id": "cond-yes",
-                            "handle": "yes",
+                            "id": "technical",
+                            "label": "Technical",
                             "operator": "==",
-                            "variable": "{{input.category}}",
+                            "variable": "input.category",
                             "value": "technical",
                         }
                     ],
-                    "default_handle": "no",
+                    "default_branch_label": "General",
                 },
                 x=400,
                 y=250,
@@ -211,23 +217,27 @@ _CONDITIONAL_ROUTER: dict[str, Any] = {
                 x=700,
                 y=400,
             ),
+            # One End per branch: only one branch runs, so a shared End
+            # mapping both outputs would leave the skipped one's placeholder.
             _node(
-                "end_1",
+                "end_technical",
                 "END",
                 {
-                    "label": "End",
-                    "output_schema": {
-                        "variables": [
-                            {
-                                "name": "result",
-                                "type": "string",
-                                "value": "{{llm_technical.output}}{{llm_general.output}}",
-                            }
-                        ]
-                    },
+                    "label": "Technical Answer",
+                    "output_mapping": {"result": "{{llm_technical.output}}"},
                 },
                 x=1000,
-                y=250,
+                y=100,
+            ),
+            _node(
+                "end_general",
+                "END",
+                {
+                    "label": "General Answer",
+                    "output_mapping": {"result": "{{llm_general.output}}"},
+                },
+                x=1000,
+                y=400,
             ),
         ],
         "edges": [
@@ -236,16 +246,16 @@ _CONDITIONAL_ROUTER: dict[str, Any] = {
                 "e-cond-tech",
                 "condition_1",
                 "llm_technical",
-                source_handle="yes",
+                source_handle="condition-technical",
             ),
             _edge(
                 "e-cond-general",
                 "condition_1",
                 "llm_general",
-                source_handle="no",
+                source_handle=_DEFAULT_HANDLE,
             ),
-            _edge("e-tech-end", "llm_technical", "end_1"),
-            _edge("e-general-end", "llm_general", "end_1"),
+            _edge("e-tech-end", "llm_technical", "end_technical"),
+            _edge("e-general-end", "llm_general", "end_general"),
         ],
         "viewport": {"x": 0, "y": 0, "zoom": 1},
     },
@@ -270,16 +280,14 @@ _KNOWLEDGE_QA: dict[str, Any] = {
                 "START",
                 {
                     "label": "Start",
-                    "input_schema": {
-                        "variables": [
-                            {
-                                "name": "query",
-                                "type": "string",
-                                "required": True,
-                                "description": "User question to answer",
-                            }
-                        ]
-                    },
+                    "variables": [
+                        {
+                            "name": "query",
+                            "type": "string",
+                            "required": True,
+                            "description": "User question to answer",
+                        }
+                    ],
                 },
                 x=100,
                 y=200,
@@ -318,15 +326,7 @@ _KNOWLEDGE_QA: dict[str, Any] = {
                 "END",
                 {
                     "label": "End",
-                    "output_schema": {
-                        "variables": [
-                            {
-                                "name": "result",
-                                "type": "string",
-                                "value": "{{llm_1.output}}",
-                            }
-                        ]
-                    },
+                    "output_mapping": {"result": "{{llm_1.output}}"},
                 },
                 x=1000,
                 y=200,
@@ -423,16 +423,14 @@ _HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
                 "START",
                 {
                     "label": "Start",
-                    "input_schema": {
-                        "variables": [
-                            {
-                                "name": "request_text",
-                                "type": "string",
-                                "required": True,
-                                "description": "The request to review and approve",
-                            }
-                        ]
-                    },
+                    "variables": [
+                        {
+                            "name": "request_text",
+                            "type": "string",
+                            "required": True,
+                            "description": "The request to review and approve",
+                        }
+                    ],
                 },
                 x=0,
                 y=250,
@@ -476,13 +474,13 @@ _HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
                     "conditions": [
                         {
                             "id": "approved",
-                            "handle": "approved",
-                            "variable": "approval_result.status",
+                            "label": "Approved",
+                            "variable": "human_1.approval_result.status",
                             "operator": "==",
                             "value": "approved",
                         }
                     ],
-                    "default_handle": "rejected",
+                    "default_branch_label": "Rejected",
                 },
                 x=900,
                 y=250,
@@ -492,15 +490,7 @@ _HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
                 "END",
                 {
                     "label": "Approved",
-                    "output_schema": {
-                        "variables": [
-                            {
-                                "name": "result",
-                                "type": "string",
-                                "value": "Request approved: {{llm_1.output}}",
-                            }
-                        ]
-                    },
+                    "output_mapping": {"result": "Request approved: {{llm_1.output}}"},
                 },
                 x=1200,
                 y=100,
@@ -510,15 +500,7 @@ _HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
                 "END",
                 {
                     "label": "Rejected",
-                    "output_schema": {
-                        "variables": [
-                            {
-                                "name": "result",
-                                "type": "string",
-                                "value": "Request rejected.",
-                            }
-                        ]
-                    },
+                    "output_mapping": {"result": "Request rejected."},
                 },
                 x=1200,
                 y=400,
@@ -532,13 +514,13 @@ _HUMAN_APPROVAL_PIPELINE: dict[str, Any] = {
                 "e-cond-approved",
                 "cond_1",
                 "end_approved",
-                source_handle="approved",
+                source_handle="condition-approved",
             ),
             _edge(
                 "e-cond-rejected",
                 "cond_1",
                 "end_rejected",
-                source_handle="rejected",
+                source_handle=_DEFAULT_HANDLE,
             ),
         ],
         "viewport": {"x": 0, "y": 0, "zoom": 1},
@@ -566,16 +548,14 @@ _CONNECTOR_ACTION: dict[str, Any] = {
                 "START",
                 {
                     "label": "Start",
-                    "input_schema": {
-                        "variables": [
-                            {
-                                "name": "query",
-                                "type": "string",
-                                "required": True,
-                                "description": "Input passed to the connector action",
-                            }
-                        ]
-                    },
+                    "variables": [
+                        {
+                            "name": "query",
+                            "type": "string",
+                            "required": True,
+                            "description": "Input passed to the connector action",
+                        }
+                    ],
                 },
                 x=100,
                 y=200,
@@ -612,15 +592,7 @@ _CONNECTOR_ACTION: dict[str, Any] = {
                 "END",
                 {
                     "label": "End",
-                    "output_schema": {
-                        "variables": [
-                            {
-                                "name": "result",
-                                "type": "string",
-                                "value": "{{llm_1.output}}",
-                            }
-                        ]
-                    },
+                    "output_mapping": {"result": "{{llm_1.output}}"},
                 },
                 x=1000,
                 y=200,
@@ -656,16 +628,14 @@ _MCP_TOOL_CALL: dict[str, Any] = {
                 "START",
                 {
                     "label": "Start",
-                    "input_schema": {
-                        "variables": [
-                            {
-                                "name": "query",
-                                "type": "string",
-                                "required": True,
-                                "description": "Input passed to the MCP tool",
-                            }
-                        ]
-                    },
+                    "variables": [
+                        {
+                            "name": "query",
+                            "type": "string",
+                            "required": True,
+                            "description": "Input passed to the MCP tool",
+                        }
+                    ],
                 },
                 x=100,
                 y=200,
@@ -702,15 +672,7 @@ _MCP_TOOL_CALL: dict[str, Any] = {
                 "END",
                 {
                     "label": "End",
-                    "output_schema": {
-                        "variables": [
-                            {
-                                "name": "result",
-                                "type": "string",
-                                "value": "{{llm_1.output}}",
-                            }
-                        ]
-                    },
+                    "output_mapping": {"result": "{{llm_1.output}}"},
                 },
                 x=1000,
                 y=200,

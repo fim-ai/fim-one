@@ -124,7 +124,7 @@ export function NodeConfigPanel({ workflowId, node, allNodes, onUpdate, onDelete
           {nodeType !== "start" && nodeType !== "end" && (
             <AdvancedSection
               errorStrategy={(node.data.error_strategy as ErrorStrategy) ?? "stop_workflow"}
-              timeoutMs={(node.data.timeout_ms as number) ?? 30000}
+              timeoutMs={(node.data.timeout_ms as number) ?? defaultTimeoutMs(nodeType)}
               retryCount={(node.data.retry_count as number) ?? 0}
               retryDelayMs={(node.data.retry_delay_ms as number) ?? 1000}
               onChangeErrorStrategy={(v) => updateField("error_strategy", v)}
@@ -427,6 +427,20 @@ type ConfigProps = {
 }
 
 /** Reusable section header */
+/** Per-type default timeout; mirrors `default_timeout_ms` in core/workflow/types.py. */
+function defaultTimeoutMs(nodeType: WorkflowNodeType): number {
+  switch (nodeType) {
+    case "agent":
+      return 300000
+    case "llm":
+      return 120000
+    case "mcp":
+      return 60000
+    default:
+      return 30000
+  }
+}
+
 function SectionHeader({ label }: { label: string }) {
   return (
     <>

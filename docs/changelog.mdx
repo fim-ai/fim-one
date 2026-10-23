@@ -12,6 +12,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Workflows built in the editor run again when they use a Condition, Knowledge Retrieval or Human Intervention step.** The editor saves these steps as `conditionBranch`, `knowledgeRetrieval` and `humanIntervention`, which the engine rejected as unknown node types, so the run failed before its first step. The same mix-up let an agent be offered a workflow with a Human Intervention step, and dropped Knowledge Retrieval steps from publishing dependencies.
+- **Condition branches match variables written as `input.score` or `{{llm_1.output}}`.** A dotted or braced variable made every condition fail silently and the run always took the default branch. Numbers typed into the run form now compare as numbers, so `"80"` satisfies `> 50`.
+- **Variables inserted with the variable picker resolve.** The picker inserts `{{node.<output variable>}}`, but LLM, Agent, Knowledge Retrieval and Connector steps only stored `.output`, so the reference stayed as literal text. A Human Intervention step that a person approved now exposes its output variable too, as it already did in test runs.
+- **Steps set to Continue or Fail Branch on error no longer fail the whole run.** The run was reported failed and its outputs dropped even though it carried on; it now completes with its outputs and lists the failed steps. Fail Branch only skips steps that can't be reached any other way, instead of everything downstream such as a shared End step.
+- **Agent, LLM and MCP steps get time to finish.** Every step defaulted to a 30-second limit, which cut most Agent runs short; the defaults are now 5 minutes for Agent, 2 minutes for LLM and 1 minute for MCP steps. A limit set on the step still wins.
+- **The Conditional Router and Human Approval templates take the branch they describe.** Their condition edges pointed at handles the editor never draws, so the technical or approved branch could not run; templates also render with their real step types, show their inputs in the run panel and keep their End mappings.
+- **Running a workflow from its page or as a batch counts against your token quota.** These runs used LLM and Agent steps without checking or recording usage; they are now refused when you are over quota and their tokens are recorded like webhook, scheduled and agent-started runs.
+- **An invalid workflow triggered through its API key no longer locks the owner out of running workflows.** Each rejected trigger kept a concurrent-run slot until the server restarted.
+- **An End step mapping a plain value that is not a variable name returns that value** instead of an empty result.
 - **Completion notifications for DAG runs list the tools that actually ran.** The "tools used" line on a completion card was built from the planner's suggested tool per step, so it could name tools that were never called and miss ones that were; it now reflects each step's real tool calls.
 
 ## [v0.9.2] - 2026-10-09

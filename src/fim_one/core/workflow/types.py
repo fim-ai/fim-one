@@ -47,6 +47,22 @@ class ErrorStrategy(str, Enum):
     FAIL_BRANCH = "fail_branch"
 
 
+# Default per-node timeout when a node sets no ``timeout_ms`` of its own.  An
+# Agent step runs a multi-iteration ReAct loop with tool calls and an LLM step
+# can stream a long completion, so a flat 30s cut most real runs short.
+DEFAULT_NODE_TIMEOUT_MS = 30_000
+_NODE_TIMEOUT_DEFAULTS_MS: dict[NodeType, int] = {
+    NodeType.AGENT: 300_000,
+    NodeType.LLM: 120_000,
+    NodeType.MCP: 60_000,
+}
+
+
+def default_timeout_ms(node_type: NodeType) -> int:
+    """Return the timeout a node of *node_type* gets when it sets none."""
+    return _NODE_TIMEOUT_DEFAULTS_MS.get(node_type, DEFAULT_NODE_TIMEOUT_MS)
+
+
 @dataclass
 class WorkflowNodeDef:
     """Definition of a single node in the blueprint."""

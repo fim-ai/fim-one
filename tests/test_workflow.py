@@ -2090,7 +2090,7 @@ class TestTimeoutAndErrorStrategy:
         bp = parse_blueprint(raw)
         llm = next(n for n in bp.nodes if n.id == "llm_plain")
         assert llm.error_strategy == ErrorStrategy.STOP_WORKFLOW
-        assert llm.timeout_ms == 30000  # default 30 s
+        assert llm.timeout_ms == 120000  # LLM default 120 s
 
     def test_parser_invalid_strategy_falls_back_to_stop(self):
         """An unrecognised error_strategy string falls back to STOP_WORKFLOW."""
@@ -2129,8 +2129,8 @@ class TestTimeoutAndErrorStrategy:
         }
         bp = parse_blueprint(raw)
         llm = next(n for n in bp.nodes if n.id == "llm_t")
-        # Parser falls back to default 30000 when conversion fails
-        assert llm.timeout_ms == 30000
+        # Parser falls back to the LLM default (120000) when conversion fails
+        assert llm.timeout_ms == 120000
 
     def test_parser_negative_timeout_uses_default(self):
         """A negative timeout_ms value should fall back to the default."""
@@ -2148,8 +2148,8 @@ class TestTimeoutAndErrorStrategy:
         }
         bp = parse_blueprint(raw)
         llm = next(n for n in bp.nodes if n.id == "llm_neg")
-        # Parser rejects negative values, falls back to default 30000
-        assert llm.timeout_ms == 30000
+        # Parser rejects negative values, falls back to the LLM default (120000)
+        assert llm.timeout_ms == 120000
 
 
 # =========================================================================

@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from fim_one.core.workflow.parser import resolve_raw_node_type
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -426,12 +428,16 @@ async def _resolve_workflow(
     for node in nodes:
         if not isinstance(node, dict):
             continue
-        node_type: str = node.get("type", "") or (node.get("data", {}).get("type", ""))
         data: dict[str, Any] = node.get("data", {})
         if not isinstance(data, dict):
             continue
+        # The editor saves ``knowledgeRetrieval`` on node.type, templates save
+        # ``custom`` there and the real type on data.type — resolve both.
+        resolved_type = resolve_raw_node_type(node)
+        if resolved_type is None:
+            continue
 
-        field_specs = _WORKFLOW_NODE_REFS.get(node_type.upper())
+        field_specs = _WORKFLOW_NODE_REFS.get(resolved_type.value)
         if not field_specs:
             continue
 

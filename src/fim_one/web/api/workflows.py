@@ -178,6 +178,11 @@ def _validate_webhook_url(url: str) -> None:
             )
 
 
+def _run_timeout_ms(wf: Workflow) -> int:
+    """Whole-run time limit: the workflow's own override, else 10 minutes."""
+    return (wf.max_run_duration_seconds or 600) * 1000
+
+
 def _sse(event: str, data: Any) -> str:
     """Format a Server-Sent Event frame."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
@@ -583,6 +588,16 @@ async def trigger_workflow(
             detail="Workflow already has a running execution. Please wait for it to complete.",
         )
 
+    from fim_one.core.workflow.engine import WorkflowEngine
+    from fim_one.core.workflow.parser import BlueprintValidationError, parse_blueprint
+
+    # Validate before taking a rate-limiter slot: a slot is only released
+    # once the run finishes, so an early rejection here would leak it.
+    try:
+        parsed = parse_blueprint(wf.blueprint)
+    except BlueprintValidationError as exc:
+        raise AppError(f"invalid_blueprint: {exc}", status_code=400)
+
     # Per-user rate limit (workflow owner)
     run_id = str(uuid.uuid4())
     allowed, rate_error = await _rate_limiter.acquire(wf.user_id, run_id)
@@ -592,14 +607,6 @@ async def trigger_workflow(
             status_code=429,
             detail=rate_error,
         )
-
-    from fim_one.core.workflow.engine import WorkflowEngine
-    from fim_one.core.workflow.parser import BlueprintValidationError, parse_blueprint
-
-    try:
-        parsed = parse_blueprint(wf.blueprint)
-    except BlueprintValidationError as exc:
-        raise AppError(f"invalid_blueprint: {exc}", status_code=400)
 
     # Decrypt env vars if present
     env_vars: dict[str, str] = {}
@@ -618,8 +625,12 @@ async def trigger_workflow(
         inputs=body.inputs,
         status="running",
     )
-    db.add(run)
-    await db.commit()
+    try:
+        db.add(run)
+        await db.commit()
+    except Exception:
+        await _rate_limiter.record_run_end(wf.user_id, run_id)
+        raise
 
     # Execute synchronously (non-SSE)
     start_time = time.time()
@@ -636,6 +647,7 @@ async def trigger_workflow(
             run_id=run_id,
             user_id=wf.user_id,
             workflow_id=wf.id,
+            workflow_timeout_ms=_run_timeout_ms(wf),
         )
 
         from fim_one.core.workflow.types import ExecutionContext
@@ -1390,6 +1402,12 @@ async def run_workflow(
 
     # --- Normal execution mode (SSE streaming) ---
 
+    # LLM and Agent steps bill the runner's token quota, the same as chat and
+    # the unattended trigger paths; refuse up front when it's exhausted.
+    from fim_one.web.api.chat import _check_token_quota
+
+    await _check_token_quota(current_user.id)
+
     # Create run record
     run_id = str(uuid.uuid4())
 
@@ -1426,8 +1444,7 @@ async def run_workflow(
     cancel_event = asyncio.Event()
     _running_tasks[run_id] = cancel_event
 
-    # Determine timeout: workflow-level override or engine default (600s = 10 min)
-    run_timeout_ms = (wf.max_run_duration_seconds or 600) * 1000
+    run_timeout_ms = _run_timeout_ms(wf)
 
     async def generate() -> AsyncGenerator[str, None]:
         start_time = time.time()
@@ -1435,6 +1452,7 @@ async def run_workflow(
         outputs: dict[str, Any] = {}
         final_status = "completed"
         error_msg: str | None = None
+        run_tokens = 0
 
         try:
             yield _sse("run_started", {"run_id": run_id, "status": "running"})
@@ -1502,9 +1520,11 @@ async def run_workflow(
                 if sse_event == "run_completed":
                     outputs = sse_data.get("outputs", {})
                     final_status = sse_data.get("status", "completed")
+                    run_tokens = int(sse_data.get("total_tokens", 0) or 0)
                 elif sse_event == "run_failed":
                     final_status = "failed"
                     error_msg = sse_data.get("error")
+                    run_tokens = int(sse_data.get("total_tokens", 0) or 0)
 
                 yield _sse(sse_event, sse_data)
 
@@ -1547,6 +1567,7 @@ async def run_workflow(
                         db_run.completed_at = datetime.now(UTC)
                         db_run.duration_ms = elapsed_ms
                         db_run.error = error_msg
+                        db_run.total_tokens = run_tokens
                         await persist_db.commit()
             except Exception:
                 logger.exception("Failed to persist workflow run %s", run_id)
@@ -1605,6 +1626,10 @@ async def batch_run_workflow(
     if not wf.blueprint or not wf.blueprint.get("nodes"):
         raise AppError("blueprint_empty", status_code=400)
 
+    from fim_one.web.api.chat import _check_token_quota
+
+    await _check_token_quota(current_user.id)
+
     # Pre-check rate limit for the total batch size before starting
     allowed, rate_error = await _rate_limiter.check_rate_limit(current_user.id)
     if not allowed:
@@ -1643,6 +1668,7 @@ async def batch_run_workflow(
         outputs: dict[str, Any] = {}
         node_results: dict[str, Any] = {}
         error_msg: str | None = None
+        run_tokens = 0
 
         # Create run record
         try:
@@ -1675,6 +1701,7 @@ async def batch_run_workflow(
                     run_id=run_id,
                     user_id=current_user.id,
                     workflow_id=wf.id,
+                    workflow_timeout_ms=_run_timeout_ms(wf),
                 )
 
                 from fim_one.core.workflow.types import ExecutionContext as _BatchEC
@@ -1704,9 +1731,11 @@ async def batch_run_workflow(
                     elif event_name == "run_completed":
                         outputs = event_data.get("outputs", {})
                         final_status = event_data.get("status", "completed")
+                        run_tokens = int(event_data.get("total_tokens", 0) or 0)
                     elif event_name == "run_failed":
                         final_status = "failed"
                         error_msg = event_data.get("error")
+                        run_tokens = int(event_data.get("total_tokens", 0) or 0)
 
             except Exception as exc:
                 final_status = "failed"
@@ -1732,6 +1761,7 @@ async def batch_run_workflow(
                     db_run.completed_at = datetime.now(UTC)
                     db_run.duration_ms = elapsed_ms
                     db_run.error = error_msg
+                    db_run.total_tokens = run_tokens
                     await persist_db.commit()
         except Exception:
             logger.exception("Failed to persist batch run %s item %d", batch_id, index)
@@ -1910,14 +1940,21 @@ async def test_node(
     if not raw_type:
         raise AppError("node_type_missing", status_code=400)
 
-    from fim_one.core.workflow.parser import _resolve_node_type
+    from fim_one.core.workflow.parser import (
+        _resolve_node_type,
+        parse_timeout_ms,
+        resolve_raw_node_type,
+    )
     from fim_one.core.workflow.types import (
         ErrorStrategy,
         WorkflowNodeDef,
     )
 
     try:
-        node_type = _resolve_node_type(raw_type)
+        resolved_type = resolve_raw_node_type(target_node_raw)
+        node_type = (
+            resolved_type if resolved_type is not None else _resolve_node_type(raw_type)
+        )
     except ValueError as exc:
         raise AppError(f"invalid_node_type: {exc}", status_code=400)
 
@@ -1940,15 +1977,7 @@ async def test_node(
         except ValueError:
             pass
 
-    raw_timeout = node_data.get("timeout_ms")
-    timeout_ms = 30000
-    if raw_timeout is not None:
-        try:
-            timeout_ms = int(raw_timeout)
-            if timeout_ms <= 0:
-                timeout_ms = 30000
-        except (TypeError, ValueError):
-            pass
+    timeout_ms = parse_timeout_ms(node_data.get("timeout_ms"), node_type)
 
     node_def = WorkflowNodeDef(
         id=body.node_id,
@@ -1995,7 +2024,7 @@ async def test_node(
     try:
         result = await asyncio.wait_for(
             executor.execute(node_def, store, context),
-            timeout=30.0,
+            timeout=timeout_ms / 1000,
         )
     except asyncio.TimeoutError:
         elapsed_ms = int((time.time() - start_time) * 1000)
@@ -2005,7 +2034,7 @@ async def test_node(
                 node_id=body.node_id,
                 node_type=node_type.value,
                 status="failed",
-                error="Node execution timed out after 30 seconds",
+                error=f"Node execution timed out after {timeout_ms / 1000:.0f} seconds",
                 duration_ms=elapsed_ms,
                 variables_after=snapshot,
             ).model_dump()

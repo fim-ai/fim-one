@@ -157,10 +157,6 @@ class WorkflowEngine:
 
         def _can_execute(nid: str) -> bool:
             """Check if a node is ready to execute."""
-            # Force-skipped by FAIL_BRANCH?
-            if nid in fail_branch_skipped:
-                return False
-
             # All predecessor nodes must be done (completed, failed, or skipped)
             for pred in predecessors.get(nid, set()):
                 if pred not in completed:
@@ -176,10 +172,6 @@ class WorkflowEngine:
 
         def _should_skip(nid: str) -> bool:
             """Check if a node should be skipped."""
-            # FAIL_BRANCH downstream nodes are force-skipped
-            if nid in fail_branch_skipped:
-                return True
-
             node_incoming = incoming_edges.get(nid, [])
             if not node_incoming:
                 return False
@@ -194,20 +186,27 @@ class WorkflowEngine:
                         return True
             return False
 
-        # Set of nodes that should be force-skipped (populated by FAIL_BRANCH)
-        fail_branch_skipped: set[str] = set()
+        # Failed nodes whose error strategy (CONTINUE / FAIL_BRANCH) says the
+        # run should carry on.  They don't fail the run by themselves.
+        tolerated_failures: set[str] = set()
 
-        def _collect_downstream(start_nid: str) -> set[str]:
-            """Collect all node IDs reachable downstream from *start_nid*."""
-            visited: set[str] = set()
-            queue_ds: list[str] = [start_nid]
-            while queue_ds:
-                current = queue_ds.pop()
-                for edge in outgoing_edges.get(current, []):
-                    if edge.target not in visited:
-                        visited.add(edge.target)
-                        queue_ds.append(edge.target)
-            return visited
+        def _branch_cut_off_by(failed_nid: str) -> set[str]:
+            """Nodes that lose every active incoming path once *failed_nid*'s
+            outgoing edges are deactivated.  A node that is still reachable
+            through another branch (e.g. a join after a parallel fan-out) is
+            not in the set and keeps running."""
+            dead: set[str] = {failed_nid}
+            for tnid in topo_order:
+                if tnid in dead or node_status.get(tnid) != NodeStatus.PENDING:
+                    continue
+                node_incoming = incoming_edges.get(tnid, [])
+                if node_incoming and all(
+                    e.id not in active_edges or e.source in dead
+                    for e in node_incoming
+                ):
+                    dead.add(tnid)
+            dead.discard(failed_nid)
+            return dead
 
         async def _handle_node_failure(
             nid: str, result: NodeResult
@@ -221,6 +220,7 @@ class WorkflowEngine:
                 # nodes will still run (they can inspect the failure via the
                 # variable store if they choose to).
                 node_status[nid] = NodeStatus.FAILED
+                tolerated_failures.add(nid)
                 await _emit(
                     "node_failed",
                     {
@@ -234,27 +234,17 @@ class WorkflowEngine:
                 )
 
             elif strategy == ErrorStrategy.FAIL_BRANCH:
-                # Mark all downstream nodes as skipped so they never run.
+                # Cut this node's branch: deactivate its outgoing edges so the
+                # normal skip cascade drops every node reachable *only*
+                # through it.  Nodes that still have another active incoming
+                # path (a join after parallel branches, the shared End node)
+                # keep running.  Nothing downstream can be running yet, since
+                # a node only starts once all its predecessors are done.
                 node_status[nid] = NodeStatus.FAILED
-                downstream = _collect_downstream(nid)
-                fail_branch_skipped.update(downstream)
-
-                # M3: Cancel any already-running tasks that are in the
-                # downstream skip set so they don't continue executing.
-                tasks_to_cancel: list[asyncio.Task[None]] = []
-                for task, task_nid in list(running_tasks.items()):
-                    if task_nid in downstream:
-                        tasks_to_cancel.append(task)
-                        node_status[task_nid] = NodeStatus.SKIPPED
-                        completed.add(task_nid)
-                        del running_tasks[task]
-
-                for task in tasks_to_cancel:
-                    task.cancel()
-                if tasks_to_cancel:
-                    await asyncio.gather(
-                        *tasks_to_cancel, return_exceptions=True
-                    )
+                tolerated_failures.add(nid)
+                downstream = _branch_cut_off_by(nid)
+                for edge in outgoing_edges.get(nid, []):
+                    active_edges.discard(edge.id)
 
                 await _emit(
                     "node_failed",
@@ -662,8 +652,18 @@ class WorkflowEngine:
                 failed_nodes = [
                     nid
                     for nid, st in node_status.items()
-                    if st == NodeStatus.FAILED
+                    if st == NodeStatus.FAILED and nid not in tolerated_failures
                 ]
+                handled_failures = sorted(
+                    nid
+                    for nid in tolerated_failures
+                    if node_status.get(nid) == NodeStatus.FAILED
+                )
+                end_reached = any(
+                    node.type == NodeType.END
+                    and node_status.get(node.id) == NodeStatus.COMPLETED
+                    for node in blueprint.nodes
+                )
 
                 # Collect outputs from End nodes
                 outputs: dict[str, Any] = {}
@@ -686,16 +686,31 @@ class WorkflowEngine:
                             "total_tokens": self._usage_tracker.get_summary().total_tokens,
                         },
                     )
-                else:
+                elif handled_failures and not end_reached:
+                    # Every failure was tolerated, but together they cut off
+                    # every path to an End node, so the run produced nothing.
                     await _emit(
-                        "run_completed",
+                        "run_failed",
                         {
-                            "status": "completed",
-                            "outputs": outputs,
+                            "status": "failed",
+                            "error": (
+                                "No End node was reached; nodes failed: "
+                                f"{handled_failures}"
+                            ),
                             "duration_ms": elapsed_ms,
                             "total_tokens": self._usage_tracker.get_summary().total_tokens,
                         },
                     )
+                else:
+                    completed_payload: dict[str, Any] = {
+                        "status": "completed",
+                        "outputs": outputs,
+                        "duration_ms": elapsed_ms,
+                        "total_tokens": self._usage_tracker.get_summary().total_tokens,
+                    }
+                    if handled_failures:
+                        completed_payload["failed_nodes"] = handled_failures
+                    await _emit("run_completed", completed_payload)
 
             except asyncio.CancelledError:
                 elapsed_ms = int((time.time() - start_time) * 1000)
