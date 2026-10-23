@@ -27,6 +27,7 @@ KB_OWNER = "kb-owner"
 AGENT_OWNER = "agent-owner"
 OWN_KB = "kb-own"
 FOREIGN_KB = "kb-foreign"
+DISABLED_KB = "kb-disabled"
 
 
 @pytest.fixture()
@@ -41,6 +42,11 @@ async def patched_session(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None
     async with factory() as s:
         s.add(KnowledgeBase(id=OWN_KB, user_id=AGENT_OWNER, name="own"))
         s.add(KnowledgeBase(id=FOREIGN_KB, user_id=KB_OWNER, name="foreign"))
+        s.add(
+            KnowledgeBase(
+                id=DISABLED_KB, user_id=AGENT_OWNER, name="off", is_active=False
+            )
+        )
         await s.commit()
     monkeypatch.setattr("fim_one.db.create_session", factory)
     yield
@@ -75,3 +81,11 @@ class TestBoundKbOwnerMap:
     async def test_missing_kb_absent(self) -> None:
         owner_map = await _resolve_bound_kb_owner_map(["nope"], AGENT_OWNER)
         assert owner_map == {}
+
+    @pytest.mark.asyncio
+    async def test_disabled_kb_is_dropped(self) -> None:
+        """Toggling a KB off must take it out of service for bound agents."""
+        owner_map = await _resolve_bound_kb_owner_map(
+            [OWN_KB, DISABLED_KB], AGENT_OWNER
+        )
+        assert owner_map == {OWN_KB: AGENT_OWNER}

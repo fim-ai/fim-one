@@ -1531,8 +1531,8 @@ async def _resolve_bound_kb_owner_map(
     delegation is only valid while the AGENT OWNER can currently see the KB
     (own + subscribed). Bindings are validated at bind time, but
     subscriptions can be reclaimed later (org exit), so the reference must
-    be re-checked at use time. KBs that fail the check are simply absent
-    from the returned map.
+    be re-checked at use time. KBs that fail the check, or that their owner
+    has disabled, are simply absent from the returned map.
     """
     from fim_one.db import create_session as _kb_cs
     from fim_one.db.models.knowledge_base import KnowledgeBase as _KBModel
@@ -1541,7 +1541,9 @@ async def _resolve_bound_kb_owner_map(
     kb_owner_map: dict[str, str] = {}
     async with _kb_cs() as _kb_db:
         _kb_stmt = sa_select(_KBModel.id, _KBModel.user_id).where(
-            _KBModel.id.in_(kb_ids)
+            _KBModel.id.in_(kb_ids),
+            # A disabled KB is out of service for every agent bound to it.
+            _KBModel.is_active == True,  # noqa: E712
         )
         if agent_owner_id:
             _kb_vis, _, _ = await _kb_resolve(
@@ -1743,7 +1745,13 @@ async def _resolve_tools(
                             DatabaseSchemaModel.columns
                         ),
                     )
-                    .where(ConnectorModel.id.in_(connector_ids), _conn_vis)
+                    .where(
+                        ConnectorModel.id.in_(connector_ids),
+                        _conn_vis,
+                        # A connector its owner switched off must not stay
+                        # callable through agents that still reference it.
+                        ConnectorModel.is_active == True,  # noqa: E712
+                    )
                 )
                 result = await session.execute(stmt)
                 connectors = result.scalars().all()
@@ -2607,13 +2615,24 @@ async def _resolve_skill_descriptors(
 
 
 async def _resolve_user_skill_ids(user_id: str) -> list[str]:
-    """Fetch all active, visible skill IDs for a user (own + org + subscribed)."""
+    """Fetch all active, visible skill IDs for a user (own + org + subscribed).
+
+    Returns ``[]`` while the Skills module is shelved, so no caller can
+    advertise skills (prompt stubs or inline content) that the disabled
+    module's ``read_skill`` tool is not there to serve.
+    """
     from fim_one.db import create_session
     from fim_one.db.models.skill import Skill
+    from fim_one.web.services.feature_flags import (
+        SETTING_FEATURE_SKILLS,
+        is_feature_enabled,
+    )
     from fim_one.web.visibility import resolve_visibility
 
     try:
         async with create_session() as session:
+            if not await is_feature_enabled(session, SETTING_FEATURE_SKILLS):
+                return []
             vis_filter, _, _ = await resolve_visibility(Skill, user_id, "skill", session)
             result = await session.execute(
                 sa_select(Skill.id).where(
@@ -2633,13 +2652,20 @@ async def _resolve_user_workflow_ids(user_id: str) -> list[str]:
     Workflows are the *static recipe* twin of skills.  Excludes workflows
     carrying a ``HUMAN_INTERVENTION`` node — those block on approval and so are
     only triggerable from the Workflows page, never inline from an agent loop.
+    Returns ``[]`` while the Workflows module is shelved.
     """
     from fim_one.db import create_session
     from fim_one.db.models.workflow import Workflow
+    from fim_one.web.services.feature_flags import (
+        SETTING_FEATURE_WORKFLOWS,
+        is_feature_enabled,
+    )
     from fim_one.web.visibility import resolve_visibility
 
     try:
         async with create_session() as session:
+            if not await is_feature_enabled(session, SETTING_FEATURE_WORKFLOWS):
+                return []
             vis_filter, _, _ = await resolve_visibility(
                 Workflow, user_id, "workflow", session
             )

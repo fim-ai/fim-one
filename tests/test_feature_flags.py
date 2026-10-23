@@ -148,3 +148,69 @@ class TestRouterGate:
         async with await self._client(session_factory) as client:
             resp = await client.get("/workflows-probe")
         assert resp.status_code == 200
+
+
+class TestChatResolutionFollowsFlags:
+    """Chat must not advertise skills or workflows from a shelved module.
+
+    The ``read_skill`` / ``run_workflow`` tools were already gated, but the
+    react and DAG endpoints injected the "Available Skills" / "Available
+    Workflows" prompt blocks from the unconditional id lookups, so the model
+    was told to call tools that were not registered (and in inline mode was
+    handed the full skill bodies).
+    """
+
+    @pytest.fixture()
+    async def seeded(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> async_sessionmaker[AsyncSession]:
+        from fim_one.db.models.skill import Skill
+        from fim_one.db.models.workflow import Workflow
+
+        async with session_factory() as db:
+            db.add(Skill(id="sk1", user_id="u1", name="refund", content="x"))
+            db.add(
+                Workflow(
+                    id="wf1", user_id="u1", name="flow", status="active",
+                    blueprint={"nodes": []},
+                )
+            )
+            await db.commit()
+        monkeypatch.setattr("fim_one.db.create_session", session_factory)
+        return session_factory
+
+    @pytest.mark.asyncio
+    async def test_skill_ids_empty_when_shelved(
+        self, seeded: async_sessionmaker[AsyncSession]
+    ) -> None:
+        from fim_one.web.api.chat import _resolve_user_skill_ids
+
+        assert await _resolve_user_skill_ids("u1") == []
+
+    @pytest.mark.asyncio
+    async def test_skill_ids_resolve_when_enabled(
+        self, seeded: async_sessionmaker[AsyncSession]
+    ) -> None:
+        from fim_one.web.api.chat import _resolve_user_skill_ids
+
+        await _set(seeded, SETTING_FEATURE_SKILLS, "true")
+        assert await _resolve_user_skill_ids("u1") == ["sk1"]
+
+    @pytest.mark.asyncio
+    async def test_workflow_ids_empty_when_shelved(
+        self, seeded: async_sessionmaker[AsyncSession]
+    ) -> None:
+        from fim_one.web.api.chat import _resolve_user_workflow_ids
+
+        assert await _resolve_user_workflow_ids("u1") == []
+
+    @pytest.mark.asyncio
+    async def test_workflow_ids_resolve_when_enabled(
+        self, seeded: async_sessionmaker[AsyncSession]
+    ) -> None:
+        from fim_one.web.api.chat import _resolve_user_workflow_ids
+
+        await _set(seeded, SETTING_FEATURE_WORKFLOWS, "true")
+        assert await _resolve_user_workflow_ids("u1") == ["wf1"]
