@@ -336,6 +336,7 @@ async def publish_skill(
         raise AppError("invalid_scope", status_code=400)
 
     skill.published_at = datetime.now(UTC)
+    skill.status = "published"
 
     # Audit log: submitted (org scope only)
     if body.scope == "org" and body.org_id:
@@ -432,6 +433,7 @@ async def unpublish_skill(
     skill.org_id = None
     skill.published_at = None
     skill.publish_status = None
+    skill.status = "draft"
 
     await db.commit()
     await db.refresh(skill)
