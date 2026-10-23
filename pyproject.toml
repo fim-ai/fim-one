@@ -35,6 +35,7 @@ dependencies = [
     "croniter>=6.0.0",
     "pyotp>=2.9.0",
     "stripe>=11.0,<13",
+    "jmespath>=1.0.1",
 ]
 
 [project.optional-dependencies]
