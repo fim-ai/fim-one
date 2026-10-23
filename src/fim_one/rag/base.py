@@ -20,6 +20,9 @@ class Document:
         fts_score: Original sparse/FTS retriever score before fusion (tracing).
         vector_rank: 0-based rank in the dense result list (tracing).
         fts_rank: 0-based rank in the sparse result list (tracing).
+        rank_fused: True when ``score`` is a rank-fusion value (RRF). Such a
+            score orders results but is not an absolute relevance (it never
+            exceeds ~0.033), so it must not be compared to a threshold.
     """
 
     content: str
@@ -30,6 +33,7 @@ class Document:
     fts_score: float | None = None
     vector_rank: int | None = None
     fts_rank: int | None = None
+    rank_fused: bool = False
 
 
 class BaseRetriever(ABC):

@@ -862,8 +862,16 @@ export const connectorApi = {
       { method: "PUT", body: JSON.stringify(body) },
     ).then((r) => r.data),
 
-  bulkUpdateSchemas: (connectorId: string, body: { schemas: SchemaTableUpdate[] }) =>
-    apiFetch<ApiResponse<{ updated: number }>>(
+  bulkUpdateSchemas: (
+    connectorId: string,
+    body: {
+      tables: (SchemaTableUpdate & {
+        table_name: string
+        columns?: (SchemaColumnUpdate & { column_name: string })[]
+      })[]
+    },
+  ) =>
+    apiFetch<ApiResponse<{ updated_count: number }>>(
       `/api/connectors/${connectorId}/schemas/bulk`,
       { method: "PUT", body: JSON.stringify(body) },
     ).then((r) => r.data),

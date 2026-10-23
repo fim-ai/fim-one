@@ -165,6 +165,7 @@ class HybridRetriever(BaseRetriever):
                 fts_score=fts_scores.get(k),
                 vector_rank=vector_ranks.get(k),
                 fts_rank=fts_ranks.get(k),
+                rank_fused=True,
             )
             for k in sorted_keys
         ]

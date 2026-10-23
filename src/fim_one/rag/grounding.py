@@ -8,7 +8,7 @@ import math
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from fim_one.core.embedding.base import BaseEmbedding
@@ -67,6 +67,20 @@ class GroundedResult:
 # ---------------------------------------------------------------------------
 # Pipeline
 # ---------------------------------------------------------------------------
+
+def _relevance(doc: Document) -> float | None:
+    """Return a score for *doc* that ``min_score`` can be compared against.
+
+    Reranked, dense and FTS scores are absolute relevances. A hybrid result
+    that was never reranked carries an RRF value instead, which tops out
+    near 0.033 and would fail any sensible threshold, so fall back to the
+    better of its dense and FTS scores.
+    """
+    if not doc.rank_fused:
+        return doc.score
+    known = [s for s in (doc.vector_score, doc.fts_score) if s is not None]
+    return max(known) if known else None
+
 
 _DEFAULT_CONFIG: dict[str, Any] = {
     "top_k": 10,
@@ -184,7 +198,12 @@ class GroundingPipeline:
                 logger.warning("Retrieval failed for kb=%s: %s", kid, result)
                 continue
             for doc in result:
-                if doc.score is not None and doc.score >= min_score:
+                relevance = _relevance(doc)
+                if relevance is not None and relevance >= min_score:
+                    # Carry the threshold-comparable score forward so the
+                    # cross-KB sort and the confidence use the same scale.
+                    if doc.rank_fused:
+                        doc = replace(doc, score=relevance, rank_fused=False)
                     merged.append((doc, kid))
 
         # Sort by score descending

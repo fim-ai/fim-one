@@ -192,6 +192,51 @@ async def test_min_score_filter():
     assert evidence[0].chunk.content == "above"
 
 
+@pytest.mark.asyncio
+async def test_rank_fused_docs_use_dense_or_fts_score_for_threshold():
+    """Hybrid retrieval without a reranker yields RRF scores (~0.016-0.033).
+
+    Compared directly against ``min_score`` they all failed, so a KB-bound
+    agent on a deployment with no reranker key never got any evidence.
+    """
+    docs = [
+        Document(content="relevant", score=0.032, vector_score=0.8,
+                 fts_score=0.4, rank_fused=True),
+        Document(content="fts only", score=0.016, fts_score=0.5,
+                 rank_fused=True),
+        Document(content="weak", score=0.015, vector_score=0.1,
+                 rank_fused=True),
+    ]
+    pipeline = GroundingPipeline(
+        kb_manager=_mock_kb_manager({"kb1": docs}),
+        embedding=_mock_embedding(),
+        config={"top_k": 10, "min_score": 0.3},
+    )
+
+    evidence = await pipeline._multi_kb_retrieve("q", ["kb1"], "user1")
+
+    assert [e.chunk.content for e in evidence] == ["relevant", "fts only"]
+    assert [e.chunk.score for e in evidence] == [0.8, 0.5]
+    assert all(not e.chunk.rank_fused for e in evidence)
+    assert pipeline._compute_confidence(evidence) == pytest.approx(0.65)
+
+
+@pytest.mark.asyncio
+async def test_absolute_scores_still_filtered_directly():
+    docs = [
+        Document(content="reranked low", score=0.1, vector_score=0.9),
+    ]
+    pipeline = GroundingPipeline(
+        kb_manager=_mock_kb_manager({"kb1": docs}),
+        embedding=_mock_embedding(),
+        config={"top_k": 10, "min_score": 0.3},
+    )
+
+    evidence = await pipeline._multi_kb_retrieve("q", ["kb1"], "user1")
+
+    assert evidence == []
+
+
 # ---------------------------------------------------------------------------
 # Tests: Citation extraction
 # ---------------------------------------------------------------------------

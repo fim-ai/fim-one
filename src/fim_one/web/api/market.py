@@ -227,7 +227,10 @@ async def browse_market(
         "agent": (Agent, _agent_market_info, "published"),
         "connector": (Connector, _connector_market_info, "published"),
         "mcp_server": (MCPServer, _mcp_market_info, None),
-        "skill": (Skill, _skill_market_info, "published"),
+        # Skills have no draft/published lifecycle of their own: sharing is
+        # carried by ``visibility``, and skills published before the publish
+        # endpoint set ``status`` still read "draft".
+        "skill": (Skill, _skill_market_info, None),
         # Workflows are never "published": their status is draft/active
         # (publish only sets visibility), so a status filter hid every one.
         "workflow": (Workflow, _workflow_market_info, None),
