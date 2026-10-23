@@ -10,10 +10,23 @@ name: i18n sync
 on:
   push:
     branches: [master]
+  # Maintainer backfill. Requires Actions write on this repo; not a pull_request trigger.
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Translate EN sources changed after this commit (exclusive), for example 6d7c0504"
+        required: true
+        type: string
 
+# Same group as Add Contributors, so only one of them pushes to master at a
+# time. cancel-in-progress stays off. queue: max keeps every waiting run.
+# Waiting is not enough on its own: a push run checks out the triggering
+# commit, which can be behind master by the time it pushes. The push step
+# rebases onto origin/master and retries.
 concurrency:
-  group: i18n-sync-${{ github.ref }}
+  group: master-auto-push
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: write
@@ -29,15 +42,32 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Push events stay on the triggering commit so before..HEAD is that
+          # push. Manual backfill checks out master, not a pull request head.
+          persist-credentials: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'master' || github.sha }}
 
       - name: Compute changed EN source files
         id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          SINCE: ${{ github.event.inputs.since }}
         run: |
-          BEFORE="${{ github.event.before }}"
-          # First push to the branch: before is all zeros — diff against empty tree
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            BEFORE=$(git hash-object -t tree /dev/null)
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if ! [[ "$SINCE" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+              echo "::error::since must be a 7-40 character commit SHA"
+              exit 1
+            fi
+            BEFORE=$(git rev-parse --verify "${SINCE}^{commit}")
+          else
+            BEFORE="$PUSH_BEFORE"
+            # First push to the branch: before is all zeros — diff against empty tree
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE=$(git hash-object -t tree /dev/null)
+            fi
           fi
+          echo "Diff base: $BEFORE"
 
           # Locale subdir exclusion (docs/{zh,ja,...} are generated, not sources)
           LOCALE_EXCLUDE=""
@@ -122,6 +152,10 @@ jobs:
 
       - name: Commit and push if anything changed
         if: steps.changes.outputs.has_any_changes == 'true'
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          SINCE: ${{ github.event.inputs.since }}
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "No translation diff — locales already up to date."
@@ -132,7 +166,39 @@ jobs:
           git config user.email "bot@fim.ai"
 
           git add docs frontend/messages README.md 'README.*.md' .translation-hashes.json
-          git commit -m "chore(i18n): sync translations for ${GITHUB_SHA::8} [skip ci]"
-          git push origin HEAD:master
-        env:
-          GITHUB_SHA: ${{ github.sha }}
+          if git diff --cached --quiet; then
+            echo "No translation diff — locales already up to date."
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SUBJECT="since ${SINCE}"
+          else
+            SUBJECT="for ${GITHUB_SHA::8}"
+          fi
+          git commit -m "chore(i18n): sync translations ${SUBJECT} [skip ci]"
+
+          # Another master push (Add Contributors, or a second translation)
+          # can land while this job runs. Rebase onto the latest master and
+          # retry a few times; a content conflict fails the job.
+          attempt=1
+          max=5
+          while [ "$attempt" -le "$max" ]; do
+            if git push origin HEAD:master; then
+              echo "Pushed translation commit"
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}/${max}); rebasing onto origin/master"
+            git fetch origin master
+            if ! git rebase origin/master; then
+              git rebase --abort || true
+              echo "::error::Could not rebase translation commit onto origin/master"
+              exit 1
+            fi
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ]; then
+              echo "Translation commit already on origin/master"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "::error::Failed to push translations after ${max} attempts"
+          exit 1

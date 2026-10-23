@@ -19,9 +19,13 @@ on:
         default: code
         type: string
 
+# Same group as i18n-sync, so only one of them pushes to master at a time.
+# cancel-in-progress stays off. queue: max keeps every waiting run (the
+# default queue drops an older pending run when a third one arrives).
 concurrency:
-  group: add-contributors-master
+  group: master-auto-push
   cancel-in-progress: false
+  queue: max
 
 jobs:
   add-contributor:
@@ -145,16 +149,43 @@ jobs:
           fi
 
           echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
-          echo "Adding $USERNAME with types: $TYPES"
 
-          # commit:true in .all-contributorsrc would make `add` commit and
-          # leave this job with a clean index, so the push step would skip.
+          # all-contributors-cli 6.26.1 treats a shorter type list that overlaps
+          # the current one as a removal (formatContributions). Passing
+          # bug,doc,test,code for tao-hpu deleted maintenance, design,
+          # projectManagement, ideas and infra, then the next merge appended
+          # test, so every merge pushed a new commit. Only pass types that are
+          # not already recorded. An already-complete contributor is a no-op.
+          NEW_TYPES=$(python3 - "$USERNAME" "$TYPES" << 'PY'
+          import json, sys
+          username, types = sys.argv[1], sys.argv[2]
+          wanted = [part for part in types.split(",") if part]
+          with open(".all-contributorsrc", encoding="utf-8") as fh:
+              config = json.load(fh)
+          existing = []
+          for contributor in config.get("contributors", []):
+              login = str(contributor.get("login", ""))
+              if login.lower() == username.lower():
+                  existing = [str(item) for item in contributor.get("contributions", [])]
+                  break
+          have = {item.lower() for item in existing}
+          print(",".join(part for part in wanted if part.lower() not in have))
+          PY
+          )
+          echo "new_types=$NEW_TYPES" >> "$GITHUB_OUTPUT"
+          if [ -z "$NEW_TYPES" ]; then
+            echo "No new contribution types for @$USERNAME; not committing"
+            exit 0
+          fi
+
+          echo "Adding $USERNAME with new types: $NEW_TYPES"
           # --no-commit keeps the edit in the worktree. The CLI is pinned to
           # the version that failed in run 39879235485.
-          npx --yes all-contributors-cli@6.26.1 add "$USERNAME" "$TYPES" --no-commit
+          npx --yes all-contributors-cli@6.26.1 add "$USERNAME" "$NEW_TYPES" --no-commit
           npx --yes all-contributors-cli@6.26.1 generate
 
       - name: Commit and push if changed
+        if: steps.add.outputs.new_types != ''
         env:
           USERNAME: ${{ steps.add.outputs.username }}
         run: |
@@ -163,11 +194,10 @@ jobs:
             git commit -m "docs: add @${USERNAME} as contributor [skip ci]"
           fi
 
-          # `add` commits on its own if --no-commit is ignored. That commit is
-          # already on HEAD and is not staged, so a staged-diff check would
-          # skip the push and the credit would never reach master.
-          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ]; then
-            echo "No changes to push"
+          # Checkout starts at origin/master. Commits ahead of it were created
+          # in this job (our commit, or the CLI if --no-commit was ignored).
+          if [ "$(git rev-list --count origin/master..HEAD)" = "0" ]; then
+            echo "No contributor commit to push"
             exit 0
           fi
 
@@ -175,5 +205,25 @@ jobs:
             git commit --amend --reset-author -m "docs: add @${USERNAME} as contributor [skip ci]"
           fi
 
-          # Same refspec i18n-sync uses to push to master with contents: write.
-          git push origin HEAD:master
+          attempt=1
+          max=5
+          while [ "$attempt" -le "$max" ]; do
+            if git push origin HEAD:master; then
+              echo "Pushed contributor commit"
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}/${max}); rebasing onto origin/master"
+            git fetch origin master
+            if ! git rebase origin/master; then
+              git rebase --abort || true
+              echo "::error::Could not rebase contributor commit onto origin/master"
+              exit 1
+            fi
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ]; then
+              echo "Contributor commit already on origin/master"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "::error::Failed to push contributor commit after ${max} attempts"
+          exit 1
