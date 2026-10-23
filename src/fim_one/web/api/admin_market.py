@@ -44,6 +44,11 @@ _RESOURCE_MODELS: dict[str, type[Any]] = {
 # Models that support publish/unpublish via a `status` column
 _PUBLISHABLE_TYPES = {"agent", "skill", "connector", "workflow"}
 
+# Types whose Market listing requires ``status == "published"``.  A workflow's
+# status is its own draft/active lifecycle and never becomes "published", so
+# filtering on it would hide every workflow in the Market org.
+_STATUS_FILTERED_TYPES = _PUBLISHABLE_TYPES - {"workflow"}
+
 
 # ---------------------------------------------------------------------------
 # Schemas
@@ -122,8 +127,9 @@ async def list_market_resources(
     """List published resources owned by the Market organisation.
 
     Only returns resources with ``status == "published"`` (for models
-    that have a status field).  MCP servers (no status) are always
-    included.  An optional ``resource_type`` query param filters to a
+    whose status tracks publishing).  MCP servers (no status) and
+    workflows (draft/active lifecycle status) are always included.
+    An optional ``resource_type`` query param filters to a
     single type.  Includes the owner username for each resource.
     """
     items: list[dict[str, Any]] = []
@@ -140,7 +146,7 @@ async def list_market_resources(
     for rtype, model in types_to_query.items():
         stmt = select(model).where(model.org_id == MARKET_ORG_ID)
         # Only show published resources (models with status field)
-        if rtype in _PUBLISHABLE_TYPES:
+        if rtype in _STATUS_FILTERED_TYPES:
             stmt = stmt.where(model.status == "published")
         result = await db.execute(stmt)
         for row in result.scalars().all():

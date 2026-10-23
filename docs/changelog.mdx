@@ -20,6 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **The Conditional Router and Human Approval templates take the branch they describe.** Their condition edges pointed at handles the editor never draws, so the technical or approved branch could not run; templates also render with their real step types, show their inputs in the run panel and keep their End mappings.
 - **Running a workflow from its page or as a batch counts against your token quota.** These runs used LLM and Agent steps without checking or recording usage; they are now refused when you are over quota and their tokens are recorded like webhook, scheduled and agent-started runs.
 - **An invalid workflow triggered through its API key no longer locks the owner out of running workflows.** Each rejected trigger kept a concurrent-run slot until the server restarted.
+- **Published workflows show up in the Market and in organizations.** The listing only showed workflows whose status was "published", a status workflows never have (theirs is draft or active), so no published workflow was ever visible to anyone else.
 - **An End step mapping a plain value that is not a variable name returns that value** instead of an empty result.
 - **Completion notifications for DAG runs list the tools that actually ran.** The "tools used" line on a completion card was built from the planner's suggested tool per step, so it could name tools that were never called and miss ones that were; it now reflects each step's real tool calls.
 

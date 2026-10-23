@@ -228,7 +228,9 @@ async def browse_market(
         "connector": (Connector, _connector_market_info, "published"),
         "mcp_server": (MCPServer, _mcp_market_info, None),
         "skill": (Skill, _skill_market_info, "published"),
-        "workflow": (Workflow, _workflow_market_info, "published"),
+        # Workflows are never "published": their status is draft/active
+        # (publish only sets visibility), so a status filter hid every one.
+        "workflow": (Workflow, _workflow_market_info, None),
     }
 
     # Collect user_ids and org_ids for batch lookup
