@@ -1,13 +1,31 @@
 name: Add Contributors
 
+# pull_request_target runs this file from master with the base repo token.
+# Check out master only. Do not check out or run the pull request head.
 on:
   pull_request_target:
     types: [closed]
     branches: [master]
+  # Maintainer backfill. Requires Actions write on this repo; not a pull_request trigger.
+  workflow_dispatch:
+    inputs:
+      username:
+        description: GitHub username to credit (for example Aryan-theccool)
+        required: true
+        type: string
+      types:
+        description: Comma-separated contribution types, no spaces (for example bug,doc,test,code)
+        required: true
+        default: code
+        type: string
+
+concurrency:
+  group: add-contributors-master
+  cancel-in-progress: false
 
 jobs:
   add-contributor:
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -16,13 +34,25 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
+          # Persists the GITHUB_TOKEN (contents: write) so the push below can authenticate.
+          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      - name: Configure git author
+        run: |
+          # .all-contributorsrc sets commit:true, so all-contributors-cli runs
+          # `git commit` itself. The runner has no user.name, and that commit
+          # fails with "Author identity unknown" before the push step. The id
+          # is github-actions[bot]'s user id so GitHub attributes the commit.
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Determine contribution types
         id: contrib
+        if: github.event_name == 'pull_request_target'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -87,27 +117,63 @@ jobs:
           echo "Detected contribution types: $TYPES"
 
       - name: Add contributor
+        id: add
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_USERNAME: ${{ github.event.pull_request.user.login }}
+          PR_TYPES: ${{ steps.contrib.outputs.types }}
+          # github.event.inputs is empty except on workflow_dispatch. The inputs
+          # context itself is not available on pull_request_target.
+          INPUT_USERNAME: ${{ github.event.inputs.username }}
+          INPUT_TYPES: ${{ github.event.inputs.types }}
         run: |
-          USERNAME="${{ github.event.pull_request.user.login }}"
-          TYPES="${{ steps.contrib.outputs.types }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            USERNAME="$INPUT_USERNAME"
+            TYPES="$INPUT_TYPES"
+          else
+            USERNAME="$PR_USERNAME"
+            TYPES="$PR_TYPES"
+          fi
 
+          if ! [[ "$USERNAME" =~ ^[A-Za-z0-9-]+$ ]]; then
+            echo "Refusing username: ${USERNAME}"
+            exit 1
+          fi
+          if ! [[ "$TYPES" =~ ^[A-Za-z]+(,[A-Za-z]+)*$ ]]; then
+            echo "Refusing contribution types: ${TYPES}"
+            exit 1
+          fi
+
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
           echo "Adding $USERNAME with types: $TYPES"
 
-          # all-contributors-cli handles dedup internally --
-          # if user exists, it merges new types with existing ones
-          npx all-contributors-cli add "$USERNAME" "$TYPES"
-          npx all-contributors-cli generate
+          # commit:true in .all-contributorsrc would make `add` commit and
+          # leave this job with a clean index, so the push step would skip.
+          # --no-commit keeps the edit in the worktree. The CLI is pinned to
+          # the version that failed in run 39879235485.
+          npx --yes all-contributors-cli@6.26.1 add "$USERNAME" "$TYPES" --no-commit
+          npx --yes all-contributors-cli@6.26.1 generate
 
       - name: Commit and push if changed
+        env:
+          USERNAME: ${{ steps.add.outputs.username }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add .all-contributorsrc README.md
-          # Check if there are actual changes to commit
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "docs: add @${{ github.event.pull_request.user.login }} as contributor [skip ci]"
-            git push
+          if ! git diff --cached --quiet; then
+            git commit -m "docs: add @${USERNAME} as contributor [skip ci]"
           fi
+
+          # `add` commits on its own if --no-commit is ignored. That commit is
+          # already on HEAD and is not staged, so a staged-diff check would
+          # skip the push and the credit would never reach master.
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ]; then
+            echo "No changes to push"
+            exit 0
+          fi
+
+          if ! git log -1 --format=%B | grep -q '\[skip ci\]'; then
+            git commit --amend --reset-author -m "docs: add @${USERNAME} as contributor [skip ci]"
+          fi
+
+          # Same refspec i18n-sync uses to push to master with contents: write.
+          git push origin HEAD:master
