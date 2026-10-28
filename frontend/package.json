@@ -32,7 +32,7 @@
     "mermaid": "^11.16.1",
     "motion": "^12.35.0",
     "next": "~15.5.28",
-    "next-intl": "^4.8.3",
+    "next-intl": "^4.14.9",
     "next-themes": "^0.4.6",
     "qrcode.react": "^4.2.0",
     "radix-ui": "^1.4.3",
@@ -76,7 +76,13 @@
   },
   "pnpm": {
     "overrides": {
-      "proxy-addr": "2.0.8"
+      "nanoid": "3.3.20",
+      "postcss": "8.5.32",
+      "postcss-selector-parser": "7.1.7",
+      "proxy-addr": "2.0.8",
+      "qs": "6.17.0",
+      "sharp": "0.35.5",
+      "undici": "7.30.1"
     }
   }
 }

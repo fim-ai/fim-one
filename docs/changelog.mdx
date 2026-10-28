@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **More library updates for the portal and the API.** Form uploads, the API framework, SQL formatting, HTML parsing, database migrations, image processing, and the portal's translation library are on releases that close known vulnerabilities.
 - **Security updates for the portal and the API.** The portal's Next.js release and HTML sanitizer, and the API's image, token, HTTP, and MCP libraries, are on versions that close known vulnerabilities.
 - **Contributor credits stay put when a merge adds nothing new.** The contributors list changes only when a merged pull request adds a contribution type that person did not already have.
 - **Workflows built in the editor run again when they use a Condition, Knowledge Retrieval or Human Intervention step.** The editor saves these steps as `conditionBranch`, `knowledgeRetrieval` and `humanIntervention`, which the engine rejected as unknown node types, so the run failed before its first step. The same mix-up let an agent be offered a workflow with a Human Intervention step, and dropped Knowledge Retrieval steps from publishing dependencies.
