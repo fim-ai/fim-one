@@ -28,5 +28,5 @@ jobs:
           path-to-signatures: signatures/v1/cla.json
           path-to-document: https://github.com/fim-ai/fim-one/blob/master/CLA.md
           branch: cla-signatures
-          allowlist: tao-hpu,*[bot]
+          allowlist: tao-hpu,cursoragent,*[bot]
           lock-pullrequest-aftermerge: false
