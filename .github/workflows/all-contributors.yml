@@ -139,6 +139,12 @@ jobs:
             TYPES="$PR_TYPES"
           fi
 
+          # Bot logins such as dependabot[bot] fail the character check below.
+          # Skip them instead of failing the job; they are not contributors.
+          if [[ "$USERNAME" == *'[bot]' ]]; then
+            echo "Skipping bot user: ${USERNAME}"
+            exit 0
+          fi
           if ! [[ "$USERNAME" =~ ^[A-Za-z0-9-]+$ ]]; then
             echo "Refusing username: ${USERNAME}"
             exit 1
