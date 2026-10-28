@@ -14,6 +14,25 @@ from .adapter import MCPToolAdapter
 logger = logging.getLogger(__name__)
 
 
+def _tool_def_from_mcp(tool: Any) -> dict[str, Any]:
+    """Build the adapter's tool dict from an MCP ``Tool``.
+
+    mcp 2.x exposes the JSON Schema as ``input_schema``. mcp 1.x used
+    ``inputSchema``. The adapter's own dict keeps the ``inputSchema`` key.
+    """
+    schema = getattr(tool, "input_schema", None)
+    if schema is None:
+        schema = getattr(tool, "inputSchema", None)
+    if not isinstance(schema, dict):
+        schema = {"type": "object", "properties": {}}
+    description = getattr(tool, "description", None) or ""
+    return {
+        "name": tool.name,
+        "description": description,
+        "inputSchema": schema,
+    }
+
+
 class MCPClient:
     """Manages connections to one or more MCP servers and provides tool adapters.
 
@@ -125,11 +144,7 @@ class MCPClient:
         for tool in tools_result.tools:
             adapter = MCPToolAdapter(
                 server_name=name,
-                tool_def={
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "inputSchema": tool.inputSchema,
-                },
+                tool_def=_tool_def_from_mcp(tool),
                 call_fn=session.call_tool,
             )
             adapters.append(adapter)
@@ -201,11 +216,7 @@ class MCPClient:
         for tool in tools_result.tools:
             adapter = MCPToolAdapter(
                 server_name=name,
-                tool_def={
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "inputSchema": tool.inputSchema,
-                },
+                tool_def=_tool_def_from_mcp(tool),
                 call_fn=session.call_tool,
             )
             adapters.append(adapter)
@@ -247,8 +258,9 @@ class MCPClient:
             If the ``mcp`` package is not installed.
         """
         try:
+            import httpx2
             from mcp import ClientSession
-            from mcp.client.streamable_http import streamablehttp_client
+            from mcp.client.streamable_http import streamable_http_client
         except ImportError as exc:
             raise ImportError(
                 "The 'mcp' package is required for MCP integration. "
@@ -262,8 +274,18 @@ class MCPClient:
 
         logger.info("Connecting to MCP server %r via Streamable HTTP: %s", name, url)
 
-        read, write, _ = await self._exit_stack.enter_async_context(
-            streamablehttp_client(url, headers=headers or {})
+        # mcp 2 removed ``streamablehttp_client`` (and the third
+        # ``get_session_id`` yield). Headers and the v1 timeouts
+        # (30s default, 300s read) now live on an httpx2 client, which
+        # we own for the life of the connection. The transport does not
+        # close a client it was given.
+        http_client = httpx2.AsyncClient(
+            headers=headers or {},
+            timeout=httpx2.Timeout(30.0, read=300.0),
+        )
+        await self._exit_stack.enter_async_context(http_client)
+        read, write = await self._exit_stack.enter_async_context(
+            streamable_http_client(url, http_client=http_client)
         )
         session: ClientSession = await self._exit_stack.enter_async_context(
             ClientSession(read, write)
@@ -277,11 +299,7 @@ class MCPClient:
         for tool in tools_result.tools:
             adapter = MCPToolAdapter(
                 server_name=name,
-                tool_def={
-                    "name": tool.name,
-                    "description": tool.description or "",
-                    "inputSchema": tool.inputSchema,
-                },
+                tool_def=_tool_def_from_mcp(tool),
                 call_fn=session.call_tool,
             )
             adapters.append(adapter)

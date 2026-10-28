@@ -94,7 +94,8 @@ class MCPToolAdapter(BaseTool):
         The result object exposes:
         - ``content``: a list of content items (each with ``.type`` and
           ``.text`` for text items, or ``.data`` for binary items).
-        - ``isError``: boolean flag indicating whether the call failed.
+        - ``is_error`` (mcp 2.x) or ``isError`` (mcp 1.x): whether the
+          call failed.
         """
         parts: list[str] = []
         for item in result.content:
@@ -103,9 +104,16 @@ class MCPToolAdapter(BaseTool):
             elif hasattr(item, "data"):
                 parts.append(f"[{item.type}: {len(item.data)} bytes]")
         output = "\n".join(parts)
-        if result.isError:
+        if _result_is_error(result):
             output = f"[MCP Error] {output}"
         return output
 
     def __repr__(self) -> str:
         return f"MCPToolAdapter(name={self._name!r}, original={self._original_name!r})"
+
+
+def _result_is_error(result: Any) -> bool:
+    """Read the MCP tool-error flag across sdk 1.x and 2.x spellings."""
+    if hasattr(result, "is_error"):
+        return bool(result.is_error)
+    return bool(getattr(result, "isError", False))

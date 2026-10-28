@@ -1201,6 +1201,13 @@ class OpenAICompatibleLLM(BaseLLM):
                 raise
             return None
         _RESPONSES_NATIVE_SUPPORT[(self._api_base, self._litellm_model)] = True
+        # LiteLLM 1.106 types ``aresponses`` as a response-or-iterator union
+        # with no ``stream=True`` overload. The streaming subclasses are
+        # async iterators; a bare response body is not.
+        if not isinstance(stream, AsyncIterator):
+            raise TypeError(
+                "litellm.aresponses(stream=True) returned a non-streaming response"
+            )
         return stream_to_chunks(stream)
 
     async def _dispatch_acompletion(self, **build_args: Any) -> Any:

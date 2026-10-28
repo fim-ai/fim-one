@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import sys
+import types
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from fim_one.core.mcp.adapter import MCPToolAdapter
 from fim_one.core.mcp.client import MCPClient
 from fim_one.core.tool import Tool, ToolRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fake MCP result types for testing the adapter
@@ -33,7 +35,7 @@ class FakeBinaryContent:
 @dataclass
 class FakeCallToolResult:
     content: list[Any] = field(default_factory=lambda: [FakeTextContent()])
-    isError: bool = False
+    isError: bool = False  # noqa: N815  # MCP 1.x attribute name
 
 
 # ======================================================================
@@ -99,6 +101,18 @@ class TestMCPToolAdapter:
         result = await adapter.run(path="/nonexistent")
         assert result.startswith("[MCP Error]")
         assert "file not found" in result
+
+    async def test_run_with_mcp2_error_flag(
+        self, adapter: MCPToolAdapter, mock_call_fn: AsyncMock
+    ) -> None:
+        """mcp 2.x renamed the tool-error flag from ``isError`` to ``is_error``."""
+        mock_call_fn.return_value = types.SimpleNamespace(
+            content=[FakeTextContent(text="rejected")],
+            is_error=True,
+        )
+        result = await adapter.run(path="/nope")
+        assert result.startswith("[MCP Error]")
+        assert "rejected" in result
 
     async def test_run_with_binary_content(
         self, adapter: MCPToolAdapter, mock_call_fn: AsyncMock
@@ -256,3 +270,104 @@ class TestMCPClient:
             assert client.connected_servers == []
         # After exit, should be cleaned up
         assert client.connected_servers == []
+
+    async def test_streamable_http_uses_mcp2_transport(self) -> None:
+        """mcp 2 yields a 2-tuple and takes headers on an httpx2 client."""
+        captured: dict[str, Any] = {}
+
+        class _Session:
+            def __init__(self, read: object, write: object) -> None:
+                captured["streams"] = (read, write)
+
+            async def __aenter__(self) -> _Session:
+                return self
+
+            async def __aexit__(self, *_exc: object) -> None:
+                return None
+
+            async def initialize(self) -> None:
+                return None
+
+            async def list_tools(self) -> Any:
+                tool = types.SimpleNamespace(
+                    name="echo",
+                    description="Echo",
+                    input_schema={
+                        "type": "object",
+                        "properties": {"q": {"type": "string"}},
+                    },
+                )
+                return types.SimpleNamespace(tools=[tool])
+
+            async def call_tool(self, *_args: object, **_kwargs: object) -> None:
+                return None
+
+        class _AsyncClient:
+            def __init__(
+                self,
+                *,
+                headers: dict[str, str] | None = None,
+                timeout: object = None,
+            ) -> None:
+                self.headers = headers or {}
+                self.timeout = timeout
+
+            async def __aenter__(self) -> _AsyncClient:
+                return self
+
+            async def __aexit__(self, *_exc: object) -> None:
+                return None
+
+        class _Timeout:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.args = args
+                self.kwargs = kwargs
+
+        @asynccontextmanager
+        async def _transport(
+            url: str,
+            *,
+            http_client: _AsyncClient | None = None,
+            **kwargs: object,
+        ):
+            captured["url"] = url
+            captured["headers"] = dict(http_client.headers) if http_client is not None else None
+            captured["kwargs"] = kwargs
+            yield "read-stream", "write-stream"
+
+        mcp_mod = types.ModuleType("mcp")
+        mcp_mod.ClientSession = _Session
+        client_mod = types.ModuleType("mcp.client")
+        stream_mod = types.ModuleType("mcp.client.streamable_http")
+        stream_mod.streamable_http_client = _transport
+        httpx2_mod = types.ModuleType("httpx2")
+        httpx2_mod.AsyncClient = _AsyncClient
+        httpx2_mod.Timeout = _Timeout
+
+        client = MCPClient()
+        with (
+            patch.dict(
+                sys.modules,
+                {
+                    "mcp": mcp_mod,
+                    "mcp.client": client_mod,
+                    "mcp.client.streamable_http": stream_mod,
+                    "httpx2": httpx2_mod,
+                },
+            ),
+            patch("fim_one.core.mcp.client._validate_url"),
+        ):
+            tools = await client.connect_streamable_http(
+                name="remote",
+                url="https://mcp.example.com/mcp",
+                headers={"Authorization": "Bearer t"},
+            )
+
+        assert captured["url"] == "https://mcp.example.com/mcp"
+        assert captured["headers"] == {"Authorization": "Bearer t"}
+        assert captured["streams"] == ("read-stream", "write-stream")
+        assert "get_session_id" not in captured["kwargs"]
+        assert len(tools) == 1
+        assert tools[0].name == "remote__echo"
+        assert tools[0].parameters_schema["properties"]["q"]["type"] == "string"
+        await client.disconnect_all()
