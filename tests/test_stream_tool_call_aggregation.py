@@ -36,7 +36,7 @@ class _FakeFunction:
 
 @dataclass
 class _FakeToolCallDelta:
-    index: int = 0
+    index: int | None = 0
     id: str | None = None
     function: _FakeFunction | None = None
 
@@ -62,7 +62,7 @@ class _FakeChunk:
 
 def _tc_chunk(
     *,
-    index: int = 0,
+    index: int | None = 0,
     tc_id: str | None = None,
     name: str | None = None,
     arguments: str | None = None,
@@ -291,6 +291,59 @@ class TestStreamToolCallAggregation:
 
         assert tool_calls[0].name == "search"
         assert tool_calls[0].arguments == {"query": "hello world"}
+
+
+class TestStreamToolCallsWithoutIndex:
+    """Providers whose OpenAI-compatible endpoint omits ``index`` (e.g. Gemini)."""
+
+    @pytest.mark.asyncio
+    async def test_parallel_calls_with_distinct_ids_stay_separate(self) -> None:
+        chunks = [
+            _tc_chunk(
+                index=None, tc_id="call_a", name="get_weather", arguments='{"city": "Paris"}'
+            ),
+            _tc_chunk(index=None, tc_id="call_b", name="get_time", arguments='{"tz": "UTC"}'),
+            _finish_chunk(),
+        ]
+        result = await _run_stream(chunks)
+
+        tool_calls = next(c for c in result if c.tool_calls).tool_calls
+        assert tool_calls is not None
+        assert [(t.id, t.name, t.arguments) for t in tool_calls] == [
+            ("call_a", "get_weather", {"city": "Paris"}),
+            ("call_b", "get_time", {"tz": "UTC"}),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_same_tool_twice_without_ids_stays_separate(self) -> None:
+        """A new name-bearing delta starts a new call, even for the same tool."""
+        chunks = [
+            _tc_chunk(index=None, name="get_weather", arguments='{"city": "Paris"}'),
+            _tc_chunk(index=None, name="get_weather", arguments='{"city": "Rome"}'),
+            _finish_chunk(),
+        ]
+        result = await _run_stream(chunks)
+
+        tool_calls = next(c for c in result if c.tool_calls).tool_calls
+        assert tool_calls is not None
+        assert [t.arguments for t in tool_calls] == [{"city": "Paris"}, {"city": "Rome"}]
+
+    @pytest.mark.asyncio
+    async def test_argument_only_deltas_continue_the_latest_call(self) -> None:
+        chunks = [
+            _tc_chunk(index=None, tc_id="call_a", name="get_weather", arguments='{"city": '),
+            _tc_chunk(index=None, arguments='"Paris"}'),
+            _tc_chunk(index=None, tc_id="call_b", name="get_time", arguments="{}"),
+            _finish_chunk(),
+        ]
+        result = await _run_stream(chunks)
+
+        tool_calls = next(c for c in result if c.tool_calls).tool_calls
+        assert tool_calls is not None
+        assert [(t.name, t.arguments) for t in tool_calls] == [
+            ("get_weather", {"city": "Paris"}),
+            ("get_time", {}),
+        ]
 
 
 class TestPartialToolCallDirect:

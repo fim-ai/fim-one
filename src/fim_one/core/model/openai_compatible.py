@@ -749,6 +749,13 @@ class OpenAICompatibleLLM(BaseLLM):
                 if delta.tool_calls:
                     for tc_delta in delta.tool_calls:
                         raw_idx = tc_delta.index
+                        # Some OpenAI-compatible endpoints (e.g. Gemini)
+                        # omit the index.  Treat that like a provider that
+                        # reuses index 0, so the boundary detection below
+                        # splits their calls instead of failing on a None key.
+                        index_missing = raw_idx is None
+                        if raw_idx is None:
+                            raw_idx = 0
                         # Redirect through any active remap (handles
                         # providers that reuse index=0 for every call).
                         idx = index_remap.get(raw_idx, raw_idx)
@@ -768,6 +775,11 @@ class OpenAICompatibleLLM(BaseLLM):
                             if tc_id and existing.id and tc_id != existing.id:
                                 is_boundary = True
                             if tc_name and existing.name and tc_name != existing.name:
+                                is_boundary = True
+                            # Without an index, a delta that names a function
+                            # starts a new call (continuations carry no name),
+                            # even when it repeats the previous tool's name.
+                            if index_missing and tc_name and existing.name:
                                 is_boundary = True
                             if is_boundary:
                                 new_idx = max(pending_tool_calls.keys()) + 1
