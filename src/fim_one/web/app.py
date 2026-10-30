@@ -105,6 +105,81 @@ from .api.webhooks import router as webhooks_router
 
 logger = logging.getLogger(__name__)
 
+# Endpoints published in the OpenAPI schema; every other route is hidden.
+_PUBLIC_API: frozenset[tuple[str, str]] = frozenset({
+    ("POST", "/api/react"),
+    ("POST", "/api/dag"),
+    ("POST", "/api/chat/inject"),
+    ("GET", "/api/conversations"),
+    ("POST", "/api/conversations"),
+    ("GET", "/api/conversations/{conversation_id}"),
+    ("PATCH", "/api/conversations/{conversation_id}"),
+    ("DELETE", "/api/conversations/{conversation_id}"),
+    ("GET", "/api/agents"),
+    ("GET", "/api/agents/{agent_id}"),
+    ("GET", "/api/knowledge-bases"),
+    ("POST", "/api/knowledge-bases/{kb_id}/retrieve"),
+    ("GET", "/api/me/api-keys"),
+    ("POST", "/api/me/api-keys"),
+    ("DELETE", "/api/me/api-keys/{key_id}"),
+    ("PATCH", "/api/me/api-keys/{key_id}/active"),
+})
+
+_SCHEMA_REF_PREFIX = "#/components/schemas/"
+
+
+def _collect_schema_refs(node: Any, found: set[str]) -> None:
+    """Add every ``#/components/schemas/<name>`` referenced under *node*."""
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith(_SCHEMA_REF_PREFIX):
+            found.add(ref[len(_SCHEMA_REF_PREFIX):])
+        for value in node.values():
+            _collect_schema_refs(value, found)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_schema_refs(item, found)
+
+
+def filter_openapi_to_public(
+    schema: dict[str, Any], public: frozenset[tuple[str, str]]
+) -> dict[str, Any]:
+    """Keep only *public* operations and the component schemas they reach.
+
+    Filtering the generated schema, rather than flipping
+    ``include_in_schema`` on ``app.routes``, keeps working when FastAPI
+    nests included routers: since 0.16x ``app.routes`` holds one wrapper
+    per ``include_router`` call, so a loop over it hid only the few
+    top-level routes and published every internal endpoint.
+    """
+    paths: dict[str, Any] = {}
+    for path, operations in schema.get("paths", {}).items():
+        kept = {
+            method: op
+            for method, op in operations.items()
+            if (method.upper(), path) in public
+        }
+        if kept:
+            paths[path] = kept
+    schema["paths"] = paths
+
+    components = schema.get("components", {})
+    all_schemas: dict[str, Any] = components.get("schemas", {})
+    reachable: set[str] = set()
+    _collect_schema_refs(paths, reachable)
+    pending = list(reachable)
+    while pending:
+        nested: set[str] = set()
+        _collect_schema_refs(all_schemas.get(pending.pop(), {}), nested)
+        for name in nested - reachable:
+            reachable.add(name)
+            pending.append(name)
+    if all_schemas:
+        components["schemas"] = {
+            name: body for name, body in all_schemas.items() if name in reachable
+        }
+    return schema
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
@@ -445,48 +520,20 @@ def create_app() -> FastAPI:
     app.include_router(webhooks_router)
 
     # ---------------------------------------------------------------------------
-    # OpenAPI: hide all routes, whitelist public API endpoints
-    # ---------------------------------------------------------------------------
-    _PUBLIC_API = {
-        ("POST", "/api/react"),
-        ("POST", "/api/dag"),
-        ("POST", "/api/chat/inject"),
-        ("GET", "/api/conversations"),
-        ("POST", "/api/conversations"),
-        ("GET", "/api/conversations/{conversation_id}"),
-        ("PATCH", "/api/conversations/{conversation_id}"),
-        ("DELETE", "/api/conversations/{conversation_id}"),
-        ("GET", "/api/agents"),
-        ("GET", "/api/agents/{agent_id}"),
-        ("GET", "/api/knowledge-bases"),
-        ("POST", "/api/knowledge-bases/{kb_id}/retrieve"),
-        ("GET", "/api/me/api-keys"),
-        ("POST", "/api/me/api-keys"),
-        ("DELETE", "/api/me/api-keys/{key_id}"),
-        ("PATCH", "/api/me/api-keys/{key_id}/active"),
-    }
-
-    for route in app.routes:
-        if not hasattr(route, "include_in_schema"):
-            continue
-        route.include_in_schema = False
-        if hasattr(route, "methods") and hasattr(route, "path"):
-            for method in route.methods:
-                if (method, route.path) in _PUBLIC_API:
-                    route.include_in_schema = True
-                    break
-
-    # ---------------------------------------------------------------------------
-    # OpenAPI: custom schema with security scheme and server placeholder
+    # OpenAPI: custom schema limited to _PUBLIC_API, with security scheme and
+    # server placeholder
     # ---------------------------------------------------------------------------
     def custom_openapi() -> dict[str, Any]:
         if app.openapi_schema:
             return app.openapi_schema
-        schema = get_openapi(
-            title=app.title,
-            version=app.version,
-            description=app.description,
-            routes=app.routes,
+        schema = filter_openapi_to_public(
+            get_openapi(
+                title=app.title,
+                version=app.version,
+                description=app.description,
+                routes=app.routes,
+            ),
+            _PUBLIC_API,
         )
         # Add security scheme
         schema.setdefault("components", {})["securitySchemes"] = {
