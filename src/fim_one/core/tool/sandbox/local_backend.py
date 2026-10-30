@@ -18,6 +18,7 @@ import io
 import logging
 import os
 import signal
+import subprocess
 import sys
 import threading
 import traceback
@@ -222,14 +223,28 @@ class _BlockedImportFinder(importlib.abc.MetaPathFinder):
 
 
 def _kill_proc_tree(proc: asyncio.subprocess.Process) -> None:
-    """Kill a subprocess and its entire process group (best-effort).
+    """Kill a subprocess and all of its descendants (best-effort).
 
-    Requires the subprocess to have been started with
-    ``start_new_session=True`` so it leads its own process group.
-    Falls back to ``proc.kill()`` if ``killpg`` fails, and on Windows,
-    which has no process groups in the POSIX sense.
+    On POSIX this requires the subprocess to have been started with
+    ``start_new_session=True`` so it leads its own process group.  Windows
+    has no process groups in that sense, and ``proc.kill()`` ends only the
+    direct child — for ``run_shell`` that is ``cmd.exe``, which leaves the
+    actual command running — so the tree is ended with ``taskkill /T``.
+    Falls back to ``proc.kill()`` if either fails.
     """
-    if sys.platform != "win32":
+    if sys.platform == "win32":
+        try:
+            done = subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if done.returncode == 0:
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    else:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
             return

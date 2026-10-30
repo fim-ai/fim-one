@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
+import uuid
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,6 +24,10 @@ from fim_one.core.tool.sandbox import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+# The test interpreter, as a shell-safe path on every OS.
+_PYTHON = Path(sys.executable).as_posix()
 
 
 def _reset_singleton() -> None:
@@ -137,11 +145,38 @@ class TestLocalBackendShell:
 
     @pytest.mark.asyncio
     async def test_timeout(self) -> None:
+        # A Python sleep instead of `sleep` so the test runs on Windows too.
         result = await self._backend().run_shell(
-            "sleep 60", sandbox_dir=self.sandbox_dir, timeout=1
+            f'"{_PYTHON}" -c "import time; time.sleep(60)"',
+            sandbox_dir=self.sandbox_dir,
+            timeout=1,
         )
         assert result.timed_out
         assert result.exit_code == 124
+
+    @pytest.mark.asyncio
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows process-tree kill")
+    async def test_timeout_kills_the_command_not_just_the_shell(self) -> None:
+        # cmd.exe is the direct child; the command it starts must die too.
+        marker = f"fim_tree_kill_{uuid.uuid4().hex[:8]}"
+        result = await self._backend().run_shell(
+            f'"{_PYTHON}" -c "import time; time.sleep(60)  # {marker}"',
+            sandbox_dir=self.sandbox_dir,
+            timeout=2,
+        )
+        assert result.timed_out
+        await asyncio.sleep(1)
+        query = (
+            "(Get-CimInstance Win32_Process | Where-Object "
+            f"{{ $_.CommandLine -like '*{marker}*' -and $_.Name -eq 'python.exe' }}).Count"
+        )
+        leftover = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", query],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout.strip()
+        assert int(leftover or 0) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -150,19 +185,68 @@ class TestLocalBackendShell:
 
 
 class TestKillProcTree:
-    """_kill_proc_tree picks the right kill path per platform."""
+    """_kill_proc_tree picks the right kill path per platform.
 
-    def test_windows_uses_proc_kill(self) -> None:
+    The Windows cases mock ``subprocess.run`` so no real taskkill is
+    issued against the fake PID.
+    """
+
+    @staticmethod
+    def _windows(run: MagicMock) -> Any:
+        from fim_one.core.tool.sandbox import local_backend
+
+        return (
+            patch.object(local_backend.sys, "platform", "win32"),
+            patch.object(local_backend.subprocess, "run", run),
+            patch.object(local_backend.subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True),
+        )
+
+    def test_windows_kills_the_tree_with_taskkill(self) -> None:
         from fim_one.core.tool.sandbox import local_backend
 
         proc = MagicMock(pid=1234)
-        with (
-            patch.object(local_backend.sys, "platform", "win32"),
-            patch.object(local_backend.os, "killpg", create=True) as killpg,
-        ):
+        run = MagicMock(return_value=MagicMock(returncode=0))
+        platform, sub_run, flag = self._windows(run)
+        with platform, sub_run, flag, patch.object(
+            local_backend.os, "killpg", create=True
+        ) as killpg:
             local_backend._kill_proc_tree(proc)
 
+        assert run.call_args.args[0] == ["taskkill", "/F", "/T", "/PID", "1234"]
         killpg.assert_not_called()
+        proc.kill.assert_not_called()
+
+    def test_windows_falls_back_when_taskkill_fails(self) -> None:
+        from fim_one.core.tool.sandbox import local_backend
+
+        proc = MagicMock(pid=1234)
+        run = MagicMock(return_value=MagicMock(returncode=128))
+        platform, sub_run, flag = self._windows(run)
+        with platform, sub_run, flag:
+            local_backend._kill_proc_tree(proc)
+
+        proc.kill.assert_called_once()
+
+    def test_windows_falls_back_when_taskkill_is_missing(self) -> None:
+        from fim_one.core.tool.sandbox import local_backend
+
+        proc = MagicMock(pid=1234)
+        run = MagicMock(side_effect=FileNotFoundError)
+        platform, sub_run, flag = self._windows(run)
+        with platform, sub_run, flag:
+            local_backend._kill_proc_tree(proc)
+
+        proc.kill.assert_called_once()
+
+    def test_windows_falls_back_when_taskkill_hangs(self) -> None:
+        from fim_one.core.tool.sandbox import local_backend
+
+        proc = MagicMock(pid=1234)
+        run = MagicMock(side_effect=local_backend.subprocess.TimeoutExpired("taskkill", 10))
+        platform, sub_run, flag = self._windows(run)
+        with platform, sub_run, flag:
+            local_backend._kill_proc_tree(proc)
+
         proc.kill.assert_called_once()
 
     def test_posix_kills_process_group(self) -> None:
@@ -199,7 +283,9 @@ class TestKillProcTree:
 
         proc = MagicMock(pid=1234)
         proc.kill.side_effect = ProcessLookupError
-        with patch.object(local_backend.sys, "platform", "win32"):
+        run = MagicMock(return_value=MagicMock(returncode=128))
+        platform, sub_run, flag = self._windows(run)
+        with platform, sub_run, flag:
             local_backend._kill_proc_tree(proc)  # must not raise
 
 
