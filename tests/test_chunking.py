@@ -67,6 +67,30 @@ async def test_recursive_chunker_chinese():
     assert len(chunks) >= 1
 
 
+@pytest.mark.parametrize(
+    "chunker_cls",
+    [RecursiveCharacterChunker, MarkdownChunker],
+    ids=["recursive", "markdown"],
+)
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("A" * 53, id="ascii"),
+        pytest.param("\u6c49" * 53, id="cjk"),
+        pytest.param("customerOrderIdentifier0123456789" * 3, id="identifier"),
+    ],
+)
+async def test_character_fallback_preserves_unbroken_text(chunker_cls, text):
+    chunk_size = 16
+    chunker = chunker_cls(chunk_size=chunk_size, overlap=0)
+
+    chunks = await chunker.chunk(text)
+
+    assert len(chunks) > 1
+    assert "".join(chunk.text for chunk in chunks) == text
+    assert all(0 < len(chunk.text) <= chunk_size for chunk in chunks)
+
+
 async def test_semantic_chunker_fallback():
     """Without an embedding model, should fall back to paragraph splitting."""
     text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
