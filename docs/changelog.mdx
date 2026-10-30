@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Long unbroken text is preserved when knowledge-base documents are chunked.** Recursive and Markdown chunking no longer collapse ASCII, CJK, or identifier-like content to its final character when no separator is available.
 - **Streaming tool calls from endpoints that omit the call index no longer fail or merge.** Gemini's OpenAI-compatible endpoint sends parallel tool calls without `index`, which crashed the stream with a `TypeError` or overwrote one call with the next.
 - **Portal math, graphs, and the development server use patched libraries.** Known issues in KaTeX, Lodash, and the local dev server are closed. Bot accounts are no longer recorded as contributors.
 - **More library updates for the portal and the API.** Form uploads, the API framework, SQL formatting, HTML parsing, database migrations, image processing, and the portal's translation library are on releases that close known vulnerabilities.

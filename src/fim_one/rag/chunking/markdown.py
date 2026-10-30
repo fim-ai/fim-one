@@ -172,11 +172,7 @@ class MarkdownChunker(BaseChunker):
         result: list[str] = []
         current = ""
         for split in splits:
-            piece = (
-                split
-                if not separator
-                else (current + separator + split if current else split)
-            )
+            piece = current + separator + split if current else split
 
             if not current:
                 current = split
