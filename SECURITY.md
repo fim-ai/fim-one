@@ -69,3 +69,9 @@ The following are **out of scope**:
 ## Recognition
 
 We appreciate responsible disclosure. Contributors who report valid security vulnerabilities will be credited in the release notes (unless they prefer to remain anonymous).
+
+### Acknowledgements
+
+| Reporter | Advisory | Fixed in |
+|----------|----------|----------|
+| [kta1kri](https://github.com/kta1kri) | [GHSA-fr6j-vx23-x4c7](https://github.com/fim-ai/fim-one/security/advisories/GHSA-fr6j-vx23-x4c7): stored database connector password sent to an attacker-chosen host via test-connection | 0.9.1 |
