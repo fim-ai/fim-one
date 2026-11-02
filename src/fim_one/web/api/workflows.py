@@ -765,21 +765,59 @@ def _approval_to_response(approval: WorkflowApproval) -> WorkflowApprovalRespons
     )
 
 
+async def _get_decidable_approval(
+    approval_id: str, user_id: str, db: AsyncSession
+) -> WorkflowApproval:
+    """Load an approval the user may decide, or raise.
+
+    An assigned approval belongs to its assignee.  An unassigned one belongs
+    to the user its run is attributed to (the runner, or the workflow owner
+    for trigger and scheduled runs); nobody else may see or decide it.
+    """
+    result = await db.execute(
+        select(WorkflowApproval, WorkflowRun.user_id)
+        .outerjoin(WorkflowRun, WorkflowRun.id == WorkflowApproval.workflow_run_id)
+        .where(WorkflowApproval.id == approval_id)
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise AppError("approval_not_found", status_code=404)
+    approval: WorkflowApproval = row[0]
+    run_user_id: str | None = row[1]
+
+    if approval.assignee:
+        if approval.assignee != user_id:
+            raise AppError(
+                "approval_not_assigned",
+                status_code=403,
+                detail="This approval is assigned to another user",
+            )
+    elif run_user_id != user_id:
+        # Same response as a missing approval: do not reveal that it exists.
+        raise AppError("approval_not_found", status_code=404)
+    return approval
+
+
 @router.get("/approvals/pending", response_model=ApiResponse)
 async def list_pending_approvals(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """List all pending approvals assigned to the current user (or unassigned)."""
-    from sqlalchemy import or_
+    """List pending approvals assigned to the current user, plus unassigned
+    ones on runs attributed to the current user."""
+    from sqlalchemy import and_, or_
 
     result = await db.execute(
         select(WorkflowApproval)
+        .outerjoin(WorkflowRun, WorkflowRun.id == WorkflowApproval.workflow_run_id)
         .where(
             WorkflowApproval.status == "pending",
             or_(
                 WorkflowApproval.assignee == current_user.id,
-                WorkflowApproval.assignee.is_(None),
+                and_(
+                    WorkflowApproval.assignee.is_(None),
+                    WorkflowRun.user_id == current_user.id,
+                ),
             ),
         )
         .order_by(WorkflowApproval.created_at.desc())
@@ -799,21 +837,7 @@ async def approve_approval(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Approve a pending workflow approval."""
-    # Read approval to verify existence and check assignee
-    result = await db.execute(
-        select(WorkflowApproval).where(WorkflowApproval.id == approval_id)
-    )
-    approval = result.scalar_one_or_none()
-    if approval is None:
-        raise AppError("approval_not_found", status_code=404)
-
-    # Check assignee -- only the assigned user (or anyone if unassigned) can approve
-    if approval.assignee and approval.assignee != current_user.id:
-        raise AppError(
-            "approval_not_assigned",
-            status_code=403,
-            detail="This approval is assigned to another user",
-        )
+    approval = await _get_decidable_approval(approval_id, current_user.id, db)
 
     # Atomic status transition: WHERE status='pending' prevents race condition
     now = datetime.now(UTC)
@@ -851,20 +875,7 @@ async def reject_approval(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     """Reject a pending workflow approval."""
-    # Read approval to verify existence and check assignee
-    result = await db.execute(
-        select(WorkflowApproval).where(WorkflowApproval.id == approval_id)
-    )
-    approval = result.scalar_one_or_none()
-    if approval is None:
-        raise AppError("approval_not_found", status_code=404)
-
-    if approval.assignee and approval.assignee != current_user.id:
-        raise AppError(
-            "approval_not_assigned",
-            status_code=403,
-            detail="This approval is assigned to another user",
-        )
+    approval = await _get_decidable_approval(approval_id, current_user.id, db)
 
     # Atomic status transition: WHERE status='pending' prevents race condition
     now = datetime.now(UTC)
@@ -2900,11 +2911,12 @@ async def list_run_approvals(
     if run is None:
         raise AppError("workflow_run_not_found", status_code=404)
 
-    result = await db.execute(
-        select(WorkflowApproval)
-        .where(WorkflowApproval.workflow_run_id == run_id)
-        .order_by(WorkflowApproval.created_at.desc())
-    )
+    # Same rule as _get_decidable_approval: someone else's run shows only the
+    # approvals assigned to the current user.
+    stmt = select(WorkflowApproval).where(WorkflowApproval.workflow_run_id == run_id)
+    if run.user_id != current_user.id:
+        stmt = stmt.where(WorkflowApproval.assignee == current_user.id)
+    result = await db.execute(stmt.order_by(WorkflowApproval.created_at.desc()))
     approvals = result.scalars().all()
 
     return ApiResponse(
