@@ -30,7 +30,7 @@ flowchart TD
 
 ### 組み込みツール
 
-`discover_builtin_tools()` によるスタートアップ時の自動検出。`core/tool/builtin/` に `BaseTool` サブクラスをドロップすると、設定なしで登録されます。カテゴリには計算（`calculator`、`python_exec`）、ウェブ（`web_search`、`web_fetch`）、ファイルシステム（`file_ops`）、および一般的なもの（`email_send`、`json_transform`、`template_render`、`text_utils`）が含まれます。これらはエージェントのネイティブ機能です。常に利用可能で、セットアップは不要です。
+起動時に `discover_builtin_tools()` を通じて自動検出されます。`core/tool/builtin/` に `BaseTool` のサブクラスを配置すると、設定なしで登録されます。カテゴリには、計算（`calculator`、`python_exec`）、Web（`web_search`、`web_fetch`）、ファイルシステム（`file_ops`）、汎用（`json_transform`、`template_render`、`text_utils`）があります。これらはエージェント固有の能力であり、常に利用可能で、セットアップは不要です。オペレーターが所有するチャネルにアクセスするツール（`email_send`、`send_notification`）は、オペレーターが有効化した場合にのみ提供されます。
 
 ### ナレッジベース
 

@@ -357,22 +357,24 @@ Contrôle le traitement des fichiers PDF/DOCX téléchargés pour la consommatio
 
 ---
 
-## Email (SMTP) (Recommandé)
+## E-mail (SMTP) (recommandé)
 
-Enregistre automatiquement l'outil intégré `email_send` lorsque `SMTP_HOST`, `SMTP_USER` et `SMTP_PASS` sont tous définis.
+Utilisé pour les codes de connexion et les notifications par e-mail. L’outil intégré `email_send` est proposé lorsque `SMTP_HOST`, `SMTP_USER` et `SMTP_PASS` sont définis **et** qu’une liste d’adresses autorisées de destinataires (`SMTP_ALLOWED_DOMAINS` ou `SMTP_ALLOWED_ADDRESSES`) est configurée, ou lorsque `EMAIL_TOOL_ENABLED=true`. Sans l’une de ces conditions, n’importe quel utilisateur pourrait envoyer un e-mail à n’importe quelle adresse depuis ce compte ; l’outil n’est donc pas proposé.
 
-| Variable | Requis | Par défaut | Description |
+| Variable | Requis | Valeur par défaut | Description |
 |---|---|---|---|
-| `SMTP_HOST` | Cond. | — | Nom d'hôte du serveur SMTP |
+| `SMTP_HOST` | Cond. | — | Nom d’hôte du serveur SMTP |
 | `SMTP_PORT` | Non | `465` | Port SMTP |
-| `SMTP_SSL` | Non | `ssl` | Mode TLS : `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` ou `""` (plain, identifiants envoyés en clair). Toute autre valeur est rejetée plutôt que de revenir silencieusement au mode plain. |
-| `SMTP_USER` | Cond. | — | Nom d'utilisateur de connexion SMTP |
+| `SMTP_SSL` | Non | `ssl` | Mode TLS : `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` ou `""` (texte brut, identifiants envoyés en clair). Toute autre valeur est rejetée au lieu de basculer silencieusement vers le texte brut. |
+| `SMTP_USER` | Cond. | — | Nom d’utilisateur de connexion SMTP |
 | `SMTP_PASS` | Cond. | — | Mot de passe de connexion SMTP |
-| `SMTP_FROM` | Non | *(utilise `SMTP_USER`)* | Adresse de l'expéditeur affichée dans l'en-tête From |
-| `SMTP_FROM_NAME` | Non | — | Nom d'affichage affiché dans l'en-tête From |
-| `SMTP_REPLY_TO` | Non | — | Adresse Reply-To ; les réponses vont ici au lieu de `SMTP_FROM` |
-| `SMTP_ALLOWED_DOMAINS` | Non | — | Liste d'autorisation de domaines séparés par des virgules (ex. `example.com,corp.io`) ; bloque les destinataires en dehors des domaines listés |
-| `SMTP_ALLOWED_ADDRESSES` | Non | — | Liste d'autorisation d'adresses exactes séparées par des virgules ; combinée avec `SMTP_ALLOWED_DOMAINS` ; laissez les deux non définis pour autoriser n'importe quel destinataire (non recommandé pour les boîtes aux lettres partagées) |
+| `SMTP_FROM` | Non | *(utilise `SMTP_USER`)* | Adresse de l’expéditeur affichée dans l’en-tête From |
+| `SMTP_FROM_NAME` | Non | — | Nom d’affichage affiché dans l’en-tête From |
+| `SMTP_REPLY_TO` | Non | — | Adresse Reply-To ; les réponses sont envoyées ici au lieu de `SMTP_FROM` |
+| `SMTP_ALLOWED_DOMAINS` | Non | — | Liste de domaines autorisés séparés par des virgules (par ex. `example.com,corp.io`) ; bloque les destinataires dont le domaine ne figure pas dans la liste |
+| `SMTP_ALLOWED_ADDRESSES` | Non | — | Liste d’adresses exactes autorisées séparées par des virgules ; combinée avec `SMTP_ALLOWED_DOMAINS`. S’applique également aux e-mails envoyés via `send_notification` |
+| `EMAIL_TOOL_ENABLED` | Non | `false` | Propose `email_send` sans liste de destinataires autorisés. À activer uniquement lorsque chaque utilisateur de cette instance est autorisé à envoyer des e-mails à n’importe quelle adresse depuis ce compte |
+| `NOTIFICATION_TOOL_ENABLED` | Non | `false` | Propose l’outil d’agent `send_notification`, qui publie vers les webhooks Slack / Lark / WeCom à l’échelle de l’instance et vers le compte SMTP. À activer uniquement lorsque chaque utilisateur de cette instance est autorisé à publier sur ces canaux |
 
 ---
 

@@ -30,7 +30,7 @@ Six capability sources converge into one registry. The agent draws from all of t
 
 ### Built-in Tools
 
-Auto-discovered at startup via `discover_builtin_tools()`. Drop a `BaseTool` subclass into `core/tool/builtin/`, and it registers without any configuration. Categories include computation (`calculator`, `python_exec`), web (`web_search`, `web_fetch`), filesystem (`file_ops`), and general (`email_send`, `json_transform`, `template_render`, `text_utils`). These are the agent's native abilities -- always available, zero setup.
+Auto-discovered at startup via `discover_builtin_tools()`. Drop a `BaseTool` subclass into `core/tool/builtin/`, and it registers without any configuration. Categories include computation (`calculator`, `python_exec`), web (`web_search`, `web_fetch`), filesystem (`file_ops`), and general (`json_transform`, `template_render`, `text_utils`). These are the agent's native abilities -- always available, zero setup. Tools that reach operator-owned channels (`email_send`, `send_notification`) are offered only when the operator enables them.
 
 ### Knowledge Base
 

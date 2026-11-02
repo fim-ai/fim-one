@@ -26,7 +26,8 @@ from .ask_user_question import AskUserQuestionTool
 from .call_agent import CallAgentTool
 from .calculator import CalculatorTool
 from .datetime_tool import DateTimeTool
-from .email_send import EmailSendTool
+from .email_send import EmailSendTool, agent_email_permitted
+from .send_notification import SendNotificationTool
 from .file_ops import FileOpsTool
 from .generate_image import GenerateImageTool
 from .grounded_retrieve import GroundedRetrieveTool
@@ -172,7 +173,8 @@ _SKIP_AUTO_DISCOVER: set[type] = {
     ReadUploadedFileTool,  # requires user_id
     GroundedRetrieveTool,  # requires kb_ids — registered by _resolve_tools()
     MarkItDownTool,  # requires vision_llm injection — registered by _resolve_tools()
-    EmailSendTool,  # requires SMTP_HOST/SMTP_USER/SMTP_PASS — registered below
+    EmailSendTool,  # instance SMTP account — allowlist or opt-in, registered below
+    SendNotificationTool,  # posts to instance-wide channels — opt-in, registered below
     ConnectorListActionsTool,  # builder tools — injected by chat.py for builder agents
     ConnectorCreateActionTool,
     ConnectorUpdateActionTool,
@@ -301,7 +303,21 @@ def discover_builtin_tools(
     # Insert at position 0 so they appear first within their category in the UI.
     import os
 
-    if os.getenv("SMTP_HOST") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASS"):
+    def _truthy(name: str) -> bool:
+        return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+    # See agent_email_permitted(): no allowlist and no opt-in, no tool.
+    smtp_configured = bool(
+        os.getenv("SMTP_HOST") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASS")
+    )
+    if smtp_configured and agent_email_permitted():
         tools.insert(0, EmailSendTool())
+
+    # The notification providers are instance-wide webhooks owned by the
+    # operator, and the tool has no per-user or per-org check.  Offering it by
+    # default would let any user on a shared instance post to those channels,
+    # so the operator has to opt in.
+    if _truthy("NOTIFICATION_TOOL_ENABLED"):
+        tools.insert(0, SendNotificationTool())
 
     return tools

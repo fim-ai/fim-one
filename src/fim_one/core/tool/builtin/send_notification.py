@@ -11,8 +11,10 @@ class SendNotificationTool(BaseTool):
     """Send a push notification via Email, Slack, Lark, or WeCom.
 
     This tool delegates to the notification registry which auto-discovers
-    configured providers from environment variables.  It is automatically
-    registered when at least one notification provider is configured.
+    configured providers from environment variables.  The providers are
+    instance-wide channels, so the tool is registered only when the operator
+    sets ``NOTIFICATION_TOOL_ENABLED``.  Email recipients go through the same
+    ``SMTP_ALLOWED_*`` allowlist as ``email_send``.
     """
 
     @property
@@ -97,6 +99,19 @@ class SendNotificationTool(BaseTool):
             return "[Error] 'title' is required."
         if not body:
             return "[Error] 'body' is required."
+
+        if provider_name == "email":
+            from .email_send import EmailSendTool, agent_email_permitted
+
+            if not agent_email_permitted():
+                return (
+                    "[Error] Email from agents is disabled on this instance. "
+                    "Configure SMTP_ALLOWED_DOMAINS / SMTP_ALLOWED_ADDRESSES "
+                    "or set EMAIL_TOOL_ENABLED=true."
+                )
+            err = EmailSendTool()._check_recipients(channel or "")
+            if err:
+                return err
 
         registry = get_notification_registry()
         message = NotificationMessage(

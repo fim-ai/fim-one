@@ -1,7 +1,7 @@
 """Notification API endpoints.
 
 Provides routes for listing configured providers, sending test notifications,
-and sending real notifications (admin only).
+and sending real notifications. Sending (test or real) is admin only.
 """
 
 from __future__ import annotations
@@ -56,9 +56,13 @@ async def list_providers(
 @router.post("/test")
 async def test_notification(
     body: NotificationTestRequest,
-    user: User = Depends(get_current_user),  # noqa: B008
+    user: User = Depends(get_current_admin),  # noqa: B008
 ) -> dict[str, object]:
-    """Send a test notification through the specified provider."""
+    """Send a test notification through the specified provider (admin only).
+
+    The providers post to instance-wide channels, so a regular user must not
+    be able to trigger them.
+    """
     registry = get_notification_registry()
     provider = registry.get(body.provider)
     if provider is None:

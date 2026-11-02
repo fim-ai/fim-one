@@ -371,7 +371,7 @@ Controls how uploaded PDF/DOCX files are processed for LLM consumption. Vision-c
 
 ## Email (SMTP) (Recommended)
 
-Auto-registers the `email_send` built-in tool when `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` are all set.
+Used for login codes and email notifications. The `email_send` built-in tool is offered when `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` are set **and** a recipient allowlist (`SMTP_ALLOWED_DOMAINS` or `SMTP_ALLOWED_ADDRESSES`) is configured, or `EMAIL_TOOL_ENABLED=true`. Without either, any user could mail any address from this account, so the tool is not offered.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -384,7 +384,9 @@ Auto-registers the `email_send` built-in tool when `SMTP_HOST`, `SMTP_USER`, and
 | `SMTP_FROM_NAME` | No | — | Display name shown in From header |
 | `SMTP_REPLY_TO` | No | — | Reply-To address; replies go here instead of `SMTP_FROM` |
 | `SMTP_ALLOWED_DOMAINS` | No | — | Comma-separated domain allowlist (e.g. `example.com,corp.io`); blocks recipients outside listed domains |
-| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`; leave both unset to allow any recipient (not recommended for shared mailboxes) |
+| `SMTP_ALLOWED_ADDRESSES` | No | — | Comma-separated exact-address allowlist; combined with `SMTP_ALLOWED_DOMAINS`. Also applies to email sent through `send_notification` |
+| `EMAIL_TOOL_ENABLED` | No | `false` | Offer `email_send` with no recipient allowlist. Enable only when every user of this instance may mail any address from this account |
+| `NOTIFICATION_TOOL_ENABLED` | No | `false` | Offer the `send_notification` agent tool, which posts to the instance-wide Slack / Lark / WeCom webhooks and the SMTP account. Enable only when every user of this instance may post to those channels |
 
 ---
 

@@ -13,6 +13,21 @@ from typing import Any
 from ..base import BaseTool
 
 
+def agent_email_permitted() -> bool:
+    """Whether agents may send mail from the instance SMTP account.
+
+    The account is the operator's, often the same one that sends login codes.
+    Without a recipient allowlist any user on a shared instance could mail any
+    address from it, so agents get it only when an allowlist is configured or
+    the operator opts in with ``EMAIL_TOOL_ENABLED``.
+    """
+    if os.getenv("SMTP_ALLOWED_DOMAINS", "").strip():
+        return True
+    if os.getenv("SMTP_ALLOWED_ADDRESSES", "").strip():
+        return True
+    return os.getenv("EMAIL_TOOL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 class EmailSendTool(BaseTool):
     """Send email via SMTP. Requires SMTP_HOST, SMTP_USER, SMTP_PASS env vars."""
 

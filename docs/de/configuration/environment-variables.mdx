@@ -359,22 +359,24 @@ Steuert, wie hochgeladene PDF-/DOCX-Dateien für die LLM-Verarbeitung verarbeite
 
 ---
 
-## Email (SMTP) (Empfohlen)
+## E-Mail (SMTP) (Empfohlen)
 
-Registriert das `email_send` Built-in-Tool automatisch, wenn `SMTP_HOST`, `SMTP_USER` und `SMTP_PASS` alle gesetzt sind.
+Wird für Anmeldecodes und E-Mail-Benachrichtigungen verwendet. Das integrierte Tool `email_send` wird angeboten, wenn `SMTP_HOST`, `SMTP_USER` und `SMTP_PASS` gesetzt sind **und** eine Empfänger-Zulassungsliste (`SMTP_ALLOWED_DOMAINS` oder `SMTP_ALLOWED_ADDRESSES`) konfiguriert ist oder `EMAIL_TOOL_ENABLED=true` gesetzt ist. Ohne eine dieser Voraussetzungen könnte jeder Benutzer von diesem Konto aus an jede beliebige Adresse E-Mails senden, daher wird das Tool nicht angeboten.
 
 | Variable | Erforderlich | Standard | Beschreibung |
 |---|---|---|---|
-| `SMTP_HOST` | Bed. | — | SMTP-Serverhostname |
+| `SMTP_HOST` | Bed. | — | Hostname des SMTP-Servers |
 | `SMTP_PORT` | Nein | `465` | SMTP-Port |
-| `SMTP_SSL` | Nein | `ssl` | TLS-Modus: `ssl` (Port 465) / `tls` (STARTTLS, Port 587) / `none` oder `""` (unverschlüsselt, Anmeldedaten im Klartext). Jeder andere Wert wird abgelehnt, anstatt stillschweigend auf unverschlüsselt zurückzufallen. |
-| `SMTP_USER` | Bed. | — | SMTP-Anmeldebenutzername |
-| `SMTP_PASS` | Bed. | — | SMTP-Anmeldepasswort |
+| `SMTP_SSL` | Nein | `ssl` | TLS-Modus: `ssl` (Port 465) / `tls` (STARTTLS, Port 587) / `none` oder `""` (unverschlüsselt, Anmeldedaten werden im Klartext gesendet). Jeder andere Wert wird abgelehnt, statt stillschweigend auf unverschlüsselte Übertragung zurückzufallen. |
+| `SMTP_USER` | Bed. | — | Benutzername für die SMTP-Anmeldung |
+| `SMTP_PASS` | Bed. | — | Passwort für die SMTP-Anmeldung |
 | `SMTP_FROM` | Nein | *(verwendet `SMTP_USER`)* | Absenderadresse im From-Header |
 | `SMTP_FROM_NAME` | Nein | — | Anzeigename im From-Header |
-| `SMTP_REPLY_TO` | Nein | — | Reply-To-Adresse; Antworten gehen hier statt an `SMTP_FROM` |
-| `SMTP_ALLOWED_DOMAINS` | Nein | — | Kommagetrennte Domain-Allowlist (z. B. `example.com,corp.io`); blockiert Empfänger außerhalb der aufgelisteten Domains |
-| `SMTP_ALLOWED_ADDRESSES` | Nein | — | Kommagetrennte Allowlist für genaue Adressen; kombiniert mit `SMTP_ALLOWED_DOMAINS`; beide nicht gesetzt lassen, um jeden Empfänger zuzulassen (nicht empfohlen für gemeinsame Postfächer) |
+| `SMTP_REPLY_TO` | Nein | — | Reply-To-Adresse; Antworten werden hierhin gesendet statt an `SMTP_FROM` |
+| `SMTP_ALLOWED_DOMAINS` | Nein | — | Durch Kommas getrennte Domain-Zulassungsliste (z. B. `example.com,corp.io`); blockiert Empfänger außerhalb der aufgeführten Domains |
+| `SMTP_ALLOWED_ADDRESSES` | Nein | — | Durch Kommas getrennte Zulassungsliste exakter Adressen; wird mit `SMTP_ALLOWED_DOMAINS` kombiniert. Gilt auch für E-Mails, die über `send_notification` gesendet werden |
+| `EMAIL_TOOL_ENABLED` | Nein | `false` | Bietet `email_send` ohne Empfänger-Zulassungsliste an. Nur aktivieren, wenn jeder Benutzer dieser Instanz von diesem Konto aus an jede beliebige Adresse E-Mails senden darf |
+| `NOTIFICATION_TOOL_ENABLED` | Nein | `false` | Bietet das Agent-Tool `send_notification` an, das Beiträge an die instanzweiten Slack-/Lark-/WeCom-Webhooks und das SMTP-Konto sendet. Nur aktivieren, wenn jeder Benutzer dieser Instanz Beiträge an diese Kanäle senden darf |
 
 ---
 

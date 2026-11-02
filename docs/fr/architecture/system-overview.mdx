@@ -30,7 +30,7 @@ Six sources de capacité convergent dans un registre unique. L'agent puise dans 
 
 ### Outils intégrés
 
-Découverts automatiquement au démarrage via `discover_builtin_tools()`. Déposez une sous-classe `BaseTool` dans `core/tool/builtin/`, et elle s'enregistre sans aucune configuration. Les catégories incluent le calcul (`calculator`, `python_exec`), le web (`web_search`, `web_fetch`), le système de fichiers (`file_ops`), et les outils généraux (`email_send`, `json_transform`, `template_render`, `text_utils`). Ce sont les capacités natives de l'agent -- toujours disponibles, zéro configuration.
+Découverts automatiquement au démarrage via `discover_builtin_tools()`. Déposez une sous-classe de `BaseTool` dans `core/tool/builtin/` pour qu’elle soit enregistrée sans aucune configuration. Les catégories incluent le calcul (`calculator`, `python_exec`), le Web (`web_search`, `web_fetch`), le système de fichiers (`file_ops`) et les outils généraux (`json_transform`, `template_render`, `text_utils`). Il s’agit des capacités natives de l’agent — toujours disponibles et ne nécessitant aucune configuration. Les outils qui accèdent aux canaux appartenant à l’opérateur (`email_send`, `send_notification`) ne sont proposés que lorsque l’opérateur les active.
 
 ### Base de Connaissances
 

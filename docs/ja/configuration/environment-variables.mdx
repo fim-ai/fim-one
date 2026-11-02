@@ -361,22 +361,24 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 
 ---
 
-## Email (SMTP) (推奨)
+## Email（SMTP）（推奨）
 
-`SMTP_HOST`、`SMTP_USER`、`SMTP_PASS` がすべて設定されている場合、`email_send` ビルトインツールが自動的に登録されます。
+ログインコードとメール通知に使用します。`SMTP_HOST`、`SMTP_USER`、`SMTP_PASS` が設定され、受信者の許可リスト（`SMTP_ALLOWED_DOMAINS` または `SMTP_ALLOWED_ADDRESSES`）が構成されている場合、または `EMAIL_TOOL_ENABLED=true` の場合に、組み込みツール `email_send` が提供されます。どちらも設定されていない場合、このアカウントから任意のアドレスにメールを送信できてしまうため、ツールは提供されません。
 
-| Variable | Required | Default | Description |
+| 変数 | 必須 | デフォルト | 説明 |
 |---|---|---|---|
-| `SMTP_HOST` | Cond. | — | SMTP サーバーホスト名 |
-| `SMTP_PORT` | No | `465` | SMTP ポート |
-| `SMTP_SSL` | No | `ssl` | TLS モード: `ssl` (ポート 465) / `tls` (STARTTLS、ポート 587) / `none` または `""` (プレーン、認証情報が平文で送信される)。その他の値は拒否され、プレーンモードへの暗黙的なフォールバックは行われません。 |
-| `SMTP_USER` | Cond. | — | SMTP ログインユーザー名 |
-| `SMTP_PASS` | Cond. | — | SMTP ログインパスワード |
-| `SMTP_FROM` | No | *(uses `SMTP_USER`)* | From ヘッダーに表示される送信者アドレス |
-| `SMTP_FROM_NAME` | No | — | From ヘッダーに表示される表示名 |
-| `SMTP_REPLY_TO` | No | — | Reply-To アドレス。返信はここに送信されます (`SMTP_FROM` の代わりに) |
-| `SMTP_ALLOWED_DOMAINS` | No | — | カンマ区切りのドメイン許可リスト (例: `example.com,corp.io`)。リストに含まれていないドメインの受信者をブロックします |
-| `SMTP_ALLOWED_ADDRESSES` | No | — | カンマ区切りの完全一致アドレス許可リスト。`SMTP_ALLOWED_DOMAINS` と組み合わせて使用されます。両方を未設定のままにすると、すべての受信者を許可します (共有メールボックスの場合は推奨されません) |
+| `SMTP_HOST` | 条件付き | — | SMTP サーバーのホスト名 |
+| `SMTP_PORT` | いいえ | `465` | SMTP ポート |
+| `SMTP_SSL` | いいえ | `ssl` | TLS モード：`ssl`（ポート 465）/ `tls`（STARTTLS、ポート 587）/ `none` または `""`（平文、認証情報が暗号化されずに送信されます）。その他の値は、平文に暗黙的にフォールバックせず拒否されます。 |
+| `SMTP_USER` | 条件付き | — | SMTP ログインユーザー名 |
+| `SMTP_PASS` | 条件付き | — | SMTP ログインパスワード |
+| `SMTP_FROM` | いいえ | *( `SMTP_USER` を使用)* | From ヘッダーに表示される送信者アドレス |
+| `SMTP_FROM_NAME` | いいえ | — | From ヘッダーに表示される表示名 |
+| `SMTP_REPLY_TO` | いいえ | — | Reply-To アドレス。返信は `SMTP_FROM` ではなくここに送信されます |
+| `SMTP_ALLOWED_DOMAINS` | いいえ | — | カンマ区切りのドメイン許可リスト（例：`example.com,corp.io`）。指定されたドメイン以外の受信者をブロックします |
+| `SMTP_ALLOWED_ADDRESSES` | いいえ | — | カンマ区切りの完全一致アドレス許可リスト。`SMTP_ALLOWED_DOMAINS` と組み合わせて適用されます。`send_notification` を介して送信されるメールにも適用されます |
+| `EMAIL_TOOL_ENABLED` | いいえ | `false` | 受信者の許可リストなしで `email_send` を提供します。このインスタンスのすべてのユーザーが、このアカウントから任意のアドレスにメールを送信できる場合にのみ有効にしてください |
+| `NOTIFICATION_TOOL_ENABLED` | いいえ | `false` | インスタンス全体の Slack / Lark / WeCom Webhook と SMTP アカウントに投稿するエージェントツール `send_notification` を提供します。このインスタンスのすべてのユーザーが、これらのチャンネルに投稿できる場合にのみ有効にしてください |
 
 ---
 

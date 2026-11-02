@@ -30,7 +30,7 @@ flowchart TD
 
 ### 内置工具
 
-在启动时通过 `discover_builtin_tools()` 自动发现。将 `BaseTool` 子类放入 `core/tool/builtin/`，它会在没有任何配置的情况下自动注册。类别包括计算（`calculator`、`python_exec`）、网络（`web_search`、`web_fetch`）、文件系统（`file_ops`）和通用（`email_send`、`json_transform`、`template_render`、`text_utils`）。这些是智能体的原生能力——始终可用，零配置。
+启动时通过 `discover_builtin_tools()` 自动发现。将 `BaseTool` 子类放入 `core/tool/builtin/`，即可在无需任何配置的情况下完成注册。类别包括计算（`calculator`、`python_exec`）、Web（`web_search`、`web_fetch`）、文件系统（`file_ops`）和通用工具（`json_transform`、`template_render`、`text_utils`）。这些是智能体的原生能力——始终可用，无需设置。能够访问运营方拥有的通道（`email_send`、`send_notification`）的工具，仅在运营方启用后提供。
 
 ### 知识库
 
