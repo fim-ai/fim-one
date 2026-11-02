@@ -1,6 +1,6 @@
 <div align="center">
 
-![FIM One Banner](./assets/banner.jpg)
+![FIM One バナー](./assets/banner.jpg)
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 [![CI](https://github.com/fim-ai/fim-one/actions/workflows/test.yml/badge.svg)](https://github.com/fim-ai/fim-one/actions/workflows/test.yml)
@@ -10,16 +10,18 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**グローバル × 中国企業向けオールインワン智能体プラットフォーム。**
-*既に運用しているすべてのシステム — グローバル SaaS から中国スタックまで — 1 つの智能体コアを通じて接続します。*
+**グローバル × 中国企業向けのオールインワン エージェントプラットフォーム。**  
+*すでに運用しているあらゆるシステムを、グローバル SaaS から中国向けスタックまで、1つのエージェントコアで接続します。*
 
-🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [ウェブサイト](https://one.fim.ai/) · 📖 [ドキュメント](https://docs.fim.ai) · 📋 [変更履歴](https://docs.fim.ai/changelog) · 🐛 [バグを報告](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ セットアップをスキップ — FIM One をクラウドで試す。**
-> マネージド版は [cloud.fim.ai](https://cloud.fim.ai/) で利用可能です — Docker、API キー、設定は不要です。サインインして数秒でシステムの接続を開始できます。_早期アクセス、フィードバック歓迎。_
+> **☁️ セットアップを省略 — FIM One を Cloud でお試しください。**
+> マネージド版を [cloud.fim.ai](https://cloud.fim.ai/) で提供しています — Docker、API キー、設定は不要です。サインインして、数秒でシステムの接続を始められます。_アーリーアクセス中。フィードバックをお待ちしています。_
+
+https://github.com/user-attachments/assets/8a0e1136-ffbc-4950-86bd-b2f8884214af
 
 ---
 
@@ -116,11 +118,11 @@ cd frontend && pnpm install && cd ..
 
 ## 主な機能
 
-#### クロスボーダー接続
-- **3つのデリバリーモード** — スタンドアロンアシスタント、組み込みCopilot、または中央Hubのいずれか。同じエージェントコア。
-- **あらゆるシステム、1つのパターン** — API、データベース、MCPサーバーを接続。アクションは認証注入を伴うエージェントツールとして自動登録。プログレッシブディスクロージャーメタツールにより、すべてのツールタイプ全体でトークン使用量を80%以上削減。
-- **データベースコネクタ** — PostgreSQL、MySQL、Oracle、SQL Server、および中国で一般的なエンタープライズデータベース（DM、KingbaseES、GBase、Highgo）。ほとんどのグローバルプラットフォームが到達できない領域。スキーマイントロスペクションとAI駆動のアノテーション。
-- **3つのビルド方法** — OpenAPI仕様をインポート、AIチャットビルダー、またはMCPサーバーを直接接続。
+#### 国境を越えた接続性
+- **3つの提供形態** — スタンドアロンアシスタント、組み込み型Copilot、または中央Hub。同じエージェントコアを使用します。
+- **あらゆるシステムに、1つのパターン** — API、データベース、MCPサーバーを接続できます。アクションは認証情報の注入に対応したエージェントツールとして自動登録されます。段階的開示メタツールにより、あらゆるツールタイプでのtoken使用量を80%以上削減できます。
+- **データベースコネクター** — PostgreSQL、MySQL、および中国で一般的なエンタープライズデータベース（DM、KingbaseES、HighGo）に対応します。これらは多くのグローバルプラットフォームからは接続できません。スキーマのイントロスペクションとAIによるアノテーションにも対応しています。
+- **構築方法は3つ** — OpenAPI仕様をインポートする、AIチャットビルダーを使用する、またはMCPサーバーに直接接続する。
 
 #### 計画と実行
 - **動的DAG計画** — LLMが実行時に目標を依存グラフに分解します。ハードコードされたワークフローはありません。
@@ -252,9 +254,9 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 ![Alt](https://repobeats.axiom.co/api/embed/49402c7d85e343e9cb5909da7b48db1930c76554.svg "Repobeats analytics image")
 
-## 貢献者
+## コントリビューター
 
-これらの素晴らしい人たちに感謝します（[絵文字キー](https://allcontributors.org/docs/en/emoji-key)）：
+この素晴らしい皆さんに感謝します（[絵文字キー](https://allcontributors.org/docs/en/emoji-key)）：
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -268,6 +270,7 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/wcboy"><img src="https://avatars.githubusercontent.com/u/85050716?v=4?s=80" width="80px;" alt="Chenying Wang"/><br /><sub><b>Chenying Wang</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/commits?author=wcboy" title="Code">💻</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Joshua-Medvinsky"><img src="https://avatars.githubusercontent.com/u/76570188?v=4?s=80" width="80px;" alt="Joshua Medvinsky"/><br /><sub><b>Joshua Medvinsky</b></sub></a><br /><a href="#security-Joshua-Medvinsky" title="Security">🛡️</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Aryan-theccool"><img src="https://avatars.githubusercontent.com/u/146411259?v=4?s=80" width="80px;" alt="Aryan singh Bhadoria"/><br /><sub><b>Aryan singh Bhadoria</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3AAryan-theccool" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Code">💻</a></td>
+      <td align="center" valign="top" width="12.5%"><a href="https://portfolio-alexgonzalez33.vercel.app/"><img src="https://avatars.githubusercontent.com/u/82875882?v=4?s=80" width="80px;" alt="alexcastgonz"/><br /><sub><b>alexcastgonz</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Apcbeingused333" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -277,7 +280,7 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-このプロジェクトは[all-contributors](https://allcontributors.org/)仕様に従っています。あらゆる種類の貢献を歓迎します！
+このプロジェクトは [all-contributors](https://allcontributors.org/) 仕様に準拠しています。どのような貢献も歓迎します！
 
 ## FIMについて
 

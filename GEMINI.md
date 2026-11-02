@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-FIM One is an AI-powered **Connector Hub** that serves as a bridge between disjointed enterprise systems (ERP, CRM, OA, Databases) through autonomous AI agents.
+FIM One is an AI agent platform for enterprise systems: agents plan and execute tasks across existing systems (ERP, CRM, OA, databases) through APIs, database connections, and MCP servers.
 
 ### Core Architecture
 - **Backend**: FastAPI (Python 3.11+) asynchronous framework.

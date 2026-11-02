@@ -1,6 +1,6 @@
 {
-  "title": "连接器",
-  "subtitle": "管理 API 连接器、MCP 服务器及其操作",
+  "title": "集成",
+  "subtitle": "管理 API 连接器、数据库连接、MCP 服务器及其操作",
   "connectorsTab": "数据库 / API",
   "mcpTab": "MCP 服务器",
   "newConnector": "新建连接器",

@@ -10,16 +10,18 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**All-in-One Agent Platform für globale × China-Unternehmen.**
-*Verbinden Sie jedes System, das Sie bereits nutzen — globale SaaS bis zum China-Stack — durch einen Agent-Kern.*
+**All-in-One-Agent-Plattform für globale Unternehmen und Unternehmen in China.**
+*Verbinden Sie jedes bereits eingesetzte System — von globaler SaaS bis zum China-Stack — über einen einzigen Agent-Kern.*
 
-🌐 [Website](https://one.fim.ai/) · 📖 [Docs](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Report Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [Website](https://one.fim.ai/) · 📖 [Dokumentation](https://docs.fim.ai) · 📋 [Änderungsprotokoll](https://docs.fim.ai/changelog) · 🐛 [Fehler melden](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ Setup überspringen — FIM One in der Cloud ausprobieren.**
-> Eine verwaltete Version ist live unter [cloud.fim.ai](https://cloud.fim.ai/) — kein Docker, keine API-Schlüssel, keine Konfiguration. Melden Sie sich an und beginnen Sie in Sekunden, Ihre Systeme zu verbinden. _Early Access, Feedback willkommen._
+> **☁️ Überspringen Sie die Einrichtung — testen Sie FIM One in der Cloud.**
+> Eine verwaltete Version ist unter [cloud.fim.ai](https://cloud.fim.ai/) verfügbar — kein Docker, keine API-Schlüssel, keine Konfiguration. Melden Sie sich an und beginnen Sie innerhalb weniger Sekunden, Ihre Systeme zu verbinden. _Früher Zugriff, Feedback willkommen._
+
+https://github.com/user-attachments/assets/8a0e1136-ffbc-4950-86bd-b2f8884214af
 
 ---
 
@@ -117,10 +119,10 @@ cd frontend && pnpm install && cd ..
 ## Hauptfunktionen
 
 #### Grenzüberschreitende Konnektivität
-- **Drei Bereitstellungsmodi** — Eigenständiger Assistent, eingebetteter Copilot oder zentraler Hub; gleicher Agent-Kern.
-- **Jedes System, ein Muster** — Verbinden Sie APIs, Datenbanken und MCP-Server. Aktionen registrieren sich automatisch als Agent-Tools mit Authentifizierungsinjektion. Progressive Disclosure Meta-Tools reduzieren die Token-Nutzung um 80%+ über alle Tool-Typen hinweg.
-- **Datenbank-Konnektoren** — PostgreSQL, MySQL, Oracle, SQL Server und in China verbreitete Enterprise-Datenbanken (DM, KingbaseES, GBase, Highgo), die die meisten globalen Plattformen nicht erreichen können. Schema-Introspektion und KI-gestützte Annotation.
-- **Drei Möglichkeiten zum Erstellen** — OpenAPI-Spezifikation importieren, KI-Chat-Builder verwenden oder MCP-Server direkt verbinden.
+- **Drei Bereitstellungsmodi** — Eigenständiger Assistent, eingebetteter Copilot oder zentraler Hub – derselbe Agentenkern.
+- **Jedes System, ein Muster** — APIs, Datenbanken und MCP-Server verbinden. Aktionen werden automatisch als Agent-Tools registriert, einschließlich Authentifizierungsübergabe. Meta-Tools zur progressiven Offenlegung reduzieren den Token-Verbrauch über alle Tool-Typen hinweg um mehr als 80 %.
+- **Datenbank-Connectoren** — PostgreSQL, MySQL und in China verbreitete Unternehmensdatenbanken (DM, KingbaseES, HighGo), die von den meisten globalen Plattformen nicht erreicht werden können. Schema-Introspektion und KI-gestützte Annotation.
+- **Drei Wege zum Erstellen** — OpenAPI-Spezifikation importieren, Builder per KI-Chat verwenden oder MCP-Server direkt verbinden.
 
 #### Planung & Ausführung
 - **Dynamische DAG-Planung** — LLM zerlegt Ziele zur Laufzeit in Abhängigkeitsgraphen. Keine hartcodierten Workflows.
@@ -254,7 +256,7 @@ Wir freuen uns über Beiträge aller Art — Code, Dokumentation, Übersetzungen
 
 ## Mitwirkende
 
-Danke an diese wunderbaren Menschen ([Emoji-Schlüssel](https://allcontributors.org/docs/en/emoji-key)):
+Vielen Dank an diese wunderbaren Menschen ([Emoji-Schlüssel](https://allcontributors.org/docs/en/emoji-key)):
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -268,6 +270,7 @@ Danke an diese wunderbaren Menschen ([Emoji-Schlüssel](https://allcontributors.
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/wcboy"><img src="https://avatars.githubusercontent.com/u/85050716?v=4?s=80" width="80px;" alt="Chenying Wang"/><br /><sub><b>Chenying Wang</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/commits?author=wcboy" title="Code">💻</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Joshua-Medvinsky"><img src="https://avatars.githubusercontent.com/u/76570188?v=4?s=80" width="80px;" alt="Joshua Medvinsky"/><br /><sub><b>Joshua Medvinsky</b></sub></a><br /><a href="#security-Joshua-Medvinsky" title="Security">🛡️</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Aryan-theccool"><img src="https://avatars.githubusercontent.com/u/146411259?v=4?s=80" width="80px;" alt="Aryan singh Bhadoria"/><br /><sub><b>Aryan singh Bhadoria</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3AAryan-theccool" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Code">💻</a></td>
+      <td align="center" valign="top" width="12.5%"><a href="https://portfolio-alexgonzalez33.vercel.app/"><img src="https://avatars.githubusercontent.com/u/82875882?v=4?s=80" width="80px;" alt="alexcastgonz"/><br /><sub><b>alexcastgonz</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Apcbeingused333" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -277,7 +280,7 @@ Danke an diese wunderbaren Menschen ([Emoji-Schlüssel](https://allcontributors.
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-Dieses Projekt folgt der [all-contributors](https://allcontributors.org/) Spezifikation. Beiträge jeglicher Art sind willkommen!
+Dieses Projekt folgt der [all-contributors](https://allcontributors.org/) -Spezifikation. Beiträge jeder Art sind willkommen!
 
 ## Über FIM
 

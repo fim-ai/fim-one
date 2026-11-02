@@ -102,9 +102,12 @@ if any of them is ever built: reuse the same assembly layer for auth,
 credentials, approval and metering. More frontends, never more logic.
 
 - **JS bubble / iframe embed** — one snippet dropped into a host system.
-  Blocked on a product decision, not on code: anonymous-visitor identity and
-  billing attribution have to be settled before the first line (attribute to
-  the widget key's owner?).
+  The blocking product decision is settled (2026-10-30): embed users are
+  already-authenticated enterprise users whose identity comes from the host
+  system via a one-time login ticket, usage is billed to the instance, and
+  there is no anonymous access. Waiting on scheduling, not on design; the
+  driving request is a railway-sector tender for an assistant layer inside an
+  existing contract-management system.
 - **Page context injection** — the embedded widget reads host page context
   (current record ID, URL, DOM selectors). Only meaningful with the embed.
 - **Feishu inbound @mention** — agents living in the group chat: query data,
@@ -212,6 +215,12 @@ What they would deliver, in one line each:
 - **Policy planes and automated approval** — resolved values that carry which
   layer set them, and a reviewer that can clear low-risk actions with no human
   present.
+- **Merge visual workflows into the DAG engine** — the drag-and-drop workflow
+  module (behind `feature.workflows`, off by default) is a second execution
+  engine that re-implements approval, MCP credentials, trigger auth and secret
+  storage. It is frozen: only security fixes go in, and it is switched on when
+  a tender demo needs visual orchestration. Merging it into the DAG planner is
+  roughly 3–5 weeks and belongs with the runtime work, not before.
 - **Typed frontend from OpenAPI** — `docs/openapi.json` is already exported
   and nothing consumes it, while `frontend/src/lib/api.ts` carries roughly 50
   hand-written interfaces that drift by construction.

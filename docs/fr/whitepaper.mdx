@@ -157,23 +157,23 @@ flowchart LR
   C --> Reports
 ```
 
-## 6. Modèle d'alignement des connecteurs
+## 6. Modèle d’alignement des connecteurs
 
-Un connecteur est une surface d'action typée soutenue par une stratégie d'authentification. FIM One définit trois niveaux d'authentification qui couvrent la grande majorité des systèmes d'entreprise.
+Un connecteur est une interface d’action typée reposant sur une stratégie d’authentification. FIM One définit trois niveaux d’authentification qui couvrent la grande majorité des systèmes d’entreprise.
 
 <AccordionGroup>
-  <Accordion title="Tier 1 — Connecteurs de base de données (Full ou Basic)">
-    Connexion directe à une base de données relationnelle ou documentaire. Le mode **Full** expose du SQL arbitraire à l'agent, contrôlé par un rôle en lecture seule ; le mode **Basic** expose uniquement des requêtes paramétrées pré-enregistrées. Support natif des **bases de données conformes à Xinchuang — Dameng (DM8), KingbaseES, HighGo, GBase** — aux côtés de PostgreSQL, MySQL et Oracle. Les clients centraux/d'État et réglementés passent la journée de conformité des appels d'offres dès le premier jour.
+  <Accordion title="Niveau 1 — Connecteurs de bases de données (complet ou basique)">
+    Connexion directe à une base de données relationnelle. Le mode **Full** expose n’importe quelle requête SQL à l’agent, avec un accès limité par un rôle en lecture seule ; le mode **Basic** expose uniquement des requêtes paramétrées préenregistrées. Prise en charge native des **bases de données conformes à Xinchuang — Dameng (DM8), KingbaseES, HighGo** — ainsi que de PostgreSQL et MySQL. Les clients du secteur public et les entreprises d’État, ainsi que les clients soumis à une réglementation, peuvent satisfaire aux exigences de conformité dès le premier jour de leurs achats.
   </Accordion>
-  <Accordion title="Tier 2 — Connecteurs OpenAPI (User-Key)">
-    Toute API REST avec une spécification OpenAPI. L'agent lit la spécification, sélectionne le point de terminaison et l'appelle avec la clé de l'utilisateur connecté. Couvre les SaaS modernes (Slack, Linear, GitHub) et les API internes bien documentées.
+  <Accordion title="Niveau 2 — Connecteurs OpenAPI (clé utilisateur)">
+    Toute API REST disposant d’une spécification OpenAPI. L’agent lit la spécification, sélectionne le point de terminaison et l’appelle avec la clé de l’utilisateur connecté. Cette catégorie couvre les SaaS modernes (Slack, Linear, GitHub) ainsi que les API internes bien documentées.
   </Accordion>
-  <Accordion title="Tier 3 — Connecteurs Login-Ticket / Legacy">
-    Pour les systèmes — particulièrement courants sur le marché chinois — qui s'authentifient via un service de ticket de connexion plutôt que OAuth2. Le connecteur gère le cycle de vie du ticket (acquisition, actualisation, invalidation) et présente une surface typée normale vers le haut. Ce niveau déverrouille les systèmes que tous les autres fournisseurs ignorent.
+  <Accordion title="Niveau 3 — Connecteurs à ticket de connexion / systèmes existants">
+    Pour les systèmes — particulièrement courants sur le marché chinois — qui s’authentifient via un service de tickets de connexion plutôt que par OAuth2. Le connecteur gère le cycle de vie du ticket (obtention, actualisation, invalidation) et présente une interface typée standard vers les couches supérieures. Ce niveau permet d’intégrer des systèmes que tous les autres fournisseurs ignorent.
   </Accordion>
 </AccordionGroup>
 
-Chaque connecteur déclare également une **dualité Canal/Intégration** : le même système sous-jacent peut apparaître à la fois comme un *canal* (récepteur de notifications, surface d'approbation) et comme une *intégration* (source de données, cible d'action). Feishu est à la fois un canal de notification et une source de données de chat de groupe ; DingTalk et WeCom suivent le même modèle.
+Chaque connecteur déclare également une **dualité Canal/Intégration** : un même système sous-jacent peut apparaître à la fois comme un *canal* (destination de notifications, interface d’approbation) et comme une *intégration* (source de données, cible d’actions). Feishu est à la fois un canal de notifications et une source de données de discussion de groupe ; DingTalk et WeCom suivent le même modèle.
 
 ## 7. Intelligence Artificielle Fiable pour l'Entreprise — Trois Piliers
 

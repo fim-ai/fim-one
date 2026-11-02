@@ -119,7 +119,7 @@ cd frontend && pnpm install && cd ..
 #### Cross-Border Connectivity
 - **Three delivery modes** — Standalone assistant, embedded Copilot, or central Hub; same agent core.
 - **Any system, one pattern** — Connect APIs, databases, MCP servers. Actions auto-register as agent tools with auth injection. Progressive disclosure meta-tools reduce token usage by 80%+ across all tool types.
-- **Database connectors** — PostgreSQL, MySQL, Oracle, SQL Server, and enterprise databases common in China (DM, KingbaseES, GBase, Highgo) that most global platforms can't reach. Schema introspection and AI-powered annotation.
+- **Database connectors** — PostgreSQL, MySQL, and enterprise databases common in China (DM, KingbaseES, Highgo) that most global platforms can't reach. Schema introspection and AI-powered annotation.
 - **Three ways to build** — Import OpenAPI spec, AI chat builder, or connect MCP servers directly.
 
 #### Planning & Execution

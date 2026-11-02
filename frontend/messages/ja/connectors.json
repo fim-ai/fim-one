@@ -1,6 +1,6 @@
 {
-  "title": "コネクタ",
-  "subtitle": "APIコネクタ、MCPサーバー、およびそれらのアクションを管理",
+  "title": "連携",
+  "subtitle": "APIコネクタ、データベース接続、MCPサーバー、およびそれらのアクションを管理",
   "connectorsTab": "データベース / API",
   "mcpTab": "MCPサーバー",
   "newConnector": "新しいコネクタ",

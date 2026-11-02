@@ -10,16 +10,18 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**全球×中国企业一体化智能体平台。**
-*通过一个智能体核心，连接您已有的每个系统——全球SaaS到中国技术栈。*
+**面向全球与中国企业的一体化智能体平台。**
+*通过一个智能体核心，连接您现有的所有系统——从全球 SaaS 到中国技术栈。*
 
-🌐 [网站](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [更新日志](https://docs.fim.ai/changelog) · 🐛 [报告问题](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [网站](https://one.fim.ai/) · 📖 [文档](https://docs.fim.ai) · 📋 [变更日志](https://docs.fim.ai/changelog) · 🐛 [报告 Bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ 跳过设置——在云端尝试FIM One。**
-> 托管版本已在[cloud.fim.ai](https://cloud.fim.ai/)上线——无需Docker、无需API密钥、无需配置。登录后即可在几秒内开始连接您的系统。*早期访问，欢迎反馈。*
+> **☁️ 跳过设置——立即在云端试用 FIM One。**
+> 托管版本已上线：[cloud.fim.ai](https://cloud.fim.ai/)——无需 Docker、无需 API 密钥、无需配置。登录后即可在几秒钟内开始连接您的系统。_抢先体验，欢迎反馈。_
+
+https://github.com/user-attachments/assets/8a0e1136-ffbc-4950-86bd-b2f8884214af
 
 ---
 
@@ -117,10 +119,10 @@ cd frontend && pnpm install && cd ..
 ## 主要功能
 
 #### 跨境连接
-- **三种交付模式** — 独立智能体、嵌入式Copilot或中央Hub；同一智能体核心。
-- **任何系统，统一模式** — 连接API、数据库、MCP服务器。操作自动注册为智能体工具并注入身份验证。渐进式披露元工具可将所有工具类型的令牌使用量减少80%以上。
-- **数据库连接器** — PostgreSQL、MySQL、Oracle、SQL Server以及中国常见的企业数据库（DM、KingbaseES、GBase、Highgo），这些是大多数全球平台无法访问的。支持模式内省和AI驱动的注释。
-- **三种构建方式** — 导入OpenAPI规范、AI聊天构建器或直接连接MCP服务器。
+- **三种交付模式** —— 独立助手、嵌入式 Copilot 或中央 Hub；使用相同的智能体核心。
+- **任意系统，一种模式** —— 连接 API、数据库和 MCP 服务器。操作会自动注册为智能体工具，并注入身份验证信息。渐进式披露元工具可将所有工具类型的 token 用量降低 80% 以上。
+- **数据库连接器** —— PostgreSQL、MySQL，以及全球大多数平台无法连接的中国常见企业数据库（DM、KingbaseES、HighGo）。支持模式内省和 AI 驱动的注释。
+- **三种构建方式** —— 导入 OpenAPI 规范、使用 AI 聊天构建器，或直接连接 MCP 服务器。
 
 #### 规划与执行
 - **动态DAG规划** — LLM在运行时将目标分解为依赖图。无硬编码工作流。
@@ -254,7 +256,7 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 ## 贡献者
 
-感谢这些杰出的人员（[emoji 说明](https://allcontributors.org/docs/en/emoji-key)）：
+感谢这些优秀的贡献者（[表情符号说明](https://allcontributors.org/docs/en/emoji-key)）：
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -268,6 +270,7 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/wcboy"><img src="https://avatars.githubusercontent.com/u/85050716?v=4?s=80" width="80px;" alt="Chenying Wang"/><br /><sub><b>Chenying Wang</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/commits?author=wcboy" title="Code">💻</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Joshua-Medvinsky"><img src="https://avatars.githubusercontent.com/u/76570188?v=4?s=80" width="80px;" alt="Joshua Medvinsky"/><br /><sub><b>Joshua Medvinsky</b></sub></a><br /><a href="#security-Joshua-Medvinsky" title="Security">🛡️</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Aryan-theccool"><img src="https://avatars.githubusercontent.com/u/146411259?v=4?s=80" width="80px;" alt="Aryan singh Bhadoria"/><br /><sub><b>Aryan singh Bhadoria</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3AAryan-theccool" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Code">💻</a></td>
+      <td align="center" valign="top" width="12.5%"><a href="https://portfolio-alexgonzalez33.vercel.app/"><img src="https://avatars.githubusercontent.com/u/82875882?v=4?s=80" width="80px;" alt="alexcastgonz"/><br /><sub><b>alexcastgonz</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Apcbeingused333" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -277,7 +280,7 @@ bash scripts/setup-hooks.sh    # install git hooks (enables auto i18n)
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-本项目遵循[all-contributors](https://allcontributors.org/)规范。欢迎任何形式的贡献！
+此项目遵循 [all-contributors](https://allcontributors.org/) 规范。欢迎任何形式的贡献！
 
 ## 关于 FIM
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-![FIM One Banner](./assets/banner.jpg)
+![Bannière FIM One](./assets/banner.jpg)
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
 [![CI](https://github.com/fim-ai/fim-one/actions/workflows/test.yml/badge.svg)](https://github.com/fim-ai/fim-one/actions/workflows/test.yml)
@@ -10,18 +10,22 @@
 
 [🌐 English](README.md) | [🇨🇳 中文](README.zh.md) | [🇯🇵 日本語](README.ja.md) | [🇰🇷 한국어](README.ko.md) | [🇩🇪 Deutsch](README.de.md) | [🇫🇷 Français](README.fr.md)
 
-**Plateforme d'agent tout-en-un pour les entreprises mondiales × chinoises.**
-*Connectez tous les systèmes que vous utilisez déjà — des SaaS mondiaux à l'écosystème chinois — via un seul cœur d'agent.*
+**Plateforme Agent tout-en-un pour les entreprises internationales et chinoises.**
+*Connectez tous les systèmes que vous utilisez déjà — des SaaS internationaux à l’écosystème chinois — via un seul cœur d’agent.*
 
-🌐 [Site web](https://one.fim.ai/) · 📖 [Documentation](https://docs.fim.ai) · 📋 [Changelog](https://docs.fim.ai/changelog) · 🐛 [Signaler un bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
+🌐 [Site web](https://one.fim.ai/) · 📖 [Documentation](https://docs.fim.ai) · 📋 [Journal des modifications](https://docs.fim.ai/changelog) · 🐛 [Signaler un bug](https://github.com/fim-ai/fim-one/issues) · 💬 [Discord](https://discord.gg/z64czxdC7z) · 🐦 [Twitter](https://x.com/FIM_One) · 🏆 [Product Hunt](https://www.producthunt.com/products/fim-one)
 
 </div>
 
 > [!TIP]
-> **☁️ Ignorez la configuration — essayez FIM One sur le Cloud.**
-> Une version gérée est disponible sur [cloud.fim.ai](https://cloud.fim.ai/) — pas de Docker, pas de clés API, pas de configuration. Connectez-vous et commencez à connecter vos systèmes en quelques secondes. _Accès anticipé, les retours sont les bienvenus._
+> **☁️ Évitez la configuration — essayez FIM One sur le cloud.**
+> Une version gérée est disponible sur [cloud.fim.ai](https://cloud.fim.ai/) — sans Docker, sans clés API et sans configuration. Connectez-vous et commencez à connecter vos systèmes en quelques secondes. _Accès anticipé, vos retours sont les bienvenus._
+
+https://github.com/user-attachments/assets/8a0e1136-ffbc-4950-86bd-b2f8884214af
 
 ---
+
+。
 
 ## Aperçu
 
@@ -117,10 +121,10 @@ cd frontend && pnpm install && cd ..
 ## Fonctionnalités principales
 
 #### Connectivité transfrontalière
-- **Trois modes de livraison** — Assistant autonome, Copilot intégré ou Hub central ; même cœur d'agent.
-- **N'importe quel système, un seul modèle** — Connectez des API, des bases de données, des serveurs MCP. Les actions s'enregistrent automatiquement en tant qu'outils d'agent avec injection d'authentification. Les méta-outils à divulgation progressive réduisent l'utilisation de tokens de 80 %+ sur tous les types d'outils.
-- **Connecteurs de base de données** — PostgreSQL, MySQL, Oracle, SQL Server et bases de données d'entreprise courantes en Chine (DM, KingbaseES, GBase, Highgo) que la plupart des plateformes mondiales ne peuvent pas atteindre. Introspection de schéma et annotation alimentée par l'IA.
-- **Trois façons de construire** — Importez une spécification OpenAPI, utilisez le générateur de chat IA ou connectez directement des serveurs MCP.
+- **Trois modes de déploiement** — Assistant autonome, Copilot intégré ou Hub centralisé ; même noyau d’agent.
+- **Tout système, un seul modèle** — Connectez des API, des bases de données et des serveurs MCP. Les actions sont automatiquement enregistrées comme outils d’agent avec injection de l’authentification. Les méta-outils à divulgation progressive réduisent de plus de 80 % l’utilisation des tokens pour tous les types d’outils.
+- **Connecteurs de bases de données** — PostgreSQL, MySQL et les bases de données d’entreprise courantes en Chine (DM, KingbaseES, HighGo), auxquelles la plupart des plateformes internationales ne peuvent pas accéder. Introspection du schéma et annotation optimisée par l’IA.
+- **Trois façons de créer** — Importer une spécification OpenAPI, utiliser un générateur par chat avec l’IA ou connecter directement des serveurs MCP.
 
 #### Planification et exécution
 - **Planification DAG dynamique** — L'LLM décompose les objectifs en graphes de dépendances à l'exécution. Aucun workflow codé en dur.
@@ -254,7 +258,7 @@ Nous accueillons les contributions de toutes sortes — code, documentation, tra
 
 ## Contributeurs
 
-Merci à ces personnes merveilleuses ([clé emoji](https://allcontributors.org/docs/en/emoji-key)) :
+Merci à toutes ces merveilleuses personnes ([légende des emojis](https://allcontributors.org/docs/en/emoji-key)) :
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -268,6 +272,7 @@ Merci à ces personnes merveilleuses ([clé emoji](https://allcontributors.org/d
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/wcboy"><img src="https://avatars.githubusercontent.com/u/85050716?v=4?s=80" width="80px;" alt="Chenying Wang"/><br /><sub><b>Chenying Wang</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/commits?author=wcboy" title="Code">💻</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Joshua-Medvinsky"><img src="https://avatars.githubusercontent.com/u/76570188?v=4?s=80" width="80px;" alt="Joshua Medvinsky"/><br /><sub><b>Joshua Medvinsky</b></sub></a><br /><a href="#security-Joshua-Medvinsky" title="Security">🛡️</a></td>
       <td align="center" valign="top" width="12.5%"><a href="https://github.com/Aryan-theccool"><img src="https://avatars.githubusercontent.com/u/146411259?v=4?s=80" width="80px;" alt="Aryan singh Bhadoria"/><br /><sub><b>Aryan singh Bhadoria</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3AAryan-theccool" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=Aryan-theccool" title="Code">💻</a></td>
+      <td align="center" valign="top" width="12.5%"><a href="https://portfolio-alexgonzalez33.vercel.app/"><img src="https://avatars.githubusercontent.com/u/82875882?v=4?s=80" width="80px;" alt="alexcastgonz"/><br /><sub><b>alexcastgonz</b></sub></a><br /><a href="https://github.com/fim-ai/fim-one/issues?q=author%3Apcbeingused333" title="Bug reports">🐛</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Documentation">📖</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Tests">⚠️</a> <a href="https://github.com/fim-ai/fim-one/commits?author=pcbeingused333" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>

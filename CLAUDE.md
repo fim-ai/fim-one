@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-AI-powered Connector Hub. Python async, provider-agnostic, protocol-first.
+AI agent platform for enterprise systems. Python async, provider-agnostic, protocol-first.
 
 - **Package manager**: `uv` (not pip) · **Frontend**: Next.js + pnpm (`frontend/`)
 - **Tests**: `uv run pytest` · **Launcher**: `./start.sh [portal|api]`

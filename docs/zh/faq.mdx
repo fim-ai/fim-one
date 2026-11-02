@@ -87,59 +87,56 @@ description: "关于 FIM One 的常见问题 — 设置、功能、许可等。"
     | 资源 | 要求 |
     |----------|-------------|
     | **Python** | 3.11+ |
-    | **RAM** | 最少 2 GB |
-    | **磁盘** | 1 GB 可用空间（加上上传文档和向量存储的空间） |
+    | **RAM** | 至少2 GB |
+    | **磁盘** | 1 GB可用空间（另需为上传的文档和向量存储预留空间） |
     | **Node.js** | 18+（用于本地开发） |
 
-    **生产环境推荐：**
+    **生产环境推荐配置：**
 
-    | 资源 | 推荐 |
+    | 资源 | 建议 |
     |----------|----------------|
-    | **RAM** | 4 GB+（特别是在本地运行嵌入模型时） |
-    | **CPU** | 2+ 核心 |
-    | **数据库** | PostgreSQL（用于多工作进程部署） |
+    | **RAM** | 4 GB以上（尤其是在本地运行嵌入模型时） |
+    | **CPU** | 2个以上核心 |
+    | **数据库** | 多工作进程部署使用 PostgreSQL |
 
-    **Docker 替代方案：** Docker 20+ 和 Docker Compose v2。无需本地 Python 或 Node.js——所有内容都在容器内构建。
+    **Docker替代方案：** Docker 20+和 Docker Compose v2。不需要本地安装 Python或 Node.js——所有内容都会在容器内构建。
   </Accordion>
 
-  <Accordion title="FIM One 支持 ARM / Apple Silicon 吗？">
-    支持。Docker 和本地开发都支持 ARM 架构，包括 Apple Silicon（M1/M2/M3/M4）Mac。Docker 镜像原生构建为 `linux/arm64`，所有 Python 和 Node.js 依赖都有 ARM 兼容的 wheels 或备选方案。
+  <Accordion title="FIM One支持 ARM／Apple芯片吗？">
+    支持。Docker和本地开发都支持 ARM架构，包括搭载 Apple芯片（M1/M2/M3/M4）的 Mac。Docker镜像会针对 `linux/arm64` 原生构建，所有 Python和 Node.js依赖项都有兼容 ARM的 wheel或备用方案。
   </Accordion>
 
   <Accordion title="支持哪些数据库？">
-    FIM One 以两种不同的方式使用数据库：
+    FIM One以两种不同方式使用数据库：
 
-    **1. 内部数据库（FIM One 自身数据）：**
-    - **SQLite** ——零配置默认选项，适合开发和单工作进程部署。
-    - **PostgreSQL** ——推荐用于生产环境，多工作进程设置（`WORKERS > 1`）时必需。
+    **1. 内部数据库（FIM One自身的数据）：**
+    - **SQLite**——零配置默认选项，非常适合开发和单工作进程部署。
+    - **PostgreSQL**——生产环境推荐选项，多工作进程设置（`WORKERS > 1`）必需。
 
-    **2. 连接器目标（您连接的系统）：**
+    **2. 连接器目标（要连接的系统）：**
 
-    FIM One 可以通过数据库连接器连接到外部数据库作为数据源：
+    FIM One可以通过数据库连接器连接外部数据库，将其作为数据源：
 
     | 数据库 | 状态 |
     |----------|--------|
     | PostgreSQL | 支持 |
     | MySQL | 支持 |
-    | Oracle | 支持 |
-    | SQL Server | 支持 |
-    | DM (Dameng) | 支持 |
+    | DM（达梦） | 支持 |
     | KingbaseES | 支持 |
-    | GBase | 支持 |
     | Highgo | 支持 |
 
-    每个数据库连接器自动生成三个工具：`list_tables`、`describe_table` 和 `query`。默认包含架构内省、AI 驱动的注释和只读查询执行。
+    每个数据库连接器会自动生成三个工具：`list_tables`、`describe_table`和 `query`。默认包含架构内省、AI驱动的注释以及只读查询执行功能。
   </Accordion>
 
-  <Accordion title="多个用户可以共享同一实例吗？">
-    可以。FIM One 从一开始就为多租户部署而构建：
+  <Accordion title="多个用户可以共享同一个实例吗？">
+    可以。FIM One从底层设计之初就支持多租户部署：
 
-    - **JWT 身份验证** ——基于令牌的身份验证，具有每用户会话隔离。
-    - **组织隔离** ——资源（智能体、连接器、MCP 服务器）的作用域限定在组织内。知识库对其所有者保持私密，永远不会直接共享。
-    - **基于角色的访问** ——管理员和用户角色，具有适当的权限边界。
-    - **资源所有权** ——对话和配置按用户隔离。
+    - **JWT身份验证**——基于令牌的身份验证，并为每个用户隔离会话。
+    - **组织隔离**——资源（智能体、连接器、MCP服务器）按组织进行限定。知识库对其所有者保持私有，绝不会直接共享。
+    - **基于角色的访问控制**——提供管理员和用户角色，并设置适当的权限边界。
+    - **资源所有权**——对话和配置按用户隔离。
 
-    对于多用户生产部署，使用 PostgreSQL 作为内部数据库，并将 `WORKERS` 设置为与预期并发相匹配。
+    对于多用户生产部署，请使用 PostgreSQL作为内部数据库，并将 `WORKERS` 设置为与预期并发量相匹配的值。
   </Accordion>
 </AccordionGroup>
 

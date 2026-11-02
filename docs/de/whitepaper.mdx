@@ -157,23 +157,23 @@ flowchart LR
   C --> Reports
 ```
 
-## 6. Connector Alignment Model
+## 6. Ausrichtungsmodell für Connectoren
 
-Ein Connector ist eine typisierte Action-Oberfläche, die durch eine Authentifizierungsstrategie unterstützt wird. FIM One definiert drei Authentifizierungsstufen, die die große Mehrheit der Unternehmenssysteme abdecken.
+Ein Connector ist eine typisierte Aktionsschnittstelle, die auf einer Authentifizierungsstrategie basiert. FIM One definiert drei Authentifizierungsstufen, die die überwiegende Mehrheit der Unternehmenssysteme abdecken.
 
 <AccordionGroup>
-  <Accordion title="Tier 1 — Database Connectors (Full oder Basic)">
-    Direkte Verbindung zu einer relationalen oder dokumentorientierten Datenbank. Der **Full**-Modus stellt beliebiges SQL für den Agent bereit, gated durch eine Read-Only-Rolle; der **Basic**-Modus stellt nur vorregistrierte parametrisierte Abfragen bereit. Native Unterstützung für **Xinchuang-konforme Datenbanken — Dameng (DM8), KingbaseES, HighGo, GBase** — neben PostgreSQL, MySQL und Oracle. Zentrale/staatliche und regulierte Kunden bestehen die Compliance-Beschaffung am ersten Tag.
+  <Accordion title="Stufe 1 — Datenbank-Connectoren (Full oder Basic)">
+    Direkte Verbindung zu einer relationalen Datenbank. Der Modus **Full** stellt dem Agent beliebige SQL-Abfragen zur Verfügung, abgesichert durch eine schreibgeschützte Rolle; der Modus **Basic** stellt nur vorab registrierte parametrisierte Abfragen bereit. Native Unterstützung für **Xinchuang-konforme Datenbanken — Dameng (DM8), KingbaseES, HighGo** — neben PostgreSQL und MySQL. Zentralstaatliche, staatliche und regulierte Kunden erfüllen damit bereits am ersten Tag die Anforderungen der Compliance-Beschaffung.
   </Accordion>
-  <Accordion title="Tier 2 — OpenAPI Connectors (User-Key)">
-    Jede REST API mit einer OpenAPI-Spezifikation. Der Agent liest die Spezifikation, wählt den Endpunkt aus und ruft ihn mit dem Schlüssel des angemeldeten Benutzers auf. Deckt modernes SaaS (Slack, Linear, GitHub) und gut dokumentierte interne APIs ab.
+  <Accordion title="Stufe 2 — OpenAPI-Connectoren (User-Key)">
+    Jede REST API mit einer OpenAPI-Spezifikation. Der Agent liest die Spezifikation, wählt den Endpunkt aus und ruft ihn mit dem Schlüssel des angemeldeten Benutzers auf. Deckt moderne SaaS-Systeme (Slack, Linear, GitHub) und gut dokumentierte interne APIs ab.
   </Accordion>
-  <Accordion title="Tier 3 — Login-Ticket / Legacy Connectors">
-    Für Systeme — besonders häufig auf dem chinesischen Markt — die sich über einen Login-Ticket-Service statt OAuth2 authentifizieren. Der Connector verwaltet den Ticket-Lebenszyklus (erwerben, aktualisieren, ungültig machen) und präsentiert eine normale typisierte Oberfläche nach oben. Diese Stufe erschließt Systeme, die jeder andere Anbieter überspringt.
+  <Accordion title="Stufe 3 — Login-Ticket-/Legacy-Connectoren">
+    Für Systeme — insbesondere solche, die auf dem chinesischen Markt verbreitet sind —, die sich über einen Login-Ticket-Dienst statt über OAuth2 authentifizieren. Der Connector verwaltet den Lebenszyklus des Tickets (Abruf, Aktualisierung, Ungültigmachung) und stellt nach außen eine normale typisierte Schnittstelle bereit. Diese Stufe erschließt Systeme, die jeder andere Anbieter auslässt.
   </Accordion>
 </AccordionGroup>
 
-Jeder Connector deklariert auch eine **Channel/Integration-Dualität**: dasselbe zugrunde liegende System kann sowohl als *Channel* (Benachrichtigungssenke, Genehmigungsoberfläche) als auch als *Integration* (Datenquelle, Action-Ziel) erscheinen. Feishu ist sowohl ein Benachrichtigungskanal als auch eine Gruppenchat-Datenquelle; DingTalk und WeCom folgen dem gleichen Muster.
+Jeder Connector definiert außerdem eine **Dualität von Kanal und Integration**: Dasselbe zugrunde liegende System kann sowohl als *Kanal* (Benachrichtigungsziel, Genehmigungsoberfläche) als auch als *Integration* (Datenquelle, Aktionsziel) auftreten. Feishu ist sowohl ein Benachrichtigungskanal als auch eine Datenquelle für Gruppenchats; DingTalk und WeCom folgen demselben Muster.
 
 ## 7. Vertrauenswürdige Enterprise-KI — Drei Säulen
 

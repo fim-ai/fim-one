@@ -130,73 +130,74 @@ flowchart LR
 - **Global MCP servers**: 관리자 프로비저닝, 모든 세션에서 로드
 - **하위 호환성**: registration_enabled → registration_mode 자동 마이그레이션
 
-### v0.7.x (2026-03-07 to 2026-03-12) — Stability + Refinements
+### v0.7.x (2026-03-07 to 2026-03-12) — 안정성 + 개선
 - 초대 코드 관리
-- 사용자별 할당량 (429 적용)
-- 구조화된 감사 로깅
+- 사용자별 할당량(429 적용)
+- 구조화된 감사 로그
 - 민감한 단어 필터링
 - 관리자 로그인 기록
 - 관리자 파일 브라우저
-- 향상된 관리자 보기 (model_name, tools, kb_ids 필드)
-- Docker Compose 배포 (단일 이미지, 명명된 볼륨)
-- OAuth 자동 감지 (window.location에서)
-- 확장 사고 / 추론 지원 (`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`) — OpenAI o-series, Gemini 2.5+, Claude
-- 관리자 도구별 활성화/비활성화 (비활성화된 도구는 런타임에 채팅에서 제외)
-- MCP 서버 관리를 Connectors 페이지로 이동
-- 이중 데이터베이스 지원: SQLite (제로 설정 기본값) + PostgreSQL (프로덕션); Docker Compose는 PostgreSQL 자동 프로비저닝
-- 모델 구성 문서 페이지 (제공자별 확장 사고 설정 포함)
-- SSE Protocol v2: `delta_reasoning`, `usage` 필드와 분할된 `done`/`suggestions`/`title`/`end` 이벤트를 포함한 실시간 답변 스트리밍; SQLite 풀 크기 5 -> 20
-- AI Builder 확장: 7개의 새로운 빌더 도구 (GetSettings, TestConnection, ImportOpenAPI for connectors; ListConnectors, AddConnector, RemoveConnector, SetModel for agents), 에이전트의 `is_builder` 플래그, 빌더 프롬프트 자동 새로고침, SSRF 가드
-- SSE v2 프론트엔드: 스트리밍 점 펄스 커서, DAG 재계획 라운드 스냅샷을 축소 가능한 카드로, DAG 레이아웃을 단계 상태에서 분리
-- AI Builder 개념 문서 페이지 (커넥터 및 에이전트 빌더 가이드 포함)
-- 조직 시스템: 역할 기반 멤버십 (소유자/관리자/멤버)을 포함한 전체 CRUD, 관리자 관리 UI
-- 3계층 리소스 가시성 (개인/조직/글로벌) — 에이전트, 커넥터, 지식 베이스, MCP 서버
-- 모든 리소스 유형에 대한 게시/게시 취소 API; 게시된 에이전트의 소유자 위임
-- 관리자 설정 가시성 엔드포인트 (복제-글로벌 대체); 통합 `build_visibility_filter()` 쿼리 헬퍼
-- 데이터베이스 커넥터 (Phase 1-3): PG/MySQL/Oracle/SQL Server + 중국 레거시 DB에 대한 직접 SQL 액세스; 스키마 자동 검사, AI 주석, 읽기 전용 쿼리 실행, 암호화된 자격 증명, 커넥터당 3개 도구 (`list_tables`, `describe_table`, `query`)
-- **평가 센터**: 정량적 에이전트 품질 벤치마킹 — 테스트 데이터셋 CRUD (프롬프트 + 예상 동작 + 어설션), 평가 실행 (병렬 실행 + LLM 채점자 + 케이스별 통과/실패/지연/토큰 결과), 자동 폴링을 포함한 결과 뷰어; 마이그레이션 `r8t0v2x4z567`
-- 3가지 모델 역할 (General/Fast/Reasoning) — 계층별 env 구성 격리; 빠른 모델은 더 이상 주 모델 설정을 상속하지 않음
-- 구조화된 데이터 및 아티팩트 전달을 위한 일반 문자열 단계 결과를 대체하는 `StepOutput` 데이터클래스
-- DAG 실행을 위한 도구 캐시 — 비동기 잠금 스탬피드 방지를 포함한 실행당 동일한 도구 호출 캐시 (`DAG_TOOL_CACHE`)
-- 실패 시 1회 재시도를 포함한 단계별 LLM 검증 (`DAG_STEP_VERIFICATION`)
-- 자동 라우팅: 빠른 LLM이 쿼리를 ReAct 또는 DAG로 분류; `/api/auto` 엔드포인트; 프론트엔드 3방향 모드 토글 (`AUTO_ROUTING`)
-- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: 기본 제공 Market org (shadow, 자동 참여 없음)는 Platform org를 대체; 마켓플레이스 탐색 및 명시적 구독을 통해 발견된 리소스 (풀 모델); Market API로 공유 리소스 구독; Market에 게시하려면 항상 검토 필요; 리소스 구독 테이블; 글로벌 가시성을 대체하는 조직 기반 리소스 공유
-- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: 에이전트의 `discoverable` 플래그; `sub_agent_ids` 화이트리스트; 전문가 에이전트에 작업을 위임하기 위한 CallAgentTool
-- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials` 테이블; `PUT /api/mcp-servers/{id}/my-credentials` 엔드포인트; 자격 증명 폴백 동작을 위한 `allow_fallback` 플래그
-- [x] ~~**Connector/KB Toggle**~~: 리소스 일시 중단/재개를 위한 `POST /api/connectors/{id}/toggle` 및 `POST /api/knowledge-bases/{id}/toggle`
-- [x] ~~**Standalone KB Conversations**~~: 에이전트 바인딩 없이 직접 KB 채팅을 위한 대화의 `kb_ids` 필드
+- 향상된 관리자 뷰(`model_name`, `tools`, `kb_ids` 필드)
+- Docker Compose 배포(단일 이미지, 이름이 지정된 볼륨)
+- window.location을 통한 OAuth 자동 감지
+- OpenAI o-series, Gemini 2.5+, Claude를 위한 확장 사고/추론 지원(`LLM_REASONING_EFFORT`, `LLM_REASONING_BUDGET_TOKENS`)
+- 관리자별 도구 활성화/비활성화(비활성화된 도구는 런타임에 채팅에서 제외됨)
+- MCP 서버 관리가 Connectors 페이지로 이동
+- 이중 데이터베이스 지원: SQLite(구성 불필요한 기본값) + PostgreSQL(프로덕션); Docker Compose가 PostgreSQL을 자동으로 프로비저닝
+- 제공업체별 확장 사고 설정을 포함한 모델 구성 문서 페이지
+- SSE Protocol v2: `delta_reasoning`, `usage` 필드를 포함한 실시간 답변 스트리밍 및 `done`/`suggestions`/`title`/`end` 이벤트 분리; SQLite 풀 크기 5 -> 20
+- AI Builder 확장: 7개의 새로운 빌더 도구(커넥터용 GetSettings, TestConnection, ImportOpenAPI; 에이전트용 ListConnectors, AddConnector, RemoveConnector, SetModel), 에이전트의 `is_builder` 플래그, 빌더 프롬프트 자동 새로 고침, SSRF 방어
+- SSE v2 프런트엔드: 스트리밍 점멸 커서, 접을 수 있는 카드로 표시되는 DAG 재계획 라운드 스냅샷, 단계 상태와 분리된 DAG 레이아웃
+- 커넥터 및 에이전트 빌더 가이드를 포함한 AI Builder 개념 문서 페이지
+- 조직 시스템: 역할 기반 멤버십(owner/admin/member)을 지원하는 완전한 CRUD 및 관리자 관리 UI
+- 에이전트, 커넥터, 지식 베이스, MCP 서버를 위한 3단계 리소스 공개 범위(개인/조직/전역)
+- 모든 리소스 유형을 위한 게시/게시 취소 API; 게시된 에이전트의 소유자 위임
+- 관리자 공개 범위 설정 엔드포인트(clone-to-global 대체); 통합 `build_visibility_filter()` 쿼리 헬퍼
+- 데이터베이스 커넥터(1-3단계): PG/MySQL 및 중국 레거시 DB에 대한 직접 SQL 액세스; 스키마 인트로스펙션, AI 주석, 읽기 전용 쿼리 실행, 암호화된 자격 증명, 커넥터당 3개의 도구(`list_tables`, `describe_table`, `query`)
+- **평가 센터**: 정량적 에이전트 품질 벤치마킹 — 테스트 데이터셋 CRUD(프롬프트 + 예상 동작 + 어설션), 평가 실행(병렬 실행 + LLM 평가자 + 케이스별 통과/실패/지연 시간/토큰 결과), 자동 폴링을 지원하는 결과 뷰어; 마이그레이션 `r8t0v2x4z567`
+- 세 가지 모델 역할(General/Fast/Reasoning)과 계층별 환경 구성 격리; 빠른 모델이 더 이상 기본 모델 설정을 상속하지 않음
+- 구조화된 데이터 및 아티팩트 전달을 위해 일반 문자열 단계 결과를 대체하는 `StepOutput` 데이터클래스
+- DAG 실행을 위한 도구 캐시 — 비동기 잠금을 통한 스탬피드 방지와 함께 실행별 동일한 도구 호출을 캐시(`DAG_TOOL_CACHE`)
+- 단계별 LLM 검증 및 실패 시 1회 재시도(`DAG_STEP_VERIFICATION`)
+- 자동 라우팅: 빠른 LLM이 쿼리를 ReAct 또는 DAG로 분류; `/api/auto` 엔드포인트; 프런트엔드 3방향 모드 토글(`AUTO_ROUTING`)
+- [x] ~~**Shadow Market Organization + Resource Subscriptions**~~: 기본 제공 Market 조직(shadow, 자동 참여 없음)이 Platform 조직을 대체; 마켓플레이스 탐색을 통해 리소스를 발견하고 명시적으로 구독(pull 모델); 공유 리소스 구독을 위한 Market API; Market에 게시하려면 항상 검토 필요; 리소스 구독 테이블; 전역 공개 범위를 대체하는 조직 기반 리소스 공유
+- [x] ~~**Agent Auto-discovery and Sub-agent Binding**~~: 에이전트의 `discoverable` 플래그; `sub_agent_ids` 허용 목록; 전문 에이전트에 작업을 위임하기 위한 CallAgentTool
+- [x] ~~**MCP Server Credentials + Per-User Override**~~: `mcp_server_credentials` 테이블; `PUT /api/mcp-servers/{id}/my-credentials` 엔드포인트; 자격 증명 대체 동작을 위한 `allow_fallback` 플래그
+- [x] ~~**Connector/KB Toggle**~~: 리소스를 일시 중지하거나 재개하기 위한 `POST /api/connectors/{id}/toggle` 및 `POST /api/knowledge-bases/{id}/toggle`
+- [x] ~~**Standalone KB Conversations**~~: 에이전트 바인딩 없이 직접 KB 채팅을 지원하는 대화의 `kb_ids` 필드
 
-### v0.8 (2026-03-20) — 연결기 선언형 구성 + 점진적 공개
-- [x] **데이터베이스 연결기**: 직접 SQL 접근 (PostgreSQL, MySQL, Oracle) *(v0.7.x에서 출시 — Phase 1-3)*
-- [x] **RBAC**: 사용자/역할별 연결기 접근 제어 *(v0.7.x에서 출시 — 조직 시스템 + 3계층 가시성)*
-- [x] **연결기 자격증명 암호화 + 사용자별 재정의**: `connector_credentials` 테이블, `CREDENTIAL_ENCRYPTION_KEY`를 통한 Fernet 암호화, `allow_fallback` 플래그, `GET/PUT/DELETE /my-credentials` 엔드포인트, 채팅 도구 로딩 시 사용자별 자격증명 해석
-- [x] **게시 검토 UI**: 조직 수준 게시 검토 시스템 — 조직별 검토 토글, ReviewsSheet 승인/거부 워크플로우, 리소스 카드의 상태 배지, 게시 대화에서 검토 공지, 거부된 리소스 재제출
-- [x] **연결기 점진적 공개 (Phase 1-2)**: 단일 `ConnectorMetaTool`이 작업별 도구를 대체; 시스템 프롬프트는 경량 **스텁**만 수신 (이름 + 1줄 설명, 연결기당 ~30 토큰 vs 작업당 ~250 토큰); 에이전트가 `discover(connector)`를 호출하여 필요 시 전체 작업 스키마 로드 — 스키마는 모델이 연결기를 선택할 때만 로드되어 캐싱을 위해 프롬프트 접두사를 안정적으로 유지. 최신 에이전트 프레임워크에서 일반적인 지연 도구 로딩 패턴을 따름. `execute` 부명령; 하위 호환성을 위한 기능 플래그.
-- [x] **에이전트 스킬 시스템 + 컴팩트 지시사항**: 에이전트 지시사항을 위한 온디맨드 스킬 로딩 — `Skill` 모델 (이름, 콘텐츠/SOP, 선택적 스크립트)이 에이전트에 첨부됨; 시스템 프롬프트에서 이름으로만 참조 (~스킬당 10 토큰); 에이전트가 `read_skill(name)`을 호출하여 필요 시 전체 콘텐츠 로드. ConnectorMetaTool의 점진적 공개를 지시사항 수준에 적용하여 대화당 지시사항 토큰 비용을 ~80% 감소. "지시사항 + 도구 + 스킬" 차별화 스토리 활성화. 또한 Agent 모델에 `compact_instructions` 필드 추가 — 컴팩팅 시 `ContextGuard`에 주입된 에이전트별 압축 우선순위 목록 (예: "주문 ID와 금액 보존, 원본 API 응답 삭제"), 현재 정적 일반 프롬프트 대체. 최신 에이전트 프레임워크에서 널리 채택된 컴팩트 지시사항 규칙을 따름.
-- [x] **연결기 가져오기/내보내기**: 연결기 템플릿 공유
-- [x] **연결기 포크**: 기존 연결기 복제 + 커스터마이징
-- [x] **워크플로우 Phase 2 노드**: Iterator, Loop, VariableAggregator, ParameterExtractor, ListOperation, Transform, DocumentExtractor, QuestionUnderstanding, HumanIntervention — 전체 프론트엔드 + 백엔드 + 150개 신규 테스트 (총 275개)를 포함한 9개 고급 노드 유형. 지수 백오프를 포함한 노드 재시도, 안전한 표현식 평가. 성공률 막대가 있는 통계 패널. 12개 기본 제공 템플릿. 창 컨텍스트 메뉴 (붙여넣기, 모두 선택, 보기 맞춤, 자동 레이아웃).
-- [x] **워크플로우 Phase 3 노드: SubWorkflow + ENV** — 2개 신규 노드 유형 (총 25개 노드), 14개 신규 테스트 (총 306개), 14개 기본 제공 템플릿. SubWorkflow: 대상 워크플로우 선택, 변수 매핑, 무한 재귀 방지를 위한 구성 가능한 깊이 제한을 포함한 전체 DB 기반 중첩 워크플로우 실행기. ENV: 키 선택기 및 폴백 기본값을 포함한 암호화된 환경 변수 읽기. 전체 프론트엔드 (노드 컴포넌트, 구성 패널, 팔레트 항목, 미니맵 색상). 노드별 실행 통계 패널 (성공률, 소요 시간, 실패 횟수 최악 우선 정렬). `getNodeStats` API 클라이언트 + `NodeStatEntry` 유형. 키보드 단축키 대화 (`?` 키).
-- [x] **워크플로우 예약 트리거**: 시간대, 기본 입력, 다음 실행 시간 계산을 포함한 워크플로우별 cron 구성. 사전 설정 cron 버튼, 30개 트리거 테스트.
-- [x] **워크플로우 API 트리거**: 사용자 인증 없이 외부 실행을 위한 워크플로우별 공개 API 키 (`wf_` 접두사), 속도 제한 포함. API 키 관리 대화 (생성/재생성/취소, 트리거 URL, cURL/JS 예제).
-- [x] **워크플로우 배치 실행**: 최대 100개 입력 세트, 구성 가능한 병렬 처리 (1-10), 항목별 결과 축소 가능, JSON 내보내기를 포함한 `POST /batch-run`. 14개 배치 실행 테스트.
-- [x] **워크플로우 실행 로그 뷰어**: 실행 패널의 실시간 시간순 SSE 이벤트 스트림 (타임스탬프, 색상 코딩 배지, 이벤트 유형 필터 토글).
-- [x] **워크플로우 실행 통계**: 백엔드가 GROUP BY 부쿼리를 통해 배치로 실행 횟수 및 성공률 가져오기; 프론트엔드가 색상 코딩 성공률 표시기를 포함한 워크플로우 카드에 통계 표시.
-- [x] **워크플로우 스케줄러 데몬**: 60초마다 만료된 cron 기반 워크플로우를 폴링하는 백그라운드 비동기 서비스. Croniter 시간대 지원, 세마포어 동시성, `last_scheduled_at` 추적, 웹훅 전달. 14개 테스트.
-- [x] **워크플로우 가져오기 충돌 해석기**: 가져오기 중 미해결 에이전트/연결기/KB/MCP 참조 감지. 가시성 필터링을 포함한 배치 DB 쿼리, 프론트엔드 토스트 경고. 17개 테스트.
-- [x] **워크플로우 테스트 노드 실행**: 모의 변수를 포함한 격리된 단일 노드 테스트, 편집기에 통합 (구성 패널 테스트 버튼 + 컨텍스트 메뉴). 23개 테스트.
-- [x] **워크플로우 버전 비교**: 노드/엣지 변경 감지, 색상 코딩 표시기 (추가됨/제거됨/수정됨)를 포함한 나란히 청사진 비교.
-- [x] **워크플로우 실행 관리**: 개별 실행 삭제 (`DELETE /runs/{run_id}`) 및 완료된 모든 실행 삭제 (`DELETE /runs`), 프론트엔드 확인 대화 포함.
-- [x] **워크플로우 실행 재생 오버레이**: 실행 기록의 "캔버스에서 보기" 버튼으로 캔버스에 과거 실행 결과를 오버레이하여 재실행 없이 노드별 상태 및 출력 표시.
-- [x] **워크플로우 즐겨찾기/고정**: 워크플로우를 목록 상단에 고정하기 위해 별 표시/고정, localStorage 지속성 포함.
-- [x] **워크플로우 실행 기록 내보내기**: 전체 실행 메타데이터 및 노드별 결과를 포함한 JSON 파일 다운로드로 실행 기록 내보내기.
-- [x] **관리자 워크플로우 관리**: 사용자 전체 워크플로우 관리를 위한 관리자 패널 탭 — 목록, 활성/비활성 토글, 확인을 포함한 삭제. 감사 로깅을 포함한 삭제, 토글, 게시를 위한 배치 엔드포인트.
-- [x] **워크플로우 템플릿 시스템**: 관리자 CRUD, 공개 목록/복제 API, 첫 시작 시 자동 삽입되는 5개 시드 템플릿을 포함한 `WorkflowTemplate` ORM 모델.
-- [x] **워크플로우 인라인 검증 배지**: 편집 중 즉각적인 시각적 피드백을 위해 오류/경고 도구 설명을 포함한 캔버스의 실시간 노드별 `ValidationBadge`.
-- [x] **워크플로우 실행 추적 뷰어**: 엔진 `trace_level` 매개변수 및 단계별 디버깅을 위한 노드별 변수 스냅샷을 포함한 타임라인 기반 추적 뷰어 Sheet.
-- [x] **워크플로우 속도 제한 및 시간 초과**: 사용자별 `WorkflowRateLimiter` (슬라이딩 윈도우 10 실행/분, 3개 동시) 및 기본 10분 전역 실행 시간 초과.
-- [x] **워크플로우 청사진 시스템**: 다단계 자동화 청사진 설계 및 실행을 위한 시각적 워크플로우 편집기 — `Workflow` / `WorkflowRun` ORM 모델, 전체 CRUD + SSE 실행 API, 가져오기/내보내기, 복제, 청사진 검증 엔드포인트, 위상 정렬 + 세마포어 기반 동시성 + 조건 분기 및 12개 노드 유형 (시작, 종료, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution)을 포함한 `WorkflowEngine`, `{{node_id.output}}` 보간 및 `env.*` 네임스페이스를 포함한 `VariableStore`, 노드별 시간 초과 및 고급 구성 UI를 포함한 노드별 오류 전략 (STOP_WORKFLOW / CONTINUE / FAIL_BRANCH), 드래그 앤 드롭 팔레트 + 노드 구성 패널 + 변수 선택기 콤보박스 + 엣지에 노드 추가 + 자동 레이아웃 (ELK.js) + 실행 기록 Sheet를 포함한 React Flow v12 시각적 편집기, 링 기반 실행 상태 스타일링 및 애니메이션 엣지 전환을 포함한 Dify 스타일 컴팩트 노드 디자인, 템플릿 선택기 대화 및 `GET /templates` + `POST /from-template` API를 포함한 4개 기본 제공 시작 템플릿 (단순 LLM 체인, 조건부 라우터, 지식 증강 QA, HTTP API 파이프라인), 통계 엔드포인트, `?run=true` URL 매개변수 자동 열기, 부프로세스 기반 코드 실행 보안, 105개 테스트 스위트 (템플릿, eval 네임스페이스 평탄화, 청사진 검증 경고, 노드/엣지 삭제, 가져오기/내보내기/복제, 교착 상태 감지, 다중 조건 분기)
-- [x] **작업 감사**: 누가 무엇을 했는지에 대한 상세 로깅 — 관리자 검토 로그 감
+### v0.8 (2026-03-20) — 커넥터 선언적 구성 + 점진적 공개
+- [x] **데이터베이스 커넥터**: 직접 SQL 액세스(PostgreSQL, MySQL) *(v0.7.x에서 제공됨 — 1~3단계)*
+- [x] **RBAC**: 사용자/역할별 커넥터 액세스 제어 *(v0.7.x에서 제공됨 — 조직 시스템 + 3단계 가시성)*
+- [x] **커넥터 자격 증명 암호화 + 사용자별 재정의**: `connector_credentials` 테이블, `CREDENTIAL_ENCRYPTION_KEY`를 통한 Fernet 암호화, `allow_fallback` 플래그, `GET/PUT/DELETE /my-credentials` 엔드포인트, 채팅 도구 로딩 시 사용자별 자격 증명 확인
+- [x] **게시 검토 UI**: 조직 수준 게시 검토 시스템 — 조직별 검토 토글, 승인/거부 워크플로가 포함된 ReviewsSheet, 리소스 카드의 상태 배지, 게시 대화상자의 검토 알림, 거부된 리소스의 재제출
+- [x] **커넥터 점진적 공개(1~2단계)**: 작업별 도구를 하나의 `ConnectorMetaTool`로 대체. 시스템 프롬프트에는 가벼운 **스텁**만 전달(name + 1줄 설명, 커넥터당 약 30 토큰, 작업당 약 250 토큰 대신)하고, 에이전트가 `discover(connector)`를 호출하면 필요할 때 전체 작업 스키마를 로드 — 모델이 커넥터를 선택할 때만 스키마를 로드하므로 캐싱을 위한 프롬프트 접두사가 안정적으로 유지됩니다. 최신 에이전트 프레임워크에서 일반적으로 사용되는 지연 도구 로딩 패턴을 따릅니다. `execute` 하위 명령, 이전 버전과의 호환성을 위한 기능 플래그.
+- [x] **에이전트 스킬 시스템 + 간결한 지침**: 에이전트 지침을 필요할 때 로드 — `Skill` 모델(name, content/SOP, 선택적 스크립트)을 에이전트에 연결하고, 시스템 프롬프트에서는 이름만 참조(스킬당 약 10 토큰); 에이전트가 `read_skill(name)`을 호출하면 필요할 때 전체 콘텐츠를 로드합니다. 더 풍부한 SOP 라이브러리를 지원하면서 대화당 지침 토큰 비용을 약 80% 줄입니다. 지침 수준에 적용된 `ConnectorMetaTool`의 점진적 공개에 대응하는 기능입니다. "지시 + 도구 + 스킬" 차별화 스토리를 지원합니다. 또한 Agent 모델에 `compact_instructions` 필드를 추가 — 압축 시 `ContextGuard`에 주입되는 에이전트별 압축 우선순위 목록(예: "주문 ID와 금액은 유지하고, 원시 API 응답은 제거")으로, 기존의 정적인 일반 프롬프트를 대체합니다. 최신 에이전트 프레임워크에서 널리 채택된 Compact Instructions 규칙을 따릅니다.
+- [x] **커넥터 가져오기/내보내기**: 커넥터 템플릿 공유
+- [x] **커넥터 포크**: 기존 커넥터 복제 및 사용자 지정
+- [x] **워크플로 2단계 노드**: Iterator, Loop, VariableAggregator, ParameterExtractor, ListOperation, Transform, DocumentExtractor, QuestionUnderstanding, HumanIntervention — 전체 프론트엔드 + 백엔드를 갖춘 9개의 고급 노드 유형과 새로운 테스트 150개(총 275개). 지수 백오프를 적용한 노드 재시도, 안전한 표현식 평가. 성공률 막대가 포함된 통계 패널. 기본 제공 템플릿 12개. 창 컨텍스트 메뉴(Paste, Select All, Fit View, Auto Layout).
+- [x] **워크플로 3단계 노드: SubWorkflow + ENV** — 새로운 노드 유형 2개(총 25개 노드), 새로운 테스트 14개(총 306개), 기본 제공 템플릿 14개. SubWorkflow: 대상 워크플로 선택, 변수 매핑, 무한 재귀 방지를 위한 구성 가능한 깊이 제한을 지원하는 완전한 DB 기반 중첩 워크플로 실행기. ENV: 키 선택기와 대체 기본값을 사용해 암호화된 환경 변수를 읽습니다. 전체 프론트엔드(노드 컴포넌트, 구성 패널, 팔레트 항목, 미니맵 색상). 노드별 실행 통계 패널(성공률, 소요 시간, 실패 횟수를 최악 순으로 정렬). `getNodeStats` API 클라이언트 + `NodeStatEntry` 타입. 키보드 단축키 대화상자(`?` 키).
+- [x] **워크플로 예약 트리거**: 시간대, 기본 입력, 다음 실행 시각 계산을 지원하는 워크플로별 cron 구성. 사전 설정 cron 버튼, 트리거 테스트 30개.
+- [x] **워크플로 API 트리거**: 사용자 인증 없이 외부에서 실행할 수 있도록 워크플로별 공개 API 키(`wf_` 접두사)와 속도 제한을 지원합니다. 생성/재생성/폐기, 트리거 URL, cURL/JS 예제가 포함된 API 키 관리 대화상자.
+- [x] **워크플로 일괄 실행**: 최대 100개의 입력 집합을 지원하는 `POST /batch-run`, 구성 가능한 병렬 처리 수준(1~10), 항목별 결과 접기/펼치기, JSON 내보내기. 일괄 실행 테스트 14개.
+- [x] **워크플로 실행 로그 뷰어**: 실행 패널에서 타임스탬프, 색상으로 구분된 배지, 이벤트 유형 필터 토글을 제공하는 실시간 시간순 SSE 이벤트 스트림.
+- [x] **워크플로 실행 통계**: 백엔드에서 GROUP BY 서브쿼리를 통해 실행 횟수와 성공률을 일괄 조회하고, 프론트엔드에서 색상으로 구분된 성공률 표시기와 함께 워크플로 카드에 통계를 표시합니다.
+- [x] **워크플로 스케줄러 데몬**: cron 기반 워크플로 중 실행 시점이 도래한 항목을 60초마다 폴링하는 백그라운드 비동기 서비스. Croniter 시간대 지원, 세마포어 동시성, `last_scheduled_at` 추적, 웹훅 전달. 테스트 14개.
+- [x] **워크플로 가져오기 충돌 해결기**: 가져오기 중 해결되지 않은 에이전트/커넥터/KB/MCP 참조를 감지합니다. 가시성 필터링을 적용한 DB 일괄 쿼리, 프론트엔드 토스트 경고. 테스트 17개.
+- [x] **워크플로 테스트 노드 실행**: 모의 변수를 사용한 격리된 단일 노드 테스트를 에디터에 통합(config 패널 Test 버튼 + 컨텍스트 메뉴). 테스트 23개.
+- [x] **워크플로 버전 비교**: 노드/엣지 변경 감지와 색상으로 구분된 표시기(추가/제거/수정)를 제공하는 나란히 보기 방식의 블루프린트 비교.
+- [x] **워크플로 실행 관리**: 개별 실행 삭제(`DELETE /runs/{run_id}`) 및 완료된 모든 실행 삭제(`DELETE /runs`), 프론트엔드 확인 대화상자 포함.
+- [x] **워크플로 실행 재생 오버레이**: 실행 기록의 "View on Canvas" 버튼을 통해 과거 실행 결과를 캔버스에 오버레이하여 재실행 없이 노드별 상태와 출력을 표시합니다.
+- [x] **워크플로 즐겨찾기/고정**: localStorage에 저장하여 워크플로를 목록 상단에 별표 표시하거나 고정합니다.
+- [x] **워크플로 실행 기록 내보내기**: 전체 실행 메타데이터와 노드별 결과를 포함한 실행 기록을 JSON 파일로 다운로드합니다.
+- [x] **관리자 워크플로 관리**: 사용자 전체의 워크플로를 관리하는 관리자 패널 탭 — 목록 조회, 활성/비활성 전환, 확인 절차를 거친 삭제. 감사 로깅을 포함한 삭제, 전환, 게시용 일괄 엔드포인트.
+- [x] **워크플로 템플릿 시스템**: 관리자 CRUD, 공개 목록/복제 API를 제공하는 `WorkflowTemplate` ORM 모델과 최초 시작 시 자동 삽입되는 시드 템플릿 5개.
+- [x] **워크플로 인라인 검증 배지**: 편집 중 즉각적인 시각적 피드백을 제공하는 오류/경고 툴팁과 함께 캔버스에 노드별 `ValidationBadge`를 실시간 표시합니다.
+- [x] **워크플로 실행 추적 뷰어**: 엔진의 `trace_level` 매개변수와 단계별 디버깅을 위한 노드별 변수 스냅샷을 제공하는 타임라인 기반 추적 뷰어 Sheet.
+- [x] **워크플로 속도 제한 및 시간 제한**: 사용자별 `WorkflowRateLimiter`(슬라이딩 윈도우 기준 분당 10회 실행, 동시 실행 3개) 및 기본 전역 실행 시간 제한 10분.
+- [x] **워크플로 블루프린트 시스템**: 다단계 자동화 블루프린트를 설계하고 실행하기 위한 시각적 워크플로 에디터 — `Workflow` / `WorkflowRun` ORM 모델, 전체 CRUD + SSE 실행 API, 가져오기/내보내기, 복제, 블루프린트 검증 엔드포인트, 위상 정렬 + 세마포어 기반 동시성 + 조건 분기와 12개 노드 유형(Start, End, LLM, ConditionBranch, QuestionClassifier, Agent, KnowledgeRetrieval, Connector, HTTPRequest, VariableAssign, TemplateTransform, CodeExecution)을 지원하는 `WorkflowEngine`, `{{node_id.output}}` 보간과 `env.*` 네임스페이스를 지원하는 `VariableStore`, 노드별 오류 전략(STOP_WORKFLOW / CONTINUE / FAIL_BRANCH)과 노드별 시간 제한 및 고급 구성 UI, 드래그 앤 드롭 팔레트 + 노드 구성 패널 + 변수 선택 콤보박스 + 엣지에 노드 추가 + 자동 레이아웃(ELK.js) + 실행 기록 Sheet를 지원하는 React Flow v12 시각적 에디터, 링 기반 실행 상태 스타일과 애니메이션 엣지 전환을 적용한 Dify 스타일의 간결한 노드 디자인, 템플릿 선택 대화상자와 `GET /templates` + `POST /from-template` API가 포함된 기본 제공 시작 템플릿 4개(Simple LLM Chain, Conditional Router, Knowledge-Augmented QA, HTTP API Pipeline), 통계 엔드포인트, `?run=true` URL 매개변수를 통한 자동 열기, 서브프로세스 기반 코드 실행 보안, 105개 테스트 모음(템플릿, 평가 네임스페이스 평탄화, 블루프린트 검증 경고, 노드/엣지 삭제, 가져오기/내보내기/복제, 교착 상태 감지, 다중 조건 분기)
+- [x] **작업 감사**: 누가 무엇을 했는지에 대한 상세 로깅 — 조직/리소스별 게시 검토 이력을 제공하는 관리자 검토 로그 감사 탭 추가
+- [x] **시맨틱 스키마 주석**: 커넥터 스키마 필드를 `semantic_tag`, `description`, `pii` 플래그로 확장하고, LLM 도구 설명에 주석을 표시하여 에이전트가 열 이름만 보고 추측하지 않고 필드의 의도를 이해할 수 있도록 지원
 
 ### v0.8.1 (2026-03-29) — 점진적 공개 성숙도 + ReAct 강화
 - DB 커넥터(`DatabaseMetaTool`), MCP 서버(`MCPServerMetaTool`), 온디맨드 도구 로딩(`request_tools` 메타 도구)을 위한 점진적 공개

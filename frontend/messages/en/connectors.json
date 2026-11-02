@@ -1,6 +1,6 @@
 {
-  "title": "Connectors",
-  "subtitle": "Manage API connectors, MCP servers, and their actions",
+  "title": "Integrations",
+  "subtitle": "Manage API connectors, database connections, MCP servers, and their actions",
   "connectorsTab": "Database / API",
   "mcpTab": "MCP Servers",
   "newConnector": "New Connector",

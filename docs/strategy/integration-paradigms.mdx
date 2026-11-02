@@ -1,7 +1,7 @@
 ---
 title: "Integration Paradigms"
 icon: "diagram-project"
-description: "CLI + Skills, MCP, or Connector Hub — understanding the three paradigms for connecting AI agents to enterprise systems."
+description: "CLI + Skills, MCP, or a governed integration platform — understanding the three paradigms for connecting AI agents to enterprise systems."
 ---
 
 ## The March 2026 Signal
@@ -121,7 +121,7 @@ The proliferation of personal AI copilots (OpenClaw, Claude Code, Cursor, Windsu
 - **Integration scope**: Single-person, few platforms, personal productivity
 - **Governance**: None needed — it is my data, my actions
 
-### Enterprise Connector Hub
+### Enterprise Integration Platform
 
 - **User**: Organization (teams, departments, cross-functional workflows)
 - **Data scope**: Cross-department, cross-system, includes sensitive and regulated data
@@ -137,7 +137,7 @@ Personal copilots commoditize simple single-platform operations. This is not FIM
 
 | Priority | Action | Rationale |
 |----------|--------|-----------|
-| Stay the course | Keep investing in Connector architecture for legacy/API systems | This is the moat — CLI + Skills will never reach legacy systems |
+| Stay the course | Keep investing in the governance layer (credentials, confirmation gates, audit) around API, database, and MCP access | CLI + Skills will never reach legacy systems, and cross-system access needs governance |
 | Embrace MCP | MCP Server support already built (MCPServerMetaTool) — keep it polished | MCP is the structured protocol bet; some platforms will adopt it eventually |
 | Monitor Skills | Track the `npx skills add` ecosystem but don't chase it | Skills solve a distribution problem FIM One doesn't have |
 | Differentiate on governance | Audit, RBAC, confirmation gates, credential management | Personal copilots will never offer enterprise governance |
@@ -159,4 +159,4 @@ However, in the short term (2026), CLI + Skills is winning on adoption speed bec
 
 The likely convergence: platforms that ship CLIs today may wrap them as MCP servers tomorrow. MCP's stdio transport already launches CLI processes — the gap between "CLI invoked by Skills" and "CLI wrapped as MCP server" is small. But this convergence is not guaranteed. If the Skills ecosystem grows fast enough and AI IDEs standardize around it, MCP may remain a developer-tools protocol rather than an enterprise-tools standard.
 
-For FIM One, the takeaway is clear: invest in the protocol layer (MCP) and the governance layer (Connector architecture), not the distribution layer (Skills). Distribution is a solved problem for platform vendors. Protocol and governance are where a hub creates durable value.
+For FIM One, the takeaway is clear: invest in the protocol layer (MCP) and the governance layer (credentials, confirmation gates, audit), not the distribution layer (Skills). Distribution is a solved problem for platform vendors. Protocol and governance are where a hub creates durable value.

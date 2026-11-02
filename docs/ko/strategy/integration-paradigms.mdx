@@ -1,7 +1,7 @@
 ---
 title: "통합 패러다임"
 icon: "diagram-project"
-description: "CLI + Skills, MCP, 또는 Connector Hub — AI 에이전트를 엔터프라이즈 시스템에 연결하는 세 가지 패러다임 이해하기."
+description: "CLI + Skills, MCP 또는 거버넌스가 적용된 통합 플랫폼 — AI 에이전트를 엔터프라이즈 시스템에 연결하는 세 가지 패러다임 이해하기."
 ---
 
 ## 2026년 3월 신호
@@ -121,42 +121,42 @@ FIM One의 가치는 우상단으로 이동할수록 증가합니다: 도달하�
 - **통합 범위**: 단일 사용자, 소수 플랫폼, 개인 생산성
 - **거버넌스**: 필요 없음 — 내 데이터, 내 작업
 
-### Enterprise Connector Hub
+### 엔터프라이즈 통합 플랫폼
 
-- **User**: Organization (teams, departments, cross-functional workflows)
-- **Data scope**: Cross-department, cross-system, includes sensitive and regulated data
-- **Authentication**: Admin-assigned permissions, least-privilege, credential vaulting
-- **Integration scope**: Multi-system orchestration, business process automation
-- **Governance**: Audit logs, RBAC, confirmation gates, compliance requirements
+- **사용자**: 조직(팀, 부서, 부서 간 워크플로)
+- **데이터 범위**: 부서 간, 시스템 간 데이터, 민감 데이터 및 규제 대상 데이터 포함
+- **인증**: 관리자가 할당한 권한, 최소 권한 원칙, 자격 증명 보관
+- **통합 범위**: 다중 시스템 오케스트레이션, 비즈니스 프로세스 자동화
+- **거버넌스**: 감사 로그, RBAC, 확인 게이트, 규정 준수 요구 사항
 
-These are complementary, not competitive. As personal copilots proliferate, enterprises will need a central hub to govern what those copilots can access. An individual using Claude Code with `npx skills add dingtalk/dws` can read their own DingTalk messages. But when an AI 智能体 needs to orchestrate across DingTalk, the company ERP, and the finance system — with audit trails, permission controls, and human confirmation for write operations — that is a different problem entirely.
+이 둘은 상호 보완적이며 경쟁 관계가 아닙니다. 개인용 코파일럿이 확산됨에 따라 기업은 이러한 코파일럿이 액세스할 수 있는 항목을 관리할 중앙 허브를 필요로 하게 됩니다. `npx skills add dingtalk/dws`와 함께 Claude Code를 사용하는 개인 사용자는 자신의 DingTalk 메시지를 읽을 수 있습니다. 하지만 AI 에이전트가 감사 추적, 권한 제어, 쓰기 작업에 대한 사람의 확인을 거치며 DingTalk, 회사 ERP, 재무 시스템 전반을 오케스트레이션해야 한다면, 이는 전혀 다른 문제입니다.
 
-Personal copilots commoditize simple single-platform operations. This is not FIM One's market. FIM One's market is the cross-system, governance-required, legacy-inclusive enterprise integration that no personal copilot can handle.
+개인용 코파일럿은 단순한 단일 플랫폼 작업을 범용화합니다. 이것은 FIM One의 시장이 아닙니다. FIM One의 시장은 개인용 코파일럿으로는 처리할 수 없는 시스템 간 통합, 거버넌스가 필요한 통합, 레거시 시스템을 포함하는 엔터프라이즈 통합입니다.
 
-## FIM One의 전략적 함의
+## FIM One에 대한 전략적 시사점
 
 | 우선순위 | 조치 | 근거 |
 |----------|--------|-----------|
-| 현재 방향 유지 | 레거시/API 시스템을 위한 Connector 아키텍처에 계속 투자 | 이것이 경쟁 우위 — CLI + Skills는 레거시 시스템에 절대 도달할 수 없음 |
-| MCP 수용 | MCP Server 지원이 이미 구축됨 (MCPServerMetaTool) — 계속 정교하게 유지 | MCP는 구조화된 프로토콜 베팅; 일부 플랫폼은 결국 이를 채택할 것 |
-| Skills 모니터링 | `npx skills add` 생태계를 추적하되 쫓아가지 말 것 | Skills는 FIM One이 가지지 않은 배포 문제를 해결 |
-| 거버넌스로 차별화 | 감사, RBAC, confirmation gates, 자격증명 관리 | 개인용 코파일럿은 절대 엔터프라이즈 거버넌스를 제공하지 않음 |
-| 명확한 포지셔닝 | "글로벌 × 중국 엔터프라이즈를 위한 올인원 에이전트 플랫폼" — "DingTalk을 호출하는 또 다른 방법"이 아님 | 플랫폼이 무료로 제공하는 단순 통합으로 경쟁하지 말 것 |
+| 현재 방향 유지 | API, 데이터베이스, MCP 액세스에 대한 거버넌스 계층(자격 증명, 확인 게이트, 감사)에 계속 투자 | CLI + Skills는 레거시 시스템에 절대 도달할 수 없으며, 시스템 간 액세스에는 거버넌스가 필요함 |
+| MCP 수용 | MCP Server 지원이 이미 구축되어 있으므로(`MCPServerMetaTool`) 계속 완성도를 높일 것 | MCP는 구조화된 프로토콜에 대한 전략적 선택이며, 일부 플랫폼은 결국 이를 채택할 것임 |
+| Skills 모니터링 | `npx skills add` 생태계를 추적하되 이를 좇지는 말 것 | Skills는 FIM One에 없는 배포 문제를 해결함 |
+| 거버넌스로 차별화 | 감사, RBAC, 확인 게이트, 자격 증명 관리 | 개인용 코파일럿은 엔터프라이즈 거버넌스를 제공할 수 없음 |
+| 명확한 포지셔닝 | “글로벌 × 중국 기업을 위한 올인원 에이전트 플랫폼” — “DingTalk를 호출하는 또 다른 방법”이 아님 | 플랫폼이 무료로 제공하는 단순한 통합 기능을 두고 경쟁하는 일을 피할 것 |
 
-최악의 전략적 결정은 CLI + Skills 물결에 반응하여 이미 자체 Skills를 제공하는 플랫폼을 위한 Skills 어댑터를 구축하는 것입니다. 이는 플랫폼 벤더 자신들과의 경쟁에서 최하위로 내려가는 경쟁입니다. 올바른 대응은 그 벤더들이 절대 도달하지 못할 시스템에 집중하는 것입니다.
+가장 나쁜 전략적 선택은 CLI + Skills의 흐름에 대응하기 위해 플랫폼이 이미 자체적으로 제공하는 기능에 대한 Skills 어댑터를 구축하는 것입니다. 이는 플랫폼 공급업체와 직접 바닥을 향해 경쟁하는 일이 됩니다. 올바른 대응은 해당 공급업체가 결코 도달하지 못할 시스템에 계속 집중하는 것입니다.
 
-## CLI, Skills, 및 MCP 간의 관계
+## CLI, Skills, MCP의 관계
 
-이 세 가지 개념은 서로 다른 계층에서 작동하며 논의에서 종종 혼동됩니다. 정확한 구분:
+이 세 가지 개념은 서로 다른 계층에서 작동하며, 논의 과정에서 혼동되는 경우가 많습니다. 정확히 구분하면 다음과 같습니다.
 
-- **CLI**는 사용자 인터페이스입니다 — 셸 명령, 텍스트 I/O, 시스템과 상호작용하는 형태
-- **Skills**는 배포 메커니즘입니다 — AI에게 CLI 명령 호출 방법을 가르치는 마크다운 파일, AI 도구 통합을 위한 패키징 형식
-- **MCP**는 프로토콜입니다 — JSON-RPC, 구조화된 검색 및 호출, AI-도구 통신을 위한 상호운용성 표준
+- **CLI**는 사용자 인터페이스입니다. 셸 명령, 텍스트 I/O, 시스템과 상호 작용하기 위한 폼 팩터를 의미합니다.
+- **Skills**는 배포 메커니즘입니다. AI에게 CLI 명령을 호출하는 방법을 알려 주는 Markdown 파일이자, AI 도구 통합을 위한 패키징 형식입니다.
+- **MCP**는 프로토콜입니다. JSON-RPC, 구조화된 검색 및 호출, AI 도구 통신을 위한 상호 운용성 표준을 제공합니다.
 
-장기적으로 이들은 서로를 대체할 수 없습니다. CLI는 인간(또는 AI 서브프로세스)이 도구와 상호작용하는 방식입니다. Skill 파일은 그 CLI가 AI IDE로 배포되는 방식입니다. MCP는 프로토콜 수준에서 구조화되고, 스키마 타입이 지정되며, 구성 가능한 통합이 작동하는 방식입니다.
+장기적으로 이들은 서로를 대체하지 않습니다. CLI는 사람(또는 AI 하위 프로세스)이 도구와 상호 작용하는 방식입니다. Skill 파일은 해당 CLI를 AI IDE에 배포하는 방식입니다. MCP는 프로토콜 수준에서 구조화되고 스키마로 타입이 지정되며 조합 가능한 통합을 구현하는 방식입니다.
 
-그러나 단기적으로(2026년), CLI + Skills는 MCP보다 구현이 저렴하기 때문에 채택 속도에서 우위를 점하고 있습니다. 기존 CLI를 가진 플랫폼은 하루 안에 Skills 파일을 배포할 수 있습니다. MCP 서버를 구현하려면 몇 주가 걸리고 프로토콜 사양, 전송 계층 및 기능 협상을 이해해야 합니다.
+하지만 단기적으로(2026년) CLI + Skills는 MCP보다 구현 비용이 저렴하기 때문에 도입 속도 측면에서 우위를 점하고 있습니다. 기존 CLI가 있는 플랫폼은 하루 만에 Skills 파일을 제공할 수 있습니다. 반면 MCP 서버를 구현하려면 수 주가 걸리며, 프로토콜 사양, 전송 계층, 기능 협상에 대한 이해가 필요합니다.
 
-가능한 수렴: 오늘날 CLI를 배포하는 플랫폼은 내일 이를 MCP 서버로 래핑할 수 있습니다. MCP의 stdio 전송은 이미 CLI 프로세스를 시작합니다 — "Skills에 의해 호출되는 CLI"와 "MCP 서버로 래핑된 CLI" 간의 간격은 작습니다. 하지만 이 수렴은 보장되지 않습니다. Skills 생태계가 충분히 빠르게 성장하고 AI IDE가 이를 표준화한다면, MCP는 엔터프라이즈 도구 표준이 아닌 개발자 도구 프로토콜로 남을 수 있습니다.
+예상되는 수렴 방향은 다음과 같습니다. 현재 CLI를 제공하는 플랫폼은 향후 이를 MCP 서버로 래핑할 수 있습니다. MCP의 stdio 전송은 이미 CLI 프로세스를 실행하므로, "Skills로 호출되는 CLI"와 "MCP 서버로 래핑된 CLI" 사이의 간극은 작습니다. 그러나 이러한 수렴이 보장되는 것은 아닙니다. Skills 생태계가 충분히 빠르게 성장하고 AI IDE가 이를 중심으로 표준화된다면, MCP는 엔터프라이즈 도구 표준이 아니라 개발자 도구 프로토콜로 남을 수도 있습니다.
 
-FIM One의 경우 결론은 명확합니다: 배포 계층(Skills)이 아닌 프로토콜 계층(MCP)과 거버넌스 계층(Connector 아키텍처)에 투자하세요. 배포는 플랫폼 공급업체에게 해결된 문제입니다. 프로토콜과 거버넌스는 허브가 지속적인 가치를 창출하는 곳입니다.
+FIM One에 주는 시사점은 분명합니다. 배포 계층(Skills)이 아니라 프로토콜 계층(MCP)과 거버넌스 계층(자격 증명, 확인 게이트, 감사)에 투자해야 합니다. 플랫폼 공급업체에게 배포는 이미 해결된 문제입니다. 허브가 지속적인 가치를 창출하는 영역은 프로토콜과 거버넌스입니다.

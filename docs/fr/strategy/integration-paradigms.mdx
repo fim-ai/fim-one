@@ -1,7 +1,7 @@
 ---
-title: "Paradigmes d'intégration"
+title: "Paradigmes d’intégration"
 icon: "diagram-project"
-description: "CLI + Skills, MCP, ou Connector Hub — comprendre les trois paradigmes pour connecter les agents IA aux systèmes d'entreprise."
+description: "CLI + Skills, MCP ou une plateforme d’intégration gouvernée — comprendre les trois paradigmes permettant de connecter les agents IA aux systèmes d’entreprise."
 ---
 
 ## Le Signal de Mars 2026
@@ -121,42 +121,42 @@ La prolifération des copilotes IA personnels (OpenClaw, Claude Code, Cursor, Wi
 - **Portée de l'intégration** : Une seule personne, quelques plateformes, productivité personnelle
 - **Gouvernance** : Aucune nécessaire — ce sont mes données, mes actions
 
-### Hub de connecteurs d'entreprise
+### Plateforme d’intégration d’entreprise
 
-- **Utilisateur** : Organisation (équipes, départements, flux de travail transversaux)
-- **Portée des données** : Inter-départements, inter-systèmes, incluant les données sensibles et réglementées
-- **Authentification** : Permissions assignées par l'administrateur, principe du moindre privilège, coffre-fort d'identifiants
-- **Portée de l'intégration** : Orchestration multi-systèmes, automatisation des processus métier
-- **Gouvernance** : Journaux d'audit, RBAC, portes de confirmation, exigences de conformité
+- **Utilisateur** : Organisation (équipes, services, workflows transverses)
+- **Périmètre des données** : Interservices et intersystèmes, incluant des données sensibles et réglementées
+- **Authentification** : Autorisations attribuées par les administrateurs, principe du moindre privilège, stockage sécurisé des identifiants
+- **Périmètre de l’intégration** : Orchestration multisystème, automatisation des processus métier
+- **Gouvernance** : Journaux d’audit, RBAC, passerelles de confirmation, exigences de conformité
 
-Ces approches sont complémentaires, non concurrentes. À mesure que les copilotes personnels se multiplient, les entreprises auront besoin d'un hub central pour gouverner ce que ces copilotes peuvent consulter. Un utilisateur utilisant Claude Code avec `npx skills add dingtalk/dws` peut lire ses propres messages DingTalk. Mais quand un agent IA doit orchestrer entre DingTalk, l'ERP de l'entreprise et le système financier — avec des pistes d'audit, des contrôles de permissions et une confirmation humaine pour les opérations d'écriture — c'est un problème entièrement différent.
+Ces solutions sont complémentaires, et non concurrentes. À mesure que les copilotes personnels se généralisent, les entreprises auront besoin d’un hub central pour gouverner les ressources auxquelles ces copilotes peuvent accéder. Une personne utilisant Claude Code avec `npx skills add dingtalk/dws` peut lire ses propres messages DingTalk. Mais lorsqu’un agent IA doit orchestrer des opérations entre DingTalk, l’ERP de l’entreprise et le système financier — avec des pistes d’audit, des contrôles d’autorisation et une confirmation humaine pour les opérations d’écriture — il s’agit d’un problème entièrement différent.
 
-Les copilotes personnels banalisent les opérations simples sur une seule plateforme. Ce n'est pas le marché de FIM One. Le marché de FIM One est l'intégration d'entreprise inter-systèmes, nécessitant une gouvernance, inclusive des systèmes hérités, qu'aucun copilote personnel ne peut gérer.
+Les copilotes personnels banalisent les opérations simples sur une plateforme unique. Ce n’est pas le marché de FIM One. Le marché de FIM One est celui de l’intégration d’entreprise intersystèmes, nécessitant une gouvernance et intégrant les systèmes legacy, qu’aucun copilote personnel ne peut prendre en charge.
 
 ## Implications stratégiques pour FIM One
 
 | Priorité | Action | Justification |
 |----------|--------|-----------|
-| Rester le cap | Continuer à investir dans l'architecture Connector pour les systèmes legacy/API | C'est le fossé — CLI + Skills ne pourront jamais atteindre les systèmes legacy |
-| Adopter MCP | Le support MCP Server est déjà intégré (MCPServerMetaTool) — le maintenir en bon état | MCP est le pari sur un protocole structuré ; certaines plateformes l'adopteront éventuellement |
-| Surveiller Skills | Suivre l'écosystème `npx skills add` mais ne pas le poursuivre | Skills résolvent un problème de distribution que FIM One n'a pas |
-| Se différencier sur la gouvernance | Audit, RBAC, confirmation gates, gestion des credentials | Les copilotes personnels n'offriront jamais la gouvernance d'entreprise |
-| Positionner clairement | « Plateforme d'agent tout-en-un pour les entreprises Global × China » — pas « une autre façon d'appeler DingTalk » | Éviter de concurrencer sur les intégrations simples que les plateformes offrent gratuitement |
+| Garder le cap | Continuer à investir dans la couche de gouvernance (identifiants, confirmation gates, audit) autour des accès à l’API, aux bases de données et à MCP | CLI + Skills n’atteindront jamais les systèmes existants, et les accès intersystèmes nécessitent une gouvernance |
+| Adopter MCP | La prise en charge de MCP Server est déjà intégrée (MCPServerMetaTool) — continuons à la perfectionner | MCP est le protocole structuré sur lequel il faut miser ; certaines plateformes finiront par l’adopter |
+| Surveiller Skills | Suivre l’écosystème `npx skills add`, sans chercher à le reproduire | Skills résout un problème de distribution que FIM One ne rencontre pas |
+| Se différencier par la gouvernance | Audit, RBAC, confirmation gates, gestion des identifiants | Les copilotes personnels ne proposeront jamais une gouvernance d’entreprise |
+| Se positionner clairement | « Plateforme d’agents tout-en-un pour les entreprises Global × China » — et non « une autre façon d’appeler DingTalk » | Éviter de se battre sur des intégrations simples que les plateformes offrent gratuitement |
 
-Le pire mouvement stratégique serait de réagir à la vague CLI + Skills en construisant des adaptateurs Skills pour les plateformes qui en fournissent déjà les leurs. C'est une course vers le bas contre les vendeurs de plateformes eux-mêmes. La bonne réponse est de rester concentré sur les systèmes que ces vendeurs ne pourront jamais atteindre.
+La pire décision stratégique serait de réagir à la vague CLI + Skills en créant des adaptateurs Skills pour des plateformes qui fournissent déjà les leurs. Ce serait une course vers le bas face aux éditeurs de ces plateformes eux-mêmes. La bonne réponse consiste à rester concentré sur les systèmes que ces éditeurs n’atteindront jamais.
 
 ## La relation entre CLI, Skills et MCP
 
-Ces trois concepts opèrent à différentes couches et sont souvent confondus dans les discussions. Une distinction précise :
+Ces trois concepts opèrent à des niveaux différents et sont souvent confondus dans les discussions. Voici une distinction précise :
 
-- **CLI** est une interface utilisateur — commandes shell, E/S texte, un format d'interaction avec un système
-- **Skills** est un mécanisme de distribution — fichiers markdown qui enseignent à l'IA comment invoquer des commandes CLI, un format de packaging pour les intégrations d'outils IA
-- **MCP** est un protocole — JSON-RPC, découverte et invocation structurées, une norme d'interopérabilité pour la communication IA-outil
+- **CLI** est une interface utilisateur — des commandes shell, des entrées et sorties textuelles, un format d’interaction avec un système
+- **Skills** est un mécanisme de distribution — des fichiers Markdown qui apprennent à l’IA à invoquer des commandes CLI, un format de packaging pour les intégrations d’outils d’IA
+- **MCP** est un protocole — JSON-RPC, découverte et invocation structurées, une norme d’interopérabilité pour la communication entre l’IA et les outils
 
-À long terme, ils ne sont pas des substituts les uns aux autres. Un CLI est la façon dont un humain (ou un sous-processus IA) interagit avec un outil. Un fichier Skill est la façon dont ce CLI est distribué dans les IDEs IA. MCP est la façon dont une intégration structurée, typée par schéma et composable fonctionne au niveau du protocole.
+À long terme, ils ne se substituent pas les uns aux autres. Une CLI est le moyen par lequel un humain (ou un sous-processus d’IA) interagit avec un outil. Un fichier Skill est le moyen de distribuer cette CLI dans les IDE d’IA. MCP permet de mettre en œuvre une intégration structurée, typée par schéma et composable au niveau du protocole.
 
-Cependant, à court terme (2026), CLI + Skills gagne en vitesse d'adoption car c'est moins cher à implémenter que MCP. Une plateforme avec un CLI existant peut livrer un fichier Skills en un jour. Implémenter un serveur MCP prend des semaines et nécessite de comprendre la spécification du protocole, les couches de transport et la négociation des capacités.
+Cependant, à court terme (en 2026), CLI + Skills s’impose par sa vitesse d’adoption, car cette solution est moins coûteuse à implémenter que MCP. Une plateforme disposant déjà d’une CLI peut fournir un fichier Skills en une journée. La mise en œuvre d’un serveur MCP prend plusieurs semaines et nécessite de comprendre la spécification du protocole, les couches de transport et la négociation des capacités.
 
-La convergence probable : les plateformes qui livrent des CLIs aujourd'hui pourraient les envelopper en serveurs MCP demain. Le transport stdio de MCP lance déjà des processus CLI — l'écart entre « CLI invoqué par Skills » et « CLI enveloppé en serveur MCP » est faible. Mais cette convergence n'est pas garantie. Si l'écosystème Skills croît assez vite et que les IDEs IA se standardisent autour de lui, MCP pourrait rester un protocole pour les outils de développement plutôt qu'une norme pour les outils d'entreprise.
+La convergence la plus probable est la suivante : les plateformes qui fournissent aujourd’hui des CLI pourront les encapsuler sous forme de serveurs MCP demain. Le transport stdio de MCP lance déjà des processus CLI — l’écart entre une « CLI invoquée par Skills » et une « CLI encapsulée sous forme de serveur MCP » est faible. Cette convergence n’est toutefois pas garantie. Si l’écosystème Skills se développe suffisamment rapidement et que les IDE d’IA l’adoptent comme standard, MCP pourrait rester un protocole destiné aux outils de développement plutôt que devenir une norme pour les outils d’entreprise.
 
-Pour FIM One, le message est clair : investir dans la couche protocole (MCP) et la couche gouvernance (architecture Connector), pas dans la couche distribution (Skills). La distribution est un problème résolu pour les fournisseurs de plateforme. Le protocole et la gouvernance sont là où un hub crée une valeur durable.
+Pour FIM One, la conclusion est claire : investissez dans la couche protocolaire (MCP) et la couche de gouvernance (identifiants, confirmation gates, audit), pas dans la couche de distribution (Skills). La distribution est un problème déjà résolu pour les fournisseurs de plateformes. C’est au niveau du protocole et de la gouvernance qu’un hub crée une valeur durable.

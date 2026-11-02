@@ -153,7 +153,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - Three-tier resource visibility (personal/org/global) for agents, connectors, knowledge bases, MCP servers
 - Publish/unpublish API for all resource types; owner delegation for published agents
 - Admin set-visibility endpoint (replaces clone-to-global); unified `build_visibility_filter()` query helper
-- Database Connectors (Phase 1-3): direct SQL access to PG/MySQL/Oracle/SQL Server + Chinese legacy DBs; schema introspection, AI annotation, read-only query execution, encrypted credentials, 3 tools per connector (`list_tables`, `describe_table`, `query`)
+- Database Connectors (Phase 1-3): direct SQL access to PG/MySQL + Chinese legacy DBs; schema introspection, AI annotation, read-only query execution, encrypted credentials, 3 tools per connector (`list_tables`, `describe_table`, `query`)
 - **Evaluation Center**: quantitative agent quality benchmarking — test dataset CRUD (prompt + expected behavior + assertions), eval runs (parallel execution + LLM grader + per-case pass/fail/latency/token results), results viewer with auto-polling; migration `r8t0v2x4z567`
 - Three model roles (General/Fast/Reasoning) with per-tier env config isolation; fast model no longer inherits main model settings
 - `StepOutput` dataclass replacing plain string step results for structured data and artifact passing
@@ -167,7 +167,7 @@ Tracked bugs that are reproducible in production but not yet fixed. Each entry n
 - [x] ~~**Standalone KB Conversations**~~: `kb_ids` field on conversations for direct KB chat without agent binding
 
 ### v0.8 (2026-03-20) — Connector Declarative Config + Progressive Disclosure
-- [x] **Database connectors**: direct SQL access (PostgreSQL, MySQL, Oracle) *(shipped in v0.7.x — Phase 1-3)*
+- [x] **Database connectors**: direct SQL access (PostgreSQL, MySQL) *(shipped in v0.7.x — Phase 1-3)*
 - [x] **RBAC**: per-user/role connector access control *(shipped in v0.7.x — org system + three-tier visibility)*
 - [x] **Connector credential encryption + per-user override**: `connector_credentials` table, Fernet encryption via `CREDENTIAL_ENCRYPTION_KEY`, `allow_fallback` flag, `GET/PUT/DELETE /my-credentials` endpoints, per-user credential resolution in chat tool loading
 - [x] **Publish review UI**: Org-level publish review system — review toggle per org, ReviewsSheet with approve/reject workflow, status badges on resource cards, review notice in publish dialog, resubmit for rejected resources
