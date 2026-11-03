@@ -12,6 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Linking a sign-in provider requires a full sign-in.** A sign-in that has not finished every step, or an API key, can no longer link a new sign-in provider to the account.
 - **A shell command that times out on Windows is stopped, not left running.** Only the `cmd.exe` wrapper was ended, so the command it started kept running in the background; the whole process tree is now ended, as on Linux and macOS.
 - **The API reference lists only the public API again.** After the FastAPI upgrade, `/openapi.json` and `/docs` published every internal and admin endpoint instead of the documented public endpoints.
 - **Streaming tool calls from endpoints that omit the call index no longer fail or merge.** Gemini's OpenAI-compatible endpoint sends parallel tool calls without `index`, which crashed the stream with a `TypeError` or overwrote one call with the next.

@@ -11,8 +11,9 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -27,7 +28,6 @@ from fim_one.web.auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     create_access_token,
     create_refresh_token,
-    decode_token,
     get_current_user,
     hash_refresh_token,
 )
@@ -62,12 +62,57 @@ async def list_providers() -> dict[str, Any]:
     return {"providers": get_configured_providers()}
 
 
+async def _bind_user_from_access_token(
+    request: Request, token: str, db: AsyncSession
+) -> str | None:
+    """Resolve the user behind a raw ``token`` on the bind path, or ``None``.
+
+    Linking a sign-in provider is an account-level decision, so only a fully
+    signed-in session may start it. The token goes through the same checks as
+    any authenticated request (:func:`get_current_user`): it must be a genuine
+    access token — not a refresh token, ticket, OAuth state or the token handed
+    out between the password step and the second factor — for an active user,
+    issued after the last force-logout. API keys are refused outright: a key is
+    a delegated credential and must never become an interactive login.
+    """
+    if token.startswith("fim_"):
+        return None
+    try:
+        user = await get_current_user(
+            request,
+            credentials=HTTPAuthorizationCredentials(scheme="Bearer", credentials=token),
+            db=db,
+        )
+    except HTTPException:
+        return None
+    return str(user.id)
+
+
+async def _require_session_user(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> User:
+    """Like :func:`get_current_user`, but refuse API-key authentication.
+
+    Used where the caller is about to attach a new sign-in method to the
+    account: a delegated API key must not be able to turn itself into a full
+    interactive session that way.
+    """
+    auth_header = request.headers.get("authorization", "")
+    scheme, _, credential = auth_header.partition(" ")
+    if scheme.lower() == "bearer" and credential.strip().startswith("fim_"):
+        raise AppError("session_required", status_code=403)
+    return current_user
+
+
 @router.get("/{provider_name}/authorize")
 async def authorize(
     provider_name: str,
+    request: Request,
     action: str | None = None,
     token: str | None = None,
     ticket: str | None = None,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> RedirectResponse:
     """Redirect user to OAuth provider for authentication.
 
@@ -102,15 +147,13 @@ async def authorize(
         elif token:
             # Deprecated: raw JWT in query param
             logger.warning("OAuth bind using deprecated raw JWT token param — use ticket instead")
-            try:
-                payload = decode_token(token)
-            except HTTPException:
+            user_id = await _bind_user_from_access_token(request, token, db)
+            if user_id is None:
                 frontend_url = _get_frontend_url()
                 return RedirectResponse(
                     url=f"{frontend_url}/settings?tab=account&bind_error=invalid_token",
                     status_code=302,
                 )
-            user_id = payload.get("sub")
         else:
             raise AppError("oauth_bind_credentials_required", status_code=400)
 
@@ -203,15 +246,19 @@ async def _handle_bind(
         select(User).where(User.id == state_entry["sub"])
     )
     user = user_result.scalar_one_or_none()
-    if user is None:
-        logger.warning("Bind flow: user_id %s not found", state_entry["sub"])
+    if user is None or not user.is_active:
+        logger.warning("Bind flow: user_id %s not found or inactive", state_entry["sub"])
         return RedirectResponse(
             url=f"{settings_url}&bind_error=user_not_found", status_code=302
         )
 
     # Email matching: only enforced when BOTH sides have an email.
     # Some providers (e.g. Feishu personal accounts) return an empty email even
-    # when the user has a login email — we rely on ticket-based auth instead.
+    # when the user has a login email. Binding such an identity is safe only
+    # because a bind state can be minted solely from a fully signed-in session
+    # (a bind ticket from /bind-ticket, or a genuine access token on the
+    # deprecated ``token`` path — see ``_bind_user_from_access_token``); the
+    # session itself is the proof that the account holder asked for the link.
     oauth_email = user_info.email
     if oauth_email and user.email:
         if oauth_email.lower() != user.email.lower():
@@ -449,7 +496,7 @@ async def _handle_login(
 
 @router.post("/bind-ticket")
 async def issue_bind_ticket(
-    current_user: User = Depends(get_current_user),  # noqa: B008
+    current_user: User = Depends(_require_session_user),  # noqa: B008
 ) -> dict[str, str]:
     """Generate a short-lived JWT bind ticket.
 

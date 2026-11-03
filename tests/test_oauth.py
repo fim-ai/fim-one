@@ -20,6 +20,7 @@ Extended (2026-05 audit, Track C2) to close the OAuth test blind spots:
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,23 +29,30 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 import pytest_asyncio
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fim_one.db.models  # noqa: F401 — register all models with metadata
 from fim_one.db.base import Base
-from fim_one.db.models import SystemSetting, User, UserOAuthBinding
+from fim_one.db.models import ApiKey, SystemSetting, User, UserOAuthBinding
 from fim_one.web.api.admin import (
     SETTING_REGISTRATION_ENABLED,
     SETTING_REGISTRATION_MODE,
 )
+from fim_one.web.api.auth import _create_2fa_temp_token
 from fim_one.web.api.oauth import _handle_bind, _handle_login, issue_bind_ticket
 from fim_one.web.auth import (
+    create_access_token,
+    create_bind_ticket,
     create_oauth_state,
+    create_refresh_token,
+    create_sse_ticket,
     verify_bind_ticket,
     verify_oauth_state,
 )
+from fim_one.web.exceptions import AppError
 from fim_one.web.oauth import (
     OAuthProvider,
     OAuthUserInfo,
@@ -888,3 +896,260 @@ class TestBindTicketIssuance:
         result = await issue_bind_ticket(current_user=user)
         # A bind ticket must NOT validate as an oauth_state (distinct token types).
         assert verify_oauth_state(result["ticket"]) is None
+
+
+# ===========================================================================
+# Bind may only start from a fully signed-in session
+# ===========================================================================
+
+
+def _bind_app(session: AsyncSession) -> FastAPI:
+    """Minimal app with the OAuth router and the test session injected."""
+    from fim_one.db import get_session
+    from fim_one.web.api.oauth import router
+
+    app = FastAPI()
+
+    @app.exception_handler(AppError)
+    async def _app_error(_req: object, exc: AppError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "error_code": exc.error_code},
+        )
+
+    app.include_router(router)
+
+    async def _override() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    app.dependency_overrides[get_session] = _override
+    return app
+
+
+async def _authorize_bind(session: AsyncSession, **params: str) -> httpx.Response:
+    app = _bind_app(session)
+    with patch(
+        "fim_one.web.api.oauth.get_provider", return_value=_make_provider("github")
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://api.test"
+        ) as client:
+            return await client.get(
+                "/api/auth/oauth/github/authorize",
+                params={"action": "bind", **params},
+                follow_redirects=False,
+            )
+
+
+def _state_from_provider_redirect(resp: httpx.Response) -> dict[str, object] | None:
+    """Return the verified OAuth state the server put on the provider redirect."""
+    assert resp.status_code == 302
+    state = _query_param(resp.headers["location"], "state")
+    return verify_oauth_state(state) if state else None
+
+
+async def _seed_api_key(session: AsyncSession, user: User, raw_key: str) -> None:
+    session.add(
+        ApiKey(
+            id=str(uuid.uuid4()),
+            key_hash=hashlib.sha256(raw_key.encode()).hexdigest(),
+            user_id=user.id,
+            name="k",
+            key_prefix=raw_key[:8],
+            is_active=True,
+            total_requests=0,
+            scopes=None,
+        )
+    )
+    await session.commit()
+
+
+class TestBindRequiresFullSession:
+    """Linking a sign-in provider needs a genuine signed-in session.
+
+    The token handed out between the password step and the second factor (and
+    every other non-access token signed with the same key) must not be able to
+    start a bind; otherwise a password alone is enough to attach a new sign-in
+    method and skip the second factor on every later login.
+    """
+
+    async def test_2fa_temp_token_cannot_start_bind(self, session: AsyncSession) -> None:
+        user = await _seed_user(session, "admin@example.com")
+        user.is_admin = True
+        user.totp_enabled = True
+        await session.commit()
+
+        resp = await _authorize_bind(session, token=_create_2fa_temp_token(user.id))
+
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert _query_param(location, "bind_error") == "invalid_token"
+        # No provider redirect, so no bind state was ever signed.
+        assert _query_param(location, "state") is None
+
+    @pytest.mark.parametrize("kind", ["refresh", "sse_ticket", "bind_ticket", "oauth_state"])
+    async def test_non_access_tokens_cannot_start_bind_via_token(
+        self, session: AsyncSession, kind: str
+    ) -> None:
+        user = await _seed_user(session, f"{kind}@example.com")
+        token = {
+            "refresh": lambda: create_refresh_token(user.id, user.email or ""),
+            "sse_ticket": lambda: create_sse_ticket(user.id),
+            "bind_ticket": lambda: create_bind_ticket(user.id),
+            "oauth_state": lambda: create_oauth_state("bind", user.id),
+        }[kind]()
+
+        resp = await _authorize_bind(session, token=token)
+
+        assert _query_param(resp.headers["location"], "bind_error") == "invalid_token"
+
+    async def test_api_key_cannot_start_bind_via_token(self, session: AsyncSession) -> None:
+        user = await _seed_user(session, "key-owner@example.com")
+        await _seed_api_key(session, user, "fim_bind_probe_key")
+
+        resp = await _authorize_bind(session, token="fim_bind_probe_key")
+
+        assert _query_param(resp.headers["location"], "bind_error") == "invalid_token"
+
+    async def test_access_token_of_disabled_user_cannot_start_bind(
+        self, session: AsyncSession
+    ) -> None:
+        user = await _seed_user(session, "disabled@example.com")
+        user.is_active = False
+        await session.commit()
+
+        resp = await _authorize_bind(
+            session, token=create_access_token(user.id, user.email or "")
+        )
+
+        assert _query_param(resp.headers["location"], "bind_error") == "invalid_token"
+
+    async def test_genuine_access_token_still_starts_bind(self, session: AsyncSession) -> None:
+        user = await _seed_user(session, "legit@example.com")
+
+        resp = await _authorize_bind(
+            session, token=create_access_token(user.id, user.email or "")
+        )
+
+        state = _state_from_provider_redirect(resp)
+        assert state is not None
+        assert state["action"] == "bind"
+        assert state["sub"] == user.id
+
+    async def test_bind_ticket_still_starts_bind(self, session: AsyncSession) -> None:
+        user = await _seed_user(session, "ticket@example.com")
+
+        resp = await _authorize_bind(session, ticket=create_bind_ticket(user.id))
+
+        state = _state_from_provider_redirect(resp)
+        assert state is not None
+        assert state["sub"] == user.id
+
+    async def test_2fa_temp_token_is_not_a_bind_ticket(self, session: AsyncSession) -> None:
+        user = await _seed_user(session, "t2@example.com")
+
+        resp = await _authorize_bind(session, ticket=_create_2fa_temp_token(user.id))
+
+        assert _query_param(resp.headers["location"], "bind_error") == "invalid_ticket"
+
+    async def test_login_authorize_needs_no_token(self, session: AsyncSession) -> None:
+        app = _bind_app(session)
+        with patch(
+            "fim_one.web.api.oauth.get_provider", return_value=_make_provider("github")
+        ):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://api.test"
+            ) as client:
+                resp = await client.get(
+                    "/api/auth/oauth/github/authorize", follow_redirects=False
+                )
+        state = _state_from_provider_redirect(resp)
+        assert state is not None
+        assert state["action"] == "login"
+        assert "sub" not in state
+
+    async def test_api_key_cannot_issue_bind_ticket(self, session: AsyncSession) -> None:
+        user = await _seed_user(session, "ticket-key@example.com")
+        await _seed_api_key(session, user, "fim_ticket_probe_key")
+        app = _bind_app(session)
+        # API-key auth records usage stats on its own session; stub it out.
+        with patch("fim_one.web.auth.create_session", return_value=AsyncMock()):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://api.test"
+            ) as client:
+                resp = await client.post(
+                    "/api/auth/oauth/bind-ticket",
+                    headers={"Authorization": "Bearer fim_ticket_probe_key"},
+                )
+        assert resp.status_code == 403
+        assert resp.json()["error_code"] == "session_required"
+
+    async def test_2fa_temp_token_cannot_issue_bind_ticket(
+        self, session: AsyncSession
+    ) -> None:
+        user = await _seed_user(session, "ticket-2fa@example.com")
+        app = _bind_app(session)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://api.test"
+        ) as client:
+            resp = await client.post(
+                "/api/auth/oauth/bind-ticket",
+                headers={"Authorization": f"Bearer {_create_2fa_temp_token(user.id)}"},
+            )
+        assert resp.status_code == 401
+
+    async def test_signed_in_session_can_issue_bind_ticket(
+        self, session: AsyncSession
+    ) -> None:
+        user = await _seed_user(session, "ticket-jwt@example.com")
+        app = _bind_app(session)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://api.test"
+        ) as client:
+            resp = await client.post(
+                "/api/auth/oauth/bind-ticket",
+                headers={
+                    "Authorization": f"Bearer {create_access_token(user.id, user.email or '')}"
+                },
+            )
+        assert resp.status_code == 200
+        assert verify_bind_ticket(resp.json()["ticket"]) == user.id
+
+    async def test_bind_state_for_disabled_user_rejected(self, session: AsyncSession) -> None:
+        user = await _seed_user(session, "gone@example.com")
+        user.is_active = False
+        await session.commit()
+        info = OAuthUserInfo(
+            provider="github",
+            id="gh-disabled",
+            username="x",
+            email=None,
+            display_name="X",
+        )
+        resp = await _handle_bind(
+            session, _bind_state(user.id), info, "github", "http://frontend"
+        )
+        assert _query_param(_redirect_location(resp), "bind_error") == "user_not_found"
+        assert await _binding_for(session, "github", "gh-disabled") is None
+
+    async def test_signed_in_user_can_still_bind_identity_without_email(
+        self, session: AsyncSession
+    ) -> None:
+        # Feishu personal accounts (and GitHub accounts with no readable
+        # address) report no email; binding one from a real session stays
+        # supported.
+        user = await _seed_user(session, "feishu-user@example.com")
+        info = OAuthUserInfo(
+            provider="feishu",
+            id="fs-no-email",
+            username="x",
+            email=None,
+            display_name="FS",
+        )
+        resp = await _handle_bind(
+            session, _bind_state(user.id), info, "feishu", "http://frontend"
+        )
+        assert _query_param(_redirect_location(resp), "bind_success") == "feishu"
+        binding = await _binding_for(session, "feishu", "fs-no-email")
+        assert binding is not None
+        assert binding.user_id == user.id

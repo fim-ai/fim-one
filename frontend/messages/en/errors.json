@@ -90,6 +90,7 @@
   "mcp_server_not_found": "MCP server not found.",
 
   "session_expired": "Session expired, please log in again.",
+  "session_required": "This action requires signing in to your account; API keys cannot be used.",
 
   "smtp_not_configured": "Email service is not configured. Please contact the administrator.",
   "email_verification_required": "Email verification is required.",
