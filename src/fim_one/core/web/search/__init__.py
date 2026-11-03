@@ -8,6 +8,7 @@ from .base import BaseWebSearch, SearchResult
 from .brave import BraveSearch
 from .exa import ExaSearch
 from .jina import JinaSearch
+from .keenable import KeenableSearch
 from .tavily import TavilySearch
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "TavilySearch",
     "BraveSearch",
     "ExaSearch",
+    "KeenableSearch",
     "get_web_searcher",
     "format_results",
 ]
@@ -26,9 +28,9 @@ def get_web_searcher(*, timeout: int = 30) -> BaseWebSearch:
     """Return the configured web search backend.
 
     Selection order:
-    1. ``WEB_SEARCH_PROVIDER`` env var (jina / tavily / brave / exa)
+    1. ``WEB_SEARCH_PROVIDER`` env var (jina / tavily / brave / exa / keenable)
     2. Auto-detect: use Tavily if TAVILY_API_KEY set, Brave if BRAVE_API_KEY set,
-       Exa if EXA_API_KEY set
+       Exa if EXA_API_KEY set, Keenable if KEENABLE_API_KEY set
     3. Default: Jina (works without an API key, rate-limited)
     """
     provider = os.environ.get("WEB_SEARCH_PROVIDER", "").lower()
@@ -39,6 +41,9 @@ def get_web_searcher(*, timeout: int = 30) -> BaseWebSearch:
         return BraveSearch(timeout=timeout)
     if provider == "exa" or (not provider and os.environ.get("EXA_API_KEY")):
         return ExaSearch(timeout=timeout)
+    if provider == "keenable" or (not provider and os.environ.get("KEENABLE_API_KEY")):
+        # Keenable also works keyless, so WEB_SEARCH_PROVIDER=keenable alone is enough.
+        return KeenableSearch(timeout=timeout)
     return JinaSearch(timeout=timeout)
 
 

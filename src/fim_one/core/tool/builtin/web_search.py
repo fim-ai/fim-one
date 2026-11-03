@@ -1,6 +1,6 @@
 """Built-in tool for searching the web.
 
-Delegates to the configured BaseWebSearch backend (Jina, Tavily, or Brave).
+Delegates to the configured BaseWebSearch backend (Jina, Tavily, Brave, Exa, or Keenable).
 Backend selection is controlled by the WEB_SEARCH_PROVIDER environment variable.
 """
 
@@ -20,7 +20,8 @@ _DEFAULT_TIMEOUT: int = 30
 class WebSearchTool(BaseTool):
     """Search the web and return results as Markdown.
 
-    Supports multiple backends: Jina (default, no key needed), Tavily, and Brave.
+    Supports multiple backends: Jina (default, no key needed), Tavily, Brave, Exa, and
+    Keenable (no key needed).
     Backend is selected via the WEB_SEARCH_PROVIDER environment variable.
     """
 

@@ -10,13 +10,14 @@ import pytest
 from fim_one.core.reranker.base import BaseReranker
 from fim_one.core.reranker.cohere import CohereReranker
 from fim_one.core.reranker.openai import OpenAIReranker, _cosine
-from fim_one.core.web.fetch import HttpxFetch, JinaFetch, get_web_fetcher
+from fim_one.core.web.fetch import HttpxFetch, JinaFetch, KeenableFetch, get_web_fetcher
 from fim_one.core.web.fetch.base import BaseWebFetch
 from fim_one.core.web.fetch.httpx_fetch import _strip_html
 from fim_one.core.web.search import (
     BraveSearch,
     ExaSearch,
     JinaSearch,
+    KeenableSearch,
     SearchResult,
     TavilySearch,
     format_results,
@@ -154,6 +155,7 @@ def test_get_web_searcher_default_is_jina(monkeypatch):
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     monkeypatch.delenv("BRAVE_API_KEY", raising=False)
     monkeypatch.delenv("EXA_API_KEY", raising=False)
+    monkeypatch.delenv("KEENABLE_API_KEY", raising=False)
     searcher = get_web_searcher()
     assert isinstance(searcher, JinaSearch)
 
@@ -478,3 +480,88 @@ def test_get_web_searcher_skips_exa_when_key_unset(monkeypatch):
     monkeypatch.delenv("EXA_API_KEY", raising=False)
     searcher = get_web_searcher()
     assert not isinstance(searcher, ExaSearch)
+
+
+# ---------------------------------------------------------------------------
+# Keenable
+# ---------------------------------------------------------------------------
+
+
+def _mock_httpx_client(payload: dict) -> tuple[MagicMock, MagicMock]:
+    resp = MagicMock()
+    resp.json.return_value = payload
+    resp.raise_for_status = MagicMock()
+    client = MagicMock()
+    client.post = AsyncMock(return_value=resp)
+    client.get = AsyncMock(return_value=resp)
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=client)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    return cm, client
+
+
+def test_get_web_searcher_keenable_keyless_via_env_var(monkeypatch):
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "keenable")
+    monkeypatch.delenv("KEENABLE_API_KEY", raising=False)
+    assert isinstance(get_web_searcher(), KeenableSearch)
+
+
+def test_get_web_searcher_keenable_auto_detect(monkeypatch):
+    for var in ("WEB_SEARCH_PROVIDER", "TAVILY_API_KEY", "BRAVE_API_KEY", "EXA_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("KEENABLE_API_KEY", "kn-key")
+    assert isinstance(get_web_searcher(), KeenableSearch)
+
+
+def test_get_web_fetcher_keenable_explicit(monkeypatch):
+    monkeypatch.setenv("WEB_FETCH_PROVIDER", "keenable")
+    assert isinstance(get_web_fetcher(), KeenableFetch)
+
+
+def test_keenable_classes_conform_to_protocols():
+    assert isinstance(KeenableSearch(), BaseWebSearch)
+    assert isinstance(KeenableFetch(), BaseWebFetch)
+
+
+@pytest.mark.asyncio
+async def test_keenable_search_keyless_uses_public_endpoint(monkeypatch):
+    monkeypatch.delenv("KEENABLE_API_KEY", raising=False)
+    monkeypatch.delenv("KEENABLE_SEARCH_SITE", raising=False)
+    cm, client = _mock_httpx_client({"results": [
+        {"title": "A", "url": "https://a.example", "description": "desc a"},
+        {"title": "no url"},
+        {"title": "B", "url": "https://b.example", "snippet": "snip b"},
+    ]})
+    with patch("fim_one.core.web.search.keenable.httpx.AsyncClient", return_value=cm):
+        results = await KeenableSearch().search("q", num_results=5)
+    args, kwargs = client.post.call_args
+    assert args[0] == "https://api.keenable.ai/v1/search/public"
+    assert kwargs["headers"] == {"X-Keenable-Title": "fim-one"}
+    assert kwargs["json"] == {"query": "q", "max_results": 5}
+    assert [r.url for r in results] == ["https://a.example", "https://b.example"]
+    assert results[1].snippet == "snip b"
+
+
+@pytest.mark.asyncio
+async def test_keenable_search_keyed_with_site(monkeypatch):
+    cm, client = _mock_httpx_client({"results": []})
+    with patch("fim_one.core.web.search.keenable.httpx.AsyncClient", return_value=cm):
+        await KeenableSearch(api_key="kn-secret", site="docs.python.org").search("q", num_results=3)
+    args, kwargs = client.post.call_args
+    assert args[0] == "https://api.keenable.ai/v1/search"
+    assert kwargs["headers"] == {"X-API-Key": "kn-secret"}
+    assert kwargs["json"] == {"query": "q", "max_results": 3, "site": "docs.python.org"}
+
+
+@pytest.mark.asyncio
+async def test_keenable_fetch_returns_markdown(monkeypatch):
+    monkeypatch.delenv("KEENABLE_API_KEY", raising=False)
+    cm, client = _mock_httpx_client(
+        {"url": "https://example.com/", "title": "Example", "content": "Body text"}
+    )
+    with patch("fim_one.core.web.fetch.keenable.httpx.AsyncClient", return_value=cm):
+        text = await KeenableFetch().fetch("https://example.com")
+    args, kwargs = client.get.call_args
+    assert args[0] == "https://api.keenable.ai/v1/fetch/public"
+    assert kwargs["params"] == {"url": "https://example.com"}
+    assert text == "# Example\n\nBody text"

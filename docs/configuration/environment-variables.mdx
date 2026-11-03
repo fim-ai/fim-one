@@ -254,8 +254,9 @@ Comma-separated names of guardrails that inspect the *content* of input or outpu
 | `TAVILY_API_KEY` | No | — | Tavily Search API key. Required when `WEB_SEARCH_PROVIDER=tavily`; also used by auto-detect if the provider is unset |
 | `BRAVE_API_KEY` | No | — | Brave Search API key. Required when `WEB_SEARCH_PROVIDER=brave`; also used by auto-detect if the provider is unset |
 | `EXA_API_KEY` | No | — | Exa Search API key. Required when `WEB_SEARCH_PROVIDER=exa`; also used by auto-detect if the provider is unset. See [Exa](/integrations/exa). Get yours at [exa.ai](https://exa.ai/) |
-| `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` (default) / `tavily` / `brave` / `exa`. Prefer setting this explicitly when using a non-default provider |
-| `WEB_FETCH_PROVIDER` | No | `jina` (if key set, else `httpx`) | Fetch provider: `jina` (uses Jina Reader API) / `httpx` (direct HTTP request, no API key needed) |
+| `KEENABLE_API_KEY` | No | — | Keenable API key (optional). Keenable works without a key when `WEB_SEARCH_PROVIDER=keenable` (keyless public endpoint, rate-limited per IP); a key raises limits and enables auto-detect. Also used by `WEB_FETCH_PROVIDER=keenable`. Get yours at [keenable.ai](https://keenable.ai/) |
+| `WEB_SEARCH_PROVIDER` | No | `jina` | Search provider selector: `jina` (default) / `tavily` / `brave` / `exa` / `keenable`. Prefer setting this explicitly when using a non-default provider |
+| `WEB_FETCH_PROVIDER` | No | `jina` (if key set, else `httpx`) | Fetch provider: `jina` (uses Jina Reader API) / `keenable` (Keenable fetch, clean Markdown, no API key needed) / `httpx` (direct HTTP request, no API key needed) |
 
 > **Quick start tip**: Setting just `JINA_API_KEY` enables the default web search stack, plus web fetch, embedding, and reranking — one key, four services. Switch search to Tavily, Brave, or Exa with `WEB_SEARCH_PROVIDER` and the matching API key.
 
