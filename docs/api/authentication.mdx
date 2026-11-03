@@ -79,15 +79,17 @@ print(response.json())
 
 Scopes limit what an API key can access. If no scopes are set, the key has full access.
 
+A key with scopes can call only the endpoints its scopes allow. Every other endpoint answers `403`, including API key management under `/api/me/api-keys`, which needs a key without scopes or a signed-in session. A key can never create a key with broader scopes than its own.
+
 Available scopes:
 
 | Scope | Allows |
 |-------|--------|
-| `chat` | POST /api/react, POST /api/dag, POST /api/chat/inject |
+| `chat` | POST /api/react, POST /api/dag, POST /api/auto, POST /api/chat/ticket, POST /api/chat/inject, POST /api/chat/inject/recall, POST /api/chat/resume, and GET/POST /api/conversations, GET/PATCH/DELETE /api/conversations/`{id}` |
 | `agents` | GET /api/agents, GET /api/agents/`{id}` |
 | `kb` | GET /api/knowledge-bases, POST /api/knowledge-bases/`{id}`/retrieve |
-| `connectors` | Connector CRUD (connector_specific endpoints) |
-| `admin` | Administrative endpoints |
+| `connectors` | Everything under /api/connectors |
+| `admin` | Everything under /api/admin (the key's owner must be an administrator) |
 
 Create a key with scopes:
 

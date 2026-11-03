@@ -11,11 +11,12 @@ import math
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
+from fim_one.web.api_key_scopes import check_delegation
 from fim_one.web.auth import get_current_user
 from fim_one.web.exceptions import AppError
 from fim_one.db.models import (
@@ -119,10 +120,15 @@ async def list_my_api_keys(
 @router.post("/api-keys", response_model=UserApiKeyCreateResponse, status_code=201)
 async def create_my_api_key(
     body: UserApiKeyCreateRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> UserApiKeyCreateResponse:
     """Create a new personal API key. The full key is returned only once."""
+    # Defence in depth: the route policy already keeps scoped keys away from
+    # key management, but a key must never be able to mint a broader one
+    # (omitting ``scopes`` would create an unrestricted key).
+    check_delegation(getattr(request.state, "api_key_scopes", None), body.scopes)
     raw_key = _generate_api_key()
     key_prefix = raw_key[:8]
     key_hash = _hash_key(raw_key)

@@ -27,6 +27,7 @@ from fim_one.db import create_session, get_session
 
 from fim_one.db.models.api_key import ApiKey
 from fim_one.db.models.user import User
+from fim_one.web.api_key_scopes import enforce_api_key_scopes, parse_scopes
 
 logger = logging.getLogger(__name__)
 
@@ -353,8 +354,7 @@ async def _authenticate_api_key(
         await stats_session.close()
 
     # None = unrestricted key
-    scopes = set(api_key.scopes.split(",")) if api_key.scopes else None
-    return user, scopes
+    return user, parse_scopes(api_key.scopes)
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +376,9 @@ async def get_current_user(
         # rather than as a transient attribute on the ORM User, which could leak
         # across auth contexts via the identity map or a future user cache.
         request.state.api_key_scopes = scopes
+        # Central scope enforcement: a scoped key reaches only the routes its
+        # scopes grant (default deny — see fim_one.web.api_key_scopes).
+        enforce_api_key_scopes(request, scopes)
         return api_user
 
     # JWT authentication
@@ -448,6 +451,7 @@ async def get_current_user_optional(
         except HTTPException:
             return None
         request.state.api_key_scopes = scopes
+        enforce_api_key_scopes(request, scopes)
         return api_user
 
     # JWT authentication

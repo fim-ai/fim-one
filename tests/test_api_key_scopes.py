@@ -37,9 +37,13 @@ def _creds(token: str) -> HTTPAuthorizationCredentials:
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
 
-def _request() -> Request:
-    """Bare HTTP request with a working ``.state`` for direct dependency calls."""
-    return Request(scope={"type": "http"})
+def _request(method: str = "POST", path: str = "/api/react") -> Request:
+    """HTTP request with a working ``.state`` for direct dependency calls.
+
+    Carries a method and path because scoped keys are checked against the
+    route they call; the default is a route the ``chat`` scope grants.
+    """
+    return Request(scope={"type": "http", "method": method, "path": path})
 
 
 @pytest_asyncio.fixture()
@@ -135,7 +139,7 @@ async def test_unrestricted_key_returns_none_scopes(db_env: None) -> None:
 async def test_scopes_live_on_request_state_per_request(db_env: None) -> None:
     """Two requests reusing the same User must not share scope state (#22)."""
     raw_key = "fim_state_key"
-    uid = await _seed_key(raw_key, scopes="chat:read")
+    uid = await _seed_key(raw_key, scopes="chat")
 
     agen = get_session()
     db = await agen.__anext__()
@@ -144,7 +148,7 @@ async def test_scopes_live_on_request_state_per_request(db_env: None) -> None:
         req_api = _request()
         user = await get_current_user(req_api, credentials=_creds(raw_key), db=db)
         assert user.id == uid
-        assert req_api.state.api_key_scopes == {"chat:read"}
+        assert req_api.state.api_key_scopes == {"chat"}
 
         # Request 2: JWT auth for the same user → unrestricted, and request 1's
         # scope set must not bleed over in either direction.
@@ -153,7 +157,7 @@ async def test_scopes_live_on_request_state_per_request(db_env: None) -> None:
         user2 = await get_current_user(req_jwt, credentials=_creds(token), db=db)
         assert user2.id == uid
         assert req_jwt.state.api_key_scopes is None
-        assert req_api.state.api_key_scopes == {"chat:read"}
+        assert req_api.state.api_key_scopes == {"chat"}
     finally:
         await agen.aclose()
 
@@ -161,10 +165,10 @@ async def test_scopes_live_on_request_state_per_request(db_env: None) -> None:
 @pytest.mark.asyncio()
 async def test_require_scope_enforces_from_request_state(db_env: None) -> None:
     raw_key = "fim_enforce_key"
-    uid = await _seed_key(raw_key, scopes="chat:read")
+    uid = await _seed_key(raw_key, scopes="chat")
 
-    check = require_scope("admin:write")
-    allow = require_scope("chat:read")
+    check = require_scope("admin")
+    allow = require_scope("chat")
 
     agen = get_session()
     db = await agen.__anext__()

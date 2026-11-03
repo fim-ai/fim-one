@@ -844,8 +844,12 @@ async def _resolve_user(
         from fim_one.db import create_session
         from fim_one.web.auth import _authenticate_api_key
 
+        from fim_one.web.api_key_scopes import enforce_scope
+
         async with create_session() as session:
-            user, _scopes = await _authenticate_api_key(token, session)
+            user, scopes = await _authenticate_api_key(token, session)
+            # Every caller of this helper is a chat stream endpoint.
+            enforce_scope(scopes, "chat")
             return (
                 user.id,
                 user.system_instructions,
