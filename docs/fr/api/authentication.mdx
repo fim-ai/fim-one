@@ -79,15 +79,17 @@ print(response.json())
 
 Les portées limitent ce qu'une clé API peut accéder. Si aucune portée n'est définie, la clé a un accès complet.
 
+Une clé avec des portées ne peut appeler que les points de terminaison que ses portées autorisent. Tous les autres points de terminaison répondent `403`, y compris la gestion des clés API sous `/api/me/api-keys`, qui nécessite une clé sans portées ou une session connectée. Une clé ne peut jamais créer une clé avec des portées plus larges que les siennes.
+
 Portées disponibles :
 
-| Portée | Permet |
-|--------|--------|
-| `chat` | POST /api/react, POST /api/dag, POST /api/chat/inject |
+| Portée | Autorise |
+|--------|----------|
+| `chat` | POST /api/react, POST /api/dag, POST /api/auto, POST /api/chat/ticket, POST /api/chat/inject, POST /api/chat/inject/recall, POST /api/chat/resume, et GET/POST /api/conversations, GET/PATCH/DELETE /api/conversations/`{id}` |
 | `agents` | GET /api/agents, GET /api/agents/`{id}` |
 | `kb` | GET /api/knowledge-bases, POST /api/knowledge-bases/`{id}`/retrieve |
-| `connectors` | CRUD des connecteurs (endpoints spécifiques aux connecteurs) |
-| `admin` | Points de terminaison administratifs |
+| `connectors` | Tout sous /api/connectors |
+| `admin` | Tout sous /api/admin (le propriétaire de la clé doit être un administrateur) |
 
 Créer une clé avec des portées :
 

@@ -77,19 +77,21 @@ print(response.json())
 
 ### スコープ
 
-スコープはAPIキーがアクセスできる内容を制限します。スコープが設定されていない場合、キーはフルアクセス権を持ちます。
+スコープはAPIキーがアクセスできる範囲を制限します。スコープが設定されていない場合、キーはフルアクセス権を持ちます。
 
-利用可能なスコープ:
+スコープを持つキーは、そのスコープが許可するエンドポイントのみを呼び出すことができます。その他のすべてのエンドポイントは `403` で応答します。これには `/api/me/api-keys` 下のAPIキー管理も含まれ、スコープなしのキーまたはサインインセッションが必要です。キーは自身のスコープより広いスコープを持つキーを作成することはできません。
 
-| スコープ | 許可される操作 |
+利用可能なスコープ：
+
+| スコープ | 許可する内容 |
 |-------|--------|
-| `chat` | POST /api/react, POST /api/dag, POST /api/chat/inject |
-| `agents` | GET /api/agents, GET /api/agents/`{id}` |
-| `kb` | GET /api/knowledge-bases, POST /api/knowledge-bases/`{id}`/retrieve |
-| `connectors` | コネクタCRUD (connector_specific endpoints) |
-| `admin` | 管理エンドポイント |
+| `chat` | POST /api/react、POST /api/dag、POST /api/auto、POST /api/chat/ticket、POST /api/chat/inject、POST /api/chat/inject/recall、POST /api/chat/resume、および GET/POST /api/conversations、GET/PATCH/DELETE /api/conversations/`{id}` |
+| `agents` | GET /api/agents、GET /api/agents/`{id}` |
+| `kb` | GET /api/knowledge-bases、POST /api/knowledge-bases/`{id}`/retrieve |
+| `connectors` | /api/connectors 下のすべて |
+| `admin` | /api/admin 下のすべて（キーの所有者は管理者である必要があります） |
 
-スコープ付きのキーを作成:
+スコープ付きのキーを作成する：
 
 ```bash
 curl -X POST https://your-domain.com/api/me/api-keys \

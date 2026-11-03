@@ -87,5 +87,8 @@
   "subscription_required": "모델을 사용하려면 유료 구독이 필요합니다.",
   "billing_plan_is_default": "기본으로 포함된 플랜은 비활성화하거나 삭제할 수 없습니다. 대신 액세스 모델을 변경하세요.",
   "invalid_access_model": "유효하지 않은 액세스 모델입니다.",
-  "db_password_required": "연결 설정이 변경되었습니다. 테스트하려면 비밀번호를 다시 입력하세요."
+  "db_password_required": "연결 설정이 변경되었습니다. 테스트하려면 비밀번호를 다시 입력하세요.",
+  "session_required": "이 작업을 수행하려면 계정에 로그인해야 합니다. API 키는 사용할 수 없습니다.",
+  "api_key_scope_denied": "이 API 키의 범위가 이 요청을 허용하지 않습니다.",
+  "api_key_scope_escalation": "API 키는 자신의 범위보다 더 넓은 범위를 가진 키를 생성할 수 없습니다."
 }

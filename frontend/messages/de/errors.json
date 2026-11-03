@@ -87,5 +87,8 @@
   "subscription_required": "Für die Nutzung von Modellen ist ein kostenpflichtiges Abonnement erforderlich.",
   "billing_plan_is_default": "Der enthaltene Standardplan kann nicht deaktiviert oder gelöscht werden. Wechseln Sie stattdessen das Zugriffsmodell.",
   "invalid_access_model": "Ungültiges Zugriffsmodell.",
-  "db_password_required": "Die Verbindungseinstellungen wurden geändert. Geben Sie das Passwort erneut ein, um den Test durchzuführen."
+  "db_password_required": "Die Verbindungseinstellungen wurden geändert. Geben Sie das Passwort erneut ein, um den Test durchzuführen.",
+  "session_required": "Diese Aktion erfordert die Anmeldung bei Ihrem Konto; API-Schlüssel können nicht verwendet werden.",
+  "api_key_scope_denied": "Die Bereiche dieses API-Schlüssels erlauben diese Anfrage nicht.",
+  "api_key_scope_escalation": "Ein API-Schlüssel kann keinen Schlüssel mit umfassenderen Bereichen als seinen eigenen erstellen."
 }

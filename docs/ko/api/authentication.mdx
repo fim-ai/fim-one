@@ -79,17 +79,19 @@ print(response.json())
 
 범위는 API 키가 액세스할 수 있는 항목을 제한합니다. 범위를 설정하지 않으면 키는 전체 액세스 권한을 가집니다.
 
+범위가 있는 키는 해당 범위에서 허용하는 엔드포인트만 호출할 수 있습니다. 다른 모든 엔드포인트는 `/api/me/api-keys` 아래의 API 키 관리를 포함하여 `403`으로 응답하며, 이는 범위가 없는 키 또는 로그인된 세션이 필요합니다. 키는 자신의 범위보다 더 넓은 범위를 가진 키를 생성할 수 없습니다.
+
 사용 가능한 범위:
 
-| 범위 | 허용 |
+| 범위 | 허용 사항 |
 |-------|--------|
-| `chat` | POST /api/react, POST /api/dag, POST /api/chat/inject |
+| `chat` | POST /api/react, POST /api/dag, POST /api/auto, POST /api/chat/ticket, POST /api/chat/inject, POST /api/chat/inject/recall, POST /api/chat/resume, 및 GET/POST /api/conversations, GET/PATCH/DELETE /api/conversations/`{id}` |
 | `agents` | GET /api/agents, GET /api/agents/`{id}` |
 | `kb` | GET /api/knowledge-bases, POST /api/knowledge-bases/`{id}`/retrieve |
-| `connectors` | 커넥터 CRUD (connector_specific endpoints) |
-| `admin` | 관리 엔드포인트 |
+| `connectors` | /api/connectors 아래의 모든 항목 |
+| `admin` | /api/admin 아래의 모든 항목 (키의 소유자는 관리자여야 함) |
 
-범위를 사용하여 키 생성:
+범위가 있는 키 생성:
 
 ```bash
 curl -X POST https://your-domain.com/api/me/api-keys \

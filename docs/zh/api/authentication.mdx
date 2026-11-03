@@ -77,17 +77,19 @@ print(response.json())
 
 ### 作用域
 
-作用域限制 API 密钥可以访问的内容。如果未设置作用域，密钥具有完全访问权限。
+作用域限制API密钥可以访问的内容。如果未设置作用域，密钥具有完全访问权限。
+
+具有作用域的密钥只能调用其作用域允许的端点。所有其他端点返回`403`，包括`/api/me/api-keys`下的API密钥管理，该管理需要没有作用域的密钥或已登录的会话。密钥永远无法创建比其自身作用域更广泛的密钥。
 
 可用作用域：
 
 | 作用域 | 允许 |
 |-------|--------|
-| `chat` | POST /api/react, POST /api/dag, POST /api/chat/inject |
-| `agents` | GET /api/agents, GET /api/agents/`{id}` |
-| `kb` | GET /api/knowledge-bases, POST /api/knowledge-bases/`{id}`/retrieve |
-| `connectors` | 连接器 CRUD（connector_specific 端点） |
-| `admin` | 管理端点 |
+| `chat` | POST /api/react、POST /api/dag、POST /api/auto、POST /api/chat/ticket、POST /api/chat/inject、POST /api/chat/inject/recall、POST /api/chat/resume，以及GET/POST /api/conversations、GET/PATCH/DELETE /api/conversations/`{id}` |
+| `agents` | GET /api/agents、GET /api/agents/`{id}` |
+| `kb` | GET /api/knowledge-bases、POST /api/knowledge-bases/`{id}`/retrieve |
+| `connectors` | /api/connectors下的所有内容 |
+| `admin` | /api/admin下的所有内容（密钥的所有者必须是管理员） |
 
 创建具有作用域的密钥：
 

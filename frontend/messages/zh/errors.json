@@ -87,5 +87,8 @@
   "subscription_required": "使用模型需要付费订阅。",
   "billing_plan_is_default": "内置默认套餐无法禁用或删除，请改为切换访问模型。",
   "invalid_access_model": "无效的访问模型。",
-  "db_password_required": "连接设置已更改。请重新输入密码以进行测试。"
+  "db_password_required": "连接设置已更改。请重新输入密码以进行测试。",
+  "session_required": "此操作需要登录您的账户；无法使用API密钥。",
+  "api_key_scope_denied": "此API密钥的作用域不允许此请求。",
+  "api_key_scope_escalation": "API密钥无法创建具有比自身更广泛作用域的密钥。"
 }

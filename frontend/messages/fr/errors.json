@@ -87,5 +87,8 @@
   "subscription_required": "Un abonnement payant est requis pour utiliser les modèles.",
   "billing_plan_is_default": "Le plan par défaut inclus ne peut pas être désactivé ni supprimé. Modifiez plutôt le modèle d'accès.",
   "invalid_access_model": "Modèle d'accès invalide.",
-  "db_password_required": "Les paramètres de connexion ont changé. Saisissez à nouveau le mot de passe pour tester."
+  "db_password_required": "Les paramètres de connexion ont changé. Saisissez à nouveau le mot de passe pour tester.",
+  "session_required": "Cette action nécessite de se connecter à votre compte ; les clés API ne peuvent pas être utilisées.",
+  "api_key_scope_denied": "Les scopes de cette clé API ne permettent pas cette requête.",
+  "api_key_scope_escalation": "Une clé API ne peut pas créer une clé avec des scopes plus larges que les siens."
 }

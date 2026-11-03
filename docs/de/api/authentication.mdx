@@ -77,17 +77,19 @@ print(response.json())
 
 ### Scopes
 
-Scopes begrenzen, worauf ein API-Schlüssel zugreifen kann. Wenn keine Scopes festgelegt sind, hat der Schlüssel vollständigen Zugriff.
+Scopes beschränken, worauf ein API-Schlüssel zugreifen kann. Wenn keine Scopes festgelegt sind, hat der Schlüssel vollständigen Zugriff.
+
+Ein Schlüssel mit Scopes kann nur die Endpunkte aufrufen, die seine Scopes erlauben. Alle anderen Endpunkte antworten mit `403`, einschließlich der API-Schlüsselverwaltung unter `/api/me/api-keys`, die einen Schlüssel ohne Scopes oder eine angemeldete Sitzung benötigt. Ein Schlüssel kann niemals einen Schlüssel mit umfassenderen Scopes als seinen eigenen erstellen.
 
 Verfügbare Scopes:
 
 | Scope | Erlaubt |
 |-------|--------|
-| `chat` | POST /api/react, POST /api/dag, POST /api/chat/inject |
+| `chat` | POST /api/react, POST /api/dag, POST /api/auto, POST /api/chat/ticket, POST /api/chat/inject, POST /api/chat/inject/recall, POST /api/chat/resume, und GET/POST /api/conversations, GET/PATCH/DELETE /api/conversations/`{id}` |
 | `agents` | GET /api/agents, GET /api/agents/`{id}` |
 | `kb` | GET /api/knowledge-bases, POST /api/knowledge-bases/`{id}`/retrieve |
-| `connectors` | Connector CRUD (connector_specific endpoints) |
-| `admin` | Administrative Endpunkte |
+| `connectors` | Alles unter /api/connectors |
+| `admin` | Alles unter /api/admin (der Eigentümer des Schlüssels muss ein Administrator sein) |
 
 Erstellen Sie einen Schlüssel mit Scopes:
 

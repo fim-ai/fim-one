@@ -87,5 +87,8 @@
   "subscription_required": "モデルを使用するには有料サブスクリプションが必要です。",
   "billing_plan_is_default": "デフォルトプランは無効化または削除できません。代わりにアクセスモデルを切り替えてください。",
   "invalid_access_model": "無効なアクセスモデルです。",
-  "db_password_required": "接続設定が変更されました。テストするには、もう一度パスワードを入力してください。"
+  "db_password_required": "接続設定が変更されました。テストするには、もう一度パスワードを入力してください。",
+  "session_required": "このアクションはアカウントへのサインインが必要です。APIキーは使用できません。",
+  "api_key_scope_denied": "このAPIキーのスコープでは、このリクエストは許可されていません。",
+  "api_key_scope_escalation": "APIキーは、自身のスコープより広いスコープを持つキーを作成することはできません。"
 }
