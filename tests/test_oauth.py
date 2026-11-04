@@ -21,6 +21,7 @@ Extended (2026-05 audit, Track C2) to close the OAuth test blind spots:
 from __future__ import annotations
 
 import hashlib
+import os
 import uuid
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -476,18 +477,45 @@ class TestFetchUserInfoEmailVerified:
                     "name": "李雷",
                     "en_name": "Lei Li",
                     "enterprise_email": "lei.li@corp.test",
+                    "tenant_key": "tk_corp",
                 }
             }
         )
-        with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=body):
+        with (
+            patch.dict(os.environ, {"FEISHU_TRUSTED_TENANT_KEYS": "tk_other, tk_corp"}),
+            patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=body),
+        ):
             info = await fetch_user_info(provider, "tok")
 
         assert info.provider == "feishu"
         assert info.id == "ou_abcdef1234"
         assert info.username == "lei_li"  # en_name lowercased, spaces → underscores
-        # Enterprise email is administratively controlled → trusted.
+        # Enterprise email from a tenant the operator trusts → verified.
         assert info.email == "lei.li@corp.test"
         assert info.email_verified is True
+
+    async def test_feishu_enterprise_email_untrusted_tenant(self) -> None:
+        # Any tenant admin can put any address in enterprise_email, so an
+        # unlisted tenant must not be able to claim a local account by email.
+        provider = _make_provider("feishu")
+        body = _json_response(
+            {
+                "data": {
+                    "open_id": "ou_attacker",
+                    "name": "Mallory",
+                    "enterprise_email": "victim@corp.test",
+                    "tenant_key": "tk_attacker",
+                }
+            }
+        )
+        for trusted in ("", "tk_corp"):
+            with (
+                patch.dict(os.environ, {"FEISHU_TRUSTED_TENANT_KEYS": trusted}),
+                patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=body),
+            ):
+                info = await fetch_user_info(provider, "tok")
+            assert info.email == "victim@corp.test"
+            assert info.email_verified is False
 
     async def test_feishu_personal_email_not_verified(self) -> None:
         provider = _make_provider("feishu")

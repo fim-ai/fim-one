@@ -467,6 +467,7 @@ When both `CLIENT_ID` and `CLIENT_SECRET` are set for a provider, the login page
 | `DISCORD_CLIENT_SECRET` | No | — | Discord OAuth2 client secret |
 | `FEISHU_APP_ID` | No | — | Feishu (Lark) App ID. Create at [open.feishu.cn](https://open.feishu.cn/app). Requires `contact:user.email:readonly` permission |
 | `FEISHU_APP_SECRET` | No | — | Feishu (Lark) App Secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | No | — | Comma-separated Feishu `tenant_key` values whose enterprise email may match an existing account by email. Other tenants can sign in but never claim an account by email |
 | `FRONTEND_URL` | **Prod** | `http://localhost:3000` | Where the browser lands after OAuth completes. Must be set in production (e.g. `https://yourdomain.com`) |
 | `API_BASE_URL` | **Prod** | `http://localhost:8000` | Externally reachable backend URL, used to build OAuth callback URLs. Must be set in production |
 | `NEXT_PUBLIC_API_URL` | **Prod** | *(auto-detected as `<hostname>:8000`)* | Browser-side API base URL for OAuth redirects. **This is a frontend build-time variable** — set it in `frontend/.env.local` for local dev, or pass it as a Docker build arg for custom production deployments. Auto-detection works for standard reverse-proxy setups (port 80/443). |

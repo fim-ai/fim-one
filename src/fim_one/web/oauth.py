@@ -242,10 +242,18 @@ async def fetch_user_info(provider: OAuthProvider, access_token: str) -> OAuthUs
             info = data.get("data", {})
             open_id = info.get("open_id", "")
             # Feishu may return enterprise_email or email; personal accounts may have neither.
-            # Only the enterprise_email is administratively controlled by the org
-            # and can be trusted as verified; a self-set personal email cannot.
+            # The enterprise_email is set by the admin of the user's own tenant, so
+            # it is only as trustworthy as that tenant: any tenant admin controls
+            # what it says.  It counts as verified only for tenants the operator
+            # lists in FEISHU_TRUSTED_TENANT_KEYS; a self-set personal email never does.
             enterprise_email = info.get("enterprise_email")
             email = info.get("email") or enterprise_email or None
+            trusted_tenants = {
+                t.strip()
+                for t in os.getenv("FEISHU_TRUSTED_TENANT_KEYS", "").split(",")
+                if t.strip()
+            }
+            tenant_trusted = info.get("tenant_key", "") in trusted_tenants
             name = info.get("name") or info.get("en_name") or f"feishu_{open_id[:8]}"
             return OAuthUserInfo(
                 provider="feishu",
@@ -253,7 +261,9 @@ async def fetch_user_info(provider: OAuthProvider, access_token: str) -> OAuthUs
                 username=(info.get("en_name") or name).lower().replace(" ", "_"),
                 email=email,
                 display_name=info.get("name") or info.get("en_name"),
-                email_verified=bool(enterprise_email) and email == enterprise_email,
+                email_verified=(
+                    tenant_trusted and bool(enterprise_email) and email == enterprise_email
+                ),
             )
         else:
             raise ValueError(f"Unknown provider: {provider.name}")
