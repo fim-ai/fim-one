@@ -6,13 +6,20 @@ ever checked against them.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from starlette.requests import Request
 
+from fim_one.db.models import IpRule
+from fim_one.web.api.admin_security import IpRuleCreateRequest, create_ip_rule
+from fim_one.web.exceptions import AppError
 from fim_one.web.ip_rules import IpNetwork, is_client_allowed, parse_rules
 
 
@@ -97,3 +104,59 @@ class TestMiddleware:
             resp2 = client.get("/api/auth/me")
         assert not _blocked(resp)
         assert not _blocked(resp2)
+
+
+@pytest_asyncio.fixture()
+async def db() -> AsyncIterator[AsyncSession]:
+    import fim_one.db.models  # noqa: F401
+    from fim_one.db.base import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with async_sessionmaker(engine, expire_on_commit=False)() as s:
+        yield s
+    await engine.dispose()
+
+
+def _admin_request(ip: str) -> Request:
+    return Request({"type": "http", "headers": [], "client": (ip, 1234)})
+
+
+class TestSelfLockoutGuard:
+    """A rule change that would block the admin making it is refused."""
+
+    @pytest.mark.asyncio
+    async def test_allowlist_without_own_ip_refused(self, db: AsyncSession) -> None:
+        admin = MagicMock(id="admin")
+        with pytest.raises(AppError) as exc:
+            await create_ip_rule(
+                IpRuleCreateRequest(ip_address="10.0.0.0/8", rule_type="allow", note=None),
+                _admin_request("198.51.100.7"),
+                admin,
+                db,
+            )
+        assert exc.value.error_code == "ip_rule_self_lockout"
+        assert (await db.execute(select(IpRule))).scalars().all() == []
+
+    @pytest.mark.asyncio
+    async def test_deny_own_ip_refused(self, db: AsyncSession) -> None:
+        with pytest.raises(AppError) as exc:
+            await create_ip_rule(
+                IpRuleCreateRequest(ip_address="198.51.100.7", rule_type="deny", note=None),
+                _admin_request("198.51.100.7"),
+                MagicMock(id="admin"),
+                db,
+            )
+        assert exc.value.error_code == "ip_rule_self_lockout"
+
+    @pytest.mark.asyncio
+    async def test_allowlist_with_own_ip_accepted(self, db: AsyncSession) -> None:
+        with patch("fim_one.web.api.admin_security.write_audit", AsyncMock()):
+            resp = await create_ip_rule(
+                IpRuleCreateRequest(ip_address="198.51.100.0/24", rule_type="allow", note=None),
+                _admin_request("198.51.100.7"),
+                MagicMock(id="admin"),
+                db,
+            )
+        assert resp.is_active

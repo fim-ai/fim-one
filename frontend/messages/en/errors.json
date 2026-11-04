@@ -12,6 +12,7 @@
   "email_already_registered": "Email already registered.",
   "invalid_credentials": "Invalid credentials.",
   "ip_not_allowed": "Access from your IP address is not allowed. Contact your administrator.",
+  "ip_rule_self_lockout": "This change would block your own address ({ip}), so it was not saved.",
   "account_disabled": "Account disabled.",
   "invalid_token_type": "Invalid token type.",
   "invalid_token_payload": "Invalid token payload.",

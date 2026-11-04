@@ -395,31 +395,34 @@ class FeishuGateHook(PreToolUseHook):
         never chosen as approvers. No explicit binding → ``None`` (auto
         mode then degrades to inline; channel_only fails closed).
 
-        The bound channel must belong to the agent's own organization. A
-        binding to another organization's channel would post the card, tool
-        arguments included, into a chat outside the organization; it is
-        treated as no binding.  Personal agents have no organization and
-        therefore never use a channel.
+        The bound channel must stay inside the agent's organization: the
+        agent's own organization once it has one, otherwise (draft or personal
+        agent) an organization its owner belongs to. A binding outside that
+        would post the card, tool arguments included, into a foreign chat; it
+        is treated as no binding.
         """
         from fim_one.db.models.channel import Channel
+        from fim_one.db.models.organization import OrgMembership
 
         approval_id = getattr(agent_row, "approval_channel_id", None)
+        if not approval_id:
+            return None
+        stmt = select(Channel).where(
+            Channel.id == approval_id, Channel.is_active.is_(True)
+        )
         agent_org = getattr(agent_row, "org_id", None)
-        if approval_id and agent_org:
-            stmt = (
-                select(Channel)
-                .where(
-                    Channel.id == approval_id,
-                    Channel.org_id == agent_org,
-                    Channel.is_active.is_(True),
+        owner_id = getattr(agent_row, "user_id", None)
+        if agent_org:
+            stmt = stmt.where(Channel.org_id == agent_org)
+        elif owner_id:
+            stmt = stmt.where(
+                Channel.org_id.in_(
+                    select(OrgMembership.org_id).where(OrgMembership.user_id == owner_id)
                 )
-                .limit(1)
             )
-            row = (await session.execute(stmt)).scalar_one_or_none()
-            if row is not None:
-                return row
-
-        return None
+        else:
+            return None
+        return (await session.execute(stmt.limit(1))).scalar_one_or_none()
 
     @staticmethod
     def _is_feishu_channel(channel_row: Any) -> bool:

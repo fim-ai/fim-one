@@ -694,21 +694,51 @@ class TestChannelOrgBoundary:
         return channel.id
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("agent_in_org", [True, False])
     async def test_channel_outside_agent_org_is_not_used(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         seed: dict[str, Any],
-        agent_in_org: bool,
     ) -> None:
-        if agent_in_org:
-            # Agent in DemoCo bound to OtherCo's channel.
-            channel_id = await self._foreign_channel(session_factory, seed["user_id"])
-            org_id: str | None = seed["org_id"]
-        else:
-            # Personal agent bound to DemoCo's channel.
-            channel_id = seed["channel_id"]
-            org_id = None
+        # Agent in DemoCo bound to OtherCo's channel.
+        channel_id = await self._foreign_channel(session_factory, seed["user_id"])
+        assert await self._channel_only_sends(
+            session_factory, seed, org_id=seed["org_id"], channel_id=channel_id
+        ) is False
+
+    @pytest.mark.asyncio
+    async def test_personal_agent_uses_owner_org_channel(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        from fim_one.db.models.organization import OrgMembership
+
+        async with session_factory() as db:
+            db.add(OrgMembership(org_id=seed["org_id"], user_id=seed["user_id"], role="member"))
+            await db.commit()
+        assert await self._channel_only_sends(
+            session_factory, seed, org_id=None, channel_id=seed["channel_id"]
+        ) is True
+
+    @pytest.mark.asyncio
+    async def test_personal_agent_cannot_use_foreign_org_channel(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+    ) -> None:
+        # Owner is not a member of DemoCo (seed adds no membership).
+        assert await self._channel_only_sends(
+            session_factory, seed, org_id=None, channel_id=seed["channel_id"]
+        ) is False
+
+    async def _channel_only_sends(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        seed: dict[str, Any],
+        *,
+        org_id: str | None,
+        channel_id: str,
+    ) -> bool:
         await _seed_agent(
             session_factory,
             user_id=seed["user_id"],
@@ -717,18 +747,17 @@ class TestChannelOrgBoundary:
             confirmation_mode="channel_only",
             approval_channel_id=channel_id,
         )
-        hook = create_feishu_gate_hook(session_factory=session_factory)
+        hook = create_feishu_gate_hook(
+            session_factory=session_factory, timeout_seconds=5, poll_interval_seconds=0.02
+        )
         ctx = _make_context(org_id=org_id, user_id=seed["user_id"], agent_id="agent-cross")
         send_mock = AsyncMock(return_value=ChannelSendResult(ok=True))
-
         with patch(
             "fim_one.core.channels.feishu.FeishuChannel.send_interactive_card",
             new=send_mock,
-        ):
-            result = await hook.execute(ctx)
-
-        assert result.allow is False
-        send_mock.assert_not_awaited()
+        ), _decide_on_create(session_factory, "approved"):
+            await hook.execute(ctx)
+        return send_mock.await_count > 0
 
 
 class TestApprovalChannelBinding:
