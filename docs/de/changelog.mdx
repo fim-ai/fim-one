@@ -10,6 +10,13 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/). Versionen ents
 
 ## [Unveröffentlicht]
 
+### Behoben
+
+- **Nicht zugewiesene Workflow-Genehmigungen sind nur für den Benutzer sichtbar, dem der Lauf gehört.** Eine Genehmigung ohne Zuweisungsempfänger wurde früher allen angemeldeten Benutzern auf der Instanz angezeigt und konnte von ihnen genehmigt oder abgelehnt werden, unabhängig von der Organisation. Sie gehört jetzt dem Benutzer, dem der Lauf zugeordnet ist (die Person, die ihn ausgeführt hat, oder der Workflow-Besitzer für Trigger- und geplante Läufe); alle anderen erhalten „nicht gefunden", und die Genehmigungsliste eines Laufs zeigt anderen Benutzern nur die Genehmigungen, die ihnen zugewiesen sind. Zugewiesene Genehmigungen bleiben unverändert.
+- **Das Tool `send_notification` ist deaktiviert, es sei denn, der Operator aktiviert es.** Seine Slack-, Lark-, WeCom- und E-Mail-Anbieter sind instanzweite Kanäle, die vom Operator konfiguriert werden, und das Tool hatte keine Überprüfung pro Benutzer oder pro Organisation, sodass der Agent eines beliebigen Benutzers darin posten konnte. Setzen Sie `NOTIFICATION_TOOL_ENABLED=true`, um es anzubieten, nur auf Instanzen, auf denen jeder Benutzer in diese Kanäle posten darf. `POST /api/notifications/test` ist jetzt nur für Administratoren verfügbar, wie `/api/notifications/send`. E-Mails, die über das Tool versendet werden, folgen den gleichen Regeln wie `email_send` unten.
+- **Das Tool `email_send` benötigt eine Empfänger-Allowlist oder ein explizites Opt-in.** Es versendet von dem SMTP-Konto der Instanz, oft dem gleichen, das Anmeldecodes versendet, und ohne Allowlist könnte der Agent eines beliebigen Benutzers von ihm an jede Adresse mailen. Es wird jetzt nur angeboten, wenn `SMTP_ALLOWED_DOMAINS` oder `SMTP_ALLOWED_ADDRESSES` gesetzt ist oder wenn `EMAIL_TOOL_ENABLED=true`. Anmeldecodes und andere System-E-Mails sind nicht betroffen.
+- **Eine Feishu-Anmeldung stimmt mit einem vorhandenen Konto nur für Mandanten überein, denen der Operator vertraut.** Die Unternehmens-E-Mail in einem Feishu-Profil wird vom Mandanten-Administrator dieses Benutzers festgelegt, sodass jeder Mandant jede Adresse präsentieren und das lokale Konto damit übernehmen könnte. Sie zählt jetzt nur als verifiziert, wenn der Mandant des Benutzers in `FEISHU_TRUSTED_TENANT_KEYS` aufgelistet ist. Benutzer von anderen Mandanten können sich weiterhin mit Feishu anmelden und es in ihren Einstellungen mit einem vorhandenen Konto verknüpfen.
+
 ## [v0.9.3] - 2026-11-04
 
 ### Sicherheit

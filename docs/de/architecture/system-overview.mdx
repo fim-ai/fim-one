@@ -30,7 +30,7 @@ Sechs Funktionsquellen konvergieren in einer Registry. Der Agent schöpft gleich
 
 ### Integrierte Tools
 
-Werden beim Start über `discover_builtin_tools()` automatisch erkannt. Füge eine `BaseTool`-Unterklasse in `core/tool/builtin/` ein, und sie wird ohne zusätzliche Konfiguration registriert. Zu den Kategorien gehören Berechnung (`calculator`, `python_exec`), Web (`web_search`, `web_fetch`), Dateisystem (`file_ops`) und Allgemein (`json_transform`, `template_render`, `text_utils`). Dies sind die nativen Fähigkeiten des Agents – immer verfügbar und ohne Einrichtung. Tools, die auf vom Betreiber verwaltete Kanäle zugreifen (`email_send`, `send_notification`), werden nur angeboten, wenn der Betreiber sie aktiviert.
+Werden beim Start automatisch über `discover_builtin_tools()` erkannt. Legen Sie eine `BaseTool`-Unterklasse in `core/tool/builtin/` ab, und sie registriert sich ohne Konfiguration. Kategorien umfassen Berechnung (`calculator`, `python_exec`), Web (`web_search`, `web_fetch`), Dateisystem (`file_ops`) und allgemein (`json_transform`, `template_render`, `text_utils`). Dies sind die nativen Fähigkeiten des Agenten – immer verfügbar, keine Einrichtung erforderlich. Tools, die auf von Bedienern verwaltete Kanäle zugreifen (`email_send`, `send_notification`), werden nur angeboten, wenn der Bediener sie aktiviert.
 
 ### Wissensdatenbank
 

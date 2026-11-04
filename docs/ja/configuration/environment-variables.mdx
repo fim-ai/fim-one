@@ -361,26 +361,24 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 
 ---
 
-## Email（SMTP）（推奨）
+## メール (SMTP) (推奨)
 
-ログインコードとメール通知に使用します。`SMTP_HOST`、`SMTP_USER`、`SMTP_PASS` が設定され、受信者の許可リスト（`SMTP_ALLOWED_DOMAINS` または `SMTP_ALLOWED_ADDRESSES`）が構成されている場合、または `EMAIL_TOOL_ENABLED=true` の場合に、組み込みツール `email_send` が提供されます。どちらも設定されていない場合、このアカウントから任意のアドレスにメールを送信できてしまうため、ツールは提供されません。
+ログインコードとメール通知に使用されます。`SMTP_HOST`、`SMTP_USER`、`SMTP_PASS` が設定され、**かつ** 受信者許可リスト (`SMTP_ALLOWED_DOMAINS` または `SMTP_ALLOWED_ADDRESSES`) が設定されている場合、または `EMAIL_TOOL_ENABLED=true` の場合に、`email_send` ビルトインツールが提供されます。どちらもない場合、任意のユーザーがこのアカウントから任意のアドレスにメールを送信できるため、ツールは提供されません。
 
 | 変数 | 必須 | デフォルト | 説明 |
 |---|---|---|---|
-| `SMTP_HOST` | 条件付き | — | SMTP サーバーのホスト名 |
+| `SMTP_HOST` | 条件付き | — | SMTP サーバーホスト名 |
 | `SMTP_PORT` | いいえ | `465` | SMTP ポート |
-| `SMTP_SSL` | いいえ | `ssl` | TLS モード：`ssl`（ポート 465）/ `tls`（STARTTLS、ポート 587）/ `none` または `""`（平文、認証情報が暗号化されずに送信されます）。その他の値は、平文に暗黙的にフォールバックせず拒否されます。 |
+| `SMTP_SSL` | いいえ | `ssl` | TLS モード: `ssl` (ポート 465) / `tls` (STARTTLS、ポート 587) / `none` または `""` (平文、認証情報をクリアテキストで送信)。その他の値は拒否されます。 |
 | `SMTP_USER` | 条件付き | — | SMTP ログインユーザー名 |
 | `SMTP_PASS` | 条件付き | — | SMTP ログインパスワード |
-| `SMTP_FROM` | いいえ | *( `SMTP_USER` を使用)* | From ヘッダーに表示される送信者アドレス |
+| `SMTP_FROM` | いいえ | *(`SMTP_USER` を使用)* | From ヘッダーに表示される送信者アドレス |
 | `SMTP_FROM_NAME` | いいえ | — | From ヘッダーに表示される表示名 |
-| `SMTP_REPLY_TO` | いいえ | — | Reply-To アドレス。返信は `SMTP_FROM` ではなくここに送信されます |
-| `SMTP_ALLOWED_DOMAINS` | いいえ | — | カンマ区切りのドメイン許可リスト（例：`example.com,corp.io`）。指定されたドメイン以外の受信者をブロックします |
-| `SMTP_ALLOWED_ADDRESSES` | いいえ | — | カンマ区切りの完全一致アドレス許可リスト。`SMTP_ALLOWED_DOMAINS` と組み合わせて適用されます。`send_notification` を介して送信されるメールにも適用されます |
-| `EMAIL_TOOL_ENABLED` | いいえ | `false` | 受信者の許可リストなしで `email_send` を提供します。このインスタンスのすべてのユーザーが、このアカウントから任意のアドレスにメールを送信できる場合にのみ有効にしてください |
-| `NOTIFICATION_TOOL_ENABLED` | いいえ | `false` | インスタンス全体の Slack / Lark / WeCom Webhook と SMTP アカウントに投稿するエージェントツール `send_notification` を提供します。このインスタンスのすべてのユーザーが、これらのチャンネルに投稿できる場合にのみ有効にしてください |
-
----
+| `SMTP_REPLY_TO` | いいえ | — | Reply-To アドレス。返信はここに送信されます (`SMTP_FROM` の代わりに) |
+| `SMTP_ALLOWED_DOMAINS` | いいえ | — | カンマ区切りのドメイン許可リスト (例: `example.com,corp.io`)。リストされたドメイン外の受信者をブロックします |
+| `SMTP_ALLOWED_ADDRESSES` | いいえ | — | カンマ区切りの完全なアドレス許可リスト。`SMTP_ALLOWED_DOMAINS` と組み合わせて使用されます。`send_notification` を通じて送信されたメールにも適用されます |
+| `EMAIL_TOOL_ENABLED` | いいえ | `false` | 受信者許可リストなしで `email_send` を提供します。このインスタンスのすべてのユーザーがこのアカウントから任意のアドレスにメールを送信できる場合にのみ有効にしてください |
+| `NOTIFICATION_TOOL_ENABLED` | いいえ | `false` | `send_notification` エージェントツールを提供します。このツールはインスタンス全体の Slack / Lark / WeCom ウェブフックと SMTP アカウントに投稿します。このインスタンスのすべてのユーザーがこれらのチャネルに投稿できる場合にのみ有効にしてください |
 
 ## コネクタ
 
@@ -441,25 +439,26 @@ Rerankerは取得したドキュメントを再スコアリングして関連性
 | `CHANNEL_CONFIRMATION_TTL_MINUTES` | いいえ | `1440` | この時間より古い保留中の確認は自動的に期限切れになります（デフォルト：24時間） |
 | `CHANNEL_CONFIRMATION_SWEEP_INTERVAL_SECONDS` | いいえ | `600` | 有効期限スイーパーが実行される頻度（デフォルト：10分ごと） |
 
-## OAuth（オプション）
+## OAuth (オプション)
 
 プロバイダーに対して `CLIENT_ID` と `CLIENT_SECRET` の両方が設定されている場合、ログインページに対応する OAuth ボタンが自動的に表示されます。
 
 | 変数 | 必須 | デフォルト | 説明 |
 |---|---|---|---|
 | `GITHUB_CLIENT_ID` | いいえ | — | GitHub OAuth App クライアント ID。[github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps で作成 |
-| `GITHUB_CLIENT_SECRET` | いいえ | — | GitHub OAuth App クライアント シークレット |
+| `GITHUB_CLIENT_SECRET` | いいえ | — | GitHub OAuth App クライアントシークレット |
 | `GOOGLE_CLIENT_ID` | いいえ | — | Google OAuth クライアント ID。[console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) で作成 |
-| `GOOGLE_CLIENT_SECRET` | いいえ | — | Google OAuth クライアント シークレット |
+| `GOOGLE_CLIENT_SECRET` | いいえ | — | Google OAuth クライアントシークレット |
 | `DISCORD_CLIENT_ID` | いいえ | — | Discord OAuth2 クライアント ID。[discord.com/developers](https://discord.com/developers/applications) で作成 |
-| `DISCORD_CLIENT_SECRET` | いいえ | — | Discord OAuth2 クライアント シークレット |
-| `FEISHU_APP_ID` | いいえ | — | Feishu（Lark）App ID。[open.feishu.cn](https://open.feishu.cn/app) で作成。`contact:user.email:readonly` 権限が必要 |
-| `FEISHU_APP_SECRET` | いいえ | — | Feishu（Lark）App シークレット |
-| `FRONTEND_URL` | **本番環境** | `http://localhost:3000` | OAuth 完了後にブラウザが遷移する先。本番環境では必須（例：`https://yourdomain.com`） |
-| `API_BASE_URL` | **本番環境** | `http://localhost:8000` | 外部からアクセス可能なバックエンド URL。OAuth コールバック URL の構築に使用。本番環境では必須 |
-| `NEXT_PUBLIC_API_URL` | **本番環境** | *（`<hostname>:8000` として自動検出）* | OAuth リダイレクト用のブラウザ側 API ベース URL。**これはフロントエンド ビルド時変数です** — ローカル開発では `frontend/.env.local` で設定するか、カスタム本番環境デプロイメントの場合は Docker ビルド引数として渡してください。標準的なリバースプロキシ設定（ポート 80/443）では自動検出が機能します。 |
+| `DISCORD_CLIENT_SECRET` | いいえ | — | Discord OAuth2 クライアントシークレット |
+| `FEISHU_APP_ID` | いいえ | — | Feishu (Lark) App ID。[open.feishu.cn](https://open.feishu.cn/app) で作成。`contact:user.email:readonly` パーミッションが必要 |
+| `FEISHU_APP_SECRET` | いいえ | — | Feishu (Lark) App Secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | いいえ | — | カンマ区切りの Feishu `tenant_key` 値。メールアドレスで既存アカウントにマッチする可能性のあるエンタープライズメール。その他のテナントはサインインできますが、メールアドレスでアカウントを要求することはできません |
+| `FRONTEND_URL` | **本番環境** | `http://localhost:3000` | OAuth 完了後にブラウザが遷移する先。本番環境では設定が必須です（例：`https://yourdomain.com`） |
+| `API_BASE_URL` | **本番環境** | `http://localhost:8000` | 外部からアクセス可能なバックエンド URL。OAuth コールバック URL の構築に使用。本番環境では設定が必須です |
+| `NEXT_PUBLIC_API_URL` | **本番環境** | *（`<hostname>:8000` として自動検出）* | OAuth リダイレクト用のブラウザ側 API ベース URL。**これはフロントエンドのビルド時変数です** — ローカル開発では `frontend/.env.local` に設定するか、カスタム本番環境デプロイメント用に Docker ビルド引数として渡してください。標準的なリバースプロキシセットアップ（ポート 80/443）では自動検出が機能します。 |
 
-> **本番環境** = ローカルではオプション（デフォルト値が機能します）ですが、インターネット公開デプロイメントでは**必須**です。
+> **本番環境** = ローカルではオプション（デフォルトが機能）ですが、**インターネット公開デプロイメントでは必須です**。
 
 ### 各プロバイダーに登録するOAuth コールバックURL
 

@@ -28,9 +28,9 @@ flowchart TD
 
 ## 여섯 가지 기능 소스
 
-### 기본 제공 도구
+### 내장 도구
 
-시작 시 `discover_builtin_tools()`를 통해 자동으로 검색됩니다. `core/tool/builtin/`에 `BaseTool` 하위 클래스를 추가하면 별도의 구성 없이 등록됩니다. 카테고리에는 계산(`calculator`, `python_exec`), 웹(`web_search`, `web_fetch`), 파일 시스템(`file_ops`), 일반(`json_transform`, `template_render`, `text_utils`)이 포함됩니다. 이러한 도구는 에이전트의 기본 기능으로, 항상 사용할 수 있으며 설정이 필요하지 않습니다. 운영자가 소유한 채널에 연결되는 도구(`email_send`, `send_notification`)는 운영자가 활성화한 경우에만 제공됩니다.
+`discover_builtin_tools()`를 통해 시작 시 자동으로 발견됩니다. `BaseTool` 서브클래스를 `core/tool/builtin/`에 드롭하면 별도의 설정 없이 등록됩니다. 카테고리에는 계산(`calculator`, `python_exec`), 웹(`web_search`, `web_fetch`), 파일시스템(`file_ops`), 일반(`json_transform`, `template_render`, `text_utils`)이 포함됩니다. 이들은 에이전트의 기본 능력입니다 — 항상 사용 가능하며 설정이 필요 없습니다. 운영자 소유 채널(`email_send`, `send_notification`)에 도달하는 도구는 운영자가 활성화할 때만 제공됩니다.
 
 ### 지식 기반
 
