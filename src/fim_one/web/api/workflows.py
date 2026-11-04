@@ -1257,9 +1257,6 @@ async def validate_workflow(
 # ---------------------------------------------------------------------------
 
 
-# Track running workflow tasks for cancellation
-_running_tasks: dict[str, asyncio.Event] = {}
-
 
 @router.post("/{workflow_id}/run")
 async def run_workflow(
@@ -1348,29 +1345,27 @@ async def run_workflow(
         get_run_service,
     )
 
-    cancel_event = asyncio.Event()
     try:
         started = await get_run_service().start_run(
             wf,
             caller_id=current_user.id,
             inputs=body.inputs,
             mode=RunMode.INTERACTIVE,
-            cancel_event=cancel_event,
         )
     except RunRefusedError as exc:
         raise _refused(exc) from None
 
     run_id = started.run_id
-    _running_tasks[run_id] = cancel_event
 
     async def generate() -> AsyncGenerator[str, None]:
         # The run executes in the run service's background task, which
         # persists it and releases its slot; this stream only relays events.
+        # Until runs are decoupled from the browser (T10 P5), a client that
+        # goes away cancels its run, however the disconnect is noticed.
         try:
             yield _sse("run_started", {"run_id": run_id, "status": "running"})
             async for sse_event, sse_data in started.events(keepalive=15.0):
                 if await request.is_disconnected():
-                    started.cancel()
                     return
                 if sse_event == "keepalive":
                     # Keepalive comment to prevent proxy/browser timeout
@@ -1378,7 +1373,8 @@ async def run_workflow(
                     continue
                 yield _sse(sse_event, sse_data)
         finally:
-            _running_tasks.pop(run_id, None)
+            if not started.done:
+                started.cancel()
         yield _sse("end", {})
 
     return StreamingResponse(
@@ -2506,9 +2502,9 @@ async def cancel_workflow_run(
     ):
         raise AppError("workflow_run_not_found", status_code=404)
 
-    cancel_event = _running_tasks.get(run_id)
-    if cancel_event:
-        cancel_event.set()
+    from fim_one.core.workflow.run_service import get_run_service
+
+    if get_run_service().cancel_run(run_id):
         return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
     if run.status in ("pending", "running"):

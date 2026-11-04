@@ -246,6 +246,11 @@ class StartedRun:
         if self._driver is None:
             self._driver = asyncio.create_task(self._drive())
 
+    @property
+    def done(self) -> bool:
+        """True once the run has been persisted and its slot released."""
+        return self._driver is not None and self._driver.done()
+
     def cancel(self) -> None:
         """Ask the engine to stop; the run is persisted as cancelled."""
         self.cancel_event.set()
@@ -311,13 +316,25 @@ class StartedRun:
             )
         finally:
             out.duration_ms = int((time.time() - start) * 1000)
-            if self._holds_slot:
-                await self._service.rate_limiter.record_run_end(
-                    self.principal.user_id, self.run_id
-                )
-            await self._service._persist(out, started_at=start)
-            self._service._fire_webhook(self.workflow, out, self.mode)
-            await self._queue.put(self._END)
+            # Each step runs even if an earlier one raises; the end marker
+            # always goes out last so no reader of events() blocks forever.
+            try:
+                try:
+                    if self._holds_slot:
+                        await self._service.rate_limiter.record_run_end(
+                            self.principal.user_id, self.run_id
+                        )
+                finally:
+                    try:
+                        await self._service._persist(out, started_at=start)
+                    finally:
+                        self._service._active_runs.pop(self.run_id, None)
+                        try:
+                            self._service._fire_webhook(self.workflow, out, self.mode)
+                        except Exception:
+                            logger.exception("Webhook dispatch failed for %s", self.run_id)
+            finally:
+                self._queue.put_nowait(self._END)
 
 
 class WorkflowRunService:
@@ -333,6 +350,17 @@ class WorkflowRunService:
         self.gate: RunGate = gate or ChatRunGate()
         self.rate_limiter = rate_limiter or WorkflowRateLimiter()
         self._engine_factory = engine_factory
+        # Runs executing in this process, by run id, so any entry point's run
+        # can be cancelled (the engine stops; the run is persisted cancelled).
+        self._active_runs: dict[str, StartedRun] = {}
+
+    def cancel_run(self, run_id: str) -> bool:
+        """Signal a run executing in this process to stop; False if not here."""
+        started = self._active_runs.get(run_id)
+        if started is None:
+            return False
+        started.cancel()
+        return True
 
     # -- checks ---------------------------------------------------------------
 
@@ -395,7 +423,7 @@ class WorkflowRunService:
         single_flight: bool = False,
         record_refusal: bool = False,
     ) -> StartedRun:
-        """Check, record and start a run; the engine starts on first use.
+        """Check, record and start a run; the engine starts immediately.
 
         *authorized* skips the checks when the caller already ran
         :meth:`authorize` (a batch checks once for all its items).
@@ -419,48 +447,59 @@ class WorkflowRunService:
             if not allowed:
                 raise RunRefusedError("workflow_rate_limited", 429, rate_error)
 
+        record_created = False
         try:
             await self._create_run_record(run_id, workflow, principal, mode, inputs)
-        except Exception:
+            record_created = True
+
+            from fim_one.db import create_session
+
+            cancel_event = cancel_event or asyncio.Event()
+            env_vars = author_env_vars(workflow, principal)
+            context = ExecutionContext(
+                run_id=run_id,
+                user_id=principal.user_id,
+                workflow_id=workflow.id,
+                env_vars=env_vars,
+                db_session_factory=create_session,
+                depth=depth,
+                cancel_event=cancel_event,
+            )
+            engine = self._make_engine(
+                max_concurrency=5,
+                cancel_event=cancel_event,
+                env_vars=env_vars,
+                run_id=run_id,
+                user_id=principal.user_id,
+                workflow_id=workflow.id,
+                workflow_timeout_ms=run_timeout_ms(workflow),
+            )
+            started = StartedRun(
+                self,
+                run_id=run_id,
+                workflow=workflow,
+                principal=principal,
+                mode=mode,
+                parsed=parsed,
+                inputs=inputs,
+                context=context,
+                engine=engine,
+                cancel_event=cancel_event,
+                holds_slot=acquire_slot,
+            )
+            self._active_runs[run_id] = started
+            # Start now, not on first read: the run must persist and release
+            # its slot even if the caller goes away before reading events.
+            started.start()
+            return started
+        except BaseException:
             if acquire_slot:
-                await self.rate_limiter.record_run_end(principal.user_id, run_id)
+                await asyncio.shield(
+                    self.rate_limiter.record_run_end(principal.user_id, run_id)
+                )
+            if record_created:
+                await asyncio.shield(self._mark_failed(run_id, "Run could not start"))
             raise
-
-        from fim_one.db import create_session
-
-        cancel_event = cancel_event or asyncio.Event()
-        env_vars = author_env_vars(workflow, principal)
-        context = ExecutionContext(
-            run_id=run_id,
-            user_id=principal.user_id,
-            workflow_id=workflow.id,
-            env_vars=env_vars,
-            db_session_factory=create_session,
-            depth=depth,
-            cancel_event=cancel_event,
-        )
-        engine = self._make_engine(
-            max_concurrency=5,
-            cancel_event=cancel_event,
-            env_vars=env_vars,
-            run_id=run_id,
-            user_id=principal.user_id,
-            workflow_id=workflow.id,
-            workflow_timeout_ms=run_timeout_ms(workflow),
-        )
-        return StartedRun(
-            self,
-            run_id=run_id,
-            workflow=workflow,
-            principal=principal,
-            mode=mode,
-            parsed=parsed,
-            inputs=inputs,
-            context=context,
-            engine=engine,
-            cancel_event=cancel_event,
-            holds_slot=acquire_slot,
-        )
 
     async def run_to_completion(self, workflow: Any, **kwargs: Any) -> RunOutcome:
         """:meth:`start_run`, then wait for the outcome."""
@@ -604,6 +643,11 @@ class WorkflowRunService:
             status="running",
             mode=mode.value,
             started_at=datetime.now(UTC),
+        )
+
+    async def _mark_failed(self, run_id: str, error: str) -> None:
+        await self._persist(
+            RunOutcome(run_id=run_id, status="failed", error=error), started_at=time.time()
         )
 
     async def _record_refusal(

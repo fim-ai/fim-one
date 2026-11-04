@@ -382,3 +382,99 @@ _ENTRY_FILES = [
 )
 def test_entry_points_do_not_assemble_runs(path: Path, needle: str) -> None:
     assert needle not in path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Run lifecycle: slots and records never leak
+# ---------------------------------------------------------------------------
+
+
+class _SlowEngine:
+    """Waits for its cancel event, then reports a cancelled run."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self._cancel: asyncio.Event = kwargs["cancel_event"]
+
+    async def execute_streaming(
+        self, _parsed: Any, _inputs: Any, context: Any = None
+    ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+        await self._cancel.wait()
+        yield "run_completed", {"status": "cancelled", "error": "Execution cancelled"}
+
+
+def _service(engine_factory: Any) -> rs.WorkflowRunService:
+    gate = MagicMock()
+    gate.check = AsyncMock()
+    return rs.WorkflowRunService(gate=gate, engine_factory=engine_factory)
+
+
+class TestRunLifecycle:
+    @pytest.mark.asyncio
+    async def test_failed_start_releases_slot_and_closes_record(self, world: World) -> None:
+        def _boom(**_: Any) -> Any:
+            raise RuntimeError("engine unavailable")
+
+        svc = _service(_boom)
+        with pytest.raises(RuntimeError):
+            await svc.start_run(
+                world.wf, caller_id=world.subscriber.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+            )
+        assert not svc.rate_limiter._active_runs.get(world.subscriber.id)
+        (run,) = await _runs(world)
+        assert run.status == "failed"
+        assert run.error == "Run could not start"
+
+    @pytest.mark.asyncio
+    async def test_run_finishes_without_a_reader(self, world: World) -> None:
+        svc = _service(_RecordingEngine)
+        started = await svc.start_run(
+            world.wf, caller_id=world.subscriber.id, inputs={}, mode=rs.RunMode.INTERACTIVE
+        )
+        # Nobody reads events(): the run still completes and frees its slot.
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert started.done
+        assert not svc.rate_limiter._active_runs.get(world.subscriber.id)
+        (run,) = await _runs(world)
+        assert run.status == "completed"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("mode", [rs.RunMode.BATCH, rs.RunMode.TOOL, rs.RunMode.TRIGGER])
+    async def test_any_mode_can_be_cancelled(self, world: World, mode: rs.RunMode) -> None:
+        svc = _service(_SlowEngine)
+        started = await svc.start_run(
+            world.wf, caller_id=world.subscriber.id, inputs={}, mode=mode, acquire_slot=False
+        )
+        assert svc.cancel_run(started.run_id) is True
+        outcome = await asyncio.wait_for(started.wait(), timeout=5)
+        assert outcome.status == "cancelled"
+        assert svc.cancel_run(started.run_id) is False  # no longer registered
+        (run,) = await _runs(world)
+        assert run.status == "cancelled"
+
+    @pytest.mark.asyncio
+    async def test_closing_the_stream_cancels_the_run(self, world: World) -> None:
+        svc = _service(_SlowEngine)
+        request = MagicMock()
+        request.is_disconnected = AsyncMock(return_value=False)
+        with patch.object(rs, "_default_service", svc):
+            async with world.factory() as db:
+                resp = await wf_api.run_workflow(
+                    world.wf.id,
+                    WorkflowRunRequest(inputs={}),
+                    request,
+                    current_user=world.subscriber,
+                    db=db,
+                )
+        assert isinstance(resp, StreamingResponse)
+        stream = resp.body_iterator
+        first = await stream.__anext__()  # type: ignore[union-attr]
+        assert "run_started" in str(first)
+        await stream.aclose()  # type: ignore[union-attr]  # client went away
+
+        for _ in range(50):
+            if not svc._active_runs:
+                break
+            await asyncio.sleep(0.02)
+        assert svc._active_runs == {}
+        (run,) = await _runs(world)
+        assert run.status == "cancelled"
