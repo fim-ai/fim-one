@@ -530,6 +530,7 @@ class TestBuiltinTemplates:
 class TestTriggerRateLimitSlot:
     @pytest.mark.asyncio
     async def test_invalid_blueprint_does_not_leak_slot(self) -> None:
+        from fim_one.core.workflow import run_service as rs
         from fim_one.core.workflow.rate_limiter import WorkflowRateLimiter
         from fim_one.web.api import workflows as wf_api
         from fim_one.web.exceptions import AppError
@@ -541,44 +542,48 @@ class TestTriggerRateLimitSlot:
             is_active=True,
             blueprint={"nodes": [{"id": "x", "data": {"type": "BOGUS"}}], "edges": []},
         )
-        running = MagicMock()
-        running.scalar_one.return_value = 0
-        db = MagicMock()
-        db.execute = AsyncMock(side_effect=[running])
-
         limiter = WorkflowRateLimiter(max_concurrent_runs=1)
+        gate = MagicMock()
+        gate.check = AsyncMock()
+        service = rs.WorkflowRunService(gate=gate, rate_limiter=limiter)
         with (
-            patch.object(wf_api, "_rate_limiter", limiter),
-            patch("fim_one.web.api.chat._check_token_quota", AsyncMock()),
-            pytest.raises(AppError),
+            patch.object(rs, "_default_service", service),
+            pytest.raises(AppError) as exc,
         ):
-            await wf_api._execute_trigger(wf, WorkflowTriggerRequest(inputs={}), db)
+            await wf_api._execute_trigger(wf, WorkflowTriggerRequest(inputs={}))
 
+        assert exc.value.error_code.startswith("invalid_blueprint")
         assert not limiter._active_runs.get("owner-1")
 
 
 class TestInteractiveRunQuota:
     @pytest.mark.asyncio
     async def test_run_refused_when_over_quota(self) -> None:
+        from fim_one.core.workflow import run_service as rs
         from fim_one.web.api import workflows as wf_api
         from fim_one.web.exceptions import AppError
         from fim_one.web.schemas.workflow import WorkflowRunRequest
 
-        wf = SimpleNamespace(id="wf-1", blueprint={"nodes": [{"id": "s"}]})
+        wf = SimpleNamespace(
+            id="wf-1", user_id="user-1", is_active=True, blueprint={"nodes": [{"id": "s"}]}
+        )
         user = MagicMock(id="user-1")
+        gate = MagicMock()
+        gate.check = AsyncMock(
+            side_effect=rs.RunRefusedError("token_quota_exceeded", 429)
+        )
+        service = rs.WorkflowRunService(gate=gate)
         acquire = AsyncMock(return_value=(True, None))
         with (
+            patch.object(rs, "_default_service", service),
             patch.object(wf_api, "_get_accessible_workflow", AsyncMock(return_value=wf)),
-            patch.object(wf_api._rate_limiter, "acquire", acquire),
-            patch(
-                "fim_one.web.api.chat._check_token_quota",
-                AsyncMock(side_effect=AppError("token_quota_exceeded", status_code=429)),
-            ),
-            pytest.raises(AppError),
+            patch.object(service.rate_limiter, "acquire", acquire),
+            pytest.raises(AppError) as exc,
         ):
             await wf_api.run_workflow(
                 "wf-1", WorkflowRunRequest(inputs={}), MagicMock(), user, MagicMock()
             )
+        assert exc.value.error_code == "token_quota_exceeded"
         acquire.assert_not_awaited()
 
 

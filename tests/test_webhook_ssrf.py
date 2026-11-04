@@ -15,8 +15,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from fim_one.core.workflow.scheduler import WorkflowScheduler
-from fim_one.web.api.workflows import _deliver_webhook
+from fim_one.core.workflow.run_service import deliver_webhook
 
 _REBOUND = [(2, 1, 6, "", ("169.254.169.254", 0))]
 _PUBLIC = [(2, 1, 6, "", ("93.184.216.34", 0))]
@@ -39,10 +38,8 @@ def fake_network(sent: list[httpx.Request]) -> Iterator[None]:
         yield
 
 
-_DELIVERERS = [
-    pytest.param(_deliver_webhook, id="api"),
-    pytest.param(WorkflowScheduler._deliver_webhook, id="scheduler"),
-]
+# Every entry point delivers through the run service.
+_DELIVERERS = [pytest.param(deliver_webhook, id="run_service")]
 
 
 class TestWebhookDeliverySSRF:

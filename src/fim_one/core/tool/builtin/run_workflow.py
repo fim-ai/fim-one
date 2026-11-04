@@ -6,7 +6,9 @@ trail).  This tool is the runtime's symmetric twin of ``read_skill`` — the age
 loop hands it to the LLM, which pulls a workflow by name when it needs one.
 
 Only workflows that are active, visible to the user, and free of human-approval
-gates are runnable inline.  Re-entrancy and deep nesting are refused so that an
+gates are runnable inline. A run executes as the agent's user (the caller):
+their credentials and quota, and the author's env vars only when the caller
+is the author.  Re-entrancy and deep nesting are refused so that an
 ``AGENT`` node inside a workflow can never trigger an unbounded call cycle.
 """
 
@@ -14,8 +16,6 @@ from __future__ import annotations
 
 import contextvars
 import json
-import time
-import uuid
 from typing import Any
 
 from fim_one.core.tool.base import BaseTool
@@ -102,14 +102,13 @@ class RunWorkflowTool(BaseTool):
 
         from sqlalchemy import select
 
-        from fim_one.core.workflow.engine import WorkflowEngine
-        from fim_one.core.workflow.parser import (
-            BlueprintValidationError,
-            parse_blueprint,
+        from fim_one.core.workflow.run_service import (
+            RunMode,
+            RunRefusedError,
+            get_run_service,
         )
-        from fim_one.core.workflow.types import ExecutionContext, NodeType
         from fim_one.db import create_session
-        from fim_one.db.models.workflow import Workflow, WorkflowRun
+        from fim_one.db.models.workflow import Workflow
 
         try:
             async with create_session() as session:
@@ -125,18 +124,6 @@ class RunWorkflowTool(BaseTool):
             if not wf:
                 return f"[Error] workflow not found or not runnable: {name}"
 
-            try:
-                parsed = parse_blueprint(wf.blueprint)
-            except BlueprintValidationError as exc:
-                return f"[Error] invalid workflow blueprint: {exc}"
-
-            # Fail closed on human-approval gates — they block for minutes/hours.
-            if any(node.type == NodeType.HUMAN_INTERVENTION for node in parsed.nodes):
-                return (
-                    f"[Error] workflow '{name}' contains a human-approval step and "
-                    "cannot be run inline; trigger it from the Workflows page instead."
-                )
-
             # Re-entrancy / depth guard.
             active = _active_workflows.get()
             if wf.id in active:
@@ -144,107 +131,46 @@ class RunWorkflowTool(BaseTool):
             if len(active) >= _MAX_WORKFLOW_DEPTH:
                 return f"[Error] workflow nesting too deep (max {_MAX_WORKFLOW_DEPTH})"
 
-            # Quota gate: workflow LLM/Agent usage bills to the owner (mirrors the
-            # webhook/cron paths). Refuse up-front when the owner is over quota so
-            # an agent can't mint free, unmetered LLM usage via run_workflow.
-            from fim_one.web.api.chat import _get_quota_status
-
-            _used, _cap = await _get_quota_status(wf.user_id)
-            if _cap > 0 and _used >= _cap:
-                return (
-                    f"[Error] workflow '{name}' cannot run: owner token quota exceeded"
-                )
-
-            env_vars: dict[str, str] = {}
-            if wf.env_vars_blob:
-                try:
-                    from fim_one.core.security.encryption import decrypt_credential
-
-                    env_vars = decrypt_credential(wf.env_vars_blob)
-                except Exception:
-                    pass
-
-            # Run as the workflow owner (mirrors the trigger endpoint): subscribed
-            # workflows execute with the publisher's bound credentials, not the caller's.
-            run_user_id = wf.user_id
-            run_id = str(uuid.uuid4())
-
-            # Best-effort audit record so agent-triggered runs show in run history.
-            try:
-                async with create_session() as session:
-                    session.add(
-                        WorkflowRun(
-                            id=run_id,
-                            workflow_id=wf.id,
-                            user_id=run_user_id,
-                            blueprint_snapshot=wf.blueprint,
-                            inputs=inputs,
-                            status="running",
-                        )
-                    )
-                    await session.commit()
-            except Exception:
-                pass
-
-            outputs: dict[str, Any] = {}
-            final_status = "completed"
-            error_msg: str | None = None
-            run_tokens = 0
-            start = time.time()
-
+            # The run executes as the agent's user (the caller), with that
+            # user's credentials and quota; the author's env vars are not
+            # injected unless the caller is the author. Human-approval steps
+            # are refused: an agent turn cannot wait for them.
             token = _active_workflows.set(active | {wf.id})
             try:
-                engine = WorkflowEngine(
-                    max_concurrency=5,
-                    env_vars=env_vars,
-                    run_id=run_id,
-                    user_id=run_user_id,
-                    workflow_id=wf.id,
-                )
-                exec_context = ExecutionContext(
-                    run_id=run_id,
-                    user_id=run_user_id,
-                    workflow_id=wf.id,
-                    env_vars=env_vars,
-                    db_session_factory=create_session,
+                outcome = await get_run_service().run_to_completion(
+                    wf,
+                    caller_id=self._user_id,
+                    inputs=inputs,
+                    mode=RunMode.TOOL,
                     depth=len(active) + 1,
                 )
-                async for event_name, event_data in engine.execute_streaming(
-                    parsed, inputs, context=exec_context
-                ):
-                    if event_name == "run_completed":
-                        outputs = event_data.get("outputs", {}) or {}
-                        final_status = event_data.get("status", "completed")
-                        run_tokens = int(event_data.get("total_tokens", 0) or 0)
-                    elif event_name == "run_failed":
-                        final_status = "failed"
-                        error_msg = event_data.get("error")
-                        run_tokens = int(event_data.get("total_tokens", 0) or 0)
+            except RunRefusedError as exc:
+                return _refusal_message(name, exc)
             finally:
                 _active_workflows.reset(token)
 
-            elapsed_ms = int((time.time() - start) * 1000)
+            if outcome.status != "completed":
+                return (
+                    f"[Error] workflow '{name}' failed: {outcome.error or 'unknown error'}"
+                )
 
-            # Finalize the audit record.
-            try:
-                from datetime import UTC, datetime
-
-                async with create_session() as session:
-                    db_run = await session.get(WorkflowRun, run_id)
-                    if db_run is not None:
-                        db_run.status = final_status
-                        db_run.outputs = outputs
-                        db_run.completed_at = datetime.now(UTC)
-                        db_run.duration_ms = elapsed_ms
-                        db_run.total_tokens = run_tokens
-                        await session.commit()
-            except Exception:
-                pass
-
-            if final_status != "completed":
-                return f"[Error] workflow '{name}' failed: {error_msg or 'unknown error'}"
-
-            body = json.dumps(outputs, ensure_ascii=False, indent=2, default=str)
+            body = json.dumps(outcome.outputs, ensure_ascii=False, indent=2, default=str)
             return f"Workflow '{name}' completed.\n\n--- Outputs ---\n{body}"
         except Exception as e:
             return f"[Error] failed to run workflow: {e}"
+
+
+def _refusal_message(name: str, exc: Any) -> str:
+    """Tool-facing text for a run the run service refused to start."""
+    if exc.error_code == "workflow_has_approval_step":
+        return (
+            f"[Error] workflow '{name}' contains a human-approval step and "
+            "cannot be run inline; trigger it from the Workflows page instead. "
+            f"({exc.error_code})"
+        )
+    reason = {
+        "token_quota_exceeded": "token quota exceeded",
+        "subscription_required": "a paid subscription is required",
+        "workflow_owner_inactive": "the workflow owner's account is disabled",
+    }.get(exc.error_code, exc.detail)
+    return f"[Error] workflow '{name}' cannot run: {reason} ({exc.error_code})"

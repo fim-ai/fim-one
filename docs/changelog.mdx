@@ -23,10 +23,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Testing a single workflow step counts against your token quota.** The step test is refused when you are over quota, and the tokens it uses are recorded.
 - **Workflow steps no longer call disabled connectors or knowledge bases.** A Connector or Knowledge Retrieval step that uses a disabled resource now fails with a message naming it, as chat already refuses them.
 - **Workflow templates are unavailable while the Workflows module is off,** like the rest of the module.
+- **Every way of starting a workflow applies the same checks.** Runs from the editor, batch runs, trigger keys, schedules, the `run_workflow` agent tool and single-step tests all check the same account state, token quota and plan, and record their token usage the same way. A workflow whose owner's account is disabled no longer runs for anyone.
+- **Time spent waiting for a Human Intervention decision no longer counts toward a workflow's maximum run duration.** A run with an approval step used to time out after 10 minutes while the approval could wait for 24 hours. When an approval times out it is now marked expired instead of staying pending.
+- **A browser tab left open on a long workflow run no longer ends the run after 15 quiet seconds.** A step that produced no events for 15 seconds could stop the run and record it as completed.
 - **Workflow trigger keys are stored as hashes and sent in a header.** Keys were stored in plain text and passed in the URL, where proxy and access logs record them. Existing keys keep working; `POST /api/workflows/trigger` now takes the key as `Authorization: Bearer <key>`. A key stops working when its owner's account is disabled.
 
 <Warning>
 **Behavior change for shared workflows.** Authors no longer see other users' runs in the run list, run details or run export; use the statistics and analytics views for counts and durations. Other users get `403` from the version history endpoints. A shared workflow run by someone other than its author runs without the author's environment variables, so steps that reference `{{env.*}}` receive empty values in those runs. Runs started by the author, through the API key, or on a schedule keep the author's environment variables.
+</Warning>
+
+<Warning>
+**Behavior change for agents that run workflows.** The `run_workflow` agent tool now runs a workflow as the user chatting with the agent: their connector and MCP credentials, their token quota, and no author environment variables unless they are the author. Previously it ran as the workflow's author. Workflows shared with other users that relied on the author's credentials or environment variables need those users to configure their own credentials. Trigger keys and schedules still run as the author.
 </Warning>
 
 <Warning>

@@ -96,7 +96,7 @@ async def client(
     app.dependency_overrides[get_session] = _session
     app.dependency_overrides[require_workflows_enabled] = _enabled
 
-    async def _fake_execute(wf: Workflow, body: Any, db: Any) -> ApiResponse:
+    async def _fake_execute(wf: Workflow, body: Any) -> ApiResponse:
         return ApiResponse(data={"ran": wf.id})
 
     with patch.object(wf_api, "_execute_trigger", _fake_execute):

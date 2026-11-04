@@ -28,6 +28,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from fim_one.core.workflow.run_service import RunRefusedError
 from fim_one.db.base import Base
 from fim_one.db.models.organization import Organization, OrgMembership
 from fim_one.db.models.resource_subscription import ResourceSubscription
@@ -432,11 +433,14 @@ class TestVersionHistoryAuthorOnly:
 class TestAuthorEnvNotInjectedForOthers:
     def test_env_only_for_author(self) -> None:
         from fim_one.core.security.encryption import encrypt_credential
+        from fim_one.core.workflow.run_service import Principal, author_env_vars
 
         wf = Workflow(user_id="author", name="x", blueprint={})
         wf.env_vars_blob = encrypt_credential({"API_TOKEN": "s3cret"})
-        assert wf_api._author_env_vars(wf, "author") == {"API_TOKEN": "s3cret"}
-        assert wf_api._author_env_vars(wf, "subscriber") == {}
+        as_author = Principal(user_id="author", author_id="author")
+        as_subscriber = Principal(user_id="subscriber", author_id="author")
+        assert author_env_vars(wf, as_author) == {"API_TOKEN": "s3cret"}
+        assert author_env_vars(wf, as_subscriber) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -465,8 +469,8 @@ class TestTestNodeQuotaAndUsage:
 
         with (
             patch(
-                "fim_one.web.api.chat._check_token_quota",
-                new=AsyncMock(side_effect=AppError("token_quota_exceeded", status_code=429)),
+                "fim_one.core.workflow.run_service.ChatRunGate.check",
+                new=AsyncMock(side_effect=RunRefusedError("token_quota_exceeded", 429)),
             ),
             pytest.raises(AppError) as exc,
         ):
@@ -493,12 +497,12 @@ class TestTestNodeQuotaAndUsage:
                 yield s
 
         with (
-            patch("fim_one.web.api.chat._check_token_quota", new=AsyncMock()),
+            patch("fim_one.core.workflow.run_service.ChatRunGate.check", new=AsyncMock()),
             patch(
                 "fim_one.core.workflow.nodes.get_executor",
                 return_value=_TokenSpendingExecutor(),
             ),
-            patch.object(wf_api, "create_session", _cs),
+            patch("fim_one.db.create_session", _cs),
         ):
             resp = await wf_api.test_node(
                 world.wf.id,

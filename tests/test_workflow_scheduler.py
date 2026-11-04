@@ -372,40 +372,55 @@ async def sched_db():  # type: ignore[no-untyped-def]
 
 async def _run_scheduled(wf) -> None:  # type: ignore[no-untyped-def]
     scheduler = WorkflowScheduler(poll_interval=60, max_concurrent_runs=1)
-    await scheduler._execute_workflow(
-        workflow_id=wf.id,
-        user_id=wf.user_id,
-        blueprint=wf.blueprint,
-        inputs=None,
-        env_vars_blob=None,
-        webhook_url=None,
-        max_run_duration_seconds=wf.max_run_duration_seconds,
-    )
+    await scheduler._execute_workflow(wf)
 
 
 class TestScheduledRunGates:
     @pytest.mark.asyncio
-    async def test_approval_node_creates_pending_approval(self, sched_db) -> None:  # type: ignore[no-untyped-def]
-        """W1: no auto-approval; W10: the workflow's own run limit applies."""
+    async def test_approval_node_waits_for_a_decision(self, sched_db) -> None:  # type: ignore[no-untyped-def]
+        """W1: a scheduled run creates a pending approval and waits for it.
+
+        The approval wait does not count toward the 1-second run limit (W5),
+        so the run is still waiting after the limit has passed.
+        """
         from sqlalchemy import select
 
         from fim_one.db.models.workflow import WorkflowApproval, WorkflowRun
 
         factory, wf = sched_db
-        await asyncio.wait_for(_run_scheduled(wf), timeout=20)
+        task = asyncio.create_task(_run_scheduled(wf))
+
+        approval = None
+        for _ in range(100):
+            await asyncio.sleep(0.05)
+            async with factory() as s:
+                approval = (await s.execute(select(WorkflowApproval))).scalar_one_or_none()
+            if approval is not None:
+                break
+        assert approval is not None, "no approval was created"
+        assert approval.status == "pending"
+        assert approval.title == "Approve the scheduled step"
+
+        await asyncio.sleep(1.3)  # past max_run_duration_seconds
+        async with factory() as s:
+            run = (await s.execute(select(WorkflowRun))).scalar_one()
+        assert run.status == "running"
+        assert run.mode == "schedule"
+        assert run.user_id == wf.user_id
 
         async with factory() as s:
-            approvals = (await s.execute(select(WorkflowApproval))).scalars().all()
-            run = (await s.execute(select(WorkflowRun))).scalar_one()
+            row = await s.get(WorkflowApproval, approval.id)
+            assert row is not None
+            row.status = "rejected"
+            row.decision_note = "not tonight"
+            await s.commit()
+        await asyncio.wait_for(task, timeout=10)
 
-        assert len(approvals) == 1
-        assert approvals[0].title == "Approve the scheduled step"
-        assert approvals[0].workflow_run_id == run.id
-        # Timed out at max_run_duration_seconds (1s), not approved, not 600s.
+        async with factory() as s:
+            run = (await s.execute(select(WorkflowRun))).scalar_one()
         assert run.status == "failed"
-        assert "timed out after 1000ms" in (run.error or "")
         human = (run.node_results or {}).get("human_1", {})
-        assert human.get("status") != "completed"
+        assert "Approval rejected: not tonight" in (human.get("error") or "")
 
     @pytest.mark.asyncio
     async def test_paid_only_without_plan_is_refused(self, sched_db) -> None:  # type: ignore[no-untyped-def]
@@ -429,10 +444,9 @@ class TestScheduledRunGates:
         assert approvals == []
 
     @pytest.mark.asyncio
-    async def test_dispatch_passes_run_limit(self) -> None:
+    async def test_dispatch_hands_the_workflow_over(self) -> None:
         scheduler = WorkflowScheduler(poll_interval=60, max_concurrent_runs=1)
         wf = _make_workflow()
-        wf.max_run_duration_seconds = 42
         mock_session = AsyncMock()
         mock_session.__aenter__.return_value = mock_session
         mock_session.execute.return_value = MagicMock(
@@ -444,4 +458,4 @@ class TestScheduledRunGates:
         ):
             await scheduler._dispatch_run(wf)
             await asyncio.sleep(0)
-        assert ex.call_args.kwargs["max_run_duration_seconds"] == 42
+        ex.assert_awaited_once_with(wf)

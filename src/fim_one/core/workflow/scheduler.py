@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-import uuid
 import zoneinfo
 from datetime import UTC, datetime
 from typing import Any
@@ -56,7 +55,6 @@ class WorkflowScheduler:
         self._semaphore = asyncio.Semaphore(max_concurrent_runs)
         self._stop_event = asyncio.Event()
         self._running_tasks: set[asyncio.Task[None]] = set()
-        self._webhook_tasks: set[asyncio.Task[None]] = set()
 
     async def run(self) -> None:
         """Main scheduler loop.  Runs until ``stop()`` is called or cancelled."""
@@ -244,242 +242,43 @@ class WorkflowScheduler:
                 await db.commit()
 
         # Launch execution as a background task
-        task = asyncio.create_task(
-            self._execute_workflow(
-                workflow_id=wf.id,
-                user_id=wf.user_id,
-                blueprint=wf.blueprint,
-                inputs=wf.schedule_inputs,
-                env_vars_blob=wf.env_vars_blob,
-                webhook_url=getattr(wf, "webhook_url", None),
-                max_run_duration_seconds=getattr(wf, "max_run_duration_seconds", None),
-            )
-        )
+        task = asyncio.create_task(self._execute_workflow(wf))
         self._running_tasks.add(task)
         task.add_done_callback(self._running_tasks.discard)
 
-    async def _execute_workflow(
-        self,
-        *,
-        workflow_id: str,
-        user_id: str,
-        blueprint: dict[str, Any],
-        inputs: dict[str, Any] | None,
-        env_vars_blob: str | None,
-        webhook_url: str | None,
-        max_run_duration_seconds: int | None = None,
-    ) -> None:
-        """Execute a single scheduled workflow run, guarded by the semaphore."""
+    async def _execute_workflow(self, wf: Any) -> None:
+        """Execute one scheduled run through the run service.
+
+        The run executes as the workflow's author and passes the same gates
+        as every other entry point. A refused run is recorded as failed with
+        the refusal code, so the author can see why the schedule did not run.
+        """
+        from .run_service import RunMode, RunRefusedError, get_run_service
+
         async with self._semaphore:
-            run_id = str(uuid.uuid4())
-            start_time = time.time()
-            final_status = "completed"
-            outputs: dict[str, Any] = {}
-            node_results: dict[str, Any] = {}
-            error_msg: str | None = None
-            run_tokens = 0
-
-            # Create the run record
-            from fim_one.db import create_session
-            from fim_one.db.models import WorkflowRun
-
             try:
-                async with create_session() as db:
-                    run = WorkflowRun(
-                        id=run_id,
-                        workflow_id=workflow_id,
-                        user_id=user_id,
-                        blueprint_snapshot=blueprint,
-                        inputs=inputs,
-                        status="running",
-                        started_at=datetime.now(UTC),
-                    )
-                    db.add(run)
-                    await db.commit()
-            except Exception:
-                logger.exception(
-                    "Failed to create run record for scheduled workflow %s",
-                    workflow_id,
+                outcome = await get_run_service().run_to_completion(
+                    wf,
+                    caller_id=None,
+                    inputs=wf.schedule_inputs,
+                    mode=RunMode.SCHEDULE,
+                    # The scheduler bounds concurrency with its own semaphore.
+                    acquire_slot=False,
+                    record_refusal=True,
+                )
+            except RunRefusedError as exc:
+                logger.warning(
+                    "Scheduled workflow %s refused: %s", wf.id, exc.error_code
                 )
                 return
-
-            # Decrypt env vars
-            env_vars: dict[str, str] = {}
-            if env_vars_blob:
-                try:
-                    from fim_one.core.security.encryption import decrypt_credential
-
-                    env_vars = decrypt_credential(env_vars_blob)
-                except Exception:
-                    logger.warning(
-                        "Failed to decrypt env vars for scheduled workflow %s",
-                        workflow_id,
-                    )
-
-            # Parse and execute
-            try:
-                from fim_one.core.workflow.engine import WorkflowEngine
-                from fim_one.core.workflow.parser import parse_blueprint
-                from fim_one.core.workflow.types import ExecutionContext
-
-                parsed = parse_blueprint(blueprint)
-                engine = WorkflowEngine(
-                    max_concurrency=5,
-                    env_vars=env_vars,
-                    run_id=run_id,
-                    user_id=user_id,
-                    workflow_id=workflow_id,
-                    # Same whole-run limit as every other entry point: the
-                    # workflow's own override, else 10 minutes.
-                    workflow_timeout_ms=(max_run_duration_seconds or 600) * 1000,
-                )
-                # A full context, as the interactive path builds: with a
-                # db_session_factory an approval node creates a pending
-                # WorkflowApproval and waits, instead of auto-approving.
-                exec_context = ExecutionContext(
-                    run_id=run_id,
-                    user_id=user_id,
-                    workflow_id=workflow_id,
-                    env_vars=env_vars,
-                    db_session_factory=create_session,
-                )
-
-                # Quota and plan gate: bill unattended cron runs to the
-                # workflow owner; skip execution when the owner is over quota
-                # or a paid_only instance finds no plan, the same gate as
-                # chat and the interactive run.
-                from fim_one.web.api.chat import _check_token_quota
-                from fim_one.web.exceptions import AppError
-
-                gate_error: str | None = None
-                try:
-                    await _check_token_quota(user_id)
-                except AppError as gate_exc:
-                    gate_error = gate_exc.error_code
-
-                if gate_error is not None:
-                    final_status = "failed"
-                    error_msg = gate_error
-                    logger.warning(
-                        "Scheduled workflow %s skipped: %s", workflow_id, gate_error
-                    )
-                else:
-                    async for event_name, event_data in engine.execute_streaming(
-                        parsed, inputs, context=exec_context
-                    ):
-                        if event_name in (
-                            "node_started",
-                            "node_completed",
-                            "node_failed",
-                            "node_skipped",
-                        ):
-                            nid = event_data.get("node_id", "")
-                            node_results[nid] = {
-                                **(node_results.get(nid) or {}),
-                                **event_data,
-                            }
-                        elif event_name == "run_completed":
-                            outputs = event_data.get("outputs", {})
-                            final_status = event_data.get("status", "completed")
-                            run_tokens = int(event_data.get("total_tokens", 0) or 0)
-                        elif event_name == "run_failed":
-                            final_status = "failed"
-                            error_msg = event_data.get("error")
-                            run_tokens = int(event_data.get("total_tokens", 0) or 0)
-
-            except Exception as exc:
-                final_status = "failed"
-                error_msg = f"{type(exc).__name__}: {exc}"
-                logger.exception(
-                    "Scheduled workflow execution failed for run %s (workflow %s)",
-                    run_id,
-                    workflow_id,
-                )
-
-            elapsed_ms = int((time.time() - start_time) * 1000)
-
-            # Persist run results
-            try:
-                from sqlalchemy import select as sa_select
-
-                async with create_session() as persist_db:
-                    result = await persist_db.execute(
-                        sa_select(WorkflowRun).where(WorkflowRun.id == run_id)
-                    )
-                    db_run = result.scalar_one_or_none()
-                    if db_run:
-                        db_run.status = final_status
-                        db_run.outputs = outputs or None
-                        db_run.node_results = node_results or None
-                        db_run.started_at = datetime.fromtimestamp(
-                            start_time, tz=UTC
-                        )
-                        db_run.completed_at = datetime.now(UTC)
-                        db_run.duration_ms = elapsed_ms
-                        db_run.error = error_msg
-                        db_run.total_tokens = run_tokens
-                        await persist_db.commit()
             except Exception:
-                logger.exception(
-                    "Failed to persist scheduled run %s", run_id
-                )
-
-            # Fire webhook if configured
-            if webhook_url and final_status in ("completed", "failed"):
-                wh_task = asyncio.create_task(
-                    self._deliver_webhook(
-                        webhook_url,
-                        {
-                            "event": (
-                                "run_completed"
-                                if final_status == "completed"
-                                else "run_failed"
-                            ),
-                            "workflow_id": workflow_id,
-                            "run_id": run_id,
-                            "status": final_status,
-                            "outputs": outputs or None,
-                            "error": error_msg,
-                            "duration_ms": elapsed_ms,
-                            "completed_at": datetime.now(UTC).isoformat(),
-                            "trigger": "scheduled",
-                        },
-                    )
-                )
-                self._webhook_tasks.add(wh_task)
-                wh_task.add_done_callback(self._webhook_tasks.discard)
+                logger.exception("Scheduled workflow %s could not start", wf.id)
+                return
 
             logger.info(
                 "Scheduled run %s for workflow %s finished: %s (%dms)",
-                run_id,
-                workflow_id,
-                final_status,
-                elapsed_ms,
-            )
-
-    @staticmethod
-    async def _deliver_webhook(
-        webhook_url: str, payload: dict[str, Any]
-    ) -> None:
-        """Fire-and-forget POST to a workflow webhook URL."""
-        from fim_one.core.security import get_safe_async_client
-
-        try:
-            async with get_safe_async_client(timeout=10.0) as client:
-                resp = await client.post(
-                    webhook_url,
-                    json=payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-Webhook-Source": "fim-one",
-                    },
-                )
-                logger.info(
-                    "Scheduler webhook delivered to %s — status %d",
-                    webhook_url,
-                    resp.status_code,
-                )
-        except Exception:
-            logger.exception(
-                "Scheduler webhook delivery failed for %s", webhook_url
+                outcome.run_id,
+                wf.id,
+                outcome.status,
+                outcome.duration_ms,
             )
