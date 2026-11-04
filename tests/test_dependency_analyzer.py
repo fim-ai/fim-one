@@ -480,9 +480,9 @@ class TestResolveWorkflowDependencies:
             name="Test WF",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": "conn-1"}},
-                    {"type": "KNOWLEDGE_RETRIEVAL", "data": {"kb_id": "kb-1"}},
-                    {"type": "LLM", "data": {"prompt": "hello"}},
+                    {"type": "connector", "data": {"connector_id": "conn-1"}},
+                    {"type": "knowledgeRetrieval", "data": {"kb_ids": ["kb-1"]}},
+                    {"type": "llm", "data": {"prompt_template": "hello"}},
                 ],
                 "edges": [],
             },
@@ -505,7 +505,7 @@ class TestResolveWorkflowDependencies:
             name="WF",
             blueprint={
                 "nodes": [
-                    {"type": "MCP", "data": {"server_id": "srv-1"}},
+                    {"type": "mcp", "data": {"server_id": "srv-1"}},
                 ],
                 "edges": [],
             },

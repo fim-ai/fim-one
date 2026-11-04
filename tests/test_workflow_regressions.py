@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from fim_one.core.workflow.blueprint_v2 import NODE_TYPE_NAMES, node_type_of, upgrade_blueprint
 from fim_one.core.workflow.engine import WorkflowEngine
 from fim_one.core.workflow.nodes import (
     ConditionBranchExecutor,
@@ -24,7 +25,6 @@ from fim_one.core.workflow.nodes import (
 from fim_one.core.workflow.parser import (
     BlueprintValidationError,
     parse_blueprint,
-    resolve_raw_node_type,
 )
 from fim_one.core.workflow.templates import WORKFLOW_TEMPLATES
 from fim_one.core.workflow.types import (
@@ -38,13 +38,19 @@ from fim_one.core.workflow.types import (
 from fim_one.core.workflow.variable_store import VariableStore
 
 
+def resolve_raw_node_type(node: dict[str, Any]) -> NodeType | None:
+    """Type of a stored node: legacy spellings are upgraded first (T10 P3)."""
+    upgraded = upgrade_blueprint({"nodes": [node]})["nodes"][0]
+    return node_type_of(upgraded)
+
+
 def _ctx() -> ExecutionContext:
     return ExecutionContext(run_id="r", user_id="u", workflow_id="w")
 
 
 def _n(node_id: str, node_type: str, **data: Any) -> dict[str, Any]:
-    """Node the way the backend/templates spell it (type on data.type)."""
-    return {"id": node_id, "data": {"type": node_type, **data}}
+    """A v2 node: the editor's type name on ``type``."""
+    return {"id": node_id, "type": NODE_TYPE_NAMES[NodeType(node_type)], "data": data}
 
 
 def _editor_node(node_id: str, rf_type: str, **data: Any) -> dict[str, Any]:

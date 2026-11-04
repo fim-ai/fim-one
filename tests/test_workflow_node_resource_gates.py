@@ -128,7 +128,7 @@ class TestDisabledKnowledgeBase:
         return WorkflowNodeDef(
             id="kb1",
             type=NodeType.KNOWLEDGE_RETRIEVAL,
-            data={"kb_id": kb_id, "query_template": "leave policy"},
+            data={"kb_ids": [kb_id], "query_template": "leave policy"},
         )
 
     @pytest.mark.asyncio
@@ -171,7 +171,7 @@ class TestMissingIdentityFailsClosed:
             (
                 KnowledgeRetrievalExecutor(),
                 NodeType.KNOWLEDGE_RETRIEVAL,
-                {"kb_id": "k", "query_template": "q"},
+                {"kb_ids": ["k"], "query_template": "q"},
             ),
         ],
     )

@@ -13,7 +13,6 @@ import pytest
 
 from fim_one.core.workflow.parser import (
     BlueprintWarning,
-    parse_blueprint,
     validate_blueprint,
 )
 from fim_one.core.workflow.types import (
@@ -28,6 +27,16 @@ from fim_one.core.workflow.types import (
 # Helpers: build raw blueprint dicts for parse_blueprint()
 # ---------------------------------------------------------------------------
 
+
+
+
+def parse_blueprint(raw: dict[str, Any]) -> Any:
+    """Fixtures here use pre-v2 spellings; upgrade them as the T10 P3
+    migration does for stored blueprints, then parse strictly."""
+    from fim_one.core.workflow.blueprint_v2 import upgrade_blueprint
+    from fim_one.core.workflow.parser import parse_blueprint as parse_v2
+
+    return parse_v2(upgrade_blueprint(raw))
 
 def _node(node_id: str, node_type: str, **data: Any) -> dict:
     """Build a raw node dict suitable for parse_blueprint()."""

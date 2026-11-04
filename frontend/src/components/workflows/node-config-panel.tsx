@@ -904,8 +904,10 @@ function KnowledgeRetrievalConfig({ data, updateField, t, otherNodes }: ConfigPr
         <Input
           className="h-7 text-xs"
           placeholder="KB ID"
-          value={(data.kb_id ?? "") as string}
-          onChange={(e) => updateField("kb_id", e.target.value)}
+          value={((data.kb_ids as string[] | undefined) ?? [])[0] ?? ""}
+          onChange={(e) =>
+            updateField("kb_ids", e.target.value ? [e.target.value] : [])
+          }
         />
       </div>
 
@@ -991,8 +993,8 @@ function ConnectorConfig({ data, updateField, t, otherNodes }: ConfigProps) {
       <div className="space-y-1.5">
         <label className="text-xs font-medium">{t("configSelectAction")}</label>
         <Select
-          value={(data.action ?? "__default__") as string}
-          onValueChange={(v) => updateField("action", v === "__default__" ? "" : v)}
+          value={((data.action_id as string | undefined) || "__default__")}
+          onValueChange={(v) => updateField("action_id", v === "__default__" ? "" : v)}
         >
           <SelectTrigger className="w-full h-7 text-xs">
             <SelectValue placeholder={t("configActionPlaceholder")} />

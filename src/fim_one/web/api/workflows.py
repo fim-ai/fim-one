@@ -325,6 +325,26 @@ def _run_stats_clauses(wf: Workflow, user_id: str) -> list[Any]:
     return clauses
 
 
+def normalize_blueprint(raw: Any) -> dict[str, Any]:
+    """Upgrade an incoming blueprint to v2 and validate it against the schema.
+
+    Every write of a blueprint goes through here, so stored blueprints are
+    always v2. A schema violation answers 422 ``blueprint_schema_invalid``
+    with ``error_args.errors`` listing ``{loc, node_id, message}`` per field.
+    """
+    from fim_one.core.workflow.blueprint_v2 import BlueprintSchemaError, normalize_for_save
+
+    try:
+        return normalize_for_save(raw)
+    except BlueprintSchemaError as exc:
+        raise AppError(
+            "blueprint_schema_invalid",
+            status_code=422,
+            detail="The workflow blueprint has invalid fields",
+            detail_args={"errors": exc.errors},
+        ) from None
+
+
 def _refused(exc: Any) -> AppError:
     """Map a run service refusal onto the API's error envelope."""
     return AppError(exc.error_code, status_code=exc.status_code, detail=exc.detail)
@@ -367,7 +387,7 @@ def _extract_schemas_from_blueprint(
 
     nodes = blueprint.get("nodes", [])
     for node in nodes:
-        node_type = (node.get("data", {}) or {}).get("type", "") or node.get("type", "")
+        node_type = str(node.get("type") or "")  # v2: "start" / "end"
         node_data = node.get("data", {}) or {}
 
         if node_type.upper() == "START":
@@ -424,13 +444,14 @@ async def create_workflow(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    input_schema, output_schema = _extract_schemas_from_blueprint(body.blueprint)
+    blueprint = normalize_blueprint(body.blueprint)
+    input_schema, output_schema = _extract_schemas_from_blueprint(blueprint)
     wf = Workflow(
         user_id=current_user.id,
         name=body.name,
         icon=body.icon,
         description=body.description,
-        blueprint=body.blueprint,
+        blueprint=blueprint,
         input_schema=input_schema,
         output_schema=output_schema,
         status=body.status,
@@ -894,6 +915,7 @@ async def update_workflow(
     # Capture old blueprint BEFORE applying updates (for diff computation)
     old_blueprint: dict[str, Any] | None = None
     if "blueprint" in update_data and update_data["blueprint"] is not None:
+        update_data["blueprint"] = normalize_blueprint(update_data["blueprint"])
         old_blueprint = wf.blueprint or {"nodes": [], "edges": [], "viewport": {}}
 
     for field, value in update_data.items():
@@ -1171,7 +1193,21 @@ async def validate_blueprint_endpoint(
         validate_blueprint as _validate,
     )
 
+    from fim_one.core.workflow.blueprint_v2 import (
+        BlueprintSchemaError,
+        normalize_for_save,
+    )
+
     blueprint = body.get("blueprint", body)
+    try:
+        blueprint = normalize_for_save(blueprint)
+    except BlueprintSchemaError as exc:
+        return ApiResponse(data={
+            "valid": False,
+            "error": str(exc),
+            "field_errors": exc.errors,
+            "warnings": [],
+        })
     try:
         parsed = parse_blueprint(blueprint)
         warnings = _validate(parsed)
@@ -1615,27 +1651,20 @@ async def test_node(
 
     # Parse node type
     node_data = target_node_raw.get("data", {}) or {}
-    raw_type = node_data.get("type", "") or target_node_raw.get("type", "")
-    if not raw_type:
-        raise AppError("node_type_missing", status_code=400)
 
     from fim_one.core.workflow.parser import (
-        _resolve_node_type,
+        BlueprintValidationError,
+        parse_error_strategy,
         parse_timeout_ms,
-        resolve_raw_node_type,
+        resolve_node_type,
     )
-    from fim_one.core.workflow.types import (
-        ErrorStrategy,
-        WorkflowNodeDef,
-    )
+    from fim_one.core.workflow.types import WorkflowNodeDef
 
     try:
-        resolved_type = resolve_raw_node_type(target_node_raw)
-        node_type = (
-            resolved_type if resolved_type is not None else _resolve_node_type(raw_type)
-        )
-    except ValueError as exc:
-        raise AppError(f"invalid_node_type: {exc}", status_code=400)
+        node_type = resolve_node_type(target_node_raw)
+        error_strategy = parse_error_strategy(node_data.get("error_strategy"))
+    except BlueprintValidationError as exc:
+        raise AppError(f"invalid_node_type: {exc}", status_code=400) from None
 
     # Reject non-testable node types
     if node_type in non_testable:
@@ -1646,16 +1675,6 @@ async def test_node(
         )
 
     # Build a WorkflowNodeDef from raw data
-    raw_error_strategy = node_data.get("error_strategy", "")
-    error_strategy = ErrorStrategy.STOP_WORKFLOW
-    if raw_error_strategy:
-        try:
-            error_strategy = ErrorStrategy(
-                raw_error_strategy.lower().replace("-", "_")
-            )
-        except ValueError:
-            pass
-
     timeout_ms = parse_timeout_ms(node_data.get("timeout_ms"), node_type)
 
     node_def = WorkflowNodeDef(
@@ -2681,24 +2700,16 @@ async def import_workflow(
         raise AppError("import_invalid_format", status_code=400)
 
     # Validate blueprint structure: must have nodes with at least a start node
-    raw_blueprint = data.blueprint
-    nodes = raw_blueprint.get("nodes", [])
-    if not nodes:
+    # Exports written before blueprint v2 are upgraded here, once.
+    if not (data.blueprint or {}).get("nodes"):
         raise AppError("import_invalid_blueprint", status_code=400)
-
-    has_start = any(
-        (n.get("data", {}) or {}).get("type", "").upper() == "START"
-        or n.get("type", "").upper() == "START"
-        for n in nodes
-    )
-    if not has_start:
-        raise AppError("import_invalid_blueprint", status_code=400)
+    raw_blueprint = normalize_blueprint(data.blueprint)
 
     # Parse the blueprint so the resolver can work with typed node definitions
     try:
         parsed_bp = parse_blueprint(raw_blueprint)
     except Exception:
-        raise AppError("import_invalid_blueprint", status_code=400)
+        raise AppError("import_invalid_blueprint", status_code=400) from None
 
     # Resolve external references
     user_org_ids = await get_user_org_ids(current_user.id, db)
@@ -2723,7 +2734,7 @@ async def import_workflow(
         name=name,
         icon=data.icon,
         description=data.description,
-        blueprint=data.blueprint,
+        blueprint=raw_blueprint,
         input_schema=data.input_schema,
         output_schema=data.output_schema,
         status="draft",

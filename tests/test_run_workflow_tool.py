@@ -167,9 +167,9 @@ async def test_not_found_when_not_in_ids(db: async_sessionmaker[AsyncSession]) -
 async def test_rejects_human_intervention_node(db: async_sessionmaker[AsyncSession]) -> None:
     bp = {
         "nodes": [
-            {"id": "start_1", "data": {"type": "START"}},
-            {"id": "h", "data": {"type": "HUMAN_INTERVENTION", "title": "ok?"}},
-            {"id": "end_1", "data": {"type": "END"}},
+            {"id": "start_1", "type": "start", "data": {}},
+            {"id": "h", "type": "humanIntervention", "data": {"title": "ok?"}},
+            {"id": "end_1", "type": "end", "data": {}},
         ],
         "edges": [
             {"id": "e1", "source": "start_1", "target": "h"},

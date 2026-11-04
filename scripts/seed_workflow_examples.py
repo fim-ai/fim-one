@@ -4,7 +4,7 @@ Usage:
     uv run python scripts/seed_workflow_examples.py
 
 Each workflow gets an api_key for unauthenticated trigger testing:
-    curl -X POST http://localhost:8000/api/workflows/trigger/{api_key} \
+    curl -X POST http://localhost:8000/api/workflows/trigger -H "Authorization: Bearer {api_key}" \
          -H 'Content-Type: application/json' \
          -d '{"inputs": {...}}'
 """
@@ -698,6 +698,21 @@ def main():
         wf6_full_pipeline(),
     ]
 
+    # Store what the API would store: v2 blueprints, hashed trigger keys.
+    from fim_one.core.workflow.blueprint_v2 import upgrade_blueprint
+    from fim_one.web.services.workflow_trigger_keys import (
+        DISPLAY_PREFIX_LEN,
+        hash_trigger_key,
+    )
+
+    raw_keys: dict[str, str] = {}
+    for wf in workflows:
+        wf["blueprint"] = json.dumps(upgrade_blueprint(json.loads(wf["blueprint"])))
+        raw_key = wf.pop("api_key")
+        raw_keys[wf["id"]] = raw_key
+        wf["api_key_hash"] = hash_trigger_key(raw_key)
+        wf["api_key_prefix"] = raw_key[:DISPLAY_PREFIX_LEN]
+
     # Build column list from first workflow
     columns = list(workflows[0].keys())
     placeholders = ", ".join(["?"] * len(columns))
@@ -707,8 +722,12 @@ def main():
         values = [wf[c] for c in columns]
         cur.execute(f"INSERT INTO workflows ({col_names}) VALUES ({placeholders})", values)
         print(f"✅ Inserted: {wf['name']}")
-        print(f"   API Key: {wf['api_key']}")
-        print(f"   Trigger: curl -X POST http://localhost:8000/api/workflows/trigger/{wf['api_key']} -H 'Content-Type: application/json' -d '{{\"inputs\": {{}}}}'")
+        print(f"   API Key: {raw_keys[wf['id']]}")
+        print(
+            "   Trigger: curl -X POST http://localhost:8000/api/workflows/trigger"
+            f" -H 'Authorization: Bearer {raw_keys[wf['id']]}'"
+            " -H 'Content-Type: application/json' -d '{\"inputs\": {}}'"
+        )
         print()
 
     conn.commit()

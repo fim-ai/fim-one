@@ -56,10 +56,7 @@ class ImportResolution:
 _REFERENCE_FIELDS: dict[NodeType, list[tuple[str, str]]] = {
     NodeType.AGENT: [("agent_id", "agent")],
     NodeType.CONNECTOR: [("connector_id", "connector")],
-    NodeType.KNOWLEDGE_RETRIEVAL: [
-        ("knowledge_base_id", "knowledge_base"),
-        ("kb_id", "knowledge_base"),
-    ],
+    NodeType.KNOWLEDGE_RETRIEVAL: [("kb_ids", "knowledge_base")],
     NodeType.MCP: [("server_id", "mcp_server")],
 }
 
@@ -85,17 +82,20 @@ def _extract_references(blueprint: WorkflowBlueprint) -> list[_ExtractedRef]:
             continue
 
         for field_name, resource_type in field_specs:
-            ref_id = node.data.get(field_name)
-            if ref_id and isinstance(ref_id, str) and ref_id.strip():
-                refs.append(
-                    _ExtractedRef(
-                        node_id=node.id,
-                        node_type=node.type.value,
-                        field_name=field_name,
-                        referenced_id=ref_id.strip(),
-                        resource_type=resource_type,
+            value = node.data.get(field_name)
+            # A field holds one id (``agent_id``) or a list (``kb_ids``).
+            values = value if isinstance(value, list) else [value]
+            for ref_id in values:
+                if ref_id and isinstance(ref_id, str) and ref_id.strip():
+                    refs.append(
+                        _ExtractedRef(
+                            node_id=node.id,
+                            node_type=node.type.value,
+                            field_name=field_name,
+                            referenced_id=ref_id.strip(),
+                            resource_type=resource_type,
+                        )
                     )
-                )
 
     return refs
 

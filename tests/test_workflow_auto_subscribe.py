@@ -213,8 +213,8 @@ class TestWorkflowSubscribeAutoSubscribesConnectionDeps:
             name="Test Workflow",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": conn_id}},
-                    {"type": "MCP", "data": {"server_id": srv_id}},
+                    {"type": "connector", "data": {"connector_id": conn_id}},
+                    {"type": "mcp", "data": {"server_id": srv_id}},
                 ],
                 "edges": [],
             },
@@ -295,7 +295,7 @@ class TestWorkflowSubscribeAutoSubscribesAgentDeps:
             name="Agent Workflow",
             blueprint={
                 "nodes": [
-                    {"type": "AGENT", "data": {"agent_id": agent_id}},
+                    {"type": "agent", "data": {"agent_id": agent_id}},
                 ],
                 "edges": [],
             },
@@ -347,7 +347,7 @@ class TestWorkflowUnsubscribeCascade:
             name="Cascade WF",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": conn_id}},
+                    {"type": "connector", "data": {"connector_id": conn_id}},
                 ],
                 "edges": [],
             },
@@ -399,7 +399,7 @@ class TestWorkflowUnsubscribeCascade:
             name="Cascade WF",
             blueprint={
                 "nodes": [
-                    {"type": "AGENT", "data": {"agent_id": agent_id}},
+                    {"type": "agent", "data": {"agent_id": agent_id}},
                 ],
                 "edges": [],
             },
@@ -452,7 +452,7 @@ class TestWorkflowUnsubscribeCascade:
             name="WF A",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": conn_id}},
+                    {"type": "connector", "data": {"connector_id": conn_id}},
                 ],
                 "edges": [],
             },
@@ -463,7 +463,7 @@ class TestWorkflowUnsubscribeCascade:
             name="WF B",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": conn_id}},
+                    {"type": "connector", "data": {"connector_id": conn_id}},
                 ],
                 "edges": [],
             },
@@ -525,7 +525,7 @@ class TestWorkflowSubscribeIdempotency:
             name="Idem WF",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": conn_id}},
+                    {"type": "connector", "data": {"connector_id": conn_id}},
                 ],
                 "edges": [],
             },
@@ -583,7 +583,7 @@ class TestWorkflowMissingResourcesGraceful:
             name="Missing Dep WF",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": fake_conn_id}},
+                    {"type": "connector", "data": {"connector_id": fake_conn_id}},
                 ],
                 "edges": [],
             },
@@ -612,7 +612,7 @@ class TestWorkflowMissingResourcesGraceful:
             name="Missing Agent WF",
             blueprint={
                 "nodes": [
-                    {"type": "AGENT", "data": {"agent_id": fake_agent_id}},
+                    {"type": "agent", "data": {"agent_id": fake_agent_id}},
                 ],
                 "edges": [],
             },
@@ -646,8 +646,8 @@ class TestWorkflowMissingResourcesGraceful:
             name="Mixed WF",
             blueprint={
                 "nodes": [
-                    {"type": "CONNECTOR", "data": {"connector_id": conn_id}},
-                    {"type": "MCP", "data": {"server_id": fake_srv_id}},
+                    {"type": "connector", "data": {"connector_id": conn_id}},
+                    {"type": "mcp", "data": {"server_id": fake_srv_id}},
                 ],
                 "edges": [],
             },
@@ -690,7 +690,7 @@ class TestWorkflowAgentContentDeps:
             name="Agent Content WF",
             blueprint={
                 "nodes": [
-                    {"type": "AGENT", "data": {"agent_id": agent_id}},
+                    {"type": "agent", "data": {"agent_id": agent_id}},
                 ],
                 "edges": [],
             },

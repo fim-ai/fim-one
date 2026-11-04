@@ -30,9 +30,9 @@ function ConnectorNodeComponent({ data, selected }: NodeProps) {
             {nodeData.connector_name}
           </p>
         )}
-        {nodeData.action && (
+        {nodeData.action_id && (
           <p className="text-[10px] text-muted-foreground/70 truncate">
-            {nodeData.action}
+            {nodeData.action_id}
           </p>
         )}
       </div>

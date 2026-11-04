@@ -126,7 +126,7 @@ async def world(session: AsyncSession) -> World:
     wf = Workflow(
         user_id=author.id,
         name="shared",
-        blueprint={"nodes": [{"id": "llm_1", "data": {"type": "LLM"}}], "edges": []},
+        blueprint={"nodes": [{"id": "llm_1", "type": "llm", "data": {}}], "edges": []},
         visibility="org",
         org_id=o1.id,
         status="active",

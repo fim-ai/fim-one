@@ -24,7 +24,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fim_one.core.workflow.engine import WorkflowEngine
-from fim_one.core.workflow.parser import parse_blueprint
 from fim_one.core.workflow.types import (
     ErrorStrategy,
     ExecutionContext,
@@ -38,10 +37,22 @@ from fim_one.core.workflow.types import (
 from fim_one.core.workflow.variable_store import VariableStore
 
 
+
+
 # ---------------------------------------------------------------------------
 # Blueprint builder helpers
 # ---------------------------------------------------------------------------
 
+
+
+
+def parse_blueprint(raw: dict[str, Any]) -> Any:
+    """Fixtures here use pre-v2 spellings; upgrade them as the T10 P3
+    migration does for stored blueprints, then parse strictly."""
+    from fim_one.core.workflow.blueprint_v2 import upgrade_blueprint
+    from fim_one.core.workflow.parser import parse_blueprint as parse_v2
+
+    return parse_v2(upgrade_blueprint(raw))
 
 def _start_node(node_id: str = "start_1", **data: Any) -> dict:
     return {

@@ -26,6 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Every way of starting a workflow applies the same checks.** Runs from the editor, batch runs, trigger keys, schedules, the `run_workflow` agent tool and single-step tests all check the same account state, token quota and plan, and record their token usage the same way. A workflow whose owner's account is disabled no longer runs for anyone.
 - **Time spent waiting for a Human Intervention decision no longer counts toward a workflow's maximum run duration.** A run with an approval step used to time out after 10 minutes while the approval could wait for 24 hours. When an approval times out it is now marked expired instead of staying pending.
 - **A browser tab left open on a long workflow run no longer ends the run after 15 quiet seconds.** A step that produced no events for 15 seconds could stop the run and record it as completed.
+- **Workflows are saved in one checked format.** The editor, the API, imports and templates now all store a workflow as blueprint version 2, with one name per step type and per setting. Saving a workflow with an invalid setting returns `422` naming each step and field at fault, instead of saving it and failing at run time. Existing workflows, versions, templates and run records are converted on upgrade; the original of each is kept for one release.
 - **Workflow trigger keys are stored as hashes and sent in a header.** Keys were stored in plain text and passed in the URL, where proxy and access logs record them. Existing keys keep working; `POST /api/workflows/trigger` now takes the key as `Authorization: Bearer <key>`. A key stops working when its owner's account is disabled.
 
 <Warning>
@@ -34,6 +35,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 <Warning>
 **Behavior change for agents that run workflows.** The `run_workflow` agent tool now runs a workflow as the user chatting with the agent: their connector and MCP credentials, their token quota, and no author environment variables unless they are the author. Previously it ran as the workflow's author. Workflows shared with other users that relied on the author's credentials or environment variables need those users to configure their own credentials. Trigger keys and schedules still run as the author.
+</Warning>
+
+<Warning>
+**Behavior change for workflow API clients.** Blueprints sent to the workflow, import and admin template endpoints are validated against blueprint version 2; an invalid one is rejected with `422` and `error_code` `blueprint_schema_invalid`, with `error_args.errors` listing `{loc, node_id, message}` per field. Older spellings (`CONDITION_BRANCH`, `prompt`, `kb_id`, `action` ...) are still accepted on input and converted. Blueprints returned by the API are version 2: node types such as `conditionBranch`, no `data.type`, Knowledge Retrieval `kb_ids` (a list) and Connector `action_id`.
 </Warning>
 
 <Warning>

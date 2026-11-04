@@ -375,7 +375,7 @@ class LLMExecutor:
             from fim_one.db import create_session
 
             # Get config from node data (accept both frontend and legacy keys)
-            prompt_template = node.data.get("prompt_template", "") or node.data.get("prompt", "")
+            prompt_template = node.data.get("prompt_template", "")
             system_prompt = node.data.get("system_prompt", "")
 
             # Interpolate variables in prompts
@@ -716,7 +716,7 @@ class AgentExecutor:
             from fim_one.web.deps import get_effective_fast_llm, get_tools
 
             agent_id = node.data.get("agent_id", "")
-            query_template = node.data.get("prompt_template", "") or node.data.get("query", "")
+            query_template = node.data.get("prompt_template", "")
 
             query = await store.interpolate(query_template) if query_template else ""
 
@@ -910,12 +910,7 @@ class KnowledgeRetrievalExecutor:
         try:
             from fim_one.web.deps import get_kb_manager
 
-            # Frontend sends kb_id (singular string), legacy uses kb_ids (list)
-            kb_ids = node.data.get("kb_ids", [])
-            if not kb_ids:
-                single_id = node.data.get("kb_id", "")
-                if single_id:
-                    kb_ids = [single_id]
+            kb_ids: list[str] = list(node.data.get("kb_ids", []) or [])
 
             # A disabled knowledge base is not queried (same rule as chat).
             disabled = await _disabled_kb_names(kb_ids)
@@ -926,7 +921,7 @@ class KnowledgeRetrievalExecutor:
                     error=f"Knowledge base '{disabled[0]}' is disabled",
                     duration_ms=_ms_since(t0),
                 )
-            query_template = node.data.get("query_template", "") or node.data.get("query", "")
+            query_template = node.data.get("query_template", "")
             top_k = node.data.get("top_k", 5)
 
             query = await store.interpolate(query_template) if query_template else ""
@@ -1011,7 +1006,7 @@ class ConnectorExecutor:
             from fim_one.db import create_session
 
             connector_id = node.data.get("connector_id", "")
-            action_id = node.data.get("action_id", "") or node.data.get("action", "")
+            action_id = node.data.get("action_id", "")
             params_template = node.data.get("parameters", {})
 
             if not connector_id or not action_id:
