@@ -19,6 +19,7 @@ from fim_one.core.utils import spawn_background
 from fim_one.core.model.types import ChatMessage
 from fim_one.db import create_session, get_session
 from fim_one.web.auth import get_current_user
+from fim_one.web.services.quota_enforcer import get_quota_checked_user
 from fim_one.web.deps import get_effective_fast_llm, get_effective_llm, get_llm_from_config, get_tools
 from fim_one.web.exceptions import AppError
 from fim_one.db.models.agent import Agent
@@ -237,7 +238,7 @@ async def _execute_eval_run(
 @router.post("", response_model=ApiResponse)
 async def create_run(
     body: EvalRunCreate,
-    current_user: User = Depends(get_current_user),  # noqa: B008
+    current_user: User = Depends(get_quota_checked_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
     # Verify agent ownership
