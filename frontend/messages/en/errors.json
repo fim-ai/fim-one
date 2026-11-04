@@ -11,6 +11,7 @@
   "username_taken": "Username already taken.",
   "email_already_registered": "Email already registered.",
   "invalid_credentials": "Invalid credentials.",
+  "ip_not_allowed": "Access from your IP address is not allowed. Contact your administrator.",
   "account_disabled": "Account disabled.",
   "invalid_token_type": "Invalid token type.",
   "invalid_token_payload": "Invalid token payload.",
