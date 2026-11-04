@@ -215,12 +215,14 @@ What they would deliver, in one line each:
 - **Policy planes and automated approval** — resolved values that carry which
   layer set them, and a reviewer that can clear low-risk actions with no human
   present.
-- **Merge visual workflows into the DAG engine** — the drag-and-drop workflow
-  module (behind `feature.workflows`, off by default) is a second execution
-  engine that re-implements approval, MCP credentials, trigger auth and secret
-  storage. It is frozen: only security fixes go in, and it is switched on when
-  a tender demo needs visual orchestration. Merging it into the DAG planner is
-  roughly 3–5 weeks and belongs with the runtime work, not before.
+- **Save a DAG plan as a workflow** — the drag-and-drop workflow module
+  (behind `feature.workflows`, off by default) stays a separate deterministic
+  scheduler; it is not merged into the DAG planner. Its own copies of
+  approval, MCP credentials, trigger auth and secret storage move onto the
+  shared layer the chat path uses, and a shared workflow runs with the
+  runner's credentials and quota. What remains parked is a one-way export:
+  a plan produced in DAG mode saved as a workflow blueprint, lossless because
+  a plan step is a subset of a blueprint node.
 - **Typed frontend from OpenAPI** — `docs/openapi.json` is already exported
   and nothing consumes it, while `frontend/src/lib/api.ts` carries roughly 50
   hand-written interfaces that drift by construction.
