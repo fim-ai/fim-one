@@ -394,14 +394,25 @@ class FeishuGateHook(PreToolUseHook):
         the org" — that routes approval cards to chats whose members were
         never chosen as approvers. No explicit binding → ``None`` (auto
         mode then degrades to inline; channel_only fails closed).
+
+        The bound channel must belong to the agent's own organization. A
+        binding to another organization's channel would post the card, tool
+        arguments included, into a chat outside the organization; it is
+        treated as no binding.  Personal agents have no organization and
+        therefore never use a channel.
         """
         from fim_one.db.models.channel import Channel
 
         approval_id = getattr(agent_row, "approval_channel_id", None)
-        if approval_id:
+        agent_org = getattr(agent_row, "org_id", None)
+        if approval_id and agent_org:
             stmt = (
                 select(Channel)
-                .where(Channel.id == approval_id, Channel.is_active.is_(True))
+                .where(
+                    Channel.id == approval_id,
+                    Channel.org_id == agent_org,
+                    Channel.is_active.is_(True),
+                )
                 .limit(1)
             )
             row = (await session.execute(stmt)).scalar_one_or_none()
