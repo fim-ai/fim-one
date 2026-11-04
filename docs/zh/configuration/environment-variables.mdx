@@ -363,24 +363,22 @@ FIM One从`LLM_BASE_URL`解析提供商（加上配置时的显式提供商字�
 
 ## 电子邮件（SMTP）（推荐）
 
-用于登录验证码和电子邮件通知。当设置了 `SMTP_HOST`、`SMTP_USER` 和 `SMTP_PASS`，并配置了收件人允许列表（`SMTP_ALLOWED_DOMAINS` 或 `SMTP_ALLOWED_ADDRESSES`），或设置 `EMAIL_TOOL_ENABLED=true` 时，才会提供内置工具 `email_send`。如果两者都未配置，任何用户都可能从此账户向任意地址发送邮件，因此不会提供该工具。
+用于登录码和电子邮件通知。当设置了 `SMTP_HOST`、`SMTP_USER` 和 `SMTP_PASS` **且** 配置了收件人允许列表（`SMTP_ALLOWED_DOMAINS` 或 `SMTP_ALLOWED_ADDRESSES`），或设置 `EMAIL_TOOL_ENABLED=true` 时，提供 `email_send` 内置工具。否则，任何用户都可能从此账户向任何地址发送邮件，因此不提供该工具。
 
-| 变量 | 必填 | 默认值 | 描述 |
+| 变量 | 必需 | 默认值 | 描述 |
 |---|---|---|---|
-| `SMTP_HOST` | 条件必填 | — | SMTP 服务器主机名 |
+| `SMTP_HOST` | 条件 | — | SMTP 服务器主机名 |
 | `SMTP_PORT` | 否 | `465` | SMTP 端口 |
-| `SMTP_SSL` | 否 | `ssl` | TLS 模式：`ssl`（端口 465）/ `tls`（STARTTLS，端口 587）/ `none` 或 `""`（明文，凭据将以明文发送）。任何其他值都会被拒绝，而不会静默回退到明文模式。 |
-| `SMTP_USER` | 条件必填 | — | SMTP 登录用户名 |
-| `SMTP_PASS` | 条件必填 | — | SMTP 登录密码 |
-| `SMTP_FROM` | 否 | *(使用 `SMTP_USER`)* | From 标头中显示的发件人地址 |
-| `SMTP_FROM_NAME` | 否 | — | From 标头中显示的名称 |
-| `SMTP_REPLY_TO` | 否 | — | Reply-To 地址；回复将发送到此地址，而不是 `SMTP_FROM` |
-| `SMTP_ALLOWED_DOMAINS` | 否 | — | 以逗号分隔的域名允许列表（例如 `example.com,corp.io`）；阻止向所列域名之外的收件人发送邮件 |
-| `SMTP_ALLOWED_ADDRESSES` | 否 | — | 以逗号分隔的精确地址允许列表；与 `SMTP_ALLOWED_DOMAINS` 结合使用。通过 `send_notification` 发送的电子邮件同样适用 |
-| `EMAIL_TOOL_ENABLED` | 否 | `false` | 在没有收件人允许列表的情况下提供 `email_send`。仅当此实例的所有用户都可以从此账户向任意地址发送邮件时才启用 |
-| `NOTIFICATION_TOOL_ENABLED` | 否 | `false` | 提供 `send_notification` 智能体工具，该工具会向实例范围内的 Slack / Lark / WeCom Webhook 和 SMTP 账户发送消息。仅当此实例的所有用户都可以向这些通道发送消息时才启用 |
-
----
+| `SMTP_SSL` | 否 | `ssl` | TLS 模式：`ssl`（端口 465）/ `tls`（STARTTLS，端口 587）/ `none` 或 `""`（明文，凭证以明文发送）。其他任何值都会被拒绝，而不是静默回退到明文。 |
+| `SMTP_USER` | 条件 | — | SMTP 登录用户名 |
+| `SMTP_PASS` | 条件 | — | SMTP 登录密码 |
+| `SMTP_FROM` | 否 | *（使用 `SMTP_USER`）* | From 头中显示的发件人地址 |
+| `SMTP_FROM_NAME` | 否 | — | From 头中显示的显示名称 |
+| `SMTP_REPLY_TO` | 否 | — | Reply-To 地址；回复将发送到此处而不是 `SMTP_FROM` |
+| `SMTP_ALLOWED_DOMAINS` | 否 | — | 逗号分隔的域名允许列表（例如 `example.com,corp.io`）；阻止列表外域名的收件人 |
+| `SMTP_ALLOWED_ADDRESSES` | 否 | — | 逗号分隔的精确地址允许列表；与 `SMTP_ALLOWED_DOMAINS` 结合使用。也适用于通过 `send_notification` 发送的电子邮件 |
+| `EMAIL_TOOL_ENABLED` | 否 | `false` | 提供 `email_send` 且不设置收件人允许列表。仅当此实例的每个用户都可能从此账户向任何地址发送邮件时才启用 |
+| `NOTIFICATION_TOOL_ENABLED` | 否 | `false` | 提供 `send_notification` 智能体工具，该工具发送到实例范围的 Slack / Lark / WeCom webhook 和 SMTP 账户。仅当此实例的每个用户都可能发送到这些通道时才启用 |
 
 ## 连接器
 
@@ -453,13 +451,14 @@ FIM One从`LLM_BASE_URL`解析提供商（加上配置时的显式提供商字�
 | `GOOGLE_CLIENT_SECRET` | 否 | — | Google OAuth 客户端密钥 |
 | `DISCORD_CLIENT_ID` | 否 | — | Discord OAuth2 客户端 ID。在 [discord.com/developers](https://discord.com/developers/applications) 创建 |
 | `DISCORD_CLIENT_SECRET` | 否 | — | Discord OAuth2 客户端密钥 |
-| `FEISHU_APP_ID` | 否 | — | 飞书（Lark）应用 ID。在 [open.feishu.cn](https://open.feishu.cn/app) 创建。需要 `contact:user.email:readonly` 权限 |
-| `FEISHU_APP_SECRET` | 否 | — | 飞书（Lark）应用密钥 |
+| `FEISHU_APP_ID` | 否 | — | Feishu（Lark）应用 ID。在 [open.feishu.cn](https://open.feishu.cn/app) 创建。需要 `contact:user.email:readonly` 权限 |
+| `FEISHU_APP_SECRET` | 否 | — | Feishu（Lark）应用密钥 |
+| `FEISHU_TRUSTED_TENANT_KEYS` | 否 | — | 逗号分隔的 Feishu `tenant_key` 值，其企业邮箱可能与现有账户通过邮箱匹配。其他租户可以登录但无法通过邮箱认领账户 |
 | `FRONTEND_URL` | **生产环境** | `http://localhost:3000` | OAuth 完成后浏览器跳转的位置。在生产环境中必须设置（例如 `https://yourdomain.com`） |
 | `API_BASE_URL` | **生产环境** | `http://localhost:8000` | 外部可访问的后端 URL，用于构建 OAuth 回调 URL。在生产环境中必须设置 |
-| `NEXT_PUBLIC_API_URL` | **生产环境** | *（自动检测为 `<hostname>:8000`）* | 浏览器端 API 基础 URL，用于 OAuth 重定向。**这是前端构建时变量** — 在本地开发时在 `frontend/.env.local` 中设置，或在自定义生产部署时作为 Docker 构建参数传递。自动检测适用于标准反向代理设置（端口 80/443）。 |
+| `NEXT_PUBLIC_API_URL` | **生产环境** | *（自动检测为 `<hostname>:8000`）* | 浏览器端 API 基础 URL，用于 OAuth 重定向。**这是前端构建时变量** —— 本地开发时在 `frontend/.env.local` 中设置，或在自定义生产部署时作为 Docker 构建参数传递。标准反向代理设置（端口 80/443）支持自动检测。 |
 
-> **生产环境** = 本地可选（使用默认值），但对于任何面向互联网的部署都**必需**。
+> **生产环境** = 本地可选（使用默认值），但对于任何面向互联网的部署都是**必需的**。
 
 ### 需要向每个提供商注册的 OAuth 回调 URL
 

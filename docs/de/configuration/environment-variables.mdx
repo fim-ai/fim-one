@@ -359,26 +359,24 @@ Steuert, wie hochgeladene PDF-/DOCX-Dateien für die LLM-Verarbeitung verarbeite
 
 ---
 
-## E-Mail (SMTP) (Empfohlen)
+## Email (SMTP) (Empfohlen)
 
-Wird für Anmeldecodes und E-Mail-Benachrichtigungen verwendet. Das integrierte Tool `email_send` wird angeboten, wenn `SMTP_HOST`, `SMTP_USER` und `SMTP_PASS` gesetzt sind **und** eine Empfänger-Zulassungsliste (`SMTP_ALLOWED_DOMAINS` oder `SMTP_ALLOWED_ADDRESSES`) konfiguriert ist oder `EMAIL_TOOL_ENABLED=true` gesetzt ist. Ohne eine dieser Voraussetzungen könnte jeder Benutzer von diesem Konto aus an jede beliebige Adresse E-Mails senden, daher wird das Tool nicht angeboten.
+Wird für Login-Codes und E-Mail-Benachrichtigungen verwendet. Das `email_send` Built-in-Tool wird angeboten, wenn `SMTP_HOST`, `SMTP_USER` und `SMTP_PASS` gesetzt sind **und** eine Empfänger-Allowlist (`SMTP_ALLOWED_DOMAINS` oder `SMTP_ALLOWED_ADDRESSES`) konfiguriert ist, oder `EMAIL_TOOL_ENABLED=true`. Ohne eines davon könnte jeder Benutzer von dieser Adresse aus E-Mails an beliebige Adressen versenden, daher wird das Tool nicht angeboten.
 
 | Variable | Erforderlich | Standard | Beschreibung |
 |---|---|---|---|
-| `SMTP_HOST` | Bed. | — | Hostname des SMTP-Servers |
+| `SMTP_HOST` | Bed. | — | SMTP-Server-Hostname |
 | `SMTP_PORT` | Nein | `465` | SMTP-Port |
-| `SMTP_SSL` | Nein | `ssl` | TLS-Modus: `ssl` (Port 465) / `tls` (STARTTLS, Port 587) / `none` oder `""` (unverschlüsselt, Anmeldedaten werden im Klartext gesendet). Jeder andere Wert wird abgelehnt, statt stillschweigend auf unverschlüsselte Übertragung zurückzufallen. |
-| `SMTP_USER` | Bed. | — | Benutzername für die SMTP-Anmeldung |
-| `SMTP_PASS` | Bed. | — | Passwort für die SMTP-Anmeldung |
+| `SMTP_SSL` | Nein | `ssl` | TLS-Modus: `ssl` (Port 465) / `tls` (STARTTLS, Port 587) / `none` oder `""` (unverschlüsselt, Anmeldedaten im Klartext). Jeder andere Wert wird abgelehnt, anstatt stillschweigend auf unverschlüsselt zurückzufallen. |
+| `SMTP_USER` | Bed. | — | SMTP-Anmeldebenutzername |
+| `SMTP_PASS` | Bed. | — | SMTP-Anmeldepasswort |
 | `SMTP_FROM` | Nein | *(verwendet `SMTP_USER`)* | Absenderadresse im From-Header |
 | `SMTP_FROM_NAME` | Nein | — | Anzeigename im From-Header |
-| `SMTP_REPLY_TO` | Nein | — | Reply-To-Adresse; Antworten werden hierhin gesendet statt an `SMTP_FROM` |
-| `SMTP_ALLOWED_DOMAINS` | Nein | — | Durch Kommas getrennte Domain-Zulassungsliste (z. B. `example.com,corp.io`); blockiert Empfänger außerhalb der aufgeführten Domains |
-| `SMTP_ALLOWED_ADDRESSES` | Nein | — | Durch Kommas getrennte Zulassungsliste exakter Adressen; wird mit `SMTP_ALLOWED_DOMAINS` kombiniert. Gilt auch für E-Mails, die über `send_notification` gesendet werden |
-| `EMAIL_TOOL_ENABLED` | Nein | `false` | Bietet `email_send` ohne Empfänger-Zulassungsliste an. Nur aktivieren, wenn jeder Benutzer dieser Instanz von diesem Konto aus an jede beliebige Adresse E-Mails senden darf |
-| `NOTIFICATION_TOOL_ENABLED` | Nein | `false` | Bietet das Agent-Tool `send_notification` an, das Beiträge an die instanzweiten Slack-/Lark-/WeCom-Webhooks und das SMTP-Konto sendet. Nur aktivieren, wenn jeder Benutzer dieser Instanz Beiträge an diese Kanäle senden darf |
-
----
+| `SMTP_REPLY_TO` | Nein | — | Reply-To-Adresse; Antworten gehen hierher statt zu `SMTP_FROM` |
+| `SMTP_ALLOWED_DOMAINS` | Nein | — | Kommagetrennte Domain-Allowlist (z. B. `example.com,corp.io`); blockiert Empfänger außerhalb der aufgelisteten Domains |
+| `SMTP_ALLOWED_ADDRESSES` | Nein | — | Kommagetrennte exakte Adressen-Allowlist; kombiniert mit `SMTP_ALLOWED_DOMAINS`. Gilt auch für E-Mails, die über `send_notification` versendet werden |
+| `EMAIL_TOOL_ENABLED` | Nein | `false` | Biete `email_send` ohne Empfänger-Allowlist an. Aktiviere nur, wenn jeder Benutzer dieser Instanz von dieser Adresse aus E-Mails an beliebige Adressen versenden darf |
+| `NOTIFICATION_TOOL_ENABLED` | Nein | `false` | Biete das `send_notification` Agent-Tool an, das auf die instanzweiten Slack- / Lark- / WeCom-Webhooks und das SMTP-Konto postet. Aktiviere nur, wenn jeder Benutzer dieser Instanz auf diese Kanäle posten darf |
 
 ## Konnektoren
 
@@ -445,19 +443,20 @@ Wenn sowohl `CLIENT_ID` als auch `CLIENT_SECRET` für einen Anbieter gesetzt sin
 
 | Variable | Erforderlich | Standard | Beschreibung |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | Nein | — | GitHub OAuth App Client ID. Erstellen Sie diese unter [github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps |
+| `GITHUB_CLIENT_ID` | Nein | — | GitHub OAuth App Client ID. Erstellen Sie eine unter [github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps |
 | `GITHUB_CLIENT_SECRET` | Nein | — | GitHub OAuth App Client Secret |
-| `GOOGLE_CLIENT_ID` | Nein | — | Google OAuth Client ID. Erstellen Sie diese unter [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) |
+| `GOOGLE_CLIENT_ID` | Nein | — | Google OAuth Client ID. Erstellen Sie eine unter [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) |
 | `GOOGLE_CLIENT_SECRET` | Nein | — | Google OAuth Client Secret |
-| `DISCORD_CLIENT_ID` | Nein | — | Discord OAuth2 Client ID. Erstellen Sie diese unter [discord.com/developers](https://discord.com/developers/applications) |
+| `DISCORD_CLIENT_ID` | Nein | — | Discord OAuth2 Client ID. Erstellen Sie eine unter [discord.com/developers](https://discord.com/developers/applications) |
 | `DISCORD_CLIENT_SECRET` | Nein | — | Discord OAuth2 Client Secret |
-| `FEISHU_APP_ID` | Nein | — | Feishu (Lark) App ID. Erstellen Sie diese unter [open.feishu.cn](https://open.feishu.cn/app). Erfordert die Berechtigung `contact:user.email:readonly` |
+| `FEISHU_APP_ID` | Nein | — | Feishu (Lark) App ID. Erstellen Sie eine unter [open.feishu.cn](https://open.feishu.cn/app). Erfordert die Berechtigung `contact:user.email:readonly` |
 | `FEISHU_APP_SECRET` | Nein | — | Feishu (Lark) App Secret |
+| `FEISHU_TRUSTED_TENANT_KEYS` | Nein | — | Kommagetrennte Feishu `tenant_key`-Werte, deren Enterprise-E-Mail mit einem vorhandenen Konto nach E-Mail übereinstimmen kann. Andere Mandanten können sich anmelden, können aber niemals ein Konto nach E-Mail beanspruchen |
 | `FRONTEND_URL` | **Prod** | `http://localhost:3000` | Wo der Browser nach Abschluss von OAuth landet. Muss in der Produktion gesetzt werden (z. B. `https://yourdomain.com`) |
 | `API_BASE_URL` | **Prod** | `http://localhost:8000` | Extern erreichbare Backend-URL, wird zum Erstellen von OAuth-Callback-URLs verwendet. Muss in der Produktion gesetzt werden |
-| `NEXT_PUBLIC_API_URL` | **Prod** | *(automatisch erkannt als `<hostname>:8000`)* | Browser-seitige API-Basis-URL für OAuth-Umleitungen. **Dies ist eine Frontend-Build-Zeit-Variable** — setzen Sie diese in `frontend/.env.local` für lokale Entwicklung oder übergeben Sie sie als Docker-Build-Argument für benutzerdefinierte Produktionsbereitstellungen. Die automatische Erkennung funktioniert für Standard-Reverse-Proxy-Setups (Port 80/443). |
+| `NEXT_PUBLIC_API_URL` | **Prod** | *(automatisch erkannt als `<hostname>:8000`)* | Browser-seitige API-Basis-URL für OAuth-Umleitungen. **Dies ist eine Frontend-Build-Zeit-Variable** — setzen Sie sie in `frontend/.env.local` für lokale Entwicklung oder übergeben Sie sie als Docker-Build-Argument für benutzerdefinierte Produktionsbereitstellungen. Die automatische Erkennung funktioniert für Standard-Reverse-Proxy-Setups (Port 80/443). |
 
-> **Prod** = lokal optional (Standardwerte funktionieren), aber **erforderlich für jede Bereitstellung mit Internetzugriff**.
+> **Prod** = lokal optional (Standards funktionieren), aber **erforderlich für jede Bereitstellung mit Internetverbindung**.
 
 ### OAuth-Callback-URLs zum Registrieren bei jedem Anbieter
 

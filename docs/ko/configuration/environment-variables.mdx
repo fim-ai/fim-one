@@ -361,26 +361,24 @@ Reranker는 검색된 문서를 다시 점수 매겨 관련성을 개선합니�
 
 ---
 
-## Email (SMTP) (권장)
+## 이메일 (SMTP) (권장)
 
-로그인 코드와 이메일 알림에 사용됩니다. `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`가 설정되어 있고 수신자 허용 목록(`SMTP_ALLOWED_DOMAINS` 또는 `SMTP_ALLOWED_ADDRESSES`)이 구성되어 있거나 `EMAIL_TOOL_ENABLED=true`인 경우 `email_send` 기본 제공 도구가 제공됩니다. 어느 조건도 충족되지 않으면 모든 사용자가 이 계정에서 임의의 주소로 이메일을 보낼 수 있으므로 도구가 제공되지 않습니다.
+로그인 코드 및 이메일 알림에 사용됩니다. `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`가 설정되고 **동시에** 수신자 허용 목록(`SMTP_ALLOWED_DOMAINS` 또는 `SMTP_ALLOWED_ADDRESSES`)이 구성되거나 `EMAIL_TOOL_ENABLED=true`일 때 `email_send` 기본 제공 도구가 제공됩니다. 둘 다 없으면 모든 사용자가 이 계정에서 모든 주소로 메일을 보낼 수 있으므로 도구가 제공되지 않습니다.
 
 | 변수 | 필수 | 기본값 | 설명 |
 |---|---|---|---|
-| `SMTP_HOST` | 조건부 | — | SMTP 서버 호스트 이름 |
-| `SMTP_PORT` | 아니요 | `465` | SMTP 포트 |
-| `SMTP_SSL` | 아니요 | `ssl` | TLS 모드: `ssl`(포트 465) / `tls`(STARTTLS, 포트 587) / `none` 또는 `""`(일반 텍스트, 자격 증명이 평문으로 전송됨). 그 외의 값은 일반 텍스트 모드로 자동 대체되지 않고 거부됩니다. |
-| `SMTP_USER` | 조건부 | — | SMTP 로그인 사용자 이름 |
+| `SMTP_HOST` | 조건부 | — | SMTP 서버 호스트명 |
+| `SMTP_PORT` | 아니오 | `465` | SMTP 포트 |
+| `SMTP_SSL` | 아니오 | `ssl` | TLS 모드: `ssl` (포트 465) / `tls` (STARTTLS, 포트 587) / `none` 또는 `""` (평문, 자격증명이 평문으로 전송됨). 다른 값은 평문으로 자동 폴백되지 않고 거부됩니다. |
+| `SMTP_USER` | 조건부 | — | SMTP 로그인 사용자명 |
 | `SMTP_PASS` | 조건부 | — | SMTP 로그인 비밀번호 |
-| `SMTP_FROM` | 아니요 | *( `SMTP_USER` 사용)* | From 헤더에 표시되는 발신자 주소 |
-| `SMTP_FROM_NAME` | 아니요 | — | From 헤더에 표시되는 이름 |
-| `SMTP_REPLY_TO` | 아니요 | — | Reply-To 주소. `SMTP_FROM` 대신 이 주소로 답장이 전송됩니다 |
-| `SMTP_ALLOWED_DOMAINS` | 아니요 | — | 쉼표로 구분된 도메인 허용 목록(예: `example.com,corp.io`). 목록에 없는 도메인의 수신자를 차단합니다 |
-| `SMTP_ALLOWED_ADDRESSES` | 아니요 | — | 쉼표로 구분된 정확한 주소 허용 목록. `SMTP_ALLOWED_DOMAINS`와 함께 적용됩니다. `send_notification`을 통해 전송되는 이메일에도 적용됩니다 |
-| `EMAIL_TOOL_ENABLED` | 아니요 | `false` | 수신자 허용 목록 없이 `email_send`를 제공합니다. 이 인스턴스의 모든 사용자가 이 계정에서 임의의 주소로 이메일을 보내도 되는 경우에만 활성화하세요 |
-| `NOTIFICATION_TOOL_ENABLED` | 아니요 | `false` | 인스턴스 전체의 Slack / Lark / WeCom 웹훅과 SMTP 계정에 게시하는 `send_notification` 에이전트 도구를 제공합니다. 이 인스턴스의 모든 사용자가 해당 채널에 게시해도 되는 경우에만 활성화하세요 |
-
----
+| `SMTP_FROM` | 아니오 | *(uses `SMTP_USER`)* | From 헤더에 표시되는 발신자 주소 |
+| `SMTP_FROM_NAME` | 아니오 | — | From 헤더에 표시되는 표시 이름 |
+| `SMTP_REPLY_TO` | 아니오 | — | Reply-To 주소; 회신이 `SMTP_FROM` 대신 여기로 전송됨 |
+| `SMTP_ALLOWED_DOMAINS` | 아니오 | — | 쉼표로 구분된 도메인 허용 목록 (예: `example.com,corp.io`); 나열된 도메인 외의 수신자를 차단함 |
+| `SMTP_ALLOWED_ADDRESSES` | 아니오 | — | 쉼표로 구분된 정확한 주소 허용 목록; `SMTP_ALLOWED_DOMAINS`과 결합됨. `send_notification`을 통해 전송된 이메일에도 적용됨 |
+| `EMAIL_TOOL_ENABLED` | 아니오 | `false` | 수신자 허용 목록 없이 `email_send`를 제공함. 이 인스턴스의 모든 사용자가 이 계정에서 모든 주소로 메일을 보낼 수 있을 때만 활성화하세요 |
+| `NOTIFICATION_TOOL_ENABLED` | 아니오 | `false` | `send_notification` 에이전트 도구를 제공함. 인스턴스 전체 Slack / Lark / WeCom 웹훅 및 SMTP 계정에 게시함. 이 인스턴스의 모든 사용자가 해당 채널에 게시할 수 있을 때만 활성화하세요 |
 
 ## 커넥터
 
@@ -443,7 +441,7 @@ Reranker는 검색된 문서를 다시 점수 매겨 관련성을 개선합니�
 
 ## OAuth (선택 사항)
 
-공급자에 대해 `CLIENT_ID`와 `CLIENT_SECRET`이 모두 설정되면 로그인 페이지에 해당 OAuth 버튼이 자동으로 표시됩니다.
+`CLIENT_ID`와 `CLIENT_SECRET`이 모두 제공자에 대해 설정되면 로그인 페이지에 해당 OAuth 버튼이 자동으로 표시됩니다.
 
 | 변수 | 필수 | 기본값 | 설명 |
 |---|---|---|---|
@@ -455,11 +453,12 @@ Reranker는 검색된 문서를 다시 점수 매겨 관련성을 개선합니�
 | `DISCORD_CLIENT_SECRET` | 아니오 | — | Discord OAuth2 클라이언트 시크릿 |
 | `FEISHU_APP_ID` | 아니오 | — | Feishu (Lark) App ID. [open.feishu.cn](https://open.feishu.cn/app)에서 생성. `contact:user.email:readonly` 권한 필요 |
 | `FEISHU_APP_SECRET` | 아니오 | — | Feishu (Lark) App Secret |
-| `FRONTEND_URL` | **프로덕션** | `http://localhost:3000` | OAuth 완료 후 브라우저가 이동할 위치. 프로덕션에서 설정 필수 (예: `https://yourdomain.com`) |
-| `API_BASE_URL` | **프로덕션** | `http://localhost:8000` | 외부에서 접근 가능한 백엔드 URL, OAuth 콜백 URL 구성에 사용. 프로덕션에서 설정 필수 |
-| `NEXT_PUBLIC_API_URL` | **프로덕션** | *(자동 감지: `<hostname>:8000`)* | OAuth 리다이렉트를 위한 브라우저 측 API 기본 URL. **이것은 프론트엔드 빌드 타임 변수**입니다 — 로컬 개발의 경우 `frontend/.env.local`에서 설정하거나, 커스텀 프로덕션 배포의 경우 Docker 빌드 인자로 전달하세요. 자동 감지는 표준 리버스 프록시 설정(포트 80/443)에서 작동합니다. |
+| `FEISHU_TRUSTED_TENANT_KEYS` | 아니오 | — | 이메일로 기존 계정과 일치할 수 있는 Feishu `tenant_key` 값(쉼표로 구분). 다른 테넌트는 로그인할 수 있지만 이메일로 계정을 요청할 수 없음 |
+| `FRONTEND_URL` | **Prod** | `http://localhost:3000` | OAuth 완료 후 브라우저가 이동할 위치. 프로덕션에서는 반드시 설정해야 함 (예: `https://yourdomain.com`) |
+| `API_BASE_URL` | **Prod** | `http://localhost:8000` | 외부에서 접근 가능한 백엔드 URL. OAuth 콜백 URL을 구성하는 데 사용됨. 프로덕션에서는 반드시 설정해야 함 |
+| `NEXT_PUBLIC_API_URL` | **Prod** | *(자동 감지: `<hostname>:8000`)* | OAuth 리다이렉트를 위한 브라우저 측 API 기본 URL. **이는 프론트엔드 빌드 타임 변수**입니다. 로컬 개발의 경우 `frontend/.env.local`에서 설정하거나, 커스텀 프로덕션 배포의 경우 Docker 빌드 인자로 전달하세요. 자동 감지는 표준 리버스 프록시 설정(포트 80/443)에서 작동합니다. |
 
-> **프로덕션** = 로컬에서는 선택 사항(기본값 작동), 하지만 인터넷에 노출된 배포의 경우 **필수**입니다.
+> **Prod** = 로컬에서는 선택 사항(기본값 작동)이지만, **인터넷에 노출되는 모든 배포에는 필수**입니다.
 
 ### 각 제공자에 등록할 OAuth 콜백 URL
 

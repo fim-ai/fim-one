@@ -357,26 +357,24 @@ Contrôle le traitement des fichiers PDF/DOCX téléchargés pour la consommatio
 
 ---
 
-## E-mail (SMTP) (recommandé)
+## Email (SMTP) (Recommandé)
 
-Utilisé pour les codes de connexion et les notifications par e-mail. L’outil intégré `email_send` est proposé lorsque `SMTP_HOST`, `SMTP_USER` et `SMTP_PASS` sont définis **et** qu’une liste d’adresses autorisées de destinataires (`SMTP_ALLOWED_DOMAINS` ou `SMTP_ALLOWED_ADDRESSES`) est configurée, ou lorsque `EMAIL_TOOL_ENABLED=true`. Sans l’une de ces conditions, n’importe quel utilisateur pourrait envoyer un e-mail à n’importe quelle adresse depuis ce compte ; l’outil n’est donc pas proposé.
+Utilisé pour les codes de connexion et les notifications par email. L'outil intégré `email_send` est proposé lorsque `SMTP_HOST`, `SMTP_USER` et `SMTP_PASS` sont définis **et** qu'une liste d'autorisation des destinataires (`SMTP_ALLOWED_DOMAINS` ou `SMTP_ALLOWED_ADDRESSES`) est configurée, ou que `EMAIL_TOOL_ENABLED=true`. Sans l'une ou l'autre, n'importe quel utilisateur pourrait envoyer un email à n'importe quelle adresse depuis ce compte, donc l'outil n'est pas proposé.
 
-| Variable | Requis | Valeur par défaut | Description |
+| Variable | Requis | Défaut | Description |
 |---|---|---|---|
-| `SMTP_HOST` | Cond. | — | Nom d’hôte du serveur SMTP |
+| `SMTP_HOST` | Cond. | — | Nom d'hôte du serveur SMTP |
 | `SMTP_PORT` | Non | `465` | Port SMTP |
-| `SMTP_SSL` | Non | `ssl` | Mode TLS : `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` ou `""` (texte brut, identifiants envoyés en clair). Toute autre valeur est rejetée au lieu de basculer silencieusement vers le texte brut. |
-| `SMTP_USER` | Cond. | — | Nom d’utilisateur de connexion SMTP |
+| `SMTP_SSL` | Non | `ssl` | Mode TLS : `ssl` (port 465) / `tls` (STARTTLS, port 587) / `none` ou `""` (simple, identifiants envoyés en clair). Toute autre valeur est rejetée plutôt que de revenir silencieusement au mode simple. |
+| `SMTP_USER` | Cond. | — | Nom d'utilisateur de connexion SMTP |
 | `SMTP_PASS` | Cond. | — | Mot de passe de connexion SMTP |
-| `SMTP_FROM` | Non | *(utilise `SMTP_USER`)* | Adresse de l’expéditeur affichée dans l’en-tête From |
-| `SMTP_FROM_NAME` | Non | — | Nom d’affichage affiché dans l’en-tête From |
-| `SMTP_REPLY_TO` | Non | — | Adresse Reply-To ; les réponses sont envoyées ici au lieu de `SMTP_FROM` |
-| `SMTP_ALLOWED_DOMAINS` | Non | — | Liste de domaines autorisés séparés par des virgules (par ex. `example.com,corp.io`) ; bloque les destinataires dont le domaine ne figure pas dans la liste |
-| `SMTP_ALLOWED_ADDRESSES` | Non | — | Liste d’adresses exactes autorisées séparées par des virgules ; combinée avec `SMTP_ALLOWED_DOMAINS`. S’applique également aux e-mails envoyés via `send_notification` |
-| `EMAIL_TOOL_ENABLED` | Non | `false` | Propose `email_send` sans liste de destinataires autorisés. À activer uniquement lorsque chaque utilisateur de cette instance est autorisé à envoyer des e-mails à n’importe quelle adresse depuis ce compte |
-| `NOTIFICATION_TOOL_ENABLED` | Non | `false` | Propose l’outil d’agent `send_notification`, qui publie vers les webhooks Slack / Lark / WeCom à l’échelle de l’instance et vers le compte SMTP. À activer uniquement lorsque chaque utilisateur de cette instance est autorisé à publier sur ces canaux |
-
----
+| `SMTP_FROM` | Non | *(utilise `SMTP_USER`)* | Adresse de l'expéditeur affichée dans l'en-tête From |
+| `SMTP_FROM_NAME` | Non | — | Nom d'affichage affiché dans l'en-tête From |
+| `SMTP_REPLY_TO` | Non | — | Adresse Reply-To ; les réponses vont ici au lieu de `SMTP_FROM` |
+| `SMTP_ALLOWED_DOMAINS` | Non | — | Liste d'autorisation de domaines séparés par des virgules (par ex. `example.com,corp.io`) ; bloque les destinataires en dehors des domaines listés |
+| `SMTP_ALLOWED_ADDRESSES` | Non | — | Liste d'autorisation d'adresses exactes séparées par des virgules ; combinée avec `SMTP_ALLOWED_DOMAINS`. S'applique également aux emails envoyés via `send_notification` |
+| `EMAIL_TOOL_ENABLED` | Non | `false` | Proposer `email_send` sans liste d'autorisation des destinataires. Activez uniquement lorsque chaque utilisateur de cette instance peut envoyer un email à n'importe quelle adresse depuis ce compte |
+| `NOTIFICATION_TOOL_ENABLED` | Non | `false` | Proposer l'outil agent `send_notification`, qui envoie des messages aux webhooks Slack / Lark / WeCom à l'échelle de l'instance et au compte SMTP. Activez uniquement lorsque chaque utilisateur de cette instance peut envoyer des messages à ces canaux |
 
 ## Connecteurs
 
@@ -439,21 +437,22 @@ Sweeper en arrière-plan qui marque les demandes d'approbation en attente obsol�
 
 ## OAuth (Optionnel)
 
-Quand `CLIENT_ID` et `CLIENT_SECRET` sont tous les deux définis pour un fournisseur, la page de connexion affiche automatiquement le bouton OAuth correspondant.
+Lorsque `CLIENT_ID` et `CLIENT_SECRET` sont tous deux définis pour un fournisseur, la page de connexion affiche automatiquement le bouton OAuth correspondant.
 
 | Variable | Requis | Par défaut | Description |
 |---|---|---|---|
-| `GITHUB_CLIENT_ID` | Non | — | ID client de l'application GitHub OAuth. Créer sur [github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps |
+| `GITHUB_CLIENT_ID` | Non | — | ID client de l'application GitHub OAuth. Créez à [github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps |
 | `GITHUB_CLIENT_SECRET` | Non | — | Secret client de l'application GitHub OAuth |
-| `GOOGLE_CLIENT_ID` | Non | — | ID client Google OAuth. Créer sur [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) |
+| `GOOGLE_CLIENT_ID` | Non | — | ID client Google OAuth. Créez à [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) |
 | `GOOGLE_CLIENT_SECRET` | Non | — | Secret client Google OAuth |
-| `DISCORD_CLIENT_ID` | Non | — | ID client Discord OAuth2. Créer sur [discord.com/developers](https://discord.com/developers/applications) |
+| `DISCORD_CLIENT_ID` | Non | — | ID client Discord OAuth2. Créez à [discord.com/developers](https://discord.com/developers/applications) |
 | `DISCORD_CLIENT_SECRET` | Non | — | Secret client Discord OAuth2 |
-| `FEISHU_APP_ID` | Non | — | ID d'application Feishu (Lark). Créer sur [open.feishu.cn](https://open.feishu.cn/app). Nécessite la permission `contact:user.email:readonly` |
+| `FEISHU_APP_ID` | Non | — | ID d'application Feishu (Lark). Créez à [open.feishu.cn](https://open.feishu.cn/app). Nécessite la permission `contact:user.email:readonly` |
 | `FEISHU_APP_SECRET` | Non | — | Secret d'application Feishu (Lark) |
-| `FRONTEND_URL` | **Prod** | `http://localhost:3000` | Où le navigateur arrive après la fin d'OAuth. Doit être défini en production (ex. `https://yourdomain.com`) |
-| `API_BASE_URL` | **Prod** | `http://localhost:8000` | URL du backend accessible de l'extérieur, utilisée pour construire les URLs de rappel OAuth. Doit être défini en production |
-| `NEXT_PUBLIC_API_URL` | **Prod** | *(détecté automatiquement comme `<hostname>:8000`)* | URL de base de l'API côté navigateur pour les redirections OAuth. **C'est une variable de temps de construction du frontend** — définissez-la dans `frontend/.env.local` pour le développement local, ou passez-la comme argument de construction Docker pour les déploiements de production personnalisés. La détection automatique fonctionne pour les configurations de proxy inverse standard (port 80/443). |
+| `FEISHU_TRUSTED_TENANT_KEYS` | Non | — | Valeurs `tenant_key` Feishu séparées par des virgules dont l'e-mail d'entreprise peut correspondre à un compte existant par e-mail. Les autres locataires peuvent se connecter mais ne peuvent jamais revendiquer un compte par e-mail |
+| `FRONTEND_URL` | **Prod** | `http://localhost:3000` | Où le navigateur accède après la fin d'OAuth. Doit être défini en production (par ex. `https://yourdomain.com`) |
+| `API_BASE_URL` | **Prod** | `http://localhost:8000` | URL backend accessible en externe, utilisée pour construire les URL de rappel OAuth. Doit être défini en production |
+| `NEXT_PUBLIC_API_URL` | **Prod** | *(détecté automatiquement comme `<hostname>:8000`)* | URL de base API côté navigateur pour les redirections OAuth. **Ceci est une variable de temps de construction frontend** — définissez-la dans `frontend/.env.local` pour le développement local, ou transmettez-la comme argument de construction Docker pour les déploiements de production personnalisés. La détection automatique fonctionne pour les configurations de proxy inverse standard (port 80/443). |
 
 > **Prod** = optionnel localement (les valeurs par défaut fonctionnent), mais **requis pour tout déploiement accessible sur Internet**.
 
