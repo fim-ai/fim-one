@@ -10,10 +10,10 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
-from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.db.models import Agent, Connector, ConnectorCallLog, Conversation, KnowledgeBase, User
 from fim_one.db.models.resource_subscription import ResourceSubscription
-from fim_one.db.models.workflow import Workflow, WorkflowRun
+from fim_one.db.models.workflow import Workflow, WorkflowRun, history_run_clause
+from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.visibility import build_visibility_filter
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -462,6 +462,7 @@ async def get_dashboard_stats(
         .where(
             WorkflowRun.user_id == current_user.id,
             WorkflowRun.created_at >= today_start,
+            history_run_clause(),
         )
     )
     workflow_runs_today: int = wf_runs_today_result.scalar_one()
@@ -475,6 +476,7 @@ async def get_dashboard_stats(
         .where(
             WorkflowRun.user_id == current_user.id,
             WorkflowRun.created_at >= thirty_days_ago,
+            history_run_clause(),
         )
     )
     wf_total_30d: int = wf_total_30d_result.scalar_one()
@@ -487,6 +489,7 @@ async def get_dashboard_stats(
                 WorkflowRun.user_id == current_user.id,
                 WorkflowRun.created_at >= thirty_days_ago,
                 WorkflowRun.status == "completed",
+                history_run_clause(),
             )
         )
         wf_completed_30d: int = wf_completed_30d_result.scalar_one()
@@ -504,7 +507,7 @@ async def get_dashboard_stats(
             WorkflowRun.created_at,
         )
         .join(Workflow, Workflow.id == WorkflowRun.workflow_id)
-        .where(WorkflowRun.user_id == current_user.id)
+        .where(WorkflowRun.user_id == current_user.id, history_run_clause())
         .order_by(WorkflowRun.created_at.desc())
         .limit(5)
     )

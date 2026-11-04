@@ -176,6 +176,17 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
     )
 
 
+# ``WorkflowRun.mode`` of a single-node test: such rows exist only so the
+# test's token usage counts toward quota.
+RUN_MODE_TEST_NODE = "test_node"
+
+
+def history_run_clause() -> Any:
+    """WHERE clause excluding single-node test rows from run history, counts,
+    rates and recent-run lists. Quota sums deliberately include them."""
+    return sa.or_(WorkflowRun.mode.is_(None), WorkflowRun.mode != RUN_MODE_TEST_NODE)
+
+
 class WorkflowApproval(UUIDPKMixin, TimestampMixin, Base):
     """A pending approval request created by a HumanIntervention node."""
 

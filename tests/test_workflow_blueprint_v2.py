@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib
 import json
 import os
@@ -69,11 +70,11 @@ def _blueprint_with(node_type: str) -> dict[str, Any]:
     last = "start_1"
     if node_type not in ("start", "end"):
         nodes.append({"id": "n1", "type": node_type, "position": {"x": 1, "y": 0},
-                      "data": _SAMPLE_DATA[node_type]})
+                      "data": copy.deepcopy(_SAMPLE_DATA[node_type])})
         edges.append({"id": "e1", "source": "start_1", "target": "n1"})
         last = "n1"
     nodes.append({"id": "end_1", "type": "end", "position": {"x": 2, "y": 0},
-                  "data": _SAMPLE_DATA["end"]})
+                  "data": copy.deepcopy(_SAMPLE_DATA["end"])})
     edges.append({"id": "e2", "source": last, "target": "end_1"})
     return {"schema_version": 2, "nodes": nodes, "edges": edges,
             "viewport": {"x": 0, "y": 0, "zoom": 1}}
@@ -368,7 +369,46 @@ class TestBlueprintMigration:
             with legacy_db.connect() as conn:
                 rows = dict(conn.execute(sa.select(tbl.c.id, tbl.c[column])).all())
             assert rows["a-old"] == PRE_093
-            assert rows["c-v2"] == _blueprint_with("llm")
+            assert rows["b-editor"] == EDITOR_093
+            # Stored as v2 before the upgrade: converted, not restored.
+            v1 = rows["c-v2"]
+            assert "schema_version" not in v1
+            assert v1["nodes"] == _blueprint_with("llm")["nodes"]
+
+    def test_downgrade_keeps_edits_made_after_upgrade(self, legacy_db: sa.Engine) -> None:
+        _run(legacy_db, P3, "upgrade")
+        edited = upgrade_blueprint(PRE_093)
+        edited["nodes"][1]["data"]["query_template"] = "edited after upgrade"
+        created = _blueprint_with("knowledgeRetrieval")
+        connector = _blueprint_with("connector")
+        for table, column in _TABLES.items():
+            tbl = sa.table(table, sa.column("id", sa.String), sa.column(column, sa.JSON))
+            with legacy_db.begin() as conn:
+                conn.execute(
+                    tbl.update().where(tbl.c.id == "a-old").values({column: edited})
+                )
+                conn.execute(tbl.insert(), [
+                    {"id": "d-new", column: created},
+                    {"id": "e-new", column: connector},
+                ])
+
+        _run(legacy_db, P3, "downgrade")
+
+        for table, column in _TABLES.items():
+            tbl = sa.table(table, sa.column("id", sa.String), sa.column(column, sa.JSON))
+            with legacy_db.connect() as conn:
+                rows = dict(conn.execute(sa.select(tbl.c.id, tbl.c[column])).all())
+            # The edit survives; the pre-upgrade original is not restored over it.
+            kb = rows["a-old"]["nodes"][1]["data"]
+            assert kb["query_template"] == "edited after upgrade"
+            assert kb["kb_id"] == "kb-9"  # pre-v2 editor key added back
+            assert "schema_version" not in rows["a-old"]
+            # Created after the upgrade: converted to the pre-v2 form.
+            new_kb = rows["d-new"]["nodes"][1]["data"]
+            assert new_kb["kb_ids"] == ["kb-1", "kb-2"] and new_kb["kb_id"] == "kb-1"
+            assert rows["e-new"]["nodes"][1]["data"]["action"] == "a-1"
+            # Untouched rows are restored exactly.
+            assert rows["b-editor"] == EDITOR_093
 
     def test_run_mode_migration(self, legacy_db: sa.Engine) -> None:
         _run(legacy_db, P0, "upgrade")

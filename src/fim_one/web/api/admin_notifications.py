@@ -12,7 +12,6 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session
-from fim_one.web.auth import get_current_admin
 from fim_one.db.models import (
     AuditLog,
     ConnectorCallLog,
@@ -21,8 +20,9 @@ from fim_one.db.models import (
     User,
     WorkflowRun,
 )
-
+from fim_one.db.models.workflow import history_run_clause
 from fim_one.web.api.admin_utils import get_setting, set_setting, write_audit
+from fim_one.web.auth import get_current_admin
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +156,7 @@ async def list_system_events(
         .where(
             WorkflowRun.status == "failed",
             WorkflowRun.created_at >= cutoff,
+            history_run_clause(),
         )
         .order_by(WorkflowRun.created_at.desc())
         .limit(limit // 4)

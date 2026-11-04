@@ -27,6 +27,7 @@ from fim_one.web.auth import get_current_user, get_user_org_ids
 from fim_one.web.platform import MARKET_ORG_ID, is_market_org
 from fim_one.db.models import User, Workflow, WorkflowApproval, WorkflowRun, WorkflowVersion
 from fim_one.db.models.resource_subscription import ResourceSubscription
+from fim_one.db.models.workflow import RUN_MODE_TEST_NODE
 from fim_one.web.schemas.common import ApiResponse, PaginatedResponse, PublishRequest
 from fim_one.web.schemas.workflow import (
     BatchRunResultItem,
@@ -78,9 +79,6 @@ router = APIRouter(
     tags=["workflows"],
     dependencies=[Depends(require_workflows_enabled)],
 )
-
-# ``WorkflowRun.mode`` of a single-node test execution (see ``test_node``).
-RUN_MODE_TEST_NODE = "test_node"
 
 
 
@@ -306,11 +304,10 @@ def _own_runs_clause(user_id: str) -> Any:
 
 
 def _history_run_clause() -> Any:
-    """Exclude single-node test executions from run history and statistics.
+    """Exclude single-node test executions from run history and statistics."""
+    from fim_one.db.models.workflow import history_run_clause
 
-    Those rows exist only so their token usage counts toward the quota.
-    """
-    return or_(WorkflowRun.mode.is_(None), WorkflowRun.mode != RUN_MODE_TEST_NODE)
+    return history_run_clause()
 
 
 def _run_stats_clauses(wf: Workflow, user_id: str) -> list[Any]:
@@ -1242,7 +1239,8 @@ async def validate_workflow(
 
     Parses the blueprint, runs ``validate_blueprint()`` for warnings, and
     returns a structured ``WorkflowValidateResponse`` with topology order.
-    Does **not** execute the workflow.
+    Does **not** execute the workflow. Author only: the analysis names the
+    blueprint's nodes.
     """
     from fim_one.core.workflow.parser import (
         BlueprintValidationError,
@@ -1251,7 +1249,7 @@ async def validate_workflow(
         validate_blueprint as _validate,
     )
 
-    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     blueprint = wf.blueprint
     if not blueprint or not blueprint.get("nodes"):
@@ -1327,13 +1325,22 @@ async def run_workflow(
             )
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
+        is_author = wf.user_id == current_user.id
         try:
             parsed = parse_blueprint(blueprint)
         except BlueprintValidationError as exc:
             dry_result = WorkflowDryRunResponse(
                 valid=False,
-                errors=[str(exc)],
+                # Parse errors name nodes; other users only learn that it
+                # is invalid.
+                errors=[str(exc) if is_author else "The workflow blueprint is invalid"],
             )
+            return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
+
+        if not is_author:
+            # The plan, warnings and topology describe the blueprint, which
+            # only its author sees.
+            dry_result = WorkflowDryRunResponse(valid=True, errors=[])
             return ApiResponse(data=dry_result.model_dump())  # type: ignore[return-value]
 
         bp_warnings = _validate(parsed)
@@ -1836,9 +1843,10 @@ async def get_workflow_variables(
 
     Used by the frontend variable-picker dropdowns in node config panels.
     For each node the response includes the node_type, title, and a list of
-    declared output variables with name and type.
+    declared output variables with name and type. Author only: the map
+    lists every node of the blueprint, which other users are not shown.
     """
-    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
     from fim_one.core.workflow.nodes import EXECUTOR_REGISTRY
     from fim_one.core.workflow.parser import parse_blueprint

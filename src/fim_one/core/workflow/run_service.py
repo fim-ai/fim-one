@@ -330,7 +330,9 @@ class StartedRun:
                     finally:
                         self._service._active_runs.pop(self.run_id, None)
                         try:
-                            self._service._fire_webhook(self.workflow, out, self.mode)
+                            self._service._fire_webhook(
+                                self.workflow, out, self.mode, self.principal
+                            )
                         except Exception:
                             logger.exception("Webhook dispatch failed for %s", self.run_id)
             finally:
@@ -702,20 +704,31 @@ class WorkflowRunService:
         except Exception:
             logger.exception("Failed to persist workflow run %s", out.run_id)
 
-    def _fire_webhook(self, workflow: Any, out: RunOutcome, mode: RunMode) -> None:
+    def _fire_webhook(
+        self, workflow: Any, out: RunOutcome, mode: RunMode, principal: Principal
+    ) -> None:
+        """POST the run result to the author's webhook.
+
+        The webhook belongs to the author, so a run by anyone else is
+        reported without its run id, outputs or error: only the event,
+        workflow, status and duration (decision 2, 2026-11-04).
+        """
         url = getattr(workflow, "webhook_url", None)
         if not url or out.status not in ("completed", "failed"):
             return
         payload: dict[str, Any] = {
             "event": "run_completed" if out.status == "completed" else "run_failed",
             "workflow_id": workflow.id,
-            "run_id": out.run_id,
             "status": out.status,
-            "outputs": out.outputs or None,
-            "error": out.error,
             "duration_ms": out.duration_ms,
-            "completed_at": datetime.now(UTC).isoformat(),
         }
+        if principal.is_author:
+            payload.update(
+                run_id=out.run_id,
+                outputs=out.outputs or None,
+                error=out.error,
+                completed_at=datetime.now(UTC).isoformat(),
+            )
         if mode == RunMode.SCHEDULE:
             payload["trigger"] = "scheduled"
 
