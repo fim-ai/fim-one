@@ -30,6 +30,7 @@ from fim_one.web.schemas.workflow import (
 )
 
 from fim_one.web.api.admin_utils import write_audit
+from fim_one.web.services.feature_flags import require_workflows_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +38,23 @@ logger = logging.getLogger(__name__)
 # Public router — accessible by any authenticated user
 # ---------------------------------------------------------------------------
 
-router = APIRouter(prefix="/api/workflow-templates", tags=["workflow-templates"])
+# Both routers belong to the soft-shelvable Workflows module and 404 in
+# lock-step with ``/api/workflows`` while the module is disabled.
+router = APIRouter(
+    prefix="/api/workflow-templates",
+    tags=["workflow-templates"],
+    dependencies=[Depends(require_workflows_enabled)],
+)
 
 # ---------------------------------------------------------------------------
 # Admin router — requires admin privileges
 # ---------------------------------------------------------------------------
 
-admin_router = APIRouter(prefix="/api/admin/workflow-templates", tags=["admin"])
+admin_router = APIRouter(
+    prefix="/api/admin/workflow-templates",
+    tags=["admin"],
+    dependencies=[Depends(require_workflows_enabled)],
+)
 
 
 # ---------------------------------------------------------------------------

@@ -154,6 +154,11 @@ class WorkflowRun(UUIDPKMixin, TimestampMixin, Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
+    # Entry point that started the run: interactive, batch, trigger,
+    # schedule, tool or test_node. NULL on rows written before the column
+    # existed; readers treat NULL as an ordinary run.
+    mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     workflow: Mapped[Workflow] = relationship(back_populates="runs", lazy="raise")
     approvals: Mapped[list[WorkflowApproval]] = relationship(
         back_populates="run", lazy="raise", passive_deletes=True

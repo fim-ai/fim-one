@@ -697,3 +697,14 @@ class TestAdminAccessControl:
 
         result = await get_current_admin(user=admin)
         assert result.is_admin is True
+
+
+class TestTemplateRoutesFollowModuleFlag:
+    """Template routes 404 with the rest of the Workflows module when it is off."""
+
+    def test_both_routers_depend_on_the_flag(self) -> None:
+        from fim_one.web.api.workflow_templates import admin_router, router
+        from fim_one.web.services.feature_flags import require_workflows_enabled
+
+        for r in (router, admin_router):
+            assert any(d.dependency is require_workflows_enabled for d in r.dependencies)

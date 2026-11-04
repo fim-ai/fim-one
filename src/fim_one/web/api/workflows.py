@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import CursorResult, delete, func, select, update
+from sqlalchemy import CursorResult, and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fim_one.db import get_session, create_session
@@ -82,6 +82,9 @@ router = APIRouter(
     tags=["workflows"],
     dependencies=[Depends(require_workflows_enabled)],
 )
+
+# ``WorkflowRun.mode`` of a single-node test execution (see ``test_node``).
+RUN_MODE_TEST_NODE = "test_node"
 
 # Module-level rate limiter shared across all workflow run endpoints
 _rate_limiter = WorkflowRateLimiter()
@@ -298,6 +301,75 @@ async def _get_accessible_workflow(
     wf = result.scalar_one_or_none()
     if wf is None:
         raise AppError("workflow_not_found", status_code=404)
+    return wf
+
+
+def _own_runs_clause(user_id: str) -> Any:
+    """Restrict run queries to runs the caller started (or that bill to them).
+
+    Run records carry the runner's inputs and outputs, so their contents are
+    shown only to that runner. This holds for the workflow author too: an
+    author sees subscribers' runs only through the aggregate endpoints
+    (counts, durations, success and failure), never their inputs or outputs.
+    """
+    return and_(WorkflowRun.user_id == user_id, _history_run_clause())
+
+
+def _history_run_clause() -> Any:
+    """Exclude single-node test executions from run history and statistics.
+
+    Those rows exist only so their token usage counts toward the quota.
+    """
+    return or_(WorkflowRun.mode.is_(None), WorkflowRun.mode != RUN_MODE_TEST_NODE)
+
+
+def _run_stats_clauses(wf: Workflow, user_id: str) -> list[Any]:
+    """WHERE clauses for aggregate run statistics.
+
+    The author aggregates over every run of the workflow; anyone else only
+    over the runs they started themselves.
+    """
+    clauses: list[Any] = [WorkflowRun.workflow_id == wf.id, _history_run_clause()]
+    if wf.user_id != user_id:
+        clauses.append(_own_runs_clause(user_id))
+    return clauses
+
+
+def _author_env_vars(wf: Workflow, runner_id: str) -> dict[str, str]:
+    """Decrypt the workflow's env vars, but only for the author's own runs.
+
+    A shared workflow run by someone else runs as that runner: the author's
+    secrets are not interpolated into a run whose outputs the runner reads.
+    """
+    if wf.user_id != runner_id or not wf.env_vars_blob:
+        return {}
+    try:
+        from fim_one.core.security.encryption import decrypt_credential
+
+        return decrypt_credential(wf.env_vars_blob)
+    except Exception:
+        logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+        return {}
+
+
+async def _get_version_owner_workflow(
+    workflow_id: str,
+    user_id: str,
+    db: AsyncSession,
+) -> Workflow:
+    """Fetch a workflow whose version history the user may read.
+
+    Versions carry full blueprints, which non-authors never see (the same
+    rule ``_workflow_to_response`` applies to the live workflow). A user who
+    can see the workflow but is not its author gets 403; anyone else 404.
+    """
+    wf = await _get_accessible_workflow(workflow_id, user_id, db)
+    if wf.user_id != user_id:
+        raise AppError(
+            "workflow_versions_owner_only",
+            status_code=403,
+            detail="Only the workflow author can view its version history",
+        )
     return wf
 
 
@@ -1442,15 +1514,8 @@ async def run_workflow(
     db.add(run)
     await db.commit()
 
-    # Decrypt env vars if present
-    env_vars: dict[str, str] = {}
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
-
-            env_vars = decrypt_credential(wf.env_vars_blob)
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+    # The author's env vars are injected only into the author's own runs.
+    env_vars = _author_env_vars(wf, current_user.id)
 
     cancel_event = asyncio.Event()
     _running_tasks[run_id] = cancel_event
@@ -1658,15 +1723,8 @@ async def batch_run_workflow(
     except BlueprintValidationError as exc:
         raise AppError(f"invalid_blueprint: {exc}", status_code=400)
 
-    # Decrypt env vars if present
-    env_vars: dict[str, str] = {}
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
-
-            env_vars = decrypt_credential(wf.env_vars_blob)
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+    # The author's env vars are injected only into the author's own runs.
+    env_vars = _author_env_vars(wf, current_user.id)
 
     batch_id = str(uuid.uuid4())
     semaphore = asyncio.Semaphore(body.max_parallel)
@@ -1906,6 +1964,45 @@ async def test_webhook(
 # Test Node (single-node isolated execution)
 # ---------------------------------------------------------------------------
 
+async def _record_test_node_usage(
+    wf: Workflow,
+    user_id: str,
+    node_id: str,
+    usage_tracker: Any,
+    status: str,
+    duration_ms: int,
+) -> None:
+    """Persist a single-node test's token usage so it counts toward quota.
+
+    Quota usage is summed from ``WorkflowRun.total_tokens``; a test that
+    consumed no tokens writes nothing. The row carries
+    ``mode="test_node"`` and no inputs or outputs, and run history and
+    statistics leave it out.
+    """
+    total_tokens = int(usage_tracker.get_summary().total_tokens or 0)
+    if total_tokens <= 0:
+        return
+    now = datetime.now(UTC)
+    try:
+        async with create_session() as usage_db:
+            usage_db.add(
+                WorkflowRun(
+                    workflow_id=wf.id,
+                    user_id=user_id,
+                    blueprint_snapshot={"nodes": [], "edges": [], "test_node": node_id},
+                    status=status,
+                    mode=RUN_MODE_TEST_NODE,
+                    started_at=now,
+                    completed_at=now,
+                    duration_ms=duration_ms,
+                    total_tokens=total_tokens,
+                )
+            )
+            await usage_db.commit()
+    except Exception:
+        logger.exception("Failed to record test-node usage for workflow %s", wf.id)
+
+
 @router.post("/{workflow_id}/test-node", response_model=ApiResponse)
 async def test_node(
     workflow_id: str,
@@ -1999,15 +2096,14 @@ async def test_node(
         timeout_ms=timeout_ms,
     )
 
-    # Merge workflow env vars with user-provided overrides
-    env_vars: dict[str, str] = {}
-    if wf.env_vars_blob:
-        try:
-            from fim_one.core.security.encryption import decrypt_credential
+    # LLM, Agent and other model-backed nodes bill the tester's quota, the
+    # same as a full run; refuse up front when it is exhausted.
+    from fim_one.web.api.chat import _check_token_quota
 
-            env_vars = decrypt_credential(wf.env_vars_blob)
-        except Exception:
-            logger.warning("Failed to decrypt workflow env vars for %s", wf.id)
+    await _check_token_quota(current_user.id)
+
+    # Merge workflow env vars with user-provided overrides
+    env_vars = _author_env_vars(wf, current_user.id)
 
     # User-provided env_vars override the stored ones
     env_vars.update(body.env_vars)
@@ -2017,12 +2113,17 @@ async def test_node(
     for key, value in body.variables.items():
         await store.set(key, value)
 
-    # Build execution context (temporary run_id, no real run record)
+    from fim_one.core.model.usage import UsageTracker
+
+    # Build execution context (temporary run_id). No db_session_factory: an
+    # approval node tested in isolation is auto-approved.
+    usage_tracker = UsageTracker()
     context = ExecutionContext(
         run_id=f"test-{uuid.uuid4()}",
         user_id=current_user.id,
         workflow_id=wf.id,
         env_vars=env_vars,
+        usage_tracker=usage_tracker,
     )
 
     # Resolve executor and run the node with a timeout
@@ -2039,6 +2140,9 @@ async def test_node(
         )
     except asyncio.TimeoutError:
         elapsed_ms = int((time.time() - start_time) * 1000)
+        await _record_test_node_usage(
+            wf, current_user.id, body.node_id, usage_tracker, "failed", elapsed_ms
+        )
         snapshot = await store.snapshot()
         return ApiResponse(
             data=NodeTestResponse(
@@ -2059,6 +2163,9 @@ async def test_node(
             wf.id,
             exc,
         )
+        await _record_test_node_usage(
+            wf, current_user.id, body.node_id, usage_tracker, "failed", elapsed_ms
+        )
         return ApiResponse(
             data=NodeTestResponse(
                 node_id=body.node_id,
@@ -2071,6 +2178,14 @@ async def test_node(
         )
 
     # Success path
+    await _record_test_node_usage(
+        wf,
+        current_user.id,
+        body.node_id,
+        usage_tracker,
+        "completed" if result.status.value == "completed" else "failed",
+        result.duration_ms,
+    )
     snapshot = await store.snapshot()
     return ApiResponse(
         data=NodeTestResponse(
@@ -2279,8 +2394,8 @@ async def list_workflow_versions(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> PaginatedResponse:
-    """List all versions for a workflow, newest first."""
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    """List all versions for a workflow, newest first. Author only."""
+    await _get_version_owner_workflow(workflow_id, current_user.id, db)
 
     base = select(WorkflowVersion).where(WorkflowVersion.workflow_id == workflow_id)
 
@@ -2312,8 +2427,8 @@ async def get_workflow_version(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Get a specific workflow version by ID."""
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    """Get a specific workflow version by ID. Author only."""
+    await _get_version_owner_workflow(workflow_id, current_user.id, db)
 
     result = await db.execute(
         select(WorkflowVersion).where(
@@ -2401,7 +2516,10 @@ async def list_workflow_runs(
     # Verify access to the workflow
     await _get_accessible_workflow(workflow_id, current_user.id, db)
 
-    base = select(WorkflowRun).where(WorkflowRun.workflow_id == workflow_id)
+    base = select(WorkflowRun).where(
+        WorkflowRun.workflow_id == workflow_id,
+        _own_runs_clause(current_user.id),
+    )
     if status:
         base = base.where(WorkflowRun.status == status)
 
@@ -2437,9 +2555,10 @@ async def get_workflow_stats(
     Includes total runs, success/failure rates, average duration, and the
     last run timestamp.  Useful for dashboard cards and editor status bars.
     """
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
+    scope = _run_stats_clauses(wf, current_user.id)
 
-    base = select(WorkflowRun).where(WorkflowRun.workflow_id == workflow_id)
+    base = select(WorkflowRun).where(*scope)
 
     # Total runs
     total_result = await db.execute(
@@ -2463,7 +2582,7 @@ async def get_workflow_stats(
     for status_val in ("completed", "failed", "cancelled", "running", "pending"):
         count_result = await db.execute(
             select(func.count()).where(
-                WorkflowRun.workflow_id == workflow_id,
+                *scope,
                 WorkflowRun.status == status_val,
             )
         )
@@ -2472,7 +2591,7 @@ async def get_workflow_stats(
     # Average duration of completed runs
     avg_result = await db.execute(
         select(func.avg(WorkflowRun.duration_ms)).where(
-            WorkflowRun.workflow_id == workflow_id,
+            *scope,
             WorkflowRun.status == "completed",
             WorkflowRun.duration_ms.isnot(None),
         )
@@ -2482,7 +2601,7 @@ async def get_workflow_stats(
     # Last run timestamp
     last_result = await db.execute(
         select(WorkflowRun.created_at)
-        .where(WorkflowRun.workflow_id == workflow_id)
+        .where(*scope)
         .order_by(WorkflowRun.created_at.desc())
         .limit(1)
     )
@@ -2517,13 +2636,14 @@ async def get_workflow_node_stats(
     per-node success rate, average duration, and failure count.  Useful for
     identifying bottleneck or flaky nodes.
     """
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
-    # Fetch recent runs that have node_results
+    # Fetch recent runs that have node_results. Only status and duration are
+    # read from them, so the author may aggregate over every run.
     result = await db.execute(
         select(WorkflowRun.node_results)
         .where(
-            WorkflowRun.workflow_id == workflow_id,
+            *_run_stats_clauses(wf, current_user.id),
             WorkflowRun.node_results.isnot(None),
         )
         .order_by(WorkflowRun.created_at.desc())
@@ -2616,11 +2736,11 @@ async def get_workflow_analytics(
     most-failed nodes, and average node count per run.  The ``days`` query
     param controls the lookback window (default 30, max 365).
     """
-    await _get_accessible_workflow(workflow_id, current_user.id, db)
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
     cutoff = datetime.now(UTC) - timedelta(days=days)
     base_filter = [
-        WorkflowRun.workflow_id == workflow_id,
+        *_run_stats_clauses(wf, current_user.id),
         WorkflowRun.created_at >= cutoff,
     ]
 
@@ -2795,7 +2915,10 @@ async def export_workflow_runs(
     """
     wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
 
-    base = select(WorkflowRun).where(WorkflowRun.workflow_id == workflow_id)
+    base = select(WorkflowRun).where(
+        WorkflowRun.workflow_id == workflow_id,
+        _own_runs_clause(current_user.id),
+    )
     if status:
         base = base.where(WorkflowRun.status == status)
 
@@ -2847,6 +2970,7 @@ async def get_workflow_run(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,
             WorkflowRun.workflow_id == workflow_id,
+            _own_runs_clause(current_user.id),
         )
     )
     run = result.scalar_one_or_none()
@@ -2863,15 +2987,9 @@ async def cancel_workflow_run(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    # Verify ownership
-    await _get_owned_workflow(workflow_id, current_user.id, db)
-
-    cancel_event = _running_tasks.get(run_id)
-    if cancel_event:
-        cancel_event.set()
-        return ApiResponse(data={"cancelled": True, "run_id": run_id})
-
-    # If not running, check if it exists and update status
+    # The runner may cancel their own run; the author may cancel any run of
+    # the workflow. The run must belong to this workflow either way.
+    wf = await _get_accessible_workflow(workflow_id, current_user.id, db)
     result = await db.execute(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,
@@ -2879,8 +2997,15 @@ async def cancel_workflow_run(
         )
     )
     run = result.scalar_one_or_none()
-    if run is None:
+    if run is None or (
+        run.user_id != current_user.id and wf.user_id != current_user.id
+    ):
         raise AppError("workflow_run_not_found", status_code=404)
+
+    cancel_event = _running_tasks.get(run_id)
+    if cancel_event:
+        cancel_event.set()
+        return ApiResponse(data={"cancelled": True, "run_id": run_id})
 
     if run.status in ("pending", "running"):
         run.status = "cancelled"
@@ -2942,6 +3067,7 @@ async def delete_workflow_run(
         select(WorkflowRun).where(
             WorkflowRun.id == run_id,
             WorkflowRun.workflow_id == workflow_id,
+            _own_runs_clause(current_user.id),
         )
     )
     run = result.scalar_one_or_none()
@@ -2971,6 +3097,7 @@ async def clear_workflow_runs(
     del_result = cast(CursorResult[Any], await db.execute(
         delete(WorkflowRun).where(
             WorkflowRun.workflow_id == workflow_id,
+            _own_runs_clause(current_user.id),
             WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
         )
     ))

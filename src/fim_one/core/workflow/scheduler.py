@@ -115,17 +115,17 @@ class WorkflowScheduler:
 
     async def _tick(self) -> None:
         """Single scheduler cycle: query due workflows and dispatch runs."""
+        from sqlalchemy import select
+
         from fim_one.db import create_session
         from fim_one.db.models import Workflow
-
-        from sqlalchemy import select
 
         # The Workflows module is soft-shelvable (off by default). While it
         # is disabled, cron-triggered runs do not fire — the scheduler tick
         # is a no-op, matching the router-level gate on manual/API triggers.
         from fim_one.web.services.feature_flags import (
-            is_feature_enabled,
             SETTING_FEATURE_WORKFLOWS,
+            is_feature_enabled,
         )
 
         async with create_session() as db:
@@ -228,10 +228,10 @@ class WorkflowScheduler:
         )
 
         # Update last_scheduled_at immediately to prevent duplicate triggers
+        from sqlalchemy import select
+
         from fim_one.db import create_session
         from fim_one.db.models import Workflow
-
-        from sqlalchemy import select
 
         now = datetime.now(UTC)
         async with create_session() as db:
@@ -252,6 +252,7 @@ class WorkflowScheduler:
                 inputs=wf.schedule_inputs,
                 env_vars_blob=wf.env_vars_blob,
                 webhook_url=getattr(wf, "webhook_url", None),
+                max_run_duration_seconds=getattr(wf, "max_run_duration_seconds", None),
             )
         )
         self._running_tasks.add(task)
@@ -266,6 +267,7 @@ class WorkflowScheduler:
         inputs: dict[str, Any] | None,
         env_vars_blob: str | None,
         webhook_url: str | None,
+        max_run_duration_seconds: int | None = None,
     ) -> None:
         """Execute a single scheduled workflow run, guarded by the semaphore."""
         async with self._semaphore:
@@ -318,6 +320,7 @@ class WorkflowScheduler:
             try:
                 from fim_one.core.workflow.engine import WorkflowEngine
                 from fim_one.core.workflow.parser import parse_blueprint
+                from fim_one.core.workflow.types import ExecutionContext
 
                 parsed = parse_blueprint(blueprint)
                 engine = WorkflowEngine(
@@ -326,24 +329,43 @@ class WorkflowScheduler:
                     run_id=run_id,
                     user_id=user_id,
                     workflow_id=workflow_id,
+                    # Same whole-run limit as every other entry point: the
+                    # workflow's own override, else 10 minutes.
+                    workflow_timeout_ms=(max_run_duration_seconds or 600) * 1000,
+                )
+                # A full context, as the interactive path builds: with a
+                # db_session_factory an approval node creates a pending
+                # WorkflowApproval and waits, instead of auto-approving.
+                exec_context = ExecutionContext(
+                    run_id=run_id,
+                    user_id=user_id,
+                    workflow_id=workflow_id,
+                    env_vars=env_vars,
+                    db_session_factory=create_session,
                 )
 
-                # Quota gate: bill unattended cron runs to the workflow owner;
-                # skip execution when the owner is already over quota so a
-                # schedule can't mint free, unmetered LLM usage.
-                from fim_one.web.api.chat import _get_quota_status
+                # Quota and plan gate: bill unattended cron runs to the
+                # workflow owner; skip execution when the owner is over quota
+                # or a paid_only instance finds no plan, the same gate as
+                # chat and the interactive run.
+                from fim_one.web.api.chat import _check_token_quota
+                from fim_one.web.exceptions import AppError
 
-                _used, _cap = await _get_quota_status(user_id)
-                if _cap > 0 and _used >= _cap:
+                gate_error: str | None = None
+                try:
+                    await _check_token_quota(user_id)
+                except AppError as gate_exc:
+                    gate_error = gate_exc.error_code
+
+                if gate_error is not None:
                     final_status = "failed"
-                    error_msg = "token_quota_exceeded"
+                    error_msg = gate_error
                     logger.warning(
-                        "Scheduled workflow %s skipped: owner over token quota",
-                        workflow_id,
+                        "Scheduled workflow %s skipped: %s", workflow_id, gate_error
                     )
                 else:
                     async for event_name, event_data in engine.execute_streaming(
-                        parsed, inputs
+                        parsed, inputs, context=exec_context
                     ):
                         if event_name in (
                             "node_started",
