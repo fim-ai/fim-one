@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
+import pyotp
 import pytest
 import pytest_asyncio
 from fastapi.responses import JSONResponse
@@ -22,10 +23,17 @@ import fim_one.db.models  # noqa: F401
 from fim_one.db.base import Base
 from fim_one.db.models.email_verification import EmailVerification
 from fim_one.db.models.user import User
-from fim_one.web.api.auth import _decode_2fa_temp_token, login_with_code
+from fim_one.web.api.auth import (
+    _create_2fa_temp_token,
+    _decode_2fa_temp_token,
+    login_with_code,
+    verify_2fa_login,
+)
 from fim_one.web.api.oauth import _handle_login
+from fim_one.web.exceptions import AppError
 from fim_one.web.oauth import OAuthUserInfo
 from fim_one.web.schemas.auth import LoginWithCodeRequest, TokenResponse
+from fim_one.web.schemas.user_settings import TwoFactorVerifyRequest
 
 
 @pytest_asyncio.fixture()
@@ -127,3 +135,35 @@ class TestOAuthLogin:
         resp = await _handle_login(session, self._info(user), "github", "http://frontend")
 
         assert "access_token" in _fragment(resp.headers["location"])
+
+
+class TestSecondFactorAttemptLimit:
+    """Failed 2FA codes are capped per user across temp tokens."""
+
+    async def _verify(self, session: AsyncSession, user: User, code: str) -> object:
+        return await verify_2fa_login(
+            TwoFactorVerifyRequest(temp_token=_create_2fa_temp_token(user.id), code=code),
+            _request(),
+            session,
+        )
+
+    async def _fail(self, session: AsyncSession, user: User, times: int) -> None:
+        for _ in range(times):
+            with pytest.raises(AppError) as exc:
+                await self._verify(session, user, "000000")
+            assert exc.value.error_code == "2fa_code_invalid"
+
+    @pytest.mark.asyncio
+    async def test_locked_after_five_failures(self, session: AsyncSession) -> None:
+        user = await _user(session, totp=True)
+        await self._fail(session, user, 5)
+        with pytest.raises(AppError) as exc:
+            await self._verify(session, user, pyotp.TOTP("JBSWY3DPEHPK3PXP").now())
+        assert exc.value.error_code == "2fa_too_many_attempts"
+
+    @pytest.mark.asyncio
+    async def test_valid_code_after_four_failures(self, session: AsyncSession) -> None:
+        user = await _user(session, totp=True)
+        await self._fail(session, user, 4)
+        resp = await self._verify(session, user, pyotp.TOTP("JBSWY3DPEHPK3PXP").now())
+        assert isinstance(resp, TokenResponse)
