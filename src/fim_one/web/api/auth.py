@@ -483,7 +483,7 @@ async def login_with_code(
     body: LoginWithCodeRequest,
     request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
-) -> TokenResponse:
+) -> TokenResponse | JSONResponse:
     """Passwordless login using an email OTP code."""
     user = await db.scalar(
         select(User).options(selectinload(User.oauth_bindings)).where(User.email == body.email)
@@ -530,6 +530,14 @@ async def login_with_code(
     # Mark as verified
     verif.verified_at = datetime.now(UTC)
     await db.flush()
+
+    # 2FA check, same as /login: the email code replaces the password, not
+    # the second factor.
+    if user.totp_enabled:
+        await db.commit()
+        temp_token = _create_2fa_temp_token(user.id)
+        await _record_login(db, request, user, success=True, failure_reason="2fa_pending")
+        return JSONResponse(content={"requires_2fa": True, "temp_token": temp_token})
 
     # Issue tokens (same pattern as /login)
     access = create_access_token(user.id, user.email)

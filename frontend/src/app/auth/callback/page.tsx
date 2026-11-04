@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
-import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from "@/lib/constants"
+import { ACCESS_TOKEN_KEY, OAUTH_2FA_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from "@/lib/constants"
 import { Loader2 } from "lucide-react"
 
 function CallbackHandler() {
@@ -21,6 +21,16 @@ function CallbackHandler() {
     // logs, nginx access logs, or Referer headers.
     const hash = window.location.hash.substring(1) // remove leading #
     const params = new URLSearchParams(hash)
+
+    // Account has 2FA: the provider sign-in is the first factor only. Hand the
+    // short-lived 2FA token to the login page, which asks for the TOTP code.
+    const twoFactorToken = params.get("temp_token")
+    if (params.get("requires_2fa") && twoFactorToken) {
+      sessionStorage.setItem(OAUTH_2FA_TOKEN_KEY, twoFactorToken)
+      window.location.href = "/login"
+      return
+    }
+
     const accessToken = params.get("access_token")
     const refreshToken = params.get("refresh_token")
     const userJson = params.get("user")

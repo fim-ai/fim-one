@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2, Globe, Sun, Moon, Check } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { APP_NAME, getApiBaseUrl, getApiDirectUrl } from "@/lib/constants"
+import { APP_NAME, OAUTH_2FA_TOKEN_KEY, getApiBaseUrl, getApiDirectUrl } from "@/lib/constants"
 import { authApi, ApiError } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import { toast } from "sonner"
@@ -131,6 +131,22 @@ function LoginPageInner() {
       }
     }
   }, [authLoading, user, router, searchParams, locale])
+
+  // OAuth sign-in for an account with 2FA lands here with a challenge token
+  useEffect(() => {
+    let token: string | null = null
+    try {
+      token = sessionStorage.getItem(OAUTH_2FA_TOKEN_KEY)
+      sessionStorage.removeItem(OAUTH_2FA_TOKEN_KEY)
+    } catch {
+      return
+    }
+    if (token) {
+      setTwoFactorTempToken(token)
+      setTwoFactorMode(true)
+      setTwoFactorCode("")
+    }
+  }, [])
 
   // Check if system needs first-time setup, and fetch registration status
   useEffect(() => {
@@ -317,7 +333,13 @@ function LoginPageInner() {
   const doLoginWithCode = useCallback(async (codeOverride?: string) => {
     setOtpVerifying(true)
     try {
-      await loginWithCode({ email: otpEmail, code: codeOverride || otpCode })
+      const result = await loginWithCode({ email: otpEmail, code: codeOverride || otpCode })
+      if (result?.requires2fa) {
+        setTwoFactorTempToken(result.tempToken)
+        setTwoFactorMode(true)
+        setTwoFactorCode("")
+        return
+      }
       // Redirect is handled by the useEffect that watches user state
     } catch (err) {
       setFieldErrors(prev => ({ ...prev, otpCode: getErrorMessage(err, tError) }))

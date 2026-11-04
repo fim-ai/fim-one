@@ -30,3 +30,5 @@ export const PLATFORM_ORG_ID = MARKET_ORG_ID
 export const ACCESS_TOKEN_KEY = "fim_access_token"
 export const REFRESH_TOKEN_KEY = "fim_refresh_token"
 export const USER_KEY = "fim_user"
+// OAuth callback → login page handoff of a 2FA challenge token (sessionStorage)
+export const OAUTH_2FA_TOKEN_KEY = "fim_oauth_2fa_token"
