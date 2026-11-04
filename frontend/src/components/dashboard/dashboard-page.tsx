@@ -261,6 +261,12 @@ export function DashboardPage() {
     )
   }
 
+  // Integrations are optional: the connector tile and panel appear only once
+  // the user has a connector.
+  const showConnectors = (stats?.active_connectors ?? 0) > 0 || sortedConnectors.length > 0
+  const rowBCols = 1 + (showConnectors ? 1 : 0) + (modules.workflows ? 1 : 0)
+  const rowBGrid = rowBCols === 3 ? "md:grid-cols-3" : rowBCols === 2 ? "md:grid-cols-2" : ""
+
   // Stat card config
   const statCards = [
     {
@@ -290,7 +296,7 @@ export function DashboardPage() {
       trend: stats ? <TrendBadge value={stats.tokens_week_trend} t={t} /> : null,
       href: undefined as string | undefined,
     },
-    {
+    ...(showConnectors ? [{
       Icon: Plug,
       label: t("statsConnectors"),
       value: (stats?.active_connectors ?? 0).toLocaleString(),
@@ -302,7 +308,7 @@ export function DashboardPage() {
         </span>
       ) : null,
       href: "/connectors" as string | undefined,
-    },
+    }] : []),
   ]
 
   return (
@@ -352,7 +358,7 @@ export function DashboardPage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className={cn("grid grid-cols-2 gap-4", statCards.length === 4 ? "md:grid-cols-4" : "md:grid-cols-3")}>
             {statCards.map((card, i) => {
               const cardContent = (
                 <>
@@ -555,12 +561,9 @@ export function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Row B skeleton: KB + Connectors (+ Workflows when enabled) */}
-            <div className={cn(
-              "grid grid-cols-1 gap-4",
-              modules.workflows ? "md:grid-cols-3" : "md:grid-cols-2"
-            )}>
-              {Array.from({ length: modules.workflows ? 3 : 2 }).map((_, i) => (
+            {/* Row B skeleton: same columns as Row B */}
+            <div className={cn("grid grid-cols-1 gap-4", rowBGrid)}>
+              {Array.from({ length: rowBCols }).map((_, i) => (
                 <Card key={i} className="gap-0 py-2">
                   <CardHeader className="px-5 py-3">
                     <Skeleton className="h-5 w-28" />
@@ -621,11 +624,8 @@ export function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Row B: Knowledge Bases + Connectors (+ Workflows when enabled) */}
-            <div className={cn(
-              "grid grid-cols-1 gap-4",
-              modules.workflows ? "md:grid-cols-3" : "md:grid-cols-2"
-            )}>
+            {/* Row B: Knowledge Bases (+ Connectors when the user has any, + Workflows when enabled) */}
+            <div className={cn("grid grid-cols-1 gap-4", rowBGrid)}>
 
               {/* Knowledge Bases */}
               <Card className="gap-0 py-2">
@@ -672,6 +672,7 @@ export function DashboardPage() {
               </Card>
 
               {/* Connectors */}
+              {showConnectors && (
               <Card className="gap-0 py-2">
                 <CardHeader className="px-5 py-3">
                   <Link href="/connectors" className="group flex items-center justify-between rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
@@ -731,6 +732,7 @@ export function DashboardPage() {
                   )}
                 </CardContent>
               </Card>
+              )}
 
               {/* Workflows — only when the module is enabled */}
               {modules.workflows && (
