@@ -120,17 +120,22 @@ export function ApiKeyDialog({
     }
   }, [apiKey, t])
 
-  const triggerUrl = apiKey
-    ? `${getApiDirectUrl()}/api/workflows/trigger/${apiKey}`
-    : `${getApiDirectUrl()}/api/workflows/trigger/{YOUR_API_KEY}`
+  // The key travels in the Authorization header, never in the URL, so it
+  // stays out of proxy and access logs.
+  const triggerUrl = `${getApiDirectUrl()}/api/workflows/trigger`
+  const keyForExample = apiKey ?? "{YOUR_API_KEY}"
 
   const curlExample = `curl -X POST "${triggerUrl}" \\
+  -H "Authorization: Bearer ${keyForExample}" \\
   -H "Content-Type: application/json" \\
   -d '{"inputs": {}}'`
 
   const fetchExample = `fetch("${triggerUrl}", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Authorization": "Bearer ${keyForExample}",
+    "Content-Type": "application/json",
+  },
   body: JSON.stringify({ inputs: {} }),
 })`
 

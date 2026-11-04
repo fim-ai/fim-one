@@ -541,12 +541,10 @@ class TestTriggerRateLimitSlot:
             is_active=True,
             blueprint={"nodes": [{"id": "x", "data": {"type": "BOGUS"}}], "edges": []},
         )
-        lookup = MagicMock()
-        lookup.scalar_one_or_none.return_value = wf
         running = MagicMock()
         running.scalar_one.return_value = 0
         db = MagicMock()
-        db.execute = AsyncMock(side_effect=[lookup, running])
+        db.execute = AsyncMock(side_effect=[running])
 
         limiter = WorkflowRateLimiter(max_concurrent_runs=1)
         with (
@@ -554,7 +552,7 @@ class TestTriggerRateLimitSlot:
             patch("fim_one.web.api.chat._check_token_quota", AsyncMock()),
             pytest.raises(AppError),
         ):
-            await wf_api.trigger_workflow("key", WorkflowTriggerRequest(inputs={}), db)
+            await wf_api._execute_trigger(wf, WorkflowTriggerRequest(inputs={}), db)
 
         assert not limiter._active_runs.get("owner-1")
 

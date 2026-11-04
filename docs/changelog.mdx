@@ -23,9 +23,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 - **Testing a single workflow step counts against your token quota.** The step test is refused when you are over quota, and the tokens it uses are recorded.
 - **Workflow steps no longer call disabled connectors or knowledge bases.** A Connector or Knowledge Retrieval step that uses a disabled resource now fails with a message naming it, as chat already refuses them.
 - **Workflow templates are unavailable while the Workflows module is off,** like the rest of the module.
+- **Workflow trigger keys are stored as hashes and sent in a header.** Keys were stored in plain text and passed in the URL, where proxy and access logs record them. Existing keys keep working; `POST /api/workflows/trigger` now takes the key as `Authorization: Bearer <key>`. A key stops working when its owner's account is disabled.
 
 <Warning>
 **Behavior change for shared workflows.** Authors no longer see other users' runs in the run list, run details or run export; use the statistics and analytics views for counts and durations. Other users get `403` from the version history endpoints. A shared workflow run by someone other than its author runs without the author's environment variables, so steps that reference `{{env.*}}` receive empty values in those runs. Runs started by the author, through the API key, or on a schedule keep the author's environment variables.
+</Warning>
+
+<Warning>
+**Behavior change for workflow trigger integrations.** Send the trigger key as `Authorization: Bearer <key>` to `POST /api/workflows/trigger`. The old `POST /api/workflows/trigger/{key}` still works in this release and answers with `Deprecation: true` and a `Link` header naming the new route; it will be removed in the next release. Keys are stored hashed from now on, so after a downgrade owners must generate new keys.
 </Warning>
 
 ## [v0.9.3] - 2026-11-04

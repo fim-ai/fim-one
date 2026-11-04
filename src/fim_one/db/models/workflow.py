@@ -68,10 +68,12 @@ class Workflow(UUIDPKMixin, TimestampMixin, Base):
     # Optional webhook URL — receives POST on run completion/failure
     webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # API key for external trigger (public endpoint, no user auth)
-    api_key: Mapped[str | None] = mapped_column(
+    # Trigger key for the public trigger endpoint, stored as a hex SHA-256
+    # hash plus a short display prefix; the plain key is shown only once.
+    api_key_hash: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+    api_key_prefix: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     # Encrypted env vars for workflow (stored as encrypted JSON)
     env_vars_blob: Mapped[str | None] = mapped_column(Text, nullable=True)

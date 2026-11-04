@@ -167,26 +167,30 @@ async def _export(w: World, user: User, session: AsyncSession) -> dict[str, Any]
     resp = await wf_api.export_workflow_runs(
         w.wf.id, status=None, limit=100, current_user=user, db=session
     )
-    return json.loads(bytes(resp.body))
+    payload: dict[str, Any] = json.loads(bytes(resp.body))
+    return payload
 
 
 async def _stats(w: World, user: User, session: AsyncSession) -> dict[str, Any]:
     resp = await wf_api.get_workflow_stats(w.wf.id, current_user=user, db=session)
-    return resp.data
+    data: dict[str, Any] = resp.data
+    return data
 
 
 async def _analytics(w: World, user: User, session: AsyncSession) -> dict[str, Any]:
     resp = await wf_api.get_workflow_analytics(
         w.wf.id, days=30, current_user=user, db=session
     )
-    return resp.data
+    data: dict[str, Any] = resp.data
+    return data
 
 
 async def _node_stats(w: World, user: User, session: AsyncSession) -> dict[str, Any]:
     resp = await wf_api.get_workflow_node_stats(
         w.wf.id, limit=100, current_user=user, db=session
     )
-    return resp.data
+    data: dict[str, Any] = resp.data
+    return data
 
 
 # ---------------------------------------------------------------------------

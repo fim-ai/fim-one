@@ -7,7 +7,6 @@ import ipaddress
 import json
 import logging
 import math
-import secrets
 import socket
 import time
 import uuid
@@ -233,7 +232,8 @@ def _workflow_to_response(wf: Workflow, *, is_owner: bool = True) -> WorkflowRes
         schedule_enabled=getattr(wf, "schedule_enabled", False),
         schedule_inputs=getattr(wf, "schedule_inputs", None),
         schedule_timezone=getattr(wf, "schedule_timezone", "UTC") or "UTC",
-        has_api_key=bool(getattr(wf, "api_key", None)),
+        has_api_key=bool(wf.api_key_hash),
+        api_key_prefix=wf.api_key_prefix if is_owner else None,
         forked_from=getattr(wf, "forked_from", None),
         created_at=wf.created_at.isoformat() if wf.created_at else "",
         updated_at=wf.updated_at.isoformat() if wf.updated_at else None,
@@ -613,26 +613,82 @@ async def create_workflow_from_template(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/trigger/{api_key}", response_model=ApiResponse)
+# Successor of the deprecated key-in-path trigger route.
+TRIGGER_PATH = "/api/workflows/trigger"
+# Response headers on the deprecated route (RFC 9745 ``Deprecation``,
+# RFC 8288 ``Link``). The route is kept for one release.
+_TRIGGER_DEPRECATION_HEADERS = {
+    "Deprecation": "true",
+    "Link": f'<{TRIGGER_PATH}>; rel="successor-version"',
+    "Warning": (
+        '299 - "Passing the trigger key in the URL is deprecated; send it as '
+        f'Authorization: Bearer <key> to POST {TRIGGER_PATH}"'
+    ),
+}
+
+
+async def _resolve_trigger_workflow(raw_key: str | None, db: AsyncSession) -> Workflow:
+    from fim_one.web.services.workflow_trigger_keys import (
+        TriggerKeyRejectedError,
+        resolve_trigger_key,
+    )
+
+    try:
+        return await resolve_trigger_key(raw_key, db)
+    except TriggerKeyRejectedError as exc:
+        raise AppError(exc.error_code, status_code=401, detail=exc.detail) from None
+
+
+@router.post("/trigger", response_model=ApiResponse)
 async def trigger_workflow(
-    api_key: str,
     body: WorkflowTriggerRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Trigger a workflow execution via its API key (no user auth required).
+    """Trigger a workflow execution with its trigger key (no user session).
 
-    This is the public webhook-style endpoint for external systems to invoke
-    a workflow.  The workflow is looked up by its unique ``api_key`` field.
-    Runs synchronously (non-SSE) and returns the final result.
+    This is the public webhook-style endpoint for external systems. Send the
+    key as ``Authorization: Bearer <key>``. Runs synchronously (non-SSE) and
+    returns the final result. The run is billed to the workflow's author.
     """
-    # Look up workflow by API key
-    result = await db.execute(
-        select(Workflow).where(Workflow.api_key == api_key)
-    )
-    wf = result.scalar_one_or_none()
-    if wf is None:
-        raise AppError("invalid_api_key", status_code=401, detail="Invalid API key")
+    from fim_one.web.services.workflow_trigger_keys import parse_bearer
 
+    raw_key = parse_bearer(request.headers.get("authorization"))
+    wf = await _resolve_trigger_workflow(raw_key, db)
+    logger.info("Workflow %s triggered by key %s", wf.id, wf.api_key_prefix)
+    return await _execute_trigger(wf, body, db)
+
+
+@router.post("/trigger/{api_key}", response_model=ApiResponse, deprecated=True)
+async def trigger_workflow_legacy(
+    api_key: str,
+    body: WorkflowTriggerRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ApiResponse:
+    """Deprecated: trigger with the key in the URL path.
+
+    Kept for one release so existing integrations keep working; responses
+    carry ``Deprecation`` and ``Link`` headers pointing at ``POST /trigger``
+    with an ``Authorization`` header. Keys in URLs end up in proxy and
+    access logs.
+    """
+    response.headers.update(_TRIGGER_DEPRECATION_HEADERS)
+    wf = await _resolve_trigger_workflow(api_key, db)
+    logger.info(
+        "Workflow %s triggered by key %s via the deprecated URL route",
+        wf.id,
+        wf.api_key_prefix,
+    )
+    return await _execute_trigger(wf, body, db)
+
+
+async def _execute_trigger(
+    wf: Workflow,
+    body: WorkflowTriggerRequest,
+    db: AsyncSession,
+) -> ApiResponse:
+    """Run *wf* for a trigger-key request, as its author."""
     if not wf.is_active:
         raise AppError("workflow_inactive", status_code=403, detail="Workflow is inactive")
 
@@ -3318,12 +3374,22 @@ async def generate_workflow_api_key(
     The key is returned in the response and is only shown once.
     If an existing key exists, it is replaced.
     """
+    from fim_one.web.services.workflow_trigger_keys import generate_trigger_key
+
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    # Generate a new API key: wf_ prefix + 43-char token = ~46 chars total
-    new_key = f"wf_{secrets.token_urlsafe(32)}"
-    wf.api_key = new_key
+    # wf_ prefix + 43-char token. Only the hash and a display prefix are
+    # stored; the plain key is returned this once.
+    new_key, key_hash, key_prefix = generate_trigger_key()
+    wf.api_key_hash = key_hash
+    wf.api_key_prefix = key_prefix
     await db.commit()
+    logger.info(
+        "Workflow %s trigger key %s generated by user %s",
+        wf.id,
+        key_prefix,
+        current_user.id,
+    )
 
     response = WorkflowApiKeyResponse(
         api_key=new_key,
@@ -3341,10 +3407,18 @@ async def revoke_workflow_api_key(
     """Revoke the API key for a workflow, disabling external triggers."""
     wf = await _get_owned_workflow(workflow_id, current_user.id, db)
 
-    if not wf.api_key:
+    if not wf.api_key_hash:
         raise AppError("no_api_key", status_code=404, detail="Workflow has no API key")
 
-    wf.api_key = None
+    revoked_prefix = wf.api_key_prefix
+    wf.api_key_hash = None
+    wf.api_key_prefix = None
     await db.commit()
+    logger.info(
+        "Workflow %s trigger key %s revoked by user %s",
+        wf.id,
+        revoked_prefix,
+        current_user.id,
+    )
 
     return ApiResponse(data={"revoked": True, "workflow_id": wf.id})

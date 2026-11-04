@@ -113,7 +113,9 @@ class TestDisabledConnector:
 
 
 class TestDisabledKnowledgeBase:
-    async def _kb(self, factory: async_sessionmaker[AsyncSession], *, active: bool) -> tuple[str, str]:
+    async def _kb(
+        self, factory: async_sessionmaker[AsyncSession], *, active: bool
+    ) -> tuple[str, str]:
         owner = await _owner(factory)
         async with factory() as s:
             kb = KnowledgeBase(user_id=owner, name="Policies")

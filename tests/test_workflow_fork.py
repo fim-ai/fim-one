@@ -122,7 +122,8 @@ async def source_workflow(
         schedule_enabled=True,
         schedule_timezone="America/New_York",
         schedule_inputs={"input_text": "default value"},
-        api_key="wk_test_api_key_12345678",
+        api_key_hash="0" * 64,
+        api_key_prefix="wf_test12",
         webhook_url="https://example.com/webhook",
     )
     async_session.add(wf)
@@ -349,7 +350,8 @@ class TestForkDoesNotCopySensitiveFields:
         other_user: User,
     ) -> None:
         forked = await _do_fork(source_workflow, other_user, async_session)
-        assert forked.api_key is None
+        assert forked.api_key_hash is None
+        assert forked.api_key_prefix is None
 
     async def test_webhook_url_not_copied(
         self,
