@@ -326,6 +326,10 @@ Bugs suivis qui sont reproductibles en production mais pas encore corrigés. Cha
 ### v0.9.2 (2026-10-09) — Correctif des requêtes sortantes
 - [x] Les webhooks et les redirections sont vérifiés par rapport aux adresses privées au moment de l’envoi ; la plage de métadonnées d’Alibaba Cloud est bloquée
 
+### v0.9.3 (2026-11-04) — Auth Hardening Patch
+- [x] Linking a sign-in provider requires a full sign-in ([GHSA-x8r3-xjc7-ph3c](https://github.com/fim-ai/fim-one/security/advisories/GHSA-x8r3-xjc7-ph3c))
+- [x] API key scopes enforced on every route, default deny ([GHSA-j575-3grh-pvcw](https://github.com/fim-ai/fim-one/security/advisories/GHSA-j575-3grh-pvcw))
+
 ## Versions planifiées
 
 Replanifié le 06/09/2026. Le noyau est construit : moteur ReAct, connecteurs,
@@ -335,14 +339,14 @@ s’agit désormais d’achever ce qui existe déjà dans la base de code et de 
 qui ne figure pas dans la liste ci-dessous n’est pas planifié ; consultez la
 note de clôture.
 
-### v0.9.3 — Finaliser ce qui est déjà en place
+### v0.9.4 — Finishing What Is In
 
-**Objectif** : finaliser les parcours déjà à moitié terminés dans l’arborescence.
+**Objectif** : finaliser les chemins à moitié terminés déjà dans l'arborescence.
 
-- [ ] Entrée de compactage par blocs et budgets tenant compte du modèle sur le parcours de chat principal, afin que toute combinaison de modèles reste dans la fenêtre de contexte
-- [ ] Vérifier les chiffres d’utilisation du streaming du pont Responses lors de la prochaine mise à niveau de LiteLLM (un mauvais mappage en amont est suspecté)
-- [ ] Retirer le pont chat→responses de LiteLLM une fois que le parcours natif GPT-5.x aura été utilisé pour une version complète
-- [ ] Mise en production de la facturation Stripe — rapprochement nocturne avec Stripe pour détecter les webhooks manqués, tests de régression full-stack et ID de prix en production
+- [ ] Compaction par chunks et budgets tenant compte du modèle sur le chemin de chat principal, afin que tout mélange de modèles reste dans la fenêtre de contexte
+- [ ] Vérifier les chiffres d'utilisation du streaming Responses-bridge lors de la prochaine mise à niveau de LiteLLM (mauvais mappage en amont suspecté)
+- [ ] Retirer le pont chat→responses de LiteLLM une fois que le chemin natif GPT-5.x a complété une version complète
+- [ ] Mise en ligne de la facturation Stripe — réconciliation nocturne par rapport à Stripe pour les webhooks manqués, tests de régression full-stack, ID de prix en direct
 
 ### Livré du plan de pré-replan v0.9
 
