@@ -21,14 +21,14 @@
     }
   },
   "colors": {
-    "primary": "#D97706",
-    "light": "#C8922A",
-    "dark": "#FBBF24"
+    "primary": "#0066FF",
+    "light": "#4D94FF",
+    "dark": "#0052CC"
   },
   "background": {
     "color": {
-      "light": "#FBF9F7",
-      "dark": "#120E0C"
+      "light": "#F5F5F2",
+      "dark": "#0B0B0D"
     }
   },
   "navigation": {

@@ -75,9 +75,9 @@ JSON-RPC sur stdio ou SSE. Découverte d'outils structurée (`tools/list`) et in
 
 Observation clé : `npx skills add` devient un canal de distribution de facto pour les intégrations d'outils IA, contournant entièrement MCP. Ces plates-formes ont choisi la rapidité de mise en marché plutôt que la normalisation des protocoles. L'écosystème des IDE IA (Cursor, Claude Code, Windsurf) comprend déjà les fichiers Skills, donc les plates-formes obtiennent une intégration IA immédiate sans avoir à implémenter un serveur de protocole.
 
-## Le spectre d'accessibilité de l'IA
+## Le spectre d’accessibilité pour l’IA
 
-Tous les systèmes ne sont pas également faciles d'accès pour l'IA, et toutes les tâches ne sont pas également simples. Ces deux dimensions définissent où différentes approches d'intégration créent de la valeur.
+Tous les systèmes ne sont pas également faciles à atteindre pour l’IA, et toutes les tâches ne sont pas aussi simples. Ces deux dimensions déterminent la valeur créée par les différentes approches d’intégration.
 
 ```mermaid
 quadrantChart
@@ -97,17 +97,17 @@ quadrantChart
     Kingdee ERP: [0.72, 0.28]
     Legacy OA: [0.85, 0.18]
     FIM One:::highlight: [0.65, 0.78]
-    classDef highlight color: #D97706, radius: 12, stroke-color: #B45309, stroke-width: 2px
+    classDef highlight color: #0066FF, radius: 12, stroke-color: #0052CC, stroke-width: 2px
 ```
 
 **Lecture du graphique :**
 
-- **Bas-gauche (Copilote personnel + Skills)** : Plateformes natives de l'IA avec des opérations simples. DingTalk, Feishu et WeCom se regroupent ici — ils livrent leur propre CLI + Skills, rendant l'intégration de l'IA sur une seule plateforme en libre-service. Les copilotes personnels comme OpenClaw et Claude Code with Skills occupent cette zone. FIM One ajoute peu de valeur ici — la plateforme a déjà fait le travail.
-- **Haut-gauche (Copilote multi-outils)** : Plateformes natives de l'IA avec des besoins inter-systèmes. Un utilisateur installant plusieurs Skills (`dingtalk` + `feishu` + `wechat`) dans Claude Code peut tenter une coordination multi-plateforme, mais manque de gouvernance, de planification d'orchestration et de gestion unifiée des identifiants.
-- **Bas-droit (Connecteur ponctuel)** : Systèmes hérités qui ont besoin d'un simple pont. Un seul Connecteur vers un ERP Kingdee ou un système OA hérité — FIM One est utile ici en tant qu'adaptateur, même pour des opérations sur un seul système, car ces systèmes n'ont pas de CLI et ont une API limitée ou inexistante.
-- **Haut-droit (Hub d'entreprise)** : Systèmes hérités ou limités en API avec des exigences d'orchestration inter-systèmes. C'est le point fort de FIM One. Interroger des contrats dans un système de gestion hérité, les corréler avec les créances ERP et envoyer des avis de recouvrement via DingTalk — cela nécessite une planification DAG, une coordination multi-connecteurs, un coffre-fort d'identifiants, des pistes d'audit et des portes de confirmation humaine. Aucun copilote personnel, aucun CLI, aucun fichier Skills ne pourra jamais atteindre cela.
+- **En bas à gauche (Copilote personnel + Skills)** : plateformes natives pour l’IA proposant des opérations simples. DingTalk, Feishu et WeCom se concentrent dans cette zone : elles fournissent leur propre CLI + Skills, ce qui rend l’intégration de l’IA à une seule plateforme accessible en libre-service. Les copilotes personnels comme OpenClaw et Claude Code avec Skills occupent également cette zone. FIM One apporte ici peu de valeur : la plateforme a déjà effectué le travail.
+- **En haut à gauche (Copilote multi-outils)** : plateformes natives pour l’IA présentant des besoins intersystèmes. Un utilisateur qui installe plusieurs Skills (`dingtalk` + `feishu` + `wechat`) dans Claude Code peut tenter de coordonner plusieurs plateformes, mais il ne dispose ni de gouvernance, ni de planification de l’orchestration, ni d’une gestion unifiée des identifiants.
+- **En bas à droite (Connecteur ponctuel)** : systèmes existants qui nécessitent une passerelle simple. Un connecteur unique vers un ERP Kingdee ou un ancien système OA — FIM One est utile ici comme adaptateur, même pour des opérations limitées à un seul système, car ces systèmes ne disposent d’aucun CLI et offrent des API limitées, voire aucune API.
+- **En haut à droite (Hub d’entreprise)** : systèmes existants ou limités par leurs API, avec des besoins d’orchestration intersystèmes. C’est le domaine de prédilection de FIM One. Interroger des contrats dans un ancien système de gestion, les mettre en corrélation avec les créances clients de l’ERP et envoyer des avis de recouvrement via DingTalk nécessite une planification en DAG, une coordination de plusieurs connecteurs, un coffre-fort pour les identifiants, des pistes d’audit et des mécanismes de confirmation humaine. Aucun copilote personnel, aucun CLI et aucun fichier Skills ne pourront jamais atteindre ce niveau.
 
-La valeur de FIM One augmente à mesure que vous vous déplacez vers le haut-droit : systèmes plus difficiles d'accès combinés à des besoins d'orchestration plus complexes. Les plateformes qui livrent leur propre CLI + Skills occupent le coin opposé — faciles d'accès, opérations simples — et représentent un marché que FIM One ne devrait pas poursuivre.
+La valeur de FIM One augmente à mesure que l’on se rapproche du coin supérieur droit : des systèmes plus difficiles à atteindre, associés à des besoins d’orchestration plus complexes. Les plateformes qui fournissent leur propre CLI + Skills occupent le coin opposé — faciles à atteindre, avec des opérations simples — et représentent un marché que FIM One ne devrait pas chercher à conquérir.
 
 ## Copilote personnel vs Hub d'entreprise
 
