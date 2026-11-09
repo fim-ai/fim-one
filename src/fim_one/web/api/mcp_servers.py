@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from fim_one.core.mcp.credentials import personal_credential_fits
+from fim_one.core.assembly.credentials import personal_credential_fits
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
@@ -231,7 +231,7 @@ async def list_mcp_servers(
     servers = result.scalars().all()
 
     # Bulk-fetch the current user's credentials. One counts only when it
-    # supplies what the server's transport reads (see core/mcp/credentials.py).
+    # supplies what the server's transport reads (see core/assembly/credentials.py).
     server_ids = [s.id for s in servers]
     cred_set: set[str] = set()
     if server_ids:

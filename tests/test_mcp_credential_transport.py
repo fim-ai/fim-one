@@ -17,10 +17,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fim_one.core.mcp.credentials import (
+from fim_one.core.assembly.credentials import (
     must_bring_own_credential,
     personal_credential_fits,
 )
+from fim_one.core.assembly.principal import CallContext, provisional_principal
 from fim_one.core.workflow.nodes import MCPExecutor
 from fim_one.core.workflow.types import (
     ExecutionContext,
@@ -150,7 +151,9 @@ async def _chat_connect(
 
     tools: Any = SimpleNamespace(
         _pending_mcp_servers=[server],
-        _mcp_user_id=user_id,
+        _mcp_call_context=CallContext(
+            principal=provisional_principal(user_id or ""), binding=None, entry="chat"
+        ),
         register=MagicMock(),
     )
     client = _client()
@@ -160,7 +163,7 @@ async def _chat_connect(
             return_value=_cred_session(cred, raises=lookup_raises),
         ),
         patch("fim_one.core.mcp.MCPClient", return_value=client),
-        patch("fim_one.web.api.chat.is_stdio_allowed", return_value=True),
+        patch("fim_one.core.security.is_stdio_allowed", return_value=True),
     ):
         await _connect_pending_mcp_servers(
             tools,

@@ -76,7 +76,12 @@ from fim_one.core.assembly.principal import (
     Entry,
     provisional_principal,
 )
-from fim_one.core.assembly.toolset import connector_tools, database_tools, kb_binding
+from fim_one.core.assembly.toolset import (
+    connector_tools,
+    database_tools,
+    kb_binding,
+    mcp_tools,
+)
 from fim_one.core.assembly.visibility import ResourceKind, authorize_use, list_usable
 from fim_one.core.agent.workspace import AgentWorkspace
 from fim_one.core.agent.guardrail import (
@@ -101,7 +106,6 @@ from fim_one.core.planner import (
     PlanStep,
 )
 from fim_one.core.planner.checkpoint import DAGCheckpoint
-from fim_one.core.security import is_stdio_allowed
 from fim_one.core.tool import ToolRegistry
 from fim_one.core.utils import (
     extract_json_value,
@@ -2051,8 +2055,8 @@ async def _resolve_tools(
                     # _conn_user_id. Binding is validated at bind time, but
                     # subscriptions can be reclaimed later (org exit), so the
                     # reference must be re-checked at use time. Credentials
-                    # still resolve against the CALLER via _mcp_user_id +
-                    # the allow_fallback gate at connect time.
+                    # still resolve against the CALLER when the servers are
+                    # connected (core/assembly/credentials).
                     _mcp_owner_id = (
                         agent_cfg.get("owner_user_id") or user_id
                         if agent_cfg
@@ -2076,7 +2080,9 @@ async def _resolve_tools(
 
             if _user_servers:
                 tools._pending_mcp_servers = list(_user_servers)  # type: ignore[attr-defined]
-                tools._mcp_user_id = user_id  # type: ignore[attr-defined]
+                tools._mcp_call_context = _tool_context(  # type: ignore[attr-defined]
+                    user_id, agent_cfg, conversation_id
+                )
     except Exception:
         logger.warning("Failed to load MCP server configs", exc_info=True)
 
@@ -2188,154 +2194,17 @@ async def _connect_pending_mcp_servers(
     if not pending:
         return None
 
-    _mcp_user_id = getattr(tools, "_mcp_user_id", None)
+    from fim_one.core.mcp import get_mcp_tool_mode
 
-    from fim_one.core.mcp import MCPClient as _MCPClient
-
-    _mcp_client = _MCPClient()
-    _loaded = 0
-
-    # Determine MCP tool mode (progressive vs legacy)
-    from fim_one.core.mcp import build_mcp_meta_tool, get_mcp_tool_mode
-    from fim_one.core.mcp.credentials import (
-        must_bring_own_credential,
-        personal_credential_fits,
+    # Whose credential each server is opened with, and which servers the
+    # caller may not open at all, is decided in core/assembly.
+    _mcp_tools, _mcp_client = await mcp_tools(
+        getattr(tools, "_mcp_call_context", None) or _use_context(None, None),
+        pending,
+        mode=get_mcp_tool_mode(agent_cfg),
     )
-
-    _mcp_tool_mode = get_mcp_tool_mode(agent_cfg)
-    # Collect adapters per server for progressive mode
-    _servers_adapters: dict[str, list[Any]] = {}
-
-    for _srv in pending:
-        try:
-            # Resolve per-user credentials vs server-level env/headers
-            _effective_env = _srv.env
-            _effective_headers = _srv.headers
-
-            # allow_fallback=False and the caller is not the owner: connect
-            # with the caller's own credential or not at all.
-            _own_only = must_bring_own_credential(_srv, _mcp_user_id)
-            _cred: Any = None
-            _cred_lookup_failed = False
-
-            if _mcp_user_id:
-                try:
-                    from sqlalchemy import select as _sa_select
-
-                    from fim_one.db import create_session as _cs_cred
-                    from fim_one.db.models.mcp_server_credential import (
-                        MCPServerCredential as _MCPCred,
-                    )
-
-                    async with _cs_cred() as _cred_db:
-                        _cred_res = await _cred_db.execute(
-                            _sa_select(_MCPCred).where(
-                                _MCPCred.server_id == _srv.id,
-                                _MCPCred.user_id == _mcp_user_id,
-                            )
-                        )
-                        _cred = _cred_res.scalar_one_or_none()
-                except Exception:
-                    _cred = None
-                    _cred_lookup_failed = True
-                    logger.warning(
-                        "Failed to resolve MCP credentials for server %r%s",
-                        _srv.name,
-                        "" if _own_only else ", using server-level env",
-                        exc_info=True,
-                    )
-
-            if _own_only:
-                # The credential must supply what the transport reads (stdio:
-                # env; SSE / HTTP: headers). One that does not — an env-only
-                # credential on an HTTP server — supplies nothing, and the
-                # owner's headers must not fill the gap. A failed lookup is
-                # treated as no credential.
-                if (
-                    _cred_lookup_failed
-                    or _cred is None
-                    or not personal_credential_fits(
-                        _srv.transport, _cred.env_blob, _cred.headers_blob
-                    )
-                ):
-                    logger.info(
-                        "Skipping MCP server %r: allow_fallback=False and user "
-                        "has no credentials for its transport",
-                        _srv.name,
-                    )
-                    continue
-                # Only the caller's own values, never merged with the owner's.
-                _effective_env = _cred.env_blob
-                _effective_headers = _cred.headers_blob
-            elif _cred:
-                # Each field the caller saved replaces the server's; a field
-                # they left empty keeps the server-level value.
-                if _cred.env_blob:
-                    _effective_env = _cred.env_blob
-                if _cred.headers_blob:
-                    _effective_headers = _cred.headers_blob
-            # else: use server-level env (current behavior)
-
-            if _srv.transport == "stdio" and _srv.command:
-                if not is_stdio_allowed():
-                    logger.warning(
-                        "STDIO MCP disabled by ALLOW_STDIO_MCP=false, skipping %r",
-                        _srv.name,
-                    )
-                    continue
-                _mcp_tools = await _mcp_client.connect_stdio(
-                    name=_srv.name,
-                    command=_srv.command,
-                    args=_srv.args or [],
-                    env=_effective_env,
-                    working_dir=_srv.working_dir,
-                )
-            elif _srv.transport == "sse" and _srv.url:
-                _mcp_tools = await _mcp_client.connect_sse(
-                    name=_srv.name,
-                    url=_srv.url,
-                    headers=_effective_headers,
-                )
-            elif _srv.transport == "streamable_http" and _srv.url:
-                _mcp_tools = await _mcp_client.connect_streamable_http(
-                    name=_srv.name,
-                    url=_srv.url,
-                    headers=_effective_headers,
-                )
-            else:
-                continue
-
-            if _mcp_tool_mode == "progressive":
-                # Collect adapters per server for batch meta-tool creation
-                _servers_adapters[_srv.name] = list(_mcp_tools)
-            else:
-                # Legacy mode — register each tool individually
-                for _t in _mcp_tools:
-                    tools.register(_t)
-            _loaded += len(_mcp_tools)
-        except Exception:
-            logger.warning(
-                "Failed to connect user MCP server %r",
-                _srv.name,
-                exc_info=True,
-            )
-
-    # Progressive mode — build a single MCPServerMetaTool
-    if _mcp_tool_mode == "progressive" and _servers_adapters:
-        meta_tool = build_mcp_meta_tool(_servers_adapters)
-        tools.register(meta_tool)
-        total_tools = sum(len(adapters) for adapters in _servers_adapters.values())
-        logger.info(
-            "Loaded MCPServerMetaTool (progressive): %d servers, %d tools consolidated into 1 tool",
-            len(_servers_adapters),
-            total_tools,
-        )
-    else:
-        logger.info(
-            "Loaded %d tools from %d user MCP servers",
-            _loaded,
-            len(pending),
-        )
+    for _mcp_tool in _mcp_tools:
+        tools.register(_mcp_tool)
     return _mcp_client
 
 

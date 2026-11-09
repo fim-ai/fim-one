@@ -1,26 +1,33 @@
 """Which credential a call goes out with.
 
-One rule for every entry point (chat with or without an agent, sub-agents,
-workflow nodes):
+One rule for API connectors and MCP servers, from every entry point (chat
+with or without an agent, sub-agents, workflow nodes):
 
-1. The acting user's own credential, when they saved one, is used alone:
-   it is never mixed with the owner's.
+1. The acting user's own credential, when they saved one that the resource
+   can use, is used alone: it is never mixed with the owner's.
 2. The resource's owner uses the credential stored on the resource.
 3. Anyone else may borrow the owner's only when the owner switched
    ``allow_fallback`` on.
 4. Otherwise the call is refused with ``credential_required``.
 
+"That the resource can use" matters for MCP servers. A server row carries
+the owner's ``env`` (read by a stdio server) and ``headers`` (sent to an SSE
+or streamable-HTTP server), and a personal credential may hold either. An
+``env``-only credential on an HTTP server supplies nothing: counting it as
+"has a credential" would send the owner's headers under the user's name.
+
 Database connectors are a separate case: their tools run raw SQL on the
 owner's database account with no per-caller scoping, so only the owner gets
 the connection config (``owner_only``).
 
-A lookup that fails is refused with ``credential_unavailable``; it never
-falls through to the owner's credential.
+A connector lookup that fails is refused with ``credential_unavailable``; it
+never falls through to the owner's credential.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -35,6 +42,8 @@ if TYPE_CHECKING:
 __all__ = [
     "CredentialSource",
     "ResolvedCredential",
+    "must_bring_own_credential",
+    "personal_credential_fits",
     "resolve_credential",
 ]
 
@@ -59,6 +68,10 @@ class ResolvedCredential:
     connector: dict[str, Any] | None = None
     # Database connector (owner only): the decrypted connection config.
     db_config: dict[str, Any] | None = None
+    # MCP server: what a stdio server is started with, and what an SSE or
+    # streamable-HTTP server is sent.
+    env: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
 
 
 def _name(resource: Any) -> str:
@@ -92,10 +105,13 @@ async def resolve_credential(
 ) -> ResolvedCredential:
     """The credential *principal*'s call to *resource* goes out with.
 
-    *resource* is a ``Connector`` row. Raises :class:`AssemblyRefusal`
-    ``credential_required`` (403), ``credential_unavailable`` (503) or, for a
-    database connector, ``owner_only`` (403).
+    *resource* is a ``Connector`` or ``MCPServer`` row. Raises
+    :class:`AssemblyRefusal` ``credential_required`` (403),
+    ``credential_unavailable`` (503) or, for a database connector,
+    ``owner_only`` (403).
     """
+    if hasattr(resource, "transport"):
+        return await _mcp_credential(db, principal, resource)
     if getattr(resource, "type", None) == "database":
         return _database_credential(principal, resource)
     return await _connector_credential(db, principal, resource)
@@ -149,4 +165,99 @@ async def _connector_credential(
     return ResolvedCredential(
         source=CredentialSource.OWNER if is_owner else CredentialSource.OWNER_FALLBACK,
         connector=stored,
+    )
+
+
+# ---------------------------------------------------------------------------
+# MCP servers
+# ---------------------------------------------------------------------------
+
+_HEADER_TRANSPORTS = frozenset({"sse", "streamable_http"})
+
+
+def personal_credential_fits(
+    transport: str | None,
+    env: Mapping[str, Any] | None,
+    headers: Mapping[str, Any] | None,
+) -> bool:
+    """Whether a personal credential supplies what *transport* reads.
+
+    stdio reads ``env``; SSE and streamable HTTP read ``headers``.  Any other
+    transport cannot be connected, so nothing fits it.
+    """
+    if transport == "stdio":
+        return bool(env)
+    if transport in _HEADER_TRANSPORTS:
+        return bool(headers)
+    return False
+
+
+def must_bring_own_credential(server: Any, user_id: str | None) -> bool:
+    """Whether *user_id* may connect to *server* only with their own credential.
+
+    True when the owner has switched ``allow_fallback`` off and the caller is
+    not the owner.  A caller with no identity is not the owner.
+    """
+    if getattr(server, "allow_fallback", True):
+        return False
+    return not user_id or getattr(server, "user_id", None) != user_id
+
+
+async def _mcp_credential(
+    db: AsyncSession, principal: Principal, server: Any
+) -> ResolvedCredential:
+    from sqlalchemy import select
+
+    from fim_one.db.models.mcp_server_credential import MCPServerCredential
+
+    own_only = must_bring_own_credential(server, principal.user_id)
+    personal: Any = None
+    lookup_failed = False
+    if principal.user_id:
+        try:
+            personal = (
+                await db.execute(
+                    select(MCPServerCredential).where(
+                        MCPServerCredential.server_id == server.id,
+                        MCPServerCredential.user_id == principal.user_id,
+                    )
+                )
+            ).scalar_one_or_none()
+        except Exception:
+            lookup_failed = True
+            logger.warning(
+                "Failed to resolve MCP credentials for server %r%s",
+                _name(server),
+                "" if own_only else ", using server-level env",
+                exc_info=True,
+            )
+
+    if personal is not None and personal_credential_fits(
+        server.transport, personal.env_blob, personal.headers_blob
+    ):
+        # Only the caller's own values, never merged with the owner's.
+        return ResolvedCredential(
+            source=CredentialSource.PERSONAL,
+            env=dict(personal.env_blob) if personal.env_blob else None,
+            headers=dict(personal.headers_blob) if personal.headers_blob else None,
+        )
+    if own_only:
+        # The credential must supply what the transport reads. One that does
+        # not supplies nothing, and the owner's must not fill the gap. A
+        # failed lookup is treated as no credential.
+        if lookup_failed:
+            raise _credential_unavailable("MCP server", server)
+        raise _credential_required(
+            "MCP server",
+            server,
+            "environment variables" if server.transport == "stdio" else "HTTP headers",
+        )
+    return ResolvedCredential(
+        source=(
+            CredentialSource.OWNER
+            if _is_owner(principal, server)
+            else CredentialSource.OWNER_FALLBACK
+        ),
+        env=server.env,
+        headers=server.headers,
     )

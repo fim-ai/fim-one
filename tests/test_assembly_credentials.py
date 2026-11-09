@@ -182,3 +182,118 @@ class TestDatabaseConnector:
         refusal = await _refusal(session, OTHER, self._db(allow_fallback=True))
 
         assert (refusal.error_code, refusal.status_code) == ("owner_only", 403)
+
+
+# ---------------------------------------------------------------------------
+# MCP servers
+# ---------------------------------------------------------------------------
+
+OWNER_ENV = {"API_KEY": "owner-key", "REGION": "owner-region"}
+OWNER_HEADERS = {"Authorization": "Bearer owner-token", "X-Tenant": "owner-tenant"}
+
+
+def _mcp(*, transport: str, allow_fallback: bool) -> SimpleNamespace:
+    return SimpleNamespace(
+        id="srv-1",
+        name="shared-server",
+        transport=transport,
+        env=dict(OWNER_ENV),
+        headers=dict(OWNER_HEADERS),
+        allow_fallback=allow_fallback,
+        user_id=OWNER,
+    )
+
+
+async def _save_mcp(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    env: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> None:
+    from fim_one.db.models.mcp_server_credential import MCPServerCredential
+
+    session.add(
+        MCPServerCredential(server_id="srv-1", user_id=user_id, env_blob=env, headers_blob=headers)
+    )
+    await session.commit()
+
+
+class TestMcpServer:
+    @pytest.mark.parametrize("allow_fallback", [True, False])
+    @pytest.mark.parametrize("user_id", [OWNER, OTHER])
+    async def test_own_credential_that_fits_is_used_alone(
+        self, session: AsyncSession, allow_fallback: bool, user_id: str
+    ) -> None:
+        """Never merged: a key the owner set and the user did not is not sent."""
+        await _save_mcp(session, user_id, env={"API_KEY": "mine"})
+
+        got = await resolve_credential(
+            session,
+            provisional_principal(user_id),
+            _mcp(transport="stdio", allow_fallback=allow_fallback),
+        )
+
+        assert got.source is CredentialSource.PERSONAL
+        assert got.env == {"API_KEY": "mine"}
+        assert got.headers is None
+
+    async def test_own_headers_fit_an_http_server(self, session: AsyncSession) -> None:
+        await _save_mcp(session, OTHER, headers={"Authorization": "Bearer mine"})
+
+        got = await resolve_credential(
+            session,
+            provisional_principal(OTHER),
+            _mcp(transport="streamable_http", allow_fallback=False),
+        )
+
+        assert got.source is CredentialSource.PERSONAL
+        assert got.headers == {"Authorization": "Bearer mine"}
+
+    @pytest.mark.parametrize("transport", ["sse", "streamable_http"])
+    async def test_env_only_credential_on_an_http_server_does_not_borrow_the_owners_headers(
+        self, session: AsyncSession, transport: str
+    ) -> None:
+        """N1: an env-only credential passed the gate and the owner's headers went out."""
+        await _save_mcp(session, OTHER, env={"ANYTHING": "x"})
+
+        refusal = await _refusal(session, OTHER, _mcp(transport=transport, allow_fallback=False))
+
+        assert (refusal.error_code, refusal.status_code) == ("credential_required", 403)
+        assert "Save your own HTTP headers" in refusal.detail
+
+    async def test_headers_only_credential_on_a_stdio_server_is_refused(
+        self, session: AsyncSession
+    ) -> None:
+        await _save_mcp(session, OTHER, headers={"Authorization": "Bearer mine"})
+
+        refusal = await _refusal(session, OTHER, _mcp(transport="stdio", allow_fallback=False))
+
+        assert refusal.error_code == "credential_required"
+        assert "Save your own environment variables" in refusal.detail
+
+    async def test_owner_uses_what_is_stored_on_the_server(self, session: AsyncSession) -> None:
+        got = await resolve_credential(
+            session, provisional_principal(OWNER), _mcp(transport="stdio", allow_fallback=False)
+        )
+
+        assert got.source is CredentialSource.OWNER
+        assert (got.env, got.headers) == (OWNER_ENV, OWNER_HEADERS)
+
+    async def test_someone_else_borrows_when_fallback_is_on(self, session: AsyncSession) -> None:
+        # A credential that does not fit the transport does not count.
+        await _save_mcp(session, OTHER, env={"ANYTHING": "x"})
+
+        got = await resolve_credential(
+            session,
+            provisional_principal(OTHER),
+            _mcp(transport="streamable_http", allow_fallback=True),
+        )
+
+        assert got.source is CredentialSource.OWNER_FALLBACK
+        assert got.headers == OWNER_HEADERS
+
+    async def test_no_identity_and_fallback_off_is_refused(self, session: AsyncSession) -> None:
+        refusal = await _refusal(session, "", _mcp(transport="stdio", allow_fallback=False))
+
+        assert refusal.error_code == "credential_required"

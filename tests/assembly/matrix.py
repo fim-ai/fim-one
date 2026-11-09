@@ -615,7 +615,6 @@ def outside_world(factory: async_sessionmaker[AsyncSession]) -> Iterator[Outside
             ("fim_one.core.tool.connector.adapter.get_safe_async_client", _client),
             ("fim_one.core.tool.connector.adapter.validate_url", lambda *a, **k: None),
             ("fim_one.core.mcp.MCPClient", _FakeMCPClient),
-            ("fim_one.web.api.chat.is_stdio_allowed", lambda: True),
             ("fim_one.core.security.is_stdio_allowed", lambda: True),
             ("fim_one.core.agent.ReActAgent", _RecordingAgent),
             ("fim_one.core.agent.react.ReActAgent", _RecordingAgent),

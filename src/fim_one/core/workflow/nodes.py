@@ -1516,7 +1516,7 @@ class MCPExecutor:
                 effective_env: dict[str, str] | None = server.env
                 effective_headers: dict[str, str] | None = server.headers
 
-                from fim_one.core.mcp.credentials import (
+                from fim_one.core.assembly.credentials import (
                     must_bring_own_credential,
                     personal_credential_fits,
                 )

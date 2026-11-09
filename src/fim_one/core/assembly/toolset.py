@@ -1,9 +1,9 @@
 """The tools a call gets for the resources it may use.
 
-These functions are where connector tools are built for a user's run: each
-resolves the acting user's credential (:mod:`.credentials`), leaves out a
-connector the user may not call, and wires the call record (:mod:`.calls`).
-The caller has already decided which connectors are usable
+These functions are where connector and MCP tools are built for a user's
+run: each resolves the acting user's credential (:mod:`.credentials`),
+leaves out a resource the user may not call, and wires the call record
+(:mod:`.calls`). The caller has already decided which resources are usable
 (:func:`fim_one.core.assembly.visibility.authorize_use`).
 :func:`kb_binding` answers which knowledge bases a call may read.
 """
@@ -22,11 +22,13 @@ from .visibility import ResourceKind, authorize_use
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from fim_one.core.mcp import MCPClient
     from fim_one.core.tool.base import BaseTool
 
+    from .credentials import ResolvedCredential
     from .principal import CallContext
 
-__all__ = ["ToolMode", "connector_tools", "database_tools", "kb_binding"]
+__all__ = ["ToolMode", "connector_tools", "database_tools", "kb_binding", "mcp_tools"]
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +190,91 @@ async def database_tools(
         )
     logger.info("Loaded %d DB tools from %d connectors", len(tools), len(databases))
     return tools
+
+
+async def _connect_mcp_server(
+    client: MCPClient, server: Any, credential: ResolvedCredential
+) -> list[Any] | None:
+    """Open *server* with *credential*; ``None`` when it cannot be connected."""
+    if server.transport == "stdio" and server.command:
+        from fim_one.core.security import is_stdio_allowed
+
+        if not is_stdio_allowed():
+            logger.warning("STDIO MCP disabled by ALLOW_STDIO_MCP=false, skipping %r", server.name)
+            return None
+        return list(
+            await client.connect_stdio(
+                name=server.name,
+                command=server.command,
+                args=server.args or [],
+                env=credential.env,
+                working_dir=server.working_dir,
+            )
+        )
+    if server.transport == "sse" and server.url:
+        return list(
+            await client.connect_sse(name=server.name, url=server.url, headers=credential.headers)
+        )
+    if server.transport == "streamable_http" and server.url:
+        return list(
+            await client.connect_streamable_http(
+                name=server.name, url=server.url, headers=credential.headers
+            )
+        )
+    return None
+
+
+async def mcp_tools(
+    ctx: CallContext,
+    servers: Sequence[Any],
+    *,
+    mode: ToolMode,
+) -> tuple[list[BaseTool], MCPClient | None]:
+    """Connect to *servers* and return their tools with the client that holds them.
+
+    A server the acting user has no credential for, or that cannot be
+    connected, is left out. The caller disconnects the client
+    (``disconnect_all``) when the run ends.
+
+    Must be awaited in the coroutine that will also disconnect: the stdio
+    client enters an anyio cancel scope that has to be left by the task
+    that entered it.
+    """
+    if not servers:
+        return [], None
+
+    from fim_one.core.mcp import MCPClient, build_mcp_meta_tool
+    from fim_one.db import create_session
+
+    client = MCPClient()
+    connected: dict[str, list[Any]] = {}
+    for server in servers:
+        try:
+            async with create_session() as db:
+                credential = await resolve_credential(db, ctx.principal, server)
+            adapters = await _connect_mcp_server(client, server, credential)
+        except AssemblyRefusal as refusal:
+            logger.info("Skipping MCP server %r: %s", server.name, refusal.error_code)
+            continue
+        except Exception:
+            logger.warning("Failed to connect user MCP server %r", server.name, exc_info=True)
+            continue
+        if adapters is not None:
+            connected[server.name] = adapters
+
+    loaded = sum(len(adapters) for adapters in connected.values())
+    if mode == "progressive":
+        if not connected:
+            return [], client
+        logger.info(
+            "Loaded MCPServerMetaTool (progressive): %d servers, %d tools consolidated into 1 tool",
+            len(connected),
+            loaded,
+        )
+        return [build_mcp_meta_tool(connected)], client
+
+    logger.info("Loaded %d tools from %d user MCP servers", loaded, len(servers))
+    return [tool for adapters in connected.values() for tool in adapters], client
 
 
 async def kb_binding(db: AsyncSession, ctx: CallContext, kb_ids: Sequence[str]) -> dict[str, str]:
