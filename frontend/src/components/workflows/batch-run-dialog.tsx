@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { workflowApi } from "@/lib/api"
+import { toastWorkflowError } from "@/lib/workflow-errors"
 import type { BatchRunResultItem, WorkflowBatchRunResponse } from "@/types/workflow"
 
 interface BatchRunDialogProps {
@@ -84,6 +85,7 @@ export function BatchRunDialog({
   onOpenChange,
 }: BatchRunDialogProps) {
   const t = useTranslations("workflows")
+  const tError = useTranslations("errors")
   const tc = useTranslations("common")
 
   const [phase, setPhase] = useState<DialogPhase>("input")
@@ -116,11 +118,11 @@ export function BatchRunDialog({
       const result = await workflowApi.batchRun(workflowId, inputs, maxParallel)
       setBatchResponse(result)
       setPhase("results")
-    } catch {
-      toast.error(t("batchRunApiError"))
+    } catch (err) {
+      toastWorkflowError(err, t("batchRunApiError"), tError, t)
       setPhase("input")
     }
-  }, [inputText, maxParallel, workflowId, t])
+  }, [inputText, maxParallel, workflowId, t, tError])
 
   const handleExportResults = useCallback(() => {
     if (!batchResponse) return

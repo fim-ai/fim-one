@@ -29,6 +29,7 @@ import { Beaker, Copy, Trash2, Settings, Clipboard, MousePointerSquareDashed, Ma
 import { useWorkflowHistory } from "@/hooks/use-workflow-history"
 import { useRecentNodes } from "@/hooks/use-recent-nodes"
 import { useModuleFlags } from "@/lib/module-flags"
+import { fieldOfLoc } from "@/lib/workflow-errors"
 import { getAutoLayoutedNodes } from "./auto-layout"
 import { HiddenNodeTypesContext, NodePalette } from "./node-palette"
 import { NodeConfigPanel } from "./node-config-panel"
@@ -525,6 +526,15 @@ export const WorkflowEditor = forwardRef<WorkflowEditorHandle, WorkflowEditorPro
         overlay[w.node_id] = { errors: [], warnings: [] }
       }
       overlay[w.node_id].warnings.push(w.message)
+    }
+
+    // Invalid settings name their step: mark it with the field and the reason.
+    for (const e of result.field_errors ?? []) {
+      if (!e.node_id) continue
+      if (!overlay[e.node_id]) {
+        overlay[e.node_id] = { errors: [], warnings: [] }
+      }
+      overlay[e.node_id].errors.push(`${fieldOfLoc(e.loc)}: ${e.message}`)
     }
 
     // If there's a global error and the result is invalid, mark it on relevant nodes if any

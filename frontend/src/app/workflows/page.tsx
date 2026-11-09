@@ -35,7 +35,7 @@ import { TemplateGalleryDialog } from "@/components/workflows/template-gallery-d
 import { Skeleton } from "@/components/ui/skeleton"
 import { useScopeFilter } from "@/hooks/use-scope-filter"
 import { useModuleGuard } from "@/lib/module-flags"
-import { toastWorkflowWriteError } from "@/lib/workflow-errors"
+import { toastWorkflowError } from "@/lib/workflow-errors"
 import { ScopeFilter } from "@/components/shared/scope-filter"
 import { ListPagination, PAGE_SIZE } from "@/components/shared/list-pagination"
 import { StaggerOnce, StaggerItem } from "@/components/ui/fade-in"
@@ -220,7 +220,7 @@ function WorkflowsPageInner() {
       setWorkflows((prev) => [duplicated, ...prev])
       toast.success(t("workflowDuplicated"))
     } catch (err) {
-      toastWorkflowWriteError(err, t("workflowDuplicateFailed"), tError, t)
+      toastWorkflowError(err, t("workflowDuplicateFailed"), tError, t)
     }
   }
 
@@ -249,7 +249,7 @@ function WorkflowsPageInner() {
         toast.success(t("workflowImported"))
       }
     } catch (err) {
-      toastWorkflowWriteError(err, t("workflowImportFailed"), tError, t)
+      toastWorkflowError(err, t("workflowImportFailed"), tError, t)
     }
     // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = ""

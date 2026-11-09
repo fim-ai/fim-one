@@ -27,6 +27,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { workflowApi } from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
 import type { NodeTestResponse } from "@/types/workflow"
 import type { WorkflowNodeType } from "@/types/workflow"
 
@@ -54,6 +55,7 @@ export function TestNodeDialog({
   onOpenChange,
 }: TestNodeDialogProps) {
   const t = useTranslations("workflows")
+  const tError = useTranslations("errors")
 
   const [variables, setVariables] = useState<KeyValueRow[]>([
     { id: crypto.randomUUID(), key: "", value: "" },
@@ -133,12 +135,11 @@ export function TestNodeDialog({
         toast.error(t("testNodeFailed"))
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      toast.error(msg)
+      toast.error(getErrorMessage(err, tError))
     } finally {
       setIsRunning(false)
     }
-  }, [workflowId, nodeId, variables, envVars, t])
+  }, [workflowId, nodeId, variables, envVars, t, tError])
 
   // Reset state when dialog closes
   const handleOpenChange = useCallback(

@@ -17,6 +17,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions corresp
 
 ### Fixed
 
+- **Workflow errors say what went wrong.** When the server refuses to save a workflow because a setting is invalid, the editor now names each step and field at fault, in the notice and as a badge on the step, also when the save was automatic. A manual save used to show only "Failed to save workflow" and an automatic one showed nothing, so the edits were lost without a word. Refusals to import, duplicate, restore, run, batch-run or test a workflow (too many runs, already running, switched off, owner's account disabled and others) now show their reason instead of a generic failure.
+- **An error without a translated message shows the server's text.** Across the app such an error was shown as an internal key such as `errors.some_code`.
 - **A workflow trigger key starts one run at a time, also when requests arrive together.** Trigger requests that arrived at the same moment could each start a run of the same workflow. Exactly one now runs and the others get `429 workflow_already_running`.
 
 ## [v0.9.4] - 2026-11-09

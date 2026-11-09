@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { PublishDialog } from "@/components/shared/publish-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { workflowApi, orgApi } from "@/lib/api"
+import { ApiError, workflowApi, orgApi } from "@/lib/api"
 import type { UserOrg } from "@/lib/api"
 import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
 import { WorkflowToolbar, type ValidationResult } from "@/components/workflows/workflow-toolbar"
@@ -46,7 +46,8 @@ import type {
   WorkflowLogEventType,
 } from "@/types/workflow"
 import { usePageTitle } from "@/hooks/use-page-title"
-import { toastWorkflowWriteError } from "@/lib/workflow-errors"
+import { getErrorMessage } from "@/lib/error-utils"
+import { toastWorkflowError } from "@/lib/workflow-errors"
 
 export default function WorkflowEditorPage() {
   const t = useTranslations("workflows")
@@ -354,14 +355,20 @@ export default function WorkflowEditorPage() {
       setIsDirty(false)
       setLastSavedAt(new Date())
     } catch (err) {
-      // Auto-save failures are silent, except a refusal the author has to
-      // act on (a switched-off step), which would otherwise lose every edit
-      // without a word.
-      toastWorkflowWriteError(
+      // A failed auto-save stays silent when it may just be the network,
+      // but a save the server refused (an invalid setting, a switched-off
+      // step) is shown, naming the steps at fault: retrying will not fix
+      // it, and the edits would otherwise be lost without a word.
+      toastWorkflowError(
         err,
         isAutoSave ? null : t("workflowUpdateFailed"),
         tError,
         t,
+        (nodeId) => {
+          const node = blueprintRef.current.nodes.find((n) => n.id === nodeId)
+          const label = (node?.data as { label?: unknown } | undefined)?.label
+          return typeof label === "string" && label ? label : undefined
+        },
       )
     } finally {
       if (!isAutoSave) setIsSaving(false)
@@ -479,7 +486,12 @@ export default function WorkflowEditorPage() {
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
-          throw new Error(body.detail || `HTTP ${res.status}`)
+          throw new ApiError(
+            res.status,
+            body.detail || `HTTP ${res.status}`,
+            body.error_code ?? null,
+            body.error_args ?? {},
+          )
         }
 
         if (!res.body) throw new Error("No response body")
@@ -583,11 +595,17 @@ export default function WorkflowEditorPage() {
         }
       } catch (err) {
         if ((err as { name?: string })?.name === "AbortError") return
-        setFinalError(err instanceof Error ? err.message : "Stream error")
+        // A run the server refused to start is explained in the user's
+        // language where the refusal has a message.
+        setFinalError(
+          err instanceof ApiError
+            ? getErrorMessage(err, tError)
+            : err instanceof Error ? err.message : "Stream error",
+        )
         setIsRunning(false)
       }
     },
-    [workflow],
+    [workflow, tError],
   )
 
   const handleCancelRun = useCallback(() => {
@@ -657,7 +675,7 @@ export default function WorkflowEditorPage() {
       toast.success(t("workflowDuplicated"))
       router.push(`/workflows/${duplicated.id}`)
     } catch (err) {
-      toastWorkflowWriteError(err, t("workflowDuplicateFailed"), tError, t)
+      toastWorkflowError(err, t("workflowDuplicateFailed"), tError, t)
     } finally {
       setIsDuplicating(false)
     }

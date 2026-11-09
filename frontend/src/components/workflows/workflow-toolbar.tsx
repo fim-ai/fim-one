@@ -61,6 +61,8 @@ export interface ValidationResult {
   valid: boolean
   warnings: Array<{ node_id: string | null; code: string; message: string }>
   error?: string
+  /** Invalid step settings, one entry per field (schema validation). */
+  field_errors?: Array<{ loc: string; node_id: string | null; message: string }>
 }
 
 interface WorkflowToolbarProps {
