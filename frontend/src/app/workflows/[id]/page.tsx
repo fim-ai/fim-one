@@ -1,9 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useEffect, useCallback, useRef, useMemo, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,10 +15,8 @@ import {
 } from "@/components/ui/dialog"
 import { PublishDialog } from "@/components/shared/publish-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { ApiError, workflowApi, orgApi } from "@/lib/api"
-import type { UserOrg } from "@/lib/api"
-import { getApiBaseUrl, ACCESS_TOKEN_KEY } from "@/lib/constants"
-import { WorkflowToolbar, type ValidationResult } from "@/components/workflows/workflow-toolbar"
+import { workflowApi } from "@/lib/api"
+import { WorkflowToolbar } from "@/components/workflows/workflow-toolbar"
 import { WorkflowEditor } from "@/components/workflows/workflow-editor"
 import type { WorkflowEditorHandle } from "@/components/workflows/workflow-editor"
 import { RunHistorySheet } from "@/components/workflows/run-history-sheet"
@@ -34,25 +31,37 @@ import { WebhookConfigDialog } from "@/components/workflows/webhook-config-dialo
 import { ApiKeyDialog } from "@/components/workflows/api-key-dialog"
 import { ScheduleDialog } from "@/components/workflows/schedule-dialog"
 import { BatchRunDialog } from "@/components/workflows/batch-run-dialog"
+import { emptyBlueprint, startVariablesOf } from "@/components/workflows/editor-page/blueprint-derived"
+import { useOpenPanels } from "@/components/workflows/editor-page/use-open-panels"
+import { useWorkflowDocument } from "@/components/workflows/editor-page/use-workflow-document"
+import { useWorkflowPublishing } from "@/components/workflows/editor-page/use-workflow-publishing"
+import { useWorkflowRun } from "@/components/workflows/editor-page/use-workflow-run"
+import { useWorkflowValidation } from "@/components/workflows/editor-page/use-workflow-validation"
 import type {
-  WorkflowResponse,
   WorkflowBlueprint,
-  WorkflowVariable,
   WorkflowNodeType,
-  WorkflowValidateResponse,
-  StartNodeData,
   NodeRunResult,
-  WorkflowLogEvent,
-  WorkflowLogEventType,
 } from "@/types/workflow"
 import { usePageTitle } from "@/hooks/use-page-title"
-import { getErrorMessage } from "@/lib/error-utils"
-import { toastWorkflowError } from "@/lib/workflow-errors"
+
+/** The dialogs and side sheets the toolbar opens. */
+type EditorPanel =
+  | "delete"
+  | "unsaved"
+  | "envVars"
+  | "runHistory"
+  | "versionHistory"
+  | "stats"
+  | "nodeStats"
+  | "variables"
+  | "analytics"
+  | "webhook"
+  | "apiKey"
+  | "schedule"
+  | "batchRun"
 
 export default function WorkflowEditorPage() {
   const t = useTranslations("workflows")
-  const tError = useTranslations("errors")
-  const to = useTranslations("organizations")
   const tc = useTranslations("common")
   const { user, isLoading: authLoading } = useAuth()
   const router = useRouter()
@@ -60,82 +69,32 @@ export default function WorkflowEditorPage() {
   const searchParams = useSearchParams()
   const workflowId = params.id as string
 
-  const [workflow, setWorkflow] = useState<WorkflowResponse | null>(null)
+  const editorRef = useRef<WorkflowEditorHandle>(null)
+  const pendingNavigationRef = useRef<string | null>(null)
+  // The blueprint being edited. The canvas writes it, saving reads it.
+  const blueprintRef = useRef<WorkflowBlueprint>(emptyBlueprint())
+
+  // --- State, one hook per concern ---
+  const panels = useOpenPanels<EditorPanel>()
+  const validation = useWorkflowValidation(workflowId, blueprintRef, editorRef)
+  const doc = useWorkflowDocument({
+    workflowId,
+    user,
+    blueprintRef,
+    onBlueprintChanged: validation.triggerValidation,
+  })
+  const { workflow, setWorkflow, isLoadingWorkflow, setIsDirty } = doc
+  const run = useWorkflowRun(workflow?.id ?? null)
+  const publishing = useWorkflowPublishing(workflow, setWorkflow)
 
   usePageTitle(workflow?.name)
 
-  const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isDuplicating, setIsDuplicating] = useState(false)
-  const [isDirty, setIsDirty] = useState(false)
-  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isAutoSavingRef = useRef(false)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
-  const [showPublishDialog, setShowPublishDialog] = useState(false)
-  const [showUnpublishDialog, setShowUnpublishDialog] = useState(false)
-  const [publishOrgId, setPublishOrgId] = useState<string>("")
-  const [userOrgs, setUserOrgs] = useState<UserOrg[]>([])
-  const [orgsLoading, setOrgsLoading] = useState(false)
-  const pendingNavigationRef = useRef<string | null>(null)
-  const editorRef = useRef<WorkflowEditorHandle>(null)
-
-  // Run state
-  const [isRunning, setIsRunning] = useState(false)
-  const [runPanelOpen, setRunPanelOpen] = useState(false)
-  const [nodeResults, setNodeResults] = useState<Record<string, NodeRunResult> | null>(null)
-  const [finalOutputs, setFinalOutputs] = useState<Record<string, unknown> | null>(null)
-  const [finalError, setFinalError] = useState<string | null>(null)
-  const [runDuration, setRunDuration] = useState<number | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const [logEvents, setLogEvents] = useState<WorkflowLogEvent[]>([])
-
-  // History sheet state
-  const [historyOpen, setHistoryOpen] = useState(false)
-
-  // Version history sheet state
-  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
-
-  // Stats panel state
-  const [statsOpen, setStatsOpen] = useState(false)
-  const [nodeStatsOpen, setNodeStatsOpen] = useState(false)
-
-  // Env vars dialog state
-  const [showEnvDialog, setShowEnvDialog] = useState(false)
-
-  // Variables panel state
-  const [variablesPanelOpen, setVariablesPanelOpen] = useState(false)
-
-  // Analytics panel state
-  const [analyticsOpen, setAnalyticsOpen] = useState(false)
-
-  // Webhook dialog state
-  const [showWebhookDialog, setShowWebhookDialog] = useState(false)
-
-  // API key dialog state
-  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false)
-
-  // Schedule dialog state
-  const [showScheduleDialog, setShowScheduleDialog] = useState(false)
+  // Schedule status (shown as a dot in the toolbar menu)
   const [scheduleActive, setScheduleActive] = useState(false)
-
-  // Batch run dialog state
-  const [showBatchRunDialog, setShowBatchRunDialog] = useState(false)
 
   // Undo/redo state (synced from editor via callback)
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
-
-  // Validation state (client-side, debounced)
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
-  const [isValidating, setIsValidating] = useState(false)
-  const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Server-side validation panel state
-  const [serverValidationOpen, setServerValidationOpen] = useState(false)
-  const [serverValidationResult, setServerValidationResult] = useState<WorkflowValidateResponse | null>(null)
-  const [isServerValidating, setIsServerValidating] = useState(false)
 
   const handleUndoRedoChange = useCallback((newCanUndo: boolean, newCanRedo: boolean) => {
     setCanUndo(newCanUndo)
@@ -149,17 +108,6 @@ export default function WorkflowEditorPage() {
   const handleRedo = useCallback(() => {
     editorRef.current?.redo()
   }, [])
-
-  // Blueprint state managed by editor
-  const blueprintRef = useRef<WorkflowBlueprint>({
-    nodes: [],
-    edges: [],
-    viewport: { x: 0, y: 0, zoom: 1 },
-  })
-  // Snapshot of the blueprint at last save/load — used to detect real changes
-  // vs. overlay-only updates (validation badges, run overlays) that shouldn't
-  // mark the form dirty.
-  const savedBlueprintRef = useRef<string>("")
 
   // Auth guard
   useEffect(() => {
@@ -180,80 +128,6 @@ export default function WorkflowEditorPage() {
     }
   }, [])
 
-  // Debounced blueprint validation
-  const triggerValidation = useCallback(() => {
-    if (validationTimerRef.current) {
-      clearTimeout(validationTimerRef.current)
-    }
-    validationTimerRef.current = setTimeout(async () => {
-      const bp = blueprintRef.current
-      // Skip validation for empty blueprints
-      if (bp.nodes.length === 0) {
-        setValidationResult(null)
-        return
-      }
-      setIsValidating(true)
-      try {
-        const result = await workflowApi.validate(bp as unknown as Record<string, unknown>)
-        setValidationResult(result)
-        // Apply validation badges on canvas nodes
-        editorRef.current?.applyValidationOverlay(result)
-      } catch {
-        // Silently ignore validation failures — don't block the user
-        setValidationResult(null)
-        editorRef.current?.clearValidationOverlay()
-      } finally {
-        setIsValidating(false)
-      }
-    }, 2000)
-  }, [])
-
-  // Clean up timers on unmount
-  useEffect(() => {
-    return () => {
-      if (validationTimerRef.current) {
-        clearTimeout(validationTimerRef.current)
-      }
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current)
-      }
-    }
-  }, [])
-
-  // Load workflow
-  useEffect(() => {
-    if (!user || !workflowId) return
-    let cancelled = false
-    setIsLoadingWorkflow(true)
-    workflowApi
-      .get(workflowId)
-      .then((data) => {
-        if (cancelled) return
-        setWorkflow(data)
-        const bp = data.blueprint ?? {
-          nodes: [],
-          edges: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }
-        blueprintRef.current = bp
-        savedBlueprintRef.current = JSON.stringify(bp)
-        // Trigger initial validation after load
-        triggerValidation()
-      })
-      .catch(() => {
-        if (!cancelled) {
-          toast.error(t("workflowUpdateFailed"))
-          router.replace("/workflows")
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingWorkflow(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [user, workflowId, router, t, triggerValidation])
-
   // Load schedule status
   useEffect(() => {
     if (!user || !workflowId) return
@@ -268,490 +142,29 @@ export default function WorkflowEditorPage() {
       })
   }, [user, workflowId])
 
-  // Dirty state beforeunload guard
-  useEffect(() => {
-    if (!isDirty) return
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-    }
-    window.addEventListener("beforeunload", handler)
-    return () => window.removeEventListener("beforeunload", handler)
-  }, [isDirty])
-
-  const handleNameChange = useCallback(
-    async (name: string) => {
-      if (!workflow) return
-      setWorkflow((prev) => prev ? { ...prev, name } : prev)
-      setIsDirty(true)
-    },
-    [workflow],
-  )
-
-  const handleIconChange = useCallback(
-    (icon: string | null) => {
-      if (!workflow) return
-      setWorkflow((prev) => prev ? { ...prev, icon } : prev)
-      setIsDirty(true)
-    },
-    [workflow],
-  )
-
-  const handleDescriptionChange = useCallback(
-    (description: string) => {
-      if (!workflow) return
-      setWorkflow((prev) => prev ? { ...prev, description } : prev)
-      setIsDirty(true)
-    },
-    [workflow],
-  )
-
-  const handleStatusChange = useCallback(
-    async (status: "draft" | "active") => {
-      if (!workflow || workflow.status === status) return
-      try {
-        const updated = await workflowApi.update(workflow.id, { status })
-        setWorkflow(updated)
-        toast.success(t("statusChanged"))
-      } catch {
-        toast.error(t("workflowUpdateFailed"))
-      }
-    },
-    [workflow, t],
-  )
-
-  const handleSave = useCallback(async () => {
-    if (!workflow) return
-    const isAutoSave = isAutoSavingRef.current
-    // Only show saving indicator for manual saves
-    if (!isAutoSave) setIsSaving(true)
-    try {
-      // Extract input_schema from start node
-      const startNode = blueprintRef.current.nodes.find((n) => n.type === "start")
-      const startData = startNode?.data as StartNodeData | undefined
-      const inputSchema: Record<string, unknown> = {}
-      if (startData?.variables) {
-        for (const v of startData.variables) {
-          inputSchema[v.name] = { type: v.type, required: v.required ?? false }
-        }
-      }
-
-      // Extract output_schema from end node
-      const endNode = blueprintRef.current.nodes.find((n) => n.type === "end")
-      const endData = endNode?.data as { output_mapping?: Record<string, string> } | undefined
-      const outputSchema = endData?.output_mapping
-        ? Object.fromEntries(Object.keys(endData.output_mapping).map((k) => [k, { type: "string" }]))
-        : null
-
-      const updated = await workflowApi.update(workflow.id, {
-        name: workflow.name,
-        description: workflow.description,
-        icon: workflow.icon,
-        blueprint: blueprintRef.current,
-        input_schema: Object.keys(inputSchema).length > 0 ? inputSchema : null,
-        output_schema: outputSchema,
-      })
-      setWorkflow(updated)
-      savedBlueprintRef.current = JSON.stringify(blueprintRef.current)
-      setIsDirty(false)
-      setLastSavedAt(new Date())
-    } catch (err) {
-      // A failed auto-save stays silent when it may just be the network,
-      // but a save the server refused (an invalid setting, a switched-off
-      // step) is shown, naming the steps at fault: retrying will not fix
-      // it, and the edits would otherwise be lost without a word.
-      toastWorkflowError(
-        err,
-        isAutoSave ? null : t("workflowUpdateFailed"),
-        tError,
-        t,
-        (nodeId) => {
-          const node = blueprintRef.current.nodes.find((n) => n.id === nodeId)
-          const label = (node?.data as { label?: unknown } | undefined)?.label
-          return typeof label === "string" && label ? label : undefined
-        },
-      )
-    } finally {
-      if (!isAutoSave) setIsSaving(false)
-      isAutoSavingRef.current = false
-    }
-  }, [workflow, t, tError])
-
-  const handleBlueprintChange = useCallback((bp: WorkflowBlueprint) => {
-    blueprintRef.current = bp
-
-    // Compare against last-saved snapshot to avoid false dirty flags from
-    // overlay-only updates (validation badges, run status overlays).
-    const bpStr = JSON.stringify(bp)
-    if (bpStr === savedBlueprintRef.current) {
-      return // No real change — skip dirty flag and auto-save
-    }
-
-    setIsDirty(true)
-    triggerValidation()
-
-    // Auto-save after 5 seconds of inactivity (silent — no "Saving..." indicator)
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current)
-    }
-    autoSaveTimerRef.current = setTimeout(() => {
-      isAutoSavingRef.current = true
-      handleSave()
-    }, 5000)
-  }, [triggerValidation, handleSave])
-
-  const handleVariablesChange = useCallback(
-    (variables: WorkflowVariable[]) => {
-      const updated = { ...blueprintRef.current, variables }
-      handleBlueprintChange(updated)
-    },
-    [handleBlueprintChange],
-  )
-
-  // Keyboard shortcuts (Cmd+S to save immediately, cancels pending auto-save)
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault()
-        if (!isSaving) {
-          if (autoSaveTimerRef.current) {
-            clearTimeout(autoSaveTimerRef.current)
-            autoSaveTimerRef.current = null
-          }
-          handleSave()
-        }
-      }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [isSaving, handleSave])
-
-  const handleRun = useCallback(() => {
-    setRunPanelOpen(true)
-    setNodeResults(null)
-    setFinalOutputs(null)
-    setFinalError(null)
-    setRunDuration(null)
-  }, [])
-
   // Auto-open run panel when navigated with ?run=true
+  const { openRunPanel } = run
   useEffect(() => {
     if (searchParams.get("run") === "true" && workflow && !isLoadingWorkflow) {
-      handleRun()
+      openRunPanel()
       router.replace(`/workflows/${workflowId}`, { scroll: false })
     }
-  }, [searchParams, workflow, isLoadingWorkflow, workflowId, router, handleRun])
+  }, [searchParams, workflow, isLoadingWorkflow, workflowId, router, openRunPanel])
 
-  const handleRunAgain = useCallback(() => {
-    setNodeResults(null)
-    setFinalOutputs(null)
-    setFinalError(null)
-    setRunDuration(null)
-    setLogEvents([])
-  }, [])
-
-  const handleStartRun = useCallback(
-    async (inputs: Record<string, unknown>) => {
-      if (!workflow) return
-
-      // Abort any existing run
-      if (abortRef.current) {
-        abortRef.current.abort()
-      }
-
-      const controller = new AbortController()
-      abortRef.current = controller
-      setIsRunning(true)
-      setNodeResults({})
-      setFinalOutputs(null)
-      setFinalError(null)
-      setRunDuration(null)
-      setLogEvents([])
-
-      try {
-        const token = typeof window !== "undefined" ? localStorage.getItem(ACCESS_TOKEN_KEY) : null
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        }
-        if (token) headers["Authorization"] = `Bearer ${token}`
-
-        const res = await fetch(
-          `${getApiBaseUrl()}/api/workflows/${workflow.id}/run`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ inputs }),
-            signal: controller.signal,
-          },
-        )
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}))
-          throw new ApiError(
-            res.status,
-            body.detail || `HTTP ${res.status}`,
-            body.error_code ?? null,
-            body.error_args ?? {},
-          )
-        }
-
-        if (!res.body) throw new Error("No response body")
-
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ""
-        let currentEvent = "message"
-        let currentData = ""
-
-        const dispatch = (eventType: string, rawData: string) => {
-          try {
-            const data = JSON.parse(rawData) as Record<string, unknown>
-
-            // Push raw event to execution log
-            const knownEvents: WorkflowLogEventType[] = [
-              "node_started", "node_completed", "node_failed",
-              "node_skipped", "node_retrying", "run_completed", "run_failed",
-            ]
-            if (knownEvents.includes(eventType as WorkflowLogEventType)) {
-              setLogEvents((prev) => [
-                ...prev,
-                {
-                  timestamp: (data.ts as number) ?? Date.now(),
-                  eventType: eventType as WorkflowLogEventType,
-                  nodeId: (data.node_id as string) ?? null,
-                  details: data,
-                },
-              ])
-            }
-
-            if (
-              eventType === "node_started" ||
-              eventType === "node_completed" ||
-              eventType === "node_failed" ||
-              eventType === "node_skipped" ||
-              eventType === "node_retrying"
-            ) {
-              const nodeId = data.node_id as string
-              const status: NodeRunResult["status"] =
-                eventType === "node_started" ? "running"
-                : eventType === "node_completed" ? "completed"
-                : eventType === "node_failed" ? "failed"
-                : eventType === "node_retrying" ? "retrying"
-                : "skipped"
-              setNodeResults((prev) => {
-                const existing = prev?.[nodeId]
-                return {
-                  ...(prev ?? {}),
-                  [nodeId]: {
-                    status,
-                    output: data.output_preview ?? existing?.output ?? null,
-                    error: ((data.error ?? data.previous_error) as string) ?? null,
-                    started_at: null,
-                    completed_at: null,
-                    duration_ms: (data.duration_ms as number) ?? existing?.duration_ms ?? null,
-                    input_preview: data.input_preview ?? existing?.input_preview ?? undefined,
-                    retryAttempt: (data.attempt as number) ?? undefined,
-                    maxRetries: (data.max_retries as number) ?? undefined,
-                  },
-                }
-              })
-            } else if (eventType === "run_completed") {
-              setFinalOutputs((data.outputs ?? null) as Record<string, unknown> | null)
-              setRunDuration((data.duration_ms ?? null) as number | null)
-              setIsRunning(false)
-            } else if (eventType === "run_failed") {
-              setFinalError((data.error ?? "Unknown error") as string)
-              setRunDuration((data.duration_ms ?? null) as number | null)
-              setIsRunning(false)
-            } else if (eventType === "end") {
-              setIsRunning(false)
-            }
-          } catch {
-            // Ignore unparseable
-          }
-        }
-
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split("\n")
-          buffer = lines.pop() ?? ""
-          for (const line of lines) {
-            if (line.startsWith("event:")) {
-              currentEvent = line.slice(6).trim()
-            } else if (line.startsWith("data:")) {
-              // SSE spec allows multi-line data — append with newline separator
-              currentData = currentData
-                ? currentData + "\n" + line.slice(5).trim()
-                : line.slice(5).trim()
-            } else if (line.startsWith(":")) {
-              // SSE comment (keepalive) — ignore
-            } else if (line === "") {
-              if (currentData) dispatch(currentEvent, currentData)
-              currentEvent = "message"
-              currentData = ""
-            }
-          }
-        }
-      } catch (err) {
-        if ((err as { name?: string })?.name === "AbortError") return
-        // A run the server refused to start is explained in the user's
-        // language where the refusal has a message.
-        setFinalError(
-          err instanceof ApiError
-            ? getErrorMessage(err, tError)
-            : err instanceof Error ? err.message : "Stream error",
-        )
-        setIsRunning(false)
-      }
-    },
-    [workflow, tError],
-  )
-
-  const handleCancelRun = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    setIsRunning(false)
-    if (workflow) {
-      workflowApi.cancelRun(workflow.id, "current").catch(() => {})
-    }
-  }, [workflow])
-
-  const handleExport = useCallback(async () => {
-    if (!workflow) return
-    try {
-      const data = await workflowApi.export(workflow.id)
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      const slug = (workflow.name || "workflow")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-      a.download = `${slug}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      toast.error(t("workflowExportFailed"))
-    }
-  }, [workflow, t])
-
-  const handleImport = useCallback(() => {
-    const input = document.createElement("input")
-    input.type = "file"
-    input.accept = ".json"
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (!file) return
-      try {
-        const text = await file.text()
-        const data = JSON.parse(text)
-        // Support both envelope format { workflow: { blueprint } } and legacy { blueprint }
-        const blueprint = data.workflow?.blueprint ?? data.blueprint
-        if (blueprint) {
-          blueprintRef.current = blueprint
-          // Force re-render by updating workflow state
-          setWorkflow((prev) =>
-            prev ? { ...prev, blueprint } : prev,
-          )
-          setIsDirty(true)
-          toast.success(t("workflowImported"))
-        }
-      } catch {
-        toast.error(t("workflowImportFailed"))
-      }
-    }
-    input.click()
-  }, [t])
-
-  const handleDuplicate = useCallback(async () => {
-    if (!workflow) return
-    setIsDuplicating(true)
-    try {
-      const duplicated = await workflowApi.duplicate(workflow.id)
-      toast.success(t("workflowDuplicated"))
-      router.push(`/workflows/${duplicated.id}`)
-    } catch (err) {
-      toastWorkflowError(err, t("workflowDuplicateFailed"), tError, t)
-    } finally {
-      setIsDuplicating(false)
-    }
-  }, [workflow, router, t, tError])
-
+  const { deleteWorkflow } = doc
+  const { set: setPanelOpen } = panels
   const handleDelete = useCallback(async () => {
-    if (!workflow) return
-    setShowDeleteDialog(false)
-    try {
-      await workflowApi.delete(workflow.id)
-      toast.success(t("workflowDeleted"))
-      router.replace("/workflows")
-    } catch {
-      toast.error(t("workflowDeleteFailed"))
-    }
-  }, [workflow, router, t])
-
-  const handlePublishClick = useCallback(() => {
-    setShowPublishDialog(true)
-    setPublishOrgId("")
-    setOrgsLoading(true)
-    orgApi.list().then((orgs) => {
-      setUserOrgs(orgs)
-      if (orgs.length > 0) setPublishOrgId(orgs[0].id)
-    }).catch(() => {}).finally(() => setOrgsLoading(false))
-  }, [])
-
-  const confirmPublish = useCallback(async () => {
-    if (!workflow || !publishOrgId) return
-    setShowPublishDialog(false)
-    try {
-      const updated = await workflowApi.publish(workflow.id, {
-        scope: "org",
-        org_id: publishOrgId,
-      })
-      setWorkflow(updated)
-      toast.success(t("workflowPublished"))
-    } catch {
-      toast.error(t("workflowPublishFailed"))
-    }
-  }, [workflow, publishOrgId, t])
-
-  const handleUnpublishClick = useCallback(() => {
-    setShowUnpublishDialog(true)
-  }, [])
-
-  const confirmUnpublish = useCallback(async () => {
-    if (!workflow) return
-    setShowUnpublishDialog(false)
-    try {
-      const updated = await workflowApi.unpublish(workflow.id)
-      setWorkflow(updated)
-      toast.success(t("workflowUnpublished"))
-    } catch {
-      toast.error(t("workflowUnpublishFailed"))
-    }
-  }, [workflow, t])
-
-  const handleResubmit = useCallback(async () => {
-    if (!workflow) return
-    try {
-      const updated = await workflowApi.resubmit(workflow.id)
-      setWorkflow(updated)
-      toast.success(to("resubmitSuccess"))
-    } catch {
-      toast.error(to("resubmitFailed"))
-    }
-  }, [workflow, to])
+    setPanelOpen("delete", false)
+    await deleteWorkflow()
+  }, [deleteWorkflow, setPanelOpen])
 
   const handleWebhookSaved = useCallback((webhookUrl: string | null) => {
     setWorkflow((prev) => prev ? { ...prev, webhook_url: webhookUrl } : prev)
-  }, [])
+  }, [setWorkflow])
 
   const handleApiKeyChanged = useCallback((hasKey: boolean) => {
     setWorkflow((prev) => prev ? { ...prev, has_api_key: hasKey } : prev)
-  }, [])
+  }, [setWorkflow])
 
   const handleScheduleChange = useCallback((hasSchedule: boolean) => {
     setScheduleActive(hasSchedule)
@@ -765,51 +178,8 @@ export default function WorkflowEditorPage() {
     editorRef.current?.applyRunOverlay(overlayNodeResults)
   }, [])
 
-  const handleVersionRestored = useCallback(() => {
-    // Reload the workflow data from the server after a version restore
-    workflowApi
-      .get(workflowId)
-      .then((data) => {
-        setWorkflow(data)
-        const bp = data.blueprint ?? {
-          nodes: [],
-          edges: [],
-          viewport: { x: 0, y: 0, zoom: 1 },
-        }
-        blueprintRef.current = bp
-        savedBlueprintRef.current = JSON.stringify(bp)
-        setIsDirty(false)
-        setLastSavedAt(new Date())
-        triggerValidation()
-      })
-      .catch(() => {
-        toast.error(t("workflowUpdateFailed"))
-      })
-  }, [workflowId, t, triggerValidation])
-
-  const handleValidate = useCallback(async () => {
-    if (!workflow) return
-    setServerValidationOpen(true)
-    setIsServerValidating(true)
-    try {
-      const result = await workflowApi.validateById(workflow.id)
-      setServerValidationResult(result)
-    } catch {
-      toast.error(t("validateFailed"))
-    } finally {
-      setIsServerValidating(false)
-    }
-  }, [workflow, t])
-
-  // Find selected org for review notice
-  const selectedOrg = publishOrgId
-    ? userOrgs.find((o) => o.id === publishOrgId)
-    : null
-
   // Get start variables for run panel
-  const startNode = blueprintRef.current.nodes.find((n) => n.type === "start")
-  const startData = startNode?.data as StartNodeData | undefined
-  const startVariables = startData?.variables ?? []
+  const startVariables = startVariablesOf(blueprintRef.current)
 
   // Build nodeId -> nodeType map for display labels
   const nodeTypeMap = useMemo(() => {
@@ -848,72 +218,72 @@ export default function WorkflowEditorPage() {
         status={workflow.status}
         visibility={workflow.visibility}
         publishStatus={workflow.publish_status}
-        isSaving={isSaving}
-        isDirty={isDirty}
-        lastSavedAt={lastSavedAt}
-        isRunning={isRunning}
-        isDuplicating={isDuplicating}
-        isValidating={isValidating}
-        validationResult={validationResult}
+        isSaving={doc.isSaving}
+        isDirty={doc.isDirty}
+        lastSavedAt={doc.lastSavedAt}
+        isRunning={run.isRunning}
+        isDuplicating={doc.isDuplicating}
+        isValidating={validation.isValidating}
+        validationResult={validation.validationResult}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        onNameChange={handleNameChange}
-        onIconChange={handleIconChange}
-        onDescriptionChange={handleDescriptionChange}
-        onSave={handleSave}
-        onRun={handleRun}
-        onExport={handleExport}
-        onImport={handleImport}
-        onDuplicate={handleDuplicate}
-        onDelete={() => setShowDeleteDialog(true)}
-        onHistory={() => setHistoryOpen(true)}
-        onVersionHistory={() => setVersionHistoryOpen(true)}
-        onStats={() => setStatsOpen(true)}
-        onNodeStats={() => setNodeStatsOpen(true)}
+        onNameChange={doc.changeName}
+        onIconChange={doc.changeIcon}
+        onDescriptionChange={doc.changeDescription}
+        onSave={doc.save}
+        onRun={run.openRunPanel}
+        onExport={doc.exportToFile}
+        onImport={doc.importFromFile}
+        onDuplicate={doc.duplicate}
+        onDelete={panels.opener("delete")}
+        onHistory={panels.opener("runHistory")}
+        onVersionHistory={panels.opener("versionHistory")}
+        onStats={panels.opener("stats")}
+        onNodeStats={panels.opener("nodeStats")}
         onAutoLayout={handleAutoLayout}
-        onValidate={handleValidate}
-        onPublish={handlePublishClick}
-        onUnpublish={handleUnpublishClick}
-        onResubmit={handleResubmit}
-        onEnvVars={() => setShowEnvDialog(true)}
-        onVariables={() => setVariablesPanelOpen(true)}
-        onAnalytics={() => setAnalyticsOpen(true)}
-        onWebhook={() => setShowWebhookDialog(true)}
+        onValidate={validation.validateOnServer}
+        onPublish={publishing.openPublishDialog}
+        onUnpublish={publishing.openUnpublishDialog}
+        onResubmit={publishing.resubmit}
+        onEnvVars={panels.opener("envVars")}
+        onVariables={panels.opener("variables")}
+        onAnalytics={panels.opener("analytics")}
+        onWebhook={panels.opener("webhook")}
         webhookConfigured={!!workflow.webhook_url}
-        onApiKey={() => setShowApiKeyDialog(true)}
+        onApiKey={panels.opener("apiKey")}
         apiKeyConfigured={!!workflow.has_api_key}
-        onSchedule={() => setShowScheduleDialog(true)}
+        onSchedule={panels.opener("schedule")}
         scheduleActive={scheduleActive}
-        onStatusChange={handleStatusChange}
-        onBatchRun={() => setShowBatchRunDialog(true)}
+        onStatusChange={doc.changeStatus}
+        onBatchRun={panels.opener("batchRun")}
       />
 
       <WorkflowEditor
         ref={editorRef}
         workflowId={workflowId}
         blueprint={workflow.blueprint}
-        onBlueprintChange={handleBlueprintChange}
+        onBlueprintChange={doc.changeBlueprint}
         onUndoRedoChange={handleUndoRedoChange}
-        isRunning={isRunning}
-        runPanelOpen={runPanelOpen}
+        isRunning={run.isRunning}
+        runPanelOpen={run.runPanelOpen}
         startVariables={startVariables}
-        nodeResults={nodeResults}
-        finalOutputs={finalOutputs}
-        finalError={finalError}
-        runDuration={runDuration}
+        nodeResults={run.nodeResults}
+        finalOutputs={run.finalOutputs}
+        finalError={run.finalError}
+        runDuration={run.runDuration}
         nodeTypeMap={nodeTypeMap}
         totalNodeCount={totalNodeCount}
-        logEvents={logEvents}
-        onStartRun={handleStartRun}
-        onRunAgain={handleRunAgain}
-        onCancelRun={handleCancelRun}
-        onCloseRunPanel={() => setRunPanelOpen(false)}
+        logEvents={run.logEvents}
+        onStartRun={run.startRun}
+        onRunAgain={run.runAgain}
+        onCancelRun={run.cancelRun}
+        onCloseRunPanel={run.closeRunPanel}
       />
 
       {/* Delete Confirmation */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <Dialog open={panels.isOpen("delete")} onOpenChange={panels.setter("delete")}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t("deleteDialogTitle")}</DialogTitle>
@@ -922,7 +292,7 @@ export default function WorkflowEditorPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setShowDeleteDialog(false)}>
+            <Button variant="ghost" className="px-6" onClick={() => panels.set("delete", false)}>
               {tc("cancel")}
             </Button>
             <Button variant="destructive" className="px-6" onClick={handleDelete}>
@@ -933,7 +303,7 @@ export default function WorkflowEditorPage() {
       </Dialog>
 
       {/* Unsaved changes guard */}
-      <Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+      <Dialog open={panels.isOpen("unsaved")} onOpenChange={panels.setter("unsaved")}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t("unsavedChangesTitle")}</DialogTitle>
@@ -942,14 +312,14 @@ export default function WorkflowEditorPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setShowUnsavedDialog(false)}>
+            <Button variant="ghost" className="px-6" onClick={() => panels.set("unsaved", false)}>
               {t("stay")}
             </Button>
             <Button
               variant="destructive"
               className="px-6"
               onClick={() => {
-                setShowUnsavedDialog(false)
+                panels.set("unsaved", false)
                 setIsDirty(false)
                 if (pendingNavigationRef.current) {
                   router.push(pendingNavigationRef.current)
@@ -964,24 +334,24 @@ export default function WorkflowEditorPage() {
 
       {/* Publish Confirmation */}
       <PublishDialog
-        open={showPublishDialog}
-        onOpenChange={setShowPublishDialog}
+        open={publishing.showPublishDialog}
+        onOpenChange={publishing.setShowPublishDialog}
         title={t("publishDialogTitle")}
         description={t("publishDialogDescription")}
-        orgs={userOrgs}
-        orgsLoading={orgsLoading}
-        selectedOrgId={publishOrgId}
-        onOrgChange={setPublishOrgId}
-        requiresReview={!!selectedOrg?.review_workflows}
+        orgs={publishing.userOrgs}
+        orgsLoading={publishing.orgsLoading}
+        selectedOrgId={publishing.publishOrgId}
+        onOrgChange={publishing.setPublishOrgId}
+        requiresReview={!!publishing.selectedOrg?.review_workflows}
         noOrgsText={t("publishNoOrgs")}
         selectOrgPlaceholder={t("publishSelectOrg")}
-        onConfirm={confirmPublish}
+        onConfirm={publishing.confirmPublish}
         resourceType="workflow"
         resourceId={workflowId}
       />
 
       {/* Unpublish Confirmation */}
-      <Dialog open={showUnpublishDialog} onOpenChange={setShowUnpublishDialog}>
+      <Dialog open={publishing.showUnpublishDialog} onOpenChange={publishing.setShowUnpublishDialog}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t("unpublishDialogTitle")}</DialogTitle>
@@ -990,8 +360,8 @@ export default function WorkflowEditorPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" className="px-6" onClick={() => setShowUnpublishDialog(false)}>{tc("cancel")}</Button>
-            <Button variant="secondary" className="px-6" onClick={confirmUnpublish}>{tc("unpublish")}</Button>
+            <Button variant="ghost" className="px-6" onClick={() => publishing.setShowUnpublishDialog(false)}>{tc("cancel")}</Button>
+            <Button variant="secondary" className="px-6" onClick={publishing.confirmUnpublish}>{tc("unpublish")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -999,15 +369,15 @@ export default function WorkflowEditorPage() {
       {/* Env Variables Dialog */}
       <EnvVarsDialog
         workflowId={workflowId}
-        open={showEnvDialog}
-        onOpenChange={setShowEnvDialog}
+        open={panels.isOpen("envVars")}
+        onOpenChange={panels.setter("envVars")}
       />
 
       {/* Run History Sheet */}
       <RunHistorySheet
         workflowId={workflowId}
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
+        open={panels.isOpen("runHistory")}
+        onOpenChange={panels.setter("runHistory")}
         nodeTypeMap={nodeTypeMap}
         onViewRunOnCanvas={handleViewRunOnCanvas}
       />
@@ -1015,47 +385,47 @@ export default function WorkflowEditorPage() {
       {/* Version History Sheet */}
       <VersionHistorySheet
         workflowId={workflowId}
-        open={versionHistoryOpen}
-        onOpenChange={setVersionHistoryOpen}
-        onVersionRestored={handleVersionRestored}
+        open={panels.isOpen("versionHistory")}
+        onOpenChange={panels.setter("versionHistory")}
+        onVersionRestored={doc.reloadAfterRestore}
       />
 
       {/* Stats Panel */}
       <WorkflowStatsPanel
         workflowId={workflowId}
-        open={statsOpen}
-        onOpenChange={setStatsOpen}
+        open={panels.isOpen("stats")}
+        onOpenChange={panels.setter("stats")}
       />
 
       {/* Node Stats Panel */}
       <NodeStatsPanel
         workflowId={workflowId}
-        open={nodeStatsOpen}
-        onOpenChange={setNodeStatsOpen}
+        open={panels.isOpen("nodeStats")}
+        onOpenChange={panels.setter("nodeStats")}
         nodeTypeMap={nodeTypeMap}
       />
 
       {/* Validation Panel */}
       <ValidationPanel
-        open={serverValidationOpen}
-        onOpenChange={setServerValidationOpen}
-        isLoading={isServerValidating}
-        result={serverValidationResult}
+        open={validation.serverValidationOpen}
+        onOpenChange={validation.setServerValidationOpen}
+        isLoading={validation.isServerValidating}
+        result={validation.serverValidationResult}
       />
 
       {/* Variables Panel */}
       <VariablesPanel
-        open={variablesPanelOpen}
-        onOpenChange={setVariablesPanelOpen}
+        open={panels.isOpen("variables")}
+        onOpenChange={panels.setter("variables")}
         variables={blueprintRef.current.variables ?? []}
-        onChange={handleVariablesChange}
+        onChange={doc.changeVariables}
       />
 
       {/* Analytics Panel */}
       <AnalyticsPanel
         workflowId={workflowId}
-        open={analyticsOpen}
-        onOpenChange={setAnalyticsOpen}
+        open={panels.isOpen("analytics")}
+        onOpenChange={panels.setter("analytics")}
         nodeTypeMap={nodeTypeMap}
       />
 
@@ -1063,8 +433,8 @@ export default function WorkflowEditorPage() {
       <WebhookConfigDialog
         workflowId={workflowId}
         webhookUrl={workflow.webhook_url}
-        open={showWebhookDialog}
-        onOpenChange={setShowWebhookDialog}
+        open={panels.isOpen("webhook")}
+        onOpenChange={panels.setter("webhook")}
         onSaved={handleWebhookSaved}
       />
 
@@ -1072,24 +442,24 @@ export default function WorkflowEditorPage() {
       <ApiKeyDialog
         workflowId={workflowId}
         hasApiKey={!!workflow.has_api_key}
-        open={showApiKeyDialog}
-        onOpenChange={setShowApiKeyDialog}
+        open={panels.isOpen("apiKey")}
+        onOpenChange={panels.setter("apiKey")}
         onApiKeyChanged={handleApiKeyChanged}
       />
 
       {/* Schedule Config Dialog */}
       <ScheduleDialog
         workflowId={workflowId}
-        open={showScheduleDialog}
-        onOpenChange={setShowScheduleDialog}
+        open={panels.isOpen("schedule")}
+        onOpenChange={panels.setter("schedule")}
         onScheduleChange={handleScheduleChange}
       />
 
       {/* Batch Run Dialog */}
       <BatchRunDialog
         workflowId={workflowId}
-        open={showBatchRunDialog}
-        onOpenChange={setShowBatchRunDialog}
+        open={panels.isOpen("batchRun")}
+        onOpenChange={panels.setter("batchRun")}
       />
     </div>
   )
