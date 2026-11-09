@@ -104,6 +104,10 @@ class FallbackLLM(BaseLLM):
         return self._primary.context_size
 
     @property
+    def max_output_tokens(self) -> int | None:
+        return self._primary.max_output_tokens
+
+    @property
     def abilities(self) -> dict[str, bool]:
         return self._primary.abilities
 

@@ -9,9 +9,14 @@ heuristic mode (``smart_truncate``) and an LLM-powered mode
 from __future__ import annotations
 
 import logging
+import os
+import re
 from typing import TYPE_CHECKING, Any
 
 from fim_one.core.model.types import ChatMessage
+
+from .budget import llm_input_budget
+from .microcompact import _is_tool_result
 
 if TYPE_CHECKING:
     from fim_one.core.model import BaseLLM
@@ -28,6 +33,41 @@ SUMMARY_PREFIX = "[Conversation summary]: "
 
 # Elision notice placed between the kept ends of a head+tail truncation.
 TRUNCATION_MARKER = "\n\n... (output truncated) ...\n\n"
+
+#: Upper bound on summariser calls for one compaction.  The history handed
+#: to the summariser is cut into parts that each fit its window; a history
+#: needing more parts than this keeps the first part and the most recent
+#: ones and drops the middle, so the cost of one compaction stays bounded.
+MAX_COMPACT_CHUNKS = max(1, int(os.getenv("CONTEXT_GUARD_MAX_COMPACT_CHUNKS") or "8"))
+
+# Hard cap on the running summary carried from one part to the next.
+_CARRY_SUMMARY_MAX_TOKENS = 10_000
+
+# Smallest part worth a summariser call.  A summariser whose window leaves
+# less room than this after the prompt cannot make progress; compaction
+# then falls back to truncation instead of looping on slivers.
+_MIN_CHUNK_TOKENS = 256
+
+# Tokens set aside per request for what is not prompt, carried summary or
+# history: the two per-message overheads, the fold labels, the elision
+# notice and the rounding slack of the character heuristic.
+_REQUEST_OVERHEAD_TOKENS = 64
+
+_FOLD_INSTRUCTION = (
+    "\n\nThe conversation is too long to summarise in one request, so it "
+    "arrives in consecutive parts. The message below holds the summary of "
+    "the earlier parts, then the next part. Reply with ONE updated summary "
+    "that covers both, in the format described above. Keep everything from "
+    "the earlier summary that still matters."
+)
+_FOLD_SUMMARY_LABEL = "[Summary of the conversation so far]\n"
+_FOLD_CHUNK_LABEL = "\n\n[Next part of the conversation]\n"
+_ELISION_NOTICE = (
+    "[... {count} earlier part(s) of the conversation omitted: too long to summarise ...]"
+)
+
+# Scratchpad block the structured compact prompts ask the summariser for.
+_ANALYSIS_RE = re.compile(r"<analysis>.*?</analysis>", re.DOTALL)
 
 
 def is_summary_message(message: ChatMessage) -> bool:
@@ -294,6 +334,274 @@ class CompactUtils:
 
         return result
 
+    @staticmethod
+    def split_on_tool_boundary(
+        compactable: list[ChatMessage],
+        keep_recent: int,
+    ) -> tuple[list[ChatMessage], list[ChatMessage]]:
+        """Split *compactable* into ``(old, recent)`` without orphaning tools.
+
+        A naive ``[-keep_recent:]`` slice can land between an assistant
+        ``tool_calls`` message and its ``role="tool"`` results.  Summarising
+        the assistant turn away while keeping the tool results produces a
+        conversation that starts with orphan tool messages — OpenAI and
+        Anthropic both reject that with HTTP 400.  Walk the boundary left
+        until the recent slice no longer starts with a tool message, so the
+        tool_use/tool_result pair stays intact on the kept side.
+        """
+        old = compactable[:-keep_recent]
+        recent = compactable[-keep_recent:]
+        while recent and recent[0].role == "tool" and old:
+            recent.insert(0, old.pop())
+        return old, recent
+
+    # ------------------------------------------------------------------
+    # Chunked summarisation
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _render_units(cls, messages: list[ChatMessage]) -> list[list[str]]:
+        """Render *messages* as summariser input lines, grouped into units.
+
+        A unit is what must not be separated when the history is cut into
+        parts: a message together with the tool results that answer it
+        (native ``role="tool"`` messages and JSON-mode observations).
+        Extended thinking is rendered too, so a clue the model surfaced only
+        in a reasoning block survives the summary instead of being silently
+        dropped (the summariser can only preserve what it is shown).
+        """
+        units: list[list[str]] = []
+        for msg in messages:
+            label = msg.role.capitalize()
+            lines: list[str] = []
+            if msg.reasoning_content:
+                lines.append(f"{label} (thinking): {msg.reasoning_content}")
+            lines.append(f"{label}: {cls.content_as_text(msg.content)}")
+            if units and _is_tool_result(msg):
+                units[-1].extend(lines)
+            else:
+                units.append(lines)
+        return units
+
+    @classmethod
+    def _line_cost(cls, line: str) -> int:
+        """Token cost charged for one rendered line inside a part.
+
+        Two above the estimate: one for the joining newline and one for the
+        fraction :meth:`estimate_tokens` rounds away, so the per-line costs
+        of a part always add up to at least the estimate of the joined text.
+        """
+        return cls.estimate_tokens(line) + 2
+
+    @staticmethod
+    def _split_line(
+        line: str,
+        max_tokens: int,
+        first_max_tokens: int | None = None,
+    ) -> list[str]:
+        """Cut *line* into consecutive pieces costing at most *max_tokens* each.
+
+        *first_max_tokens*, when given, sizes the first piece instead, so a
+        cut can start by filling the room left in a part.  Uses the same
+        per-character cost as :meth:`estimate_tokens`.  Every piece holds at
+        least one character, so the walk always advances.
+        """
+        pieces: list[str] = []
+        limit = max_tokens if first_max_tokens is None else first_max_tokens
+        start = 0
+        ascii_chars = 0
+        non_ascii_chars = 0
+        for idx, ch in enumerate(line):
+            is_ascii = ord(ch) < 128
+            ascii_next = ascii_chars + (1 if is_ascii else 0)
+            non_ascii_next = non_ascii_chars + (0 if is_ascii else 1)
+            if ascii_next / 4.0 + non_ascii_next / 1.5 > limit and idx > start:
+                pieces.append(line[start:idx])
+                limit = max_tokens
+                start = idx
+                ascii_chars = 1 if is_ascii else 0
+                non_ascii_chars = 0 if is_ascii else 1
+            else:
+                ascii_chars = ascii_next
+                non_ascii_chars = non_ascii_next
+        if start < len(line):
+            pieces.append(line[start:])
+        return pieces
+
+    @classmethod
+    def _pack_chunks(cls, units: list[list[str]], chunk_tokens: int) -> list[str]:
+        """Pack rendered *units* into parts of at most *chunk_tokens* each.
+
+        Units are kept whole: a tool call is never put in a different part
+        from its results.  The one exception is a unit that is larger than
+        a whole part on its own — it is laid out across parts line by line,
+        and a line that is itself too long is cut into pieces.  The parts
+        are plain text for the summariser, so that split only affects what
+        the summariser reads side by side, never the message list sent to
+        the main model.
+        """
+        chunks: list[str] = []
+        current: list[str] = []
+        used = 0
+        for unit in units:
+            costs = [cls._line_cost(line) for line in unit]
+            unit_cost = sum(costs)
+            if unit_cost <= chunk_tokens:
+                if used + unit_cost > chunk_tokens:
+                    chunks.append("\n".join(current))
+                    current, used = [], 0
+                current.extend(unit)
+                used += unit_cost
+                continue
+            for line, cost in zip(unit, costs, strict=True):
+                if cost <= chunk_tokens:
+                    pieces = [line]
+                else:
+                    # Start the cut with the room the current part has left,
+                    # unless that room is a sliver.
+                    room = chunk_tokens - used
+                    pieces = cls._split_line(
+                        line,
+                        chunk_tokens - 2,
+                        first_max_tokens=room - 2 if room >= _MIN_CHUNK_TOKENS else None,
+                    )
+                for piece in pieces:
+                    piece_cost = cls._line_cost(piece)
+                    if current and used + piece_cost > chunk_tokens:
+                        chunks.append("\n".join(current))
+                        current, used = [], 0
+                    current.append(piece)
+                    used += piece_cost
+        if current:
+            chunks.append("\n".join(current))
+        return chunks
+
+    @staticmethod
+    def _cap_chunks(chunks: list[str]) -> list[str]:
+        """Bound *chunks* to :data:`MAX_COMPACT_CHUNKS` parts.
+
+        Keeps the first part (it usually carries the original request) and
+        the most recent ones; the middle is dropped and replaced by a
+        one-line notice so the summariser knows there is a gap.
+        """
+        if len(chunks) <= MAX_COMPACT_CHUNKS:
+            return chunks
+        head = chunks[:1] if MAX_COMPACT_CHUNKS > 1 else []
+        tail = chunks[len(chunks) - max(MAX_COMPACT_CHUNKS - 1, 1) :]
+        omitted = len(chunks) - len(head) - len(tail)
+        logger.warning(
+            "Compaction input needs %d parts but at most %d are summarised "
+            "(CONTEXT_GUARD_MAX_COMPACT_CHUNKS); dropping the %d oldest "
+            "parts after the first",
+            len(chunks),
+            MAX_COMPACT_CHUNKS,
+            omitted,
+        )
+        tail[0] = f"{_ELISION_NOTICE.format(count=omitted)}\n{tail[0]}"
+        return head + tail
+
+    @classmethod
+    async def summarize_history(
+        cls,
+        messages: list[ChatMessage],
+        llm: BaseLLM,
+        prompt: str,
+        *,
+        input_budget: int,
+        usage_tracker: UsageTracker | None = None,
+    ) -> str | None:
+        """Summarise *messages* without any request exceeding *input_budget*.
+
+        A history that fits the summariser's window goes out as one request.
+        A longer one is cut into consecutive parts (see :meth:`_pack_chunks`)
+        and folded: the first part is summarised on its own, and each later
+        request carries the summary so far plus the next part and asks for
+        one updated summary.  The carried summary is capped, so every
+        request — prompt, carried summary and part together — stays within
+        *input_budget* by the same estimate the rest of context management
+        uses.
+
+        Args:
+            messages: The turns to summarise (oldest first).
+            llm: The summariser.
+            prompt: System prompt describing the summary wanted.
+            input_budget: Input tokens the summariser can take per request.
+            usage_tracker: Records the usage of every summariser call.
+
+        Returns:
+            The summary, or ``None`` when it could not be produced (a call
+            failed or came back empty, or the prompt leaves no room for
+            history in the summariser's window).  Callers fall back to
+            :meth:`smart_truncate`.
+        """
+        units = cls._render_units(messages)
+        if not units:
+            return None
+
+        whole = "\n".join(line for unit in units for line in unit)
+        single_room = input_budget - cls.estimate_tokens(prompt) - _REQUEST_OVERHEAD_TOKENS
+        carry_cap = 0
+        if cls.estimate_tokens(whole) <= single_room:
+            chunks = [whole]
+        else:
+            carry_cap = min(_CARRY_SUMMARY_MAX_TOKENS, input_budget // 4)
+            chunk_tokens = (
+                input_budget
+                - cls.estimate_tokens(prompt + _FOLD_INSTRUCTION)
+                - carry_cap
+                - _REQUEST_OVERHEAD_TOKENS
+            )
+            if chunk_tokens < _MIN_CHUNK_TOKENS:
+                logger.warning(
+                    "Compaction skipped: the summariser's input budget (%d tokens) "
+                    "leaves no room for history after the compact prompt",
+                    input_budget,
+                )
+                return None
+            chunks = cls._cap_chunks(cls._pack_chunks(units, chunk_tokens))
+            logger.info(
+                "Compaction input exceeds the summariser's input budget "
+                "(%d tokens); summarising in %d parts",
+                input_budget,
+                len(chunks),
+            )
+
+        summary = ""
+        for index, chunk in enumerate(chunks):
+            if index == 0:
+                request = [
+                    ChatMessage(role="system", content=prompt),
+                    ChatMessage(role="user", content=chunk),
+                ]
+            else:
+                carried = cls.truncate_head_tail(summary, carry_cap)
+                request = [
+                    ChatMessage(role="system", content=prompt + _FOLD_INSTRUCTION),
+                    ChatMessage(
+                        role="user",
+                        content=f"{_FOLD_SUMMARY_LABEL}{carried}{_FOLD_CHUNK_LABEL}{chunk}",
+                    ),
+                ]
+            try:
+                result = await llm.chat(request)
+                raw_content = result.message.content
+                if usage_tracker and result.usage:
+                    await usage_tracker.record(result.usage)
+            except Exception:
+                logger.warning(
+                    "LLM compact failed on part %d/%d",
+                    index + 1,
+                    len(chunks),
+                    exc_info=True,
+                )
+                return None
+            summary = _ANALYSIS_RE.sub(
+                "", raw_content if isinstance(raw_content, str) else ""
+            ).strip()
+            if not summary:
+                return None
+        return summary
+
     @classmethod
     async def llm_compact(
         cls,
@@ -302,19 +610,26 @@ class CompactUtils:
         max_tokens: int = 8000,
         keep_recent: int = 4,
         usage_tracker: UsageTracker | None = None,
+        summary_input_budget: int | None = None,
     ) -> list[ChatMessage]:
         """Compress conversation history using an LLM summary.
 
         If the history already fits within *max_tokens*, it is returned
         unchanged.  Otherwise the earliest turns are summarised into a
         single system message while the most recent *keep_recent*
-        user/assistant pairs are kept verbatim.
+        messages are kept verbatim (more when the cut would otherwise land
+        between a tool call and its results).
 
         Args:
             messages: Full conversation history (oldest first).
             llm: A fast LLM to use for summarisation.
             max_tokens: Maximum token budget for the returned history.
             keep_recent: Number of recent messages to preserve verbatim.
+            usage_tracker: Records the usage of the summariser calls.
+            summary_input_budget: Input tokens *llm* can take per request.
+                Defaults to the window *llm* declares, else
+                ``CONTEXT_GUARD_DEFAULT_BUDGET``.  Histories larger than
+                this are summarised in parts (:meth:`summarize_history`).
 
         Returns:
             A compacted message list that fits within *max_tokens*.
@@ -334,35 +649,17 @@ class CompactUtils:
         if len(compactable) <= keep_recent:
             return cls.smart_truncate(messages, max_tokens)
 
-        old_messages = compactable[:-keep_recent]
-        recent_messages = list(compactable[-keep_recent:])
+        old_messages, recent_messages = cls.split_on_tool_boundary(compactable, keep_recent)
 
-        # Build the text block to summarise.  Include extended-thinking so a
-        # clue the model surfaced only in a reasoning block survives the
-        # summary instead of being silently dropped (the summariser can only
-        # preserve what it is shown).
-        lines: list[str] = []
-        for msg in old_messages:
-            prefix = "User" if msg.role == "user" else "Assistant"
-            if msg.reasoning_content:
-                lines.append(f"{prefix} (thinking): {msg.reasoning_content}")
-            lines.append(f"{prefix}: {cls.content_as_text(msg.content)}")
-        history_text = "\n".join(lines)
-
-        try:
-            result = await llm.chat([
-                ChatMessage(role="system", content=_COMPACT_PROMPT),
-                ChatMessage(role="user", content=history_text),
-            ])
-            raw_content = result.message.content
-            summary = (raw_content if isinstance(raw_content, str) else "").strip()
-            if usage_tracker and result.usage:
-                await usage_tracker.record(result.usage)
-        except Exception:
-            logger.warning("LLM compact failed, falling back to truncation", exc_info=True)
-            return cls.smart_truncate(messages, max_tokens)
-
+        summary = await cls.summarize_history(
+            old_messages,
+            llm,
+            _COMPACT_PROMPT,
+            input_budget=summary_input_budget or llm_input_budget(llm),
+            usage_tracker=usage_tracker,
+        )
         if not summary:
+            logger.warning("LLM compact produced no summary, falling back to truncation")
             return cls.smart_truncate(messages, max_tokens)
 
         compacted = [

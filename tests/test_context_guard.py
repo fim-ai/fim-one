@@ -401,3 +401,194 @@ class TestCompactPreservesToolPairing:
         assert any(
             m.role == "assistant" and m.tool_calls for m in result[:first_tool]
         ), "kept tool results must be preceded by their assistant tool_calls turn"
+
+
+# ------------------------------------------------------------------
+# Model-aware summariser budget and chunked compaction input
+# ------------------------------------------------------------------
+
+
+def _tokens(messages: list[ChatMessage]) -> int:
+    from fim_one.core.memory.compact import CompactUtils
+
+    return CompactUtils.estimate_messages_tokens(messages)
+
+
+def _long_history(n: int, chars: int = 1_200) -> list[ChatMessage]:
+    return [
+        ChatMessage(
+            role="user" if i % 2 == 0 else "assistant",
+            content=f"MARK-{i} " + "x" * chars,
+        )
+        for i in range(n)
+    ]
+
+
+class TestSummariserBudget:
+    def test_defaults_to_the_summarisers_declared_window(self) -> None:
+        from fim_one.core.memory.budget import compute_input_budget
+
+        llm = FakeLLM(context_size=8_000, max_output_tokens=2_000)
+        guard = ContextGuard(compact_llm=llm, default_budget=100_000)
+        assert guard.compact_input_budget == compute_input_budget(8_000, 2_000)
+
+    def test_unknown_summariser_uses_the_documented_default(self) -> None:
+        from fim_one.core.memory.budget import DEFAULT_INPUT_BUDGET
+
+        guard = ContextGuard(compact_llm=FakeLLM(), default_budget=100_000)
+        assert guard.compact_input_budget == DEFAULT_INPUT_BUDGET
+
+    def test_explicit_budget_wins(self) -> None:
+        llm = FakeLLM(context_size=8_000, max_output_tokens=2_000)
+        guard = ContextGuard(
+            compact_llm=llm, default_budget=100_000, compact_input_budget=3_000
+        )
+        assert guard.compact_input_budget == 3_000
+
+
+class TestModelMix:
+    """Main and summariser windows differ in either direction."""
+
+    async def test_large_main_small_summariser_never_overflows_the_summariser(
+        self,
+    ) -> None:
+        # Main model budget 30k, summariser window 8k - 2k.  The history
+        # over budget is ~5x what the summariser can take in one request.
+        fast = FakeLLM(
+            [answer(f"S{i}") for i in range(1, 50)],
+            context_size=8_000,
+            max_output_tokens=2_000,
+        )
+        guard = ContextGuard(compact_llm=fast, default_budget=30_000)
+        msgs = [ChatMessage(role="system", content="sys"), *_long_history(104)]
+        assert _tokens(msgs) > 30_000
+
+        result = await guard.check_and_compact(msgs)
+
+        assert fast.chat_call_count > 1
+        for call in fast.chat_calls:
+            assert _tokens(call.messages) <= 8_000 - 2_000
+        assert _tokens(result) <= 30_000
+        assert any(
+            m.role == "system" and "[Conversation summary]" in (m.content or "")
+            for m in result
+        )
+        # The last four turns are kept verbatim.
+        assert [m.content for m in result[-4:]] == [m.content for m in msgs[-4:]]
+
+    async def test_small_main_large_summariser_is_one_request_within_main_budget(
+        self,
+    ) -> None:
+        fast = FakeLLM([answer("S1")], context_size=200_000, max_output_tokens=8_000)
+        guard = ContextGuard(compact_llm=fast, default_budget=6_000)
+        msgs = [ChatMessage(role="system", content="sys"), *_long_history(60)]
+
+        result = await guard.check_and_compact(msgs)
+
+        assert fast.chat_call_count == 1
+        assert _tokens(result) <= 6_000
+        assert any(
+            m.role == "system" and "[Conversation summary]: S1" in (m.content or "")
+            for m in result
+        )
+
+    async def test_unknown_summariser_is_chunked_at_the_documented_default(
+        self,
+    ) -> None:
+        from fim_one.core.memory.budget import DEFAULT_INPUT_BUDGET
+
+        fast = FakeLLM([answer(f"S{i}") for i in range(1, 50)])  # no window metadata
+        guard = ContextGuard(compact_llm=fast, default_budget=60_000)
+        msgs = _long_history(300)  # ~91k tokens
+
+        result = await guard.check_and_compact(msgs)
+
+        assert fast.chat_call_count > 1
+        for call in fast.chat_calls:
+            assert _tokens(call.messages) <= DEFAULT_INPUT_BUDGET
+        assert _tokens(result) <= 60_000
+
+
+class TestChunkedCompactInvariants:
+    def _small_summariser(self, script: list[str] | None = None) -> FakeLLM:
+        turns = script or [f"S{i}" for i in range(1, 50)]
+        return FakeLLM(
+            [answer(t) for t in turns], context_size=8_000, max_output_tokens=2_000
+        )
+
+    async def test_kept_tool_results_keep_their_tool_calls_turn(self) -> None:
+        """The v0.8.9 pairing guarantee holds when the input is chunked."""
+        from fim_one.core.model.types import ToolCallRequest
+
+        fast = self._small_summariser()
+        guard = ContextGuard(compact_llm=fast, default_budget=30_000)
+        msgs = _long_history(104)
+        msgs.append(
+            ChatMessage(
+                role="assistant",
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(id=f"t{i}", name="search", arguments={})
+                    for i in range(4)
+                ],
+            )
+        )
+        msgs.extend(
+            ChatMessage(role="tool", content=f"result-{i}", tool_call_id=f"t{i}")
+            for i in range(4)
+        )
+
+        result = await guard.check_and_compact(msgs)
+
+        assert fast.chat_call_count > 1
+        tool_ids = [m.tool_call_id for m in result if m.role == "tool"]
+        assert tool_ids == ["t0", "t1", "t2", "t3"]
+        first_tool = next(i for i, m in enumerate(result) if m.role == "tool")
+        owner = result[first_tool - 1]
+        assert owner.role == "assistant" and owner.tool_calls
+        assert [tc.id for tc in owner.tool_calls] == tool_ids
+
+    async def test_compacted_result_does_not_trigger_another_compaction(self) -> None:
+        """One compaction settles the list; the next check is a no-op."""
+        fast = self._small_summariser()
+        guard = ContextGuard(compact_llm=fast, default_budget=30_000)
+        msgs = _long_history(104)
+
+        once = await guard.check_and_compact(msgs)
+        calls_after_first = fast.chat_call_count
+        twice = await guard.check_and_compact(once)
+
+        assert fast.chat_call_count == calls_after_first
+        assert twice == once
+
+    async def test_structured_work_card_survives_chunking(self) -> None:
+        card = (
+            "## 1. Primary Request\nShip the report.\n\n"
+            "## 7. Pending Tasks\n- write tests\n"
+        )
+        fast = self._small_summariser(["## 1. Primary Request\nfirst part", card])
+        guard = ContextGuard(compact_llm=fast, default_budget=7_000)
+        msgs = _long_history(30)
+
+        result = await guard.check_and_compact(msgs, hint="react_iteration")
+
+        # The script's last turn repeats, so every later part returns the card.
+        assert fast.chat_call_count >= 2
+        assert guard._last_work_card is not None
+        assert guard._last_work_card.primary_request == "Ship the report."
+        assert guard._last_work_card.pending_tasks == ["write tests"]
+        assert any("Ship the report." in (m.content or "") for m in result)
+
+    async def test_summariser_failure_part_way_falls_back_to_truncation(self) -> None:
+        fast = FakeLLM(
+            [answer("S1"), raises(RuntimeError("boom"))],
+            context_size=8_000,
+            max_output_tokens=2_000,
+        )
+        guard = ContextGuard(compact_llm=fast, default_budget=30_000)
+        msgs = _long_history(104)
+
+        result = await guard.check_and_compact(msgs)
+
+        assert _tokens(result) <= 30_000
+        assert not any("[Conversation summary]" in (m.content or "") for m in result)

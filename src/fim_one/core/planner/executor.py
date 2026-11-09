@@ -16,7 +16,8 @@ from typing import Any
 
 from fim_one.core.agent import ReActAgent
 from fim_one.core.agent.types import Action
-from fim_one.core.memory.context_guard import ContextGuard, compute_input_budget
+from fim_one.core.memory.budget import declared_input_budget
+from fim_one.core.memory.context_guard import ContextGuard
 from fim_one.core.model import ChatMessage
 from fim_one.core.model.base import BaseLLM
 from fim_one.core.model.registry import ModelRegistry
@@ -476,36 +477,26 @@ class DAGExecutor:
         If the LLM does not expose ``context_size``, falls back to the
         existing global ``ContextGuard`` passed at construction time.
 
-        Uses the shared :func:`compute_input_budget` formula (also behind
-        ``fim_one.web.deps._compute_input_budget``), which applies a safety
-        margin below the API hard limit.  No static system_prompt_reserve
-        is subtracted — ContextGuard accounts for the system prompt
+        Uses the shared :func:`declared_input_budget` helper (the same
+        formula the chat entry points use), which applies a safety margin
+        below the API hard limit.  No static system_prompt_reserve is
+        subtracted — ContextGuard accounts for the system prompt
         dynamically when estimating tokens.
         """
         if self._context_guard is None:
             return None
 
-        model_ctx = getattr(llm, "context_size", None)
-        if not isinstance(model_ctx, int):
+        budget = declared_input_budget(llm)
+        if budget is None:
             return self._context_guard
-
-        # Derive max_output from the LLM's default_max_tokens if available,
-        # otherwise use a sensible default.
-        raw_max_output = getattr(llm, "_default_max_tokens", None)
-        max_output = raw_max_output if isinstance(raw_max_output, int) else 64000
-
-        budget = compute_input_budget(model_ctx, max_output)
 
         # If the computed budget matches the existing guard's default, reuse it.
         if budget == self._context_guard._default_budget:
             return self._context_guard
 
         logger.debug(
-            "Model-aware ContextGuard for %s: context_size=%d, "
-            "max_output=%d, budget=%d (global budget=%d)",
+            "Model-aware ContextGuard for %s: budget=%d (global budget=%d)",
             getattr(llm, "model_id", "unknown"),
-            model_ctx,
-            max_output,
             budget,
             self._context_guard._default_budget,
         )
@@ -516,6 +507,8 @@ class DAGExecutor:
             max_message_chars=self._context_guard.max_message_chars,
             usage_tracker=self._context_guard._usage_tracker,
             custom_compact_prompt=self._context_guard._custom_compact_prompt,
+            # The summariser is the same model, so its window is too.
+            compact_input_budget=self._context_guard.compact_input_budget,
         )
 
     def _resolve_direct_llm(self, step: PlanStep) -> BaseLLM:

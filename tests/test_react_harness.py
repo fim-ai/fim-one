@@ -730,3 +730,109 @@ class TestHistoryReplay:
             ),
         ]
         assert ReActAgent._history_to_replay(history) == []
+
+
+# ======================================================================
+# Model mix: main and fast windows differ, every request stays in window
+# ======================================================================
+
+
+class TestModelMixStaysWithinWindow:
+    """The chat wiring end to end: a long history, two different windows.
+
+    Mirrors how ``chat.py`` builds the agent: the guard's budget is the
+    smaller of the two models' input budgets (one message list goes to
+    both), and the summariser is budgeted by the fast model's window.  The
+    summariser gets its own ``FakeLLM`` so its script does not interleave
+    with the tool-decision script; it declares the fast model's window.
+    """
+
+    async def _run(
+        self,
+        main_window: tuple[int, int],
+        fast_window: tuple[int, int],
+    ) -> tuple[FakeLLM, FakeLLM, FakeLLM, str]:
+        from fim_one.core.memory import ContextGuard, WindowMemory
+        from fim_one.core.memory.budget import declared_input_budget
+
+        main = FakeLLM(
+            [answer("final from main")],
+            abilities=NATIVE_TOOLS,
+            context_size=main_window[0],
+            max_output_tokens=main_window[1],
+        )
+        fast = FakeLLM(
+            [tool_call("echo", {"text": "hi"}), tool_call("finish", {})],
+            abilities=NATIVE_TOOLS,
+            context_size=fast_window[0],
+            max_output_tokens=fast_window[1],
+        )
+        summariser = FakeLLM(
+            [answer("Summary of the earlier conversation.")],
+            context_size=fast_window[0],
+            max_output_tokens=fast_window[1],
+        )
+        main_budget = declared_input_budget(main)
+        fast_budget = declared_input_budget(fast)
+        assert main_budget is not None and fast_budget is not None
+
+        memory = WindowMemory(max_messages=10_000)
+        for i in range(120):  # ~37k tokens of history
+            await memory.add_message(
+                ChatMessage(
+                    role="user" if i % 2 == 0 else "assistant",
+                    content=f"MARK-{i} " + "x" * 1_200,
+                )
+            )
+        tools = ToolRegistry()
+        tools.register(EchoTool())
+        agent = ReActAgent(
+            llm=main,
+            fast_llm=fast,
+            tools=tools,
+            memory=memory,
+            context_guard=ContextGuard(
+                compact_llm=summariser,
+                default_budget=min(main_budget, fast_budget),
+                compact_input_budget=fast_budget,
+            ),
+            enable_plan_tool=False,
+            finish_signal=True,
+        )
+        result = await agent.run("what now?")
+        streamed = "".join([piece async for piece in agent.stream_answer("what now?", result)])
+        return main, fast, summariser, streamed
+
+    @staticmethod
+    def _assert_within_window(llm: FakeLLM, window: tuple[int, int]) -> None:
+        from fim_one.core.memory.compact import CompactUtils
+
+        assert llm.calls, "the model was expected to be called"
+        for call in llm.calls:
+            assert CompactUtils.estimate_messages_tokens(call.messages) <= window[0] - window[1]
+
+    async def test_small_main_large_fast(self) -> None:
+        main_window, fast_window = (16_000, 4_000), (200_000, 8_000)
+
+        main, fast, summariser, streamed = await self._run(main_window, fast_window)
+
+        assert streamed == "final from main"
+        self._assert_within_window(main, main_window)
+        self._assert_within_window(fast, fast_window)
+        self._assert_within_window(summariser, fast_window)
+        # The fast model could hold the whole history, but the list must
+        # also fit the main model, so it was compacted (in one request).
+        assert summariser.chat_call_count == 1
+
+    async def test_large_main_small_fast(self) -> None:
+        main_window, fast_window = (200_000, 8_000), (16_000, 4_000)
+
+        main, fast, summariser, streamed = await self._run(main_window, fast_window)
+
+        assert streamed == "final from main"
+        self._assert_within_window(main, main_window)
+        self._assert_within_window(fast, fast_window)
+        self._assert_within_window(summariser, fast_window)
+        # The history is over three times the summariser's window: it was
+        # summarised in parts instead of one oversized request.
+        assert summariser.chat_call_count > 1

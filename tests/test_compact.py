@@ -440,3 +440,394 @@ class TestSmartTruncateToolPairing:
         # results instead of exposing them as orphans.
         assert all(m.role != "tool" for m in result)
         assert result == [user]
+
+
+# ---------------------------------------------------------------------------
+# Chunked summarisation
+# ---------------------------------------------------------------------------
+
+
+def _request_tokens(messages: list[ChatMessage]) -> int:
+    """Size of one summariser request by the estimator compaction uses."""
+    return CompactUtils.estimate_messages_tokens(messages)
+
+
+def _history(n: int, body: str) -> list[ChatMessage]:
+    """*n* alternating user/assistant turns, each tagged ``MARK-<i>``."""
+    return [
+        ChatMessage(
+            role="user" if i % 2 == 0 else "assistant",
+            content=f"MARK-{i} {body}",
+        )
+        for i in range(n)
+    ]
+
+
+def _summariser(context_size: int = 8_000, max_output_tokens: int = 2_000) -> FakeLLM:
+    """A summariser with a small declared window; answers ``S<n>`` per call."""
+    return FakeLLM(
+        [answer(f"S{i}") for i in range(1, 200)],
+        context_size=context_size,
+        max_output_tokens=max_output_tokens,
+    )
+
+
+_PROMPT = "Summarise the conversation."
+
+
+class TestSummarizeHistorySingleRequest:
+    async def test_history_that_fits_is_one_plain_request(self) -> None:
+        llm = _summariser()
+        msgs = _history(4, "short")
+
+        summary = await CompactUtils.summarize_history(
+            msgs, llm, _PROMPT, input_budget=5_000
+        )
+
+        assert summary == "S1"
+        assert llm.chat_call_count == 1
+        call = llm.last_call
+        assert call.system_prompt == _PROMPT
+        assert call.user_text() == (
+            "User: MARK-0 short\nAssistant: MARK-1 short\n"
+            "User: MARK-2 short\nAssistant: MARK-3 short"
+        )
+
+    async def test_empty_history_makes_no_call(self) -> None:
+        llm = _summariser()
+        assert await CompactUtils.summarize_history([], llm, _PROMPT, input_budget=5_000) is None
+        assert llm.chat_call_count == 0
+
+
+class TestSummarizeHistoryChunked:
+    """A history larger than the summariser's window is folded in parts."""
+
+    async def test_no_request_exceeds_the_summarisers_window(self) -> None:
+        llm = _summariser(context_size=8_000, max_output_tokens=2_000)
+        budget = 5_520  # (8000 - 2000) * 0.92
+        msgs = _history(90, "x" * 1_200)  # ~27k tokens, ~5 windows
+        assert _request_tokens(msgs) > 4 * budget
+
+        summary = await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=budget)
+
+        assert llm.chat_call_count > 1
+        for call in llm.chat_calls:
+            assert _request_tokens(call.messages) <= budget
+            assert _request_tokens(call.messages) <= 8_000 - 2_000
+        # The result is the last fold, and every turn reached the summariser.
+        assert summary == f"S{llm.chat_call_count}"
+        seen = "\n".join(call.user_text() for call in llm.chat_calls)
+        assert all(f"MARK-{i} " in seen for i in range(90))
+
+    async def test_cjk_history_stays_within_the_window(self) -> None:
+        # CJK costs ~2.7x more per character; the packing must use the
+        # estimator's cost, not a character count.
+        llm = _summariser()
+        budget = 5_520
+        msgs = _history(60, "中文内容测试" * 150)
+
+        await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=budget)
+
+        assert llm.chat_call_count > 1
+        for call in llm.chat_calls:
+            assert _request_tokens(call.messages) <= budget
+
+    async def test_later_parts_carry_the_summary_so_far(self) -> None:
+        llm = _summariser()
+        msgs = _history(60, "x" * 1_200)
+
+        await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+
+        first, second = llm.chat_calls[0], llm.chat_calls[1]
+        assert first.system_prompt == _PROMPT
+        assert "[Summary of the conversation so far]" not in first.user_text()
+        assert second.system_prompt is not None
+        assert second.system_prompt.startswith(_PROMPT)
+        assert "[Summary of the conversation so far]\nS1" in second.user_text()
+        assert "[Next part of the conversation]" in second.user_text()
+
+    async def test_parts_are_consecutive_and_in_order(self) -> None:
+        llm = _summariser()
+        msgs = _history(60, "x" * 1_200)
+
+        await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+
+        order: list[int] = []
+        for call in llm.chat_calls:
+            for line in call.user_text().splitlines():
+                if ": MARK-" in line:
+                    order.append(int(line.split("MARK-")[1].split(" ")[0]))
+        assert order == list(range(60))
+
+    async def test_analysis_scratchpad_is_not_carried_forward(self) -> None:
+        llm = FakeLLM(
+            [answer("<analysis>scratch</analysis>\nKept one"), answer("Kept two")],
+            context_size=8_000,
+            max_output_tokens=2_000,
+        )
+        msgs = _history(30, "x" * 1_200)
+
+        summary = await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+
+        assert "scratch" not in llm.chat_calls[1].user_text()
+        assert "Kept one" in llm.chat_calls[1].user_text()
+        assert summary == "Kept two"
+
+    async def test_single_message_larger_than_a_part_is_cut_not_dropped(self) -> None:
+        llm = _summariser()
+        budget = 5_520
+        huge = "".join(f"<{i:05d}>" for i in range(6_000))  # 42k chars, ~10.5k tokens
+        msgs = [
+            ChatMessage(role="user", content="before"),
+            ChatMessage(role="assistant", content=huge),
+            ChatMessage(role="user", content="after"),
+        ]
+
+        await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=budget)
+
+        assert llm.chat_call_count >= 2
+        for call in llm.chat_calls:
+            assert _request_tokens(call.messages) <= budget
+        seen = "".join(call.user_text() for call in llm.chat_calls)
+        # Pieces rejoin to the original text: drop the scaffolding between
+        # them and every tag must still be there, in order.
+        assert all(f"<{i:05d}>" in seen for i in (0, 1_500, 3_000, 4_500, 5_999))
+
+    async def test_every_summariser_call_is_metered(self) -> None:
+        usage = {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
+        llm = FakeLLM(
+            [answer("S", usage=usage)], context_size=8_000, max_output_tokens=2_000
+        )
+        tracker = AsyncMock()
+        msgs = _history(60, "x" * 1_200)
+
+        await CompactUtils.summarize_history(
+            msgs, llm, _PROMPT, input_budget=5_520, usage_tracker=tracker
+        )
+
+        assert llm.chat_call_count > 1
+        assert tracker.record.await_count == llm.chat_call_count
+
+
+class TestSummarizeHistoryToolPairs:
+    """A tool call and its results are never put in different parts."""
+
+    def _pairs(self, n: int, body: str) -> list[ChatMessage]:
+        from fim_one.core.model.types import ToolCallRequest
+
+        msgs: list[ChatMessage] = []
+        for i in range(n):
+            msgs.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"CALL-{i} {body}",
+                    tool_calls=[ToolCallRequest(id=f"t{i}", name="search", arguments={})],
+                )
+            )
+            msgs.append(
+                ChatMessage(role="tool", content=f"RESULT-{i} {body}", tool_call_id=f"t{i}")
+            )
+        return msgs
+
+    async def test_native_tool_call_stays_with_its_result(self) -> None:
+        llm = _summariser()
+        # Each pair is ~0.6k tokens; a part holds several, with an uneven
+        # remainder, so a boundary would land inside a pair if pairs were
+        # not kept whole.
+        msgs = self._pairs(40, "x" * 1_150)
+
+        await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+
+        assert llm.chat_call_count > 1
+        for call in llm.chat_calls:
+            text = call.user_text()
+            for i in range(40):
+                assert (f"CALL-{i} " in text) == (f"RESULT-{i} " in text)
+
+    async def test_json_mode_observation_stays_with_its_action(self) -> None:
+        llm = _summariser()
+        msgs: list[ChatMessage] = []
+        for i in range(40):
+            msgs.append(ChatMessage(role="assistant", content=f"ACT-{i} " + "x" * 1_150))
+            msgs.append(
+                ChatMessage(role="user", content=f"Observation: OBS-{i} " + "x" * 1_150)
+            )
+
+        await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+
+        assert llm.chat_call_count > 1
+        for call in llm.chat_calls:
+            text = call.user_text()
+            for i in range(40):
+                assert (f"ACT-{i} " in text) == (f"OBS-{i} " in text)
+
+    async def test_pair_larger_than_a_part_still_fits_the_window(self) -> None:
+        # A pair that cannot fit one part has to be split; the requests
+        # must still respect the window and lose nothing.
+        llm = _summariser()
+        budget = 5_520
+        msgs = self._pairs(3, "y" * 16_000)  # each pair ~8k tokens
+
+        await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=budget)
+
+        for call in llm.chat_calls:
+            assert _request_tokens(call.messages) <= budget
+        seen = "\n".join(call.user_text() for call in llm.chat_calls)
+        assert all(f"CALL-{i} " in seen and f"RESULT-{i} " in seen for i in range(3))
+
+
+class TestSummarizeHistoryBounds:
+    async def test_prompt_that_leaves_no_room_gives_up_without_calling(self) -> None:
+        # An agent's custom compact instructions can be longer than the
+        # summariser's window; no part could ever fit, so do not try.
+        llm = _summariser()
+        msgs = _history(60, "x" * 1_200)
+
+        summary = await CompactUtils.summarize_history(
+            msgs, llm, "p" * 40_000, input_budget=5_520
+        )
+
+        assert summary is None
+        assert llm.chat_call_count == 0
+
+    async def test_failure_part_way_returns_none(self) -> None:
+        llm = FakeLLM(
+            [answer("S1"), raises(RuntimeError("boom"))],
+            context_size=8_000,
+            max_output_tokens=2_000,
+        )
+        msgs = _history(60, "x" * 1_200)
+
+        assert (
+            await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+            is None
+        )
+        assert llm.chat_call_count == 2
+
+    async def test_empty_part_summary_returns_none(self) -> None:
+        llm = FakeLLM([answer("")], context_size=8_000, max_output_tokens=2_000)
+        msgs = _history(60, "x" * 1_200)
+
+        assert (
+            await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+            is None
+        )
+        assert llm.chat_call_count == 1
+
+    async def test_part_count_is_capped(self) -> None:
+        llm = _summariser()
+        budget = 5_520
+        msgs = _history(200, "x" * 1_200)  # ~11 windows
+
+        with patch("fim_one.core.memory.compact.MAX_COMPACT_CHUNKS", 3):
+            summary = await CompactUtils.summarize_history(
+                msgs, llm, _PROMPT, input_budget=budget
+            )
+
+        assert llm.chat_call_count == 3
+        assert summary == "S3"
+        calls = llm.chat_calls
+        for call in calls:
+            assert _request_tokens(call.messages) <= budget
+        # First part and the most recent parts survive; the gap is flagged.
+        assert "MARK-0 " in calls[0].user_text()
+        assert "MARK-199 " in calls[2].user_text()
+        assert "earlier part(s) of the conversation omitted" in calls[1].user_text()
+
+    async def test_cap_of_one_keeps_the_most_recent_part(self) -> None:
+        llm = _summariser()
+        msgs = _history(200, "x" * 1_200)
+
+        with patch("fim_one.core.memory.compact.MAX_COMPACT_CHUNKS", 1):
+            await CompactUtils.summarize_history(msgs, llm, _PROMPT, input_budget=5_520)
+
+        assert llm.chat_call_count == 1
+        assert "MARK-199 " in llm.last_call.user_text()
+        assert _request_tokens(llm.last_call.messages) <= 5_520
+
+    @pytest.mark.parametrize(
+        "line",
+        ["a" * 1_000, "中" * 400, "mixed 中文 and ascii " * 60, "x"],
+    )
+    def test_split_line_always_advances_and_loses_nothing(self, line: str) -> None:
+        for max_tokens in (1, 3, 50):
+            pieces = CompactUtils._split_line(line, max_tokens)
+            assert "".join(pieces) == line
+            assert all(pieces)
+            assert all(
+                len(piece) == 1 or CompactUtils.estimate_tokens(piece) <= max_tokens
+                for piece in pieces
+            )
+
+
+class TestLlmCompactChunked:
+    """Load-time compaction (DbMemory) with a summariser smaller than history."""
+
+    async def test_history_larger_than_summariser_window_is_summarised(self) -> None:
+        # Before chunking this sent ~36k tokens to an 8k-window model in a
+        # single request; the provider rejects that and compaction silently
+        # degraded to truncation.
+        llm = _summariser(context_size=8_000, max_output_tokens=2_000)
+        window = 8_000 - 2_000
+        msgs = _history(120, "x" * 1_200)
+
+        result = await CompactUtils.llm_compact(msgs, llm, max_tokens=4_000, keep_recent=4)
+
+        assert llm.chat_call_count > 1
+        for call in llm.chat_calls:
+            assert _request_tokens(call.messages) <= window
+        summaries = [
+            m for m in result if m.role == "system" and "[Conversation summary]" in (m.content or "")
+        ]
+        assert len(summaries) == 1
+        assert CompactUtils.estimate_messages_tokens(result) <= 4_000
+        assert result[-1].content == msgs[-1].content
+
+    async def test_explicit_summary_budget_wins_over_the_declared_window(self) -> None:
+        llm = _summariser(context_size=200_000, max_output_tokens=8_000)
+        msgs = _history(120, "x" * 1_200)
+
+        await CompactUtils.llm_compact(
+            msgs, llm, max_tokens=4_000, summary_input_budget=5_520
+        )
+
+        assert llm.chat_call_count > 1
+        for call in llm.chat_calls:
+            assert _request_tokens(call.messages) <= 5_520
+
+    async def test_unknown_summariser_uses_the_documented_default(self) -> None:
+        from fim_one.core.memory.budget import DEFAULT_INPUT_BUDGET
+
+        llm = FakeLLM([answer(f"S{i}") for i in range(1, 50)])  # no window metadata
+        msgs = _history(300, "x" * 1_200)  # ~91k tokens
+        assert _request_tokens(msgs) > 2 * DEFAULT_INPUT_BUDGET
+
+        await CompactUtils.llm_compact(msgs, llm, max_tokens=4_000)
+
+        assert llm.chat_call_count > 1
+        for call in llm.chat_calls:
+            assert _request_tokens(call.messages) <= DEFAULT_INPUT_BUDGET
+
+    async def test_recent_window_does_not_start_with_orphan_tool_results(self) -> None:
+        from fim_one.core.model.types import ToolCallRequest
+
+        llm = _summariser(context_size=200_000, max_output_tokens=8_000)
+        msgs = _history(8, "x" * 1_200)
+        msgs.append(
+            ChatMessage(
+                role="assistant",
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(id=f"t{i}", name="search", arguments={}) for i in range(4)
+                ],
+            )
+        )
+        msgs.extend(
+            ChatMessage(role="tool", content=f"result-{i}", tool_call_id=f"t{i}")
+            for i in range(4)
+        )
+
+        result = await CompactUtils.llm_compact(msgs, llm, max_tokens=1_000, keep_recent=4)
+
+        first_tool = next(i for i, m in enumerate(result) if m.role == "tool")
+        assert any(m.role == "assistant" and m.tool_calls for m in result[:first_tool])
