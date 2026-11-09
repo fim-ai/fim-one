@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Beaker, ChevronDown, MessageSquare, Plus, Trash2, X } from "lucide-react"
+import { Beaker, Plus, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
 import {
   AlertDialog,
@@ -28,6 +27,8 @@ import { connectorApi } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { ConnectorResponse } from "@/types/connector"
 import { actionOptions, connectorOptions } from "./node-config/connector-options"
+import { AdvancedSection, defaultTimeoutMs } from "./node-config/advanced-section"
+import { CommentSection } from "./node-config/comment-section"
 import { VariablePicker } from "./variable-picker"
 import { TestNodeDialog } from "./test-node-dialog"
 import type { Node } from "@xyflow/react"
@@ -209,197 +210,6 @@ export function NodeConfigPanel({ workflowId, node, allNodes, onUpdate, onDelete
   )
 }
 
-// --- Advanced Section (error strategy + timeout) ---
-
-const ERROR_STRATEGIES: ErrorStrategy[] = ["stop_workflow", "continue", "fail_branch"]
-
-function AdvancedSection({
-  errorStrategy,
-  timeoutMs,
-  retryCount,
-  retryDelayMs,
-  onChangeErrorStrategy,
-  onChangeTimeout,
-  onChangeRetryCount,
-  onChangeRetryDelay,
-}: {
-  errorStrategy: ErrorStrategy
-  timeoutMs: number
-  retryCount: number
-  retryDelayMs: number
-  onChangeErrorStrategy: (v: ErrorStrategy) => void
-  onChangeTimeout: (v: number) => void
-  onChangeRetryCount: (v: number) => void
-  onChangeRetryDelay: (v: number) => void
-}) {
-  const t = useTranslations("workflows")
-  const [expanded, setExpanded] = useState(false)
-
-  return (
-    <>
-      <Separator className="my-1" />
-      <button
-        type="button"
-        className="flex items-center justify-between w-full text-xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {t("configSectionAdvanced")}
-        <ChevronDown
-          className={cn(
-            "h-3 w-3 transition-transform duration-200",
-            expanded && "rotate-180",
-          )}
-        />
-      </button>
-      {expanded && (
-        <div className="space-y-3 pb-1">
-          {/* Error strategy */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium">{t("configErrorStrategy")}</label>
-            <Select
-              value={errorStrategy}
-              onValueChange={(v) => onChangeErrorStrategy(v as ErrorStrategy)}
-            >
-              <SelectTrigger className="w-full h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ERROR_STRATEGIES.map((s) => (
-                  <SelectItem key={s} value={s} className="text-xs">
-                    {t(`configErrorStrategy_${s}` as Parameters<typeof t>[0])}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-[10px] text-muted-foreground">
-              {t(`configErrorStrategyHint_${errorStrategy}` as Parameters<typeof t>[0])}
-            </p>
-          </div>
-          {/* Timeout */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium">{t("configTimeout")}</label>
-            <Input
-              type="number"
-              className="h-7 text-xs"
-              value={timeoutMs}
-              min={1000}
-              max={600000}
-              step={1000}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10)
-                if (!isNaN(v) && v > 0) onChangeTimeout(v)
-              }}
-            />
-            <p className="text-[10px] text-muted-foreground">
-              {t("configTimeoutHint")}
-            </p>
-          </div>
-          {/* Retry */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium">{t("configRetryCount")}</label>
-            <Input
-              type="number"
-              className="h-7 text-xs"
-              value={retryCount}
-              min={0}
-              max={10}
-              step={1}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10)
-                if (!isNaN(v) && v >= 0) onChangeRetryCount(v)
-              }}
-            />
-            <p className="text-[10px] text-muted-foreground">
-              {t("configRetryCountHint")}
-            </p>
-          </div>
-          {retryCount > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">{t("configRetryDelay")}</label>
-              <Input
-                type="number"
-                className="h-7 text-xs"
-                value={retryDelayMs}
-                min={100}
-                max={60000}
-                step={500}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10)
-                  if (!isNaN(v) && v >= 100) onChangeRetryDelay(v)
-                }}
-              />
-              <p className="text-[10px] text-muted-foreground">
-                {t("configRetryDelayHint")}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  )
-}
-
-// --- Comment / annotation section ---
-
-function CommentSection({
-  comment,
-  onChange,
-}: {
-  comment: string
-  onChange: (value: string) => void
-}) {
-  const t = useTranslations("workflows")
-  const [expanded, setExpanded] = useState(false)
-
-  const firstLine = comment ? comment.split("\n")[0] : ""
-  const hasComment = comment.length > 0
-
-  return (
-    <>
-      <Separator className="my-1" />
-      <button
-        type="button"
-        className="flex items-center justify-between w-full text-xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <span className="flex items-center gap-1.5">
-          <MessageSquare className="h-3 w-3" />
-          {t("configCommentSection")}
-        </span>
-        <span className="flex items-center gap-1.5">
-          {!expanded && hasComment && (
-            <span className="text-[10px] text-muted-foreground/70 truncate max-w-[120px]">
-              {firstLine}
-            </span>
-          )}
-          <ChevronDown
-            className={cn(
-              "h-3 w-3 transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
-          />
-        </span>
-      </button>
-      {expanded && (
-        <div className="pb-1">
-          <Textarea
-            value={comment}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={t("configCommentPlaceholder")}
-            className="min-h-[60px] text-xs resize-none"
-            rows={3}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement
-              target.style.height = "auto"
-              target.style.height = `${target.scrollHeight}px`
-            }}
-          />
-        </div>
-      )}
-    </>
-  )
-}
-
 // --- Per-node config fields ---
 
 interface NodeConfigFieldsProps {
@@ -447,20 +257,6 @@ type ConfigProps = {
 }
 
 /** Reusable section header */
-/** Per-type default timeout; mirrors `default_timeout_ms` in core/workflow/types.py. */
-function defaultTimeoutMs(nodeType: WorkflowNodeType): number {
-  switch (nodeType) {
-    case "agent":
-      return 300000
-    case "llm":
-      return 120000
-    case "mcp":
-      return 60000
-    default:
-      return 30000
-  }
-}
-
 function SectionHeader({ label }: { label: string }) {
   return (
     <>
