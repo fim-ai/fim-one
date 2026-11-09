@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import math
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fim_one.core.mcp.credentials import personal_credential_fits
 from fim_one.core.security import is_stdio_allowed, validate_stdio_command, validate_url
 from fim_one.db import get_session
 from fim_one.web.exceptions import AppError
@@ -89,6 +91,13 @@ def _to_response(srv: MCPServer, *, is_owner: bool = True, my_has_credentials: b
         created_at=srv.created_at.isoformat() if srv.created_at else "",
         updated_at=srv.updated_at.isoformat() if srv.updated_at else None,
     )
+
+
+def _credential_fits(transport: str | None, cred: Any) -> bool:
+    """Whether a stored personal credential supplies what *transport* reads."""
+    env: dict[str, str] = dict(cred.env_blob) if cred.env_blob else {}
+    headers: dict[str, str] = dict(cred.headers_blob) if cred.headers_blob else {}
+    return personal_credential_fits(transport, env, headers)
 
 
 async def _get_owned_server(
@@ -221,17 +230,23 @@ async def list_mcp_servers(
     )
     servers = result.scalars().all()
 
-    # Bulk-fetch credential existence for current user
+    # Bulk-fetch the current user's credentials. One counts only when it
+    # supplies what the server's transport reads (see core/mcp/credentials.py).
     server_ids = [s.id for s in servers]
     cred_set: set[str] = set()
     if server_ids:
         cred_result = await db.execute(
-            select(MCPServerCredential.server_id).where(
+            select(MCPServerCredential).where(
                 MCPServerCredential.server_id.in_(server_ids),
                 MCPServerCredential.user_id == current_user.id,
             )
         )
-        cred_set = {row[0] for row in cred_result.all()}
+        _transport_by_id = {s.id: s.transport for s in servers}
+        cred_set = {
+            c.server_id
+            for c in cred_result.scalars().all()
+            if _credential_fits(_transport_by_id.get(c.server_id), c)
+        }
 
     subscribed_mcp_ids_set = set(subscribed_mcp_ids)
     items = []
@@ -285,7 +300,8 @@ async def get_mcp_server(
             MCPServerCredential.user_id == current_user.id,
         )
     )
-    my_has_credentials = cred_result.scalar_one_or_none() is not None
+    _cred = cred_result.scalar_one_or_none()
+    my_has_credentials = _cred is not None and _credential_fits(server.transport, _cred)
     _is_owner = server.user_id == current_user.id
     return ApiResponse(data=_to_response(server, is_owner=_is_owner, my_has_credentials=my_has_credentials).model_dump())
 
@@ -608,17 +624,28 @@ async def get_my_mcp_credentials(
     )
     row = result.scalar_one_or_none()
     if row is None:
-        # Return server env key names as template for pre-population
+        # Return the server's env / header key names as template for
+        # pre-population (names only, never the owner's values).
         server_env_keys = list((server.env or {}).keys())
+        server_header_keys = list((server.headers or {}).keys())
         return ApiResponse(
-            data=MCPMyCredentialStatus(has_credentials=False, env_keys=server_env_keys).model_dump()
+            data=MCPMyCredentialStatus(
+                has_credentials=False,
+                env_keys=server_env_keys,
+                header_keys=server_header_keys,
+            ).model_dump()
         )
     env: dict[str, str] = dict(row.env_blob) if row.env_blob else {}
+    headers: dict[str, str] = dict(row.headers_blob) if row.headers_blob else {}
     return ApiResponse(
         data=MCPMyCredentialStatus(
-            has_credentials=True,
-            env_keys=list(env.keys()),
+            # A saved credential counts only when it supplies what the
+            # transport reads; an env-only one on an HTTP server does not.
+            has_credentials=personal_credential_fits(server.transport, env, headers),
+            env_keys=list(env.keys()) or list((server.env or {}).keys()),
             env=env,
+            header_keys=list(headers.keys()) or list((server.headers or {}).keys()),
+            headers=headers,
         ).model_dump()
     )
 
@@ -630,13 +657,39 @@ async def upsert_my_mcp_credentials(
     current_user: User = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ApiResponse:
-    """Create or replace the current user's personal env credentials for this MCP server."""
+    """Create or replace the current user's personal credentials for this MCP server.
+
+    The credential must supply what the server's transport reads: ``env`` for
+    stdio, ``headers`` for SSE / streamable HTTP. One that does not would be
+    saved and then never used.
+    """
     from fim_one.db.models.mcp_server_credential import MCPServerCredential
 
-    await _get_accessible_server(server_id, current_user.id, db)
+    server = await _get_accessible_server(server_id, current_user.id, db)
 
     env_data: dict[str, str] = body.env or {}
     headers_data: dict[str, str] = body.headers or {}
+
+    if (env_data or headers_data) and not personal_credential_fits(
+        server.transport, env_data, headers_data
+    ):
+        if server.transport == "stdio":
+            raise AppError(
+                "mcp_credential_needs_env",
+                status_code=400,
+                detail=(
+                    "This MCP server runs as a local process and reads "
+                    "environment variables; provide your credentials as env."
+                ),
+            )
+        raise AppError(
+            "mcp_credential_needs_headers",
+            status_code=400,
+            detail=(
+                "This MCP server is reached over HTTP and reads request "
+                "headers; provide your credentials as headers."
+            ),
+        )
 
     existing = await db.execute(
         select(MCPServerCredential).where(

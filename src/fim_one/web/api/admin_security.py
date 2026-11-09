@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field, field_validator
@@ -361,7 +361,7 @@ async def list_active_sessions(
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> list[ActiveSessionItem]:
     """List users with active refresh tokens (i.e. active sessions)."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     q = (
         select(User)
         .where(

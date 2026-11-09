@@ -202,7 +202,7 @@ class TestResolveReferences:
         mock_db.execute.return_value = mock_result
 
         with patch(
-            "fim_one.web.visibility.build_visibility_filter",
+            "fim_one.core.assembly.visibility.visibility_clause",
             return_value=True,
         ):
             result = await resolve_blueprint_references(
@@ -228,7 +228,7 @@ class TestResolveReferences:
         mock_db.execute.return_value = mock_result
 
         with patch(
-            "fim_one.web.visibility.build_visibility_filter",
+            "fim_one.core.assembly.visibility.visibility_clause",
             return_value=True,
         ):
             result = await resolve_blueprint_references(
@@ -268,7 +268,7 @@ class TestResolveReferences:
         mock_db.execute.side_effect = [agent_result, conn_result]
 
         with patch(
-            "fim_one.web.visibility.build_visibility_filter",
+            "fim_one.core.assembly.visibility.visibility_clause",
             return_value=True,
         ):
             result = await resolve_blueprint_references(
@@ -294,7 +294,7 @@ class TestResolveReferences:
         mock_db.execute.return_value = mock_result
 
         with patch(
-            "fim_one.web.visibility.build_visibility_filter",
+            "fim_one.core.assembly.visibility.visibility_clause",
             return_value=True,
         ):
             result = await resolve_blueprint_references(
@@ -316,7 +316,7 @@ class TestResolveReferences:
         mock_db.execute.return_value = mock_result
 
         with patch(
-            "fim_one.web.visibility.build_visibility_filter",
+            "fim_one.core.assembly.visibility.visibility_clause",
             return_value=True,
         ):
             result = await resolve_blueprint_references(

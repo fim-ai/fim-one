@@ -117,7 +117,7 @@ async def _query_accessible_ids(
 
     Returns a mapping of id -> name (or None) for accessible resources.
     """
-    from fim_one.web.visibility import build_visibility_filter
+    from fim_one.core.assembly.visibility import visibility_clause
 
     if not candidate_ids:
         return {}
@@ -128,9 +128,7 @@ async def _query_accessible_ids(
 
     stmt = select(model.id, model.name).where(
         model.id.in_(candidate_ids),
-        build_visibility_filter(
-            model, user_id, user_org_ids, subscribed_ids=subscribed_ids
-        ),
+        visibility_clause(model, user_id, subscribed_ids),
     )
     result = await db.execute(stmt)
     return {row[0]: row[1] for row in result.all()}

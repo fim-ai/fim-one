@@ -18,6 +18,7 @@ from .types import ExecutionContext, NodeResult, NodeStatus, NodeType, WorkflowN
 from .variable_store import VariableStore
 
 if TYPE_CHECKING:
+    from fim_one.core.assembly.principal import CallContext
     from fim_one.core.tool.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -869,6 +870,24 @@ def _missing_identity(
     )
 
 
+def _node_call_context(node: WorkflowNodeDef, context: ExecutionContext) -> CallContext:
+    """The assembly-layer call context of a node in this run.
+
+    ``binding=None``: resources are judged by the run's own identity, as
+    they were before the assembly layer. The workflow becomes the binding
+    (and its author the subject) when nodes are folded into that layer.
+    """
+    from fim_one.core.assembly.principal import CallContext, provisional_principal
+
+    return CallContext(
+        principal=provisional_principal(context.user_id),
+        binding=None,
+        entry="workflow_node",
+        workflow_run_id=context.run_id,
+        node_id=node.id,
+    )
+
+
 async def _disabled_kb_names(kb_ids: list[str]) -> list[str]:
     """Return the names of the knowledge bases in *kb_ids* that are disabled."""
     if not kb_ids:
@@ -1027,7 +1046,7 @@ class ConnectorExecutor:
 
             # Load connector and action from DB
             async with create_session() as db:
-                from fim_one.db.models.connector import Connector, ConnectorAction
+                from fim_one.db.models.connector import ConnectorAction
                 from sqlalchemy import select
 
                 # Enforce visibility against the run's identity: a shared
@@ -1036,35 +1055,28 @@ class ConnectorExecutor:
                 # connectors the runner owns or has subscribed to are usable —
                 # not any connector that merely exists by id (tightened from
                 # existence-only to match chat assembly + agent binding).
-                from fim_one.web.visibility import resolve_visibility
-
-                _vis_clause, _, _ = await resolve_visibility(
-                    Connector, context.user_id, "connector", db
-                )
-                conn_stmt = select(Connector).where(
-                    Connector.id == connector_id, _vis_clause
-                )
-                conn_result = await db.execute(conn_stmt)
-                connector = conn_result.scalar_one_or_none()
-                if not connector:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            f"Connector '{connector_id}' not found or not "
-                            "accessible to you"
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
-
                 # A disabled connector is not callable (same rule as chat).
-                if not connector.is_active:
+                from fim_one.core.assembly.visibility import (
+                    ResourceKind,
+                    authorize_use,
+                )
+
+                _decision = await authorize_use(
+                    db, _node_call_context(node, context), ResourceKind.CONNECTOR, [connector_id]
+                )
+                # Not applied here yet: a database connector run by someone
+                # other than its owner is not refused as ``owner_only``; it
+                # goes on to the HTTP adapter below and fails there
+                # (registered in tests/assembly/matrix.py).
+                _usable = _decision.including("owner_only")
+                if not _usable:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=f"Connector '{connector.name}' is disabled",
+                        error=_decision.refused[connector_id].detail,
                         duration_ms=_ms_since(t0),
                     )
+                connector = _usable[0]
 
                 action_result = await db.execute(
                     select(ConnectorAction).where(
@@ -1473,7 +1485,6 @@ class MCPExecutor:
 
             # Load MCP server config from DB
             from fim_one.db import create_session
-            from fim_one.db.models.mcp_server import MCPServer
             from sqlalchemy import select
 
             async with create_session() as db:
@@ -1482,42 +1493,39 @@ class MCPExecutor:
                 # has subscribed to are usable — not any server that merely
                 # exists by id (previously existence-only, so a workflow
                 # referencing a foreign server_id could ride the owner's
-                # env/headers whenever allow_fallback was on).
-                from fim_one.web.visibility import resolve_visibility
-
-                _vis_clause, _, _ = await resolve_visibility(
-                    MCPServer, context.user_id, "mcp_server", db
+                # env/headers whenever allow_fallback was on). A disabled
+                # server is not callable.
+                from fim_one.core.assembly.visibility import (
+                    ResourceKind,
+                    authorize_use,
                 )
-                server_stmt = select(MCPServer).where(
-                    MCPServer.id == server_id, _vis_clause
-                )
-                result = await db.execute(server_stmt)
-                server = result.scalar_one_or_none()
 
-                if not server:
+                _decision = await authorize_use(
+                    db, _node_call_context(node, context), ResourceKind.MCP_SERVER, [server_id]
+                )
+                if not _decision.usable:
                     return NodeResult(
                         node_id=node.id,
                         status=NodeStatus.FAILED,
-                        error=(
-                            f"MCP server '{server_id}' not found or not "
-                            "accessible to you"
-                        ),
+                        error=_decision.refused[server_id].detail,
                         duration_ms=_ms_since(t0),
                     )
-
-                if not server.is_active:
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=f"MCP server '{server.name}' is disabled",
-                        duration_ms=_ms_since(t0),
-                    )
+                server = _decision.usable[0]
 
                 # Resolve per-user credentials vs server-level env/headers
                 effective_env: dict[str, str] | None = server.env
                 effective_headers: dict[str, str] | None = server.headers
 
-                has_user_cred = False
+                from fim_one.core.mcp.credentials import (
+                    must_bring_own_credential,
+                    personal_credential_fits,
+                )
+
+                # allow_fallback=False and the runner is not the owner:
+                # connect with the runner's own credential or not at all.
+                own_only = must_bring_own_credential(server, context.user_id)
+                own_env: dict[str, str] = {}
+                own_headers: dict[str, str] = {}
                 try:
                     from fim_one.db.models.mcp_server_credential import (
                         MCPServerCredential,
@@ -1531,20 +1539,14 @@ class MCPExecutor:
                     )
                     cred = cred_result.scalar_one_or_none()
                     if cred:
-                        env_dict: dict[str, str] = dict(cred.env_blob) if cred.env_blob else {}
-                        if env_dict:
-                            effective_env = {
-                                **(effective_env or {}),
-                                **env_dict,
-                            }
-                        headers_dict: dict[str, str] = dict(cred.headers_blob) if cred.headers_blob else {}
-                        if headers_dict:
-                            effective_headers = {
-                                **(effective_headers or {}),
-                                **headers_dict,
-                            }
-                        has_user_cred = bool(env_dict or headers_dict)
+                        own_env = dict(cred.env_blob) if cred.env_blob else {}
+                        own_headers = (
+                            dict(cred.headers_blob) if cred.headers_blob else {}
+                        )
                 except Exception:
+                    # A failed lookup counts as no credential: the gate below
+                    # then refuses a runner who must bring their own.
+                    own_env, own_headers = {}, {}
                     logger.warning(
                         "Failed to load MCP credentials for user %s, server %s",
                         context.user_id,
@@ -1552,25 +1554,42 @@ class MCPExecutor:
                         exc_info=True,
                     )
 
-                # allow_fallback gate (align with chat.py MCP path): a
-                # non-owner with no usable per-user credential must not
-                # silently fall back to the owner's server-level env/headers.
-                if (
-                    not has_user_cred
-                    and not getattr(server, "allow_fallback", True)
-                    and server.user_id != context.user_id
-                ):
-                    return NodeResult(
-                        node_id=node.id,
-                        status=NodeStatus.FAILED,
-                        error=(
-                            f"MCP server '{server.name}' requires your own "
-                            "credentials (fallback to the owner's is "
-                            "disabled). Configure per-user credentials to "
-                            "use it in a workflow."
-                        ),
-                        duration_ms=_ms_since(t0),
-                    )
+                if own_only:
+                    # The credential must supply what the transport reads
+                    # (stdio: env; SSE / HTTP: headers). An env-only
+                    # credential on an HTTP server supplies nothing, and the
+                    # owner's headers must not fill the gap.
+                    if not personal_credential_fits(
+                        server.transport, own_env, own_headers
+                    ):
+                        _needs = (
+                            "environment variables"
+                            if server.transport == "stdio"
+                            else "HTTP headers"
+                        )
+                        return NodeResult(
+                            node_id=node.id,
+                            status=NodeStatus.FAILED,
+                            error=(
+                                f"MCP server '{server.name}' requires your own "
+                                "credentials (fallback to the owner's is "
+                                f"disabled). Save your own {_needs} for it "
+                                "to use it in a workflow."
+                            ),
+                            duration_ms=_ms_since(t0),
+                        )
+                    # Only the runner's own values, never merged with the
+                    # owner's.
+                    effective_env = own_env or None
+                    effective_headers = own_headers or None
+                else:
+                    if own_env:
+                        effective_env = {**(effective_env or {}), **own_env}
+                    if own_headers:
+                        effective_headers = {
+                            **(effective_headers or {}),
+                            **own_headers,
+                        }
 
             # Connect to MCP server and discover tools
             from fim_one.core.mcp import MCPClient

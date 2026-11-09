@@ -38,6 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { mcpServerApi } from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
 import { MARKET_ORG_ID } from "@/lib/constants"
 import type { MCPServerResponse } from "@/types/mcp-server"
 
@@ -72,6 +73,7 @@ export function MCPServerCard({
 }: MCPServerCardProps) {
   const t = useTranslations("tools")
   const tc = useTranslations("common")
+  const tError = useTranslations("errors")
   const to = useTranslations("organizations")
 
   const endpoint = server.transport === "stdio" ? server.command : server.url
@@ -95,6 +97,9 @@ export function MCPServerCard({
   const isFromOrg = source === "org"
   const isSubscribed = isFromMarket || isFromOrg
   const needsKeyConfig = !isOwner && !server.allow_fallback && !server.my_has_credentials
+  // A personal credential must supply what the transport reads: stdio servers
+  // read environment variables, SSE / HTTP servers read request headers.
+  const usesHeaders = server.transport !== "stdio"
 
   const handleTest = async () => {
     setTesting(true)
@@ -114,20 +119,23 @@ export function MCPServerCard({
     setMyKeysOpen(true)
     try {
       const status = await mcpServerApi.getMyCredentials(server.id)
-      if (status.has_credentials && status.env && Object.keys(status.env).length > 0) {
+      const saved = usesHeaders ? status.headers : status.env
+      const keyNames = usesHeaders ? status.header_keys : status.env_keys
+      const serverValues = usesHeaders ? server.headers : server.env
+      if (status.has_credentials && saved && Object.keys(saved).length > 0) {
         // Show actual saved values so user can see / edit them
-        setMyKeysEnv(status.env)
-      } else if (status.env_keys && status.env_keys.length > 0) {
-        // First time: pre-fill key names from server's env template, values empty
+        setMyKeysEnv(saved)
+      } else if (keyNames && keyNames.length > 0) {
+        // First time: pre-fill key names from the server's template, values empty
         const template: Record<string, string> = {}
-        for (const k of status.env_keys) {
+        for (const k of keyNames) {
           template[k] = ""
         }
         setMyKeysEnv(template)
-      } else if (server.env) {
-        // Fallback: use server.env keys (owner view)
+      } else if (serverValues) {
+        // Fallback: use the server's own key names (owner view)
         const template: Record<string, string> = {}
-        for (const k of Object.keys(server.env)) {
+        for (const k of Object.keys(serverValues)) {
           template[k] = ""
         }
         setMyKeysEnv(template)
@@ -184,13 +192,13 @@ export function MCPServerCard({
     }
     setMyKeysSaving(true)
     try {
-      await mcpServerApi.upsertMyCredentials(server.id, { env })
+      await mcpServerApi.upsertMyCredentials(server.id, usesHeaders ? { headers: env } : { env })
       const hasCredentials = Object.keys(env).length > 0
       toast.success(hasCredentials ? t("myCredentialsSaved") : t("myCredentialsCleared"))
       setMyKeysOpen(false)
       onCredentialsSaved?.(server.id, hasCredentials)
-    } catch {
-      toast.error(t("failedToSaveMcpServer"))
+    } catch (err) {
+      toast.error(getErrorMessage(err, tError))
     } finally {
       setMyKeysSaving(false)
     }
@@ -492,7 +500,7 @@ export function MCPServerCard({
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">{t("myKeysEnvVars")}</Label>
+              <Label className="text-sm font-medium">{usesHeaders ? t("myKeysHeaders") : t("myKeysEnvVars")}</Label>
               <Button
                 type="button"
                 variant="outline"
@@ -514,7 +522,7 @@ export function MCPServerCard({
                     <div className="flex items-center gap-2">
                       <Input
                         className="h-8 text-xs font-mono flex-1"
-                        placeholder="KEY_NAME"
+                        placeholder={usesHeaders ? "Header-Name" : "KEY_NAME"}
                         value={key}
                         onChange={(e) => handleEnvKeyChange(key, e.target.value)}
                       />
@@ -542,7 +550,7 @@ export function MCPServerCard({
                 ))}
                 {Object.keys(myKeysEnv).length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-4">
-                    No environment variables. Click &quot;Add&quot; to add one.
+                    {usesHeaders ? t("myKeysNoHeaders") : t("myKeysNoEnvVars")}
                   </p>
                 )}
               </div>
