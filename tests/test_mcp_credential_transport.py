@@ -22,6 +22,7 @@ from fim_one.core.assembly.credentials import (
     personal_credential_fits,
 )
 from fim_one.core.assembly.principal import CallContext, provisional_principal
+from fim_one.core.security.encryption import encrypt_credential
 from fim_one.core.workflow.nodes import MCPExecutor
 from fim_one.core.workflow.types import (
     ExecutionContext,
@@ -125,13 +126,27 @@ class TestMustBringOwnCredential:
 # ---------------------------------------------------------------------------
 
 
+def _cred_rows(cred: Any) -> list[tuple[str, str | None, str | None]]:
+    """The caller's saved credential as the lookup reads it: one row per
+    server, the two blobs as stored (encrypted)."""
+    if cred is None:
+        return []
+    return [
+        (
+            "srv-1",
+            encrypt_credential(cred.env_blob) if cred.env_blob is not None else None,
+            encrypt_credential(cred.headers_blob) if cred.headers_blob is not None else None,
+        )
+    ]
+
+
 def _cred_session(cred: Any = None, *, raises: bool = False) -> AsyncMock:
     session = AsyncMock()
     if raises:
         session.execute = AsyncMock(side_effect=RuntimeError("db down"))
     else:
         result = MagicMock()
-        result.scalar_one_or_none.return_value = cred
+        result.all.return_value = _cred_rows(cred)
         session.execute = AsyncMock(return_value=result)
     cm = AsyncMock()
     cm.__aenter__ = AsyncMock(return_value=session)
@@ -302,7 +317,7 @@ def _node_session(server: Any, cred: Any, *, cred_raises: bool = False) -> Async
             return result
         if cred_raises:
             raise RuntimeError("db down")
-        result.scalar_one_or_none.return_value = cred
+        result.all.return_value = _cred_rows(cred)
         return result
 
     session = AsyncMock()

@@ -158,7 +158,9 @@ def _mock_db_session(
         if call_count == 1:
             r.scalar_one_or_none.return_value = server
         else:
-            r.scalar_one_or_none.return_value = credential
+            # The credential lookup reads rows; none of these tests saves one.
+            assert credential is None
+            r.all.return_value = []
         return r
 
     mock_session = AsyncMock()

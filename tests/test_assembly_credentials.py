@@ -11,7 +11,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import fim_one.db.models  # noqa: F401
-from fim_one.core.assembly.credentials import CredentialSource, resolve_credential
+from fim_one.core.assembly.credentials import (
+    CredentialSource,
+    resolve_credential,
+    resolve_credentials,
+)
 from fim_one.core.assembly.errors import AssemblyRefusal
 from fim_one.core.assembly.principal import provisional_principal
 from fim_one.core.security.encryption import encrypt_credential, encrypt_db_config
@@ -439,3 +443,68 @@ class TestMcpServerThatStoresNothing:
 
         assert got.source is CredentialSource.PERSONAL
         assert got.env == {"API_KEY": "mine"}
+
+
+class TestManyResourcesOneLookup:
+    """A chat with no agent resolves every connector and server the user can
+    see on every turn: the lookups must not grow with their number."""
+
+    async def test_connectors_and_servers_take_one_query_each(self, session: AsyncSession) -> None:
+        from sqlalchemy import event
+
+        connectors = []
+        for n in range(6):
+            conn = _connector(allow_fallback=n % 2 == 0)
+            conn.id = f"conn-{n}"
+            connectors.append(conn)
+            session.add(
+                ConnectorCredential(
+                    connector_id=conn.id,
+                    user_id=None,
+                    credentials_blob=encrypt_credential({"default_token": f"owner-{n}"}),
+                )
+            )
+        session.add(
+            ConnectorCredential(
+                connector_id="conn-1",
+                user_id=OTHER,
+                credentials_blob=encrypt_credential({"token": "mine"}),
+            )
+        )
+        servers = []
+        for n in range(4):
+            server = _mcp(transport="stdio", allow_fallback=True)
+            server.id = f"srv-{n}"
+            servers.append(server)
+        await session.commit()
+
+        statements: list[str] = []
+        engine = session.get_bind()
+
+        def _count(_conn: Any, _cursor: Any, statement: str, *_: Any) -> None:
+            statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", _count)
+        try:
+            answers = await resolve_credentials(
+                session, provisional_principal(OTHER), [*connectors, *servers]
+            )
+        finally:
+            event.remove(engine, "before_cursor_execute", _count)
+
+        assert len(statements) == 2, statements
+        sources = [
+            a.error_code if isinstance(a, AssemblyRefusal) else str(a.source) for a in answers
+        ]
+        assert sources == [
+            "owner_fallback",  # conn-0: fallback on
+            "personal",  # conn-1: fallback off, but a credential of their own
+            "owner_fallback",
+            "credential_required",  # conn-3: fallback off
+            "owner_fallback",
+            "credential_required",
+            *["owner_fallback"] * 4,  # the servers
+        ]
+        first = answers[0]
+        assert not isinstance(first, AssemblyRefusal)
+        assert first.connector == {"default_token": "owner-0"}

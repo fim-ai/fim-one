@@ -15,7 +15,7 @@ from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from .calls import call_recorder
-from .credentials import CredentialSource, resolve_credential
+from .credentials import CredentialSource, resolve_credential, resolve_credentials
 from .errors import AssemblyRefusal
 from .visibility import ResourceKind, authorize_use
 
@@ -66,13 +66,13 @@ async def connector_tools(
     sources: dict[str, CredentialSource] = {}
     record = call_recorder(ctx, kind="connector", credential_source=sources)
     callable_connectors: list[tuple[Any, dict[str, Any]]] = []
-    for conn in connectors:
-        try:
-            credential = await resolve_credential(db, ctx.principal, conn)
-        except AssemblyRefusal as refusal:
+    # One lookup for the whole set, however many connectors there are.
+    answers = await resolve_credentials(db, ctx.principal, connectors)
+    for conn, credential in zip(connectors, answers, strict=True):
+        if isinstance(credential, AssemblyRefusal):
             if strict:
-                raise
-            logger.info("Skipping connector %r: %s", conn.name, refusal.error_code)
+                raise credential
+            logger.info("Skipping connector %r: %s", conn.name, credential.error_code)
             continue
         sources[conn.id] = credential.source
         callable_connectors.append((conn, credential.connector or {}))
@@ -331,7 +331,10 @@ async def _open_mcp_servers(
     sources: dict[str, CredentialSource] = {}
     record = call_recorder(ctx, kind="mcp", credential_source=sources)
     connected: dict[str, list[Any]] = {}
-    for server in servers:
+    # One lookup for the whole set, however many servers there are.
+    async with create_session() as db:
+        answers = await resolve_credentials(db, ctx.principal, servers)
+    for server, credential in zip(servers, answers, strict=True):
         if server.name in connected:
             # The client and the meta-tool key a server by name: a second one
             # would replace the first under it.
@@ -342,8 +345,8 @@ async def _open_mcp_servers(
             )
             continue
         try:
-            async with create_session() as db:
-                credential = await resolve_credential(db, ctx.principal, server)
+            if isinstance(credential, AssemblyRefusal):
+                raise credential
             adapters = await _connect_mcp_server(client, server, credential)
             sources[server.id] = credential.source
             for adapter in adapters:

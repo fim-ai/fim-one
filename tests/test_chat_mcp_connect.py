@@ -46,7 +46,7 @@ def _adapter(server: str, tool: str) -> MCPToolAdapter:
 
 def _no_credential_session() -> AsyncMock:
     result = MagicMock()
-    result.scalar_one_or_none.return_value = None
+    result.all.return_value = []
     session = AsyncMock()
     session.execute = AsyncMock(return_value=result)
     cm = AsyncMock()

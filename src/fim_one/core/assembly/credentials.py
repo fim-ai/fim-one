@@ -38,7 +38,7 @@ falls through to the owner's credential.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -56,6 +56,7 @@ __all__ = [
     "must_bring_own_credential",
     "personal_credential_fits",
     "resolve_credential",
+    "resolve_credentials",
 ]
 
 logger = logging.getLogger(__name__)
@@ -121,11 +122,39 @@ async def resolve_credential(
     ``credential_unavailable`` (503) or, for a database connector,
     ``owner_only`` (403).
     """
-    if hasattr(resource, "transport"):
-        return await _mcp_credential(db, principal, resource)
-    if getattr(resource, "type", None) == "database":
-        return _database_credential(principal, resource)
-    return await _connector_credential(db, principal, resource)
+    (answer,) = await resolve_credentials(db, principal, [resource])
+    if isinstance(answer, AssemblyRefusal):
+        raise answer
+    return answer
+
+
+async def resolve_credentials(
+    db: AsyncSession, principal: Principal, resources: Sequence[Any]
+) -> list[ResolvedCredential | AssemblyRefusal]:
+    """:func:`resolve_credential` for many resources: one answer each, in order.
+
+    A refusal is returned, not raised, so that one resource the user may not
+    call does not stop the rest. The stored credentials of all the API
+    connectors are read in one query, and those of all the MCP servers in
+    another, however many there are: a chat with no agent resolves every
+    connector and server the user can see on every turn.
+    """
+    answers: dict[int, ResolvedCredential | AssemblyRefusal] = {}
+    connectors: list[tuple[int, Any]] = []
+    servers: list[tuple[int, Any]] = []
+    for index, resource in enumerate(resources):
+        if hasattr(resource, "transport"):
+            servers.append((index, resource))
+        elif getattr(resource, "type", None) == "database":
+            try:
+                answers[index] = _database_credential(principal, resource)
+            except AssemblyRefusal as refusal:
+                answers[index] = refusal
+        else:
+            connectors.append((index, resource))
+    answers.update(await _connector_credentials(db, principal, connectors))
+    answers.update(await _mcp_credentials(db, principal, servers))
+    return [answers[index] for index in range(len(resources))]
 
 
 def _database_credential(principal: Principal, conn: Any) -> ResolvedCredential:
@@ -166,41 +195,87 @@ def _secrets_left_in_auth_config(conn: Any) -> dict[str, Any]:
     return {key: config[key] for key in _AUTH_CONFIG_SECRET_KEYS if config.get(key)}
 
 
-async def _connector_credential(
-    db: AsyncSession, principal: Principal, conn: Any
+def _read(ciphertext: str) -> dict[str, Any]:
+    """A stored credential blob as the dict it holds."""
+    from fim_one.core.security.encryption import decrypt_credential
+
+    return decrypt_credential(ciphertext)
+
+
+async def _connector_credentials(
+    db: AsyncSession, principal: Principal, connectors: Sequence[tuple[int, Any]]
+) -> dict[int, ResolvedCredential | AssemblyRefusal]:
+    """Answers for API connectors, keyed by the index each came with."""
+    answers: dict[int, ResolvedCredential | AssemblyRefusal] = {}
+    needing: list[tuple[int, Any]] = []
+    for index, conn in connectors:
+        if (getattr(conn, "auth_type", None) or "none") == "none":
+            # The connector sends no credential, so there is none to resolve
+            # and none of the owner's to gate.
+            answers[index] = ResolvedCredential(source=CredentialSource.NONE, connector={})
+        else:
+            needing.append((index, conn))
+    if not needing:
+        return answers
+
+    from sqlalchemy import or_, select
+
+    from fim_one.db.models.connector_credential import ConnectorCredential
+
+    # connector id -> the caller's own row / the default (owner's) row
+    personal_rows: dict[str, str] = {}
+    default_rows: dict[str, str] = {}
+    try:
+        whose: Any = ConnectorCredential.user_id.is_(None)
+        if principal.user_id:
+            whose = or_(whose, ConnectorCredential.user_id == principal.user_id)
+        rows = (
+            await db.execute(
+                select(
+                    ConnectorCredential.connector_id,
+                    ConnectorCredential.user_id,
+                    ConnectorCredential.credentials_blob,
+                ).where(ConnectorCredential.connector_id.in_([c.id for _, c in needing]), whose)
+            )
+        ).all()
+        for connector_id, user_id, blob in rows:
+            (default_rows if user_id is None else personal_rows)[connector_id] = blob
+    except Exception:
+        logger.warning(
+            "Failed to load credentials for %d connector(s)", len(needing), exc_info=True
+        )
+        for index, conn in needing:
+            answers[index] = _credential_unavailable("Connector", conn)
+        return answers
+
+    for index, conn in needing:
+        try:
+            answers[index] = _connector_answer(
+                principal, conn, personal_rows.get(conn.id), default_rows.get(conn.id)
+            )
+        except AssemblyRefusal as refusal:
+            answers[index] = refusal
+    return answers
+
+
+def _connector_answer(
+    principal: Principal, conn: Any, personal_blob: str | None, default_blob: str | None
 ) -> ResolvedCredential:
-    from fim_one.core.security.connector_credentials import load_connector_credential
-
-    if (getattr(conn, "auth_type", None) or "none") == "none":
-        # The connector sends no credential, so there is none to resolve and
-        # none of the owner's to gate.
-        return ResolvedCredential(source=CredentialSource.NONE, connector={})
-
     is_owner = _is_owner(principal, conn)
     may_borrow = is_owner or bool(getattr(conn, "allow_fallback", True))
-    try:
-        personal = (
-            await load_connector_credential(db, conn.id, principal.user_id)
-            if principal.user_id
-            else None
-        )
-        # A row of the user's own decides, even one that reads back empty
-        # (blank, or not decryptable): the owner's is not tried in its place.
-        stored = (
-            await load_connector_credential(db, conn.id, None)
-            if personal is None and may_borrow
-            else None
-        )
-    except Exception as exc:
-        logger.warning("Failed to load credentials for connector %r", _name(conn), exc_info=True)
-        raise _credential_unavailable("Connector", conn) from exc
-
+    # A row of the user's own decides, even one that reads back empty: the
+    # owner's is not tried in its place.
+    personal = _read(personal_blob) if personal_blob is not None else None
     if personal:
         return ResolvedCredential(source=CredentialSource.PERSONAL, connector=personal)
     if not may_borrow:
         raise _credential_required("Connector", conn)
+    stored: dict[str, Any] = {}
     if personal is None:
-        stored = {**_secrets_left_in_auth_config(conn), **(stored or {})}
+        stored = {
+            **_secrets_left_in_auth_config(conn),
+            **(_read(default_blob) if default_blob is not None else {}),
+        }
     if not stored:
         # Nothing usable is stored: the request goes out bare.
         return ResolvedCredential(source=CredentialSource.NONE, connector={})
@@ -245,41 +320,66 @@ def must_bring_own_credential(server: Any, user_id: str | None) -> bool:
     return not user_id or getattr(server, "user_id", None) != user_id
 
 
-async def _mcp_credential(
-    db: AsyncSession, principal: Principal, server: Any
-) -> ResolvedCredential:
-    from sqlalchemy import select
+async def _mcp_credentials(
+    db: AsyncSession, principal: Principal, servers: Sequence[tuple[int, Any]]
+) -> dict[int, ResolvedCredential | AssemblyRefusal]:
+    """Answers for MCP servers, keyed by the index each came with."""
+    answers: dict[int, ResolvedCredential | AssemblyRefusal] = {}
+    if not servers:
+        return answers
 
-    from fim_one.db.models.mcp_server_credential import MCPServerCredential
-
-    personal: Any = None
+    # server id -> (env blob, headers blob) of the caller's own credential
+    personal_rows: dict[str, tuple[str | None, str | None]] = {}
     if principal.user_id:
+        from sqlalchemy import Text, select, type_coerce
+
+        from fim_one.db.models.mcp_server_credential import MCPServerCredential
+
         try:
-            personal = (
+            rows = (
                 await db.execute(
-                    select(MCPServerCredential).where(
-                        MCPServerCredential.server_id == server.id,
+                    select(
+                        MCPServerCredential.server_id,
+                        # As stored: reading a blob is this module's business.
+                        type_coerce(MCPServerCredential.env_blob, Text),
+                        type_coerce(MCPServerCredential.headers_blob, Text),
+                    ).where(
+                        MCPServerCredential.server_id.in_([s.id for _, s in servers]),
                         MCPServerCredential.user_id == principal.user_id,
                     )
                 )
-            ).scalar_one_or_none()
-        except Exception as exc:
+            ).all()
+            for server_id, env_blob, headers_blob in rows:
+                personal_rows[server_id] = (env_blob, headers_blob)
+        except Exception:
             # Not knowing whether the caller saved a credential is not the
             # same as knowing they did not: the owner's is not used instead.
             logger.warning(
-                "Failed to load credentials for MCP server %r", _name(server), exc_info=True
+                "Failed to load credentials for %d MCP server(s)", len(servers), exc_info=True
             )
-            raise _credential_unavailable("MCP server", server) from exc
+            for index, server in servers:
+                answers[index] = _credential_unavailable("MCP server", server)
+            return answers
 
-    if personal is not None and personal_credential_fits(
-        server.transport, personal.env_blob, personal.headers_blob
-    ):
-        # Only the caller's own values, never merged with the owner's.
-        return ResolvedCredential(
-            source=CredentialSource.PERSONAL,
-            env=dict(personal.env_blob) if personal.env_blob else None,
-            headers=dict(personal.headers_blob) if personal.headers_blob else None,
-        )
+    for index, server in servers:
+        try:
+            answers[index] = _mcp_answer(principal, server, personal_rows.get(server.id))
+        except AssemblyRefusal as refusal:
+            answers[index] = refusal
+    return answers
+
+
+def _mcp_answer(
+    principal: Principal, server: Any, personal_blobs: tuple[str | None, str | None] | None
+) -> ResolvedCredential:
+    if personal_blobs is not None:
+        env = _read(personal_blobs[0]) if personal_blobs[0] is not None else None
+        headers = _read(personal_blobs[1]) if personal_blobs[1] is not None else None
+        if personal_credential_fits(server.transport, env, headers):
+            # Only the caller's own values, never merged with the owner's.
+            return ResolvedCredential(
+                source=CredentialSource.PERSONAL, env=env or None, headers=headers or None
+            )
     if must_bring_own_credential(server, principal.user_id):
         # The credential must supply what the transport reads. One that does
         # not supplies nothing, and the owner's must not fill the gap. This
