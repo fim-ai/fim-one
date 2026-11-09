@@ -100,12 +100,14 @@ The hook runs automatically on every commit. It only processes staged files rele
 
 | Order | Step | Trigger | What it does |
 |---|---|---|---|
-| 0 | Locale-edit guard | Any staged file under `messages/{locale}/`, `docs/{locale}/`, or `README.{locale}.md` | Aborts the commit — no override. Fix translations via `scripts/translation-glossary.md` instead. |
+| 0 | Locale-edit guard | Any staged file under `messages/{locale}/`, `docs/{locale}/`, or `README.{locale}.md` | Aborts the commit. Fix translations via `scripts/translation-glossary.md` instead. The only override is `TRANSLATION_REPAIR=1`, for committing output of `scripts/translate.py` when the English change is already committed. |
 | 1 | OpenAPI spec regen | `src/fim_one/web/**/*.py` changed | Re-exports `docs/openapi.json` from FastAPI routes |
-| 2 | i18n translation | `messages/en/*.json`, `docs/*.mdx`, or `README.md` changed (needs local `LLM_API_KEY`, else CI handles it after merge) | Translates new/changed keys into all target locales |
-| 3 | mypy type checking | Any `src/fim_one/**/*.py` changed | Runs mypy with full import chain on staged files |
-| 4 | MDX validation | Any `.mdx` file staged | Validates JSX/MDX syntax before it reaches Mintlify |
-| 5 | Markdown link gate | Any `.md` / `.mdx` file staged | `scripts/check_md_links.py` rejects links to missing pages or assets and `#anchors` that match no heading, across all of `docs/` (a rename breaks links in files you did not stage). Also runs in CI. |
+| 2 | Docs nav regen | `docs/nav.template.json`, `docs/docs.base.json`, `scripts/docs-nav-glossary.json`, or `docs/nav-overrides/*.json` changed | Rebuilds `docs/docs.json` with `scripts/build-docs-nav.py` |
+| 3 | i18n translation | `messages/en/*.json`, `docs/*.mdx`, or `README.md` changed (needs local `LLM_API_KEY`, else CI handles it after merge) | Translates new/changed keys into all target locales |
+| 4 | mypy type checking | Any `src/fim_one/**/*.py` changed | Runs mypy with full import chain on staged files |
+| 5 | Behavioral-eval freshness | Staged files on the watch list in `scripts/eval_stamp.py` (system prompt, ReAct loop, built-in tools) | Refuses the commit until `uv run pytest evals/ -q` has been run for the change; `SKIP_EVALS=1` bypasses |
+| 6 | Markdown link gate | Any `.md` / `.mdx` file staged | `scripts/check_md_links.py` rejects links to missing pages or assets and `#anchors` that match no heading, across all of `docs/` (a rename breaks links in files you did not stage). Also runs in CI. |
+| 7 | MDX validation | Any `.mdx` file staged | Validates JSX/MDX syntax before it reaches Mintlify |
 
 If any step fails, the commit is aborted. Fix the reported errors and retry.
 
@@ -121,7 +123,7 @@ FIM One supports 6 locales (EN, ZH, JA, KO, DE, FR). Translations are fully auto
 - `docs/*.mdx` (root level, not locale subdirs) -- documentation
 - `README.md` -- project readme
 
-Other locale files (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) are **auto-generated** and the pre-commit hook unconditionally refuses commits that manually edit them. To fix a mistranslation, edit [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — the prompt-injected single source of truth for every translation rule — then regenerate affected files with `uv run scripts/translate.py --files <en-sources> --force`. Every glossary fix applies to all five locales permanently.
+Other locale files (`messages/zh/`, `docs/zh/`, `README.zh.md`, etc.) are **auto-generated** and the pre-commit hook refuses commits that manually edit them. To fix a mistranslation, edit [`scripts/translation-glossary.md`](https://github.com/fim-ai/fim-one/blob/master/scripts/translation-glossary.md) — the prompt-injected single source of truth for every translation rule — then regenerate affected files with `uv run scripts/translate.py --files <en-sources> --force`. Every glossary fix applies to all five locales permanently.
 
 **Two paths to generating locale files:**
 

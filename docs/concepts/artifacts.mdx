@@ -4,7 +4,7 @@ icon: "file-export"
 description: "Browse, preview, and download all AI-generated files across your conversations."
 ---
 
-Artifacts are the files that AI agents produce during conversations — images, HTML pages, code files, documents, and other outputs. The Artifacts page is a cross-conversation gallery that lets you find, preview, and download everything your agents have created.
+Artifacts are the files that AI agents produce during conversations — images, HTML pages, code files, documents, and other outputs. The Artifacts page is a cross-conversation gallery that lets you find, preview, and download the deliverables your agents have produced.
 
 ## How Artifacts Are Created
 
@@ -19,23 +19,23 @@ Common producers:
 | Code execution tools | Any file | Generated code, exported data |
 | Image generation | Images | AI-generated illustrations |
 
-When a tool produces an artifact, it appears inline in the conversation as a downloadable attachment. All artifacts are also collected in the Artifacts gallery for cross-conversation browsing.
+When a tool produces an artifact, it appears inline in the conversation as a downloadable attachment. Deliverables — the files an answer hands over as final output — are also collected in the Artifacts gallery for cross-conversation browsing; intermediate files stay in their conversation.
 
 ## The Gallery
 
-The Artifacts page (`/artifacts`) provides a unified view of all files you've generated across all conversations.
+The Artifacts page (`/artifacts`) provides a unified view of the deliverables from all your conversations.
 
 ### Filtering
 
-Four type filters narrow the view:
+Filter tabs narrow the view (All plus four types):
 
 | Filter | File Types |
 |--------|-----------|
 | **All** | Everything |
 | **Images** | PNG, JPG, GIF, SVG, WebP |
 | **HTML** | HTML pages and reports |
-| **Code** | Python, JavaScript, TypeScript, JSON, YAML, XML, CSS, SQL, Markdown, shell scripts |
-| **Files** | Everything else — CSV, PDF, plain text, binary files |
+| **Code** | Any text file except HTML, plus JSON: source code, Markdown, CSV, plain text, YAML |
+| **Files** | Everything else — PDF, archives, binary files |
 
 ### Preview
 
@@ -58,4 +58,4 @@ Each artifact shows:
 
 ## Storage
 
-Artifacts are stored on the server filesystem, one directory per conversation. Each artifact gets a UUID-based filename, making URLs unguessable without access to the conversation. Files are served directly — no database records for individual artifacts, keeping the storage layer simple and fast.
+Artifacts are stored on the server filesystem, one directory per conversation. Each artifact is stored under a random 12-character id plus its original name; download URLs carry the conversation UUID. Files are served directly — no database records for individual artifacts, keeping the storage layer simple and fast.

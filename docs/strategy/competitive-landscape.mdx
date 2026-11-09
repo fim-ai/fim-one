@@ -20,13 +20,13 @@ Dify / Manus are **replacement products** — they ask users to move work into a
 | Dimension | Dify | Manus | Coze | FIM One |
 |-----------|------|-------|------|-----------|
 | **Approach** | Visual DAG workflow builder | Autonomous consumer agent | Visual builder + agent space | Cross-Border Agent Platform |
-| **Delivery** | Standalone platform | Cloud SaaS + API | Cloud SaaS + self-hosted (Coze Studio) | Platform / API / embed |
+| **Delivery** | Standalone platform | Cloud SaaS + API | Cloud SaaS + self-hosted (Coze Studio) | Platform / API (embed planned) |
 | **Planning** | Human-designed static DAGs | Multi-agent Chain-of-Thought | Static workflows + dynamic agents | LLM DAG planning + ReAct loops |
 | **Legacy system integration** | API nodes (manual wiring) | None | Plugin marketplace | Connector Platform (standardized) |
-| **Cross-system orchestration** | No | No | No | Hub Mode (N:N) |
-| **Embeddable** | iframe + script embed | API only | Chat SDK + 10+ channels | API / iframe (Widget planned) |
+| **Cross-system orchestration** | No | No | No | Yes (one agent across several systems) |
+| **Embeddable** | iframe + script embed | API only | Chat SDK + 10+ channels | API (iframe / widget planned) |
 | **Human confirmation** | No | No | No | Yes (pre-execution gate) |
-| **Self-hosted** | Yes (Docker Compose) | No | Yes (Coze Studio, Apache 2.0) | Yes (single process) |
+| **Self-hosted** | Yes (Docker Compose) | No | Yes (Coze Studio, Apache 2.0) | Yes (Docker Compose) |
 | **License** | Apache 2.0 | Proprietary | Apache 2.0 (Coze Studio) | Source Available |
 | **Traction** | 121K+ stars | Acquired by Meta ($2B+, China regulatory review) | ByteDance backed, 20K+ stars (Studio) | Early stage |
 
@@ -42,35 +42,35 @@ Dify / Manus are **replacement products** — they ask users to move work into a
 
 ## FIM One's Unique Differentiators
 
-### 1. Connector Architecture (MCP + Governance)
+### 1. Connector Architecture (Adapters + Governance)
 
 ```
 Platform (ReAct / DAG / Portal)
     ↓
 Connector Governance (audit, read_only, auth, confirmation gate)
     ↓
-MCP Protocol (standard transport, process isolation)
+Integration adapters (API connector, database connector, MCP server)
     ↓
-Legacy System (DB / API / message bus)
+Legacy System (DB / API)
 ```
 
-Connectors are implemented as **MCP Servers** with a governance layer on top. The agent doesn't know it's talking to a legacy system -- connectors surface as ordinary tools in the ToolRegistry. No other platform in this space has a standardized connector architecture with enterprise governance built in. See [Connector Architecture](/architecture/connector-architecture) for the full design.
+API and database connectors run in-process as governed tools; external **MCP servers** attach through the MCP client under the same governance. The agent doesn't know it's talking to a legacy system -- connectors surface as ordinary tools in the ToolRegistry. No other platform in this space has a standardized connector architecture with enterprise governance built in. See [Connector Architecture](/architecture/connector-architecture) for the full design.
 
-### 2. Dual-Mode Delivery
+### 2. Dual-Mode Delivery (embedded mode planned)
 
 ```
 Standalone:  Full web UI, independent AI assistant
-Embedded:    <script src="fim-one.js"> injected into host page
-             OR iframe / standalone URL with auth passthrough
+Embedded:    host page calls the API today; a drop-in script / iframe
+             embed with identity passed from the host is planned
 ```
 
 ### 3. Human Confirmation Gate
 
-Write operations on legacy systems require explicit user approval. Implemented as a pre-execution hook -- does not modify the agent loop. SSE event `confirmation_required` pauses execution until user responds.
+Connector actions marked as requiring confirmation need explicit user approval. Implemented as a pre-execution hook -- does not modify the agent loop. SSE event `awaiting_confirmation` pauses execution until user responds.
 
-### 4. Page Context Injection
+### 4. Page Context Injection (planned)
 
-When embedded, the widget reads context from the host page (current contract ID, page URL, DOM selectors) and injects it into the agent's context. The agent understands *where* the user is, not just *what* they asked.
+Not shipped; it depends on the embed. When embedded, the widget will read context from the host page (current contract ID, page URL, DOM selectors) and inject it into the agent's context. The agent understands *where* the user is, not just *what* they asked.
 
 ## Category Durability Analysis
 
@@ -120,9 +120,9 @@ FIM One's Connector architecture is conceptually **AI-era MuleSoft**:
 | | MuleSoft | FIM One |
 |-|----------|-----------|
 | **What** | System-to-system API integration | Cross-Border Agent Platform for system integration |
-| **How** | Connectors + declarative mapping | MCP Servers + Connector Governance Layer |
-| **Protocol** | Anypoint SDK | MCP (open standard) + governance layer |
-| **Standardization** | Anypoint connectors | Level 1 (Python MCP Server) -> Level 2 (YAML) -> Level 3 (AI-generated) |
+| **How** | Connectors + declarative mapping | API / database connectors and MCP servers + Connector Governance Layer |
+| **Protocol** | Anypoint SDK | HTTP, SQL drivers, MCP (open standard) + governance layer |
+| **Standardization** | Anypoint connectors | Manual config, OpenAPI import, or AI builder |
 | **Value** | "Connect everything" | "All-in-one agent platform for Global × China enterprises" |
 
 This analogy is powerful for enterprise positioning.

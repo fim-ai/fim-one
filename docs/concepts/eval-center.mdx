@@ -4,7 +4,7 @@ icon: "flask"
 description: "Quantitatively benchmark your agents with test datasets and automated LLM grading."
 ---
 
-The Evaluation Center lets you verify agent quality **before** deploying to production. Create a dataset of test cases, run them against any published agent, and get a quantitative report with per-case pass/fail verdicts, latency, and token usage.
+The Evaluation Center lets you verify agent quality **before** deploying to production. Create a dataset of test cases, run them against any agent you own, and get a quantitative report with per-case pass/fail verdicts, latency, and token usage.
 
 <Info>
 Designed for enterprise procurement review — every result is auditable, reproducible, and stored persistently.
@@ -16,7 +16,7 @@ Each evaluation run executes a **three-stage pipeline** for every test case:
 
 <Steps>
   <Step title="Agent Execution">
-    A real ReActAgent runs the test case prompt. Same engine as chat: same model, same tools, same instructions. No mocking, no shortcuts.
+    A real ReActAgent runs the test case prompt. Same engine as chat, with the agent's instructions and the built-in tools. No mocking, no shortcuts.
 
     Produces: **answer**, **latency**, **token usage**.
   </Step>
@@ -95,14 +95,14 @@ While a run is in progress (`pending` or `running` status), the page auto-refres
 
 ### Included
 - **Builtin tools**: calculator, web_search, web_fetch, python_exec, file_ops, etc.
-- **Agent instructions**: The agent's `extra_instructions` field is passed through
-- **Agent's configured model**: If the agent has a custom model config, that model is used
+- **Agent instructions**: The agent's `instructions` are passed through
+- **Agent's configured model**: If the agent has an inline model config, that model is used; otherwise the system default model
 
 ### Not Included (by design)
 - **Connectors**: External HTTP connectors require live third-party services — skipped in eval to avoid flaky tests
 - **MCP servers**: Same reason — external process dependencies
 - **Conversation history**: Each case runs in isolation with no prior context
-- **Knowledge bases**: KB retrieval tools are not loaded in eval mode
+- **Knowledge bases**: The agent's knowledge bases are not attached in eval mode
 
 <Info>
 This means eval results reflect the agent's **reasoning and tool-use ability**, not its integration with external services. Test connectors separately via the Connector Test feature.
@@ -131,7 +131,7 @@ The grader is an LLM (the system's "fast" model) that receives four pieces of in
 }
 ```
 
-The grader uses `structured_llm_call` with function calling to enforce the schema. If the grader itself fails (network error, malformed response), the case is marked as `error`.
+The grader uses `structured_llm_call` with function calling to enforce the schema. If the grader produces no verdict (network error, malformed response), the case is recorded as `fail` with the reasoning "Grader failed to produce a verdict." `error` means the agent run itself raised.
 
 ## Best Practices
 

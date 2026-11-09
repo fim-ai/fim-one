@@ -24,7 +24,7 @@ We classify every feature by its relationship to LLM progress, and allocate effo
 ### Why Connector Platform is fully orthogonal
 
 Models will never natively:
-- Store and encrypt API credentials (AES-GCM)
+- Store and encrypt API credentials (Fernet)
 - Manage OAuth flows (authorization page → callback → refresh token)
 - Connect to a client's Kingdee/金蝶 ERP database
 - Push notifications to Lark/飞书 or WeCom/企微
@@ -73,17 +73,17 @@ Building a competing orchestration layer would mean racing against first-party i
 | Feature | Version | Why orthogonal |
 |---------|---------|---------------|
 | Connector entity + CRUD | v0.6.1 | Enterprise integration, pure engineering |
-| Per-user credentials (AES-GCM) | v0.6.2 | Security infrastructure |
+| Per-user credentials (Fernet) | v0.6.2 | Security infrastructure |
 | Confirmation Gate | v0.6.2 | Safety mechanism for write operations |
 | Connector Export/Import/Fork | v0.7 | Distribution mechanism |
 | OAuth 2.0 | v0.7 | Protocol implementation |
-| MCP Server Export | v0.7 | Interoperability (depends on MCP adoption) |
+| MCP Server Export | not implemented | Interoperability (depends on MCP adoption) |
 | Database Connector | v0.8 | Direct DB access, connection pools |
 | Message Push | v0.8 | Notification channels |
 | RBAC | v0.8 | Access control, governance |
 | Operation Audit Log | v0.8 | Compliance |
 | Sandbox Hardening | v0.9 | Security isolation |
-| Observability (OTel, circuit breaker) | v0.9 | Production operations |
+| Observability (circuit breaker shipped; OTel not implemented) | v0.9 | Production operations |
 | Connector Analytics | v0.9 | Usage tracking |
 | Docker Compose | v0.9 | Deployment |
 | Admin Dashboard | v1.0 | Management UI |

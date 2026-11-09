@@ -13,7 +13,7 @@ FIM One has three model roles:
 | Role | Env Variable | Used For |
 |---|---|---|
 | **General** | `LLM_MODEL` | Planning, analysis, ReAct agent, complex reasoning |
-| **Fast** | `FAST_LLM_MODEL` | DAG step execution, context compaction (cheaper, faster) |
+| **Fast** | `FAST_LLM_MODEL` | DAG steps the planner marks `fast`, ReAct tool-decision iterations, context compaction (cheaper, faster) |
 | **Reasoning** | `REASONING_LLM_MODEL` | Deep analysis, complex planning, mathematical proofs |
 
 Fast and Reasoning fall back to General if not configured. For production deployments, splitting into at least two models (General + Fast) gives the best cost/quality balance.
@@ -133,7 +133,7 @@ The most battle-tested option. OpenAI models have the best native function calli
 - Budget Fast: `gpt-5-mini` ($0.25/$2.00) and `gpt-5-nano` ($0.05/$0.40) remain available at lower prices
 - Legacy: `gpt-4.1` (still in API, 1M context, good for coding)
 
-**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: `/v1/chat/completions` rejects GPT-5.x requests that combine tools with reasoning, so FIM One talks the Responses API directly for GPT-5.x, where both work together. That path also carries each turn's encrypted reasoning into the next one, so an agent building a multi-step answer keeps what it already worked out instead of re-deriving it at every tool call. Endpoints without a `/v1/responses` route fall back to chat completions with an explicit `reasoning_effort: "none"` during agent tool-use steps, and `FIM_GPT5_RESPONSES_MODE` can force either fallback by hand. Other model families on OpenAI-compatible endpoints stay on chat completions: they gain nothing from Responses, and proxy shims for it can badly buffer streaming. GPT-5.4 requires `temperature=1`, which FIM One handles automatically via LiteLLM's parameter filtering (`drop_params`).
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium` — works natively with o-series and GPT-5.x models. GPT-5.4 supports `reasoning_effort` with levels `none`, `low`, `medium`, `high`, `xhigh`. The o-series requires `max_completion_tokens` instead of `max_tokens`, which LiteLLM handles automatically. Note: `/v1/chat/completions` rejects GPT-5.x requests that combine tools with reasoning, so FIM One talks the Responses API directly for GPT-5.x, where both work together. That path also carries each turn's encrypted reasoning into the next one, so an agent building a multi-step answer keeps what it already worked out instead of re-deriving it at every tool call. Endpoints without a `/v1/responses` route fall back to chat completions with an explicit `reasoning_effort: "none"` during agent tool-use steps, and `FIM_GPT5_RESPONSES_MODE` can force either fallback by hand. Other model families on OpenAI-compatible endpoints stay on chat completions: they gain nothing from Responses, and proxy shims for it can badly buffer streaming. GPT-5 and later accept only the default temperature; FIM One removes any other value from the request and sends `max_completion_tokens` instead of `max_tokens`.
 
 | Model | Input $/MTok | Output $/MTok | Context |
 |---|---|---|---|
@@ -178,7 +178,7 @@ Claude excels at nuanced reasoning and complex multi-step tasks. FIM One connect
 
 Opus 4.6 and Sonnet 4.6 have a 1M context window (GA since March 13, 2026 — no beta header needed). Haiku 4.5 has a 200K context window.
 
-**Reasoning:** Set `LLM_REASONING_EFFORT=medium`. LiteLLM routes Anthropic models through the native API, so `reasoning_content` (extended thinking) is fully returned and visible in the UI "thinking" step. Claude 4.6 and newer use Adaptive Thinking (`thinking: {type: "adaptive"}` plus `output_config.effort`) in place of a manual `budget_tokens`, which FIM One emits directly rather than relying on LiteLLM's mapping. Anthropic requires `temperature=1` while thinking is active, and the system enforces that for you: the request builder pins the value on Anthropic routes, and on models that reject sampling parameters outright it removes `temperature` altogether. Do not set `LLM_TEMPERATURE=1` by hand. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
+**Reasoning:** Set `LLM_REASONING_EFFORT=medium`. LiteLLM routes Anthropic models through the native API, so `reasoning_content` (extended thinking) is fully returned and visible in the UI "thinking" step. Claude 4.6 and newer use Adaptive Thinking (`thinking: {type: "adaptive"}` plus `output_config.effort`) in place of a manual `budget_tokens`, which FIM One emits directly rather than relying on LiteLLM's mapping. Anthropic requires `temperature=1` while thinking is active, and the system enforces that for you: with thinking on, Claude 4.5 and older are sent `temperature=1.0`, and adaptive-thinking models (4.6 and newer) have `temperature` removed from the request; models that reject sampling parameters outright have it removed whether or not thinking is on. Do not set `LLM_TEMPERATURE=1` by hand. See [Extended Thinking](/configuration/environment-variables#extended-thinking-reasoning) for details.
 
 ```bash
 # .env — Anthropic Claude
@@ -507,7 +507,7 @@ If the same relay URL were `https://my-relay.example.com/v1` instead, the `/clau
 - **OpenAI compatible** is the universal fallback and works with any relay, but provider-specific features (like extended thinking output) may be unavailable.
 
 <Note>
-If your relay platform uses non-standard path conventions (e.g., no `/claude` or `/anthropic` in the URL), FIM One falls back to OpenAI compatible protocol — which works for most use cases. For full native protocol support, you can set the `provider` field explicitly via the admin model configuration UI.
+If your relay platform uses non-standard path conventions (e.g., no `/claude` or `/anthropic` in the URL), FIM One falls back to OpenAI compatible protocol — which works for most use cases. For full native protocol support, use a base URL whose host or path identifies the protocol (`/claude`, `/anthropic`, `/gemini`); the admin model UI has no protocol selector.
 </Note>
 
 Relays also fail in ways a direct provider does not, and most of those failures are silent: a dropped parameter, a stripped cache breakpoint, a buffered stream that never errors. The symptom-by-symptom list is in [Relay/proxy gotchas](/architecture/llm-provider-guide#relayproxy-gotchas).
@@ -522,7 +522,7 @@ Relays also fail in ways a direct provider does not, and most of those failures 
 
 ### Main vs Fast: When to Split
 
-- **Split** when your main model is expensive or slow (e.g., `gpt-5.4` + `gpt-5.4-nano`). DAG mode runs many parallel steps — using a cheaper fast model saves significant cost.
+- **Split** when your main model is expensive or slow (e.g., `gpt-5.4` + `gpt-5.4-nano`). Tool-decision iterations, compaction, and the DAG steps the planner marks `fast` run on the fast model — using a cheaper one saves significant cost.
 - **Same model** when your model is already cheap (e.g., `deepseek-chat` for both). The overhead of managing two models isn't worth it.
 
 ### When to Enable Reasoning

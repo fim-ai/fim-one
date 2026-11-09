@@ -32,7 +32,7 @@ FIM One is built around a set of thin abstract base classes — one per swappabl
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fim_one.core.model.base import BaseLLM
+from fim_one.core.model.base import REASONING_INHERIT, BaseLLM
 from fim_one.core.model.types import ChatMessage, LLMResult, StreamChunk
 
 
@@ -52,6 +52,8 @@ class MyLLM(BaseLLM):
             "json_mode": True,   # supports response_format JSON mode
             "vision":   False,
             "streaming": True,
+            "thinking": False,   # emits reasoning tokens
+            "tool_choice": True, # accepts a forced tool_choice (read by structured output)
         }
 
     async def chat(
@@ -63,6 +65,7 @@ class MyLLM(BaseLLM):
         temperature: float | None = None,
         max_tokens: int | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | object | None = REASONING_INHERIT,
     ) -> LLMResult:
         # Call your provider, return LLMResult(message=..., usage=...)
         ...
@@ -83,14 +86,14 @@ class MyLLM(BaseLLM):
 
 ### Registration via ModelRegistry
 
-`ModelRegistry` maps names to `BaseLLM` instances and resolves by role. The system uses four built-in roles: `general`, `fast`, `compact`, and `vision`. You can add your own.
+`ModelRegistry` maps names to `BaseLLM` instances and resolves by role. The system looks up three roles: `general`, `fast`, and `reasoning`. You can add your own.
 
 ```python
 from fim_one.core.model.registry import ModelRegistry
 
 registry = ModelRegistry()
 registry.register("my-llm", MyLLM(api_key="...", model="my-v1"), roles=["general"])
-registry.register("my-fast", MyLLM(api_key="...", model="my-mini"), roles=["fast", "compact"])
+registry.register("my-fast", MyLLM(api_key="...", model="my-mini"), roles=["fast"])
 
 # Retrieve later
 llm = registry.get_default()           # first "general" model, or first registered
@@ -219,7 +222,7 @@ class RedisMemory(BaseMemory):
         await self._redis.delete(self._key)
 ```
 
-Inject via the agent constructor: `ReActAgent(llm=llm, memory=RedisMemory(conv_id, url))`.
+Inject via the agent constructor: `ReActAgent(llm=llm, tools=registry, memory=RedisMemory(conv_id, url))`.
 
 ---
 

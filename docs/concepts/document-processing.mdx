@@ -22,7 +22,7 @@ Each document format has a dedicated processing pipeline. The behavior changes d
 | **DOCX / DOC** | markitdown (Markdown conversion) | Embedded images extracted with `[Figure N]` positional markers via python-docx | Text extraction only; images lost |
 | **PPTX / PPT** | markitdown (text from each slide) | Embedded images extracted with `[Figure N]` markers and slide separators via python-pptx | Text extraction only; slide visuals lost |
 | **XLSX / XLS** | markitdown (table structure preserved) | Same as text mode (tables do not benefit from vision) | Same |
-| **Images** (JPG, PNG, GIF, WebP) | N/A | Sent as `image_url` vision content blocks | Annotated as `[Attached image: filename]` — model is aware but cannot see the content |
+| **Images** (JPG, PNG, GIF, WebP) | N/A | Sent as `image_url` vision content blocks | Annotated as `[Attached images (text-only model, not displayed): filename (file_id: ...)]` — model is aware but cannot see the content |
 | **Text files** (TXT, MD, PY, JS, HTML, CSV, JSON) | Direct read / parse | N/A (text is text) | Same |
 
 <Tip>
@@ -83,9 +83,9 @@ Pass the `doc_mode` parameter in the chat API to control processing for a single
 
 ```json
 {
-  "message": "Analyze this financial report",
+  "q": "Analyze this financial report",
   "doc_mode": "vision",
-  "attachments": [...]
+  "image_ids": "<file_id>,<file_id>"
 }
 ```
 
@@ -183,7 +183,7 @@ This helps users understand and resolve file processing issues without trial and
 - **Start with `auto` mode.** The default behavior is correct for most deployments — vision is used when beneficial and available.
 - **Monitor token usage.** After enabling vision, watch the token consumption dashboard. If costs spike unexpectedly, adjust `DOCUMENT_VISION_MAX_PAGES` or `DOCUMENT_VISION_DPI`.
 
-- **Use the pre-built sandbox image.** The `Dockerfile.sandbox` includes common data-science packages (pdfplumber, Pillow, pandas, etc.) needed for AI code execution against documents. Build it via `docker compose` or manually with `docker build -f Dockerfile.sandbox -t fim-sandbox .` to ensure code execution works in `--network=none` containers.
+- **Use the pre-built sandbox image.** The `Dockerfile.sandbox` includes common data-science packages (pdfplumber, Pillow, pandas, etc.) needed for AI code execution against documents. Build it via `docker compose` or manually with `docker build -f Dockerfile.sandbox -t fim-sandbox:python .` to ensure code execution works in `--network=none` containers.
 
 ### For End Users
 

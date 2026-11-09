@@ -40,21 +40,21 @@ Group: "Production"
 
 <Steps>
   <Step title="Open the Models page">
-    Navigate to **Admin** (sidebar) and select the **Models** tab.
+    Open **Admin Panel** from the user menu and select the **Models** tab.
   </Step>
   <Step title="Click Add Provider">
     Click the **Add Provider** button in the top-right area of the Providers section.
   </Step>
   <Step title="Select a preset or use a custom endpoint">
-    The dialog shows preset buttons for common providers: **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI**, and **OpenAI Compatible** (custom endpoint). Clicking a preset auto-fills the provider name and base URL.
+    The dialog offers presets for 16 providers — **OpenAI**, **Anthropic (Claude)**, **Google Gemini**, **DeepSeek**, **Mistral AI**, **xAI (Grok)**, **OpenRouter**, **Ollama**, and the China and Global endpoints of **Qwen**, **GLM**, **Moonshot** and **MiniMax** — plus **OpenAI Compatible** (custom endpoint). Clicking a preset auto-fills the provider name and base URL.
 
-    Choose **OpenAI Compatible** if your provider is not listed (e.g., a third-party relay, Ollama, or any other OpenAI-compatible endpoint).
+    Choose **OpenAI Compatible** if your provider is not listed (e.g., a third-party relay or any other OpenAI-compatible endpoint).
   </Step>
   <Step title="Enter credentials">
     Fill in the required fields:
     - **Provider Name** -- A friendly label (e.g., "My OpenAI Account"). This is for your reference only.
     - **Base URL** -- The API endpoint. Presets fill this automatically. For custom endpoints, enter the full URL (e.g., `http://localhost:11434/v1` for Ollama).
-    - **API Key** -- Your provider's API key. For local models (Ollama), enter any non-empty string (e.g., `ollama`).
+    - **API Key** -- Your provider's API key. With the Ollama preset the API key can be left empty.
   </Step>
   <Step title="Save">
     Click **Create**. The provider appears in the list, ready for you to add models under it.
@@ -79,10 +79,10 @@ You can create multiple providers for the same service. For example, two "OpenAI
   <Step title="Enter model details">
     Fill in the two required fields:
     - **Display Name** -- A human-readable name shown in the UI (e.g., "GPT-4o", "Claude Sonnet"). Can be anything you like.
-    - **Model Name (API)** -- The exact model identifier sent to the API (e.g., `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). This must match what your provider expects.
+    - **Model ID** -- The exact model identifier sent to the API (e.g., `gpt-4o`, `claude-sonnet-4-6`, `deepseek-chat`). This must match what your provider expects.
   </Step>
   <Step title="Configure advanced settings (optional)">
-    Click the **Advanced** toggle to reveal additional settings: Max Output Tokens, Context Size, Temperature, Native Function Calling, and JSON Mode. See the [Advanced Settings](#advanced-settings) section below for details on each.
+    Click the **Advanced** toggle to reveal additional settings: Max Output Tokens, Context Size, Temperature, Native Function Calling, JSON Mode, and Vision Support (whether the model accepts images; see [Document Processing](/concepts/document-processing)). See the [Advanced Settings](#advanced-settings) section below for details on each.
   </Step>
   <Step title="Save">
     Click **Create**. The model appears under its provider and is now available for assignment to model groups.
@@ -137,7 +137,7 @@ For technical details, see [LLM Provider Compatibility -- json_mode_enabled](/ar
 Controls the randomness of model output. Range: 0 (deterministic) to 2 (highly creative).
 
 <Note>
-When reasoning/extended thinking is enabled for Anthropic models, temperature is automatically forced to 1.0 by the system. You do not need to set this manually.
+When reasoning/extended thinking is enabled for Anthropic models, the system handles temperature: Claude 4.5 and older are sent 1.0, and Claude 4.6 and newer have the parameter removed. You do not need to set this manually.
 </Note>
 
 ### Max Output Tokens
@@ -280,7 +280,7 @@ FIM One uses three model roles. Each role serves a different purpose in the exec
 |---|---|---|
 | **General** | Planning, analysis, ReAct agent, DAG step execution (default) | Your most capable model (e.g., `gpt-4o`, `claude-sonnet-4-6`) |
 | **Fast** | `model_hint="fast"` DAG steps, context compaction, history summary | Optimized for speed and cost (e.g., `gpt-5-nano`, `deepseek-chat`). Falls back to General if not assigned. |
-| **Reasoning** | `model_hint="reasoning"` DAG steps, domain-escalated ReAct (legal/medical/financial) | A strong reasoning model (e.g., `o3`, `deepseek-reasoner`). Falls back to General if not assigned. |
+| **Reasoning** | `model_hint="reasoning"` DAG steps, domain-escalated ReAct (legal, medical, financial, tax, compliance, patent by default) | A strong reasoning model (e.g., `o3`, `deepseek-reasoner`). Falls back to General if not assigned. |
 
 ### Creating a Model Group
 
@@ -304,19 +304,19 @@ FIM One uses three model roles. Each role serves a different purpose in the exec
 
 ### Activating a Group
 
-To activate a model group, use the dropdown or activation control on the Models page. Only one group can be active at a time. Activating a group immediately applies its model assignments to all new conversations.
+To activate a model group, use the dropdown or activation control on the Models page. Only one group can be active at a time. Activating a group applies its model assignments to the next message in every conversation.
 
 To deactivate the current group (falling back to ENV-configured models), select the deactivate option.
 
 <Warning>
-Switching the active model group affects **all new conversations** system-wide. Existing in-progress conversations continue using whichever model was active when they started.
+Switching the active model group takes effect system-wide on the next message in every conversation, new or existing. A response that is already streaming finishes on the previous model.
 </Warning>
 
 ---
 
 ## Domain-Aware Model Escalation
 
-When the auto-router detects a specialist domain — **legal**, **medical**, or **financial** — the system automatically escalates model selection beyond the normal role assignments:
+When the domain classifier detects a specialist domain — by default **legal**, **medical**, **financial**, **tax**, **compliance**, or **patent** (`ESCALATION_DOMAINS`) — the system automatically escalates model selection beyond the normal role assignments:
 
 - **ReAct mode:** The general model is replaced by the **reasoning model** (`registry.get_by_role("reasoning")`). This means the Reasoning slot in your Model Group is not only used for DAG `model_hint="reasoning"` steps — it also serves as the escalation target for domain-specific ReAct tasks.
 - **DAG mode:** Domain context is injected into the planner prompt, guiding it to assign `model_hint="reasoning"` to steps requiring specialist accuracy.
@@ -327,7 +327,7 @@ This escalation is automatic and requires no configuration beyond having a Reaso
 
 | Variable | Default | Description |
 |---|---|---|
-| `DAG_CITATION_VERIFICATION` | `true` | Enable post-step citation verification for legal/medical/financial content. Extracts citations via regex and verifies accuracy via LLM judgment. |
+| `DAG_CITATION_VERIFICATION` | `true` | Enable post-step citation verification for specialist-domain content. Extracts citations via regex and verifies accuracy via LLM judgment. |
 | `DAG_STRUCTURED_CONTEXT_MULTIPLIER` | `3.0` | Truncation budget multiplier for structured content (citations, tables, code blocks) in DAG dependency context. Higher values preserve more structured data between steps. |
 
 <Tip>
@@ -361,5 +361,5 @@ The Models page supports exporting your entire provider and model configuration 
 - Backing up your configuration before making changes
 
 <Warning>
-Exported configuration does **not** include API keys. After importing, you must edit each provider to enter the appropriate API key.
+Exported configuration does **not** include API keys. The import dialog asks for a key for each new provider; providers that already exist keep theirs.
 </Warning>
